@@ -24,7 +24,7 @@ source: ./__fixtures__/invalid/shapes/telo.yaml
 expect:
   errors:
     - code: SCHEMA_VIOLATION
-      message: "Ui.View/misspelled: /content/type must be equal to one of the allowed values (box | stack | columns | text | badge | link | menu | tabs | image | svg | value | time | markdown | list | button | bar | command | composite)"
+      message: "Ui.View/misspelled: /content/type must be equal to one of the allowed values (box | stack | columns | text | badge | link | menu | tabs | image | svg | value | time | markdown | list | button | bar | command | composite | pane)"
     - code: SCHEMA_VIOLATION
       message: "Ui.View/strayKey: /content/children/0 must NOT have additional properties ('gap' is not allowed)"
     - code: SCHEMA_VIOLATION
@@ -82,7 +82,11 @@ expect:
     - code: SCHEMA_VIOLATION
       message: "Ui.TabBarNavigation/tooManyTabs: /visible must be <= 5"
     - code: REFERENCE_KIND_MISMATCH
-      message: "Ui.HeaderNavigation/sidebarAsCompact: reference at 'compact' → 'Ui.SidebarNavigation' does not implement 'Ui.CompactNavigationPlacement'"
+      message: "Ui.HeaderNavigation/headerAsCompact: reference at 'compact' → 'Ui.HeaderNavigation' does not implement 'Ui.CompactNavigationPlacement'"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Navbar/navbarWithoutNavigation: / is missing required property 'navigation'"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.NavigationColumn/columnWithoutNavigation: / is missing required property 'navigation'"
 ---
 kind: Assert.Manifest
 metadata: { name: compactAddressedAtRuntime }
@@ -103,14 +107,14 @@ metadata: { name: splitCompactAddressedAtRuntime }
 source: ./__fixtures__/invalid/split-compact-addressed/telo.yaml
 expect:
   errors: []
-  runFails: "Ui.SplitView 'splitCompactAddressed': names a compact surface that declares an address"
+  runFails: "Ui.SplitView 'splitCompactAddressed': 'aside.compact' names a compact surface that declares an address"
 ---
 kind: Assert.Manifest
 metadata: { name: splitCompactNestedAtRuntime }
 source: ./__fixtures__/invalid/split-compact-nested/telo.yaml
 expect:
   errors: []
-  runFails: "Ui.SplitView 'splitCompactNested': names a compact surface that declares a compact surface of its own"
+  runFails: "Ui.SplitView 'splitCompactNested': 'aside.compact' names a compact surface that declares a compact surface of its own"
 ---
 # A condition holds only keywords of the interpreted profile and can hold for
 # the type it reads; a reader's query parameters leave `_telo` to the renderer;

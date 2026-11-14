@@ -1,0 +1,8 @@
+# A guarded read of the withheld binding.
+kind: Telo.Application
+metadata: { name: WithheldApp, version: 1.0.0 }
+imports: { Kinds: ../kinds }
+---
+kind: Kinds.Box
+metadata: { name: box }
+title: !cel "request != null ? 'signed in' : 'guest'"

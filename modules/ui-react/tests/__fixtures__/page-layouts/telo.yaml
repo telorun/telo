@@ -1,0 +1,101 @@
+# An application drawing its pages in layouts: one shared by two entries, a
+# page drawn bare, and two pages with a layout of their own each. The layout's
+# navbar entry for staff is delivered by a request header, and the page
+# holding a pane varies by the whole request.
+kind: Telo.Application
+metadata: { name: UiReactPageLayoutsApp, version: 1.0.0 }
+imports: { Http: ../../../../http-server, Ui: ../../../../ui, UiReact: ../../../ }
+ports: { http: { env: PORT, default: 19360 } }
+targets:
+  - !ref server
+---
+kind: Ui.Page
+metadata: { name: home }
+path: /
+title: Home
+children:
+  - { type: text, text: Welcome, style: title }
+---
+kind: Ui.Page
+metadata: { name: reports }
+path: /reports
+title: Reports
+children:
+  - type: pane
+    ref:
+      kind: Ui.NavigationColumn
+      navigation:
+        items:
+          - { type: link, text: Summary, href: "/reports?section=summary" }
+---
+kind: Ui.Page
+metadata: { name: signIn }
+path: /sign-in
+title: Sign in
+children:
+  - { type: text, text: Sign in, style: title }
+---
+kind: Ui.Page
+metadata: { name: first }
+path: /first
+title: First
+children: []
+---
+kind: Ui.Page
+metadata: { name: second }
+path: /second
+title: Second
+children: []
+---
+kind: Ui.PageLayout
+metadata: { name: chrome }
+header:
+  - type: pane
+    ref:
+      kind: Ui.Navbar
+      title: Acme
+      navigation:
+        items:
+          - { type: page, page: !ref home }
+          - { type: link, text: Staff, href: /staff, when: !cel "'x-role' in request.headers" }
+footer:
+  - { type: text, text: Acme Corporation, style: muted }
+---
+kind: UiReact.App
+metadata: { name: admin }
+title: Layouts
+theme: !ref UiReact.defaultTheme
+layout: !ref chrome
+pages:
+  - !ref home
+  - { page: !ref reports, layout: !ref chrome }
+  - { page: !ref signIn, layout: { kind: Ui.PageLayout } }
+  - page: !ref first
+    layout:
+      kind: Ui.PageLayout
+      footer: [{ type: text, text: One }]
+  - page: !ref second
+    layout:
+      kind: Ui.PageLayout
+      footer: [{ type: text, text: One }]
+notFound:
+  - { type: text, text: Nothing here, style: title }
+  - { type: link, text: Back to the start, href: { path: !ref home } }
+---
+# Names no layout and no entry is a route: nothing carries a layout id.
+kind: UiReact.App
+metadata: { name: plain }
+title: Plain
+theme: !ref UiReact.defaultTheme
+pages: [!ref signIn]
+---
+kind: Http.Server
+metadata: { name: server }
+listen:
+  address: 127.0.0.1
+  port: !cel "ports.http"
+mounts:
+  - path: /admin
+    mount: !ref admin
+  - path: /plain
+    mount: !ref plain

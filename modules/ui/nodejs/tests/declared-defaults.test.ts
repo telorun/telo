@@ -10,6 +10,8 @@ import * as CollectionOptionsController from "../src/option-source.js";
 import * as surfaces from "../src/surface-controllers.js";
 import * as ChatController from "../src/chat-controller.js";
 import * as SplitViewController from "../src/split-view-controller.js";
+import { asideFrame } from "../src/aside.js";
+import { NavbarController, NavigationColumnController } from "../src/navigation-panes.js";
 import { IconButtonController } from "../src/button-display.js";
 import * as CollectionPresentationController from "../src/collection-presentation.js";
 import * as ListingController from "../src/listing-controller.js";
@@ -155,13 +157,16 @@ describe("a default the manifest declares", () => {
     expect({ label: button.label }).toEqual(defaultsOf(declared("IconButton")));
   });
 
-  it("is what a split view carries for a member left out", async () => {
+  it("is what an aside carries for a member left out, in a split view as in a layout", async () => {
     const empty = { type: "stack", children: [] };
-    const { node } = await provided(SplitViewController, { label: "Filters", aside: { content: empty }, content: empty, collapse: {} });
-    const { side, size, frame, collapse } = defaultsOf(declared("SplitView"));
-    expect({ side: node.side, size: node.size, frame: node.frame, collapse: node.collapse }).toEqual({ side, size, frame, collapse: { ...collapse, state: null } });
-    expect(node.toggle).toEqual({ type: "icon", icon: null, label: "hidden" });
-    expect(node.aside).toEqual({ actions: [], content: { ...empty, fill: false } });
+    const { side, size, frame, collapse } = defaultsOf(declared("Aside"));
+    const written = { label: "Filters", content: empty, collapse: {} };
+    const filled = (await asideFrame(written, ctx, "the owner", "aside")).frame;
+    expect({ side: filled.side, size: filled.size, frame: filled.frame, collapse: filled.collapse }).toEqual({ side, size, frame, collapse: { ...collapse, state: null } });
+    expect(filled.toggle).toEqual({ type: "icon", icon: null, label: "hidden" });
+    expect(filled.compact).toEqual({ ...(await provided(surfaces.DrawerController)), side });
+    const { node } = await provided(SplitViewController, { aside: written, content: empty });
+    expect(node.aside).toEqual({ ...filled, actions: [], content: { ...empty, fill: false } });
   });
 
   it("is what a listing carries for a member left out", async () => {
@@ -243,16 +248,6 @@ describe("a default the manifest declares", () => {
     expect(await provided(navigation.HeaderNavigationController)).toEqual({ type: "header", compact: overlay });
   });
 
-  it("is what a sidebar provides for a member left out: no rail, memory, and a drawer from its own side", async () => {
-    const { type, compact, store, ...members } = await provided(navigation.SidebarNavigationController, { side: "end" });
-    expect([type, store]).toEqual(["sidebar", { type: "memory" }]);
-    const { rail: railDefaults, ...defaults } = defaultsOf(declared("SidebarNavigation"));
-    expect(members).toEqual({ ...defaults, side: "end" });
-    expect(compact).toEqual({ type: "overlay", surface: { ...(await provided(surfaces.DrawerController)), side: "end" } });
-    const { rail } = await provided(navigation.SidebarNavigationController, { rail: { collapsed: undefined } });
-    expect(rail).toEqual(railDefaults);
-  });
-
   it("is what a tab bar provides for a member left out: a drawer from the bottom edge", async () => {
     const { type, surface, ...members } = await provided(navigation.TabBarNavigationController);
     expect(type).toBe("tab-bar");
@@ -260,16 +255,18 @@ describe("a default the manifest declares", () => {
     expect(surface).toEqual({ ...(await provided(surfaces.DrawerController)), side: "bottom" });
   });
 
-  it("is what an application's navigation is when it declares none: each page in order, in the header", async () => {
-    const page = (path: string) => ({ snapshot: () => ({ path, title: { text: path }, query: {} }), invoke: async () => ({}), assets: () => [] });
-    const noIcon = async (): Promise<string> => {
-      throw new Error("no entry names an icon");
-    };
-    const prepared = await navigation.preparedNavigation(undefined, [page("/"), page("/b")] as never, ctx, "the app", noIcon);
-    expect(navigation.deliveredNavigation(prepared.items)).toEqual([
-      { type: "page", key: "entry", path: "/", text: { text: "/" } },
-      { type: "page", key: "b", path: "/b", text: { text: "/b" } },
-    ]);
-    expect(prepared.placement).toEqual(await provided(navigation.HeaderNavigationController));
+  it("is what a navigation bar answers for a member left out: no sides, and a menu bar in the header", async () => {
+    const delivering = {
+      ...ctx,
+      createTypeValidator: () => ({ validate: () => {}, isValid: () => true }),
+      expandValue: (value: unknown) => value,
+    } as unknown as ResourceContext;
+    const bar = await NavbarController.create(resource({ navigation: { items: [] }, start: undefined, end: undefined, placement: undefined }), delivering);
+    const { node } = await (bar as unknown as { invoke(inputs: object): Promise<{ node: Schema }> }).invoke({});
+    const { start, end } = defaultsOf(declared("Navbar"));
+    expect({ start: node.start, end: node.end }).toEqual({ start, end });
+    expect(node.placement).toEqual(await provided(navigation.HeaderNavigationController));
+    const column = await NavigationColumnController.create(resource({ navigation: { items: [] }, state: undefined }), delivering);
+    expect((await (column as unknown as { invoke(inputs: object): Promise<{ node: Schema }> }).invoke({})).node.state).toBeNull();
   });
 });

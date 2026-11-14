@@ -107,11 +107,11 @@ expect:
     - code: CEL_UNKNOWN_FIELD
       message: "Ui.Page/inbox: !cel: 'params.id' is not defined"
     - code: CEL_UNKNOWN_FIELD
-      message: "Ui.View/planTitle: !cel: 'params.id' is not defined (available: ) (as Ui.Page/inbox references it)"
+      message: "Ui.View/planTitle: !cel: 'params.id' is not defined (available: none) (as Ui.Page/inbox references it)"
     - code: CEL_UNKNOWN_FIELD
       message: "Ui.Page/inbox at 'children[2].ref': Ui.View/planId: !cel: 'params.id' is not defined"
     - code: CEL_UNKNOWN_FIELD
-      message: "Ui.Listing/commands: !cel: 'params.name' is not defined (available: ) (as Ui.Page/runners references it)"
+      message: "Ui.Listing/commands: !cel: 'params.name' is not defined (available: none) (as Ui.Page/runners references it)"
     - code: PATH_PARAMETER_UNBOUND
       message: "Ui.Page/inbox: the template 'path: /plans/{id}' of 'plan' (named at 'children[3].href.path') reads '{id}'"
     - code: SCHEMA_VIOLATION

@@ -1,0 +1,11 @@
+units:
+  analyzer: Added
+body: "Resource rules gain `reachable: { kind, use, through }`, exclusive with `in:`:
+  the rule iterates, as `this`, the declaration every reference of `kind` at a slot of
+  use `use` names, reachable from the resource through slots and step `invoke:` targets
+  whose use is in `through`. A reference a dependency wrote is reported at the slot of
+  the entry's own modules where the walk entered it; a hop the walk cannot cross skips
+  the rule, and a malformed `reachable:` is refused at the kind. In both rule families a
+  bound declaration is now equal only to itself: `==`, `!=` and `in` compare which
+  declaration it is, not what it holds, so a declaration holding an expression no longer
+  skips a rule that only compares it."

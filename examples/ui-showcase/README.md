@@ -37,7 +37,7 @@ relative path, so the example runs from a checkout.
 | `/` | the built-in look, the example's own `showcase.css`, and a brand chosen per request: with the cookie `showcase-brand=acme` (set by `/api/brand?set=acme`, cleared by `?set=none`) the Acme tokens apply, without it the theme's own |
 | `/radix` | `UiReactRadix.theme` |
 | `/brand` | the example's own theme from `brand/` — Radix's controls, `brand.css` and token values of its own — under a brand of one token set that serves the bundled Inter typeface |
-| `/sidebar` | the built-in look and `showcase.css`, its navigation in a sidebar instead of the header, and its pages at full width beside it (`pageWidth: full`) instead of the theme's centred column |
+| `/sidebar` | the built-in look and `showcase.css`, its navigation in an aside of the page layout instead of the header, and its pages at full width beside it (`pageWidth: full`) instead of the theme's centred column |
 
 All four place the same pages. Each page's content is one `Ui.View`, and
 each page one `Ui.Page` placing it, declared once in its `pages-*.yaml`; every
@@ -50,7 +50,7 @@ page's own `query`, and on the themes page the links to the other two mounts
 and the brand switch — a link resolves under the mount it is drawn in, so only
 the root application reaches the others.
 
-Every application draws one navigation tree (`UiReact.App.navigation`), naming
+Every application draws one navigation tree (the `navigation` of the `Ui.Navbar` its page layout places), naming
 its pages by reference: Overview, a **Building blocks** group holding
 Conditions, Data, Tables, Filters and an **Input** group inside it (Forms,
 Actions), then Components, CRUD, Related records and Themes. Every entry and group carries an
@@ -61,17 +61,16 @@ text, so the current one takes the theme's current colour. Above `compactBelow` 
 bar whose groups open as a dropdown and a submenu; below it, a menu button
 first in the header opens the tree in a drawer from the start edge.
 
-`/sidebar` draws the same tree with `Ui.SidebarNavigation`: a column beside
-the page whose groups open in place, several at once, and a toggle collapsing
-it to a rail of each entry's icon, whose groups open beside it. Which
-groups are open and whether it is collapsed are kept in local storage, so a
-reload finds it as it was left. Below `compactBelow` it is a
-`Ui.TabBarNavigation` along the bottom edge showing four tabs — Overview, the
-Building blocks group, Components and More, which holds CRUD and Themes — a
-group's tab and More opening their entries in a bottom sheet.
+`/sidebar` draws the same tree in the layout's `aside`, a `Ui.NavigationColumn`:
+a column beside the page whose groups open in place, several at once, and a
+toggle collapsing it to a rail of each entry's icon, whose groups open beside
+it. Which groups are open and whether it is folded are kept in local storage,
+so a reload finds it as it was left. Below `compactBelow` the aside becomes a
+drawer from the start edge, opened by the toggle at the header's edge. Its
+navbar holds the mark and the two menus and an empty navigation.
 
 Every application draws the same header around its title and navigation
-(`UiReact.App.header`), on one row while the window is wider than
+(the layout's `Ui.Navbar`, its `start` and `end`), on one row while the window is wider than
 `compactBelow`: the example's mark before the title, and after the navigation
 two `menu` nodes. **Language** offers every language the showcase speaks,
 each named in its own language, each `/api/lang?set=<tag>` under the mount: it
@@ -109,7 +108,7 @@ brand switch, `/api/brand`, is the root's alone.
 
 | File | Holds |
 | --- | --- |
-| `telo.yaml` | the application, the four `UiReact.App` mounts with their header and navigation, the navigation's icons, the root's own overview, conditions and themes pages, the logo view they share, the `Callout` composite kind, the session check, the three collections, the server serving the API under each mount, the Inter family the brand serves |
+| `telo.yaml` | the application, the four `UiReact.App` mounts with their page layout (a navbar, and an aside on `/sidebar`), the navigation's icons, the root's own overview, conditions and themes pages, the logo view they share, the `Callout` composite kind, the session check, the three collections, the server serving the API under each mount, the Inter family the brand serves |
 | `data.yaml` | the SQLite connection, schema, tables with their seed rows (the posts' and the reporting lines' with foreign keys), the projects, tasks, people, authors, posts and employees `Crud.Collection`s, the sources the browser reads them from, and the tasks' and posts' presentations; the review tables, the `reviews` and `commands` `DataModel.Collection`s and the inbox's presentation |
 | `api.yaml` | the routes `crud` does not give and the shapes they share with the pages: record reads, the task board, the tag action, the forms' writes and lists, every action of the actions page, the session, the language and brand switches, the request origin and redirect target rules (`origin`, `sameOriginTarget`), and the review routes under `/api/review` |
 | `translations/` | one `Telo.TextTranslations` per language for the example's own texts, listed in the application's `translations:` block after ui's shipped `Ui.*Translations`, each file named by its language tag (`pl.yaml`, `ja.yaml`, …); `en.yaml` covers the one text crud writes with no `lang` |
@@ -239,7 +238,7 @@ Each test that runs the application gives it a database file of its own under
 
 | Test | Port | Asserts |
 | --- | --- | --- |
-| `tests/serves-the-showcase.yaml` | 8151 | the application documents of all four mounts — `/sidebar`'s placement with every default filled — in English and Polish and with the brand cookie, the derived theme's tokens and the brand's Inter faces, and every page document — the overview's nodes, conditions, readers, the tables' columns and every surface spec, every filter bar's policy and fields, every form's fields, option sources, groups and state, every action's fields, answer trees, `onSuccess` and row actions, the components with their module and stylesheet served, the admin screen's bar, forms and surfaces, the related-records page's title and navigation entry, and the themes page with the root's links and brand badge — `/radix`, `/brand` and `/sidebar` placing the same views |
+| `tests/serves-the-showcase.yaml` | 8151 | the application documents of all four mounts — `/sidebar`'s aside with every default filled — in English and Polish and with the brand cookie, the derived theme's tokens and the brand's Inter faces, and every page document — the overview's nodes, conditions, readers, the tables' columns and every surface spec, every filter bar's policy and fields, every form's fields, option sources, groups and state, every action's fields, answer trees, `onSuccess` and row actions, the components with their module and stylesheet served, the admin screen's bar, forms and surfaces, the related-records page's title and navigation entry, and the themes page with the root's links and brand badge — `/radix`, `/brand` and `/sidebar` placing the same views |
 | `tests/answers-every-route.yaml` | 8152 | the project, record, tag, session and brand routes against the real database: paging, sorting, `in`, a create / read / replace / delete round trip, the 400 validation problem, a 401, the session and the brand switch; and under `/radix`, `/brand` and `/sidebar`, a reader's route, a collection listing, an action's route, the guard's 401 and no brand switch |
 | `tests/searches-posts.yaml` | 8158 | the three search pages' bars, their search and placement, and the requests they send: a search joined to a status filter, the authors present under a search, and the refusal of a search over the authors |
 | `tests/tables-and-filters.yaml` | 8153 | the routes the tables and filter bars call: the tasks a page at a time by cursor, sorted both ways, every filter operator the bars send with `in` repeated, a refused sort and filter, a create / read / replace / delete round trip with refused bodies, and the task board's nested rows and cursor |

@@ -324,15 +324,14 @@ pages:
     children:
       - { type: text, text: Nothing else }
 ---
-# Full-width pages and header nodes, its header's width left to `pageWidth`.
+# Full-width pages, with the not-found nodes of its own.
 kind: UiReact.App
 metadata: { name: wide }
 title: Wide
 theme: !ref UiReact.defaultTheme
 pageWidth: full
-header:
-  start:
-    - { type: text, text: Wide }
+notFound:
+  - { type: text, text: Nothing here, style: title }
 pages:
   - kind: Ui.Page
     path: /
@@ -352,7 +351,6 @@ theme:
     - !module-path ./look.css
   controls:
     - !ref Widgets.controls
-header: { width: full }
 pages:
   - kind: Ui.Page
     path: /

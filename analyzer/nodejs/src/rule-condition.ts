@@ -22,11 +22,23 @@ import {
   moduleCallNames,
   moduleCallOf,
 } from "@telorun/templating";
-import { childNodes, type CelNode } from "@telorun/cel";
+import {
+  BOOL,
+  DYN,
+  celEqual,
+  celError,
+  celLookup,
+  childNodes,
+  MISSING,
+  isCelRecord,
+  type CelNode,
+  type CelValue,
+} from "@telorun/cel";
 import type { ModuleCallDispatch } from "@telorun/templating";
 import { renderChain, type CallableFlags } from "./callable-flags.js";
 import { moduleNamesEnvironment, namespaceDispatchOf } from "./cel-environment.js";
 import type { DiagnosticFix } from "./types.js";
+import { declarationIdentityOf } from "./rule-binding-marks.js";
 
 /**
  * Wall-clock ceiling for one rule over one resource. The rules run on the
@@ -102,12 +114,119 @@ const NON_DETERMINISTIC = new Set(
     .map((f) => f.name),
 );
 
+/** The calls a condition's `==` / `!=` and `in` evaluate through — names no
+ *  source can spell, so only the rewrite below reaches them. */
+const SAME_VALUE = "@telo.rule.same";
+const MEMBER_OF = "@telo.rule.in";
+
+/**
+ * CEL equality, except that a bound declaration is a value equal only to
+ * itself: two are equal exactly when they bind the same declaration, whatever
+ * each holds. A list or map is compared member by member, so a written entry
+ * holding declarations compares its literals by value and its declarations by
+ * identity.
+ */
+export function ruleValuesEqual(left: unknown, right: unknown): boolean {
+  const a = declarationIdentityOf(left);
+  const b = declarationIdentityOf(right);
+  if (a !== undefined || b !== undefined) return a !== undefined && a === b;
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return left.length === right.length && left.every((item, i) => ruleValuesEqual(item, right[i]));
+  }
+  if (isCelRecord(left) && isCelRecord(right)) {
+    const keys = Object.keys(left);
+    if (keys.length !== Object.keys(right).length) return false;
+    return keys.every((key) => Object.prototype.hasOwnProperty.call(right, key) && ruleValuesEqual(left[key], right[key]));
+  }
+  return celEqual(left as CelValue, right as CelValue);
+}
+
 let sharedEnv: ReturnType<typeof buildCelEnvironment> | undefined;
 /** The analyzer's own environment — no host handlers, so every `hostBacked`
  *  entry is a throwing stub. Built once; it is stateless. */
 export function ruleEnv(): ReturnType<typeof buildCelEnvironment> {
-  sharedEnv ??= buildCelEnvironment();
-  return sharedEnv;
+  if (sharedEnv) return sharedEnv;
+  const env = buildCelEnvironment();
+  env.registerFunction(
+    { name: SAME_VALUE, form: "global", parameters: [DYN, DYN], returns: BOOL },
+    { implementation: (_ctx, a, b) => ruleValuesEqual(a, b) },
+  );
+  env.registerFunction(
+    { name: MEMBER_OF, form: "global", parameters: [DYN, DYN], returns: BOOL },
+    {
+      implementation: (ctx, a, b) => {
+        if (Array.isArray(b)) return b.some((held) => ruleValuesEqual(a, held));
+        const found = celLookup(b as CelValue, a as CelValue);
+        if (found === MISSING) return false;
+        if (typeof found !== "symbol") return true;
+        return celError("no_matching_overload", "'in' needs a list or a map on its right", ctx.range);
+      },
+    },
+  );
+  sharedEnv = env;
+  return env;
+}
+
+/** Whether a node is a plain chain of member reads off a name — what a read
+ *  chain follows, and what a comparison can take as a declaration whole. */
+function isPlainChain(node: CelNode): boolean {
+  if (node.kind === "ident") return true;
+  return node.kind === "select" && !node.optional && isPlainChain(node.operand);
+}
+
+const IDENTITY_OPERATORS = new Set(["==", "!=", "in"]);
+
+/** `node` with each child rebuilt by `map`. */
+function mapChildren(node: CelNode, map: (child: CelNode) => CelNode): CelNode {
+  switch (node.kind) {
+    case "literal":
+    case "ident":
+    case "unparsed":
+      return node;
+    case "list":
+      return { ...node, elements: node.elements.map((element) => ({ ...element, value: map(element.value) })) };
+    case "map":
+      return { ...node, entries: node.entries.map((entry) => ({ ...entry, key: map(entry.key), value: map(entry.value) })) };
+    case "select":
+    case "unary":
+      return { ...node, operand: map(node.operand) };
+    case "index":
+      return { ...node, operand: map(node.operand), index: map(node.index) };
+    case "call":
+    case "qcall":
+      return { ...node, args: node.args.map(map) };
+    case "receiverCall":
+      return { ...node, receiver: map(node.receiver), args: node.args.map(map) };
+    case "binary":
+      return { ...node, left: map(node.left), right: map(node.right) };
+    case "conditional":
+      return { ...node, condition: map(node.condition), whenTrue: map(node.whenTrue), whenFalse: map(node.whenFalse) };
+  }
+}
+
+/** The tree with every `==`, `!=` and `in` evaluated through the rule's own
+ *  comparison. */
+function comparedByRule(node: CelNode): CelNode {
+  const rebuilt = mapChildren(node, comparedByRule);
+  if (rebuilt.kind !== "binary" || !IDENTITY_OPERATORS.has(rebuilt.operator)) return rebuilt;
+  const call: CelNode = {
+    kind: "call",
+    name: rebuilt.operator === "in" ? MEMBER_OF : SAME_VALUE,
+    nameRange: rebuilt.range,
+    args: [rebuilt.left, rebuilt.right],
+    range: rebuilt.range,
+  };
+  return rebuilt.operator === "!=" ? { kind: "unary", operator: "!", operand: call, range: rebuilt.range } : call;
+}
+
+/** The tree with each plain chain a comparison takes as an operand read as
+ *  nothing — what the condition reads beyond the values it only compares. */
+function withoutComparedOperands(node: CelNode): CelNode {
+  const rebuilt = mapChildren(node, withoutComparedOperands);
+  if (rebuilt.kind !== "binary" || !IDENTITY_OPERATORS.has(rebuilt.operator)) return rebuilt;
+  const nothing = (operand: CelNode): CelNode =>
+    isPlainChain(operand) ? { kind: "literal", literal: { type: "null" }, range: operand.range } : operand;
+  return { ...rebuilt, left: nothing(rebuilt.left), right: nothing(rebuilt.right) };
 }
 
 export type CompiledRule =
@@ -119,6 +238,10 @@ export type CompiledRule =
        *  an `in` test read a map's keys, never its values. `chains` stays the
        *  whole-range reading the places a rule reads are worked out from. */
       reads: readonly (readonly string[])[];
+      /** The chains of `reads` read only as an operand of `==`, `!=` or `in`: a
+       *  bound declaration there is compared by identity, so what it holds is
+       *  not read. */
+      identityReads: readonly (readonly string[])[];
       /** The module functions it calls, as written (`Self.fits`). */
       calls: readonly string[];
       /** The members of `self` a presence test asks about (`has(self.port)`),
@@ -195,7 +318,11 @@ export function compileRuleCondition(
     // nothing", so the caller checks the whole of every binding.
     result = { reason: diagnostic.message };
   } else {
-    const program = env.compile(parsed);
+    // Equality and membership are the rule's own: a bound declaration is equal
+    // only to itself.
+    const program = env.compile({ ...parsed, root: comparedByRule(parsed.root) });
+    const reads = extractValueReadChains(parsed.root);
+    const beyond = new Set(extractValueReadChains(withoutComparedOperands(parsed.root)).map((chain) => JSON.stringify(chain)));
     result = {
       // The caller hands the module's dispatch table in the activation, under
       // a key outside CEL's identifier grammar, so no author can reach past
@@ -213,7 +340,8 @@ export function compileRuleCondition(
       // to the member it reads on each element — so an expression in a field of
       // an element the condition never reads does not stop the rule running.
       chains: extractReadChains(parsed.root),
-      reads: extractValueReadChains(parsed.root),
+      reads,
+      identityReads: reads.filter((chain) => !beyond.has(JSON.stringify(chain))),
       calls: calledFunctions(parsed.root),
       rootPresence: rootPresenceMembers(parsed.root),
     };

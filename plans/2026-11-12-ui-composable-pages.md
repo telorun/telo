@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 priority: high
 depends-on: []
 packages: [analyzer/nodejs, modules/ui, modules/ui-react, modules/ui-react-radix, examples, starters, apps/authoring-agent, apps/hub, docs]
@@ -29,10 +29,12 @@ The App also checks only part of what its pages link to. `UI_NAVIGATION_PAGE_UNR
 - The published reading `assets` of `Ui.Pane`, `Ui.PageLayout` and `Ui.Page`: the files the resource can name, in `Ui.Composite`'s `assets` item shape, known at creation. Absent, the resource names no file.
 - The `title` text style, drawn as `h1`. `heading` stays `h2` and `subheading` stays `h3`.
 - `UiReact.App.notFound`: nodes drawn per request for a path no page serves, inside the App's layout. Omitted, the built-in heading and text are drawn.
-- `reachable: { kind, use, through }` in `x-telo-resource-rules`, exclusive with `in:`. The rule iterates, as `this`, the declaration named by every reference of kind `kind` at a slot of use `use`, reachable from the resource through slots whose use is in `through`.
+- `reachable: { kind, use, through }` in `x-telo-resource-rules`, exclusive with `in:`. The rule iterates, as `this`, the declaration named by every reference of kind `kind` at a slot of use `use`, reachable from the resource through slots and step `invoke:` targets whose use is in `through`.
 - `UI_PAGE_UNROUTED`: a page reference reachable from the App names a page `pages` does not list. It is a static check only.
+- `x-telo-context-withheld: "<reason>"`: on a CEL context binding or a member beneath one, marks it named but unavailable at that site. Every read of it is refused (`CEL_UNKNOWN_IDENTIFIER` for a binding, `CEL_UNKNOWN_FIELD` for a member) with the holder's reason, and the mark travels through `x-telo-context-from-referrer`.
+- `CONTEXT_WITHHELD_INVALID`: `x-telo-context-withheld` off a binding or member, or beside a typing keyword.
 - Wire: the layout document at `_telo/ui/layout?id=<id>`, `{ specVersion, bundle, digest, id, width, header, aside?, footer }`, served `private, no-cache` with `ETag` its `digest` and `Vary: *`. An unknown `id` is the 404 problem every unknown `_telo` path answers.
-- Wire: the application document's `layout` (the default layout's id) and `pages[].layout` (each page's layout id, absent for a bare page).
+- Wire: the application document's `layout` (the default layout's id) and `pages[].layout` (each page's layout id, absent when no layout applies: the App names none and the entry is not a `Ui.PageRoute`).
 - Wire: `children` on the 404 answer of `_telo/ui/page`, holding the not-found nodes for the request.
 - Wire: the `Ui.SpecNode` branches `navbar` (`{ type, title?, start, end, navigation, placement }`) and `navigation-column` (`{ type, navigation, state }`).
 - The parts `footer`, `footer-content`, `navbar` and `nav-column`.
@@ -45,6 +47,7 @@ The App also checks only part of what its pages link to. `UI_NAVIGATION_PAGE_UNR
 - `Ui.Page.title`: now the document title and the navigation text only. No heading is drawn for it.
 - `UiReact.App.title`: now the document title only.
 - Application document: no longer carries `navigation` or `header`.
+- Wire: a navigation entry's `icon` is an asset `{ digest, name }`, served under `_telo/ui/assets/<digest>/<name>`, instead of a URL.
 - Page document: `Vary: *` when the page holds a pane; otherwise the headers its own expressions read, as today.
 - Browser storage: a navigation column's open groups are kept under `telo.ui:<mount path>:n:<key>`, one entry per column `state.key`. The fold of an aside stays under its own `collapse.state` key.
 - `UI_NAVIGATION_PAGE_UNTITLED` / `ERR_UI_NAVIGATION_PAGE_UNTITLED` and `UI_NAVIGATION_PAGE_HAS_PARAMETERS` / `ERR_UI_NAVIGATION_PAGE_HAS_PARAMETERS`: now declared on `Ui.NavigationPane` instead of `UiReact.App`.
@@ -69,9 +72,9 @@ The App also checks only part of what its pages link to. `UI_NAVIGATION_PAGE_UNR
 
 The App is the only caller of a layout, so a library's page is drawn in whatever layout the application that lists it chooses.
 
-**A layout is three fixed regions around `main`.** The regions are `header`, `aside` and `footer`, placed around an implicit `main` that holds the page's children. There is no outlet node to place or misplace. The renderer draws them as the landmarks `header`, `aside` and `footer`. The header and footer span the application width, with their content inset by the layout's `width`. When `width` is omitted, they use the App's `pageWidth`, else `contained`, so a header lines up with a contained column whatever width a page declares.
+**A layout is three fixed regions around `main`.** The regions are `header`, `aside` and `footer`, placed around an implicit `main` that holds the page's children. There is no outlet node to place or misplace. The renderer draws them as the landmarks `header`, `aside` and `footer`. The header and footer span the application width, with their content inset by the layout's `width`. When `width` is omitted, they use the App's `pageWidth`, else `contained`, so a header lines up with a contained page drawn with no aside beside it, whatever width a page declares. Each region insets its content against the box it spans: beside an aside, `main`'s column is inset against `main`, and the header content stays where it is whether the aside is folded, unfolded or compact.
 
-The regions, and `notFound`, read `request` at run time. They bind `params` and `query` as closed, empty objects, because one layout is drawn on pages with different variables. So a composite placed there that reads `params.id` is `CEL_UNKNOWN_FIELD`, naming the layout. A `Ui.Data` there still reads the `query` it declares itself.
+The regions, and `notFound`, read `request` at run time. They withhold `params` and `query` (`x-telo-context-withheld`), because one layout is drawn on pages with different variables. So a composite placed there that reads `params.id` is `CEL_UNKNOWN_IDENTIFIER`, naming the layout and why. A `Ui.Data` there still reads the `query` it declares itself.
 
 **The layout travels on its own and is evaluated per navigation.** A layout's content depends on the layout and the request alone, so it is served as the layout document at `_telo/ui/layout?id=<id>`, not repeated in every page document.
 - The application document names each page's layout id in `pages[].layout` and the default in `layout`.
@@ -83,7 +86,7 @@ The regions, and `notFound`, read `request` at run time. They bind `params` and 
 
 A `304` is decided by the digest of the document produced for that request alone, so it never crosses users with different headers. The layout document is `Vary: *`, because it holds the answers of panes the App handed the request to. The id is a digest of the App field that first names the layout declaration (`/layout`, `/pages/3/layout`), so it is the same on every replica. An unknown path answers the 404 problem with `children`, the not-found nodes produced for the request, drawn in the default layout, so a 404 keeps the navigation.
 
-**A pane is resolved where the tree that places it is resolved.** A pane in a page's children or in a layout region is invoked per request with `{ request }`. A pane inside a composite (a `Ui.SplitView` aside, a `Ui.View`) is invoked once, at the composite's creation, with `{}`. This is the rule `when` already follows. `request` is typed from where the pane is placed: present in a region or a page, nullable inside a composite. It is nullable rather than absent because one pane kind, such as `Ui.NavigationColumn`, serves both placements. An unguarded `request` read in a pane inside a composite is `CEL_NULLABLE_ACCESS`, naming the composite. The message tells the author to place the pane where it is resolved per request, or to drop the read.
+**A pane is resolved where the tree that places it is resolved.** A pane in a page's children or in a layout region is invoked per request with `{ request }`. A pane inside a composite (a `Ui.SplitView` aside, a `Ui.View`) is invoked once, at the composite's creation, with `{}`. This is the rule `when` already follows. `request` is typed from where the pane is placed: present in a page or a layout region, withheld inside a composite, nullable where nothing places it. Every composite's node-holding region withholds `request` with a reason, and the mark reaches the pane through referrer typing, so one pane kind, such as `Ui.NavigationColumn`, serves both placements. Any `request` read in a pane inside a composite, a guarded one included, is `CEL_UNKNOWN_IDENTIFIER`, naming the composite. The message tells the author to place the pane where it is resolved per request, or to drop the read.
 
 A pane answers only `{ node? }`. The files it can name are published in its `assets` reading at creation. Pages and layouts publish the same member, and the App serves only files collected at creation, so every replica serves every file from boot. A pane kind of another module, such as a footer or an account menu, is placed with no change to `ui`.
 
@@ -99,7 +102,7 @@ A `Ui.NavigationColumn` in an aside draws a column (`Navigation` with `layout: v
 
 **A navigation tree carries its rules wherever it is held.** `UI_NAVIGATION_PAGE_UNTITLED` and `UI_NAVIGATION_PAGE_HAS_PARAMETERS` move to `Ui.NavigationPane`. `Ui.Navbar`, `Ui.NavigationColumn` and another module's navigation pane extend it in merge form and inherit both rules. The runtime twins stay in the shared navigation preparation every navigation pane's controller calls. A navigation pane extending in `base:` form inherits no rule and restates them.
 
-**Every page reference is checked, wherever it is written.** The App's rule resolves the page of each `pages` entry (`/pages` and `/pages/*/page`) and walks `reachable: { kind: Ui.Page, use: schema, through: [dependency, call] }`. It holds when `this` is one of those pages. The walk goes from the App through its pages, its layouts, `notFound`, and every composite and pane they reach. It finds every navigation entry, `link`, action `onSuccess.navigate` and address naming a page. `pages` and both `layout` slots are `use: call`, so they are walked, not judged.
+**Every page reference is checked, wherever it is written.** The App's rule resolves the page of each `pages` entry (`/pages` and `/pages/*/page`) and walks `reachable: { kind: Ui.Page, use: schema, through: [dependency, call] }`. It holds when `this` is one of those pages. The walk goes from the App through its pages, its layouts, `notFound`, every composite and pane they reach, and every step-body `invoke:` target among them. It finds every navigation entry, `link`, action `onSuccess.navigate` and address naming a page. `pages` and both `layout` slots are `use: call`, so they are walked, not judged.
 
 `this` is the declaration the reference names. Two bound declarations are equal exactly when they are the same declaration, so a library's page listed through an import alias is never reported as unlisted. Findings are anchored as follows:
 - A reference written in the entry's own modules is reported at that reference.
@@ -376,7 +379,7 @@ notFound:
 
 What this shows:
 - `home` and `reports` are drawn inside the header, the aside and the footer, and moving between them keeps all three mounted. The aside's fold and the column's open groups are remembered under `shortcuts`.
-- `reports` spans the full width while the header content stays on the contained column.
+- `reports` spans the full width while the header content stays on the application's contained column.
 - `signIn` is drawn bare.
 - The `Help.Links` pane on `home` is invoked per request, so its `Reading reports` entry is delivered only with an `x-role` header. It inherits the navigation rules with no rule of its own.
 - The navigation column inside the split view is invoked once, when the split view is created. Its entries read no `request`.
@@ -500,18 +503,19 @@ $ telo check ./telo.yaml
 telo.yaml:30:13  error  Help.Links: names a page with no title, so the entry has no text.
                         Give the page a title, or the entry a text. (rule
                         UI_NAVIGATION_PAGE_UNTITLED)  RESOURCE_RULE_VIOLATED
-telo.yaml:42:82  error  Ui.SplitView: CEL at 'aside.content.ref.navigation.items[0].when':
-                        'request' is null here, because a pane inside a composite is
-                        resolved once at creation. Place the pane in a page's children or
-                        a layout region, or drop the read.  CEL_NULLABLE_ACCESS
+telo.yaml:42:82  error  Ui.Page/home: !cel: 'request' is not available here — the inline
+                        Ui.SplitView withholds it: a composite is resolved once, at its
+                        creation, with no request. Place what reads it in a page's children
+                        or a layout region, or drop the read.  CEL_UNKNOWN_IDENTIFIER
 telo.yaml:64:7   error  Ui.Navbar: must have required property 'navigation'  SCHEMA_VIOLATION
 telo.yaml:65:7   error  UiReact.App/ui: names a page the application does not list in
                         its pages, so it leads nowhere. Add the page to pages, or remove
                         the reference. (rule UI_PAGE_UNROUTED; the page Docs.guide,
                         reached through Docs.nav)  RESOURCE_RULE_VIOLATED
-telo.yaml:69:105 error  Ui.View: CEL at 'content.href.pathParams.id': 'params.id' is not
-                        defined, because a layout region binds no page variables
-                        (available: none)  CEL_UNKNOWN_FIELD
+telo.yaml:69:105 error  UiReact.App/ui: !cel: 'params' is not available here — the inline
+                        Ui.PageLayout withholds it: a layout region is drawn on pages with
+                        different path variables and query parameters, so it reads none.
+                        Read them in the page that declares them.  CEL_UNKNOWN_IDENTIFIER
 telo.yaml:71:46  error  UiReact.App/ui: names a page the application does not list in
                         its pages, so it leads nowhere. Add the page to pages, or remove
                         the reference. (rule UI_PAGE_UNROUTED)  RESOURCE_RULE_VIOLATED
@@ -519,7 +523,7 @@ telo.yaml:71:46  error  UiReact.App/ui: names a page the application does not li
 6 errors
 ```
 
-Every rule violation reports under `RESOURCE_RULE_VIOLATED`, with the rule's own code in `data.rule`. The `Docs.guide` reference is written in the library, so it is reported at the application's `!ref Docs.nav`, where the walk entered the library. An unlisted page does not refuse the run: started anyway, the `Sign in` link opens the not-found page.
+Every rule violation reports under `RESOURCE_RULE_VIOLATED`, with the rule's own code in `data.rule`. The `Docs.guide` reference is written in the library, so it is reported at the application's `!ref Docs.nav`, where the walk entered the library. An unlisted page written in the application refuses `telo run` with the same finding; one written in a dependency is the static finding only, and at run time its link opens the not-found page.
 
 A library declaring `reachable:` wrongly:
 
@@ -594,7 +598,7 @@ GET /_telo/ui/app
   "pages": [
     { "path": "/", "title": "Home", "layout": "6d1e0b" },
     { "path": "/reports", "title": "Reports", "layout": "6d1e0b" },
-    { "path": "/sign-in", "title": "Sign in" }
+    { "path": "/sign-in", "title": "Sign in", "layout": "e2a817" }
   ],
   "layout": "6d1e0b",
   "stylesheets": [ "/_telo/ui/assets/a1c09e/renderer.css", "/_telo/ui/assets/b27f4d/default-theme.css" ],
@@ -677,14 +681,14 @@ The page document of `/reports` carries `path`, `title`, `query`, `width` and `c
 
 ## Verify
 
-- A page listed as `{ page, layout: { kind: Ui.PageLayout } }` is drawn with no header, aside, footer or `h1`, and its application-document entry has no `layout`. The application document has no `navigation` or `header`, and no page document has a layout member.
+- A page listed as `{ page, layout: { kind: Ui.PageLayout } }` is drawn with no header, aside, footer or `h1`; its application-document entry names a layout whose document has empty regions. An App with no `layout` gives a plain page entry no `layout`. The application document has no `navigation` or `header`, and no page document has a layout member.
 - In a three-page sidebar app the aside is declared once. Moving between pages answers the layout with `304`, requested in parallel with the page document, keeps the aside's fold state and does not remount the navbar. In a 150-page app the bytes of one navigation do not grow with the page count.
 - A navbar entry gated on a header appears at the next navigation after the header changes, with no reload. A conditional request carrying a digest produced for another role header gets `200`, not `304`.
 - The layout document and a page holding a pane answer `Vary: *`.
 - Two `pages` entries naming one layout declaration carry one id, and two inline layouts carry two. A second replica answers the same id with the same `digest`, and serves a navbar icon's file before it has answered any document.
-- A pane inside a composite is invoked once in total. Its unguarded `request` read is `CEL_NULLABLE_ACCESS` naming the composite, and the same pane in a layout region needs no guard.
-- A `Ui.View` reading `params.id`, placed in a layout header, is `CEL_UNKNOWN_FIELD` naming the layout. The same view placed in a page at `/x/{id}` passes.
-- With `pageWidth: contained` and a `full` page, the header content still lines up with the contained column.
+- A pane inside a composite is invoked once in total. Its `request` read, guarded or not, is `CEL_UNKNOWN_IDENTIFIER` naming the composite and its reason, and the same pane in a layout region reads `request` with no guard.
+- A `Ui.View` reading `params.id`, placed in a layout header, is `CEL_UNKNOWN_IDENTIFIER` naming the layout and its reason. The same view placed in a page at `/x/{id}` passes.
+- With `pageWidth: contained`, no aside and a `full` page, the header content still lines up with the contained column. With an aside, the header content's inset is the same folded, unfolded and compact.
 - `Ui.SplitView` and a layout's aside produce the same parts and fold behaviour. A `Ui.NavigationColumn` in an aside folds to its rail, and becomes a drawer below `compactBelow`. Two columns with different `state.key`s keep their open groups apart.
 - The pane contract's input schema has exactly `request`, optional, and its output exactly `node`. A `Ui.Navbar` with no `navigation` is `SCHEMA_VIOLATION`.
 - A navigation pane of another module, extending `Ui.NavigationPane` in merge form with an untitled page entry, reports `UI_NAVIGATION_PAGE_UNTITLED` at that entry with no rule of its own.
@@ -695,7 +699,7 @@ The page document of `/reports` carries `path`, `title`, `query`, `width` and `c
   - an entry of a navigation column in the aside;
   - an entry of another module's pane, anchored at the slot of the entry module that reached it.
 
-  A library's page the App lists through its alias is never reported. No controller raises `ERR_UI_PAGE_UNROUTED`, and the running app answers that link with the not-found page.
+  A library's page the App lists through its alias is never reported. No controller raises `ERR_UI_PAGE_UNROUTED`; a dependency's unlisted page is answered at run time with the not-found page.
 - `reachable:` beside `in:`, an unresolved `kind`, or a `use` or `through` value outside the reference vocabulary, is `RESOURCE_RULE_INVALID`.
 - App → layout → navbar → page reports no dependency cycle, the call graph's caller of every layout is the App, and the walk stays linear on a manifest a hundred times larger.
 - `ui-react`'s controls, vectors and component ABI data are unchanged, and a control set built for `ui_react_controls-4` from the previous release still loads.

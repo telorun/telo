@@ -1,6 +1,5 @@
-# An application whose sidebar names another module's compact placement and
-# keeps its state in the browser's local storage, and whose one entry's icon is
-# a file of its own.
+# An application whose navbar names another module's compact placement, and
+# whose one entry's icon is a file of its own.
 kind: Telo.Application
 metadata: { name: UiReactNavigationPlacementsApp, version: 1.0.0 }
 imports:
@@ -24,17 +23,19 @@ title: Navigation placements
 theme: !ref UiReact.defaultTheme
 pages:
   - !ref home
-navigation:
-  items:
-    - type: page
-      page: !ref home
-      icon: { kind: Ui.FileIcon, file: !module-path ./glyph.svg }
-  placement:
-    kind: Ui.SidebarNavigation
-    side: end
-    rail: {}
-    store: { kind: Ui.LocalStore }
-    compact: { kind: Lib.ThreeTabs }
+layout:
+  kind: Ui.PageLayout
+  header:
+    - type: pane
+      ref:
+        kind: Ui.Navbar
+        title: Placements
+        navigation:
+          items:
+            - type: page
+              page: !ref home
+              icon: { kind: Ui.FileIcon, file: !module-path ./glyph.svg }
+        placement: { kind: Ui.HeaderNavigation, compact: { kind: Lib.ThreeTabs } }
 ---
 kind: Http.Server
 metadata: { name: server }

@@ -1,0 +1,33 @@
+# An abstract naming its own shape through `telo://Self/<Type>`, with a rule over
+# the reference slot that shape holds.
+kind: Telo.Library
+metadata: { name: Base }
+exports: { kinds: [Item, Holder], resources: [Entry] }
+---
+kind: Telo.JsonSchema
+metadata: { name: Entry }
+schema:
+  type: object
+  properties:
+    item: { x-telo-ref: { kind: Self.Item, use: schema } }
+---
+kind: Telo.Definition
+metadata: { name: Item }
+capability: Telo.Provider
+controllers: [pkg:npm/none@0.0.0]
+schema:
+  type: object
+  properties: { title: { type: string } }
+---
+kind: Telo.Abstract
+metadata: { name: Holder }
+capability: Telo.Provider
+schema:
+  type: object
+  properties:
+    entry: { $ref: "telo://Self/Entry" }
+  x-telo-resource-rules:
+    - resolve: [/entry/item]
+      condition: !cel "has(self.entry.item.title)"
+      code: ITEM_UNTITLED
+      message: names an item with no title.

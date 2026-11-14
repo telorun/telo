@@ -1,0 +1,29 @@
+# Three malformed `reachable:` rules: beside `in:`, a use and a through outside
+# the reference vocabulary, and a kind that resolves to nothing.
+kind: Telo.Library
+metadata: { name: Portal }
+imports: { Reach: ../kinds }
+exports: { kinds: [Site] }
+---
+kind: Telo.Abstract
+metadata: { name: Site }
+capability: Telo.Mount
+schema:
+  type: object
+  properties:
+    pages: { type: array, items: { x-telo-ref: { kind: Reach.Page, use: call } } }
+  x-telo-resource-rules:
+    - resolve: [/pages]
+      in: /pages
+      reachable: { kind: Reach.Page, use: schema, through: [dependency, call] }
+      condition: !cel "self.pages.exists(p, p == this)"
+      code: BOTH
+      message: names a page the portal does not serve.
+    - reachable: { kind: Reach.Page, use: read, through: [] }
+      condition: !cel "true"
+      code: BAD_USE
+      message: links a page the portal does not serve.
+    - reachable: { kind: Reach.Pge, use: schema, through: [call, reads] }
+      condition: !cel "true"
+      code: BAD_KIND
+      message: names a page.

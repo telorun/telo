@@ -1,0 +1,61 @@
+# A site listing `home` and the library's `guide` through its alias. `draft` is
+# named by a bar, by actions a sequence invokes (by name, inline, and in a
+# `catch:` branch) and nowhere listed; the library's bar and sequence name
+# `orphan`, which is not listed either.
+kind: Telo.Application
+metadata: { name: ReachableSite }
+imports: { Reach: ./kinds, Docs: ./docs }
+---
+kind: Reach.Page
+metadata: { name: home }
+path: /
+title: !cel "'Home'"
+---
+kind: Reach.Page
+metadata: { name: draft }
+path: /draft
+---
+kind: Reach.Action
+metadata: { name: openDraft }
+page: !ref draft
+---
+kind: Reach.Action
+metadata: { name: openHome }
+page: !ref home
+---
+kind: Telo.Sequence
+metadata: { name: flow }
+steps:
+  - name: named
+    invoke: !ref openDraft
+  - name: inline
+    invoke: { kind: Reach.Action, page: !ref draft }
+  - name: guarded
+    try:
+      - name: home
+        invoke: !ref openHome
+    catch:
+      - name: recover
+        invoke: { kind: Reach.Action, page: !ref draft }
+  - name: library
+    invoke: !ref Docs.tour
+---
+kind: Reach.Site
+metadata: { name: site }
+pages: [!ref home, !ref Docs.guide]
+layout:
+  kind: Reach.Layout
+  header:
+    - !ref Docs.nav
+    - kind: Reach.Bar
+      items:
+        - { page: !ref home, text: Home }
+        - { page: !ref draft, text: Draft }
+        - { page: !ref Docs.guide, text: Guide }
+        - { href: !ref draft, text: Draft link }
+        - { href: /draft, text: Draft address }
+handler: !ref flow
+---
+kind: Reach.Shallow
+metadata: { name: shallow }
+handler: !ref flow

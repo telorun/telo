@@ -478,66 +478,78 @@ kind: Telo.JsonSchema
 metadata: { name: Whoami }
 schema: { type: object, required: [user], properties: { user: { type: string, title: User } } }
 ---
+kind: Ui.Page
+metadata: { name: notesPage }
+path: /
+title: Notes
+width: contained
+children:
+  - { type: text, text: Notes, style: title }
+  - type: composite
+    ref:
+      kind: Ui.Data
+      model: !ref Whoami
+      source: /api/session
+      # A 401 from the notes list reads the session again.
+      reloadOn: [focus, unauthorized]
+      content:
+        type: stack
+        children:
+          - type: stack
+            shown: { at: !cel "data.user", matches: { minLength: 1 } }
+            children:
+              - { type: text, text: Signed in as, style: muted }
+              - { type: value, value: !cel "data.user", style: strong }
+              - type: composite
+                ref:
+                  kind: Ui.Listing
+                  presentation: !ref notesPresentation
+                  model: !ref Note
+                  sort: { by: { property: updatedAt, direction: descending } }
+                  layout:
+                    kind: Ui.TableLayout
+                    columns:
+                      - value: !cel "row.text"
+                      - value: !cel "row.updatedAt"
+                  empty: { type: text, text: No notes yet., style: muted }
+                  create: { form: !ref noteForm }
+                  edit: { form: !ref noteForm }
+                  delete: true
+          - type: stack
+            shown: { at: !cel "data.user", matches: { maxLength: 0 } }
+            children:
+              - { type: text, text: Sign in to see your notes., style: muted }
+              - { type: link, text: Sign in, href: /auth/login, button: { kind: Ui.TextButton }, style: accent }
+      # A session the server no longer holds is refused, not read as nobody.
+      failure:
+        type: stack
+        children:
+          - type: stack
+            shown: { at: !cel "error.status", matches: { const: 401 } }
+            children:
+              - { type: text, text: Your session has ended. Sign in again to see your notes., style: muted }
+              - { type: link, text: Sign in, href: /auth/login, button: { kind: Ui.TextButton }, style: accent }
+          - type: value
+            value: !cel "error.message"
+            shown: { at: !cel "error", matches: { not: { required: [status], properties: { status: { const: 401 } } } } }
+---
 # The home page reads the session and shows either the user and their notes or the
 # way in. The user's name is drawn as text, whatever it holds.
 kind: UiReact.App
 metadata: { name: ui }
 title: Notes
 theme: !ref UiReact.defaultTheme
-pages:
-  - kind: Ui.Page
-    path: /
-    title: Notes
-    width: contained
-    children:
-      - { type: text, text: Notes, style: heading }
-      - type: composite
-        ref:
-          kind: Ui.Data
-          model: !ref Whoami
-          source: /api/session
-          # A 401 from the notes list reads the session again.
-          reloadOn: [focus, unauthorized]
-          content:
-            type: stack
-            children:
-              - type: stack
-                shown: { at: !cel "data.user", matches: { minLength: 1 } }
-                children:
-                  - { type: text, text: Signed in as, style: muted }
-                  - { type: value, value: !cel "data.user", style: strong }
-                  - type: composite
-                    ref:
-                      kind: Ui.Listing
-                      presentation: !ref notesPresentation
-                      model: !ref Note
-                      sort: { by: { property: updatedAt, direction: descending } }
-                      layout:
-                        kind: Ui.TableLayout
-                        columns:
-                          - value: !cel "row.text"
-                          - value: !cel "row.updatedAt"
-                      empty: { type: text, text: No notes yet., style: muted }
-                      create: { form: !ref noteForm }
-                      edit: { form: !ref noteForm }
-                      delete: true
-              - type: stack
-                shown: { at: !cel "data.user", matches: { maxLength: 0 } }
-                children:
-                  - { type: text, text: Sign in to see your notes., style: muted }
-                  - { type: link, text: Sign in, href: /auth/login, button: { kind: Ui.TextButton }, style: accent }
-          # A session the server no longer holds is refused, not read as nobody.
-          failure:
-            type: stack
-            children:
-              - type: stack
-                shown: { at: !cel "error.status", matches: { const: 401 } }
-                children:
-                  - { type: text, text: Your session has ended. Sign in again to see your notes., style: muted }
-                  - { type: link, text: Sign in, href: /auth/login, button: { kind: Ui.TextButton }, style: accent }
-              - type: value
-                value: !cel "error.message"
-                shown: { at: !cel "error", matches: { not: { required: [status], properties: { status: { const: 401 } } } } }
+pages: [!ref notesPage]
+layout:
+  kind: Ui.PageLayout
+  header:
+    - type: pane
+      ref:
+        kind: Ui.Navbar
+        title: Notes
+        navigation:
+          items:
+            - { type: page, page: !ref notesPage }
 ---
 kind: Telo.OpenUrl
 metadata: { name: openUi }

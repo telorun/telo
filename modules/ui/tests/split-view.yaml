@@ -3,11 +3,11 @@ metadata:
   name: UiSplitViewTest
   version: 1.0.0
   description: |
-    A split view carries its label, both trees, whether and where its fold is
-    kept, and the surface its aside becomes on a narrow viewport — written, or
-    filled by ui: the start edge, a medium aside, no fold, and a drawer from
-    the aside's side, empty actions, a flush frame and an icon button of the look's own for
-    the toggle.
+    A split view carries its aside — its label, whether and where its fold is
+    kept, the surface it becomes on a narrow viewport and its tree — and the
+    content beside it, written or filled by ui: the start edge, a medium
+    aside, no fold, a drawer from the aside's side, empty actions, a flush
+    frame and an icon button of the look's own for the toggle.
 lang: en
 imports: { Ui: ../, Probe: ./__fixtures__/probe, Assert: ../../assert }
 targets:
@@ -19,26 +19,25 @@ targets:
 ---
 kind: Ui.SplitView
 metadata: { name: plain }
-label: Filters
-aside: { content: { type: text, text: Aside } }
+aside: { label: Filters, content: { type: text, text: Aside } }
 content: { type: text, text: Content }
 ---
 kind: Ui.SplitView
 metadata: { name: written }
-side: end
-size: large
-frame: framed
-toggle: { kind: Ui.TextButton }
-label: Conversations
-collapse:
-  collapsed: true
-  state: { key: conversations, store: { kind: Ui.SessionStore } }
 aside:
+  side: end
+  size: large
+  frame: framed
+  toggle: { kind: Ui.TextButton }
+  label: Conversations
+  collapse:
+    collapsed: true
+    state: { key: conversations, store: { kind: Ui.SessionStore } }
+  compact: { kind: Ui.Dialog, size: small }
   actions:
     - { type: link, text: New, href: /new, button: { kind: Ui.TextButton } }
   content: { type: stack, children: [{ type: text, text: Aside }] }
 content: { type: text, text: Content }
-compact: { kind: Ui.Dialog, size: small }
 ---
 kind: Telo.Sequence
 metadata: { name: check }
@@ -54,20 +53,22 @@ steps:
       expected:
         type: split
         fill: false
-        side: start
-        size: medium
-        frame: flush
-        toggle: { type: icon, icon: null, label: hidden }
-        label: { text: Filters, context: null, lang: en, computed: false }
-        aside: { actions: [], content: { type: text, fill: false, text: { text: Aside, context: null, lang: en, computed: false } } }
-        content: { type: text, fill: false, text: { text: Content, context: null, lang: en, computed: false } }
-        collapse: null
-        compact:
-          type: drawer
+        aside:
           side: start
           size: medium
-          modal: true
-          dismiss: { escape: true, outside: true, closeButton: true }
+          frame: flush
+          toggle: { type: icon, icon: null, label: hidden }
+          label: { text: Filters, context: null, lang: en, computed: false }
+          collapse: null
+          compact:
+            type: drawer
+            side: start
+            size: medium
+            modal: true
+            dismiss: { escape: true, outside: true, closeButton: true }
+          actions: []
+          content: { type: text, fill: false, text: { text: Aside, context: null, lang: en, computed: false } }
+        content: { type: text, fill: false, text: { text: Content, context: null, lang: en, computed: false } }
   - name: writtenIs
     invoke: { kind: Assert.Equals }
     inputs:
@@ -75,12 +76,18 @@ steps:
       expected:
         type: split
         fill: false
-        side: end
-        size: large
-        frame: framed
-        toggle: { type: text }
-        label: { text: Conversations, context: null, lang: en, computed: false }
         aside:
+          side: end
+          size: large
+          frame: framed
+          toggle: { type: text }
+          label: { text: Conversations, context: null, lang: en, computed: false }
+          collapse: { collapsed: true, state: { key: conversations, store: { type: session } } }
+          compact:
+            type: dialog
+            size: small
+            modal: true
+            dismiss: { escape: true, outside: true, closeButton: true }
           actions:
             - type: link
               fill: false
@@ -92,12 +99,6 @@ steps:
             fill: false
             children: [{ type: text, fill: false, text: { text: Aside, context: null, lang: en, computed: false } }]
         content: { type: text, fill: false, text: { text: Content, context: null, lang: en, computed: false } }
-        collapse: { collapsed: true, state: { key: conversations, store: { type: session } } }
-        compact:
-          type: dialog
-          size: small
-          modal: true
-          dismiss: { escape: true, outside: true, closeButton: true }
 ---
 kind: Assert.Manifest
 metadata: { name: actionRefused }

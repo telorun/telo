@@ -47,11 +47,16 @@ turns what it produces into a web application.
   node draws a date relative to now ("3 hours ago") or in the viewer's own
   zone. Filter defaults and presets may be relative to now (a day ago, this
   week).
-- **Navigation names pages, never paths.** An application's menu is a tree of
+- **Chrome is a layout an application chooses.** A page draws its own nodes;
+  the header, the fold-out sidebar and the footer around it are a page layout
+  the application assigns, per page or bare, evaluated per request so a menu
+  follows a sign-in or a role. Each piece of chrome is a pane — a navigation
+  bar, a navigation column, or a pane kind of another module.
+- **Navigation names pages, never paths.** A navigation pane's tree holds
   pages, links and nested groups, each with an optional icon — a menu bar with
-  dropdowns, a sidebar collapsing to a rail of icons, a menu button with a
-  drawer or a bottom tab bar on a phone — and a page it names that the
-  application does not serve is refused by `telo check`, at any depth.
+  dropdowns, a column folding to a rail of icons in a sidebar, a menu button
+  with a drawer or a bottom tab bar on a phone — and a page an entry names
+  with no title, or with a variable in its path, is refused by `telo check`.
 - **How a form opens is declared, not built.** A listing names the surface its
   create and edit forms appear in — a dialog, a drawer, a panel beside the
   list, a page of its own — with an address to link to and a replacement for
@@ -95,7 +100,11 @@ turns what it produces into a web application.
 | Kind | Purpose |
 | --- | --- |
 | [`Ui.Page`](docs/page.md) | One page of an application: its address — variables included — its title and its nodes, delivered per request. |
-| [`Ui.HeaderNavigation`, `Ui.SidebarNavigation`, `Ui.OverlayNavigation`, `Ui.TabBarNavigation`](docs/navigation.md#placements) | How an application's navigation tree is drawn: a menu bar in the header with dropdowns and submenus, a sidebar collapsing to a rail, the whole tree behind a menu button, or a bottom tab bar. |
+| [`Ui.PageLayout`](docs/page-layout.md) | The chrome around a page: a header, a fold-out aside and a footer, delivered per request. |
+| [`Ui.Navbar`](docs/navigation.md#uinavbar) | A navigation bar: a title and a navigation tree drawn by its placement, with nodes before and after it. |
+| [`Ui.NavigationColumn`](docs/navigation.md#uinavigationcolumn) | A navigation tree as a column, folding to a rail of glyphs in an aside, its open groups kept between visits. |
+| [`Ui.Pane`, `Ui.NavigationPane`](docs/pane.md) | The contracts every piece of chrome, and every one drawing a navigation tree, answers through. |
+| [`Ui.HeaderNavigation`, `Ui.OverlayNavigation`, `Ui.TabBarNavigation`](docs/navigation.md#placements) | How a navigation bar draws its tree: a menu bar in the header with dropdowns and submenus, the whole tree behind a menu button, or a bottom tab bar. |
 | [`Ui.NavigationPlacement`, `Ui.CompactNavigationPlacement`](docs/navigation.md#placements) | The contracts every navigation placement, and every one suiting a narrow screen, provides through. |
 | [`Ui.FileIcon`](docs/icons.md#uifileicon) | An icon drawn from an image file of your own, in the colour of the text beside it. |
 | [`Ui.Icon`](docs/icons.md#uiicon) | The contract every icon provides through: the one image file its glyph is drawn from. |
@@ -125,7 +134,7 @@ turns what it produces into a web application.
 | [`Ui.Filters`](docs/filters.md) | A filter bar over the listings it contains. |
 | [`Ui.AbovePlacement`, `Ui.AsidePlacement`, `Ui.CollapsiblePlacement`, `Ui.OverlayPlacement`, `Ui.SearchBoxPlacement`](docs/filter-placement.md) | Where a filter bar's controls sit: above its content, beside it, folded behind a toggle, in an overlay, or gathered into one search box. |
 | [`Ui.FilterPlacement`, `Ui.FoldingFilterPlacement`](docs/filter-placement.md) | The contracts every placement, and every one that folds — what a narrow viewport uses — provides through. |
-| [`Ui.LocalStore`, `Ui.SessionStore`](docs/state-store.md#stores) | Where a filter bar's, a form's or an action's values, and a sidebar's open groups, are kept between visits. |
+| [`Ui.LocalStore`, `Ui.SessionStore`](docs/state-store.md#stores) | Where a filter bar's, a form's or an action's values, a navigation column's open groups and an aside's fold are kept between visits. |
 | [`Ui.StateStore`](docs/state-store.md#stores) | The contract every store provides through. |
 | [`Ui.Component`](docs/component.md) | A custom browser component, with its properties. |
 | [`Ui.ComponentExport`](docs/component-export.md) | Publishes a component a module ships. |
@@ -133,8 +142,13 @@ turns what it produces into a web application.
 | [`Ui.Composite`](docs/composite.md) | The contract every composite provides through. |
 | [`Ui.Translations`](docs/texts.md#uis-own-texts) | A translation of `ui`'s own texts — loading, save, a pager's range, each validation message — into one language, by key; `ui` exports one per language it ships (`Ui.germanTranslations`, `Ui.polishTranslations`, …). |
 
-An application's navigation tree, `Ui.Navigation` with its `Ui.NavigationItem`
-entries, and the defaults `ui` fills are in [Navigation](docs/navigation.md).
+A navigation tree, `Ui.Navigation` with its `Ui.NavigationItem` entries, the
+panes drawing one and the defaults `ui` fills are in [Navigation](docs/navigation.md);
+the pane contract — where a pane is resolved, its `assets` reading, the
+`request` it reads — in [Panes](docs/pane.md); the fold-out column a split view
+and a layout share, `Ui.Aside`, in [Ui.SplitView](docs/split-view.md#the-aside);
+an application's `pages` entry drawing one page in another layout,
+`Ui.PageRoute`, in [Ui.PageLayout](docs/page-layout.md).
 Which fields are texts, a text over data (`Ui.BoundText`), `ui`'s own texts and their translations, and what a renderer translates are in [Texts and translation](docs/texts.md).
 The node vocabulary and the style list are in [Nodes](docs/nodes.md);
 `when`, `shown`, `Ui.Condition`, `Ui.Enablement`, `Ui.QueryParameters` and the

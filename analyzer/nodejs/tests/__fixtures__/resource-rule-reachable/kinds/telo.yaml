@@ -1,0 +1,80 @@
+# Generic fixture kinds: a site lists pages and is drawn in a layout whose header
+# holds bars; a bar's items (by `page`, and by `href`, an accessor field) and an
+# action name pages by shape. `Site`'s rule walks every call and dependency
+# slot, step targets included; `Shallow`'s walks dependency slots only.
+kind: Telo.Library
+metadata: { name: Reach }
+exports: { kinds: [Page, Bar, Layout, Action, Site, Shallow] }
+---
+kind: Telo.Definition
+metadata: { name: Page }
+capability: Telo.Provider
+controllers: [pkg:npm/none@0.0.0]
+schema:
+  type: object
+  properties: { path: { type: string }, title: { type: string } }
+---
+kind: Telo.Definition
+metadata: { name: Bar }
+capability: Telo.Provider
+controllers: [pkg:npm/none@0.0.0]
+schema:
+  type: object
+  properties:
+    items:
+      type: array
+      items:
+        type: object
+        properties:
+          page: { x-telo-ref: { kind: Self.Page, use: schema } }
+          href:
+            x-telo-eval: accessor
+            anyOf: [{ type: string }, { x-telo-ref: { kind: Self.Page, use: schema } }]
+          text: { type: string }
+---
+kind: Telo.Definition
+metadata: { name: Layout }
+capability: Telo.Provider
+controllers: [pkg:npm/none@0.0.0]
+schema:
+  type: object
+  properties:
+    header: { type: array, items: { x-telo-ref: { kind: Self.Bar, use: dependency } } }
+---
+kind: Telo.Definition
+metadata: { name: Action }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  properties: { page: { x-telo-ref: { kind: Self.Page, use: schema } } }
+---
+kind: Telo.Definition
+metadata: { name: Site }
+capability: Telo.Provider
+controllers: [pkg:npm/none@0.0.0]
+schema:
+  type: object
+  properties:
+    pages: { type: array, items: { x-telo-ref: { kind: Self.Page, use: call } } }
+    layout: { x-telo-ref: { kind: Self.Layout, use: dependency } }
+    handler: { x-telo-ref: { kind: Telo.Executable, use: call } }
+  x-telo-resource-rules:
+    - resolve: [/pages]
+      reachable: { kind: Self.Page, use: schema, through: [dependency, call] }
+      condition: !cel "self.pages.exists(p, p == this)"
+      code: PAGE_UNLISTED
+      message: names a page the site does not list.
+---
+kind: Telo.Definition
+metadata: { name: Shallow }
+capability: Telo.Provider
+controllers: [pkg:npm/none@0.0.0]
+schema:
+  type: object
+  properties: { handler: { x-telo-ref: { kind: Telo.Executable, use: call } } }
+  x-telo-resource-rules:
+    - reachable: { kind: Self.Page, use: schema, through: [dependency] }
+      condition: !cel "false"
+      code: SHALLOW_PAGE
+      message: names a page.

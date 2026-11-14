@@ -204,6 +204,7 @@ describe("a table", () => {
     expect(rendered.requests).toEqual([
       "GET /admin/_telo/ui/app",
       "GET /admin/_telo/ui/page?path=%2F",
+      "GET /admin/_telo/ui/layout?id=main",
       "GET /admin/api/todos?limit=2",
       "POST /admin/api/todos",
       "GET /admin/api/todos?limit=2",
@@ -300,7 +301,7 @@ describe("a table", () => {
     expect(link.getAttribute("href")).toBe(`${prefix}/files/a.pdf`);
     expect(await rendered.click(link)).toBe(false);
     expect(window.location.pathname).toBe(`${prefix}/`);
-    expect(rendered.part("page-title").textContent).toBe("Todos");
+    expect(document.title).toBe("Todos · Test App");
   });
 
   it("moves within the application on a cell's link to one of its pages", async () => {
@@ -309,7 +310,7 @@ describe("a table", () => {
     expect([link.getAttribute("href"), link.getAttribute("target"), link.getAttribute("rel")]).toEqual(["/admin/reports", null, null]);
     expect(await rendered.click(link)).toBe(true);
     expect(window.location.pathname).toBe("/admin/reports");
-    expect(rendered.part("page-title").textContent).toBe("Reports");
+    expect(document.title).toBe("Reports · Test App");
     expect(rendered.reloads).toBe(0);
   });
 

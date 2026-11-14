@@ -95,11 +95,12 @@ kind: Telo.Definition
 metadata:
   name: App
   description: >-
-    A web application assembled from pages, each at its own path, reached
-    through a navigation menu with groups, dropdowns and submenus that turns
-    into a menu button and drawer on a phone. Serves the page shell, the page
-    descriptions, scripts, stylesheets and fonts under one mount, and can vary
-    what a page shows per request — by a header such as a role or a tenant.
+    A web application assembled from pages, each at its own path and drawn in
+    a shared layout with a header, navigation, aside and footer, or in a layout
+    of its own, or bare. Serves the page shell, the page descriptions, the
+    layouts, scripts, stylesheets and fonts under one mount, and can vary what
+    a page or the chrome shows per request — by a header such as a role or a
+    tenant.
 capability: Telo.Mount
 controllers: [pkg:telo/local/js?path=./nodejs/ui-react.mjs&local_path=./nodejs/src/index.ts#AppController]
 schema:
@@ -111,7 +112,7 @@ schema:
   properties:
     title:
       title: Title
-      description: The application's name, shown in its header and as the document title.
+      description: The application's name, used as the document title.
       $ref: "telo://manifest#/$defs/Text"
       x-telo-text-values: {}
       x-telo-eval: compile
@@ -172,105 +173,52 @@ schema:
         beside the navigation.
       $ref: "telo://Ui/PageWidth"
       default: contained
-    header:
-      title: Header
+    layout:
+      title: Layout
       description: >-
-        Nodes of the application's own in its header, drawn on every page:
-        `start` before the title, `end` after the navigation, each evaluated
-        per request over `request` alone; `width` lines the content up with a
-        contained page or spreads it across the bar.
-      type: object
-      additionalProperties: false
-      properties:
-        width:
-          title: Width
-          description: >-
-            How wide the header's content is drawn, the same on every page:
-            `contained` starts and ends where a contained page does, `full`
-            spans the bar. Omitted, the application's `pageWidth`; a page's own
-            `width` never changes it.
-          $ref: "telo://Ui/PageWidth"
-        start:
-          title: Start
-          description: Nodes before the application's title, such as a logo.
-          type: array
-          items: { $ref: "telo://Ui/Node" }
-          x-telo-context:
-            type: object
-            properties:
-              request:
-                x-telo-context-eval: runtime
-                type: object
-                properties:
-                  headers: { type: object, additionalProperties: { type: string } }
-                  ip: { type: string }
-                  lang: { type: string, description: The language negotiated for the request. }
-        end:
-          title: End
-          description: Nodes after the navigation, such as language or theme switches.
-          type: array
-          items: { $ref: "telo://Ui/Node" }
-          x-telo-context:
-            type: object
-            properties:
-              request:
-                x-telo-context-eval: runtime
-                type: object
-                properties:
-                  headers: { type: object, additionalProperties: { type: string } }
-                  ip: { type: string }
-                  lang: { type: string, description: The language negotiated for the request. }
+        The chrome every page is drawn in unless its `pages` entry names
+        another: a header, an aside and a footer around the page. Omitted,
+        pages are drawn with no chrome.
+      x-telo-ref: { kind: Ui.PageLayout, use: call }
     pages:
       title: Pages
       description: >-
         The pages the application routes to, each served at its own path:
-        written in place, or named by reference — a library's included. No two
-        may route the same addresses.
+        written in place, named by reference (a library's included), or a
+        `Ui.PageRoute` drawing the page in a layout of its own. No two may
+        route the same addresses.
       type: array
       minItems: 1
-      items: { x-telo-ref: { kind: Ui.Page, use: call } }
-    navigation:
-      title: Navigation
+      items:
+        anyOf:
+          - { x-telo-ref: { kind: Ui.Page, use: call } }
+          - { $ref: "telo:Ui/PageRoute" }
+    notFound:
+      title: Not found
       description: >-
-        The navigation tree and how it is drawn, every page an entry names one
-        `pages` lists. Omitted, one entry per page in the order `pages` lists
-        them, in the header and behind a menu button on a narrow viewport.
-      $ref: "telo://Ui/Navigation"
+        Nodes drawn, inside the application's layout, for a path no page
+        serves. Omitted, a heading and a sentence naming the address are drawn.
+      $ref: "telo://Ui/Node#/$defs/Region"
   x-telo-resource-rules:
     # A variable's name decides no route: `{id}` and `{key}` match the same segments.
     - resolve: [/pages]
       in: /pages
       condition: !cel >-
-        self.pages.exists_one(p, regexReplace(p.path, '[{][^/]*[}]', '{}') == regexReplace(this.path, '[{][^/]*[}]', '{}'))
+        self.pages.exists_one(p, regexReplace(has(p.page) ? p.page.path : p.path, '[{][^/]*[}]', '{}') ==
+        regexReplace(has(this.page) ? this.page.path : this.path, '[{][^/]*[}]', '{}'))
       code: UI_PAGE_PATH_DUPLICATE
       message: >-
         declares a path another page already has, or one differing from it only
         in the names of its variables, so both route the same addresses. Give
         each page a path of its own.
-    # Every depth of the tree: a group's entries, and theirs.
-    - in: /navigation/items(/*/items)*
-      condition: !cel >-
-        this.type != 'page' || self.pages.exists(p, p.name == this.page.name &&
-        p.?alias.orValue('') == this.page.?alias.orValue(''))
-      code: UI_NAVIGATION_PAGE_UNROUTED
+    # Every page reference the application draws, in any layout, pane or composite.
+    - resolve: [/pages]
+      reachable: { kind: Ui.Page, use: schema, through: [dependency, call] }
+      condition: !cel "self.pages.exists(p, p == this || (has(p.page) && p.page == this))"
+      code: UI_PAGE_UNROUTED
       message: >-
         names a page the application does not list in its pages, so it leads
-        nowhere. Add the page to pages, or remove the entry.
-    - resolve: ["/navigation/items(/*/items)*/*/page"]
-      in: /navigation/items(/*/items)*
-      condition: !cel "this.type != 'page' || has(this.text) || !has(this.page.path) || has(this.page.title)"
-      code: UI_NAVIGATION_PAGE_UNTITLED
-      message: >-
-        names a page with no title and gives no text of its own, so it has no
-        label. Write the entry's text, or give the page a title.
-    - resolve: ["/navigation/items(/*/items)*/*/page"]
-      in: /navigation/items(/*/items)*
-      condition: !cel "this.type != 'page' || !has(this.page.path) || !this.page.path.contains('{')"
-      code: UI_NAVIGATION_PAGE_HAS_PARAMETERS
-      message: >-
-        names a page with a variable in its path, which a navigation entry
-        cannot fill. Reach the page with a link whose pathParams fill it, or
-        remove the entry.
+        nowhere. Add the page to pages, or remove the reference.
 ---
 # The look of every part the renderer draws and, optionally, the controls it
 # draws with; the brand stays a separate `Ui.DesignTokens` set. Layering:

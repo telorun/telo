@@ -491,58 +491,73 @@ schema:
           userId: { type: integer, title: User }
           title: { type: string, title: Title }
 ---
+kind: Ui.Page
+metadata: { name: syncPage }
+path: /
+title: Sync
+children:
+  - { type: text, text: "Sync now", style: title }
+  - { type: text, text: "Pulls every page from the upstream and upserts it. Rate limited: a second press too soon is refused.", style: muted }
+  - type: composite
+    ref:
+      kind: Ui.Action
+      inputModel:
+        kind: Telo.JsonSchema
+        schema: { type: object, additionalProperties: false, properties: {} }
+      outputModel: !ref SyncResult
+      request: { target: { path: /api/sync } }
+      label: Sync now
+      result:
+        type: list
+        heading: Last runs
+        rows: !cel "result.runs"
+        columns:
+          - value: !cel "row.finishedAt"
+          - value: !cel "row.outcome"
+          - value: !cel "row.pages"
+          - value: !cel "row.records"
+          - value: !cel "row.detail"
+---
+kind: Ui.Page
+metadata: { name: postsPage }
+path: /posts
+title: Posts
+children:
+  - { type: text, text: "Posts in the local copy", style: title }
+  - { type: text, text: "Leave the user empty to list every user's posts.", style: muted }
+  - type: composite
+    ref:
+      kind: Ui.Action
+      inputModel: !ref PostSearch
+      outputModel: !ref PostList
+      request: { target: { path: /api/posts/search } }
+      label: Find posts
+      result:
+        type: list
+        rows: !cel "result.posts"
+        columns:
+          - value: !cel "row.id"
+          - value: !cel "row.userId"
+          - value: !cel "row.title"
+---
 # The whole frontend: a button that syncs and shows how the last runs went, and
 # a form that looks posts up in the local copy.
 kind: UiReact.App
 metadata: { name: ui }
 title: API sync
 theme: !ref UiReact.defaultTheme
-pages:
-  - kind: Ui.Page
-    path: /
-    title: Sync
-    children:
-      - { type: text, text: "Sync now", style: heading }
-      - { type: text, text: "Pulls every page from the upstream and upserts it. Rate limited: a second press too soon is refused.", style: muted }
-      - type: composite
-        ref:
-          kind: Ui.Action
-          inputModel:
-            kind: Telo.JsonSchema
-            schema: { type: object, additionalProperties: false, properties: {} }
-          outputModel: !ref SyncResult
-          request: { target: { path: /api/sync } }
-          label: Sync now
-          result:
-            type: list
-            heading: Last runs
-            rows: !cel "result.runs"
-            columns:
-              - value: !cel "row.finishedAt"
-              - value: !cel "row.outcome"
-              - value: !cel "row.pages"
-              - value: !cel "row.records"
-              - value: !cel "row.detail"
-  - kind: Ui.Page
-    path: /posts
-    title: Posts
-    children:
-      - { type: text, text: "Posts in the local copy", style: heading }
-      - { type: text, text: "Leave the user empty to list every user's posts.", style: muted }
-      - type: composite
-        ref:
-          kind: Ui.Action
-          inputModel: !ref PostSearch
-          outputModel: !ref PostList
-          request: { target: { path: /api/posts/search } }
-          label: Find posts
-          result:
-            type: list
-            rows: !cel "result.posts"
-            columns:
-              - value: !cel "row.id"
-              - value: !cel "row.userId"
-              - value: !cel "row.title"
+pages: [!ref syncPage, !ref postsPage]
+layout:
+  kind: Ui.PageLayout
+  header:
+    - type: pane
+      ref:
+        kind: Ui.Navbar
+        title: API sync
+        navigation:
+          items:
+            - { type: page, page: !ref syncPage }
+            - { type: page, page: !ref postsPage }
 ---
 kind: Http.Server
 metadata: { name: server }

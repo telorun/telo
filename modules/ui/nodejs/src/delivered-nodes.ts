@@ -1,9 +1,10 @@
-import { canonicalTypeSchemaId, type DataValidator, type ResourceContext } from "@telorun/sdk";
+import { canonicalTypeSchemaId, type DataValidator, type InvokeContext, type ResourceContext } from "@telorun/sdk";
 import { mergeAssets, type AssetFile, type SpecNode } from "./composite.js";
 import { filledNode } from "./fill-marking.js";
 import { deliveredMenu, deliveredTabs, nodeLists, placed, presented, withLinkButtons, type AuthoredNode, type AuthoredTab, type RootShapes } from "./node-resolution.js";
 import { headerReads, type HeaderReads } from "./request-header-reads.js";
 import { boundActionsOf, placedBoundAction, withBoundActions } from "./bound-actions.js";
+import { isPane, paneAssets, paneInputs, type PaneInstance, type PaneRequest } from "./pane.js";
 import { uiText } from "./spec-texts.js";
 
 /** The node standing where one could not be produced. */
@@ -52,7 +53,8 @@ type Invalid = (node: SpecNode, reason: string) => void;
  * are, and is left out when none does, a composite stands as the node it
  * provided at start — placed as `ui`
  * places it, the placement's style and `shown` over it — or is left out when
- * it provided none, a bound action of a list or a button carries the node
+ * it provided none, a pane stands as the node it answered for this request,
+ * placed the same way, or is left out when it answered none, a bound action of a list or a button carries the node
  * its action provided at start, and every node that is not a valid `Ui.SpecNode` once
  * evaluated is replaced — itself, not its container — by an error node.
  * `invalid` is told about each replacement.
@@ -66,21 +68,22 @@ export function producedNode(
   provided: (ref: unknown) => SpecNode | null | undefined,
   validator: DataValidator,
   invalid: Invalid,
+  answered: (ref: unknown) => SpecNode | null | undefined = () => undefined,
 ): SpecNode | undefined {
   if (node.when === false) return undefined;
   const { when, ...rest } = node;
-  if (node.type === "composite") {
-    const composite = provided(node.ref);
-    // A composite with nothing to show is left out, like a node switched off.
-    if (composite === null) return undefined;
-    if (!composite) return refuse(rest as SpecNode, "its 'ref' names nothing this application resolved", invalid);
-    if (node.style == null && node.shown == null && node.fill !== true) return composite;
+  if (node.type === "composite" || node.type === "pane") {
+    const standing = node.type === "composite" ? provided(node.ref) : answered(node.ref);
+    // One with nothing to show is left out, like a node switched off.
+    if (standing === null) return undefined;
+    if (!standing) return refuse(rest as SpecNode, "its 'ref' names nothing this application resolved", invalid);
+    if (node.style == null && node.shown == null && node.fill !== true) return standing;
     const shell = placed(
-      { ...JUDGED, ...(composite.style === undefined ? {} : { style: composite.style }), ...(composite.shown === undefined ? {} : { shown: composite.shown }), fill: composite.fill === true },
+      { ...JUDGED, ...(standing.style === undefined ? {} : { style: standing.style }), ...(standing.shown === undefined ? {} : { shown: standing.shown }), fill: standing.fill === true },
       node,
     );
     const reason = refusalOf(shell.type === "box" ? { ...shell, children: [JUDGED] } : shell, validator);
-    return reason === undefined ? placed(composite, node) : refuse(rest as SpecNode, reason, invalid);
+    return reason === undefined ? placed(standing, node) : refuse(rest as SpecNode, reason, invalid);
   }
   if (node.type === "menu") {
     // Its items are delivered by their own `when`, and judged with it.
@@ -95,7 +98,7 @@ export function producedNode(
         ? {
             ...tab,
             children: (tab.children as EvaluatedNode[])
-              .map((child) => producedNode(child, provided, validator, invalid))
+              .map((child) => producedNode(child, provided, validator, invalid, answered))
               .filter((child): child is SpecNode => child !== undefined),
           }
         : tab,
@@ -128,7 +131,7 @@ export function producedNode(
   const judged: Record<string, unknown> = { ...rest };
   for (const list of lists) {
     const children = ((node[list] as EvaluatedNode[] | undefined) ?? [])
-      .map((child) => producedNode(child, provided, validator, invalid))
+      .map((child) => producedNode(child, provided, validator, invalid, answered))
       .filter((child): child is SpecNode => child !== undefined);
     produced[list] = children;
     judged[list] = children.map(() => JUDGED);
@@ -171,59 +174,90 @@ interface Providing {
 const provides = (candidate: unknown): candidate is Providing =>
   typeof (candidate as Providing | null)?.provide === "function";
 
+/** Where a tree's resources are numbered: each composite and each bound
+ *  action's action in `placed`, each pane in `panes`. */
+interface Numbering {
+  placed: unknown[];
+  panes: PaneInstance[];
+  composite(ref: unknown, where: string): Providing;
+  pane(ref: unknown, where: string): PaneInstance;
+}
+
 /**
  * Nodes with each composite's `ref`, and each bound action's `action`,
- * replaced by its index in `placed`, where the instance is appended. A tree's
- * structure and references are literal — only leaf values are evaluated per
- * request — so the numbering made once holds for every request, and no
- * instance passes through evaluation. `composite` resolves a composite node's
- * reference to its instance.
+ * replaced by its index in `placed`, and each pane's `ref` by its index in
+ * `panes`, where the instance is appended. A tree's structure and references
+ * are literal — only leaf values are evaluated per request — so the numbering
+ * made once holds for every request, and no instance passes through
+ * evaluation.
  */
-function withCompositesNumbered(node: unknown, placed: unknown[], composite: (ref: unknown, where: string) => Providing, where: string): unknown {
-  if (Array.isArray(node)) return node.map((child, at) => withCompositesNumbered(child, placed, composite, `${where}[${at}]`));
+function withCompositesNumbered(node: unknown, numbering: Numbering, where: string): unknown {
+  if (Array.isArray(node)) return node.map((child, at) => withCompositesNumbered(child, numbering, `${where}[${at}]`));
   if (node === null || typeof node !== "object") return node;
   const { type, ref, tabs } = node as EvaluatedNode;
-  if (type === "composite") return { ...node, ref: placed.push(composite(ref, where)) - 1 };
+  if (type === "composite") return { ...node, ref: numbering.placed.push(numbering.composite(ref, where)) - 1 };
+  if (type === "pane") return { ...node, ref: numbering.panes.push(numbering.pane(ref, where)) - 1 };
   if (type === "tabs" && Array.isArray(tabs)) {
     return {
       ...node,
       tabs: (tabs as AuthoredTab[]).map((tab, at) =>
-        Array.isArray(tab.children) ? { ...tab, children: withCompositesNumbered(tab.children, placed, composite, `${where}.tabs[${at}].children`) } : tab,
+        Array.isArray(tab.children) ? { ...tab, children: withCompositesNumbered(tab.children, numbering, `${where}.tabs[${at}].children`) } : tab,
       ),
     };
   }
   const lists = nodeLists(node as EvaluatedNode);
   if (lists.length > 0) {
     const numbered: Record<string, unknown> = { ...node };
-    for (const list of lists) numbered[list] = withCompositesNumbered((node as EvaluatedNode)[list], placed, composite, `${where}.${list}`);
+    for (const list of lists) numbered[list] = withCompositesNumbered((node as EvaluatedNode)[list], numbering, `${where}.${list}`);
     return numbered;
   }
   const entries = boundActionsOf(node as EvaluatedNode);
   if (entries.length === 0) return node;
   return withBoundActions(
     node as EvaluatedNode,
-    entries.map((entry) => (provides(entry.action) ? { ...entry, action: placed.push(entry.action) - 1 } : entry)),
+    entries.map((entry) => (provides(entry.action) ? { ...entry, action: numbering.placed.push(entry.action) - 1 } : entry)),
   );
 }
 
+/** The numbers of the panes a request delivers: those of an evaluated tree
+ *  not under a node or a tab switched off. */
+function deliveredPanes(node: EvaluatedNode, found: Set<number>): void {
+  if (node.when === false) return;
+  if (node.type === "pane") {
+    found.add(node.ref as number);
+    return;
+  }
+  if (node.type === "tabs" && Array.isArray(node.tabs)) {
+    for (const tab of node.tabs as AuthoredTab[]) {
+      if (tab.when !== false) for (const child of (tab.children ?? []) as EvaluatedNode[]) deliveredPanes(child, found);
+    }
+    return;
+  }
+  for (const list of nodeLists(node)) for (const child of (node[list] as EvaluatedNode[] | undefined) ?? []) deliveredPanes(child, found);
+}
+
 /**
- * Nodes written for a place delivered per request — a page's children, an
- * application's header: prepared once, with what the roots in scope say about
- * the values they name and every composite they place resolved and judged, then
- * evaluated and produced for each request ({@link producedNode}).
+ * Nodes written for a place delivered per request — a page's children, a
+ * layout's region, a navigation bar's sides: prepared once, with what the
+ * roots in scope say about the values they name and every composite they place
+ * resolved and judged, then evaluated for each request, every pane delivered
+ * invoked with it, and produced ({@link producedNode}).
  */
 export class RequestNodes {
   private constructor(
     private readonly ctx: ResourceContext,
     private readonly where: string,
-    /** The nodes, every composite numbered. */
+    /** The nodes, every composite and pane numbered. */
     private readonly tree: unknown,
     /** What each numbered composite provided — `null` for nothing. */
     private readonly composites: (SpecNode | null)[],
+    /** Each numbered pane. */
+    private readonly panes: PaneInstance[],
     private readonly validator: DataValidator,
-    /** Every file the composites need, each once. */
+    /** Every file the composites and panes can name, each once. */
     readonly assets: AssetFile[],
-    /** The request headers the nodes' expressions read. */
+    /** The request headers the nodes' expressions read; any, `*`, when they
+     *  place a pane, which is handed the whole request. */
     readonly headerReads: HeaderReads,
   ) {}
 
@@ -237,14 +271,17 @@ export class RequestNodes {
       buttons.push(drawn.assets);
       authored.push(presented(drawn.node, roots, reader, `${where}[${at}]`));
     }
-    const placed: unknown[] = [];
-    const composite = (ref: unknown, at: string) =>
-      ctx.resolveRef(ref, provides, () => `'ref' of the composite node at ${where}${at}`, "Ui.Composite");
-    const tree = withCompositesNumbered(authored, placed, composite, "");
+    const numbering: Numbering = {
+      placed: [],
+      panes: [],
+      composite: (ref, at) => ctx.resolveRef(ref, provides, () => `'ref' of the composite node at ${where}${at}`, "Ui.Composite"),
+      pane: (ref, at) => ctx.resolveRef(ref, isPane, () => `'ref' of the pane node at ${where}${at}`, "Ui.Pane"),
+    };
+    const tree = withCompositesNumbered(authored, numbering, "");
     const validator = ctx.createTypeValidator(canonicalTypeSchemaId("Ui", "SpecNode"));
     const composites: (SpecNode | null)[] = [];
     const assets: AssetFile[][] = [];
-    for (const instance of placed) {
+    for (const instance of numbering.placed) {
       const provided = await (instance as Providing).provide();
       assets.push(provided.assets);
       composites.push(
@@ -261,27 +298,42 @@ export class RequestNodes {
             ),
       );
     }
-    return new RequestNodes(ctx, where, tree, composites, validator, mergeAssets(...assets, ...buttons), headerReads(tree));
+    for (const pane of numbering.panes) assets.push(paneAssets(pane));
+    const reads = numbering.panes.length > 0 ? "*" : headerReads(tree);
+    return new RequestNodes(ctx, where, tree, composites, numbering.panes, validator, mergeAssets(...assets, ...buttons), reads);
   }
 
-  /** The nodes for one request: evaluated over it, a node switched off left
-   *  out, one not valid replaced by an error node and logged, and every node
-   *  above a filling one marked to fill. */
-  deliver(request: Record<string, unknown>): SpecNode[] {
+  /** The nodes for one request: evaluated over it, each pane it delivers
+   *  invoked with it — with nothing when `request` is null, as where the nodes
+   *  are resolved once — a node switched off left out, one not valid replaced
+   *  by an error node and logged, and every node above a filling one marked to
+   *  fill. `context` is the invocation the request is handled under. */
+  async deliver(request: PaneRequest | null, context?: InvokeContext): Promise<SpecNode[]> {
     const evaluated = this.ctx.expandValue(this.tree, { request }) as EvaluatedNode[];
+    const delivered = new Set<number>();
+    for (const node of evaluated) deliveredPanes(node, delivered);
+    const answers = new Map<number, SpecNode | null>();
+    await Promise.all(
+      [...delivered].map(async (at) => {
+        const answer = await this.panes[at]!.invoke(paneInputs(request), context);
+        answers.set(at, answer.node === undefined ? null : filledNode(answer.node));
+      }),
+    );
+    const invalid = (node: SpecNode, reason: string) =>
+      this.ctx.log.error("A node is not valid for this request and is shown as an error", {
+        code: "ERR_UI_NODE_INVALID",
+        where: this.where,
+        type: String(node.type),
+        reason,
+      });
     return evaluated
       .map((node) =>
         producedNode(
           node,
           (ref) => this.composites[ref as number],
           this.validator,
-          (invalid, reason) =>
-            this.ctx.log.error("A node is not valid for this request and is shown as an error", {
-              code: "ERR_UI_NODE_INVALID",
-              where: this.where,
-              type: String(invalid.type),
-              reason,
-            }),
+          invalid,
+          (ref) => answers.get(ref as number),
         ),
       )
       .filter((node): node is SpecNode => node !== undefined)

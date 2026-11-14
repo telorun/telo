@@ -9,8 +9,8 @@ exports: { resources: [actionNotAButton] }
 ---
 kind: Ui.SplitView
 metadata: { name: actionNotAButton }
-label: Conversations
 aside:
+  label: Conversations
   actions:
     - { type: text, text: New }
   content: { type: text, text: Aside }

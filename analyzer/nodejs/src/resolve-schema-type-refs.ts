@@ -83,6 +83,72 @@ export function resolveSchemaTypeRefs(
   }
 }
 
+/**
+ * `definition` with every `$ref: "telo://<Self|Alias>/<Type>"` in its schema
+ * fields made canonical in the scope of the module that DECLARED it, as the
+ * definition is registered.
+ *
+ * A kind extending it in merge form inherits these nodes, and its own module
+ * is the scope its effective schema is read in, so a `telo://Self/<Type>` left
+ * for later named a shape of the CHILD's module: the reference slots and rules
+ * beneath it were lost wherever the parent lives in another module. Only the
+ * containers on the way to a rewritten `$ref` are copied, so the document the
+ * author wrote — which `validateSchemaTypeRefs` judges as written — and every
+ * node beside them keep their identity; with nothing to rewrite the definition
+ * itself is returned.
+ */
+export function withCanonicalSchemaTypeRefs<T extends object>(
+  definition: T,
+  aliases?: AliasResolver,
+  aliasesByModule?: Map<string, AliasResolver>,
+): T {
+  const metadata = (definition as { metadata?: { module?: string } }).metadata;
+  const ownModule = metadata?.module;
+  const resolver = moduleAliasScope(metadata, aliases, aliasesByModule);
+  const resolveAuthority = (authority: string): string | undefined =>
+    authority === "Self" ? ownModule : resolver?.moduleForAlias(authority);
+  let copy: Record<string, unknown> | undefined;
+  for (const field of SCHEMA_FIELDS) {
+    const value = (definition as Record<string, unknown>)[field];
+    const canonical = canonicalTypeRefStrings(value, resolveAuthority);
+    if (canonical !== value) (copy ??= { ...(definition as Record<string, unknown>) })[field] = canonical;
+  }
+  return (copy ?? definition) as T;
+}
+
+function canonicalTypeRefStrings(
+  value: unknown,
+  resolveAuthority: (authority: string) => string | undefined,
+): unknown {
+  if (value === null || typeof value !== "object" || isTaggedSentinel(value)) return value;
+  if (Array.isArray(value)) {
+    let items: unknown[] | undefined;
+    value.forEach((item, index) => {
+      const read = canonicalTypeRefStrings(item, resolveAuthority);
+      if (read !== item) (items ??= [...value])[index] = read;
+    });
+    return items ?? value;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return value;
+  let copy: Record<string, unknown> | undefined;
+  const ref = (value as { $ref?: unknown }).$ref;
+  if (typeof ref === "string") {
+    const { shape, pointer } = schemaReferenceParts(ref);
+    const parsed = parseTeloTypeRef(shape);
+    const module = parsed ? resolveAuthority(parsed.authority) : undefined;
+    if (parsed && module) {
+      copy = { ...value, $ref: `${canonicalTypeSchemaId(module, parsed.typeName)}${pointer === "#" ? "" : pointer}` };
+    }
+  }
+  for (const [key, child] of Object.entries(value)) {
+    if (key === "$ref") continue;
+    const read = canonicalTypeRefStrings(child, resolveAuthority);
+    if (read !== child) (copy ??= { ...value })[key] = read;
+  }
+  return copy ?? value;
+}
+
 /** The slice of the definition registry that tells a named shape's kind. */
 export interface ShapeKindSource {
   resolve(kind: string): ResourceDefinition | undefined;

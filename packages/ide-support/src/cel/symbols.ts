@@ -10,7 +10,7 @@ import { formatType } from "@telorun/cel";
  * to jump to; a transport binding like `request` has a scope entry and no
  * declaration at all. Joining them is hover's job, not this module's.
  */
-import type { CelScope } from "@telorun/analyzer";
+import { withheldReason, type CelScope } from "@telorun/analyzer";
 import { navigateSchema } from "../completions/detect-context.js";
 
 /** One name in scope, with whatever the scope knows about it. Both `type` and
@@ -96,6 +96,11 @@ export function celRootSymbols(scope: CelScope): CelSymbol[] {
   }
   for (const [name, schema] of Object.entries(contextProperties(scope))) {
     const node = schema as Record<string, any>;
+    // Named here and holding no value: no expression may read it.
+    if (withheldReason(node) !== undefined) {
+      out.delete(name);
+      continue;
+    }
     out.set(name, {
       name,
       type: schemaTypeName(node) ?? out.get(name)?.type,
@@ -133,14 +138,15 @@ export function celMemberSymbols(scope: CelScope, prefix: string[]): CelSymbol[]
   const node = schemaAtPath(scope, prefix);
   const props = node?.properties;
   if (!props || typeof props !== "object") return [];
-  return Object.entries(props as Record<string, any>).map(([name, raw]) => {
+  return Object.entries(props as Record<string, any>).flatMap(([name, raw]) => {
     const child = raw as Record<string, any>;
-    return {
+    if (withheldReason(child) !== undefined) return [];
+    return [{
       name,
       type: schemaTypeName(child),
       schema: child,
       description: typeof child.description === "string" ? child.description : undefined,
-    };
+    }];
   });
 }
 
@@ -149,6 +155,13 @@ export function celMemberSymbols(scope: CelScope, prefix: string[]): CelSymbol[]
  *  identifier, not at the chain's tail. */
 export function celSymbolAt(scope: CelScope, parts: string[]): CelSymbol | undefined {
   if (parts.length === 0) return undefined;
+  // A name the scope withholds is described by why it holds no value here.
+  for (let depth = 1; depth <= parts.length; depth++) {
+    const reason = withheldReason(schemaAtPath(scope, parts.slice(0, depth)));
+    if (reason !== undefined) {
+      return { name: parts.slice(0, depth).join("."), description: `Not available here: ${reason}` };
+    }
+  }
   if (parts.length === 1) {
     return celRootSymbols(scope).find((s) => s.name === parts[0]);
   }

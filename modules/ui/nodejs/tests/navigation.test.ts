@@ -30,36 +30,43 @@ describe("a navigation delivered for a request", () => {
     const link = (label: string) => ({ type: "link" as const, href: "/x", text: text(label) as never });
     const prepared = await preparedNavigation(
       { items: [{ type: "group", text: text("Admin") as never, items: [link("Users"), link("Users")] }, link("Admin")] },
-      [],
       {} as ResourceContext,
       "the app",
-      async () => "",
     );
     const keys = (entries: { key: string; items?: unknown[] }[]): unknown[] =>
       entries.map((entry) => (entry.items === undefined ? entry.key : [entry.key, keys(entry.items as never)]));
     expect(keys(deliveredNavigation(prepared.items))).toEqual([["admin", ["admin/users", "admin/users~2"]], "admin~2"]);
   });
 
-  it("leaves a page with no title out of an omitted navigation, and refuses an entry naming one without text of its own", async () => {
-    const page = (path: string, title?: string) => ({ snapshot: () => ({ path, ...(title === undefined ? {} : { title: text(title) }), query: {} }) }) as never;
-    const ctx = { resolveRef: (reference: unknown) => reference } as unknown as ResourceContext;
-    const bare = page("/chat");
-    const prepared = await preparedNavigation(undefined, [page("/", "Home"), bare], ctx, "the app", async () => "");
-    expect(deliveredNavigation(prepared.items).map((entry) => (entry as { path: string }).path)).toEqual(["/"]);
-    await expect(preparedNavigation({ items: [{ type: "page", page: bare }] } as never, [bare], ctx, "the app", async () => "")).rejects.toMatchObject({
-      code: "ERR_UI_NAVIGATION_PAGE_UNTITLED",
-    });
-    const labelled = await preparedNavigation({ items: [{ type: "page", page: bare, text: text("Chat") }] } as never, [bare], ctx, "the app", async () => "");
-    expect(deliveredNavigation(labelled.items)).toEqual([{ type: "page", key: "chat", path: "/chat", text: text("Chat") }]);
+  /** A context reading the pages it declares by name. */
+  const declaring = (pages: Record<string, { path: string; title?: unknown }>) =>
+    ({ resolveDeclaredManifest: (name: string) => pages[name] }) as unknown as ResourceContext;
+  const named = (name: string) => ({ __ref: true, kind: "Ui.Page", name });
+
+  it("reads a page entry off the page's declaration: its path, and its title as written unless the entry says otherwise", async () => {
+    const ctx = declaring({ home: { path: "/", title: "Home" }, chat: { path: "/chat", title: { text: "Chat", context: "talk" } } });
+    const prepared = await preparedNavigation(
+      { items: [{ type: "page", page: named("home") }, { type: "page", page: named("chat") }, { type: "page", page: named("home"), text: text("Start") as never }] },
+      ctx,
+      "the app",
+    );
+    expect(deliveredNavigation(prepared.items)).toEqual([
+      { type: "page", key: "home", path: "/", text: { text: "Home", context: null, lang: "und", computed: false } },
+      { type: "page", key: "chat", path: "/chat", text: { text: "Chat", context: "talk", lang: "und", computed: false } },
+      { type: "page", key: "start", path: "/", text: text("Start") },
+    ]);
   });
 
-  it("leaves a page with a variable in its path out of an omitted navigation, and refuses an entry naming one", async () => {
-    const page = (path: string) => ({ snapshot: () => ({ path, title: text(path), query: {} }) }) as never;
-    const ctx = { resolveRef: (reference: unknown) => reference } as unknown as ResourceContext;
-    const plan = page("/plans/{id}");
-    const prepared = await preparedNavigation(undefined, [page("/"), plan], ctx, "the app", async () => "");
-    expect(deliveredNavigation(prepared.items).map((entry) => (entry as { path: string }).path)).toEqual(["/"]);
-    await expect(preparedNavigation({ items: [{ type: "page", page: plan }] } as never, [plan], ctx, "the app", async () => "")).rejects.toMatchObject({
+  it("refuses an entry naming a page with no title and no text of its own", async () => {
+    const ctx = declaring({ chat: { path: "/chat" } });
+    await expect(preparedNavigation({ items: [{ type: "page", page: named("chat") }] }, ctx, "the app")).rejects.toMatchObject({
+      code: "ERR_UI_NAVIGATION_PAGE_UNTITLED",
+    });
+  });
+
+  it("refuses an entry naming a page with a variable in its path", async () => {
+    const ctx = declaring({ plan: { path: "/plans/{id}", title: "Plan" } });
+    await expect(preparedNavigation({ items: [{ type: "page", page: named("plan") }] }, ctx, "the app")).rejects.toMatchObject({
       code: "ERR_UI_NAVIGATION_PAGE_HAS_PARAMETERS",
     });
   });

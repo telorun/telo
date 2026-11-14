@@ -20,7 +20,8 @@ const isBinding = (value: unknown): value is Binding => {
 
 type Reference = { name: string; alias?: string };
 
-function referenceOf(value: unknown): Reference | undefined {
+/** What a written page reference names: a resolved reference, a `!ref` sentinel, or a declaration's identity. */
+export function referenceOf(value: unknown): Reference | undefined {
   const written = value as { __ref?: unknown; name?: unknown; alias?: unknown } | null;
   if (written && typeof written === "object" && written.__ref === true && typeof written.name === "string") {
     return { name: written.name, ...(typeof written.alias === "string" ? { alias: written.alias } : {}) };
@@ -31,8 +32,19 @@ function referenceOf(value: unknown): Reference | undefined {
   return identity ? { name: identity.name } : undefined;
 }
 
-/** The path of the page a reference names, read from its declaration. */
-function pagePath(reference: Reference, ctx: ResourceContext, where: string): string {
+/** A page as its declaration says: its path, and its title as written. */
+export interface DeclaredPage {
+  path: string;
+  title?: unknown;
+}
+
+/**
+ * The page a reference names, read from its declaration: a page is named,
+ * never held, so a page may place a link to itself and two pages may name
+ * each other.
+ */
+export function declaredPage(value: unknown, ctx: ResourceContext, where: string): DeclaredPage {
+  const reference = referenceOf(value);
   const lookup = ctx.resolveDeclaredManifest?.bind(ctx);
   if (!lookup) {
     throw new RuntimeError(
@@ -40,11 +52,14 @@ function pagePath(reference: Reference, ctx: ResourceContext, where: string): st
       `${where}: this host cannot read declarations, which resolving a page reference to its path needs.`,
     );
   }
-  const page = lookup(reference.name, reference.alias) as { path?: unknown } | undefined;
+  const page = reference && (lookup(reference.name, reference.alias) as { path?: unknown; title?: unknown } | undefined);
   if (typeof page?.path !== "string") {
-    throw new RuntimeError("ERR_REF_UNRESOLVED", `${where}: '${reference.name}' names no page with a 'path'. Point 'path' at a Ui.Page.`);
+    throw new RuntimeError(
+      "ERR_REF_UNRESOLVED",
+      `${where}: '${reference?.name ?? "the value"}' names no page with a 'path'. Point it at a Ui.Page.`,
+    );
   }
-  return page.path;
+  return { path: page.path, ...(page.title == null ? {} : { title: page.title }) };
 }
 
 /**
@@ -54,9 +69,9 @@ function pagePath(reference: Reference, ctx: ResourceContext, where: string): st
  */
 export function addressSpec(address: AddressConfig, ctx: ResourceContext, where: string): AddressSpec {
   if (typeof address === "string") return { path: { value: address }, pathParams: {}, queryParams: {} };
-  const reference = referenceOf(address.path) ?? referenceOf((address.path as { value?: unknown } | null)?.value);
+  const reference = referenceOf(address.path) ? address.path : (address.path as { value?: unknown } | null)?.value;
   let path: Binding;
-  if (reference) path = { value: pagePath(reference, ctx, where) };
+  if (referenceOf(reference)) path = { value: declaredPage(reference, ctx, where).path };
   else if (isBinding(address.path)) path = address.path;
   else path = { value: address.path };
   return { path, pathParams: { ...(address.pathParams ?? {}) }, queryParams: { ...(address.queryParams ?? {}) } };

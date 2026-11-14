@@ -1,0 +1,76 @@
+# A page holds parts per request; a box holds them once, withholding `request`
+# in its region and a member of it in another; a part reads `request` as its
+# referrer types it.
+kind: Telo.Library
+metadata: { name: Kinds }
+exports: { kinds: [Part, Box, Page] }
+---
+kind: Telo.Definition
+metadata: { name: Part }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  properties:
+    when:
+      type: boolean
+      x-telo-eval: runtime
+      x-telo-context:
+        type: object
+        properties:
+          request:
+            x-telo-context-from-referrer: request
+            x-telo-context-eval: runtime
+            type: [object, "null"]
+            properties: { headers: { type: object, additionalProperties: { type: string } } }
+---
+kind: Telo.Definition
+metadata: { name: Box }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  properties:
+    parts:
+      type: array
+      items: { x-telo-ref: { kind: Self.Part, use: call } }
+      x-telo-context:
+        type: object
+        properties: { request: { $ref: "#/$defs/NoRequest", x-telo-context-eval: runtime } }
+    title:
+      type: string
+      x-telo-eval: runtime
+      x-telo-context:
+        type: object
+        properties: { request: { $ref: "#/$defs/NoRequest", x-telo-context-eval: runtime } }
+    note:
+      type: string
+      x-telo-eval: runtime
+      x-telo-context:
+        type: object
+        properties:
+          request:
+            type: object
+            properties:
+              headers: { type: object, additionalProperties: { type: string } }
+              principal: { x-telo-context-withheld: "a box knows no principal." }
+  $defs:
+    NoRequest: { x-telo-context-withheld: "a box is drawn once, with no request." }
+---
+kind: Telo.Definition
+metadata: { name: Page }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  properties:
+    parts:
+      type: array
+      items: { x-telo-ref: { kind: [Self.Part, Self.Box], use: call } }
+      x-telo-context:
+        type: object
+        properties:
+          request:
+            x-telo-context-eval: runtime
+            type: object
+            properties: { headers: { type: object, additionalProperties: { type: string } } }

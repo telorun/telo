@@ -7,11 +7,13 @@ Everything is under the mount path. With the application mounted at `/admin`,
 | --- | --- | --- |
 | any address a page opens, and any other path not under `_telo` | the shell; status 404 when no page [opens](app.md#routing) the address | `no-cache` |
 | `_telo/ui/app` | the application document | `private, no-cache`, `ETag` |
-| `_telo/ui/page?path=<address path>` | the document of the page the address opens; a 404 problem (`{ type, title, status }`, `application/problem+json`) when none does | `private, no-cache`, `ETag` |
+| `_telo/ui/layout?id=<layout id>` | the [layout document](#the-layout-document) of that layout for this request; the 404 problem when no layout has the id | `private, no-cache`, `ETag`, `Vary: *` |
+| `_telo/ui/page?path=<address path>` | the document of the page the address opens; the 404 problem with the not-found `children` when none does | `private, no-cache`, `ETag` |
 | `_telo/ui/events` | server-sent events | — |
 | `_telo/ui/assets/<sha256>/<name>` | a file by content address | `public, max-age=31536000, immutable` |
 
-Anything else under `_telo`, and an asset no address names, is the same 404 problem. Query keys beginning `_telo` are
+Anything else under `_telo`, an unknown layout id, and an asset no address names, is the same 404 problem
+(`{ type, title, status }`, `application/problem+json`). Query keys beginning `_telo` are
 reserved to the renderer.
 
 An address whose path is not valid percent-encoding (`/plans/%ZZ`) opens no
@@ -159,35 +161,37 @@ continues in memory. A bar with no `state` writes nothing anywhere.
 
 ## Navigation state
 
-A [sidebar](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) naming a `store` keeps
-one entry in local storage (`Ui.LocalStore`) or session storage
-(`Ui.SessionStore`); it writes nothing to the address.
+A [navigation column](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) naming a
+`state` keeps one entry in local storage (`Ui.LocalStore`) or session storage
+(`Ui.SessionStore`); it writes nothing to the address. A column with no `state`
+keeps its open groups in memory.
 
 | | |
 | --- | --- |
-| Key | `telo.ui:<mount path>:n` — one per application, its mount path as a filter bar's |
-| Value | `{ "v": 2, "open": ["admin", "admin/logs"], "collapsed": true }` |
+| Key | `telo.ui:<mount path>:n:<key>` — one per column `state.key`, its mount path as a filter bar's; two columns with different keys keep their open groups apart, and columns naming one key share the entry |
+| Value | `{ "v": 3, "open": ["admin", "admin/logs"] }` |
 
-`open` lists the groups open in the sidebar's column, each by its
+`open` lists the groups open in the column, each by its
 [key](#entry-keys) — `admin` the group written `Admin`, `admin/logs` the group
-`Logs` inside it — and `collapsed` whether the sidebar is collapsed to its
-rail. The entry is written on every change the viewer makes, never at the
-start. What is read back is held to the tree drawn: a key naming no group of
-it is ignored, and an entry whose `v` is not `2` is ignored and replaced by
-the next write. A store the browser refuses is reported in the console and
-the sidebar continues in memory.
+`Logs` inside it. The entry is written on every change the viewer makes, never
+at the start. What is read back is held to the tree drawn: a key naming no
+group of it is ignored, and an entry whose `v` is not `3` is ignored and
+replaced by the next write. A store the browser refuses is reported in the
+console and the column continues in memory. A column in a folded aside is a
+rail whose floating groups are not kept, and whether the aside is folded is
+the aside's own entry, under its `collapse.state` key (below).
 
-## Split view state
+## Aside state
 
 A [split view](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) naming `collapse.state`
 keeps one entry in the store it names; it writes nothing to the address.
 
 | | |
 | --- | --- |
-| Key | `telo.ui:<mount path>:s:<key>` — the mount path as a filter bar's; split views naming one `key` share the entry |
+| Key | `telo.ui:<mount path>:s:<key>` — the mount path as a filter bar's; asides naming one `key` share the entry |
 | Value | `{ "v": 1, "collapsed": true }` |
 
-The entry is read when the split view mounts and beats `collapse.collapsed`,
+The entry is read when the aside mounts — a split view's or a layout's — and beats `collapse.collapsed`,
 and written on every change the viewer makes, never at the start. An entry
 whose `v` is not `1` is ignored and replaced by the next write. A store the
 browser refuses is reported in the console and the choice stays in memory.
@@ -213,18 +217,17 @@ entries share onto a single address, so the page holds one React and one host.
   "digest": "<digest of this document>",
   "title": "Todo Admin",
   "lang": "en",
-  "pages": [ { "path": "/", "title": "Todos" } ],
-  "navigation": {
-    "items": [ { "type": "page", "key": "todos", "path": "/", "text": "Todos", "icon": "/admin/_telo/ui/assets/…/house.svg" } ],
-    "placement": { "type": "header", "compact": { "type": "overlay", "surface": { "type": "drawer", "side": "start", "…": "…" } } }
-  },
+  "pages": [
+    { "path": "/", "title": "Todos", "layout": "6d1e0b4a91c2" },
+    { "path": "/sign-in", "title": "Sign in" }
+  ],
+  "layout": "6d1e0b4a91c2",
   "stylesheets": [ "/admin/_telo/ui/assets/…/renderer.css", "…" ],
   "controls": {
     "stylesheets": { "Select": "/admin/_telo/ui/assets/…/select.css", "…": "…" },
     "sets": [ { "module": "/admin/_telo/ui/assets/…/controls.js", "exports": [ "Select" ] } ]
   },
-  "compactBelow": "40rem",
-  "header": { "start": [ { "type": "image", "src": "/logo.svg", "alt": "Acme" } ], "end": [], "width": "contained" }
+  "compactBelow": "40rem"
 }
 ```
 
@@ -243,17 +246,50 @@ breakpoint, always present: below that viewport width every surface's
 `compact` replacement applies. A surface open when the viewport crosses the
 breakpoint is swapped in place: what was entered stays.
 `pages` lists every page the application serves, in order — what a move
-within it may reach. `navigation` is the [navigation](app.md#navigation) for
-this request, every default filled: its entries delivered by their `when`,
-each carrying its [key](#entry-keys), a `page` entry its page's path, an entry with an icon the
-address its glyph's file is served at, and its placement as
-[`Ui.NavigationPlacementSpec`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/).
-`header` is always present: its `start` and `end` nodes as `Ui.SpecNode`s
-produced for this request, as a page's `children` are, each list empty when
-that side declares nothing or every node in it is switched off, and `width`,
-how wide the header's content is drawn — the application's `header.width`,
-else its `pageWidth`, else `contained`, resolved by `ui`'s `resolvedPageWidth`
-([header width](app.md#header-width)).
+within it may reach — and `pages[].layout` the id of the layout it is drawn in,
+absent only when no layout is named (the application names none and the entry
+is not a route; a `{ kind: Ui.PageLayout }` route has an id, its document holding
+empty regions); `layout` is the id of the application's own, absent when it declares none. An id is a digest of the application field that first
+names the layout declaration, so every replica says the same and two entries
+naming one declaration share it. The document carries neither a navigation nor a
+header: those travel in the layout document.
+
+## The layout document
+
+```
+GET /admin/_telo/ui/layout?id=6d1e0b4a91c2
+200 OK
+Cache-Control: private, no-cache
+ETag: "<digest>"
+Vary: *
+```
+
+```json
+{
+  "specVersion": 1,
+  "bundle": "<renderer digest>",
+  "digest": "<digest of this document>",
+  "id": "6d1e0b4a91c2",
+  "width": "contained",
+  "header": [ { "type": "navbar", "title": "Acme", "start": [], "end": [], "navigation": { "items": [ { "type": "page", "key": "home", "path": "/", "text": "Home", "icon": { "digest": "…", "name": "house.svg" } } ] }, "placement": { "type": "header", "compact": { "type": "overlay", "…": "…" } } } ],
+  "aside": { "side": "start", "size": "medium", "frame": "flush", "toggle": { "…": "…" }, "label": "Shortcuts", "collapse": null, "compact": { "type": "drawer", "…": "…" }, "actions": [], "content": { "type": "navigation-column", "navigation": { "items": [ "…" ] }, "state": null } },
+  "footer": [ { "type": "text", "text": "Acme Corporation", "style": "muted" } ]
+}
+```
+
+The layout is evaluated for each request: its nodes' `when` and values read the
+request, and every pane it places is invoked with it, so a navbar follows a
+sign-in, a session expiry or a role header at the next navigation. Its `digest` is
+a hash of the document produced for that request alone, so a conditional request
+carrying a digest produced for other headers is answered `200` with the new
+document, never `304`. The document varies by the whole request (`Vary: *`).
+`width` is the layout's, else the application's `pageWidth`, else `contained`;
+`aside` is absent when the layout has none, and an empty layout is `{ width, header: [], footer: [] }`; each region's nodes are
+`Ui.SpecNode`s. A navigation entry's `icon` is `{ digest, name }`, the file served
+at `_telo/ui/assets/<digest>/<name>` — by every replica from boot, whether or not it has
+answered a document. The renderer fetches the document the first time it needs
+an id, and revalidates it with each page document and when the event stream
+reconnects ([Layouts](app.md#how-the-renderer-gets-a-layout)).
 
 ## A page document
 
@@ -273,12 +309,35 @@ else its `pageWidth`, else `contained`, resolved by `ui`'s `resolvedPageWidth`
 `path` is the page's declared path, its variables as written (`/plans/{id}`),
 whichever address opened it; the renderer reads the variables from the address.
 `title` is absent for a page that declares none — in this document and in the
-application document's `pages` — and the renderer then draws no heading. `children` are `Ui.SpecNode`s, produced for this request: no `when` is left in
+application document's `pages` — and names the browser tab and the page's navigation entries; no heading is drawn for it. `children` are `Ui.SpecNode`s, produced for this request: no `when` is left in
 them, and every `shown` is carried as written. `query` is the page's declared
 query parameters, `{}` when it declares none; the renderer reads each from the
 address as the page's `query` root. `width` is how wide the page's content is
 drawn, `contained` or `full` — the page's own, else the application's
-`pageWidth`, else `contained` ([page width](app.md#page-width)).
+`pageWidth`, else `contained` ([page width](app.md#page-width)). The document
+names no layout: the application document does.
+
+It varies by the headers its own expressions read, and by the whole request,
+`Vary: *`, when the page places a [pane](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/),
+since a pane is handed the request.
+
+### The not-found problem
+
+An address no page opens answers `404`, `application/problem+json`, with the
+nodes the renderer draws, in the default layout:
+
+```json
+{
+  "type": "about:blank",
+  "title": "Not Found",
+  "status": 404,
+  "children": [ { "type": "text", "text": "Nothing here", "style": "title" } ]
+}
+```
+
+`children` are `notFound`'s nodes produced for this request (`private,
+no-cache`, varying by the headers they read) — or, with none written, a heading
+and a sentence naming the address in the request's language.
 
 ## Digests
 

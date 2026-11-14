@@ -49,6 +49,7 @@ schema:
 | `code` | Names the rule. Reported in the diagnostic's `data.rule`. Required, unique within the kind. |
 | `message` | What the relationship means, written by the kind's author. Required. |
 | `in` | JSON Pointer to the collection to iterate, with `*` and repeated groups to name several. Optional. |
+| `reachable` | `{ kind, use, through }`: iterate the declarations references of `kind` name, found by a walk through other resources. Optional, and exclusive with `in`. |
 | `severity` | `error` (default) or `warning`. |
 
 ### `in:` is the anchor
@@ -92,7 +93,7 @@ two independent claims, and a rule anchored `/indexes` while filtering
 | Name | Is |
 | --- | --- |
 | `self` | the whole resource |
-| `this` | the element `in:` iterates — an array item, or a map entry's **value** |
+| `this` | the element `in:` iterates — an array item, or a map entry's **value** — or, with `reachable:`, each declaration the walk finds |
 | `key` | the map key, when the collection is a map (`null` for an array) |
 | `coReferrers` | *(with `coReferrers:`)* the other resources this rule judges whose slot names the declaration mine names |
 
@@ -171,6 +172,18 @@ kind's author for the manifest author's mistake.
 
 It is opt-in so that no existing rule changes what it reads.
 
+**A bound declaration is equal only to itself.** `==`, `!=` and `in` decide a
+declaration a rule bound — `self`, a declaration `resolve:` or `coReferrers:`
+binds, `this` under `reachable:` — by which declaration it is (the module that
+declares it and its name), never by what it holds. So
+`self.languages.exists(l, l == self.primary)` runs over models whose fields hold
+expressions, a declaration reached through an import alias equals the same one
+reached by its bare name, and two declarations holding the same fields are
+unequal. A written entry holding declarations (`{ mount, prefix }`) compares its
+declarations by identity and its other members by value. Read whole any other way
+— handed to a function, `size(l)`, `string(l)` — a declaration is read with
+everything it holds, and an expression in it skips the rule.
+
 ### Others claiming the same target: `coReferrers:`
 
 Some conflicts exist only between two resources of one kind that share what they
@@ -210,6 +223,52 @@ An analyzer released before `coReferrers:` evaluates the condition with the name
 unbound and reports a defect against the module that wrote it, so that module
 declares a `requires: telo:` floor at the release that carries the binding.
 
+### Every reference reachable: `reachable:`
+
+Some relations are not between a resource's own fields but between the resource
+and everything it reaches: a site listing its pages wants every link, menu entry
+and redirect anywhere beneath it to name one of them, whether it is written in
+the site, in a layout the site holds, or in a component a library supplies.
+`reachable:` finds them:
+
+```yaml
+x-telo-resource-rules:
+  - resolve: [/pages]
+    reachable: { kind: Ui.Page, use: schema, through: [dependency, call] }
+    condition: !cel "self.pages.exists(p, p == this)"
+    code: PAGE_UNLISTED
+    message: names a page the site does not list.
+```
+
+| Key | Meaning |
+| --- | --- |
+| `kind` | The kind of reference to find, alias-qualified as in `x-telo-ref`; a descendant kind counts. |
+| `use` | The use of the slot it is found at. |
+| `through` | The uses of the slots the walk crosses, at least one. |
+
+From the resource, the walk crosses every reference slot whose use is in
+`through` into the declaration it names — a top-level one, an inline one, one an
+imported library declares — and on from there. A step's `invoke:` target, at any
+depth of any step body (branches, loops, `catch:` and `finally:` included), is a
+slot of use `call`. Every reference of `kind` at a slot of use `use` along the
+way is a subject, and `this` is the declaration it names, compared by identity
+(above), so a library's page listed through its import alias is never reported as
+unlisted. A slot whose use is in both is crossed and judged. Each declaration is
+walked once, so a cycle ends and the cost stays linear in what the walk reaches.
+
+A finding is reported at the reference when the entry's own modules wrote it.
+One written in a dependency is reported at the slot of the entry's own modules
+where the walk first entered that dependency, and its message names the
+declaration reached and the reference entered through:
+`Site/site: names a page the site does not list. (the Ui.Page Docs.orphan, reached through Docs.nav)`.
+
+A hop the walk cannot cross — a reference naming nothing loaded, a library's
+kind-only `resources:` input, an expression where a reference belongs — makes the
+rule `RESOURCE_RULE_SKIPPED` for that resource, rather than judging part of what
+it reaches. A rule whose walk reaches nothing on any resource of its kind is
+`RESOURCE_RULE_UNEXERCISED`. `resolve:` and `coReferrers:` still bind `self`
+beside it.
+
 ### Polarity
 
 `condition` is true when the rule **holds** — the same polarity as
@@ -236,6 +295,10 @@ written rather than on somebody's manifest:
   reference slot, a field a kind the slot may hold declares.
 - **`coReferrers:` must name one reference slot this kind declares** — a plain
   field or a collection reaches no other resource.
+- **`reachable:` iterates instead of `in:`, never beside it**, its `kind` must
+  name a kind, its `use` must be one of `schema`, `dependency`, `call`,
+  `detached`, `trigger.inbound`, `trigger.consumer`, and its `through` must name
+  at least one use from the same list.
 - **The condition must parse and type-check.** One expression, one verdict: the
   templating engine's.
 - **`condition:` must carry the `!cel` tag.** The reader is lenient and a bare
@@ -299,8 +362,9 @@ reported:
   unrelated `version: !cel "module.version"` elsewhere on the resource does not
   disable the rule, and neither does an expression in a field of a list entry
   when the condition reads another field of it through a comprehension.
-- **`RESOURCE_RULE_UNEXERCISED`** — the `in:` collection was empty on every
-  resource of the kind in this workspace, so nothing proved the condition. Worth
+- **`RESOURCE_RULE_UNEXERCISED`** — the `in:` collection was empty, or the
+  `reachable:` walk found nothing, on every resource of the kind in this
+  workspace, so nothing proved the condition. Worth
   knowing, because cel-js types `self` only shallowly: a typo below the first
   level survives declaration validation and is caught only by evaluation.
 
@@ -310,7 +374,7 @@ reported:
 | --- | --- | --- |
 | `RESOURCE_RULE_VIOLATED` | the rule's `severity` | a resource broke the rule; `data.rule` names it, `data.path` anchors it |
 | `RESOURCE_RULE_INVALID` | error for a malformed declaration, and for an evaluation failure in a rule this workspace declares; warning for an evaluation failure in a dependency's | the rule itself is malformed, throws, or exceeded its budget |
-| `RESOURCE_RULE_SKIPPED` | information | the rule could not run here: a value it reads is not known until creation, or a reference it reads through — `resolve:`, or the `coReferrers:` slot — names nothing it can compare |
+| `RESOURCE_RULE_SKIPPED` | information | the rule could not run here: a value it reads is not known until creation, or a reference it reads through — `resolve:`, the `coReferrers:` slot, or a hop of the `reachable:` walk — names nothing it can compare |
 | `RESOURCE_RULE_UNEXERCISED` | information | the rule never ran anywhere |
 
 Every violation reports under the one `RESOURCE_RULE_VIOLATED` code, with your

@@ -24,6 +24,7 @@ texts:
   - { text: Building blocks, translation: "बिल्डिंग ब्लॉक" }
   - { text: Input, translation: "इनपुट" }
   - { text: Search, translation: "खोज" }
+  - { text: Navigation, translation: नेविगेशन }
 
   # The header of every application: the mark, the Language and Theme
   # menus and the Theme menu's items. The language names are each written

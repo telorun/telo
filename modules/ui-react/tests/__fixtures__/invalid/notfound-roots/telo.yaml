@@ -1,11 +1,11 @@
-# A header node whose condition reads the query, a root only a page binds.
+# A not-found node whose condition reads the query, a root only a page binds.
 kind: Telo.Library
 metadata:
-  name: UiReactHeaderRoots
+  name: UiReactNotFoundRoots
   version: 1.0.0
   description: >-
-    Test fixture exporting an application whose header node reads the query
-    in its condition, though no query is in scope in the header.
+    Test fixture exporting an application whose not-found node reads the query
+    in its condition, though no query is in scope there.
 imports: { UiReact: ../../../../, Ui: ../../../../../ui }
 exports: { resources: [headed] }
 ---
@@ -13,13 +13,12 @@ kind: UiReact.App
 metadata: { name: headed }
 title: Headed
 theme: !ref UiReact.defaultTheme
-header:
-  end:
-    - type: text
-      text: Tabbed
-      shown:
-        at: !cel "query.tab"
-        matches: { const: one }
+notFound:
+  - type: text
+    text: Missing
+    shown:
+      at: !cel "query.tab"
+      matches: { const: one }
 pages:
   - kind: Ui.Page
     path: /

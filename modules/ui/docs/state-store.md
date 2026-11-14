@@ -39,10 +39,10 @@ nothing is a `SCHEMA_VIOLATION`.
 Both keep it in the viewer's browser; nothing is sent to the server.
 `Ui.StateStore` is the abstract they extend — the bar's slot takes any kind
 that extends it, so another place to keep state is another kind and the bar
-does not change. A [`Ui.SidebarNavigation`](navigation.md#placements) names
-one at `store` to keep its open groups and whether its rail is collapsed, and
-a [`Ui.SplitView`](split-view.md#collapsing) at `collapse.state` to keep whether
-its aside is folded away.
+does not change. A [`Ui.NavigationColumn`](navigation.md#uinavigationcolumn)
+names one at `state.store` to keep its open groups, and a
+[`Ui.Aside`](split-view.md#collapsing) — a split view's or a layout's — at
+`collapse.state` to keep whether it is folded away.
 
 ## One key, one state
 

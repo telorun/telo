@@ -24,10 +24,11 @@ import {
   type NamedShapeLookup,
 } from "./eval-paths.js";
 import { propertySchemas } from "./manifest-navigation.js";
-import { followSchemaReferences } from "./schema-reference.js";
+import { followSchemaReferences, resolveSchemaReference } from "./schema-reference.js";
 import { CONTEXT_EVAL, contextEvalValueProblem } from "./context-eval.js";
 import { CONTEXT_FROM_PATH_TEMPLATE, fromPathTemplateProblem } from "./context-from-path-template.js";
 import { CONTEXT_FROM_REFERRER, fromReferrerProblem } from "./context-from-referrer.js";
+import { CONTEXT_WITHHELD, withheldProblem, withheldReason } from "./context-withheld.js";
 import { ITEM_FILLS, itemFillsValueProblem } from "./context-fill-cycle.js";
 import { NULLABLE_WHEN, nullableWhenTarget, nullableWhenValueProblem, readNullableWhen } from "./context-nullable-when.js";
 import { ELEMENT_FROM_ITEM, readRelativePointer, relativePointerRefusal, type SchemaLevel } from "./element-from-item.js";
@@ -49,6 +50,7 @@ export interface AnnotationProblem {
     | "CONTEXT_FROM_REFERRER_INVALID"
     | "CONTEXT_FROM_PATH_TEMPLATE_INVALID"
     | "CONTEXT_NULLABLE_WHEN_INVALID"
+    | "CONTEXT_WITHHELD_INVALID"
     | "CONTEXT_ITEM_FILLS_INVALID";
   readonly warning?: true;
   /** Where the annotation is written, from the document root. */
@@ -60,6 +62,7 @@ export interface AnnotationProblem {
 type Role =
   | { kind: "property"; enclosing: Schema }
   | { kind: "binding"; field: readonly SchemaLevel[] | undefined }
+  | { kind: "definition" }
   | { kind: "other" };
 
 /**
@@ -146,6 +149,22 @@ export function annotationDeclarationProblems(
       const where = renderValuePath([...path, CONTEXT_FROM_REFERRER]);
       const problem = fromReferrerProblem(node, where, binding !== undefined);
       if (problem) problems.push({ code: problem.code, path: where, message: problem.message });
+    }
+
+    if (CONTEXT_WITHHELD in node) {
+      const where = renderValuePath([...path, CONTEXT_WITHHELD]);
+      const problem = withheldProblem(node, where, binding !== undefined || role.kind === "definition");
+      if (problem) problems.push({ code: problem.code, path: where, message: problem.message });
+    } else if (binding !== undefined && typeof node.$ref === "string") {
+      // A binding naming a withheld node by `$ref` is read as that node, its
+      // own keys over it: they too may only be those beside the mark.
+      const target = resolveSchemaReference(node.$ref, root, shapes)?.node;
+      if (withheldReason(target) !== undefined) {
+        const { $ref: _ref, ...own } = node;
+        const where = renderValuePath([...path, "$ref"]);
+        const problem = withheldProblem({ ...target, ...own }, where, true);
+        if (problem) problems.push({ code: problem.code, path: where, message: problem.message });
+      }
     }
 
     if (CONTEXT_FROM_PATH_TEMPLATE in node) {
@@ -257,7 +276,7 @@ export function annotationDeclarationProblems(
     for (const map of ["$defs", "definitions"] as const) {
       if (!isSchema(node[map])) continue;
       for (const [key, child] of Object.entries(node[map] as Schema)) {
-        visit(child, [...path, map, key], other, false, undefined);
+        visit(child, [...path, map, key], { kind: "definition" }, false, undefined);
       }
     }
     visit(node.additionalProperties, [...path, "additionalProperties"], other, accessorHere, deeper("*", node.additionalProperties));

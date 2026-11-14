@@ -218,7 +218,7 @@ steps:
         shell: !cel "steps.shell.result.status"
         page: !cel "steps.page.result.status"
         title: !cel "steps.page.result.body.title"
-        root: !cel "steps.page.result.body.children[0].type"
+        root: !cel "steps.page.result.body.children[1].type"
         # The module's `lang:` is the language every document is served in.
         lang: !cel "steps.page.result.body.lang"
         shellLang: !cel "steps.shell.result.body.contains('<html lang=\"en\">')"
@@ -235,7 +235,7 @@ steps:
   - name: verifyGeneratedPage
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.page.result.body.children.map(c, {'bar': {'placement': c.placement, 'apply': c.apply, 'state': c.state, 'presets': c.presets}, 'create': {'surface': c.content.create.surface, 'afterSubmit': c.content.create.afterSubmit, 'unsaved': c.content.create.unsaved}, 'edit': {'surface': c.content.edit.surface, 'afterSubmit': c.content.edit.afterSubmit, 'unsaved': c.content.edit.unsaved}})"
+      actual: !cel "steps.page.result.body.children.filter(c, c.type == 'filters').map(c, {'bar': {'placement': c.placement, 'apply': c.apply, 'state': c.state, 'presets': c.presets}, 'create': {'surface': c.content.create.surface, 'afterSubmit': c.content.create.afterSubmit, 'unsaved': c.content.create.unsaved}, 'edit': {'surface': c.content.edit.surface, 'afterSubmit': c.content.edit.afterSubmit, 'unsaved': c.content.edit.unsaved}})"
       expected:
         - bar:
             placement: { type: above, show: chosen, controls: direct, summary: chips }

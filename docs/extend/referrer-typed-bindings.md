@@ -1,7 +1,7 @@
 ---
 sidebar_label: Referrer-Typed Bindings
 slug: /extend/referrer-typed-bindings
-description: "Type a CEL binding from whoever references the resource, and say where it may be null, so telo check refuses an unguarded read where some referrer makes it null."
+description: "Type a CEL binding from whoever references the resource, say where it may be null, or withhold it, so telo check refuses a read some referrer makes unsafe."
 ---
 
 # Referrer-typed bindings
@@ -10,15 +10,17 @@ Some values in a kind's CEL context are decided by the resource that
 **references** it, not by the kind. A field kind does not know which form lists
 it, but its `values` binding is that form's record. A router does not know which
 server mounts it, but its `request.principal` is whatever that mount
-authenticated. Two annotations on an `x-telo-context` express this:
+authenticated. Three annotations on an `x-telo-context` express this:
 
 - `x-telo-context-from-referrer` types a node from the scope of each resource
   that references this one;
 - `x-telo-context-nullable-when` says where a node may be null, based on a value
-  the resource holds.
+  the resource holds;
+- `x-telo-context-withheld` says a node is named at a site but holds no value
+  there, and why.
 
-Both are read only by the analyzer. Each referrer is judged on its own, so a
-finding that only some referrers cause names them.
+All three are read only by the analyzer. Each referrer is judged on its own, so
+a finding that only some referrers cause names them.
 
 ## `x-telo-context-from-referrer: "<binding>[/<member>…]"`
 
@@ -165,8 +167,64 @@ modules, in these cases:
 - the pointer names a member the schema does not declare on its path;
 - an `equals` literal is one the target's schema refuses.
 
+## `x-telo-context-withheld: "<reason>"`
+
+This annotation goes on a binding, or on a member beneath one. It says the node
+is **named** at the site and holds **no value** there. Every expression reading
+it is refused, a null test, `has()` and an accessor chain included. A withheld
+binding is `CEL_UNKNOWN_IDENTIFIER` and a withheld member is
+`CEL_UNKNOWN_FIELD`. The message carries the reason:
+
+```
+'request' is not available here: <reason>
+```
+
+The mark travels through `x-telo-context-from-referrer` like any other typing:
+the referrer's node replaces the annotated node's keywords, mark included, and
+on through a chain of referrers. Then the message names the resource whose
+scope withholds it, `the inline <Kind>` where the author gave it no name:
+
+```
+'request' is not available here — the inline Ui.SplitView withholds it: <reason>
+```
+
+A binding typed from its referrers is judged once per distinct typing, so one
+kind is fully typed where one referrer places it and refused where another
+withholds the node. A pane reads `request` in a page's children, where the page
+types it, and is refused inside a composite, whose regions withhold it:
+
+```yaml
+# a composite: what its regions hold is resolved once, with no request
+content:
+  $ref: "telo://Self/Node"
+  x-telo-context:
+    type: object
+    properties:
+      request: { $ref: "#/$defs/NoRequest", x-telo-context-eval: runtime }
+$defs:
+  NoRequest:
+    x-telo-context-withheld: >-
+      a composite is resolved once, at its creation, with no request.
+```
+
+A binding naming a node by `$ref` is read as that node, its own keys over it,
+so a reason shared by several regions is written once, in a `$defs` entry or
+in a named shape the bindings point at.
+
+Write the binding withheld rather than leaving it out, or typing it closed and
+empty: a name nothing declares is reported as unknown, with no reason, and a
+pane typed from its referrers would fall back to its own keywords.
+
+The editor offers no withheld name, and hovering one shows the reason.
+
+**Misuse.** Written outside a binding's subtree (other than a `$defs` entry a
+binding may name), or beside anything but `x-telo-context-eval`, `title` and
+`description` — a type keyword, or another typing annotation — the annotation is
+`CONTEXT_WITHHELD_INVALID`, reported at the kind. A value that is not a
+non-empty string is `SCHEMA_VIOLATION`.
+
 ## Runtime
 
-Neither annotation exists at runtime. The kernel reads no context, and what the
+None of these annotations exists at runtime. The kernel reads no context, and what the
 transport puts into a binding is the controller's to supply. The static typing
 is what keeps a manifest from reading a member that may be null.

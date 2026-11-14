@@ -21,6 +21,7 @@ import {
   type BoundActionConfig,
   type PendingBoundAction,
 } from "./bound-actions.js";
+import { answerAtCreation, isPane, paneAssets } from "./pane.js";
 import { sourceKeys } from "./source-keys.js";
 
 /** A `Ui.Node` as its author wrote it, references already live. */
@@ -59,8 +60,9 @@ export function nodeLists(node: { type: string; [key: string]: unknown }): strin
  * Turn an authored node into the node a renderer receives: a node whose
  * `when:` is false is left out, a menu keeps only the items delivered (see
  * {@link deliveredMenu}) and a `tabs` node only the tabs (see
- * {@link deliveredTabs}), a composite is replaced by what it provides,
- * containers resolve their children in order, and a `value` or `list` node
+ * {@link deliveredTabs}), a composite is replaced by what it provides, a pane
+ * by what it answers with no request ({@link answerAtCreation}) and the files
+ * its reading names, containers resolve their children in order, and a `value` or `list` node
  * carries what its roots say about the values it names, and every action a
  * `list`, `button` or `markdown` node runs is provided. `undefined` means the
  * node is omitted — switched off, or a composite that provided none.
@@ -84,6 +86,13 @@ export async function resolveNode(
     // A composite with nothing to show is left out, like a node switched off.
     if (!provided.node) return undefined;
     return { node: placed(provided.node, node), assets: provided.assets };
+  }
+  if (node.type === "pane") {
+    const pane = ctx.resolveRef(node.ref, isPane, () => `'ref' of the pane node at ${where}`, "Ui.Pane");
+    const answer = await answerAtCreation(pane);
+    // A pane with nothing to show is left out, like a node switched off.
+    if (!answer.node) return undefined;
+    return { node: placed(answer.node, node), assets: paneAssets(pane) };
   }
   if (node.type === "tabs" && Array.isArray(node.tabs)) {
     const tabs: AuthoredTab[] = [];

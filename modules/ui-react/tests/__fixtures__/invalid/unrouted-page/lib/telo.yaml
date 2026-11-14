@@ -1,44 +1,80 @@
-# A navigation naming, three groups deep, a page the application does not list.
+# Page references the application does not list, written in a navbar, a link,
+# a navigation column, another module's pane and a library's navbar.
 kind: Telo.Library
 metadata:
   name: UiReactUnroutedPage
   version: 1.0.0
   description: >-
-    Test fixture exporting an application whose navigation names, three groups
-    deep, a page its pages do not list.
-imports: { UiReact: ../../../../../, Ui: ../../../../../../ui }
-exports: { resources: [deep] }
+    Test fixture exporting an application whose layout and pages name pages its
+    pages do not list, in each place a page can be named.
+imports:
+  UiReact: ../../../../../
+  Ui: ../../../../../../ui
+  Help: ../../../../../../ui/tests/__fixtures__/help
+  Docs: ../docs
+exports: { resources: [draft] }
 ---
 kind: Ui.Page
 metadata: { name: home }
 path: /
 title: Home
+children:
+  - type: pane
+    ref:
+      kind: Help.Links
+      heading: Need a hand?
+      navigation:
+        items:
+          - { type: page, page: !ref third }
+---
+kind: Ui.Page
+metadata: { name: second }
+path: /second
+title: Second
 children: []
 ---
 kind: Ui.Page
-metadata: { name: hidden }
-path: /hidden
-title: Hidden
+metadata: { name: third }
+path: /third
+title: Third
+children: []
+---
+kind: Ui.Page
+metadata: { name: fourth }
+path: /fourth
+title: Fourth
+children: []
+---
+kind: Ui.Page
+metadata: { name: fifth }
+path: /fifth
+title: Fifth
 children: []
 ---
 kind: UiReact.App
-metadata: { name: deep }
-title: Deep
+metadata: { name: draft }
+title: Draft
 theme: !ref UiReact.defaultTheme
-pages:
-  - !ref home
-navigation:
-  items:
-    - type: page
-      page: !ref home
-    - type: group
-      text: One
-      items:
-        - type: group
-          text: Two
+pages: [!ref home, !ref Docs.listed]
+layout:
+  kind: Ui.PageLayout
+  header:
+    - type: pane
+      ref:
+        kind: Ui.Navbar
+        title: Draft
+        navigation:
           items:
-            - type: group
-              text: Three
-              items:
-                - type: page
-                  page: !ref hidden
+            - { type: page, page: !ref second }
+    - { type: pane, ref: !ref Docs.nav }
+  aside:
+    label: Shortcuts
+    content:
+      type: pane
+      ref:
+        kind: Ui.NavigationColumn
+        navigation:
+          items:
+            - { type: page, page: !ref fourth }
+  footer:
+    - { type: link, text: Fifth, href: { path: !ref fifth } }

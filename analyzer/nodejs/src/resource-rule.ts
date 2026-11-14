@@ -9,7 +9,9 @@
  * collections is a comprehension closure rather than a path language with
  * wildcard bindings to design. `in:` names the
  * collection to iterate and IS the diagnostic anchor: iterating what the pointer
- * names is what makes a reported path exist by construction.
+ * names is what makes a reported path exist by construction. `reachable:`
+ * iterates instead the declarations references of a kind name, found by a walk
+ * through other resources (`reachable-walk.ts`), each anchored at its reference.
  *
  * Vocabulary borrowed from `Telo.JsonSchema.rules` — `condition` true when the
  * rule HOLDS, the subject bound as `this`, plus `code` and `message` — because
@@ -43,9 +45,10 @@ import {
   type ReferentReads,
   type ReferrerReads,
 } from "./read-place.js";
-import { readRefSlot } from "./ref-slot.js";
+import { isRefSlot, isRefUse, readRefSlot, type RefUse } from "./ref-slot.js";
 import { compileRuleCondition } from "./rule-condition.js";
-import { isBoundDeclaration, isComparableTag, unboundFailureOf } from "./rule-binding-marks.js";
+import { declarationIdentityOf, isBoundDeclaration, isComparableTag, unboundFailureOf } from "./rule-binding-marks.js";
+import { isStepSlot } from "./step-slot.js";
 import type { PeerBindingFailure } from "./peer-binding.js";
 import type { ResourceDefinition } from "@telorun/sdk";
 import { authorSchemaChain, type DefResolver } from "./extends-resolution.js";
@@ -72,6 +75,11 @@ export interface ResourceRule {
    *  other declaration judged by this rule whose slot there resolves to the
    *  declaration `self`'s does, each with its references resolved one level. */
   readonly coReferrers?: string;
+  /** Iterates, as `this`, the declaration every reference of `kind` at a slot
+   *  of use `use` names, reachable from the resource through slots — and step
+   *  `invoke:` targets, of use `call` — whose use is in `through`. Exclusive
+   *  with `in:`. */
+  readonly reachable?: ReachableSpec;
   /** CEL source. TRUE when the rule holds. */
   readonly condition: string;
   /** The rule's own name, carried in `data.rule`. Never a diagnostic code —
@@ -81,6 +89,46 @@ export interface ResourceRule {
   readonly severity: ResourceRuleSeverity;
   /** Position in the annotation array — the anchor for a declaration defect. */
   readonly index: number;
+}
+
+/** What a `reachable:` rule walks: `kind` canonical once its declaring scope
+ *  has resolved it. */
+export interface ReachableSpec {
+  readonly kind: string;
+  readonly use: RefUse;
+  readonly through: readonly RefUse[];
+}
+
+/** A well-formed `reachable:` value, or `undefined`. */
+export function readReachable(value: unknown): ReachableSpec | undefined {
+  if (!isObject(value) || typeof value.kind !== "string" || value.kind.length === 0) return undefined;
+  if (!isRefUse(value.use)) return undefined;
+  const through = value.through;
+  if (!Array.isArray(through) || through.length === 0 || !through.every(isRefUse)) return undefined;
+  return { kind: value.kind, use: value.use, through: through as RefUse[] };
+}
+
+/** Whether a node carries resource rules. */
+export function hasResourceRules(node: Record<string, unknown>): boolean {
+  return Array.isArray(node[RESOURCE_RULES_ANNOTATION]);
+}
+
+/**
+ * Rewrite each rule's `reachable.kind` through `rewrite`, in place — the
+ * `rewriteReferrerRuleKinds` mirror: canonical everywhere downstream, and a
+ * kind resolving to nothing left as written for the caller to report.
+ */
+export function rewriteReachableRuleKinds(
+  node: Record<string, unknown>,
+  rewrite: (kind: string, index: number) => string | undefined,
+): void {
+  const raw = node[RESOURCE_RULES_ANNOTATION];
+  if (!Array.isArray(raw)) return;
+  raw.forEach((entry, index) => {
+    if (!isObject(entry) || !isObject(entry.reachable) || typeof entry.reachable.kind !== "string") return;
+    const rewritten = rewrite(entry.reachable.kind, index);
+    if (rewritten !== undefined) entry.reachable.kind = rewritten;
+  });
 }
 
 /** One element a rule is evaluated against. */
@@ -185,10 +233,13 @@ export function readResourceRules(schema: unknown): ResourceRule[] {
     }
     const coReferrers = entry.coReferrers;
     if (coReferrers !== undefined && !isSlotPointer(coReferrers)) return;
+    const reachable = entry.reachable === undefined ? undefined : readReachable(entry.reachable);
+    if (entry.reachable !== undefined && (!reachable || pointer !== undefined)) return;
     rules.push({
       ...(pointer === undefined ? {} : { in: pointer }),
       ...(resolve === undefined ? {} : { resolve: resolve as string[] }),
       ...(coReferrers === undefined ? {} : { coReferrers: coReferrers as string }),
+      ...(reachable === undefined ? {} : { reachable }),
       condition,
       code,
       message,
@@ -547,14 +598,16 @@ export interface DynamicLeaf {
   readonly failure?: PeerBindingFailure;
 }
 
-/** The first member a binding could not bind inside a value read. */
-function findUnboundMember(value: unknown, seen = new Set<object>()): PeerBindingFailure | undefined {
+/** The first member a binding could not bind inside a value read. `identity`:
+ *  the value is only compared, so a declaration inside it is its identity. */
+function findUnboundMember(value: unknown, identity = false, seen = new Set<object>()): PeerBindingFailure | undefined {
   if (!value || typeof value !== "object" || seen.has(value as object)) return undefined;
   seen.add(value as object);
   const own = unboundFailureOf(value);
   if (own) return own;
+  if (identity && declarationIdentityOf(value) !== undefined) return undefined;
   for (const child of Array.isArray(value) ? value : Object.values(value as Record<string, unknown>)) {
-    const found = findUnboundMember(child, seen);
+    const found = findUnboundMember(child, identity, seen);
     if (found) return found;
   }
   return undefined;
@@ -586,24 +639,26 @@ export function dynamicNode(value: unknown, path: string): DynamicLeaf | undefin
  * Stops at nested inline `{ kind }` declarations for the reason every other walk
  * does: that CEL belongs to the nested kind, evaluated in its own scope.
  */
-export function findDynamicLeaf(value: unknown, base = "", whole = false): DynamicLeaf | undefined {
+export function findDynamicLeaf(value: unknown, base = "", whole = false, identity = false): DynamicLeaf | undefined {
   if (isObject(value)) {
     if (isComparableTag(value)) return undefined;
+    // Only compared, a declaration is its identity: what it holds decides nothing.
+    if (identity && declarationIdentityOf(value) !== undefined) return undefined;
     const own = dynamicNode(value, base);
     if (own) return own;
-    // A declaration a rule binding resolved is read with everything it holds,
-    // nested declarations included.
+    // A declaration a rule binding resolved, read whole otherwise, is read with
+    // everything it holds, nested declarations included.
     const deep = whole || isBoundDeclaration(value);
     if (typeof value.kind === "string" && base !== "" && !deep) return undefined;
     for (const [key, child] of Object.entries(value)) {
-      const found = findDynamicLeaf(child, base === "" ? key : `${base}.${key}`, deep);
+      const found = findDynamicLeaf(child, base === "" ? key : `${base}.${key}`, deep, identity);
       if (found) return found;
     }
     return undefined;
   }
   if (Array.isArray(value)) {
     for (let i = 0; i < value.length; i++) {
-      const found = findDynamicLeaf(value[i], `${base}[${i}]`, whole);
+      const found = findDynamicLeaf(value[i], `${base}[${i}]`, whole, identity);
       if (found) return found;
     }
   }
@@ -706,11 +761,21 @@ export function readNodes(
 export function findDynamicRead(
   chains: readonly (readonly string[])[],
   roots: Record<string, unknown>,
+  /** The chains a condition reads only as an operand of `==`, `!=` or `in`
+   *  (`CompiledRule.identityReads`): a declaration there is its identity. */
+  identityReads: readonly (readonly string[])[] = [],
 ): DynamicLeaf | undefined {
-  for (const read of readNodes(chains, roots)) {
-    const failure = findUnboundMember(read.node);
+  const compared = new Set(identityReads.map((chain) => JSON.stringify(chain)));
+  const content = chains.filter((chain) => !compared.has(JSON.stringify(chain)));
+  const identity = chains.filter((chain) => compared.has(JSON.stringify(chain)));
+  const reads = [
+    ...readNodes(content, roots).map((read) => ({ read, identity: false })),
+    ...readNodes(identity, roots).map((read) => ({ read, identity: true })),
+  ];
+  for (const { read, identity: only } of reads) {
+    const failure = findUnboundMember(read.node, only);
     if (failure) return { path: read.path, what: "a member that could not be bound", failure };
-    const leaf = findDynamicLeaf(read.node);
+    const leaf = findDynamicLeaf(read.node, "", false, only);
     if (!leaf) continue;
     const own = dynamicNode(read.node, "") !== undefined;
     const path = own
@@ -832,6 +897,17 @@ function coReferrerReads(rule: ResourceRule, moduleNames?: ReadonlySet<string>):
   ];
 }
 
+/** What a `reachable:` rule reads in each declaration its walk reaches: every
+ *  place its kind may hold a reference or a step body at, and what the
+ *  condition reads of `this`. */
+function reachableReads(rule: ResourceRule, moduleNames?: ReadonlySet<string>): ReferentReads {
+  const ofThis = ruleReferentReads([{ condition: rule.condition }], [], "this", moduleNames, true);
+  return (referent) => [
+    ...kindPlaces(referent, (node) => isRefSlot(node) || isStepSlot(node)).map((keys): ReferentPlace => ({ kind: "value", keys })),
+    ...ofThis(referent),
+  ];
+}
+
 /** What a resource-rule instance reads beside its anchor: the places of its
  *  own declaration its rules read, and — by name — in the declarations each
  *  `resolve:` pointer reaches, the places the rules read there. */
@@ -903,6 +979,13 @@ export function resourceRuleReads(rules: readonly ResourceRule[], moduleNames?: 
       read(at);
       const referrers: ReferentPlace = { kind: "referrers", reads: coReferrerReads(rule, moduleNames) };
       targets.push({ at, reads: () => [referrers] });
+    }
+    if (rule.reachable !== undefined) {
+      // The walk starts at any slot of the resource, and reads in each
+      // declaration it reaches every place a slot or step may name another
+      // from — and, as `this`, whatever the condition reads of one.
+      read([]);
+      targets.push({ at: [], reads: reachableReads(rule, moduleNames) });
     }
   }
   const all = [...places.values()];

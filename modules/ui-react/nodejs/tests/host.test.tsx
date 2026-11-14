@@ -37,7 +37,7 @@ describe("the host object", () => {
     rendered = await show([probe]);
     await rendered.click(rendered.fixture("nowhere"));
     expect(rendered.part("page").getAttribute("data-state")).toBe("empty");
-    expect(rendered.part("page-title").textContent).toBe("Not found");
+    expect(rendered.container.querySelector("h1")?.textContent).toBe("Not found");
     rendered.unmount();
     rendered = await show([probe]);
     await rendered.click(rendered.fixture("page"));
@@ -74,7 +74,7 @@ describe("the host object", () => {
     expect([file.getAttribute("href"), file.getAttribute("target"), done.getAttribute("target")]).toEqual(["/admin/files/a.pdf", null, null]);
     expect(await rendered.click(file)).toBe(false);
     expect(window.location.pathname).toBe("/admin/");
-    expect(rendered.part("page-title").textContent).toBe("Home");
+    expect(document.title).toBe("Home · Test App");
     expect(await rendered.click(done)).toBe(true);
     expect(window.location.pathname).toBe("/admin/done");
     expect(rendered.part("text").textContent).toBe("The done page");

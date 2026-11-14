@@ -40,7 +40,9 @@ import {
   type PeerBindingFailure,
 } from "./peer-binding.js";
 import type { DiagnosticFix } from "./types.js";
-import { readRefSlot } from "./ref-slot.js";
+import { readRefSlot, REF_USES, isRefUse } from "./ref-slot.js";
+import type { ReachAnchor } from "./reachable-walk.js";
+import { manifestDeclarationKey, markDeclarationIdentity } from "./rule-binding-marks.js";
 import {
   RESOURCE_RULES_ANNOTATION,
   celSourceOf,
@@ -57,6 +59,7 @@ import {
   resolveRuleSubjects,
   type ResourceRule,
   type RulePointerStep,
+  type RuleSubject,
   unfoldOnce,
 } from "./resource-rule.js";
 import { resolveSchemaReference } from "./schema-reference.js";
@@ -73,6 +76,14 @@ export interface ResourceRuleIssue {
 }
 
 /** One rule's verdict on one resource. */
+/** Where a `reachable:` rule reports a finding: the reference, or the entry's
+ *  slot the walk entered a dependency through — and, for the latter, what it
+ *  reached there. */
+export interface ReachedAt {
+  readonly anchor: ReachAnchor;
+  readonly reach?: { readonly reached: string; readonly through: string };
+}
+
 export type ResourceRuleFinding =
   | {
       kind: "violation";
@@ -80,9 +91,11 @@ export type ResourceRuleFinding =
       /** Path of the offending element, or "" for a rule with no `in:`. */
       path: string;
       message: string;
+      /** For a `reachable:` rule: where the reference it judged is reported. */
+      reached?: ReachedAt;
     }
-  | { kind: "skipped"; rule: ResourceRule; path: string; dynamic: DynamicLeaf }
-  | { kind: "unbound"; rule: ResourceRule; failure: PeerBindingFailure }
+  | { kind: "skipped"; rule: ResourceRule; path: string; dynamic: DynamicLeaf; reached?: ReachedAt }
+  | { kind: "unbound"; rule: ResourceRule; failure: PeerBindingFailure; reached?: ReachedAt }
   | { kind: "failed"; rule: ResourceRule; path: string; reason: string }
   | { kind: "over-budget"; rule: ResourceRule; path: string; elapsedMs: number };
 
@@ -558,6 +571,11 @@ export function validateResourceRuleDeclarations(
       }
     }
 
+    if (entry.reachable !== undefined) {
+      const named = typeof entry.code === "string" && entry.code.length > 0 ? entry.code : String(index);
+      for (const problem of reachableProblems(entry, named)) issue(`${at}${problem.at}`, problem.message);
+    }
+
     if (condition !== undefined && condition.length > 0 && !isTaggedCondition(entry.condition)) {
       issue(`${at}.condition`, UNTAGGED_CONDITION, untaggedConditionFix(condition));
     }
@@ -570,6 +588,43 @@ export function validateResourceRuleDeclarations(
   });
 
   return issues;
+}
+
+/** Why a rule's `reachable:` is malformed, each at its place relative to the
+ *  rule. Its `kind` resolving to nothing is reported by the kind
+ *  canonicalization, at `reachable.kind`. */
+function reachableProblems(entry: Record<string, unknown>, rule: string): { at: string; message: string }[] {
+  const out: { at: string; message: string }[] = [];
+  if (entry.in !== undefined) {
+    out.push({ at: "", message: `rule ${rule} declares both 'in' and 'reachable'; a rule iterates one of them.` });
+  }
+  const reachable = entry.reachable;
+  if (!isObject(reachable)) {
+    out.push({
+      at: ".reachable",
+      message:
+        `rule ${rule}: 'reachable' must be { kind, use, through } — the kind of reference to find, the use of ` +
+        "the slot it is found at, and the uses of the slots walked to reach it.",
+    });
+    return out;
+  }
+  if (typeof reachable.kind !== "string" || reachable.kind.length === 0) {
+    out.push({ at: ".reachable.kind", message: `rule ${rule}: 'kind' must name the kind of reference to find, alias-qualified.` });
+  }
+  if (!isRefUse(reachable.use)) {
+    out.push({ at: ".reachable.use", message: `rule ${rule}: 'use' must be one of ${REF_USES.join(", ")}.` });
+  }
+  const through = reachable.through;
+  if (!Array.isArray(through) || through.length === 0) {
+    out.push({ at: ".reachable.through", message: `rule ${rule}: 'through' must name at least one use.` });
+  } else {
+    through.forEach((use: unknown, i: number) => {
+      if (!isRefUse(use)) {
+        out.push({ at: `.reachable.through[${i}]`, message: `rule ${rule}: 'through' must name uses among ${REF_USES.join(", ")}.` });
+      }
+    });
+  }
+  return out;
 }
 
 /**
@@ -692,7 +747,8 @@ export function evaluateResourceRules(
       findings.push({ kind: "unbound", rule, failure: bound.failure });
       continue;
     }
-    const self = bound.self;
+    // `self` is the declaration it binds: equal only to itself.
+    const self = markDeclarationIdentity(bound.self, manifestDeclarationKey(manifest));
     const bindings: Record<string, unknown> = {};
     if (rule.coReferrers !== undefined) {
       const co = coReferrersBinding(manifest, kind, rule as ResourceRule & { coReferrers: string }, binder, coReferrersOf);
@@ -702,8 +758,29 @@ export function evaluateResourceRules(
       }
       bindings.coReferrers = co.value;
     }
-    const subjects =
-      rule.in === undefined ? [{ path: "", value: self }] : resolveRuleSubjects(self, rule.in);
+    let subjects: (RuleSubject & { reached?: ReachedAt })[] | undefined;
+    if (rule.reachable !== undefined) {
+      // Every reference of the kind the walk reaches, `this` the declaration it names.
+      const walk = binder
+        ? binder.reachable(manifest, kind, rule.reachable)
+        : ({ ok: false, failure: { reason: "unknown-shape", at: "" } } as const);
+      if (!walk.ok) {
+        findings.push({
+          kind: "unbound",
+          rule,
+          failure: walk.failure,
+          ...("anchor" in walk && walk.anchor ? { reached: { anchor: walk.anchor } } : {}),
+        });
+        continue;
+      }
+      subjects = walk.references.map((reference) => ({
+        path: reference.anchor.path,
+        value: reference.value,
+        reached: { anchor: reference.anchor, ...(reference.reach ? { reach: reference.reach } : {}) },
+      }));
+    } else {
+      subjects = rule.in === undefined ? [{ path: "", value: self }] : resolveRuleSubjects(self, rule.in);
+    }
     // `undefined` means the pointer resolved to a scalar — a declaration defect
     // the strict half reports at the kind. Evaluating anyway would report it
     // against the consumer instead.
@@ -714,7 +791,18 @@ export function evaluateResourceRules(
       findings.push({ kind: "failed", rule, path: "", reason: compiled.reason });
       continue;
     }
-    const { parsed, reads: chains } = compiled;
+    const { parsed, reads: chains, identityReads } = compiled;
+    // A reference a dependency wrote is reported at the slot the walk entered
+    // it through, once per declaration it reaches there.
+    const reported = new Set<string>();
+    const once = (subject: { path: string; reached?: ReachedAt }, verdict: string): boolean => {
+      if (!subject.reached) return true;
+      const { anchor, reach } = subject.reached;
+      const key = JSON.stringify([verdict, anchor.manifest.kind, anchor.manifest.metadata?.name, anchor.path, reach?.reached]);
+      if (reported.has(key)) return false;
+      reported.add(key);
+      return true;
+    };
 
     // The budget stops the loop, so it is asked before a subject is evaluated:
     // one slow evaluation with nothing left to judge has skipped nothing.
@@ -734,15 +822,19 @@ export function evaluateResourceRules(
       // Only the nodes this condition READS decide whether it can run — see
       // `readNodes`. Scanning the whole subject would disable every
       // resource-wide rule on any manifest containing one unrelated expression.
-      const dynamic = findDynamicRead(chains, { self, this: subject.value, ...bindings });
+      const dynamic = findDynamicRead(chains, { self, this: subject.value, ...bindings }, identityReads);
       if (dynamic?.failure) {
         // About the rule rather than one subject, so reported once.
-        if (!unboundReported) findings.push({ kind: "unbound", rule, failure: dynamic.failure });
+        if (!unboundReported) {
+          findings.push({ kind: "unbound", rule, failure: dynamic.failure, ...(subject.reached ? { reached: subject.reached } : {}) });
+        }
         unboundReported = true;
         continue;
       }
       if (dynamic !== undefined) {
-        findings.push({ kind: "skipped", rule, path: subject.path, dynamic });
+        if (once(subject, "skipped")) {
+          findings.push({ kind: "skipped", rule, path: subject.path, dynamic, ...(subject.reached ? { reached: subject.reached } : {}) });
+        }
         continue;
       }
       let held: unknown;
@@ -763,8 +855,14 @@ export function evaluateResourceRules(
         });
         break;
       }
-      if (held !== true) {
-        findings.push({ kind: "violation", rule, path: subject.path, message: rule.message });
+      if (held !== true && once(subject, "violation")) {
+        findings.push({
+          kind: "violation",
+          rule,
+          path: subject.path,
+          message: rule.message,
+          ...(subject.reached ? { reached: subject.reached } : {}),
+        });
       }
     }
   }
@@ -807,7 +905,20 @@ export function resolvedRuleView(
 
 /** Whether a rule found anything to iterate on this resource — the input to the
  *  never-exercised report, which is the second way coverage varies invisibly. */
-export function ruleExercised(manifest: ResourceManifest, rule: ResourceRule): boolean {
+export function ruleExercised(
+  manifest: ResourceManifest,
+  rule: ResourceRule,
+  /** The run's binder and the resource's kind, which a `reachable:` rule walks
+   *  with — through the same cache its evaluation used. */
+  binder?: PeerBinder,
+  kind: string = manifest.kind,
+): boolean {
+  if (rule.reachable !== undefined) {
+    if (!binder) return false;
+    const walk = binder.reachable(manifest, kind, rule.reachable);
+    // A walk that could not finish is reported skipped, not unexercised.
+    return !walk.ok || walk.references.length > 0;
+  }
   if (rule.in === undefined) return true;
   const subjects = resolveRuleSubjects(manifest as unknown as Record<string, unknown>, rule.in);
   return subjects !== undefined && subjects.length > 0;
@@ -865,6 +976,53 @@ export function reportResourceRules(
 
   for (const finding of findings) {
     const at = "path" in finding && finding.path !== "" ? finding.path : undefined;
+    const reached = "reached" in finding ? finding.reached : undefined;
+    if (reached) {
+      // A `reachable:` rule's finding: at the reference it judged, naming the
+      // resource the rule belongs to — and what it reached in a dependency.
+      const detail = reached.reach
+        ? ` (the ${finding.rule.reachable?.kind ?? "declaration"} ${reached.reach.reached}, reached through ${reached.reach.through})`
+        : "";
+      const base = {
+        manifest: reached.anchor.manifest,
+        path: reached.anchor.path === "" ? undefined : reached.anchor.path,
+        rule: finding.rule.code,
+      };
+      if (finding.kind === "violation") {
+        out.push({
+          ...base,
+          code: "RESOURCE_RULE_VIOLATED",
+          severity: finding.rule.severity,
+          message: `${manifest.kind}/${name}: ${finding.message}${detail}`,
+        });
+        continue;
+      }
+      if (finding.kind === "unbound") {
+        if (isSilentBindingFailure(finding.failure)) continue;
+        out.push({
+          ...base,
+          code: "RESOURCE_RULE_SKIPPED",
+          severity: "information",
+          message:
+            `${manifest.kind}/${name}: rule '${finding.rule.code}' did not run — ` +
+            `${bindingFailureReason(finding.failure)} Reported rather than dropped: a check whose ` +
+            "coverage varies invisibly reads as passing.",
+        });
+        continue;
+      }
+      if (finding.kind === "skipped") {
+        out.push({
+          ...base,
+          code: "RESOURCE_RULE_SKIPPED",
+          severity: "information",
+          message:
+            `${manifest.kind}/${name}: rule '${finding.rule.code}' did not run for a reference it reaches${detail} — ` +
+            `what it reads holds ${finding.dynamic.what} at '${finding.dynamic.path}', which is not known until ` +
+            "the resource is created. Reported rather than dropped: a check whose coverage varies invisibly reads as passing.",
+        });
+        continue;
+      }
+    }
     if (finding.kind === "violation") {
       out.push({
         // One analyzer-owned envelope: surfaces branch on `code`, so a published
@@ -952,11 +1110,14 @@ export function reportUnexercisedRule(
   definition: ResourceManifest,
   rule: ResourceRule,
 ): ResourceRuleDiagnostic {
+  const nothing = rule.reachable
+    ? `no resource of this kind reaches a reference of ${rule.reachable.kind} at a '${rule.reachable.use}' slot`
+    : `'${rule.in}' was empty on every resource of this kind`;
   return {
     code: "RESOURCE_RULE_UNEXERCISED",
     severity: "information",
     message:
-      `Rule '${rule.code}' never ran: '${rule.in}' was empty on every resource of this kind, ` +
+      `Rule '${rule.code}' never ran: ${nothing}, ` +
       "so nothing has proven the condition. A nested typo in the condition is caught only at " +
       "evaluation.",
     manifest: definition,

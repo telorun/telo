@@ -181,40 +181,8 @@
     {
       "name": "every node, a filter bar of every policy, and a table's dialogs; a menu node's panel and a tooltip over it, each closing alone",
       "path": "/",
-      "app": {
-        "specVersion": 1,
-        "title": {"message":["Scenes"],"lang":"en"},
-        "lang": "en",
-        "pages": [{"path":"/","title":{"message":["Everything"],"lang":"en"}}],
-        "navigation": {
-          "items": [{"type":"page","key":"everything","path":"/","text":{"message":["Everything"],"lang":"en"}}],
-          "placement": {
-            "type": "header",
-            "compact": {
-              "type": "overlay",
-              "surface": {"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}
-            }
-          }
-        },
-        "header": {
-          "width": "contained",
-          "start": [{"type":"badge","text":{"message":["Beta"],"lang":"en"}}],
-          "end": [
-            {"type":"link","text":{"message":["Help"],"lang":"en"},"href":{"path":{"value":"/"},"pathParams":{},"queryParams":{}}},
-            {
-              "type": "menu",
-              "text": {"message":["Language"],"lang":"en"},
-              "items": [
-                {"type":"link","text":{"message":["English"],"lang":"en"},"href":{"path":{"value":"/?lang=en"},"pathParams":{},"queryParams":{}},"style":"strong"},
-                {"type":"link","text":{"message":["Polski"],"lang":"en"},"href":{"path":{"value":"/?lang=pl"},"pathParams":{},"queryParams":{}}}
-              ]
-            }
-          ]
-        },
-        "stylesheets": [],
-        "controls": {"stylesheets":{},"sets":[]},
-        "compactBelow": "40rem"
-      },
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Everything"],"lang":"en"},"layout":"main"}],"layout":"main","stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
+      "layouts": {"main":{"specVersion":1,"id":"main","width":"contained","header":[{"type":"navbar","title":{"message":["Scenes"],"lang":"en"},"start":[{"type":"badge","text":{"message":["Beta"],"lang":"en"}}],"end":[{"type":"link","text":{"message":["Help"],"lang":"en"},"href":{"path":{"value":"/"},"pathParams":{},"queryParams":{}}},{"type":"menu","text":{"message":["Language"],"lang":"en"},"items":[{"type":"link","text":{"message":["English"],"lang":"en"},"href":{"path":{"value":"/?lang=en"},"pathParams":{},"queryParams":{}},"style":"strong"},{"type":"link","text":{"message":["Polski"],"lang":"en"},"href":{"path":{"value":"/?lang=pl"},"pathParams":{},"queryParams":{}}}]}],"navigation":{"items":[{"type":"page","key":"everything","path":"/","text":{"message":["Everything"],"lang":"en"}}]},"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}},"fill":false}],"footer":[]}},
       "pages": {
         "/": {
           "specVersion": 1,
@@ -957,7 +925,7 @@
         {
           "expect": {
             "present": [{"tag":"a","part":"nav-item","text":"Polski","within":{"part":"nav-panel"}}],
-            "absent": [{"tag":"nav","part":"navigation","within":{"part":"header-end"}},{"role":"menuitem"}],
+            "absent": [{"tag":"nav","part":"navigation","within":{"part":"navbar-end"}},{"role":"menuitem"}],
             "attributes": [{"of":{"part":"nav-item","text":"English"},"name":"aria-current","value":"true"}]
           }
         },
@@ -1008,26 +976,8 @@
     {
       "name": "an edit form opened in line, under its row",
       "path": "/",
-      "app": {
-        "specVersion": 1,
-        "title": {"message":["Scenes"],"lang":"en"},
-        "lang": "en",
-        "pages": [{"path":"/","title":{"message":["Inline"],"lang":"en"}}],
-        "navigation": {
-          "items": [{"type":"page","key":"inline","path":"/","text":{"message":["Inline"],"lang":"en"}}],
-          "placement": {
-            "type": "header",
-            "compact": {
-              "type": "overlay",
-              "surface": {"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}
-            }
-          }
-        },
-        "stylesheets": [],
-        "controls": {"stylesheets":{},"sets":[]},
-        "header": {"start":[],"end":[],"width":"contained"},
-        "compactBelow": "40rem"
-      },
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Inline"],"lang":"en"},"layout":"main"}],"layout":"main","stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
+      "layouts": {"main":{"specVersion":1,"id":"main","width":"contained","header":[{"type":"navbar","title":{"message":["Scenes"],"lang":"en"},"start":[],"end":[],"navigation":{"items":[{"type":"page","key":"inline","path":"/","text":{"message":["Inline"],"lang":"en"}}]},"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}},"fill":false}],"footer":[]}},
       "pages": {
         "/": {
           "specVersion": 1,
@@ -1152,26 +1102,8 @@
     {
       "name": "an action that has answered, beside a table whose rows offer an operation",
       "path": "/",
-      "app": {
-        "specVersion": 1,
-        "title": {"message":["Scenes"],"lang":"en"},
-        "lang": "en",
-        "pages": [{"path":"/","title":{"message":["Action"],"lang":"en"}}],
-        "navigation": {
-          "items": [{"type":"page","key":"action","path":"/","text":{"message":["Action"],"lang":"en"}}],
-          "placement": {
-            "type": "header",
-            "compact": {
-              "type": "overlay",
-              "surface": {"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}
-            }
-          }
-        },
-        "stylesheets": [],
-        "controls": {"stylesheets":{},"sets":[]},
-        "header": {"start":[],"end":[],"width":"contained"},
-        "compactBelow": "40rem"
-      },
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Action"],"lang":"en"},"layout":"main"}],"layout":"main","stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
+      "layouts": {"main":{"specVersion":1,"id":"main","width":"contained","header":[{"type":"navbar","title":{"message":["Scenes"],"lang":"en"},"start":[],"end":[],"navigation":{"items":[{"type":"page","key":"action","path":"/","text":{"message":["Action"],"lang":"en"}}]},"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}},"fill":false}],"footer":[]}},
       "pages": {
         "/": {
           "specVersion": 1,
@@ -1387,26 +1319,8 @@
     {
       "name": "an action that failed, beside a table whose rows' operations answered and failed",
       "path": "/",
-      "app": {
-        "specVersion": 1,
-        "title": {"message":["Scenes"],"lang":"en"},
-        "lang": "en",
-        "pages": [{"path":"/","title":{"message":["Answers"],"lang":"en"}}],
-        "navigation": {
-          "items": [{"type":"page","key":"answers","path":"/","text":{"message":["Answers"],"lang":"en"}}],
-          "placement": {
-            "type": "header",
-            "compact": {
-              "type": "overlay",
-              "surface": {"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}
-            }
-          }
-        },
-        "stylesheets": [],
-        "controls": {"stylesheets":{},"sets":[]},
-        "header": {"start":[],"end":[],"width":"contained"},
-        "compactBelow": "40rem"
-      },
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Answers"],"lang":"en"},"layout":"main"}],"layout":"main","stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
+      "layouts": {"main":{"specVersion":1,"id":"main","width":"contained","header":[{"type":"navbar","title":{"message":["Scenes"],"lang":"en"},"start":[],"end":[],"navigation":{"items":[{"type":"page","key":"answers","path":"/","text":{"message":["Answers"],"lang":"en"}}]},"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}},"fill":false}],"footer":[]}},
       "pages": {
         "/": {
           "specVersion": 1,
@@ -1648,26 +1562,8 @@
     {
       "name": "a reader that has answered, and an action whose condition does not hold",
       "path": "/",
-      "app": {
-        "specVersion": 1,
-        "title": {"message":["Scenes"],"lang":"en"},
-        "lang": "en",
-        "pages": [{"path":"/","title":{"message":["Data"],"lang":"en"}}],
-        "navigation": {
-          "items": [{"type":"page","key":"data","path":"/","text":{"message":["Data"],"lang":"en"}}],
-          "placement": {
-            "type": "header",
-            "compact": {
-              "type": "overlay",
-              "surface": {"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}
-            }
-          }
-        },
-        "stylesheets": [],
-        "controls": {"stylesheets":{},"sets":[]},
-        "header": {"start":[],"end":[],"width":"contained"},
-        "compactBelow": "40rem"
-      },
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Data"],"lang":"en"},"layout":"main"}],"layout":"main","stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
+      "layouts": {"main":{"specVersion":1,"id":"main","width":"contained","header":[{"type":"navbar","title":{"message":["Scenes"],"lang":"en"},"start":[],"end":[],"navigation":{"items":[{"type":"page","key":"data","path":"/","text":{"message":["Data"],"lang":"en"}}]},"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}},"fill":false}],"footer":[]}},
       "pages": {
         "/": {
           "specVersion": 1,
@@ -1795,26 +1691,8 @@
     {
       "name": "every field kind, in a group, over an option source with hints and links",
       "path": "/",
-      "app": {
-        "specVersion": 1,
-        "title": {"message":["Scenes"],"lang":"en"},
-        "lang": "en",
-        "pages": [{"path":"/","title":{"message":["Fields"],"lang":"en"}}],
-        "navigation": {
-          "items": [{"type":"page","key":"fields","path":"/","text":{"message":["Fields"],"lang":"en"}}],
-          "placement": {
-            "type": "header",
-            "compact": {
-              "type": "overlay",
-              "surface": {"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}
-            }
-          }
-        },
-        "stylesheets": [],
-        "controls": {"stylesheets":{},"sets":[]},
-        "header": {"start":[],"end":[],"width":"contained"},
-        "compactBelow": "40rem"
-      },
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Fields"],"lang":"en"},"layout":"main"}],"layout":"main","stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
+      "layouts": {"main":{"specVersion":1,"id":"main","width":"contained","header":[{"type":"navbar","title":{"message":["Scenes"],"lang":"en"},"start":[],"end":[],"navigation":{"items":[{"type":"page","key":"fields","path":"/","text":{"message":["Fields"],"lang":"en"}}]},"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}},"fill":false}],"footer":[]}},
       "pages": {
         "/": {
           "specVersion": 1,
@@ -1955,26 +1833,8 @@
     {
       "name": "forms open at the address they are opened under, in a dialog and a drawer",
       "path": "/?_telo.open.created=&_telo.open.edited=1",
-      "app": {
-        "specVersion": 1,
-        "title": {"message":["Scenes"],"lang":"en"},
-        "lang": "en",
-        "pages": [{"path":"/","title":{"message":["Opened"],"lang":"en"}}],
-        "navigation": {
-          "items": [{"type":"page","key":"opened","path":"/","text":{"message":["Opened"],"lang":"en"}}],
-          "placement": {
-            "type": "header",
-            "compact": {
-              "type": "overlay",
-              "surface": {"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}
-            }
-          }
-        },
-        "stylesheets": [],
-        "controls": {"stylesheets":{},"sets":[]},
-        "header": {"start":[],"end":[],"width":"contained"},
-        "compactBelow": "40rem"
-      },
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Opened"],"lang":"en"},"layout":"main"}],"layout":"main","stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
+      "layouts": {"main":{"specVersion":1,"id":"main","width":"contained","header":[{"type":"navbar","title":{"message":["Scenes"],"lang":"en"},"start":[],"end":[],"navigation":{"items":[{"type":"page","key":"opened","path":"/","text":{"message":["Opened"],"lang":"en"}}]},"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}},"fill":false}],"footer":[]}},
       "pages": {
         "/": {
           "specVersion": 1,
@@ -2142,26 +2002,8 @@
     {
       "name": "a table whose first page has not arrived",
       "path": "/",
-      "app": {
-        "specVersion": 1,
-        "title": {"message":["Scenes"],"lang":"en"},
-        "lang": "en",
-        "pages": [{"path":"/","title":{"message":["Slow"],"lang":"en"}}],
-        "navigation": {
-          "items": [{"type":"page","key":"slow","path":"/","text":{"message":["Slow"],"lang":"en"}}],
-          "placement": {
-            "type": "header",
-            "compact": {
-              "type": "overlay",
-              "surface": {"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}
-            }
-          }
-        },
-        "stylesheets": [],
-        "controls": {"stylesheets":{},"sets":[]},
-        "header": {"start":[],"end":[],"width":"contained"},
-        "compactBelow": "40rem"
-      },
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Slow"],"lang":"en"},"layout":"main"}],"layout":"main","stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
+      "layouts": {"main":{"specVersion":1,"id":"main","width":"contained","header":[{"type":"navbar","title":{"message":["Scenes"],"lang":"en"},"start":[],"end":[],"navigation":{"items":[{"type":"page","key":"slow","path":"/","text":{"message":["Slow"],"lang":"en"}}]},"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}},"fill":false}],"footer":[]}},
       "pages": {
         "/": {
           "specVersion": 1,
@@ -2315,42 +2157,8 @@
       "name": "every state the renderer sets, below the breakpoint, and the menu button's drawer opening groups in place",
       "path": "/",
       "compact": true,
-      "app": {
-        "specVersion": 1,
-        "title": {"message":["Scenes"],"lang":"en"},
-        "lang": "en",
-        "pages": [{"path":"/","title":{"message":["States"],"lang":"en"}},{"path":"/other","title":{"message":["Other"],"lang":"en"}}],
-        "navigation": {
-          "items": [
-            {"type":"page","key":"states","path":"/","text":{"message":["States"],"lang":"en"}},
-            {
-              "type": "group",
-              "key": "sections",
-              "text": {"message":["Sections"],"lang":"en"},
-              "items": [
-                {"type":"page","key":"sections/other","path":"/other","text":{"message":["Other"],"lang":"en"}},
-                {
-                  "type": "group",
-                  "key": "sections/deeper",
-                  "text": {"message":["Deeper"],"lang":"en"},
-                  "items": [{"type":"link","key":"sections/deeper/guide","href":"/guide","text":{"message":["Guide"],"lang":"en"}}]
-                }
-              ]
-            }
-          ],
-          "placement": {
-            "type": "header",
-            "compact": {
-              "type": "overlay",
-              "surface": {"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}
-            }
-          }
-        },
-        "stylesheets": [],
-        "controls": {"stylesheets":{},"sets":[]},
-        "header": {"start":[],"end":[],"width":"contained"},
-        "compactBelow": "40rem"
-      },
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["States"],"lang":"en"},"layout":"main"},{"path":"/other","title":{"message":["Other"],"lang":"en"},"layout":"main"}],"layout":"main","stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
+      "layouts": {"main":{"specVersion":1,"id":"main","width":"contained","header":[{"type":"navbar","title":{"message":["Scenes"],"lang":"en"},"start":[],"end":[],"navigation":{"items":[{"type":"page","key":"states","path":"/","text":{"message":["States"],"lang":"en"}},{"type":"group","key":"sections","text":{"message":["Sections"],"lang":"en"},"items":[{"type":"page","key":"sections/other","path":"/other","text":{"message":["Other"],"lang":"en"}},{"type":"group","key":"sections/deeper","text":{"message":["Deeper"],"lang":"en"},"items":[{"type":"link","key":"sections/deeper/guide","href":"/guide","text":{"message":["Guide"],"lang":"en"}}]}]}]},"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}},"fill":false}],"footer":[]}},
       "pages": {
         "/": {
           "specVersion": 1,
@@ -3097,7 +2905,7 @@
               "reloadOn": []
             },
             {"type":"markdown","value":{"value":"# Heading\n\n## Subheading\n\nParagraph with *emphasis*, **strong**, ~~strike~~ and `code`, a [link](https://example.com/a), a hard break\\\nhere, ![logo](/logo.png) and https://example.org/auto.\n\n> A quote\n\n- item one\n- [x] done\n- [ ] todo\n\n1. first\n2. second\n\n---\n\n| Left | Right | Centre |\n|:-----|------:|:------:|\n| a | b | c |\n\n```ts\nconst answer: number = 42; // the answer\n```\n\n<b>raw</b>"},"style":"muted"},
-            {"type":"link","text":{"message":["Quarterly plan"],"lang":"en"},"href":{"path":{"value":"/"},"pathParams":{},"queryParams":{"conversation":{"value":"c1"}}}},{"type":"link","text":{"message":["Start"],"lang":"en"},"href":{"path":{"value":"/"},"pathParams":{},"queryParams":{}},"button":{"type":"text"}},{"type":"split","side":"start","size":"small","frame":"flush","toggle":{"type":"icon","icon":null,"label":"hidden"},"label":{"message":["Filters"],"lang":"en"},"aside":{"actions":[],"content":{"type":"text","text":{"message":["Aside text"],"lang":"en"}}},"content":{"type":"chat","spec":{"attachments":{"accepts":[{"type":"image","mediaTypes":["image/png"],"maxBytes":1048576},{"type":"file","mediaTypes":["application/pdf"],"maxBytes":5242880}],"maxPerMessage":2},"operations":["branch","cancel"]},"basePath":"/api/chat","header":[{"type":"bar","start":[{"type":"value","value":{"root":"conversation","path":["title"]},"present":{"type":["string","null"]},"labels":[],"style":"heading","fill":false}],"center":[],"end":[{"type":"command","command":{"root":"chat","path":["exportTranscript"]},"text":{"set":"Ui.Translations","key":"chatExport"},"button":{"type":"text"},"fill":false},{"type":"command","command":{"root":"chat","path":["copyTranscript"]},"text":{"message":["Copy all"],"lang":"en"},"button":{"type":"icon","icon":null,"label":"hidden"},"fill":false},{"type":"command","command":{"root":"chat","path":["stop"]},"text":{"message":["Stop"],"lang":"en"},"button":{"type":"icon","icon":null,"label":"hidden"},"fill":false},{"type":"command","command":{"root":"chat","path":["newConversation"]},"text":{"message":["New conversation"],"lang":"en"},"button":{"type":"icon","icon":null,"label":"hidden"},"fill":false}],"fill":false}],"placeholder":{"message":["Ask anything"],"lang":"en"},"starters":[{"prompt":{"message":["Summarise this file"],"lang":"en"},"onChoose":"send"}],"show":{"reasoning":true,"toolDetail":true,"usage":true,"copy":true},"buttons":{"copy":{"type":"text"},"edit":{"type":"text"},"regenerate":{"type":"text"},"attach":{"type":"text"},"send":{"type":"text"},"stop":{"type":"text"}},"composer":{"actions":"inside"},"conversation":{"parameter":"conversation"},"refreshes":[],"fill":true},"collapse":null,"compact":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}},"fill":true}
+            {"type":"link","text":{"message":["Quarterly plan"],"lang":"en"},"href":{"path":{"value":"/"},"pathParams":{},"queryParams":{"conversation":{"value":"c1"}}}},{"type":"link","text":{"message":["Start"],"lang":"en"},"href":{"path":{"value":"/"},"pathParams":{},"queryParams":{}},"button":{"type":"text"}},{"type":"split","aside":{"side":"start","size":"small","frame":"flush","toggle":{"type":"icon","icon":null,"label":"hidden"},"label":{"message":["Filters"],"lang":"en"},"collapse":null,"compact":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}},"actions":[],"content":{"type":"text","text":{"message":["Aside text"],"lang":"en"}}},"content":{"type":"chat","spec":{"attachments":{"accepts":[{"type":"image","mediaTypes":["image/png"],"maxBytes":1048576},{"type":"file","mediaTypes":["application/pdf"],"maxBytes":5242880}],"maxPerMessage":2},"operations":["branch","cancel"]},"basePath":"/api/chat","header":[{"type":"bar","start":[{"type":"value","value":{"root":"conversation","path":["title"]},"present":{"type":["string","null"]},"labels":[],"style":"heading","fill":false}],"center":[],"end":[{"type":"command","command":{"root":"chat","path":["exportTranscript"]},"text":{"set":"Ui.Translations","key":"chatExport"},"button":{"type":"text"},"fill":false},{"type":"command","command":{"root":"chat","path":["copyTranscript"]},"text":{"message":["Copy all"],"lang":"en"},"button":{"type":"icon","icon":null,"label":"hidden"},"fill":false},{"type":"command","command":{"root":"chat","path":["stop"]},"text":{"message":["Stop"],"lang":"en"},"button":{"type":"icon","icon":null,"label":"hidden"},"fill":false},{"type":"command","command":{"root":"chat","path":["newConversation"]},"text":{"message":["New conversation"],"lang":"en"},"button":{"type":"icon","icon":null,"label":"hidden"},"fill":false}],"fill":false}],"placeholder":{"message":["Ask anything"],"lang":"en"},"starters":[{"prompt":{"message":["Summarise this file"],"lang":"en"},"onChoose":"send"}],"show":{"reasoning":true,"toolDetail":true,"usage":true,"copy":true},"buttons":{"copy":{"type":"text"},"edit":{"type":"text"},"regenerate":{"type":"text"},"attach":{"type":"text"},"send":{"type":"text"},"stop":{"type":"text"}},"composer":{"actions":"inside"},"conversation":{"parameter":"conversation"},"refreshes":[],"fill":true},"fill":true}
           ]
         },
         "/other": {"specVersion":1,"title":{"message":["Other"],"lang":"en"},"lang":"en","query":{},"width":"contained","children":[]}
@@ -3154,26 +2962,8 @@
     {
       "name": "a select, a multi-select and the unsaved-input question over a drawer, each closing alone",
       "path": "/",
-      "app": {
-        "specVersion": 1,
-        "title": {"message":["Scenes"],"lang":"en"},
-        "lang": "en",
-        "pages": [{"path":"/","title":{"message":["Layers"],"lang":"en"}}],
-        "navigation": {
-          "items": [{"type":"page","key":"layers","path":"/","text":{"message":["Layers"],"lang":"en"}}],
-          "placement": {
-            "type": "header",
-            "compact": {
-              "type": "overlay",
-              "surface": {"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}
-            }
-          }
-        },
-        "stylesheets": [],
-        "controls": {"stylesheets":{},"sets":[]},
-        "header": {"start":[],"end":[],"width":"contained"},
-        "compactBelow": "40rem"
-      },
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Layers"],"lang":"en"},"layout":"main"}],"layout":"main","stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
+      "layouts": {"main":{"specVersion":1,"id":"main","width":"contained","header":[{"type":"navbar","title":{"message":["Scenes"],"lang":"en"},"start":[],"end":[],"navigation":{"items":[{"type":"page","key":"layers","path":"/","text":{"message":["Layers"],"lang":"en"}}]},"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}},"fill":false}],"footer":[]}},
       "pages": {
         "/": {
           "specVersion": 1,
@@ -3328,26 +3118,8 @@
     {
       "name": "a select and a multi-select in a popover, and a tooltip over it, each closing alone; a chip's popover over a popover filter overlay, closed together by a press outside both unless a list is open",
       "path": "/",
-      "app": {
-        "specVersion": 1,
-        "title": {"message":["Scenes"],"lang":"en"},
-        "lang": "en",
-        "pages": [{"path":"/","title":{"message":["Layers"],"lang":"en"}}],
-        "navigation": {
-          "items": [{"type":"page","key":"layers","path":"/","text":{"message":["Layers"],"lang":"en"}}],
-          "placement": {
-            "type": "header",
-            "compact": {
-              "type": "overlay",
-              "surface": {"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}
-            }
-          }
-        },
-        "stylesheets": [],
-        "controls": {"stylesheets":{},"sets":[]},
-        "header": {"start":[],"end":[],"width":"contained"},
-        "compactBelow": "40rem"
-      },
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Layers"],"lang":"en"},"layout":"main"}],"layout":"main","stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
+      "layouts": {"main":{"specVersion":1,"id":"main","width":"contained","header":[{"type":"navbar","title":{"message":["Scenes"],"lang":"en"},"start":[],"end":[],"navigation":{"items":[{"type":"page","key":"layers","path":"/","text":{"message":["Layers"],"lang":"en"}}]},"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}},"fill":false}],"footer":[]}},
       "pages": {
         "/": {
           "specVersion": 1,
@@ -3503,13 +3275,13 @@
         {"click":{"part":"filters-toggle"}},
         {"click":{"part":"filter-chip"}},
         {"expect":{"present":[{"part":"filter-select"},{"part":"surface-title","within":{"part":"surface","attributes":{"data-surface":"popover"}}}]}},
-        {"press":{"part":"page-title"}},
+        {"press":{"part":"page"}},
         {"expect":{"absent":[{"part":"surface"}]}},
         {"click":{"part":"filters-toggle"}},
         {"click":{"part":"filter-chip"}},
         {"key":"ArrowDown","on":{"part":"filter-select"}},
         {"expect":{"present":[{"part":"select-content"}]}},
-        {"press":{"part":"page-title"}},
+        {"press":{"part":"page"}},
         {
           "expect": {
             "absent": [{"part":"select-content"}],
@@ -3530,26 +3302,8 @@
     {
       "name": "a menu and a multi-select in a filter overlay, and the unsaved-input question over a dialog, each closing alone",
       "path": "/",
-      "app": {
-        "specVersion": 1,
-        "title": {"message":["Scenes"],"lang":"en"},
-        "lang": "en",
-        "pages": [{"path":"/","title":{"message":["Layers"],"lang":"en"}}],
-        "navigation": {
-          "items": [{"type":"page","key":"layers","path":"/","text":{"message":["Layers"],"lang":"en"}}],
-          "placement": {
-            "type": "header",
-            "compact": {
-              "type": "overlay",
-              "surface": {"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}
-            }
-          }
-        },
-        "stylesheets": [],
-        "controls": {"stylesheets":{},"sets":[]},
-        "header": {"start":[],"end":[],"width":"contained"},
-        "compactBelow": "40rem"
-      },
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Layers"],"lang":"en"},"layout":"main"}],"layout":"main","stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
+      "layouts": {"main":{"specVersion":1,"id":"main","width":"contained","header":[{"type":"navbar","title":{"message":["Scenes"],"lang":"en"},"start":[],"end":[],"navigation":{"items":[{"type":"page","key":"layers","path":"/","text":{"message":["Layers"],"lang":"en"}}]},"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}},"fill":false}],"footer":[]}},
       "pages": {
         "/": {
           "specVersion": 1,
@@ -3727,48 +3481,10 @@
       ]
     },
     {
-      "name": "a sidebar beside a full-width page, its groups opening in place, collapsed to a rail of its entries' icons and back; a tabs node choosing its tab under the address",
+      "name": "a layout's aside beside a full-width page, its groups opening in place, collapsed to a rail of its entries' icons and back; a tabs node choosing its tab under the address",
       "path": "/?_telo.open.section=details",
-      "app": {
-        "specVersion": 1,
-        "title": {"message":["Scenes"],"lang":"en"},
-        "lang": "en",
-        "pages": [{"path":"/","title":{"message":["Home"],"lang":"en"}},{"path":"/other","title":{"message":["Other"],"lang":"en"}}],
-        "navigation": {
-          "items": [
-            {"type":"page","key":"home","path":"/","text":{"message":["Home"],"lang":"en"},"icon":"/_telo/ui/assets/aa/house.svg"},
-            {
-              "type": "group",
-              "key": "sections",
-              "text": {"message":["Sections"],"lang":"en"},
-              "icon": "/_telo/ui/assets/bb/folder.svg",
-              "items": [
-                {"type":"page","key":"sections/other","path":"/other","text":{"message":["Other"],"lang":"en"}},
-                {
-                  "type": "group",
-                  "key": "sections/deeper",
-                  "text": {"message":["Deeper"],"lang":"en"},
-                  "items": [{"type":"link","key":"sections/deeper/guide","href":"/guide","text":{"message":["Guide"],"lang":"en"}}]
-                }
-              ]
-            }
-          ],
-          "placement": {
-            "type": "sidebar",
-            "side": "start",
-            "rail": {"collapsed":false},
-            "store": {"type":"memory"},
-            "compact": {
-              "type": "overlay",
-              "surface": {"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}
-            }
-          }
-        },
-        "stylesheets": [],
-        "controls": {"stylesheets":{},"sets":[]},
-        "header": {"start":[],"end":[],"width":"contained"},
-        "compactBelow": "40rem"
-      },
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Home"],"lang":"en"},"layout":"main"},{"path":"/other","title":{"message":["Other"],"lang":"en"},"layout":"main"}],"layout":"main","stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
+      "layouts": {"main":{"specVersion":1,"id":"main","width":"contained","header":[{"type":"navbar","title":{"message":["Scenes"],"lang":"en"},"start":[],"end":[],"navigation":{"items":[]},"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}},"fill":false}],"footer":[{"type":"text","text":{"message":["Footer text"],"lang":"en"},"style":"muted"}],"aside":{"side":"start","size":"medium","frame":"flush","toggle":{"type":"icon","icon":null,"label":"hidden"},"label":{"message":["Navigation"],"lang":"en"},"collapse":{"collapsed":false,"state":null},"compact":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}},"actions":[],"content":{"type":"navigation-column","navigation":{"items":[{"type":"page","key":"home","path":"/","text":{"message":["Home"],"lang":"en"},"icon":{"digest":"aa","name":"house.svg"}},{"type":"group","key":"sections","text":{"message":["Sections"],"lang":"en"},"icon":{"digest":"bb","name":"folder.svg"},"items":[{"type":"page","key":"sections/other","path":"/other","text":{"message":["Other"],"lang":"en"}},{"type":"group","key":"sections/deeper","text":{"message":["Deeper"],"lang":"en"},"items":[{"type":"link","key":"sections/deeper/guide","href":"/guide","text":{"message":["Guide"],"lang":"en"}}]}]}]},"state":null,"fill":false}}}},
       "pages": {
         "/": {
           "specVersion": 1,
@@ -3801,15 +3517,18 @@
         {
           "expect": {
             "present": [
-              {"tag":"nav","part":"navigation","within":{"part":"sidebar"},"attributes":{"data-layout":"vertical"}},
-              {"part":"text","text":"The details","within":{"part":"tab-panel"}}
+              {"tag":"nav","part":"navigation","within":{"part":"aside"},"attributes":{"data-layout":"vertical"}},
+              {"part":"text","text":"The details","within":{"part":"tab-panel"}},
+              {"part":"text","text":"Footer text","within":{"part":"footer-content"}},
+              {"part":"navbar-title","text":"Scenes","within":{"part":"header-content"}}
             ],
             "attributes": [
               {"of":{"part":"tab","text":"Details"},"name":"aria-selected","value":"true"},
-              {"of":{"part":"sidebar"},"name":"data-state","value":"open"},
-              {"of":{"part":"sidebar-toggle"},"name":"aria-expanded","value":"true"},
+              {"of":{"part":"aside"},"name":"data-state","value":"open"},
+              {"of":{"part":"aside-toggle"},"name":"aria-expanded","value":"true"},
               {"of":{"part":"page"},"name":"data-width","value":"full"},
-              {"of":{"part":"header"},"name":"data-width","value":"contained"}
+              {"of":{"part":"header"},"name":"data-width","value":"contained"},
+              {"of":{"part":"footer"},"name":"data-width","value":"contained"}
             ]
           }
         },
@@ -3823,68 +3542,37 @@
         {"click":{"part":"nav-toggle","text":"Sections"}},
         {"click":{"part":"nav-toggle","text":"Deeper"}},
         {"expect":{"present":[{"tag":"a","part":"nav-item","text":"Guide","within":{"part":"nav-group","index":1}}],"absent":[{"part":"nav-panel"}]}},
-        {"click":{"part":"sidebar-toggle"}},
+        {"click":{"part":"aside-toggle"}},
         {
           "expect": {
             "present": [
-              {"part":"navigation","within":{"part":"sidebar"},"attributes":{"data-layout":"rail"}},
+              {"part":"navigation","within":{"part":"aside"},"attributes":{"data-layout":"rail"}},
               {"part":"glyph","within":{"tag":"a","part":"nav-item","text":"","attributes":{"aria-label":"Home"}}},
               {"part":"glyph","within":{"part":"nav-toggle","attributes":{"aria-label":"Sections"}}}
             ],
             "absent": [{"part":"nav-group"}],
-            "attributes": [{"of":{"part":"sidebar"},"name":"data-state","value":"closed"},{"of":{"part":"sidebar-toggle"},"name":"aria-expanded","value":"false"}]
+            "attributes": [{"of":{"part":"aside"},"name":"data-state","value":"rail"},{"of":{"part":"aside-toggle"},"name":"aria-expanded","value":"false"}]
           }
         },
         {"click":{"part":"nav-toggle","attributes":{"aria-label":"Sections"}}},
         {"expect":{"present":[{"tag":"a","part":"nav-item","text":"Other","within":{"part":"nav-panel"}}]}},
         {"key":"Escape"},
         {"expect":{"absent":[{"part":"nav-panel"}]}},
-        {"click":{"part":"sidebar-toggle"}},
+        {"click":{"part":"aside-toggle"}},
         {
           "expect": {
             "present": [{"tag":"a","part":"nav-item","text":"Guide","within":{"part":"nav-group","index":1}}],
-            "attributes": [{"of":{"part":"sidebar"},"name":"data-state","value":"open"}]
+            "attributes": [{"of":{"part":"aside"},"name":"data-state","value":"open"}]
           }
         }
       ]
     },
     {
-      "name": "below the breakpoint, a sidebar's tab bar showing its first entries with their icons, More opening the rest in a bottom sheet whose groups open in place",
+      "name": "below the breakpoint, a navbar's tab bar showing its first entries with their icons, More opening the rest in a bottom sheet whose groups open in place",
       "path": "/",
       "compact": true,
-      "app": {
-        "specVersion": 1,
-        "title": {"message":["Scenes"],"lang":"en"},
-        "lang": "en",
-        "pages": [{"path":"/","title":{"message":["Home"],"lang":"en"}},{"path":"/other","title":{"message":["Other"],"lang":"en"}}],
-        "navigation": {
-          "items": [
-            {"type":"page","key":"home","path":"/","text":{"message":["Home"],"lang":"en"},"icon":"/_telo/ui/assets/aa/house.svg"},
-            {"type":"page","key":"other","path":"/other","text":{"message":["Other"],"lang":"en"}},
-            {
-              "type": "group",
-              "key": "sections",
-              "text": {"message":["Sections"],"lang":"en"},
-              "items": [{"type":"link","key":"sections/guide","href":"/guide","text":{"message":["Guide"],"lang":"en"}}]
-            },
-            {"type":"link","key":"help","href":"/help","text":{"message":["Help"],"lang":"en"}}
-          ],
-          "placement": {
-            "type": "sidebar",
-            "side": "start",
-            "store": {"type":"memory"},
-            "compact": {
-              "type": "tab-bar",
-              "visible": 3,
-              "surface": {"type":"drawer","side":"bottom","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}
-            }
-          }
-        },
-        "stylesheets": [],
-        "controls": {"stylesheets":{},"sets":[]},
-        "header": {"start":[],"end":[],"width":"full"},
-        "compactBelow": "40rem"
-      },
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Home"],"lang":"en"},"layout":"main"},{"path":"/other","title":{"message":["Other"],"lang":"en"},"layout":"main"}],"layout":"main","stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
+      "layouts": {"main":{"specVersion":1,"id":"main","width":"full","header":[{"type":"navbar","title":{"message":["Scenes"],"lang":"en"},"start":[],"end":[],"navigation":{"items":[{"type":"page","key":"home","path":"/","text":{"message":["Home"],"lang":"en"},"icon":{"digest":"aa","name":"house.svg"}},{"type":"page","key":"other","path":"/other","text":{"message":["Other"],"lang":"en"}},{"type":"group","key":"sections","text":{"message":["Sections"],"lang":"en"},"items":[{"type":"link","key":"sections/guide","href":"/guide","text":{"message":["Guide"],"lang":"en"}}]},{"type":"link","key":"help","href":"/help","text":{"message":["Help"],"lang":"en"}}]},"placement":{"type":"tab-bar","visible":3,"surface":{"type":"drawer","side":"bottom","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}},"fill":false}],"footer":[]}},
       "pages": {
         "/": {
           "specVersion": 1,
@@ -3905,7 +3593,7 @@
               {"tag":"a","part":"nav-item","text":"Other","within":{"part":"tab-bar"}},
               {"part":"nav-toggle","text":"More","within":{"part":"tab-bar"}}
             ],
-            "absent": [{"part":"sidebar"},{"part":"nav-menu"},{"part":"nav-toggle","text":"Sections","within":{"part":"tab-bar"}}],
+            "absent": [{"part":"aside"},{"part":"nav-menu"},{"part":"nav-toggle","text":"Sections","within":{"part":"tab-bar"}}],
             "attributes": [
               {"of":{"part":"nav-toggle","text":"More","within":{"part":"tab-bar"}},"name":"aria-haspopup","value":"dialog"},
               {"of":{"part":"nav-toggle","text":"More","within":{"part":"tab-bar"}},"name":"aria-expanded","value":"false"}
@@ -3929,43 +3617,8 @@
     {
       "name": "a full-width header over a contained page, the navigation in it",
       "path": "/",
-      "app": {
-        "specVersion": 1,
-        "title": {"message":["Scenes"],"lang":"en"},
-        "lang": "en",
-        "pages": [{"path":"/","title":{"message":["Home"],"lang":"en"}},{"path":"/other","title":{"message":["Other"],"lang":"en"}}],
-        "navigation": {
-          "items": [
-            {"type":"page","key":"home","path":"/","text":{"message":["Home"],"lang":"en"},"icon":"/_telo/ui/assets/aa/house.svg"},
-            {
-              "type": "group",
-              "key": "sections",
-              "text": {"message":["Sections"],"lang":"en"},
-              "icon": "/_telo/ui/assets/bb/folder.svg",
-              "items": [
-                {"type":"page","key":"sections/other","path":"/other","text":{"message":["Other"],"lang":"en"}},
-                {
-                  "type": "group",
-                  "key": "sections/deeper",
-                  "text": {"message":["Deeper"],"lang":"en"},
-                  "items": [{"type":"link","key":"sections/deeper/guide","href":"/guide","text":{"message":["Guide"],"lang":"en"}}]
-                }
-              ]
-            }
-          ],
-          "placement": {
-            "type": "header",
-            "compact": {
-              "type": "overlay",
-              "surface": {"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}
-            }
-          }
-        },
-        "stylesheets": [],
-        "controls": {"stylesheets":{},"sets":[]},
-        "header": {"start":[],"end":[],"width":"full"},
-        "compactBelow": "40rem"
-      },
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Home"],"lang":"en"},"layout":"main"},{"path":"/other","title":{"message":["Other"],"lang":"en"},"layout":"main"}],"layout":"main","stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
+      "layouts": {"main":{"specVersion":1,"id":"main","width":"full","header":[{"type":"navbar","title":{"message":["Scenes"],"lang":"en"},"start":[],"end":[],"navigation":{"items":[{"type":"page","key":"home","path":"/","text":{"message":["Home"],"lang":"en"},"icon":{"digest":"aa","name":"house.svg"}},{"type":"group","key":"sections","text":{"message":["Sections"],"lang":"en"},"icon":{"digest":"bb","name":"folder.svg"},"items":[{"type":"page","key":"sections/other","path":"/other","text":{"message":["Other"],"lang":"en"}},{"type":"group","key":"sections/deeper","text":{"message":["Deeper"],"lang":"en"},"items":[{"type":"link","key":"sections/deeper/guide","href":"/guide","text":{"message":["Guide"],"lang":"en"}}]}]}]},"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}},"fill":false}],"footer":[]}},
       "pages": {
         "/": {
           "specVersion": 1,
@@ -3980,55 +3633,17 @@
       "steps": [
         {
           "expect": {
-            "present": [{"part":"header-content","within":{"part":"header"}},{"part":"app-title","within":{"part":"header-content"}}],
+            "present": [{"part":"header-content","within":{"part":"header"}},{"part":"navbar-title","within":{"part":"header-content"}}],
             "attributes": [{"of":{"part":"header"},"name":"data-width","value":"full"},{"of":{"part":"page"},"name":"data-width","value":"contained"}]
           }
         }
       ]
     },
     {
-      "name": "a sidebar at the end edge under a contained header",
+      "name": "a layout's aside at the end edge under a contained header",
       "path": "/",
-      "app": {
-        "specVersion": 1,
-        "title": {"message":["Scenes"],"lang":"en"},
-        "lang": "en",
-        "pages": [{"path":"/","title":{"message":["Home"],"lang":"en"}},{"path":"/other","title":{"message":["Other"],"lang":"en"}}],
-        "navigation": {
-          "items": [
-            {"type":"page","key":"home","path":"/","text":{"message":["Home"],"lang":"en"},"icon":"/_telo/ui/assets/aa/house.svg"},
-            {
-              "type": "group",
-              "key": "sections",
-              "text": {"message":["Sections"],"lang":"en"},
-              "icon": "/_telo/ui/assets/bb/folder.svg",
-              "items": [
-                {"type":"page","key":"sections/other","path":"/other","text":{"message":["Other"],"lang":"en"}},
-                {
-                  "type": "group",
-                  "key": "sections/deeper",
-                  "text": {"message":["Deeper"],"lang":"en"},
-                  "items": [{"type":"link","key":"sections/deeper/guide","href":"/guide","text":{"message":["Guide"],"lang":"en"}}]
-                }
-              ]
-            }
-          ],
-          "placement": {
-            "type": "sidebar",
-            "side": "end",
-            "rail": {"collapsed":false},
-            "store": {"type":"memory"},
-            "compact": {
-              "type": "overlay",
-              "surface": {"type":"drawer","side":"bottom","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}
-            }
-          }
-        },
-        "stylesheets": [],
-        "controls": {"stylesheets":{},"sets":[]},
-        "header": {"start":[],"end":[],"width":"contained"},
-        "compactBelow": "40rem"
-      },
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Home"],"lang":"en"},"layout":"main"},{"path":"/other","title":{"message":["Other"],"lang":"en"},"layout":"main"}],"layout":"main","stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
+      "layouts": {"main":{"specVersion":1,"id":"main","width":"contained","header":[{"type":"navbar","title":{"message":["Scenes"],"lang":"en"},"start":[],"end":[],"navigation":{"items":[]},"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}},"fill":false}],"footer":[],"aside":{"side":"end","size":"medium","frame":"flush","toggle":{"type":"icon","icon":null,"label":"hidden"},"label":{"message":["Navigation"],"lang":"en"},"collapse":{"collapsed":false,"state":null},"compact":{"type":"drawer","side":"bottom","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}},"actions":[],"content":{"type":"navigation-column","navigation":{"items":[{"type":"page","key":"home","path":"/","text":{"message":["Home"],"lang":"en"},"icon":{"digest":"aa","name":"house.svg"}},{"type":"group","key":"sections","text":{"message":["Sections"],"lang":"en"},"icon":{"digest":"bb","name":"folder.svg"},"items":[{"type":"page","key":"sections/other","path":"/other","text":{"message":["Other"],"lang":"en"}},{"type":"group","key":"sections/deeper","text":{"message":["Deeper"],"lang":"en"},"items":[{"type":"link","key":"sections/deeper/guide","href":"/guide","text":{"message":["Guide"],"lang":"en"}}]}]}]},"state":null,"fill":false}}}},
       "pages": {
         "/": {
           "specVersion": 1,
@@ -4045,8 +3660,8 @@
           "expect": {
             "present": [
               {"part":"header-content","within":{"part":"header"}},
-              {"part":"app-title","within":{"part":"header-content"}},
-              {"part":"sidebar","attributes":{"data-side":"end"}}
+              {"part":"navbar-title","within":{"part":"header-content"}},
+              {"part":"aside","attributes":{"data-side":"end"}}
             ],
             "attributes": [{"of":{"part":"header"},"name":"data-width","value":"contained"},{"of":{"part":"page"},"name":"data-width","value":"contained"}]
           }
@@ -4054,48 +3669,10 @@
       ]
     },
     {
-      "name": "a sidebar at the end edge under a full-width header",
+      "name": "a layout's aside at the end edge under a full-width header",
       "path": "/",
-      "app": {
-        "specVersion": 1,
-        "title": {"message":["Scenes"],"lang":"en"},
-        "lang": "en",
-        "pages": [{"path":"/","title":{"message":["Home"],"lang":"en"}},{"path":"/other","title":{"message":["Other"],"lang":"en"}}],
-        "navigation": {
-          "items": [
-            {"type":"page","key":"home","path":"/","text":{"message":["Home"],"lang":"en"},"icon":"/_telo/ui/assets/aa/house.svg"},
-            {
-              "type": "group",
-              "key": "sections",
-              "text": {"message":["Sections"],"lang":"en"},
-              "icon": "/_telo/ui/assets/bb/folder.svg",
-              "items": [
-                {"type":"page","key":"sections/other","path":"/other","text":{"message":["Other"],"lang":"en"}},
-                {
-                  "type": "group",
-                  "key": "sections/deeper",
-                  "text": {"message":["Deeper"],"lang":"en"},
-                  "items": [{"type":"link","key":"sections/deeper/guide","href":"/guide","text":{"message":["Guide"],"lang":"en"}}]
-                }
-              ]
-            }
-          ],
-          "placement": {
-            "type": "sidebar",
-            "side": "end",
-            "rail": {"collapsed":false},
-            "store": {"type":"memory"},
-            "compact": {
-              "type": "overlay",
-              "surface": {"type":"drawer","side":"bottom","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}
-            }
-          }
-        },
-        "stylesheets": [],
-        "controls": {"stylesheets":{},"sets":[]},
-        "header": {"start":[],"end":[],"width":"full"},
-        "compactBelow": "40rem"
-      },
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Home"],"lang":"en"},"layout":"main"},{"path":"/other","title":{"message":["Other"],"lang":"en"},"layout":"main"}],"layout":"main","stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
+      "layouts": {"main":{"specVersion":1,"id":"main","width":"full","header":[{"type":"navbar","title":{"message":["Scenes"],"lang":"en"},"start":[],"end":[],"navigation":{"items":[]},"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}},"fill":false}],"footer":[],"aside":{"side":"end","size":"medium","frame":"flush","toggle":{"type":"icon","icon":null,"label":"hidden"},"label":{"message":["Navigation"],"lang":"en"},"collapse":{"collapsed":false,"state":null},"compact":{"type":"drawer","side":"bottom","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}},"actions":[],"content":{"type":"navigation-column","navigation":{"items":[{"type":"page","key":"home","path":"/","text":{"message":["Home"],"lang":"en"},"icon":{"digest":"aa","name":"house.svg"}},{"type":"group","key":"sections","text":{"message":["Sections"],"lang":"en"},"icon":{"digest":"bb","name":"folder.svg"},"items":[{"type":"page","key":"sections/other","path":"/other","text":{"message":["Other"],"lang":"en"}},{"type":"group","key":"sections/deeper","text":{"message":["Deeper"],"lang":"en"},"items":[{"type":"link","key":"sections/deeper/guide","href":"/guide","text":{"message":["Guide"],"lang":"en"}}]}]}]},"state":null,"fill":false}}}},
       "pages": {
         "/": {
           "specVersion": 1,
@@ -4112,8 +3689,8 @@
           "expect": {
             "present": [
               {"part":"header-content","within":{"part":"header"}},
-              {"part":"app-title","within":{"part":"header-content"}},
-              {"part":"sidebar","attributes":{"data-side":"end"}}
+              {"part":"navbar-title","within":{"part":"header-content"}},
+              {"part":"aside","attributes":{"data-side":"end"}}
             ],
             "attributes": [{"of":{"part":"header"},"name":"data-width","value":"full"},{"of":{"part":"page"},"name":"data-width","value":"contained"}]
           }
@@ -4123,70 +3700,8 @@
     {
       "name": "every built-in layout of a listing: a sorted list paged by Load more, cards with an edit form open in line, a board whose card's Move to menu is open, a calendar, a timeline in lanes and a tree expanded",
       "path": "/",
-      "app": {
-        "specVersion": 1,
-        "title": {
-          "message": [
-            "Scenes"
-          ],
-          "lang": "en"
-        },
-        "lang": "en",
-        "pages": [
-          {
-            "path": "/",
-            "title": {
-              "message": [
-                "Layouts"
-              ],
-              "lang": "en"
-            }
-          }
-        ],
-        "navigation": {
-          "items": [
-            {
-              "type": "page",
-              "key": "layouts",
-              "path": "/",
-              "text": {
-                "message": [
-                  "Layouts"
-                ],
-                "lang": "en"
-              }
-            }
-          ],
-          "placement": {
-            "type": "header",
-            "compact": {
-              "type": "overlay",
-              "surface": {
-                "type": "drawer",
-                "side": "start",
-                "size": "medium",
-                "modal": true,
-                "dismiss": {
-                  "escape": true,
-                  "outside": true,
-                  "closeButton": true
-                }
-              }
-            }
-          }
-        },
-        "stylesheets": [],
-        "controls": {
-          "stylesheets": {},
-          "sets": []
-        },
-        "header": {
-          "start": [],
-          "end": [],
-          "width": "contained"
-        },
-        "compactBelow": "40rem"
-      },
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Layouts"],"lang":"en"},"layout":"main"}],"layout":"main","stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
+      "layouts": {"main":{"specVersion":1,"id":"main","width":"contained","header":[{"type":"navbar","title":{"message":["Scenes"],"lang":"en"},"start":[],"end":[],"navigation":{"items":[{"type":"page","key":"layouts","path":"/","text":{"message":["Layouts"],"lang":"en"}}]},"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}},"fill":false}],"footer":[]}},
       "pages": {
         "/": {
           "specVersion": 1,
@@ -6663,7 +6178,8 @@
     {
       "name": "a chat over an endpoint offering everything: a transcript of every kind of part, a branch, a turn that failed, ended at its limit, asked for approval and dropped its stream, and files dropped on the message box",
       "path": "/",
-      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Chat"],"lang":"en"}}],"navigation":{"items":[{"type":"page","key":"chat","path":"/","text":{"message":["Chat"],"lang":"en"}}],"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}}},"stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"header":{"start":[],"end":[],"width":"contained"},"compactBelow":"40rem"},
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Chat"],"lang":"en"},"layout":"main"}],"layout":"main","stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
+      "layouts": {"main":{"specVersion":1,"id":"main","width":"contained","header":[{"type":"navbar","title":{"message":["Scenes"],"lang":"en"},"start":[],"end":[],"navigation":{"items":[{"type":"page","key":"chat","path":"/","text":{"message":["Chat"],"lang":"en"}}]},"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}},"fill":false}],"footer":[]}},
       "pages": {"/":{"specVersion":1,"title":{"message":["Chat"],"lang":"en"},"lang":"en","query":{},"width":"full","children":[{"type":"link","text":{"message":["Quarterly plan"],"lang":"en"},"href":{"path":{"value":"/"},"pathParams":{},"queryParams":{"conversation":{"value":"c1"}}}},{"type":"chat","spec":{"attachments":{"accepts":[{"type":"image","mediaTypes":["image/png"],"maxBytes":1048576},{"type":"file","mediaTypes":["application/pdf"],"maxBytes":5242880}],"maxPerMessage":2},"operations":["branch","cancel"]},"basePath":"/api/chat","header":[{"type":"bar","start":[{"type":"value","value":{"root":"conversation","path":["title"]},"present":{"type":["string","null"]},"labels":[],"style":"heading","fill":false}],"center":[],"end":[{"type":"command","command":{"root":"chat","path":["exportTranscript"]},"text":{"set":"Ui.Translations","key":"chatExport"},"button":{"type":"text"},"fill":false},{"type":"command","command":{"root":"chat","path":["copyTranscript"]},"text":{"message":["Copy all"],"lang":"en"},"button":{"type":"icon","icon":null,"label":"hidden"},"fill":false},{"type":"command","command":{"root":"chat","path":["stop"]},"text":{"message":["Stop"],"lang":"en"},"button":{"type":"icon","icon":null,"label":"hidden"},"fill":false},{"type":"command","command":{"root":"chat","path":["newConversation"]},"text":{"message":["New conversation"],"lang":"en"},"button":{"type":"icon","icon":null,"label":"hidden"},"fill":false}],"fill":false}],"placeholder":{"message":["Ask anything"],"lang":"en"},"starters":[{"prompt":{"message":["Summarise this file"],"lang":"en"},"onChoose":"send"}],"show":{"reasoning":true,"toolDetail":true,"usage":true,"copy":true},"buttons":{"copy":{"type":"text"},"edit":{"type":"text"},"regenerate":{"type":"text"},"attach":{"type":"text"},"send":{"type":"text"},"stop":{"type":"text"}},"composer":{"actions":"inside"},"conversation":{"parameter":"conversation"},"refreshes":[]}]}},
       "responses": {
         "GET /api/chat/conversations/c1": {"status":200,"body":{"id":"c1","title":"Quarterly plan","archived":false,"turn":"t1","running":false}},
@@ -6737,7 +6253,8 @@
     {
       "name": "a chat's buttons inside the message box's frame, which is where they are unless the page says otherwise",
       "path": "/",
-      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Chat"],"lang":"en"}}],"navigation":{"items":[{"type":"page","key":"chat","path":"/","text":{"message":["Chat"],"lang":"en"}}],"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}}},"stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"header":{"start":[],"end":[],"width":"contained"},"compactBelow":"40rem"},
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Chat"],"lang":"en"},"layout":"main"}],"layout":"main","stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
+      "layouts": {"main":{"specVersion":1,"id":"main","width":"contained","header":[{"type":"navbar","title":{"message":["Scenes"],"lang":"en"},"start":[],"end":[],"navigation":{"items":[{"type":"page","key":"chat","path":"/","text":{"message":["Chat"],"lang":"en"}}]},"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}},"fill":false}],"footer":[]}},
       "pages": {"/":{"specVersion":1,"title":{"message":["Chat"],"lang":"en"},"lang":"en","query":{},"width":"full","children":[{"type":"link","text":{"message":["Quarterly plan"],"lang":"en"},"href":{"path":{"value":"/"},"pathParams":{},"queryParams":{"conversation":{"value":"c1"}}}},{"type":"chat","spec":{"attachments":{"accepts":[{"type":"image","mediaTypes":["image/png"],"maxBytes":1048576},{"type":"file","mediaTypes":["application/pdf"],"maxBytes":5242880}],"maxPerMessage":2},"operations":["branch","cancel"]},"basePath":"/api/chat","header":[{"type":"bar","start":[],"center":[],"end":[{"type":"command","command":{"root":"chat","path":["exportTranscript"]},"text":{"set":"Ui.Translations","key":"chatExport"},"button":{"type":"text"},"fill":false}],"fill":false}],"placeholder":{"message":["Ask anything"],"lang":"en"},"starters":[{"prompt":{"message":["Summarise this file"],"lang":"en"},"onChoose":"send"}],"show":{"reasoning":true,"toolDetail":true,"usage":true,"copy":true},"buttons":{"copy":{"type":"text"},"edit":{"type":"text"},"regenerate":{"type":"text"},"attach":{"type":"text"},"send":{"type":"text"},"stop":{"type":"text"}},"composer":{"actions":"inside"},"conversation":{"parameter":"conversation"},"refreshes":[]}]}},
       "responses": {
         "GET /api/chat/conversations/c1": {"status":200,"body":{"id":"c1","title":"Quarterly plan","archived":false,"turn":"t1","running":false}},
@@ -6754,7 +6271,8 @@
     {
       "name": "a chat's buttons under the message box, drawn as glyphs: a look's glyph with its text as the name and tooltip, a glyph of the page's own beside its text, and an export button switched off",
       "path": "/",
-      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Chat"],"lang":"en"}}],"navigation":{"items":[{"type":"page","key":"chat","path":"/","text":{"message":["Chat"],"lang":"en"}}],"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}}},"stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"header":{"start":[],"end":[],"width":"contained"},"compactBelow":"40rem"},
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Chat"],"lang":"en"},"layout":"main"}],"layout":"main","stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
+      "layouts": {"main":{"specVersion":1,"id":"main","width":"contained","header":[{"type":"navbar","title":{"message":["Scenes"],"lang":"en"},"start":[],"end":[],"navigation":{"items":[{"type":"page","key":"chat","path":"/","text":{"message":["Chat"],"lang":"en"}}]},"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}},"fill":false}],"footer":[]}},
       "pages": {"/":{"specVersion":1,"title":{"message":["Chat"],"lang":"en"},"lang":"en","query":{},"width":"full","children":[{"type":"link","text":{"message":["Quarterly plan"],"lang":"en"},"href":{"path":{"value":"/"},"pathParams":{},"queryParams":{"conversation":{"value":"c1"}}}},{"type":"chat","spec":{"attachments":{"accepts":[{"type":"image","mediaTypes":["image/png"],"maxBytes":1048576},{"type":"file","mediaTypes":["application/pdf"],"maxBytes":5242880}],"maxPerMessage":2},"operations":["branch","cancel"]},"basePath":"/api/chat","header":[],"placeholder":{"message":["Ask anything"],"lang":"en"},"starters":[{"prompt":{"message":["Summarise this file"],"lang":"en"},"onChoose":"send"}],"show":{"reasoning":true,"toolDetail":true,"usage":true,"copy":true},"buttons":{"copy":{"type":"icon","icon":null,"label":"hidden"},"edit":{"type":"text"},"regenerate":{"type":"icon","icon":{"digest":"dd","name":"mark.svg"},"label":"shown"},"attach":{"type":"text"},"send":{"type":"icon","icon":null,"label":"hidden"},"stop":{"type":"text"}},"composer":{"actions":"outside"},"conversation":{"parameter":"conversation"},"refreshes":[]}]}},
       "responses": {
         "GET /api/chat/conversations/c1": {"status":200,"body":{"id":"c1","title":"Quarterly plan","archived":false,"turn":"t1","running":false}},
@@ -6775,28 +6293,30 @@
     {
       "name": "a split view's aside beside its content, folded away by its toggle and shown again",
       "path": "/",
-      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Home"],"lang":"en"}}],"navigation":{"items":[{"type":"page","key":"home","path":"/","text":{"message":["Home"],"lang":"en"}}],"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}}},"stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"header":{"start":[],"end":[],"width":"contained"},"compactBelow":"40rem"},
-      "pages": {"/":{"specVersion":1,"title":{"message":["Home"],"lang":"en"},"lang":"en","query":{},"width":"full","children":[{"type":"split","side":"start","size":"small","frame":"flush","toggle":{"type":"text"},"label":{"message":["Filters"],"lang":"en"},"aside":{"actions":[{"type":"link","text":{"message":["New"],"lang":"en"},"href":{"path":{"value":"/new"},"pathParams":{},"queryParams":{}},"button":{"type":"icon","icon":null,"label":"shown"}}],"content":{"type":"text","text":{"message":["Aside text"],"lang":"en"}}},"content":{"type":"text","text":{"message":["Content text"],"lang":"en"}},"collapse":{"collapsed":false,"state":null},"compact":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}]}},
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Home"],"lang":"en"},"layout":"main"}],"layout":"main","stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
+      "layouts": {"main":{"specVersion":1,"id":"main","width":"contained","header":[{"type":"navbar","title":{"message":["Scenes"],"lang":"en"},"start":[],"end":[],"navigation":{"items":[{"type":"page","key":"home","path":"/","text":{"message":["Home"],"lang":"en"}}]},"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}},"fill":false}],"footer":[]}},
+      "pages": {"/":{"specVersion":1,"title":{"message":["Home"],"lang":"en"},"lang":"en","query":{},"width":"full","children":[{"type":"split","aside":{"side":"start","size":"small","frame":"flush","toggle":{"type":"text"},"label":{"message":["Filters"],"lang":"en"},"collapse":{"collapsed":false,"state":null},"compact":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}},"actions":[{"type":"link","text":{"message":["New"],"lang":"en"},"href":{"path":{"value":"/new"},"pathParams":{},"queryParams":{}},"button":{"type":"icon","icon":null,"label":"shown"}}],"content":{"type":"text","text":{"message":["Aside text"],"lang":"en"}}},"content":{"type":"text","text":{"message":["Content text"],"lang":"en"}}}]}},
       "responses": {},
       "steps": [
-        {"expect":{"present":[{"part":"split"},{"part":"link","within":{"part":"split-actions"}},{"part":"split-content","within":{"part":"split"}},{"part":"split-aside","within":{"part":"split"}},{"part":"split-toggle","within":{"part":"split-aside"}}],"attributes":[{"of":{"part":"link","within":{"part":"split-actions"}},"name":"aria-label","value":null},{"of":{"part":"split"},"name":"data-state","value":"open"},{"of":{"part":"split"},"name":"data-side","value":"start"},{"of":{"part":"split"},"name":"data-frame","value":"flush"},{"of":{"part":"split-aside"},"name":"data-frame","value":"flush"},{"of":{"part":"split-aside"},"name":"data-size","value":"small"},{"of":{"part":"split-aside"},"name":"aria-label","value":"Filters"},{"of":{"part":"split-toggle"},"name":"aria-expanded","value":"true"}],"text":[{"of":{"part":"split-toggle"},"value":"Hide Filters"}],"absent":[{"part":"split-toggle","within":{"part":"split-content"}}]}},
-        {"click":{"part":"split-toggle","within":{"part":"split-aside"}}},
-        {"expect":{"present":[{"part":"link","within":{"part":"split-actions"}},{"part":"split-toggle","within":{"part":"split-aside"}}],"attributes":[{"of":{"part":"link","within":{"part":"split-actions"}},"name":"aria-label","value":"New"},{"of":{"part":"link","within":{"part":"split-actions"}},"name":"data-button","value":"icon"},{"of":{"part":"split"},"name":"data-state","value":"collapsed"},{"of":{"part":"split-aside"},"name":"data-state","value":"rail"},{"of":{"part":"split-toggle"},"name":"aria-expanded","value":"false"}],"text":[{"of":{"part":"split-toggle"},"value":"Show Filters"}],"absent":[{"part":"split-toggle","within":{"part":"split-content"}}]}},
-        {"click":{"part":"split-toggle","within":{"part":"split-aside"}}},
-        {"expect":{"attributes":[{"of":{"part":"split"},"name":"data-state","value":"open"}],"present":[{"part":"split-toggle","within":{"part":"split-aside"}}]}}
+        {"expect":{"present":[{"part":"split"},{"part":"link","within":{"part":"aside-actions"}},{"part":"split-content","within":{"part":"split"}},{"part":"aside","within":{"part":"split"}},{"part":"aside-toggle","within":{"part":"aside"}}],"attributes":[{"of":{"part":"link","within":{"part":"aside-actions"}},"name":"aria-label","value":null},{"of":{"part":"split"},"name":"data-state","value":"open"},{"of":{"part":"split"},"name":"data-side","value":"start"},{"of":{"part":"split"},"name":"data-frame","value":"flush"},{"of":{"part":"aside"},"name":"data-frame","value":"flush"},{"of":{"part":"aside"},"name":"data-size","value":"small"},{"of":{"part":"aside"},"name":"aria-label","value":"Filters"},{"of":{"part":"aside-toggle"},"name":"aria-expanded","value":"true"}],"text":[{"of":{"part":"aside-toggle"},"value":"Hide Filters"}],"absent":[{"part":"aside-toggle","within":{"part":"split-content"}}]}},
+        {"click":{"part":"aside-toggle","within":{"part":"aside"}}},
+        {"expect":{"present":[{"part":"link","within":{"part":"aside-actions"}},{"part":"aside-toggle","within":{"part":"aside"}}],"attributes":[{"of":{"part":"link","within":{"part":"aside-actions"}},"name":"aria-label","value":"New"},{"of":{"part":"link","within":{"part":"aside-actions"}},"name":"data-button","value":"icon"},{"of":{"part":"split"},"name":"data-state","value":"collapsed"},{"of":{"part":"aside"},"name":"data-state","value":"rail"},{"of":{"part":"aside-toggle"},"name":"aria-expanded","value":"false"}],"text":[{"of":{"part":"aside-toggle"},"value":"Show Filters"}],"absent":[{"part":"aside-toggle","within":{"part":"split-content"}}]}},
+        {"click":{"part":"aside-toggle","within":{"part":"aside"}}},
+        {"expect":{"attributes":[{"of":{"part":"split"},"name":"data-state","value":"open"}],"present":[{"part":"aside-toggle","within":{"part":"aside"}}]}}
       ]
     },
     {
       "name": "below the breakpoint, a split view's aside leaving the page for a drawer its toggle opens",
       "path": "/",
       "compact": true,
-      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Home"],"lang":"en"}}],"navigation":{"items":[{"type":"page","key":"home","path":"/","text":{"message":["Home"],"lang":"en"}}],"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}}},"stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"header":{"start":[],"end":[],"width":"contained"},"compactBelow":"40rem"},
-      "pages": {"/":{"specVersion":1,"title":{"message":["Home"],"lang":"en"},"lang":"en","query":{},"width":"full","children":[{"type":"split","side":"end","size":"large","frame":"framed","toggle":{"type":"icon","icon":null,"label":"hidden"},"label":{"message":["Filters"],"lang":"en"},"aside":{"actions":[{"type":"link","text":{"message":["New"],"lang":"en"},"href":{"path":{"value":"/new"},"pathParams":{},"queryParams":{}},"button":{"type":"icon","icon":null,"label":"shown"}}],"content":{"type":"text","text":{"message":["Aside text"],"lang":"en"}}},"content":{"type":"text","text":{"message":["Content text"],"lang":"en"}},"collapse":null,"compact":{"type":"drawer","side":"end","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}]}},
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Home"],"lang":"en"},"layout":"main"}],"layout":"main","stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
+      "layouts": {"main":{"specVersion":1,"id":"main","width":"contained","header":[{"type":"navbar","title":{"message":["Scenes"],"lang":"en"},"start":[],"end":[],"navigation":{"items":[{"type":"page","key":"home","path":"/","text":{"message":["Home"],"lang":"en"}}]},"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}},"fill":false}],"footer":[]}},
+      "pages": {"/":{"specVersion":1,"title":{"message":["Home"],"lang":"en"},"lang":"en","query":{},"width":"full","children":[{"type":"split","aside":{"side":"end","size":"large","frame":"framed","toggle":{"type":"icon","icon":null,"label":"hidden"},"label":{"message":["Filters"],"lang":"en"},"collapse":null,"compact":{"type":"drawer","side":"end","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}},"actions":[{"type":"link","text":{"message":["New"],"lang":"en"},"href":{"path":{"value":"/new"},"pathParams":{},"queryParams":{}},"button":{"type":"icon","icon":null,"label":"shown"}}],"content":{"type":"text","text":{"message":["Aside text"],"lang":"en"}}},"content":{"type":"text","text":{"message":["Content text"],"lang":"en"}}}]}},
       "responses": {},
       "steps": [
-        {"expect":{"present":[{"part":"link","within":{"part":"split-actions"}},{"part":"split-toggle","within":{"part":"split-bar"}},{"part":"split-bar","within":{"part":"split-aside"}}],"attributes":[{"of":{"part":"link","within":{"part":"split-actions"}},"name":"aria-label","value":"New"},{"of":{"part":"split"},"name":"data-state","value":"compact"},{"of":{"part":"split"},"name":"data-side","value":"end"},{"of":{"part":"split-aside"},"name":"data-state","value":"rail"},{"of":{"part":"split"},"name":"data-frame","value":"framed"},{"of":{"part":"split-toggle"},"name":"aria-expanded","value":"false"},{"of":{"part":"split-toggle"},"name":"aria-label","value":"Show Filters"}],"text":[{"of":{"part":"split-toggle"},"value":""}],"absent":[{"part":"split-toggle","within":{"part":"split-content"}},{"part":"surface-body"}]}},
-        {"click":{"part":"split-toggle"}},
-        {"expect":{"present":[{"part":"split-aside","within":{"part":"surface-body"}}],"attributes":[{"of":{"part":"split-aside"},"name":"data-size","value":"large"},{"of":{"part":"split-aside"},"name":"data-frame","value":"framed"}],"text":[{"of":{"part":"surface-title"},"value":"Filters"}],"absent":[{"part":"link","within":{"part":"surface-body"}},{"part":"split-toggle","within":{"part":"surface-body"}}]}},
+        {"expect":{"present":[{"part":"link","within":{"part":"aside-actions"}},{"part":"aside-toggle","within":{"part":"aside-bar"}},{"part":"aside-bar","within":{"part":"aside"}}],"attributes":[{"of":{"part":"link","within":{"part":"aside-actions"}},"name":"aria-label","value":"New"},{"of":{"part":"split"},"name":"data-state","value":"compact"},{"of":{"part":"split"},"name":"data-side","value":"end"},{"of":{"part":"aside"},"name":"data-state","value":"rail"},{"of":{"part":"split"},"name":"data-frame","value":"framed"},{"of":{"part":"aside-toggle"},"name":"aria-expanded","value":"false"},{"of":{"part":"aside-toggle"},"name":"aria-label","value":"Show Filters"}],"text":[{"of":{"part":"aside-toggle"},"value":""}],"absent":[{"part":"aside-toggle","within":{"part":"split-content"}},{"part":"surface-body"}]}},
+        {"click":{"part":"aside-toggle"}},
+        {"expect":{"present":[{"part":"aside","within":{"part":"surface-body"}}],"attributes":[{"of":{"part":"aside"},"name":"data-size","value":"large"},{"of":{"part":"aside"},"name":"data-frame","value":"framed"}],"text":[{"of":{"part":"surface-title"},"value":"Filters"}],"absent":[{"part":"link","within":{"part":"surface-body"}},{"part":"aside-toggle","within":{"part":"surface-body"}}]}},
         {"click":{"part":"surface-close"}},
         {"expect":{"absent":[{"part":"surface-body"}]}}
       ]
@@ -6804,70 +6324,8 @@
     {
         "name": "a listing whose records' actions are folded into a menu, opening beside its trigger",
         "path": "/",
-        "app": {
-            "specVersion": 1,
-            "title": {
-                "message": [
-                    "Scenes"
-                ],
-                "lang": "en"
-            },
-            "lang": "en",
-            "pages": [
-                {
-                    "path": "/",
-                    "title": {
-                        "message": [
-                            "Slow"
-                        ],
-                        "lang": "en"
-                    }
-                }
-            ],
-            "navigation": {
-                "items": [
-                    {
-                        "type": "page",
-                        "key": "slow",
-                        "path": "/",
-                        "text": {
-                            "message": [
-                                "Slow"
-                            ],
-                            "lang": "en"
-                        }
-                    }
-                ],
-                "placement": {
-                    "type": "header",
-                    "compact": {
-                        "type": "overlay",
-                        "surface": {
-                            "type": "drawer",
-                            "side": "start",
-                            "size": "medium",
-                            "modal": true,
-                            "dismiss": {
-                                "escape": true,
-                                "outside": true,
-                                "closeButton": true
-                            }
-                        }
-                    }
-                }
-            },
-            "stylesheets": [],
-            "controls": {
-                "stylesheets": {},
-                "sets": []
-            },
-            "header": {
-                "start": [],
-                "end": [],
-                "width": "contained"
-            },
-            "compactBelow": "40rem"
-        },
+        "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Slow"],"lang":"en"},"layout":"main"}],"layout":"main","stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
+        "layouts": {"main":{"specVersion":1,"id":"main","width":"contained","header":[{"type":"navbar","title":{"message":["Scenes"],"lang":"en"},"start":[],"end":[],"navigation":{"items":[{"type":"page","key":"slow","path":"/","text":{"message":["Slow"],"lang":"en"}}]},"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}},"fill":false}],"footer":[]}},
         "pages": {
             "/": {
                 "specVersion": 1,
@@ -7317,16 +6775,18 @@
     {
       "name": "every node filling the page: the page no longer scrolls as a whole, and each node and the parts passing the room on are marked",
       "path": "/",
-      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Filled"],"lang":"en"}}],"navigation":{"items":[{"type":"page","key":"filled","path":"/","text":{"message":["Filled"],"lang":"en"}}],"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}}},"header":{"width":"contained","start":[{"type":"badge","text":{"message":["Beta"],"lang":"en"}}],"end":[{"type":"link","text":{"message":["Help"],"lang":"en"},"href":{"path":{"value":"/"},"pathParams":{},"queryParams":{}}},{"type":"menu","text":{"message":["Language"],"lang":"en"},"items":[{"type":"link","text":{"message":["English"],"lang":"en"},"href":{"path":{"value":"/?lang=en"},"pathParams":{},"queryParams":{}},"style":"strong"},{"type":"link","text":{"message":["Polski"],"lang":"en"},"href":{"path":{"value":"/?lang=pl"},"pathParams":{},"queryParams":{}}}]}]},"stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
-      "pages": {"/":{"specVersion":1,"title":{"message":["Filled"],"lang":"en"},"lang":"en","query":{},"width":"full","children":[{"type":"stack","fill":true,"children":[{"type":"text","text":{"message":["Heading"],"lang":"en"},"fill":true}]},{"type":"box","fill":true,"children":[{"type":"badge","text":{"message":["New"],"lang":"en"},"fill":true}]},{"type":"columns","fill":true,"children":[{"type":"link","text":{"message":["Docs"],"lang":"en"},"href":{"path":{"value":"/docs"},"pathParams":{},"queryParams":{}},"button":null,"fill":true}]},{"type":"image","src":"/logo.png","alt":{"message":[],"lang":"en"},"fill":true},{"type":"svg","markup":"<svg xmlns='http://www.w3.org/2000/svg'/>","alt":{"message":["Chart"],"lang":"en"},"fill":true},{"type":"markdown","value":{"value":"# Filled"},"fill":true},{"type":"time","value":{"value":"2026-11-05"},"relative":false,"fill":true},{"type":"button","action":{"type":"action","schema":{"type":"object","required":["id"],"properties":{"id":{"type":"string"}}},"request":{"method":"POST","target":{"path":{"value":"/api/decisions"},"pathParams":{},"queryParams":{}},"consumed":[]},"label":{"message":["Approve"],"lang":"en"},"fields":[{"type":"input","property":"id","label":{"message":["id"],"lang":"en"},"control":"auto"}],"groups":[],"state":{"address":false,"store":{"type":"memory"},"fields":["id"]},"failure":{"type":"stack","style":"danger","children":[{"type":"value","value":{"root":"error","path":["code"]},"present":{"type":"string"},"style":"strong"},{"type":"value","value":{"root":"error","path":["message"]},"present":{"type":"string"}}]},"onSuccess":{"refreshes":[]},"concurrency":"parallel","clearAnswerOn":[]},"inputs":{"id":{"value":"p7"}},"button":{"type":"text"},"fill":true},{"type":"menu","text":{"message":["Language"],"lang":"en"},"items":[{"type":"link","text":{"message":["English"],"lang":"en"},"href":{"path":{"value":"/?lang=en"},"pathParams":{},"queryParams":{}},"button":null,"fill":false}],"fill":true},{"type":"tabs","tabs":[{"key":"summary","text":{"message":["Summary"],"lang":"en"},"children":[{"type":"text","text":{"message":["Summary text"],"lang":"en"},"fill":true}]}],"fill":true},{"type":"bar","start":[{"type":"text","text":{"message":["Start"],"lang":"en"},"fill":false}],"center":[],"end":[{"type":"badge","text":{"message":["End"],"lang":"en"},"fill":false}],"fill":true},{"type":"data","schema":{"type":"object","required":["authorized"],"properties":{"authorized":{"type":"boolean"},"email":{"type":"string"},"files":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"url":{"type":"string","format":"uri-reference"}}}}}},"source":{"path":{"value":"/api/account"},"pathParams":{},"queryParams":{}},"query":{},"content":{"type":"stack","fill":true,"children":[{"type":"value","value":{"root":"data","path":["email"]},"present":{"type":"string"},"fill":true},{"type":"list","rowActionsDisplay":"auto","heading":{"message":["Files"],"lang":"en"},"rows":{"root":"data","path":["files"]},"columns":[{"header":{"message":["Name"],"lang":"en"},"value":{"root":"row","path":["name"]},"present":{"type":"string"}}],"fill":true}]},"loading":{"type":"text","text":{"message":["Loading…"],"lang":"en"},"style":"muted"},"failure":{"type":"stack","style":"danger","children":[{"type":"value","value":{"root":"error","path":["code"]},"present":{"type":"string"},"style":"strong"},{"type":"value","value":{"root":"error","path":["message"]},"present":{"type":"string"}}]},"reloadOn":[],"fill":true},{"type":"filters","basePath":"/api/todos","fields":[{"property":"text","operator":"contains","label":{"message":["Task"],"lang":"en"},"schema":{"type":"string","title":"Task","minLength":2},"pinned":false,"control":"auto","values":"all"},{"property":"isDone","operator":"eq","label":{"message":["Done"],"lang":"en"},"schema":{"type":"boolean","title":"Done"},"pinned":false,"control":"auto","values":"all"},{"property":"status","operator":"in","label":{"message":["Status"],"lang":"en"},"schema":{"title":"Status","enum":["open","blocked","done"]},"pinned":false,"control":"auto","values":"all"},{"property":"priority","operator":"gte","label":{"message":["Priority"],"lang":"en"},"schema":{"type":"integer","title":"Priority","minimum":1,"maximum":5},"pinned":false,"control":"auto","values":"all"},{"property":"dueOn","operator":"gte","label":{"message":["Due"],"lang":"en"},"schema":{"type":"string","title":"Due","format":"date"},"pinned":false,"control":"auto","values":"all"},{"property":"dueOn","operator":"lte","label":{"message":["Due"],"lang":"en"},"schema":{"type":"string","title":"Due","format":"date"},"pinned":false,"control":"auto","values":"all"}],"content":{"type":"text","text":{"message":["Filtered"],"lang":"en"},"fill":true},"show":"all","placement":{"type":"above"},"controls":"direct","apply":"commit","summary":"none","state":{"address":false,"store":{"type":"memory"},"fields":["id","text","isDone","priority","status","dueOn","notes"]},"presets":[],"fill":true},{"type":"listing","schema":{"type":"object","required":["text"],"properties":{"id":{"type":"integer"},"text":{"type":"string","title":"Task","minLength":2},"isDone":{"type":"boolean","title":"Done"},"priority":{"type":"integer","title":"Priority","minimum":1,"maximum":5},"status":{"title":"Status","enum":["open","blocked","done"]},"dueOn":{"type":"string","title":"Due","format":"date"},"notes":{"type":"string","title":"Notes","contentMediaType":"text/plain"}}},"basePath":"/api/empty","key":"id","query":{},"pageSize":2,"paging":"pages","sort":{"sortable":["text","priority","dueOn"],"initial":null},"show":{"count":true},"rowStyle":{"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},"create":{"form":{"type":"form","schema":{"type":"object","required":["text"],"properties":{"id":{"type":"integer"},"text":{"type":"string","title":"Task","minLength":2},"isDone":{"type":"boolean","title":"Done"},"priority":{"type":"integer","title":"Priority","minimum":1,"maximum":5},"status":{"title":"Status","enum":["open","blocked","done"]},"dueOn":{"type":"string","title":"Due","format":"date"},"notes":{"type":"string","title":"Notes","contentMediaType":"text/plain"}}},"basePath":"/api/todos","fields":[{"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},{"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},{"type":"input","property":"priority","label":{"message":["Priority"],"lang":"en"},"control":"auto"},{"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},{"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},{"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}],"groups":[],"state":{"address":false,"store":{"type":"memory"},"fields":["text","isDone","priority","status","dueOn","notes"]}},"surface":{"type":"dialog","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}},"afterSubmit":"close","unsaved":"confirm"},"edit":{"form":{"type":"form","schema":{"type":"object","required":["text"],"properties":{"id":{"type":"integer"},"text":{"type":"string","title":"Task","minLength":2},"isDone":{"type":"boolean","title":"Done"},"priority":{"type":"integer","title":"Priority","minimum":1,"maximum":5},"status":{"title":"Status","enum":["open","blocked","done"]},"dueOn":{"type":"string","title":"Due","format":"date"},"notes":{"type":"string","title":"Notes","contentMediaType":"text/plain"}}},"basePath":"/api/todos","fields":[{"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},{"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},{"type":"input","property":"priority","label":{"message":["Priority"],"lang":"en"},"control":"auto"},{"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},{"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},{"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}],"groups":[],"state":{"address":false,"store":{"type":"memory"},"fields":["text","isDone","priority","status","dueOn","notes"]}},"surface":{"type":"dialog","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}},"afterSubmit":"close","unsaved":"confirm"},"delete":true,"rowActionsDisplay":"auto","rowActions":[],"relations":{},"empty":{"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},"layout":{"type":"table","columns":[{"header":{"message":["Task"],"lang":"en"},"value":{"root":"row","path":["text"]},"sort":"text","present":{"type":"string"},"labels":[]},{"header":{"message":["Priority"],"lang":"en"},"value":{"root":"row","path":["priority"]},"sort":"priority","present":{"type":"integer"},"style":{"by":{"root":"row","path":["priority"]},"cases":{"1":"danger"},"default":"strong"},"labels":[]},{"header":{"message":["Due"],"lang":"en"},"value":{"root":"row","path":["dueOn"]},"sort":"dueOn","present":{"type":"string","format":"date"},"labels":[]},{"header":{"message":["State"],"lang":"en"},"cell":{"type":"component","module":{"digest":"cc","name":"components.js"},"export":"StatusPill","abi":"ui_react-1","external":["react"],"stylesheets":[{"digest":"cc","name":"components.css"}],"props":{"done":{"root":"row","path":["isDone"]}}},"labels":[]}],"reads":{}},"fill":true},{"type":"form","schema":{"type":"object","required":["text"],"properties":{"id":{"type":"integer"},"text":{"type":"string","title":"Task","minLength":2},"isDone":{"type":"boolean","title":"Done"},"priority":{"type":"integer","title":"Priority","minimum":1,"maximum":5},"status":{"title":"Status","enum":["open","blocked","done"]},"dueOn":{"type":"string","title":"Due","format":"date"},"notes":{"type":"string","title":"Notes","contentMediaType":"text/plain"}}},"basePath":"/api/todos","fields":[{"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},{"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},{"type":"input","property":"priority","label":{"message":["Priority"],"lang":"en"},"control":"auto"},{"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},{"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},{"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}],"groups":[],"state":{"address":false,"store":{"type":"memory"},"fields":["text","isDone","priority","status","dueOn","notes"]},"fill":true},{"type":"action","schema":{"type":"object","required":["month"],"properties":{"month":{"type":"string","title":"Month","pattern":"^[0-9]{4}-[0-9]{2}$"},"copies":{"type":"integer","title":"Copies","minimum":1},"formats":{"type":"array","title":"Formats","items":{"enum":["pdf","csv"]}},"recipients":{"type":"array","title":"Recipients","items":{"type":"string","minLength":3}}}},"request":{"method":"POST","target":{"path":{"value":"/api/reports"},"pathParams":{},"queryParams":{}},"consumed":[]},"label":{"message":["Generate"],"lang":"en"},"fields":[{"type":"input","property":"month","label":{"message":["Month"],"lang":"en"},"control":"auto"},{"type":"input","property":"copies","label":{"message":["Copies"],"lang":"en"},"control":"auto"},{"type":"input","property":"formats","label":{"message":["Formats"],"lang":"en"},"control":"auto"},{"type":"input","property":"recipients","label":{"message":["Recipients"],"lang":"en"},"control":"auto"}],"groups":[],"state":{"address":false,"store":{"type":"memory"},"fields":["month","copies","formats","recipients"]},"failure":{"type":"stack","style":"danger","children":[{"type":"value","value":{"root":"error","path":["code"]},"present":{"type":"string"},"style":"strong"},{"type":"value","value":{"root":"error","path":["message"]},"present":{"type":"string"}}]},"onSuccess":{"refreshes":[]},"concurrency":"parallel","clearAnswerOn":[],"result":{"type":"stack","children":[{"type":"list","rowActionsDisplay":"auto","heading":{"message":["Files"],"lang":"en"},"rows":{"root":"result","path":["files"]},"columns":[{"header":{"message":["File"],"lang":"en"},"value":{"root":"row","path":["name"]},"present":{"type":"string"}},{"header":{"message":["Download"],"lang":"en"},"value":{"root":"row","path":["url"]},"present":{"type":"string","format":"uri-reference"}},{"header":{"message":["Month"],"lang":"en"},"value":{"root":"result","path":["month"]},"present":{"type":"string"}},{"header":{"message":["Kind"],"lang":"en"},"value":{"value":"report"}}]},{"type":"list","rowActionsDisplay":"auto","rows":{"root":"result","path":["totals"]},"columns":[{"header":{"message":["Made"],"lang":"en"},"value":{"root":"row","path":["at"]},"present":{"type":"string","format":"date"}}]}]},"enabled":{"at":{"root":"values","path":["month"]},"matches":{"minLength":7},"disabledText":{"message":["Choose a month first."],"lang":"en"}},"fill":true},{"type":"component","module":{"digest":"cc","name":"components.js"},"export":"Counter","abi":"ui_react-1","external":["react"],"stylesheets":[{"digest":"cc","name":"components.css"}],"props":{"step":{"value":1}},"fill":true},{"type":"chat","spec":{"attachments":{"accepts":[{"type":"image","mediaTypes":["image/png"],"maxBytes":1048576},{"type":"file","mediaTypes":["application/pdf"],"maxBytes":5242880}],"maxPerMessage":2},"operations":["branch","cancel"]},"basePath":"/api/chat","header":[{"type":"bar","start":[],"center":[],"end":[{"type":"command","command":{"root":"chat","path":["exportTranscript"]},"text":{"set":"Ui.Translations","key":"chatExport"},"button":{"type":"text"},"fill":true}],"fill":true}],"placeholder":{"message":["Ask anything"],"lang":"en"},"starters":[{"prompt":{"message":["Summarise this file"],"lang":"en"},"onChoose":"send"}],"show":{"reasoning":true,"toolDetail":true,"usage":true,"copy":true},"buttons":{"copy":{"type":"text"},"edit":{"type":"text"},"regenerate":{"type":"text"},"attach":{"type":"text"},"send":{"type":"text"},"stop":{"type":"text"}},"composer":{"actions":"inside"},"conversation":null,"refreshes":[],"fill":true},{"type":"split","side":"start","size":"small","frame":"flush","toggle":{"type":"text"},"label":{"message":["Filters"],"lang":"en"},"aside":{"actions":[{"type":"link","text":{"message":["New"],"lang":"en"},"href":{"path":{"value":"/new"},"pathParams":{},"queryParams":{}},"button":{"type":"icon","icon":null,"label":"shown"}}],"content":{"type":"text","text":{"message":["Aside text"],"lang":"en"}}},"content":{"type":"text","text":{"message":["Content text"],"lang":"en"},"fill":true},"collapse":{"collapsed":false,"state":null},"compact":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}},"fill":true}]}},
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Filled"],"lang":"en"},"layout":"main"}],"layout":"main","stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
+      "layouts": {"main":{"specVersion":1,"id":"main","width":"contained","header":[{"type":"navbar","title":{"message":["Scenes"],"lang":"en"},"start":[{"type":"badge","text":{"message":["Beta"],"lang":"en"}}],"end":[{"type":"link","text":{"message":["Help"],"lang":"en"},"href":{"path":{"value":"/"},"pathParams":{},"queryParams":{}}},{"type":"menu","text":{"message":["Language"],"lang":"en"},"items":[{"type":"link","text":{"message":["English"],"lang":"en"},"href":{"path":{"value":"/?lang=en"},"pathParams":{},"queryParams":{}},"style":"strong"},{"type":"link","text":{"message":["Polski"],"lang":"en"},"href":{"path":{"value":"/?lang=pl"},"pathParams":{},"queryParams":{}}}]}],"navigation":{"items":[{"type":"page","key":"filled","path":"/","text":{"message":["Filled"],"lang":"en"}}]},"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}},"fill":false}],"footer":[]}},
+      "pages": {"/":{"specVersion":1,"title":{"message":["Filled"],"lang":"en"},"lang":"en","query":{},"width":"full","children":[{"type":"stack","fill":true,"children":[{"type":"text","text":{"message":["Heading"],"lang":"en"},"fill":true}]},{"type":"box","fill":true,"children":[{"type":"badge","text":{"message":["New"],"lang":"en"},"fill":true}]},{"type":"columns","fill":true,"children":[{"type":"link","text":{"message":["Docs"],"lang":"en"},"href":{"path":{"value":"/docs"},"pathParams":{},"queryParams":{}},"button":null,"fill":true}]},{"type":"image","src":"/logo.png","alt":{"message":[],"lang":"en"},"fill":true},{"type":"svg","markup":"<svg xmlns='http://www.w3.org/2000/svg'/>","alt":{"message":["Chart"],"lang":"en"},"fill":true},{"type":"markdown","value":{"value":"# Filled"},"fill":true},{"type":"time","value":{"value":"2026-11-05"},"relative":false,"fill":true},{"type":"button","action":{"type":"action","schema":{"type":"object","required":["id"],"properties":{"id":{"type":"string"}}},"request":{"method":"POST","target":{"path":{"value":"/api/decisions"},"pathParams":{},"queryParams":{}},"consumed":[]},"label":{"message":["Approve"],"lang":"en"},"fields":[{"type":"input","property":"id","label":{"message":["id"],"lang":"en"},"control":"auto"}],"groups":[],"state":{"address":false,"store":{"type":"memory"},"fields":["id"]},"failure":{"type":"stack","style":"danger","children":[{"type":"value","value":{"root":"error","path":["code"]},"present":{"type":"string"},"style":"strong"},{"type":"value","value":{"root":"error","path":["message"]},"present":{"type":"string"}}]},"onSuccess":{"refreshes":[]},"concurrency":"parallel","clearAnswerOn":[]},"inputs":{"id":{"value":"p7"}},"button":{"type":"text"},"fill":true},{"type":"menu","text":{"message":["Language"],"lang":"en"},"items":[{"type":"link","text":{"message":["English"],"lang":"en"},"href":{"path":{"value":"/?lang=en"},"pathParams":{},"queryParams":{}},"button":null,"fill":false}],"fill":true},{"type":"tabs","tabs":[{"key":"summary","text":{"message":["Summary"],"lang":"en"},"children":[{"type":"text","text":{"message":["Summary text"],"lang":"en"},"fill":true}]}],"fill":true},{"type":"bar","start":[{"type":"text","text":{"message":["Start"],"lang":"en"},"fill":false}],"center":[],"end":[{"type":"badge","text":{"message":["End"],"lang":"en"},"fill":false}],"fill":true},{"type":"data","schema":{"type":"object","required":["authorized"],"properties":{"authorized":{"type":"boolean"},"email":{"type":"string"},"files":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"url":{"type":"string","format":"uri-reference"}}}}}},"source":{"path":{"value":"/api/account"},"pathParams":{},"queryParams":{}},"query":{},"content":{"type":"stack","fill":true,"children":[{"type":"value","value":{"root":"data","path":["email"]},"present":{"type":"string"},"fill":true},{"type":"list","rowActionsDisplay":"auto","heading":{"message":["Files"],"lang":"en"},"rows":{"root":"data","path":["files"]},"columns":[{"header":{"message":["Name"],"lang":"en"},"value":{"root":"row","path":["name"]},"present":{"type":"string"}}],"fill":true}]},"loading":{"type":"text","text":{"message":["Loading…"],"lang":"en"},"style":"muted"},"failure":{"type":"stack","style":"danger","children":[{"type":"value","value":{"root":"error","path":["code"]},"present":{"type":"string"},"style":"strong"},{"type":"value","value":{"root":"error","path":["message"]},"present":{"type":"string"}}]},"reloadOn":[],"fill":true},{"type":"filters","basePath":"/api/todos","fields":[{"property":"text","operator":"contains","label":{"message":["Task"],"lang":"en"},"schema":{"type":"string","title":"Task","minLength":2},"pinned":false,"control":"auto","values":"all"},{"property":"isDone","operator":"eq","label":{"message":["Done"],"lang":"en"},"schema":{"type":"boolean","title":"Done"},"pinned":false,"control":"auto","values":"all"},{"property":"status","operator":"in","label":{"message":["Status"],"lang":"en"},"schema":{"title":"Status","enum":["open","blocked","done"]},"pinned":false,"control":"auto","values":"all"},{"property":"priority","operator":"gte","label":{"message":["Priority"],"lang":"en"},"schema":{"type":"integer","title":"Priority","minimum":1,"maximum":5},"pinned":false,"control":"auto","values":"all"},{"property":"dueOn","operator":"gte","label":{"message":["Due"],"lang":"en"},"schema":{"type":"string","title":"Due","format":"date"},"pinned":false,"control":"auto","values":"all"},{"property":"dueOn","operator":"lte","label":{"message":["Due"],"lang":"en"},"schema":{"type":"string","title":"Due","format":"date"},"pinned":false,"control":"auto","values":"all"}],"content":{"type":"text","text":{"message":["Filtered"],"lang":"en"},"fill":true},"show":"all","placement":{"type":"above"},"controls":"direct","apply":"commit","summary":"none","state":{"address":false,"store":{"type":"memory"},"fields":["id","text","isDone","priority","status","dueOn","notes"]},"presets":[],"fill":true},{"type":"listing","schema":{"type":"object","required":["text"],"properties":{"id":{"type":"integer"},"text":{"type":"string","title":"Task","minLength":2},"isDone":{"type":"boolean","title":"Done"},"priority":{"type":"integer","title":"Priority","minimum":1,"maximum":5},"status":{"title":"Status","enum":["open","blocked","done"]},"dueOn":{"type":"string","title":"Due","format":"date"},"notes":{"type":"string","title":"Notes","contentMediaType":"text/plain"}}},"basePath":"/api/empty","key":"id","query":{},"pageSize":2,"paging":"pages","sort":{"sortable":["text","priority","dueOn"],"initial":null},"show":{"count":true},"rowStyle":{"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},"create":{"form":{"type":"form","schema":{"type":"object","required":["text"],"properties":{"id":{"type":"integer"},"text":{"type":"string","title":"Task","minLength":2},"isDone":{"type":"boolean","title":"Done"},"priority":{"type":"integer","title":"Priority","minimum":1,"maximum":5},"status":{"title":"Status","enum":["open","blocked","done"]},"dueOn":{"type":"string","title":"Due","format":"date"},"notes":{"type":"string","title":"Notes","contentMediaType":"text/plain"}}},"basePath":"/api/todos","fields":[{"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},{"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},{"type":"input","property":"priority","label":{"message":["Priority"],"lang":"en"},"control":"auto"},{"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},{"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},{"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}],"groups":[],"state":{"address":false,"store":{"type":"memory"},"fields":["text","isDone","priority","status","dueOn","notes"]}},"surface":{"type":"dialog","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}},"afterSubmit":"close","unsaved":"confirm"},"edit":{"form":{"type":"form","schema":{"type":"object","required":["text"],"properties":{"id":{"type":"integer"},"text":{"type":"string","title":"Task","minLength":2},"isDone":{"type":"boolean","title":"Done"},"priority":{"type":"integer","title":"Priority","minimum":1,"maximum":5},"status":{"title":"Status","enum":["open","blocked","done"]},"dueOn":{"type":"string","title":"Due","format":"date"},"notes":{"type":"string","title":"Notes","contentMediaType":"text/plain"}}},"basePath":"/api/todos","fields":[{"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},{"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},{"type":"input","property":"priority","label":{"message":["Priority"],"lang":"en"},"control":"auto"},{"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},{"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},{"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}],"groups":[],"state":{"address":false,"store":{"type":"memory"},"fields":["text","isDone","priority","status","dueOn","notes"]}},"surface":{"type":"dialog","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}},"afterSubmit":"close","unsaved":"confirm"},"delete":true,"rowActionsDisplay":"auto","rowActions":[],"relations":{},"empty":{"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},"layout":{"type":"table","columns":[{"header":{"message":["Task"],"lang":"en"},"value":{"root":"row","path":["text"]},"sort":"text","present":{"type":"string"},"labels":[]},{"header":{"message":["Priority"],"lang":"en"},"value":{"root":"row","path":["priority"]},"sort":"priority","present":{"type":"integer"},"style":{"by":{"root":"row","path":["priority"]},"cases":{"1":"danger"},"default":"strong"},"labels":[]},{"header":{"message":["Due"],"lang":"en"},"value":{"root":"row","path":["dueOn"]},"sort":"dueOn","present":{"type":"string","format":"date"},"labels":[]},{"header":{"message":["State"],"lang":"en"},"cell":{"type":"component","module":{"digest":"cc","name":"components.js"},"export":"StatusPill","abi":"ui_react-1","external":["react"],"stylesheets":[{"digest":"cc","name":"components.css"}],"props":{"done":{"root":"row","path":["isDone"]}}},"labels":[]}],"reads":{}},"fill":true},{"type":"form","schema":{"type":"object","required":["text"],"properties":{"id":{"type":"integer"},"text":{"type":"string","title":"Task","minLength":2},"isDone":{"type":"boolean","title":"Done"},"priority":{"type":"integer","title":"Priority","minimum":1,"maximum":5},"status":{"title":"Status","enum":["open","blocked","done"]},"dueOn":{"type":"string","title":"Due","format":"date"},"notes":{"type":"string","title":"Notes","contentMediaType":"text/plain"}}},"basePath":"/api/todos","fields":[{"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},{"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},{"type":"input","property":"priority","label":{"message":["Priority"],"lang":"en"},"control":"auto"},{"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},{"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},{"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}],"groups":[],"state":{"address":false,"store":{"type":"memory"},"fields":["text","isDone","priority","status","dueOn","notes"]},"fill":true},{"type":"action","schema":{"type":"object","required":["month"],"properties":{"month":{"type":"string","title":"Month","pattern":"^[0-9]{4}-[0-9]{2}$"},"copies":{"type":"integer","title":"Copies","minimum":1},"formats":{"type":"array","title":"Formats","items":{"enum":["pdf","csv"]}},"recipients":{"type":"array","title":"Recipients","items":{"type":"string","minLength":3}}}},"request":{"method":"POST","target":{"path":{"value":"/api/reports"},"pathParams":{},"queryParams":{}},"consumed":[]},"label":{"message":["Generate"],"lang":"en"},"fields":[{"type":"input","property":"month","label":{"message":["Month"],"lang":"en"},"control":"auto"},{"type":"input","property":"copies","label":{"message":["Copies"],"lang":"en"},"control":"auto"},{"type":"input","property":"formats","label":{"message":["Formats"],"lang":"en"},"control":"auto"},{"type":"input","property":"recipients","label":{"message":["Recipients"],"lang":"en"},"control":"auto"}],"groups":[],"state":{"address":false,"store":{"type":"memory"},"fields":["month","copies","formats","recipients"]},"failure":{"type":"stack","style":"danger","children":[{"type":"value","value":{"root":"error","path":["code"]},"present":{"type":"string"},"style":"strong"},{"type":"value","value":{"root":"error","path":["message"]},"present":{"type":"string"}}]},"onSuccess":{"refreshes":[]},"concurrency":"parallel","clearAnswerOn":[],"result":{"type":"stack","children":[{"type":"list","rowActionsDisplay":"auto","heading":{"message":["Files"],"lang":"en"},"rows":{"root":"result","path":["files"]},"columns":[{"header":{"message":["File"],"lang":"en"},"value":{"root":"row","path":["name"]},"present":{"type":"string"}},{"header":{"message":["Download"],"lang":"en"},"value":{"root":"row","path":["url"]},"present":{"type":"string","format":"uri-reference"}},{"header":{"message":["Month"],"lang":"en"},"value":{"root":"result","path":["month"]},"present":{"type":"string"}},{"header":{"message":["Kind"],"lang":"en"},"value":{"value":"report"}}]},{"type":"list","rowActionsDisplay":"auto","rows":{"root":"result","path":["totals"]},"columns":[{"header":{"message":["Made"],"lang":"en"},"value":{"root":"row","path":["at"]},"present":{"type":"string","format":"date"}}]}]},"enabled":{"at":{"root":"values","path":["month"]},"matches":{"minLength":7},"disabledText":{"message":["Choose a month first."],"lang":"en"}},"fill":true},{"type":"component","module":{"digest":"cc","name":"components.js"},"export":"Counter","abi":"ui_react-1","external":["react"],"stylesheets":[{"digest":"cc","name":"components.css"}],"props":{"step":{"value":1}},"fill":true},{"type":"chat","spec":{"attachments":{"accepts":[{"type":"image","mediaTypes":["image/png"],"maxBytes":1048576},{"type":"file","mediaTypes":["application/pdf"],"maxBytes":5242880}],"maxPerMessage":2},"operations":["branch","cancel"]},"basePath":"/api/chat","header":[{"type":"bar","start":[],"center":[],"end":[{"type":"command","command":{"root":"chat","path":["exportTranscript"]},"text":{"set":"Ui.Translations","key":"chatExport"},"button":{"type":"text"},"fill":true}],"fill":true}],"placeholder":{"message":["Ask anything"],"lang":"en"},"starters":[{"prompt":{"message":["Summarise this file"],"lang":"en"},"onChoose":"send"}],"show":{"reasoning":true,"toolDetail":true,"usage":true,"copy":true},"buttons":{"copy":{"type":"text"},"edit":{"type":"text"},"regenerate":{"type":"text"},"attach":{"type":"text"},"send":{"type":"text"},"stop":{"type":"text"}},"composer":{"actions":"inside"},"conversation":null,"refreshes":[],"fill":true},{"type":"split","aside":{"side":"start","size":"small","frame":"flush","toggle":{"type":"text"},"label":{"message":["Filters"],"lang":"en"},"collapse":{"collapsed":false,"state":null},"compact":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}},"actions":[{"type":"link","text":{"message":["New"],"lang":"en"},"href":{"path":{"value":"/new"},"pathParams":{},"queryParams":{}},"button":{"type":"icon","icon":null,"label":"shown"}}],"content":{"type":"text","text":{"message":["Aside text"],"lang":"en"}}},"content":{"type":"text","text":{"message":["Content text"],"lang":"en"},"fill":true},"fill":true}]}},
       "responses": {"GET /api/todos":{"status":200,"body":{"rows":[{"id":1,"text":"Write the plan","isDone":true,"priority":2,"status":"done","dueOn":"2026-10-01"},{"id":2,"text":"Review the plan","isDone":false,"priority":1,"status":"open","dueOn":"2026-10-07"}],"total":5,"next":"Mg"}},"GET /api/todos/*":{"status":200,"body":{"id":1,"text":"Write the plan","isDone":true,"priority":2,"status":"done","dueOn":"2026-10-01"}},"POST /api/todos":{"status":201,"body":{"id":6,"text":"Write the plan","isDone":true,"priority":2,"status":"done","dueOn":"2026-10-01"}},"DELETE /api/todos/*":{"status":204},"GET /api/empty":{"status":200,"body":{"rows":[],"total":0,"next":null}},"GET /api/account":{"status":200,"body":{"authorized":true,"email":"ada@example.com","files":[{"name":"a.pdf"}]}}},
       "modules": {"/_telo/ui/assets/cc/components.js":["Counter","StatusPill","HostProbe"]},
-      "steps": [{"wait":500},{"expect":{"present":[{"part":"app","attributes":{"data-fill":"true"}},{"part":"main","attributes":{"data-fill":"true"}},{"part":"page","attributes":{"data-fill":"true"}},{"part":"box","attributes":{"data-fill":"true"}},{"part":"stack","attributes":{"data-fill":"true"}},{"part":"columns","attributes":{"data-fill":"true"}},{"part":"text","attributes":{"data-fill":"true"}},{"part":"badge","attributes":{"data-fill":"true"}},{"part":"link","attributes":{"data-fill":"true"}},{"part":"image","attributes":{"data-fill":"true"}},{"part":"svg","attributes":{"data-fill":"true"}},{"part":"value","attributes":{"data-fill":"true"}},{"part":"list","attributes":{"data-fill":"true"}},{"part":"bar","attributes":{"data-fill":"true"}},{"part":"command","attributes":{"data-fill":"true"}},{"part":"data","attributes":{"data-fill":"true"}},{"part":"listing","attributes":{"data-fill":"true"}},{"part":"form","attributes":{"data-fill":"true"}},{"part":"action","attributes":{"data-fill":"true"}},{"part":"filters","attributes":{"data-fill":"true"}},{"part":"component","attributes":{"data-fill":"true"}},{"part":"chat","attributes":{"data-fill":"true"}},{"part":"split","attributes":{"data-fill":"true"}},{"part":"split-aside","attributes":{"data-fill":"true"}},{"part":"split-content","attributes":{"data-fill":"true"}},{"part":"markdown","attributes":{"data-fill":"true"}},{"part":"time","attributes":{"data-fill":"true"}},{"part":"button","attributes":{"data-fill":"true"}},{"part":"navigation","attributes":{"data-fill":"true"}},{"part":"tabs","attributes":{"data-fill":"true"}},{"part":"tab-panel","attributes":{"data-fill":"true"}}]}}]
+      "steps": [{"wait":500},{"expect":{"present":[{"part":"app","attributes":{"data-fill":"true"}},{"part":"main","attributes":{"data-fill":"true"}},{"part":"page","attributes":{"data-fill":"true"}},{"part":"box","attributes":{"data-fill":"true"}},{"part":"stack","attributes":{"data-fill":"true"}},{"part":"columns","attributes":{"data-fill":"true"}},{"part":"text","attributes":{"data-fill":"true"}},{"part":"badge","attributes":{"data-fill":"true"}},{"part":"link","attributes":{"data-fill":"true"}},{"part":"image","attributes":{"data-fill":"true"}},{"part":"svg","attributes":{"data-fill":"true"}},{"part":"value","attributes":{"data-fill":"true"}},{"part":"list","attributes":{"data-fill":"true"}},{"part":"bar","attributes":{"data-fill":"true"}},{"part":"command","attributes":{"data-fill":"true"}},{"part":"data","attributes":{"data-fill":"true"}},{"part":"listing","attributes":{"data-fill":"true"}},{"part":"form","attributes":{"data-fill":"true"}},{"part":"action","attributes":{"data-fill":"true"}},{"part":"filters","attributes":{"data-fill":"true"}},{"part":"component","attributes":{"data-fill":"true"}},{"part":"chat","attributes":{"data-fill":"true"}},{"part":"split","attributes":{"data-fill":"true"}},{"part":"aside","attributes":{"data-fill":"true"}},{"part":"split-content","attributes":{"data-fill":"true"}},{"part":"markdown","attributes":{"data-fill":"true"}},{"part":"time","attributes":{"data-fill":"true"}},{"part":"button","attributes":{"data-fill":"true"}},{"part":"navigation","attributes":{"data-fill":"true"}},{"part":"tabs","attributes":{"data-fill":"true"}},{"part":"tab-panel","attributes":{"data-fill":"true"}}]}}]
     },
     {
       "name": "a filter bar drawn as one search box: its chips before the input, and its suggestions in sections under it, taken from the keyboard",
       "path": "/",
-      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Data"],"lang":"en"}}],"navigation":{"items":[{"type":"page","key":"data","path":"/","text":{"message":["Data"],"lang":"en"}}],"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}}},"stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"header":{"start":[],"end":[],"width":"contained"},"compactBelow":"40rem"},
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Data"],"lang":"en"},"layout":"main"}],"layout":"main","stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
+      "layouts": {"main":{"specVersion":1,"id":"main","width":"contained","header":[{"type":"navbar","title":{"message":["Scenes"],"lang":"en"},"start":[],"end":[],"navigation":{"items":[{"type":"page","key":"data","path":"/","text":{"message":["Data"],"lang":"en"}}]},"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}},"fill":false}],"footer":[]}},
       "pages": {"/":{"specVersion":1,"title":{"message":["Data"],"lang":"en"},"lang":"en","query":{},"width":"contained","children":[{"type":"filters","basePath":"/api/todos","fields":[{"property":"text","operator":"contains","label":{"message":["Task"],"lang":"en"},"schema":{"type":"string","title":"Task","minLength":2},"pinned":false,"control":"auto","values":"all"},{"property":"status","operator":"in","label":{"message":["Status"],"lang":"en"},"schema":{"title":"Status","enum":["open","blocked","done"]},"pinned":false,"control":"auto","values":"all","default":["open"],"labels":[{"value":"open","label":{"message":["Open"],"lang":"en"}},{"value":"blocked","label":{"message":["Blocked"],"lang":"en"}},{"value":"done","label":{"message":["Done"],"lang":"en"}}]},{"property":"priority","operator":"gte","label":{"message":["Priority"],"lang":"en"},"schema":{"type":"integer","title":"Priority","minimum":1,"maximum":5},"pinned":false,"control":"auto","values":"all"}],"content":{"type":"text","text":{"message":["Matching tasks"],"lang":"en"}},"placement":{"type":"searchBox","placeholder":{"message":["Search tasks, or filter by status"],"lang":"en"}},"apply":"commit","state":{"address":false,"store":{"type":"memory"},"fields":["search","text","status","priority"]},"presets":[{"label":{"message":["Open"],"lang":"en"},"values":[{"property":"status","operator":"in","value":["open"]}]}],"search":{"pinned":false,"default":"plan"}}]}},
       "responses": {},
       "steps": [
@@ -7345,7 +6805,8 @@
     {
       "name": "a markdown text whose items carry controls, one past the text; times relative and absolute, a button, and a list styled by row and column",
       "path": "/",
-      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Review"],"lang":"en"}}],"navigation":{"items":[{"type":"page","key":"review","path":"/","text":{"message":["Review"],"lang":"en"}}],"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}}},"stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"header":{"start":[],"end":[],"width":"contained"},"compactBelow":"40rem"},
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Review"],"lang":"en"},"layout":"main"}],"layout":"main","stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
+      "layouts": {"main":{"specVersion":1,"id":"main","width":"contained","header":[{"type":"navbar","title":{"message":["Scenes"],"lang":"en"},"start":[],"end":[],"navigation":{"items":[{"type":"page","key":"review","path":"/","text":{"message":["Review"],"lang":"en"}}]},"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}},"fill":false}],"footer":[]}},
       "pages": {"/":{"specVersion":1,"title":{"message":["Review"],"lang":"en"},"lang":"en","query":{},"width":"contained","children":[{"type":"markdown","value":{"value":"# Plan\n\n- S1 Split the importer\n- S2 Merge the readers\n"},"annotations":{"rows":{"value":[{"id":"S1","line":3,"count":2},{"id":"S2","line":4,"count":0},{"id":"S9","line":99,"count":1}]},"line":{"root":"row","path":["line"]},"count":{"root":"row","path":["count"]},"action":{"action":{"type":"action","schema":{"type":"object","required":["item","body"],"properties":{"item":{"type":"string"},"body":{"type":"string","title":"Comment","minLength":1}}},"request":{"method":"POST","target":{"path":{"value":"/api/comments"},"pathParams":{},"queryParams":{}},"consumed":[]},"label":{"message":["Comment"],"lang":"en"},"fields":[{"type":"input","property":"item","label":{"message":["item"],"lang":"en"},"control":"auto"},{"type":"input","property":"body","label":{"message":["Comment"],"lang":"en"},"control":"auto"}],"groups":[],"state":{"address":false,"store":{"type":"memory"},"fields":["item","body"]},"failure":{"type":"stack","style":"danger","children":[{"type":"value","value":{"root":"error","path":["code"]},"present":{"type":"string"},"style":"strong"},{"type":"value","value":{"root":"error","path":["message"]},"present":{"type":"string"}}]},"onSuccess":{"refreshes":[]},"concurrency":"parallel","clearAnswerOn":[]},"inputs":{"item":{"root":"row","path":["id"]}},"prompt":{"fields":[{"type":"input","property":"body","label":{"message":["Comment"],"lang":"en"},"control":"auto"}]}}}},{"type":"time","value":{"value":"2026-11-05T16:20:00Z"},"relative":true},{"type":"time","value":{"value":"2026-11-05"},"relative":false},{"type":"button","action":{"type":"action","schema":{"type":"object","required":["id"],"properties":{"id":{"type":"string"}}},"request":{"method":"POST","target":{"path":{"value":"/api/decisions"},"pathParams":{},"queryParams":{}},"consumed":[]},"label":{"message":["Approve"],"lang":"en"},"fields":[{"type":"input","property":"id","label":{"message":["id"],"lang":"en"},"control":"auto"}],"groups":[],"state":{"address":false,"store":{"type":"memory"},"fields":["id"]},"failure":{"type":"stack","style":"danger","children":[{"type":"value","value":{"root":"error","path":["code"]},"present":{"type":"string"},"style":"strong"},{"type":"value","value":{"root":"error","path":["message"]},"present":{"type":"string"}}]},"onSuccess":{"refreshes":[]},"concurrency":"parallel","clearAnswerOn":[]},"inputs":{"id":{"value":"p7"}},"button":{"type":"text"}},{"type":"list","rowActionsDisplay":"auto","rows":{"value":[{"op":"added","text":"- two files","at":"2026-11-05T16:20:00Z"},{"op":"context","text":"## S1 Split","at":"2026-11-01T10:00:00Z"}]},"rowStyle":{"by":{"root":"row","path":["op"]},"cases":{"added":"success","removed":"danger"}},"columns":[{"header":{"message":["Line"],"lang":"en"},"value":{"root":"row","path":["text"]},"labels":[],"present":{"type":"string"},"style":{"by":{"root":"row","path":["op"]},"cases":{"context":"muted"}}},{"type":"time","header":{"message":["When"],"lang":"en"},"value":{"root":"row","path":["at"]},"relative":true,"present":{"type":"string","format":"date-time"}}]}]}},
       "responses": {},
       "steps": [

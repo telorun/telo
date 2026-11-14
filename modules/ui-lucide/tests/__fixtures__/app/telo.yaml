@@ -21,13 +21,16 @@ kind: UiReact.App
 metadata: { name: admin }
 title: Icons
 theme: !ref UiReact.defaultTheme
-pages:
-  - !ref home
-navigation:
-  items:
-    - type: page
-      page: !ref home
-      icon: { kind: UiLucide.Icon, name: house }
+pages: [!ref home]
+layout:
+  kind: Ui.PageLayout
+  header:
+    - type: pane
+      ref:
+        kind: Ui.Navbar
+        navigation:
+          items:
+            - { type: page, page: !ref home, icon: { kind: UiLucide.Icon, name: house } }
 ---
 kind: Http.Server
 metadata: { name: server }

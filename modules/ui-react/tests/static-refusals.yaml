@@ -11,7 +11,7 @@ metadata:
     checked for duplicate paths all the same — the rule is not skipped. A page
     path and a link address written `//…` are refused as written: a browser
     reads either as another host. A condition the browser draws cannot read
-    the request, and a node's delivery cannot read the query; a header node
+    the request, and a node's delivery cannot read the query; a not-found node
     has no query to read at all. A theme two of
     whose `controls` entries implement one control is refused where it is
     declared and by the theme itself — two different sets, two equal
@@ -19,23 +19,27 @@ metadata:
     alike — and so is a control set replacing some of the ten layer controls
     but not all of them, as the nine of the third generation are, and a set
     written against the previous controls generation. A
-    navigation entry naming a page the application does not list, at any
-    depth of its groups, is refused where it is written and by the
-    application itself; so is an entry naming a page with no title that gives
-    no text of its own, and one naming a page with a variable in its path —
-    in a group inside a group as well.
+    page reference reachable from the application — in a navbar, a link, a
+    navigation column in the aside, another module's pane or a library's
+    navbar — naming a page `pages` does not list is refused where it is
+    written, whatever alias `ui` is imported under: an entry module's own
+    reference fails the load's analysis (`telo run` exits 1), and no check at
+    run time repeats it, so only a dependency's reference reaches a running
+    application, where its link opens the not-found page.
 imports: { Probe: ./__fixtures__/probe, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref computedChildren
   - !ref computedChildrenAtRuntime
   - !ref duplicatePath
   - !ref duplicatePathAtRuntime
+  - !ref duplicateRoute
+  - !ref duplicateRouteAtRuntime
   - !ref variableNamesPath
   - !ref variableNamesPathAtRuntime
   - !ref offsiteReferences
   - !ref ruleRuns
   - !ref pageRoots
-  - !ref headerRoots
+  - !ref notFoundRoots
   - !ref themeControlDuplicate
   - !ref themeControlDuplicateAtRuntime
   - !ref themeControlEqual
@@ -49,12 +53,9 @@ targets:
   - !ref controlsPreviousGeneration
   - !ref controlsPreviousGenerationImported
   - !ref unroutedPage
-  - !ref unroutedPageAtRuntime
-  - !ref untitledPage
-  - !ref untitledPageAtRuntime
-  - !ref navigationPageVariable
-  - !ref navigationPageVariableAtRuntime
-  - !ref navigationPageDeep
+  - !ref unroutedPageCount
+  - !ref unroutedPageAlias
+  - !ref unroutedPageAliasCount
 ---
 kind: Assert.Manifest
 metadata: { name: computedChildren }
@@ -82,6 +83,24 @@ expect:
 kind: Assert.Manifest
 metadata: { name: duplicatePathAtRuntime }
 source: ./__fixtures__/invalid/duplicate-path/telo.yaml
+expect:
+  errors: []
+  runFails: "UiReact.App 'twice': 'pages[1]' declares a path another page already has ('/reports')"
+---
+# A page and a `Ui.PageRoute` routing one path are two pages at it.
+kind: Assert.Manifest
+metadata: { name: duplicateRoute }
+source: ./__fixtures__/invalid/duplicate-route/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "UiReact.App/twice at 'pages[0]': declares a path another page already has"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "UiReact.App/twice at 'pages[1]': declares a path another page already has"
+---
+kind: Assert.Manifest
+metadata: { name: duplicateRouteAtRuntime }
+source: ./__fixtures__/invalid/duplicate-route/telo.yaml
 expect:
   errors: []
   runFails: "UiReact.App 'twice': 'pages[1]' declares a path another page already has ('/reports')"
@@ -136,14 +155,12 @@ expect:
       message: "UiReact.App/mixed: !cel: unknown identifier 'query'"
 ---
 kind: Assert.Manifest
-metadata: { name: headerRoots }
-source: ./__fixtures__/invalid/header-roots/telo.yaml
+metadata: { name: notFoundRoots }
+source: ./__fixtures__/invalid/notfound-roots/telo.yaml
 expect:
   errors:
     - code: CEL_UNKNOWN_IDENTIFIER
-      message: "UiReact.App/headed: !cel: unknown identifier 'query'"
-    - code: CEL_UNKNOWN_FIELD
-      message: "UiReact.App/headed: !cel: 'query' is not defined"
+      message: "UiReact.App/headed: !cel: 'query' is not available here: a layout region is drawn on pages with different path variables and query parameters, so it reads none."
 ---
 kind: Assert.Manifest
 metadata: { name: themeControlDuplicate }
@@ -239,57 +256,60 @@ metadata: { name: themeControlDisjointAtRuntime }
 source: ./__fixtures__/theme-control-disjoint/telo.yaml
 expect: { errors: [], runs: true }
 ---
+# A page reference reachable from the application, written in a navbar, a link,
+# a navigation column in the aside, another module's pane and a library's
+# navbar. The library's page the application lists through its alias is never
+# reported. There is no runtime twin: the running application answers such a
+# link with the not-found page.
 kind: Assert.Manifest
 metadata: { name: unroutedPage }
 source: ./__fixtures__/invalid/unrouted-page/lib/telo.yaml
 expect:
   errors:
     - code: RESOURCE_RULE_VIOLATED
-      message: "UiReact.App/deep at 'navigation.items[1].items[0].items[0].items[0]': names a page the application does not list in its pages"
+      message: "UiReact.App/draft: names a page the application does not list in its pages, so it leads nowhere"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "UiReact.App/draft: names a page the application does not list in its pages, so it leads nowhere"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "UiReact.App/draft: names a page the application does not list in its pages, so it leads nowhere"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "UiReact.App/draft: names a page the application does not list in its pages, so it leads nowhere"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "(the Ui.Page UiReactUnroutedDocs.guide, reached through Docs.nav)"
 ---
-kind: Assert.Manifest
-metadata: { name: unroutedPageAtRuntime }
-source: ./__fixtures__/invalid/unrouted-page/telo.yaml
-expect:
-  errors: []
-  runFails: "UiReact.App 'deep': 'navigation.items[1].items[0].items[0].items[0]' names a page the application does not list in its pages ('/hidden')"
+# One finding for each of the five references: the count is what a message
+# alone, identical for four of them, cannot pin.
+kind: Telo.Sequence
+metadata: { name: unroutedPageCount }
+steps:
+  - name: check
+    invoke: { kind: Probe.Diagnostics, source: ./__fixtures__/invalid/unrouted-page/lib/telo.yaml }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.check.result.codes"
+      expected: [RESOURCE_RULE_VIOLATED, RESOURCE_RULE_VIOLATED, RESOURCE_RULE_VIOLATED, RESOURCE_RULE_VIOLATED, RESOURCE_RULE_VIOLATED]
 ---
+# `ui` imported as `Kit`: the navigation rules a navbar inherits and the page
+# check reach every entry all the same.
 kind: Assert.Manifest
-metadata: { name: untitledPage }
-source: ./__fixtures__/invalid/untitled-page/lib/telo.yaml
+metadata: { name: unroutedPageAlias }
+source: ./__fixtures__/invalid/unrouted-page-alias/telo.yaml
 expect:
   errors:
     - code: RESOURCE_RULE_VIOLATED
-      message: "UiReact.App/bare at 'navigation.items[1].items[0]': names a page with no title and gives no text of its own"
----
-kind: Assert.Manifest
-metadata: { name: untitledPageAtRuntime }
-source: ./__fixtures__/invalid/untitled-page/telo.yaml
-expect:
-  errors: []
-  runFails: "UiReact.App 'bare': 'navigation.items[1].items[0]' names a page with no title ('/chat') and gives no text of its own"
----
-kind: Assert.Manifest
-metadata: { name: navigationPageVariable }
-source: ./__fixtures__/invalid/navigation-page-variable/lib/telo.yaml
-expect:
-  errors:
+      message: "UiReact.App/aliased: names a page the application does not list in its pages, so it leads nowhere"
     - code: RESOURCE_RULE_VIOLATED
-      message: "UiReact.App/linked at 'navigation.items[1]': names a page with a variable in its path, which a navigation entry cannot fill"
+      message: "Kit.Navbar/aliased_layout_header_0_ref at 'layout.header[0].ref.navigation.items[1]': names a page with no title"
 ---
-kind: Assert.Manifest
-metadata: { name: navigationPageVariableAtRuntime }
-source: ./__fixtures__/invalid/navigation-page-variable/telo.yaml
-expect:
-  errors: []
-  runFails: "UiReact.App 'linked': 'navigation.items[1]' names a page with a variable in its path ('/plans/{id}')"
----
-kind: Assert.Manifest
-metadata: { name: navigationPageDeep }
-source: ./__fixtures__/invalid/navigation-page-deep/telo.yaml
-expect:
-  errors:
-    - code: RESOURCE_RULE_VIOLATED
-      message: "UiReact.App/nested at 'navigation.items[1].items[0].items[0]': names a page with a variable in its path"
-    - code: RESOURCE_RULE_VIOLATED
-      message: "UiReact.App/nested at 'navigation.items[1].items[0].items[1]': names a page with no title and gives no text of its own"
+# The navbar's and the column's unlisted page, and the untitled one.
+kind: Telo.Sequence
+metadata: { name: unroutedPageAliasCount }
+steps:
+  - name: check
+    invoke: { kind: Probe.Diagnostics, source: ./__fixtures__/invalid/unrouted-page-alias/telo.yaml }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.check.result.codes"
+      expected: [RESOURCE_RULE_VIOLATED, RESOURCE_RULE_VIOLATED, RESOURCE_RULE_VIOLATED]

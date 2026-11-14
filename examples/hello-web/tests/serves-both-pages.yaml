@@ -27,6 +27,9 @@ steps:
   - name: app
     invoke: { kind: HttpClient.Request, method: GET }
     inputs: { url: "http://127.0.0.1:8851/_telo/ui/app" }
+  - name: layout
+    invoke: { kind: HttpClient.Request, method: GET }
+    inputs: { url: "http://127.0.0.1:8851/_telo/ui/layout", query: { id: !cel "steps.app.result.body.layout" } }
   - name: home
     invoke: { kind: HttpClient.Request, method: GET }
     inputs: { url: "http://127.0.0.1:8851/_telo/ui/page", query: { path: / } }
@@ -39,7 +42,7 @@ steps:
       actual:
         shell: !cel "steps.shell.result.status"
         title: !cel "steps.app.result.body.title"
-        navigation: !cel "steps.app.result.body.navigation.items.map(i, i.path)"
+        navigation: !cel "steps.layout.result.body.header[0].navigation.items.map(i, i.path)"
         home: !cel "steps.home.result.body.children.map(c, c.type)"
         homeHeading: !cel "steps.home.result.body.children[0].text"
         settings: !cel "steps.settings.result.body.children.map(c, c.type)"

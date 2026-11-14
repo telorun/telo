@@ -24,6 +24,7 @@ texts:
   - { text: Building blocks, translation: Bausteine }
   - { text: Input, translation: Eingabe }
   - { text: Search, translation: Suche }
+  - { text: Navigation, translation: Navigation }
 
   # The header of every application: the mark, the Language and Theme
   # menus and the Theme menu's items. The language names are each written

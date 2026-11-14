@@ -7,6 +7,7 @@ import {
   rewriteReferrerRuleKinds,
 } from "./referrer-rule.js";
 import { hasTextKeys, rewriteTextKeysKinds } from "./text-keys.js";
+import { RESOURCE_RULES_ANNOTATION, hasResourceRules, rewriteReachableRuleKinds } from "./resource-rule.js";
 import { hasRequiresZone, rewriteRequiresZoneKind } from "./zone-slot.js";
 
 const REF_ANNOTATION = "x-telo-ref";
@@ -36,7 +37,7 @@ export interface RefConstraintIssue {
    *  (the default), an `x-telo-requires-zone` provider kind, or an
    *  `x-telo-referrer-rules` `referrer:` filter — the caller reports those as
    *  ZONE_PROVIDER_UNRESOLVED and REFERRER_RULE_INVALID. */
-  annotation?: "ref" | "zone" | "referrer";
+  annotation?: "ref" | "zone" | "referrer" | "reachable";
   /** For `gated`: the target module and the kinds it does export. */
   gate?: { module: string; exported: string[] };
   /** Aliases the declaring scope does know — the "did you mean" material for
@@ -51,7 +52,8 @@ export function isLegacyRefIdentity(ref: string): boolean {
 
 /**
  * Rewrites the `x-telo-ref` constraints (and the kinds a `callsCoReferrers`,
- * `x-telo-requires-zone`, `x-telo-referrer-rules` and `x-telo-text-keys` name) on one definition doc from the alias
+ * `x-telo-requires-zone`, `x-telo-referrer-rules`, an `x-telo-resource-rules`
+ * `reachable:` and `x-telo-text-keys` name) on one definition doc from the alias
  * form (`KvStore.Store`, `Self.Store`, `Telo.Invocable`) to the canonical
  * `<module>.<Kind>` key the definition registry is keyed by.
  *
@@ -86,7 +88,7 @@ export function resolveSchemaRefKinds(
   const record = (
     ref: string,
     path: string,
-    annotation: "ref" | "zone" | "referrer" = "ref",
+    annotation: "ref" | "zone" | "referrer" | "reachable" = "ref",
   ): void => {
     if (isLegacyRefIdentity(ref)) {
       issues.push({ ref, path, manifest: definition, reason: "legacy", annotation });
@@ -164,6 +166,17 @@ export function resolveSchemaRefKinds(
         const result = resolver.resolveKindResult(kind);
         if (result.status === "ok") return result.kind;
         record(kind, `${path}.${REFERRER_RULES_ANNOTATION}`, "referrer");
+        return undefined;
+      });
+    }
+    if (hasResourceRules(obj)) {
+      // A resource rule's `reachable.kind` names the kind of reference its walk
+      // finds, through the same grammar and scope; one that names nothing is
+      // RESOURCE_RULE_INVALID at the kind that wrote it.
+      rewriteReachableRuleKinds(obj, (kind, index) => {
+        const result = resolver.resolveKindResult(kind);
+        if (result.status === "ok") return result.kind;
+        record(kind, `${path}.${RESOURCE_RULES_ANNOTATION}[${index}].reachable.kind`, "reachable");
         return undefined;
       });
     }

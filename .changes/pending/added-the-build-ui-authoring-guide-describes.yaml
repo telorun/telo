@@ -1,0 +1,6 @@
+units:
+  apps/hub: Added
+body: "The build-ui authoring guide describes composable pages: a UiReact.App layout of
+  header, aside and footer, panes (Ui.Navbar, Ui.NavigationColumn), per-page layouts,
+  the title text style, Ui.Aside inside Ui.SplitView and the static check that every
+  linked page is listed."

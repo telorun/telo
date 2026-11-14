@@ -21,6 +21,7 @@ import { MarkdownNode, type MarkdownNodeSpec } from "./markdown/markdown-node.js
 import { MenuNode } from "./menu-node.js";
 import { RelatedContext, RelatedValue } from "./related-labels.js";
 import { EmbeddedContext, RecordLinkContext, RendererContext, RootsContext, underMount, VisibleContext } from "./renderer-context.js";
+import { NavbarNode, NavigationColumnNode, type NavbarNodeSpec, type NavigationColumnNodeSpec } from "./site-navigation.js";
 import { SplitNode, type SplitNodeSpec } from "./split-view.js";
 import { TabsNode } from "./tabs-node.js";
 import { TimeValue } from "./time-value.js";
@@ -184,7 +185,7 @@ function Drawn({ node, embedded }: { node: SpecNode; embedded: boolean }): React
       );
     case "text": {
       const names = [node.style ?? []].flat();
-      const Element = names.includes("heading") ? "h2" : names.includes("subheading") ? "h3" : "p";
+      const Element = names.includes("title") ? "h1" : names.includes("heading") ? "h2" : names.includes("subheading") ? "h3" : "p";
       return (
         <Element data-telo-part="text" data-fill={fill} data-style={style}>
           {text(node.text)}
@@ -299,6 +300,10 @@ function Drawn({ node, embedded }: { node: SpecNode; embedded: boolean }): React
       return <ChatNode node={node as unknown as ChatNodeSpec} embedded={embedded} />;
     case "split":
       return <SplitNode node={node as unknown as SplitNodeSpec} />;
+    case "navbar":
+      return <NavbarNode node={node as unknown as NavbarNodeSpec} />;
+    case "navigation-column":
+      return <NavigationColumnNode node={node as unknown as NavigationColumnNodeSpec} />;
     case "error":
       return <ErrorNode error={node as unknown as ErrorSpec} />;
     default:

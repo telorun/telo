@@ -1,0 +1,13 @@
+# The abstract's library imported under an alias that is not its name: the
+# inherited shape is still read in the module that declared it.
+kind: Telo.Application
+metadata: { name: InheritedSchemaRefs }
+imports: { Kit: ./base, Ext: ./ext }
+---
+kind: Kit.Item
+metadata: { name: untitled }
+---
+kind: Ext.Holder
+metadata: { name: holder }
+label: Holder
+entry: { item: !ref untitled }

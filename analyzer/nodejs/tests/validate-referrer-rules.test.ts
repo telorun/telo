@@ -821,7 +821,7 @@ describe("peer rules — binding", () => {
     ]);
   });
 
-  it("reads a peer read whole with everything it holds, nested declarations included", () => {
+  it("compares a peer by identity, and reads one read whole otherwise with everything it holds", () => {
     const a = table({ name: "a", table: "a" });
     const b = table({
       name: "b",
@@ -835,7 +835,9 @@ describe("peer rules — binding", () => {
       "x-telo-referrer-rules": [{ ...DUPLICATE["x-telo-referrer-rules"][0]!, condition: cel(condition) }],
     });
     expect(evaluateReferrerRules(a, rule("!peers.exists(p, p.table == self.table)"), at, matches, binder(a, b))).toEqual([]);
-    expect(evaluateReferrerRules(a, rule("!peers.exists(p, p == self)"), at, matches, binder(a, b))).toMatchObject([
+    // Only compared, a peer is the declaration it binds: what it holds is not read.
+    expect(evaluateReferrerRules(a, rule("!peers.exists(p, p == self)"), at, matches, binder(a, b))).toEqual([]);
+    expect(evaluateReferrerRules(a, rule("!peers.exists(p, size(p) == 0)"), at, matches, binder(a, b))).toMatchObject([
       { kind: "skipped", dynamic: { what: "a CEL expression" } },
     ]);
   });

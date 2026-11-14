@@ -43,6 +43,7 @@ function handlerDef(): ResourceDefinition {
                   path: { type: "string" },
                 },
               },
+              session: { "x-telo-context-withheld": "a handler is built once, with no session." },
             },
           },
         },
@@ -125,6 +126,21 @@ describe("CEL completion", () => {
     );
     expect(results.map((r) => r.label).sort()).toEqual(["method", "path"]);
     expect(results.find((r) => r.label === "method")?.detail).toBe("string");
+  });
+
+  it("offers no name the scope withholds", async () => {
+    const { registry, manifests } = setup("request.method");
+    const { text, line, character } = cursorAt(DOC("se|"));
+    const results = await buildCompletions(
+      text,
+      line,
+      character,
+      registry,
+      undefined,
+      undefined,
+      registry.analysisOf(manifests),
+    );
+    expect(results.map((r) => r.label)).not.toContain("session");
   });
 
   it("offers the module's declared variables, typed", async () => {
@@ -237,6 +253,20 @@ describe("CEL hover", () => {
     expect(hover?.contents).toContain("method");
     expect(hover?.contents).toContain("string");
     expect(hover?.contents).toContain("The HTTP method.");
+  });
+
+  it("says why a withheld name holds no value here", () => {
+    const { registry, manifests } = setup("session.user");
+    const { text, line, character } = cursorAt(DOC("sess|ion.user"));
+    const hover = buildHover(
+      text,
+      line,
+      character,
+      registry,
+      undefined,
+      registry.analysisOf(manifests),
+    );
+    expect(hover?.contents).toContain("Not available here: a handler is built once, with no session.");
   });
 
   it("describes the chain PREFIX when the cursor is on it, not the tail", () => {

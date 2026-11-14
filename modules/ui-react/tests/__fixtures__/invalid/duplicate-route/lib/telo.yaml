@@ -1,0 +1,26 @@
+# A page and a routed page at one path.
+kind: Telo.Library
+metadata:
+  name: UiReactDuplicateRoute
+  version: 1.0.0
+  description: >-
+    Test fixture exporting an application that declares a page and a routed
+    page at the same path.
+imports: { UiReact: ../../../../../, Ui: ../../../../../../ui }
+exports: { resources: [twice] }
+---
+kind: UiReact.App
+metadata: { name: twice }
+title: Twice
+theme: !ref UiReact.defaultTheme
+pages:
+  - kind: Ui.Page
+    path: /reports
+    title: Reports
+    children: []
+  - page:
+      kind: Ui.Page
+      path: /reports
+      title: Reports again
+      children: []
+    layout: { kind: Ui.PageLayout }

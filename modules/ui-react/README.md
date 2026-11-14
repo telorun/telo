@@ -15,12 +15,14 @@ by a React renderer this module ships prebuilt.
 - **Pages keyed by ID.** A page path's `{name}` segment is a
   [variable](docs/app.md#routing) its nodes read as `params`, so `/plans/{id}`
   reads one plan; another ID draws the page afresh.
-- **A menu that fits the screen.** The [navigation](docs/app.md#navigation) is
-  a tree of pages, links and groups — a menu bar with dropdowns and submenus,
-  or a sidebar collapsing to a rail of icons that remembers its open groups,
-  and below the breakpoint a menu button opening a drawer or a bottom tab bar
-  — written as data, naming pages by reference so a library's pages join it
-  unchanged. An entry's [icon](docs/app.md#icons) is drawn in the colour of
+- **Chrome you arrange.** The application's [layout](docs/app.md#layouts) is a
+  header, an aside and a footer around every page — a navbar with a menu bar
+  of dropdowns and submenus, a navigation column folding to a rail of icons
+  that remembers its open groups, below the breakpoint a menu button opening a
+  drawer or a bottom tab bar — written as data, naming pages by reference so a
+  library's pages join it unchanged. One page can take a layout of its own or
+  none, and every page a link, navigation entry or address names is checked to
+  be one the application lists, before it runs. An entry's [icon](docs/app.md#icons) is drawn in the colour of
   its text, so a theme colours it as it colours text.
 - **Data on page load, drawn by condition.** A [`Ui.Data`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)
   is read when it is drawn — a loading state first, a failure state for a
@@ -49,9 +51,9 @@ by a React renderer this module ships prebuilt.
 - **Contained or full-width pages.** A page is drawn within the look's measure,
   centred, or across all the room beside the navigation — chosen for the whole
   application (`pageWidth`) or per page (`width`), the measure and the inset
-  design tokens (`width.page`, `space.page`); the header's content lines up
-  with a contained page under every theme, beside a sidebar too, or spans the
-  bar (`header.width`).
+  design tokens (`width.page`, `space.page`); a layout's header content is inset
+  against the application's width, lining up with a contained page drawn with no
+  aside beside it, under every theme, or spans the bar (the layout's `width`).
 - **Styling is a published contract.** Every element carries a stable part
   name; your stylesheet is applied last and always wins.
 - **Controls behind a contract.** Every interactive leaf — text boxes, choices,
@@ -191,6 +193,10 @@ metadata: { name: admin }
 title: Todo Admin
 theme: !ref UiReact.defaultTheme
 tokens: { kind: Ui.DesignTokens, color.accent: "#1d4ed8" }
+layout:
+  kind: Ui.PageLayout
+  header:
+    - { type: bar, start: [{ type: text, text: Todo Admin, style: title }] }
 pages:
   - kind: Ui.Page
     path: /

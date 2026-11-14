@@ -93,27 +93,40 @@ schema:
   required: [code, shortUrl]
   properties: { code: { type: string }, shortUrl: { type: string, title: Short URL } }
 ---
+kind: Ui.Page
+metadata: { name: shorten }
+path: /
+title: Shorten a URL
+children:
+  - { type: text, text: Shorten a URL, style: title }
+  - type: composite
+    ref:
+      kind: Ui.Action
+      inputModel: !ref ShortenRequest
+      outputModel: !ref ShortenAnswer
+      request: { target: /api/shorten }
+      label: Shorten
+      result:
+        type: stack
+        children:
+          - { type: text, text: Your short URL, style: muted }
+          - { type: value, value: !cel "result.shortUrl", style: strong }
+---
 kind: UiReact.App
 metadata: { name: app }
 title: URL Shortener
 theme: !ref UiReact.defaultTheme
-pages:
-  - kind: Ui.Page
-    path: /
-    title: Shorten a URL
-    children:
-      - type: composite
-        ref:
-          kind: Ui.Action
-          inputModel: !ref ShortenRequest
-          outputModel: !ref ShortenAnswer
-          request: { target: /api/shorten }
-          label: Shorten
-          result:
-            type: stack
-            children:
-              - { type: text, text: Your short URL, style: muted }
-              - { type: value, value: !cel "result.shortUrl", style: strong }
+pages: [!ref shorten]
+layout:
+  kind: Ui.PageLayout
+  header:
+    - type: pane
+      ref:
+        kind: Ui.Navbar
+        title: URL Shortener
+        navigation:
+          items:
+            - { type: page, page: !ref shorten }
 ---
 kind: Telo.OpenUrl
 metadata: { name: openApp }

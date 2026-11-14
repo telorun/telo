@@ -34,6 +34,11 @@ describe("filling", () => {
     });
   });
 
+  it("fills no navigation bar from a filling node at its sides", () => {
+    const bar = { type: "navbar", start: [], end: [{ type: "stack", children: [], fill: true }], navigation: { items: [] }, placement: { type: "header" }, fill: false };
+    expect(filledNode(bar)).toMatchObject({ fill: false, end: [{ fill: true }] });
+  });
+
   it("marks nothing for a filling node a condition leaves out", () => {
     const [stack] = delivered([{ type: "stack", children: [{ type: "text", text: "Gone", fill: true, when: false }, { type: "text", text: "Kept", fill: false }], fill: false }]);
     expect(stack).toEqual({ type: "stack", children: [{ type: "text", text: "Kept", fill: false }], fill: false });

@@ -59,11 +59,21 @@ class FakeEventSource extends EventTarget {
 (globalThis as any).EventSource = FakeEventSource;
 
 export interface Page {
-  /** None: the page declares no title, so no heading is drawn. */
+  /** The document title and navigation text; no heading is drawn for it. */
   title?: string;
   /** `contained` when not given. */
   width?: "contained" | "full";
   children: SpecNode[];
+  /** The id of the layout the page is drawn in; the default layout when not given, none for `false`. */
+  layout?: string | false;
+}
+
+/** A layout document's members, as a server fills them. */
+export interface LayoutParts {
+  width?: "contained" | "full";
+  header?: unknown[];
+  aside?: unknown;
+  footer?: unknown[];
 }
 
 type Responder = (request: { method: string; url: URL; init?: RequestInit }) => Response | Promise<Response>;
@@ -78,6 +88,8 @@ export interface Rendered {
   sent: { request: string; contentType: string | null; body: unknown }[];
   /** Replace a page's children, as a server would between two requests. */
   setPage(path: string, page: Page): void;
+  /** Replace a layout, as a server would between two requests: its digest changes. */
+  setLayout(id: string, layout: LayoutParts): void;
   /** Answer the next requests to a URL prefix with this response. */
   answer(prefix: string, respond: Responder): void;
   /** Make the server report another renderer than the one running. */
@@ -160,14 +172,33 @@ export async function render(options: {
   messages?: Record<string, ReturnType<typeof wireText>>;
   /** The application document's controls: the built-ins' mechanics and a theme's sets. */
   controls?: ControlsField;
-  /** The application's own header nodes, by side, and its width (`contained` when not given). */
+  /** The default layout's navbar: its own nodes, by side, and the layout's width (`contained` when not given). */
   header?: { start?: unknown[]; end?: unknown[]; width?: "contained" | "full" };
-  /** The navigation as the application document carries it; one entry per
-   *  page, in the header, when not given. */
+  /** The default layout's navbar navigation; one entry per titled page, in a header row, when not given. */
   navigation?: { items: unknown[]; placement: unknown };
+  /** The layouts by id; the default layout `main` (a navbar over the pages, titled `Test App`) when not given, none for `false`. */
+  layouts?: Record<string, LayoutParts> | false;
+  /** The nodes the 404 answer carries; the server's built-in ones when not given. */
+  notFound?: unknown[];
 }): Promise<Rendered> {
   const prefix = options.prefix ?? "";
   const pages = { ...options.pages };
+  const defaultNavbar = () => ({
+    type: "navbar",
+    title: wireText("Test App"),
+    start: wire(options.header?.start ?? []),
+    end: wire(options.header?.end ?? []),
+    navigation: options.navigation ?? {
+      items: Object.entries(pages).flatMap(([path, page]) => (page.title === undefined ? [] : [{ type: "page", key: path, path, text: wireText(page.title) }])),
+      placement: HEADER_NAVIGATION,
+    },
+    placement: options.navigation?.placement ?? HEADER_NAVIGATION,
+    fill: false,
+  });
+  const layouts: Record<string, LayoutParts> =
+    options.layouts === false ? {} : options.layouts ?? { main: { width: options.header?.width ?? "contained", header: [defaultNavbar()], footer: [] } };
+  const layoutVersions: Record<string, number> = {};
+  const layoutOf = (page: Page): string | undefined => (page.layout === false ? undefined : (page.layout ?? (options.layouts === false ? undefined : Object.keys(layouts)[0])));
   const versions: Record<string, number> = {};
   const collections = Object.fromEntries(
     Object.entries(options.collections ?? {}).map(([basePath, rows]) => [basePath, createCollection(rows, options.required ?? [])]),
@@ -197,22 +228,45 @@ export async function render(options: {
         digest: "app-1",
         title: wireText("Test App"),
         lang: options.lang ?? "en",
-        pages: Object.entries(pages).map(([path, page]) => ({ path, ...(page.title === undefined ? {} : { title: wireText(page.title) }) })),
-        navigation: options.navigation ?? {
-          items: Object.entries(pages).flatMap(([path, page]) => (page.title === undefined ? [] : [{ type: "page", path, text: wireText(page.title) }])),
-          placement: HEADER_NAVIGATION,
-        },
+        pages: Object.entries(pages).map(([path, page]) => ({
+          path,
+          ...(page.title === undefined ? {} : { title: wireText(page.title) }),
+          ...(layoutOf(page) === undefined ? {} : { layout: layoutOf(page) }),
+        })),
+        ...(options.layouts === false ? {} : { layout: Object.keys(layouts)[0] }),
         texts: uiTexts(options.messages),
         stylesheets: [`${prefix}/_telo/ui/assets/aa/base.css`],
         controls: options.controls ?? { stylesheets: {}, sets: [] },
         compactBelow: "40rem",
-        header: { start: wire(options.header?.start ?? []), end: wire(options.header?.end ?? []), width: options.header?.width ?? "contained" },
+      });
+    }
+    if (url.pathname === `${prefix}/_telo/ui/layout`) {
+      const id = url.searchParams.get("id") as string;
+      const layout = layouts[id];
+      if (!layout) return json({ type: "about:blank", title: "Not Found", status: 404 }, 404);
+      const digest = `${id}#${layoutVersions[id] ?? 0}`;
+      if (new Headers(init?.headers).get("if-none-match") === `"${digest}"`) return new Response(null, { status: 304 });
+      return json({
+        specVersion: 1,
+        bundle,
+        digest,
+        id,
+        width: layout.width ?? "contained",
+        header: wire(layout.header ?? []),
+        ...(layout.aside === undefined ? {} : { aside: wire(layout.aside) }),
+        footer: wire(layout.footer ?? []),
       });
     }
     if (url.pathname === `${prefix}/_telo/ui/page`) {
       // Looked up as the server does: the page the address opens, by its declared path.
       const matched = matchPage(Object.keys(pages), url.searchParams.get("path") as string);
-      if (!matched) return json({ type: "about:blank", title: "Not Found", status: 404 }, 404);
+      if (!matched) {
+        const children = options.notFound ?? [
+          { type: "text", style: "title", text: wireText("Not found") },
+          { type: "text", text: wireText(`Nothing is served at ${url.searchParams.get("path")}.`) },
+        ];
+        return json({ type: "about:blank", title: "Not Found", status: 404, children: wire(children) }, 404);
+      }
       const path = matched.path;
       const digest = `${path}#${versions[path] ?? 0}`;
       if (new Headers(init?.headers).get("if-none-match") === `"${digest}"`) return new Response(null, { status: 304 });
@@ -328,6 +382,10 @@ export async function render(options: {
     setPage(path, page) {
       pages[path] = page;
       versions[path] = (versions[path] ?? 0) + 1;
+    },
+    setLayout(id, layout) {
+      layouts[id] = layout;
+      layoutVersions[id] = (layoutVersions[id] ?? 0) + 1;
     },
     answer(start, respond) {
       answers.unshift([start, respond]);

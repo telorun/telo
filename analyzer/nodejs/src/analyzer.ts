@@ -223,6 +223,7 @@ import {
   canonicalShapeSchema,
   resolveSchemaTypeRefs,
   withCanonicalRefSentinels,
+  withCanonicalSchemaTypeRefs,
 } from "./resolve-schema-type-refs.js";
 import { configuredNamedShapes, libraryNamedShapes } from "./configured-named-shapes.js";
 import { foldedNamedShapeReads, foldedNamedShapes, type NamedShapeDeclaration } from "./named-shape-extends.js";
@@ -7443,8 +7444,13 @@ export class StaticAnalyzer {
       const resolvedExtends = def.extends
         ? (scopeResolver.resolveKind(def.extends) ?? def.extends)
         : def.extends;
-      const normalized =
-        resolvedExtends !== def.extends ? { ...def, extends: resolvedExtends } : def;
+      // A named shape the schema names is canonical in THIS module's scope
+      // before a kind of another module can inherit it.
+      const normalized = withCanonicalSchemaTypeRefs(
+        resolvedExtends !== def.extends ? { ...def, extends: resolvedExtends } : def,
+        aliases,
+        aliasesByModule,
+      );
       if (normalized !== def) registeredCopies.push(normalized as unknown as ResourceManifest);
       defs.register(normalized);
     }
@@ -7815,6 +7821,23 @@ export class StaticAnalyzer {
               `The prefix must be an import alias declared in this file's 'imports:' map, ` +
               `'Self' for a kind in this library, or 'Telo' for a built-in. A filter that ` +
               `matches nothing leaves the rule inert. Known aliases: ` +
+              `${issue.knownAliases?.join(", ") || "(none)"}.`,
+            data,
+          });
+          continue;
+        }
+        if (issue.annotation === "reachable") {
+          // A walk finding no reference of a kind that does not exist checks
+          // nothing, while every resource reads as passing it.
+          diagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: "RESOURCE_RULE_INVALID",
+            source: SOURCE,
+            message:
+              `x-telo-resource-rules 'reachable.kind: ${issue.ref}' at '${issue.path}' names no kind. ` +
+              `The prefix must be an import alias declared in this file's 'imports:' map, ` +
+              `'Self' for a kind in this library, or 'Telo' for a built-in. A walk for a kind that ` +
+              `does not exist finds nothing, so the rule checks nothing. Known aliases: ` +
               `${issue.knownAliases?.join(", ") || "(none)"}.`,
             data,
           });

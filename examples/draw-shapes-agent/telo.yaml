@@ -382,19 +382,31 @@ result:
     - { type: value, value: !cel "result.summary" }
     - { type: value, value: !cel "result.url", text: Open the drawing }
 ---
+kind: Ui.Page
+metadata: { name: drawPage }
+path: /
+title: Draw
+width: contained
+children:
+  - { type: text, text: Describe a layout, style: title }
+  - { type: text, text: "For example: a red square top-left and a blue circle centered. The agent draws, reviews its own picture and redraws until it matches.", style: muted }
+  - { type: composite, ref: !ref drawAction }
+---
 kind: UiReact.App
 metadata: { name: ui }
 title: Draw shapes
 theme: !ref UiReact.defaultTheme
-pages:
-  - kind: Ui.Page
-    path: /
-    title: Draw
-    width: contained
-    children:
-      - { type: text, text: Describe a layout, style: heading }
-      - { type: text, text: "For example: a red square top-left and a blue circle centered. The agent draws, reviews its own picture and redraws until it matches.", style: muted }
-      - { type: composite, ref: !ref drawAction }
+pages: [!ref drawPage]
+layout:
+  kind: Ui.PageLayout
+  header:
+    - type: pane
+      ref:
+        kind: Ui.Navbar
+        title: Draw shapes
+        navigation:
+          items:
+            - { type: page, page: !ref drawPage }
 ---
 kind: Telo.OpenUrl
 metadata: { name: openUi }

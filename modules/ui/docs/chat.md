@@ -215,9 +215,9 @@ children:
   - type: composite
     ref:
       kind: Ui.SplitView
-      label: Conversations
-      size: small
       aside:
+        label: Conversations
+        size: small
         actions:
           - { type: link, text: New conversation, href: { path: !ref assistant }, button: { kind: Ui.IconButton, label: shown } }
         content:

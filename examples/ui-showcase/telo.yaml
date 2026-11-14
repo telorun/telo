@@ -146,88 +146,8 @@ tokens:
 stylesheets:
   - !module-path ./showcase.css
 compactBelow: 48rem
-header:
-  start:
-    - { type: composite, ref: !ref logo }
-  end:
-    - type: menu
-      text: Language
-      items:
-        - type: link
-          text: English
-          href: "/api/lang?set=en"
-          style: !cel "request.lang == 'en' ? ['strong'] : []"
-        - type: link
-          text: Deutsch
-          href: "/api/lang?set=de"
-          style: !cel "request.lang == 'de' ? ['strong'] : []"
-        - type: link
-          text: Español
-          href: "/api/lang?set=es"
-          style: !cel "request.lang == 'es' ? ['strong'] : []"
-        - type: link
-          text: Français
-          href: "/api/lang?set=fr"
-          style: !cel "request.lang == 'fr' ? ['strong'] : []"
-        - type: link
-          text: Italiano
-          href: "/api/lang?set=it"
-          style: !cel "request.lang == 'it' ? ['strong'] : []"
-        - type: link
-          text: Nederlands
-          href: "/api/lang?set=nl"
-          style: !cel "request.lang == 'nl' ? ['strong'] : []"
-        - type: link
-          text: Polski
-          href: "/api/lang?set=pl"
-          style: !cel "request.lang == 'pl' ? ['strong'] : []"
-        - type: link
-          text: Português
-          href: "/api/lang?set=pt"
-          style: !cel "request.lang == 'pt' ? ['strong'] : []"
-        - type: link
-          text: Türkçe
-          href: "/api/lang?set=tr"
-          style: !cel "request.lang == 'tr' ? ['strong'] : []"
-        - type: link
-          text: Русский
-          href: "/api/lang?set=ru"
-          style: !cel "request.lang == 'ru' ? ['strong'] : []"
-        - type: link
-          text: Українська
-          href: "/api/lang?set=uk"
-          style: !cel "request.lang == 'uk' ? ['strong'] : []"
-        - type: link
-          text: हिन्दी
-          href: "/api/lang?set=hi"
-          style: !cel "request.lang == 'hi' ? ['strong'] : []"
-        - type: link
-          text: 日本語
-          href: "/api/lang?set=ja"
-          style: !cel "request.lang == 'ja' ? ['strong'] : []"
-        - type: link
-          text: 한국어
-          href: "/api/lang?set=ko"
-          style: !cel "request.lang == 'ko' ? ['strong'] : []"
-        - type: link
-          text: 中文
-          href: "/api/lang?set=zh"
-          style: !cel "request.lang == 'zh' ? ['strong'] : []"
-    - type: menu
-      text: Theme
-      items:
-        - { type: link, text: Default, href: /, style: strong }
-        - { type: link, text: Radix, href: "/api/mount?to=radix" }
-        - { type: link, text: Brand, href: "/api/mount?to=brand" }
-        - { type: link, text: Sidebar, href: "/api/mount?to=sidebar" }
-        - type: link
-          text: Use the Acme brand
-          href: "/api/brand?set=acme"
-          when: !cel "!('cookie' in request.headers && Self.cookie(request.headers['cookie'], 'showcase-brand') == 'acme')"
-        - type: link
-          text: "Use the theme's own values"
-          href: "/api/brand?set=none"
-          when: !cel "'cookie' in request.headers && Self.cookie(request.headers['cookie'], 'showcase-brand') == 'acme'"
+# The pages as a tree: the screens built from nodes in one group, the ones
+# entering data in a group inside it.
 pages:
   - !ref rootOverview
   - !ref rootConditions
@@ -247,37 +167,123 @@ pages:
   - !ref compare
   - !ref worker
   - !ref rootThemes
-# The pages as a tree: the screens built from nodes in one group, the ones
-# entering data in a group inside it.
-navigation:
-  items:
-    - { type: page, page: !ref rootOverview, icon: !ref overviewIcon }
-    - type: group
-      text: Building blocks
-      icon: !ref buildingBlocksIcon
-      items:
-        - { type: page, page: !ref rootConditions, icon: !ref conditionsIcon }
-        - { type: page, page: !ref dataScreen, icon: !ref dataIcon }
-        - { type: page, page: !ref tablesScreen, icon: !ref tablesIcon }
-        - { type: page, page: !ref filtersScreen, icon: !ref filtersIcon }
-        - type: group
-          text: Input
-          icon: !ref inputIcon
+layout:
+  kind: Ui.PageLayout
+  header:
+    - type: pane
+      ref:
+        kind: Ui.Navbar
+        title: UI showcase
+        start:
+          - { type: composite, ref: !ref logo }
+        end:
+          - type: menu
+            text: Language
+            items:
+              - type: link
+                text: English
+                href: "/api/lang?set=en"
+                style: !cel "request.lang == 'en' ? ['strong'] : []"
+              - type: link
+                text: Deutsch
+                href: "/api/lang?set=de"
+                style: !cel "request.lang == 'de' ? ['strong'] : []"
+              - type: link
+                text: Español
+                href: "/api/lang?set=es"
+                style: !cel "request.lang == 'es' ? ['strong'] : []"
+              - type: link
+                text: Français
+                href: "/api/lang?set=fr"
+                style: !cel "request.lang == 'fr' ? ['strong'] : []"
+              - type: link
+                text: Italiano
+                href: "/api/lang?set=it"
+                style: !cel "request.lang == 'it' ? ['strong'] : []"
+              - type: link
+                text: Nederlands
+                href: "/api/lang?set=nl"
+                style: !cel "request.lang == 'nl' ? ['strong'] : []"
+              - type: link
+                text: Polski
+                href: "/api/lang?set=pl"
+                style: !cel "request.lang == 'pl' ? ['strong'] : []"
+              - type: link
+                text: Português
+                href: "/api/lang?set=pt"
+                style: !cel "request.lang == 'pt' ? ['strong'] : []"
+              - type: link
+                text: Türkçe
+                href: "/api/lang?set=tr"
+                style: !cel "request.lang == 'tr' ? ['strong'] : []"
+              - type: link
+                text: Русский
+                href: "/api/lang?set=ru"
+                style: !cel "request.lang == 'ru' ? ['strong'] : []"
+              - type: link
+                text: Українська
+                href: "/api/lang?set=uk"
+                style: !cel "request.lang == 'uk' ? ['strong'] : []"
+              - type: link
+                text: हिन्दी
+                href: "/api/lang?set=hi"
+                style: !cel "request.lang == 'hi' ? ['strong'] : []"
+              - type: link
+                text: 日本語
+                href: "/api/lang?set=ja"
+                style: !cel "request.lang == 'ja' ? ['strong'] : []"
+              - type: link
+                text: 한국어
+                href: "/api/lang?set=ko"
+                style: !cel "request.lang == 'ko' ? ['strong'] : []"
+              - type: link
+                text: 中文
+                href: "/api/lang?set=zh"
+                style: !cel "request.lang == 'zh' ? ['strong'] : []"
+          - type: menu
+            text: Theme
+            items:
+              - { type: link, text: Default, href: /, style: strong }
+              - { type: link, text: Radix, href: "/api/mount?to=radix" }
+              - { type: link, text: Brand, href: "/api/mount?to=brand" }
+              - { type: link, text: Sidebar, href: "/api/mount?to=sidebar" }
+              - type: link
+                text: Use the Acme brand
+                href: "/api/brand?set=acme"
+                when: !cel "!('cookie' in request.headers && Self.cookie(request.headers['cookie'], 'showcase-brand') == 'acme')"
+              - type: link
+                text: "Use the theme's own values"
+                href: "/api/brand?set=none"
+                when: !cel "'cookie' in request.headers && Self.cookie(request.headers['cookie'], 'showcase-brand') == 'acme'"
+        navigation:
           items:
-            - { type: page, page: !ref formsScreen, icon: !ref formsIcon }
-            - { type: page, page: !ref actionsScreen, icon: !ref actionsIcon }
-    - { type: page, page: !ref componentsScreen, icon: !ref componentsIcon }
-    - { type: page, page: !ref crudScreen, icon: !ref crudIcon }
-    - { type: page, page: !ref recordsScreen, icon: !ref recordsIcon }
-    - type: group
-      text: Search
-      icon: !ref searchIcon
-      items:
-        - { type: page, page: !ref searchScreen, icon: !ref searchPostsIcon }
-        - { type: page, page: !ref searchBesideScreen, icon: !ref searchBesideIcon }
-        - { type: page, page: !ref searchReleasesScreen, icon: !ref searchReleasesIcon }
-    - { type: page, page: !ref inbox, icon: !ref reviewsIcon }
-    - { type: page, page: !ref rootThemes, icon: !ref themesIcon }
+            - { type: page, page: !ref rootOverview, icon: !ref overviewIcon }
+            - type: group
+              text: Building blocks
+              icon: !ref buildingBlocksIcon
+              items:
+                - { type: page, page: !ref rootConditions, icon: !ref conditionsIcon }
+                - { type: page, page: !ref dataScreen, icon: !ref dataIcon }
+                - { type: page, page: !ref tablesScreen, icon: !ref tablesIcon }
+                - { type: page, page: !ref filtersScreen, icon: !ref filtersIcon }
+                - type: group
+                  text: Input
+                  icon: !ref inputIcon
+                  items:
+                    - { type: page, page: !ref formsScreen, icon: !ref formsIcon }
+                    - { type: page, page: !ref actionsScreen, icon: !ref actionsIcon }
+            - { type: page, page: !ref componentsScreen, icon: !ref componentsIcon }
+            - { type: page, page: !ref crudScreen, icon: !ref crudIcon }
+            - { type: page, page: !ref recordsScreen, icon: !ref recordsIcon }
+            - type: group
+              text: Search
+              icon: !ref searchIcon
+              items:
+                - { type: page, page: !ref searchScreen, icon: !ref searchPostsIcon }
+                - { type: page, page: !ref searchBesideScreen, icon: !ref searchBesideIcon }
+                - { type: page, page: !ref searchReleasesScreen, icon: !ref searchReleasesIcon }
+            - { type: page, page: !ref inbox, icon: !ref reviewsIcon }
+            - { type: page, page: !ref rootThemes, icon: !ref themesIcon }
 ---
 # The overview at the root: the view every application places, and nodes of
 # this application's own evaluated per request.
@@ -286,6 +292,7 @@ metadata: { name: rootOverview }
 path: /
 title: Overview
 children:
+  - { type: text, text: Overview, style: title }
   - { type: composite, ref: !ref overviewPage }
   - type: stack
     children:
@@ -317,6 +324,7 @@ path: /conditions
 title: Conditions
 query: { mode: { type: string, enum: [compact, detailed] } }
 children:
+  - { type: text, text: Conditions, style: title }
   - { type: composite, ref: !ref conditionsPage }
   - type: stack
     children:
@@ -337,6 +345,7 @@ metadata: { name: rootThemes }
 path: /themes
 title: Themes
 children:
+  - { type: text, text: Themes, style: title }
   - { type: composite, ref: !ref themesPage }
   - type: stack
     children:
@@ -370,80 +379,6 @@ metadata: { name: radixShowcase }
 title: UI showcase — Radix
 theme: !ref Radix.theme
 compactBelow: 48rem
-header:
-  start:
-    - { type: composite, ref: !ref logo }
-  end:
-    - type: menu
-      text: Language
-      items:
-        - type: link
-          text: English
-          href: "/api/lang?set=en"
-          style: !cel "request.lang == 'en' ? ['strong'] : []"
-        - type: link
-          text: Deutsch
-          href: "/api/lang?set=de"
-          style: !cel "request.lang == 'de' ? ['strong'] : []"
-        - type: link
-          text: Español
-          href: "/api/lang?set=es"
-          style: !cel "request.lang == 'es' ? ['strong'] : []"
-        - type: link
-          text: Français
-          href: "/api/lang?set=fr"
-          style: !cel "request.lang == 'fr' ? ['strong'] : []"
-        - type: link
-          text: Italiano
-          href: "/api/lang?set=it"
-          style: !cel "request.lang == 'it' ? ['strong'] : []"
-        - type: link
-          text: Nederlands
-          href: "/api/lang?set=nl"
-          style: !cel "request.lang == 'nl' ? ['strong'] : []"
-        - type: link
-          text: Polski
-          href: "/api/lang?set=pl"
-          style: !cel "request.lang == 'pl' ? ['strong'] : []"
-        - type: link
-          text: Português
-          href: "/api/lang?set=pt"
-          style: !cel "request.lang == 'pt' ? ['strong'] : []"
-        - type: link
-          text: Türkçe
-          href: "/api/lang?set=tr"
-          style: !cel "request.lang == 'tr' ? ['strong'] : []"
-        - type: link
-          text: Русский
-          href: "/api/lang?set=ru"
-          style: !cel "request.lang == 'ru' ? ['strong'] : []"
-        - type: link
-          text: Українська
-          href: "/api/lang?set=uk"
-          style: !cel "request.lang == 'uk' ? ['strong'] : []"
-        - type: link
-          text: हिन्दी
-          href: "/api/lang?set=hi"
-          style: !cel "request.lang == 'hi' ? ['strong'] : []"
-        - type: link
-          text: 日本語
-          href: "/api/lang?set=ja"
-          style: !cel "request.lang == 'ja' ? ['strong'] : []"
-        - type: link
-          text: 한국어
-          href: "/api/lang?set=ko"
-          style: !cel "request.lang == 'ko' ? ['strong'] : []"
-        - type: link
-          text: 中文
-          href: "/api/lang?set=zh"
-          style: !cel "request.lang == 'zh' ? ['strong'] : []"
-    - type: menu
-      text: Theme
-      items:
-        - { type: link, text: Default, href: "/api/mount?to=root" }
-        - { type: link, text: Radix, href: /, style: strong }
-        - { type: link, text: Brand, href: "/api/mount?to=brand" }
-        - { type: link, text: Sidebar, href: "/api/mount?to=sidebar" }
 pages:
   - !ref overviewScreen
   - !ref conditionsScreen
@@ -463,35 +398,115 @@ pages:
   - !ref compare
   - !ref worker
   - !ref themesScreen
-navigation:
-  items:
-    - { type: page, page: !ref overviewScreen, icon: !ref overviewIcon }
-    - type: group
-      text: Building blocks
-      icon: !ref buildingBlocksIcon
-      items:
-        - { type: page, page: !ref conditionsScreen, icon: !ref conditionsIcon }
-        - { type: page, page: !ref dataScreen, icon: !ref dataIcon }
-        - { type: page, page: !ref tablesScreen, icon: !ref tablesIcon }
-        - { type: page, page: !ref filtersScreen, icon: !ref filtersIcon }
-        - type: group
-          text: Input
-          icon: !ref inputIcon
+layout:
+  kind: Ui.PageLayout
+  header:
+    - type: pane
+      ref:
+        kind: Ui.Navbar
+        title: UI showcase — Radix
+        start:
+          - { type: composite, ref: !ref logo }
+        end:
+          - type: menu
+            text: Language
+            items:
+              - type: link
+                text: English
+                href: "/api/lang?set=en"
+                style: !cel "request.lang == 'en' ? ['strong'] : []"
+              - type: link
+                text: Deutsch
+                href: "/api/lang?set=de"
+                style: !cel "request.lang == 'de' ? ['strong'] : []"
+              - type: link
+                text: Español
+                href: "/api/lang?set=es"
+                style: !cel "request.lang == 'es' ? ['strong'] : []"
+              - type: link
+                text: Français
+                href: "/api/lang?set=fr"
+                style: !cel "request.lang == 'fr' ? ['strong'] : []"
+              - type: link
+                text: Italiano
+                href: "/api/lang?set=it"
+                style: !cel "request.lang == 'it' ? ['strong'] : []"
+              - type: link
+                text: Nederlands
+                href: "/api/lang?set=nl"
+                style: !cel "request.lang == 'nl' ? ['strong'] : []"
+              - type: link
+                text: Polski
+                href: "/api/lang?set=pl"
+                style: !cel "request.lang == 'pl' ? ['strong'] : []"
+              - type: link
+                text: Português
+                href: "/api/lang?set=pt"
+                style: !cel "request.lang == 'pt' ? ['strong'] : []"
+              - type: link
+                text: Türkçe
+                href: "/api/lang?set=tr"
+                style: !cel "request.lang == 'tr' ? ['strong'] : []"
+              - type: link
+                text: Русский
+                href: "/api/lang?set=ru"
+                style: !cel "request.lang == 'ru' ? ['strong'] : []"
+              - type: link
+                text: Українська
+                href: "/api/lang?set=uk"
+                style: !cel "request.lang == 'uk' ? ['strong'] : []"
+              - type: link
+                text: हिन्दी
+                href: "/api/lang?set=hi"
+                style: !cel "request.lang == 'hi' ? ['strong'] : []"
+              - type: link
+                text: 日本語
+                href: "/api/lang?set=ja"
+                style: !cel "request.lang == 'ja' ? ['strong'] : []"
+              - type: link
+                text: 한국어
+                href: "/api/lang?set=ko"
+                style: !cel "request.lang == 'ko' ? ['strong'] : []"
+              - type: link
+                text: 中文
+                href: "/api/lang?set=zh"
+                style: !cel "request.lang == 'zh' ? ['strong'] : []"
+          - type: menu
+            text: Theme
+            items:
+              - { type: link, text: Default, href: "/api/mount?to=root" }
+              - { type: link, text: Radix, href: /, style: strong }
+              - { type: link, text: Brand, href: "/api/mount?to=brand" }
+              - { type: link, text: Sidebar, href: "/api/mount?to=sidebar" }
+        navigation:
           items:
-            - { type: page, page: !ref formsScreen, icon: !ref formsIcon }
-            - { type: page, page: !ref actionsScreen, icon: !ref actionsIcon }
-    - { type: page, page: !ref componentsScreen, icon: !ref componentsIcon }
-    - { type: page, page: !ref crudScreen, icon: !ref crudIcon }
-    - { type: page, page: !ref recordsScreen, icon: !ref recordsIcon }
-    - type: group
-      text: Search
-      icon: !ref searchIcon
-      items:
-        - { type: page, page: !ref searchScreen, icon: !ref searchPostsIcon }
-        - { type: page, page: !ref searchBesideScreen, icon: !ref searchBesideIcon }
-        - { type: page, page: !ref searchReleasesScreen, icon: !ref searchReleasesIcon }
-    - { type: page, page: !ref inbox, icon: !ref reviewsIcon }
-    - { type: page, page: !ref themesScreen, icon: !ref themesIcon }
+            - { type: page, page: !ref overviewScreen, icon: !ref overviewIcon }
+            - type: group
+              text: Building blocks
+              icon: !ref buildingBlocksIcon
+              items:
+                - { type: page, page: !ref conditionsScreen, icon: !ref conditionsIcon }
+                - { type: page, page: !ref dataScreen, icon: !ref dataIcon }
+                - { type: page, page: !ref tablesScreen, icon: !ref tablesIcon }
+                - { type: page, page: !ref filtersScreen, icon: !ref filtersIcon }
+                - type: group
+                  text: Input
+                  icon: !ref inputIcon
+                  items:
+                    - { type: page, page: !ref formsScreen, icon: !ref formsIcon }
+                    - { type: page, page: !ref actionsScreen, icon: !ref actionsIcon }
+            - { type: page, page: !ref componentsScreen, icon: !ref componentsIcon }
+            - { type: page, page: !ref crudScreen, icon: !ref crudIcon }
+            - { type: page, page: !ref recordsScreen, icon: !ref recordsIcon }
+            - type: group
+              text: Search
+              icon: !ref searchIcon
+              items:
+                - { type: page, page: !ref searchScreen, icon: !ref searchPostsIcon }
+                - { type: page, page: !ref searchBesideScreen, icon: !ref searchBesideIcon }
+                - { type: page, page: !ref searchReleasesScreen, icon: !ref searchReleasesIcon }
+            - { type: page, page: !ref inbox, icon: !ref reviewsIcon }
+            - { type: page, page: !ref themesScreen, icon: !ref themesIcon }
 ---
 # The same pages under the example's own theme (`brand/`): Radix's controls
 # under a stylesheet of its own, and one brand token set shipping the Inter
@@ -505,80 +520,6 @@ tokens:
   font.body: !ref inter
   font.heading: !ref inter
 compactBelow: 48rem
-header:
-  start:
-    - { type: composite, ref: !ref logo }
-  end:
-    - type: menu
-      text: Language
-      items:
-        - type: link
-          text: English
-          href: "/api/lang?set=en"
-          style: !cel "request.lang == 'en' ? ['strong'] : []"
-        - type: link
-          text: Deutsch
-          href: "/api/lang?set=de"
-          style: !cel "request.lang == 'de' ? ['strong'] : []"
-        - type: link
-          text: Español
-          href: "/api/lang?set=es"
-          style: !cel "request.lang == 'es' ? ['strong'] : []"
-        - type: link
-          text: Français
-          href: "/api/lang?set=fr"
-          style: !cel "request.lang == 'fr' ? ['strong'] : []"
-        - type: link
-          text: Italiano
-          href: "/api/lang?set=it"
-          style: !cel "request.lang == 'it' ? ['strong'] : []"
-        - type: link
-          text: Nederlands
-          href: "/api/lang?set=nl"
-          style: !cel "request.lang == 'nl' ? ['strong'] : []"
-        - type: link
-          text: Polski
-          href: "/api/lang?set=pl"
-          style: !cel "request.lang == 'pl' ? ['strong'] : []"
-        - type: link
-          text: Português
-          href: "/api/lang?set=pt"
-          style: !cel "request.lang == 'pt' ? ['strong'] : []"
-        - type: link
-          text: Türkçe
-          href: "/api/lang?set=tr"
-          style: !cel "request.lang == 'tr' ? ['strong'] : []"
-        - type: link
-          text: Русский
-          href: "/api/lang?set=ru"
-          style: !cel "request.lang == 'ru' ? ['strong'] : []"
-        - type: link
-          text: Українська
-          href: "/api/lang?set=uk"
-          style: !cel "request.lang == 'uk' ? ['strong'] : []"
-        - type: link
-          text: हिन्दी
-          href: "/api/lang?set=hi"
-          style: !cel "request.lang == 'hi' ? ['strong'] : []"
-        - type: link
-          text: 日本語
-          href: "/api/lang?set=ja"
-          style: !cel "request.lang == 'ja' ? ['strong'] : []"
-        - type: link
-          text: 한국어
-          href: "/api/lang?set=ko"
-          style: !cel "request.lang == 'ko' ? ['strong'] : []"
-        - type: link
-          text: 中文
-          href: "/api/lang?set=zh"
-          style: !cel "request.lang == 'zh' ? ['strong'] : []"
-    - type: menu
-      text: Theme
-      items:
-        - { type: link, text: Default, href: "/api/mount?to=root" }
-        - { type: link, text: Radix, href: "/api/mount?to=radix" }
-        - { type: link, text: Brand, href: /, style: strong }
-        - { type: link, text: Sidebar, href: "/api/mount?to=sidebar" }
 pages:
   - !ref overviewScreen
   - !ref conditionsScreen
@@ -598,35 +539,115 @@ pages:
   - !ref compare
   - !ref worker
   - !ref themesScreen
-navigation:
-  items:
-    - { type: page, page: !ref overviewScreen, icon: !ref overviewIcon }
-    - type: group
-      text: Building blocks
-      icon: !ref buildingBlocksIcon
-      items:
-        - { type: page, page: !ref conditionsScreen, icon: !ref conditionsIcon }
-        - { type: page, page: !ref dataScreen, icon: !ref dataIcon }
-        - { type: page, page: !ref tablesScreen, icon: !ref tablesIcon }
-        - { type: page, page: !ref filtersScreen, icon: !ref filtersIcon }
-        - type: group
-          text: Input
-          icon: !ref inputIcon
+layout:
+  kind: Ui.PageLayout
+  header:
+    - type: pane
+      ref:
+        kind: Ui.Navbar
+        title: UI showcase — brand
+        start:
+          - { type: composite, ref: !ref logo }
+        end:
+          - type: menu
+            text: Language
+            items:
+              - type: link
+                text: English
+                href: "/api/lang?set=en"
+                style: !cel "request.lang == 'en' ? ['strong'] : []"
+              - type: link
+                text: Deutsch
+                href: "/api/lang?set=de"
+                style: !cel "request.lang == 'de' ? ['strong'] : []"
+              - type: link
+                text: Español
+                href: "/api/lang?set=es"
+                style: !cel "request.lang == 'es' ? ['strong'] : []"
+              - type: link
+                text: Français
+                href: "/api/lang?set=fr"
+                style: !cel "request.lang == 'fr' ? ['strong'] : []"
+              - type: link
+                text: Italiano
+                href: "/api/lang?set=it"
+                style: !cel "request.lang == 'it' ? ['strong'] : []"
+              - type: link
+                text: Nederlands
+                href: "/api/lang?set=nl"
+                style: !cel "request.lang == 'nl' ? ['strong'] : []"
+              - type: link
+                text: Polski
+                href: "/api/lang?set=pl"
+                style: !cel "request.lang == 'pl' ? ['strong'] : []"
+              - type: link
+                text: Português
+                href: "/api/lang?set=pt"
+                style: !cel "request.lang == 'pt' ? ['strong'] : []"
+              - type: link
+                text: Türkçe
+                href: "/api/lang?set=tr"
+                style: !cel "request.lang == 'tr' ? ['strong'] : []"
+              - type: link
+                text: Русский
+                href: "/api/lang?set=ru"
+                style: !cel "request.lang == 'ru' ? ['strong'] : []"
+              - type: link
+                text: Українська
+                href: "/api/lang?set=uk"
+                style: !cel "request.lang == 'uk' ? ['strong'] : []"
+              - type: link
+                text: हिन्दी
+                href: "/api/lang?set=hi"
+                style: !cel "request.lang == 'hi' ? ['strong'] : []"
+              - type: link
+                text: 日本語
+                href: "/api/lang?set=ja"
+                style: !cel "request.lang == 'ja' ? ['strong'] : []"
+              - type: link
+                text: 한국어
+                href: "/api/lang?set=ko"
+                style: !cel "request.lang == 'ko' ? ['strong'] : []"
+              - type: link
+                text: 中文
+                href: "/api/lang?set=zh"
+                style: !cel "request.lang == 'zh' ? ['strong'] : []"
+          - type: menu
+            text: Theme
+            items:
+              - { type: link, text: Default, href: "/api/mount?to=root" }
+              - { type: link, text: Radix, href: "/api/mount?to=radix" }
+              - { type: link, text: Brand, href: /, style: strong }
+              - { type: link, text: Sidebar, href: "/api/mount?to=sidebar" }
+        navigation:
           items:
-            - { type: page, page: !ref formsScreen, icon: !ref formsIcon }
-            - { type: page, page: !ref actionsScreen, icon: !ref actionsIcon }
-    - { type: page, page: !ref componentsScreen, icon: !ref componentsIcon }
-    - { type: page, page: !ref crudScreen, icon: !ref crudIcon }
-    - { type: page, page: !ref recordsScreen, icon: !ref recordsIcon }
-    - type: group
-      text: Search
-      icon: !ref searchIcon
-      items:
-        - { type: page, page: !ref searchScreen, icon: !ref searchPostsIcon }
-        - { type: page, page: !ref searchBesideScreen, icon: !ref searchBesideIcon }
-        - { type: page, page: !ref searchReleasesScreen, icon: !ref searchReleasesIcon }
-    - { type: page, page: !ref inbox, icon: !ref reviewsIcon }
-    - { type: page, page: !ref themesScreen, icon: !ref themesIcon }
+            - { type: page, page: !ref overviewScreen, icon: !ref overviewIcon }
+            - type: group
+              text: Building blocks
+              icon: !ref buildingBlocksIcon
+              items:
+                - { type: page, page: !ref conditionsScreen, icon: !ref conditionsIcon }
+                - { type: page, page: !ref dataScreen, icon: !ref dataIcon }
+                - { type: page, page: !ref tablesScreen, icon: !ref tablesIcon }
+                - { type: page, page: !ref filtersScreen, icon: !ref filtersIcon }
+                - type: group
+                  text: Input
+                  icon: !ref inputIcon
+                  items:
+                    - { type: page, page: !ref formsScreen, icon: !ref formsIcon }
+                    - { type: page, page: !ref actionsScreen, icon: !ref actionsIcon }
+            - { type: page, page: !ref componentsScreen, icon: !ref componentsIcon }
+            - { type: page, page: !ref crudScreen, icon: !ref crudIcon }
+            - { type: page, page: !ref recordsScreen, icon: !ref recordsIcon }
+            - type: group
+              text: Search
+              icon: !ref searchIcon
+              items:
+                - { type: page, page: !ref searchScreen, icon: !ref searchPostsIcon }
+                - { type: page, page: !ref searchBesideScreen, icon: !ref searchBesideIcon }
+                - { type: page, page: !ref searchReleasesScreen, icon: !ref searchReleasesIcon }
+            - { type: page, page: !ref inbox, icon: !ref reviewsIcon }
+            - { type: page, page: !ref themesScreen, icon: !ref themesIcon }
 ---
 # The built-in look with its navigation in a sidebar that collapses to a rail
 # (kept in local storage) beside a full-width page; below the breakpoint, a
@@ -639,80 +660,6 @@ stylesheets:
   - !module-path ./showcase.css
 compactBelow: 48rem
 pageWidth: full
-header:
-  start:
-    - { type: composite, ref: !ref logo }
-  end:
-    - type: menu
-      text: Language
-      items:
-        - type: link
-          text: English
-          href: "/api/lang?set=en"
-          style: !cel "request.lang == 'en' ? ['strong'] : []"
-        - type: link
-          text: Deutsch
-          href: "/api/lang?set=de"
-          style: !cel "request.lang == 'de' ? ['strong'] : []"
-        - type: link
-          text: Español
-          href: "/api/lang?set=es"
-          style: !cel "request.lang == 'es' ? ['strong'] : []"
-        - type: link
-          text: Français
-          href: "/api/lang?set=fr"
-          style: !cel "request.lang == 'fr' ? ['strong'] : []"
-        - type: link
-          text: Italiano
-          href: "/api/lang?set=it"
-          style: !cel "request.lang == 'it' ? ['strong'] : []"
-        - type: link
-          text: Nederlands
-          href: "/api/lang?set=nl"
-          style: !cel "request.lang == 'nl' ? ['strong'] : []"
-        - type: link
-          text: Polski
-          href: "/api/lang?set=pl"
-          style: !cel "request.lang == 'pl' ? ['strong'] : []"
-        - type: link
-          text: Português
-          href: "/api/lang?set=pt"
-          style: !cel "request.lang == 'pt' ? ['strong'] : []"
-        - type: link
-          text: Türkçe
-          href: "/api/lang?set=tr"
-          style: !cel "request.lang == 'tr' ? ['strong'] : []"
-        - type: link
-          text: Русский
-          href: "/api/lang?set=ru"
-          style: !cel "request.lang == 'ru' ? ['strong'] : []"
-        - type: link
-          text: Українська
-          href: "/api/lang?set=uk"
-          style: !cel "request.lang == 'uk' ? ['strong'] : []"
-        - type: link
-          text: हिन्दी
-          href: "/api/lang?set=hi"
-          style: !cel "request.lang == 'hi' ? ['strong'] : []"
-        - type: link
-          text: 日本語
-          href: "/api/lang?set=ja"
-          style: !cel "request.lang == 'ja' ? ['strong'] : []"
-        - type: link
-          text: 한국어
-          href: "/api/lang?set=ko"
-          style: !cel "request.lang == 'ko' ? ['strong'] : []"
-        - type: link
-          text: 中文
-          href: "/api/lang?set=zh"
-          style: !cel "request.lang == 'zh' ? ['strong'] : []"
-    - type: menu
-      text: Theme
-      items:
-        - { type: link, text: Default, href: "/api/mount?to=root" }
-        - { type: link, text: Radix, href: "/api/mount?to=radix" }
-        - { type: link, text: Brand, href: "/api/mount?to=brand" }
-        - { type: link, text: Sidebar, href: /, style: strong }
 pages:
   - !ref overviewScreen
   - !ref conditionsScreen
@@ -732,40 +679,124 @@ pages:
   - !ref compare
   - !ref worker
   - !ref themesScreen
-navigation:
-  items:
-    - { type: page, page: !ref overviewScreen, icon: !ref overviewIcon }
-    - type: group
-      text: Building blocks
-      icon: !ref buildingBlocksIcon
-      items:
-        - { type: page, page: !ref conditionsScreen, icon: !ref conditionsIcon }
-        - { type: page, page: !ref dataScreen, icon: !ref dataIcon }
-        - { type: page, page: !ref tablesScreen, icon: !ref tablesIcon }
-        - { type: page, page: !ref filtersScreen, icon: !ref filtersIcon }
-        - type: group
-          text: Input
-          icon: !ref inputIcon
+layout:
+  kind: Ui.PageLayout
+  header:
+    - type: pane
+      ref:
+        kind: Ui.Navbar
+        title: UI showcase — sidebar
+        start:
+          - { type: composite, ref: !ref logo }
+        end:
+          - type: menu
+            text: Language
+            items:
+              - type: link
+                text: English
+                href: "/api/lang?set=en"
+                style: !cel "request.lang == 'en' ? ['strong'] : []"
+              - type: link
+                text: Deutsch
+                href: "/api/lang?set=de"
+                style: !cel "request.lang == 'de' ? ['strong'] : []"
+              - type: link
+                text: Español
+                href: "/api/lang?set=es"
+                style: !cel "request.lang == 'es' ? ['strong'] : []"
+              - type: link
+                text: Français
+                href: "/api/lang?set=fr"
+                style: !cel "request.lang == 'fr' ? ['strong'] : []"
+              - type: link
+                text: Italiano
+                href: "/api/lang?set=it"
+                style: !cel "request.lang == 'it' ? ['strong'] : []"
+              - type: link
+                text: Nederlands
+                href: "/api/lang?set=nl"
+                style: !cel "request.lang == 'nl' ? ['strong'] : []"
+              - type: link
+                text: Polski
+                href: "/api/lang?set=pl"
+                style: !cel "request.lang == 'pl' ? ['strong'] : []"
+              - type: link
+                text: Português
+                href: "/api/lang?set=pt"
+                style: !cel "request.lang == 'pt' ? ['strong'] : []"
+              - type: link
+                text: Türkçe
+                href: "/api/lang?set=tr"
+                style: !cel "request.lang == 'tr' ? ['strong'] : []"
+              - type: link
+                text: Русский
+                href: "/api/lang?set=ru"
+                style: !cel "request.lang == 'ru' ? ['strong'] : []"
+              - type: link
+                text: Українська
+                href: "/api/lang?set=uk"
+                style: !cel "request.lang == 'uk' ? ['strong'] : []"
+              - type: link
+                text: हिन्दी
+                href: "/api/lang?set=hi"
+                style: !cel "request.lang == 'hi' ? ['strong'] : []"
+              - type: link
+                text: 日本語
+                href: "/api/lang?set=ja"
+                style: !cel "request.lang == 'ja' ? ['strong'] : []"
+              - type: link
+                text: 한국어
+                href: "/api/lang?set=ko"
+                style: !cel "request.lang == 'ko' ? ['strong'] : []"
+              - type: link
+                text: 中文
+                href: "/api/lang?set=zh"
+                style: !cel "request.lang == 'zh' ? ['strong'] : []"
+          - type: menu
+            text: Theme
+            items:
+              - { type: link, text: Default, href: "/api/mount?to=root" }
+              - { type: link, text: Radix, href: "/api/mount?to=radix" }
+              - { type: link, text: Brand, href: "/api/mount?to=brand" }
+              - { type: link, text: Sidebar, href: /, style: strong }
+        navigation: { items: [] }
+  aside:
+    label: Navigation
+    collapse: { state: { key: navigation, store: { kind: Ui.LocalStore } } }
+    content:
+      type: pane
+      ref:
+        kind: Ui.NavigationColumn
+        state: { key: navigation, store: { kind: Ui.LocalStore } }
+        navigation:
           items:
-            - { type: page, page: !ref formsScreen, icon: !ref formsIcon }
-            - { type: page, page: !ref actionsScreen, icon: !ref actionsIcon }
-    - { type: page, page: !ref componentsScreen, icon: !ref componentsIcon }
-    - { type: page, page: !ref crudScreen, icon: !ref crudIcon }
-    - { type: page, page: !ref recordsScreen, icon: !ref recordsIcon }
-    - type: group
-      text: Search
-      icon: !ref searchIcon
-      items:
-        - { type: page, page: !ref searchScreen, icon: !ref searchPostsIcon }
-        - { type: page, page: !ref searchBesideScreen, icon: !ref searchBesideIcon }
-        - { type: page, page: !ref searchReleasesScreen, icon: !ref searchReleasesIcon }
-    - { type: page, page: !ref inbox, icon: !ref reviewsIcon }
-    - { type: page, page: !ref themesScreen, icon: !ref themesIcon }
-  placement:
-    kind: Ui.SidebarNavigation
-    rail: {}
-    store: { kind: Ui.LocalStore }
-    compact: { kind: Ui.TabBarNavigation, visible: 4 }
+            - { type: page, page: !ref overviewScreen, icon: !ref overviewIcon }
+            - type: group
+              text: Building blocks
+              icon: !ref buildingBlocksIcon
+              items:
+                - { type: page, page: !ref conditionsScreen, icon: !ref conditionsIcon }
+                - { type: page, page: !ref dataScreen, icon: !ref dataIcon }
+                - { type: page, page: !ref tablesScreen, icon: !ref tablesIcon }
+                - { type: page, page: !ref filtersScreen, icon: !ref filtersIcon }
+                - type: group
+                  text: Input
+                  icon: !ref inputIcon
+                  items:
+                    - { type: page, page: !ref formsScreen, icon: !ref formsIcon }
+                    - { type: page, page: !ref actionsScreen, icon: !ref actionsIcon }
+            - { type: page, page: !ref componentsScreen, icon: !ref componentsIcon }
+            - { type: page, page: !ref crudScreen, icon: !ref crudIcon }
+            - { type: page, page: !ref recordsScreen, icon: !ref recordsIcon }
+            - type: group
+              text: Search
+              icon: !ref searchIcon
+              items:
+                - { type: page, page: !ref searchScreen, icon: !ref searchPostsIcon }
+                - { type: page, page: !ref searchBesideScreen, icon: !ref searchBesideIcon }
+                - { type: page, page: !ref searchReleasesScreen, icon: !ref searchReleasesIcon }
+            - { type: page, page: !ref inbox, icon: !ref reviewsIcon }
+            - { type: page, page: !ref themesScreen, icon: !ref themesIcon }
 ---
 # The navigation's icons, shared by the four applications: Lucide's glyphs, and
 # the showcase's own mark drawn from a file of the example's. A glyph takes the

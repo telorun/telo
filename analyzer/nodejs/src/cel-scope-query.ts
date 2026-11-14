@@ -21,6 +21,7 @@ import { buildCelEnvironment } from "./cel-environment.js";
 import { ModuleFunctionIndex } from "./module-function-index.js";
 import { CallableFlagsIndex } from "./callable-flags.js";
 import { CelScopeResolver, type CelScope, type ReferrerVariant } from "./cel-scope.js";
+import { withheldReason } from "./context-withheld.js";
 import { DefinitionRegistry } from "./definition-registry.js";
 import { accessorSiteAt, celEvalModeAt, governedCelEvalSites, scopeMatchOf } from "./eval-paths.js";
 import { buildKernelGlobalsIndex } from "./kernel-globals.js";
@@ -465,6 +466,9 @@ function commonVariant(variants: readonly ReferrerVariant[]): ReferrerVariant {
 }
 
 function commonShape(shapes: readonly Record<string, any>[]): Record<string, any> {
+  // A node one typing withholds is offered by none.
+  const withheld = shapes.find((shape) => withheldReason(shape) !== undefined);
+  if (withheld) return withheld;
   const [first, ...rest] = shapes;
   if (!first || rest.length === 0) return first ?? {};
   const properties = first.properties;

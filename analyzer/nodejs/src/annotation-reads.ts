@@ -75,6 +75,7 @@ export const ANNOTATION_READS: AnnotationReadTable = {
   "x-telo-context-nullable-when": nullableWhenReads,
   "x-telo-context-parameters-from": contextParametersFromReads,
   "x-telo-context-ref-from": contextRefFromReads,
+  "x-telo-context-withheld": READS_NOTHING,
   "x-telo-error-context": READS_NOTHING,
   "x-telo-eval": READS_NOTHING,
   "x-telo-inline": READS_NOTHING,

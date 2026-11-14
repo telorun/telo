@@ -102,7 +102,7 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        split: !cel "{'type': steps.page.result.body.children[0].type, 'side': steps.page.result.body.children[0].side, 'size': steps.page.result.body.children[0].size, 'aside': steps.page.result.body.children[0].aside.content.type, 'content': steps.page.result.body.children[0].content.type}"
+        split: !cel "{'type': steps.page.result.body.children[0].type, 'side': steps.page.result.body.children[0].aside.side, 'size': steps.page.result.body.children[0].aside.size, 'aside': steps.page.result.body.children[0].aside.content.type, 'content': steps.page.result.body.children[0].content.type}"
         newConversation: !cel "steps.page.result.body.children[0].aside.actions[0].href"
         listing: !cel "steps.page.result.body.children[0].aside.content.basePath"
         listingRow: !cel "steps.page.result.body.children[0].aside.content.layout.content.children[0].href"

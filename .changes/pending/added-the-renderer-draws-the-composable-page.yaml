@@ -1,0 +1,28 @@
+units:
+  modules/ui-react: Added
+body: "The renderer draws the composable-page wire. A page is drawn inside the layout
+  its application document names: the renderer fetches the layout document the first
+  time it needs an id, then revalidates it with If-None-Match in parallel with each page
+  document and when the event stream reconnects, so a 304 keeps it, a new digest redraws
+  it in place, and between two pages of one id the header, aside and footer stay
+  mounted. They are drawn as the header, aside and footer landmarks around main, the
+  header and footer spanning the application with their content inset against the
+  application's width by the layout's width, so a contained header lines up with a
+  contained page drawn with no aside beside it; a layout with empty regions draws no
+  landmark. An unknown path draws the 404's children inside the default layout. The
+  navbar and navigation-column nodes are drawn, a navigation column folding to a rail in
+  a folded aside, and a text of the title style is drawn as h1 while the page's own
+  title draws no heading. One aside component draws a split view's aside and a layout's,
+  and a navigation column's open groups are kept under telo.ui:<mount path>:n:<key>, one
+  entry per column state key. The styling contract's part list is closed per release, so
+  these renames and removals are announced here: split-aside, split-bar, split-actions
+  and split-toggle are now aside, aside-bar, aside-actions and aside-toggle (aside
+  carries the states split-aside and sidebar carried: data-side, data-size, data-fill
+  and folded); app-title, header-start and header-end are now navbar-title, navbar-start
+  and navbar-end; page-title, sidebar and sidebar-toggle are removed; footer,
+  footer-content, navbar and nav-column are added. A theme stylesheet still written
+  against the old names draws those regions with the base layer only, and CheckTheme
+  reports each new part as part-unstyled. The app, header and header-content grid rules
+  now come from the page layout and the sidebar subgrid rule is removed.
+  UiReact.defaultTheme styles every new part. No contract generation moves:
+  ui_react_controls-4, ui_react-1 and ui_react_layouts-1 are unchanged."

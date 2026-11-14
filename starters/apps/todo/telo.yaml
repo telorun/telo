@@ -121,6 +121,65 @@ kind: Ui.CollectionPresentation
 metadata: { name: todosPresentation }
 source: !ref todosSource
 ---
+kind: Ui.Page
+metadata: { name: todosPage }
+path: /
+title: Todos
+children:
+  - { type: text, text: Todos, style: title }
+  - type: composite
+    ref:
+      kind: CrudUi.Admin
+      source: !ref todosSource
+      # The bar shows only the filters chosen, as chips, kept in the address
+      # and the browser.
+      filters:
+        placement: { kind: Ui.AbovePlacement, show: chosen, summary: chips }
+        state: { key: todos, address: true, store: { kind: Ui.LocalStore } }
+      create:
+        # A drawer, and a full-size dialog on a narrow screen.
+        surface: { kind: Ui.Drawer, side: end, compact: { kind: Ui.Dialog, size: full } }
+        afterSubmit: again
+      edit:
+        surface: { kind: Ui.Drawer, side: end, address: { name: todo } }
+        unsaved: confirm
+---
+kind: Ui.Page
+metadata: { name: statusPage }
+path: /status
+title: By status
+children:
+  - { type: text, text: Todos by status, style: title }
+  - type: composite
+    ref:
+      kind: Ui.Filters
+      presentation: !ref todosPresentation
+      # The bar folds behind a toggle.
+      policy: { placement: { kind: Ui.CollapsiblePlacement } }
+      fields:
+        # Pinned: the search box stays outside the fold.
+        - { property: text, operator: contains, pinned: true }
+        # No control: the presets below are the only way to set it.
+        - { property: isDone, operator: eq, control: none }
+        # Behind the toggle: a range of due days, from one to another.
+        - { property: dueOn, operator: gte }
+        - { property: dueOn, operator: lte }
+      presets:
+        - { label: All, values: [] }
+        - { label: Open, values: [{ property: isDone, operator: eq, value: false }] }
+        - { label: Done, values: [{ property: isDone, operator: eq, value: true }] }
+      content:
+        type: composite
+        ref:
+          kind: Ui.Listing
+          presentation: !ref todosPresentation
+          model: !ref Todo
+          # An opener with nothing but its form opens as the listing
+          # decides: a dialog that closes after a save.
+          create: { form: { kind: Ui.Form, model: !ref NewTodo, presentation: !ref todosPresentation } }
+          edit: { form: { kind: Ui.Form, model: !ref TodoEdit, presentation: !ref todosPresentation } }
+          delete: true
+---
 # The whole frontend. `/` is one `CrudUi.Admin` — listing, filters, and the
 # create and edit forms all come from the collection — given three keys that
 # say how it behaves. `/status` is the same screen written out by hand.
@@ -129,61 +188,18 @@ metadata: { name: ui }
 title: Todos
 theme: !ref UiReact.defaultTheme
 tokens: { kind: Ui.DesignTokens, color.accent: "#1f8fff", radius.md: 6px }
-pages:
-  - kind: Ui.Page
-    path: /
-    title: Todos
-    children:
-      - type: composite
-        ref:
-          kind: CrudUi.Admin
-          source: !ref todosSource
-          # The bar shows only the filters chosen, as chips, kept in the address
-          # and the browser.
-          filters:
-            placement: { kind: Ui.AbovePlacement, show: chosen, summary: chips }
-            state: { key: todos, address: true, store: { kind: Ui.LocalStore } }
-          create:
-            # A drawer, and a full-size dialog on a narrow screen.
-            surface: { kind: Ui.Drawer, side: end, compact: { kind: Ui.Dialog, size: full } }
-            afterSubmit: again
-          edit:
-            surface: { kind: Ui.Drawer, side: end, address: { name: todo } }
-            unsaved: confirm
-  - kind: Ui.Page
-    path: /status
-    title: By status
-    children:
-      - { type: text, text: Todos by status, style: heading }
-      - type: composite
-        ref:
-          kind: Ui.Filters
-          presentation: !ref todosPresentation
-          # The bar folds behind a toggle.
-          policy: { placement: { kind: Ui.CollapsiblePlacement } }
-          fields:
-            # Pinned: the search box stays outside the fold.
-            - { property: text, operator: contains, pinned: true }
-            # No control: the presets below are the only way to set it.
-            - { property: isDone, operator: eq, control: none }
-            # Behind the toggle: a range of due days, from one to another.
-            - { property: dueOn, operator: gte }
-            - { property: dueOn, operator: lte }
-          presets:
-            - { label: All, values: [] }
-            - { label: Open, values: [{ property: isDone, operator: eq, value: false }] }
-            - { label: Done, values: [{ property: isDone, operator: eq, value: true }] }
-          content:
-            type: composite
-            ref:
-              kind: Ui.Listing
-              presentation: !ref todosPresentation
-              model: !ref Todo
-              # An opener with nothing but its form opens as the listing
-              # decides: a dialog that closes after a save.
-              create: { form: { kind: Ui.Form, model: !ref NewTodo, presentation: !ref todosPresentation } }
-              edit: { form: { kind: Ui.Form, model: !ref TodoEdit, presentation: !ref todosPresentation } }
-              delete: true
+pages: [!ref todosPage, !ref statusPage]
+layout:
+  kind: Ui.PageLayout
+  header:
+    - type: pane
+      ref:
+        kind: Ui.Navbar
+        title: Todos
+        navigation:
+          items:
+            - { type: page, page: !ref todosPage }
+            - { type: page, page: !ref statusPage }
 ---
 kind: Http.Server
 metadata: { name: server }

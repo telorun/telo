@@ -107,7 +107,7 @@ describe("a dialog", () => {
     await rendered.focus(task(rendered));
     await rendered.choose(within(rendered, "select"), "blocked");
     expect([surface(rendered) !== undefined, within(rendered, "select").textContent]).toEqual([true, "blocked"]);
-    await rendered.pointerDown(rendered.part("page-title"));
+    await rendered.pointerDown(rendered.part("page"));
     expect(surface(rendered)).toBeUndefined();
   });
 
@@ -162,7 +162,7 @@ describe("a popover", () => {
     rendered = await show({ ...popover, dismiss: { escape: false, outside: false } });
     await rendered.click(rendered.part("listing-create"));
     await rendered.escape();
-    await rendered.pointerDown(rendered.part("page-title"));
+    await rendered.pointerDown(rendered.part("page"));
     expect(surface(rendered)).toBeDefined();
     await rendered.click(within(rendered, "cancel"));
     expect(surface(rendered)).toBeUndefined();
@@ -267,7 +267,7 @@ describe("a page surface", () => {
     expect(surface(rendered)!.getAttribute("data-surface")).toBe("page");
     expect(rendered.part("page").contains(surface(rendered)!)).toBe(true);
     expect(content.style.display).toBe("none");
-    expect(rendered.part("page-title").textContent).toBe("Todos");
+    expect(document.title).toBe("Todos · Test App");
     await rendered.enter(task(rendered), "From a page");
     await rendered.click(within(rendered, "submit"));
     expect(surface(rendered)).toBeUndefined();

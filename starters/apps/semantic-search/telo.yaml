@@ -458,6 +458,78 @@ routes:
         content: { application/json: { body: { error: not_found } } }
       - { status: 204 }
 ---
+kind: Ui.Page
+metadata: { name: askPage }
+path: /
+title: Ask
+children:
+  - { type: text, text: "Ask your documents", style: title }
+  - { type: text, text: "Answered only from the passages retrieved for the question.", style: muted }
+  - type: composite
+    ref:
+      kind: Ui.Action
+      inputModel: !ref Question
+      outputModel: !ref Answer
+      request: { target: { path: /api/ask } }
+      label: Ask
+      result:
+        type: stack
+        children:
+          - type: list
+            rows: !cel "result.reply"
+            columns:
+              - value: !cel "row.answer"
+          - type: list
+            heading: Sources
+            rows: !cel "result.sources"
+            columns:
+              - value: !cel "row.title"
+              - value: !cel "row.score"
+---
+kind: Ui.Page
+metadata: { name: searchPage }
+path: /search
+title: Search
+children:
+  - { type: text, text: "Search by meaning", style: title }
+  - { type: text, text: "The passages nearest to a query, with their scores — retrieval on its own.", style: muted }
+  - type: composite
+    ref:
+      kind: Ui.Action
+      inputModel: !ref Question
+      outputModel: !ref Matches
+      request: { target: { path: /api/search } }
+      label: Search
+      result:
+        type: list
+        rows: !cel "result.matches"
+        columns:
+          - value: !cel "row.title"
+          - value: !cel "row.id"
+          - value: !cel "row.score"
+---
+kind: Ui.Page
+metadata: { name: documentsPage }
+path: /documents
+title: Add a document
+children:
+  - { type: text, text: "Add a document", style: title }
+  - { type: text, text: "Indexed at once; adding one under a title already used replaces it.", style: muted }
+  - type: composite
+    ref:
+      kind: Ui.Action
+      inputModel: !ref Document
+      outputModel: !ref Indexed
+      request: { target: { path: /api/documents } }
+      label: Index
+      # The form shows these two only; the id is left for the API to derive.
+      fields: [title, text]
+      result:
+        type: list
+        rows: !cel "result.indexed"
+        columns:
+          - value: !cel "row.id"
+---
 # The whole frontend. An action is a form built from its input shape, a button
 # that sends one POST, and tables drawn from what comes back. What crosses to
 # the browser is this description, never generated code.
@@ -465,73 +537,19 @@ kind: UiReact.App
 metadata: { name: ui }
 title: Semantic search
 theme: !ref UiReact.defaultTheme
-pages:
-  - kind: Ui.Page
-    path: /
-    title: Ask
-    children:
-      - { type: text, text: "Ask your documents", style: heading }
-      - { type: text, text: "Answered only from the passages retrieved for the question.", style: muted }
-      - type: composite
-        ref:
-          kind: Ui.Action
-          inputModel: !ref Question
-          outputModel: !ref Answer
-          request: { target: { path: /api/ask } }
-          label: Ask
-          result:
-            type: stack
-            children:
-              - type: list
-                rows: !cel "result.reply"
-                columns:
-                  - value: !cel "row.answer"
-              - type: list
-                heading: Sources
-                rows: !cel "result.sources"
-                columns:
-                  - value: !cel "row.title"
-                  - value: !cel "row.score"
-  - kind: Ui.Page
-    path: /search
-    title: Search
-    children:
-      - { type: text, text: "Search by meaning", style: heading }
-      - { type: text, text: "The passages nearest to a query, with their scores — retrieval on its own.", style: muted }
-      - type: composite
-        ref:
-          kind: Ui.Action
-          inputModel: !ref Question
-          outputModel: !ref Matches
-          request: { target: { path: /api/search } }
-          label: Search
-          result:
-            type: list
-            rows: !cel "result.matches"
-            columns:
-              - value: !cel "row.title"
-              - value: !cel "row.id"
-              - value: !cel "row.score"
-  - kind: Ui.Page
-    path: /documents
-    title: Add a document
-    children:
-      - { type: text, text: "Add a document", style: heading }
-      - { type: text, text: "Indexed at once; adding one under a title already used replaces it.", style: muted }
-      - type: composite
-        ref:
-          kind: Ui.Action
-          inputModel: !ref Document
-          outputModel: !ref Indexed
-          request: { target: { path: /api/documents } }
-          label: Index
-          # The form shows these two only; the id is left for the API to derive.
-          fields: [title, text]
-          result:
-            type: list
-            rows: !cel "result.indexed"
-            columns:
-              - value: !cel "row.id"
+pages: [!ref askPage, !ref searchPage, !ref documentsPage]
+layout:
+  kind: Ui.PageLayout
+  header:
+    - type: pane
+      ref:
+        kind: Ui.Navbar
+        title: Semantic search
+        navigation:
+          items:
+            - { type: page, page: !ref askPage }
+            - { type: page, page: !ref searchPage }
+            - { type: page, page: !ref documentsPage }
 ---
 kind: Http.Server
 metadata: { name: server }

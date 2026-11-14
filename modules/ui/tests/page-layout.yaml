@@ -1,0 +1,159 @@
+kind: Telo.Application
+metadata:
+  name: UiPageLayoutTest
+  version: 1.0.0
+  description: |
+    A page layout answers its regions for each request: a navigation bar's
+    entries and a column's entries delivered by the request, every default of
+    the bar, the column and the aside filled by ui, its width its own, else the
+    application's, else contained; and it publishes, at creation, the files
+    its regions can name — a column entry's glyph among them.
+lang: en
+imports: { Ui: ../, Assert: ../../assert }
+targets: [!ref check]
+---
+kind: Ui.Page
+metadata: { name: home }
+path: /
+title: Home
+children: [{ type: text, text: Home, style: title }]
+---
+kind: Ui.Page
+metadata: { name: reports }
+path: /reports
+title: Reports
+children: [{ type: text, text: Reports, style: title }]
+---
+kind: Ui.Page
+metadata: { name: signIn }
+path: /sign-in
+title: Sign in
+children: [{ type: text, text: Sign in, style: title }]
+---
+kind: Ui.PageLayout
+metadata: { name: layout }
+width: contained
+header:
+  - type: pane
+    ref:
+      kind: Ui.Navbar
+      title: Acme
+      navigation:
+        items:
+          - { type: page, page: !ref home }
+          - { type: page, page: !ref reports, when: !cel "'x-role' in request.headers" }
+      end:
+        - { type: link, text: Sign in, href: { path: !ref signIn } }
+aside:
+  label: Shortcuts
+  collapse: { state: { key: shortcuts, store: { kind: Ui.LocalStore } } }
+  content:
+    type: pane
+    ref:
+      kind: Ui.NavigationColumn
+      state: { key: shortcuts, store: { kind: Ui.LocalStore } }
+      navigation:
+        items:
+          - type: link
+            text: Status
+            href: "https://status.acme.test"
+            icon: { kind: Ui.FileIcon, file: !module-path ./__fixtures__/chat-icons/mark.svg }
+          - type: group
+            text: Account
+            items:
+              - { type: page, page: !ref signIn, text: Switch account }
+              - { type: link, text: Staff handbook, href: "https://handbook.acme.test", when: !cel "'x-role' in request.headers" }
+footer:
+  - { type: text, text: Acme Corporation, style: muted }
+---
+kind: Ui.PageLayout
+metadata: { name: bare }
+---
+kind: Telo.Sequence
+metadata: { name: check }
+steps:
+  - name: anonymous
+    invoke: !ref layout
+    inputs: { request: { headers: {} }, pageWidth: full }
+  - name: anonymousIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.anonymous.result"
+      expected:
+        width: contained
+        header:
+          - type: navbar
+            fill: false
+            title: { text: Acme, context: null, lang: en, computed: false }
+            start: []
+            end:
+              - type: link
+                fill: false
+                text: { text: Sign in, context: null, lang: en, computed: false }
+                href: { path: { value: /sign-in }, pathParams: {}, queryParams: {} }
+                button: null
+            navigation:
+              items:
+                - { type: page, key: home, path: /, text: { text: Home, context: null, lang: und, computed: false } }
+            placement:
+              type: header
+              compact:
+                type: overlay
+                surface: { type: drawer, side: start, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+        aside:
+          side: start
+          size: medium
+          frame: flush
+          toggle: { type: icon, icon: null, label: hidden }
+          label: { text: Shortcuts, context: null, lang: en, computed: false }
+          collapse: { collapsed: false, state: { key: shortcuts, store: { type: local } } }
+          compact: { type: drawer, side: start, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+          actions: []
+          content:
+            type: navigation-column
+            fill: false
+            state: { key: shortcuts, store: { type: local } }
+            navigation:
+              items:
+                - type: link
+                  key: status
+                  href: "https://status.acme.test"
+                  text: { text: Status, context: null, lang: en, computed: false }
+                  icon: { digest: 276ad3aee0a8ee2c8486148005b736534b2a9fea0abe52ccf5e0e7d0b97ae8b2, name: mark.svg }
+                - type: group
+                  key: account
+                  text: { text: Account, context: null, lang: en, computed: false }
+                  items:
+                    - { type: page, key: account/switch-account, path: /sign-in, text: { text: Switch account, context: null, lang: en, computed: false } }
+        footer:
+          - { type: text, fill: false, style: muted, text: { text: Acme Corporation, context: null, lang: en, computed: false } }
+  - name: staff
+    invoke: !ref layout
+    inputs: { request: { headers: { x-role: admin } } }
+  - name: staffIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        bar: !cel "steps.staff.result.header[0].navigation.items.map(i, i.key)"
+        column: !cel "steps.staff.result.aside.content.navigation.items[1].items.map(i, i.key)"
+      expected:
+        bar: [home, reports]
+        column: [account/switch-account, account/staff-handbook]
+  - name: inherited
+    invoke: !ref bare
+    inputs: { request: { headers: {} }, pageWidth: full }
+  - name: fallback
+    invoke: !ref bare
+    inputs: { request: { headers: {} } }
+  - name: bareIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: { inherited: !cel "steps.inherited.result", fallback: !cel "steps.fallback.result" }
+      expected:
+        inherited: { width: full, header: [], footer: [] }
+        fallback: { width: contained, header: [], footer: [] }
+  - name: assetsAre
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "resources.layout.assets.map(a, [a.digest, a.name, a.mediaType])"
+      expected: [[276ad3aee0a8ee2c8486148005b736534b2a9fea0abe52ccf5e0e7d0b97ae8b2, mark.svg, image/svg+xml]]

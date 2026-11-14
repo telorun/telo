@@ -22,7 +22,8 @@ type Mark = (node: SpecNode) => SpecNode;
  * a reader's trees, a filter bar's content. A tree drawn in a box of its own — a
  * surface's form, a listing's empty tree, an action's answers, a row action's
  * action, a menu's items, a split view's actions, a chat's header — is decided
- * inside that box and fills nothing around it. Linear in the size of the tree.
+ * inside that box and fills nothing around it, and so is a navigation bar's.
+ * Linear in the size of the tree.
  */
 export function filledNode(node: SpecNode): SpecNode {
   let fills = node.fill === true;
@@ -33,9 +34,11 @@ export function filledNode(node: SpecNode): SpecNode {
   };
   const own: Mark = (child) => filledNode(child);
   const out: Record<string, unknown> = { ...node };
+  // A navigation bar's sides are drawn in the bar, and fill nothing around it.
+  const listMark = node.type === "navbar" ? own : passing;
   for (const key of PASSING_LISTS) {
     const list = node[key];
-    if (Array.isArray(list)) out[key] = list.map((child) => (isNode(child) ? passing(child) : child));
+    if (Array.isArray(list)) out[key] = list.map((child) => (isNode(child) ? listMark(child) : child));
   }
   for (const key of PASSING_TREES[node.type] ?? []) {
     if (isNode(node[key])) out[key] = passing(node[key]);

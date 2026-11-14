@@ -28,7 +28,10 @@ import type { AliasResolver } from "./alias-resolver.js";
 import { renderChain } from "./callable-flags.js";
 import { parseCelSource, valueBrandHint } from "./cel-environment.js";
 import { producedValueOf, type ProducedValue } from "./cel-produced-value.js";
-import { declaredChainSchemaAt, type CelScopeResolver, type CelSiteRef, type ReferrerLink, type ReferrerVariant } from "./cel-scope.js";
+import { accessChains } from "./cel-access-chains.js";
+import { declaredChainSchemaAt, LOCATION_SEPARATOR, type CelScopeResolver, type CelSiteRef, type ReferrerLink, type ReferrerVariant } from "./cel-scope.js";
+import { withheldMessage, withheldNodes, withheldOnChain, type WithheldNode } from "./context-withheld.js";
+import { isGeneratedDeclaration } from "./generated-name.js";
 import { reportCelSiteJudgement } from "./cel-site-judgements.js";
 import type { CelOccurrenceFacts } from "./cel-site-solve.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
@@ -622,6 +625,33 @@ export class CelJudge {
         });
       }
 
+      // A binding or member the context withholds is named here and holds no
+      // value: every read of it is refused, saying who withholds it and why.
+      const regionNames = new Set<string>();
+      for (const region of siteRef.contexts ?? (siteRef.contextSchema ? [{ schema: siteRef.contextSchema }] : [])) {
+        for (const name of Object.keys(region.schema?.properties ?? {})) regionNames.add(name);
+      }
+      const withheld = regionNames.size > 0 ? withheldNodes(effectiveContext, regionNames) : [];
+      if (withheld.length > 0) {
+        const reported = new Set<WithheldNode>();
+        for (const expression of celExpressionsOf(engineName, expr)) {
+          for (const chain of accessChains(expression, siteModuleNames)) {
+            const node = withheldOnChain(withheld, chain);
+            if (!node || reported.has(node)) continue;
+            reported.add(node);
+            const finding: AnalysisDiagnostic = {
+              severity: DiagnosticSeverity.Error,
+              code: node.location.length === 1 ? "CEL_UNKNOWN_IDENTIFIER" : "CEL_UNKNOWN_FIELD",
+              source: SOURCE,
+              message: `${m.kind}/${resource.name}: !${engineName}: ${withheldMessage(node, withholderOf(variant, node))}`,
+              data: { resource, filePath, path },
+            };
+            namesItsWithholder.add(finding);
+            diagnostics.push(finding);
+          }
+        }
+      }
+
       for (const f of result.diagnostics) {
         // The consumer resolves an accessor by path, null-propagating, so
         // an unguarded read through a nullable value is not a fault there.
@@ -690,6 +720,36 @@ export class CelJudge {
   }
 }
 
+/** Withheld-read findings, which name the referrer withholding the node
+ *  themselves, so no variant suffix is added to them. */
+const namesItsWithholder = new WeakSet<AnalysisDiagnostic>();
+
+/**
+ * Who withholds `node` at a site judged under `variant`: the resource whose
+ * scope declares it — the outermost link of each referrer's chain, "the inline
+ * <Kind>" where its name was generated — when the node reached the site through
+ * a referrer; undefined when the site's own region declares it.
+ */
+function withholderOf(variant: ReferrerVariant | undefined, node: WithheldNode): string | undefined {
+  if (!variant || variant.referrers.length === 0) return undefined;
+  const typed = Object.keys(variant.bindings).some((key) => {
+    const steps = key.split(LOCATION_SEPARATOR);
+    return steps.length <= node.location.length && steps.every((step, i) => node.location[i] === step);
+  });
+  if (!typed) return undefined;
+  const labels = new Set<string>();
+  const outermost = (link: ReferrerLink): void => {
+    if (link.via && link.via.length > 0) {
+      link.via.forEach(outermost);
+      return;
+    }
+    const m = link.manifest;
+    labels.add(isGeneratedDeclaration(m) ? `the inline ${m.kind}` : `${m.kind}/${String(m.metadata?.name ?? "")}`);
+  };
+  variant.referrers.forEach(outermost);
+  return [...labels].join(", ");
+}
+
 /** Who gives a variant its typing, as a message names them. */
 function referrerLabel(variant: ReferrerVariant | undefined): string | undefined {
   if (!variant || variant.referrers.length === 0) return undefined;
@@ -721,7 +781,9 @@ function mergeVariantFindings(
     for (const d of sink) {
       const shared = counts.get(keyOf(d)) === judged.length;
       const finding =
-        shared || label === undefined ? d : { ...d, message: `${d.message} (as ${label} references it)` };
+        shared || label === undefined || namesItsWithholder.has(d)
+          ? d
+          : { ...d, message: `${d.message} (as ${label} references it)` };
       const anchors = foreign ? entryReferrers(variant?.referrers ?? [], rootModules) : [];
       const copies =
         anchors.length === 0

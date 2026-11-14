@@ -64,16 +64,16 @@ kind: Ui.View
 metadata: { name: helpLink }
 content: { type: link, text: Help, href: /help }
 ---
-# Its header holds a logo, a composite, a menu with an item delivered per
-# request, and a badge delivered per request.
+# Its layout's header holds a logo, a composite, a menu with an item delivered
+# per request, and a badge delivered per request.
 kind: UiReact.App
 metadata: { name: app }
 title: Invoices
 theme: !ref UiReact.defaultTheme
-header:
-  start:
+layout:
+  kind: Ui.PageLayout
+  header:
     - { type: image, src: /logo.svg, alt: Invoices }
-  end:
     - { type: composite, ref: !ref helpLink }
     - type: menu
       text: Help

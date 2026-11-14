@@ -1,8 +1,8 @@
 {
   "parts": {
     "shell": [
-      "app", "header", "header-content", "header-start", "app-title", "nav", "nav-menu", "header-end", "sidebar",
-      "sidebar-toggle", "main", "page", "page-title", "tab-bar"
+      "app", "header", "header-content", "navbar", "navbar-start", "navbar-title", "nav", "nav-menu", "navbar-end", "nav-column",
+      "main", "page", "footer", "footer-content", "tab-bar"
     ],
     "structure": [
       "box", "stack", "columns", "column", "text", "badge", "link", "image", "svg", "value", "time", "list",
@@ -36,7 +36,8 @@
       "media-viewer-position", "media-viewer-next", "media-viewer-zoom-out", "media-viewer-zoom-reset",
       "media-viewer-zoom-in", "media-viewer-download"
     ],
-    "split": ["split", "split-aside", "split-bar", "split-actions", "split-content", "split-toggle"],
+    "split": ["split", "split-content"],
+    "aside": ["aside", "aside-bar", "aside-actions", "aside-toggle"],
     "navigation": ["navigation", "nav-toggle", "nav-item", "nav-group", "nav-panel"],
     "tabs": ["tabs", "tab-list", "tab", "tab-panel"],
     "listing": [
@@ -99,12 +100,12 @@
     "data-dirty": { "values": ["true"], "on": ["form"] },
     "data-compact": { "values": ["true"], "on": ["app"] },
     "data-surface": { "values": ["dialog", "drawer", "popover", "inline", "panel", "page", "confirmation"], "on": ["surface"] },
-    "data-side": { "values": ["start", "end", "top", "bottom"], "on": ["surface", "filters", "sidebar", "split", "split-aside"] },
+    "data-side": { "values": ["start", "end", "top", "bottom"], "on": ["app", "surface", "filters", "aside", "split"] },
     "data-placement": { "values": ["above", "aside", "collapsible", "overlay"], "on": ["filters"] },
     "data-active": { "values": ["true"], "on": ["filter", "filter-chip"] },
     "data-pending": { "values": ["true"], "on": ["filters"] },
-    "data-size": { "values": ["small", "medium", "large", "full"], "on": ["surface", "cards-layout", "split-aside"] },
-    "data-frame": { "values": ["framed", "flush"], "on": ["split", "split-aside", "list-layout"] },
+    "data-size": { "values": ["small", "medium", "large", "full"], "on": ["surface", "cards-layout", "aside"] },
+    "data-frame": { "values": ["framed", "flush"], "on": ["split", "aside", "list-layout"] },
     "data-embedded": { "values": ["true"], "on": ["chat", "list-layout", "table-frame", "tree-layout", "calendar-grid"] },
     "data-button": { "values": ["text", "icon"], "on": ["link", "command", "button"] },
     "data-command": { "values": ["chat.exportTranscript", "chat.copyTranscript", "chat.stop", "chat.newConversation"], "on": ["command"] },
@@ -112,7 +113,7 @@
       "values": ["true"],
       "on": [
         "app", "main", "page", "box", "stack", "columns", "text", "badge", "link", "image", "svg", "value", "time", "list", "bar",
-        "command", "button", "data", "listing", "form", "action", "filters", "component", "chat", "split", "split-aside", "split-content",
+        "command", "button", "data", "listing", "form", "action", "filters", "component", "chat", "split", "aside", "split-content",
         "markdown", "navigation", "tabs", "tab-panel"
       ]
     },
@@ -122,7 +123,7 @@
     "data-align": { "values": ["start", "center", "end"], "on": ["surface", "markdown-table-header-cell", "markdown-table-cell"] },
     "data-modal": { "values": ["true", "false"], "on": ["surface"] },
     "data-sorted": { "values": ["asc", "desc"], "on": ["table-header-cell", "listing-sort-option"] },
-    "data-width": { "values": ["contained", "full"], "on": ["header", "page"] },
+    "data-width": { "values": ["contained", "full"], "on": ["header", "footer", "page"] },
     "data-level": { "values": ["1", "2", "3", "4", "5", "6"], "on": ["markdown-heading"] },
     "data-token": {
       "values": [
@@ -133,9 +134,9 @@
     }
   },
   "partStates": [
-    { "values": ["open", "closed"], "on": ["filters-bar", "filter-chip", "sidebar", "chat-reasoning"] },
+    { "values": ["open", "closed"], "on": ["filters-bar", "filter-chip", "chat-reasoning"] },
     { "values": ["open", "collapsed", "compact"], "on": ["split"] },
-    { "values": ["open", "rail", "compact"], "on": ["split-aside"] }
+    { "values": ["open", "rail", "compact"], "on": ["aside"] }
   ],
   "reserved": [
     { "part": "filters-bar", "properties": ["display"], "because": "a closed collapsible bar is hidden" },
@@ -157,17 +158,19 @@
     { "part": "chat-message", "properties": ["margin-top", "margin-bottom"], "because": "a message drawn stands in for the messages out of view beside it with its block margins" },
     { "part": "chat-announcer", "properties": ["position", "clip-path"], "because": "announcements are read aloud and never drawn" },
     { "part": "split", "properties": ["display", "grid-template-columns"], "because": "the aside sits beside the content while it is open" },
-    { "part": "split-aside", "properties": ["display", "width", "grid-column"], "because": "the aside is as wide as its size says, on its side, and a folded one is a rail holding only its bar and actions" },
+    { "part": "aside", "properties": ["display", "width", "grid-column"], "because": "the aside is as wide as its size says, on its side, and a folded one is a rail holding only its bar and actions" },
     { "part": "split-content", "properties": ["grid-column"], "because": "the content takes the column the aside leaves" },
     { "part": "listing", "properties": ["display", "grid-template-columns"], "because": "a panel sits beside the records and the pager" },
     { "part": "listing-toolbar", "properties": ["order"], "because": "the toolbar stays above a panel" },
     { "part": "surface", "properties": ["order"], "because": "a panel sits on its side" },
-    { "part": "app", "properties": ["display", "grid-template-columns"], "because": "a sidebar sits beside the page" },
+    { "part": "app", "properties": ["display", "grid-template-columns"], "because": "a layout's aside sits beside the page" },
     { "part": "tab-bar", "properties": ["position", "bottom"], "because": "a tab bar stays at the bottom edge" },
     { "part": "glyph", "properties": ["background-color", "mask-image"], "because": "a glyph is its file's shape in the colour of the text around it" },
     { "part": "page", "properties": ["max-width", "margin-inline"], "because": "a contained page is no wider than the width.page token, centred" },
-    { "part": "header", "properties": ["display", "grid-template-columns", "padding-inline"], "because": "beside a sidebar the header spans every column of the application, and its content holds the inset" },
-    { "part": "header-content", "properties": ["padding-inline", "grid-column"], "because": "a contained header's content starts and ends where a contained page does" },
+    { "part": "header", "properties": ["display", "grid-column", "padding-inline"], "because": "the header spans the application, above the aside and the page, and its content holds the inset" },
+    { "part": "header-content", "properties": ["padding-inline"], "because": "a contained header's content starts and ends where a contained page does" },
+    { "part": "footer", "properties": ["display", "grid-column", "padding-inline"], "because": "the footer spans the application, below the aside and the page, and its content holds the inset" },
+    { "part": "footer-content", "properties": ["padding-inline"], "because": "a contained footer's content starts and ends where a contained page does" },
     { "part": "main", "properties": ["padding-inline"], "because": "the page column is inset by the space.page token" },
     { "part": "calendar-grid", "properties": ["display", "grid-template-columns"], "because": "a calendar's days are a grid of seven weekdays, or of the one day shown" },
     { "part": "timeline-axis", "properties": ["display", "grid-template-columns"], "because": "a timeline's columns are the periods of its scale" },

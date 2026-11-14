@@ -1,0 +1,22 @@
+# Reads of a withheld binding and member: in a box's own fields, and in parts a
+# box places, named or inline; the same part kind placed in a page reads
+# `request` freely.
+kind: Telo.Application
+metadata: { name: ContextWithheld }
+imports: { Kinds: ./kinds }
+---
+kind: Kinds.Box
+metadata: { name: box }
+title: !cel "request.headers['x-title']"
+note: !cel "request.principal.id + request.headers['x-note']"
+parts:
+  - kind: Kinds.Part
+    when: !cel "request != null && 'x-role' in request.headers"
+---
+kind: Kinds.Page
+metadata: { name: page }
+parts:
+  - { kind: Kinds.Part, when: !cel "'x-role' in request.headers" }
+  - kind: Kinds.Box
+    parts:
+      - { kind: Kinds.Part, when: !cel "has(request.headers)" }

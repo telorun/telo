@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 import { HEADER_NAVIGATION, render, type Rendered } from "./harness.js";
+import { asideOf } from "./spec-nodes.js";
 import { wireText } from "./ui-texts.js";
 
 let rendered: Rendered | undefined;
@@ -25,11 +26,11 @@ const drawer = (side: string) => ({
   modal: true,
   dismiss: { escape: true, outside: true, closeButton: true },
 });
-// The header's row: what its only child, `header-content`, holds.
-const headerParts = (r: Rendered) => [...r.part("header-content").children].map((child) => child.getAttribute("data-telo-part"));
+// The navbar's row: what the navbar holds.
+const navbarParts = (r: Rendered) => [...r.part("navbar").children].map((child) => child.getAttribute("data-telo-part"));
 const toggle = (r: Rendered, text: string) => r.parts("nav-toggle").find((candidate) => candidate.textContent === text) as HTMLElement;
 
-describe("the application's navigation", () => {
+describe("a navbar and a navigation column", () => {
   it("draws the tree in the header: a group as a dropdown, a nested group as a submenu, the shown page and the groups on the way to it current", async () => {
     rendered = await render({ path: "/audit", pages, navigation: { items: tree, placement: HEADER_NAVIGATION } });
     expect(rendered.part("nav").querySelector('[data-telo-part="navigation"]')?.getAttribute("data-layout")).toBe("horizontal");
@@ -48,7 +49,7 @@ describe("the application's navigation", () => {
 
   it("is a menu button first in the header below the breakpoint, opening a drawer holding the whole tree, its groups opened in place", async () => {
     rendered = await render({ path: "/", pages, narrow: true, navigation: { items: tree, placement: HEADER_NAVIGATION } });
-    expect(headerParts(rendered)).toEqual(["nav-menu", "app-title"]);
+    expect(navbarParts(rendered)).toEqual(["nav-menu", "navbar-title"]);
     await rendered.click(rendered.part("nav-menu"));
     const surface = rendered.part("surface");
     expect([surface.getAttribute("data-surface"), surface.getAttribute("data-side")]).toEqual(["drawer", "start"]);
@@ -62,34 +63,71 @@ describe("the application's navigation", () => {
     expect(rendered.parts("surface")).toEqual([]);
   });
 
-  it("keeps a sidebar's open groups and its collapsed rail in its store, read back when the application is drawn again", async () => {
-    const sidebar = { type: "sidebar", side: "start", rail: { collapsed: false }, store: { type: "local" }, compact: { type: "overlay", surface: drawer("start") } };
-    const draw = () => render({ path: "/", pages, navigation: { items: tree, placement: sidebar } });
-    const layout = (r: Rendered) => r.part("sidebar").querySelector('[data-telo-part="navigation"]')?.getAttribute("data-layout");
+  const column = (key: string | null) => ({ type: "navigation-column", navigation: { items: tree }, state: key === null ? null : { key, store: { type: "local" } } });
+  const folding = (key: string) => ({ collapsed: false, state: { key, store: { type: "local" } } });
+  const inAside = (r: Rendered) => r.part("aside").querySelector('[data-telo-part="navigation"]')?.getAttribute("data-layout");
+
+  it("draws a column in an aside, folding to a rail with the aside, and keeps its open groups and the fold under keys of their own, read back when the application is drawn again", async () => {
+    const layouts = { main: { header: [], aside: asideOf(column("shortcuts"), { collapse: folding("shortcuts") }) } };
+    const draw = () => render({ path: "/", pages, layouts });
     window.localStorage.clear();
     rendered = await draw();
-    expect(layout(rendered)).toBe("vertical");
+    expect(inAside(rendered)).toBe("vertical");
     await rendered.click(toggle(rendered, "Admin"));
     await rendered.click(toggle(rendered, "Logs"));
-    await rendered.click(rendered.part("sidebar-toggle"));
-    expect([layout(rendered), rendered.part("sidebar").getAttribute("data-state")]).toEqual(["rail", "closed"]);
-    expect(JSON.parse(window.localStorage.getItem("telo.ui:/:n") as string)).toEqual({ v: 2, open: ["admin", "admin/logs"], collapsed: true });
+    await rendered.click(rendered.part("aside-toggle"));
+    expect([inAside(rendered), rendered.part("aside").getAttribute("data-state")]).toEqual(["rail", "rail"]);
+    expect(JSON.parse(window.localStorage.getItem("telo.ui:/:n:shortcuts") as string)).toEqual({ v: 3, open: ["admin", "admin/logs"] });
+    expect(JSON.parse(window.localStorage.getItem("telo.ui:/:s:shortcuts") as string)).toEqual({ v: 1, collapsed: true });
     rendered.unmount();
 
     rendered = await draw();
-    expect(layout(rendered)).toBe("rail");
-    await rendered.click(rendered.part("sidebar-toggle"));
+    expect(inAside(rendered)).toBe("rail");
+    await rendered.click(rendered.part("aside-toggle"));
     expect(rendered.parts("nav-group")).toHaveLength(2);
     window.localStorage.clear();
   });
 
+  it("keeps the open groups of two columns with different keys apart, and draws a column outside an aside as a plain column", async () => {
+    const layouts = { main: { header: [], aside: asideOf(column("shortcuts")) } };
+    window.localStorage.clear();
+    rendered = await render({ path: "/", layouts, pages: { ...pages, "/": { ...pages["/"], children: [column("page") as never] } } });
+    const columns = rendered.parts("nav-column");
+    expect(columns).toHaveLength(2);
+    const [inSide, inPage] = columns;
+    await rendered.click([...inSide.querySelectorAll<HTMLElement>('[data-telo-part="nav-toggle"]')].find((button) => button.textContent === "Admin") as HTMLElement);
+    expect(inSide.querySelectorAll('[data-telo-part="nav-group"]')).toHaveLength(1);
+    expect(inPage.querySelectorAll('[data-telo-part="nav-group"]')).toHaveLength(0);
+    expect(inPage.querySelector('[data-telo-part="navigation"]')?.getAttribute("data-layout")).toBe("vertical");
+    expect(JSON.parse(window.localStorage.getItem("telo.ui:/:n:shortcuts") as string)).toEqual({ v: 3, open: ["admin"] });
+    expect(window.localStorage.getItem("telo.ui:/:n:page")).toBeNull();
+    window.localStorage.clear();
+  });
+
+  it("becomes a drawer below the breakpoint, its toggle at the header's edge on the aside's side, and above main when there is no header", async () => {
+    const layout = (header: unknown[], side: string) => ({ main: { header, aside: asideOf(column(null), { side, collapse: folding("nav") }) } });
+    rendered = await render({ path: "/", pages, narrow: true, layouts: layout([{ type: "text", text: "Top" }], "end") });
+    const content = rendered.part("header-content");
+    expect(content.lastElementChild?.getAttribute("data-telo-part")).toBe("aside");
+    expect(rendered.part("aside").getAttribute("data-state")).toBe("rail");
+    await rendered.click(rendered.part("aside-toggle"));
+    const surface = rendered.part("surface");
+    expect([surface.getAttribute("data-surface"), surface.getAttribute("data-side")]).toEqual(["drawer", "start"]);
+    expect(surface.querySelector('[data-telo-part="navigation"]')?.getAttribute("data-layout")).toBe("vertical");
+    rendered.unmount();
+
+    rendered = await render({ path: "/", pages, narrow: true, layouts: layout([], "start") });
+    expect(rendered.parts("header")).toEqual([]);
+    expect(rendered.part("aside").nextElementSibling).toBe(rendered.part("main"));
+  });
+
   it("puts the menu button last in the header when its drawer opens from the end edge", async () => {
     rendered = await render({ path: "/", pages, navigation: { items: tree, placement: { type: "overlay", surface: drawer("end") } } });
-    expect(headerParts(rendered)).toEqual(["app-title", "nav-menu"]);
+    expect(navbarParts(rendered)).toEqual(["navbar-title", "nav-menu"]);
   });
 
   it("draws an entry's icon as a glyph masked by the file at its address, hidden from assistive technology and holding no markup of the file's", async () => {
-    const items = [{ ...entry("home", "/", "Home"), icon: "/_telo/ui/assets/aa/house.svg" }, entry("users", "/users", "Users")];
+    const items = [{ ...entry("home", "/", "Home"), icon: { digest: "aa", name: "house.svg" } }, entry("users", "/users", "Users")];
     rendered = await render({ path: "/", pages, navigation: { items, placement: HEADER_NAVIGATION } });
     const glyphs = rendered.parts("glyph");
     expect(glyphs.map((glyph) => glyph.closest('[data-telo-part="nav-item"]')?.textContent)).toEqual(["Home"]);

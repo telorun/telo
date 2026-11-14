@@ -1295,6 +1295,7 @@ export type { CelScope, CelScopeInputs, CelSiteRef } from "./cel-scope.js";
 export type { FunctionParameter, ResolvedFunction } from "./module-function-index.js";
 export { renderChain, type CallableFlags } from "./callable-flags.js";
 export { CelScopeQuery } from "./cel-scope-query.js";
+export { withheldReason } from "./context-withheld.js";
 export type { CelScopeQueryContext, ContextDeclarationSite } from "./cel-scope-query.js";
 // The pairing of a registry and the manifests it analyzed — the one seam a host
 // threads for every question that needs both.

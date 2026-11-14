@@ -97,22 +97,23 @@ describe("the style checks", () => {
 
   it("refuse each of the shell's reserved pairs, through its longhands and shorthands too", () => {
     const parts = JSON.parse(readFileSync(new URL("../../../ui-react/nodejs/src/contract/parts.json", import.meta.url), "utf8"));
-    const shell = parts.reserved.filter((entry: { part: string }) => ["header", "header-content", "main", "page"].includes(entry.part));
+    const shell = parts.reserved.filter((entry: { part: string }) => ["header", "header-content", "footer", "footer-content", "main", "page"].includes(entry.part));
     const read = readStylesheet(`
-      [data-telo-part=header] { display: flex; grid: none; padding: 0 1rem }
+      [data-telo-part=header] { display: flex; grid-area: 1 / 1; padding: 0 1rem }
       [data-telo-part=header] { padding-left: 1rem }
-      [data-telo-part=header-content] { padding-inline-end: 1rem; grid-area: 1 / 1 }
-      [data-telo-part=header-content] { grid-column-start: 2 }
+      [data-telo-part=header-content] { padding-inline-end: 1rem }
+      [data-telo-part=footer] { display: block; grid-column-start: 2 }
+      [data-telo-part=footer-content] { padding: 0 }
       [data-telo-part=main] { padding-right: 1rem }
       [data-telo-part=page] { margin: 0; max-inline-size: none }`);
     if (!read.ok) throw new Error(read.message);
     const window = new Window();
-    window.document.body.innerHTML = `<div data-telo-part="header"><div data-telo-part="header-content"></div></div><main data-telo-part="main"><div data-telo-part="page"></div></main>`;
+    window.document.body.innerHTML = `<div data-telo-part="header"><div data-telo-part="header-content"></div></div><main data-telo-part="main"><div data-telo-part="page"></div></main><footer data-telo-part="footer"><div data-telo-part="footer-content"></div></footer>`;
     const coverage = new StyleCoverage([{ path: "/theme.css", reading: read.reading }]);
     coverage.record(window.document as unknown as Document);
     const refused = coverage.problems({ parts: [], reserved: shell }, []).map((problem) => problem.subject);
     expect([...new Set(refused)].sort()).toEqual(
-      ["header: display", "header: grid-template-columns", "header: padding-inline", "header-content: grid-column", "header-content: padding-inline", "main: padding-inline", "page: margin-inline", "page: max-width"].sort(),
+      ["header: display", "header: grid-column", "header: padding-inline", "header-content: padding-inline", "footer: display", "footer: grid-column", "footer-content: padding-inline", "main: padding-inline", "page: margin-inline", "page: max-width"].sort(),
     );
   });
 

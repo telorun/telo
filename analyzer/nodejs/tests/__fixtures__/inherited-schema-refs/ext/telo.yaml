@@ -1,0 +1,14 @@
+# A kind of another module extending the abstract in merge form, with no rule
+# of its own.
+kind: Telo.Library
+metadata: { name: Ext }
+imports: { Base: ../base }
+exports: { kinds: [Holder] }
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+extends: Base.Holder
+controllers: [pkg:npm/none@0.0.0]
+schema:
+  type: object
+  properties: { label: { type: string } }

@@ -1,0 +1,13 @@
+# A site whose layout names nothing loaded: the walk cannot cross it.
+kind: Telo.Application
+metadata: { name: UnresolvedHop }
+imports: { Reach: ./kinds }
+---
+kind: Reach.Page
+metadata: { name: home }
+path: /
+---
+kind: Reach.Site
+metadata: { name: site }
+pages: [!ref home]
+layout: !ref missing

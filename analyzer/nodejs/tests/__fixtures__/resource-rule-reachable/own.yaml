@@ -1,0 +1,21 @@
+# A kind of the application's own whose walk reaches no page anywhere.
+kind: Telo.Application
+metadata: { name: OwnWalker }
+imports: { Reach: ./kinds }
+---
+kind: Telo.Definition
+metadata: { name: Walker }
+capability: Telo.Provider
+controllers: [pkg:npm/none@0.0.0]
+schema:
+  type: object
+  properties: { layout: { x-telo-ref: { kind: Reach.Layout, use: dependency } } }
+  x-telo-resource-rules:
+    - reachable: { kind: Reach.Page, use: schema, through: [dependency] }
+      condition: !cel "false"
+      code: NEVER_REACHES
+      message: names a page.
+---
+kind: OwnWalker.Walker
+metadata: { name: empty }
+layout: { kind: Reach.Layout, header: [] }

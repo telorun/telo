@@ -1,0 +1,83 @@
+# A pane resolved once inside a composite reading `request` — unguarded in a
+# named split view, guarded in an inline one — and the same kind reading it in a
+# page's children and in a layout region; a view reading `params.id` placed in a
+# layout region and in a page whose path binds `id`; and a navigation pane of
+# another module naming a page with no title.
+kind: Telo.Application
+metadata: { name: UiInvalidPanesApp, version: 1.0.0 }
+lang: en
+imports: { Ui: ../../../../, Help: ../../help }
+---
+kind: Ui.Page
+metadata: { name: home }
+path: /
+title: Home
+children:
+  - { type: composite, ref: !ref sections }
+  - type: pane
+    ref:
+      kind: Ui.NavigationColumn
+      navigation:
+        items:
+          - { type: link, text: Admin, href: /admin, when: !cel "'x-role' in request.headers" }
+  - type: pane
+    ref:
+      kind: Help.Links
+      heading: Need a hand?
+      navigation:
+        items:
+          - { type: page, page: !ref draft }
+  - type: composite
+    ref:
+      kind: Ui.SplitView
+      aside:
+        label: Guarded
+        content:
+          type: pane
+          ref:
+            kind: Ui.NavigationColumn
+            navigation:
+              items:
+                - { type: link, text: Admin, href: /admin, when: !cel "request != null && 'x-role' in request.headers" }
+      content: { type: text, text: Guarded }
+---
+kind: Ui.SplitView
+metadata: { name: sections }
+aside:
+  label: Sections
+  content:
+    type: pane
+    ref:
+      kind: Ui.NavigationColumn
+      navigation:
+        items:
+          - { type: link, text: Admin, href: /admin, when: !cel "'x-role' in request.headers" }
+content: { type: text, text: Welcome, style: title }
+---
+kind: Ui.Page
+metadata: { name: draft }
+path: /draft
+children:
+  - { type: text, text: Work in progress, style: muted }
+---
+kind: Ui.View
+metadata: { name: editLink }
+content: { type: link, text: Edit this page, href: { path: "/edit/{id}", pathParams: { id: !cel "params.id" } } }
+---
+kind: Ui.Page
+metadata: { name: record }
+path: /x/{id}
+title: Record
+children:
+  - { type: composite, ref: !ref editLink }
+---
+kind: Ui.PageLayout
+metadata: { name: layout }
+header:
+  - { type: composite, ref: !ref editLink }
+  - type: pane
+    ref:
+      kind: Ui.NavigationColumn
+      navigation:
+        items:
+          - { type: link, text: Admin, href: /admin, when: !cel "'x-role' in request.headers" }

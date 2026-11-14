@@ -1,0 +1,30 @@
+# Ready-made pages with a navigation bar linking them: one the application lists, one it does not.
+kind: Telo.Library
+metadata:
+  name: UiReactUnroutedDocs
+  version: 1.0.0
+  description: >-
+    Test fixture exporting two documentation pages and a navigation bar naming
+    both, to list among an application's pages and place in its header.
+imports: { Ui: ../../../../../../ui }
+exports: { resources: [guide, listed, nav] }
+---
+kind: Ui.Page
+metadata: { name: guide }
+path: /guide
+title: Guide
+children: []
+---
+kind: Ui.Page
+metadata: { name: listed }
+path: /listed
+title: Listed
+children: []
+---
+kind: Ui.Navbar
+metadata: { name: nav }
+title: Docs
+navigation:
+  items:
+    - { type: page, page: !ref guide }
+    - { type: page, page: !ref listed }

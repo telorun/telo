@@ -315,50 +315,62 @@ routes:
           application/json:
             body: !cel "result"
 ---
+kind: Ui.Page
+metadata: { name: jobPage }
+path: /
+title: Job
+children:
+  - { type: text, text: "Run the job", style: title }
+  - { type: text, text: "Fires the same run the schedule fires. One run at a time: a second one is refused while the first is going.", style: muted }
+  - type: composite
+    ref:
+      kind: Ui.Action
+      inputModel: &nothing
+        kind: Telo.JsonSchema
+        schema: { type: object, additionalProperties: false, properties: {} }
+      outputModel: !ref RunHistory
+      request: { target: { path: /api/run } }
+      label: Run now
+      result:
+        type: list
+        heading: Runs
+        rows: !cel "result.runs"
+        columns: &runColumns
+          - value: !cel "row.id"
+          - value: !cel "row.startedAt"
+          - value: !cel "row.finishedAt"
+          - value: !cel "row.outcome"
+          - value: !cel "row.detail"
+  - { type: text, text: "History", style: heading }
+  - type: composite
+    ref:
+      kind: Ui.Action
+      inputModel: *nothing
+      outputModel: !ref RunHistory
+      request: { target: { path: /api/runs/recent } }
+      label: Show history
+      result:
+        type: list
+        rows: !cel "result.runs"
+        columns: *runColumns
+---
 # The whole frontend: two buttons, each a form with nothing to fill in, and the
 # table each draws from what its route answers.
 kind: UiReact.App
 metadata: { name: ui }
 title: Scheduled job
 theme: !ref UiReact.defaultTheme
-pages:
-  - kind: Ui.Page
-    path: /
-    title: Job
-    children:
-      - { type: text, text: "Run the job", style: heading }
-      - { type: text, text: "Fires the same run the schedule fires. One run at a time: a second one is refused while the first is going.", style: muted }
-      - type: composite
-        ref:
-          kind: Ui.Action
-          inputModel: &nothing
-            kind: Telo.JsonSchema
-            schema: { type: object, additionalProperties: false, properties: {} }
-          outputModel: !ref RunHistory
-          request: { target: { path: /api/run } }
-          label: Run now
-          result:
-            type: list
-            heading: Runs
-            rows: !cel "result.runs"
-            columns: &runColumns
-              - value: !cel "row.id"
-              - value: !cel "row.startedAt"
-              - value: !cel "row.finishedAt"
-              - value: !cel "row.outcome"
-              - value: !cel "row.detail"
-      - { type: text, text: "History", style: heading }
-      - type: composite
-        ref:
-          kind: Ui.Action
-          inputModel: *nothing
-          outputModel: !ref RunHistory
-          request: { target: { path: /api/runs/recent } }
-          label: Show history
-          result:
-            type: list
-            rows: !cel "result.runs"
-            columns: *runColumns
+pages: [!ref jobPage]
+layout:
+  kind: Ui.PageLayout
+  header:
+    - type: pane
+      ref:
+        kind: Ui.Navbar
+        title: Scheduled job
+        navigation:
+          items:
+            - { type: page, page: !ref jobPage }
 ---
 kind: Http.Server
 metadata: { name: server }

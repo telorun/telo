@@ -26,15 +26,18 @@ expression selects nothing.
 | `bar` | `start?`, `center?`, `end?` | a [bar](#bars): nodes at its start, its centre and its end |
 | `command` | `command`, `text`, `button?` | a button running a [command](#commands) of the place it is written in |
 | `composite` | `ref` | a [composite](composite.md): a `!ref`, or an inline declaration |
+| `pane` | `ref` | a [pane](pane.md) — a piece of chrome such as a navigation bar: a `!ref`, or an inline declaration; replaced by the node it answers |
 
 Every node also takes:
 
 - `style` — one name from the style list, or a list of them; every node but
-  `tabs`, whose look is its theme's.
+  `tabs`, whose look is its theme's, and `pane`, whose node is the pane's.
 - `when` — a boolean, `true` when left out: whether the node is **delivered**.
   It is evaluated on the server — per request on a page's own nodes (where it
   may read `request`), once at creation inside a composite — and a node whose
   `when` is false is left out of its parent: it is not sent and holds no state.
+  A `pane` follows the same rule: invoked per request with the request where
+  the tree is delivered per request, once — with none — inside a composite.
 - `shown` — a [condition](conditions.md): whether a delivered node is
   **drawn**. It is read in the browser over the roots the place it is written
   binds, and content it hides keeps its state and starts no request. Both keys
@@ -479,6 +482,7 @@ looks.
 
 | Style | Meaning |
 | --- | --- |
+| `title` | the page's title (the level-1 heading element on `text`); a page draws its own, since no heading is drawn for its `title` |
 | `heading` | a section heading (a level-2 heading element on `text`) |
 | `subheading` | a heading below it (level 3) |
 | `muted` | secondary |
@@ -513,8 +517,9 @@ null value takes `default`; a value no case names takes `default` too.
 `Ui.SpecNode` is the same vocabulary after resolution: every `when` decided
 and gone — a menu's items and a `tabs` node's tabs included, so a `menu` carries at least one item and `tabs` at least one tab — every `shown` carried as written (`{ at, matches }`, `at` a binding),
 every composite replaced by the node it provides (`listing`, `form`, `action`,
-`filters`, `data`, `component`), and `error` for a node that could not be
-produced. Every node carries `fill`, `true` exactly where it or a node in the
+`filters`, `data`, `component`), every pane by the node it answers (left out
+when it answers none — there is no `pane` node on the wire), and `error` for a
+node that could not be produced. Every node carries `fill`, `true` exactly where it or a node in the
 room it passes on was written filling. A `value` and a `time` node carry
 `present` — what the schema it reads says (`type`, `format`) — and each `list`
 column its `header` and `present`, all resolved on the server, a time column
@@ -577,10 +582,12 @@ now](filters.md#values-relative-to-now) a list of one `{ unit, offset }`.
 
 ## Nodes a renderer receives
 
-A composite provides nodes of the `Ui.SpecNode` shape, which has two that are
-not written by hand in a page's tree:
+Composites and panes provide nodes of the `Ui.SpecNode` shape, which has four
+that are not written by hand in a page's tree:
 
 | `type` | Members | Is |
 | --- | --- | --- |
 | `chat` | `spec`, `basePath`, `header`, `placeholder`, `starters`, `show`, `buttons`, `composer`, `conversation`, `refreshes`, `style?`, `shown?` | the node [`Ui.Chat`](chat.md) provides, every member present |
-| `split` | `side`, `size`, `label`, `aside` (`{ actions, content }`), `content`, `collapse`, `compact`, `style?`, `shown?` | the node [`Ui.SplitView`](split-view.md) provides, every member present |
+| `split` | `aside` — every member of a [`Ui.Aside`](split-view.md#the-aside) present — `content`, `style?`, `shown?` | the node [`Ui.SplitView`](split-view.md) provides |
+| `navbar` | `title?`, `start`, `end`, `navigation`, `placement`, `shown?` | the node [`Ui.Navbar`](navigation.md#uinavbar) answers, every member but `title` present |
+| `navigation-column` | `navigation`, `state`, `shown?` | the node [`Ui.NavigationColumn`](navigation.md#uinavigationcolumn) answers, `state` `null` when the open groups are kept in memory |

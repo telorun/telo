@@ -77,6 +77,7 @@ export const ANNOTATION_KEYWORDS = [
   "x-telo-context-nullable-when",
   "x-telo-context-parameters-from",
   "x-telo-context-ref-from",
+  "x-telo-context-withheld",
   "x-telo-error-context",
   "x-telo-eval",
   "x-telo-inline",

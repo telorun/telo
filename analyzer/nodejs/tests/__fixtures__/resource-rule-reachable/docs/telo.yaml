@@ -1,0 +1,27 @@
+# Ready-made pages and a bar linking them, written in a library: `guide` is
+# listed by the application, `orphan` is not.
+kind: Telo.Library
+metadata: { name: Docs }
+imports: { Reach: ../kinds }
+exports: { resources: [guide, nav, tour] }
+---
+kind: Reach.Page
+metadata: { name: guide }
+path: /guide
+title: !cel "'Guide'"
+---
+kind: Reach.Page
+metadata: { name: orphan }
+path: /orphan
+---
+kind: Reach.Bar
+metadata: { name: nav }
+items:
+  - { page: !ref guide, text: Guide }
+  - { page: !ref orphan, text: Orphan }
+---
+kind: Telo.Sequence
+metadata: { name: tour }
+steps:
+  - name: open
+    invoke: { kind: Reach.Action, page: !ref orphan }

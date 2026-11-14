@@ -41,9 +41,11 @@
  * **Nothing the condition does not read can fail a binding.** An entry is bound
  * as written, a reference naming nothing loaded or a kind-only input is a mark
  * in its place (`rule-binding-marks.ts`), and each resolved declaration is
- * recorded as one; the read-narrowed check (`findDynamicRead`) then judges only
- * what a condition reads — an expression, a mark — and reads a resolved
- * declaration read whole with everything it holds, since `findDynamicLeaf`
+ * recorded as one, with the declaration it binds as its identity; the
+ * read-narrowed check (`findDynamicRead`) then judges only what a condition
+ * reads — an expression, a mark. A resolved declaration only compared (`==`,
+ * `!=`, `in`) is its identity, so what it holds is not read; read whole any
+ * other way it is read with everything it holds, since `findDynamicLeaf`
  * otherwise stops at a nested `{kind}`. A `!module-path` inside a resolved
  * declaration compares as written. Only `kind-refused` still fails a binding.
  *
@@ -101,7 +103,17 @@ import {
   type RuleShapeLookup,
 } from "./validate-resource-rules.js";
 import { isResolvedReference } from "./resolved-reference.js";
-import { markBoundDeclaration, unboundMember } from "./rule-binding-marks.js";
+import {
+  declarationIdentityOf,
+  manifestDeclarationKey,
+  markBoundDeclaration,
+  markDeclarationIdentity,
+  unboundMember,
+} from "./rule-binding-marks.js";
+import { resolveSlotUseAt } from "./call-graph.js";
+import type { RefUse } from "./ref-slot.js";
+import type { ReachableSpec } from "./resource-rule.js";
+import { walkReachable, type ReachEnv, type ReachableResult } from "./reachable-walk.js";
 import { importPathOf, importPathThrough, scopeReadAt } from "./scoped-name-resolver.js";
 
 /**
@@ -220,6 +232,10 @@ export interface RefSite {
   readonly shape: string;
   /** Every kind the slot accepts, unioned. Empty when the slot names none. */
   readonly kinds: readonly string[];
+  /** What the declaring resource does with the target at this site, its
+   *  case map resolved where it can be (`resolveSlotUseAt`); empty for a slot
+   *  that declares none. Absent where the host does not say. */
+  readonly uses?: readonly RefUse[];
 }
 
 /** What the binder needs from its host. Both halves are the caller's because
@@ -253,6 +269,9 @@ export interface PeerBinderEnv {
   /** A declaration as a rule reads it — each accessor field as its binding
    *  (`rule-declaration-view.ts`). Omitted, a declaration reads as written. */
   readonly viewOf?: (declaration: ResourceManifest) => ResourceManifest;
+  /** What a `reachable:` walk reads beyond a binding. Omitted, the walk binds
+   *  nothing. */
+  readonly reach?: ReachEnv;
 }
 
 /** True for a binding failure that must be reported by NOTHING: the manifest is
@@ -443,7 +462,10 @@ function resolveReference(
   if (resolver.refuses(site, declaration)) {
     return { ok: false, failure: { reason: "kind-refused", at } };
   }
-  return { ok: true, value: markBoundDeclaration(declaration, isModulePath) };
+  return {
+    ok: true,
+    value: markDeclarationIdentity(markBoundDeclaration(declaration, isModulePath), manifestDeclarationKey(declaration)),
+  };
 }
 
 type ResolvedCollection =
@@ -704,8 +726,47 @@ export class PeerBinder {
     const cached = this.coReferrers.get(manifest);
     if (cached) return cached;
     const resolved = this.resolveCoReferrer(manifest, kind);
+    if (resolved.ok && resolved.value && typeof resolved.value === "object") {
+      markDeclarationIdentity(resolved.value as object, manifestDeclarationKey(manifest));
+    }
     this.coReferrers.set(manifest, resolved);
     return resolved;
+  }
+
+  private readonly walks = new WeakMap<ResourceManifest, Map<string, ReachableResult>>();
+
+  /**
+   * Every reference of `spec.kind` at a slot of use `spec.use` reachable from
+   * `manifest` through slots and step `invoke:` targets whose use is in
+   * `spec.through` — each named declaration bound by identity, with where it is
+   * reported. Each declaration is walked once, so a cycle ends and the walk is
+   * linear in what it reaches. Memoized per resource and spec.
+   */
+  reachable(manifest: ResourceManifest, kind: string, spec: ReachableSpec): ReachableResult {
+    let bySpec = this.walks.get(manifest);
+    if (!bySpec) this.walks.set(manifest, (bySpec = new Map()));
+    const key = JSON.stringify([kind, spec.kind, spec.use, spec.through]);
+    const known = bySpec.get(key);
+    if (known) return known;
+    const reach = this.env.reach;
+    const result: ReachableResult = reach
+      ? walkReachable(manifest, kind, spec, {
+          ...reach,
+          view: (declaration) => this.view(declaration),
+          declarationOf: (reference, from) => {
+            const declaration = this.env.declarationOf(reference, from);
+            return declaration && this.view(declaration);
+          },
+          refSitesOf: (declaration, declarationKind) => this.env.refSitesOf(declaration, declarationKind),
+          refuses: (site, declaration) => this.resolver(declaration, () => site).refuses(site, declaration),
+          bind: (value, identity) =>
+            declarationIdentityOf(value) === undefined
+              ? markDeclarationIdentity(markBoundDeclaration(value, isModulePath), identity)
+              : value,
+        })
+      : { ok: false, failure: { reason: "unknown-shape", at: "" } };
+    bySpec.set(key, result);
+    return result;
   }
 
   private resolveCoReferrer(manifest: ResourceManifest, kind: string): EntryResult {
@@ -918,6 +979,9 @@ export function analyzerPeerBinder(
   /** Where a dependency's declaration reads the references it writes. Omitted,
    *  every reference is read in the analysed modules' scope. */
   writing?: WritingModules,
+  /** What a `reachable:` walk reads beyond a binding. Omitted, a rule
+   *  declaring one reports as unbound. */
+  reach?: ReachEnv,
 ): PeerBinder {
   const names = requests.names;
 
@@ -1005,7 +1069,13 @@ export function analyzerPeerBinder(
           if (!kinds.includes(accepted)) kinds.push(accepted);
         }
       }
-      sites.set(site.path, { shape: site.refs[0]!.fieldPath, kinds });
+      const uses: RefUse[] = [];
+      for (const ref of site.refs) {
+        for (const use of resolveSlotUseAt(ref.slot, view, ref, site.path).use) {
+          if (!uses.includes(use)) uses.push(use);
+        }
+      }
+      sites.set(site.path, { shape: site.refs[0]!.fieldPath, kinds, uses });
     }
     return sites;
   };
@@ -1016,6 +1086,7 @@ export function analyzerPeerBinder(
     refSitesOf,
     ...(slotAccepts ? { slotAccepts } : {}),
     ...(viewOf ? { viewOf } : {}),
+    ...(reach ? { reach } : {}),
   });
 }
 

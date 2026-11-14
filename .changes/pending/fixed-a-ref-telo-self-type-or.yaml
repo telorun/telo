@@ -1,0 +1,7 @@
+units:
+  analyzer: Fixed
+body: "A `$ref: \"telo://Self/<Type>\"` (or `telo://<Alias>/<Type>`) in a kind's schema
+  names the shape of the module that wrote it when a kind of another module inherits it
+  in merge form: it was read in the inheriting kind's module, so the reference slots
+  behind it were unknown, rules over them were skipped and inherited `x-telo-ref` sites
+  were missed."

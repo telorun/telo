@@ -1,0 +1,5 @@
+units:
+  templating: Fixed
+body: "An unknown member of a closed object that declares no members reads `(available:
+  none)` in its `CEL_UNKNOWN_FIELD` message, never `(available: )`, in both the Node and
+  the Rust tag engines."

@@ -31,7 +31,7 @@ export interface PageRequest {
 /** A page as delivered for one request. */
 export interface PageDocument {
   path: string;
-  /** Absent when the page declares none: no heading is drawn. */
+  /** The document title; absent when the page declares none. */
   title?: TextRecord;
   /** The query parameters its nodes read, by name; empty when none is declared. */
   query: Record<string, unknown>;
@@ -39,11 +39,13 @@ export interface PageDocument {
   children: SpecNode[];
 }
 
-/** What a page publishes: its address, its title when it has one and what it reads. */
+/** What a page publishes: its address, its title when it has one, what it
+ *  reads, and every file its nodes can name — known at creation. */
 export interface PageReading {
   path: string;
   title?: TextRecord;
   query: Record<string, unknown>;
+  assets: AssetFile[];
 }
 
 /** A `Ui.Page`, as whoever lists it holds it. */
@@ -51,15 +53,14 @@ export interface PageInstance extends ResourceInstance {
   /** `context` is the invocation the request is handled under. */
   invoke(inputs: PageInputs, context?: InvokeContext): Promise<PageDocument>;
   snapshot(): PageReading;
-  /** Every file the page's composites need. */
-  assets(): AssetFile[];
-  /** The request headers the page's expressions read. */
+  /** The request headers the page's expressions read; any, `*`, when it
+   *  places a pane, which is handed the whole request. */
   headerReads(): HeaderReads;
 }
 
 export function isPage(candidate: unknown): candidate is PageInstance {
   const page = candidate as Partial<PageInstance> | null;
-  return typeof page?.invoke === "function" && typeof page.snapshot === "function" && typeof page.assets === "function";
+  return typeof page?.invoke === "function" && typeof page.snapshot === "function" && typeof page.headerReads === "function";
 }
 
 /** One page: its nodes prepared once, delivered per request. */
@@ -70,20 +71,17 @@ class Page implements PageInstance {
     private readonly nodes: RequestNodes,
   ) {}
 
-  async invoke({ request, pageWidth }: PageInputs): Promise<PageDocument> {
+  async invoke({ request, pageWidth }: PageInputs, context?: InvokeContext): Promise<PageDocument> {
+    const { assets, ...document } = this.reading;
     return {
-      ...this.reading,
+      ...document,
       width: resolvedPageWidth(this.width, pageWidth),
-      children: this.nodes.deliver(request as unknown as Record<string, unknown>),
+      children: await this.nodes.deliver(request, context),
     };
   }
 
   snapshot(): PageReading {
     return this.reading;
-  }
-
-  assets(): AssetFile[] {
-    return this.nodes.assets;
   }
 
   headerReads(): HeaderReads {
@@ -105,5 +103,9 @@ export async function create(resource: PageResource, ctx: ResourceContext): Prom
     "params",
   );
   const nodes = await RequestNodes.prepare(resource.children, { query: queryShape, params: paramsShape }, ctx, `${where} children`);
-  return new Page({ path: resource.path, ...(resource.title == null ? {} : { title: resource.title }), query }, resource.width ?? undefined, nodes);
+  return new Page(
+    { path: resource.path, ...(resource.title == null ? {} : { title: resource.title }), query, assets: nodes.assets },
+    resource.width ?? undefined,
+    nodes,
+  );
 }

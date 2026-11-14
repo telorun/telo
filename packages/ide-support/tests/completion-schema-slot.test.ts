@@ -97,6 +97,7 @@ describe("buildCompletions — JSON Schema slots", () => {
       "x-telo-context-from-referrer",
       "x-telo-context-item-fills",
       "x-telo-context-nullable-when",
+      "x-telo-context-withheld",
     ]);
   });
 
@@ -122,6 +123,7 @@ describe("buildCompletions — JSON Schema slots", () => {
       "x-telo-context-from-path-template",
       "x-telo-context-from-referrer",
       "x-telo-context-nullable-when",
+      "x-telo-context-withheld",
     ]);
   });
 });

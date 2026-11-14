@@ -258,18 +258,23 @@ title: Telo Assistant
 theme: !ref UiReact.defaultTheme
 # Telo's blue, the colour of the mark in the header.
 tokens: { kind: Ui.DesignTokens, color.accent: "#2062ce", color.accent-text: "#ffffff" }
-header:
-  width: full
-  start:
-    - type: link
-      text: Telo Assistant
-      href: { path: !ref assistant }
-      style: accent
-      button: { kind: Ui.IconButton, icon: { kind: Ui.FileIcon, file: !module-path ./telo-mark.svg } }
-  end:
-    - { type: link, text: Built with Telo, href: "https://telo.run" }
-navigation: { items: [] }
 pages: [!ref assistant]
+layout:
+  kind: Ui.PageLayout
+  width: full
+  header:
+    - type: pane
+      ref:
+        kind: Ui.Navbar
+        start:
+          - type: link
+            text: Telo Assistant
+            href: { path: !ref assistant }
+            style: accent
+            button: { kind: Ui.IconButton, icon: { kind: Ui.FileIcon, file: !module-path ./telo-mark.svg } }
+        end:
+          - { type: link, text: Built with Telo, href: "https://telo.run" }
+        navigation: { items: [] }
 ---
 # The conversations beside the chat: a link per conversation and a link to start
 # a new one, both to this page, the chat reading the conversation its address names.
@@ -281,10 +286,10 @@ children:
   - type: composite
     ref:
       kind: Ui.SplitView
-      label: Conversations
-      size: small
-      collapse: { state: { key: conversations, store: { kind: Ui.LocalStore } } }
       aside:
+        label: Conversations
+        size: small
+        collapse: { state: { key: conversations, store: { kind: Ui.LocalStore } } }
         actions:
           - type: link
             text: New conversation

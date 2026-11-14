@@ -46,6 +46,7 @@ import {
   pointerSegments,
   pointerToPath,
 } from "./resource-rule.js";
+import { manifestDeclarationKey, markDeclarationIdentity } from "./rule-binding-marks.js";
 import {
   RULE_BUDGET_MS,
   UNTAGGED_CONDITION,
@@ -519,8 +520,9 @@ export function evaluateReferrerRules(
         continue;
       }
       const scope: Record<string, unknown> = {
-        self: selfView.self,
-        referrer: referrerView.self,
+        // Each is the declaration it binds: equal only to itself.
+        self: markDeclarationIdentity(selfView.self, manifestDeclarationKey(manifest)),
+        referrer: markDeclarationIdentity(referrerView.self, manifestDeclarationKey(referrer.manifest)),
         ...(context.functions ? { [MODULE_CALL_DISPATCH_KEY]: context.functions } : {}),
       };
       if (perEntry) {
@@ -550,7 +552,7 @@ export function evaluateReferrerRules(
       // resource-rule reasoning, and it bites harder here: the referrer is a
       // whole manifest, so scanning all of it would disable the rule for any
       // server carrying one unrelated expression.
-      const dynamic = findDynamicRead(chains, scope);
+      const dynamic = findDynamicRead(chains, scope, compiled.identityReads);
       if (dynamic?.failure) {
         findings.push({ kind: "unbound", rule, referrer, failure: dynamic.failure });
         continue;
