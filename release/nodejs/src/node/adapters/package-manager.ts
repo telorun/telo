@@ -5,6 +5,7 @@
  * directory is an error, never a guess.
  */
 
+import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -72,6 +73,31 @@ export function packCommand(manager: PackageManager, destination: string): { com
     case "bun":
       return { command: "bun", args: ["pm", "pack", "--destination", destination] };
   }
+}
+
+/**
+ * Runs a package manager. On Windows each manager is a `.cmd` shim, which no
+ * spawn finds without a shell (and Node refuses to start one without since
+ * CVE-2024-27980), so it goes through `cmd.exe` there: every argument quoted —
+ * a path may hold a space — and the command left bare, since a quoted name
+ * makes the shim resolve its own location against the working directory.
+ */
+export function runPackageManager(command: string, args: readonly string[], cwd: string): SpawnSyncReturns<string> {
+  const viaCmd = process.platform === "win32";
+  return spawnSync(command, viaCmd ? args.map(quoteForCmd) : [...args], {
+    cwd,
+    encoding: "utf8",
+    maxBuffer: 256 * 1024 * 1024,
+    shell: viaCmd,
+  });
+}
+
+/** A literal `"` toggles cmd's quote state and has no portable escape, so it is refused. */
+export function quoteForCmd(token: string): string {
+  if (token.includes('"')) {
+    throw new Error(`cannot pass '${token}' to a package manager on Windows: a literal '"' has no escape through cmd.exe.`);
+  }
+  return `"${token}"`;
 }
 
 /** Managers with no workspace protocol: a sibling is named by a plain range. */

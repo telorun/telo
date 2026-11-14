@@ -5,6 +5,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 use serde_json::Value;
 
@@ -131,6 +132,47 @@ pub fn pack_command(manager: PackageManager, destination: &Path) -> (&'static st
         PackageManager::YarnBerry => ("yarn", vec!["pack".into(), "--out".into(), file]),
         PackageManager::Bun => ("bun", vec!["pm".into(), "pack".into(), "--destination".into(), dest]),
     }
+}
+
+/// Runs a package manager. On Windows each manager is a `.cmd` shim, which no
+/// spawn finds without a shell, so it goes through `cmd.exe` there as Node's
+/// `shell: true` does: every argument quoted, since a path may hold a space,
+/// and the command left bare, since a quoted name makes the shim resolve its
+/// own location against the working directory.
+pub fn run_package_manager(command: &str, args: &[String], cwd: &Path) -> Result<std::process::Output, ReleaseError> {
+    let mut run = package_manager_command(command, args)?;
+    run.current_dir(cwd).stdin(Stdio::null()).output().map_err(|err| {
+        ReleaseError::new(format!(
+            "`{command} {}` could not start ({err}). {command} packs this package; install it, or name another manager in 'packageManager'.",
+            args.join(" ")
+        ))
+    })
+}
+
+#[cfg(windows)]
+fn package_manager_command(command: &str, args: &[String]) -> Result<Command, ReleaseError> {
+    use std::os::windows::process::CommandExt;
+    let quoted = args.iter().map(|arg| quote_for_cmd(arg)).collect::<Result<Vec<_>, _>>()?;
+    let mut run = Command::new("cmd.exe");
+    run.args(["/d", "/s", "/c"]).raw_arg(format!("\"{command} {}\"", quoted.join(" ")));
+    Ok(run)
+}
+
+#[cfg(not(windows))]
+fn package_manager_command(command: &str, args: &[String]) -> Result<Command, ReleaseError> {
+    let mut run = Command::new(command);
+    run.args(args);
+    Ok(run)
+}
+
+/// A literal `"` toggles cmd's quote state and has no portable escape, so it is refused.
+pub fn quote_for_cmd(token: &str) -> Result<String, ReleaseError> {
+    if token.contains('"') {
+        return Err(ReleaseError::new(format!(
+            "cannot pass '{token}' to a package manager on Windows: a literal '\"' has no escape through cmd.exe."
+        )));
+    }
+    Ok(format!("\"{token}\""))
 }
 
 /// Managers with no workspace protocol: a sibling is named by a plain range.

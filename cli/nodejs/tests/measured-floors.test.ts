@@ -31,11 +31,12 @@ afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
 
 /**
  * One module: `needs` is what the fake CLI needs of a release to read it (a
- * version, or `unreleased`), `floor` what it declares, `imports` a sibling.
+ * version, or `unreleased`), `floor` what it declares, `imports` a sibling,
+ * `restricted` a `restrictions:` entry's telo bound (over `restrictedVersions`).
  */
 function writeModule(
   name: string,
-  options: { needs?: string; floor?: string; imports?: string } = {},
+  options: { needs?: string; floor?: string; imports?: string; restricted?: string; restrictedVersions?: string } = {},
 ): string {
   const lines = [
     "kind: Telo.Library",
@@ -44,6 +45,14 @@ function writeModule(
     "  version: 1.0.0",
     ...(options.needs ? [`  # needs: ${options.needs}`] : []),
     ...(options.floor ? [`requires: { telo: "${options.floor}" }`] : []),
+    ...(options.restricted
+      ? [
+          "restrictions:",
+          ...(options.restrictedVersions ? [`  - versions: "${options.restrictedVersions}"`, "    requires:"] : ["  - requires:"]),
+          `      telo: "${options.restricted}"`,
+          '    reason: "needs a runtime feature"',
+        ]
+      : []),
     ...(options.imports ? ["imports:", `  Sibling: ../${options.imports}`] : []),
     "exports:",
     "  kinds: []",
@@ -298,6 +307,23 @@ describe("naming a measurement copy in a run's output", () => {
     expect(mentions(output, "/w/modules/type/.telo-floor-measure.yaml")).toBe(false);
     expect(mentions(output, "/w/modules/media-type/.telo-floor-measure.yaml")).toBe(true);
   });
+
+  it("does not reject a module a failed batch names only in a warning", async () => {
+    writeModule("base", { needs: "0.80.0" });
+    writeModule("user", { needs: "0.85.0" });
+    const workspace = loadWorkspace(root);
+    const copyOf = (name: string) => path.join(root, "modules", name, ".telo-floor-measure.yaml");
+    const inner = fakeCli();
+    const runner: CliRunner = async (version, paths) => {
+      const result = await inner(version, paths);
+      if (result.status !== "failed" || !paths.includes(copyOf("base"))) return result;
+      return { status: "failed", output: `${copyOf("base")}:31:17  warning  stale  DEPRECATION_REPLACEMENT_UNRESOLVED\n${result.output}` };
+    };
+    const results = await measureAndWriteFloors(workspace, workspace.modules, { runner, finals: FINALS });
+    const floorOf = (key: string) => results.find((r) => r.module.key === key)!.to;
+    expect(floorOf("modules/base")).toEqual({ kind: "version", version: "0.80.0" });
+    expect(floorOf("modules/user")).toEqual({ kind: "version", version: "0.85.0" });
+  });
 });
 
 describe("attributing a rejection to the import closure", () => {
@@ -374,8 +400,50 @@ describe("floors follow the siblings a module imports", () => {
     expect(results[0]!.to).toEqual({ kind: "version", version: "0.88.0" });
   });
 
+  it("raises a dependent to a sibling's covering restriction, never a module to its own", async () => {
+    writeModule("base", { needs: "0.80.0", restricted: ">=0.85.0" });
+    writeModule("user", { imports: "base" });
+    writeModule("waiting", { restricted: ">=unreleased" });
+    writeModule("after", { imports: "waiting" });
+    writeModule("earlier", { needs: "0.80.0", restricted: ">=0.85.0", restrictedVersions: "<1.0.0" });
+    writeModule("unheld", { imports: "earlier" });
+    const workspace = loadWorkspace(root);
+
+    const results = await measureAndWriteFloors(workspace, workspace.modules, {
+      runner: fakeCli(),
+      finals: FINALS,
+    });
+
+    const result = (key: string) => results.find((r) => r.module.key === key)!;
+    const line = (key: string) => floorLine(result(key));
+    expect(result("modules/base").to).toEqual({ kind: "version", version: "0.80.0" });
+    expect(result("modules/waiting").to).toEqual({ kind: "none" });
+    expect(line("modules/user")).toBe(
+      "modules/user: (none) → >=0.85.0 (imports modules/base, restricted to >=0.85.0)",
+    );
+    expect(line("modules/after")).toBe(
+      "modules/after: (none) → >=unreleased (imports modules/waiting, restricted to >=unreleased)",
+    );
+    expect(line("modules/unheld")).toBe("modules/unheld: (none) → >=0.80.0 (imports modules/earlier at >=0.80.0)");
+  });
+
   const check = () =>
     checkWorkspaceRequires(loadWorkspace(root), { currentVersion: "0.90.0", runner: fakeCli(), finals: FINALS });
+
+  it("holds a dependent at a sibling's restriction and fails one below it", async () => {
+    writeModule("base", { needs: "0.80.0", floor: ">=0.80.0", restricted: ">=0.85.0" });
+    writeModule("user", { floor: ">=0.85.0", imports: "base" });
+    writeModule("low", { floor: ">=0.80.0", imports: "base" });
+    const failures = (await check()).failures;
+    expect(failures.map((f) => [f.module, f.code, f.measured])).toEqual([
+      ["modules/low", "REQUIRES_FLOOR_TOO_LOW", ">=0.85.0"],
+    ]);
+    expect(failures[0]!.message).toBe(
+      "requires.telo is '>=0.80.0'; imports modules/base, restricted to >=0.85.0, and the lowest published telo " +
+        "that accepts this module is 0.85.0 (imports modules/base, restricted to >=0.85.0). " +
+        "Run `telo release floor --module modules/low`.",
+    );
+  });
 
   it("holds a floor equal to a sibling's correct though the release below accepts the module", async () => {
     writeModule("base", { needs: "0.85.0", floor: ">=0.85.0" });

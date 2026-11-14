@@ -125,7 +125,7 @@ describe("a declared { command } payload", () => {
   it("refuses a non-zero exit, a missing file, a duplicate and a path outside the workspace", () => {
     expect(() => digest("exit 3")).toThrow(/exited 3/);
     expect(() => digest("echo b.txt")).toThrow(/names no file/);
-    expect(() => digest("echo a.txt; echo a.txt")).toThrow(/twice/);
+    expect(() => digest("echo a.txt && echo a.txt")).toThrow(/twice/);
     expect(() => digest("echo ../../etc/passwd")).toThrow(/outside the workspace/);
   });
 });

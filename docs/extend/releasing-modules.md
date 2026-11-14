@@ -273,8 +273,9 @@ release now accepts, a number raised by hand, or a `>=unreleased` in a plan that
 moves no telo version). Each names the measured value.
 
 `floor` measures the lowest published telo that reads each module (or `--module <dir>`)
-with the published CLI, siblings first (a dependent is never below the floors of the siblings it
-imports by relative path), and writes it into `requires.telo`: a version,
+with the published CLI, siblings first (a dependent is never below what the siblings it imports by
+relative path impose: their `requires.telo`, or a higher bound a `restrictions:` entry of theirs
+states for their own version), and writes it into `requires.telo`: a version,
 `>=unreleased` when no published telo reads the syntax yet, or no `requires:` when the oldest
 telo that reads `requires:` accepts it. It writes nothing if the registry cannot be reached.
 Nobody types `requires.telo` in a workspace; what measurement cannot see is a

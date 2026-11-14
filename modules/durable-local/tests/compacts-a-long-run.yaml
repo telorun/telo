@@ -97,9 +97,9 @@ steps:
     invoke: !ref status
     inputs:
       run: !cel "steps.start.result.runId"
+  # Stops on any settled status too, so a run that failed fails the assertion below instead of spinning.
   - name: untilParked
-    while: !cel "steps.parked.result.status != 'parked'"
-    maxIterations: 400
+    while: !cel "steps.parked.result.status in ['running', 'unknown']"
     do:
       - name: parked
         invoke: !ref status

@@ -57,7 +57,13 @@ try {
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);
 } finally {
-  server.kill();
-  rmSync(stateDir, { recursive: true, force: true });
+  // Windows keeps the server's database open until the process has exited, so
+  // the state directory is removed only after it has.
+  if (!serverExited) {
+    const exited = new Promise((r) => server.once("exit", r));
+    server.kill();
+    await exited;
+  }
+  rmSync(stateDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 }
 process.exit(status);

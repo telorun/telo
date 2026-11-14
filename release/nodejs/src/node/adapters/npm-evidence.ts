@@ -18,7 +18,6 @@
  * package packs its manifest's maps in varying orders.
  */
 
-import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -31,7 +30,7 @@ import { digestFileSet, withoutBookkeeping, type FileSetEntry } from "../files-d
 import { fetchBytes, fetchOrAbsent, RegistryError } from "../registry-fetch.js";
 import { readTarGz } from "../tar.js";
 import type { ReleaseWorkspace } from "../workspace.js";
-import { detectPackageManager, packCommand, usesPlainRanges, type PackageManager } from "./package-manager.js";
+import { detectPackageManager, packCommand, runPackageManager, usesPlainRanges, type PackageManager } from "./package-manager.js";
 
 const EDGE_SECTIONS = ["dependencies", "peerDependencies", "optionalDependencies"] as const;
 const UNPUBLISHABLE_RANGE = /^(workspace|catalog):/;
@@ -194,7 +193,7 @@ function pack(root: string, ref: AnchorRef, manager: PackageManager): FileSetEnt
   const destination = fs.mkdtempSync(path.join(os.tmpdir(), "telorun-release-pack-"));
   try {
     const { command, args } = packCommand(manager, destination);
-    const run = spawnSync(command, args, { cwd: dir, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
+    const run = runPackageManager(command, args, dir);
     if (run.error) {
       throw new Error(
         `${ref.unit.key}: \`${command} ${args.join(" ")}\` could not start (${run.error.message}). ` +
