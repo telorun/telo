@@ -231,7 +231,7 @@ kind: Assert.Manifest
 metadata: { name: missingContextRefusedAtRuntime }
 source: ./__fixtures__/resolver-context-app.yaml
 expect:
-  errors: []
+  errors: [{ code: CONTRACT_INPUTS_MISMATCH, message: "Run.Sequence/callWithoutContext: inputs at 'steps[0].inputs' do not satisfy reader's declared inputType: /context is missing required property 'conversationId'" }]
   runFails: "AI.Text/reader: inputs do not satisfy the declared inputType: Invalid value passed: {\"prompt\":\"hello\",\"context\":{}}. Error: /context is missing required property 'conversationId'"
 ---
 # A tool turn names the call it answers: the Message contract refuses one that

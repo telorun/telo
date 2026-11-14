@@ -6327,15 +6327,17 @@ is how you tell "the checker missed nothing, this is a different question" from
 "the checker is telling you something". Four classes survive a clean check, and
 guessing at the wrong one is what turns a two-minute fix into a rewrite.
 
-**A dependency's own internals.** Analysis is ENTRY-SCOPED — a library's
-internal declarations are its author's to fix, so your check is silent about
-them by design and the kernel is the only thing left. An `ERR_*` naming a
-resource, kind or alias you never wrote is this: `ERR_DUPLICATE_RESOURCE` for a
-name a library declares twice, `ERR_BASE_WITH_TEMPLATE_BODY` for a kind that
-declares `base:` beside a body. If the library is in the workspace, open ITS
-`telo.yaml` and fix it there — writing it runs `telo check` against that file,
-which reports what your app's check could not. If it is a published module, say
-so plainly and name the version; do not contort your own manifest around someone
+**A dependency's own internals.** `telo check` of your app also judges every
+library it imports, as that library's own check would. A library reached by file
+paths alone is reported at ITS file and line, warnings included; a published
+module's own defects appear as warnings at your `imports:` entry; they do not fail `telo check`, and the fix is a version that passes. An error at an `imports:` entry is something your run would refuse — fix the import (what you supply, the need, the version). The check may be
+stricter than a run: a run refuses only what it creates, so a defect in a kind
+or branch your app never instantiates is reported and the app still boots. An
+`ERR_*` naming a resource, kind or alias you never wrote is a dependency's
+refusal: `ERR_DUPLICATE_RESOURCE` for a name a library declares twice,
+`ERR_BASE_WITH_TEMPLATE_BODY` for a kind that declares `base:` beside a body.
+If the library is in the workspace, open ITS `telo.yaml` and fix it there. If it
+is a published module, say so plainly and name the version; do not contort your own manifest around someone
 else's defect — but check first that it IS a defect rather than an older
 spelling: a dependency writing `mount: api` or a CEL-named `resources:` entry is
 using the legacy form, which still runs and is only deprecated.

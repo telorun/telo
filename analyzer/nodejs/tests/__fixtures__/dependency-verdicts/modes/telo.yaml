@@ -1,0 +1,14 @@
+# A library whose defect holds only when its importer picks `mode: b`.
+kind: Telo.Library
+metadata: { name: Modes }
+variables: { mode: { type: string, enum: [a, b] } }
+---
+kind: Telo.Definition
+metadata: { name: Widget }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./widget.mjs#Widget]
+schema: { type: object, properties: { size: { type: integer } } }
+--- !switch
+metadata: { name: widget }
+switch: !cel "variables.mode"
+cases: { a: { kind: Self.Widget, size: 1 }, b: { kind: Self.Widget, size: big } }

@@ -35,7 +35,7 @@ kind: Assert.Manifest
 metadata: { name: unknownToolAtRuntime }
 source: ./__fixtures__/text-tools-unknown-app.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Ai.Agent/agent at 'textTools[0]': names a tool no tool provider declares, by the name the model is told after each provider entry's `include`, `exclude` and `prefix`." }, { code: RESOURCE_RULE_VIOLATED, message: "Ai.AgentStream/stream at 'textTools[0]': names a tool no tool provider declares, by the name the model is told after each provider entry's `include`, `exclude` and `prefix`." }]
   runFails: "ERR_AI_TEXT_TOOL_UNKNOWN: Ai.Agent \"agent\": textTools[0] names the tool \"apply_changes\", which no tool provider advertises. Advertised: files_apply_changes."
 ---
 kind: Assert.Manifest
@@ -52,7 +52,7 @@ kind: Assert.Manifest
 metadata: { name: tagListedTwiceAtRuntime }
 source: ./__fixtures__/text-tools-tag-duplicate-app.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Ai.Agent/agent at 'textTools[0]': lists a tag another textTools entry lists too; each block is gathered by exactly one entry." }, { code: RESOURCE_RULE_VIOLATED, message: "Ai.Agent/agent at 'textTools[1]': lists a tag another textTools entry lists too; each block is gathered by exactly one entry." }]
   runFails: "[ERR_AI_TEXT_TOOL_TAG_DUPLICATE] InvokeError: Ai.Agent \"agent\": textTools[1] lists the tag \"telo-file\", which textTools[0] lists too."
 ---
 kind: Assert.Manifest
@@ -81,7 +81,7 @@ kind: Assert.Manifest
 metadata: { name: argumentUnknownAtRuntime }
 source: ./__fixtures__/text-tools-argument-unknown-app.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Ai.Agent/agent at 'textTools[0]': maps an argument the tool's `parameters` refuse: one absent from `properties`, unmatched by `patternProperties`, under `additionalProperties: false`." }, { code: RESOURCE_RULE_VIOLATED, message: "Ai.AgentStream/stream at 'textTools[0]': maps an argument the tool's `parameters` refuse: one absent from `properties`, unmatched by `patternProperties`, under `additionalProperties: false`." }]
   runFails: "ERR_AI_TEXT_TOOL_ARGUMENT_UNKNOWN: Ai.Agent \"agent\": textTools[0] maps the argument \"force\", which the parameters of \"apply_changes\" do not allow."
 ---
 kind: Assert.Manifest
@@ -98,5 +98,5 @@ kind: Assert.Manifest
 metadata: { name: argumentMissingAtRuntime }
 source: ./__fixtures__/text-tools-argument-missing-app.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Ai.Agent/agent at 'textTools[0]': leaves unmapped a parameter the tool's `parameters` list as `required`." }, { code: RESOURCE_RULE_VIOLATED, message: "Ai.AgentStream/stream at 'textTools[0]': leaves unmapped a parameter the tool's `parameters` list as `required`." }]
   runFails: "ERR_AI_TEXT_TOOL_ARGUMENT_MISSING: Ai.Agent \"agent\": textTools[0] leaves the required parameter \"changes\" of \"apply_changes\" unmapped."

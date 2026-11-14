@@ -4402,8 +4402,11 @@ function suppressUnreadableModuleDiagnostics(
 
 export class StaticAnalyzer {
   private readonly celEnv: CelEnvironment;
+  /** The host handlers this analyzer's CEL environment was built with. */
+  readonly celHandlers: CelHandlers | undefined;
 
   constructor(options: StaticAnalyzerOptions = {}) {
+    this.celHandlers = options.celHandlers;
     this.celEnv = buildCelEnvironment(options.celHandlers);
   }
 

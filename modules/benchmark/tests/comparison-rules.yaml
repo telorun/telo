@@ -30,7 +30,7 @@ kind: Assert.Manifest
 metadata: { name: refusedAtCreation }
 source: ./__fixtures__/comparison-invalid-app.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Benchmark.Comparison/invalid at 'subjects[0]': shares its name with another subject." }, { code: RESOURCE_RULE_VIOLATED, message: "Benchmark.Comparison/invalid at 'subjects[1]': shares its name with another subject." }, { code: RESOURCE_RULE_VIOLATED, message: "Benchmark.Comparison/invalid at 'workloads[0]': shares its name with another workload." }, { code: RESOURCE_RULE_VIOLATED, message: "Benchmark.Comparison/invalid at 'workloads[1]': shares its name with another workload." }, { code: RESOURCE_RULE_VIOLATED, message: "Benchmark.Comparison/invalid at 'subjects[0]': names no readiness url, so it runs to exit and cannot serve the workloads." }, { code: RESOURCE_RULE_VIOLATED, message: "Benchmark.Comparison/invalid at 'report.thresholds[0]': judges no workload this comparison declares." }, { code: RESOURCE_RULE_VIOLATED, message: "Benchmark.Comparison/invalid at 'report.thresholds[1]': names a subject this comparison does not declare." }, { code: RESOURCE_RULE_VIOLATED, message: "Benchmark.Comparison/invalid at 'report.thresholds[2]': sets a latency limit, but a workload it judges states no rate." }]
   runFails: >-
     Benchmark.Comparison "invalid": two subjects are named "app"; two workloads are named "ping"; subject "app"
     names no readiness url, so it runs to exit and cannot serve the workloads; the threshold for leads/every

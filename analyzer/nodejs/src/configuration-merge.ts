@@ -20,6 +20,7 @@ import {
   type Assignment,
   type Dimension,
 } from "./configuration-dimensions.js";
+import { diagnosticIdentity } from "./diagnostic-identity.js";
 import { ConditionSpace, FALSE, type Condition } from "./presence-condition.js";
 import type { AnalysisDiagnostic } from "./types.js";
 
@@ -35,21 +36,6 @@ export interface ConditionedFinding {
   readonly condition: Condition;
 }
 
-function identityOf(d: AnalysisDiagnostic): string {
-  const data = d.data as
-    | { resource?: { kind?: unknown; name?: unknown }; filePath?: unknown; path?: unknown }
-    | undefined;
-  return JSON.stringify([
-    d.code,
-    data?.resource?.kind,
-    data?.resource?.name,
-    data?.filePath,
-    data?.path,
-    d.range ?? null,
-    d.message,
-  ]);
-}
-
 /** `findings`, in the order each first appears, merged by identity and
  *  labelled among the configurations `universe` holds. */
 export function mergeConditionedDiagnostics(
@@ -60,7 +46,7 @@ export function mergeConditionedDiagnostics(
 ): AnalysisDiagnostic[] {
   const found = new Map<string, { diagnostic: AnalysisDiagnostic; condition: Condition }>();
   for (const { diagnostic, condition } of findings) {
-    const identity = identityOf(diagnostic);
+    const identity = diagnosticIdentity(diagnostic);
     const known = found.get(identity);
     if (known) known.condition = space.or(known.condition, condition);
     else found.set(identity, { diagnostic, condition });

@@ -18,4 +18,4 @@ expect:
 kind: Assert.Manifest
 metadata: { name: refusedAtCreation }
 source: ./__fixtures__/internal-columns/declared-twice-app.yaml
-expect: { errors: [], runFails: "SQL_COLUMN_DECLARED_TWICE" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "SQLite.Table/documents at 'internalColumns.layer': is also declared under 'columns'. A column is part of the row contract or outside it — keep one." }], runFails: "SQL_COLUMN_DECLARED_TWICE" }

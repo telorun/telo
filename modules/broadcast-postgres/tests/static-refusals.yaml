@@ -20,4 +20,4 @@ expect:
 kind: Assert.Manifest
 metadata: { name: oversizedBoundAtRuntime }
 source: ./__fixtures__/oversized-bound/consumer.yaml
-expect: { errors: [], runFails: "ERR_BROADCAST_MAX_BYTES_EXCEEDS_BACKEND" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "BroadcastPostgres.Channel/cacheEvents: sets 'maxBytes' above 7999, the largest notification payload PostgreSQL accepts. Lower the bound." }], runFails: "ERR_BROADCAST_MAX_BYTES_EXCEEDS_BACKEND" }

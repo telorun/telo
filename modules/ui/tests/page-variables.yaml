@@ -133,5 +133,5 @@ kind: Assert.Manifest
 metadata: { name: reloadEveryAtRuntime }
 source: ./__fixtures__/invalid/reload-every/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: SCHEMA_VIOLATION, message: "Ui.Data/tooOften: /reloadEvery must be a Telo.Duration at least 5s, not 1s" }, { code: SCHEMA_VIOLATION, message: "Ui.Listing/listedTooOften: /reloadEvery must be a Telo.Duration at least 5s, not 4.999s" }]
   runFails: "/reloadEvery must be a Telo.Duration at least 5s, not 1s"

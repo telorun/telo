@@ -1,0 +1,10 @@
+units:
+  analyzer: Added
+body: "A dependency verdict: every imported library is judged as its own entry (the
+  result of checking it alone), memoized by a digest of its closure. A library reached
+  by file paths is reported at its own file, every severity; one reached through an oci
+  or http(s) import or nested in an artifact, its errors as warnings at the importing
+  entry, never changing the exit status. `analyzeLoadedGraph`, `analyzeDependencies`,
+  `diagnosticIdentity` and `unionDiagnostics` are exported. Check-only: the kernel's
+  load refuses what it always did. Stricter than before: a manifest that passed a check
+  may now report its libraries' defects."

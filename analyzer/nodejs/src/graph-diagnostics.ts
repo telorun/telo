@@ -54,6 +54,29 @@ export function assembleGraphDiagnostics(
   graph: LoadedGraph,
   analysisDiagnostics: AnalysisDiagnostic[],
 ): { diagnostics: AnalysisDiagnostic[]; suppressed: AnalysisDiagnostic[] } {
+  const { live, suppressed } = partitionAnalysisDiagnostics(graph, analysisDiagnostics);
+  return {
+    diagnostics: [
+      ...graph.parseDiagnostics,
+      ...graph.migrationDiagnostics,
+      ...graph.versionDiagnostics,
+      ...graph.moduleFileDiagnostics,
+      ...importResolutionDiagnostics(graph),
+      ...live,
+    ],
+    suppressed,
+  };
+}
+
+/**
+ * The analysis half of {@link assembleGraphDiagnostics}: each diagnostic's path
+ * remapped to the author's file, then split into the `live` ones and the
+ * cascade `suppressed` on compromised files.
+ */
+export function partitionAnalysisDiagnostics(
+  graph: LoadedGraph,
+  analysisDiagnostics: readonly AnalysisDiagnostic[],
+): { live: AnalysisDiagnostic[]; suppressed: AnalysisDiagnostic[] } {
   const compromised = compromisedFiles(graph);
   const entrySource = graph.entry.owner.source;
   const live: AnalysisDiagnostic[] = [];
@@ -68,16 +91,5 @@ export function assembleGraphDiagnostics(
     const file = findPositions(graph, d.data)?.file ?? rawFilePath ?? entrySource;
     (compromised.has(file) ? suppressed : live).push(d);
   }
-
-  return {
-    diagnostics: [
-      ...graph.parseDiagnostics,
-      ...graph.migrationDiagnostics,
-      ...graph.versionDiagnostics,
-      ...graph.moduleFileDiagnostics,
-      ...importResolutionDiagnostics(graph),
-      ...live,
-    ],
-    suppressed,
-  };
+  return { live, suppressed };
 }

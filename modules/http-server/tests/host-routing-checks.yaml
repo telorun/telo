@@ -38,7 +38,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: listenMovedBesideAtRuntime }
 source: ./__fixtures__/host-routing-checks/listen-moved-consumer.yaml
-expect: { errors: [], runFails: "ERR_HTTP_SERVER_LISTEN_MOVED" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Http.Server/server: writes the socket it binds at the top level, which moved under `listen:` — `port` is now `listen.port` and `host` is now `listen.address`: write `listen: { port: … }`." }], runFails: "ERR_HTTP_SERVER_LISTEN_MOVED" }
 ---
 kind: Assert.Manifest
 metadata: { name: baseUrlRemoved }
@@ -58,7 +58,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: unknownHostsWithoutHostnamesAtRuntime }
 source: ./__fixtures__/host-routing-checks/unknown-hosts-consumer.yaml
-expect: { errors: [], runFails: "ERR_HTTP_UNKNOWN_HOSTS_NO_HOSTNAMES" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Http.Server/server: sets `unknownHosts: reject`, and none of its mounts names `hostnames`, so every request whose host is not an IP literal would be refused. Name the address needs each mount answers in its `hostnames`, or drop `unknownHosts: reject`." }], runFails: "ERR_HTTP_UNKNOWN_HOSTS_NO_HOSTNAMES" }
 ---
 # A hostname is never written in a manifest: an entry is a reference to an
 # address need, required and supplied only by whoever runs the application.

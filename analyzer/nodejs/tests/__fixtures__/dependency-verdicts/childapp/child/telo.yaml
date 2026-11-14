@@ -1,0 +1,4 @@
+kind: Telo.Application
+metadata: { name: Child }
+variables:
+  who: { env: CHILD_WHO, type: string, default: nobody }

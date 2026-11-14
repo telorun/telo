@@ -28,7 +28,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: storeNameDuplicateAtRuntime }
 source: ./__fixtures__/store-name-duplicate-app.yaml
-expect: { errors: [], runFails: "ERR_API_KEY_STORE_NAME_DUPLICATE" }
+expect: { errors: [{ code: REFERRER_RULE_VIOLATED, message: "Keys.Store/orders at 'table': required by Keys.Table — claims a store name another store in this table already claims. Two stores with one name in one table would read and revoke each other's keys — give each store a name of its own." }, { code: REFERRER_RULE_VIOLATED, message: "Keys.Store/ordersAgain at 'table': required by Keys.Table — claims a store name another store in this table already claims. Two stores with one name in one table would read and revoke each other's keys — give each store a name of its own." }], runFails: "ERR_API_KEY_STORE_NAME_DUPLICATE" }
 ---
 kind: Assert.Manifest
 metadata: { name: zeroRetention }

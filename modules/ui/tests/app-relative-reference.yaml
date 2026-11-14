@@ -28,4 +28,4 @@ steps:
 kind: Assert.Manifest
 metadata: { name: refusedAtCreation }
 source: ./__fixtures__/app-relative-reference/consumer/telo.yaml
-expect: { errors: [], runFails: "/basePath must match pattern" }
+expect: { errors: [{ code: SCHEMA_VIOLATION, message: "Ui.CollectionSource/protocolRelative: /basePath must match pattern \"^/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$\"" }], runFails: "/basePath must match pattern" }

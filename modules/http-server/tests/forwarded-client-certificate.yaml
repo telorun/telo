@@ -24,7 +24,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: untrustedAtRuntime }
 source: ./__fixtures__/forwarded-client-certificate/untrusted-consumer.yaml
-expect: { errors: [], runFails: "ERR_HTTP_FORWARDED_CERTIFICATE_UNTRUSTED" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Http.Server/server: reads a forwarded client certificate but trusts no proxy, so any client could send that header. Set `trustProxy` to the proxy in front of this server, or drop `forwardedClientCertificate`." }], runFails: "ERR_HTTP_FORWARDED_CERTIFICATE_UNTRUSTED" }
 ---
 kind: Client.Client
 metadata: { name: viaEnvoy }

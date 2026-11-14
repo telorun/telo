@@ -1,16 +1,13 @@
 import {
   AnalysisRegistry,
-  StaticAnalyzer,
-  collectApplicationSources,
-  collectModuleDocuments,
-  flattenForAnalyzer,
-  DiagnosticSeverity,
+  analyzeLoadedGraph,
   isModuleKind,
   type AnalysisDiagnostic,
   type LoadedGraph,
 } from "@telorun/analyzer";
 import type { ResourceManifest } from "@telorun/sdk";
 import * as path from "node:path";
+import { verdictStoreFor } from "./dependency-verdict-store.js";
 import { nodeHostVersions } from "@telorun/kernel";
 import { cacheTargetFor, loadFreshGraph, openSession } from "./check-session.js";
 import { resolveLocation, type Logger } from "./logger.js";
@@ -77,19 +74,13 @@ export async function loadAnalyzedGraph(manifest: string, log: Logger): Promise<
     return undefined;
   }
 
-  const manifests = flattenForAnalyzer(graph);
-  const registry = new AnalysisRegistry();
-  const errors = new StaticAnalyzer()
-    .analyze(
-      manifests,
-      {
-        moduleDocuments: collectModuleDocuments(graph),
-        applicationSources: collectApplicationSources(graph),
-        hostVersions: nodeHostVersions(),
-      },
-      registry,
-    )
-    .filter((d) => d.severity === DiagnosticSeverity.Error);
+  // Library verdicts persist as `telo check` persists them; a describe-like
+  // command is read-only toward the cache, so it only reads.
+  const store = verdictStoreFor(input, false, log);
+  const { manifests, registry, errors } = await analyzeLoadedGraph(graph, {
+    hostVersions: nodeHostVersions(),
+    ...(store ? { store } : {}),
+  });
   const root = manifests.find(
     (m) =>
       isModuleKind(m.kind) &&

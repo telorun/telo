@@ -1,0 +1,7 @@
+# A library naming a module file whose kind of entry the loader stamps.
+kind: Telo.Library
+metadata: { name: Claims }
+---
+kind: Telo.Value
+metadata: { name: root }
+value: !module-path ./public

@@ -52,7 +52,7 @@ kind: Assert.Manifest
 metadata: { name: toolTwiceInBundleAtRuntime }
 source: ./__fixtures__/refusals/tool-twice-in-bundle/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Mcp.Tools/First at 'entries[0]': declares a name another entry of this bundle already declares. A client calls a tool by its name, so each must name one entry." }, { code: RESOURCE_RULE_VIOLATED, message: "Mcp.Tools/First at 'entries[1]': declares a name another entry of this bundle already declares. A client calls a tool by its name, so each must name one entry." }]
   runFails: "Mcp.Tools[First]: duplicate tool 'ping' within the same bundle"
 ---
 kind: Assert.Manifest
@@ -67,7 +67,7 @@ kind: Assert.Manifest
 metadata: { name: resourceTwiceInBundleAtRuntime }
 source: ./__fixtures__/refusals/resource-twice-in-bundle/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Mcp.Resources/First at 'entries[0]': declares a URI another entry of this bundle already declares. A client reads a resource by its URI, so each must name one entry." }, { code: RESOURCE_RULE_VIOLATED, message: "Mcp.Resources/First at 'entries[1]': declares a URI another entry of this bundle already declares. A client reads a resource by its URI, so each must name one entry." }]
   runFails: "Mcp.Resources[First]: duplicate resource 'note://a' within the same bundle"
 ---
 kind: Assert.Manifest
@@ -82,7 +82,7 @@ kind: Assert.Manifest
 metadata: { name: promptTwiceInBundleAtRuntime }
 source: ./__fixtures__/refusals/prompt-twice-in-bundle/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Mcp.Prompts/First at 'entries[0]': declares a name another entry of this bundle already declares. A client fetches a prompt by its name, so each must name one entry." }, { code: RESOURCE_RULE_VIOLATED, message: "Mcp.Prompts/First at 'entries[1]': declares a name another entry of this bundle already declares. A client fetches a prompt by its name, so each must name one entry." }]
   runFails: "Mcp.Prompts[First]: duplicate prompt 'greet' within the same bundle"
 ---
 kind: Assert.Manifest
@@ -97,7 +97,7 @@ kind: Assert.Manifest
 metadata: { name: toolTwiceAcrossBundlesAtRuntime }
 source: ./__fixtures__/refusals/tool-twice-across-bundles/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Mcp.HttpEndpoint/server at 'tools[0]': declares a tool name another bundle of this server also declares, or is listed twice." }, { code: RESOURCE_RULE_VIOLATED, message: "Mcp.HttpEndpoint/server at 'tools[1]': declares a tool name another bundle of this server also declares, or is listed twice." }]
   runFails: "duplicate tool name 'ping' across bundles 'First' and 'Second'"
 ---
 kind: Assert.Manifest
@@ -112,7 +112,7 @@ kind: Assert.Manifest
 metadata: { name: resourceTwiceAcrossBundlesAtRuntime }
 source: ./__fixtures__/refusals/resource-twice-across-bundles/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Mcp.HttpEndpoint/server at 'resources[0]': declares a resource URI another bundle of this server also declares, or is listed twice." }, { code: RESOURCE_RULE_VIOLATED, message: "Mcp.HttpEndpoint/server at 'resources[1]': declares a resource URI another bundle of this server also declares, or is listed twice." }]
   runFails: "duplicate resource URI 'note://a' across bundles 'First' and 'Second'"
 ---
 kind: Assert.Manifest
@@ -127,7 +127,7 @@ kind: Assert.Manifest
 metadata: { name: promptTwiceAcrossBundlesAtRuntime }
 source: ./__fixtures__/refusals/prompt-twice-across-bundles/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Mcp.HttpEndpoint/server at 'prompts[0]': declares a prompt name another bundle of this server also declares, or is listed twice." }, { code: RESOURCE_RULE_VIOLATED, message: "Mcp.HttpEndpoint/server at 'prompts[1]': declares a prompt name another bundle of this server also declares, or is listed twice." }]
   runFails: "duplicate prompt name 'greet' across bundles 'First' and 'Second'"
 ---
 kind: Assert.Manifest
@@ -142,7 +142,7 @@ kind: Assert.Manifest
 metadata: { name: toolTwiceAcrossBundlesStdioAtRuntime }
 source: ./__fixtures__/refusals/tool-twice-across-bundles-stdio/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Mcp.StdioServer/server at 'tools[0]': declares a tool name another bundle of this server also declares, or is listed twice." }, { code: RESOURCE_RULE_VIOLATED, message: "Mcp.StdioServer/server at 'tools[1]': declares a tool name another bundle of this server also declares, or is listed twice." }]
   runFails: "duplicate tool name 'ping' across bundles 'First' and 'Second'"
 ---
 kind: Assert.Manifest
@@ -157,7 +157,7 @@ kind: Assert.Manifest
 metadata: { name: resourceUriAndTemplateAtRuntime }
 source: ./__fixtures__/refusals/resource-uri-and-template/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: SCHEMA_VIOLATION, message: "Mcp.Resources/First: /entries/0 must match exactly one schema in oneOf" }]
   runFails: "Resource does not match schema for kind Mcp.Resources"
 ---
 kind: Assert.Manifest
@@ -172,7 +172,7 @@ kind: Assert.Manifest
 metadata: { name: resourceNoUriAtRuntime }
 source: ./__fixtures__/refusals/resource-no-uri/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: SCHEMA_VIOLATION, message: "Mcp.Resources/First: /entries/0 matches no alternative — expected one with 'uri', or one with 'uriTemplate'" }]
   runFails: "Resource does not match schema for kind Mcp.Resources"
 ---
 kind: Assert.Manifest
@@ -187,7 +187,7 @@ kind: Assert.Manifest
 metadata: { name: resourcesBundleListedTwiceAtRuntime }
 source: ./__fixtures__/refusals/resources-bundle-listed-twice/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Mcp.StdioServer/server at 'resources[0]': declares a resource URI another bundle of this server also declares, or is listed twice." }, { code: RESOURCE_RULE_VIOLATED, message: "Mcp.StdioServer/server at 'resources[1]': declares a resource URI another bundle of this server also declares, or is listed twice." }]
   runFails: "duplicate resource URI 'note://a' across bundles 'First' and 'First'"
 ---
 kind: Assert.Manifest
@@ -202,7 +202,7 @@ kind: Assert.Manifest
 metadata: { name: resourceTemplateUnclosedAtRuntime }
 source: ./__fixtures__/refusals/resource-template-unclosed/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: SCHEMA_VIOLATION, message: "Mcp.Resources/First: /entries/0/uriTemplate must match pattern \"^([^{}]|\\{[^{}]+\\})+$\"" }]
   runFails: "Resource does not match schema for kind Mcp.Resources"
 ---
 kind: Assert.Manifest
@@ -217,7 +217,7 @@ kind: Assert.Manifest
 metadata: { name: resourceTemplateUnnamedAtRuntime }
 source: ./__fixtures__/refusals/resource-template-unnamed/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: SCHEMA_VIOLATION, message: "Mcp.Resources/First: /entries/0/uriTemplate must match pattern \"^([^{}]|\\{[^{}]+\\})+$\"" }]
   runFails: "Resource does not match schema for kind Mcp.Resources"
 ---
 kind: Assert.Manifest
@@ -232,7 +232,7 @@ kind: Assert.Manifest
 metadata: { name: resourceUriEmptyAtRuntime }
 source: ./__fixtures__/refusals/resource-uri-empty/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: SCHEMA_VIOLATION, message: "Mcp.Resources/First: /entries/0/uri must NOT have fewer than 1 characters" }]
   runFails: "Resource does not match schema for kind Mcp.Resources"
 ---
 kind: Assert.Manifest
@@ -246,4 +246,4 @@ expect:
 kind: Assert.Manifest
 metadata: { name: promptNameEmptyAtRuntime }
 source: ./__fixtures__/refusals/prompt-name-empty/telo.yaml
-expect: { errors: [], runFails: "Resource does not match schema for kind Mcp.Prompts" }
+expect: { errors: [{ code: SCHEMA_VIOLATION, message: "Mcp.Prompts/First: /entries/0/name must NOT have fewer than 1 characters" }], runFails: "Resource does not match schema for kind Mcp.Prompts" }

@@ -1,0 +1,4 @@
+# The version reconciliation replaces: only it reaches the defective library.
+kind: Telo.Library
+metadata: { name: Store, version: 1.0.0 }
+imports: { Legacy: "oci://registry.test/legacy@1.0.0" }

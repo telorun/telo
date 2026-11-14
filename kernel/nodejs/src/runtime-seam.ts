@@ -1,12 +1,9 @@
 import {
   Loader,
   StaticAnalyzer,
-  assembleGraphDiagnostics,
-  collectApplicationSources,
-  collectModuleDocuments,
+  analyzeLoadedGraph,
   describeModuleSource,
   diagnosticFix,
-  flattenForAnalyzer,
   locateDiagnostic,
   type AnalysisDiagnostic,
   type DiagnosticData,
@@ -423,17 +420,12 @@ export class KernelRuntimeSeam implements RuntimeSeam {
     // The analysis and the assembly `telo check` performs, so a caller reads
     // the same codes, messages and locations: the compromised-file cascade held
     // back, migrated paths remapped, every diagnostic located by the shared rule.
-    const analysis = new StaticAnalyzer({ celHandlers: nodeCelHandlers }).analyze(
-      flattenForAnalyzer(graph),
-      {
-        // The zone stage derives each imported library's export contracts from
-        // its own full documents, which the flattened list drops.
-        moduleDocuments: collectModuleDocuments(graph),
-        applicationSources: collectApplicationSources(graph),
-        hostVersions: nodeHostVersions(),
-      },
-    );
-    const { diagnostics } = assembleGraphDiagnostics(graph, analysis);
+    // Every library the graph loads is judged by its own verdict, as `telo
+    // check` reports it.
+    const { diagnostics } = await analyzeLoadedGraph(graph, {
+      analyzer: new StaticAnalyzer({ celHandlers: nodeCelHandlers }),
+      hostVersions: nodeHostVersions(),
+    });
     return { diagnostics: diagnostics.map((d) => toCheckDiagnostic(d, graph)) };
   }
 }

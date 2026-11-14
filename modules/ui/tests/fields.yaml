@@ -207,5 +207,5 @@ kind: Assert.Manifest
 metadata: { name: ratingRefusedAtRuntime }
 source: ./__fixtures__/invalid/rating-at-runtime/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: REFERRER_RULE_VIOLATED, message: "Ui.Form/rated at 'fields[0]': required by Stars.Rating — rates a property that is not a number declaring `minimum` and `maximum`." }]
   runFails: "Ui.Form 'rated': 'fields[0]' rates a property that is not a number declaring 'minimum' and 'maximum' ('note')"

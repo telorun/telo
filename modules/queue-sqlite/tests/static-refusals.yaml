@@ -8,8 +8,7 @@ metadata:
   name: QueueSqliteStaticRefusals
   version: 1.0.0
   description: The SQLite queue's refusals, as `telo check` and the kernel report them.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref outsideTransaction
   - !ref foreignConnection
@@ -41,12 +40,11 @@ expect:
   errors:
     - code: REFERRER_RULE_VIOLATED
       message: "Queue.Queue/emails at 'table': required by Queue.Table — claims a queue name"
-    - code: REFERRER_RULE_VIOLATED
-      message: "Queue.Queue/emailsAgain at 'table'"
+    - { code: REFERRER_RULE_VIOLATED, message: "Queue.Queue/emailsAgain at 'table'" }
 ---
 kind: Assert.Manifest
 metadata: { name: queueNameDuplicateAtRuntime }
 source: ./__fixtures__/queue-name-duplicate-app.yaml
 expect:
-  errors: []
+  errors: [{ code: REFERRER_RULE_VIOLATED, message: "Queue.Queue/emails at 'table': required by Queue.Table — claims a queue name another queue in this table already claims. Two queues with one name in one table would deliver, deduplicate and purge each other's messages — give each queue a name of its own." }, { code: REFERRER_RULE_VIOLATED, message: "Queue.Queue/emailsAgain at 'table': required by Queue.Table — claims a queue name another queue in this table already claims. Two queues with one name in one table would deliver, deduplicate and purge each other's messages — give each queue a name of its own." }]
   runFails: "ERR_QUEUE_NAME_DUPLICATE"

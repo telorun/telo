@@ -68,7 +68,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version-file: package.json
+          node-version: 24
           cache: pnpm
           registry-url: https://registry.npmjs.org
 
@@ -152,7 +152,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version-file: package.json
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -245,7 +245,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version-file: package.json
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -316,7 +316,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version-file: package.json
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -382,7 +382,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version-file: package.json
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -393,6 +393,11 @@ jobs:
 
       - name: Build workspace
         run: pnpm -r --if-present build
+
+      # A linking crate's cargo layer reads its closure across every platform
+      # (`cargo metadata --locked --offline`), so every platform's crates are fetched first.
+      - name: Fetch every platform's crates
+        run: cargo fetch --locked
 
       # The pins are read from the registry.
       - name: Log in to GHCR
@@ -463,7 +468,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version-file: package.json
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -510,7 +515,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version-file: package.json
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -571,10 +576,16 @@ jobs:
           ref: ${{ needs.publication.outputs.sha }}
           fetch-depth: 0
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version-file: package.json
+          node-version: 24
+
+      - name: Install the release scripts' dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts --filter @telorun/monorepo
 
       - name: Move stable
         env:
@@ -659,6 +670,7 @@ jobs:
     needs: [release, artifact-check]
     if: >-
       ${{ always() && needs.release.result == 'success' &&
+      needs.release.outputs.channel != 'none' &&
       contains(fromJSON(needs.release.outputs.units).*.key, 'ide/vscode') &&
       needs.artifact-check.result == 'success' }}
     permissions:
@@ -668,6 +680,7 @@ jobs:
       channel: ${{ needs.release.outputs.channel }}
       version: ${{ needs.release.outputs.version }}
       tag: ${{ needs.release.outputs.tag }}
+      units: ${{ needs.release.outputs.units }}
     secrets: inherit
 
   # Studio publishes at the final: its desktop builds, web image and chart, and
@@ -678,7 +691,7 @@ jobs:
     needs: [release, artifact-check]
     if: >-
       ${{ always() && needs.release.result == 'success' &&
-      needs.release.outputs.channel != 'candidate' &&
+      (needs.release.outputs.channel == 'final' || needs.release.outputs.channel == 'patch') &&
       contains(fromJSON(needs.release.outputs.units).*.key, 'apps/studio') &&
       needs.artifact-check.result == 'success' }}
     permissions:

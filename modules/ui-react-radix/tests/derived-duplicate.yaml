@@ -25,5 +25,5 @@ kind: Assert.Manifest
 metadata: { name: refusedAtRuntime }
 source: ./__fixtures__/derived-duplicate/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "UiReact.Theme/theme at 'controls[0]': implements a control another entry of controls implements too. Give each control one implementation." }, { code: RESOURCE_RULE_VIOLATED, message: "UiReact.Theme/theme at 'controls[1]': implements a control another entry of controls implements too. Give each control one implementation." }]
   runFails: "UiReact.Theme 'theme': 'controls[1]' (UiReact.Controls 'layerControls') implements 'Select', which 'controls[0]' (UiReact.Controls 'controls') already implements"

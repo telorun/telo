@@ -28,7 +28,7 @@ kind: Assert.Manifest
 metadata: { name: withoutAllowAtRuntime }
 source: ./__fixtures__/authentication/protected-without-allow/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Http.Server/server: declares `protectedResource` on a mount whose `authentication` names no verifier, so the metadata would describe no authentication. List the mount's `verifiers`, or remove `protectedResource`." }]
   runFails: "[ERR_PROTECTED_RESOURCE_WITHOUT_AUTHENTICATION] RuntimeError: Http.Server[server] mounts[0] declares `protectedResource`"
 ---
 kind: Assert.Manifest
@@ -43,7 +43,7 @@ kind: Assert.Manifest
 metadata: { name: withoutVerifiersAtRuntime }
 source: ./__fixtures__/authentication/protected-without-verifiers/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Http.Server/server: has a mount whose `authentication` denies anonymous callers and names no verifier, so no request can ever be served there. List its `verifiers`, or allow anonymous callers." }, { code: RESOURCE_RULE_VIOLATED, message: "Http.Server/server: declares `protectedResource` on a mount whose `authentication` names no verifier, so the metadata would describe no authentication. List the mount's `verifiers`, or remove `protectedResource`." }]
   runFails: "[ERR_PROTECTED_RESOURCE_WITHOUT_AUTHENTICATION] RuntimeError: Http.Server[server] mounts[0] declares `protectedResource`"
 ---
 kind: Assert.Manifest
@@ -57,5 +57,5 @@ kind: Assert.Manifest
 metadata: { name: withoutAuthenticationAtRuntime }
 source: ./__fixtures__/authentication/protected-without-authentication/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Http.Server/server: declares `protectedResource` on a mount whose `authentication` names no verifier, so the metadata would describe no authentication. List the mount's `verifiers`, or remove `protectedResource`." }]
   runFails: "[ERR_PROTECTED_RESOURCE_WITHOUT_AUTHENTICATION] RuntimeError: Http.Server[server] mounts[0] declares `protectedResource`"

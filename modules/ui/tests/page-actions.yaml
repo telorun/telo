@@ -191,5 +191,5 @@ kind: Assert.Manifest
 metadata: { name: buttonInputsAtRuntime }
 source: ./__fixtures__/invalid/page-actions/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Ui.Action/commentIncomplete: leaves a property the input model requires with no field, so a valid record could never be sent. List a field for every required property, or leave `fields` out where each one is a scalar or a list of scalars." }, { code: CONTRACT_INPUTS_MISMATCH, message: "Ui.Data/authorUnprompted: inputs at 'content.inputs' do not satisfy decide's declared inputType: / is missing required property 'author'" }, { code: CONTRACT_INPUTS_MISMATCH, message: "Ui.Data/hashMisspelled: inputs at 'content.inputs' do not satisfy decide's declared inputType: / must NOT have additional properties ('hsh' is not allowed)" }, { code: CEL_UNKNOWN_FIELD, message: "Ui.Data/revisionTypo: !cel: 'data.plan.latestRevison' is not defined (available: id, title, latestRevision)" }]
   runFails: "Ui.Data 'authorUnprompted' content: 'inputs' cannot make a record of the action's input model: required input 'author' is not bound."

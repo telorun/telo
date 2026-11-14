@@ -149,7 +149,7 @@ kind: Assert.Manifest
 metadata: { name: missingContextRefusedAtRuntime }
 source: ./__fixtures__/agent-context-app.yaml
 expect:
-  errors: []
+  errors: [{ code: CONTRACT_INPUTS_MISMATCH, message: "Run.Sequence/callWithoutContext: inputs at 'steps[0].inputs' do not satisfy turnAgent's declared inputType: /context is missing required property 'turnId'" }]
   runFails: "AI.Agent/turnAgent: inputs do not satisfy the declared inputType: Invalid value passed: {\"prompt\":\"hello\",\"context\":{}}. Error: /context is missing required property 'turnId'"
 ---
 # An agent mounting a second provider, called with a `context` holding only the
@@ -166,5 +166,5 @@ kind: Assert.Manifest
 metadata: { name: missingSessionIdRefusedAtRuntime }
 source: ./__fixtures__/agent-context-session-app.yaml
 expect:
-  errors: []
+  errors: [{ code: CONTRACT_INPUTS_MISMATCH, message: "Run.Sequence/callWithoutSessionId: inputs at 'steps[0].inputs.context' do not satisfy turnAndSessionAgent's declared inputType: /context is missing required property 'sessionId'" }]
   runFails: "AI.Agent/turnAndSessionAgent: inputs do not satisfy the declared inputType: Invalid value passed: {\"prompt\":\"hello\",\"context\":{\"turnId\":\"turn-7\"}}. Error: /context is missing required property 'sessionId'"

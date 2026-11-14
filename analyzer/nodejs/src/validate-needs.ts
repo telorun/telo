@@ -12,6 +12,7 @@ import type { ModuleDocuments } from "./module-documents.js";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { AnalysisRegistry } from "./analysis-registry.js";
 import { declaringModuleScope } from "./module-alias-scope.js";
+import { importAnchoredMessage } from "./reaching-import.js";
 import { isModuleKind } from "./module-kinds.js";
 import type { ReachSite } from "./reference-reach.js";
 import { type AnalysisDiagnostic, DiagnosticSeverity } from "./types.js";
@@ -89,9 +90,11 @@ export function needTableDiagnostics(
       severity: DiagnosticSeverity.Error,
       code: p.code,
       source: SOURCE,
-      message:
-        `Imported library '${p.module}', reached through import '${via.alias}': ${p.message} ` +
-        `The repair is the library's — import a version of it that resolves this.`,
+      message: importAnchoredMessage(
+        p.module,
+        via.alias,
+        `${p.message} The repair is the library's — import a version of it that resolves this.`,
+      ),
       data: {
         ...(scopedImportAnchorOf(via.manifest) ?? {
           resource: { kind: "Telo.Import", name: via.alias },

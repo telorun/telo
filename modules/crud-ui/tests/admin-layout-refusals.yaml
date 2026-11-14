@@ -25,5 +25,5 @@ kind: Assert.Manifest
 metadata: { name: groupNotFilterableAtRuntime }
 source: ./__fixtures__/layout-refusals/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: REFERRER_RULE_VIOLATED, message: "CrudUi.Admin/byPriority: 'layout' is forwarded into the UiKit.Listing entry 'listing' as 'layout', which checks it as its own field — the UiKit.Listing entry 'listing' at 'layout': required by Ui.BoardLayout — groups records by a property the collection does not accept an equality on, so no group can be read. Declare it with operator `eq` under the collection's `query.filters`, or group by another property." }]
   runFails: "Ui.Listing 'listing': 'layout' groups records by a property the collection does not accept an equality on ('priority')"

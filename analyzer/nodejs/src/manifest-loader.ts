@@ -752,33 +752,42 @@ export class Loader {
       parseDiagnostics: collectParseDiagnostics(modules),
       errors,
       applicationSources: followApplications
-        ? await this.loadApplicationSources(entry, { modules, importEdges }, options)
+        ? await this.loadApplicationSources([entry], { modules, importEdges }, options)
+        : new Map(),
+      moduleApplicationSources: followApplications
+        ? await this.loadApplicationSources(
+            [...modules.values()].filter((mod) => mod !== entry),
+            { modules, importEdges },
+            options,
+          )
         : new Map(),
     };
   }
 
-  /** Every child application a resource of the entry's own files names at an
+  /** Every child application a resource of `owners`' own files names at an
    *  annotated field, by declaring file and source as written — each resource's
-   *  kind resolved through the entry's own import edges. */
+   *  kind resolved through its own module's import edges. */
   private async loadApplicationSources(
-    entry: LoadedModule,
+    owners: readonly LoadedModule[],
     graph: LoadedKindScope,
     options: LoadOptions | undefined,
   ): Promise<Map<string, Map<string, ApplicationSourceLoad>>> {
     const out = new Map<string, Map<string, ApplicationSourceLoad>>();
-    const fields = new Map<string, string | undefined>();
-    const fieldOf = (kind: string): string | undefined => {
-      if (!fields.has(kind)) fields.set(kind, applicationSourceFieldOf(graph, entry, kind));
-      return fields.get(kind);
-    };
-    for (const file of [entry.owner, ...entry.partials]) {
-      const sources = applicationSourceCandidates(file.manifests, fieldOf);
-      if (sources.size === 0) continue;
-      const loads = new Map<string, ApplicationSourceLoad>();
-      for (const source of sources) {
-        loads.set(source, await this.loadApplicationSource(file.source, source, options));
+    for (const owner of owners) {
+      const fields = new Map<string, string | undefined>();
+      const fieldOf = (kind: string): string | undefined => {
+        if (!fields.has(kind)) fields.set(kind, applicationSourceFieldOf(graph, owner, kind));
+        return fields.get(kind);
+      };
+      for (const file of [owner.owner, ...owner.partials]) {
+        const sources = applicationSourceCandidates(file.manifests, fieldOf);
+        if (sources.size === 0) continue;
+        const loads = new Map<string, ApplicationSourceLoad>();
+        for (const source of sources) {
+          loads.set(source, await this.loadApplicationSource(file.source, source, options));
+        }
+        out.set(file.source, loads);
       }
-      out.set(file.source, loads);
     }
     return out;
   }

@@ -172,6 +172,9 @@ export interface LoadedGraph {
    *  the load — the analysis reports a failure at the field that names it, and
    *  only for a resource whose kind really carries the annotation. */
   applicationSources?: Map<string, Map<string, ApplicationSourceLoad>>;
+  /** The same for every module but the entry, which the dependency verdict
+   *  judges as an entry of its own; never read by the entry's analysis. */
+  moduleApplicationSources?: Map<string, Map<string, ApplicationSourceLoad>>;
 }
 
 /** One child application source, as the loader found it. */

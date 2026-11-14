@@ -39,7 +39,7 @@ kind: Assert.Manifest
 metadata: { name: implicitlyPublicAtRuntime }
 source: ./__fixtures__/authentication/implicitly-public/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Http.Server/server: declares `authentication` on some mounts and not on others, so a mount without it is open to anyone. Declare `authentication` on every mount — `{ anonymous: allow }` for a public one." }]
   runFails: "[ERR_MOUNT_IMPLICITLY_PUBLIC] RuntimeError: Http.Server[server] declares `authentication` on some mounts and not on mounts[1]"
 ---
 kind: Assert.Manifest
@@ -53,7 +53,7 @@ kind: Assert.Manifest
 metadata: { name: unsatisfiableAtRuntime }
 source: ./__fixtures__/authentication/unsatisfiable/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Http.Server/server: has a mount whose `authentication` denies anonymous callers and names no verifier, so no request can ever be served there. List its `verifiers`, or allow anonymous callers." }]
   runFails: "[ERR_AUTHENTICATION_UNSATISFIABLE] RuntimeError: Http.Server[server] mounts[0] denies anonymous callers and names no verifier"
 ---
 kind: Assert.Manifest
@@ -67,7 +67,7 @@ kind: Assert.Manifest
 metadata: { name: unsatisfiableRouteAtRuntime }
 source: ./__fixtures__/authentication/unsatisfiable-route/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: REFERRER_RULE_VIOLATED, message: "Http.Server/server at 'mounts[0].mount': required by Http.Api — mounts this router with a route whose `authentication` denies anonymous callers while neither the route nor this mount names a verifier, so no request can ever be served there. List `verifiers` on the route or the mount, or allow anonymous callers." }]
   runFails: "[ERR_AUTHENTICATION_UNSATISFIABLE] RuntimeError: Http.Server[server] mounts[0] mounts a route whose authentication denies anonymous callers"
 ---
 kind: Assert.Manifest
@@ -81,7 +81,7 @@ kind: Assert.Manifest
 metadata: { name: unsatisfiableRouteBareAtRuntime }
 source: ./__fixtures__/authentication/unsatisfiable-route-bare/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: REFERRER_RULE_VIOLATED, message: "Http.Server/server at 'mounts[0].mount': required by Http.Api — mounts this router with a route whose `authentication` denies anonymous callers while neither the route nor this mount names a verifier, so no request can ever be served there. List `verifiers` on the route or the mount, or allow anonymous callers." }]
   runFails: "[ERR_AUTHENTICATION_UNSATISFIABLE] RuntimeError: Http.Server[server] mounts[0] mounts a route whose authentication denies anonymous callers"
 ---
 kind: Assert.Manifest
@@ -95,7 +95,7 @@ kind: Assert.Manifest
 metadata: { name: forwardedUntrustedAtRuntime }
 source: ./__fixtures__/authentication/forwarded-untrusted/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: REFERRER_RULE_VIOLATED, message: "Http.Server/server at 'mounts[0].authentication.verifiers[0].from': required by Http.FromForwardedIdentity — reads a forwarded identity but trusts no proxy, so any client could send that header and be served as anyone. Set `trustProxy` to the proxy in front of this server." }]
   runFails: "[ERR_HTTP_PROXY_SOURCE_UNTRUSTED] RuntimeError: Http.Server[server] mounts[0] reads a forwarded identity"
 ---
 kind: Assert.Manifest
@@ -110,7 +110,7 @@ kind: Assert.Manifest
 metadata: { name: forwardedOnRouteAtRuntime }
 source: ./__fixtures__/authentication/forwarded-on-route/telo.yaml
 expect:
-  errors: []
+  errors: [{ code: REFERRER_RULE_VIOLATED, message: "Http.Api/routed at 'routes[1].authentication.verifiers[0].from': required by Http.FromForwardedIdentity — reads a forwarded identity in a route's `authentication`. Only a mount's can: whether the proxy is trusted is the server's. Move the entry to the mount." }, { code: REFERRER_RULE_VIOLATED, message: "Http.Api/routed at 'routes[0].authentication.verifiers[0].from': required by Http.FromForwardedIdentity — reads a forwarded identity in a route's `authentication`. Only a mount's can: whether the proxy is trusted is the server's. Move the entry to the mount." }]
   runFails: "[ERR_HTTP_PROXY_SOURCE_ON_ROUTE] RuntimeError: Http.Api[routed] routes[0] reads a forwarded identity"
 ---
 kind: Assert.Manifest

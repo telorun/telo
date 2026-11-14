@@ -1,0 +1,3 @@
+kind: Telo.Application
+metadata: { name: ModeB }
+imports: { Modes: { source: ./modes, variables: { mode: b } } }

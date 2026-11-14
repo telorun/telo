@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import { PackageURL } from "packageurl-js";
 import * as path from "path";
-import { DEFAULT_MANIFEST_FILENAME, Loader, PUBLISH_BLOCKING_CODES, StaticAnalyzer, TELO_SURFACE_VERSION, collectApplicationSources, collectModuleDocuments, flattenForAnalyzer, isBuiltinVocabularyRoot, readRequires, readRestrictions, splitIntegrity, type LoadedGraph } from "@telorun/analyzer";
+import { DEFAULT_MANIFEST_FILENAME, Loader, DiagnosticSeverity, PUBLISH_BLOCKING_CODES, TELO_SURFACE_VERSION, analyzeLoadedGraph, isBuiltinVocabularyRoot, readRequires, readRestrictions, splitIntegrity, unionDiagnostics, withoutCoveredDependencyFindings, type LoadedGraph } from "@telorun/analyzer";
 import { LocalFileSource, defaultTransportRegistry, resolveCacheRoot } from "@telorun/kernel";
 import { defaultCustomTags } from "@telorun/templating";
 import { parseAllDocuments } from "yaml";
@@ -660,11 +660,13 @@ async function publishOne(
       diagnostics: parsed.diagnostics,
     });
   }
-  const analysisManifests = flattenForAnalyzer(analysisGraph);
-  const diagnostics = new StaticAnalyzer().analyze(analysisManifests, {
-    moduleDocuments: collectModuleDocuments(analysisGraph),
-    applicationSources: collectApplicationSources(analysisGraph),
-  });
+  // The entry's own analysis, plus every library's errors: a library the
+  // manifest loads that `telo check` refuses is refused here too.
+  const { analysis, dependencies } = await analyzeLoadedGraph(analysisGraph);
+  const diagnostics = unionDiagnostics(
+    withoutCoveredDependencyFindings(analysis, dependencies),
+    dependencies.diagnostics.filter((d) => d.severity === DiagnosticSeverity.Error),
+  );
   const { errorCount, diagnostics: located } = formatAnalysisDiagnostics(
     diagnostics,
     analysisGraph,

@@ -1,0 +1,4 @@
+units:
+  apps/authoring-agent: Added
+body: The authoring agent knows that `telo check` reports every imported library's own
+  findings, and that a run refuses only what it creates.

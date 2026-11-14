@@ -37,7 +37,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: nodeKeyUnknownColumnAtRuntime }
 source: ./__fixtures__/rules/node-key-unknown-column-app.yaml
-expect: { errors: [], runFails: "GRAPH_NODE_KEY_UNKNOWN_COLUMN" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "GraphSql.Node/person: names a key column its table does not declare." }], runFails: "GRAPH_NODE_KEY_UNKNOWN_COLUMN" }
 ---
 kind: Assert.Manifest
 metadata: { name: nodeKeyInvalid }
@@ -50,7 +50,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: nodeKeyInvalidAtRuntime }
 source: ./__fixtures__/rules/node-key-invalid-app.yaml
-expect: { errors: [], runFails: "GRAPH_NODE_KEY_INVALID" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "GraphSql.Node/person: names a key column that does not identify a row on its own terms: it must be the primary key, or unique and 'nullable: false', and it must not be an identity column, since a node's key is supplied by the caller." }], runFails: "GRAPH_NODE_KEY_INVALID" }
 ---
 kind: Assert.Manifest
 metadata: { name: endpointUnknownColumn }
@@ -63,7 +63,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: endpointUnknownColumnAtRuntime }
 source: ./__fixtures__/rules/endpoint-unknown-column-app.yaml
-expect: { errors: [], runFails: "GRAPH_ENDPOINT_UNKNOWN_COLUMN" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "GraphSql.Relationship/knows: names a sourceColumn or targetColumn its table does not declare, or names the same column for both." }], runFails: "GRAPH_ENDPOINT_UNKNOWN_COLUMN" }
 ---
 kind: Assert.Manifest
 metadata: { name: endpointForeignKeyMissing }
@@ -76,7 +76,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: endpointForeignKeyMissingAtRuntime }
 source: ./__fixtures__/rules/endpoint-foreign-key-missing-app.yaml
-expect: { errors: [], runFails: "GRAPH_ENDPOINT_FOREIGN_KEY_MISSING" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "GraphSql.Relationship/knows: has no foreign key over exactly its sourceColumn (or targetColumn) to the endpoint node's table and key column with `onDelete: cascade`. The database deletes a node's relationships through that key, so the table must declare one for each endpoint." }], runFails: "GRAPH_ENDPOINT_FOREIGN_KEY_MISSING" }
 ---
 kind: Assert.Manifest
 metadata: { name: relationshipNotUnique }
@@ -89,7 +89,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: relationshipNotUniqueAtRuntime }
 source: ./__fixtures__/rules/relationship-not-unique-app.yaml
-expect: { errors: [], runFails: "GRAPH_RELATIONSHIP_NOT_UNIQUE" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "GraphSql.Relationship/knows: has no unique index over exactly its sourceColumn and targetColumn. At most one relationship of a type joins an ordered pair, and that index is what the database enforces it with." }], runFails: "GRAPH_RELATIONSHIP_NOT_UNIQUE" }
 ---
 kind: Assert.Manifest
 metadata: { name: tableNotInSchema }
@@ -102,7 +102,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: tableNotInSchemaAtRuntime }
 source: ./__fixtures__/rules/table-not-in-schema-app.yaml
-expect: { errors: [], runFails: "GRAPH_TABLE_NOT_IN_SCHEMA" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "GraphSql.Store/kb: lists a node or relationship type whose table its schema does not list in 'tables:'. The schema is what creates and migrates the table; add it there." }], runFails: "GRAPH_TABLE_NOT_IN_SCHEMA" }
 ---
 kind: Assert.Manifest
 metadata: { name: schemaConnectionMismatch }
@@ -115,7 +115,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: schemaConnectionMismatchAtRuntime }
 source: ./__fixtures__/rules/schema-connection-mismatch-app.yaml
-expect: { errors: [], runFails: "GRAPH_SCHEMA_CONNECTION_MISMATCH" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "GraphSql.Store/kb: names a schema on a different connection. The schema must create its tables where the graph reads them." }], runFails: "GRAPH_SCHEMA_CONNECTION_MISMATCH" }
 ---
 kind: Assert.Manifest
 metadata: { name: tableShared }
@@ -128,4 +128,4 @@ expect:
 kind: Assert.Manifest
 metadata: { name: tableSharedAtRuntime }
 source: ./__fixtures__/rules/table-shared-app.yaml
-expect: { errors: [], runFails: "GRAPH_TABLE_SHARED" }
+expect: { errors: [{ code: RESOURCE_RULE_VIOLATED, message: "GraphSql.Store/kb: lists two node or relationship types over the same table. Each type is its own table, so a row belongs to exactly one type." }], runFails: "GRAPH_TABLE_SHARED" }

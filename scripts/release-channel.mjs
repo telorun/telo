@@ -48,8 +48,9 @@ export function channelOf({ cliVersion }) {
  * line's `v<version>`; `releaseTag` is what the run tags (that, or the numbered
  * `packages-*` when units other than modules moved without the line); `recordTag`
  * is what main records — the release tag, empty for a candidate. A release commit
- * a release tag already names is released, so a run at a later commit of the branch
- * releases nothing; a re-run at the release commit itself finds its tags again.
+ * a release tag already names — or, for a packages release, one a packages tag of the
+ * branch contains — is released, so a run at a later commit of the branch releases
+ * nothing; a re-run at the commit the tags name finds them again.
  */
 export function classifyRelease({ cwd = ROOT, units = [], branch }) {
   const none = { channel: "none", version: "", tag: "", releaseTag: "", candidates: false, recordTag: "", released: false };
@@ -67,8 +68,22 @@ export function classifyRelease({ cwd = ROOT, units = [], branch }) {
     return { channel, version: line.version, tag, releaseTag: tag, candidates, recordTag: candidates ? "" : tag, released: true };
   }
   if (!units.some((unit) => unit.ecosystem !== "telo")) return { ...none, candidates, released: true };
-  const releaseTag = numberedTag({ cwd, branch, kind: "packages", candidate: candidates }).tag;
-  return { ...none, releaseTag, candidates, recordTag: candidates ? "" : releaseTag, released: true };
+  const packages = numberedTag({ cwd, branch, kind: "packages", candidate: candidates });
+  // A packages tag a later commit of the branch made has released it, unless it names HEAD.
+  if (!packages.existing && commit && seriesTags({ cwd, branch, kind: "packages", candidate: candidates, contains: commit }).tags.length > 0) {
+    return none;
+  }
+  return { ...none, releaseTag: packages.tag, candidates, recordTag: candidates ? "" : packages.tag, released: true };
+}
+
+/** The branch's `<kind>-<x.y>-[rc.]<n>` tags, those containing `contains` when given. */
+function seriesTags({ cwd, branch, kind, candidate, contains }) {
+  const match = RELEASE_BRANCH.exec(branch ?? "");
+  if (!match) throw new Error(`${branch} is not a release/<major>.<minor> branch.`);
+  const prefix = `${kind}-${match[1]}-${candidate ? "rc." : ""}`;
+  const own = new RegExp(`^${prefix.replace(/\./g, "\\.")}\\d+$`);
+  const listed = git(cwd, "tag", ...(contains ? ["--contains", contains] : []), "--list", `${prefix}*`);
+  return { prefix, tags: listed.split("\n").filter((tag) => own.test(tag)) };
 }
 
 /** Number of the branch's next `modules-` or `packages-` release tag — a candidate's
@@ -76,12 +91,8 @@ export function classifyRelease({ cwd = ROOT, units = [], branch }) {
  *  tag naming HEAD as its release commit if a re-run finds one, on HEAD or on its
  *  publication commit. `branch` is `release/<major>.<minor>`. */
 export function numberedTag({ cwd = ROOT, branch, kind, candidate = false }) {
-  const match = RELEASE_BRANCH.exec(branch ?? "");
-  if (!match) throw new Error(`${branch} is not a release/<major>.<minor> branch.`);
-  const prefix = `${kind}-${match[1]}-${candidate ? "rc." : ""}`;
-  const own = new RegExp(`^${prefix.replace(/\./g, "\\.")}\\d+$`);
-  const existing = git(cwd, "tag", "--list", `${prefix}*`).split("\n").filter((tag) => own.test(tag));
-  const onHead = tagsOfReleaseCommit({ cwd, commit: "HEAD", patterns: [`refs/tags/${prefix}*`] }).filter((tag) => own.test(tag));
+  const { prefix, tags: existing } = seriesTags({ cwd, branch, kind, candidate });
+  const onHead = tagsOfReleaseCommit({ cwd, commit: "HEAD", patterns: [`refs/tags/${prefix}*`] }).filter((tag) => existing.includes(tag));
   return { tag: onHead[0] ?? `${prefix}${existing.length + 1}`, existing: onHead.length > 0 };
 }
 

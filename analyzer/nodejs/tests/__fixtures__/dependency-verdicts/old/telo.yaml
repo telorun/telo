@@ -1,0 +1,4 @@
+# Asks for the older version of a library the application imports newer.
+kind: Telo.Library
+metadata: { name: Old }
+imports: { Store: "oci://registry.test/store@1.0.0" }

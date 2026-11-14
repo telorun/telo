@@ -1,8 +1,8 @@
 ---
 status: draft
 priority: medium
-depends-on: [2026-11-13-runner-sign-in.md]
-packages: [cli/nodejs, packages/runner-core, packages/share-tunnel, apps/k8s-runner]
+depends-on: [2026-11-13-runner-sign-in.md, 2026-11-14-mit-runtime-relicense.md]
+packages: [cli/nodejs, packages/runner-core, packages/runner-protocol, packages/share-tunnel, apps/k8s-runner]
 refinement: ready
 ---
 
@@ -28,7 +28,7 @@ The hosted runner (`https://runner.telo.run`) already routes `<port>-<id>.teloru
   - `ERR_SHARE_APP_UNSUPPORTED`: no `tcp` port, or `Telo.DesktopHost` declared.
   - `ERR_SHARE_HOST_VALUE_CONFLICT`: a public-URL host template is set beside `--share`.
   - `ERR_SHARE_LOST`: the share was deleted or taken over while running.
-- `/v1` contract:
+- `/v1` contract, defined in `@telorun/runner-protocol`:
   - `features.shares` in `/v1/capabilities`, holding `{ maxPerOwner, retentionSeconds }`.
   - `POST /v1/shares`: get or create by `name`. It answers `{ id, name, application, publicUrlTemplate, publicUrlSecondaryTemplate, tunnelUrl }`, `201` when new and `200` when it exists.
   - `GET /v1/shares`: the caller's shares, each `{ id, name, application, connected, lastActiveAt }`, newest activity first.
@@ -41,7 +41,7 @@ The hosted runner (`https://runner.telo.run`) already routes `<port>-<id>.teloru
 - `/v1/shares/{id}/tunnel` on `tunnel.<baseDomain>`: the tunnel endpoint, served by the relay. It is a WebSocket with subprotocol `telo-share-1`.
   - Close codes: `4400` protocol error, `4401` credential refused, `4404` share deleted, `4408` keepalive timeout, `4409` superseded by another run, `4503` runner at its connected-share capacity.
   - Inside it: the relay-set request header `telo-share-port`, and the CLI's control message `ports`.
-- `packages/share-tunnel` (`@telorun/share-tunnel`): a new release unit, off the telo line, under the Sustainable Use license. It holds the tunnel protocol spec `specs/tunnel-protocol.md` (generation 1, with vectors) and both engines, the relay end and the client end.
+- `packages/share-tunnel` (`@telorun/share-tunnel`): a new release unit, off the telo line, under MIT with its own `LICENSE`. It holds the tunnel protocol spec `specs/tunnel-protocol.md` (generation 1, with vectors) and the client engine. The relay engine is runner-core's and stays under the Sustainable Use license.
 - Runner settings: `RUNNER_SHARES`, `RUNNER_ROLE` (`control` by default, or `relay`), `RUNNER_MAX_CONNECTED_SHARES`, `RUNNER_MAX_SHARES_PER_OWNER`, `RUNNER_SHARE_RETENTION_SECONDS`.
 - k8s-runner chart:
   - A `shares` values block with `enabled`, `maxConnected`, `maxPerOwner` and `retentionSeconds`.
@@ -376,9 +376,12 @@ The shares live in three places:
 
 | Part | Where | What it does |
 |---|---|---|
+| Contract | `@telorun/runner-protocol` (MIT) | Defines `features.shares` and the `/v1/shares` shapes and errors. The CLI reads them and runner-core serves them. |
 | Control plane | runner-core | Serves `/v1/shares` over its store and caller resolver. |
-| Tunnel package | `@telorun/share-tunnel` | Holds the protocol and both engines. Depends on nothing in runner-core, and declares two seams: a share directory (look up, connect with fence, record a disconnect) and a tunnel authenticator. |
-| Relay | runner-core, as role `relay` | Implements the two seams with its store and identity verifier. Only the CLI uses the client engine. |
+| Tunnel package | `@telorun/share-tunnel` (MIT) | Holds the protocol spec, its vectors and the client engine the CLI runs. Depends on no Sustainable Use package. |
+| Relay | runner-core, as role `relay` | Holds the relay engine over two seams of its own, a share directory (look up, connect with fence, record a disconnect) and a tunnel authenticator, implemented with its store and identity verifier. It runs the tunnel package's vectors. |
+
+The cut follows the license line: the protocol and the client a developer runs are MIT, and the relay a hosted runner operates is not. A relay anyone could host would undo that.
 
 `RUNNER_ROLE=relay` starts the same runner image as the relay. The k8s runner runs it as a separate `relay` Deployment, with one replica hard-coded and the `Recreate` strategy, as the control plane has. Visitor traffic therefore never passes through the control plane, which is pinned to one replica and manages every session. A relay rollout drops every tunnel, and each CLI's reconnect restores it.
 
@@ -408,7 +411,7 @@ The control plane owns `/v1/shares` and the retention sweep.
 `RUNNER_SHARES` and `RUNNER_ROLE=relay` refuse to boot in any of these cases, each naming the setting to fix:
 - with `RUNNER_SESSION_STORE=sqlite`, because the relay is another process and a SQLite file belongs to one pod;
 - without `RUNNER_IDENTITY_AUDIENCE` / `RUNNER_IDENTITY_ISSUERS`;
-- over a backend that does not route shares. Docker and `telo runner` never do. k8s does only with `SESSION_ROUTING_MODE` set to `ingress` or `gateway` and a base domain.
+- over a backend that does not route shares. Docker and `telo-local-runner` never do. k8s does only with `SESSION_ROUTING_MODE` set to `ingress` or `gateway` and a base domain.
 
 The chart's value validation refuses the same combinations. For example:
 
@@ -455,7 +458,7 @@ This share is not connected.
 
 ### Rust
 
-The Rust CLI does not offer `--share`. The tunnel protocol is specified so that it can, and both engines in `@telorun/share-tunnel` run the spec's vectors.
+The Rust CLI does not offer `--share`. The tunnel protocol is specified so that it can. The client engine in `@telorun/share-tunnel` and the relay engine in runner-core both run the spec's vectors.
 
 ### Docs and bookkeeping
 
@@ -467,8 +470,8 @@ The Rust CLI does not offer `--share`. The tunnel protocol is specified so that 
   - the CLI guide covers `telo shares`.
 - **Agent and ledger:** a paragraph in the authoring-agent primer, and a benefits-ledger entry under Telo itself ("Share a local run").
 - **Release:**
-  - add `packages/share-tunnel` to `release.units`;
-  - add `telo release add` fragments for `cli`, `packages/runner-core`, `packages/share-tunnel` and `apps/k8s-runner`.
+  - add `packages/share-tunnel` to `release.units`, and to the MIT directories of `check:licenses` and the README's `## License` table;
+  - add `telo release add` fragments for `cli`, `packages/runner-core`, `packages/runner-protocol`, `packages/share-tunnel` and `apps/k8s-runner`.
 
 ## Verify
 
@@ -520,4 +523,5 @@ The Rust CLI does not offer `--share`. The tunnel protocol is specified so that 
     - on SQLite;
     - without identity;
     - under routing mode `auto` or `none`;
-    - on the docker runner and `telo runner`.
+    - on the docker runner and `telo-local-runner`.
+15. **License line.** `pnpm run check:licenses` passes with `packages/share-tunnel` listed as MIT, and the package names no Sustainable Use dependency.

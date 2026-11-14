@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
+import { ensureRelease } from "../github-releases.mjs";
 import { attachAssets } from "../release-assets.mjs";
 import { imageLatestMoves, imageVersionOf, pointerMoves } from "../release-pointers.mjs";
 import { moveStable, stableMoves } from "../release-stable.mjs";
@@ -58,6 +59,45 @@ describe("GitHub Release promotion", () => {
   it("makes a final latest, unless a higher release already is", () => {
     assert.equal(promotion({ tag: "v0.85.0", latestTag: "v0.84.2" }).make_latest, "true");
     assert.equal(promotion({ tag: "v0.84.2", latestTag: "v0.85.0" }).make_latest, "false");
+  });
+});
+
+describe("GitHub Release creation", () => {
+  const fakeGithub = (pages) => {
+    const calls = [];
+    const sent = [];
+    const github = async (path, init = {}) => {
+      calls.push(`${init.method ?? "GET"} ${path}`);
+      if (init.body) sent.push(JSON.parse(init.body));
+      const page = /[?&]page=(\d+)/.exec(path)?.[1];
+      const body = page ? (pages[Number(page) - 1] ?? []) : path === "/releases/latest" ? { tag_name: "v0.84.2" } : {};
+      return { ok: true, status: 200, json: async () => body, text: async () => "" };
+    };
+    return { github, calls, sent };
+  };
+  const release = { tag: "v0.85.0", name: "Telo v0.85.0", body: "notes", line: true, channel: "final", version: "0.85.0" };
+
+  it("fills an empty draft on a later page instead of creating a second one, and leaves one with a body", async () => {
+    const other = Array.from({ length: 100 }, (_, i) => ({ id: i, tag_name: `v0.1.${i}`, body: "x" }));
+    const empty = fakeGithub([other, [{ id: 7, tag_name: "v0.85.0", draft: true, body: "" }]]);
+    await ensureRelease({ ...release, github: empty.github });
+    assert.deepEqual(empty.calls, ["GET /releases?per_page=100&page=1", "GET /releases?per_page=100&page=2", "PATCH /releases/7"]);
+
+    const filled = fakeGithub([[{ id: 7, tag_name: "v0.85.0", draft: true, body: "notes" }]]);
+    await ensureRelease({ ...release, github: filled.github });
+    assert.deepEqual(filled.calls, ["GET /releases?per_page=100&page=1"]);
+  });
+
+  it("creates the release as a draft when no release holds the tag", async () => {
+    const { github, calls, sent } = fakeGithub([[{ id: 1, tag_name: "v0.84.2", body: "x" }]]);
+    await ensureRelease({ ...release, github });
+    assert.deepEqual([sent[0].tag_name, sent[0].draft, sent[0].make_latest], ["v0.85.0", true, "true"]);
+    assert.deepEqual(calls, [
+      "GET /releases?per_page=100&page=1",
+      "GET /releases?per_page=100&page=2",
+      "GET /releases/latest",
+      "POST /releases",
+    ]);
   });
 });
 

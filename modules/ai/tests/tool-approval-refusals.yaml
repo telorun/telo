@@ -95,7 +95,7 @@ kind: Assert.Manifest
 metadata: { name: nameFilteredAtRuntime }
 source: ./__fixtures__/approval-name-filtered-app.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Ai.Agent/agent at 'toolProviders[0]': lists a tool in `approval.include` that its own `include` / `exclude` removes; the entry never exposes that tool, so the name gates nothing." }]
   runFails: "Ai.Agent \"agent\" lists \"wipe\" in a tool provider's 'approval.include', but the entry's own 'include' / 'exclude' removes that tool, so the name would gate nothing. [ERR_AI_APPROVAL_NAME_FILTERED]"
 ---
 kind: Assert.Manifest
@@ -110,7 +110,7 @@ kind: Assert.Manifest
 metadata: { name: streamNameFilteredAtRuntime }
 source: ./__fixtures__/approval-name-filtered-stream-app.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Ai.AgentStream/agent at 'toolProviders[0]': lists a tool in `approval.include` that its own `include` / `exclude` removes; the entry never exposes that tool, so the name gates nothing." }]
   runFails: "Ai.AgentStream \"agent\" lists \"wipe\" in a tool provider's 'approval.include', but the entry's own 'include' / 'exclude' removes that tool, so the name would gate nothing. [ERR_AI_APPROVAL_NAME_FILTERED]"
 ---
 kind: Assert.Manifest

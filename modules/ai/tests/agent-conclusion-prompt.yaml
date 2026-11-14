@@ -26,7 +26,7 @@ kind: Assert.Manifest
 metadata: { name: conclusionPromptUnusedAtRuntime }
 source: ./__fixtures__/conclusion-prompt-unused-app.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Ai.Agent/agent: sets `conclusionPrompt` without `onMaxSteps: conclude`; the prompt is sent only by the concluding call, so it would never be used." }]
   runFails: "Ai.Agent \"agent\" sets 'conclusionPrompt' without 'onMaxSteps: conclude', so the prompt would never be sent. [ERR_AI_CONCLUSION_PROMPT_UNUSED]"
 ---
 kind: Assert.Manifest
@@ -41,5 +41,5 @@ kind: Assert.Manifest
 metadata: { name: streamConclusionPromptUnusedAtRuntime }
 source: ./__fixtures__/conclusion-prompt-unused-stream-app.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Ai.AgentStream/agent: sets `conclusionPrompt` without `onMaxSteps: conclude`; the prompt is sent only by the concluding call, so it would never be used." }]
   runFails: "Ai.AgentStream \"agent\" sets 'conclusionPrompt' without 'onMaxSteps: conclude', so the prompt would never be sent. [ERR_AI_CONCLUSION_PROMPT_UNUSED]"

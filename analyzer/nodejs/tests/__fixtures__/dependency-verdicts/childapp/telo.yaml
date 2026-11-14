@@ -1,0 +1,10 @@
+# A library running a child application it supplies an undeclared variable.
+kind: Telo.Library
+metadata: { name: ChildLib }
+imports: { App: ../../../../../../modules/app }
+---
+kind: App.Instance
+metadata: { name: child }
+source: ./child/telo.yaml
+variables:
+  whom: the library

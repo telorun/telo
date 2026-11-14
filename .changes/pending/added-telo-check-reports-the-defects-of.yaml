@@ -1,0 +1,8 @@
+units:
+  cli: Added
+body: "`telo check` reports the defects of every library the app imports — at the
+  library's own file when it is reached by file paths, at the `imports:` entry for a
+  published one — instead of passing a manifest the run refuses. `telo check app
+  app/lib` prints each finding once; verdicts are cached under `<cache
+  root>/dependency-verdicts` (none written with `--no-cache-write`). `telo describe`,
+  `needs report`, `env template` and `telo publish` refuse a library with errors too."

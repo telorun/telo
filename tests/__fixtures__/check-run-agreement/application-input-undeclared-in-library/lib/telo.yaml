@@ -1,0 +1,12 @@
+kind: Telo.Library
+metadata:
+  name: ApplicationInputUndeclaredInLibrary
+  version: 1.0.0
+imports:
+  App: ../../../../../modules/app
+---
+kind: App.Instance
+metadata: { name: child }
+source: ./child/telo.yaml
+variables:
+  whom: the library

@@ -1,0 +1,10 @@
+# A resource the library declares but does not export, missing a required field
+# of its kind: the library's own check refuses it, and so does a load of any
+# application importing it.
+kind: Telo.Library
+metadata:
+  name: LibraryResourceSchemaLib
+---
+kind: Telo.Value
+metadata:
+  name: incomplete

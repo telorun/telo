@@ -27,7 +27,7 @@ kind: Assert.Manifest
 metadata: { name: keySetRefusedAtCreation }
 source: ./__fixtures__/keyset-form-app.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Jose.KeySet/keys: must declare either `store` (a managed, rotating set) or `keys` (a static set), not both and not neither." }]
   runFails: "declare either `store` (a managed, rotating set) or `keys` (a static set), not both and not neither"
 ---
 kind: Assert.Manifest
@@ -42,7 +42,7 @@ kind: Assert.Manifest
 metadata: { name: remoteRefusedAtCreation }
 source: ./__fixtures__/remote-keyset-source-app.yaml
 expect:
-  errors: []
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Jose.RemoteKeySet/keys: must declare either `url` (a JWKS) or `issuer` (discovered through its metadata document), not both and not neither." }]
   runFails: "declare either `url` (a JWKS) or `issuer` (discovered through its metadata), not both and not neither"
 ---
 kind: Assert.Manifest

@@ -1,0 +1,13 @@
+# A library whose own check finds a warning alone.
+kind: Telo.Library
+metadata: { name: Notes }
+---
+kind: Telo.Definition
+metadata: { name: Note }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./note.mjs#Note]
+schema: { type: object, properties: { text: { type: string } } }
+---
+kind: Self.Note
+metadata: { name: LoudNote }
+text: hello

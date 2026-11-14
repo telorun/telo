@@ -1,12 +1,8 @@
 import {
   AnalysisRegistry,
   Loader,
-  StaticAnalyzer,
-  assembleGraphDiagnostics,
-  collectApplicationSources,
-  collectModuleDocuments,
+  analyzeLoadedGraph,
   findPositions,
-  flattenForAnalyzer,
   type AstDocument,
   type LoadOptions,
   type LoadedGraph,
@@ -275,21 +271,15 @@ export class WorkspaceSession {
     }
     if (done.has(owner)) return;
     done.add(owner);
-    this.analyzeGraph(owner, graph);
+    await this.analyzeGraph(owner, graph);
   }
 
-  /** The analysis `telo check` performs, over the same graph, with its
-   *  diagnostics located the same way. No host versions: an editor is not the
-   *  machine that will run the manifest. */
-  private analyzeGraph(owner: string, graph: LoadedGraph): void {
-    const manifests = flattenForAnalyzer(graph);
+  /** The analysis `telo check` performs — the entry's and every library's own
+   *  verdict — over the same graph, with its diagnostics located the same way.
+   *  No host versions: an editor is not the machine that will run the manifest. */
+  private async analyzeGraph(owner: string, graph: LoadedGraph): Promise<void> {
     const registry = new AnalysisRegistry();
-    const raw = new StaticAnalyzer().analyze(
-      manifests,
-      { moduleDocuments: collectModuleDocuments(graph), applicationSources: collectApplicationSources(graph) },
-      registry,
-    );
-    const { diagnostics: assembled } = assembleGraphDiagnostics(graph, raw);
+    const { manifests, diagnostics: assembled } = await analyzeLoadedGraph(graph, { registry });
 
     const diagnostics = new Map<string, Diagnostic[]>();
     for (const d of assembled) {
