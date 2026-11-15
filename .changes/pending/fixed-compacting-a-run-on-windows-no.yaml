@@ -1,5 +1,0 @@
-units:
-  modules/durable-journal-file: Fixed
-body: "Compacting a run on Windows no longer fails with EPERM while another read or
-  append has the run's file open: the rename over it is retried with backoff for up to
-  10 seconds."

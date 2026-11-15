@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.137.0 - 2026-11-15
+### Added
+* Every build of the telo line now reports its recorded version with `+unreleased` — the engine handshake, the kernel's `Kernel.Starting`, the CEL engine's module key, the built-in vocabulary archive and the running surface — and only the published package, built by its own `prepack`, reports exactly its version. The surface generation is the recorded version's `major.minor.patch`; no build reads a release plan any more.
+* The editor shows the findings of the libraries a manifest imports, each published once per file whether the library, its consumer or both are open.
+### Fixed
+* The build writes esbuild's metafile beside the engine (`dist/language-server.meta.json`), which the release planner reads as the engine's inline edges; the `teloInlines` list in `package.json` is gone.
+
 ## 0.136.0
 
 ## 0.135.0

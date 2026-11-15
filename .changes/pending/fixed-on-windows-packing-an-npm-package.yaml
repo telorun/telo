@@ -1,6 +1,0 @@
-units:
-  release: Fixed
-body: "On Windows, packing an npm package for its evidence starts the package manager
-  through `cmd.exe`, every argument quoted: `npm`, `pnpm`, `yarn` and `bun` are `.cmd`
-  shims there, which no spawn finds without a shell, so `telo-release status` and every
-  command reading npm evidence failed to start the manager on Windows."

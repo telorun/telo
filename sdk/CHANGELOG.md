@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.137.0 - 2026-11-15
+### Fixed
+* A stop asked between `Kernel.Started` and `start()` reaching its idle wait is no longer lost: `forceIdle()` with no wait pending releases the next `waitForIdle()`, so a SIGTERM in that window ends the process instead of leaving it running.
+
 ## 0.136.0
 
 ### Minor Changes

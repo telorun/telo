@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0 - 2026-11-15
+### Added
+* The Telo glob has a Rust twin, `telorun-glob` (`packages/glob/rust`), answering the same conformance suite as this package.
+
 ## 0.3.2
 
 ### Patch Changes
