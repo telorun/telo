@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.3 - 2026-11-15
+### Fixed
+* Compacting a run on Windows no longer fails with EPERM while another read or append has the run's file open: the rename over it is retried with backoff for up to 10 seconds.
+
 ## 0.9.1 - 2026-11-12
 ### Fixed
 * Two concurrent purges of the same run in one process are serialized, so the second answers false once the first has removed the run.

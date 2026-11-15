@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2 - 2026-11-15
+### Fixed
+* The handshake section of the README states the engine identity as the tree's recorded version, `X+unreleased` in every build but the published package.
+
 ## 0.3.1
 
 ### Patch Changes

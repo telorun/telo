@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.0 - 2026-11-15
+### Added
+* The authoring agent knows that `telo check` reports every imported library's own findings, and that a run refuses only what it creates.
+* The primer teaches composable pages: a UiReact.App layout with navbar and aside panes replaces the App header and navigation, Ui.SplitView holds its fold settings in aside, a page title draws no heading, an unlisted linked page is refused, and resource rules may walk references with reachable.
+
 ## 0.37.0 - 2026-11-12
 ### Added
 * The primer teaches that a with:-scoped resource reads the invocation's inputs, that forwarding kinds type their payload from the target's contract, and how an unread scoped stream is cancelled.

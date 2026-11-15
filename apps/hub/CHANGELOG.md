@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.28.0 - 2026-11-15
+### Added
+* The build-ui authoring guide describes composable pages: a UiReact.App layout of header, aside and footer, panes (Ui.Navbar, Ui.NavigationColumn), per-page layouts, the title text style, Ui.Aside inside Ui.SplitView and the static check that every linked page is listed.
+### Fixed
+* The embedder client retries a failed embeddings call twice with a short backoff, so a search no longer fails with ERR_MODEL_TIMEOUT on one slow response.
+* The hub indexes final module versions only: a prerelease version is never listed, and one already indexed is removed on the next reconcile pass.
+
 ## 0.27.0 - 2026-11-12
 ### Added
 * The design-library guide teaches x-telo-context-from-path-template, typing a binding as the variables of a path template the resource holds, completedWhen on x-telo-ref and pointer $ref reuse of a closed shape's members; the build-ui guide teaches page variables and params, reloadEvery, the markdown, time and button nodes, Ui.BoundAction, list styles, relative filter values and Crud.Reader over a SELECT with scope.

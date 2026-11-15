@@ -1,6 +1,6 @@
 {
   "name": "@telorun/hub-web",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "Telo Hub discovery frontend — a request-time React Router server that renders module pages, the sitemap and robots.txt from the live hub.",
