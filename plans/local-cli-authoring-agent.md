@@ -7,6 +7,10 @@ packages: [cli, packages/runner-core, apps/studio, apps/authoring-agent]
 
 # Authoring agent on the local CLI runner
 
+## Constraints
+
+None.
+
 ## Goal
 
 The desktop editor gets the authoring agent on the local CLI runner the way it does on k8s: co-resident in a watch session, writing the session's own workspace, and launchable on its own when no session is running.

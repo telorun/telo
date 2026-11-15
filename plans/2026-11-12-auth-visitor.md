@@ -12,6 +12,10 @@ refinement: not-started
 
 A chat embedded on someone else's site, or a support widget, serves people who never sign in, and each must still get back their own conversations. Today every such caller is the same caller: a mount with `authentication: { anonymous: allow }` serves them all with `request.principal` null, so anything keyed by the caller is one shared bucket. A session does not help, because `Session.Verifier` reads a cookie and a page framed on another site gets its cookies blocked or partitioned. An application can hand-build a route that signs a JWT with `Jose.Sign` and accept it with `AuthBearer.Jwt`. But nothing ties the claims the route mints to what the verifier accepts, the verifier then advertises the application as an OAuth authorization server, and nothing limits how many identities one address can mint.
 
+## Constraints
+
+None.
+
 ## Surface
 
 **Added**

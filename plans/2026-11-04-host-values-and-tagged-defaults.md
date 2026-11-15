@@ -12,6 +12,10 @@ Order: 1, then 2. The state-directory half of 2 does not depend on 1 and may shi
 
 ---
 
+## Constraints
+
+None.
+
 ## 1. `Telo.GeneratedSecret`
 
 **Today.** No such type, no `TELO_HOST_SECRET_SEED`. A secret a module needs is supplied by an env name or not at all; the kernel strips only the public URL templates and `TELO_HOST_STATE_DIR` from the workload and from a started child.

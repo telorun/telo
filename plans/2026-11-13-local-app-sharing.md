@@ -14,6 +14,10 @@ An application run with `telo run` can be reached only from the machine running 
 
 The hosted runner (`https://runner.telo.run`) already routes `<port>-<id>.telorun.dev` to session workloads, and it is a template-mode host of `Telo.PublicUrl`. A local run cannot use any of that.
 
+## Constraints
+
+None.
+
 ## Surface
 
 **Added**

@@ -18,6 +18,10 @@ Nothing tells an author that their application's structure has drifted. Today:
 
 The analyzer already has every fact needed: references, `extends`, template bodies, CEL reads of `resources.X` and module calls are all declared, so structure can be computed exactly instead of estimated.
 
+## Constraints
+
+None.
+
 ## Solution
 
 A new analysis pass emits four **hint**-severity diagnostics, all prefixed `COHESION_`. It runs only when the entry is a `Telo.Application`, and covers:

@@ -30,6 +30,10 @@ Every design below was settled during the loop. The builders' notes (seams, trap
 timings) are in `.claude/loops/2026-10-27-template-expansion/03c-presence-conditions/`
 (`builder.md`, `decider.md`) for whoever builds it.
 
+## Constraints
+
+None.
+
 ## The oracle and the measurements
 
 Two existing harnesses judge every part of this plan:

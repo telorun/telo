@@ -25,6 +25,10 @@ run in the isolate, this plan ends there:
 - nothing else is built;
 - no shipped slice depends on Temporal.
 
+## Constraints
+
+None.
+
 ## Before
 
 An app on Temporal cannot run a Telo body durably. It would have to restate its logic as

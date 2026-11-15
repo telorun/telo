@@ -2,6 +2,7 @@
 status: draft
 priority: high
 depends-on: []
+refinement: not-started
 packages: [modules/ui, modules/ui-react, modules/ui-react-radix, modules/crud-ui, examples/ui-showcase, examples/chat, apps/hub, apps/authoring-agent, docs]
 ---
 
@@ -13,17 +14,24 @@ Only three things in a screen react to a press: a `link` navigates, a `button` n
 
 - A card in `Ui.CardLayout`, a table row, a board card, a calendar event, a `badge`, an `image`, a `value` cannot do anything when pressed. Making a card open something means putting a `link` inside it.
 - Nothing but a form opens over the current page. A record's page (`/posts/{id}`) can only be navigated to, leaving the list behind; there is no way to show it in a dialog or drawer.
-- "Where pressing this goes" is spelled `href` on a `value` node, a `list` column, a `Ui.TableLayout` column and a relation, and nothing else can say it.
+- "Where this goes" has a spelling per site — `href` on a `link`, a menu item, a `value` node, a `list` column, a `Ui.TableLayout` column, a relation and a `Ui.CollectionOptions` choice, `onSuccess.navigate` on an action — each able only to move to an address, so no site can open a page over the current one and the next site that goes somewhere adds another key.
+
+## Constraints
+
+None.
 
 ## Surface
 
 **Added**
 
-- `press` — key on the `box`, `stack`, `columns`, `text`, `badge`, `image`, `svg`, `value` and `time` nodes, on `list` and `Ui.TableLayout` columns, on a `Ui.CollectionPresentation` relation, on `Ui.Listing` and on `CrudUi.Admin`: what pressing it does.
-- `Ui.Press` — abstract over the press kinds, declaring `label`, a required `Ui.BoundText`: the press's accessible name.
-- `Ui.Navigate` — press kind `{ href, label }`: moves to an address.
-- `Ui.OpenPage` — press kind `{ page, pathParams?, queryParams?, surface?, label }`: opens a page over the current one in a `Ui.ViewportOverlay`.
-- `Ui.PressSpec` — the wire form of a press, `type` one of `navigate | openPage`, as `press` on every pressable `Ui.SpecNode` branch, `list` column and relation spec.
+- `Ui.Destination` — abstract over where something goes; its kinds are `Ui.Navigate`, `Ui.OpenPage` and `Ui.Close`.
+- `Ui.Navigate` — destination `{ href }`: moves to an address.
+- `Ui.OpenPage` — destination `{ page, pathParams?, queryParams?, surface? }`: opens a page over the current one in a `Ui.ViewportOverlay`.
+- `Ui.Close` — destination with no keys: closes the surface it is written inside.
+- `to` — the key holding a `Ui.Destination`: on a press, on the `link` node, on a `menu` item, on a `Ui.CollectionOptions` choice and on `Ui.Action.onSuccess`.
+- `Ui.Press` — named shape `{ to, label }`, `label` a required `Ui.BoundText`: the press's accessible name.
+- `press` — key holding a `Ui.Press`, on the `box`, `stack`, `columns`, `text`, `badge`, `image`, `svg`, `value` and `time` nodes, on `list` and `Ui.TableLayout` columns, on a `Ui.CollectionPresentation` relation, on `Ui.Listing` and on `CrudUi.Admin`: what pressing it does.
+- `Ui.DestinationSpec` — the wire form of a destination, `type` one of `navigate | openPage | close`; `Ui.PressSpec` — the wire form of a press, `{ to, label }`, as `press` on every pressable `Ui.SpecNode` branch, `list` column and relation spec.
 - `ui_react_layouts-2` — the layout contract's next generation: a record's `press` member, `onOpen` running the press, `selected` reporting it; the renderer hosts `-1` and `-2`.
 - `press` — styling part: the element spanning a pressed node or record, its geometry reserved to the renderer's base layer.
 
@@ -32,26 +40,41 @@ Only three things in a screen react to a press: a `link` navigates, a `button` n
 - `_telo.open.<name>` — for an opened page, holds the page's app-relative address (`_telo.open.post=%2Fposts%2Fhello`).
 - `data-selected` on a record part — also set while the page its press opened is open.
 - The reserved (part, property) pairs — `press` (`position`, `inset`, `z-index`), any part holding a `press`, a `table-cell` of a pressed `table-row` and interactive content after a `press` (`position`), reported by `CheckTheme` when a theme sets them.
+- `UI_PAGE_UNROUTED` — also reached through `Ui.OpenPage.page` at any `to`.
 
 **Removed**
 
-- `href` on the `value` node, on `list` and `Ui.TableLayout` columns and on a relation — `SCHEMA_VIOLATION`; `press: { kind: Ui.Navigate, href, label }` replaces it.
-- `href` on the wire's `value` branch, `list` column branches and relation spec — `press` carries it.
+- `href` on the `value` node, on `list` and `Ui.TableLayout` columns and on a relation — `SCHEMA_VIOLATION`; `press: { to: { kind: Ui.Navigate, href }, label }` replaces it.
+- `href` on the `link` node, on a `menu` item and on a `Ui.CollectionOptions` choice — `SCHEMA_VIOLATION`; `to: { kind: Ui.Navigate, href }` replaces it.
+- `Ui.Action.onSuccess.navigate` — `SCHEMA_VIOLATION`; `onSuccess.to` replaces it.
+- `href` on the wire's `value`, `link` and menu item branches, `list` column branches and relation spec, and `navigate` on the wire's `onSuccess` — `press` and `to` carry them.
 
 ## Solution
 
-**Two press kinds under one abstract.** `press` is a reference slot (`x-telo-ref`, `use: dependency`, kind `Ui.Press`) holding an inline declaration, so a press is checked with its own schema and typed regions wherever it is written, inside a node tree included. Anything but a `Ui.Press` at the slot is `REFERENCE_KIND_MISMATCH`. `Ui.Press` is a `Telo.Provider` abstract whose `outputType` is `Ui.PressSpec`; unlike `Ui.Surface`, which declares no schema, it declares the one key every press shares, `label`.
+**One destination vocabulary.** Wherever something goes somewhere it holds `to`: a reference slot (`x-telo-ref`, `use: dependency`, kind `Ui.Destination`) holding an inline declaration, so a destination is checked with its own schema and typed regions wherever it is written, inside a node tree included. Anything but a `Ui.Destination` at the slot is `REFERENCE_KIND_MISMATCH`. `Ui.Destination` is a `Telo.Provider` abstract whose `outputType` is `Ui.DestinationSpec`; it declares no key of its own.
 
-- `Ui.Navigate` — `href` is a `Ui.Address`. Drawn as a real `<a>`, so it opens in a new tab like any link.
+- `Ui.Navigate` — `href` is a `Ui.Address`.
 - `Ui.OpenPage` — `page` is a `use: schema` reference to a `Ui.Page` (a declaration read, as `Ui.Address` reads a page's `path`, so two pages may open each other); `pathParams` carries `x-telo-path-params-for: { template: /page, through: path }`, so a missing or unknown variable is `PATH_PARAMETER_UNBOUND` / `PATH_PARAMETER_UNUSED`; `queryParams` is an address's; `surface`, the surface it opens in over a page, is a `use: dependency` reference to a `Ui.ViewportOverlay` (a dialog or a drawer, since a whole page has no anchor), a `Ui.Dialog` when omitted, filled by `ui`. The renderer fetches the opened page's own page document — the one a navigation to its address fetches — and draws its children in the surface, titled by the page's `title`, else by the press's `label`. A page no application lists draws the not-found page in the surface, as a link to it would.
+- `Ui.Close` — no keys. It closes the surface the place it is written in is open in. As a press or a link it is not drawn where nothing is open around it; as a success effect it does nothing there.
 
-A press's accessors — `href`, `pathParams`, `queryParams`, `label`'s values — read the roots in scope where it is written (`row`, `data`, `query`, `params`, `values`, `result`, `input`), each typed from the referrer's binding (`x-telo-context-from-referrer`); a root absent there is `CEL_UNKNOWN_IDENTIFIER`. A relation's press reads `row` as the related record, as its `href` did.
+A destination with an address is drawn as a real `<a>` to it, so it opens in a new tab like any link: for `Ui.OpenPage` that is the opened page's own address, an unmodified click opening it in the surface. `Ui.Close` is drawn as a button.
 
-**The accessible name is `label`**, required, so it is checked statically (`SCHEMA_VIOLATION` when absent, `CEL_UNKNOWN_FIELD` for a misspelt value), crosses the wire as one text and names the press element the same way in every renderer and layout component. Being a `Ui.BoundText` it names each record (`Read {$title}`); it should contain the visible text, so speech input finds it. Nothing is computed from drawn content: a card is named by its label rather than announced as all of its text.
+**`to` is the one key, at every site.**
 
-Running an action stays the `button` node and row actions; a third press kind running one would be a second spelling of those with a second place to draw the answer.
+- `press: { to, label }` — the named shape `Ui.Press`, on the nodes, columns, relations and listings listed under Surface.
+- `to` on a `link` node and on a `menu` item, so a link is `{ type: link, text, to, button? }`.
+- `to` on a `Ui.CollectionOptions` choice.
+- `Ui.Action.onSuccess.to`, over `result` and `input`, where `onSuccess.navigate` was. The body-read rule counts a `to` reading `result`.
 
-**Where `press` replaces `href`.** On a `value` node, a `list` column, a `Ui.TableLayout` column and a relation, `press` is the only way to say what pressing does, and `href` there is `SCHEMA_VIOLATION`. A `link` node, a `menu` item and a `Ui.CollectionOptions` choice keep `href`, since each is the link itself. There is no manifest migration: matching the `Ui.` prefix and every hosting kind in a data migration is the obstacle the composable chat plan declined; in-repo manifests are updated and the `ui` fragment describes the break.
+So the same `Ui.OpenPage` value opens the same page in the same surface from a card, a link, a menu item and a success, and a later site that goes somewhere takes `to` rather than a key of its own. `href` and `onSuccess.navigate` at those sites are `SCHEMA_VIOLATION`. A `Ui.Navigation` entry (`page` / `link`) is the site's map, not an effect, and keeps its spelling. There is no manifest migration: matching the `Ui.` prefix and every hosting kind in a data migration is the obstacle the composable chat plan declined; in-repo manifests are updated and the `ui` fragment describes the break.
+
+`UI_PAGE_UNROUTED` reaches a page through `Ui.OpenPage.page` at every `to`.
+
+A destination's accessors — `href`, `pathParams`, `queryParams` — and a press's `label` values read the roots in scope where they are written (`row`, `data`, `query`, `params`, `values`, `result`, `input`), each typed from the referrer's binding (`x-telo-context-from-referrer`); a root absent there is `CEL_UNKNOWN_IDENTIFIER`. A relation's press reads `row` as the related record, as its `href` did.
+
+**The accessible name belongs to the trigger, not the destination.** A press carries `label`, required, so it is checked statically (`SCHEMA_VIOLATION` when absent, `CEL_UNKNOWN_FIELD` for a misspelt value), crosses the wire as one text and names the press element the same way in every renderer and layout component. Being a `Ui.BoundText` it names each record (`Read {$title}`); it should contain the visible text, so speech input finds it. Nothing is computed from drawn content: a card is named by its label rather than announced as all of its text. A `link` and a menu item are named by their `text`, and a success effect has no name, which is why `label` is not a key of a destination.
+
+**Running an action is never a destination.** It stays the `button` node, row actions and every other `Ui.BoundAction`: an action's answer and failure are drawn at its button, and a pressed card, a success effect or a link has no such place.
 
 **A pressed container** uses the covering-target pattern, and its geometry is the renderer's, reserved in its base layer as the page width is, so no theme, control set or layout component restates it: the `press` element is the first child of the element it covers (of a table row's first cell), absolutely positioned at `inset: 0`; the covered element is positioned as its containing block (a pressed `table-row` itself, its cells left unpositioned); and interactive content after it inside the covered element — links, buttons, form controls, `label`, `summary`, `[tabindex]`, `[contenteditable]` — is positioned, so it paints above the press by tree order and stays separately reachable. A nested pressed container is raised by the same rule, so nesting presses needs no rule. A theme paints only the press's focus ring:
 
@@ -121,34 +144,37 @@ export function Gallery({ records }: LayoutProps) {
 }
 ```
 
-**Wire.** Every pressable `Ui.SpecNode` branch, `list` column and relation spec carries `press` (null when absent), a `Ui.PressSpec` whose `type` is one-to-one with the kind; its `href` is the wire's existing address shape — a template and bindings resolved in the browser, since `row` exists only there — its `label` the wire's text or bound text, and `ui` fills the surface, so a renderer reads no default. The author page's badge, then the card listing's press:
+**Wire.** Every pressable `Ui.SpecNode` branch, `list` column and relation spec carries `press` (null when absent), a `Ui.PressSpec` `{ to, label }`; a `link` node, a menu item and a choice carry `to`, and an action's `onSuccess` carries `to` when written. `to` is a `Ui.DestinationSpec` whose `type` is one-to-one with the kind; its `href` is the wire's existing address shape — a template and bindings resolved in the browser, since `row` exists only there — a press's `label` the wire's text or bound text, and `ui` fills the surface, so a renderer reads no default. The author page's badge, then the card listing's press:
 
 ```json
 {
-  "type": "navigate",
-  "href": { "path": { "value": "/" }, "pathParams": {}, "queryParams": {} },
+  "to": { "type": "navigate", "href": { "path": { "value": "/" }, "pathParams": {}, "queryParams": {} } },
   "label": { "text": "All posts", "context": null, "lang": "en", "computed": false }
 }
 ```
 
 ```json
 {
-  "type": "openPage",
-  "href": { "path": { "value": "/posts/{id}" }, "pathParams": { "id": { "root": "row", "path": ["id"] } }, "queryParams": {} },
+  "to": {
+    "type": "openPage",
+    "href": { "path": { "value": "/posts/{id}" }, "pathParams": { "id": { "root": "row", "path": ["id"] } }, "queryParams": {} },
+    "surface": {
+      "type": "drawer",
+      "side": "end",
+      "size": "medium",
+      "modal": true,
+      "dismiss": { "escape": true, "outside": true, "closeButton": true },
+      "address": { "name": "post" }
+    }
+  },
   "label": {
     "text": { "text": "Open {$title}", "context": null, "lang": "en", "computed": false },
     "values": { "title": { "root": "row", "path": ["title"] } }
-  },
-  "surface": {
-    "type": "drawer",
-    "side": "end",
-    "size": "medium",
-    "modal": true,
-    "dismiss": { "escape": true, "outside": true, "closeButton": true },
-    "address": { "name": "post" }
   }
 }
 ```
+
+A `close` destination is `{ "type": "close" }`.
 
 ## Example
 
@@ -329,9 +355,7 @@ relations:
     label: !cel "row.name"
     # `row` is the author; the page opens in a dialog, unaddressed.
     press:
-      kind: Ui.OpenPage
-      page: !ref authorPage
-      pathParams: { id: !cel "row.id" }
+      to: { kind: Ui.OpenPage, page: !ref authorPage, pathParams: { id: !cel "row.id" } }
       label: { text: "{$name}", values: { name: !cel "row.name" } }
 ---
 kind: Ui.Page
@@ -346,11 +370,12 @@ children:
       model: !ref Post
       # Pressing a card opens the post in an end drawer: `?_telo.open.post=%2Fposts%2Fhello`.
       press:
-        kind: Ui.OpenPage
-        page: !ref postPage
-        pathParams: { id: !cel "row.id" }
+        to:
+          kind: Ui.OpenPage
+          page: !ref postPage
+          pathParams: { id: !cel "row.id" }
+          surface: { kind: Ui.Drawer, side: end, address: { name: post } }
         label: { text: "Open {$title}", values: { title: !cel "row.title" } }
-        surface: { kind: Ui.Drawer, side: end, address: { name: post } }
       # With `press` written, editing is the record's edit button.
       edit: { form: { kind: Ui.Form, model: !ref Post, presentation: !ref postsPresentation, fields: [title, body, authorId] } }
       layout:
@@ -363,7 +388,7 @@ children:
             # A target of its own above the card's: it goes to the full page.
             - type: link
               text: Full page
-              href: { path: !ref postPage, pathParams: { id: !cel "row.id" } }
+              to: { kind: Ui.Navigate, href: { path: !ref postPage, pathParams: { id: !cel "row.id" } } }
 ---
 kind: Ui.Page
 metadata: { name: postPage }
@@ -384,10 +409,11 @@ children:
           - type: text
             text: About the author
             press:
-              kind: Ui.OpenPage
-              page: !ref authorPage
-              pathParams: { id: !cel "data.authorId" }
-              queryParams: { from: !cel "data.id" }
+              to:
+                kind: Ui.OpenPage
+                page: !ref authorPage
+                pathParams: { id: !cel "data.authorId" }
+                queryParams: { from: !cel "data.id" }
               label: About the author
 ---
 kind: Ui.Page
@@ -408,14 +434,12 @@ children:
           - { type: value, value: !cel "data.name" }
           - type: badge
             text: All posts
-            press: { kind: Ui.Navigate, href: { path: !ref postsPage }, label: All posts }
+            press: { to: { kind: Ui.Navigate, href: { path: !ref postsPage } }, label: All posts }
   - type: text
     text: Back to the post
     shown: { at: !cel "query.from", matches: { type: string } }
     press:
-      kind: Ui.OpenPage
-      page: !ref postPage
-      pathParams: { id: !cel "query.from" }
+      to: { kind: Ui.OpenPage, page: !ref postPage, pathParams: { id: !cel "query.from" } }
       label: Back to the post
   # The author's posts. Pressing one opens it — over the list, or replacing
   # this page when it is itself open over another.
@@ -426,9 +450,7 @@ children:
       model: !ref Post
       filters: { authorId: !cel "params.id" }
       press:
-        kind: Ui.OpenPage
-        page: !ref postPage
-        pathParams: { id: !cel "row.id" }
+        to: { kind: Ui.OpenPage, page: !ref postPage, pathParams: { id: !cel "row.id" } }
         label: { text: "Read {$title}", values: { title: !cel "row.title" } }
       layout: { kind: Ui.ListLayout }
 ---
@@ -452,8 +474,7 @@ pages:
             columns:
               - value: !cel "row.title"
                 press:
-                  kind: Ui.Navigate
-                  href: { path: !ref postPage, pathParams: { id: !cel "row.id" } }
+                  to: { kind: Ui.Navigate, href: { path: !ref postPage, pathParams: { id: !cel "row.id" } } }
                   label: { text: "{$title}", values: { title: !cel "row.title" } }
               # The author's label opens the author's page, as the presentation says.
               - value: !cel "row.authorId"
@@ -537,9 +558,7 @@ pages:
               schemas: { list: !ref Task, create: !ref NewTask, update: !ref NewTask }
               query: { filters: [], sort: [{ property: title }] }
           press:
-            kind: Ui.OpenPage
-            page: !ref taskPage
-            pathParams: { id: !cel "row.id" }
+            to: { kind: Ui.OpenPage, page: !ref taskPage, pathParams: { id: !cel "row.id" } }
             label: { text: "Open {$title}", values: { title: !cel "row.title" } }
   - !ref taskPage
 ```
@@ -573,28 +592,27 @@ path: /
 title: Home
 children:
   # PATH_PARAMETER_UNBOUND — `/authors/{id}` needs `id`.
-  - { type: text, text: Newest author, press: { kind: Ui.OpenPage, page: !ref authorPage, label: Newest author } }
+  - { type: text, text: Newest author, press: { to: { kind: Ui.OpenPage, page: !ref authorPage }, label: Newest author } }
   # REFERENCE_KIND_MISMATCH — `page` names a Ui.Page.
-  - { type: badge, text: Authors, press: { kind: Ui.OpenPage, page: !ref Author, label: Authors } }
+  - { type: badge, text: Authors, press: { to: { kind: Ui.OpenPage, page: !ref Author }, label: Authors } }
   # CEL_UNKNOWN_IDENTIFIER — a page's own nodes bind no `row`.
   - type: text
     text: First author
-    press: { kind: Ui.OpenPage, page: !ref authorPage, pathParams: { id: !cel "row.id" }, label: First author }
-  # SCHEMA_VIOLATION — a press needs a `label`.
-  - { type: text, text: Ada, press: { kind: Ui.OpenPage, page: !ref authorPage, pathParams: { id: ada } } }
-  # SCHEMA_VIOLATION — `href` is gone from `value`; write `press: { kind: Ui.Navigate, href, label }`.
+    press: { to: { kind: Ui.OpenPage, page: !ref authorPage, pathParams: { id: !cel "row.id" } }, label: First author }
+  # SCHEMA_VIOLATION — a press on a node needs a `label`.
+  - { type: text, text: Ada, press: { to: { kind: Ui.OpenPage, page: !ref authorPage, pathParams: { id: ada } } } }
+  # SCHEMA_VIOLATION — `href` is gone from `value`; write `press: { to: { kind: Ui.Navigate, href }, label }`.
   - { type: value, value: ada, href: { path: !ref authorPage, pathParams: { id: ada } } }
-  # REFERENCE_KIND_MISMATCH — a press is a Ui.Press.
-  - { type: text, text: Close, press: { kind: Ui.Dialog } }
+  # SCHEMA_VIOLATION — `href` is gone from `link`; write `to: { kind: Ui.Navigate, href }`.
+  - { type: link, text: Authors, href: /authors }
+  # REFERENCE_KIND_MISMATCH — `to` holds a Ui.Destination.
+  - { type: text, text: Close, press: { to: { kind: Ui.Dialog }, label: Close } }
   # REFERENCE_KIND_MISMATCH — a page opens in a Ui.ViewportOverlay: a dialog or a drawer.
   - type: text
     text: Ada in a popover
     press:
-      kind: Ui.OpenPage
-      page: !ref authorPage
-      pathParams: { id: ada }
+      to: { kind: Ui.OpenPage, page: !ref authorPage, pathParams: { id: ada }, surface: { kind: Ui.Popover, side: bottom } }
       label: Ada
-      surface: { kind: Ui.Popover, side: bottom }
 ```
 
 ## Verify
@@ -606,7 +624,9 @@ children:
 - Every press element's accessible name is exactly its formatted `label` ("Open Hello world", "Ada"); no renderer code reads text out of drawn content to name anything.
 - With `press` written, the record's edit button opens the `edit` form; a listing with `edit` and no `press` behaves as today.
 - A fixture holding a filter bar and an addressed `edit` opener inside an opened page writes neither to the host's address.
-- Each refused line above is reported by `telo check` with the code shown, and fails a consumer's run with its kernel twin; `href` on a `list` column, a `Ui.TableLayout` column and a relation is `SCHEMA_VIOLATION` too.
+- Each refused line above is reported by `telo check` with the code shown, and fails a consumer's run with its kernel twin; `href` on a `list` column, a `Ui.TableLayout` column, a relation, a `link` node, a menu item and a `Ui.CollectionOptions`, and `navigate` under `onSuccess`, are `SCHEMA_VIOLATION` too.
+- One `Ui.OpenPage` value written at a press, a `link`'s `to` and an action's `onSuccess.to` opens the same page in the same surface; a `link` to it is a real `<a>` to the page's own address, so a middle click opens the full page; `onSuccess.to` reading `result` forces the body read.
+- A `Ui.Close` press inside an opened page closes its surface; the same node on a page of its own is not drawn; `onSuccess.to: { kind: Ui.Close }` closes the surface after a success and does nothing where none is open.
 - A press inside a `Ui.Data` tree inside a `list` column types `data` and `row` from the referrer — one fixture with a field misspelt in each is `CEL_UNKNOWN_FIELD` twice.
 - Layouts: the layout vectors hold `press` as the first child of each built-in record root (of the first cell for a table); the hosted generations are `ui_react_layouts-1` and `-2` and an unknown one is refused; a `-2` component under a renderer hosting only `-1` is replaced by `ERR_UI_COMPONENT_ABI_UNSUPPORTED` naming `ui_react_layouts-2`; a `-1` component opens records through `onOpen` and runs the listing's press; the `GalleryLayout` component draws `record.press` and sets `data-selected` from `selected`.
 - In a real browser engine — happy-dom does no layout — a pointer on a card, a table row and a component record lands on the press over text and on a nested link, row action or control over those.
@@ -615,4 +635,4 @@ children:
 
 ## Bookkeeping
 
-Docs: `ui` `nodes.md`, `presses.md` (new: the two kinds, `label` containing the visible text), `listing.md`, `listing-layouts.md`, `collection-presentation.md`, `surfaces.md` (a page opened in a surface, the context rule, the non-modal case, first owner of a name); `ui-react` `urls.md` (the opened page's address, the two-key cold load, in-memory addresses inside it), `layouts-abi.md` (both generations, the `-1` lane, `record.press` as the record root's first child, the root never `static`, a non-interactive element a component positions inside a record taking `pointer-events: none`), `styling.md` (the `press` part, the reserved rows, `data-selected`, no drag-selection inside a pressed container); `crud-ui` `admin.md`. The part list, the contract data and vectors for `-2`, the renderer's base layer, and the default theme's, `ui-react-radix`'s and the showcase `brand.css` focus styles for `press`. `examples/ui-showcase`, `examples/chat` and the in-repo test manifests moved off `href`; `Ui.CollectionOptions.href` (`examples/report-console`) stays. The hub `build-ui` guide (within its 32768-byte bound), the primer, `modules/CLAUDE.md`'s Declarative UI paragraph. A ledger entry under Standard library, "Records that open in place". `Added` fragments for `ui` (describing the `href` break), `ui-react` (`ui_react_layouts-2`), `ui-react-radix`, `crud-ui`; a changeset for `@telorun/ui-react-contract`. `telo release floor` for the showcase and every in-repo module adopting `press`.
+Docs: `ui` `nodes.md`, `presses.md` (new: destinations and their three kinds, the `to` key, presses, `label` containing the visible text), `action.md` (`onSuccess.to`), `field-kinds.md` (a choice's `to`), `listing.md`, `listing-layouts.md`, `collection-presentation.md`, `surfaces.md` (a page opened in a surface, the context rule, the non-modal case, first owner of a name); `ui-react` `urls.md` (the opened page's address, the two-key cold load, in-memory addresses inside it), `layouts-abi.md` (both generations, the `-1` lane, `record.press` as the record root's first child, the root never `static`, a non-interactive element a component positions inside a record taking `pointer-events: none`), `styling.md` (the `press` part, the reserved rows, `data-selected`, no drag-selection inside a pressed container); `crud-ui` `admin.md`. The part list, the contract data and vectors for `-2`, the renderer's base layer, and the default theme's, `ui-react-radix`'s and the showcase `brand.css` focus styles for `press`. `examples/ui-showcase`, `examples/chat`, `examples/report-console` and the in-repo test manifests moved off `href` and `onSuccess.navigate`. The hub `build-ui` guide (within its 32768-byte bound), the primer, `modules/CLAUDE.md`'s Declarative UI paragraph. A ledger entry under Standard library, "Records that open in place". `Added` fragments for `ui` (describing the `href` and `onSuccess.navigate` break), `ui-react` (`ui_react_layouts-2`), `ui-react-radix`, `crud-ui`; a changeset for `@telorun/ui-react-contract`. `telo release floor` for the showcase and every in-repo module adopting `press`.

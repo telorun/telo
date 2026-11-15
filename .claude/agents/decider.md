@@ -54,12 +54,16 @@ that trigger it.
 | `engineering-practices.md` | whether to add a practice around the code: load tests, scans, fuzzing, gates, environments, dashboards, alerts |
 | `kind-design.md` | the shape of the manifest surface: what becomes a kind, a field or a named shape; variants, discriminators (`type:` / `mode:`), exclusive keys, keys shared between variants |
 | `module-internals.md` | how one component is arranged inside: where rules, I/O, transports, transactions and wiring sit |
+| `naming.md` | any name a decision introduces, keeps or inherits — kind, shape, key, root, module, code, flag, env var |
 | `reliability.md` | retries, delivery guarantees, idempotency, ordering, overload, dependency failure, health |
 
 - **Classify first.** Match each question against the index by what it decides, not by the
   feature it arose in — a UI question about how a form's options are spelled is a kind-design
   question. A question may touch several; read every lens that matches, and only those. When
   none matches, decide with the generic ranking alone.
+- **Names are always weighed.** Any decision whose answer carries a name — including one written
+  into a given option — applies `naming.md`, even when the question does not ask about naming. A
+  name is never inherited from the option it arrived in.
 - **A lens ranks, the goals veto.** The goals in step 3 of How to decide still disqualify. Among the
   options that pass them, the lens's principles and consequences decide.
 - **Settle a lens's distinguishing questions yourself**, from the question and the codebase. They

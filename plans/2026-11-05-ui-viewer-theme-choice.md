@@ -17,6 +17,10 @@ A viewer cannot choose how the application looks.
 
 Home Assistant keeps a theme and a light/dark mode per user, chosen from the profile page, with nothing for the dashboard author to write.
 
+## Constraints
+
+None.
+
 ## Solution
 
 **Viewer preferences — vocabulary in `ui`, storage in the renderer.** `ui` declares the `Ui.Preferences` shape — a map of named choices, each `{ label, choices: [{ value, label }], default }`, `value` matching `^[a-z][a-z0-9-]*$`, `label` a `Text` — and a `preference` node, `{ type: preference, name, label? }`, drawn through the `Select` control. `UiReact.App` takes `preferences` of that shape and implements the storage:

@@ -14,6 +14,10 @@ A Telo chat cannot be put on another site. `UiReact.App` owns the whole document
 
 The chat API is also open to every caller. `Chat.Api` lists, reads, renames, archives and deletes every conversation, and streams, cancels and serves the attachments of every turn, for anyone who can reach it. On a public page, every visitor would read everyone else's conversations.
 
+## Constraints
+
+None.
+
 ## Surface
 
 **Added**

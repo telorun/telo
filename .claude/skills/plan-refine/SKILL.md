@@ -13,6 +13,11 @@ of the **Final report**.
 The plan is the argument, else the file selected in the editor. If neither names a file under
 `plans/`, ask for it and stop.
 
+The plan's **Constraints** section holds the user's constraints. They are final: never weigh,
+change, remove or work around one, never offer an option that violates one, and never edit the
+section, except to add it as `None.` to a plan that lacks it. Every reviewer and decider prompt carries
+the constraints verbatim, marked as fixed.
+
 Refinement makes a plan correct, not bigger. Every mechanism it adds is something a maintainer
 keeps working forever, so a mechanism is added only for a failure that happens in practice, and the
 first answer to a problem inside a mechanism is removing that mechanism.
@@ -25,10 +30,16 @@ untracked.
 
 ### 1. Review
 
-Spawn a fresh `reviewer` agent each round. Its prompt holds: the plan's path, the **Review
-checklist** below copied in full, and — from round 2 on — the **settled decisions** so far, each
-one sentence. Settled decisions are facts: the reviewer may reopen one only by naming a new,
+Spawn a fresh `reviewer` agent each round. Its prompt holds: the plan's path, the plan's
+**Constraints** verbatim under the heading **Constraints — fixed, never question or weigh**, the
+**Review checklist** below copied in full, and — from round 2 on — the **settled decisions** so far,
+each one sentence. Settled decisions are facts: the reviewer may reopen one only by naming a new,
 concrete failure it causes, never by restating a rejected option.
+
+In round 1, the prompt also lists every choice the plan already makes in its own Decisions section,
+rejected alternatives included, under the heading **Plan's own decisions — test each**. They are
+not settled decisions: the reviewer reports any whose reason does not hold as an issue, which goes
+to Decide like any other.
 
 ### 2. Sort
 
@@ -58,12 +69,14 @@ Sort every other issue into exactly one of:
   concrete failure of the current one. The plan stays as it is; collected for the final report.
 
 An issue that is none of these is reported, not decided. Never settle an architectural choice
-yourself.
+yourself. An issue that challenges a constraint is dropped; an issue whose every option violates a
+constraint is a **User question**.
 
 ### 3. Decide
 
 Send all of the round's decisions to `decider` in **one** call, as a set of related questions, each
-with the reviewer's options and the plan's path. When the issue sits inside a mechanism the plan or
+with the reviewer's options and the plan's path, and the plan's **Constraints** verbatim as fixed:
+the decider never picks, amends toward or proposes an option that violates one. When the issue sits inside a mechanism the plan or
 this refinement added, add **removing that mechanism** as an option. Skip the call when there are
 none. Tell it that maintenance cost counts here, whatever its usual brief says: a mechanism a
 maintainer must keep working is a cost. Ask it to state, beside each answer:
@@ -111,7 +124,12 @@ Apply every decision, fix and removal to the plan yourself:
   lists is held for the final report.
 - Keep the plan's rules: valid frontmatter, no code other than usage examples, no source paths,
   observable artifacts named exactly, Before / After / Verify, short.
-- Keep the **Surface** section (right after Problem) in step with every decision: a name added,
+- Never drop a rejected alternative, or its reason, from the plan while editing, unless a decision
+  this refinement made replaced it. A rewrite carries each one over, and one whose reason no longer
+  holds goes to the decider, not into silence.
+- Never edit the **Constraints** section, and leave the plan satisfying every constraint after each
+  edit.
+- Keep the **Surface** section (right after Constraints) in step with every decision: a name added,
   renamed, dropped or found to exist already moves between **Added**, **Changed** and **Removed**,
   or leaves the list, in the same round.
 
@@ -154,12 +172,20 @@ they may show surface that is not implemented yet.
 Copy this section verbatim into every decider call that carries names.
 
 > For each name, weigh the plan's name, the reviewer's alternatives and any better name you find;
-> you may coin one. Names in one plan are decided together and must agree with each other.
+> you may coin one. Apply the `naming.md` lens. Names in one plan are decided together and must
+> agree with each other.
+>
+> When established systems converge on a term for the concept, that term is the name, unless a
+> disqualifier below holds.
 >
 > Disqualified — a candidate that:
 >
-> - collides with an existing name in the same namespace (a kind, a key, a module, a code, a flag)
-> - uses a different word for a concept Telo already names, or the same word for a different one
+> - is identical to an existing name in the identical namespace (two kinds of one module, two keys
+>   on one object, two codes, two flags of one command) — unless the decision renames the less
+>   generic of the two and lists the rename as an obligation. Sharing a word with a key, a CEL
+>   root, a protocol term or another module's kind is not a collision.
+> - is a synonym picked to avoid such a shared word
+> - uses a different word for a concept Telo already names
 > - names a backend or an implementation in a generic kind, field or module
 > - only makes sense against history (`new`, `v2`, `legacy`, `unlike before`)
 > - breaks the case rules (PascalCase types, camelCase values), is a CEL keyword, or is a
@@ -167,12 +193,11 @@ Copy this section verbatim into every decider call that carries names.
 >
 > Among the survivors, pick the one that:
 >
-> 1. uses the term established systems converge on for the same concept, when they converge
-> 2. says what the thing is or does, not how it is built
-> 3. reads right where it is used — `<Alias>.<Kind>`, `resources.<name>.<field>`, `--flag`, the
+> 1. says what the thing is or does — not what it holds, how it is built or how it travels
+> 2. reads right where it is used — `<Alias>.<Kind>`, `resources.<name>.<field>`, `--flag`, the
 >    diagnostic a user reads
-> 4. is the word a searcher on the hub would type
-> 5. is shorter, when everything above ties
+> 3. is the word a searcher on the hub would type
+> 4. is shorter, when everything above ties
 >
 > For each name return the chosen name, labelled *kept*, *alternative* or *new*, and one sentence
 > on why it beats the others.
@@ -206,7 +231,11 @@ Copy this section verbatim into every reviewer prompt.
 >
 > A missing, incomplete or incorrect example is an issue.
 >
-> **Then check the Surface section** right after Problem: every observable name the plan adds,
+> The plan's **Constraints** section holds the user's constraints, and they are fixed: never
+> question, weigh or propose changing one, and never offer an option that violates one. A plan whose
+> text contradicts one of its own constraints is an issue.
+>
+> **Then check the Surface section** right after Constraints: every observable name the plan adds,
 > changes or removes, under **Added**, **Changed** and **Removed**, one line each. A name in the
 > prose or examples missing from it, a name marked Added that already exists in the codebase, or a
 > reused name listed at all is an issue.
@@ -246,6 +275,13 @@ Copy this section verbatim into every reviewer prompt.
 >   decision it stems from and a simpler alternative
 > - for every mechanism the plan contains, whether the problem it solves happens in practice; a
 >   mechanism that guards only a hypothetical failure is an issue — report it for removal
+> - every refusal the plan adds that only forbids a construct in some place (a kind in the wrong
+>   document, a key on the wrong kind): could the schema make that state unrepresentable instead —
+>   a key on the owning document rather than a new document kind, a closed enum, a required key?
+>   Such a refusal is an issue, with the representable alternative as its option.
+> - every new kind, document or top-level key the plan adds: name the other declaration forms it
+>   could take (a key on an existing document, a field of an existing kind, a named shape) and
+>   whether the plan's form beats them. A form chosen without that comparison is an issue.
 >
 > Never mention:
 >

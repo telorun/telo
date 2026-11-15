@@ -19,6 +19,10 @@ The authoring agent changes files only through JSON tool calls, and that costs i
 
 Telo cannot make a tool call carry raw text: the `anthropic` module speaks the API's JSON tool input, and `Ai.Agent` hands a tool a parsed `arguments` object. But a model's reply TEXT has no escaping, and the application already reads structure out of reply text (the `telo-questions` block).
 
+## Constraints
+
+None.
+
 ## Solution
 
 **The model writes file contents and edits as fenced blocks in its reply; `Ai.Agent` gathers a reply's blocks into ONE call of one of its own tools, runs it through the ordinary tool path, and answers with the result.** For the authoring agent that call is one change set: every file checked before any is written, one lease hold, one checkpoint call, one `telo check` over every touched file. Four parts:

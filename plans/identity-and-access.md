@@ -20,6 +20,10 @@ authentication method, and everything around it: users, credentials, sessions, o
 members, clients, APIs, roles, policies, consents, audit — delivered as modules an application
 composes by import.
 
+## Constraints
+
+None.
+
 ## Principles
 
 - **One inbound seam, mirroring the outbound one.** `Http.Credential` says "request in → auth

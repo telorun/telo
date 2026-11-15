@@ -13,6 +13,10 @@ A screen cannot change what it draws by the device it is on. `compactBelow` swit
 
 Home Assistant's `screen` condition takes a media query string per card. A string media query is opaque to static analysis; a fixed set of typed facts is not.
 
+## Constraints
+
+None.
+
 ## Solution
 
 **A `viewport` root, bound once.** `viewport` is declared a single time, as an accessor-only binding in a region on the `Ui.Condition` shape itself — the shape every `shown`, and `Ui.Enablement` (`enabled` on an action or row action), reaches by `$ref`. Regions inside named shapes are reached by the one walk that collects every region, so `viewport` is in scope wherever a condition is written: on a page's own children, inside a `Ui.Data` content, on a field, inside a composite declared as its own resource, on an `enabled`. It is the one root bound by the condition rather than by the resource holding it — a deliberate widening of "a root is in scope only where the resource binds it", recorded in `conditions.md` and `modules/CLAUDE.md`, because the viewport belongs to no resource.

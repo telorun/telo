@@ -1,7 +1,8 @@
 ---
 status: draft
 priority: medium
-depends-on: [2026-11-05-ui-press-and-record-detail.md]
+depends-on: [2026-11-05-ui-press-and-record-detail.md, 2026-11-15-ui-record-pages.md, 2026-11-15-ui-query-reads.md]
+refinement: not-started
 packages: [analyzer/nodejs, modules/ui, modules/ui-react, modules/crud-ui, examples/ui-showcase, apps/hub, apps/authoring-agent, docs]
 ---
 
@@ -15,6 +16,10 @@ A library also cannot ship pages at all: a module offering an account area or a 
 
 Home Assistant builds its default dashboard from the registries with a `strategy:` — the screens exist the moment the data does. Telo has the parts (collections, presentations, listings, templated definitions with `!for-each`), but no seam a generator can deliver pages through.
 
+## Constraints
+
+None.
+
 ## Solution
 
 **`Ui.Pages` — pages and their menu, as one resource.** `Ui.Pages` is an abstract `Telo.Provider` whose reading is `{ pages, navigation }`: a list of `Ui.Page` references and a list of `Ui.Navigation` items over those pages. `Ui.PageSet` is its concrete kind, written with those two fields. A library exports a set as an instance (`exports.resources`), so "an account area" is one import and one list entry.
@@ -23,25 +28,26 @@ Home Assistant builds its default dashboard from the registries with a `strategy
 
 **The App's rules see through a set — including a generated one.** The App's page rules (`UI_PAGE_PATH_DUPLICATE`, `UI_NAVIGATION_PAGE_UNROUTED`, the new `UI_NAVIGATION_SET_UNPLACED`) resolve `pageSets` into each set's `pages` and `navigation`. For a set produced by a template, the analyzer is extended once, generically: **a rule's `resolve:` that reaches a templated resource continues into the body entry its dispatch verb (`provide:`) names, as that consumer instantiates it** — the per-consumer instantiation `telo check` already performs for rules reading across body entries. So a generated page colliding with a hand-written one is refused before the app runs, exactly as two hand-written ones are. At start the App reads each set's published reading and raises the same codes as `ERR_` twins. A library's set paths are the library's: a collision with the importer's pages is refused, and a library meant to be placed under a prefix the importer chooses ships a templated set kind taking it, as `Ui.CollectionPages` takes its paths.
 
-**`Ui.CollectionPages` — one page per collection, generated.** A templated kind extending `Ui.Pages` (in `ui`, renderer-neutral). It takes `collections`, a map whose keys name the pages, each entry:
+**`Ui.CollectionPages` — a collection's pages, generated.** A templated kind extending `Ui.Pages` (in `ui`, renderer-neutral). It takes `collections`, a map whose keys name the pages, each entry:
 
 | Key | | |
 | --- | --- | --- |
-| `presentation` | required | the `Ui.CollectionPresentation` the page lists; its `detail` opens each record |
+| `presentation` | required | the `Ui.CollectionPresentation` the list page lists and the forms write to |
 | `model` | required | the row shape |
-| `title`, `path` | required | the page's title and path |
+| `title`, `path` | required | the list page's title and path |
 | `icon` | | the navigation entry's `Ui.Icon` |
-| `create`, `update` | | write shapes; each present adds the create / edit opener with its form |
+| `create`, `update` | | the create and edit forms' models; `create` present adds a create page at `<path>/new`, `update` an edit page at `<path>/{key}`, and the listing's `create` / `edit` press opening it |
+| `surface` | | the `Ui.Surface` both presses open their page in; a `Ui.Dialog` when omitted |
 | `filters` | | a `Ui.FilterPolicy`; present, the listing sits in a filter bar of one control per collection filter |
 | `layout`, `compact`, `paging` | | forwarded to the listing |
 
-and an optional `group` (a `Text`): present, the set's navigation is one group of that name holding an entry per collection; absent, one entry per collection, in the map's written order. The body is one page family over `collections` and one `Ui.PageSet` entry listing its members (`!ref pages[each.key]`), which `provide:` names. Every optional part lives inside the one page member and is chosen with `!if`, which contributes nothing to its container when no branch holds: an opener only for an entry holding `create` / `update`, the filter bar only for one holding `filters`. A key left out reaches the listing or bar as absent, so `ui` still owns every default. For a collection not served by `crud`, the author writes the presentation and model; the page, listing, bar, forms and menu are generated.
+and an optional `group` (a `Text`): present, the set's navigation is one group of that name holding an entry per collection; absent, one entry per collection, in the map's written order. The body is three page families over `collections` — the list pages, and the create and edit pages of the entries holding `create` / `update` — and one `Ui.PageSet` entry listing their members, which `provide:` names; only the list pages enter the set's navigation. An edit page is a `query` node reading the record at `<basePath>/{key}` and a `Ui.Form` with `record: { presentation, key }` and `initialValues` over it; a create page is a `Ui.Form` with `record: { presentation }`. Every optional part is chosen with `!if`, which contributes nothing to its container when no branch holds: a page and its press only for an entry holding `create` / `update`, the filter bar only for one holding `filters`. A literal path segment beats a variable, so `<path>/new` is the create page and a record whose key is the text `new` cannot be opened by a generated page. A key left out reaches the listing or bar as absent, so `ui` still owns every default. For a collection not served by `crud`, the author writes the presentation and model; the pages, listing, bar, forms and menu are generated.
 
-**`CrudUi.CollectionPages` — the same over `crud`, with nothing restated.** A templated kind extending `Ui.Pages` whose entries name a `CrudUi.CollectionSource` plus `title`, `path`, `icon`, `relations`, `detail`, `filters`, `layout`, `compact` and `paging`. It generates each entry's presentation (with `relations` and `detail` forwarded whole, in the press plan's shapes) and fills `model`, `create` and `update` from the crud collection's `schemas`, wrapping a `Ui.CollectionPages`. An entry may instead name its own `presentation` — the ejected form of that one piece — which is how one entry's relations open another entry's records: a `Ui.OpenRecord` names a presentation by reference, and a generated family member cannot be named from outside its body.
+**`CrudUi.CollectionPages` — the same over `crud`, with nothing restated.** A templated kind extending `Ui.Pages` whose entries name a `CrudUi.CollectionSource` plus `title`, `path`, `icon`, `relations`, `surface`, `filters`, `layout`, `compact` and `paging`. It generates each entry's presentation (with `relations` forwarded whole, each relation's `press` included) and fills `model`, `create` and `update` from the crud collection's `schemas`, wrapping a `Ui.CollectionPages`. An entry may instead name its own `presentation` — the ejected form of that one piece. A generated page cannot be named from outside its body, so a relation that leads to another entry's record does so by address — a `Ui.Navigate` to that entry's `<path>/{key}` — and opening it in a surface instead is the point where that entry's pages are written by hand.
 
-**Generated pages are an expansion, not an editor surface.** As for `CrudUi.Admin`, a visual editor shows the generating resource and its entries; ejecting replaces it with the hand-written `Ui.Page`s, listings, bars and forms it expands into, which read like hand-written `ui`. The docs document that path.
+**Generated pages are an expansion, not an editor surface.** As for `CrudUi.Admin`, a visual editor shows the generating resource and its entries; ejecting replaces it with the hand-written `Ui.Page`s, listings, bars and forms it expands into, which read like hand-written `ui`. `CrudUi.Admin` stays the composite for one collection on a page the author writes, its `create` / `edit` presses pointing at pages the author declares. The docs document that path.
 
-Before: eight pages, eight navigation entries, eight `CrudUi.Admin` composites. After: one `CrudUi.CollectionPages` in `pageSets:` and its menu drawn by default.
+Before: eight list pages, sixteen form pages, eight navigation entries, eight `CrudUi.Admin` composites. After: one `CrudUi.CollectionPages` in `pageSets:` and its menu drawn by default.
 
 ## Decisions
 
@@ -56,12 +62,13 @@ Bookkeeping: docs (new `page-set.md`, new `collection-pages.md`, `navigation.md`
 
 ## Verify
 
-- An application with `pages: [!ref home]` and `pageSets: [!ref admin]`, `admin` a `CrudUi.CollectionPages` over three crud sources, serves `/admin/tasks`, `/admin/people`, `/admin/tags`; the header navigation shows Home and an Admin group with the three; each page lists, filters, creates, edits and opens a record's detail.
+- An application with `pages: [!ref home]` and `pageSets: [!ref admin]`, `admin` a `CrudUi.CollectionPages` over three crud sources, serves `/admin/tasks`, `/admin/people`, `/admin/tags`; the header navigation shows Home and an Admin group with the three; each page lists and filters, and its create and edit presses open `/admin/tasks/new` and `/admin/tasks/7` in a dialog, which also load as pages of their own.
 - A generated page whose `path` equals a hand-written page's is `UI_PAGE_PATH_DUPLICATE` under `telo check` and fails the run with `ERR_UI_PAGE_PATH_DUPLICATE`; the same for a library's exported `Ui.PageSet`.
 - A `{ type: set }` entry naming an unplaced set is `UI_NAVIGATION_SET_UNPLACED`, pinned both ways.
-- An entry with no `filters` produces no filter bar, and one with no `create` no create opener (`Assert.Equals` on the page document); `paging: more` reaches the generated listing.
+- An entry with no `filters` produces no filter bar, and one with no `create` no create page and no create button (`Assert.Equals` on the application and page documents); `paging: more` reaches the generated listing.
 - Adding a fourth entry to the map changes no other page's member identity (`pages['tasks']` unchanged) and no other page's address; the navigation follows the map's written order.
-- A crud entry naming its own `presentation`, related to by another entry's `Ui.OpenRecord`, opens that record's detail from the other page.
+- A crud entry whose relation's `press` is a `Ui.Navigate` to another entry's `<path>/{key}` moves to that record's generated edit page.
+- An entry with `surface: { kind: Ui.Drawer, side: end, address: { name: task } }` opens its edit page at `?_telo.open.task=%2Fadmin%2Ftasks%2F7`, and saving there sends a `PATCH` and closes the drawer.
 
 ## Example after the change
 
@@ -75,7 +82,7 @@ collections:
     title: Tasks
     path: /admin/tasks
     filters: { show: chosen, summary: chips }
-    detail: { surface: { kind: Ui.Drawer, side: end, address: { name: task } } }
+    surface: { kind: Ui.Drawer, side: end, address: { name: task } }
   people: { source: !ref peopleSource, title: People, path: /admin/people }
 ---
 kind: UiReact.App
