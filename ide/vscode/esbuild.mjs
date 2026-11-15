@@ -17,6 +17,7 @@ if (withEngine) {
 }
 
 // The file icon is the repo's one Telo mark, staged rather than copied by hand.
+mkdirSync("dist", { recursive: true });
 copyFileSync("../../assets/telo.svg", "dist/file-icon.svg");
 
 /** @type {import("esbuild").BuildOptions} */

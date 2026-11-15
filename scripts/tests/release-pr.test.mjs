@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { after, describe, it } from "node:test";
 import { composeReleasePrBody } from "../release-pr-body.mjs";
 import { versionReleasePr } from "../release-pr-version.mjs";
-import { headCarriesFinal, isCandidate, versionPrBranch } from "../release-version.mjs";
+import { branchRecordsFinal, headCarriesFinal, isCandidate, versionPrBranch } from "../release-version.mjs";
 
 const made = [];
 after(() => made.forEach((dir) => rmSync(dir, { recursive: true, force: true })));
@@ -66,6 +66,16 @@ describe("release PR candidacy", () => {
 
     const patching = releaseRepo({ base: { kernel: { version: "0.85.0" } }, head: { kernel: { version: "0.85.1" } }, tags: ["v0.85.0"] });
     assert.equal(isCandidate({ cwd: patching, branch: "release/0.85" }), false);
+  });
+
+  it("is final once the branch records its line's final, before v<x.y>.0 exists", () => {
+    const merged = releaseRepo({ base: { analyzer: { version: "0.85.0" } }, head: { analyzer: { version: "0.85.0", candidate: "0.85.1-rc.1" } } });
+    assert.equal(branchRecordsFinal({ cwd: merged, branch: "release/0.85" }), true);
+    assert.equal(isCandidate({ cwd: merged, branch: "release/0.85" }), false);
+
+    const previousLine = releaseRepo({ base: { analyzer: { version: "0.84.2", candidate: "0.85.0-rc.2" } }, head: { analyzer: { version: "0.84.2" } } });
+    assert.equal(branchRecordsFinal({ cwd: previousLine, branch: "release/0.85" }), false);
+    assert.equal(isCandidate({ cwd: previousLine, branch: "release/0.85" }), true);
   });
 });
 
