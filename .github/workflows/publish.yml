@@ -125,8 +125,9 @@ jobs:
 
   # The release PR, `chore(release): version` from `release-version/<branch>`, on
   # every run: `telo release status` planning a unit is what makes one. Candidacy is
-  # derived (`release-version.mjs`): while `v<x.y>.0` is absent and no open release
-  # PR's head carries final versions, `telo release apply --candidate`. With nothing
+  # derived (`release-version.mjs`): while `v<x.y>.0` is absent, the branch's ledger
+  # records no `x.y` final and no open release PR's head carries final versions,
+  # `telo release apply --candidate`. With nothing
   # planned the apply writes nothing and no PR is opened. Its own job, so a failure
   # here leaves the release this run published free to be tagged.
   release-pr:
@@ -663,23 +664,22 @@ jobs:
       tag: ${{ needs.release.outputs.tag }}
     secrets: inherit
 
-  # A candidate's `.vsix` is an asset of the pre-release; a final's or patch's also
-  # goes to the Marketplace, which accepts no prerelease version.
+  # Whenever the release moved `ide/vscode`, the telo line or not: the `.vsix` is an
+  # asset of the release's GitHub Release, and a final version also goes to the
+  # Marketplace, which accepts no prerelease version.
   vscode:
     name: VS Code extension
     needs: [release, artifact-check]
     if: >-
       ${{ always() && needs.release.result == 'success' &&
-      needs.release.outputs.channel != 'none' &&
+      needs.release.outputs.release-tag != '' &&
       contains(fromJSON(needs.release.outputs.units).*.key, 'ide/vscode') &&
       needs.artifact-check.result == 'success' }}
     permissions:
       contents: write
     uses: ./.github/workflows/vscode-release.yml
     with:
-      channel: ${{ needs.release.outputs.channel }}
-      version: ${{ needs.release.outputs.version }}
-      tag: ${{ needs.release.outputs.tag }}
+      tag: ${{ needs.release.outputs.release-tag }}
       units: ${{ needs.release.outputs.units }}
     secrets: inherit
 

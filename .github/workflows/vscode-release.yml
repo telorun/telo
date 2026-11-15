@@ -1,18 +1,20 @@
 name: Release VS Code Extension
 
 # Packages the Telo VS Code extension and publishes it from the branch's Publish
-# run, which calls this workflow on every channel that released a CLI:
-#   candidate   the `.vsix` is an asset of the GitHub pre-release `v<cli version>`;
-#               the Marketplace accepts only `major.minor.patch`, so it gets none.
+# run, on every release that moved `ide/vscode` — a telo line release, or a
+# packages release when only the extension moved:
+#   candidate   the extension's version is a prerelease (`<final>-rc.<k>`): the
+#               `.vsix` is an asset of the release's GitHub pre-release; the
+#               Marketplace accepts only `major.minor.patch`, so it gets none.
 #               The `.vsix` bundles its own engine, and the editor's version
 #               catalog never selects a candidate engine.
-#   final/patch the same asset, and the VS Code Marketplace — moved only forward.
+#   final       the same asset, and the VS Code Marketplace — moved only forward,
+#               against the extension versions earlier release tags hold.
 #
 # `ide/vscode` is a release unit of its own (a declared payload: the files `vsce`
 # packs), versioned by `telo release apply` when what it ships moves — a bundled
 # engine included. The release signal is the unit appearing among the units the
-# release commit moved (`units`, from Publish). A run where it did not move
-# packages nothing.
+# release commit moved (`units`, from Publish).
 # Recovery is a re-run of the Publish run.
 #
 # The links in the packed README resolve to the unit's own tag,
@@ -21,16 +23,8 @@ name: Release VS Code Extension
 on:
   workflow_call:
     inputs:
-      channel:
-        description: 'candidate, final or patch.'
-        type: string
-        required: true
-      version:
-        description: 'The CLI version released.'
-        type: string
-        required: true
       tag:
-        description: 'The release tag (v<version>), checked out, whose draft release the .vsix is attached to.'
+        description: 'The release tag (v<version> or packages-<x.y>-[rc.]<n>), checked out, whose release the .vsix is attached to.'
         type: string
         required: true
       units:
@@ -66,21 +60,25 @@ jobs:
           if [ -n "$VERSION" ]; then
             echo "The extension released $VERSION."
             echo "release=true" >> "$GITHUB_OUTPUT"
+            case "$VERSION" in
+              *-*) echo "candidate=true" >> "$GITHUB_OUTPUT" ;;
+              *) echo "candidate=false" >> "$GITHUB_OUTPUT" ;;
+            esac
           else
             echo "The release did not move ide/vscode; nothing to package."
             echo "release=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Install the release scripts' dependencies
-        if: steps.check.outputs.release == 'true' && inputs.channel != 'candidate'
+        if: steps.check.outputs.release == 'true' && steps.check.outputs.candidate == 'false'
         run: |
           corepack enable
           pnpm install --frozen-lockfile --ignore-scripts --filter @telorun/monorepo
 
       - name: Does the Marketplace move forward
         id: pointers
-        if: steps.check.outputs.release == 'true' && inputs.channel != 'candidate'
-        run: node scripts/release-pointers.mjs --version "${{ inputs.version }}" --channel "${{ inputs.channel }}"
+        if: steps.check.outputs.release == 'true' && steps.check.outputs.candidate == 'false'
+        run: node scripts/release-pointers.mjs image --file ide/vscode/package.json
 
       - name: Setup pnpm
         if: steps.check.outputs.release == 'true'
