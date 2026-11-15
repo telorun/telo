@@ -186,8 +186,11 @@ jobs:
       # `engines.vscode` fails here while `tsc` and esbuild both pass. Running it
       # per-PR keeps that failure off `vscode-release.yml`, which Publish calls
       # to package the same way at a release and has no PR to fail instead.
+      # From a clean `dist/`, as the release's fresh checkout packages it.
       - name: Check the VS Code extension packages
-        run: pnpm --filter "./ide/vscode" vsix
+        run: |
+          rm -rf ide/vscode/dist
+          pnpm --filter "./ide/vscode" vsix
 
       # The release PR's gate on the publication commit its merge makes: every import
       # must come out published, or await this release's own publish. The release plan

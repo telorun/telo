@@ -6,7 +6,9 @@
 // versions. Publish final release builds the final PR (`--final`), and the head it
 // pushes records final versions in `.changes/ledger.yaml`, so every later rebuild
 // of that open PR is the final too; closing it goes back to candidates. A branch
-// that has published `v<x.y>.0` takes patches, which are finals.
+// whose ledger records the line's `x.y` final takes patches, which are finals —
+// read from the branch, because the Publish run of the final's merge builds the
+// next release PR before it creates `v<x.y>.0`.
 //
 // Usage: node scripts/release-version.mjs [--final] [--branch <release/x.y>]
 //        (the branch defaults to GITHUB_REF_NAME; writes `candidate` as a step output)
@@ -17,7 +19,9 @@ import { setOutput } from "./release-actions-output.mjs";
 import { ledgerVersionsAt } from "./release-units.mjs";
 import { ROOT, finalPublished } from "./version-line.mjs";
 
-const RELEASE_BRANCH = /^release\/\d+\.\d+$/;
+const RELEASE_BRANCH = /^release\/(\d+)\.(\d+)$/;
+/** The ledger unit whose version is the line's. */
+const LINE_UNIT = "analyzer";
 
 /** The release PR branch of a release branch: where Publish and Finish push it. */
 export function versionPrBranch(branch) {
@@ -36,13 +40,21 @@ export function headCarriesFinal({ cwd = ROOT, branch }) {
   return false;
 }
 
+/** Whether the branch, as last fetched, records a final of its own line: the line
+ *  unit's ledger `version` is `x.y.<n>`, which only a merged final apply writes. */
+export function branchRecordsFinal({ cwd = ROOT, branch }) {
+  const [, major, minor] = RELEASE_BRANCH.exec(branch);
+  const version = ledgerVersionsAt(cwd, `refs/remotes/origin/${branch}`).get(LINE_UNIT)?.version;
+  return version !== undefined && new RegExp(`^${major}\\.${minor}\\.\\d+$`).test(version);
+}
+
 /**
  * Whether the release PR built now versions candidates. `openPr` is whether a
  * release PR is open; `carriesFinal` is asked only then.
  */
 export function isCandidate({ cwd = ROOT, branch, final = false, openPr = false, carriesFinal = () => false }) {
   if (!RELEASE_BRANCH.test(branch ?? "")) throw new Error(`${branch} is not a release/<major>.<minor> branch.`);
-  if (final || finalPublished({ cwd, branch })) return false;
+  if (final || finalPublished({ cwd, branch }) || branchRecordsFinal({ cwd, branch })) return false;
   return !(openPr && carriesFinal());
 }
 
@@ -70,7 +82,7 @@ export function candidacyFromArgs(args, env = process.env) {
   return isCandidate({
     branch,
     final,
-    openPr: !final && !finalPublished({ cwd: ROOT, branch }) && openReleasePr(branch),
+    openPr: !final && !finalPublished({ cwd: ROOT, branch }) && !branchRecordsFinal({ cwd: ROOT, branch }) && openReleasePr(branch),
     carriesFinal: () => headCarriesFinal({ branch }),
   });
 }
