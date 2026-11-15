@@ -9,11 +9,11 @@ metadata:
     is what shows the tool loop, the stored history and the three commands all
     work end to end — and that a provider failure leaves the chat running.
 imports:
-  Run: ../../../../modules/run
-  App: ../../../../modules/app
-  Channel: ../../../../modules/channel
-  Http: ../../../../modules/http-server
-  Assert: ../../../../modules/assert
+  Run: oci://ghcr.io/telorun/run@0.35.0#sha256-FdrKmwYD_cpBi4_6f0a2Pf0BTtHG3Po4gQOqdpLR2T4
+  App: oci://ghcr.io/telorun/app@0.7.1#sha256-QC8YsWqll6bwUbrPUzbNrKwEov7kH9MCbGTgF5hxOX0
+  Channel: oci://ghcr.io/telorun/channel@0.4.0#sha256-nD_0ZsyaVddeihAxep3t4y7Di0V0wSRrscxi5Pb5uuE
+  Http: oci://ghcr.io/telorun/http-server@0.44.2#sha256-Z3aQs8Q0qiXMrxwC8RFylKFbxqMv4BE1d1wJ_akPtb8
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   scratchDir:
     env: AI_AGENT_CONSOLE_TEST_SCRATCH_DIR

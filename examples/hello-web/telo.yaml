@@ -12,9 +12,9 @@ metadata:
 lang: en
 requires: { telo: ">=0.133.0" }
 imports:
-  Http: ../../modules/http-server
-  Ui: ../../modules/ui
-  UiReact: ../../modules/ui-react
+  Http: oci://ghcr.io/telorun/http-server@0.44.2#sha256-Z3aQs8Q0qiXMrxwC8RFylKFbxqMv4BE1d1wJ_akPtb8
+  Ui: oci://ghcr.io/telorun/ui@0.13.0#sha256-6ZCKPGkJ8374cysULmUeCkj-OkNGdze8BsKlb33xdIk
+  UiReact: oci://ghcr.io/telorun/ui-react@0.14.0#sha256-9BKzO0fB7LYD1z6U1vkqzlwMsge8q7QMZKayZnL446o
 ports: { http: { env: PORT, default: 8080 } }
 targets:
   - !ref helloServer

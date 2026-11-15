@@ -9,7 +9,7 @@ metadata:
 
     Run: telo run ./examples/notes-desktop
 lang: en
-imports: { App: ../../modules/app, Desktop: ../../modules/desktop }
+imports: { App: oci://ghcr.io/telorun/app@0.7.1#sha256-QC8YsWqll6bwUbrPUzbNrKwEov7kH9MCbGTgF5hxOX0, Desktop: oci://ghcr.io/telorun/desktop@0.2.0#sha256-cU03iOG4aAfb5a_xw1BA7mTrL2xbyVdR5up42nAKnJo }
 ports: { http: { env: PORT, default: 53817 } }
 needs:
   desktopHost:

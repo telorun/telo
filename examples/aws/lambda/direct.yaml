@@ -18,7 +18,7 @@ metadata:
     full packaging + deploy walkthrough.
 imports:
   Lambda: oci://ghcr.io/telorun/aws/lambda@0.12.0#sha256-m6AEJNfJguLIFgbZuNmO06pdUathLclu3dMHpgqXreQ
-  Run: ../../../modules/run
+  Run: oci://ghcr.io/telorun/run@0.35.0#sha256-FdrKmwYD_cpBi4_6f0a2Pf0BTtHG3Po4gQOqdpLR2T4
 targets:
   - !ref main
 ---
