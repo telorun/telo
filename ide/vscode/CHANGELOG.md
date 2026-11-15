@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.0 - 2026-11-15
+### Fixed
+* The shipped `.vsix` embeds the exact published version of the language engine it bundles, and its payload is exactly the file set `vsce` packages.
+
 ## 0.6.9
 
 ### Patch Changes

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.0 - 2026-11-15
+### Fixed
+* The README example places its navigation entry in a Ui.Navbar of the application's page layout, as UiReact.App no longer takes a navigation.
+
 ## 0.8.0 - 2026-11-09
 ### Fixed
 * `requires.telo` now holds the measured floor, raised to the highest floor among the workspace modules this module imports.

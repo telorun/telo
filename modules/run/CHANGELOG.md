@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.35.0 - 2026-11-15
+### Added
+* Run.Sequence is now a pure alias of the built-in Telo.Sequence: it extends it, declares no schema, throws or controller of its own, and still reports DEPRECATED_KIND naming Telo.Sequence. Behaviour is unchanged for manifests that already used the built-in semantics; the module no longer ships a separate sequence controller.
+
 ## 0.34.0 - 2026-11-12
 ### Added
 * Run.Detach's forwarded inputs are typed by the target's input contract, so its sensitive marks are redacted in the detach's traces and a payload the contract refuses fails at the detach's own dispatch.

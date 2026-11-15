@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.1 - 2026-11-15
+### Fixed
+* App.Instance resolves a relative source against the module declaring it for every relative form, including a bare `..`, `.` and `child`; only `./` and `../` paths were, so the others were read against the process's working directory and failed with ENOENT unless started from the module's own directory.
+
 ## 0.7.0 - 2026-11-09
 ### Added
 * Under a parent with TELO_HOST_STATE_DIR, a child application gets its own state directory, apps/<module path and name> (apps/web, apps/Admin.web), and a child's missing input is refused at its start naming the instance and the fix; only the root asks.

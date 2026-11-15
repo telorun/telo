@@ -1,9 +1,0 @@
-units:
-  cli: Fixed
-body: "`telo release floor` and `telo release check` raise a dependent's `requires.telo`
-  to what a relatively imported sibling imposes — its `requires.telo`, or the higher
-  `telo` bound a `restrictions:` entry states for the sibling's own version — not to its
-  `requires.telo` alone; a newer published telo gates such an entry at the dependent
-  while an older one ignores it, so the search landed on a floor `check` then refuted. A
-  module is no longer counted as rejected by a batched run that names it only in a
-  warning, which had raised floors no release needed."

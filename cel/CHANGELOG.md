@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.137.0 - 2026-11-15
+### Added
+* Every build of the telo line now reports its recorded version with `+unreleased` — the engine handshake, the kernel's `Kernel.Starting`, the CEL engine's module key, the built-in vocabulary archive and the running surface — and only the published package, built by its own `prepack`, reports exactly its version. The surface generation is the recorded version's `major.minor.patch`; no build reads a release plan any more.
+
 ## 0.136.0
 
 ## 0.135.0

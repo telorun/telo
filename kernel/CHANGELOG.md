@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.137.0 - 2026-11-15
+### Added
+* `ctx.runtime.check` reports every imported library's own findings, as `telo check` does. The kernel's load is unchanged and refuses what it always did.
+* Every build of the telo line now reports its recorded version with `+unreleased` — the engine handshake, the kernel's `Kernel.Starting`, the CEL engine's module key, the built-in vocabulary archive and the running surface — and only the published package, built by its own `prepack`, reports exactly its version. The surface generation is the recorded version's `major.minor.patch`; no build reads a release plan any more.
+* The Rust kernel loads a manifest that holds `!cel`, `!interpolate` or `!sql`. Where it consumes a value — creating a resource, registering a kind, reading a module doc, supplying an import, running a `targets:` entry — it compiles each such value and, having no expression engine yet, refuses it with `ERR_UNSUPPORTED_MANIFEST_FEATURE` naming the resource, the field and the tag; `!literal` is replaced by its text at any depth, and a `${{` left untagged is refused with `ERR_UNTAGGED_INTERPOLATION` as the Node kernel refuses it.
+* A YAML parse error is now reported in Telo's words rather than the `yaml` package's: one closed set of kinds — a key written twice, an alias naming no anchor before it in its document, aliases expanding past the bound of 100, a quote never closed, a flow collection never closed, a tab as indentation, a plain value holding `: `, a line indented to match nothing beside it, an escape YAML does not define, a plain value starting with `@` or `` ` `` — each with one sentence, and every other error as `This is not valid YAML; check the indentation, quoting and brackets at this position.`, still under `MANIFEST_PARSE_FAILED` with the parser's range. The `Hint:` the colon case carried is now that kind's sentence. The Rust loader reads YAML through a twin of the `yaml` package's lexer, parser and composer, so it reports every one of these errors — several in one document, and those in later documents — in the same words at the same ranges, pinned by `templating/tag-conformance/loader-positions.json`.
+
+An alias naming no anchor, and aliases expanding past the bound, are now `MANIFEST_PARSE_FAILED` diagnostics on their document — the unresolved alias located at the alias — where the load used to throw the `yaml` package's `ReferenceError` out of the whole parse.
+
+A span of a file with no `---` marker, no value and no error — what a leading `...` opens, comments before it included — is no longer read as an empty first document: the document after it is document 0, in its diagnostics, its positions and the loaded file's manifests.
+
+`@telorun/analyzer`, `@telorun/templating` and `@telorun/kernel` depend on `yaml` at exactly 2.8.3, the version the Rust reader twins, so the two loaders cannot drift apart through a `yaml` update.
+### Fixed
+* A stop asked between `Kernel.Started` and `start()` reaching its idle wait is no longer lost: `forceIdle()` with no wait pending releases the next `waitForIdle()`, so a SIGTERM in that window ends the process instead of leaving it running.
+* A kind that extends another is now read through one answer for everything derived along `extends` — its merged schema, observed-state block, throws, declared display messages, published fields, capability and rules — instead of values written over the declaration at registration, so a declaration always means what its author wrote and the kernel, the analyzer and the editor features cannot disagree about a derived value. A schema projection (`x-telo-schema-projection` or `-from`) is now inherited along merge-form `extends`: the nearest declarer wins, either form replaces what would be inherited, and a `base:` child, whose schema is its own, keeps declaring its own.
+
 ## 0.136.0
 
 ### Minor Changes
