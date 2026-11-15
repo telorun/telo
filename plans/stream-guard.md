@@ -38,6 +38,10 @@ manifest-authored `Ai.ModelStream` cannot honour the contract's central rule —
 stream fails by rejecting, and the failure is catchable by name* — which the
 TypeScript providers honour today.
 
+## Constraints
+
+None.
+
 ## Solution
 
 **`Stream.Guard`**, in `stream`: a stage that passes every element through untouched

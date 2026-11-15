@@ -13,6 +13,10 @@ the **bind interface**. This is the single source of truth read by three
 consumers: the kernel (CEL scope), the analyzer (validation + branding), and the
 runner (how to expose it).
 
+## Constraints
+
+None.
+
 ## Why
 
 Two latent defects today:

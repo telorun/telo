@@ -18,6 +18,10 @@ Two things are still structurally missing, and the rest of this plan follows fro
 
 Everything below is one deliverable: the agent and Studio's chat share one contract, and half of these items are a route on one side and an affordance on the other. Every new surface is advertised in the capability document's `features`, never sniffed, so an older editor against a newer agent ignores what it does not know and a newer editor against an older agent hides what is not there.
 
+## Constraints
+
+None.
+
 ## Solution
 
 Each item states what happens today, what should happen instead, and how you would know it worked.

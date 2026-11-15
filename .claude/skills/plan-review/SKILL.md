@@ -13,6 +13,8 @@ Determine whether the proposed plan is sound, sustainable long-term, and aligned
 - **Performance** — the init loop, CEL evaluation, and resource resolution must stay fast; the plan must not introduce unnecessary overhead
 - **Static analysis** — YAML manifests must remain statically analyzable; the plan must preserve the ability to validate references, type-check CEL expressions, and detect errors without running the kernel
 
+The plan's **Constraints** section holds the user's constraints, and they are fixed: never question, weigh or propose changing one, and never offer an option that violates one. A plan whose text contradicts one of its own constraints is an issue.
+
 Focus on:
 
 - architecture and design of the proposed solution

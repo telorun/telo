@@ -13,6 +13,10 @@ A page lays out content with `box`, `stack` and `columns`. `columns` puts its ch
 
 Home Assistant's sections view is a grid in which each card declares its size in grid units and the grid reflows on narrow screens. That is also the shape a visual editor needs: resizing a card changes one number, reordering changes the list order.
 
+## Constraints
+
+None.
+
 ## Solution
 
 **A `grid` node.** `{ type: grid, cells }`, `cells` at least one, each cell a closed object `{ content, columns?, compactColumns? }`:

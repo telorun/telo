@@ -3,15 +3,20 @@ status: draft
 priority: medium
 depends-on: [2026-11-05-broadcast-channels.md]
 packages: [modules/data-model, modules/ui, modules/ui-react, modules/crud, examples/ui-showcase, apps/hub, apps/authoring-agent, docs]
+refinement: not-started
 ---
 
 # Screens that update when anyone writes
 
 ## Problem
 
-A screen re-reads only after its own tab writes. When an action answers 2xx, the renderer announces the paths it wrote and every `Ui.Data`, `Ui.Listing` and `Ui.Chat` reading one of them reads again — but the announcement lives in that tab's memory. Another tab, another viewer, a worker or a scheduled job changing the same records leaves every other screen stale until the viewer reloads or refocuses the window (`reloadOn: [focus]`). The timed refresh in the review-app plan (`refreshEvery`) polls on an interval; it costs a read per tick whether or not anything changed, and is still late by up to one interval.
+A screen re-reads only after its own tab writes. When an action answers 2xx, the renderer announces the paths it wrote and every `Ui.Data`, `Ui.Listing` and `Ui.Chat` reading one of them reads again — but the announcement lives in that tab's memory. Another tab, another viewer, a worker or a scheduled job changing the same records leaves every other screen stale until the viewer reloads or refocuses the window (`reloadOn: [focus]`). A timed re-read (`reloadEvery` on `Ui.Data` and `Ui.Listing`) polls on an interval; it costs a read per tick whether or not anything changed, and is still late by up to one interval.
 
 `UiReact.App` already holds a server-sent event stream open to every tab (`<mount>/_telo/ui/events`); today it carries only `hello`, used to reload the page when the renderer bundle changes and to refetch the documents after a reconnect.
+
+## Constraints
+
+None.
 
 ## Solution
 
@@ -39,7 +44,7 @@ A screen re-reads only after its own tab writes. When an action answers 2xx, the
 - **A viewer's own write is announced twice** — locally and by the echo — costing at most one extra read per affected node. Rejected: tagging writes with a tab identity, which every publisher would then have to carry through its handlers.
 - **A gap, an overflow or a reconnect re-reads everything.** At-most-once delivery cannot say what was missed; re-reading the page is the only correct answer and costs one read per data node.
 - **No per-node switch.** A server announcement is the same fact as a local one, which already reloads unconditionally. Rejected: `reloadOn: [changes]`, which would make the same write reload a node from one tab and not from another.
-- **Complements `refreshEvery`** rather than replacing it: a timer suits data no publisher announces.
+- **Complements `reloadEvery`** rather than replacing it: a timer suits data no publisher announces.
 
 Bookkeeping: docs (`data-model` new `change-message.md`; `ui` `data.md`, `listing.md`, `action.md` "After a success", new `changes.md`; `ui-react` `app.md`, `urls.md` § Events with the `changed` and `resync` events; `crud` `api.md`); the showcase gains a channel shared by its App and `Crud.Api`, with an integration test running two `App.Instance` children on one PostgreSQL database that reads one's event stream after the other writes; the hub `build-ui` guide (within its 32768-byte bound), the primer, `modules/CLAUDE.md`; a ledger entry under Standard library, "Screens that update when anyone writes"; `Added` fragments for `data-model`, `ui`, `ui-react`, `crud`. `requires:` floors where the previous published CLI, run against a module's own file with the block stripped, rejects it.
 

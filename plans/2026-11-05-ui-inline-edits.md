@@ -1,87 +1,105 @@
 ---
 status: draft
 priority: medium
-depends-on: []
+depends-on: [2026-11-15-collection-partial-writes.md, 2026-11-05-ui-press-and-record-detail.md]
 packages: [modules/ui, modules/ui-react, modules/ui-react-radix, modules/ui-react-conformance, examples/ui-showcase, apps/hub, apps/authoring-agent, docs]
+refinement: not-started
 ---
 
 # Editing a value where it is shown
 
 ## Problem
 
-Changing one value of a record means opening its edit form. Marking a task done, moving a status, rating an item or reassigning a row is: press the row's edit button, find the field, change it, submit, close. A listing can show a boolean as text but not as a switch the viewer flips. The nearest thing is an edit opener on `Ui.InlineSurface`, which still draws the whole form under the record.
+Changing one value of a record means opening its edit form. Marking a task done, moving a status, rating an item or reassigning a row is: press the row's edit button, find the field, change it, submit, close. A listing can show a boolean as text but not as a switch the viewer flips.
 
-Home Assistant's tile card takes `features:` — a toggle, a slider, a select — that act on the entity in place. A Telo listing should offer the same, with what a control may edit still judged before the app runs.
+Home Assistant's tile card takes `features:` — a toggle, a slider, a select — that act on the entity in place, and every data grid marks a column editable. A Telo listing should offer the same, with what a control may edit still judged before the app runs.
+
+## Constraints
+
+None.
+
+## Surface
+
+**Added**
+
+- `field` — key on a `Ui.TableLayout` column: a property name or a `Ui.Field` kind; the cell is drawn as that field's control.
+- `fields` — key on `Ui.ListLayout`, `Ui.CardLayout`, `Ui.BoardLayout`, `Ui.CalendarLayout`, `Ui.TimelineLayout` and `Ui.TreeLayout`: a list of property names and `Ui.Field` kinds, drawn in each record's actions region before its row actions.
+- `UI_INLINE_FIELD_NOT_UPDATABLE` (twin `ERR_UI_INLINE_FIELD_NOT_UPDATABLE`) — an inline field whose property the collection's `schemas.update` does not declare, or a collection declaring none.
+- `UI_COLUMN_FIELD_VALUE_MISMATCH` (twin `ERR_UI_COLUMN_FIELD_VALUE_MISMATCH`) — a column with `field` whose `value` is not exactly `row.<the field's property>`.
+- `fields` — member of each record in the layout contract `ui_react_layouts-2`, and the host component `InlineEdit` exported by `@telorun/ui-react`.
+- Styling part `inline-edit`, carrying `data-pending` and `data-invalid`.
+- Keyed texts `inlineSaving` and `inlineFailed` in `Ui.Translations` and its fourteen translations.
+- Wire: `field` on a table column spec and `fields` on each of the six layout specs, each entry a field spec; `[]` and absent when none is written.
+
+**Changed**
+
+- `UI_FIELD_DUPLICATE` — also reported for two inline fields of one layout entering one property.
+
+**Removed**
+
+- None.
 
 ## Solution
 
-**`inline` on a listing's edit opener.** `Ui.Listing.edit` gains `inline`: a list of property names, each one the edit form offers as a field (the form's `fields`, or every enterable property when it lists none). Each is edited in place with **that form field** — its kind, control, option source, label and `shown` — so the inline control and the form can never disagree about how a property is entered. `inline` exists only inside `edit`, so an inline edit without an edit form cannot be written.
+**Editability is declared where the control is drawn.** A table column says `field: done`, and its cell is a switch. A layout whose record is a free node tree has no column to mark, so it takes `fields: [done, status]`, drawn in the record's actions region — the place the row actions already occupy in every layout. An entry is a property name, which is exactly `{ kind: Ui.InputField, property: <name> }`, or any field kind: a select over an option source, a picker of related records. A relation property named bare is entered with a picker from the listing's presentation, as on a form. A field's `group` has no meaning in a row and is refused (`SCHEMA_VIOLATION`).
 
-**Where it is drawn.** In every built-in layout, wherever the record presents the property through exactly `row.<property>`: a `Ui.TableLayout` column whose `value` is that chain, a `value` node in a layout's `content` (cards, list, board, calendar, timeline, tree) and the default per-property values; in the listing's `compact` layout by the same rule. A column with `href` or `cell` is never inline — it is a link or a component — and neither is a `value` node with `href`. A relation property is edited with the form's field for it, a picker by default. A field's `group` has no meaning in a row and is ignored.
+**Judged against what the collection accepts.** The listing's collection declares `schemas.update`. An inline field's property must be one it declares — the collection's key never is — or it is `UI_INLINE_FIELD_NOT_UPDATABLE`; each field kind judges its own fit against that shape, through the rules a form's fields already use, so a field kind of another module is checked with no change to `ui`. A column's `field` must enter the property its `value` shows (`UI_COLUMN_FIELD_VALUE_MISMATCH`); a column with `press` or `cell` takes no `field` (`SCHEMA_VIOLATION`).
 
-**What it sends.** Exactly what the edit form sends: the record is read by key (`GET <basePath>/<key>`, which may hold more than the listing's row), the new value is put over it, and the result is sent as `PUT <basePath>/<key>`, validated against the form's `model`. A property the list shape does not select is therefore never cleared. The answer replaces the row until the announced reload of `basePath` (and `<basePath>/<key>`, as an edit announces) reads the list shape again.
+**What it sends.** `PATCH <basePath>/<key value>` with a body of one member, `{ <property>: <value> }`, an emptied field as `null`. There is no read first, and nothing the list did not select can be cleared. It carries `If-Match` under the page-wide validator rule — when something on the page read that record's own address — and not otherwise: the list's rows carry no validator. The answer replaces the row, and `<basePath>` and `<basePath>/<key value>` are announced as after any write.
 
-**Stated limit.** Between that read and the `PUT`, another viewer's change to the same record is overwritten — the edit form's window, one round trip long. Closing it needs a conditional or partial write in the collection contract, which this plan does not change.
+**When it sends.** A field drawn by a control reporting `onCommit` in the controls contract (`TextInput`, `NumberInput`, `Slider`) sends on commit — Enter or leaving a text field, release of a slider — with Escape reverting; one reporting only `onChange` (`Checkbox`, `Select`, `MultiSelect`, `Listbox`, the picker, the date range) sends on change. No control is added to the contract; each is drawn with its field's label as its accessible name and, in a table, without a visible label beside the column header.
 
-**When it sends.** A field drawn by a control reporting `onCommit` in `ui_react_controls-3` (`TextInput`, `NumberInput`, `Slider`) sends on commit — Enter or leaving a text field, release of a slider — with Escape reverting; one reporting only `onChange` (`Checkbox`, `Select`, `MultiSelect`, `Listbox`, the picker, the date range) sends on change. No control is added to the contract; each is drawn with its field's label as its accessible name and without a visible label beside a column header.
+**While pending** the control shows the entered value, busy and disabled. **On failure** it reverts: a 400 issue whose pointer names the property is drawn on the control, a `412` re-reads the listing and says the record changed, anything else is drawn as the row's failure, as a row action's is.
 
-**While pending** the control shows the entered value, busy and disabled. **On failure** it reverts: a 400 issue whose pointer names the property is drawn on the control, anything else as the row's failure, as a row action's is.
+**Per row.** The field's `shown` condition is read over the row as `values`; where it does not hold, a table cell draws the value read-only and a layout's actions region leaves the field out.
 
-**Per row.** The field's `shown` condition is read over the row as the form's `values` (the form model's properties the row holds; one the row does not hold is missing, and a missing value never satisfies a condition). Where it does not hold, the value is drawn read-only.
+**Component layouts.** A record of `ui_react_layouts-2` — the generation the press plan introduces — carries `fields`, and a component places `InlineEdit` where it draws a value, with the same commit, pending and failure behaviour. A layout vector pins that behaviour for any component using it.
 
-**Component layouts.** The layout ABI `ui_react_layouts-1` gains, additively, an `inline` member on each record (its editable properties) and a host component, `InlineEdit`, exported by `@telorun/ui-react`, that a component places where it draws a value, with the same read, commit, pending and failure behaviour. A layout vector pins that behaviour for any component using it.
+**Controls and themes.** Inline controls carry the `inline-edit` part; `UiReactConformance.CheckTheme` gains a scene drawing each inline control, so every theme is held to them.
 
-**Rules**, each pinned both ways in `modules/ui/tests/` and twinned in the listing's controller:
+**Before / after.** Before, flipping a task's `done` is four presses through a form, and the save reads the record and replaces it. After, `field: done` on the column draws a switch in every row, and flipping one sends `PATCH /api/tasks/7` with `{ "done": true }`.
 
-- `UI_INLINE_FIELD_NOT_IN_FORM` — an `inline` property the edit form does not offer as a field (twin `ERR_UI_INLINE_FIELD_NOT_IN_FORM`).
-- `UI_INLINE_FIELD_KEY` — the collection's key property (twin `ERR_UI_INLINE_FIELD_KEY`).
-- `UI_INLINE_FIELD_DUPLICATE` — a property listed twice (twin `ERR_UI_INLINE_FIELD_DUPLICATE`).
-- `UI_INLINE_FIELD_UNPLACED` — a warning, a referrer rule on `Ui.TableLayout` from `Ui.Listing`: an `inline` property no column presents as `row.<property>` (no twin; it refuses nothing). A layout whose content is a node tree cannot be judged this way, which the docs state.
-
-The field's own fit (`UI_FIELD_CONTROL_UNSUPPORTED`, `UI_FIELD_UNSUPPORTED`) is already judged on the form, so an inline field needs no second fit rule.
-
-**Controls and themes.** Inline controls carry the `inline-edit` part (with `data-pending` and `data-invalid`); `UiReactConformance.CheckTheme` gains a scene drawing each inline control, so every theme is held to them.
-
-**Before / after.** Before, flipping a task's `done` is four presses through a form. After, `edit: { form: …, inline: [done, status] }` draws `done` as a switch and `status` as a select in every row, and flipping one saves it.
-
-## Decisions
-
-- **Inline edits ride the edit opener and reuse its fields**, not a new request vocabulary or a second field declaration. The edit form already owns the write shape, the record contract's `PUT`, which properties may be written and how each is entered; listing a property name is all an inline edit adds. A write that is not a record replace (a status transition with its own route) stays a row action or a board's `move`.
-- **Read, overlay, replace.** The listing's row is the list shape, narrower than the record; replacing from it would clear every property the list does not select.
-- **Placement by `row.<property>`, not a new column key.** A column or `value` already says which property it shows; any other expression is not one property's value and cannot be written back.
-- **No optimistic success.** The control shows the entered value while pending but never as saved; a refusal reverts, so the screen never shows a value the server did not accept.
-- **Disabled while pending**, not queued: a queued change would be sent over a row the first change's answer has already replaced.
-
-Bookkeeping: docs (`listing.md`, `field-kinds.md`, `listing-layouts.md`, `ui-react` `layouts-abi.md`, `component-abi.md`, `styling.md`); the part list; default-theme, `ui-react-radix` and showcase `brand.css` styles; keyed texts (`inlineSaving`, `inlineFailed`) in all fourteen catalogs; a showcase table and board with inline fields and tests under its `tests/`; the hub `build-ui` guide (within its 32768-byte bound), the primer, `modules/CLAUDE.md`; a ledger entry under Standard library, "Edit a value where it is shown"; `Added` fragments for `ui`, `ui-react`, `ui-react-radix`, `ui-react-conformance`; changesets for `@telorun/ui-react-contract` and `@telorun/ui-react` where their published code moves. `requires:` floors where the previous published CLI, run against a module's own file with the block stripped, rejects it.
-
-## Verify
-
-- A task table with `inline: [done]` draws `done` as a switch; flipping it reads `GET /api/tasks/7`, sends `PUT /api/tasks/7` with that record and `done: true`, and every listing over `/api/tasks` reads again.
-- A list shape that omits `notes`: after a flip the record still holds its `notes`.
-- A 400 with `data.issues` at `/body/done` reverts the switch and shows the message on it; a 500 reverts and shows the row failure.
-- A slider sends once on release, not while dragging; a text input sends on Enter, not per keystroke; Escape reverts without sending.
-- A row whose `shown` condition fails draws the value as text; a column with `href` on `done` draws a link, not a switch.
-- A property the form does not offer is `UI_INLINE_FIELD_NOT_IN_FORM`, the key `UI_INLINE_FIELD_KEY`, a repeat `UI_INLINE_FIELD_DUPLICATE` — each refused at the declaring library and failing a consumer's run with the twin; a table with no column for an inline property warns `UI_INLINE_FIELD_UNPLACED`.
-- A component layout placing `InlineEdit` passes the layout vector; `CheckTheme` passes for both built-in themes with the inline scene.
-
-## Example after the change
+## Example
 
 ```yaml
 kind: Ui.Listing
 metadata: { name: tasks }
 presentation: !ref tasksPresentation
 model: !ref Task
-edit:
-  form:
-    kind: Ui.Form
-    model: !ref NewTask
-    presentation: !ref tasksPresentation
-    fields: [text, done, { kind: Ui.InputField, property: status, control: select }]
-  inline: [done, status]
 layout:
   kind: Ui.TableLayout
   columns:
     - { value: !cel "row.text" }
-    - { value: !cel "row.status" }
-    - { value: !cel "row.done" }
+    - value: !cel "row.status"
+      field: { kind: Ui.InputField, property: status, control: select }
+    - { value: !cel "row.done", field: done }
+compact:
+  kind: Ui.CardLayout
+  content: { type: value, value: !cel "row.text" }
+  fields: [done]
 ```
+
+## Decisions
+
+- **Marked at the place, not listed elsewhere and matched by expression.** A list of property names apart from the layout needs the layout searched for a cell showing each, and a warning when none does; the column is the only thing that knows where the control is drawn.
+- **A layout-level list for node-tree layouts, not a key on the `value` node.** A `value` node is drawn in trees no listing owns — a reader's, an action's answer — where an edit would have no collection to write to and nothing to judge it.
+- **The field is declared here, not borrowed from an edit form.** A record's edit screen is a page of its own; a cell depending on a form elsewhere would break when that page changes.
+- **A one-member `PATCH`.** The row is the list shape, narrower than the record; anything that sends more than the edited property either reads first or clears what the list did not select.
+- **No optimistic success.** The control shows the entered value while pending but never as saved; a refusal reverts, so the screen never shows a value the server did not accept.
+- **Disabled while pending**, not queued: a queued change would be sent over a row the first change's answer has already replaced.
+- **A write that is not a property's value stays an action.** A status transition with its own route is a row action or a board's `move`.
+
+## Verify
+
+- A task table with `field: done` draws `done` as a switch; flipping it sends exactly `PATCH /api/tasks/7` with `{ "done": true }` and no `GET`, and every listing over `/api/tasks` reads again.
+- A list shape that omits `notes`: after a flip the record still holds its `notes`.
+- `fields: [done]` on a card layout draws the switch among each card's actions, before its row actions.
+- A 400 with `data.issues` at `/body/done` reverts the switch and shows the message on it; a 500 reverts and shows the row failure; a `412` reverts and the listing reads again.
+- A slider sends once on release, not while dragging; a text input sends on Enter, not per keystroke; Escape reverts without sending.
+- A row whose `shown` condition fails draws the value as text.
+- A property absent from `schemas.update`, the key included, is `UI_INLINE_FIELD_NOT_UPDATABLE`; a column showing `row.title` with `field: done` is `UI_COLUMN_FIELD_VALUE_MISMATCH`; two entries for one property are `UI_FIELD_DUPLICATE` — each refused at the declaring library and failing a consumer's run with the twin.
+- A component layout placing `InlineEdit` passes the layout vector; `CheckTheme` passes for both built-in themes with the inline scene.
+
+## Bookkeeping
+
+Docs (`listing-layouts.md`, `field-kinds.md`, `listing.md`; `ui-react` `layouts-abi.md`, `component-abi.md`, `styling.md`); the part list; default-theme, `ui-react-radix` and showcase `brand.css` styles; the keyed texts in all fourteen catalogs; a showcase table and board with inline fields and tests under its `tests/`; the hub `build-ui` guide (within its 32768-byte bound), the primer, `modules/CLAUDE.md`; a ledger entry under Standard library, "Edit a value where it is shown"; `Added` fragments for `ui`, `ui-react`, `ui-react-radix`, `ui-react-conformance`; changesets for `@telorun/ui-react-contract` and `@telorun/ui-react` where their published code moves. `telo release floor` with the change.

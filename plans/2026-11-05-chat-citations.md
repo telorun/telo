@@ -16,6 +16,10 @@ A chat reply cannot say where its answer came from. The chat can draw a "Sources
 - **A citation needs a URL.** A document has no valid shape, and citations without one are dropped silently.
 - **No retrieval.** Nothing splits a document into passages, indexes it, or turns a question into matching passages.
 
+## Constraints
+
+None.
+
 ## Solution
 
 **A source is something a reader can follow**: `{ url, title, mediaType? }`.

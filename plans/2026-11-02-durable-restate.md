@@ -24,6 +24,10 @@ If the seam is wrong about who owns the lifecycle, it fails here, which is why t
 Temporal. The seam does not change. If it has to, that is a finding about the seam, reported
 before any other work continues.
 
+## Constraints
+
+None.
+
 ## Before
 
 Durable work runs only on `durable-local`. An app that already operates Restate has to run a

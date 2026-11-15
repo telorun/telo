@@ -15,6 +15,10 @@ packages: [analyzer, kernel, sdk, ide-support, http-server, kv-store, cache, sql
 
 A multi-tenant application keeps its tenants in one of two layouts, or both — a database per tenant, or shared tables with a tenant column — often with per-user records inside each tenant. The plan serves both layouts and any stack of owners (sections 1 and 4). It rests on the keyed-pools plan's machinery — one instance per key, routed by a zone — and adds no field to its kinds.
 
+## Constraints
+
+None.
+
 ## Solution
 
 ### 1. An ownership says who data belongs to, and the dispatch that serves a request enters it

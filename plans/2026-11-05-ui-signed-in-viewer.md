@@ -13,6 +13,10 @@ A screen cannot tailor itself to the signed-in person. A node's `when`, a naviga
 
 Home Assistant gates a card with a `user` condition. In Telo inbound authentication delivers `authentication:` on `Http.Server.mounts[]` and a typed `request.principal` (`Auth.Principal`) in route contexts; screens do not yet read it.
 
+## Constraints
+
+None.
+
 ## Surface
 
 **Added**

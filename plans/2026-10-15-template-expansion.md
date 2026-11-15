@@ -54,6 +54,10 @@ The database example also uses `Telo.DurableDirectory`, one of the
 kernel-declared need types still to land: that example runs once it exists,
 and nothing else here waits for it.
 
+## Constraints
+
+None.
+
 ## Delivery order
 
 One plan, four parts, landing in this order — each part is merged only once the

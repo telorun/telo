@@ -18,6 +18,10 @@ packages: [modules/http-dispatch, modules/http-server, modules/hal]
 
 **There is no place to decorate every response or problem of a media type** (adding links to problems, laying a body out as HAL), short of writing each `body:` by hand.
 
+## Constraints
+
+None.
+
 ## Solution
 
 **Routes can be resources:**

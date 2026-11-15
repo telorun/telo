@@ -21,6 +21,10 @@ The run record format declares `manifestDigest`, but nothing writes or reads it.
 deploy resumes against the new code silently, even when the deploy changed a step it will replay,
 a kind that step uses, or the version of a library the kind comes from.
 
+## Constraints
+
+None.
+
 ## Design
 
 **The manifest digest covers the code a run replays.** `DurableLocal.Workflow` records

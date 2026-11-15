@@ -17,6 +17,10 @@ Hub discovery lists every backend of a contract as a peer of the contract itself
 - The authoring agent's `LIBRARY INDEX:` (`list_libraries` for `ghcr.io/telorun`, 84 KB, re-sent on every turn) gives about 9.6 KB to 38 libraries whose every kind implements another module's abstract, and lists backend kinds inside 19 more. It does not say which kinds are abstract, so the agent cannot tell a contract from a backend without another call.
 - Choosing a backend is a lookup once the contract is known. The authoring agent cannot make it: `find_implementations` is mounted only on the `find_kinds` sub-agent. It also matches direct `extends` only, so `openai`'s `Model` (which extends `Self.ChatModel`, which extends `Ai.Model`) is not listed as an `Ai.Model`, while `api-key-sql`'s `Store`, an abstract nothing can declare, is listed as an implementation of `ApiKey.Store`. And a deprecated alias carries its deprecation only in its description text.
 
+## Constraints
+
+None.
+
 ## Surface
 
 **Added**
