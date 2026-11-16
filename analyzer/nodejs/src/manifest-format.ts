@@ -135,7 +135,7 @@ function collectEdits(node: unknown, text: string, token: string, edits: Edit[])
   }
 }
 
-/** A manifest's first document names a dotted `kind` (`Telo.Application`, `Http.Server`) — read
+/** A manifest's first document names a dotted `kind` (`Telo.Application`, `Acme.Server`) — read
  *  even from text that does not fully parse, so a broken manifest is reported, not skipped. */
 export function isManifestText(text: string): boolean {
   const [first] = parseAllDocuments(text, { customTags: defaultCustomTags() });

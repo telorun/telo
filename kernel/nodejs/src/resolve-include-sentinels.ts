@@ -76,7 +76,7 @@ async function readIncluded(
     throw new RuntimeError(
       "ERR_INCLUDE_FILE_TOO_LARGE",
       `Cannot embed '${displayPath}': it is ${mb(size)}, over the ${mb(MAX_INCLUDE_BYTES)} ` +
-        `limit for a file embedded into a manifest value. Read it at runtime with Fs.File ` +
+        `limit for a file embedded into a manifest value. Read it at runtime with a file-reading kind ` +
         `instead, which does not retain it for the life of the resource.`,
     );
   }

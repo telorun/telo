@@ -112,7 +112,7 @@ function detectAbi(): string | undefined {
  *
  * Computed once: the host cannot change mid-process, and `detectLibc` generates a
  * full Node diagnostic report (a heap and stack walk costing tens of milliseconds).
- * The controller loader asks per candidate per definition — oauth-client alone has
+ * The controller loader asks per candidate per definition — one module alone has
  * seventeen — so recomputing would put that squarely inside the init loop.
  */
 let cachedHostTarget: PlatformTarget | undefined;
@@ -149,7 +149,7 @@ export const NODE_HOSTED_FORMATS: ReadonlySet<string> = new Set(["js", "napi"]);
  * importer's pin" to "trust whatever is already on disk".
  *
  * Materialization is per layer, memoized in-process, and guarded by the shared
- * cross-process directory lock — oauth-client alone has seventeen definitions
+ * cross-process directory lock — one module alone has seventeen definitions
  * resolving concurrently against one controller layer, and several kernels may
  * populate one cache directory at once.
  *
@@ -301,7 +301,7 @@ export class ModuleArtifact {
    * Both, because `common` is where the sink rule puts a file the author did not
    * claim via `assets:` — and a module that ships static files but has no bundled
    * controller has no other path to its own payload. Assets alone would leave such
-   * a module's `Http.Static` root resolving into an empty directory, which is the
+   * a module's static-file root resolving into an empty directory, which is the
    * exact silent failure this design promises not to have.
    */
   async materializeModuleFiles(): Promise<void> {

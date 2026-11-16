@@ -37,7 +37,7 @@ interface ModuleIdentity {
  *  Two refs share an identity when they address the same module at different
  *  versions, whatever transport owns them:
  *
- *    "std/kv-store@0.3.0"             → "std/kv-store"
+ *    "std/acme@0.3.0"                 → "std/acme"
  *    "oci://ghcr.io/acme/s3@1.2.0"    → "oci://ghcr.io/acme/s3"
  *    "https://x.com/lib/telo.yaml"    → itself (a URL carries no version)
  *

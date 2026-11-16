@@ -53,7 +53,7 @@ const SOURCE = "telo-analyzer";
  *    part of the contract (`throws-ceiling.ts`).
  *
  * Deliberately NOT diagnosed: an input that is neither `required:` nor
- * defaulted. It is indistinguishable from a genuinely optional one — `Ai.Text`
+ * defaulted. It is indistinguishable from a genuinely optional one — a text-generation kind
  * takes `prompt` OR `messages`, and `system` is optional on purpose — so the
  * check fired ~40 times across the standard library on correct manifests with no
  * way for an author to record the intent. A warning that cannot be silenced on
@@ -405,7 +405,7 @@ function namedTypeReference(value: unknown): string | undefined {
  * declare none of their own: a child that declares one is checked against
  * nothing, statically or at dispatch, since `resolveBoundContract` stops at the
  * same nearest declaration. So an abstract could state a floor every
- * implementation must answer with (`Durable.Run`'s `runId` / `status`, the
+ * implementation must answer with (a durable run's `runId` / `status`, the
  * identity every later question about a run is asked by) and have that floor hold
  * for exactly the implementations that declared nothing — while the real ones,
  * which all declare their own, escaped it. A slot typed by the abstract would

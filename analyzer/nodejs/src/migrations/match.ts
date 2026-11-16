@@ -11,7 +11,7 @@
  *  it may touch (`inKind`) and which region of those documents it may reach
  *  into (`under`); nothing outside is reachable. The alternative — walk
  *  everything and subtract — cannot be made sound, because the set to subtract
- *  is unbounded: a `Run.Value` value, an `Assert.Equals` expected, any kind
+ *  is unbounded: a `Telo.Value` value, an assertion's expected, any kind
  *  whose config carries a user JSON blob can hold something shaped like the
  *  node a rule looks for, and forgetting one corrupts a manifest with no
  *  diagnostic. A denylist also cannot express the guarantee the module surface

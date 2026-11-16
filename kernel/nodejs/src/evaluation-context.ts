@@ -221,7 +221,7 @@ function localDependencyNames(refs: ResourceRef[]): string[] {
  * remaining live forms wire-friendly:
  *  - a resolved `!ref` (`{kind, name, alias?}`) → its `{kind, name}` target;
  *  - a deferred runtime expression (a `CompiledValue` left for per-call eval, e.g.
- *    an Http.Api route reading `request`) → its tagged source text — there is no
+ *    a router route reading `request`) → its tagged source text — there is no
  *    concrete value for it at the resource level;
  *  - a string carrying a known secret value → `[secret]` (substring-scrubbed), so
  *    a compile-time `${{ secrets.x }}` never lands in the stream verbatim.
@@ -2509,7 +2509,7 @@ export class EvaluationContext implements IEvaluationContext {
 
   /**
    * Like invoke(), but the caller has already resolved the instance (e.g. the
-   * scope path in Run.Sequence, or the live-injected Http.Api route handler).
+   * scope path in Telo.Sequence, or the live-injected router route handler).
    * Shares the single emission point so events fire exactly once per call
    * regardless of which path reached the instance.
    */
@@ -2792,7 +2792,7 @@ export class EvaluationContext implements IEvaluationContext {
       // A step / boot-target slot may reference a pure Runnable (the schema
       // allows `telo#Runnable` alongside `telo#Invocable`); dispatch it via
       // `run()` — side effects only, no outputs. Prefer `invoke()` when both
-      // exist so a dual-capability instance (e.g. Run.Sequence) keeps invoke
+      // exist so a dual-capability instance (e.g. Telo.Sequence) keeps invoke
       // semantics and returns its `steps`/`outputs`.
       // A pure Runnable reached through an `invoke:` slot runs exactly as it
       // would from a `targets:` list, so it starts here too — its observed state
@@ -2886,7 +2886,7 @@ export class EvaluationContext implements IEvaluationContext {
       }
       const message = err instanceof Error ? err.message : String(err);
       const code = err instanceof Error ? err.name : undefined;
-      // Keep `message` raw so callers (Run.Sequence catch blocks, assertions)
+      // Keep `message` raw so callers (Telo.Sequence catch blocks, assertions)
       // see the original error text unchanged. Resource context lives only on
       // the attached diagnostic, which the CLI's formatter renders as the
       // location prefix. Attach the original error as `cause` so
@@ -2947,11 +2947,11 @@ export class EvaluationContext implements IEvaluationContext {
   /**
    * The declared capability of a kind, or undefined if unknown. Definitions are
    * keyed by their canonical `<module>.<Kind>`, but a resource carries the alias
-   * kind it was written with (`Http.Server`), so resolve the alias first.
+   * kind it was written with (`Acme.Server`), so resolve the alias first.
    * Best-effort: `resolveKind` exists only on a `ModuleContext` and throws for
    * unqualified / ungated kinds, so guard and fall back to the raw kind.
    */
-  /** Resolve an alias kind (`Http.Server`) to its canonical `<module>.<Kind>`.
+  /** Resolve an alias kind (`Acme.Server`) to its canonical `<module>.<Kind>`.
    *  Only a `ModuleContext` carries the import-alias table; the base returns the
    *  kind unchanged. A typed seam (overridden in `ModuleContext`), matching the
    *  `traceRootScope()` pattern, rather than reaching across the boundary. */
@@ -3143,12 +3143,12 @@ export class EvaluationContext implements IEvaluationContext {
     // service must NOT establish an ambient: its token reaches it via the explicit
     // `run(invokeCtx)` argument (how it observes shutdown), and its externally
     // triggered work then starts with a clean ambient — separate traces, no
-    // inherited cancellation. Runnables (one-shot, e.g. `Run.Sequence`) keep the
+    // inherited cancellation. Runnables (one-shot, e.g. `Telo.Sequence`) keep the
     // ALS scope so their steps nest and inherit cancellation.
     const isService = this.capabilityOf(kind) === "Telo.Service";
 
     // Span instrumentation mirrors `runInvoke` — minting an id here makes
-    // Runnables (a `Run.Sequence` boot target) appear in the trace and re-parents
+    // Runnables (a `Telo.Sequence` boot target) appear in the trace and re-parents
     // their nested invokes. A long-lived Service emits only the `start` span (its
     // `run()` resolves at teardown), the "running" signal a debug consumer wants.
     const tracing = this.tracer?.enabled === true;

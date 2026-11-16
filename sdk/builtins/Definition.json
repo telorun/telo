@@ -120,7 +120,7 @@
       },
       "mount": {
         "title": "Mount target",
-        "description": "The `resources:` entry (a Telo.Mount, e.g. an Http.Api) whose `register()` this kind delegates to, as `!ref <entry>`.",
+        "description": "The `resources:` entry (a Telo.Mount, e.g. a router) whose `register()` this kind delegates to, as `!ref <entry>`.",
         "$ref": "telo://manifest#/$defs/DispatchTarget"
       },
       "inputs": {

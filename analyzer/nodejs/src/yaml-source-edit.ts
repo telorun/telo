@@ -54,7 +54,7 @@ export function quoteStyleOf(source: string): QuoteStyle {
  *  cannot be rewritten safely.
  *
  *  A plain original is kept plain when it can be — rewriting `Run.Sequenc` to
- *  `"Run.Sequence"` would be a correct but noisy diff on a kind name — and
+ *  `"Telo.Sequence"` would be a correct but noisy diff on a kind name — and
  *  promoted to double quotes when the new value would not survive unquoted.
  *
  *  **A multi-line span is refused.** A block scalar's span covers its `|`/`>-`

@@ -288,8 +288,8 @@ mod tests {
     fn resolves_an_embed_inside_a_nested_declaration() {
         let (_dir, manifest) = fixture();
         let mut doc = json!({
-            "kind": "Run.Sequence",
-            "with": [{ "kind": "Run.Value", "value": sentinel(INCLUDE_TEXT_ENGINE, "theme.txt") }],
+            "kind": "Telo.Sequence",
+            "with": [{ "kind": "Telo.Value", "value": sentinel(INCLUDE_TEXT_ENGINE, "theme.txt") }],
         });
         resolve_include_sentinels(&mut doc, &manifest, &ModuleFiles::OnDisk, &mut IncludeCache::new()).unwrap();
         assert_eq!(doc["with"][0]["value"], json!("brand: blue\n"));

@@ -98,7 +98,7 @@ export interface RefSiteEvent {
   within: ScopeSite | undefined;
   /** True when the site was found by value-tree scanning rather than the reach
    *  (only when `discoverNestedRefs` is set) — a ref inside a step body, where
-   *  the reach stops (e.g. `Run.Sequence` `steps[].invoke`).
+   *  the reach stops (e.g. `Telo.Sequence` `steps[].invoke`).
    *  Nested sites carry no x-telo-ref constraint (`entry.refs` is empty) and no
    *  scope info; `concretePath` still points at the exact location, so consumers
    *  can anchor to it. */
@@ -162,7 +162,7 @@ export interface VisitOptions {
   /** When true, additionally discover refs by scanning each resource's value
    *  tree for `!ref` sentinels and resolved references — surfacing
    *  refs no reference slot names because they sit in a step body, where the
-   *  reach stops (notably `Run.Sequence` step `invoke`s). Emitted as `RefSite`s
+   *  reach stops (notably `Telo.Sequence` step `invoke`s). Emitted as `RefSite`s
    *  with `nested: true`, deduped against the reach's sites by concrete path.
    *  Opt-in: the validators / dependency graph must NOT enable it (those refs
    *  are runtime-resolved, not boot dependencies). */
@@ -193,7 +193,7 @@ const NESTED_REF_ENTRY: RefFieldEntry = { refs: [], uses: [], isArray: false };
  *  emitted, an inline declaration is left alone, and **neither is
  *  descended into**. A nested resource's own refs belong to its inner topology,
  *  not the enclosing node — e.g. an inline `Sql.Exec` step's `connection` is the
- *  Exec's dependency, not the surrounding `Run.Sequence`'s. The scan is started
+ *  Exec's dependency, not the surrounding `Telo.Sequence`'s. The scan is started
  *  per top-level field (not on the resource object) so the resource's own
  *  `kind` doesn't trip this boundary. */
 function walkRefValues(
@@ -349,7 +349,7 @@ export function visitManifest(
     }
 
     // Value-tree-driven nested ref discovery — refs inside a step body, where
-    // the reach stops (e.g. Run.Sequence step `invoke`s). Deduped against the
+    // the reach stops (e.g. Telo.Sequence step `invoke`s). Deduped against the
     // reach's sites by concrete path.
     // Scanned per top-level field so the resource's own `kind` isn't treated as
     // a resource boundary by `walkRefValues`.

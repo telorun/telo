@@ -222,7 +222,7 @@ export function manifestRootForResolver(
  *   - `branch-list`— value is an array of objects each carrying further roled
  *                    sub-properties (e.g. elseif: [{ if, then }]).
  *   - `case-map`   — value is an object whose values are step arrays (e.g. cases).
- * No specific Run.Sequence field name is hardcoded; any kind that uses
+ * No specific Telo.Sequence field name is hardcoded; any kind that uses
  * a step body and tags its branch fields with these roles works.
  *
  * The context exists whenever the manifest holds a step body, and is an empty

@@ -362,7 +362,7 @@ export async function buildControllerBundle(
  * A module's library surface is one specifier and one entry point — subpaths are
  * deliberately not representable, since reproducing npm's `exports` map inside
  * the artifact would pull a package manager's resolution semantics into Telo. Left
- * alone, `@telorun/ai/content` matches no external, so esbuild inlines it and the
+ * alone, `@telorun/acme/content` matches no external, so esbuild inlines it and the
  * duplicated scope comes back silently. Marking `<specifier>/*` external instead
  * would trade that for a module-not-found on someone else's machine, so the
  * honest place to fail is the build.
@@ -513,7 +513,7 @@ function assertNoInlinedSiblings(
  * for.
  *
  * The check above is derived from the `imports:` edges, so it is vacuous exactly
- * where the mistake is made: a module whose TypeScript imports `@telorun/sql`
+ * where the mistake is made: a module whose TypeScript imports `@telorun/acme`
  * while its manifest never says `Sql: ../sql`. Nothing externalizes the specifier,
  * the package manager resolves it, esbuild inlines it, and the duplicated module
  * scope this whole mechanism removes comes back with nothing to report it. The

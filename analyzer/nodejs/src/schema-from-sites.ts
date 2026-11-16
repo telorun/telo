@@ -44,7 +44,7 @@ export interface SchemaFromSlotSite {
 /**
  * True when every failure an `x-telo-schema-from` expression can raise is
  * decided by the kind alone — a malformed expression, or an alias-qualified
- * anchor (`HttpDispatch.Outcomes/$defs/Returns`) — rather than by what a
+ * anchor (`Acme.Outcomes/$defs/Returns`) — rather than by what a
  * resource writes at a sibling anchor.
  */
 export function schemaFromIsKindDecidable(schemaFrom: string): boolean {

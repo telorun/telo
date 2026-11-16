@@ -319,7 +319,7 @@ export class ResourceContextImpl implements ResourceContext {
    * Where a NAME resolves from: the owning context first, then the enclosing
    * module. Same order as `ScopeContext.getInstance` and the CEL `resources`
    * layering — scope-local wins, outer is the fallback — so a `with:`-scoped
-   * resource can still dispatch a module-level one by name (an `Http.Server`
+   * resource can still dispatch a module-level one by name (a server
    * whose `notFoundHandler` targets a module-level invocable).
    *
    * Registration deliberately does NOT use this: a new manifest belongs to the
@@ -439,7 +439,7 @@ export class ResourceContextImpl implements ResourceContext {
    *
    *  Following the `$ref` matters because AJV resolves cross-schema references
    *  against its own registry at compile time, while the kernel's registry is
-   *  what actually holds these — a `Type.JsonSchema` registers under the
+   *  what actually holds these — a `Telo.JsonSchema` registers under the
    *  canonical URI as a *key*, which AJV does not treat as a resolvable id. A
    *  definition whose whole contract is `{ $ref: "telo://Self/TokenSet" }` (the
    *  sanctioned way to declare a shape once and reference it from several kinds)
@@ -1206,14 +1206,14 @@ export class ResourceContextImpl implements ResourceContext {
     // Register the inline manifest when:
     //  - it carries configuration (clearly a declaration), or
     //  - it is a bare `{kind}` with no `metadata.name` and the caller supplied
-    //    a `resourceName` (the slot is known-inline — e.g. a Run.Sequence step
+    //    a `resourceName` (the slot is known-inline — e.g. a Telo.Sequence step
     //    with `invoke: {kind: SomeInvocable}` — and wants a fresh stateless
     //    instance registered under the generated name).
     // A bare `{kind, metadata: {name}}` names a resource registered elsewhere
     // and skips registration. registerManifest itself throws
     // ERR_DUPLICATE_RESOURCE on collision — surfacing collisions loudly is
     // the contract here; previous silent-skip-on-duplicate hid real bugs
-    // (e.g. inline auto-names colliding across sibling Run.Sequence steps).
+    // (e.g. inline auto-names colliding across sibling Telo.Sequence steps).
     const hasInlineProperties = Object.keys(resource).some((k) => k !== "kind" && k !== "metadata");
     const hasExplicitName = resource.metadata?.name !== undefined;
     const shouldRegister =
@@ -1394,7 +1394,7 @@ export class ResourceContextImpl implements ResourceContext {
   }
 
   /** The module-owned libraries the module at `source` imports by bare specifier
-   *  — how a controller bundle's `@telorun/kv-store` finds the module that owns
+   *  — how a controller bundle's `@telorun/acme` finds the module that owns
    *  it. Kernel-only, on the same seam as {@link getModuleArtifact}. */
   getSiblingLibraries(source: string | undefined): SiblingLibraryMap {
     return this.kernel.getSiblingLibraries(source);

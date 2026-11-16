@@ -76,7 +76,7 @@ export function validateIncludePlacement(manifests: ResourceManifest[]): Analysi
           `never read — a ${manifest.kind} doc is not instantiated, and ` +
           (embed
             ? `a file embed is resolved when the resource holding it is created. Move it onto ` +
-              `the resource that needs the file, or read the file at runtime with Fs.File.`
+              `the resource that needs the file, or read the file at runtime with a file-reading kind.`
             : `a module path is resolved when the resource holding it is created. Move it onto ` +
               `the resource that needs the location.`),
         data: {

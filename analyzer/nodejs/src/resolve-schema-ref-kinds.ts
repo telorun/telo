@@ -54,7 +54,7 @@ export function isLegacyRefIdentity(ref: string): boolean {
  * Rewrites the `x-telo-ref` constraints (and the kinds a `callsCoReferrers`,
  * `x-telo-requires-zone`, `x-telo-referrer-rules`, an `x-telo-resource-rules`
  * `reachable:` and `x-telo-text-keys` name) on one definition doc from the alias
- * form (`KvStore.Store`, `Self.Store`, `Telo.Invocable`) to the canonical
+ * form (`Acme.Store`, `Self.Store`, `Telo.Invocable`) to the canonical
  * `<module>.<Kind>` key the definition registry is keyed by.
  *
  * `resolver` must be the scope of the module that DECLARES the definition, not
@@ -69,7 +69,7 @@ export function isLegacyRefIdentity(ref: string): boolean {
  * anything. The authored value is left in place either way, so a diagnostic
  * quotes what the author actually wrote.
  *
- * An `unknown` result also covers an already-canonical value (`kv-store.Store`
+ * An `unknown` result also covers an already-canonical value (`acme.Store`
  * names a module, not an alias), which is what keeps the rewrite idempotent —
  * the caller drops those by checking the definition registry once every kind is
  * registered.

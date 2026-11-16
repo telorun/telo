@@ -8,7 +8,7 @@
  *
  * A word boundary is before an uppercase letter that follows a lowercase letter
  * or a digit, and before the last uppercase letter of an uppercase run that a
- * lowercase letter follows — `HTTPServer` is `HTTP_SERVER`, `SQL` stays `SQL`.
+ * lowercase letter follows — `XMLParser` is `XML_PARSER`, `SQL` stays `SQL`.
  * Two names this maps to one string are refused as `NEED_ENV_NAME_COLLISION`.
  *
  * Browser-safe.

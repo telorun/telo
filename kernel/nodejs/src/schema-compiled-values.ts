@@ -65,7 +65,7 @@ function collectSchemaProperties(
  *    `{kind, name, alias?}`, and the only other object a ref slot admits is an
  *    inline definition (`{kind, …config}`);
  *  - a live instance is either not a plain object, or exposes a method (a
- *    controller's `create()` may return an object literal — `Assert.Schema`
+ *    controller's `create()` may return an object literal — a schema assertion
  *    does). Copying one is what the walk exists to avoid, and its graph is
  *    routinely cyclic;
  *  - what is left came from YAML, where a function cannot appear. */

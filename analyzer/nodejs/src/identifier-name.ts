@@ -49,13 +49,13 @@
  * *type* — something writable in `kind:` / `extends:` / an `x-telo-ref` or type
  * slot. camelCase names a *value* — something holding data at runtime, read
  * through `resources.` / `steps.` / `variables.` in CEL. That is what
- * distinguishes `kind: Console.WriteLine` from `!ref Console.writeLine`, two
+ * distinguishes `kind: Acme.WriteLine` from `!ref Acme.writeLine`, two
  * character-identical grammars otherwise, and the collision is not
  * hypothetical: it is the sanctioned singleton pattern (declare
  * `kind: Self.WriteLine`, export the instance, withhold the kind).
  *
  * **Only the first character is checked.** A full camelCase pattern would
- * relitigate `httpApi` vs `httpAPI` and `OAuthClient` vs `OauthClient` with no
+ * relitigate `httpApi` vs `httpAPI` and `MyClient` vs `Myclient` with no
  * benefit — the first character is what carries the type/value signal, and a
  * stricter rule would fight legitimate names containing acronyms or digits
  * while owning a judgement nobody asked this pass to make. An

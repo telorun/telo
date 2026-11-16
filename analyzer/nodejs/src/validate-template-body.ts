@@ -34,8 +34,8 @@ const SOURCE = "telo-analyzer";
  *  METHOD PRESENCE at dispatch (`entry.instance?.invoke`), so a declared
  *  capability says nothing about whether a dispatch works — the same structural
  *  -versus-nominal split that keeps `use` uncross-constrained against a slot's
- *  target. A check here read `Run.Sequence`'s `capability: Telo.Runnable` and
- *  rejected `Ai.Buffered`, a shipping module whose sequence implements `invoke()`
+ *  target. A check here read `Telo.Sequence`'s `capability: Telo.Runnable` and
+ *  rejected a shipping module whose sequence implements `invoke()`
  *  over an inputs/outputs contract and dispatches correctly. Trimming the refused
  *  set would only move that: any controller may expose a method its capability
  *  does not name, and a template body is exactly where that is done on purpose. */

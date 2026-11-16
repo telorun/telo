@@ -96,7 +96,7 @@ export function evaluatedField(sites: CelEvalSites, path: string): boolean {
 }
 
 /** Why the expression cannot stay, in the wording both halves share. `at` names
- *  what holds it (`on the Http.Api entry 'api'`) where that is not already
+ *  what holds it (`on the Acme.Router entry 'api'`) where that is not already
  *  clear from the diagnostic's own subject. The repair differs by position:
  *  inside a template body a reference the INSTANCE holds is forwarded verbatim,
  *  while a resource field has nothing to forward. */

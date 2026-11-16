@@ -4,7 +4,7 @@
  *
  * A kind constraint says what a target IS, never what it RETURNS: a slot that
  * accepts `Telo.Executable` admits every sequence, and whether one returns the
- * shape the holder reads off it (`Stream.Concat` pulls `output` from each
+ * shape the holder reads off it (a stream-concatenating kind pulls `output` from each
  * source) was known only when the holder dispatched it. The target's output
  * contract is resolved exactly as `steps.<name>.result` is typed — the target's
  * own `outputType`, then its kind's along `extends`, then the key set of a

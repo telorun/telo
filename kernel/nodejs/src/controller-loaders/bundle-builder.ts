@@ -234,7 +234,7 @@ async function buildBundle(
     const out = result.outputFiles?.[0];
     if (!out) return null;
     // A flattened bundle that resolves paths relative to its own directory is
-    // unsafe: a deep dep locating a sibling asset (e.g. http-server's
+    // unsafe: a deep dep locating a sibling asset (e.g. a server module's
     // `${__dirname}/js/standalone.js`) would miss it at the bundle's new
     // location. esbuild rewrites `__dirname`/`__filename` to `import.meta.url`,
     // so its presence flags this — fall back to the loose import for those.

@@ -5,7 +5,7 @@
  * All of them are consumers of the ONE containment walk
  * (`resolve-zone-containment.ts`), parameterized over the attribute that opens
  * the region. The zones differ in what they forbid, not in how their contents
- * are found, and no check here names a kind: `modules/durable` is not part of
+ * are found, and no check here names a kind: the durable-execution module is not part of
  * the analyzer's surface, which is what the topology-driven constraint requires
  * and what makes going native cost a module rather than an analyzer change.
  *

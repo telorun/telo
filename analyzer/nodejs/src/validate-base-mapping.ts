@@ -95,7 +95,7 @@ interface CheckCtx {
 /** Keys the inherited controller supplies itself when it builds the parent
  *  manifest (`{ kind, metadata, ...base }`), so `base:` neither has to set them
  *  nor may. Without this exclusion a parent whose schema lists `metadata` in
- *  `required` — `JS.Script` does, the most natural parent for a remapping child —
+ *  `required` — a scripting kind does, the most natural parent for a remapping child —
  *  is unusable: omitting it is BASE_MISSING_REQUIRED and setting it is
  *  BASE_UNKNOWN_FIELD, since `metadata` is required but never a declared
  *  property. Only at the top level; a nested `metadata` field is the parent's

@@ -15,7 +15,7 @@
  * here: `@telorun/sdk` is external and collapsed to the running kernel's copy, so a module
  * PUBLISHED before the repair carries a controller that still hands the bag over raw. Fixing
  * it only in the module would have broken `request.query` for every app importing any
- * published `http-server` — the artifacts in users' lock files, which cannot be fixed
+ * published HTTP server module — the artifacts in users' lock files, which cannot be fixed
  * retroactively. The kernel is the side that ships with the engine, so it is the side that
  * can repair them.
  *

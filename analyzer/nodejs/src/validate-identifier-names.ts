@@ -226,7 +226,7 @@ function stepNameFindings(
  * is inherited and immutable along `extends` — a kind omits it to take its
  * ancestor's — so reading the leaf answers `undefined` for every kind that does,
  * and the fallback then calls a type a value. That is not hypothetical: it is
- * exactly `Type.JsonSchema`, a pure alias of the built-in (`extends:
+ * exactly the legacy JSON Schema kind, a pure alias of the built-in (`extends:
  * Telo.JsonSchema`, no `capability:` of its own), so a shape declared through
  * the deprecated spelling was reported as miscased while the identical
  * declaration written as `kind: Telo.JsonSchema` was not. Renaming on that

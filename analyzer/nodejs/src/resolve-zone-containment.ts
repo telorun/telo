@@ -13,11 +13,11 @@
  * is **parameterized over the attribute that opens the region** — so the durable
  * zone (`replayed`) and the constraint zones (`noSuspend`, `atomic`,
  * `idempotent`) share one traversal. It resolves an attribute NAME and nothing
- * else: no kind is named here, which is what keeps `modules/durable` out of the
+ * else: no kind is named here, which is what keeps the durable-execution module out of the
  * analyzer's surface and satisfies the topology-driven constraint.
  *
  * **Two shapes of body slot, one region.** A slot may hold its body as a
- * reference to an executable (`Sql.Transaction.steps`) or carry a step array
+ * reference to an executable (a transaction's `steps`) or carry a step array
  * natively (the shared `Step` fragment, which any kind may point at). Both are
  * regions; the first is entered through the slot's edge, the second through the
  * step nodes the slot declares. Handling only the first would have made the

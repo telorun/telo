@@ -172,8 +172,8 @@ export function readRequiresZone(node: Record<string, any> | undefined): Require
  * a resource needs of the region around it. Neither says *this resource breaks
  * that guarantee* — and without it a zone attribute has a promise and no way to
  * name what falsifies it: `noSuspend` would be enforced only when a parking kind
- * happened to reach its runtime check, and `Durable.Sleep` would be
- * indistinguishable from `Durable.Value`, which needs the same journal and parks
+ * happened to reach its runtime check, and a durable sleep would be
+ * indistinguishable from a durable value, which needs the same journal and parks
  * nothing.
  *
  * Declared at the kind's SCHEMA ROOT, because it is a property of the kind

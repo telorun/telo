@@ -120,7 +120,7 @@ export function validateExtends(
 
     // --- extends validation ---
     // At this point `m.extends` is whatever the manifest declared (alias form, e.g.
-    // "Ai.Model"). Resolve through the AliasResolver to the canonical form before
+    // "Acme.Model"). Resolve through the AliasResolver to the canonical form before
     // looking up the target definition.
     const extendsValue = (m as { extends?: unknown }).extends;
     if (extendsValue !== undefined) {
@@ -139,7 +139,7 @@ export function validateExtends(
           source: SOURCE,
           message:
             `${label}: 'extends: ${extendsValue}' must be in alias form "<Alias>.<Name>" ` +
-            `(e.g. "Ai.Model"), resolved via this file's Telo.Import declarations.`,
+            `(e.g. "Acme.Model"), resolved via this file's Telo.Import declarations.`,
           data: { resource, filePath, path: "extends" },
         });
       } else {

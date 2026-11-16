@@ -220,7 +220,7 @@ export function validateReferrerRuleDeclarations(
       issue(
         `${at}.referrer`,
         "'referrer' names the kind a referring resource must be, in the same alias-qualified " +
-          "grammar as extends: (Self.Server, Http.Server, Telo.Something). Omit it to apply the " +
+          "grammar as extends: (Self.Server, Acme.Server, Telo.Something). Omit it to apply the " +
           "rule to every referrer.",
       );
     }
@@ -684,8 +684,8 @@ const nameOf =(manifest: ResourceManifest): string =>
  *
  * A violation names the declaring kind in the message. For a resource rule the
  * reported resource IS of the kind that declared it, so the origin is implicit;
- * here it is not — the diagnostic lands on an `Http.Server` for a rule
- * `HttpServer.Reference` wrote — and leaving that to the author's prose would
+ * here it is not — the diagnostic lands on an `Acme.Server` for a rule
+ * `Acme.Reference` wrote — and leaving that to the author's prose would
  * make the trail depend on remembering to write it.
  */
 export function reportReferrerRules(

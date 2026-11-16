@@ -26,7 +26,7 @@ export interface ThrowsCodeMeta {
 }
 
 /** Code a non-`InvokeError` failure surfaces as inside a `catch` block. Mirrors
- *  `PLAIN_ERROR_CODE` in `@telorun/run`'s `toSequenceError`: any invoke can throw
+ *  `PLAIN_ERROR_CODE` in the sequence controller's `toSequenceError`: any invoke can throw
  *  a plain error, which the catch sees as `error.code === "INTERNAL_ERROR"`. */
 export const PLAIN_ERROR_CODE = "INTERNAL_ERROR";
 
@@ -53,7 +53,7 @@ export interface ResolveCtx {
   /** Per-imported-library alias resolvers, keyed by module name. A manifest that
    *  originated in an imported library resolves its kind aliases against its own
    *  module's resolver, not the consumer's — an inline handler extracted from an
-   *  imported Http.Api inherits the lexical scope of the library that declares it. */
+   *  imported router inherits the lexical scope of the library that declares it. */
   aliasesByModule: Map<string, AliasResolver>;
   /** The consumer/root module names; resources owned by these resolve against `aliases`. */
   rootModules: Set<string>;
@@ -615,7 +615,7 @@ function collectStepArrayThrows(
   return result;
 }
 
-/** Walk one step, dispatching by shape. Generic for any Run.Sequence-style
+/** Walk one step, dispatching by shape. Generic for any Telo.Sequence-style
  *  composer: the step keys it recognises (`try` / `catch` / `finally` / `then`
  *  / `else` / `elseif` / `do` / `cases` / `default`) are the same set already
  *  traversed by the analyzer's step-body walk, so future
@@ -653,7 +653,7 @@ function collectStepThrows(
     if (Array.isArray(step.catch)) {
       // Catch absorbs the try block's codes; the catch's own throws propagate
       // out instead. Sequence-specific subtraction — the plan explicitly
-      // anchors this to Run.Sequence's try/catch schema shape.
+      // anchors this to Telo.Sequence's try/catch schema shape.
       const tryCodes = new Set(tryUnion.codes.keys());
       // A plain (non-InvokeError) failure in the try block reaches the catch as
       // `error.code === PLAIN_ERROR_CODE`, so a `throw: { code: error.code }`

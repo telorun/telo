@@ -131,7 +131,7 @@ export function inheritedCapability(
  *    fields are internal, set solely through `base:`).
  *  - without `base:` but with `extends` → `merge(parent-effective, own)` (a pure
  *    additive extension; child overrides on key conflicts), reusing the same
- *    `mergeTypeSchemas` that `Type.JsonSchema.extends` uses — except the two
+ *    `mergeTypeSchemas` that `Telo.JsonSchema.extends` uses — except the two
  *    rule annotations, which join the parent's rules and the child's
  *    (`rule-inheritance.ts`), and `x-telo-text-keys`, which is the child's own
  *    or absent: its names are spelled in the declaring module's scope, so it is

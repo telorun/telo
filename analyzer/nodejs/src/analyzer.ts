@@ -995,7 +995,7 @@ function assertManifestPositions(manifests: ResourceManifest[]): void {
   }
 }
 
-/** Resolve an alias-prefixed kind value (e.g. `Self.Encoder` or `Ai.Model`)
+/** Resolve an alias-prefixed kind value (e.g. `Self.Encoder` or `Acme.Model`)
  *  to its canonical form. `Self.<Name>` resolves to `<ownModule>.<Name>` —
  *  the magic alias for "this library's own module" — and other prefixes
  *  resolve through the declaring file's Telo.Import aliases. */
@@ -1014,7 +1014,7 @@ const SOURCE = "telo-analyzer";
 
 /** How to name the owner of a resolved contract in a diagnostic. When the
  *  contract came from the definition's direct parent, echo the author's own
- *  spelling (`extends: Mcp.SessionProvider`) — that is the text they can find in
+ *  spelling (`extends: Acme.Provider`) — that is the text they can find in
  *  their file. A contract inherited from further up the chain isn't written
  *  anywhere in this file, so the canonical `module.Kind` is what locates it. */
 function contractOwnerLabel(
@@ -3822,7 +3822,7 @@ function ruleIssueDiagnostic(issue: ResourceRuleIssue | ReferrerRuleIssue): Anal
  * edge — no name list here to keep in step. This replaced
  * `NON_INVOKABLE_CAPABILITIES`, a maintained set of capabilities the analyzer
  * believed could never be invoked, which was unsound in the direction that
- * rejects working manifests: it listed `Telo.Provider`, and `Ai.Model` is a
+ * rejects working manifests: it listed `Telo.Provider`, and a model kind is a
  * Provider the agent controller invokes directly — the divergence being
  * structural versus nominal, since the kernel tests method presence at dispatch
  * while any static test can only read a declared capability.
@@ -3858,7 +3858,7 @@ const NO_ENTRY_POINT_CAPABILITIES = new Set([
 ]);
 
 /**
- * Validate step `invoke` references (e.g. `Run.Sequence`
+ * Validate step `invoke` references (e.g. `Telo.Sequence`
  * steps).
  *
  * A schema's reference reach stops at a step body — step `invoke` slots sit in
@@ -3868,7 +3868,7 @@ const NO_ENTRY_POINT_CAPABILITIES = new Set([
  * step invoke passes `telo check` and only fails at runtime. This pass covers
  * exactly those slots, in two dimensions:
  *   - Existence: an `invoke: !ref <name>` that names a missing instance — or a
- *     *kind* instead of an exported instance (`!ref Stream.Of`) — is a still-a-
+ *     *kind* instead of an exported instance (`!ref Acme.Stream`) — is a still-a-
  *     sentinel after Phase 2.5 resolution → `UNRESOLVED_REFERENCE` (runtime
  *     `ERR_RESOURCE_NOT_FOUND`).
  *   - Invokability: a resolved instance whose kind fails `isExecutableKind` —
@@ -3879,7 +3879,7 @@ const NO_ENTRY_POINT_CAPABILITIES = new Set([
  * Generic and topology-driven — it walks steps via the same step-slot
  * / `x-telo-topology-role` annotations `buildStepContextSchema` uses (through the
  * shared `walkStepArray`), so nested branches (then/else/do/catch/cases) are
- * covered and no `Run.Sequence` field name is hardcoded. The cross-module
+ * covered and no `Telo.Sequence` field name is hardcoded. The cross-module
  * partial-analysis guard mirrors `validateReferences`, so a reference into an
  * unloaded import is skipped rather than false-flagged.
  */
@@ -4063,7 +4063,7 @@ withQuotedPath({
  * the annotated field name to its declared error-shape schema. The field name
  * is matched against CEL paths so the context applies at any nesting depth under
  * that field — e.g. `error` inside a `catch:` nested inside another `try:`. No
- * specific field name (or `Run.Sequence`) is hardcoded; any composer that tags
+ * specific field name (or `Telo.Sequence`) is hardcoded; any composer that tags
  * its error-bearing branch fields opts in the same way.
  */
 /** How the zone walks resolve a kind read off a node of a given module. */
@@ -7320,7 +7320,7 @@ export class StaticAnalyzer {
      * filters to.
      *
      * Liskov in BOTH directions, which is what the check has to be: the filter
-     * is usually an abstract (`Sql.Schema`, so one rule serves every backend)
+     * is usually an abstract (`Acme.Schema`, so one rule serves every backend)
      * while the collection is declared by the backends that implement it, so a
      * pointer resolving on any candidate resolves the rule. Reported only when
      * NO candidate declares it, or when every candidate that does holds plain
@@ -7538,7 +7538,7 @@ export class StaticAnalyzer {
     if (!options?.skipValidation) {
       for (const issue of refConstraintIssues) {
         // An `unknown` prefix is also what an ALREADY-CANONICAL value looks like
-        // (`kv-store.Store` names a module, not an alias). Now that every kind is
+        // (`acme.Store` names a module, not an alias). Now that every kind is
         // registered, the registry separates the two — anything it resolves was
         // canonical, anything it doesn't names nothing at all.
         if (issue.reason === "unknown" && defs.resolve(issue.ref)) continue;

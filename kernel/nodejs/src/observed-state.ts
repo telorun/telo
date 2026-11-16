@@ -28,7 +28,7 @@ const Ajv = AjvModule.default ?? AjvModule;
 export const OBSERVED_STATE_INFO = Symbol("telo.observedState");
 
 export interface ObservedStateInfo {
-  /** The kind as written on the resource doc (`OAuthClient.RedirectListener`). */
+  /** The kind as written on the resource doc (`Acme.Listener`). */
   kind: string;
   name: string;
   /** Owning module, named in the "defect in someone else's module" message. */

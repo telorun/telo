@@ -102,7 +102,7 @@ export interface RefSlot {
   kinds: string[];
   /** The relations the declaring resource has with the target. A set, because a
    *  slot may dispatch its target more than one way within a single invocation
-   *  (`Cache.View` calls inline on a miss and detached on a background
+   *  (a cache view calls inline on a miss and detached on a background
    *  revalidation). Empty when the slot declares no use — the bare-string form,
    *  or a slot that defers to {@link RefSlot.useCases}. */
   uses: RefUse[];
@@ -123,7 +123,7 @@ export interface RefSlot {
    *  target's and its catch scope encloses the target's.
    *
    *  It exists because the relation is real where `use` correctly says nothing:
-   *  `Http.Server.mounts[].mount` is a `dependency` (the server holds the mount
+   *  `Acme.Server.mounts[].mount` is a `dependency` (the server holds the mount
    *  and calls a convention method on it — control reaches a route through the
    *  MOUNT's own `trigger.inbound` slot, not through this one), yet a throw from
    *  that route is exactly what the server renders. Following every `dependency`

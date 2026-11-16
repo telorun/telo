@@ -8,9 +8,9 @@
  *   kinds:
  *     - Store
  *   code:
- *     - specifier: "@telorun/kv-store"
+ *     - specifier: "@telorun/acme"
  *       format: js
- *       path: ./nodejs/kv-store.mjs
+ *       path: ./nodejs/acme.mjs
  *       source: ./nodejs/src/index.ts
  * ```
  *
@@ -38,7 +38,7 @@
  *
  * ## Why the specifier is declared here
  *
- * A bundle imports the bare specifier `@telorun/sql`; the consumer's manifest
+ * A bundle imports the bare specifier `@telorun/acme`; the consumer's manifest
  * declares the dependency as `Sql: ../sql`. Something has to connect the two, and
  * it is the *library* that says so, once, rather than each of its consumers:
  *

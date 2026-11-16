@@ -21,7 +21,7 @@ export interface ResourceInput {
    *  in CEL. */
   name: string;
   /** The alias-qualified kind constraint, as written in the DECLARING library's
-   *  own scope (`Sql.Connection`, `Self.Store`, `Telo.LogSink`). There is no
+   *  own scope (`Acme.Connection`, `Self.Store`, `Telo.LogSink`). There is no
    *  `use:` here: the boundary is a dependency edge for init order whatever the
    *  library does with the instance, and the flattened application analysis
    *  drops the library doc, so an app-level claim about internal call sites is
