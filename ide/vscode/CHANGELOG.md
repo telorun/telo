@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.1 - 2026-11-16
+### Fixed
+* The extension is published again: its release build failed on a clean checkout, so 0.7.0 was tagged but never shipped as a .vsix or to the Marketplace. This version ships it.
+
 ## 0.7.0 - 2026-11-15
 ### Fixed
 * The shipped `.vsix` embeds the exact published version of the language engine it bundles, and its payload is exactly the file set `vsce` packages.
