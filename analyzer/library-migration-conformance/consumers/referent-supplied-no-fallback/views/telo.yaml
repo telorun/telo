@@ -1,0 +1,75 @@
+kind: Telo.Library
+metadata: { name: Strict }
+lang: en
+exports: { kinds: [Query, View, Page, Screen], resources: [Node] }
+migrations:
+  VIEWS_DATA_REPLACED:
+    reason: A read is a query, and what is drawn over its answer belongs to the node that places it.
+    rules:
+      - rewrite: Self.Data
+        match: { type: object, required: [source, content] }
+        move: { /source: /url }
+        remove: [/content, /loading, /failure]
+        set: { kind: Self.Query }
+      - rewrite: Self.Node
+        match: { type: object, required: [type, ref], properties: { type: { const: composite } } }
+        resolve: { data: { at: /ref, before: Self.Data } }
+        move: { /ref: /query }
+        copy: { data#/content: /children/0, data#/loading: /loading/0, data#/failure: /failure/0 }
+        set: { type: query }
+---
+kind: Telo.JsonSchema
+metadata: { name: Node }
+schema:
+  oneOf:
+    - type: object
+      required: [type, text]
+      additionalProperties: false
+      properties: { type: { const: text }, text: { type: string } }
+    - type: object
+      required: [type, ref]
+      additionalProperties: false
+      properties: { type: { const: composite }, ref: { x-telo-ref: { kind: Self.View, use: dependency } } }
+    - type: object
+      required: [type, query]
+      additionalProperties: false
+      properties:
+        type: { const: query }
+        query: { x-telo-ref: { kind: Self.Query, use: dependency } }
+        children: { type: array, items: { $ref: "#" } }
+        loading: { type: array, items: { $ref: "#" } }
+        failure: { type: array, items: { $ref: "#" } }
+---
+kind: Telo.Definition
+metadata: { name: Query }
+capability: Telo.Invocable
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    url: { type: object, properties: { path: { type: string } } }
+    reloadOn: { type: array, items: { type: string } }
+---
+kind: Telo.Definition
+metadata: { name: View }
+capability: Telo.Invocable
+schema: { type: object, additionalProperties: false, properties: { content: { $ref: "telo://Self/Node" } } }
+---
+kind: Telo.Definition
+metadata: { name: Page }
+capability: Telo.Invocable
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    path: { type: string }
+    children: { type: array, items: { $ref: "telo://Self/Node" } }
+---
+kind: Telo.Definition
+metadata: { name: Screen }
+capability: Telo.Invocable
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    pages: { type: array, items: { x-telo-ref: { kind: Self.Page, use: dependency } } }

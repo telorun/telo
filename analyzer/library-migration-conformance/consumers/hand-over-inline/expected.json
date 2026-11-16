@@ -1,0 +1,192 @@
+{
+  "diagnostics": [
+    {
+      "code": "VIEWS_DATA_REPLACED",
+      "severity": 2,
+      "file": "hand-over-inline/telo.yaml",
+      "path": "children[0]",
+      "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
+    },
+    {
+      "code": "VIEWS_DATA_REPLACED",
+      "severity": 2,
+      "file": "hand-over-inline/telo.yaml",
+      "path": "children[0].ref",
+      "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
+    },
+    {
+      "code": "VIEWS_DATA_REPLACED",
+      "severity": 2,
+      "file": "hand-over-inline/telo.yaml",
+      "path": "pages[0].then.children[0]",
+      "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
+    },
+    {
+      "code": "VIEWS_DATA_REPLACED",
+      "severity": 2,
+      "file": "hand-over-inline/telo.yaml",
+      "path": "pages[0].then.children[0].ref",
+      "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
+    },
+    {
+      "code": "VIEWS_DATA_REPLACED",
+      "severity": 2,
+      "file": "hand-over-inline/telo.yaml",
+      "path": "resources[0].children[0]",
+      "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
+    },
+    {
+      "code": "VIEWS_DATA_REPLACED",
+      "severity": 2,
+      "file": "hand-over-inline/telo.yaml",
+      "path": "resources[0].children[0].ref",
+      "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
+    },
+    {
+      "code": "VIEWS_DATA_REPLACED",
+      "severity": 2,
+      "file": "hand-over-inline/telo.yaml",
+      "path": "with[0].children[0]",
+      "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
+    },
+    {
+      "code": "VIEWS_DATA_REPLACED",
+      "severity": 2,
+      "file": "hand-over-inline/telo.yaml",
+      "path": "with[0].children[0].ref",
+      "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
+    }
+  ],
+  "migrated": {
+    "hand-over-inline/telo.yaml": {
+      "1": {
+        "kind": "V.Page",
+        "metadata": {
+          "name": "home"
+        },
+        "path": "/",
+        "children": [
+          {
+            "type": "query",
+            "query": {
+              "kind": "V.Query",
+              "url": {
+                "path": "/api/home"
+              }
+            },
+            "children": [
+              {
+                "type": "text",
+                "text": "Home"
+              }
+            ]
+          }
+        ]
+      },
+      "2": {
+        "kind": "V.Screen",
+        "metadata": {
+          "name": "branches"
+        },
+        "pages": [
+          {
+            "__expand": "if",
+            "if": "!cel variables.wide",
+            "then": {
+              "kind": "V.Page",
+              "path": "/wide",
+              "children": [
+                {
+                  "type": "query",
+                  "query": {
+                    "kind": "V.Query",
+                    "url": {
+                      "path": "/api/wide"
+                    }
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "Wide"
+                    }
+                  ]
+                }
+              ]
+            },
+            "else": {
+              "kind": "V.Page",
+              "path": "/narrow"
+            }
+          }
+        ]
+      },
+      "3": {
+        "kind": "Telo.Definition",
+        "metadata": {
+          "name": "Wrapped"
+        },
+        "capability": "Telo.Invocable",
+        "resources": [
+          {
+            "kind": "V.Page",
+            "metadata": {
+              "name": "inner"
+            },
+            "path": "/inner",
+            "children": [
+              {
+                "type": "query",
+                "query": {
+                  "kind": "V.Query",
+                  "url": {
+                    "path": "/api/inner"
+                  }
+                },
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "Inner"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "invoke": "!ref inner"
+      },
+      "4": {
+        "kind": "Telo.Sequence",
+        "metadata": {
+          "name": "scoped"
+        },
+        "with": [
+          {
+            "kind": "V.Page",
+            "metadata": {
+              "name": "member"
+            },
+            "path": "/member",
+            "children": [
+              {
+                "type": "query",
+                "query": {
+                  "kind": "V.Query",
+                  "url": {
+                    "path": "/api/member"
+                  }
+                },
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "Member"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "steps": []
+      }
+    }
+  }
+}

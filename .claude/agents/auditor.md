@@ -60,6 +60,17 @@ Then judge, in this order:
    CLI; the editor knows nothing of `modules/`; a generic module knows nothing of a more
    specific one. Nothing anywhere derives meaning from a kind name or a resource-name suffix —
    those heuristics are forbidden and fragile.
+   **The core packages name no module, in any way.** In `analyzer/`, `kernel/`, `sdk/`,
+   `templating/` and `cel/` (both languages, and the data they read: `sdk/*` entries,
+   `analyzer/migrations/`), any mention of a specific module is a blocking finding —
+   code, a string, an error message, a test helper, a doc comment or an example alike. That covers
+   a module's name in any spelling (`http-server`, `HttpServer`, `sqlite_file`), its kinds under
+   any alias (`Http.Server`, `Run.Sequence`, `sqlite.Connection`), its paths and specifiers
+   (`modules/run`, `@telorun/kv-store`), and a data entry filtering on its kinds. The fix is
+   rewording through the annotation or capability that carries the behaviour, with examples
+   under invented names (`Acme.Server`). `pnpm run check:module-mentions` is a textual backstop
+   with a skip list of generic words; a word it skips is still a finding where it means the
+   module, so read for meaning, not for what the check passes.
 4. **Portability and placement.** An implementation that cannot be ported to Rust or Go is a
    finding. Language-specific files and docs belong under their language directory; parallel
    implementations should share one file path and shape unless the work is genuinely

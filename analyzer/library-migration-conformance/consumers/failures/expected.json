@@ -1,0 +1,67 @@
+{
+  "diagnostics": [
+    {
+      "code": "EDGE_P_RENAMED",
+      "severity": 2,
+      "file": "failures/telo.yaml",
+      "path": "",
+      "message": "P is Q."
+    },
+    {
+      "code": "EDGE_X_RENAMED",
+      "severity": 2,
+      "file": "failures/telo.yaml",
+      "path": "",
+      "message": "X is Y."
+    },
+    {
+      "code": "MIGRATION_FAILED",
+      "severity": 1,
+      "file": "failures/telo.yaml",
+      "path": "",
+      "message": "The migration EDGE_A_TO_B of Edge could not be applied: migrations.EDGE_A_TO_B.rules[0] still matches once every rule that applies has fired: EDGE_A_TO_B and EDGE_B_TO_A undo each other, a cycle among migrations."
+    },
+    {
+      "code": "MIGRATION_FAILED",
+      "severity": 1,
+      "file": "failures/telo.yaml",
+      "path": "",
+      "message": "The migration EDGE_X_RENAMED of Edge could not be applied: the result fails the current schema at /tittle: / must NOT have additional properties ('tittle' is not allowed)."
+    },
+    {
+      "code": "MIGRATION_FAILED",
+      "severity": 1,
+      "file": "failures/telo.yaml",
+      "path": "",
+      "message": "The migration EDGE_X_RENAMED of Edge could not be applied: the result of migrations.EDGE_X_RENAMED.rules[1] still satisfies its match."
+    },
+    {
+      "code": "MIGRATION_FAILED",
+      "severity": 1,
+      "file": "failures/telo.yaml",
+      "path": "",
+      "message": "The migration EDGE_X_RENAMED of Edge could not be applied: two writes reach /both."
+    }
+  ],
+  "migrated": {
+    "failures/telo.yaml": {
+      "2": {
+        "kind": "E.Pair",
+        "metadata": {
+          "name": "pair"
+        },
+        "keep1": "one",
+        "keep2": [
+          "two"
+        ],
+        "keep3": {
+          "three": 3
+        },
+        "keep4": null,
+        "keep5": true,
+        "q": 2,
+        "y": 1
+      }
+    }
+  }
+}

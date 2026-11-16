@@ -10,8 +10,10 @@
 //! the refusals the Rust kernel makes — a YAML parse failure, the loader's expansion
 //! refusals, a reserved kind prefix, the capability roster, the reference forms and a
 //! plain string left holding `${{` — located by Node's fallback chain; the kernel raises
-//! them from here. Node's other passes have no counterpart yet, and this crate is where
-//! they belong when they arrive.
+//! them from here. A library's `migrations:` block is read and its `match` twinned, but the
+//! consumer stage applying it is not: where one may apply, the hosts refuse the import
+//! reaching the library instead (`library_migrations`). Node's other passes have no
+//! counterpart yet, and this crate is where they belong when they arrive.
 //!
 //! The artifact model — selectors, the layer index, the OCI ref grammar and
 //! inline integrity — lives here for the same reason it lives in the Node
@@ -29,6 +31,7 @@ pub mod graph_diagnostics;
 pub mod host_path_slot;
 pub mod import_resolution_diagnostics;
 pub mod levenshtein;
+pub mod library_migrations;
 pub mod loaded_types;
 pub mod loader_expansion_refusals;
 pub mod manifest_loader;
@@ -62,6 +65,7 @@ pub use analyzer::{analyze, AnalysisOptions};
 pub use diagnostic_location::{find_positions, locate_diagnostic, resolve_range, LocatedDiagnostic};
 pub use graph_diagnostics::{assemble_graph_diagnostics, compromised_files, AssembledDiagnostics};
 pub use import_resolution_diagnostics::{import_failure_code, import_failure_diagnostics};
+pub use library_migrations::{unapplied_library_migrations, UnappliedLibraryMigration};
 pub use loaded_types::{
     GraphLoadError, ImportEdge, ImportFailureReason, LoadedFile, LoadedGraph, LoadedModule, ParseError,
     ParseErrorOrigin,

@@ -11,7 +11,7 @@ import {
   buildEvalPaths,
   evaluatedField,
   extractCelRegionScopes,
-  collectApplicationSources,
+  DiagnosticSeverity,
   collectModuleDocuments,
   inputRequirements,
   requirementDimensions,
@@ -21,6 +21,8 @@ import {
   declarationSignature,
   diffManifests,
   flattenForAnalyzer,
+  registerLoadedGraph,
+  withLibraryMigrationsApplied,
   formatAjvErrors,
   flattenLoadedModule,
   stampScopedImportsIn,
@@ -71,6 +73,7 @@ import {
   listRequests,
   namedShapeReading,
   describeModuleSource,
+  libraryMigrationDiagnostics,
 } from "@telorun/analyzer";
 import {
   createArchiveReader,
@@ -333,6 +336,11 @@ import { policyFingerprint } from "./runtime-registry.js";
 import { describeValue, SchemaValidationError, SchemaValidator } from "./schema-validator.js";
 import { declaredDisplayMessageOf, errorDataRefusal, errorDataValidatorOver } from "./declared-display-messages.js";
 import { staticDiagnosticToRuntime } from "./static-analysis-diagnostics.js";
+import {
+  libraryMigrationRecordOf,
+  refuseFailedMigrations,
+  withLibraryMigrations,
+} from "./library-migration-replay.js";
 import { importLoadFailure } from "./import-load-failure.js";
 import { needRefusalError, type NeedRefusal } from "./need-refusals.js";
 import { refuseReservedKindPrefix } from "./reserved-kind-prefix.js";
@@ -949,14 +957,10 @@ export class Kernel implements IKernel {
       entryModule: this._appName,
       loadedGraph: this._loadedGraph,
       loadModule: (url, options) => this.loadAdoptedModule(url, options),
-      loadLibrary: async (url) => {
+      loadLibrary: async (url, registry) => {
         const graph = await this.loader.loadGraph(url, { desugarImports: true, migrate: true });
         if (graph.errors.length > 0) throw importLoadFailure(graph);
-        return {
-          manifests: flattenForAnalyzer(graph),
-          moduleDocuments: collectModuleDocuments(graph),
-          applicationSources: collectApplicationSources(graph),
-        };
+        return { graph, ...registerLoadedGraph(graph, registry) };
       },
     };
   }
@@ -1508,7 +1512,26 @@ export class Kernel implements IKernel {
           d.code === undefined ? undefined : { "telo.diagnostic.code": d.code },
         );
     }
-    const staticManifests = flattenForAnalyzer(analysisGraph);
+    // Registration of the graph's declaration plane, once, before flatten; the
+    // analysis below reads it and registers nothing.
+    const {
+      registration,
+      manifests: staticManifests,
+      moduleDocuments: analysisDocuments,
+      applicationSources: analysisApplicationSources,
+    } = registerLoadedGraph(analysisGraph, this.registry);
+    // A library migration that applied rewrote the entry's own spelling, reported
+    // like a core one; a failed one is the analysis's to refuse.
+    for (const d of libraryMigrationDiagnostics(analysisGraph)) {
+      if (d.code === "MIGRATION_FAILED") continue;
+      const filePath = (d.data as { filePath?: string } | undefined)?.filePath;
+      this.logging
+        .kernelLogger()
+        .warn(
+          filePath ? `${describeModuleSource(analysisGraph, filePath)}: ${d.message}` : d.message,
+          d.code === undefined ? undefined : { "telo.diagnostic.code": d.code },
+        );
+    }
     this.staticManifests = staticManifests;
     this.loadTimeManifests = staticManifests;
     this.loadTimeDocuments = staticManifests;
@@ -1537,8 +1560,9 @@ export class Kernel implements IKernel {
     // Hash-keyed analysis cache: when the entry's full LoadedGraph matches
     // a previously-stamped successful run (same file bytes, same stamp
     // protocol version), skip the per-resource validation walk inside
-    // `analyzeErrors`. Registration of identities / aliases / definitions
-    // and inline-resource normalisation still runs — only the diagnostic
+    // `analyzeRegistered`. Registration of identities / aliases / definitions
+    // (`registerLoadedGraph`, before flatten) and inline-resource
+    // normalisation still run — only the diagnostic
     // passes are elided. Memory- / HTTP-rooted entries have no
     // local stamp store and always re-validate.
     const analysisSignature = computeAnalysisSignature(analysisGraph, {
@@ -1552,19 +1576,25 @@ export class Kernel implements IKernel {
       ? await readAnalysisStamp(stampKey, analysisDir, this.logging.kernelLogger())
       : undefined;
     const skipValidation = stamp?.signature === analysisSignature;
-    const errors = this.analyzer.analyzeErrors(
+    const analysis = this.analyzer.analyzeRegistered(
       staticManifests,
       // Imported libraries' full documents, for the zone stage's per-library
       // export derivation: `flattenForAnalyzer` forwards only each library's
       // export surface, never its internal dispatch chain.
       {
         skipValidation,
-        moduleDocuments: collectModuleDocuments(analysisGraph),
-        applicationSources: collectApplicationSources(analysisGraph),
+        moduleDocuments: analysisDocuments,
+        applicationSources: analysisApplicationSources,
         hostVersions: nodeHostVersions(),
       },
-      this.registry,
+      registration,
     );
+    // A node a library migration failed on is left as written: the findings
+    // beneath it are held back, as `telo check` holds them back.
+    const errors = withLibraryMigrationsApplied(analysisGraph, analysis).filter(
+      (d) => d.severity === DiagnosticSeverity.Error,
+    );
+    refuseFailedMigrations(analysisGraph, errors);
     // The need table, over every module the load reached: each refusal decidable
     // from the declarations is raised here, before any resource initializes, as
     // its `ERR_` twin — so a load the analysis refused for a need-table problem
@@ -1758,7 +1788,10 @@ export class Kernel implements IKernel {
     // routes them to the import-controller, which actually loads and runs them.
     // Without it (analysis-only desugar) inline imports would pass validation
     // and then never execute.
-    const lm = await this.loader.loadModule(sourceUrl, { compile: true, desugarImports: true, migrate: true });
+    // The library migration stage ran over the analysis load; its record for the
+    // entry is replayed on a copy of this compiled load.
+    const loaded = await this.loader.loadModule(sourceUrl, { compile: true, desugarImports: true, migrate: true });
+    const lm = withLibraryMigrations(loaded, libraryMigrationRecordOf(analysisGraph, loaded.owner.source));
     await this.celModules?.adopt(lm);
     const runtimeManifests = flattenLoadedModule(lm);
     // A scoped `Telo.Import` carries the identity the load resolved it to.

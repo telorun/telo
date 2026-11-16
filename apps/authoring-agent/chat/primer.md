@@ -2354,6 +2354,41 @@ property, which types that CEL variable from the resource's own field: when
 the field is left out the node's own keywords stand, so write `properties: {}`
 with `additionalProperties: false` there for a closed empty binding.
 
+## Keeping consumers working — `migrations:` on a library
+
+When a library renames a kind or reshapes a field its importers write, it
+ships the repair itself: a `migrations:` map on its `Telo.Library` document
+(never on an Application), each key the diagnostic code it reports with
+(`SHOP_LABEL_RENAMED`).
+
+```yaml
+migrations:
+  SHOP_LABEL_RENAMED:
+    reason: "`label:` is now `title:`."
+    rules:
+      - rewrite: Self.Item
+        match: { type: object, required: [label] }
+        move: { /label: /title }
+```
+
+- `rewrite: Self.<Name>` names one type of this library (a kind, a named shape,
+  or a kind it no longer declares); no other library's type is accepted.
+- `match` is closed — `type`, `required`, `const`, `enum`, `properties`,
+  `items`, `<key>: false` for absent — and must be provably disjoint from the
+  current schema (require a key, or pin a `const` / `enum` the current schema
+  refuses), or `telo check` of the library reports `MIGRATION_MATCH_OVERLAPS_SCHEMA`.
+- A rule writes only what changes: `remove`, `move`, `copy` (pointers, positional),
+  `set` (literals only, no tags); everything else is kept. A `kind:` in `set:`
+  is written `Self.<Kind>` and lands in the importer's alias, which is how a kind
+  is renamed at its declarations.
+- It reaches consumers under any alias, in their own files, reported at their line;
+  `telo migrate` writes the repair. Prove each with a legacy fixture in
+  `tests/__fixtures__/manifest-migrations/<code-in-kebab-case>/`, asserted by
+  `tests/manifest-migrations.yaml` (`Assert.Manifest`, `expect.warnings`, `runs: true`
+  where it can boot), importing the library under an alias of its own.
+- There are no version stamps: deleting a migration breaks every published
+  dependent still in the old spelling, so retiring one is a breaking removal.
+
 ## Functions — a computation CEL calls by name
 
 A calculation repeated across expressions is a FUNCTION: a resource of
@@ -3440,7 +3475,8 @@ to `telo.run/next/`: a module's bytes must not depend on which release publishes
   `access:` (`{ kind: Postgres.DatabaseAccess, fields: { url: { scheme: postgres, host: …, user: …, password: !cel "secrets.dbPassword", path: /app } } }`).
 
   The imperative pre-pass bucket is `prepare:` (formerly `beforeMigrations:`,
-  which still loads and is rewritten): data preparation for a narrowing the
+  which still loads: the module's own migration rewrites it under any alias):
+  data preparation for a narrowing the
   pass is about to attempt — backfill before NOT NULL, make values fit before a
   length reduction. `migrations:` runs after the pass. Keys are unique across
   both maps and the ledger stores the key alone, so moving an entry between

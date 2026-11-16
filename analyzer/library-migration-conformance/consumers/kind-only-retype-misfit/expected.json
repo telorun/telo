@@ -1,0 +1,72 @@
+{
+  "diagnostics": [
+    {
+      "code": "REFERENCE_KIND_MISMATCH",
+      "severity": 1,
+      "file": "kind-only-retype-misfit/panel/telo.yaml",
+      "path": "children[0].query",
+      "message": "V.Page/summary: reference at 'children[0].query' → 'V.View' (resolved: 'Views.View') does not match required 'Views.Query'"
+    },
+    {
+      "code": "VIEWS_DATA_REPLACED",
+      "severity": 2,
+      "file": "kind-only-retype-misfit/panel/telo.yaml",
+      "path": "resources.data",
+      "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
+    },
+    {
+      "code": "VIEWS_DATA_REPLACED",
+      "severity": 2,
+      "file": "kind-only-retype-misfit/telo.yaml",
+      "path": "",
+      "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
+    }
+  ],
+  "migrated": {
+    "kind-only-retype-misfit/panel/telo.yaml": {
+      "0": {
+        "kind": "Telo.Library",
+        "metadata": {
+          "name": "Panel"
+        },
+        "lang": "en",
+        "imports": {
+          "V": "../../__fixtures__/views"
+        },
+        "resources": {
+          "data": {
+            "kind": "V.View"
+          }
+        },
+        "exports": {
+          "resources": [
+            "summary"
+          ]
+        }
+      }
+    },
+    "kind-only-retype-misfit/telo.yaml": {
+      "1": {
+        "kind": "V.View",
+        "metadata": {
+          "name": "me"
+        },
+        "content": {
+          "type": "query",
+          "query": {
+            "kind": "V.Query",
+            "url": {
+              "path": "/api/me"
+            }
+          },
+          "children": [
+            {
+              "type": "text",
+              "text": "Signed in"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

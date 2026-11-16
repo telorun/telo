@@ -1,0 +1,17 @@
+kind: Telo.Library
+metadata: { name: Pattern }
+migrations:
+  PATTERN_LEGACY_SCHEME:
+    reason: A link no longer names the legacy scheme.
+    rules:
+      - rewrite: Self.Link
+        match: { type: object, required: [href], properties: { href: { const: "legacy:home" } } }
+        set: { href: / }
+---
+kind: Telo.JsonSchema
+metadata: { name: Link }
+schema:
+  type: object
+  additionalProperties: false
+  required: [href]
+  properties: { href: { type: string, pattern: "^/" } }

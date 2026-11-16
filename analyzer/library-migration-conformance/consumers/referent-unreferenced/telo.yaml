@@ -1,0 +1,21 @@
+kind: Telo.Application
+metadata: { name: Unreferenced }
+lang: en
+imports: { V: ../__fixtures__/views }
+targets: []
+---
+kind: V.Data
+metadata: { name: me }
+source: { path: /api/me }
+reloadOn: [focus, unauthorized]
+content: { type: text, text: Signed in }
+---
+kind: V.Data
+metadata: { name: orders }
+source: { path: /api/orders }
+content: { type: text, text: Orders }
+---
+kind: V.Page
+metadata: { name: home }
+path: /
+children: [{ type: composite, ref: !ref orders }]

@@ -5,15 +5,16 @@
 //! `telo check` prints: the same envelope, text, exit status and cache behaviour, for what
 //! this analyzer covers. It may under-report and never over-report. A construct this build
 //! cannot read — a file the YAML reader holds back, an import it cannot resolve, an input it
-//! cannot open — is no diagnostic: it is held back like a parse failure, reported on stderr
-//! as a host refusal, and makes the run fail.
+//! cannot open, a library migration it does not apply where one may apply — is no
+//! diagnostic: it is held back like a parse failure, reported on stderr as a host refusal,
+//! and makes the run fail.
 
 use std::collections::HashSet;
 
 use serde_json::json;
 use telo_analyzer::{
-    analyze, assemble_graph_diagnostics, find_positions, AnalysisDiagnostic, AnalysisOptions, LoadedGraph,
-    ParseErrorOrigin,
+    analyze, assemble_graph_diagnostics, find_positions, unapplied_library_migrations, AnalysisDiagnostic,
+    AnalysisOptions, LoadedGraph, ParseErrorOrigin,
 };
 use telo_kernel::controllers::module::module_controller::value_branch_accepts;
 use telo_kernel::manifest_sources::local_manifest_cache_source::write_manifest_cache;
@@ -126,8 +127,10 @@ fn owning_file(graph: &LoadedGraph, d: &AnalysisDiagnostic) -> String {
 }
 
 /// Report every construct of the graph this build cannot read on stderr, naming the file,
-/// document, line and column. Returns the files held back — whose diagnostics are dropped,
-/// as a file that failed to parse has its analysis held back — and whether any was found.
+/// document, line and column, and every library migration it does not apply, at the import
+/// reaching the library and the node it may apply at. Returns the files held back — whose
+/// diagnostics are dropped, as a file that failed to parse has its analysis held back — and
+/// whether any was found.
 fn report_unsupported_constructs(graph: &LoadedGraph, log: &Logger) -> std::io::Result<(HashSet<String>, bool)> {
     let mut held = HashSet::new();
     for module in graph.modules.values() {
@@ -150,6 +153,14 @@ fn report_unsupported_constructs(graph: &LoadedGraph, log: &Logger) -> std::io::
             ))?;
             held.insert(file.source.clone());
         }
+    }
+    for refusal in unapplied_library_migrations(graph) {
+        log.out.err_line(&format!(
+            "[{UNSUPPORTED}] {}",
+            refusal.message(|path| display_source_path(path, &log.cwd))
+        ))?;
+        held.insert(refusal.import_file);
+        held.insert(refusal.node_file);
     }
     let refused = !held.is_empty();
     Ok((held, refused))

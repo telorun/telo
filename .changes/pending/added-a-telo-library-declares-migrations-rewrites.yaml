@@ -1,0 +1,12 @@
+units:
+  analyzer: Added
+body: "A `Telo.Library` declares `migrations:`: rewrites of the legacy spellings of its
+  own kinds and named shapes, keyed by the diagnostic code each reports with, each rule
+  a `rewrite: Self.<Name>` recognized by a closed `match` (`type`, `required`, `const`,
+  `enum`, `properties`, `items`, `<key>: false`) and changed by `remove`, `move`,
+  `copy`, `set` and `resolve`. `telo check` of the library proves each `match` disjoint
+  from the type's current schema (`MIGRATION_MATCH_OVERLAPS_SCHEMA`), refuses a `kind:`
+  the library does not own or re-export (`MIGRATION_KIND_FOREIGN`), a `rewrite:` target
+  it neither declares nor gives a `kind:` (`MIGRATION_TYPE_UNKNOWN`) and a binding that
+  does not hold (`MIGRATION_BINDING_INVALID`), and refuses any tag in a migration and
+  `migrations:` on an Application as `SCHEMA_VIOLATION`."

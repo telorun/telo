@@ -1,0 +1,12 @@
+{
+  "diagnostics": [
+    {
+      "code": "MIGRATION_FAILED",
+      "severity": 1,
+      "file": "no-alias/telo.yaml",
+      "path": "notFound[0]",
+      "message": "The migration UI_LINK_HREF_MOVED of Ui could not be applied: it writes the kind Ui.Navigate, and telo.yaml has no import of Ui to spell it with. Add `Ui: ../__fixtures__/ui` under `imports:` and run again."
+    }
+  ],
+  "migrated": {}
+}

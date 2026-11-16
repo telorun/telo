@@ -1,0 +1,12 @@
+kind: Telo.Application
+metadata: { name: Misfit }
+lang: en
+imports:
+  Panel: { source: ./panel, resources: { data: !ref me } }
+  V: ../__fixtures__/views
+targets: []
+---
+kind: V.Data
+metadata: { name: me }
+source: { path: /api/me }
+content: { type: text, text: Signed in }

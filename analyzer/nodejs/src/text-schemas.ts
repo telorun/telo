@@ -19,8 +19,8 @@
  */
 import { serializePattern } from "@telorun/sdk";
 import { isHoistedFragmentDefKey, manifestFragmentOf } from "./manifest-schemas.js";
-import { resolveSchemaReference } from "./schema-reference.js";
 import { readRefSlot } from "./ref-slot.js";
+import { resolveSchemaReference } from "./schema-reference.js";
 import { SCHEMA_REGION_KEYS } from "./schema-region.js";
 import { textKey } from "./text-judgement.js";
 import {
@@ -32,6 +32,7 @@ import {
   type ValuePath,
 } from "./text-slot.js";
 import { isResolvedReference } from "./resolved-reference.js";
+import { walkValueSchema } from "./value-schema-walk.js";
 
 export type SchemaRole = "kind" | "data" | "params";
 
@@ -65,8 +66,8 @@ function inlineSchemaOf(value: unknown): Record<string, unknown> | undefined {
 }
 
 /**
- * Every schema `manifest` holds, found by walking its kind's schema and the value
- * in tandem (stamped slots, `use: schema` slots) and the value alone (contract
+ * Every schema `manifest` holds, found by the value/schema co-walk over its kind's
+ * schema (stamped slots, `use: schema` slots) and the value alone (contract
  * fields). A site is not descended into; an expression or a live value never is.
  */
 export function schemaValueSites(
@@ -81,53 +82,25 @@ export function schemaValueSites(
   };
 
   if (kindSchema) {
-    const entered = new Set<string>();
-    const ids = new WeakMap<object, number>();
-    let nextId = 0;
-    const nodeId = (node: object) => {
-      let id = ids.get(node);
-      if (id === undefined) ids.set(node, (id = nextId++));
-      return id;
-    };
-    const walk = (node: unknown, value: unknown, path: ValuePath): void => {
-      if (!node || typeof node !== "object" || Array.isArray(node) || value === undefined) return;
-      if (isExpression(value)) return;
-      const declared = node as Record<string, any>;
-      const key = `${nodeId(declared)}\0${renderValuePath(path)}`;
-      if (entered.has(key)) return;
-      entered.add(key);
-      const fragment = manifestFragmentOf(declared);
-      if (fragment === "KindSchema" || fragment === "JsonSchema7") {
-        if (isPlainObject(value)) add(fragment === "KindSchema" ? "kind" : "data", path, value);
-        return;
-      }
-      if (fragment === "CallableParams" && Array.isArray(value)) add("params", path, value);
-      const slot = readRefSlot(declared);
-      if (slot?.uses.includes("schema")) {
-        const inline = inlineSchemaOf(value);
-        if (inline) {
-          add("data", inline === value ? path : [...path, "schema"], inline);
-          return;
+    walkValueSchema(kindSchema, manifest, {
+      standing: (value) => (isExpression(value) ? [] : undefined),
+      visit: ({ node, value, path, boundary }) => {
+        if (boundary) return "stop";
+        const fragment = manifestFragmentOf(node);
+        if (fragment === "KindSchema" || fragment === "JsonSchema7") {
+          if (isPlainObject(value)) add(fragment === "KindSchema" ? "kind" : "data", path, value);
+          return "stop";
         }
-      }
-      if (typeof declared.$ref === "string" && declared.$ref.startsWith("#")) {
-        walk(resolveSchemaReference(declared.$ref, kindSchema, undefined)?.node, value, path);
-      }
-      for (const union of ["oneOf", "anyOf", "allOf"] as const) {
-        if (Array.isArray(declared[union])) for (const branch of declared[union]) walk(branch, value, path);
-      }
-      if (Array.isArray(value)) {
-        if (isPlainObject(declared.items)) value.forEach((item, index) => walk(declared.items, item, [...path, index]));
-        return;
-      }
-      if (!isPlainObject(value)) return;
-      const properties = isPlainObject(declared.properties) ? declared.properties : {};
-      for (const [name, child] of Object.entries(value)) {
-        if (name in properties) walk(properties[name], child, [...path, name]);
-        else if (isPlainObject(declared.additionalProperties)) walk(declared.additionalProperties, child, [...path, name]);
-      }
-    };
-    walk(kindSchema, manifest, []);
+        if (fragment === "CallableParams" && Array.isArray(value)) add("params", path, value);
+        if (readRefSlot(node)?.uses.includes("schema")) {
+          const inline = inlineSchemaOf(value);
+          if (inline) {
+            add("data", inline === value ? path : [...path, "schema"], inline);
+            return "stop";
+          }
+        }
+      },
+    });
   }
 
   const contracts = (value: unknown, path: ValuePath): void => {

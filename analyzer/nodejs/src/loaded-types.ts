@@ -1,6 +1,7 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import type { CelProgramSite } from "@telorun/templating";
 import type { Document } from "yaml";
+import type { LibraryMigrationOutcome } from "./library-migrations/stage.js";
 import type { FileMigrations } from "./migrations/driver.js";
 import type { DocumentPosition } from "./position-metadata.js";
 import type { AnalysisDiagnostic, Range } from "./types.js";
@@ -175,6 +176,16 @@ export interface LoadedGraph {
   /** The same for every module but the entry, which the dependency verdict
    *  judges as an entry of its own; never read by the entry's analysis. */
   moduleApplicationSources?: Map<string, Map<string, ApplicationSourceLoad>>;
+  /** The load variant the graph was read in (`LoadOptions.migrate`): the
+   *  library migration stage runs only over a migrated load, never over a
+   *  round-trip view. */
+  migrate: boolean;
+  /** The library migration stage's result, set by the registration that ran it
+   *  (`registerLoadedGraph`) and carried by every graph re-rooted from this one.
+   *  When set, `modules` holds the graph's own copies of every module whose
+   *  closure reaches a library declaring `migrations:`, already migrated. Absent
+   *  when no library of the closure declares migrations. */
+  libraryMigrations?: LibraryMigrationOutcome;
 }
 
 /** One child application source, as the loader found it. */

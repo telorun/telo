@@ -1,0 +1,39 @@
+{
+  "diagnostics": [
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "telo.yaml",
+      "path": "migrations.UI_COLLECTION_KEY_RENAMED.rules[0].rewrite",
+      "message": "Telo.Library/Ui: /migrations/UI_COLLECTION_KEY_RENAMED/rules/0/rewrite must match pattern \"^Self\\.[A-Z][A-Za-z0-9_]*$\""
+    },
+    {
+      "code": "MIGRATION_KIND_FOREIGN",
+      "severity": 1,
+      "file": "telo.yaml",
+      "path": "migrations.UI_SOURCE_COLLECTION_INLINED.rules[0].set.kind",
+      "message": "Telo.Library/Ui: `DataModel.Collection` is neither a kind of Ui nor one it re-exports; a migration writes only its own library's kinds. List `DataModel.Collection` under `exports.kinds` to write it."
+    },
+    {
+      "code": "MIGRATION_KIND_FOREIGN",
+      "severity": 1,
+      "file": "telo.yaml",
+      "path": "migrations.UI_PRESS_TARGET_NAMED.rules[0].set.to.kind",
+      "message": "Telo.Library/Ui: `Self.Navgate` is neither a kind of Ui nor one it re-exports; a migration writes only its own library's kinds. Did you mean `Self.Navigate`?"
+    },
+    {
+      "code": "MIGRATION_MATCH_OVERLAPS_SCHEMA",
+      "severity": 1,
+      "file": "telo.yaml",
+      "path": "migrations.UI_LINK_PRESS_LOOSE.rules[0].match",
+      "message": "Telo.Library/Ui: `match` also accepts the current `link` branch of Self.Node: a `link` value with `text` and `to` matches it. Require a key that branch refuses, such as `href`."
+    },
+    {
+      "code": "MIGRATION_BINDING_INVALID",
+      "severity": 1,
+      "file": "telo.yaml",
+      "path": "migrations.UI_DATA_PLACEMENT_MOVED.rules[0].resolve.data.before",
+      "message": "Telo.Library/Ui: `before: Self.Data` names a type this migration does not rewrite; add a `rewrite: Self.Data` rule to UI_DATA_PLACEMENT_MOVED, or read the declaration as migrated by leaving out `before`."
+    }
+  ]
+}

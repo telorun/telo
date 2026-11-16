@@ -1,0 +1,130 @@
+{
+  "diagnostics": [
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "declaration-positions/telo.yaml",
+      "path": "",
+      "message": "U.Page/legacyKeys: / must NOT have additional properties ('foreign' is not allowed)"
+    },
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "declaration-positions/telo.yaml",
+      "path": "",
+      "message": "U.Page/legacyKeys: / must NOT have additional properties ('sidebar' is not allowed)"
+    },
+    {
+      "code": "UI_BOX_REPLACED",
+      "severity": 4,
+      "file": "declaration-positions/telo.yaml",
+      "path": "pages[0].then.panel",
+      "message": "A box is a panel."
+    },
+    {
+      "code": "UI_BOX_REPLACED",
+      "severity": 4,
+      "file": "declaration-positions/telo.yaml",
+      "path": "resources[0].panel",
+      "message": "A box is a panel."
+    },
+    {
+      "code": "UI_BOX_REPLACED",
+      "severity": 4,
+      "file": "declaration-positions/telo.yaml",
+      "path": "sidebar",
+      "message": "A box is a panel."
+    },
+    {
+      "code": "UI_BOX_REPLACED",
+      "severity": 4,
+      "file": "declaration-positions/telo.yaml",
+      "path": "with[0]",
+      "message": "A box is a panel."
+    }
+  ],
+  "migrated": {
+    "declaration-positions/telo.yaml": {
+      "1": {
+        "kind": "U.Shelf",
+        "metadata": {
+          "name": "branches"
+        },
+        "pages": [
+          {
+            "__expand": "if",
+            "if": "!cel variables.wide",
+            "then": {
+              "kind": "U.Page",
+              "path": "/wide",
+              "panel": {
+                "kind": "U.Panel",
+                "title": "Wide"
+              }
+            },
+            "else": {
+              "kind": "U.Page",
+              "path": "/narrow"
+            }
+          }
+        ]
+      },
+      "2": {
+        "kind": "Telo.Definition",
+        "metadata": {
+          "name": "Wrapped"
+        },
+        "capability": "Telo.Invocable",
+        "resources": [
+          {
+            "kind": "U.Page",
+            "metadata": {
+              "name": "inner"
+            },
+            "path": "/inner",
+            "panel": {
+              "kind": "U.Panel",
+              "title": "Inner"
+            }
+          }
+        ],
+        "invoke": "!ref inner"
+      },
+      "3": {
+        "kind": "Telo.Sequence",
+        "metadata": {
+          "name": "scoped"
+        },
+        "with": [
+          {
+            "kind": "U.Panel",
+            "metadata": {
+              "name": "member"
+            },
+            "title": "Member"
+          }
+        ],
+        "steps": []
+      },
+      "4": {
+        "kind": "U.Page",
+        "metadata": {
+          "name": "legacyKeys"
+        },
+        "path": "/legacy",
+        "sidebar": {
+          "kind": "U.Panel",
+          "title": "Side"
+        },
+        "foreign": {
+          "kind": "Telo.Value",
+          "label": "Kept"
+        },
+        "extra": {
+          "kind": "U.Box",
+          "label": "Open"
+        }
+      }
+    }
+  }
+}

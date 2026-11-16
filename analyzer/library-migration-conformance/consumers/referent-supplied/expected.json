@@ -1,0 +1,69 @@
+{
+  "diagnostics": [
+    {
+      "code": "VIEWS_DATA_REPLACED",
+      "severity": 2,
+      "file": "referent-supplied/panel/telo.yaml",
+      "path": "resources.data",
+      "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
+    },
+    {
+      "code": "VIEWS_DATA_REPLACED",
+      "severity": 2,
+      "file": "referent-supplied/telo.yaml",
+      "path": "",
+      "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
+    }
+  ],
+  "migrated": {
+    "referent-supplied/panel/telo.yaml": {
+      "0": {
+        "kind": "Telo.Library",
+        "metadata": {
+          "name": "Panel"
+        },
+        "lang": "en",
+        "imports": {
+          "V": "../../__fixtures__/views"
+        },
+        "resources": {
+          "data": {
+            "kind": "V.View"
+          }
+        },
+        "exports": {
+          "resources": [
+            "summary"
+          ]
+        }
+      }
+    },
+    "referent-supplied/telo.yaml": {
+      "1": {
+        "kind": "V.View",
+        "metadata": {
+          "name": "me"
+        },
+        "content": {
+          "type": "query",
+          "query": {
+            "kind": "V.Query",
+            "url": {
+              "path": "/api/me"
+            },
+            "reloadOn": [
+              "focus",
+              "unauthorized"
+            ]
+          },
+          "children": [
+            {
+              "type": "text",
+              "text": "Signed in"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

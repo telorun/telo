@@ -1,0 +1,10 @@
+kind: Telo.Library
+metadata: { name: Panel }
+lang: en
+imports: { V: ../../__fixtures__/views }
+resources: { data: { kind: V.Data } }
+exports: { resources: [summary] }
+---
+kind: V.View
+metadata: { name: summary }
+content: { type: composite, ref: !ref data }

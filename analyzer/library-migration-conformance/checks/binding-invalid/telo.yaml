@@ -1,0 +1,28 @@
+kind: Telo.Library
+metadata: { name: Bindings }
+migrations:
+  BINDINGS_CONTENT_MOVED:
+    reason: What is drawn over a read belongs to the node that places it.
+    rules:
+      - rewrite: Self.Source
+        match: { type: object, required: [content] }
+        remove: [/content]
+      - rewrite: Self.Node
+        match: { type: object, required: [type, ref], properties: { type: { const: legacy } } }
+        resolve: { source: { at: /label, before: Self.Source } }
+        move: { "source#/content": /children/0 }
+        copy: { "data#/content": /children/1 }
+        set: { type: current }
+---
+kind: Telo.JsonSchema
+metadata: { name: Node }
+schema:
+  type: object
+  required: [type, ref]
+  additionalProperties: false
+  properties: { type: { const: current }, ref: { x-telo-ref: { kind: Self.Source, use: dependency } }, label: { type: string }, children: { type: array } }
+---
+kind: Telo.Definition
+metadata: { name: Source }
+capability: Telo.Type
+schema: { type: object, additionalProperties: false, properties: { url: { type: string } } }

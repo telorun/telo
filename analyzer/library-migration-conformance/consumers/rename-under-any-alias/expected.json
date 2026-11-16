@@ -1,0 +1,36 @@
+{
+  "diagnostics": [
+    {
+      "code": "MIGRATION_FAILED",
+      "severity": 1,
+      "file": "rename-under-any-alias/telo.yaml",
+      "path": "",
+      "message": "The migration SQL_BEFORE_MIGRATIONS_RENAMED of SQLite could not be applied: it writes /prepare, which the node already holds."
+    },
+    {
+      "code": "SQL_BEFORE_MIGRATIONS_RENAMED",
+      "severity": 2,
+      "file": "rename-under-any-alias/telo.yaml",
+      "path": "",
+      "message": "`beforeMigrations:` is now `prepare:`."
+    }
+  ],
+  "migrated": {
+    "rename-under-any-alias/telo.yaml": {
+      "1": {
+        "kind": "Db.Schema",
+        "metadata": {
+          "name": "schema"
+        },
+        "tables": [
+          "users"
+        ],
+        "prepare": {
+          "20260501_backfill_names": {
+            "statement": "UPDATE users SET name = '' WHERE name IS NULL"
+          }
+        }
+      }
+    }
+  }
+}

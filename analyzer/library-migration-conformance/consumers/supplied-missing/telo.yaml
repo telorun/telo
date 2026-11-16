@@ -1,0 +1,5 @@
+kind: Telo.Application
+metadata: { name: SuppliedMissing }
+lang: en
+imports: { V: ../__fixtures__/views, Panel: ./panel }
+targets: []

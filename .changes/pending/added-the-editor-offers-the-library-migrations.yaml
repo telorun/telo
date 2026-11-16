@@ -1,0 +1,6 @@
+units:
+  packages/ide-support: Added
+  packages/language-server: Added
+body: The editor offers the library migrations of a module as one quick fix on a
+  diagnostic one of them raised, the same edit set telo migrate writes, when none of it
+  is unwritable.

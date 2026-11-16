@@ -1,0 +1,55 @@
+kind: Telo.Library
+metadata: { name: Shapes }
+lang: en
+exports: { kinds: [New, Query, View], resources: [Node] }
+migrations:
+  SHAPES_OLD_RENAMED:
+    reason: Old is Mid.
+    rules:
+      - { rewrite: Self.Old, match: { type: object, required: [a] }, set: { kind: Self.Mid } }
+  SHAPES_MID_RENAMED:
+    reason: Mid is New.
+    rules:
+      - { rewrite: Self.Mid, match: { type: object, required: [b] }, set: { kind: Self.New } }
+  SHAPES_DATA_REPLACED:
+    reason: A read is a query.
+    rules:
+      - { rewrite: Self.Data, match: { type: object, required: [source] }, move: { /source: /url }, set: { kind: Self.Query } }
+      - rewrite: Self.Node
+        match: { type: object, required: [type, ref], properties: { type: { const: composite } } }
+        resolve: { data: { at: /ref, before: Self.Data } }
+        move: { /ref: /query }
+        set: { type: query }
+      - { rewrite: Self.Data, match: { type: object, required: [source] }, remove: [/source], set: { kind: Self.View } }
+  SHAPES_DATA_QUERIED:
+    reason: A read is only a query.
+    rules:
+      - { rewrite: Self.Data, match: { type: object, required: [source] }, move: { /source: /url }, set: { kind: Self.Query } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Node }
+schema:
+  oneOf:
+    - type: object
+      required: [type, ref]
+      additionalProperties: false
+      properties: { type: { const: composite }, ref: { x-telo-ref: { kind: Self.View, use: dependency } } }
+    - type: object
+      required: [type, query]
+      additionalProperties: false
+      properties: { type: { const: query }, query: { x-telo-ref: { kind: Self.Query, use: dependency } } }
+---
+kind: Telo.Definition
+metadata: { name: New }
+capability: Telo.Invocable
+schema: { type: object, additionalProperties: false, properties: { c: { type: integer } } }
+---
+kind: Telo.Definition
+metadata: { name: Query }
+capability: Telo.Invocable
+schema: { type: object, additionalProperties: false, properties: { url: { type: string } } }
+---
+kind: Telo.Definition
+metadata: { name: View }
+capability: Telo.Invocable
+schema: { type: object, additionalProperties: false, properties: { content: { $ref: "telo://Self/Node" } } }

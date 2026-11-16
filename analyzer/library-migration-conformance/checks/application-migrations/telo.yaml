@@ -1,0 +1,11 @@
+kind: Telo.Application
+metadata: { name: Library }
+lang: en
+targets: []
+migrations:
+  LIBRARY_HREF_MOVED:
+    reason: Links name their destination.
+    rules:
+      - rewrite: Self.Node
+        match: { type: object, required: [href] }
+        remove: [/href]

@@ -109,6 +109,12 @@ jobs:
       - name: Check the license boundary
         run: pnpm run check:licenses
 
+      # The analyzer and the kernel know no module: resource-specific behaviour
+      # is expressed through annotations. A comment naming a stdlib kind is how
+      # that knowledge starts, so the check is textual and reads comments too.
+      - name: Check the core names no module
+        run: pnpm run check:module-mentions
+
       # A link into the repository is relative, so GitHub resolves it against the
       # ref being viewed and the site build and npm / .vsix packing rewrite it to
       # the tag they publish. An absolute URL is pinned to one ref and goes stale;

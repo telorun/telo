@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata: { name: Account }
+lang: en
+imports:
+  V: ./views
+  Panel: { source: ./panel, resources: { data: !ref me } }
+targets: []
+---
+kind: V.Data
+metadata: { name: me }
+source: { path: /api/me }
+reloadOn: [focus, unauthorized]
+content: { type: text, text: Signed in }
+---
+kind: V.Screen
+metadata: { name: app }
+pages:
+  - kind: V.Page
+    path: /
+    children: [{ type: composite, ref: !ref me }]
+  - kind: V.Page
+    path: /settings
+    children: [{ type: composite, ref: !ref Panel.summary }]

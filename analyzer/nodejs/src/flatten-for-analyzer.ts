@@ -369,7 +369,66 @@ function withModuleGlobals(
  *
  *  Position metadata (`positionIndex`) is NOT stamped on manifests —
  *  callers look it up via `findPositions(graph, ...)` on the LoadedGraph. */
-export function flattenForAnalyzer(graph: LoadedGraph): ResourceManifest[] {
+export function flattenForAnalyzer(graph: LoadedGraph, plane?: DeclarationPlane): ResourceManifest[] {
+  const result = flattenGraph(graph);
+  if (!plane) return result;
+  // The documents of the plane are the ones its registration registered: the
+  // flattened set holds those objects, so what a registry read returns and what
+  // the analysis walks are one document.
+  let next = 0;
+  const out = result.map((m) => {
+    if (!isDeclarationPlaneDocument(m)) return m;
+    const registered = plane.manifests[next++];
+    if (!registered || !samePlaneDocument(registered, m)) {
+      throw new Error(
+        `The declaration plane does not match the graph it is flattened with: ` +
+          `expected ${describePlaneDocument(m)}, found ${registered ? describePlaneDocument(registered) : "nothing"}.`,
+      );
+    }
+    return registered;
+  });
+  if (next !== plane.manifests.length) {
+    throw new Error(
+      `The declaration plane does not match the graph it is flattened with: it holds ` +
+        `${plane.manifests.length} documents and the graph ${next}.`,
+    );
+  }
+  return out;
+}
+
+/**
+ * The declaration plane of a loaded graph — the documents registration reads:
+ * the entry's module doc, every `Telo.Import` (stamped with its target's
+ * identity and export gates) and every kind document, the entry's and those
+ * forwarded from each library — read before flatten, which reuses them.
+ */
+export interface DeclarationPlane {
+  readonly manifests: readonly ResourceManifest[];
+}
+
+/** Whether registration reads `m`: a module doc, an import or a kind document. */
+function isDeclarationPlaneDocument(m: ResourceManifest): boolean {
+  return isModuleKind(m.kind) || declaresKindOrImport(m);
+}
+
+function samePlaneDocument(a: ResourceManifest, b: ResourceManifest): boolean {
+  return (
+    a.kind === b.kind &&
+    a.metadata?.name === b.metadata?.name &&
+    (a.metadata as { source?: unknown } | undefined)?.source === (b.metadata as { source?: unknown } | undefined)?.source
+  );
+}
+
+function describePlaneDocument(m: ResourceManifest): string {
+  return `${m.kind} '${String(m.metadata?.name)}' of ${String((m.metadata as { source?: unknown } | undefined)?.source)}`;
+}
+
+/** The declaration plane of `graph`, in the order flatten places it. */
+export function declarationPlaneOf(graph: LoadedGraph): DeclarationPlane {
+  return { manifests: flattenGraph(graph).filter(isDeclarationPlaneDocument) };
+}
+
+function flattenGraph(graph: LoadedGraph): ResourceManifest[] {
   const result: ResourceManifest[] = [];
 
   result.push(...selectModuleManifestsForAnalysis(collectModuleManifests(graph.entry), true));

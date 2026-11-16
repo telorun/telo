@@ -1,0 +1,24 @@
+kind: Telo.Application
+metadata: { name: Bindings }
+lang: en
+imports: { C: ./cards }
+targets: []
+---
+kind: C.Card
+metadata: { name: greeting }
+ref: !ref hello
+inheritTitle: true
+---
+kind: C.Label
+metadata: { name: hello }
+text: Hello
+---
+kind: C.Card
+metadata: { name: first }
+ref: !ref second
+inheritTitle: true
+---
+kind: C.Card
+metadata: { name: second }
+ref: !ref first
+inheritTitle: true

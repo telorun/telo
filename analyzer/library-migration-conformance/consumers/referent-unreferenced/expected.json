@@ -1,0 +1,82 @@
+{
+  "diagnostics": [
+    {
+      "code": "VIEWS_DATA_REPLACED",
+      "severity": 2,
+      "file": "referent-unreferenced/telo.yaml",
+      "path": "",
+      "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
+    },
+    {
+      "code": "VIEWS_DATA_REPLACED",
+      "severity": 2,
+      "file": "referent-unreferenced/telo.yaml",
+      "path": "",
+      "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
+    },
+    {
+      "code": "VIEWS_DATA_REPLACED",
+      "severity": 2,
+      "file": "referent-unreferenced/telo.yaml",
+      "path": "children[0]",
+      "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
+    }
+  ],
+  "migrated": {
+    "referent-unreferenced/telo.yaml": {
+      "1": {
+        "kind": "V.View",
+        "metadata": {
+          "name": "me"
+        },
+        "content": {
+          "type": "query",
+          "query": {
+            "kind": "V.Query",
+            "url": {
+              "path": "/api/me"
+            },
+            "reloadOn": [
+              "focus",
+              "unauthorized"
+            ]
+          },
+          "children": [
+            {
+              "type": "text",
+              "text": "Signed in"
+            }
+          ]
+        }
+      },
+      "2": {
+        "kind": "V.Query",
+        "metadata": {
+          "name": "orders"
+        },
+        "url": {
+          "path": "/api/orders"
+        }
+      },
+      "3": {
+        "kind": "V.Page",
+        "metadata": {
+          "name": "home"
+        },
+        "path": "/",
+        "children": [
+          {
+            "type": "query",
+            "query": "!ref orders",
+            "children": [
+              {
+                "type": "text",
+                "text": "Orders"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

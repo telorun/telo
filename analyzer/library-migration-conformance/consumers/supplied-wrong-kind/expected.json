@@ -1,0 +1,42 @@
+{
+  "diagnostics": [
+    {
+      "code": "RESOURCE_INPUT_KIND_MISMATCH",
+      "severity": 1,
+      "file": "supplied-wrong-kind/telo.yaml",
+      "path": "resources.data",
+      "message": "Import 'Panel': resource input 'data' is 'V.Page' (resolved: 'Views.Page'), which does not satisfy the declared constraint 'Views.View'."
+    },
+    {
+      "code": "VIEWS_DATA_REPLACED",
+      "severity": 2,
+      "file": "supplied-wrong-kind/panel/telo.yaml",
+      "path": "resources.data",
+      "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
+    }
+  ],
+  "migrated": {
+    "supplied-wrong-kind/panel/telo.yaml": {
+      "0": {
+        "kind": "Telo.Library",
+        "metadata": {
+          "name": "Panel"
+        },
+        "lang": "en",
+        "imports": {
+          "V": "../../__fixtures__/views"
+        },
+        "resources": {
+          "data": {
+            "kind": "V.View"
+          }
+        },
+        "exports": {
+          "resources": [
+            "summary"
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,5 +1,6 @@
 import type { LoadedGraph } from "@telorun/analyzer";
 import type { RuntimeDiagnostic } from "@telorun/kernel";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createLogger, formatAnalysisDiagnostics, formatDiagnostics } from "../src/logger.js";
@@ -182,10 +183,79 @@ describe("formatAnalysisDiagnostics — structured payload", () => {
     expect(every).not.toHaveProperty("configurations");
   });
 
+  it("reports an info or hint diagnostic under its own severity", () => {
+    const [info, hint] = collect([
+      { severity: 3, code: "X", message: "an info" },
+      { severity: 4, code: "Y", message: "a hint" },
+    ] as never);
+    expect(info!.severity).toBe("info");
+    expect(hint!.severity).toBe("hint");
+  });
+
   it("omits the fields entirely when a diagnostic has no repair to offer", () => {
     const [d] = collect([{ severity: 1, code: "X", message: "no stamp" }] as never);
     expect(d).not.toHaveProperty("fix");
     expect(d).not.toHaveProperty("resource");
     expect(d).not.toHaveProperty("path");
+  });
+});
+
+describe("formatAnalysisDiagnostics — a library migration", () => {
+  const ENTRY = "/work/app/telo.yaml";
+  const LIBRARY = "/work/app/panel/telo.yaml";
+  const log = createLogger(false);
+
+  const file = (source: string) => ({
+    source,
+    requestedUrl: source,
+    manifests: [{ kind: "Telo.Library", metadata: { name: "Panel" } }],
+    positions: [
+      {
+        sourceLine: 0,
+        positionIndex: new Map([["kind", { start: { line: 6, character: 8 }, end: { line: 6, character: 20 } }]]),
+      },
+    ],
+  });
+  const graph = {
+    rootSource: ENTRY,
+    modules: new Map([
+      [ENTRY, { owner: file(ENTRY), partials: [] }],
+      [LIBRARY, { owner: file(LIBRARY), partials: [] }],
+    ]),
+  } as unknown as LoadedGraph;
+
+  const fired = (filePath: string) => ({
+    severity: 3,
+    code: "UI_DATA_REPLACED",
+    message: "A read is a query.",
+    data: {
+      filePath,
+      resource: { kind: "Telo.Library", name: "Panel" },
+      path: "kind",
+      libraryMigration: { module: "ui", source: "oci://ghcr.io/telorun/ui@0.16.0", modulePath: filePath },
+    },
+  });
+
+  it("names the library and the command that applies it, the code on a line of its own", () => {
+    const lines: string[] = [];
+    const sink = { isTTY: false, write: (chunk: string) => (lines.push(chunk), true) };
+    const restore = installOutput(new Output({ format: "text", stdout: sink, stderr: sink, env: {} }));
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue("/work/app");
+    try {
+      formatAnalysisDiagnostics([fired(ENTRY), fired(LIBRARY)] as never, graph, log, ENTRY);
+    } finally {
+      cwd.mockRestore();
+      restore();
+    }
+    expect(lines.join("").split("\n").slice(0, -1)).toEqual([
+      "telo.yaml:7:9  info  A read is a query.",
+      "declared by ui (oci://ghcr.io/telorun/ui@0.16.0)",
+      "run `telo migrate telo.yaml` to apply",
+      "UI_DATA_REPLACED",
+      `${join("panel", "telo.yaml")}:7:9  info  A read is a query.`,
+      "declared by ui (oci://ghcr.io/telorun/ui@0.16.0)",
+      "run `telo migrate panel` to apply",
+      "UI_DATA_REPLACED",
+    ]);
   });
 });

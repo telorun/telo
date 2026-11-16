@@ -1,7 +1,0 @@
-kind: Telo.Library
-metadata: { name: SQLite }
----
-kind: Telo.Definition
-metadata: { name: Schema }
-capability: Telo.Type
-schema: { type: object, properties: { prepare: { type: object } } }

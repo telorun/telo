@@ -1,0 +1,42 @@
+kind: Telo.Application
+metadata: { name: Inline }
+lang: en
+imports: { V: ../__fixtures__/views }
+variables: { wide: { env: WIDE, type: boolean, default: true } }
+targets: []
+---
+kind: V.Page
+metadata: { name: home }
+path: /
+children:
+  - { type: composite, ref: { kind: V.Data, source: { path: /api/home }, content: { type: text, text: Home } } }
+---
+kind: V.Screen
+metadata: { name: branches }
+pages:
+  - !if
+    if: !cel "variables.wide"
+    then:
+      kind: V.Page
+      path: /wide
+      children: [{ type: composite, ref: { kind: V.Data, source: { path: /api/wide }, content: { type: text, text: Wide } } }]
+    else: { kind: V.Page, path: /narrow }
+---
+kind: Telo.Definition
+metadata: { name: Wrapped }
+capability: Telo.Invocable
+resources:
+  - kind: V.Page
+    metadata: { name: inner }
+    path: /inner
+    children: [{ type: composite, ref: { kind: V.Data, source: { path: /api/inner }, content: { type: text, text: Inner } } }]
+invoke: !ref inner
+---
+kind: Telo.Sequence
+metadata: { name: scoped }
+with:
+  - kind: V.Page
+    metadata: { name: member }
+    path: /member
+    children: [{ type: composite, ref: { kind: V.Data, source: { path: /api/member }, content: { type: text, text: Member } } }]
+steps: []

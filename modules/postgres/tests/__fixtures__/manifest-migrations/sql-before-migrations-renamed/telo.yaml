@@ -1,0 +1,30 @@
+kind: Telo.Application
+metadata:
+  name: LegacyBeforeMigrations
+  version: 1.0.0
+  description: |
+    A schema written with the legacy `beforeMigrations:` spelling under an import
+    alias no standard-library entry ever named. It is only checked, since running
+    it needs a database.
+imports: { Sql: ../../../../../sql, Store: ../../../.. }
+targets:
+  - !ref schema
+---
+kind: Store.Connection
+metadata: { name: db }
+access:
+  kind: Store.DatabaseAccess
+  fields: { url: postgres://postgres:postgres@localhost:5432/postgres }
+---
+kind: Store.Table
+metadata: { name: users }
+table: users
+columns:
+  id: { type: integer, primaryKey: true }
+  name: { type: text, nullable: false }
+---
+kind: Store.Schema
+metadata: { name: schema }
+connection: !ref db
+tables: [!ref users]
+beforeMigrations: { 20260501_noop: { statement: "SELECT 1" } }

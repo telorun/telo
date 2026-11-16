@@ -1,0 +1,77 @@
+kind: Telo.Library
+metadata: { name: Ui }
+lang: en
+exports: { kinds: [Page, Navigate, Shelf, Panel], resources: [Node] }
+migrations:
+  UI_LINK_HREF_MOVED:
+    reason: A link's destination is a navigation effect.
+    rules:
+      - rewrite: Self.Node
+        match: { type: object, required: [type, href], properties: { type: { const: link }, to: false } }
+        move: { /href: /to/href }
+        set: { to: { kind: Self.Navigate } }
+  UI_NAVIGATE_HREF_RENAMED:
+    severity: info
+    reason: Every destination names where it goes as its address.
+    rules:
+      - rewrite: Self.Navigate
+        match: { type: object, required: [href] }
+        move: { /href: /address }
+  UI_BOX_REPLACED:
+    severity: hint
+    reason: A box is a panel.
+    rules:
+      - rewrite: Self.Box
+        match: { type: object, required: [label] }
+        move: { /label: /title }
+        set: { kind: Self.Panel }
+---
+kind: Telo.JsonSchema
+metadata: { name: Node }
+schema:
+  oneOf:
+    - type: object
+      required: [type, text]
+      additionalProperties: false
+      properties: { type: { const: text }, text: { type: string } }
+    - type: object
+      required: [type, to]
+      additionalProperties: false
+      properties:
+        type: { const: link }
+        text: { type: string }
+        to: { x-telo-ref: { kind: Self.Navigate, use: dependency } }
+---
+kind: Telo.Definition
+metadata: { name: Navigate }
+capability: Telo.Invocable
+schema:
+  type: object
+  additionalProperties: false
+  properties: { address: { type: object, properties: { path: { type: string } } } }
+---
+kind: Telo.Definition
+metadata: { name: Panel }
+capability: Telo.Invocable
+schema: { type: object, additionalProperties: false, properties: { title: { type: string } } }
+---
+kind: Telo.Definition
+metadata: { name: Page }
+capability: Telo.Invocable
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    path: { type: string }
+    children: { type: array, items: { anyOf: [{ $ref: "telo://Self/Node" }, { type: string }] } }
+    extra: { type: object }
+    panel: { x-telo-ref: { kind: Self.Panel, use: dependency } }
+---
+kind: Telo.Definition
+metadata: { name: Shelf }
+capability: Telo.Invocable
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    pages: { type: array, items: { x-telo-ref: { kind: Self.Page, use: dependency } } }

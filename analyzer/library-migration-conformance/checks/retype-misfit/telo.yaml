@@ -1,0 +1,11 @@
+kind: Telo.Library
+metadata: { name: Panel }
+lang: en
+imports: { V: ../../consumers/__fixtures__/views }
+resources: { data: { kind: V.Data } }
+exports: { resources: [summary] }
+---
+kind: V.Page
+metadata: { name: summary }
+path: /
+children: [{ type: query, query: !ref data }]

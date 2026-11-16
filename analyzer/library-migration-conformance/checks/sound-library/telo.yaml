@@ -1,0 +1,59 @@
+kind: Telo.Library
+metadata: { name: Shapes }
+lang: en
+imports: { Parts: ./parts }
+exports: { kinds: [Navigate, Query, Parts.Panel] }
+migrations:
+  SHAPES_LINK_HREF_MOVED:
+    severity: info
+    reason: A link names its destination as a navigation.
+    rules:
+      - rewrite: Self.Node
+        match: { type: object, required: [type, href], properties: { type: { const: link }, to: false } }
+        move: { /href: /to/href }
+        set: { to: { kind: Self.Navigate, legacyTitle: Untitled } }
+  SHAPES_DATA_REPLACED:
+    reason: A read is a query.
+    rules:
+      - rewrite: Self.Data
+        match: { type: object, required: [source, content] }
+        move: { /source: /url }
+        remove: [/content]
+        set: { kind: Self.Query }
+      - rewrite: Self.Node
+        match: { type: object, required: [type, ref], properties: { type: { const: composite } } }
+        resolve: { data: { at: /ref, before: Self.Data } }
+        move: { /ref: /query }
+        copy: { data#/content: /children/0 }
+        set: { type: query }
+  SHAPES_PANEL_INLINED:
+    reason: A panel is a part.
+    rules:
+      - rewrite: Self.Node
+        match: { type: object, required: [type, panel], properties: { type: { const: query } } }
+        resolve: { target: { at: /query } }
+        copy: { target#/url: /panel/url }
+        set: { panel: { kind: Parts.Panel } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Node }
+schema:
+  oneOf:
+    - type: object
+      required: [type, to]
+      additionalProperties: false
+      properties: { type: { const: link }, to: { x-telo-ref: { kind: Self.Navigate, use: dependency } } }
+    - type: object
+      required: [type, query]
+      additionalProperties: false
+      properties: { type: { const: query }, query: { x-telo-ref: { kind: Self.Query, use: dependency } }, children: { type: array } }
+---
+kind: Telo.Definition
+metadata: { name: Navigate }
+capability: Telo.Type
+schema: { type: object, additionalProperties: false, properties: { href: { type: string } } }
+---
+kind: Telo.Definition
+metadata: { name: Query }
+capability: Telo.Type
+schema: { type: object, additionalProperties: false, properties: { url: { type: string } } }

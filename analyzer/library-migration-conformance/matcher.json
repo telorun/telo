@@ -1,0 +1,445 @@
+{
+  "vectors": [
+    {
+      "id": "type-object-map",
+      "value": "{ a: 1 }",
+      "match": {
+        "type": "object"
+      },
+      "holds": true
+    },
+    {
+      "id": "type-object-string",
+      "value": "text",
+      "match": {
+        "type": "object"
+      },
+      "holds": false
+    },
+    {
+      "id": "type-object-list",
+      "value": "[1, 2]",
+      "match": {
+        "type": "object"
+      },
+      "holds": false
+    },
+    {
+      "id": "type-list-of-names",
+      "value": "text",
+      "match": {
+        "type": [
+          "object",
+          "string"
+        ]
+      },
+      "holds": true
+    },
+    {
+      "id": "type-integer-whole",
+      "value": "3",
+      "match": {
+        "type": "integer"
+      },
+      "holds": true
+    },
+    {
+      "id": "type-integer-fraction",
+      "value": "3.5",
+      "match": {
+        "type": "integer"
+      },
+      "holds": false
+    },
+    {
+      "id": "type-number-whole",
+      "value": "3",
+      "match": {
+        "type": "number"
+      },
+      "holds": true
+    },
+    {
+      "id": "type-null",
+      "value": "null",
+      "match": {
+        "type": "null"
+      },
+      "holds": true
+    },
+    {
+      "id": "type-tagged",
+      "value": "!cel \"variables.name\"",
+      "match": {
+        "type": "string"
+      },
+      "holds": false
+    },
+    {
+      "id": "type-ref-tagged",
+      "value": "!ref authors",
+      "match": {
+        "type": "object"
+      },
+      "holds": false
+    },
+    {
+      "id": "type-expansion-tagged",
+      "value": "!if { when: !cel \"variables.on\", then: { a: 1 }, else: { a: 2 } }",
+      "match": {
+        "type": "object"
+      },
+      "holds": false
+    },
+    {
+      "id": "const-equal",
+      "value": "link",
+      "match": {
+        "const": "link"
+      },
+      "holds": true
+    },
+    {
+      "id": "const-unequal",
+      "value": "text",
+      "match": {
+        "const": "link"
+      },
+      "holds": false
+    },
+    {
+      "id": "const-tagged",
+      "value": "!cel \"'link'\"",
+      "match": {
+        "const": "link"
+      },
+      "holds": false
+    },
+    {
+      "id": "const-deep-key-order",
+      "value": "{ b: [1, { c: true }], a: x }",
+      "match": {
+        "const": {
+          "a": "x",
+          "b": [
+            1,
+            {
+              "c": true
+            }
+          ]
+        }
+      },
+      "holds": true
+    },
+    {
+      "id": "const-whole-and-fraction-equal",
+      "value": "1.0",
+      "match": {
+        "const": 1
+      },
+      "holds": true
+    },
+    {
+      "id": "enum-member",
+      "value": "query",
+      "match": {
+        "enum": [
+          "composite",
+          "query"
+        ]
+      },
+      "holds": true
+    },
+    {
+      "id": "enum-non-member",
+      "value": "text",
+      "match": {
+        "enum": [
+          "composite",
+          "query"
+        ]
+      },
+      "holds": false
+    },
+    {
+      "id": "enum-tagged",
+      "value": "!cel \"x\"",
+      "match": {
+        "enum": [
+          "composite",
+          "query"
+        ]
+      },
+      "holds": false
+    },
+    {
+      "id": "required-present",
+      "value": "{ type: link, href: / }",
+      "match": {
+        "required": [
+          "type",
+          "href"
+        ]
+      },
+      "holds": true
+    },
+    {
+      "id": "required-absent",
+      "value": "{ type: link }",
+      "match": {
+        "required": [
+          "type",
+          "href"
+        ]
+      },
+      "holds": false
+    },
+    {
+      "id": "required-null-present",
+      "value": "{ href: null }",
+      "match": {
+        "required": [
+          "href"
+        ]
+      },
+      "holds": true
+    },
+    {
+      "id": "required-tagged-member",
+      "value": "{ href: !cel \"row.id\" }",
+      "match": {
+        "required": [
+          "href"
+        ]
+      },
+      "holds": true
+    },
+    {
+      "id": "required-ref-member",
+      "value": "{ ref: !ref me }",
+      "match": {
+        "required": [
+          "ref"
+        ]
+      },
+      "holds": true
+    },
+    {
+      "id": "required-on-scalar",
+      "value": "text",
+      "match": {
+        "required": [
+          "href"
+        ]
+      },
+      "holds": true
+    },
+    {
+      "id": "required-on-tagged",
+      "value": "!cel \"x\"",
+      "match": {
+        "required": [
+          "href"
+        ]
+      },
+      "holds": true
+    },
+    {
+      "id": "properties-absent-key-absent",
+      "value": "{ type: link }",
+      "match": {
+        "properties": {
+          "to": false
+        }
+      },
+      "holds": true
+    },
+    {
+      "id": "properties-absent-key-present",
+      "value": "{ type: link, to: x }",
+      "match": {
+        "properties": {
+          "to": false
+        }
+      },
+      "holds": false
+    },
+    {
+      "id": "properties-absent-key-tagged",
+      "value": "{ type: link, to: !ref home }",
+      "match": {
+        "properties": {
+          "to": false
+        }
+      },
+      "holds": false
+    },
+    {
+      "id": "properties-member-holds",
+      "value": "{ type: link }",
+      "match": {
+        "properties": {
+          "type": {
+            "const": "link"
+          }
+        }
+      },
+      "holds": true
+    },
+    {
+      "id": "properties-member-fails",
+      "value": "{ type: text }",
+      "match": {
+        "properties": {
+          "type": {
+            "const": "link"
+          }
+        }
+      },
+      "holds": false
+    },
+    {
+      "id": "properties-member-missing",
+      "value": "{ text: hi }",
+      "match": {
+        "properties": {
+          "type": {
+            "const": "link"
+          }
+        }
+      },
+      "holds": true
+    },
+    {
+      "id": "properties-member-tagged",
+      "value": "{ type: !cel \"x\" }",
+      "match": {
+        "properties": {
+          "type": {
+            "type": "string"
+          }
+        }
+      },
+      "holds": false
+    },
+    {
+      "id": "properties-nested-required",
+      "value": "{ to: { href: / } }",
+      "match": {
+        "properties": {
+          "to": {
+            "required": [
+              "href"
+            ]
+          }
+        }
+      },
+      "holds": true
+    },
+    {
+      "id": "properties-nested-required-fails",
+      "value": "{ to: { path: / } }",
+      "match": {
+        "properties": {
+          "to": {
+            "required": [
+              "href"
+            ]
+          }
+        }
+      },
+      "holds": false
+    },
+    {
+      "id": "items-each-holds",
+      "value": "[{ type: a }, { type: b }]",
+      "match": {
+        "items": {
+          "required": [
+            "type"
+          ]
+        }
+      },
+      "holds": true
+    },
+    {
+      "id": "items-one-fails",
+      "value": "[{ type: a }, { kind: b }]",
+      "match": {
+        "items": {
+          "required": [
+            "type"
+          ]
+        }
+      },
+      "holds": false
+    },
+    {
+      "id": "items-empty",
+      "value": "[]",
+      "match": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "holds": true
+    },
+    {
+      "id": "items-on-map",
+      "value": "{ a: 1 }",
+      "match": {
+        "items": {
+          "type": "string"
+        }
+      },
+      "holds": true
+    },
+    {
+      "id": "items-tagged-element",
+      "value": "[a, !cel \"b\"]",
+      "match": {
+        "items": {
+          "type": "string"
+        }
+      },
+      "holds": false
+    },
+    {
+      "id": "legacy-link",
+      "value": "{ type: link, text: Authors, href: { path: !ref authors } }",
+      "match": {
+        "type": "object",
+        "required": [
+          "type",
+          "href"
+        ],
+        "properties": {
+          "type": {
+            "const": "link"
+          },
+          "to": false
+        }
+      },
+      "holds": true
+    },
+    {
+      "id": "current-link",
+      "value": "{ type: link, text: Authors, to: { kind: U.Navigate, href: { path: !ref authors } } }",
+      "match": {
+        "type": "object",
+        "required": [
+          "type",
+          "href"
+        ],
+        "properties": {
+          "type": {
+            "const": "link"
+          },
+          "to": false
+        }
+      },
+      "holds": false
+    }
+  ]
+}

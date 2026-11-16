@@ -1,0 +1,6 @@
+units:
+  analyzer: Added
+body: "`StaticAnalyzer.analyzeRegistered` analyses a set whose declaration plane
+  `registerDefinitions` already registered, and `registerLoadedGraph` registers a loaded
+  graph's plane and flattens the graph over it; `analyze()` and `analyzeLoadedGraph` are
+  built on the two."

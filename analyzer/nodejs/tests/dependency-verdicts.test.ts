@@ -86,9 +86,11 @@ const summary = (d: AnalysisDiagnostic) => {
 
 class CountingAnalyzer extends StaticAnalyzer {
   calls = 0;
-  override analyze(...args: Parameters<StaticAnalyzer["analyze"]>): ReturnType<StaticAnalyzer["analyze"]> {
+  override analyzeRegistered(
+    ...args: Parameters<StaticAnalyzer["analyzeRegistered"]>
+  ): ReturnType<StaticAnalyzer["analyzeRegistered"]> {
     this.calls++;
-    return super.analyze(...args);
+    return super.analyzeRegistered(...args);
   }
 }
 

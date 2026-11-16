@@ -1,0 +1,32 @@
+{
+  "diagnostics": [
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "telo.yaml",
+      "path": "migrations",
+      "message": "Telo.Library/Ui: /migrations must NOT have additional properties ('linkPress' is not allowed)"
+    },
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "telo.yaml",
+      "path": "migrations.UI_LINK_HREF_MOVED.rules[0].match",
+      "message": "Telo.Library/Ui: /migrations/UI_LINK_HREF_MOVED/rules/0/match must NOT have additional properties ('anyOf' is not allowed)"
+    },
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "telo.yaml",
+      "path": "migrations.UI_LINK_SLOT_MATCHED.rules[0].match.properties.to",
+      "message": "Telo.Library/Ui: /migrations/UI_LINK_SLOT_MATCHED/rules/0/match/properties/to must NOT have additional properties ('x-telo-ref' is not allowed)"
+    },
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "telo.yaml",
+      "path": "migrations.UI_LINK_HREF_MOVED.rules[0].set.to.title",
+      "message": "Telo.Library/Ui: `set:` holds literals only, and no expression runs in a migration; `migrations.UI_LINK_HREF_MOVED.rules[0].set.to.title` holds `!cel`. Carry the value with `copy: { /text: /to/title }`."
+    }
+  ]
+}

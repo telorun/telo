@@ -1,0 +1,18 @@
+# The module declares the rename of `beforeMigrations:`, so it reaches a consumer
+# under any alias: the fixture imports it as `Store`.
+kind: Telo.Application
+metadata:
+  name: SqliteManifestMigrations
+  version: 1.0.0
+  description: A legacy `beforeMigrations:` loads migrated and runs under a custom alias.
+imports: { Assert: ../../assert }
+targets:
+  - !ref sqlBeforeMigrationsRenamed
+---
+kind: Assert.Manifest
+metadata: { name: sqlBeforeMigrationsRenamed }
+source: ./__fixtures__/manifest-migrations/sql-before-migrations-renamed/telo.yaml
+expect:
+  warnings:
+    - { code: SQL_BEFORE_MIGRATIONS_RENAMED }
+  runs: true

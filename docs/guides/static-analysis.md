@@ -131,6 +131,20 @@ Errors fail the command; warnings do not. A warning flags something suspicious
 rather than broken — an unused declaration, a deprecated kind or spelling, a
 name that breaks the casing convention. The
 [diagnostics reference](/reference/diagnostics) marks each warning with ⚠️.
+A diagnostic of a lower severity prints `info` or `hint` instead, and carries
+that label as its `-o json` `severity`; it counts as a warning and never fails
+the command.
+
+A library migration that rewrote one of your nodes names the library that
+declares it and the command that writes the rewrite into your file, then its
+code:
+
+```
+telo.yaml:28:9  warning  A link's destination is a navigation effect, so every press target is written one way.
+declared by ui (oci://ghcr.io/telorun/ui@<version>)
+run `telo migrate telo.yaml` to apply
+UI_LINK_HREF_MOVED
+```
 
 ## When a CEL expression will not type-check
 

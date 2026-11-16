@@ -596,6 +596,7 @@ export class Loader {
         modules,
         importEdges: new Map(),
         overrides: new Map(),
+        migrate: options?.migrate === true,
         migrationDiagnostics: [],
         versionDiagnostics: [],
         moduleFileDiagnostics: [],
@@ -741,6 +742,7 @@ export class Loader {
       importEdges,
       scopedImportEdges,
       overrides,
+      migrate: options?.migrate === true,
       migrationDiagnostics: collectMigrationDiagnostics(entry),
       versionDiagnostics: diagnostics,
       moduleFileDiagnostics: await collectLocalModuleFileDiagnostics(

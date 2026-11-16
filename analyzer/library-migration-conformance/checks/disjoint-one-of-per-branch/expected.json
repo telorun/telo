@@ -1,0 +1,11 @@
+{
+  "diagnostics": [
+    {
+      "code": "MIGRATION_MATCH_OVERLAPS_SCHEMA",
+      "severity": 1,
+      "file": "telo.yaml",
+      "path": "migrations.BRANCHES_LABEL_RENAMED.rules[0].match",
+      "message": "Telo.Library/Branches: `match` also accepts the current `text` branch of Self.Node: a `text` value with `text` matches it. Require a key that branch refuses, such as `label`."
+    }
+  ]
+}

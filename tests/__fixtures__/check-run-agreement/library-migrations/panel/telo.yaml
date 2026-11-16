@@ -1,0 +1,6 @@
+# Still written against the release of Shop that declared crates.
+kind: Telo.Library
+metadata: { name: Panel }
+lang: en
+imports: { Shop: ../shop }
+resources: { item: { kind: Shop.Crate } }

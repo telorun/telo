@@ -1,0 +1,10 @@
+kind: Telo.Application
+metadata: { name: Catalog }
+lang: en
+imports: { Shop: ./shop }
+targets: []
+---
+kind: Shop.Home
+metadata: { name: home }
+notFound:
+  - { type: link, text: Back to the shop, href: { path: / } }

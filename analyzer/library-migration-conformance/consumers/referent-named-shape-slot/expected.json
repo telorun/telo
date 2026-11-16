@@ -1,0 +1,63 @@
+{
+  "diagnostics": [
+    {
+      "code": "VIEWS_DATA_REPLACED",
+      "severity": 2,
+      "file": "referent-named-shape-slot/telo.yaml",
+      "path": "",
+      "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
+    },
+    {
+      "code": "VIEWS_DATA_REPLACED",
+      "severity": 2,
+      "file": "referent-named-shape-slot/telo.yaml",
+      "path": "with[0].children[0]",
+      "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
+    }
+  ],
+  "migrated": {
+    "referent-named-shape-slot/telo.yaml": {
+      "1": {
+        "kind": "V.Query",
+        "metadata": {
+          "name": "me"
+        },
+        "reloadOn": [
+          "focus",
+          "unauthorized"
+        ],
+        "url": {
+          "path": "/api/me"
+        }
+      },
+      "2": {
+        "kind": "Telo.Sequence",
+        "metadata": {
+          "name": "scoped"
+        },
+        "with": [
+          {
+            "kind": "V.Page",
+            "metadata": {
+              "name": "member"
+            },
+            "path": "/",
+            "children": [
+              {
+                "type": "query",
+                "query": "!ref me",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "Signed in"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "steps": []
+      }
+    }
+  }
+}

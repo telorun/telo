@@ -1,0 +1,25 @@
+{
+  "diagnostics": [
+    {
+      "code": "MIGRATION_BINDING_INVALID",
+      "severity": 1,
+      "file": "telo.yaml",
+      "path": "migrations.BINDINGS_CONTENT_MOVED.rules[1].resolve.source.at",
+      "message": "Telo.Library/Bindings: `at: /label` names neither a reference slot of Self.Node nor a key `match` requires; point it at the `!ref` or inline declaration the node holds, and require that key in `match`."
+    },
+    {
+      "code": "MIGRATION_BINDING_INVALID",
+      "severity": 1,
+      "file": "telo.yaml",
+      "path": "migrations.BINDINGS_CONTENT_MOVED.rules[1].copy.data#/content",
+      "message": "Telo.Library/Bindings: `copy:` source `data#/content` reads the binding `data`, which no `resolve:` entry of this rule declares; declare it under `resolve:`, or copy from the matched node with a pointer."
+    },
+    {
+      "code": "MIGRATION_BINDING_INVALID",
+      "severity": 1,
+      "file": "telo.yaml",
+      "path": "migrations.BINDINGS_CONTENT_MOVED.rules[1].move.source#/content",
+      "message": "Telo.Library/Bindings: `move:` source `source#/content` reads a binding, and a rule writes only its own node; carry the value with `copy:` instead."
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "diagnostics": [
+    {
+      "code": "VIEWS_DATA_REPLACED",
+      "severity": 2,
+      "file": "binding-shadowed-template/telo.yaml",
+      "path": "",
+      "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
+    }
+  ],
+  "migrated": {
+    "binding-shadowed-template/telo.yaml": {
+      "1": {
+        "kind": "V.View",
+        "metadata": {
+          "name": "me"
+        },
+        "content": {
+          "type": "query",
+          "query": {
+            "kind": "V.Query",
+            "url": {
+              "path": "/api/me"
+            }
+          },
+          "children": [
+            {
+              "type": "text",
+              "text": "TOPLEVEL"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

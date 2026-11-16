@@ -1,0 +1,14 @@
+# A crate supplied to a library keeps its content: the import's supply is a
+# reference no rule reads, so the crate takes the fallback and becomes a box,
+# and the library's input is retyped to the box.
+kind: Telo.Application
+metadata: { name: SuppliedCrate }
+lang: en
+imports:
+  Shop: ./shop
+  Panel: { source: ./panel, resources: { item: !ref crate } }
+targets: []
+---
+kind: Shop.Crate
+metadata: { name: crate }
+contents: apples

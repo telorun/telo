@@ -1,0 +1,37 @@
+kind: Telo.Application
+metadata: { name: Positions }
+lang: en
+imports: { U: ../__fixtures__/ui }
+variables: { wide: { env: WIDE, type: boolean, default: true } }
+targets: []
+---
+kind: U.Shelf
+metadata: { name: branches }
+pages:
+  - !if
+    if: !cel "variables.wide"
+    then: { kind: U.Page, path: /wide, panel: { kind: U.Box, label: Wide } }
+    else: { kind: U.Page, path: /narrow }
+---
+kind: Telo.Definition
+metadata: { name: Wrapped }
+capability: Telo.Invocable
+resources:
+  - kind: U.Page
+    metadata: { name: inner }
+    path: /inner
+    panel: { kind: U.Box, label: Inner }
+invoke: !ref inner
+---
+kind: Telo.Sequence
+metadata: { name: scoped }
+with:
+  - { kind: U.Box, metadata: { name: member }, label: Member }
+steps: []
+---
+kind: U.Page
+metadata: { name: legacyKeys }
+path: /legacy
+sidebar: { kind: U.Box, label: Side }
+foreign: { kind: Telo.Value, label: Kept }
+extra: { kind: U.Box, label: Open }

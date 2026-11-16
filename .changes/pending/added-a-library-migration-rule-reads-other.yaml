@@ -1,0 +1,14 @@
+units:
+  analyzer: Added
+body: "A library migration rule reads other declarations through `resolve:` — inline at
+  `at` or named by the `!ref` there, as migrated or, with `before: Self.<Type>`, as it
+  was before the migration's hand-over rule of that type — so a node placing a
+  declaration takes over the content the declaration's own rewrite drops. The hand-over
+  commits only when every reference to the referent in its module instance is read by
+  such a rule; otherwise the referent takes the type's later fallback rule and every
+  placing node is left as written, and with no fallback the referent reports
+  `MIGRATION_FAILED` naming the reference that kept it from firing. A library's
+  kind-only `resources:` / `needs:` entry naming a removed kind is retyped to the kind
+  its rules replace it with. `telo check` of a library refuses a `rewrite:` naming a
+  type it does not declare and no rule gives a `kind:` (`MIGRATION_TYPE_UNKNOWN`), and
+  the stage runs only over a migrated load."

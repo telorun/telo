@@ -1,0 +1,32 @@
+kind: Telo.Application
+metadata: { name: Failures }
+lang: en
+imports: { E: ../__fixtures__/edge }
+targets: []
+---
+kind: E.Cycle
+metadata: { name: cycle }
+a: 1
+---
+kind: E.Pair
+metadata: { name: pair }
+x: 1
+p: 2
+keep1: one
+keep2: [two]
+keep3: { three: 3 }
+keep4: null
+keep5: true
+---
+kind: E.Leftover
+metadata: { name: leftover }
+old: 1
+---
+kind: E.Clash
+metadata: { name: clash }
+left: 1
+right: 2
+---
+kind: E.Misspelled
+metadata: { name: misspelled }
+label: x

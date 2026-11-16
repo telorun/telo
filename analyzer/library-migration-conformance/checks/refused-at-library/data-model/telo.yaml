@@ -1,0 +1,8 @@
+kind: Telo.Library
+metadata: { name: DataModel }
+exports: { kinds: [Collection] }
+---
+kind: Telo.Definition
+metadata: { name: Collection }
+capability: Telo.Type
+schema: { type: object, additionalProperties: false, properties: { key: { type: string } } }

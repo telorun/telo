@@ -1,0 +1,28 @@
+kind: Telo.Application
+metadata: { name: ShadowedTemplate }
+lang: en
+imports: { V: ../__fixtures__/views, H: ../__fixtures__/hold }
+targets: []
+---
+kind: V.Data
+metadata: { name: me }
+source: { path: /api/me }
+reloadOn: [focus, unauthorized]
+content: { type: text, text: Signed in }
+---
+kind: V.Page
+metadata: { name: home }
+path: /
+children: [{ type: composite, ref: !ref me }]
+---
+kind: Telo.Value
+metadata: { name: reader }
+value: ok
+---
+kind: Telo.Definition
+metadata: { name: Wrapped }
+capability: Telo.Invocable
+resources:
+  - { kind: H.Pin, metadata: { name: me }, target: !ref reader }
+  - { kind: H.Pin, metadata: { name: inner }, target: !ref me }
+invoke: !ref inner

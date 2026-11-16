@@ -1,0 +1,5 @@
+kind: Telo.Application
+metadata: { name: FailedInLibrary }
+lang: en
+imports: { Shelf: ./failed-library }
+targets: []

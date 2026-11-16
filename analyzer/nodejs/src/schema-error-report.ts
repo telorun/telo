@@ -59,6 +59,8 @@ export interface SchemaIssue {
   keyword?: string;
   /** For `required`, the property that is missing. */
   missingProperty?: string;
+  /** For `additionalProperties`, the property that is not allowed. */
+  additionalProperty?: string;
   /** For `x-telo-type`, the value type the value failed. */
   valueType?: string;
   /** The message after the pointer it opens with, where it quotes its place —
@@ -731,7 +733,7 @@ export function schemaIssues(
   // reads identically at one place; it is one finding.
   const seen = new Set<string>();
   return reducedErrors(errors, data).flatMap((err) => {
-    const { missingProperty: missing, valueType } = err.params ?? {};
+    const { missingProperty: missing, additionalProperty: extra, valueType } = err.params ?? {};
     const prose = errorProse(err);
     const issue: SchemaIssue = {
       message: formatSingleError(err),
@@ -741,6 +743,7 @@ export function schemaIssues(
       quoteTrail: err.keyword === "required" && err.params?.missingProperty ? 1 : 0,
       ...(err.keyword ? { keyword: err.keyword } : {}),
       ...(typeof missing === "string" ? { missingProperty: missing } : {}),
+      ...(err.keyword === "additionalProperties" && typeof extra === "string" ? { additionalProperty: extra } : {}),
       ...(typeof valueType === "string" && valueType !== "" ? { valueType } : {}),
     };
     const key = `${issue.path}\u0000${issue.message}`;

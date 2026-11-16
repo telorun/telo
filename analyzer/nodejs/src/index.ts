@@ -22,6 +22,13 @@ export {
 export { collectApplicationSources, type ApplicationSourceRecords } from "./child-application.js";
 export { assembleGraphDiagnostics, compromisedFiles, partitionAnalysisDiagnostics } from "./graph-diagnostics.js";
 export { analyzeLoadedGraph, type GraphAnalysis, type GraphAnalysisOptions } from "./graph-analysis.js";
+export { registerLoadedGraph, type RegisteredGraph } from "./graph-registration.js";
+export {
+  observeDefinitionRegistrations,
+  registerDefinitions,
+  type DefinitionRegistration,
+  type RegisteredDefinition,
+} from "./definition-registration.js";
 export {
   analyzeDependencies,
   dependencyVerdictKey,
@@ -1074,6 +1081,52 @@ export {
   remapMigratedPaths,
 } from "./migrations/index.js";
 export type { FileMigrations, MigrationEntry, MigrationRewrite } from "./migrations/index.js";
+export {
+  isOpaqueMigrationValue,
+  migrationMatchHolds,
+  migrationValuesEqual,
+  type MigrationMatch,
+  type MigrationMatchType,
+} from "./library-migrations/match.js";
+export {
+  MIGRATION_CODE_PATTERN,
+  migrationPointerSegments,
+  parseMigrationSource,
+  readLibraryMigrations,
+  readMigrationMatch,
+  selfTypeName,
+  type LibraryMigration,
+  type MigrationBinding,
+  type MigrationPlacement,
+  type MigrationRule,
+  type MigrationSeverity,
+  type MigrationSource,
+} from "./library-migrations/declaration.js";
+export { matchOverlap, type MatchOverlap, type OverlapNote, type OverlappingBranch } from "./library-migrations/disjointness.js";
+export {
+  applyLibraryMigrationRecord,
+  migrationRecordMismatches,
+  migrationTextDigest,
+  type MigrationRecordEntry,
+  type MigrationRecordNode,
+  type MigrationTreePointer,
+  type ModuleMigrationRecord,
+} from "./library-migrations/edit-record.js";
+export { type LibraryHandOver, type LibraryMigrationFinding, type LibraryMigrationOutcome } from "./library-migrations/stage.js";
+export {
+  planLibraryWriteBack,
+  type LibraryDroppedComment,
+  type LibraryRewriteReport,
+  type LibraryUnwritableReport,
+  type LibraryWriteBack,
+  type LibraryWriteBackInput,
+} from "./library-migrations/write-back.js";
+export { cloneMigrationTree } from "./library-migrations/rule-application.js";
+export {
+  libraryMigrationDiagnostics,
+  withLibraryMigrationsApplied,
+  type LibraryMigrationDiagnosticData,
+} from "./library-migrations/report.js";
 export { desugarLoadedFile, inlineImportManifests } from "./inline-imports.js";
 export type { SyntheticImport } from "./inline-imports.js";
 export {

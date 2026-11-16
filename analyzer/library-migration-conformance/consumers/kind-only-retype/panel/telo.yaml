@@ -1,0 +1,7 @@
+kind: Telo.Library
+metadata: { name: Panel }
+lang: en
+imports: { S: ../shapes }
+resources:
+  renamed: { kind: S.Old, optional: true }
+  read: { kind: S.Data, optional: true }

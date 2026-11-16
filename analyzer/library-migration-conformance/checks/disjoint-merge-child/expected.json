@@ -1,0 +1,11 @@
+{
+  "diagnostics": [
+    {
+      "code": "MIGRATION_MATCH_OVERLAPS_SCHEMA",
+      "severity": 1,
+      "file": "telo.yaml",
+      "path": "migrations.MERGE_ADDRESS_RENAMED.rules[0].match",
+      "message": "Telo.Library/Merge: `match` also accepts the current schema of Self.Page: a value matches it, since it declares `address`. Require a key the schema refuses, or pin a `const` / `enum` it refuses."
+    }
+  ]
+}

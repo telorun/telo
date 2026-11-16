@@ -682,6 +682,9 @@ targets:
   - !ref scopeInputsNotOpenedByDispatch
   - !ref scopeInputsRunDefaults
   - !ref scopeInputsRunRefusesEmpty
+  - !ref libraryMigrationFailed
+  - !ref libraryMigrationFailedInLibrary
+  - !ref libraryMigrationSuppliedFallback
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -7387,3 +7390,33 @@ expect:
   errors:
     - { code: SCHEMA_VIOLATION, message: "Telo.Value/incomplete: / is missing required property 'value'" }
   runFails: "[ERR_RESOURCE_SCHEMA_VALIDATION_FAILED] RuntimeError: Resource does not match schema for kind Telo.Value"
+---
+# A library migration that cannot be applied leaves the node as written: the
+# check reports it, and the kernel refuses the load before anything is created.
+kind: Assert.Manifest
+metadata: { name: libraryMigrationFailed }
+source: ./__fixtures__/check-run-agreement/library-migrations/failed.yaml
+expect:
+  errors:
+    - { code: MIGRATION_FAILED, message: "The migration SHOP_LABEL_RENAMED of Shop could not be applied: it writes /value, which the node already holds." }
+  runFails: "[ERR_MIGRATION_FAILED] The migration SHOP_LABEL_RENAMED of Shop could not be applied"
+---
+# …in a library's own file too, refused at the import reaching it.
+kind: Assert.Manifest
+metadata: { name: libraryMigrationFailedInLibrary }
+source: ./__fixtures__/check-run-agreement/library-migrations/failed-in-library.yaml
+expect:
+  errors:
+    - { code: MIGRATION_FAILED, message: "The migration SHOP_LABEL_RENAMED of Shop could not be applied: it writes /value, which the node already holds." }
+  runFails: "[ERR_MIGRATION_FAILED] Imported library 'FailedShelf', reached through import 'Shelf'"
+---
+# A removed kind's declaration supplied to a library takes the fallback rule, and
+# the library's kind-only input is retyped to its replacement: both load migrated.
+kind: Assert.Manifest
+metadata: { name: libraryMigrationSuppliedFallback }
+source: ./__fixtures__/check-run-agreement/library-migrations/supplied.yaml
+expect:
+  warnings:
+    - { code: SHOP_CRATE_REPLACED, message: "A crate is a box." }
+    - { code: SHOP_CRATE_REPLACED, message: "A crate is a box." }
+  runs: true

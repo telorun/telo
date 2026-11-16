@@ -1,8 +1,8 @@
 import type { TeloDiagnosticData } from "@telorun/editor-protocol";
-import { renderFixReplacement } from "@telorun/ide-support";
-import { CodeActionKind, type CodeAction } from "vscode-languageserver/browser";
+import { firedLibraryMigrationCodes, libraryMigrationFix, renderFixReplacement } from "@telorun/ide-support";
+import { CodeActionKind, type CodeAction, type Diagnostic, type TextEdit } from "vscode-languageserver/browser";
 import type { FeatureContext } from "./context.js";
-import { canonicalDocumentUri } from "../document-uri.js";
+import { canonicalDocumentUri, sourceOfUri, uriOfSource } from "../document-uri.js";
 
 /**
  * The analyzer's repair as a quick fix. It arrives in `Diagnostic.data`, which
@@ -12,11 +12,12 @@ import { canonicalDocumentUri } from "../document-uri.js";
  * scalar identically; a span that cannot be rewritten safely (a block scalar)
  * gets no action rather than one that breaks the document.
  */
-export function registerCodeActions({ connection, documents }: FeatureContext): void {
+export function registerCodeActions({ connection, documents, session }: FeatureContext): void {
   connection.onCodeAction((params) => {
     const document = documents.get(params.textDocument.uri);
     if (!document) return null;
     const actions: CodeAction[] = [];
+    actions.push(...libraryMigrationActions(session, params.textDocument.uri, params.context.diagnostics));
     for (const diagnostic of params.context.diagnostics) {
       const fix = (diagnostic.data as TeloDiagnosticData | undefined)?.fix;
       if (!fix) continue;
@@ -49,4 +50,29 @@ export function registerCodeActions({ connection, documents }: FeatureContext): 
 function singleLine(text: string): string {
   const flat = text.replace(/\s+/g, " ").trim();
   return flat.length > 60 ? `${flat.slice(0, 57)}…` : flat;
+}
+
+/**
+ * The library migrations of the document's module as one quick fix, offered on a
+ * diagnostic one of them raised and only when `telo migrate` could write every
+ * node of them: the edit set is the same one the command writes.
+ */
+function libraryMigrationActions(
+  session: FeatureContext["session"],
+  uri: string,
+  diagnostics: readonly Diagnostic[],
+): CodeAction[] {
+  const source = sourceOfUri(uri);
+  const { graph } = session.documentAnalysis(source);
+  if (!graph) return [];
+  const fired = firedLibraryMigrationCodes(graph);
+  const raised = diagnostics.filter((d) => typeof d.code === "string" && fired.has(d.code));
+  if (raised.length === 0) return [];
+  const fix = libraryMigrationFix(graph, source);
+  if (!fix) return [];
+  const changes: Record<string, TextEdit[]> = {};
+  for (const [file, edits] of fix.changes) {
+    changes[uriOfSource(file)] = edits.map((edit) => ({ range: { start: edit.start, end: edit.end }, newText: edit.newText }));
+  }
+  return [{ title: fix.title, kind: CodeActionKind.QuickFix, diagnostics: raised, edit: { changes } }];
 }
