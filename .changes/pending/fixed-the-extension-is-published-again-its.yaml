@@ -1,5 +1,0 @@
-units:
-  ide/vscode: Fixed
-body: "The extension is published again: its release build failed on a clean checkout,
-  so 0.7.0 was tagged but never shipped as a .vsix or to the Marketplace. This version
-  ships it."
