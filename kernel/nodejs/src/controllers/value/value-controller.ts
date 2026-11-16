@@ -5,7 +5,7 @@ import type { ResourceContext, ResourceInstance, ResourceManifest } from "@telor
  *
  * A kernel built-in for the reason `Telo.Sequence` is: the standalone value
  * shaper must not need an import. It binds and expands through the same SDK
- * seam `Run.Value`'s controller uses, so the two cannot answer differently.
+ * seam its deprecated twin's controller uses, so the two cannot answer differently.
  */
 interface ValueManifest extends ResourceManifest {
   bindings?: Record<string, unknown>;

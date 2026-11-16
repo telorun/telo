@@ -928,7 +928,7 @@ export function emittedIdentity(written: Keys, instance: LoopInstance): string {
   return `${siteOf(written)}${instance.map((frame) => elementIndexText(frame.element)).join("")}`;
 }
 
-/** How an emitted item is named in a message: `the Scheduler.Cron emitted for
+/** How an emitted item is named in a message: `the Acme.Job emitted for
  *  jobs.nightlyReport`. */
 export function describeEmitted(kind: string, sourcePath: string, instance: LoopInstance): string {
   const last = instance[instance.length - 1]?.element;

@@ -82,7 +82,7 @@ const KIND_METADATA_TYPES: Record<string, FieldType> = {
   deprecated: "object",
 };
 
-/** Alias-qualified kind — `Self.Migrations`, `Cache.Store`, `Telo.JsonSchema`. */
+/** Alias-qualified kind — `Self.Migrations`, `Acme.Store`, `Telo.JsonSchema`. */
 const ALIAS_KIND_RE = /^[A-Z][A-Za-z0-9_]*\.[A-Z][A-Za-z0-9_]*$/;
 
 /** The built-in namespace, resolvable without an import — mirrors `validate-extends`. */

@@ -7,7 +7,7 @@ import { AliasResolver, scopeResolverForModule, type ModuleScopes } from "./alia
  * exported instances are checked in the CONSUMER's pass. But every alias-qualified
  * name on such a manifest — its `kind:`, its `extends:`, an `x-telo-schema-from`
  * anchor — was written against the alias map of the module that DECLARED it. A
- * library writes `kind: Http.Api` through an import the consumer has no reason to
+ * library writes `kind: Acme.Router` through an import the consumer has no reason to
  * have, so resolving it through the entry's table finds nothing, and everything
  * derived from the definition silently goes missing: the reference reach (Phase-5
  * injection blind to a forwarded resource's ref slots) and the `x-telo-context`
@@ -23,7 +23,7 @@ import { AliasResolver, scopeResolverForModule, type ModuleScopes } from "./alia
  *    entry's own", which is what the global table answers correctly.
  *  - {@link declaringModuleScope} falls back to an EMPTY table for a non-root
  *    module. For canonicalizing what a library DECLARED, where resolving its
- *    `Http.Api` through the consumer's imports would silently bind a library's
+ *    `Acme.Router` through the consumer's imports would silently bind a library's
  *    kind to whatever the app happens to import under that alias — a wrong
  *    answer, which is worse than none.
  *

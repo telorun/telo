@@ -19,7 +19,7 @@
  *
  * **Edges are `(from, slot, to, use)` and the graph is a MULTIGRAPH.** The slot
  * path is part of an edge's identity, so a kind declaring several ref slots
- * emits one edge per slot, each with its own `use` — `Cache.View` holds its
+ * emits one edge per slot, each with its own `use` — a cache view holds its
  * `store:` as a `dependency` while its `invoke:` is a `call` — and two slots may
  * name the same target without collapsing. Array slots emit one edge per
  * element. This is a requirement, not a detail: the old `dependency-graph.ts`
@@ -308,7 +308,7 @@ export const resourceId = (kind: string, name: string): string => `${kind}\0${na
  *
  * **A resource name is MODULE-SCOPED**, so `(kind, name)` is unique inside one
  * module and not across a flattened set: two libraries each exporting an
- * `Http.Api` named `routes` are two declarations, and keying both as
+ * router named `routes` are two declarations, and keying both as
  * `http.Api\0routes` silently made them one — the second overwrote the first,
  * taking its edges and its steps with it. The module is part of the identity
  * wherever the loader stamped one; a manifest with no stamp keeps the bare form,
@@ -379,7 +379,7 @@ const NO_DEFAULT: SchemaDefault = () => undefined;
 /** Schema-declared `default:` for a selector pointer, resolved against the
  *  schema of the object ENCLOSING the annotated slot — the same anchoring the
  *  runtime value walk uses. This is what classifies the common spelling: a
- *  `Lease.Critical` that omits `detach:` takes the schema's `default: false`
+ *  critical-section kind that omits `detach:` takes the schema's `default: false`
  *  and is a `call` edge, not an unresolved one. */
 function schemaDefaultOf(enclosingSchema: Record<string, any> | undefined): SchemaDefault {
   if (!enclosingSchema) return NO_DEFAULT;
@@ -787,7 +787,7 @@ export function buildCallGraph(
 
   /**
    * A resource's definition, resolved in the scope of the module that DECLARED
-   * it. A manifest carries the kind as AUTHORED (`Run.Sequence`), while the
+   * it. A manifest carries the kind as AUTHORED (`Telo.Sequence`), while the
    * registry is keyed canonically (`run.Sequence`), so a raw lookup misses for
    * every alias-form kind — which is every kind in a real manifest. That miss
    * is silent and costly: step collection would find no step list (so a step's
@@ -1030,7 +1030,7 @@ export function buildCallGraph(
         // A site inside a step was already emitted by the step walk, which
         // reads the step item schema directly. When the REACH also reaches it
         // — `Telo.Application`'s inline `targets[].invoke`, unlike a
-        // `Run.Sequence` step body's `steps[].invoke` — the site is a
+        // `Telo.Sequence` step body's `steps[].invoke` — the site is a
         // Phase-5 injection site, and the existing step edge is stamped so the
         // init-order projection keeps it.
         if (ownerStepOf(stepsByOwner.get(sourceId) ?? [], event.concretePath)) {

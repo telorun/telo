@@ -268,7 +268,7 @@ class ResourceDefinition implements ResourceInstance {
     // it for that selector's directory rather than fetching anything itself.
     const artifact = host.getModuleArtifact?.(this.resource.metadata.source);
     // The libraries of the module that declared this kind, for the same reason:
-    // a bundle's bare `@telorun/kv-store` means whatever THAT module's imports
+    // a bundle's bare `@telorun/acme` means whatever THAT module's imports
     // say it means, never the consumer's.
     const libraries = host.getSiblingLibraries?.(this.resource.metadata.source);
     // Its `sources:` block, so a staged prebuilt candidate is checked against

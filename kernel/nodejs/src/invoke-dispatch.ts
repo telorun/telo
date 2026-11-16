@@ -36,7 +36,7 @@ export function parseRef(ref: string): { kind: string; name: string } {
   if (lastDot <= 0 || lastDot === ref.length - 1) {
     throw new RuntimeError(
       "ERR_INVALID_VALUE",
-      `Invalid resource reference '${ref}': expected '<Kind>.<Name>' (e.g. 'Http.Server.Main') or pass { kind, name } directly.`,
+      `Invalid resource reference '${ref}': expected '<Kind>.<Name>' (e.g. 'Acme.Server.Main') or pass { kind, name } directly.`,
     );
   }
   return { kind: ref.slice(0, lastDot), name: ref.slice(lastDot + 1) };

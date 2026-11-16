@@ -13,7 +13,7 @@
  * sentence — *a region declaring attribute A must not contain a resource
  * declaring it violates A* — and it is run once per attribute in
  * `sdk/zone-attributes/`. So `noSuspend` (a parking kind inside a lease) and any
- * attribute added later are covered by the same traversal, and `modules/durable`
+ * attribute added later are covered by the same traversal, and the durable-execution module
  * stays outside the analyzer's surface exactly as the topology-driven constraint
  * requires.
  *

@@ -93,7 +93,7 @@ export function parseHostPatternOrigin(origin: string): { scheme: string; patter
 }
 
 /** Read a hostname pattern (`*.a.example`, `*-a.example`). The same reading as
- *  `http-dispatch`'s `hostnameMatcher`; both are held to one vector table. */
+ *  the HTTP dispatch module's `hostnameMatcher`; both are held to one vector table. */
 export function parseHostPattern(host: string): HostPattern | undefined {
   if (!host.startsWith("*")) return undefined;
   const suffix = normalizeHost(host.slice(1));

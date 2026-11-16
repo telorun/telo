@@ -480,7 +480,7 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
       const callerDef = resolveDef(caller.kind, moduleOf(caller));
       // WHICH slot establishes the zone depends on the body's SHAPE, and both
       // shapes are real. A ref body annotates the slot the edge itself names
-      // (`Sql.Transaction.steps`, holding a `!ref` to an executable). A NATIVE
+      // (a transaction's `steps`, holding a `!ref` to an executable). A NATIVE
       // body annotates the step ARRAY, while the edge comes from a step inside
       // it and names that step's own `invoke:` — so looking only at `edge.slot`
       // finds no annotation and the enclosing zone never discharges anything.
@@ -579,7 +579,7 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
         // taken, and "sometimes throws" is not a working manifest.
         //
         // This is the one place the plan's original rule was inverted, and
-        // deliberately. That rule existed to stop `Cache.View`'s UNCONDITIONAL
+        // deliberately. That rule existed to stop a cache view's UNCONDITIONAL
         // `[call, detached]` from hard-erroring every cached transactional call
         // under the default `revalidate: sync`, where the controller never
         // detaches — but the same change that added this pass re-annotated that

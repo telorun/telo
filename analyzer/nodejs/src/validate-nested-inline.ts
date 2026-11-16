@@ -51,7 +51,7 @@ export interface InlineConfigValidator {
  * `name`, every target of a body a `base:` mapping forwards other than verbatim
  * as `self.<field>`, and any reference slot of a step other than its dispatch
  * field. It also checks, recursively, every inline declaration nested inside one
- * it checks — e.g. `invoke: { kind: Console.ReadLine, prompt: "…" }`, where
+ * it checks — e.g. `invoke: { kind: Acme.ReadLine, prompt: "…" }`, where
  * `prompt` belongs in the step's `inputs`, not the config.
  *
  * Walks the manifest data together with its definition schema, resolving local
@@ -241,7 +241,7 @@ export function validateNestedInline(
       );
     }
     // Recurse into the inline body against its own schema so deeper inline
-    // resources (e.g. an inline Run.Sequence's own steps) are validated too.
+    // resources (e.g. an inline Telo.Sequence's own steps) are validated too.
     walkSlots(inline, schema, schema, parseKeys(path), (data, keys) => {
       if (data && typeof data === "object" && !Array.isArray(data) && isInlineDeclaration(data)) {
         validateInline(data as Record<string, any>, pathText(keys));

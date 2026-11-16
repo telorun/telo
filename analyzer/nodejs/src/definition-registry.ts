@@ -312,7 +312,7 @@ export class DefinitionRegistry {
    *  unresolvable ref reads as partial context rather than an error.
    *
    *  @param namespace  The module's `metadata.namespace`, or null when it declares none.
-   *  @param moduleName The module's `metadata.name` (e.g. "pipeline", "http-server"). */
+   *  @param moduleName The module's `metadata.name` (e.g. "pipeline", "web-server"). */
   registerModuleIdentity(namespace: string | null, moduleName: string): void {
     if (!namespace || moduleName === "Telo") return;
     this.identityMap.set(`${namespace}/${moduleName}`, moduleName);
@@ -721,7 +721,7 @@ export class DefinitionRegistry {
   /** Resolves an `x-telo-ref` constraint to a canonical registry kind key.
    *
    *  The constraint is already canonical `<module>.<Kind>`: alias-form values
-   *  (`KvStore.Store`, `Self.Store`, `Telo.Invocable`) are rewritten in the
+   *  (`Acme.Store`, `Self.Store`, `Telo.Invocable`) are rewritten in the
    *  declaring module's scope by `resolveSchemaRefKinds` before registration, so
    *  no module context is needed here.
    *
@@ -729,7 +729,7 @@ export class DefinitionRegistry {
    *  identity table for module versions published before the alias form existed:
    *
    *    "telo#Invocable"         → "Telo.Invocable"
-   *    "std/http-server#Server" → "http-server.Server"
+   *    "std/acme#Server"        → "acme.Server"
    *
    *  Returns undefined when a legacy string is malformed or its identity was
    *  never registered. */
@@ -951,7 +951,7 @@ export class DefinitionRegistry {
    * The schema an `x-telo-schema-from` slot derives its shape from.
    *
    * Only the STATIC form resolves: an anchor that is a dotted alias-qualified
-   * kind (`HttpDispatch.Request/$defs/Matcher`). The polymorphic forms — a
+   * kind (`Acme.Request/$defs/Matcher`). The polymorphic forms — a
    * relative anchor, or a single-segment absolute one — name a sibling property
    * whose value is known per resource, so a definition-level lookup would be
    * guessing at one instance's shape.

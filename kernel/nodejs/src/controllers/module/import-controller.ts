@@ -442,7 +442,7 @@ export async function create(
   // Initialize the child's resources in dependency order, mirroring the root
   // context (kernel.boot → setInitOrder). Without this, an imported library's
   // resources init in registration order, so a dependent can run Phase 5
-  // injection before its dependency exists — e.g. an Http.Api whose inline route
+  // injection before its dependency exists — e.g. a router whose inline route
   // handler is appended after it during inline-resource extraction would init,
   // and inject, before the handler is created, leaving the handler ref
   // unresolved. The order is computed in the library's OWN scope (its registry view),

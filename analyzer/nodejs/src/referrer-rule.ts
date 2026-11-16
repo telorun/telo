@@ -3,14 +3,14 @@
  * what must be true of whoever REFERENCES one of its resources.
  *
  * `x-telo-resource-rules` relates the fields of one resource; this relates a
- * resource to the one that reached it. `Http.Reference` renders the OpenAPI
+ * resource to the one that reached it. a reference kind renders the OpenAPI
  * document its server collects, so a server mounting it without an `openapi:`
  * block has nothing to render — a disagreement neither kind can state alone,
  * and one that otherwise surfaces only at boot, after the port is bound.
  *
  * Declared by the kind that HAS the requirement, never by the kind that must
  * satisfy it. That is what lets a third-party mount carry its own requirement
- * without `Http.Server` knowing the kind exists — and it is what keeps the rule
+ * without the referenced kind knowing the kind exists — and it is what keeps the rule
  * free of a kind literal on the subject side, where the spelling would be the
  * consumer's import alias rather than anything the rule author controls.
  *

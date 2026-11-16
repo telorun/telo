@@ -811,7 +811,7 @@ function computeInstallRoot(entryUrl: string): string {
  * Version-qualified install alias for a controller package. The kernel's single
  * flat install root can hold only one folder per package name, but a manifest
  * graph may legitimately reference the same package at multiple versions (e.g.
- * a library pins `@telorun/mcp-client@0.3.1` while the app uses `0.4.0`).
+ * a library pins `@telorun/acme@0.3.1` while the app uses `0.4.0`).
  * Installing each `name@version` under a distinct npm alias
  * (`npm install <alias>@npm:<name>@<version>`) lets every version coexist in
  * one `node_modules`, mirroring the per-(name, version) identity of a Telo

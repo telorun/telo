@@ -1668,7 +1668,7 @@ export class Kernel implements IKernel {
       // Fed from the GRAPH, not from `staticManifests`: flatten forwards every
       // module's definitions but only the ENTRY's resource instances, and a
       // named type is a resource instance — so a library that declares its
-      // shapes once and `$ref`s them (`oauth-client`, `vector-store`) has no
+      // shapes once and `$ref`s them (a library of many kinds) has no
       // type doc in the flattened view at all.
       const graphDocs = [...analysisGraph.modules.values()].flatMap((mod) =>
         flattenLoadedModule(mod),
@@ -4290,7 +4290,7 @@ export class Kernel implements IKernel {
    * context the resource belongs to, and the handle hangs off it rather than off
    * the root: a `with:` block's inline declarations name their kinds through the
    * import aliases of the module that DECLARED the resource, so a library's
-   * scoped `kind: OAuth.RedirectListener` resolves against that library's
+   * scoped `kind: Acme.Listener` resolves against that library's
    * imports — the root has never heard of the alias.
    */
   private _injectDependencies(

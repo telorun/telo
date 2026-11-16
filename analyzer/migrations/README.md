@@ -111,7 +111,7 @@ empty collections as `{}` / `[]`) or inline before a flow mapping's closing
 brace, writing a string plain only when it is a bare word that reads back as
 that string and double-quoted otherwise. `caught-member-marks` is the user: it
 writes a whole `x-telo-context` into a published `notFoundHandler.catches`
-that has none — what http-server 0.39.1 binds there: `request`, and `error`
+that has none — what the HTTP server module 0.39.1 binds there: `request`, and `error`
 with `code`, `message` and `data`.
 
 `reason` is the only prose an entry writes. The driver generates what changed

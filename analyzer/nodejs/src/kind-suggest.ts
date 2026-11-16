@@ -16,7 +16,7 @@ const ROOT_KINDS = [
  *    - The hardcoded Telo root kinds.
  *    - For every registered non-abstract definition, the alias form
  *      `${alias}.${TypeName}` for each import alias that points at its
- *      module. Canonical kebab-case forms (e.g. `http-server.Server`) are
+ *      module. Canonical kebab-case forms (e.g. `module.Kind`) are
  *      deliberately excluded — users write manifests via alias. */
 export function computeValidUserFacingKinds(
   aliases: AliasResolver,

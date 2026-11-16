@@ -744,7 +744,7 @@ export function precompileApplicationEnvSchemas(
  * ahead of the contract warm below.
  *
  * A contract declared as `{kind: Telo.JsonSchema, schema: {$ref: "telo:m/X"}}`
- * — what `oauth-client` and `vector-store` write — is compiled at runtime from
+ * — what a module sharing one set of shapes writes — is compiled at runtime from
  * the schema registered under that id, reached by following the alias. With no
  * types registered the warm follows it to the `$ref` wrapper itself, AJV refuses
  * the unresolvable reference, and the entry is silently not baked while the
@@ -759,7 +759,7 @@ export function precompileApplicationEnvSchemas(
  * while a parent type is unregistered) and stops as soon as a pass registers
  * nothing new, so an unresolvable parent ends it instead of spinning.
  *
- * The deprecated `Type.JsonSchema` is not warmed: it is a module kind with its
+ * The deprecated legacy JSON Schema kind is not warmed: it is a module kind with its
  * own controller, and reaching for this one would be assuming the two stayed
  * identical.
  */
@@ -825,7 +825,7 @@ export async function precompileTypeSchemas(
  * definitions that don't inherit.
  *
  * It is a factory, not a single resolver, because `extends` aliases are scoped
- * to the DECLARING module — `Cache.Store` reads against that library's import
+ * to the DECLARING module — a store kind reads against that library's import
  * map, `Self.Host` against its own name. A global resolver silently fails to
  * resolve those, yielding the un-merged schema and reintroducing the very miss
  * this exists to prevent.

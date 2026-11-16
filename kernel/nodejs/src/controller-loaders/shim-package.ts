@@ -28,7 +28,7 @@ export const SHIM_MARKER = "x-telo-generated";
  * rather than mistaken for someone else's package.
  *
  * **Marker second**, for a slot outside the cache: the prebuilt-`path=` branch
- * imports out of a working copy, where `node_modules/@telorun/sql` is a package
+ * imports out of a working copy, where `node_modules/@telorun/acme` is a package
  * manager's symlink straight into the sibling's own source tree. Reading the
  * `package.json` **through** whatever is there settles it — a symlink resolves
  * to the target's, which carries no marker — so one read covers both a link and

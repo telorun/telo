@@ -25,7 +25,7 @@
 // The real environment, captured before any lock — and stored on `globalThis`
 // under a process-global symbol so it is shared across *every* `@telorun/kernel`
 // module instance in the process. This matters because a controller can load a
-// second copy of the kernel: the `@telorun/test` suite runner imports `Kernel`
+// second copy of the kernel: the test-suite runner imports `Kernel`
 // to spawn child kernels in-process. That second copy's module body runs *after*
 // the main kernel already locked `process.env`, so a plain `process.env` capture
 // there would grab the (proxied) env. Reading the shared snapshot instead keeps

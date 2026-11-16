@@ -1026,7 +1026,7 @@ export function stampSharedLifecycle(
  *  Canonicalized here because this is the only point where the target's own
  *  import edges are in hand: the consumer's pass sees the flattened list, from
  *  which the library doc and its alias scope are both gone, so an entry written
- *  `Sql.Connection` would otherwise be read against whatever the CONSUMER
+ *  `Acme.Connection` would otherwise be read against whatever the CONSUMER
  *  happens to alias `Sql` to. Stamped on `metadata` for the same reason
  *  `exportedKinds` is — the `Telo.Import` schema forbids extra top-level
  *  fields. An entry whose alias resolves to nothing is stamped with its kind

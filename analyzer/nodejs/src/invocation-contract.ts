@@ -106,7 +106,7 @@ export function projectionModules(
  */
 
 /** Where a resolved contract was declared. Instance-level declarations let one
- *  call site narrow a kind's contract (`JS.Script` does this); kind-level ones
+ *  call site narrow a kind's contract (a scripting kind does this); kind-level ones
  *  are the kind's own signature. */
 export type ContractOrigin = "instance" | "kind";
 
@@ -362,7 +362,7 @@ function contractRefTarget(
  * A copy of `schema` with every `live`-typed node left unconstrained, for
  * validating a runtime value against.
  *
- * Live values travel in BOTH directions — `Codec.Encoder` declares a stream on
+ * Live values travel in BOTH directions — an encoder kind declares a stream on
  * its `inputType` and lists it in `required`, and `Record.Stream`, `Ai`, `Tar`
  * and `Console` do the same — so a one-directional skip would walk a live
  * `Stream` with AJV on the hottest path in the runtime. That is the same defect
@@ -661,7 +661,7 @@ function isPlainRecord(value: unknown): boolean {
  *  resource-Created event's properties.
  *
  *  Declared by the kind that OWNS the contract, so the kernel names no kind and
- *  any module opts in — the `x-telo-eval` shape. Exempting "an Http.Credential
+ *  any module opts in — the `x-telo-eval` shape. Exempting "an HTTP credential
  *  result" directly would be kind-knowledge in the kernel, and would stop at
  *  that one kind while the same token surfaces wherever else a contract carries
  *  it.

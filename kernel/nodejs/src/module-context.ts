@@ -546,7 +546,7 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
 
   /** Like `resolveImportedInstance`, but returns the `{kind, name}` ref (canonical kind)
    *  for controllers that resolve step/handler invokes to refs rather than live instances
-   *  (e.g. Run.Sequence via `ensureKindRef`). The alias is reattached by the caller. */
+   *  (e.g. Telo.Sequence via `ensureKindRef`). The alias is reattached by the caller. */
   resolveImportedRef(alias: string, name: string): { kind: string; name: string } | undefined {
     const scope = this.importedScopes.get(alias);
     if (!scope || !scope.names.has(name)) return undefined;
@@ -683,7 +683,7 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
   }
 
   /**
-   * Resolve a fully-qualified kind like "Http.Server" to its real kind "http-server.Server".
+   * Resolve a fully-qualified kind like "Acme.Server" to its real kind "acme.Server".
    * Splits on the first dot, looks up the prefix in importAliases, validates against
    * importedKinds (if set), and reconstructs the resolved kind. When the alias is not
    * present locally, walks up the lifecycle parent chain so children inherit ancestors'
@@ -1067,7 +1067,7 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
           continue;
         }
         // A bare `!ref Alias.name` boot target is Phase-5-injected into the live
-        // instance, which for a Run.Sequence exposes both `run()` and `invoke()`.
+        // instance, which for a Telo.Sequence exposes both `run()` and `invoke()`.
         // Guard against treating such an instance as an authored inline-invoke
         // step — only a structural `{ invoke: <ref>, inputs }` spec (no `run`)
         // belongs here; the live instance falls through to the runnable branch.

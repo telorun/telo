@@ -306,10 +306,10 @@ export function checkCallSite(
  *
  * Two sites are consulted because there are two real ones: the STEP's own policy
  * — `retry` on the kernel-owned dispatch site — and the TARGET's, a field on an
- * arbitrary kind, because `Http.Request` re-attempts inside its own `invoke()`
+ * arbitrary kind, because a request kind re-attempts inside its own `invoke()`
  * where only it can tell a 429 from a 500. A live value is equally doomed by
  * either. EVERY retry-bearing field at a site is checked, not the first, since
- * `Http.Request` carries both spellings and property order must not decide which
+ * a request kind carries both spellings and property order must not decide which
  * is seen.
  *
  * Only a STATICALLY KNOWN non-zero budget counts. An `attempts` written as CEL

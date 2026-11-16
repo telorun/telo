@@ -77,7 +77,7 @@ export class AliasResolver {
     return { status: "ok", kind: `${realModule}.${suffix}` };
   }
 
-  /** Resolves "Http.Api" → "http-server.Api". Undefined if the alias is unknown OR the kind
+  /** Resolves "Alias.Kind" → "module.Kind". Undefined if the alias is unknown OR the kind
    *  is gated out — use `resolveKindResult` when the difference matters. */
   resolveKind(kind: string): string | undefined {
     const r = this.resolveKindResult(kind);
@@ -93,8 +93,8 @@ export class AliasResolver {
   }
 
   /** Returns every alias that currently points at `targetModule`.
-   *  Used by clients that need to convert a canonical kind key (e.g. "http-server.Server")
-   *  back into its user-facing alias form (e.g. "Http.Server"). */
+   *  Used by clients that need to convert a canonical kind key (e.g. "module.Kind")
+   *  back into its user-facing alias form (e.g. "Alias.Kind"). */
   aliasesFor(targetModule: string): string[] {
     const result: string[] = [];
     for (const [alias, mod] of this.importAliases) {
@@ -107,7 +107,7 @@ export class AliasResolver {
 /**
  * The alias resolver for a resource's own lexical scope. A resource that
  * originated in an imported library (its `ownModule` names a non-root module —
- * e.g. an inline handler extracted from an imported Http.Api) resolves its kind
+ * e.g. an inline handler extracted from an imported router) resolves its kind
  * aliases against THAT library's import map, so an anonymous child inherits the
  * lexical scope of the document that declares it. Returns undefined for
  * root/consumer-owned resources (and unknown modules), so callers fall back to

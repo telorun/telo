@@ -65,10 +65,10 @@ async function pathExists(filePath: string): Promise<boolean> {
  *
  * The realm collapse above points a closed, kernel-owned name at the kernel's own
  * copy. This is the same move one step out: the name is declared by the library
- * (`library: [pkg:telo/local/js?…&specifier=@telorun/sql]`), and the copy comes
+ * (`library: [pkg:telo/local/js?…&specifier=@telorun/acme]`), and the copy comes
  * from that module's artifact rather than from the kernel. What it buys is the
  * same thing — resolution *and* identity — which here means one module scope for
- * `@telorun/sql` across its own six controllers and every dependent, instead of
+ * `@telorun/acme` across its own six controllers and every dependent, instead of
  * one copy per bundle.
  *
  * A **synthesized package** rather than a symlink to the module's directory: a
@@ -86,7 +86,7 @@ async function pathExists(filePath: string): Promise<boolean> {
  *
  * **A slot something else owns is never written.** The bundle directory is not
  * always the loader's: the prebuilt-`path=` branch imports out of a working copy,
- * where `node_modules/@telorun/sql` is a package manager's symlink INTO the
+ * where `node_modules/@telorun/acme` is a package manager's symlink INTO the
  * library's own source tree — writing through it would replace that package's
  * real `package.json`. So a slot is written only when it is absent or carries the
  * marker this loader stamps (`shim-package.ts`, shared with the realm). A foreign
@@ -472,7 +472,7 @@ export class BundleControllerLoader {
       (await this.existsOnce(sourceFile)) &&
       (await canBuildFromSource());
     // Every sibling library this bundle imports, resolved before the bundle is:
-    // its `import { KeyedClaim } from "@telorun/kv-store"` has to have a file
+    // its `import { KeyedClaim } from "@telorun/acme"` has to have a file
     // behind it, and which file that is depends on the import graph rather than
     // on anything inside the bundle. Done at resolve time with the other
     // fail-fast checks, so an unresolvable library reports itself as a candidate

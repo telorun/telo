@@ -48,7 +48,7 @@ import {
  *
  * A contract is only a guarantee if it cannot be dispatched around, and most
  * consumers never reach the kernel's dispatch chokepoint: Phase-5 injection puts
- * the live instance straight into a consumer's config object, so `Ai.Agent`
+ * the live instance straight into a consumer's config object, so an agent kind
  * reads `this.resource.model` and calls `model.invoke(...)` in hand. Enforcing at
  * a handoff would mean enforcing at every handoff — Phase-5 injection,
  * `ctx.resolveRef`, scope-handle resolution, the template controller's direct
@@ -146,12 +146,12 @@ const CONTRACT_ERROR: Record<ContractDirection, string> = {
  * The resolved schema is stripped of `x-telo-stream` properties first: a live
  * `Stream` in a declared slot is not data to be traversed, the same defect as
  * `stripCompiledValues` walking a live instance in a ref slot. Streams travel in
- * both directions (`Codec.Encoder` marks `input` on its `inputType` and requires
+ * both directions (an encoder kind marks `input` on its `inputType` and requires
  * it), so the skip is not one-directional.
  *
  * WHICH declaration applies is decided here, at create time — that is a fact
  * about the manifest. COMPILING it is deferred to first dispatch and memoized: a
- * contract may reference a named `telo#Type` whose `Type.JsonSchema` resource
+ * contract may reference a named `telo#Type` whose `Telo.JsonSchema` resource
  * initializes later in the same multi-pass loop, and resolving it eagerly would
  * make every contract-declaring kind depend on type-registration order. Nothing
  * can dispatch before the loop finishes, so first-use is always late enough.
@@ -422,7 +422,7 @@ export function contractViolation(
   cause: unknown,
 ): Error {
   // A type's CEL `rules:` raise the author's OWN code — that is the whole point
-  // of declaring one, and `modules/type` documents rule codes as catchable.
+  // of declaring one, and the legacy type module documents rule codes as catchable.
   // Only a structural schema failure is the ambient contract violation.
   //
   // Re-raised as a STRUCTURED error carrying that code: the rule itself throws a

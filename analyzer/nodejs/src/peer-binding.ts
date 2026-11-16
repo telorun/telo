@@ -1114,7 +1114,7 @@ export function analyzerWritingModules(
  * The strict half's resolver for a `peers:` pointer.
  *
  * Liskov in BOTH directions, which is what the check has to be: the filter is
- * usually an abstract (`Sql.Schema`, so one rule serves every backend) while the
+ * usually an abstract (`Acme.Schema`, so one rule serves every backend) while the
  * collection is declared by the backends that implement it, so a pointer
  * resolving on any candidate resolves the rule. Reported only when NO candidate
  * declares it, or when every candidate that does holds plain data — the two

@@ -237,7 +237,7 @@ export function duplicateNameDiagnostic(
  * it here would leave the reference sites silent about a manifest that cannot
  * run. `isDeclaration` is the ONE exception and it is not an instance: a
  * library's `resources:` entry is constrained by kind alone, so its kind-only
- * stand-in routinely IS an abstract (`connection: {kind: Sql.Connection}`), and
+ * stand-in routinely IS an abstract (`connection: {kind: Acme.Connection}`), and
  * every use of that name inside the library is a reference to it.
  */
 export function kindSatisfies(

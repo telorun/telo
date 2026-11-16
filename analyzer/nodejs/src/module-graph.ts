@@ -660,7 +660,7 @@ export interface BuildModuleGraphOptions {
  *
  * The flattened analysis carries every imported library's definitions beside
  * its instances, so without this the instance plane fills with the abstracts a
- * dependency happens to declare (`Sql.Connection`, `Codec.Encoder`) — boxes for
+ * dependency happens to declare (a connection, an encoder) — boxes for
  * things that never exist at runtime, drawn among the things that do. They are
  * the kind plane's, which is a separate surface. The module docs are here too:
  * the entry module's is minted as the ROOT, and an imported library's is not an
@@ -905,7 +905,7 @@ export function buildModuleGraph(
   //
   // The call graph keys a resource by `(kind, name)`, which is unique within one
   // module and not across a flattened set: two libraries each exporting an
-  // `Http.Api` named `routes` collapse onto one node there, and a picture built
+  // router named `routes` collapse onto one node there, and a picture built
   // from that map draws one box for two declarations. Minting here from the
   // manifests keeps both, qualified by their declaring module. What is still the
   // call graph's — steps and edges — is translated through `projectedId`, and
@@ -955,7 +955,7 @@ export function buildModuleGraph(
       //
       // One declaration, one box: the call graph keys a scoped node by the
       // scope POINTER, and `x-telo-scope` lists every region a scoped name
-      // resolves in (`Run.Sequence` names both `/steps` and `/targets`), so one
+      // resolves in (`Telo.Sequence` names both `/steps` and `/targets`), so one
       // `with:` entry arrives once per pointer. The pointers say where the name
       // is visible, not where the resource was declared.
       const key = `${graphNode.scopeOwner ?? ""}#scope#${resourceId(graphNode.kind, graphNode.name)}`;
@@ -1654,7 +1654,7 @@ function withAlternatives(
 /**
  * The rows and edges a DECLARATION written at a dispatch site contributes.
  *
- * `invoke: { kind: Sql.Command, connection: !ref chatDb }` is a resource the
+ * `invoke: { kind: Acme.Command, connection: !ref chatDb }` is a resource the
  * manifest genuinely declares, and until now the graph could see none of it: no
  * node, no edge, and a step row identical to one that dispatches nothing. The
  * hold was invisible too, so a connection reached only from inside inline
@@ -2106,7 +2106,7 @@ export function readGraphMatch(
  *
  * Both are found by annotation (`x-telo-topology-role: entries`, and the shared
  * step-body stamp), so a third-party composer's list is offered the same
- * affordances as `Http.Api`'s routes with no editor change.
+ * affordances as a router's routes with no editor change.
  */
 function declaredRowArrays(
   schema: Record<string, any> | undefined,
@@ -2299,7 +2299,7 @@ function buildPorts(
     // it and there is nowhere to put anything. That is the very socket the
     // comment above calls worse than not drawing it, reached by the other road.
     //
-    // It is also why `Http.Server` drew `notFoundHandler` twice. That property
+    // It is also why a server drew `notFoundHandler` twice. That property
     // holds two ref slots — `invoke`, and an `encoder` the `returns:` schema
     // pulls in through `x-telo-schema-from` — and a rail port renders one line
     // per port under its top-level property's name, so the dead one came out as
@@ -2337,7 +2337,7 @@ function arrayBaseOf(path: string): string {
  *
  * Both array shapes reach here: a direct array of refs (`targets[]` →
  * `targets[2]`) and a ref inside an array of objects (`mounts[].mount` →
- * `mounts[2].mount`). The second was missing, so an `Http.Server` with no mounts
+ * `mounts[2].mount`). The second was missing, so a server with no mounts
  * offered no way to add one — the port drew an empty rail and the drag had
  * nowhere to land. Undefined for a slot in no array, and for one nested past a
  * single array, where the index of the outer item is not determined by the slot

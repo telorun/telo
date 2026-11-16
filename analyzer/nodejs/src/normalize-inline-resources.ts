@@ -262,7 +262,7 @@ export function normalizeInlineResources(
         ? ({ ...resource, metadata: { ...resource.metadata, module: current.module } } as NamedManifest)
         : resource;
     // The concrete sites, schema-from slots expanded — so an inline encoder
-    // inside an HttpDispatch.Outcomes/$defs/Returns sub-schema reaches
+    // inside an Acme.Outcomes/$defs/Returns sub-schema reaches
     // extraction — and recursion unrolled as deep as the data goes.
     const sites = registry.referenceSites(view, aliases, aliasesByModule, resource);
 

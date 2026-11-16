@@ -3,8 +3,8 @@
  *
  * Format: scheme://host/path#kind.name[/kind.child/kind.child/...]
  * Examples:
- *   file:///path/to/file.yaml#Http.Server.Example
- *   http://localhost/template/ApiServer#Http.Server/api-us-east
+ *   file:///path/to/file.yaml#Acme.Server.Example
+ *   http://localhost/template/ApiServer#Acme.Server/api-us-east
  *   https://example.com/resources.yaml#Data.Type.User
  */
 export class ResourceURI {

@@ -366,7 +366,7 @@ export function withoutRefusedFormConsequences(
 }
 
 /** Best-effort name for the `!ref` suggestion in a string-ref diagnostic: a
- *  dotted-FQN (`Http.Api.UsersApi`) keeps its last segment, an alias-qualified
+ *  dotted-FQN (`Acme.Router.UsersApi`) keeps its last segment, an alias-qualified
  *  name (`Console.writeLine`) is left intact, a bare name passes through. */
 function refHint(value: string): string {
   const dotCount = (value.match(/\./g) ?? []).length;

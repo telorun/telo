@@ -293,7 +293,7 @@ refPositions: RefPositionHost & TemplateHost): ControllerInstance {
       // READ FOREVER: published artifacts carry them (see the note above), and
       // their `name` is a CEL template expanded against `self`, which is what a
       // CEL-named entry is matched by. Per-call data lives on the top-level
-      // `inputs:` sibling (same factoring as Run.Sequence steps), never in the
+      // `inputs:` sibling (same factoring as Telo.Sequence steps), never in the
       // target's resource body — the body is `self`-only so every child can be
       // created once at init and reused across calls.
       const targetName = (
@@ -726,7 +726,7 @@ refPositions: RefPositionHost & TemplateHost): ControllerInstance {
 
         ...(definition.mount != null && {
           // `register(...)` is the Telo.Mount contract a consuming transport
-          // calls (`Http.Server`: `app, prefix, requestScope`). It is not on the
+          // calls (a server kind: `app, prefix, requestScope`). It is not on the
           // base ResourceInstance type, so the persistent mount child is accessed
           // structurally, and every argument is forwarded as the transport gave it.
           register: (...args: unknown[]) => {

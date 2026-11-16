@@ -129,7 +129,7 @@ export interface ContextResolveOpts {
 
 /**
  * Resolve a type field value (string name, inline type, or raw schema) to a JSON Schema.
- * - String: look up the named type by name (Type.JsonSchema resources)
+ * - String: look up the named type by name (Telo.JsonSchema resources)
  * - Object with `kind` + `schema`: inline type definition → return the `schema`
  * - Object with `type` or `properties`: raw JSON Schema, return as-is
  */
@@ -202,7 +202,7 @@ function kindIndexOf(declarations: DeclarationRequests): KindIndex {
  * docs, not guess from a name.
  *
  * Read by name, not fully-qualified kind, because a resource writes its kind
- * through whatever alias its file declares (`Type.JsonSchema`, `Telo.JsonSchema`,
+ * through whatever alias its file declares (`Telo.JsonSchema`,
  * `Shapes.JsonSchema`) while the definition knows only its own module and name.
  * An `extends` is resolved exactly, in the module that wrote it, so a parent of
  * the same name in another module is never the one inherited from.
@@ -296,7 +296,7 @@ export function resolveTypeFieldToSchema(
       // see, never one of the same name in another module.
       return undefined;
     }
-    // Inline type resource: { kind: "Type.JsonSchema", schema: {...} }
+    // Inline type resource: { kind: "Telo.JsonSchema", schema: {...} }
     if (obj.schema && typeof obj.schema === "object") {
       return applyExtends(obj.schema as Record<string, any>, obj.extends, declarations, ancestry, reader);
     }
@@ -316,7 +316,7 @@ export function resolveTypeFieldToSchema(
 }
 
 /**
- * Fold a `Type.JsonSchema`'s `extends` parents into its own schema, matching the
+ * Fold a `Telo.JsonSchema`'s `extends` parents into its own schema, matching the
  * runtime `type` controller exactly — both call the shared `mergeTypeSchemas`, so
  * static analysis and runtime validation can never disagree on a type's effective
  * shape. Without this the analyzer would see only a child type's own properties
@@ -548,7 +548,7 @@ export function resolveContextAnnotations(
     // (a transport scope's `request/schema` → `{ query, body, params }`), or a
     // `telo#Type` field naming one contract (`inputType:`). The second form has
     // to be resolved first: the standard library writes it as the inline
-    // `{ kind: Type.JsonSchema, schema: … }` wrapper, so merging it verbatim
+    // `{ kind: Telo.JsonSchema, schema: … }` wrapper, so merging it verbatim
     // would type the variable as `{ kind, schema }` instead of its properties.
     // The navigated node — or one of the properties in it — may itself be an
     // expression: a route whose `request.schema.body` is `!cel "self.model.schema"`

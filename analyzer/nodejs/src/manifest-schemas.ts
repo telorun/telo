@@ -281,7 +281,7 @@ interface ExpandedTemplate {
  * One expanded template per fragment, cloned per consumer.
  *
  * Expansion is a full walk of the body and the result is identical every time —
- * `Step` alone is a couple of hundred nodes and `modules/run` hoists it four
+ * `Step` alone is a couple of hundred nodes and a step-bearing module hoists it four
  * times, on the kernel's boot path. The copy handed out is still fresh, because
  * downstream passes (`resolveSchemaRefKinds`, migrations) rewrite schemas in
  * place.

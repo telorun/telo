@@ -94,7 +94,7 @@ function render(value: unknown, container: object, key: string | number): unknow
  *  original (possibly BigInt) value is the one to keep.
  *
  *  Arrays are walked index-wise, not treated as leaves: AJV writes a default at
- *  every level it finds one, including inside `items`, and `Collection.Sort`'s
+ *  every level it finds one, including inside `items`, and a sort kind's
  *  `orderBy[].descending` is exactly that shape. Bailing at the array boundary
  *  would drop those fills silently — a worse failure than the throw it replaced,
  *  because the call then succeeds with the default missing. This mirrors the

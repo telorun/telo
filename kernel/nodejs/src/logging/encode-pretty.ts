@@ -5,7 +5,7 @@ import { relativeModuleFile } from "./to-error-value.js";
  * The `pretty` encoding — `kernel/specs/logging.md` §11.2. For humans on a
  * terminal:
  *
- *     12:34:56.789 INFO  Http.Server.api  listening  net.host.port=8080
+ *     12:34:56.789 INFO  Acme.Server.api  listening  net.host.port=8080
  *
  * The color table is a modal synthesis across pino-pretty, zap, tint,
  * tracing-subscriber, consola, and winston, which do not fully agree — zap alone

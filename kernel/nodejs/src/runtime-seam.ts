@@ -320,7 +320,7 @@ export class KernelRuntimeSeam implements RuntimeSeam {
         // shares the root the parent already resolved instead of deriving one
         // beside the child manifest. Deriving put a `.telo` in every directory
         // holding a test manifest and rebuilt every controller bundle once per
-        // test, since `Test.Suite` runs each test through here.
+        // test, since the test-suite kind runs each test through here.
         //
         // `undefined` means "resolve one yourself" and `null` means "no cache" —
         // a parent with no local anchor must yield the first, not the second.

@@ -43,7 +43,7 @@ type ResolvedRef = ResolvedReference;
  * The walk is value-tree-driven, not reach-driven: a `!ref` tag is an
  * *explicit* reference marker, so any sentinel found anywhere is unambiguously a
  * reference and is resolved. This reaches sites the reference reach
- * intentionally stops before — notably `Run.Sequence` step `invoke`s (in a step
+ * intentionally stops before — notably `Telo.Sequence` step `invoke`s (in a step
  * body) and references nested inside inline definitions — so every downstream consumer
  * (Phase-5 injection, the runtime controllers, the analyzer's step-context and
  * dependency passes) sees the uniform `{kind, name}` shape regardless of where
@@ -271,7 +271,7 @@ function resolveReferences(
     }
     const obj = value as Record<string, unknown>;
     // A nested inline declaration may declare scopes of its own (a
-    // `Run.Sequence` inside another sequence's `with:`): its own fields read
+    // `Telo.Sequence` inside another sequence's `with:`): its own fields read
     // names through them, then through every scope it is written in.
     if (typeof obj.kind === "string" && at.holder) {
       const inner: WalkSite = {

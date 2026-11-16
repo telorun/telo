@@ -197,9 +197,9 @@ export function scopedCycles(graph: CallGraph): ReadonlyArray<ReadonlyArray<Reso
  * Formats a cycle result into a human-readable error string matching the spec:
  *
  *   Circular dependency detected:
- *     Run.Sequence "DataSync"
- *       → Http.Server "Api"
- *       → Run.Sequence "DataSync"
+ *     Telo.Sequence "DataSync"
+ *       → Acme.Server "Api"
+ *       → Telo.Sequence "DataSync"
  */
 export function formatCycle(cycle: ReadonlyArray<ResourceNode>): string {
   const lines = ["Circular dependency detected:"];
@@ -226,7 +226,7 @@ export function formatCycle(cycle: ReadonlyArray<ResourceNode>): string {
  * The order resources are created in: the dependency order, with the
  * declarations a resource's kind is spelled through placed before it.
  *
- * `kind: Http.Api` is created against the alias its `Telo.Import` registers,
+ * `kind: Acme.Router` is created against the alias its `Telo.Import` registers,
  * and `kind: Self.Page` against the `Telo.Definition` that declares `Page`;
  * a definition's `extends:` resolves the same way. Neither is a dependency
  * edge — an import or a definition is not a boot-time resource — so without

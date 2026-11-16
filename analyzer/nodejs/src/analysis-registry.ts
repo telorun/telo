@@ -507,7 +507,7 @@ export class AnalysisRegistry {
    * the declaring definition's module is where those aliases mean something.
    *
    * The seam an IDE walks a schema through: a slot shaped entirely by this
-   * annotation (an `Http.Api` route's `request:`) carries no `properties` of its
+   * annotation (a router's route `request:`) carries no `properties` of its
    * own, so a walker that only reads `properties` finds nothing there and
    * silently offers no keys and no hover — a whole field of the standard library
    * looking like an unknown one.
@@ -643,7 +643,7 @@ export class AnalysisRegistry {
    *  `extends` target.
    *
    *  `extends` aliases are lexically scoped to the declaring library — a library
-   *  writes `extends: Cache.Store` against its own import map, and `Self.Host`
+   *  writes `extends: Acme.Store` against its own import map, and `Self.Host`
    *  against its own module name. The global alias table knows neither, so
    *  {@link resolveDefinition} silently returns undefined for them and callers
    *  fall back to an un-inherited view. Mirrors the module-scope selection in

@@ -431,7 +431,7 @@ export class CelScopeQuery {
   /** The kind's declaration, resolved in the scope of the module that DECLARED
    *  this resource — the same rule the manifest visitor applies, and the reason
    *  it has to be the same one: everything this query offers is read off the
-   *  definition, so resolving a forwarded library resource's `kind: Http.Api`
+   *  definition, so resolving a forwarded library resource's `kind: Acme.Router`
    *  through the entry's aliases alone found nothing and the editor silently
    *  offered no `request` / `result` at a site `telo check` accepts. A
    *  completion list is a claim that the name it offers will pass the checker,

@@ -4,8 +4,8 @@
  * Two independent ways a value is evaluated, and every consumer needs both:
  * `x-telo-eval` names a field directly, while a REGION annotation
  * (`x-telo-context` / `x-telo-step-context` / `x-telo-error-context`, or a step
- * body) covers everything beneath it — which is how `Run.Choice`'s rows and an
- * `Http.Api` route's `returns:` entries hold expressions while declaring no
+ * body) covers everything beneath it — which is how a choice kind's rows and an
+ * router's route `returns:` entries hold expressions while declaring no
  * annotation of their own.
  *
  * The consumers are on both sides of the runtime: `telo check` decides whether a

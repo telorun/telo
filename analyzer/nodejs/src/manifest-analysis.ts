@@ -342,7 +342,7 @@ export class ManifestAnalysis {
    * exactly what `telo check` validates that call site against and what the
    * kernel binds at dispatch. Layered instance-first: a resource declaring its
    * own `inputType:` narrows the kind's, which is the common case for a
-   * `Run.Sequence` used as a handler.
+   * `Telo.Sequence` used as a handler.
    */
   contractFor(ref: ManifestRef, direction: ContractDirection): Record<string, any> | undefined {
     const target = this.resolveRef(ref);

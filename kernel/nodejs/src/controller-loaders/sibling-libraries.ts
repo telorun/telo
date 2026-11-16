@@ -2,14 +2,14 @@
  * The module-owned libraries a module's controller bundles import by bare
  * specifier, resolved to the artifacts that carry them.
  *
- * A bundle imports `@telorun/kv-store`; the manifest declares the dependency as
- * `KvStore: ../kv-store`; the target module's own `library:` block says that its
- * `js` entry point is what `@telorun/kv-store` means. This type is the joined
+ * A bundle imports `@telorun/acme`; the manifest declares the dependency as
+ * `Acme: ../acme`; the target module's own `library:` block says that its
+ * `js` entry point is what `@telorun/acme` means. This type is the joined
  * result — computed once per module during `kernel.load()`, where the import
  * graph and every module's artifact are both in hand, and handed to the loader.
  *
  * It is deliberately **not** something the loader derives for itself. Resolution
- * needs the import edges (which module is `KvStore`), the target's manifest (what
+ * needs the import edges (which module is `Acme`), the target's manifest (what
  * specifier it declares) and the target's artifact (where its layer is); a loader
  * sees one canonical base URI and none of those.
  */
@@ -45,8 +45,8 @@ export interface ResolvedSiblingLibrary {
   readonly moduleVersion: string | undefined;
   /** The owning module's OWN sibling libraries. Building a library entry from
    *  source is the same build as building a controller from source, so it needs
-   *  the same externals — `kv-store-sql`'s bundle externalizes `@telorun/sql`,
-   *  and building `@telorun/sql`'s entry point in turn needs sql's own. Held as
+   *  the same externals — `acme-backend`'s bundle externalizes `@telorun/other`,
+   *  and building `@telorun/other`'s entry point in turn needs its own. Held as
    *  a live reference and filled in a second pass, so an import cycle cannot
    *  make construction recurse. */
   readonly libraries: SiblingLibraryMap;
@@ -75,7 +75,7 @@ export interface SiblingLibraryInputs {
 
 /**
  * Join the import graph to each target's declared library entry point, so a
- * controller bundle's bare `@telorun/kv-store` resolves to the module that owns
+ * controller bundle's bare `@telorun/acme` resolves to the module that owns
  * it instead of being copied into the bundle.
  *
  * Called from `kernel.load()` for the same reason the artifacts are built there:
