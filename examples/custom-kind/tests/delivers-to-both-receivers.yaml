@@ -8,7 +8,7 @@ metadata:
     so what it prints is the round trip: a kind declared, instantiated and
     delivered.
 imports:
-  Assert: ../../../modules/assert
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 targets:
   - !ref test
 ---

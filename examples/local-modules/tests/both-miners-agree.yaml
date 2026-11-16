@@ -7,7 +7,7 @@ metadata:
     `examples/local-modules` and checks that both find the same nonce and hash,
     against a value computed outside either. Timings vary by machine, so they
     are not compared.
-imports: { PowTs: ../pow-ts, PowRust: ../pow-rust, Assert: ../../../modules/assert }
+imports: { PowTs: ../pow-ts, PowRust: ../pow-rust, Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI }
 targets:
   - !ref test
 ---
