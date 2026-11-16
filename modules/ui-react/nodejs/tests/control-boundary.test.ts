@@ -136,11 +136,20 @@ describe("the base layer", () => {
 
   it("declares every reserved property on its part, so the documented layout holds under an empty theme", () => {
     const missing = contract.reserved
-      .filter((entry) => entry.state === undefined)
+      .filter((entry) => entry.state === undefined && entry.part !== undefined)
       .flatMap(({ part, properties }) =>
         properties.filter((property) => !base.some((rule) => named(rule.selector).includes(part as string) && rule.properties.includes(property))).map((property) => `${part} ${property}`),
       );
     expect(missing).toEqual([]);
+    // A reservation in a relation to a part: on what holds it, and on the interactive elements after it.
+    const reaches = (selector: string, entry: (typeof contract.reserved)[number]) =>
+      entry.holding !== undefined
+        ? selector.includes(`:has(> [data-telo-part="${entry.holding}"])`)
+        : selector.includes(`[data-telo-part="${entry.after}"] ~`) && (entry.interactive ?? []).every((element) => selector.includes(element));
+    const unrelated = contract.reserved
+      .filter((entry) => entry.holding !== undefined || entry.after !== undefined)
+      .flatMap((entry) => entry.properties.filter((property) => !base.some((rule) => reaches(rule.selector, entry) && rule.properties.includes(property))).map((property) => `${entry.holding ?? entry.after} ${property}`));
+    expect(unrelated).toEqual([]);
   });
 
   it("reserves, per state, exactly what its rules for that state declare: on a part with an entry of its own, else on every part carrying it", () => {

@@ -43,7 +43,7 @@ children:
             kind: Ui.TableLayout
             columns:
               - value: !cel "row.title"
-                href: { path: !ref review, pathParams: { id: !cel "row.id" } }
+                to: { kind: Ui.Navigate, href: { path: !ref review, pathParams: { id: !cel "row.id" } } }
               - value: !cel "row.product"
               - value: !cel "row.state"
               - value: !cel "row.revisedAt"
@@ -78,12 +78,12 @@ children:
             children:
               - type: link
                 text: Compare revisions
-                href: { path: !ref compare, pathParams: { id: !cel "params.id" } }
+                to: { kind: Ui.Navigate, href: { path: !ref compare, pathParams: { id: !cel "params.id" } } }
               # With no worker the parameter is null, which leaves the address
               # unresolved, and a link with an unresolved address is drawn as text.
               - type: link
                 text: Its worker
-                href: { path: !ref worker, pathParams: { name: !cel "data.review.worker" } }
+                to: { kind: Ui.Navigate, href: { path: !ref worker, pathParams: { name: !cel "data.review.worker" } } }
           # Three buttons, each bound to the revision on screen; each prompt asks
           # for what the inputs leave, and `author` is entered once for all four.
           - type: columns
@@ -214,10 +214,12 @@ children:
             rowStyle: { by: !cel "row.base", cases: { "true": strong } }
             columns:
               - value: !cel "row.seq"
-                href:
-                  path: !ref compare
-                  pathParams: { id: !cel "params.id" }
-                  queryParams: { base: !cel "row.seq", target: !cel "data.target" }
+                to:
+                  kind: Ui.Navigate
+                  href:
+                    path: !ref compare
+                    pathParams: { id: !cel "params.id" }
+                    queryParams: { base: !cel "row.seq", target: !cel "data.target" }
               - { type: time, value: !cel "row.createdAt", relative: true }
           - type: list
             heading: Compare to
@@ -225,10 +227,12 @@ children:
             rowStyle: { by: !cel "row.target", cases: { "true": strong } }
             columns:
               - value: !cel "row.seq"
-                href:
-                  path: !ref compare
-                  pathParams: { id: !cel "params.id" }
-                  queryParams: { base: !cel "data.base", target: !cel "row.seq" }
+                to:
+                  kind: Ui.Navigate
+                  href:
+                    path: !ref compare
+                    pathParams: { id: !cel "params.id" }
+                    queryParams: { base: !cel "data.base", target: !cel "row.seq" }
               - { type: time, value: !cel "row.createdAt", relative: true }
           - type: text
             style: muted

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 import { render, type Rendered } from "./harness.js";
-import { address, asideOf, operation } from "./spec-nodes.js";
+import { address, navigateTo, asideOf, operation } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
@@ -62,7 +62,7 @@ describe("the application shell", () => {
     rendered = await render({
       path: "/sign-in",
       layouts,
-      pages: { "/": { title: "Home", children: [{ type: "text", text: "First" }] }, "/sign-in": { title: "Sign in", layout: false, children: [{ type: "link", text: "Back", href: address("/") }] } },
+      pages: { "/": { title: "Home", children: [{ type: "text", text: "First" }] }, "/sign-in": { title: "Sign in", layout: false, children: [{ type: "link", text: "Back", to: navigateTo(address("/")) }] } },
     });
     expect(["header", "aside", "footer"].map((part) => rendered!.parts(part).length)).toEqual([0, 0, 0]);
     expect(rendered.container.querySelectorAll("h1")).toHaveLength(0);
@@ -80,7 +80,7 @@ describe("the application shell", () => {
     rendered = await render({
       path: "/",
       layouts: { main: { header } },
-      pages: { "/": { title: "Home", children: [{ type: "link", text: "Next", href: address("/two") }] }, "/two": { title: "Two", children: [{ type: "text", text: "Second" }] } },
+      pages: { "/": { title: "Home", children: [{ type: "link", text: "Next", to: navigateTo(address("/two")) }] }, "/two": { title: "Two", children: [{ type: "text", text: "Second" }] } },
     });
     const layoutRequests = () => rendered!.requests.filter((request) => request.includes("/_telo/ui/layout"));
     const top = rendered.part("header").querySelector('[data-telo-part="text"]');
@@ -119,7 +119,7 @@ describe("the application shell", () => {
   });
 
   it("draws a navbar's own nodes before its title and after its navigation, on every page", async () => {
-    const header = { start: [{ type: "image", src: "/logo.svg", alt: "Logo" }], end: [{ type: "link", text: "Help", href: address("/help") }] };
+    const header = { start: [{ type: "image", src: "/logo.svg", alt: "Logo" }], end: [{ type: "link", text: "Help", to: navigateTo(address("/help")) }] };
     rendered = await render({ path: "/nowhere", prefix: "/admin", pages, header });
     const parts = (element: Element) => [...element.children].map((child) => child.getAttribute("data-telo-part"));
     expect(parts(rendered.part("header"))).toEqual(["header-content"]);
@@ -171,7 +171,7 @@ describe("the application shell", () => {
 
   it("opens a page by the variables of its path, which its nodes read as `params`", async () => {
     const plan = { title: "Plan", children: [{ type: "value", value: { root: "params", path: ["id"] }, present: { type: "string" } }] };
-    rendered = await render({ path: "/", pages: { "/": { title: "Home", children: [{ type: "link", text: "Open", href: address("/plans/p%207") }] }, "/plans/{id}": plan } });
+    rendered = await render({ path: "/", pages: { "/": { title: "Home", children: [{ type: "link", text: "Open", to: navigateTo(address("/plans/p%207")) }] }, "/plans/{id}": plan } });
     expect(await rendered.click(rendered.part("link"))).toBe(true);
     expect(rendered.requests).toContain("GET /_telo/ui/page?path=%2Fplans%2Fp%25207");
     expect(rendered.part("value").textContent).toBe("p 7");
@@ -180,8 +180,8 @@ describe("the application shell", () => {
   it("draws a page afresh for another value of a variable, and keeps it mounted for another query", async () => {
     const note = operation("/api/notes", "Send", { type: "object", properties: { note: { type: "string", title: "Note" } } });
     const links = [
-      { type: "link", text: "Same", href: address("/plans/a", {}, { tab: { value: "x" } }) },
-      { type: "link", text: "Other", href: address("/plans/b") },
+      { type: "link", text: "Same", to: navigateTo(address("/plans/a", {}, { tab: { value: "x" } })) },
+      { type: "link", text: "Other", to: navigateTo(address("/plans/b")) },
     ];
     rendered = await render({ path: "/plans/a", pages: { "/plans/{id}": { title: "Plan", children: [note, ...links] } } });
     const documents = () => rendered!.requests.filter((request) => request.startsWith("GET /_telo/ui/page")).length;

@@ -36,4 +36,4 @@ metadata: { name: filledItem }
 content:
   type: menu
   text: Pick
-  items: [{ type: link, text: One, href: /one, fill: true }]
+  items: [{ type: link, text: One, to: { kind: Ui.Navigate, href: /one }, fill: true }]

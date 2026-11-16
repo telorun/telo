@@ -300,7 +300,14 @@ from another (a form's field) may take its type from whoever references it:
 `x-telo-context-from-referrer: <binding>[/<member>…]` on a binding, or a member
 beneath one (`request/principal`), types it from what that path names in scope at
 each referencing slot, at the site's own eval mode, judged once per distinct type;
-with no referrer the node keeps its own keywords.
+with no referrer, or one whose scope lacks the path, the node keeps its own
+keywords. `x-telo-context-withheld: "<reason>"` beside it makes that reading a
+refusal: the node is typed where a referrer binds the path, and every read of it
+is `CEL_UNKNOWN_IDENTIFIER` / `CEL_UNKNOWN_FIELD`, naming the referrer and the
+reason, where none does. An `x-telo-context` at a kind's schema root names its
+bindings at every CEL site of the resource and marks no field as evaluated;
+children extending the kind without `base:` inherit it, their own root context
+added over it by binding name.
 `x-telo-context-from-path-template: "<relative pointer>"` (`0/path`) types a
 binding as the variables of the path template the resource holds there — one
 required string per `{name}` segment, closed, so a variable the template lacks
@@ -4772,22 +4779,39 @@ Where to start:
     inside it), `Ui.Action` (a button sending a request to a route and drawing what it
     answered), `Ui.Data` (a record read when the page loads) and `Ui.View` (a
     node tree placed wherever it is needed), each reading `Telo.JsonSchema`
-    shapes. A request or link target is an ADDRESS: a literal string, or
+    shapes. A request target is an ADDRESS: a literal string, or
     `{ path, pathParams, queryParams }` — `path` a template whose `{name}`
     placeholders are whole segments (`/tasks/{id}`), filled from `pathParams`
     (accessors over `row`, `input`, `query`, … or literals, percent-encoded),
-    `queryParams` the query (null and empty left out); a link's `path` may be a
-    `!ref` to a `Ui.Page`. An unbound placeholder or unused `pathParams` entry
-    is refused by `telo check` (and by the kernel). Links (`link.href`, menu
-    items, `value.href`, column and relation `href`s, `onSuccess.navigate`)
-    take addresses and are never per-request CEL — two `link` nodes with `when`
-    instead. `Ui.Action` sends `request: { method, target }` — `method` `POST`
+    `queryParams` the query (null and empty left out); a `Ui.Navigate`'s `path`
+    may be a `!ref` to a `Ui.Page`. An unbound placeholder or unused `pathParams`
+    entry is refused by `telo check` (and by the kernel). Where a press GOES is
+    a destination under `to`: `{ kind: Ui.Navigate, href: <address> }` moves to
+    an address; `{ kind: Ui.OpenPage, page: !ref <page>, pathParams?,
+    queryParams?, surface? }` opens a listed page over the current one in a
+    `Ui.Dialog` or `Ui.Drawer` — `surface` omitted means the surface it is
+    pressed in, else a dialog; one page is open at a time, and a surface with
+    `address: { name: post }` keeps it in the address as `_telo.page.post`.
+    `to` sits on a `link` node, a menu item, a `value` node, `list` and
+    `Ui.TableLayout` columns, a relation, `Ui.CollectionOptions`, a navigation
+    `link` entry and `Ui.Action.onSuccess` (`{ to, refreshes }`); `href` at
+    those sites and `onSuccess.navigate` are refused. A region holding several
+    things — a `box`, `stack` or `columns` node, a `Ui.Listing`'s records, a
+    `CrudUi.Admin`'s rows — takes `press: { to, label }`, `label` a required
+    text naming it (`{ text: "Open {$title}", values: { title: !cel
+    "row.title" } }`); a pressed badge is a `box` with `press`, a pressed text
+    a `link`. A listing with `press` keeps editing on the record's edit button.
+    A destination reads only the roots bound where its `to` is written (`row`
+    on a page's own `link` is refused) and is never per-request CEL — two
+    `link` nodes with `when` instead. Running an action is never a
+    destination: it stays a `button` node or a row action.
+    `Ui.Action` sends `request: { method, target }` — `method` `POST`
     (default), `PUT`, `PATCH` or `DELETE`, `target` an address over `input`
     (there is no `source`). An input property bound as exactly `input.<name>` is
     consumed: it travels in the target and is left out of the JSON body; a
     `DELETE` sends no body and must consume every input property
     (`UI_ACTION_INPUT_UNSENT`). A 2xx with no body (204) is a success unless
-    `result`, `navigate` or a `refreshes` entry reads `result`. After a 2xx the
+    `result`, `onSuccess.to` or a `refreshes` entry reads `result`. After a 2xx the
     target's path, each `onSuccess.refreshes` request target and a listing's
     `basePath` are announced, and every `Ui.Data`, `Ui.Listing` and `Ui.Chat`
     reading exactly that path reads again; a whole segment of a literal
@@ -4807,8 +4831,9 @@ Where to start:
     all inside `aside`; the aside stays mounted and starts no request while
     hidden. A `link` node takes
     `button` (a `Ui.TextButton` / `Ui.IconButton`) to draw as a button, and a
-    link whose address is the current page (`_telo*` parameters aside) is
-    `aria-current="page"`, its record `data-selected`, with no authoring. A
+    link or press leading where the viewer is (the current address, `_telo*`
+    parameters aside, or the page open over it) is `aria-current="page"`, its
+    record `data-selected`, with no authoring. A
     `bar` node lays out `start`, `center` (kept centred) and `end` node lists;
     a `command` node (`command: !cel "<root>.<command>"`, `text`, `button?`) is a
     button running a command the place it is in binds (a `Ui.Command`
@@ -4822,7 +4847,7 @@ Where to start:
     `Ui.CollectionSource` (a `DataModel.Collection` and its `basePath`, written
     once and used by every screen and picker over it) and a
     `Ui.CollectionPresentation` (`source`, and `relations: { <property>: {
-    source, label, hint?, href?, search? } }` showing a related record by
+    source, label, hint?, to?, search? } }` showing a related record by
     name). From a relation the listing labels the column, the filter bar offers
     the records (`values: present` offers only those that occur, with counts,
     for a property under `query.facets`) and the form enters a picker. A
@@ -4830,7 +4855,7 @@ Where to start:
     `Ui.TableLayout` (default), `Ui.ListLayout`, `Ui.CardLayout`,
     `Ui.BoardLayout` (`groups`), `Ui.CalendarLayout` and `Ui.TimelineLayout`
     (`span`), `Ui.TreeLayout` (`parent`), or `Ui.ComponentLayout` for a
-    component of your own; `compact` is the layout below the narrow-screen
+    component of your own (built for `ui_react_layouts-2`); `compact` is the layout below the narrow-screen
     breakpoint, and a layout's `move` is a bound action running when a card,
     event or tree item is dragged. `telo check` refuses a layout whose filter
     the collection does not accept. `Ui.Collection`, `Ui.Table` and `Crud.Ui`
@@ -4860,8 +4885,10 @@ Where to start:
     matches one percent-decoded segment, a literal segment winning over it, and
     the page's nodes, readers, views and sources read it as `params.id` (a
     string; `telo check` refuses a variable the placing page lacks). A
-    navigation entry cannot name such a page (refused); a `link` reaches it with
-    `href: { path: !ref review, pathParams: { id: !cel "row.id" } }`, and a path
+    navigation `page` entry cannot name such a page (refused); a `link` reaches
+    it with `to: { kind: Ui.Navigate, href: { path: !ref review, pathParams:
+    { id: !cel "row.id" } } }` (or `{ kind: Ui.OpenPage, page: !ref review,
+    pathParams: { id: !cel "row.id" } }` to open it in place), and a path
     parameter may read a nullable value: null leaves the address unresolved (a
     link is drawn as text). A `Ui.CollectionSource.basePath` may be
     `{ path, pathParams }` over `params` / `query`. `Ui.Data` and `Ui.Listing`
@@ -4910,8 +4937,9 @@ Where to start:
     default, `Ui.OverlayNavigation`'s menu button and drawer, or
     `Ui.TabBarNavigation`) and `Ui.NavigationColumn` (`navigation`, `state?`, a
     column that folds to a rail of icons inside an aside). A `navigation` is
-    `{ items }` naming pages by `!ref`, never by path, never derived. Every page
-    a link, navigation entry or `onSuccess.navigate` names must be listed in
+    `{ items }` — `{ type: page, page: !ref … }`, `{ type: link, text, to }`,
+    groups — naming pages by `!ref`, never by path, never derived. Every page a
+    navigation entry, an address or a `Ui.OpenPage` names must be listed in
     `pages` (`UI_PAGE_UNROUTED`). `notFound:` is the nodes drawn for an unknown
     path inside the layout. A page's content is `contained` (the look's centred measure,
     the `width.page` design token, inset by `space.page`) unless
@@ -4929,7 +4957,8 @@ Where to start:
   - A screen over one SQL table's records is `crud` plus `crud-ui`: one
     `Crud.Collection` shared by `Crud.Api` (the API, `collection:`) and a
     `CrudUi.CollectionSource` that `CrudUi.Admin` (the whole screen, with
-    optional `relations`, `layout`, `compact`, `paging`) reads. Hand-build from
+    optional `relations`, `layout`, `compact`, `paging`, and `press` — what
+    pressing a row does) reads. Hand-build from
     the `ui` kinds when the screen is anything more.
 
 Before the first screen file, call the `guide_…` tool that covers user

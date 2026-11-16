@@ -1,0 +1,96 @@
+kind: Telo.Application
+metadata:
+  name: CrudUiAdminPressTest
+  version: 1.0.0
+  description: |
+    `CrudUi.Admin.press` is handed to the admin's listing whole: the listing
+    carries the press on the wire, its destination and label over `row`, and
+    keeps its edit form for the record's edit button. A press reading a
+    property the collection's list shape does not declare is refused at the
+    admin that wrote it.
+imports:
+  CrudUi: ../
+  Crud: ../../crud
+  SQLite: ../../sqlite
+  Ui: ../../ui
+  Probe: ../../ui/tests/__fixtures__/probe
+  Assert: ../../assert
+targets:
+  - !ref main
+  - !ref misread
+---
+kind: SQLite.Table
+metadata: { name: tasksTable }
+table: tasks
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  title: { type: text, nullable: false }
+---
+kind: Telo.JsonSchema
+metadata: { name: NewTask }
+schema:
+  type: object
+  required: [title]
+  additionalProperties: false
+  properties: { title: { type: string, title: Title, minLength: 1 } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Task }
+extends: NewTask
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
+---
+kind: Crud.Collection
+metadata: { name: tasks }
+model: !ref Task
+table: !ref tasksTable
+schemas: { list: !ref Task, create: !ref NewTask, update: !ref NewTask }
+query: { filters: [], sort: [{ property: title }] }
+---
+kind: CrudUi.CollectionSource
+metadata: { name: tasksSource }
+collection: !ref tasks
+basePath: /api/tasks
+---
+kind: Ui.Page
+metadata: { name: taskPage }
+path: /tasks/{id}
+title: Task
+children: [{ type: text, text: Task }]
+---
+kind: CrudUi.Admin
+metadata: { name: pressed }
+source: !ref tasksSource
+press:
+  to: { kind: Ui.OpenPage, page: !ref taskPage, pathParams: { id: !cel "row.id" } }
+  label: { text: "Open {$title}", values: { title: !cel "row.title" } }
+---
+kind: Telo.Sequence
+metadata: { name: main }
+steps:
+  - name: pressed
+    invoke: { kind: Probe.Read, source: !ref pressed }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        press: !cel "steps.pressed.result.node.content.press"
+        edit: !cel "steps.pressed.result.node.content.edit.form.type"
+      expected:
+        press:
+          to:
+            type: openPage
+            href: { path: { value: "/tasks/{id}" }, pathParams: { id: { root: row, path: [id] } }, queryParams: {} }
+            surface: { type: dialog, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+            keepsSurface: true
+          label:
+            text: { text: "Open {$title}", context: null, lang: und, computed: false }
+            values: { title: { root: row, path: [title] } }
+        edit: form
+---
+kind: Assert.Manifest
+metadata: { name: misread }
+source: ./__fixtures__/press-refusals/telo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "CrudUi.Admin/misread: !cel: 'row.priority' is not defined (available: id, title)"

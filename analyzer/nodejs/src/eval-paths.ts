@@ -440,7 +440,8 @@ function collectedOf(schema: Record<string, any>, shapes: NamedShapeLookup): Col
   const state: WalkState = { shapes, resolved: new Map() };
   const found = emptyCollected();
   const own = withContextNames(NO_NAMES, schema);
-  if (declaresCelRegion(schema)) found.regions.push("");
+  // A context at the schema root names what every site may read and marks no
+  // field as evaluated, so the root is no region.
   if (isContextNode(schema)) found.contexts.push({ path: "", schema: contextOf(schema, schema, state) });
   // At the root an `x-telo-eval` is the `**` wildcard, read by the caller, and
   // eval sites are reached through the root's own `properties` alone.
@@ -796,10 +797,14 @@ export interface ScopeMatch {
   itemEnd: number;
 }
 
+const ROOT_MATCH: ScopeMatch = Object.freeze({ prefix: "", itemEnd: 0 });
+
 const captureRegexes = new Map<string, RegExp>();
 
 export function scopeMatchOf(exprPath: string, scope: string): ScopeMatch | undefined {
-  const stripped = scope.startsWith("$.") ? scope.slice(2) : scope === "$" ? "" : scope;
+  // The schema root's scope covers every site, its item the resource itself.
+  if (scope === "$") return ROOT_MATCH;
+  const stripped = scope.startsWith("$.") ? scope.slice(2) : scope;
   if (!stripped) return undefined;
   if (!isEvalPathPattern(stripped)) {
     return evalPathCovers(stripped, exprPath) ? { prefix: stripped, itemEnd: 0 } : undefined;

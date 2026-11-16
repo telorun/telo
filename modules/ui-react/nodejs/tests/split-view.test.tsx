@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadFixtureComponents, render, wire, type Rendered } from "./harness.js";
-import { address, asideOf, listingNode, todos } from "./spec-nodes.js";
+import { address, navigateTo, asideOf, listingNode, todos } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => {
@@ -27,7 +27,7 @@ const key = "telo.ui:/:s:filters";
 
 describe("a split view", () => {
   it("draws the same parts, states and fold as a layout's aside", async () => {
-    const aside = asideOf({ type: "text", text: "Aside" }, { collapse: { collapsed: false, state: null }, actions: [{ type: "link", text: "New", href: address("/new"), button: { type: "icon", icon: null, label: "shown" } }] });
+    const aside = asideOf({ type: "text", text: "Aside" }, { collapse: { collapsed: false, state: null }, actions: [{ type: "link", text: "New", to: navigateTo(address("/new")), button: { type: "icon", icon: null, label: "shown" } }] });
     const inside = (r: Rendered) => [...r.part("aside").querySelectorAll("[data-telo-part]")].map((part) => part.getAttribute("data-telo-part"));
     const attributes = (r: Rendered) => ["data-side", "data-size", "data-frame", "data-state"].map((name) => r.part("aside").getAttribute(name));
     rendered = await show(wire({ type: "split", aside, content: { type: "text", text: "Content" } }));
@@ -74,7 +74,7 @@ describe("a split view", () => {
   });
 
   it("draws its actions under the bar holding the toggle, as stacked glyphs when folded, and in the rail only when compact", async () => {
-    const entries = [{ type: "link", text: "New", href: address("/new"), button: { type: "icon", icon: null, label: "shown" } }];
+    const entries = [{ type: "link", text: "New", to: navigateTo(address("/new")), button: { type: "icon", icon: null, label: "shown" } }];
     const withBar = { actions: entries, content: { type: "text", text: "Aside" } };
     rendered = await show(split({}, withBar));
     const link = () => rendered!.part("aside-actions").querySelector<HTMLElement>('[data-telo-part="link"]')!;
@@ -141,7 +141,7 @@ describe("a split view", () => {
       path: "/",
       narrow: true,
       pages: {
-        "/": { title: "Home", children: [split({}, { content: wire({ type: "link", text: "Other", href: address("/other") }) })] },
+        "/": { title: "Home", children: [split({}, { content: wire({ type: "link", text: "Other", to: navigateTo(address("/other")) }) })] },
         "/other": { title: "Other", children: [] },
       },
     });

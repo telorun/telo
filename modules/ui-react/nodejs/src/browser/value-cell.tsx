@@ -1,6 +1,7 @@
 import { useContext, type ReactNode } from "react";
 import { CurrentAnchor } from "./current-location.js";
 import { presentValue } from "./bindings.js";
+import { DestinationAnchor, type ResolvedDestination } from "./destination.js";
 import { useHostStore } from "./host.js";
 import { applicationPath, linkAddress } from "./link-address.js";
 import { matchPage } from "./page-route.js";
@@ -15,9 +16,9 @@ interface PresentedProps {
   labels?: readonly ValueLabel[];
   /** Drawn for a link in place of its address. */
   text?: string;
-  /** Where the value links to, already resolved; nothing links without one
+  /** Where the value leads, already resolved; nothing links without one
    *  unless the model calls the value an address. */
-  href?: string;
+  to?: ResolvedDestination;
 }
 
 /** The address a value links to: the one it was given, else its own text where the model calls it an address and no label stands for it. */
@@ -31,29 +32,56 @@ export function presentedAddress(value: unknown, present: PresentedProps["presen
  * link to a page of the application moves within it; any other — a file the
  * origin serves, another site — opens beside the application.
  */
-export function Presented({ value, present, labels, text, href: given }: PresentedProps): ReactNode {
+export function Presented({ value, present, labels, text, to }: PresentedProps): ReactNode {
   const format = useText();
   const say = useSay();
   const label = labelFor(labels, value);
   const shown = label ? format(label) : presentValue(value, present, say);
+  const drawn = text ?? shown;
   return (
-    <ValueLink address={presentedAddress(value, present, labels, given)} plain={shown}>
-      {text ?? shown}
+    <ValueLink address={presentedAddress(value, present, labels, to?.address)} to={to} plain={shown} naming={drawn}>
+      {drawn}
     </ValueLink>
   );
 }
 
-/** A link to `address` drawing `children`, where it is an address a link may hold; `plain` otherwise, else `children`. */
-export function ValueLink({ address, plain, children }: { address: string | undefined; plain?: ReactNode; children: ReactNode }): ReactNode {
+/**
+ * A link drawing `children` — to the destination `to`, else to `address` —
+ * where its address is one a link may hold; `plain` otherwise, else
+ * `children`. A click on a destination's link goes to the destination;
+ * `naming` is the text the link is drawn with.
+ */
+export function ValueLink({
+  address,
+  to,
+  plain,
+  naming,
+  children,
+}: {
+  address?: string;
+  to?: ResolvedDestination;
+  plain?: ReactNode;
+  naming: string;
+  children: ReactNode;
+}): ReactNode {
   const store = useHostStore();
   const { prefix, pages } = useContext(RendererContext);
   const ofRecord = useContext(RecordLinkContext);
-  const href = address === undefined ? undefined : linkAddress(store, address);
+  const at = to?.address ?? address;
+  const href = at === undefined ? undefined : linkAddress(store, at);
   if (href === undefined) return plain ?? children;
-  const path = address?.startsWith("/") ? applicationPath(prefix, href) : undefined;
+  const path = at?.startsWith("/") ? applicationPath(prefix, href) : undefined;
   const page = path !== undefined && matchPage(pages, path) !== undefined;
+  const attributes = { "data-telo-part": "link", "data-record": ofRecord ? "true" : undefined, target: page ? undefined : "_blank", rel: page ? undefined : "noopener" };
+  if (to !== undefined) {
+    return (
+      <DestinationAnchor destination={to} href={href} naming={naming} {...attributes}>
+        {children}
+      </DestinationAnchor>
+    );
+  }
   return (
-    <CurrentAnchor address={address} data-telo-part="link" data-record={ofRecord ? "true" : undefined} href={href} target={page ? undefined : "_blank"} rel={page ? undefined : "noopener"}>
+    <CurrentAnchor lead={at === undefined ? undefined : { type: "navigate", address: at }} href={href} {...attributes}>
       {children}
     </CurrentAnchor>
   );

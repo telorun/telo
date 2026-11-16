@@ -77,6 +77,14 @@
   [data-telo-part="box"] { display: block; }
   [data-telo-part="columns"] { display: flex; flex-wrap: wrap; align-items: flex-start; }
   [data-telo-part="column"] { flex: 1 1 0; min-width: 0; }
+  /* A press spans the element it is the first child of, which is its containing
+     block; interactive content after it is positioned, so it paints above the
+     press by tree order and stays a target of its own, as a nested pressed
+     element does. Both rules only raise what nothing positions already. */
+  [data-telo-part="press"] { position: absolute; inset: 0; z-index: 0; }
+  :where(:has(> [data-telo-part="press"])) { position: relative; }
+  :where([data-telo-part="press"] ~ :is(a, button, input, select, textarea, label, summary, [tabindex], [contenteditable]):not([data-telo-part="press"]),
+    [data-telo-part="press"] ~ * :is(a, button, input, select, textarea, label, summary, [tabindex], [contenteditable]):not([data-telo-part="press"])) { position: relative; }
   /* A bar: its start, its centre and its end in three columns, the centre
      centred whatever the sides hold (the start taking the room of an empty
      one); below the breakpoint the regions wrap. */

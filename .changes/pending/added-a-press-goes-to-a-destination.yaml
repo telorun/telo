@@ -1,0 +1,23 @@
+units:
+  modules/ui: Added
+body: "A press goes to a destination held by the key `to`: `Ui.Navigate` (`href`, an
+  address) moves to an address, and `Ui.OpenPage` (`page`, `pathParams`, `queryParams`,
+  `surface`) opens a page of the application over the current one in a dialog or a
+  drawer, keeping the surface it is pressed in when `surface` is omitted. A destination
+  reads the roots bound where its `to` is written, and a root its place does not bind is
+  refused by `telo check`. `Ui.Destination` is the abstract a destination kind of
+  another module extends. A whole region can be pressed: `press`, a `Ui.Press` (`to` and
+  a required `label`, the press's accessible name), on the `box`, `stack` and `columns`
+  nodes, and on `Ui.Listing`, where it says what pressing a record does over `row` —
+  written, editing is the record's edit button; omitted, pressing a record opens `edit`
+  as before. `press` on any other node, and a press with no `label`, are a
+  `SCHEMA_VIOLATION`. Breaking: `href` is removed from the `link` node, a `menu` item,
+  the `value` node, `list` and `Ui.TableLayout` columns, a `Ui.CollectionPresentation`
+  relation, `Ui.OptionSource` and a `Ui.Navigation` `link` entry, and `navigate` from
+  `Ui.Action.onSuccess` — each is now a `SCHEMA_VIOLATION`; write `to: { kind:
+  Ui.Navigate, href: <the address> }` in its place, and `onSuccess.to` for
+  `onSuccess.navigate`. On the wire every such site carries `to`, a `Ui.DestinationSpec`
+  (`navigate` or `openPage`, the latter with its filled `surface` and `keepsSurface`),
+  in place of `href` and `navigate`; the `box`, `stack` and `columns` nodes and the
+  `listing` node always carry `press`, a `Ui.PressSpec` (`{ to, label }`) or null, so a
+  pane or composite building such a node itself must write `press: null`."

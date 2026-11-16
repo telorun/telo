@@ -19,6 +19,7 @@ layout. How records are drawn is [the layout's](listing-layouts.md).
 | `show` | `{ count: true }` | [what is shown beside the records](#the-count): `{ count? }` |
 | `rowStyle` | | a [style rule](nodes.md#style-rules) for the record's element in every layout: a table row, a card, an event |
 | `create`, `edit` | | [how a form is opened](#opening-a-form): `{ form, surface?, afterSubmit?, unsaved? }` |
+| `press` | the `edit` opener | [what pressing a record does](#pressing-a-record): a [`Ui.Press`](presses.md#presses), `{ to, label }`, over `row`, `query` and `params` |
 | `delete` | `false` | whether each record offers a confirmed delete |
 | `rowActions` | none | [operations each record offers](#row-actions): `{ action, inputs, confirm?, prompt?, enabled? }` each |
 | `rowActionsDisplay` | `auto` | [how the actions, edit and delete are drawn](#how-the-actions-are-drawn): `auto`, `inline` or `menu` |
@@ -132,11 +133,13 @@ than the one that lacked the room by at least what it lacked.
 
 ## The selected record
 
-A record whose layout draws a link that leads to where the viewer is — a
-column's `href`, a `link` node in a layout's `content`, a value the model
-calls a `uri` — is the selected record: its element carries
-`data-selected="true"` and the layout contract's `selected` is true. A
-relation's label links and a row action's answer are never counted. The rule
+A record whose press, or a link its layout draws, leads to where the viewer
+is — the listing's `press`, a column's `to`, a `link` node in a layout's
+`content`, a value the model calls a `uri` — is the selected record: its
+element carries `data-selected="true"` (in a table, its row) and the layout
+contract's `selected` is true; a component layout's `selected` reports the
+press alone. A relation's label links and a row action's answer are never
+counted. The rule
 that decides what is current, a stray parameter unmarking a link included, is
 in [nodes](nodes.md#the-current-location). A chat's conversation list is
 this: rows linking to `/?conversation=<id>` mark the open conversation.
@@ -152,7 +155,7 @@ list item, a card, an event, a bar.
 
 Where the presentation presents a property's relation, a value over
 `row.<property>` shows the related record's label instead of its key, linked
-where the relation gives `href`. The listing's node carries each presented
+where the relation gives `to`. The listing's node carries each presented
 relation under `relations`, keyed by property, as the
 [option source](field-kinds.md#option-sources) its labels are read
 from: the keys of every page answered in one render turn are looked up with
@@ -186,6 +189,37 @@ An edit opens over the record read by its key, not over the record shown.
 
 The object is the only spelling: `create: !ref todoForm` is refused
 (`SCHEMA_VIOLATION`), as is `afterSubmit: again` on `edit`.
+
+## Pressing a record
+
+Without `press`, pressing a record opens its `edit` form. `press` says what
+pressing one does instead — a [destination](presses.md) and the label naming
+the press, both over the record's `row` and the listing's `query` and
+`params` — and editing is then the record's edit button:
+
+```yaml
+press:
+  to:
+    kind: Ui.OpenPage
+    page: !ref postPage
+    pathParams: { id: !cel "row.id" }
+    surface: { kind: Ui.Drawer, side: end, address: { name: post } }
+  label: { text: "Open {$title}", values: { title: !cel "row.title" } }
+edit: { form: !ref postForm }
+```
+
+Every layout draws the press across the whole record — a list item, a card, a
+board card, a calendar or timeline event, a tree item — except a table, which
+draws it across [the row's first cell](listing-layouts.md#uitablelayout). The
+record's own links, buttons and row actions stay targets of their own above
+it. A record press is the listing's own `press` and is never set by another
+resource; a related record's label goes where its
+[relation's `to`](collection-presentation.md#relations) says, in every listing
+over the presentation.
+
+A `to` reading a property the model does not declare, and a `label` value
+doing so, are `CEL_UNKNOWN_FIELD`; a press with no `label` is
+`SCHEMA_VIOLATION`.
 
 ## Row actions
 
@@ -354,8 +388,10 @@ What the listing provides is a `type: listing` node carrying `schema`,
 (`{ sortable, initial }`: the properties the viewer may sort by — none when the
 order is fixed — and the order sent until they choose, `-` leading a descending
 one, or null), `show` (`{ count }`), `rowStyle`, `create`, `edit`, `delete`,
-`rowActions`, `rowActionsDisplay`, `relations`, `empty`, `layout`, `compact` and `reloadEvery` (the
-interval in milliseconds, present when set) — every default filled by `ui`.
+`rowActions`, `rowActionsDisplay`, `relations`, `empty`, `layout`, `compact`,
+`press` (a [`Ui.PressSpec`](presses.md#what-a-renderer-receives), `null` when
+none is written) and `reloadEvery` (the interval in milliseconds, present when
+set) — every default filled by `ui`.
 `basePath` is the source's literal path or its [template](collection-source.md#a-templated-base-path).
 `layout` and `compact` are [`Ui.ListingLayoutSpec`](listing-layouts.md#the-layout-spec)
 values.

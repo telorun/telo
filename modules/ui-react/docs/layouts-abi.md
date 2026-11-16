@@ -1,4 +1,4 @@
-# The layout contract — `ui_react_layouts-1`
+# The layout contract — `ui_react_layouts-2`
 
 What a listing layout component is written against: a browser component
 drawing the records a [`Ui.Listing`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) reads, named by a
@@ -8,14 +8,14 @@ board, calendar, timeline and tree layouts are its reference implementation:
 the renderer draws them through this contract, as it draws any other.
 
 A layout component is a **named export** of a browser entry that declares
-`abi: ui_react_layouts-1`, published with a
+`abi: ui_react_layouts-2`, published with a
 [`Ui.ComponentExport`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/). It is **fully
 controlled**: it fetches nothing and holds nothing the renderer holds.
 
 | | The renderer | The component |
 | --- | --- | --- |
 | Data | reading the plan's reads — every group, period and tree level, each paged; filters, the viewer's sort, reloads after a write, a move or a change announced for the collection; looking up related records' labels | draws `records`, `groups`, `children` and `span` |
-| Records | each record's actions — row actions, edit, delete — the inline edit form, the create and edit openers, running a move and drawing its answer | draws each record's `actions` and `detail` where the record is |
+| Records | each record's press and whether it leads to where the viewer is, each record's actions — row actions, edit, delete — the inline edit form, the create and edit openers, running a move and drawing its answer | draws each record's `press` first in the element it covers, sets `data-selected` from `selected`, and draws `actions` and `detail` where the record is |
 | Intents | what each one does | reports `onEndReached`, `onPeriodChange`, `onExpand`, `onOpen`, `onSortChange`, `onMove`, `onCreate` |
 | Text | every word, finished, and `lang` | formats nothing it is not given but dates, in `lang` |
 
@@ -39,7 +39,7 @@ record and delivered on it as `record.props`, every other once, as `props`.
 | `sort` | the viewer's sort, `value` — the order the listing starts in until another is chosen — and each property it may be by with its title, `sortable`; none when the listing's order is fixed |
 | `paging` | `more` — `onEndReached` when the viewer asks — or `scroll` — once the end is in view |
 | `empty` | the listing's `empty` node, drawn where the records would be when the reads answer none |
-| `can` | which of `open`, `create` and `move` does anything |
+| `can` | which of `open` — the listing has a press or an `edit` opener — `create` and `move` does anything |
 | `words` | the renderer's own texts a layout draws, finished: `loadMore`, `moveTo`, `none`, `newRecord` |
 | `lang` | the language the page is in |
 
@@ -51,10 +51,11 @@ A record:
 | `row` | the record as read |
 | `props` | the props bound to `row`, read over this record |
 | `labels` | by property with a relation, the related record's label, once looked up |
+| `press` | the element the renderer draws for the listing's [press](#the-record-press), `null` without one: drawn as the first child of the element it covers |
 | `actions` | its row actions, edit, delete and a failed move's answer, drawn by the renderer — as buttons or one menu button, the wrapping element's `data-display` saying which; `null` when it offers none |
 | `detail` | present while its edit form is open in line: drawn under it |
 | `style` | the style names `rowStyle` gives it, for its element's `data-style` |
-| `selected` | whether a link the renderer draws for the record leads to where the viewer is (see [the current location](styling.md#state)); `false` for a component layout, which draws its own links |
+| `selected` | whether the record's press leads to where the viewer is (see [the current location](styling.md#state)) — and, for a built-in layout, a link its content draws; the component sets `data-selected` from it on the element its press covers |
 | `movable` | whether `onMove` may be reported for it now: the move's `enabled` holds and none of its presses is pending |
 
 A group, beside everything a read holds:
@@ -78,7 +79,7 @@ A group, beside everything a read holds:
 | `onEndReached` | `(at?)` — read the next page: of the outermost read with no `at`, of a group with `{ group }`, of a tree level with `{ parent }` |
 | `onPeriodChange` | `(period)` — show another period: what a `span` plan reads; sets `span` |
 | `onExpand` | `(key, open)` — read a record's children, or stop reading them |
-| `onOpen` | `(key)` — open the record as the listing's `edit` opener says |
+| `onOpen` | `(key)` — run the record's press, else open it as the listing's `edit` opener says; what `can.open` reports |
 | `onSortChange` | `(sort)` — sort by a property, `-` before it for descending |
 | `onMove` | `(key, to)` — run the layout's `move` with `to`, the record as the gesture leaves it; a member it leaves out keeps the row's value |
 | `onCreate` | `(values)` — open the create form holding `values`; only the plan's own properties are kept |
@@ -88,10 +89,86 @@ concurrent moves: the renderer runs the layout's `move` row action with the
 inputs it binds over `row` and `to`, and a 2xx answer reloads every listing
 over the collection.
 
+## The record press
+
+A listing's `press` says what pressing a record does. The renderer draws it as
+an element — a real link to where it leads, named by the press's label — and
+hands it over as `record.press`; a component places it as the **first child of
+the element it covers**, the record's root or one part of it, and sets
+`data-selected` there from `record.selected`. The geometry is the renderer's
+base layer's, so a component restates none of it: the press is stretched
+across the element holding it, that element is its containing block, and
+every link, button, form control, `label`, `summary`, `[tabindex]` and
+`[contenteditable]` after the press inside it is positioned, so each paints
+above the press and stays a target of its own — `record.actions` included.
+
+What a component draws around it keeps that working:
+
+- The element holding the press is **never `position: static`**: the base
+  layer positions it, and a rule of the component's setting `static` lets the
+  press escape to the next positioned ancestor.
+- A **non-interactive** element the component positions inside a record — a
+  corner badge, a positioned image — paints above the press too, so it takes
+  `pointer-events: none` and a pointer on it still lands on the press.
+- Text inside the covered element cannot be selected by dragging across it;
+  cover one part of the record when the rest must stay selectable, as the
+  table covers its first cell.
+
+Without a press `record.press` is `null`, and a record is opened, where the
+listing edits, through `onOpen`, as before. A gallery drawing it:
+
+```yaml
+kind: Telo.Library
+metadata:
+  name: GalleryLayout
+  version: 1.0.0
+  description: A gallery of records drawn by a browser component, each record opening as its listing's press says.
+imports:
+  Ui: oci://ghcr.io/telorun/ui
+exports:
+  resources: [gallery]
+  browser:
+    - specifier: "@example/gallery"
+      path: ./browser/gallery.js
+      source: ./browser/src/gallery.tsx
+      abi: ui_react_layouts-2
+      external: [react]
+      exports: [Gallery]
+---
+kind: Ui.ComponentExport
+metadata: { name: gallery }
+entry: "@example/gallery"
+export: Gallery
+props: { kind: Telo.JsonSchema, schema: { type: object, additionalProperties: false, properties: {} } }
+```
+
+```tsx
+import type { LayoutProps } from "@telorun/ui-react-contract";
+
+export function Gallery({ records }: LayoutProps) {
+  return (
+    <ul className="gallery">
+      {records.map((record) => (
+        <li key={record.key} className="gallery-item" data-selected={record.selected || undefined}>
+          {record.press}
+          <h3>{String(record.row.title)}</h3>
+          {record.actions}
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
 ## The built-in layouts
 
 Each is exported under its name and held, by the vectors, to its root part,
-the other parts it may draw and the intents it reports.
+the other parts it may draw, the intents it reports, and to drawing each
+record's press as the first child of the record's element — the list item,
+card, board card, calendar event, timeline bar or tree item — which carries
+`data-selected` while the record is selected. The renderer's table, which is
+no component of this contract, draws the press across each row's first cell
+instead, the row carrying `data-selected`.
 
 | Type | Export | Root part | Sub-parts |
 | --- | --- | --- | --- |
@@ -133,7 +210,8 @@ contracts it hosts, or imports a specifier the page does not supply, is
 refused as `ERR_UI_COMPONENT_ABI_UNSUPPORTED` or
 `ERR_UI_COMPONENT_IMPORT_UNSUPPLIED`, as for a `Ui.Component`, and that listing
 is drawn as the error node in its place. This renderer hosts
-`ui_react_layouts-1` alone. The component ABI `ui_react-1` and the controls
+`ui_react_layouts-2` alone: a component built for `ui_react_layouts-1` is
+refused, the message naming `ui_react_layouts-2`, and is rebuilt against it. The component ABI `ui_react-1` and the controls
 contract `ui_react_controls-4` are separate generations, unchanged by this one.
 
 ## The declaration
@@ -157,13 +235,15 @@ export interface LayoutRecord {
   props: Record<string, unknown>;
   /** By property with a relation, the label of the related record it names, once known. */
   labels: Record<string, string>;
+  /** The element the renderer draws for the listing's press, `null` without one: drawn as the first child of the element it covers — the record's root, or one part of it. */
+  press: ReactNode;
   /** The record's row actions, edit and delete, drawn by the renderer; `null` when it offers none. */
   actions: ReactNode;
   /** Where its inline edit form opens: present while one is open on it, to be drawn under it. */
   detail?: ReactNode;
   /** The style names `rowStyle` gives it, for its element's `data-style`. */
   style?: string;
-  /** Whether a link the renderer draws for it leads to where the viewer is; false for a component layout. */
+  /** Whether its press leads to where the viewer is — for a built-in layout, or a link its content draws; the record's element carries `data-selected` from it. */
   selected: boolean;
   /** Whether `onMove` may be reported for it. */
   movable: boolean;
@@ -207,7 +287,7 @@ export interface LayoutEnd {
 }
 
 /**
- * What a layout component of `ui_react_layouts-1` is given: the outermost read
+ * What a layout component of `ui_react_layouts-2` is given: the outermost read
  * (the only read, a tree's roots, or under `groups` every group's records),
  * the plan's dimensions where it has them, and what it reports. It fetches
  * nothing and holds nothing the renderer holds.
@@ -227,7 +307,7 @@ export interface LayoutProps extends LayoutLevel {
   paging: "more" | "scroll";
   /** Drawn where the records would be when the reads answer none. */
   empty: ReactNode;
-  /** Which of `onOpen`, `onCreate` and `onMove` does anything. */
+  /** Which of `onOpen`, `onCreate` and `onMove` does anything: `open` while the listing has a press or an edit opener. */
   can: { open: boolean; create: boolean; move: boolean };
   /** The renderer's words a layout draws, finished. */
   words: { loadMore: string; moveTo: string; none: string; newRecord: string };
@@ -239,7 +319,7 @@ export interface LayoutProps extends LayoutLevel {
   onPeriodChange(period: LayoutPeriod): void;
   /** Read, or stop reading, a record's children. */
   onExpand(key: string, open: boolean): void;
-  /** Open a record as its edit opener says. */
+  /** Run a record's press, else open it as its edit opener says. */
   onOpen(key: string): void;
   /** Sort by a property, `-` before it for descending. */
   onSortChange(sort: string): void;
@@ -259,12 +339,23 @@ per built-in layout, the props every vector starts from and each behaviour
 vector. `runLayoutVector` runs one, as `runVector` runs a control's (see
 [the controls contract](controls-abi.md#vectors-scenes-and-the-interpreter)):
 an intent reported is applied to the prop it sets — `onPeriodChange` sets
-`span` — and after every step the layout is held to its documented parts. The
+`span` — and after every step the layout is held to its documented parts. An
+expectation's `firstChild` (`{ of, is }`) holds that the first element child of
+`of` is the element `is` names. The
 built-ins meet every vector inside the renderer's own texts, in a happy-dom window.
 
 ## How the generation grows
 
-For the life of `ui_react_layouts-1` a prop or a member is added only where a
+`ui_react_layouts-2` differs from `ui_react_layouts-1` in:
+
+- a record's `press`, which a component draws first in the element it covers —
+  a new required behaviour;
+- `selected`, which reports the press for every layout, a component's included;
+- `onOpen`, which runs the press where the listing has one, and `can.open`,
+  which holds for a press or an `edit` opener;
+- one interpreter term, the `firstChild` of an expectation.
+
+For the life of `ui_react_layouts-2` a prop or a member is added only where a
 component ignoring it still meets the contract, and the supplied specifiers
 only grow. A new intent, a new required behaviour or a change to what a prop
 holds is the next generation.

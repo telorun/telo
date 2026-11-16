@@ -21,4 +21,4 @@ content:
   rows: !cel "data.items"
   columns:
     - value: !cel "row.name"
-      href: { path: "/items/{id}", pathParams: { id: !cel "row.nmae" } }
+      to: { kind: Ui.Navigate, href: { path: "/items/{id}", pathParams: { id: !cel "row.nmae" } } }

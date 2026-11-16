@@ -137,7 +137,8 @@ export function useRecordEntry(entry: EntrySpec, initial?: Record<string, unknow
     if (state.key === undefined || initial) return;
     return store.onKept((change) => {
       if (change.from === self || change.key !== state.key) return;
-      const shared = (state.address && change.address) || (state.store.type !== "memory" && state.store.type === change.store);
+      // One address is one store's: a page opened over another keeps its own.
+      const shared = (state.address && change.address && change.at === store) || (state.store.type !== "memory" && state.store.type === change.store);
       if (!shared) return;
       const followed = fields.filter((field) => {
         if (!state.fields.includes(field.property) || !Object.hasOwn(change.values, field.property)) return false;

@@ -2,12 +2,14 @@ import { useContext, type ComponentType, type ReactNode } from "react";
 import type { LayoutGroup, LayoutLevel, LayoutProps, LayoutRecord } from "../../contract/ui-react-layouts.js";
 import { readBinding, type Binding } from "../bindings.js";
 import { LoadedComponent } from "../component.js";
-import { useHost } from "../host.js";
+import { useViewer } from "../current-location.js";
+import { leadOf, openDestination, resolveDestination, useDestinationContext } from "../destination.js";
 import type { LayoutProps as DrawnLayout } from "../listing.js";
 import type { ListedRecord, ReadView } from "../listing-engine.js";
 import { Node, type SpecNode } from "../nodes.js";
 import { optionOf, type OptionSourceSpec } from "../option-source.js";
-import { anyCurrent, drawnAddresses } from "../record-selection.js";
+import { Press, type PressSpec } from "../press.js";
+import { anyLeadsHere, drawnLeads } from "../record-selection.js";
 import { heldValues } from "../related-labels.js";
 import { RecordLinkContext, RendererContext, RootsContext, RowContext } from "../renderer-context.js";
 import { labelFor, useSay, useText, type WireText } from "../texts.js";
@@ -18,7 +20,7 @@ import { ListLayout } from "./list-layout.js";
 import { TimelineLayout } from "./timeline-layout.js";
 import { TreeLayout } from "./tree-layout.js";
 
-/** The built-in layouts of `ui_react_layouts-1`, by the spec's `type`. */
+/** The built-in layouts of `ui_react_layouts-2`, by the spec's `type`. */
 export const BUILT_IN_LAYOUTS: Readonly<Record<string, ComponentType<LayoutProps>>> = {
   list: ListLayout,
   cards: CardsLayout,
@@ -50,7 +52,8 @@ const rowBound = (binding: Binding) => "root" in binding && binding.root === "ro
  */
 export function ContractLayout({ spec, node, drawing }: DrawnLayout): ReactNode {
   const roots = useContext(RootsContext);
-  const { location } = useHost();
+  const viewer = useViewer();
+  const destinations = useDestinationContext();
   const { lang } = useContext(RendererContext);
   const say = useSay();
   const text = useText();
@@ -58,6 +61,9 @@ export function ContractLayout({ spec, node, drawing }: DrawnLayout): ReactNode 
   const relations = node.relations as Record<string, OptionSourceSpec>;
   const schema = node.schema as { properties?: Record<string, { title?: unknown }> };
   const component = spec.type === "component";
+  const press = (node.press ?? null) as PressSpec | null;
+  /** The record press over a record: where it leads, when its address resolves. */
+  const pressed = (row: Record<string, unknown>) => (press === null ? undefined : resolveDestination(press.to, { ...roots, row }, "'press' to"));
   const bindings = component ? (spec.props as Record<string, Binding>) : {};
 
   // The props a built-in layout is given: its own keys once, its content per record.
@@ -105,11 +111,14 @@ export function ContractLayout({ spec, node, drawing }: DrawnLayout): ReactNode 
     }
     const style = drawing.rowStyle(listed.row);
     const failure = drawing.moveFailure(listed);
+    const destination = pressed(listed.row);
+    const leads = destination === undefined ? [] : [leadOf(destination)];
     return {
       key: listed.key,
       row: listed.row,
       props: perRecord(listed.row),
       labels,
+      press: press === null ? null : <Press press={press} roots={{ ...roots, row: listed.row }} />,
       actions:
         drawing.hasActions || failure !== null ? (
           <div data-telo-part="row-actions" data-display={drawing.actionsArea.display} ref={drawing.actionsArea.ref}>
@@ -119,8 +128,8 @@ export function ContractLayout({ spec, node, drawing }: DrawnLayout): ReactNode 
         ) : null,
       ...(drawing.detail?.key === listed.key ? { detail: <div data-telo-part="listing-detail" ref={drawing.detail.ref} /> } : {}),
       ...(style !== undefined ? { style } : {}),
-      // A component layout draws the links itself, so none is the renderer's to judge.
-      selected: !component && anyCurrent(drawnAddresses(spec.content, { ...roots, row: listed.row }, relations), location),
+      // The press is the renderer's to judge; a component layout draws the links of its content itself.
+      selected: anyLeadsHere(component ? leads : [...leads, ...drawnLeads(spec.content, { ...roots, row: listed.row }, relations)], viewer),
       movable: drawing.movable(listed),
     };
   };
@@ -182,7 +191,7 @@ export function ContractLayout({ spec, node, drawing }: DrawnLayout): ReactNode 
     },
     paging: node.paging === "scroll" ? "scroll" : "more",
     empty: drawing.empty,
-    can: { open: drawing.open !== undefined, create: drawing.create !== undefined, move: spec.move !== undefined },
+    can: { open: press !== null || drawing.open !== undefined, create: drawing.create !== undefined, move: spec.move !== undefined },
     words: { loadMore: say("loadMore"), moveTo: say("moveTo"), none: say("none"), newRecord: say("newRecord") },
     lang,
     onEndReached: (at) => {
@@ -195,7 +204,13 @@ export function ContractLayout({ spec, node, drawing }: DrawnLayout): ReactNode 
     },
     onPeriodChange: (period) => drawing.showPeriod(period),
     onExpand: (key, open) => drawing.expand(key, open),
-    onOpen: (key) => drawing.open?.(key),
+    onOpen: (key) => {
+      if (press === null) return drawing.open?.(key);
+      const held = drawing.reads.flatMap((read) => read.records).find((each) => each.key === key);
+      const destination = held && pressed(held.row);
+      if (held === undefined || destination === undefined) return;
+      openDestination(destination.to, { ...destinations, address: destination.address }, { naming: text(press.label, undefined, { ...roots, row: held.row }) });
+    },
     onSortChange: (sort) => drawing.sort.set(sort),
     onMove: (key, to) => {
       const held = drawing.reads.flatMap((read) => read.records).find((each) => each.key === key);

@@ -1,5 +1,6 @@
 import type { ResourceDefinition } from "@telorun/sdk";
 import { mergeTypeSchemas } from "@telorun/sdk";
+import { withJoinedRootContext } from "./root-context-inheritance.js";
 import { joinInheritedRules, RULE_ANNOTATIONS } from "./rule-inheritance.js";
 import { hasTextKeys, TEXT_KEYS_ANNOTATION } from "./text-keys.js";
 
@@ -133,7 +134,8 @@ export function inheritedCapability(
  *    additive extension; child overrides on key conflicts), reusing the same
  *    `mergeTypeSchemas` that `Telo.JsonSchema.extends` uses — except the two
  *    rule annotations, which join the parent's rules and the child's
- *    (`rule-inheritance.ts`), and `x-telo-text-keys`, which is the child's own
+ *    (`rule-inheritance.ts`), the root `x-telo-context`, the child's laid over
+ *    the parent's (`root-context-inheritance.ts`), and `x-telo-text-keys`, which is the child's own
  *    or absent: its names are spelled in the declaring module's scope, so it is
  *    inherited by {@link textKeysDeclarer}, never copied.
  *  - no `extends` → the own schema unchanged. */
@@ -146,7 +148,7 @@ export function effectiveAuthorSchema(
   if (!parent) return own;
   if (body(def).base) return own;
   const parentSchema = effectiveAuthorSchema(parent, resolve);
-  const merged = mergeTypeSchemas([parentSchema, own]) as Record<string, any>;
+  const merged = withJoinedRootContext(mergeTypeSchemas([parentSchema, own]) as Record<string, any>, [parentSchema, own]);
   for (const annotation of RULE_ANNOTATIONS) {
     const joined = joinInheritedRules(parentSchema[annotation], own[annotation]);
     if (joined !== undefined) merged[annotation] = joined;

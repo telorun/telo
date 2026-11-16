@@ -28,9 +28,9 @@ expect:
     - code: SCHEMA_VIOLATION
       message: "Ui.View/strayKey: /content/children/0 must NOT have additional properties ('gap' is not allowed)"
     - code: SCHEMA_VIOLATION
-      message: "Ui.View/offsiteLink: /content/href must match a schema in anyOf"
+      message: "Ui.View/offsiteLink: /content/to/href must match pattern"
     - code: SCHEMA_VIOLATION
-      message: "Ui.View/offsiteItem: /content/items/1/href must match a schema in anyOf"
+      message: "Ui.View/offsiteItem: /content/items/1/to/href must match pattern"
     - code: SCHEMA_VIOLATION
       message: "Ui.Component/pill: `props` does not satisfy the type declared at `/component/props`: / must NOT have additional properties ('colour' is not allowed)"
     - code: SCHEMA_VIOLATION

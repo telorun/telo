@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, type Rendered } from "./harness.js";
-import { actionNode, address, dataNode, listingNode, operation } from "./spec-nodes.js";
+import { actionNode, address, navigateTo, dataNode, listingNode, operation } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => {
@@ -47,7 +47,7 @@ const confirming = () => confirmation()?.querySelector<HTMLButtonElement>('[data
 
 describe("addresses", () => {
   it("draws a column's address from the row and moves within the application on it", async () => {
-    const column = { header: "Title", value: row("title"), present: { type: "string" }, href: address("/", {}, { conversation: row("id") }) };
+    const column = { header: "Title", value: row("title"), present: { type: "string" }, to: navigateTo(address("/", {}, { conversation: row("id") })) };
     rendered = await showConversations([listingNode({ schema: conversationSchema, basePath: "/api/chat/conversations", columns: [column], rowStyle: undefined, delete: false, create: undefined, edit: undefined, sort: { sortable: [], initial: null } })]);
     const links = rendered.parts("link");
     expect(links.map((link) => [link.getAttribute("href"), link.textContent, link.getAttribute("target")])).toEqual([
@@ -63,7 +63,7 @@ describe("addresses", () => {
     const report = vi.spyOn(console, "error").mockImplementation(() => {});
     rendered = await render({
       path: "/",
-      pages: { "/": { title: "Home", children: [{ type: "link", text: "Open", href: address("/open/{id}", { id: { root: "query", path: ["id"] } }) }] as never } },
+      pages: { "/": { title: "Home", children: [{ type: "link", text: "Open", to: navigateTo(address("/open/{id}", { id: { root: "query", path: ["id"] } })) }] as never } },
     });
     expect(rendered.parts("link")).toEqual([]);
     expect(rendered.part("text").textContent).toBe("Open");
@@ -73,7 +73,7 @@ describe("addresses", () => {
   it("keeps a node's state across a move to the page already shown", async () => {
     rendered = await render({
       path: "/",
-      pages: { "/": { title: "Reports", children: [actionNode(), { type: "link", text: "Again", href: address("/", {}, { page: { value: 2 } }) }] as never } },
+      pages: { "/": { title: "Reports", children: [actionNode(), { type: "link", text: "Again", to: navigateTo(address("/", {}, { page: { value: 2 } })) }] as never } },
     });
     await rendered.enter(rendered.part("input"), "2026-09");
     const pageReads = reads(rendered, "/_telo/ui/page");

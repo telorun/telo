@@ -519,7 +519,7 @@ children:
             shown: { at: !cel "data.user", matches: { maxLength: 0 } }
             children:
               - { type: text, text: Sign in to see your notes., style: muted }
-              - { type: link, text: Sign in, href: /auth/login, button: { kind: Ui.TextButton }, style: accent }
+              - { type: link, text: Sign in, to: { kind: Ui.Navigate, href: /auth/login }, button: { kind: Ui.TextButton }, style: accent }
       # A session the server no longer holds is refused, not read as nobody.
       failure:
         type: stack
@@ -528,7 +528,7 @@ children:
             shown: { at: !cel "error.status", matches: { const: 401 } }
             children:
               - { type: text, text: Your session has ended. Sign in again to see your notes., style: muted }
-              - { type: link, text: Sign in, href: /auth/login, button: { kind: Ui.TextButton }, style: accent }
+              - { type: link, text: Sign in, to: { kind: Ui.Navigate, href: /auth/login }, button: { kind: Ui.TextButton }, style: accent }
           - type: value
             value: !cel "error.message"
             shown: { at: !cel "error", matches: { not: { required: [status], properties: { status: { const: 401 } } } } }

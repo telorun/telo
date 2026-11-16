@@ -10,14 +10,21 @@
  * pane placed in a composite's region inherits the composite's refusal of
  * `request`, and the message names the referrer that withholds it.
  *
- * Written on a binding beside `x-telo-context-eval`, `title` and `description`
- * only, or in a `$defs` entry a binding names by `$ref` — read as if written
- * on the binding (the context reader follows that `$ref`). This file is the
- * one reader of the value and its strict half.
+ * Beside `x-telo-context-from-referrer` it is the node's own reading, kept
+ * wherever no referrer types it: typed where a referrer's scope holds the path,
+ * withheld — naming that referrer — where it lacks it, and withheld where
+ * nothing references the resource.
+ *
+ * Written on a binding beside `x-telo-context-eval`, `x-telo-context-from-
+ * referrer`, `title` and `description` only, or in a `$defs` entry a binding
+ * names by `$ref` — read as if written on the binding (the context reader
+ * follows that `$ref`). This file is the one reader of the value and its strict
+ * half.
  *
  * Browser-safe: no Node built-ins.
  */
 import { CONTEXT_EVAL } from "./context-eval.js";
+import { CONTEXT_FROM_REFERRER } from "./context-from-referrer.js";
 import { schemaReferenceParts } from "./schema-reference.js";
 
 export const CONTEXT_WITHHELD = "x-telo-context-withheld";
@@ -28,7 +35,13 @@ const isSchema = (node: unknown): node is Schema =>
   !!node && typeof node === "object" && !Array.isArray(node);
 
 /** The keys a withheld node may carry beside the mark. */
-const BESIDE: ReadonlySet<string> = new Set([CONTEXT_WITHHELD, CONTEXT_EVAL, "title", "description"]);
+const BESIDE: ReadonlySet<string> = new Set([
+  CONTEXT_WITHHELD,
+  CONTEXT_EVAL,
+  CONTEXT_FROM_REFERRER,
+  "title",
+  "description",
+]);
 
 /** Why `node` is withheld, or undefined. A node `withNull` wrapped
  *  (`{ anyOf: [node, { type: null }] }`) is still the node it wraps. */
@@ -92,9 +105,10 @@ export function withheldOnChain(
 
 /**
  * The refusal of a read of `node`: `'<name>' is not available here — <holder>
- * withholds it: <reason>` where the mark reached the site through a referrer,
- * `'<name>' is not available here: <reason>` where the site's own region
- * declares it.
+ * withholds it: <reason>` where a referrer gave the node its reading — its own
+ * mark, where the referrer's scope lacks the path — `'<name>' is not available
+ * here: <reason>` where nothing references the resource or the site's own
+ * region declares it.
  */
 export function withheldMessage(node: WithheldNode, holder: string | undefined): string {
   const name = node.location.join(".");
@@ -178,7 +192,7 @@ export function withheldProblem(node: Schema, where: string, placed: boolean): W
       code: "CONTEXT_WITHHELD_INVALID",
       message:
         `'${where}' says the node holds no value here, so '${beside}' beside it types nothing; keep only ` +
-        `'${CONTEXT_EVAL}', 'title' and 'description' beside it.`,
+        `'${CONTEXT_EVAL}', '${CONTEXT_FROM_REFERRER}', 'title' and 'description' beside it.`,
     };
   }
   return undefined;

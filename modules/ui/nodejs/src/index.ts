@@ -10,11 +10,15 @@
 // addresses its own entries exactly as a component's are addressed.
 export { entryAssets, type AssetRef } from "./browser-entry-assets.js";
 export type { AssetFile } from "./composite.js";
-// What presents the values a page's own `value` and `list` nodes name, what a
-// composite's placement contributes to the node it provided, and which of a
+// What presents the values a page's own `value` and `list` nodes name, where
+// each `to` it holds goes, what a composite's placement contributes to the node it provided, and which of a
 // menu's items are delivered — so a renderer's page tree reads exactly as a
 // composite's does.
-export { deliveredMenu, placed, presented, type AuthoredNode, type RootShapes } from "./node-resolution.js";
+export { deliveredMenu, placed, presented, withDestinations, type AuthoredNode, type RootShapes } from "./node-resolution.js";
+// Where a press goes, as a renderer receives it.
+export { destinationAt, isDestination, type DestinationSpec } from "./destination.js";
+// What pressing a region or a listing's record does, as a renderer receives it.
+export type { PressSpec } from "./press.js";
 export { modelShape, type Shape, type ShapeReader } from "./model-schema.js";
 export { placedBoundAction } from "./bound-actions.js";
 // An address or request target as a renderer receives it, with every default
@@ -103,6 +107,7 @@ export {
   InputFieldController,
   PickerFieldController,
 } from "./field-controllers.js";
+export { NavigateController, OpenPageController } from "./destination.js";
 export {
   DialogController,
   DrawerController,

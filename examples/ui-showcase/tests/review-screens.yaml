@@ -75,7 +75,7 @@ steps:
         source: !cel "[steps.nodes.result.bar.basePath, steps.nodes.result.bar.content.basePath]"
         reloadEvery: !cel "steps.nodes.result.bar.content.reloadEvery"
         rowStyle: !cel "steps.nodes.result.bar.content.rowStyle"
-        titleLink: !cel "steps.nodes.result.bar.content.layout.columns[0].href"
+        titleLink: !cel "steps.nodes.result.bar.content.layout.columns[0].to"
         presets: !cel "steps.nodes.result.bar.presets.map(p, [p.label.message[0], p.values])"
       expected:
         pages:
@@ -87,7 +87,7 @@ steps:
         source: [/api/review/reviews, /api/review/reviews]
         reloadEvery: 30000
         rowStyle: { by: { root: row, path: [overdue] }, cases: { "true": danger } }
-        titleLink: { path: { value: "/reviews/{id}" }, pathParams: { id: { root: row, path: [id] } }, queryParams: {} }
+        titleLink: { type: navigate, href: { path: { value: "/reviews/{id}" }, pathParams: { id: { root: row, path: [id] } }, queryParams: {} } }
         presets:
           - [All, []]
           - - Waiting a day or more
@@ -104,7 +104,7 @@ steps:
         source: !cel "steps.nodes.result.detail.source"
         reloadEvery: !cel "steps.nodes.result.detail.reloadEvery"
         kinds: !cel "steps.nodes.result.reviewNodes.map(n, n.type)"
-        links: !cel "steps.nodes.result.reviewNodes[2].children.map(l, l.href)"
+        links: !cel "steps.nodes.result.reviewNodes[2].children.map(l, l.to)"
         buttons: !cel >-
           steps.nodes.result.reviewNodes[3].children.map(b,
             [b.inputs.decision, b.action.label.message[0], b.prompt.fields.map(f, f.property), b.action.state.key])
@@ -120,8 +120,8 @@ steps:
         reloadEvery: 30000
         kinds: [text, time, columns, columns, markdown, list]
         links:
-          - { path: { value: "/reviews/{id}/compare" }, pathParams: { id: { root: params, path: [id] } }, queryParams: {} }
-          - { path: { value: "/workers/{name}" }, pathParams: { name: { root: data, path: [review, worker] } }, queryParams: {} }
+          - { type: navigate, href: { path: { value: "/reviews/{id}/compare" }, pathParams: { id: { root: params, path: [id] } }, queryParams: {} } }
+          - { type: navigate, href: { path: { value: "/workers/{name}" }, pathParams: { name: { root: data, path: [review, worker] } }, queryParams: {} } }
         buttons:
           - [{ value: approve }, Approve, [author], reviewer]
           - [{ value: request_changes }, Request changes, [author, note], reviewer]

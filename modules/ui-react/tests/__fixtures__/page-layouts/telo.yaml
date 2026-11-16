@@ -26,7 +26,7 @@ children:
       kind: Ui.NavigationColumn
       navigation:
         items:
-          - { type: link, text: Summary, href: "/reports?section=summary" }
+          - { type: link, text: Summary, to: { kind: Ui.Navigate, href: "/reports?section=summary" } }
 ---
 kind: Ui.Page
 metadata: { name: signIn }
@@ -57,7 +57,7 @@ header:
       navigation:
         items:
           - { type: page, page: !ref home }
-          - { type: link, text: Staff, href: /staff, when: !cel "'x-role' in request.headers" }
+          - { type: link, text: Staff, to: { kind: Ui.Navigate, href: /staff }, when: !cel "'x-role' in request.headers" }
 footer:
   - { type: text, text: Acme Corporation, style: muted }
 ---
@@ -80,7 +80,7 @@ pages:
       footer: [{ type: text, text: One }]
 notFound:
   - { type: text, text: Nothing here, style: title }
-  - { type: link, text: Back to the start, href: { path: !ref home } }
+  - { type: link, text: Back to the start, to: { kind: Ui.Navigate, href: { path: !ref home } } }
 ---
 # Names no layout and no entry is a route: nothing carries a layout id.
 kind: UiReact.App

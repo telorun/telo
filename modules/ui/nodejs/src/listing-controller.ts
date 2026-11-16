@@ -11,6 +11,7 @@ import { isLayout, type LayoutAnswer, type LayoutInputs } from "./listing-layout
 import { tableLayout } from "./table-layout.js";
 import { filledProvided } from "./fill-marking.js";
 import { reloadEveryOf } from "./timed-reload.js";
+import { pressSpec, type PressConfig } from "./press.js";
 
 /** How a form is opened. A member holding nothing is one left out. */
 interface OpenerConfig {
@@ -35,6 +36,7 @@ type ListingResource = RuntimeResource & {
   edit?: OpenerConfig | null;
   delete?: boolean | null;
   rowActions?: BoundActionConfig[] | null;
+  press?: PressConfig | null;
   empty?: AuthoredNode | null;
   layout?: unknown;
   compact?: unknown;
@@ -69,7 +71,7 @@ class Listing implements ResourceInstance {
     const resource = this.resource;
     const owner = `Ui.Listing '${resource.metadata.name}'`;
     const schema = modelSchema(resource.model, this.ctx, owner);
-    const { basePath, collection, relations } = presentationAt(resource.presentation, this.ctx, owner);
+    const { basePath, collection, relations } = await presentationAt(resource.presentation, this.ctx, owner);
     for (const property of Object.keys(resource.filters ?? {})) {
       if (!Object.hasOwn(schema.properties ?? {}, property)) {
         throw new RuntimeError(
@@ -127,6 +129,7 @@ class Listing implements ResourceInstance {
     assets.push(...actionAssets);
     const create = await opener(resource.create, "create");
     const edit = await opener(resource.edit, "edit");
+    const press = await pressSpec(resource.press, this.ctx, owner);
     const written = resource.empty == null ? undefined : await resolveNode(resource.empty, this.ctx, `${owner} empty`);
     if (written) assets.push(written.assets);
     const node: SpecNode = {
@@ -153,6 +156,7 @@ class Listing implements ResourceInstance {
       empty: written?.node ?? { type: "text", text: uiText("noRows") },
       layout: layout.spec!,
       ...(compact ? { compact: compact.spec! } : {}),
+      press,
       ...reloadEveryOf(resource.reloadEvery),
     };
     return filledProvided({ node, assets: mergeAssets(...assets) });

@@ -125,6 +125,7 @@ h3[data-telo-part="text"] { font-size: var(--telo-font-size-lg); font-weight: 60
 [data-telo-part="link"][data-button]:not([data-style~="accent"])[aria-current="page"] { background: var(--ui-react-radix-fill); }
 :is([data-telo-part="table-row"], [data-telo-part="list-item"], [data-telo-part="card"], [data-telo-part="board-card"], [data-telo-part="calendar-event"], [data-telo-part="timeline-bar"], [data-telo-part="tree-item"])[data-selected] { background: var(--ui-react-radix-fill); }
 [data-telo-part="link"]:focus-visible { box-shadow: var(--ui-react-radix-focus); }
+[data-telo-part="press"]:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; border-radius: inherit; }
 /* Long unbroken text (an address, a path) wraps rather than leaving its box. */
 :is([data-telo-part="text"], [data-telo-part="value"], [data-telo-part="link"]) { overflow-wrap: break-word; }
 [data-telo-part="badge"] { box-sizing: border-box; padding: 0 var(--telo-space-sm); border: 1px solid var(--telo-color-border); border-radius: var(--telo-radius-sm); background: var(--telo-color-surface); color: var(--telo-color-text); font-size: var(--telo-font-size-sm); font-weight: 500; }

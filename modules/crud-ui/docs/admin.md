@@ -7,13 +7,14 @@ confirmed delete on every record.
 | Field | | |
 | --- | --- | --- |
 | `source` | required | a `CrudUi.CollectionSource`: the [`Crud.Collection`](https://hub.telo.run/module/oci/ghcr.io/telorun/crud/) and the `basePath` its [`Crud.Api`](https://hub.telo.run/module/oci/ghcr.io/telorun/crud/) is served at |
-| `relations` | optional | how each related record is read, labelled and searched, keyed by a property the collection relates: `{ source, label, hint?, href?, search?, pageSize? }`, as on a [collection presentation](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) |
+| `relations` | optional | how each related record is read, labelled and searched, keyed by a property the collection relates: `{ source, label, hint?, to?, search?, pageSize? }`, as on a [collection presentation](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) |
 | `filters` | optional | how the filter bar behaves — a [filter policy](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/): `placement` (which carries `show`, `controls` and `summary`), `apply`, `state` |
 | `create` | optional | how the create form opens: `surface` (a [surface](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) kind), `afterSubmit` (`close` \| `again` \| `keep`), `unsaved` (`confirm` \| `discard`) |
 | `edit` | optional | how the edit form opens: the same three, with `afterSubmit` `close` \| `keep` |
 | `paging` | optional | how further pages are reached: `pages`, `more` or `scroll` ([the listing](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)) |
 | `layout` | optional | how the records are drawn — a [listing layout](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/): a table, a list, cards, a board, a calendar, a timeline, a tree or a component |
 | `compact` | optional | the layout drawn below the application's breakpoint |
+| `press` | optional | what pressing a record does — a [press](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/): `to`, where it goes, and `label`, its name, both over `row` |
 
 ## The source
 
@@ -124,8 +125,9 @@ compact:
   `Ui.Action` over a route of its own — since the collection's API serves no
   move route.
 
-A surface, a placement, a store and a layout are resources of the `ui` module,
-chosen by `kind:` and written inline or as a `!ref`; import `ui` to name one.
+A surface, a placement, a store, a layout and a destination are resources of
+the `ui` module, chosen by `kind:` and written inline or as a `!ref`; import
+`ui` to name one.
 
 **The defaults are the `ui` side's.** `CrudUi.Admin` declares none and passes
 each key on as written (`paging` restating only the listing's three values, so
@@ -142,6 +144,39 @@ that wrote them.
 `CrudUi.Admin` is a composite of the `ui` module's vocabulary, so it is placed
 like any other and drawn by whichever renderer the application mounts. This
 module depends on no renderer.
+
+## Opening a record
+
+Without `press`, pressing a record opens the edit form. `press` says what
+pressing it does instead — here, the task's own page opened over the list in a
+dialog — and the record's edit form stays on its edit button:
+
+```yaml
+kind: Ui.Page
+metadata: { name: taskPage }
+path: /tasks/{id}
+title: Task
+children:
+  - type: composite
+    ref:
+      kind: Ui.Data
+      model: !ref TaskRecord
+      source: { path: "/api/tasks/{id}", pathParams: { id: !cel "params.id" } }
+      content: { type: value, value: !cel "data.text" }
+---
+kind: CrudUi.Admin
+metadata: { name: taskScreen }
+source: !ref tasksSource
+press:
+  to: { kind: Ui.OpenPage, page: !ref taskPage, pathParams: { id: !cel "row.id" } }
+  label: { text: "Open {$text}", values: { text: !cel "row.text" } }
+```
+
+`press` is handed to the listing whole. Its `row` is one record of the
+collection's list shape, as a layout's is, so a destination or a label naming a
+property the list does not return is reported by `telo check` at the admin.
+`label` is the press's accessible name; include the text the record shows. The
+application lists `taskPage` in its `pages`.
 
 ## What it does
 
@@ -222,8 +257,8 @@ content: { type: composite, ref: !ref taskListing }
 placed as `{ type: composite, ref: !ref taskFilters }`. The presentation holds
 `relations` when the admin writes them; an opener holds `form` and whatever
 `create` / `edit` wrote beside it; the bar holds `policy` when `filters` is
-written; the listing holds `paging`, `layout` and `compact` when they are
-written. The two produce the same page, node for node — every member is on the
+written; the listing holds `paging`, `layout`, `compact` and `press` when they
+are written. The two produce the same page, node for node — every member is on the
 wire either way, a default where nothing was written. The listing's `model` is
 the `list` shape and the bar reads the collection's `model`, so the bar can
 filter by a property no column shows.

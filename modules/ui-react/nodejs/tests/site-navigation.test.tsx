@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 import { HEADER_NAVIGATION, render, type Rendered } from "./harness.js";
-import { asideOf } from "./spec-nodes.js";
+import { address, asideOf, navigateTo } from "./spec-nodes.js";
 import { wireText } from "./ui-texts.js";
 
 let rendered: Rendered | undefined;
@@ -142,7 +142,7 @@ describe("a navbar and a navigation column", () => {
     Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => 320 });
     HTMLElement.prototype.getBoundingClientRect = () => ({ width: 120, height: 40, top: 0, left: 0, right: 120, bottom: 40, x: 0, y: 0, toJSON: () => ({}) });
     try {
-      const items = [entry("home", "/", "Home"), entry("users", "/users", "Users"), entry("audit", "/audit", "Audit"), { type: "link", key: "help", href: "/help", text: wireText("Help") }];
+      const items = [entry("home", "/", "Home"), entry("users", "/users", "Users"), entry("audit", "/audit", "Audit"), { type: "link", key: "help", to: navigateTo(address("/help")), text: wireText("Help") }];
       const tabBar = { type: "tab-bar", visible: 3, surface: drawer("bottom") };
       rendered = await render({ path: "/", pages, navigation: { items, placement: tabBar } });
       const bar = rendered.part("tab-bar");

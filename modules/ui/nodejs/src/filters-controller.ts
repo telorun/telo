@@ -285,7 +285,7 @@ class Filters implements ResourceInstance {
 
   async provide(): Promise<Provided> {
     const owner = `Ui.Filters '${this.resource.metadata.name}'`;
-    const { basePath, collection, relations } = presentationAt(this.resource.presentation, this.ctx, owner);
+    const { basePath, collection, relations } = await presentationAt(this.resource.presentation, this.ctx, owner);
     const schema = collection.model;
     const overrides = new Map<number, OptionSourceSpec>();
     for (const [index, config] of (this.resource.fields ?? []).entries()) {

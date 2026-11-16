@@ -87,7 +87,7 @@ failure:
   type: value
   value: !cel "error.message"
 onSuccess:
-  navigate: { path: !cel "result.location" }
+  to: { kind: Ui.Navigate, href: { path: !cel "result.location" } }
   refreshes:
     - /api/reports
     - /api/archive
@@ -105,7 +105,7 @@ inputModel:
     properties: { name: { type: string }, month: { type: string } }
 request: { target: /api/archive }
 label: Archive
-onSuccess: { navigate: /files }
+onSuccess: { to: { kind: Ui.Navigate, href: /files } }
 ---
 kind: Ui.Action
 metadata: { name: chosen }
@@ -294,6 +294,7 @@ steps:
             result:
               type: stack
               fill: false
+              press: null
               children:
                 - type: list
                   fill: false
@@ -323,11 +324,12 @@ steps:
                         failure:
                           type: stack
                           fill: false
+                          press: null
                           style: danger
                           children:
                             - { type: value, fill: false, value: { root: error, path: [code] }, present: { type: string }, style: strong, labels: [] }
                             - { type: value, fill: false, value: { root: error, path: [message] }, present: { type: string }, labels: [] }
-                        onSuccess: { navigate: { path: { value: /files }, pathParams: {}, queryParams: {} }, refreshes: [] }
+                        onSuccess: { to: { type: navigate, href: { path: { value: /files }, pathParams: {}, queryParams: {} } }, refreshes: [] }
                         concurrency: parallel
                         clearAnswerOn: []
                       inputs: { name: { root: row, path: [name] }, month: { root: input, path: [month] } }
@@ -347,7 +349,7 @@ steps:
               present: { type: string }
               labels: []
             onSuccess:
-              navigate: { path: { root: result, path: [location] }, pathParams: {}, queryParams: {} }
+              to: { type: navigate, href: { path: { root: result, path: [location] }, pathParams: {}, queryParams: {} } }
               refreshes:
                 - { path: { value: /api/reports }, pathParams: {}, queryParams: {} }
                 - { path: { value: /api/archive }, pathParams: {}, queryParams: {} }
@@ -369,6 +371,7 @@ steps:
           failure:
             type: stack
             fill: false
+            press: null
             style: danger
             children:
               - { type: value, fill: false, value: { root: error, path: [code] }, present: { type: string }, style: strong, labels: [] }

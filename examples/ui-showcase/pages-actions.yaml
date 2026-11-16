@@ -133,7 +133,7 @@ content:
             label: Open its tasks
             fields:
               - { kind: Ui.ChoiceField, property: code, options: !ref projectOptions }
-            onSuccess: { navigate: { path: !cel "result.page" } }
+            onSuccess: { to: { kind: Ui.Navigate, href: { path: !cel "result.page" } } }
         - type: composite
           ref:
             kind: Ui.Action
@@ -141,7 +141,7 @@ content:
             outputModel: !ref Homepage
             request: { target: /api/homepage }
             label: Visit the homepage
-            onSuccess: { navigate: { path: !cel "result.homepage" } }
+            onSuccess: { to: { kind: Ui.Navigate, href: { path: !cel "result.homepage" } } }
 
     # ---- Reading again after a success ----
     - { type: text, text: Reading again after a success, style: heading }
@@ -342,7 +342,7 @@ content:
             fields:
               - title
               - { kind: Ui.ChoiceField, property: projectCode, options: !ref projectOptions }
-            onSuccess: { navigate: /tables, refreshes: [ /api/tasks ] }
+            onSuccess: { to: { kind: Ui.Navigate, href: /tables }, refreshes: [ /api/tasks ] }
         - type: composite
           ref:
             kind: Ui.Action
@@ -350,7 +350,7 @@ content:
             outputModel: !ref TeamLinks
             request: { target: /api/team-links }
             label: Open the handbook
-            onSuccess: { navigate: { path: !cel "result.handbook" } }
+            onSuccess: { to: { kind: Ui.Navigate, href: { path: !cel "result.handbook" } } }
         - type: composite
           ref:
             kind: Ui.Action
@@ -358,7 +358,7 @@ content:
             outputModel: !ref TeamLinks
             request: { target: /api/team-links }
             label: Open the mirror
-            onSuccess: { navigate: { path: !cel "result.mirror" } }
+            onSuccess: { to: { kind: Ui.Navigate, href: { path: !cel "result.mirror" } } }
             result:
               type: text
               style: warning
@@ -430,10 +430,10 @@ content:
         of the move, so its dialog asks nothing and is a plain confirmation. Choose a project and a status:
     - type: columns
       children:
-        - { type: link, text: TEL-42 into review, href: "/actions?project=TEL-42&moveTo=review" }
-        - { type: link, text: APP-5 to finished, href: "/actions?project=APP-5&moveTo=done" }
-        - { type: link, text: OPS-7 back to in progress, href: "/actions?project=OPS-7&moveTo=doing" }
-        - { type: link, text: Neither, href: /actions }
+        - { type: link, text: TEL-42 into review, to: { kind: Ui.Navigate, href: "/actions?project=TEL-42&moveTo=review" } }
+        - { type: link, text: APP-5 to finished, to: { kind: Ui.Navigate, href: "/actions?project=APP-5&moveTo=done" } }
+        - { type: link, text: OPS-7 back to in progress, to: { kind: Ui.Navigate, href: "/actions?project=OPS-7&moveTo=doing" } }
+        - { type: link, text: Neither, to: { kind: Ui.Navigate, href: /actions } }
     - type: composite
       ref:
         kind: Ui.Listing

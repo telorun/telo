@@ -44,6 +44,9 @@ describe("the documented styling contract", () => {
   it("lists exactly the reserved properties of the data file", () => {
     const documented = table(section(page, "Reserved properties")).map(([part, state, properties, because]) => {
       const [attribute, value] = names(state)[0]?.split("=") ?? [];
+      // A reservation in a relation to a part: `any part holding <part>`, or `<interactive>… after <part>`.
+      if (part.startsWith("any part holding ")) return { holding: names(part)[0], properties: names(properties), because };
+      if (part.includes(" after ")) return { after: names(part).at(-1), interactive: names(part).slice(0, -1), properties: names(properties), because };
       return {
         ...(names(part).length > 0 ? { part: names(part)[0] } : {}),
         ...(attribute === undefined ? {} : { state: { attribute, value: JSON.parse(value) } }),

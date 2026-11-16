@@ -1,0 +1,96 @@
+kind: Telo.Application
+metadata:
+  name: UiDestinationsTest
+  version: 1.0.0
+  description: |
+    A destination reaches a renderer as its wire form: `Ui.Navigate` its
+    address, `Ui.OpenPage` the opened page's own address with the surface it
+    opens in filled. Without a surface it is a dialog's defaults and keeps the
+    surface it is pressed in; a written dialog, equal on the wire, does not. An
+    action's success goes to a destination reading the answer.
+imports: { Ui: ../, Probe: ./__fixtures__/probe, Assert: ../../assert }
+targets:
+  - !ref check
+---
+kind: Ui.Page
+metadata: { name: postPage }
+path: /posts/{id}
+title: Post
+children: [{ type: text, text: Post }]
+---
+kind: Ui.View
+metadata: { name: links }
+content:
+  type: stack
+  children:
+    - { type: link, text: Docs, to: { kind: Ui.Navigate, href: /docs } }
+    - { type: link, text: Hello, to: { kind: Ui.Navigate, href: { path: !ref postPage, pathParams: { id: hello } } } }
+    - { type: link, text: Hello here, to: { kind: Ui.OpenPage, page: !ref postPage, pathParams: { id: hello } } }
+    - { type: link, text: Hello in a dialog, to: { kind: Ui.OpenPage, page: !ref postPage, pathParams: { id: hello }, surface: { kind: Ui.Dialog } } }
+    - type: link
+      text: Hello in a drawer
+      to:
+        kind: Ui.OpenPage
+        page: !ref postPage
+        pathParams: { id: hello }
+        queryParams: { from: list }
+        surface: { kind: Ui.Drawer, size: large, address: { name: post } }
+---
+kind: Ui.Action
+metadata: { name: publish }
+inputModel:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [title], properties: { title: { type: string } } }
+outputModel:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [id], properties: { id: { type: string } } }
+request: { target: /api/posts }
+label: Publish
+onSuccess:
+  to: { kind: Ui.OpenPage, page: !ref postPage, pathParams: { id: !cel "result.id" } }
+---
+kind: Telo.Sequence
+metadata: { name: check }
+steps:
+  - name: links
+    invoke: { kind: Probe.Read, source: !ref links }
+  - name: linksGo
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.links.result.node.children.map(link, link.to)"
+      expected:
+        - type: navigate
+          href: { path: { value: /docs }, pathParams: {}, queryParams: {} }
+        - type: navigate
+          href: { path: { value: "/posts/{id}" }, pathParams: { id: { value: hello } }, queryParams: {} }
+        - type: openPage
+          href: { path: { value: "/posts/{id}" }, pathParams: { id: { value: hello } }, queryParams: {} }
+          surface: { type: dialog, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+          keepsSurface: true
+        - type: openPage
+          href: { path: { value: "/posts/{id}" }, pathParams: { id: { value: hello } }, queryParams: {} }
+          surface: { type: dialog, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+          keepsSurface: false
+        - type: openPage
+          href: { path: { value: "/posts/{id}" }, pathParams: { id: { value: hello } }, queryParams: { from: { value: list } } }
+          surface:
+            type: drawer
+            side: end
+            size: large
+            modal: true
+            dismiss: { escape: true, outside: true, closeButton: true }
+            address: { name: post }
+          keepsSurface: false
+  - name: publish
+    invoke: { kind: Probe.Read, source: !ref publish }
+  - name: successGoes
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.publish.result.node.onSuccess"
+      expected:
+        to:
+          type: openPage
+          href: { path: { value: "/posts/{id}" }, pathParams: { id: { root: result, path: [id] } }, queryParams: {} }
+          surface: { type: dialog, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+          keepsSurface: true
+        refreshes: []

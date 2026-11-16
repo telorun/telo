@@ -2,7 +2,7 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { render, wireText, type Rendered } from "./harness.js";
-import { address, dataNode, operation } from "./spec-nodes.js";
+import { address, navigateTo, dataNode, operation } from "./spec-nodes.js";
 import { transcriptMarkdown } from "../src/browser/chat/chat-blocks.js";
 
 // The markdown renderer is a chunk fetched on first use; transforming it is slower than a test waits.
@@ -99,9 +99,9 @@ const page = (rows: unknown[]) => json({ rows: [...rows].reverse(), total: rows.
 
 /** Links a viewer follows to choose the conversation the page shows. */
 const LINKS = [
-  { type: "link", text: "to new", href: address("/") },
-  { type: "link", text: "to c1", href: address("/", {}, { conversation: { value: "c1" } }) },
-  { type: "link", text: "to c2", href: address("/", {}, { conversation: { value: "c2" } }) },
+  { type: "link", text: "to new", to: navigateTo(address("/")) },
+  { type: "link", text: "to c1", to: navigateTo(address("/", {}, { conversation: { value: "c1" } })) },
+  { type: "link", text: "to c2", to: navigateTo(address("/", {}, { conversation: { value: "c2" } })) },
 ];
 
 /** Follow the link choosing a conversation, or a new one. */

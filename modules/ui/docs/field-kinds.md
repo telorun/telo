@@ -94,7 +94,7 @@ fit a choice.
 | `surface` | a dialog with its defaults | a `Ui.Overlay` the options are searched and chosen in |
 
 For a set too large for a list — a foreign key, an assignee. The chosen values
-are drawn as their labels, linked where the source gives an `href`.
+are drawn as their labels, linked where the source gives a `to`.
 
 ## `Ui.DateRangeField`
 
@@ -115,9 +115,9 @@ warning and does not block.
 
 `Ui.OptionSource` is the abstract every source of options extends: `model` (the
 shape of one option's record) and accessors over `row`, a record of `model` —
-`value` (what choosing it yields), `label`, `hint?` and `href?` — an
-[address](nodes.md#addresses) over `row`, so a chosen option links to
-`{ path: "/people/{id}", pathParams: { id: !cel "row.id" } }`.
+`value` (what choosing it yields), `label`, `hint?` — and `to?`, a
+[destination](presses.md) over `row`, so a chosen option goes to
+`{ kind: Ui.OpenPage, page: !ref personPage, pathParams: { id: !cel "row.id" } }`.
 `Ui.CollectionOptions` reads them from a
 [collection](https://hub.telo.run/module/oci/ghcr.io/telorun/data-model/):
 
@@ -233,7 +233,7 @@ A preset's `label` is a text record, and `initialPreset` is the index of the
 preset the field starts at, `null` when none is declared. See
 [Texts and translation](texts.md#what-a-renderer-receives).
 
-An option source is `{ type: collection, schema, value, label, hint?, href?,
-basePath, filters, pageSize, search? }`, each accessor a binding, `href` an address in its wire form (`{ path, pathParams, queryParams }`) and `basePath` the source's literal path or its [template](collection-source.md#a-templated-base-path). The form and
+An option source is `{ type: collection, schema, value, label, hint?, to?,
+basePath, filters, pageSize, search? }`, each accessor a binding, `to` a [`Ui.DestinationSpec`](presses.md#what-a-renderer-receives) and `basePath` the source's literal path or its [template](collection-source.md#a-templated-base-path). The form and
 action nodes carry `groups` (empty when none) and `state` — `{ key?, address,
 store, fields }`, `store` `{ type: memory }` when none is named.

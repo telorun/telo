@@ -11,11 +11,11 @@ exports: { resources: [literalLink, templateLink, literalTarget, templateTarget,
 ---
 kind: Ui.View
 metadata: { name: literalLink }
-content: { type: link, text: All, href: /files/* }
+content: { type: link, text: All, to: { kind: Ui.Navigate, href: /files/* } }
 ---
 kind: Ui.View
 metadata: { name: templateLink }
-content: { type: link, text: Item, href: { path: "/x/{id}/**", pathParams: { id: 7 } } }
+content: { type: link, text: Item, to: { kind: Ui.Navigate, href: { path: "/x/{id}/**", pathParams: { id: 7 } } } }
 ---
 kind: Ui.Action
 metadata: { name: literalTarget }

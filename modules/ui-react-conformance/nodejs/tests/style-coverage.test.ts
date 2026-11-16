@@ -156,6 +156,37 @@ describe("the style checks", () => {
     expect(reservedFor(`[data-telo-part="component"]:not([data-fill="true"]) { min-height: 1rem }`)).toEqual([]);
   });
 
+  it("hold a reservation in a relation to a part on what holds it and on the interactive parts after it", () => {
+    const parts = JSON.parse(readFileSync(new URL("../../../ui-react/nodejs/src/contract/parts.json", import.meta.url), "utf8"));
+    const press = parts.reserved.filter((entry: { holding?: string; after?: string }) => entry.holding === "press" || entry.after === "press");
+    const reservedFor = (css: string) => {
+      const read = readStylesheet(css);
+      if (!read.ok) throw new Error(read.message);
+      const window = new Window();
+      window.document.body.innerHTML = `
+        <table><tr data-telo-part="table-row">
+          <td data-telo-part="table-cell"><a data-telo-part="press" href="/1"></a><a data-telo-part="link" href="/1/full">Full</a><span data-telo-part="badge">New</span></td>
+          <td data-telo-part="table-cell"><a data-telo-part="link" href="/2">Two</a></td>
+        </tr></table>`;
+      const coverage = new StyleCoverage([{ path: "/theme.css", reading: read.reading }], press);
+      coverage.record(window.document as unknown as Document);
+      return coverage.problems({ parts: [], reserved: press }, []);
+    };
+    expect(reservedFor(`[data-telo-part="table-cell"] { position: static } [data-telo-part="link"] { position: static }`)).toEqual([
+      {
+        check: "property-reserved",
+        subject: "holding press: position",
+        message: `'[data-telo-part="table-cell"]' in /theme.css sets 'position' on a part holding a 'press' ('table-cell'), which the renderer reserves: the element a press covers is its containing block.`,
+      },
+      {
+        check: "property-reserved",
+        subject: "after press: position",
+        message: `'[data-telo-part="link"]' in /theme.css sets 'position' on interactive content after a 'press' ('link'), which the renderer reserves: interactive content after a press paints above it and stays a target of its own.`,
+      },
+    ]);
+    expect(reservedFor(`[data-telo-part="table-row"] { position: relative } [data-telo-part="badge"] { position: absolute } [data-telo-part="press"]:focus-visible { outline: 2px solid }`)).toEqual([]);
+  });
+
   it("refuse a stylesheet css-tree cannot parse", () => {
     expect(readStylesheet(`[data-telo-part=page] { color: red; }\n}} .x {`)).toEqual({ ok: false, message: "Selector is expected at line 2, column 1" });
   });

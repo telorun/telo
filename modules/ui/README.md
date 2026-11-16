@@ -76,7 +76,8 @@ turns what it produces into a web application.
   refused again by the resource itself for a manifest that never passed it.
 - **An operation's answer is drawn as content.** An action draws a success as
   its `result` tree and anything else as its `failure` tree, then refreshes the
-  readers and listings a success changed and navigates where its answer says; a
+  readers and listings a success changed and goes where its answer says — to
+  another page, or opening one over the current page; a
   listing's or a list's row draws the answer of the action it ran in place of its
   button.
 - **What is drawn can depend on data, declared as data.** A node's `shown` is a
@@ -128,8 +129,10 @@ turns what it produces into a web application.
 | [`Ui.Field`](docs/field-kinds.md#uifield) | The contract every field kind answers through, judging its own fit to the model it is placed in. |
 | [`Ui.CollectionOptions`](docs/field-kinds.md#option-sources) | A field's options, read, searched and labelled through the collection contract. |
 | [`Ui.OptionSource`](docs/field-kinds.md#option-sources) | The contract every source of options provides through. |
-| [`Ui.Action`](docs/action.md) | A button that runs an operation: a form for its input, its answer and its failure drawn as node trees, navigation and refreshes after a success, serial or parallel presses, and a place on every record of a listing or a list or on a `button` node, its inputs bound from the data in scope. |
-| [`Ui.Dialog`, `Ui.Drawer`, `Ui.Popover`, `Ui.InlineSurface`, `Ui.Panel`, `Ui.PageSurface`](docs/surfaces.md) | Where a form opens: over the page, in line, beside the list, or in place of the page. |
+| [`Ui.Navigate`, `Ui.OpenPage`](docs/presses.md) | Where a link, a menu item, a column, a related record, an option, a navigation entry or a success goes: to an address, or to a page opened over the current one in a dialog or a drawer. |
+| [`Ui.Destination`](docs/presses.md#destinations) | The contract every destination provides through, reading the values bound where it is written. |
+| [`Ui.Action`](docs/action.md) | A button that runs an operation: a form for its input, its answer and its failure drawn as node trees, a destination and refreshes after a success, serial or parallel presses, and a place on every record of a listing or a list or on a `button` node, its inputs bound from the data in scope. |
+| [`Ui.Dialog`, `Ui.Drawer`, `Ui.Popover`, `Ui.InlineSurface`, `Ui.Panel`, `Ui.PageSurface`](docs/surfaces.md) | Where a form or a page opens: over the page, in line, beside the list, or in place of the page. |
 | [`Ui.Surface`, `Ui.Overlay`, `Ui.ViewportOverlay`](docs/surfaces.md#the-abstracts) | The contracts every surface, every floating one, and every one placed against the viewport — what a narrow viewport uses — provides through. |
 | [`Ui.Filters`](docs/filters.md) | A filter bar over the listings it contains. |
 | [`Ui.AbovePlacement`, `Ui.AsidePlacement`, `Ui.CollapsiblePlacement`, `Ui.OverlayPlacement`, `Ui.SearchBoxPlacement`](docs/filter-placement.md) | Where a filter bar's controls sit: above its content, beside it, folded behind a toggle, in an overlay, or gathered into one search box. |
@@ -150,7 +153,9 @@ and a layout share, `Ui.Aside`, in [Ui.SplitView](docs/split-view.md#the-aside);
 an application's `pages` entry drawing one page in another layout,
 `Ui.PageRoute`, in [Ui.PageLayout](docs/page-layout.md).
 Which fields are texts, a text over data (`Ui.BoundText`), `ui`'s own texts and their translations, and what a renderer translates are in [Texts and translation](docs/texts.md).
-The node vocabulary and the style list are in [Nodes](docs/nodes.md);
+The node vocabulary and the style list are in [Nodes](docs/nodes.md); where a
+press goes, the roots a destination reads, and a pressed region or record —
+`Ui.Press` — in [Presses and destinations](docs/presses.md);
 `when`, `shown`, `Ui.Condition`, `Ui.Enablement`, `Ui.QueryParameters` and the
 interpreted profile `Ui.Match` are in [Conditions](docs/conditions.md). What a
 collection source speaks is [the collection contract](https://hub.telo.run/module/oci/ghcr.io/telorun/data-model/),

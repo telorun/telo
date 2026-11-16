@@ -1,0 +1,67 @@
+# A context at a kind's schema root names `row` for every site: `Pick`, a
+# merge-form child declaring no context of its own, inherits it from its
+# abstract, so a plain chain rooted at `row` checks and reaches the controller
+# as a binding, whichever chain the configuration chooses.
+kind: Telo.Application
+metadata: { name: RootContextAgreement, version: 1.0.0 }
+imports: { Assert: ../../../../../modules/assert }
+variables:
+  column: { env: COLUMN, type: string, enum: [text, status], default: text }
+targets: [!ref main]
+---
+kind: Telo.JsonSchema
+metadata: { name: Todo }
+schema:
+  type: object
+  additionalProperties: false
+  properties: { text: { type: string }, status: { type: string } }
+---
+kind: Telo.Abstract
+metadata: { name: Cell }
+capability: Telo.Provider
+schema:
+  type: object
+  x-telo-context:
+    type: object
+    properties: { row: { x-telo-context-from-root: model, x-telo-context-eval: accessor } }
+  properties:
+    model: { x-telo-ref: { kind: Telo.Type, use: schema } }
+    value: { x-telo-eval: accessor }
+---
+kind: Telo.Definition
+metadata: { name: Pick }
+extends: Self.Cell
+controllers: [pkg:telo/local/js?path=./probe.mjs#Pick]
+schema: { type: object, properties: { label: { type: string } } }
+---
+kind: Telo.Definition
+metadata: { name: Read }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Read]
+schema:
+  type: object
+  required: [source]
+  additionalProperties: false
+  properties: { source: { x-telo-ref: { kind: Telo.Provider, use: call } } }
+---
+kind: Self.Pick
+metadata: { name: pick }
+model: !ref Todo
+label: !cel "variables.column"
+value: !if
+  if: !cel "variables.column == 'status'"
+  then: !cel "row.status"
+  else: !cel "row.text"
+---
+kind: Telo.Sequence
+metadata: { name: main }
+steps:
+  - name: read
+    invoke: { kind: Self.Read, source: !ref pick }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.read.result"
+      expected:
+        root: row
+        path: [!cel "variables.column"]

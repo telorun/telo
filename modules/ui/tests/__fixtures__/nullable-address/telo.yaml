@@ -14,7 +14,9 @@ source: /api/record
 content:
   type: link
   text: Worker
-  href:
-    path: "/workers/{worker}"
-    pathParams: { worker: !cel "data.worker" }
-    queryParams: { by: !cel "data.worker" }
+  to:
+    kind: Ui.Navigate
+    href:
+      path: "/workers/{worker}"
+      pathParams: { worker: !cel "data.worker" }
+      queryParams: { by: !cel "data.worker" }

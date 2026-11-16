@@ -1,0 +1,61 @@
+# Presses that are refused, each where it is written.
+kind: Telo.Application
+metadata: { name: UiInvalidPressesApp, version: 1.0.0 }
+imports: { Ui: ../../../../, DataModel: ../../../../../data-model }
+---
+kind: Telo.JsonSchema
+metadata: { name: Post }
+schema: { type: object, required: [id, title], properties: { id: { type: string }, title: { type: string } } }
+---
+kind: Ui.Page
+metadata: { name: postPage }
+path: /posts/{id}
+title: Post
+children: [{ type: text, text: Post }]
+---
+kind: Ui.Page
+metadata: { name: homePage }
+path: /
+title: Home
+children:
+  # SCHEMA_VIOLATION — a press needs a `label`.
+  - { type: box, press: { to: { kind: Ui.Navigate, href: /docs } }, children: [{ type: text, text: Docs }] }
+  # SCHEMA_VIOLATION, each — `press` is on `box`, `stack` and `columns` only.
+  - { type: text, text: Docs, press: { to: { kind: Ui.Navigate, href: /docs }, label: Docs } }
+  - { type: badge, text: New, press: { to: { kind: Ui.Navigate, href: /docs }, label: New } }
+  - { type: image, src: /logo.png, alt: Logo, press: { to: { kind: Ui.Navigate, href: /docs }, label: Logo } }
+  - { type: svg, markup: <svg/>, alt: Logo, press: { to: { kind: Ui.Navigate, href: /docs }, label: Logo } }
+  - { type: value, value: "2026-11-15", press: { to: { kind: Ui.Navigate, href: /docs }, label: Yesterday } }
+  - { type: time, value: "2026-11-16", press: { to: { kind: Ui.Navigate, href: /docs }, label: Today } }
+  # CEL_UNKNOWN_IDENTIFIER — a page's own nodes bind no `row`.
+  - type: stack
+    press:
+      to: { kind: Ui.OpenPage, page: !ref postPage, pathParams: { id: !cel "row.id" } }
+      label: First post
+    children: [{ type: text, text: First post }]
+  # CEL_UNKNOWN_FIELD — a label's values read the holder's roots, typed: `Post` has no `titel`.
+  - type: composite
+    ref:
+      kind: Ui.Data
+      model: !ref Post
+      source: /api/posts/hello
+      content:
+        type: box
+        press:
+          to: { kind: Ui.OpenPage, page: !ref postPage, pathParams: { id: !cel "data.id" } }
+          label: { text: "Read {$title}", values: { title: !cel "data.titel" } }
+        children: [{ type: value, value: !cel "data.title" }]
+---
+# CEL_UNKNOWN_FIELD — a listing's press reads `row`, typed from `model`: `Post` has no `idd`.
+kind: Ui.Listing
+metadata: { name: posts }
+presentation:
+  kind: Ui.CollectionPresentation
+  source:
+    kind: Ui.CollectionSource
+    basePath: /api/posts
+    collection: { kind: DataModel.Collection, model: !ref Post, query: { filters: [], sort: [] } }
+model: !ref Post
+press:
+  to: { kind: Ui.OpenPage, page: !ref postPage, pathParams: { id: !cel "row.idd" } }
+  label: { text: "Open {$title}", values: { title: !cel "row.title" } }

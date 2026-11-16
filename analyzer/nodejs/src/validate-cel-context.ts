@@ -28,6 +28,7 @@ import { listRequests, type DeclarationRequests } from "./declaration-requests.j
 import { argumentRecordSchema, readParams } from "./callable-signature.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { withRefSlotsAsReadings } from "./ref-slot-reading.js";
+import { withJoinedRootContext } from "./root-context-inheritance.js";
 import { inlineNamedShapes } from "./schema-compat.js";
 import { dispatchTargetOf } from "./template-body.js";
 import { valueDerivedContract, valueDerivedSlot } from "./value-derived-contract.js";
@@ -337,8 +338,9 @@ function applyExtends(
 }
 
 /** A shape's own schema with each `extends` parent `resolveParent` resolves
- *  folded in, parents first — the merge the kernel's type controller makes. A
- *  parent that resolves to nothing is left out. */
+ *  folded in, parents first — the merge the kernel's type controller makes,
+ *  with the root `x-telo-context`s joined as a kind's are. A parent that
+ *  resolves to nothing is left out. */
 export function foldTypeExtends(
   ownSchema: Record<string, any>,
   extendsField: unknown,
@@ -352,7 +354,8 @@ export function foldTypeExtends(
     if (parentSchema) resolved.push(parentSchema);
   }
   if (resolved.length === 0) return ownSchema;
-  return mergeTypeSchemas([...resolved, ownSchema]) as Record<string, any>;
+  const chain = [...resolved, ownSchema];
+  return withJoinedRootContext(mergeTypeSchemas(chain) as Record<string, any>, chain);
 }
 
 /** The expression a `!cel` field value holds — its sentinel or its compiled

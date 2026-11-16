@@ -19,7 +19,7 @@ children:
       kind: Ui.NavigationColumn
       navigation:
         items:
-          - { type: link, text: Admin, href: /admin, when: !cel "'x-role' in request.headers" }
+          - { type: link, text: Admin, to: { kind: Ui.Navigate, href: /admin }, when: !cel "'x-role' in request.headers" }
   - type: pane
     ref:
       kind: Help.Links
@@ -38,7 +38,7 @@ children:
             kind: Ui.NavigationColumn
             navigation:
               items:
-                - { type: link, text: Admin, href: /admin, when: !cel "request != null && 'x-role' in request.headers" }
+                - { type: link, text: Admin, to: { kind: Ui.Navigate, href: /admin }, when: !cel "request != null && 'x-role' in request.headers" }
       content: { type: text, text: Guarded }
 ---
 kind: Ui.SplitView
@@ -51,7 +51,7 @@ aside:
       kind: Ui.NavigationColumn
       navigation:
         items:
-          - { type: link, text: Admin, href: /admin, when: !cel "'x-role' in request.headers" }
+          - { type: link, text: Admin, to: { kind: Ui.Navigate, href: /admin }, when: !cel "'x-role' in request.headers" }
 content: { type: text, text: Welcome, style: title }
 ---
 kind: Ui.Page
@@ -62,7 +62,7 @@ children:
 ---
 kind: Ui.View
 metadata: { name: editLink }
-content: { type: link, text: Edit this page, href: { path: "/edit/{id}", pathParams: { id: !cel "params.id" } } }
+content: { type: link, text: Edit this page, to: { kind: Ui.Navigate, href: { path: "/edit/{id}", pathParams: { id: !cel "params.id" } } } }
 ---
 kind: Ui.Page
 metadata: { name: record }
@@ -80,4 +80,4 @@ header:
       kind: Ui.NavigationColumn
       navigation:
         items:
-          - { type: link, text: Admin, href: /admin, when: !cel "'x-role' in request.headers" }
+          - { type: link, text: Admin, to: { kind: Ui.Navigate, href: /admin }, when: !cel "'x-role' in request.headers" }

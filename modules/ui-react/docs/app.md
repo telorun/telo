@@ -170,7 +170,7 @@ the tree and its references are literal, as for a page.
 ### Page references are checked
 
 Every reference to a page reachable from the application — a navigation entry,
-a `link` address, an action's `onSuccess.navigate`, in a layout, a pane, a
+an address or a `Ui.OpenPage` at any `to`, in a layout, a pane, a
 composite or a page — must name a page `pages` lists, or
 `telo check` reports `RESOURCE_RULE_VIOLATED` with `data.rule: UI_PAGE_UNROUTED`
 at that reference; one written in a library the application imports is
@@ -230,10 +230,12 @@ placement's, so both must hold.
 
 ## What is evaluated per request
 
-Inside `children`, a layout's regions and `notFound`, each node's `when:` and its leaf values — `text`, `href`,
+Inside `children`, a layout's regions and `notFound`, each node's `when:` and its leaf values — `text`,
 `src`, `alt`, `markup`, `style` — may be expressions, evaluated for every
 request against the request — and never against `query` or any other root the
-browser holds (`CEL_UNKNOWN_IDENTIFIER`):
+browser holds (`CEL_UNKNOWN_IDENTIFIER`). A destination's address is not
+evaluated per request: a link that differs by request is two `link` nodes with
+a `when` each.
 
 | Name | |
 | --- | --- |
@@ -400,7 +402,7 @@ but the drawing is the listing's, whatever the layout:
   it is shown.
 - **Related records.** A column over a property whose relation the listing
   presents shows the related record's label, linked where the relation gives
-  `href`. The keys of every page answered in one turn are looked up together
+  `to`. The keys of every page answered in one turn are looked up together
   with `in`, in batches of the relation's `pageSize`, each key once; a change
   announced for the relation's source `basePath` looks them up again. A lookup
   that fails is drawn as an `error` node under the records, which keep their
@@ -432,9 +434,14 @@ contract](layouts-abi.md) hands them over:
 | tree | the roots, a record's children under it once expanded; what is expanded is kept across reloads | each level on its own, by "Load more" |
 | component | whatever the module's component draws | as its plan says |
 
+Every layout draws the listing's `press` across the whole record — the table
+across each row's first cell, the row carrying `data-selected` — and a
+record's `edit` stays on its edit button while a press is written.
+
 A component layout's entry is held to the layout contract when the
-application starts; one built for another is drawn as an error node in place
-of its listing (`ERR_UI_COMPONENT_ABI_UNSUPPORTED`).
+application starts; one built for another — `ui_react_layouts-1` included —
+is drawn as an error node in place of its listing
+(`ERR_UI_COMPONENT_ABI_UNSUPPORTED`).
 
 - A listing, a form, a filter bar and an option source read and write their
   `basePath` under the mount, as a reader reads its resolved `source`: mounted
@@ -614,7 +621,7 @@ delete. A [`button` node](#buttons) and a markdown node's
   `maximum`, `tags` typed items; `auto` derives one as above. A choice draws
   its source's options in a list or side by side, reading the next page as the
   list scrolls to its end (side by side, a `More` button). A picker shows the
-  chosen values as their labels, linked by the source's `href` under the
+  chosen values as their labels, linked by the source's `to` under the
   address rule, and opens its surface to search — after the typing pause, or at
   once on Enter, an answer to an older search discarded — and to choose from a
   list that reads one more page per scroll to its end. A date range draws its
@@ -668,8 +675,8 @@ below it what the operation answered.
   The fields keep what was entered, whatever the answer.
 - A success draws the `result` tree (`action-result`) over `result`, the
   record sent as `input` and what the form holds now as `values`. Its body is
-  read only when that tree, `onSuccess.navigate` or an `onSuccess.refreshes`
-  entry reads `result`, and must then be a JSON object the declared answer
+  read only when that tree, the address of `onSuccess.to` or an
+  `onSuccess.refreshes` entry reads `result`, and must then be a JSON object the declared answer
   model accepts; any other body, an empty one (a `204`) included, is a failure
   `ERR_UI_RESPONSE_INVALID`. A 2xx nothing reads is a success whatever it holds.
 - Anything else draws the `failure` tree (`action-failure`) over `error` —
@@ -682,11 +689,12 @@ below it what the operation answered.
 - After a success the resolved target path and each resolved
   `onSuccess.refreshes` path are announced (an entry that does not resolve is
   skipped and reported in the console), and every reader reading exactly one
-  reads again ([invalidation](urls.md#invalidation)). `onSuccess.navigate`
-  moves the page: within the application to an address a declared page opens, by a full load to
-  any other app-relative address, by replacing the page for an `https://`,
-  `http://` or `mailto:` one. An address that does not resolve navigates
-  nowhere.
+  reads again ([invalidation](urls.md#invalidation)). The page then goes to
+  `onSuccess.to`, its address over `result` and `input`: within the
+  application to an address a declared page opens, by a full load to any other
+  app-relative address, by replacing the page for an `https://`, `http://` or
+  `mailto:` one; an opened page is followed to its own address. An address
+  that does not resolve goes nowhere.
 - The drawn answer is cleared when a property `clearAnswerOn` lists changes.
 
 ### Buttons
@@ -730,6 +738,16 @@ roots the list is drawn under.
   is swapped in place: what was entered stays.
 - **Address.** A surface declared with `address` keeps what is open in the
   page's query, under [the open key](urls.md#the-open-key).
+- **Opened pages.** A destination opening a page draws that page — the
+  document a move to its address fetches, so a page no application lists
+  draws the not-found page — in the dialog or drawer it names, titled by the
+  page's title, else by the text or label of what opened it. The shell holds
+  one opened page: opening another replaces it and takes its history entry, a
+  destination moving somewhere from inside it moves the application and closes
+  it, and Escape or its close button closes it and gives the focus back to what
+  opened it on the page beneath. Its address is kept under
+  [the page key](urls.md#the-page-key), and what its own nodes would write into
+  the address is kept in memory.
 - **Unsaved input.** Under `unsaved: confirm`, a form that holds unsaved input
   asks before anything closes it: its own close button, Escape, a click
   outside or Cancel; the navigation, a link, or a component's `navigate` to

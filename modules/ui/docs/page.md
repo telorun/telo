@@ -41,10 +41,10 @@ children:
   every request with it. A `shown` condition and a `value` or `list`
   node read `query` and `params` in the browser instead, and never `request`
   (`CEL_UNKNOWN_IDENTIFIER`).
-- A `link`'s `href` is an [address](nodes.md#addresses), and is not evaluated per
-  request: `href: !cel "request…"` is `CEL_UNKNOWN_IDENTIFIER`; a link that
-  differs by request is two `link` nodes with a `when` each. An address may
-  name a page by `!ref`, which is that page's `path` — renaming the `path`
+- A `link`'s `to` is a [destination](presses.md), and is not evaluated per
+  request: one reading `request` is `CEL_UNKNOWN_IDENTIFIER`; a link that
+  differs by request is two `link` nodes with a `when` each. A destination
+  names a page by `!ref`, which is that page's `path` — renaming the `path`
   moves every link to it.
 - The tree's structure and its references are literal: a computed list of
   children or a computed `ref` is `REF_SLOT_COMPUTED` at `telo check` and
@@ -84,14 +84,14 @@ children:
   segment answers the application's not-found page.
 - A navigation entry cannot name a page with a variable, since it has nothing
   to fill it with (see [navigation](navigation.md)); a page with a variable is
-  reached by a `link` whose [address](nodes.md#addresses) names it with `!ref`
+  reached by a `link` whose [destination](presses.md) names it with `!ref`
   and fills every variable in `pathParams`, which `telo check` holds to the
   page's `path` (`PATH_PARAMETER_UNBOUND`, `PATH_PARAMETER_UNUSED`):
 
   ```yaml
   - type: link
     text: Open
-    href: { path: !ref plan, pathParams: { id: !cel "row.id" } }
+    to: { kind: Ui.Navigate, href: { path: !ref plan, pathParams: { id: !cel "row.id" } } }
   ```
 
 - A move to another value of a variable draws the page afresh, since it shows

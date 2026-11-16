@@ -1,5 +1,5 @@
 {
-  "generation": "ui_react_layouts-1",
+  "generation": "ui_react_layouts-2",
   "supplied": [
     "react",
     "react/jsx-runtime",
@@ -36,6 +36,7 @@
     "row",
     "props",
     "labels",
+    "press",
     "actions",
     "detail",
     "style",

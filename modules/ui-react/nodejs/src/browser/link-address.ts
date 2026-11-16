@@ -38,3 +38,22 @@ export function pageAddress(prefix: string, pages: readonly string[], href: stri
   const url = new URL(href, window.location.href);
   return target + url.search + url.hash;
 }
+
+/**
+ * Where a plain click on an anchor to a page the application declares moves
+ * within it, the click taken from the browser; nothing for any other click,
+ * which stays the browser's.
+ */
+export function anchorMove(
+  event: Pick<MouseEvent, "defaultPrevented" | "button" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey" | "target" | "preventDefault">,
+  prefix: string,
+  pages: readonly string[],
+): string | undefined {
+  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return undefined;
+  const anchor = (event.target as Element).closest?.("a");
+  const href = anchor?.getAttribute("href");
+  if (!anchor || href == null || anchor.getAttribute("target") || anchor.hasAttribute("download")) return undefined;
+  const to = pageAddress(prefix, pages, href);
+  if (to !== undefined) event.preventDefault();
+  return to;
+}

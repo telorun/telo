@@ -519,7 +519,7 @@ children:
         type: list
         rows: !cel "result.reports"
         columns: *reportColumns
-  - { type: link, text: "Open the latest report", href: /api/reports/latest }
+  - { type: link, text: "Open the latest report", to: { kind: Ui.Navigate, href: /api/reports/latest } }
 ---
 # The whole frontend: two buttons with nothing to fill in, and the table of
 # reports each draws from what its route answers. A link out of that table

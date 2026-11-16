@@ -19,7 +19,7 @@ which declare their own roots.
       actions:
         - type: link
           text: New conversation
-          href: { path: !ref assistant }
+          to: { kind: Ui.Navigate, href: { path: !ref assistant } }
           button: { kind: Ui.IconButton, label: shown, icon: { kind: UiLucide.Icon, name: square-pen } }
       content:
         type: composite

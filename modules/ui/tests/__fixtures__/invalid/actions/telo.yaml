@@ -6,46 +6,30 @@
 # that cannot make a record of the action they are handed to or read a root
 # nothing binds there.
 kind: Telo.Application
-metadata:
-  name: UiInvalidActionsApp
-  version: 1.0.0
-imports:
-  Ui: ../../../../
-  DataModel: ../../../../../data-model
+metadata: { name: UiInvalidActionsApp, version: 1.0.0 }
+imports: { Ui: ../../../../, DataModel: ../../../../../data-model }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Request
-schema:
-  type: object
-  properties:
-    month: { type: string }
+metadata: { name: Request }
+schema: { type: object, properties: { month: { type: string } } }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Answer
+metadata: { name: Answer }
 schema:
   type: object
   properties:
     kind: { type: string }
-    files:
-      type: array
-      items:
-        type: object
-        properties:
-          name: { type: string }
+    files: { type: array, items: { type: object, properties: { name: { type: string } } } }
 ---
 kind: Ui.Action
-metadata:
-  name: strayKey
+metadata: { name: strayKey }
 inputModel: !ref Request
 request: { target: /api/reports }
 label: Generate
 method: PUT
 ---
 kind: Ui.Action
-metadata:
-  name: rowTypo
+metadata: { name: rowTypo }
 inputModel: !ref Request
 outputModel: !ref Answer
 request: { target: /api/reports }
@@ -57,8 +41,7 @@ result:
     - value: !cel "row.nmae"
 ---
 kind: Ui.Action
-metadata:
-  name: rowsNotAList
+metadata: { name: rowsNotAList }
 inputModel: !ref Request
 outputModel: !ref Answer
 request: { target: /api/reports }
@@ -70,8 +53,7 @@ result:
     - value: !cel "result.kind"
 ---
 kind: Ui.Action
-metadata:
-  name: rowsComputed
+metadata: { name: rowsComputed }
 inputModel: !ref Request
 outputModel: !ref Answer
 request: { target: /api/reports }
@@ -83,8 +65,7 @@ result:
     - value: !cel "result.kind"
 ---
 kind: Ui.Action
-metadata:
-  name: noAnswerModel
+metadata: { name: noAnswerModel }
 inputModel: !ref Request
 request: { target: /api/reports }
 label: Generate
@@ -92,11 +73,10 @@ result:
   type: list
   rows: !cel "result.files"
   columns:
-    - value: fixed
+    - { value: fixed }
 ---
 kind: Ui.Action
-metadata:
-  name: listsRemoved
+metadata: { name: listsRemoved }
 inputModel: !ref Request
 outputModel: !ref Answer
 request: { target: /api/reports }
@@ -117,56 +97,45 @@ request: { method: GET, target: /api/reports }
 label: Generate
 ---
 kind: Ui.Action
-metadata:
-  name: navigateOff
+metadata: { name: navigateOff }
 inputModel: !ref Request
 request: { target: /api/reports }
 label: Generate
 onSuccess:
-  navigate: ftp://files.example/report
+  to: { kind: Ui.Navigate, href: ftp://files.example/report }
   refreshes: [api/reports]
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Todo
+metadata: { name: Todo }
 schema:
   type: object
   required: [id]
-  properties:
-    id: { type: integer }
-    name: { type: string }
+  properties: { id: { type: integer }, name: { type: string } }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Archive
+metadata: { name: Archive }
 schema:
   type: object
   additionalProperties: false
   required: [id]
-  properties:
-    id: { type: integer }
-    status: { type: string }
+  properties: { id: { type: integer }, status: { type: string } }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Rename
+metadata: { name: Rename }
 schema:
   type: object
   additionalProperties: false
   required: [name]
-  properties:
-    name: { type: string }
+  properties: { name: { type: string } }
 ---
 kind: Ui.Action
-metadata:
-  name: archive
+metadata: { name: archive }
 inputModel: !ref Archive
 request: { target: /api/todos/archive }
 label: Archive
 ---
 kind: Ui.Action
-metadata:
-  name: rename
+metadata: { name: rename }
 inputModel: !ref Rename
 request: { target: /api/todos/rename }
 label: Rename
@@ -183,8 +152,7 @@ source:
 ---
 # Each map is held to its own action's model, so this one is clean.
 kind: Ui.Listing
-metadata:
-  name: eachItsOwn
+metadata: { name: eachItsOwn }
 model: !ref Todo
 presentation: !ref todos
 rowActions:
@@ -195,8 +163,7 @@ rowActions:
     confirm: Rename it?
 ---
 kind: Ui.Listing
-metadata:
-  name: rowMemberUnknown
+metadata: { name: rowMemberUnknown }
 model: !ref Todo
 presentation: !ref todos
 rowActions:
@@ -204,8 +171,7 @@ rowActions:
     inputs: { id: !cel "row.missing" }
 ---
 kind: Ui.Listing
-metadata:
-  name: chainMistyped
+metadata: { name: chainMistyped }
 model: !ref Todo
 presentation: !ref todos
 rowActions:
@@ -213,8 +179,7 @@ rowActions:
     inputs: { id: !cel "row.name" }
 ---
 kind: Ui.Listing
-metadata:
-  name: inputComputed
+metadata: { name: inputComputed }
 model: !ref Todo
 presentation: !ref todos
 rowActions:
@@ -222,16 +187,14 @@ rowActions:
     inputs: { id: !cel "row.id + 1" }
 ---
 kind: Ui.Listing
-metadata:
-  name: inputsAbsent
+metadata: { name: inputsAbsent }
 model: !ref Todo
 presentation: !ref todos
 rowActions:
   - action: !ref rename
 ---
 kind: Ui.Listing
-metadata:
-  name: inputsEmpty
+metadata: { name: inputsEmpty }
 model: !ref Todo
 presentation: !ref todos
 rowActions:
@@ -239,8 +202,7 @@ rowActions:
     inputs: {}
 ---
 kind: Ui.Listing
-metadata:
-  name: confirmFlag
+metadata: { name: confirmFlag }
 model: !ref Todo
 presentation: !ref todos
 rowActions:
@@ -249,8 +211,7 @@ rowActions:
     confirm: true
 ---
 kind: Ui.Listing
-metadata:
-  name: confirmEmpty
+metadata: { name: confirmEmpty }
 model: !ref Todo
 presentation: !ref todos
 rowActions:
@@ -259,12 +220,10 @@ rowActions:
     confirm: ""
 ---
 kind: Ui.Listing
-metadata:
-  name: queryTypo
+metadata: { name: queryTypo }
 model: !ref Todo
 presentation: !ref todos
-query:
-  status: { type: string }
+query: { status: { type: string } }
 rowActions:
   - action: !ref archive
     inputs: { id: !cel "row.id", status: !cel "query.statuss" }
@@ -272,8 +231,7 @@ rowActions:
 # A list's row actions: one reads a root no form binds here, one leaves the
 # action's required input unbound.
 kind: Ui.Data
-metadata:
-  name: listRowActions
+metadata: { name: listRowActions }
 model:
   kind: Telo.JsonSchema
   schema:

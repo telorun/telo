@@ -15,8 +15,8 @@ metadata:
     runs. Each is drawn in the colour of the text beside it in menus, sidebars
     and tab bars.
 requires:
-  # Imports ui, which needs 0.121.0.
-  telo: ">=0.136.0"
+  # Imports ui, whose floor it takes.
+  telo: ">=unreleased"
 imports: { Ui: ../ui }
 exports: { kinds: [Icon] }
 # Every glyph ships in the assets layer; a resource reads only the one it names.

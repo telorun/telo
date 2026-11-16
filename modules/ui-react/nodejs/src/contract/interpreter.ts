@@ -61,6 +61,8 @@ export interface Expectation {
   absent?: Target[];
   attributes?: { of: Target; name: string; value: string | null }[];
   text?: { of: Target; value: string }[];
+  /** The first element child of `of` is the element `is` names. */
+  firstChild?: { of: Target; is: Target }[];
   /** These are drawn outside the application's element. */
   outside?: Target[];
 }
@@ -162,7 +164,7 @@ export interface ControlsContract {
 
 const contract = controlsContract as unknown as ControlsContract;
 
-/** One built-in layout of `ui_react_layouts-1`: what its export draws and reports, held as a control is. */
+/** One built-in layout of `ui_react_layouts-2`: what its export draws and reports, held as a control is. */
 export interface LayoutContract extends ControlContract {
   /** The name the reference implementation is exported under. */
   export: string;
@@ -413,6 +415,13 @@ function expectations(expectation: Expectation, session: Session, intents: unkno
     if (!element) problem(`nothing is drawn as ${describe(of)}`);
     else if (element.textContent?.trim() !== value) problem(`${describe(of)} reads ${JSON.stringify(element.textContent?.trim())}, not ${JSON.stringify(value)}`);
   }
+  for (const { of, is } of expectation.firstChild ?? []) {
+    const parent = candidates(of, session)[of.index ?? 0];
+    const child = candidates(is, session)[is.index ?? 0];
+    if (!parent) problem(`nothing is drawn as ${describe(of)}`);
+    else if (!child) problem(`nothing is drawn as ${describe(is)}`);
+    else if (parent.firstElementChild !== child) problem(`the first child of ${describe(of)} is ${focusName(parent.firstElementChild)}, not ${describe(is)}`);
+  }
   for (const target of expectation.outside ?? []) {
     const element = candidates(target, session)[target.index ?? 0];
     if (!element) problem(`nothing is drawn as ${describe(target)}`);
@@ -574,7 +583,7 @@ export async function runVector(options: {
 }
 
 /**
- * Run one vector against a layout component of `ui_react_layouts-1`, as
+ * Run one vector against a layout component of `ui_react_layouts-2`, as
  * {@link runVector} runs one against a control: `layout` names the built-in
  * whose parts and intents it is held to, by the spec's `type`.
  */

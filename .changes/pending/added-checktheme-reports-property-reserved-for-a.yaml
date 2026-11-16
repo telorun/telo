@@ -1,0 +1,7 @@
+units:
+  modules/ui-react-conformance: Added
+body: "`CheckTheme` reports `property-reserved` for a reservation in a relation to a
+  part, as the renderer's contract now declares them: `position` on any part holding a
+  `press` (in a table, the first `table-cell` of a pressed `table-row`) and on the
+  interactive content after a `press` inside the element it covers, named `holding
+  press: position` and `after press: position`."

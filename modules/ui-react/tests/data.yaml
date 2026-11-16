@@ -52,6 +52,7 @@ steps:
             content:
               type: stack
               fill: false
+              press: null
               children:
                 - type: value
                   fill: false
@@ -67,6 +68,7 @@ steps:
             failure:
               type: stack
               fill: false
+              press: null
               style: danger
               children:
                 - { type: value, fill: false, value: { root: error, path: [code] }, present: { type: string }, style: strong, labels: [] }

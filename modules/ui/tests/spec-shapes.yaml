@@ -93,6 +93,7 @@ steps:
             node:
               type: listing
               fill: false
+              press: null
               schema: {}
               basePath: /api/todos
               key: id

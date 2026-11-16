@@ -2,7 +2,8 @@
 # cards, on a board by status and on a calendar by publication day; filter bars
 # offering the authors by name, every one or only those with posts; a post
 # form picking its author; the authors' own screen; and the reporting lines as
-# a tree. Every application places this view on its `/records` page.
+# a tree, and records that open in place, in a drawer and a dialog. Every
+# application places this view on its `/records` page.
 kind: Ui.View
 metadata: { name: recordsPage }
 content:
@@ -152,6 +153,48 @@ content:
             children:
               - { type: value, value: !cel "row.name" }
               - { type: value, value: !cel "row.title", style: muted }
+
+    # ---- Records that open in place ----
+    - { type: text, text: Records that open in place, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        Pressing a card opens the post in a drawer at the end of the page, and the drawer is part of the
+        address, so it reopens on reload and Back closes it. The card's own link goes to the post's full page,
+        and the menu opens the first post in a dialog.
+    - type: menu
+      text: Quick look
+      items:
+        - type: link
+          text: The first post
+          to:
+            kind: Ui.OpenPage
+            page: !ref postRecord
+            pathParams: { id: 1 }
+            surface: { kind: Ui.Dialog }
+    - type: composite
+      ref:
+        kind: Ui.Listing
+        presentation: !ref postsPresentation
+        model: !ref Post
+        pageSize: 3
+        press:
+          to:
+            kind: Ui.OpenPage
+            page: !ref postRecord
+            pathParams: { id: !cel "row.id" }
+            surface: { kind: Ui.Drawer, side: end, address: { name: post } }
+          label: { text: "Open {$title}", values: { title: !cel "row.title" } }
+        layout:
+          kind: Ui.CardLayout
+          size: small
+          content:
+            type: stack
+            children:
+              - { type: value, value: !cel "row.title" }
+              - type: link
+                text: Full page
+                to: { kind: Ui.Navigate, href: { path: !ref postRecord, pathParams: { id: !cel "row.id" } } }
 ---
 # The form that writes a post, opened by every listing of posts: its author is
 # picked from the authors, as the presentation's relation says.
@@ -184,3 +227,28 @@ path: /records
 title: Related records
 children:
   - { type: composite, ref: !ref recordsPage }
+---
+# One post by the key in its address: the page a card opens in a drawer, the
+# menu opens in a dialog, and its own link reaches in full.
+kind: Ui.Page
+metadata: { name: postRecord }
+path: /records/{id}
+title: Post
+children:
+  - type: composite
+    ref:
+      kind: Ui.Data
+      model: !ref Post
+      source:
+        path: "/api/posts/{id}"
+        pathParams: { id: !cel "params.id" }
+      content:
+        type: stack
+        children:
+          - type: text
+            style: heading
+            text: { text: "{$title}", values: { title: !cel "data.title" } }
+          - { type: value, value: !cel "data.status" }
+          - { type: value, value: !cel "data.publishedOn" }
+          - { type: value, value: !cel "data.body" }
+          - { type: link, text: All records, to: { kind: Ui.Navigate, href: /records } }

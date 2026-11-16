@@ -109,7 +109,7 @@ metadata:
     runs. Each is drawn in the colour of the text beside it in menus, sidebars
     and tab bars.
 requires:
-  # Imports ui, which needs 0.121.0.
+  # Imports ui, whose floor it takes.
   telo: ">=0.121.0"
 imports:
   Ui: ../ui

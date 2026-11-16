@@ -8,7 +8,7 @@ describe("a navigation delivered for a request", () => {
   it("leaves out an entry switched off, and a group none of whose entries is delivered, every other keeping its key", () => {
     const evaluated = [
       { type: "page", key: "home", path: "/", text: text("Home") },
-      { type: "link", key: "docs", href: "https://telo.run", text: text("Docs"), when: false },
+      { type: "link", key: "docs", to: { type: "navigate", href: { path: { value: "https://telo.run" }, pathParams: {}, queryParams: {} } }, text: text("Docs"), when: false },
       {
         type: "group",
         key: "admin",
@@ -27,10 +27,11 @@ describe("a navigation delivered for a request", () => {
   });
 
   it("names each entry by the slug of its source text, under its group's key", async () => {
-    const link = (label: string) => ({ type: "link" as const, href: "/x", text: text(label) as never });
+    const destination = { provide: async () => ({ type: "navigate", href: { path: { value: "/x" }, pathParams: {}, queryParams: {} } }) };
+    const link = (label: string) => ({ type: "link" as const, to: destination, text: text(label) as never });
     const prepared = await preparedNavigation(
       { items: [{ type: "group", text: text("Admin") as never, items: [link("Users"), link("Users")] }, link("Admin")] },
-      {} as ResourceContext,
+      { resolveRef: (value: unknown) => value } as unknown as ResourceContext,
       "the app",
     );
     const keys = (entries: { key: string; items?: unknown[] }[]): unknown[] =>

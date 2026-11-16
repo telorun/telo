@@ -16,7 +16,7 @@ tree for anything else.
 | `enabled` | always | when the button can be pressed, and why not: a [`Ui.Enablement`](conditions.md#enablement) over `values` |
 | `result` | nothing drawn | a [node tree](nodes.md) drawn from a success, over `result`, `input` and `values` |
 | `failure` | the error's code and message | a node tree drawn when the operation does not succeed, over `error`, `input` and `values` |
-| `onSuccess` | nothing | `{ navigate?, refreshes? }`: an [address](nodes.md#addresses) the page goes to over `result` and `input`, and the request targets read again over `input` and `result` |
+| `onSuccess` | nothing | `{ to?, refreshes? }`: a [destination](presses.md) a success goes to over `result` and `input`, and the request targets read again over `input` and `result` |
 | `concurrency` | `parallel` | `parallel` or `serial`: whether presses run at once or one after another |
 | `clearAnswerOn` | none | input properties whose change clears what was drawn from the last answer |
 
@@ -124,7 +124,7 @@ it names — for no answer at all, and for a 2xx body that is not a JSON object
 or that `outputModel` refuses (`code: ERR_UI_RESPONSE_INVALID`). Left out, it
 draws the error's code and message.
 
-A success's body is read only when the `result` tree, `onSuccess.navigate` or
+A success's body is read only when the `result` tree, `onSuccess.to` or
 a `refreshes` entry reads `result`; otherwise any 2xx is a success, whatever it
 carries.
 
@@ -152,15 +152,28 @@ opted into with `/**`. A wildcard comes from the literal template alone — a
 `conformance/refreshes.json`. A wildcard in any other address is
 `SCHEMA_VIOLATION`.
 
-`onSuccess.navigate` is an [address](nodes.md#addresses) over `result` and
-`input`: a literal, `{ path, pathParams, queryParams }`, or a `path` chain
-reading a whole address from the answer. An app-relative address of a declared
-page moves within the application; any other app-relative address is loaded; an
-`https://`, `http://` or `mailto:` address replaces the page. An address that
-does not resolve navigates nowhere, and the answer is drawn.
+`onSuccess.to` is a [destination](presses.md) over `result` and `input`: a
+[`Ui.Navigate`](presses.md#uinavigate) to an address — a literal,
+`{ path, pathParams, queryParams }`, or a `path` chain reading a whole address
+from the answer — or a [`Ui.OpenPage`](presses.md#uiopenpage) opening a page,
+the record just created for one, over the current one. An app-relative address
+of a declared page moves within the application; any other app-relative address
+is loaded; an `https://`, `http://` or `mailto:` address replaces the page. An
+address that does not resolve goes nowhere, and the answer is drawn. Reading a
+root the success does not bind, such as `row`, is `CEL_UNKNOWN_IDENTIFIER`.
+
+```yaml
+onSuccess:
+  to:
+    kind: Ui.OpenPage
+    page: !ref projectPage
+    pathParams: { id: !cel "result.id" }
+    surface: { kind: Ui.Drawer, side: end, address: { name: project } }
+  refreshes: [/api/projects]
+```
 
 **An empty success.** A 2xx with no body, 204 included, is a success unless
-something reads `result` — the `result` tree, `navigate` or a `refreshes` entry
+something reads `result` — the `result` tree, `to` or a `refreshes` entry
 — in which case an empty body is `ERR_UI_RESPONSE_INVALID`.
 
 ## Pressing
@@ -241,7 +254,7 @@ list is drawn from.
 | `value: !cel "row.nmae"`, `rows: !cel "result.fiels"` in `result` | `CEL_UNKNOWN_FIELD`, listing the declared members |
 | a `list`'s `rows` naming something that is not a list | `CEL_TYPE_ERROR` |
 | `rows: !cel "size(result.files)"`, or any other expression | `ACCESSOR_NOT_PLAIN_CHAIN` |
-| `navigate: ftp://…`, `refreshes: [api/reports]` | `SCHEMA_VIOLATION` |
+| `to: { kind: Ui.Navigate, href: ftp://… }`, `refreshes: [api/reports]`, `navigate:` (now `to`) | `SCHEMA_VIOLATION` |
 | `source:` (now `request.target`), `method: GET`, an absolute `target`, a page reference as a `target`, a key the kind does not take (`lists`) | `SCHEMA_VIOLATION` |
 | a bound action's input the action does not take, or a required one left out by an entry that does not prompt | `CONTRACT_INPUTS_MISMATCH` |
 
@@ -280,7 +293,7 @@ An `action` node:
 | `answer` | the output model's JSON Schema, present when one is declared |
 | `result` | the `result` tree, its `value` and `list` nodes [presented](nodes.md#values-and-lists) from the roots they read; present when declared |
 | `failure` | the `failure` tree, the default filled in |
-| `onSuccess` | `{ navigate?, refreshes }`: `navigate` an address over `result` and `input`, present when declared; `refreshes` addresses over `input` and `result`, empty when none |
+| `onSuccess` | `{ to?, refreshes }`: `to` a [`Ui.DestinationSpec`](presses.md#what-a-renderer-receives) over `result` and `input`, present when declared; `refreshes` addresses over `input` and `result`, empty when none |
 | `concurrency` | `parallel` or `serial` |
 | `clearAnswerOn` | the listed properties; empty when none |
 

@@ -1,6 +1,6 @@
 import { canonicalTypeSchemaId, RuntimeError, type ResourceContext } from "@telorun/sdk";
-import { addressSpec, type AddressConfig } from "./address-spec.js";
 import { buttonSpec, providedButton } from "./button-display.js";
+import { destinationAt } from "./destination.js";
 import {
   isComposite,
   mergeAssets,
@@ -22,6 +22,7 @@ import {
   type PendingBoundAction,
 } from "./bound-actions.js";
 import { answerAtCreation, isPane, paneAssets } from "./pane.js";
+import { isPressable, pressSpec, type PressConfig } from "./press.js";
 import { sourceKeys } from "./source-keys.js";
 
 /** A `Ui.Node` as its author wrote it, references already live. */
@@ -62,7 +63,7 @@ export function nodeLists(node: { type: string; [key: string]: unknown }): strin
  * {@link deliveredMenu}) and a `tabs` node only the tabs (see
  * {@link deliveredTabs}), a composite is replaced by what it provides, a pane
  * by what it answers with no request ({@link answerAtCreation}) and the files
- * its reading names, containers resolve their children in order, and a `value` or `list` node
+ * its reading names, containers resolve their children in order and their press, and a `value` or `list` node
  * carries what its roots say about the values it names, and every action a
  * `list`, `button` or `markdown` node runs is provided. `undefined` means the
  * node is omitted — switched off, or a composite that provided none.
@@ -115,7 +116,7 @@ export async function resolveNode(
   }
   const lists = nodeLists(node);
   if (lists.length === 0) {
-    const drawn = await withLinkButtons(node, ctx, where);
+    const drawn = await withLinkButtons(await withDestinations(node, ctx, where), ctx, where);
     const { when, ...leaf } = presented(drawn.node, roots, reader, where);
     if (leaf.type === "menu") {
       const menu = deliveredMenu(leaf);
@@ -138,6 +139,7 @@ export async function resolveNode(
     }
     container[list] = children;
   }
+  if (isPressable(node.type)) container.press = await pressSpec(node.press as PressConfig | null | undefined, ctx, `the ${node.type} node at ${where}`);
   return { node: { ...container, fill: node.fill === true } as SpecNode, assets: mergeAssets(...assets) };
 }
 
@@ -153,7 +155,7 @@ export function placed(provided: SpecNode, placement: { style?: unknown; shown?:
   const styled: SpecNode = { ...provided, ...(style === undefined ? {} : { style }), fill };
   if (placement.shown == null) return styled;
   if (styled.shown === undefined) return { ...styled, shown: placement.shown };
-  return { type: "box", children: [styled], shown: placement.shown, fill };
+  return { type: "box", children: [styled], press: null, shown: placement.shown, fill };
 }
 
 /**
@@ -196,13 +198,65 @@ export async function withLinkButtons(node: AuthoredNode, ctx: ResourceContext, 
 }
 
 /**
+ * `node` with the destination of every `to` it holds, at any depth — a link's,
+ * a menu item's, a `value` node's, a `list` column's and a container's press —
+ * turned into what a renderer receives. Runs before {@link presented}, which
+ * reads `to` as given.
+ */
+export async function withDestinations(node: AuthoredNode, ctx: ResourceContext, where: string): Promise<AuthoredNode> {
+  const destination = (value: unknown, at: string) => destinationAt(value, ctx, () => `'${at}' of the ${node.type} node at ${where}`);
+  if (node.type === "tabs" && Array.isArray(node.tabs)) {
+    const tabs: AuthoredTab[] = [];
+    for (const [index, tab] of (node.tabs as AuthoredTab[]).entries()) {
+      if (!Array.isArray(tab.children)) {
+        tabs.push(tab);
+        continue;
+      }
+      const children: AuthoredNode[] = [];
+      for (const [at, child] of tab.children.entries()) children.push(await withDestinations(child, ctx, `${where}.tabs[${index}].children[${at}]`));
+      tabs.push({ ...tab, children });
+    }
+    return { ...node, tabs };
+  }
+  const lists = nodeLists(node);
+  if (lists.length > 0) {
+    const resolved: AuthoredNode = { ...node };
+    if (isPressable(node.type) && node.press != null) {
+      resolved.press = await pressSpec(node.press as PressConfig, ctx, `the ${node.type} node at ${where}`);
+    }
+    for (const list of lists) {
+      if (!Array.isArray(node[list])) continue;
+      const children: AuthoredNode[] = [];
+      for (const [index, child] of (node[list] as AuthoredNode[]).entries()) children.push(await withDestinations(child, ctx, `${where}.${list}[${index}]`));
+      resolved[list] = children;
+    }
+    return resolved;
+  }
+  if (node.type === "menu" && Array.isArray(node.items)) {
+    const items: AuthoredNode[] = [];
+    for (const [index, item] of (node.items as AuthoredNode[]).entries()) items.push(await withDestinations(item, ctx, `${where}.items[${index}]`));
+    return { ...node, items };
+  }
+  if (node.type === "list" && Array.isArray(node.columns)) {
+    const columns: AuthoredColumn[] = [];
+    for (const [index, column] of (node.columns as AuthoredColumn[]).entries()) {
+      columns.push(column.to == null ? column : { ...column, to: await destination(column.to, `columns[${index}].to`) });
+    }
+    return { ...node, columns };
+  }
+  if ((node.type === "link" || node.type === "value") && node.to != null) return { ...node, to: await destination(node.to, "to") };
+  return node;
+}
+
+/**
  * A node with what its roots say about the values it names, through every
  * container: a `value` or `time` node's `present`, a `list` node's column
  * headers and each column's `present`, a time's `relative`, and each bound
  * action of a `list`, `button` or `markdown` node
  * held to its action ({@link pendingBoundAction}), the action
  * still the instance for whoever places the node to provide; a `command` node
- * is held to a command one of its roots offers. A member holding nothing is one left out, a bar's region `[]`, and
+ * is held to a command one of its roots offers. A member holding nothing is one left out, a bar's region `[]`, a
+ * container's `press` null, and
  * `fill` is the one written; `when` is kept, for whoever decides delivery.
  */
 export function presented(node: AuthoredNode, roots: RootShapes, reader: ShapeReader, where: string): AuthoredNode {
@@ -218,6 +272,7 @@ export function presented(node: AuthoredNode, roots: RootShapes, reader: ShapeRe
     };
   }
   if (own.type === "bar") for (const list of nodeLists(own)) own[list] ??= [];
+  if (isPressable(own.type)) own.press ??= null;
   const lists = nodeLists(own);
   if (lists.length > 0) {
     const shown: AuthoredNode = { ...own };
@@ -230,7 +285,7 @@ export function presented(node: AuthoredNode, roots: RootShapes, reader: ShapeRe
     commandAt(own.command as Binding, roots, reader, `${where}.command`);
     return own;
   }
-  if (own.type === "link") return { ...own, href: addressSpec(own.href as AddressConfig, reader.ctx, `${where}.href`), button: own.button ?? null };
+  if (own.type === "link") return { ...own, button: own.button ?? null };
   if (own.type === "menu" && Array.isArray(own.items)) {
     return {
       ...own,
@@ -243,7 +298,6 @@ export function presented(node: AuthoredNode, roots: RootShapes, reader: ShapeRe
     return {
       ...own,
       ...(present ? { present } : {}),
-      ...(own.href == null ? {} : { href: addressSpec(own.href as AddressConfig, reader.ctx, `${where}.href`) }),
       labels: shapeLabels(target),
     };
   }
@@ -255,7 +309,7 @@ export function presented(node: AuthoredNode, roots: RootShapes, reader: ShapeRe
     const rows = shapeOf(own.rows as Binding, roots, reader, `${where}.rows`);
     const row = rows && itemsOf(rows, reader, `${where}.rows`);
     const rowRoots: RootShapes = { ...roots, row };
-    const columns = (own.columns as AuthoredColumn[]).map(({ type, header, value, relative, href, shown, style }, index) => {
+    const columns = (own.columns as AuthoredColumn[]).map(({ type, header, value, relative, to, shown, style }, index) => {
       const at = `${where}.columns[${index}]`;
       const target = shapeOf(value, rowRoots, reader, `${at}.value`);
       const last = isChain(value) ? value.path[value.path.length - 1] : undefined;
@@ -267,7 +321,7 @@ export function presented(node: AuthoredNode, roots: RootShapes, reader: ShapeRe
         value,
         ...(time ? { relative: relative === true } : { labels: shapeLabels(target) }),
         ...(present ? { present } : {}),
-        ...(href != null ? { href: addressSpec(href, reader.ctx, `${at}.href`) } : {}),
+        ...(to != null ? { to } : {}),
         ...(shown != null ? { shown } : {}),
         ...(style != null ? { style } : {}),
       };
@@ -278,13 +332,14 @@ export function presented(node: AuthoredNode, roots: RootShapes, reader: ShapeRe
   return own;
 }
 
-/** A `list` column as written. A member holding nothing is one left out. */
+/** A `list` column as written, its destination already resolved
+ *  ({@link withDestinations}). A member holding nothing is one left out. */
 interface AuthoredColumn {
   type?: string | null;
   header?: unknown;
   value: Binding;
   relative?: boolean | null;
-  href?: AddressConfig | null;
+  to?: unknown;
   shown?: Condition | null;
   style?: unknown;
 }

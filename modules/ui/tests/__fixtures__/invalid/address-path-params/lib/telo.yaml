@@ -15,4 +15,4 @@ content:
   children:
     - type: box
       children:
-        - { type: link, text: Item, href: { path: "/x/{id}", pathParams: { idd: 7 } } }
+        - { type: link, text: Item, to: { kind: Ui.Navigate, href: { path: "/x/{id}", pathParams: { idd: 7 } } } }

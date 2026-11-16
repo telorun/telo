@@ -44,7 +44,7 @@ children:
   - { type: value, value: !cel "params.id" }
   - { type: composite, ref: !ref planTitle }
   - { type: composite, ref: !ref Lib.planId }
-  - { type: link, text: Plan, href: { path: !ref plan } }
+  - { type: link, text: Plan, to: { kind: Ui.Navigate, href: { path: !ref plan } } }
 ---
 kind: Ui.Page
 metadata: { name: runner }

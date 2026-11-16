@@ -1,0 +1,11 @@
+units:
+  analyzer: Added
+body: "`x-telo-context-withheld` is legal beside `x-telo-context-from-referrer` on a
+  context binding or member: the node is typed where a referrer's scope holds the path,
+  and every read of it is refused where a referrer's scope lacks the path — naming that
+  referrer and the reason — or where nothing references the resource.
+  `CONTEXT_WITHHELD_INVALID` no longer refuses the pair. An `x-telo-context` written at
+  a kind's schema root is now in force at every CEL site of the resource: it names what
+  each site may read, including at accessor fields, and marks no field as evaluated. A
+  child extending the kind without `base:` inherits it, a root context of its own laid
+  over the parent's by binding name; a `base:` child does not."

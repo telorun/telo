@@ -1,0 +1,136 @@
+kind: Telo.Application
+metadata:
+  name: UiPressesTest
+  version: 1.0.0
+  description: |
+    A press reaches a renderer as its wire form: where it goes and the text
+    naming it. A `box`, `stack` or `columns` node carries its press, or null
+    when none is written — on a page's own nodes and inside a composite alike.
+    A listing carries its record press the same way, its label formatted with
+    values of `row`, and null when it has none.
+imports:
+  Ui: ../
+  DataModel: ../../data-model
+  Probe: ./__fixtures__/probe
+  Assert: ../../assert
+targets:
+  - !ref check
+---
+kind: Telo.JsonSchema
+metadata: { name: Post }
+schema:
+  type: object
+  required: [id, title]
+  properties: { id: { type: string }, title: { type: string } }
+---
+kind: Ui.Page
+metadata: { name: postPage }
+path: /posts/{id}
+title: Post
+children: [{ type: text, text: Post }]
+---
+kind: Ui.Page
+metadata: { name: homePage }
+path: /
+title: Home
+children:
+  - type: box
+    press:
+      to: { kind: Ui.OpenPage, page: !ref postPage, pathParams: { id: hello } }
+      label: Read Hello
+    children: [{ type: text, text: Hello }]
+  - { type: stack, children: [{ type: text, text: Unpressed }] }
+---
+kind: Ui.View
+metadata: { name: regions }
+content:
+  type: stack
+  press: { to: { kind: Ui.Navigate, href: /docs }, label: Docs }
+  children:
+    - type: columns
+      press:
+        to: { kind: Ui.Navigate, href: { path: !ref postPage, pathParams: { id: hello } } }
+        label: Hello
+      children: [{ type: text, text: Hello }]
+    - { type: box, children: [{ type: text, text: Unpressed }] }
+---
+kind: Ui.CollectionPresentation
+metadata: { name: postsPresentation }
+source:
+  kind: Ui.CollectionSource
+  basePath: /api/posts
+  collection: { kind: DataModel.Collection, model: !ref Post, query: { filters: [], sort: [] } }
+---
+kind: Ui.Listing
+metadata: { name: pressedPosts }
+presentation: !ref postsPresentation
+model: !ref Post
+press:
+  to:
+    kind: Ui.OpenPage
+    page: !ref postPage
+    pathParams: { id: !cel "row.id" }
+    surface: { kind: Ui.Drawer, address: { name: post } }
+  label: { text: "Open {$title}", values: { title: !cel "row.title" } }
+layout: { kind: Ui.ListLayout }
+---
+kind: Ui.Listing
+metadata: { name: posts }
+presentation: !ref postsPresentation
+model: !ref Post
+layout: { kind: Ui.ListLayout }
+---
+kind: Telo.Sequence
+metadata: { name: check }
+steps:
+  - name: page
+    invoke: !ref homePage
+    inputs: { request: { headers: {} } }
+  - name: pagePresses
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.page.result.children.map(node, node.press)"
+      expected:
+        - to:
+            type: openPage
+            href: { path: { value: "/posts/{id}" }, pathParams: { id: { value: hello } }, queryParams: {} }
+            surface: { type: dialog, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+            keepsSurface: true
+          label: { text: Read Hello, context: null, lang: und, computed: false }
+        - null
+  - name: regions
+    invoke: { kind: Probe.Read, source: !ref regions }
+  - name: regionPresses
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[steps.regions.result.node.press, steps.regions.result.node.children[0].press, steps.regions.result.node.children[1].press]"
+      expected:
+        - to: { type: navigate, href: { path: { value: /docs }, pathParams: {}, queryParams: {} } }
+          label: { text: Docs, context: null, lang: und, computed: false }
+        - to: { type: navigate, href: { path: { value: "/posts/{id}" }, pathParams: { id: { value: hello } }, queryParams: {} } }
+          label: { text: Hello, context: null, lang: und, computed: false }
+        - null
+  - name: pressedPosts
+    invoke: { kind: Probe.Read, source: !ref pressedPosts }
+  - name: posts
+    invoke: { kind: Probe.Read, source: !ref posts }
+  - name: recordPresses
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[steps.pressedPosts.result.node.press, steps.posts.result.node.press]"
+      expected:
+        - to:
+            type: openPage
+            href: { path: { value: "/posts/{id}" }, pathParams: { id: { root: row, path: [id] } }, queryParams: {} }
+            surface:
+              type: drawer
+              side: end
+              size: medium
+              modal: true
+              dismiss: { escape: true, outside: true, closeButton: true }
+              address: { name: post }
+            keepsSurface: false
+          label:
+            text: { text: "Open {$title}", context: null, lang: und, computed: false }
+            values: { title: { root: row, path: [title] } }
+        - null

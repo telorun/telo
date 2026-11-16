@@ -13,9 +13,9 @@ metadata:
     custom components and design tokens — rendered into an admin panel or
     back-office screen without frontend code.
 requires:
-  # 0.128.0 refuses this file: it knows neither `Telo.KeyedTranslations`, which
-  # declares `ui`'s own texts, nor `x-telo-text-keys`. Verified by execution.
-  telo: ">=0.136.0"
+  # 0.137.0 refuses this file: a destination's roots hold `x-telo-context-withheld`
+  # beside `x-telo-context-from-referrer`. Measured by `telo release floor`.
+  telo: ">=unreleased"
 lang: en
 # The conformance rows a renderer's tests read: the interpreted profile's,
 # which control fits which property, what a listing's read plan requests, and how
@@ -25,8 +25,8 @@ files: [conformance/match.json, conformance/control-fits.json, conformance/listi
 include: [./translations/de.yaml, ./translations/es.yaml, ./translations/fr.yaml, ./translations/hi.yaml, ./translations/it.yaml, ./translations/ja.yaml, ./translations/ko.yaml, ./translations/nl.yaml, ./translations/pl.yaml, ./translations/pt.yaml, ./translations/ru.yaml, ./translations/tr.yaml, ./translations/uk.yaml, ./translations/zh.yaml]
 imports: { Font: ../font, DataModel: ../data-model, Conversation: ../conversation }
 exports:
-  kinds: [Translations, Composite, Surface, Overlay, ViewportOverlay, Dialog, Drawer, Popover, InlineSurface, Panel, PageSurface, FilterPlacement, FoldingFilterPlacement, AbovePlacement, AsidePlacement, CollapsiblePlacement, OverlayPlacement, SearchBoxPlacement, StateStore, LocalStore, SessionStore, NavigationPlacement, CompactNavigationPlacement, HeaderNavigation, OverlayNavigation, TabBarNavigation, Icon, FileIcon, ButtonDisplay, TextButton, IconButton, Page, PageLayout, Pane, NavigationPane, Navbar, NavigationColumn, View, CollectionSource, ConversationSource, CollectionPresentation, Chat, SplitView, Listing, ListingLayout, TableLayout, ListLayout, CardLayout, BoardLayout, CalendarLayout, TimelineLayout, TreeLayout, ComponentLayout, Form, Action, Filters, Component, ComponentExport, DesignTokens, Data, Field, InputField, ChoiceField, PickerField, DateRangeField, OptionSource, CollectionOptions]
-  resources: [chineseTranslations, dutchTranslations, frenchTranslations, germanTranslations, hindiTranslations, italianTranslations, japaneseTranslations, koreanTranslations, polishTranslations, portugueseTranslations, russianTranslations, spanishTranslations, turkishTranslations, ukrainianTranslations, BoundText, Match, Condition, Enablement, RequestError, AppRelativeReference, QueryParameters, Address, RequestTarget, RefreshTarget, Control, FieldGroup, StateRecord, FieldAnswer, OptionSourceSpec, Relations, ListingLayoutSpec, ListingLayoutAnswer, controlFits, BoundAction, Command, Grouping, Span, Node, SpecNode, OverlaySpec, SurfaceSpec, ButtonDisplaySpec, AfterCreate, AfterEdit, UnsavedInput, FilterPolicy, FilterDisplay, FilterPlacementSpec, StateStoreSpec, Navigation, NavigationItem, NavigationPlacementSpec, PageWidth, Frame, RowActionsDisplay, Aside, PageRoute]
+  kinds: [Translations, Composite, Surface, Overlay, ViewportOverlay, Dialog, Drawer, Popover, InlineSurface, Panel, PageSurface, Destination, Navigate, OpenPage, FilterPlacement, FoldingFilterPlacement, AbovePlacement, AsidePlacement, CollapsiblePlacement, OverlayPlacement, SearchBoxPlacement, StateStore, LocalStore, SessionStore, NavigationPlacement, CompactNavigationPlacement, HeaderNavigation, OverlayNavigation, TabBarNavigation, Icon, FileIcon, ButtonDisplay, TextButton, IconButton, Page, PageLayout, Pane, NavigationPane, Navbar, NavigationColumn, View, CollectionSource, ConversationSource, CollectionPresentation, Chat, SplitView, Listing, ListingLayout, TableLayout, ListLayout, CardLayout, BoardLayout, CalendarLayout, TimelineLayout, TreeLayout, ComponentLayout, Form, Action, Filters, Component, ComponentExport, DesignTokens, Data, Field, InputField, ChoiceField, PickerField, DateRangeField, OptionSource, CollectionOptions]
+  resources: [chineseTranslations, dutchTranslations, frenchTranslations, germanTranslations, hindiTranslations, italianTranslations, japaneseTranslations, koreanTranslations, polishTranslations, portugueseTranslations, russianTranslations, spanishTranslations, turkishTranslations, ukrainianTranslations, BoundText, Match, Condition, Enablement, RequestError, AppRelativeReference, QueryParameters, Address, RequestTarget, RefreshTarget, Control, FieldGroup, StateRecord, FieldAnswer, OptionSourceSpec, Relations, ListingLayoutSpec, ListingLayoutAnswer, controlFits, BoundAction, Command, Press, Grouping, Span, Node, SpecNode, OverlaySpec, SurfaceSpec, DestinationSpec, PressSpec, ButtonDisplaySpec, AfterCreate, AfterEdit, UnsavedInput, FilterPolicy, FilterDisplay, FilterPlacementSpec, StateStoreSpec, Navigation, NavigationItem, NavigationPlacementSpec, PageWidth, Frame, RowActionsDisplay, Aside, PageRoute]
   # The entry point a renderer's controller bundle resolves `@telorun/ui` to:
   # how a built browser entry becomes the files a page loads, so a renderer
   # addresses its own entries exactly as a placed component's are addressed.
@@ -426,7 +426,8 @@ schema:
         value: { $ref: "#/$defs/Binding" }
         label: { $ref: "#/$defs/Binding" }
         hint: { $ref: "#/$defs/Binding" }
-        href: { $ref: "telo:Ui/SpecNode#/$defs/Address" }
+        # Present when an option goes somewhere.
+        to: { $ref: "telo:Ui/DestinationSpec" }
         basePath: { $ref: "telo:Ui/SpecNode#/$defs/BasePath" }
         filters: { type: object, additionalProperties: { $ref: "#/$defs/Binding" } }
         # Sent as `limit` on every request, a label lookup's batches included.
@@ -487,10 +488,10 @@ schema:
           type: object
           properties:
             row: { x-telo-context-eval: accessor, x-telo-context-ref-from: source/collection/model }
-      href:
-        title: Link
-        description: Where a related record links to, an address over the related `row`.
-        $ref: "telo:Ui/Address"
+      to:
+        title: To
+        description: Where a related record's label goes, a destination over the related `row`.
+        x-telo-ref: { kind: Self.Destination, use: dependency }
         x-telo-context:
           type: object
           properties:
@@ -688,7 +689,7 @@ schema:
         header: { $ref: "telo:Ui/SpecNode#/$defs/Text" }
         value: { $ref: "telo:Ui/SpecNode#/$defs/Binding" }
         # Present when the value is drawn as a link.
-        href: { $ref: "telo:Ui/SpecNode#/$defs/Address" }
+        to: { $ref: "telo:Ui/DestinationSpec" }
         # What each value the model labels is shown as.
         labels: { $ref: "telo:Ui/SpecNode#/$defs/Labels" }
         # Present when the column is sortable: the property sent as `sort`.
@@ -834,6 +835,27 @@ schema:
     offered: { description: Whether the owner offers the command here; a command node over one it does not is not drawn., type: boolean }
     enabled: { description: Whether it can run now; while it cannot, its button is disabled., type: boolean }
 ---
+# What pressing a region does — a container node, a listing's record — and the
+# name the press is announced by. `label` reads the roots of the place holding
+# the press, `to` the roots bound where it is written.
+kind: Telo.JsonSchema
+metadata: { name: Press }
+schema:
+  type: object
+  additionalProperties: false
+  required: [to, label]
+  properties:
+    to:
+      title: To
+      description: Where pressing the region goes, a destination declared in place.
+      x-telo-ref: { kind: Self.Destination, use: dependency }
+    label:
+      title: Label
+      description: >-
+        The press's accessible name, and nothing else names it. Include the
+        text the region shows, so speech input finds it.
+      $ref: "telo:Ui/BoundText"
+---
 # One node of a page, as an author writes it. Internally tagged on `type`, each
 # branch closed, so a misspelled type lists the valid ones and a stray key is
 # reported on the branch it was written in. Spacing — gap, alignment, width —
@@ -854,6 +876,8 @@ schema:
       properties:
         type: { enum: [box, stack, columns] }
         children: { type: array, items: { $ref: "#" } }
+        # Makes the whole region one press target.
+        press: { $ref: "telo:Ui/Press" }
         style: { $ref: "#/$defs/Style" }
         when: { type: boolean, default: true }
         shown: { $ref: "telo:Ui/Condition" }
@@ -868,19 +892,19 @@ schema:
         shown: { $ref: "telo:Ui/Condition" }
         fill: { type: boolean, default: false }
     - additionalProperties: false
-      required: [type, text, href]
+      required: [type, text, to]
       properties:
         type: { const: link }
         text: { $ref: "telo:Ui/BoundText" }
-        href: { $ref: "telo:Ui/Address" }
+        to: { $ref: "#/$defs/To" }
         # Draws the link as a button: its text, or a glyph with the text as its name.
         button: { x-telo-ref: { kind: Self.ButtonDisplay, use: dependency } }
         style: { $ref: "#/$defs/Style" }
         when: { type: boolean, default: true }
         shown: { $ref: "telo:Ui/Condition" }
         fill: { type: boolean, default: false }
-    # A button opening a list of links: choosing one follows its `href` as
-    # clicking the link would. An item whose `style` holds `strong` is the
+    # A button opening a list of links: choosing one goes where its `to` says
+    # as clicking the link would. An item whose `style` holds `strong` is the
     # current choice. Items are delivered by their own `when`.
     - additionalProperties: false
       required: [type, text, items]
@@ -954,7 +978,7 @@ schema:
         value: { x-telo-eval: accessor }
         text: { $ref: "telo:Ui/BoundText" }
         # Draws the presented value as the text of a link.
-        href: { $ref: "telo:Ui/Address" }
+        to: { $ref: "#/$defs/To" }
         style: { $ref: "#/$defs/Style" }
         when: { type: boolean, default: true }
         shown: { $ref: "telo:Ui/Condition" }
@@ -1041,7 +1065,7 @@ schema:
                       type: object
                       properties:
                         row: { x-telo-context-element-from-item: "2/rows", x-telo-context-eval: accessor }
-                  href: { $ref: "#/$defs/ListColumn/properties/href" }
+                  to: { $ref: "#/$defs/ListColumn/properties/to" }
                   shown: { $ref: "#/$defs/ListColumn/properties/shown" }
                   style: { $ref: "#/$defs/ListColumn/properties/style" }
               - additionalProperties: false
@@ -1058,7 +1082,7 @@ schema:
                       properties:
                         row: { x-telo-context-element-from-item: "2/rows", x-telo-context-eval: accessor }
                   relative: { type: boolean, default: false }
-                  href: { $ref: "#/$defs/ListColumn/properties/href" }
+                  to: { $ref: "#/$defs/ListColumn/properties/to" }
                   shown: { $ref: "#/$defs/ListColumn/properties/shown" }
                   style: { $ref: "#/$defs/ListColumn/properties/style" }
         # Styles of each row chosen by a value of `row`.
@@ -1150,6 +1174,9 @@ schema:
         when: { type: boolean, default: true }
         shown: { $ref: "telo:Ui/Condition" }
   $defs:
+    # Where a press goes: a destination declared in place, reading the roots
+    # bound where it is written.
+    To: { x-telo-ref: { kind: Self.Destination, use: dependency } }
     StyleName: { enum: [title, heading, subheading, muted, strong, accent, danger, warning, success] }
     Style:
       anyOf:
@@ -1199,8 +1226,8 @@ schema:
       properties:
         header: { $ref: "telo:Ui/BoundText" }
         # Draws the value as the text of a link, over `row` and the roots the list is drawn under.
-        href:
-          $ref: "telo:Ui/Address"
+        to:
+          $ref: "#/$defs/To"
           x-telo-context:
             type: object
             properties:
@@ -1224,10 +1251,12 @@ schema:
   type: object
   oneOf:
     - additionalProperties: false
-      required: [type, children, fill]
+      required: [type, children, press, fill]
       properties:
         type: { enum: [box, stack, columns] }
         children: { type: array, items: { $ref: "#" } }
+        # Null when the region is not pressed.
+        press: { $ref: "#/$defs/Press" }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
         fill: { type: boolean }
@@ -1292,7 +1321,7 @@ schema:
     # `compact` below the application's breakpoint, keeping the listing's
     # state). Everything but the drawing is the listing's, whatever the layout.
     - additionalProperties: false
-      required: [type, schema, basePath, key, query, pageSize, paging, sort, show, delete, rowActions, rowActionsDisplay, relations, empty, layout, fill]
+      required: [type, schema, basePath, key, query, pageSize, paging, sort, show, delete, rowActions, rowActionsDisplay, relations, empty, layout, press, fill]
       properties:
         type: { const: listing }
         schema: { type: object }
@@ -1353,6 +1382,8 @@ schema:
         empty: { $ref: "#" }
         layout: { $ref: "telo:Ui/ListingLayoutSpec" }
         compact: { $ref: "telo:Ui/ListingLayoutSpec" }
+        # What pressing a record does, over `row`; null when pressing one opens `edit`.
+        press: { $ref: "#/$defs/Press" }
         # Present when the loaded records are read again on a timer: the interval in milliseconds.
         reloadEvery: { type: integer, minimum: 5000 }
         style: { $ref: "#/$defs/Style" }
@@ -1456,7 +1487,7 @@ schema:
         value: { $ref: "#/$defs/Binding" }
         text: { $ref: "#/$defs/NodeText" }
         # Present when the value is drawn as a link.
-        href: { $ref: "#/$defs/Address" }
+        to: { $ref: "telo:Ui/DestinationSpec" }
         # What each value the model labels is shown as.
         labels: { $ref: "#/$defs/Labels" }
         present: { type: object }
@@ -1497,7 +1528,7 @@ schema:
                   # The model's own description of the value.
                   present: { type: object }
                   # Present when the value is drawn as a link.
-                  href: { $ref: "#/$defs/Address" }
+                  to: { $ref: "telo:Ui/DestinationSpec" }
                   shown: { $ref: "#/$defs/Shown" }
                   style: { $ref: "#/$defs/StyleRule" }
               # A date or a date-time, drawn as the `time` node draws one.
@@ -1509,7 +1540,7 @@ schema:
                   value: { $ref: "#/$defs/Binding" }
                   relative: { type: boolean }
                   present: { type: object }
-                  href: { $ref: "#/$defs/Address" }
+                  to: { $ref: "telo:Ui/DestinationSpec" }
                   shown: { $ref: "#/$defs/Shown" }
                   style: { $ref: "#/$defs/StyleRule" }
         rowStyle: { $ref: "#/$defs/StyleRule" }
@@ -1719,11 +1750,11 @@ schema:
     Link:
       type: object
       additionalProperties: false
-      required: [type, text, href, button, fill]
+      required: [type, text, to, button, fill]
       properties:
         type: { const: link }
         text: { $ref: "#/$defs/NodeText" }
-        href: { $ref: "#/$defs/Address" }
+        to: { $ref: "telo:Ui/DestinationSpec" }
         # Null draws the link inline as text.
         button:
           anyOf:
@@ -1749,6 +1780,11 @@ schema:
       anyOf:
         - { $ref: "telo://manifest#/$defs/TextRecord" }
         - { $ref: "#/$defs/KeyedText" }
+    # What pressing a region or a record does, or null when nothing is pressed.
+    Press:
+      anyOf:
+        - { type: "null" }
+        - { $ref: "telo:Ui/PressSpec" }
     # A text of a node: a text, or a text with the values it is formatted with.
     NodeText:
       anyOf:
@@ -1820,7 +1856,8 @@ schema:
           additionalProperties: false
           required: [refreshes]
           properties:
-            navigate: { $ref: "#/$defs/Address" }
+            # Present when written: where a success goes.
+            to: { $ref: "telo:Ui/DestinationSpec" }
             refreshes: { type: array, items: { $ref: "#/$defs/Address" } }
         concurrency: { enum: [parallel, serial] }
         clearAnswerOn: { type: array, items: { type: string } }
@@ -2069,11 +2106,11 @@ schema:
             text: { $ref: "#/$defs/Text" }
             icon: { $ref: "#/$defs/AssetRef" }
         - additionalProperties: false
-          required: [type, key, href, text]
+          required: [type, key, to, text]
           properties:
             type: { const: link }
             key: { type: string }
-            href: { type: string }
+            to: { $ref: "telo:Ui/DestinationSpec" }
             text: { $ref: "#/$defs/Text" }
             icon: { $ref: "#/$defs/AssetRef" }
         - additionalProperties: false
@@ -2190,6 +2227,42 @@ schema:
       properties:
         type: { const: page }
         address: { $ref: "telo:Ui/OverlaySpec#/$defs/Address" }
+---
+# Where a press goes, as a renderer receives it. Tagged on `type`, one branch
+# per kind of destination; `href` is the address it leads to, resolved in the
+# browser. A page opened over the current one carries its surface filled, and
+# `keepsSurface`: whether a press inside an opened page keeps that page's
+# surface instead (true exactly when no surface was written).
+kind: Telo.JsonSchema
+metadata: { name: DestinationSpec }
+schema:
+  type: object
+  oneOf:
+    - additionalProperties: false
+      required: [type, href]
+      properties: { type: { const: navigate }, href: { $ref: "telo:Ui/SpecNode#/$defs/Address" } }
+    - additionalProperties: false
+      required: [type, href, surface, keepsSurface]
+      properties:
+        type: { const: openPage }
+        href: { $ref: "telo:Ui/SpecNode#/$defs/Address" }
+        surface:
+          allOf:
+            - { $ref: "telo:Ui/OverlaySpec" }
+            - { properties: { type: { enum: [dialog, drawer] } } }
+        keepsSurface: { type: boolean }
+---
+# What pressing a region or a record does, as a renderer receives it: where it
+# goes, and the text naming the press — a text, or a text with its values.
+kind: Telo.JsonSchema
+metadata: { name: PressSpec }
+schema:
+  type: object
+  additionalProperties: false
+  required: [to, label]
+  properties:
+    to: { $ref: "telo:Ui/DestinationSpec" }
+    label: { $ref: "telo:Ui/SpecNode#/$defs/NodeText" }
 ---
 # What a create form does once its record is saved.
 kind: Telo.JsonSchema
@@ -2366,7 +2439,7 @@ schema:
       items: { $ref: "telo:Ui/NavigationItem" }
 ---
 # One entry of a navigation tree, tagged on `type`: a page the application
-# serves, a link to any address, or a group of entries nested to any depth.
+# serves, a link to any destination, or a group of entries nested to any depth.
 kind: Telo.JsonSchema
 metadata: { name: NavigationItem }
 schema:
@@ -2392,7 +2465,7 @@ schema:
           type: boolean
           default: true
     - additionalProperties: false
-      required: [type, text, href]
+      required: [type, text, to]
       properties:
         type: { const: link }
         text:
@@ -2400,13 +2473,10 @@ schema:
           description: What the entry says.
           $ref: "telo://manifest#/$defs/Text"
           x-telo-text-values: {}
-        href:
-          title: Address
-          description: >-
-            Where the entry leads: a path under the application's mount, or an
-            `https:`, `http:` or `mailto:` address.
-          type: string
-          anyOf: [{ $ref: "telo:Ui/AppRelativeReference" }, { pattern: "^(https://|http://|mailto:)" }]
+        to:
+          title: To
+          description: Where the entry goes. A navigation binds no root, so every value of it is fixed.
+          x-telo-ref: { kind: Self.Destination, use: dependency }
         icon: { $ref: "#/$defs/Icon" }
         when:
           title: When
@@ -3380,6 +3450,95 @@ schema:
     with edit and delete, into one menu button; `auto` draws them inline while
     they fit the room the layout gives them and as a menu when they do not.
   enum: [auto, inline, menu]
+---
+# Where a press goes. Declared in place at every `to`, so its accessors read
+# the roots bound where it is written, and a root the place does not bind is
+# withheld. A merge-form destination kind inherits the roots from here.
+kind: Telo.Abstract
+metadata:
+  name: Destination
+  description: >-
+    Where pressing a link, a menu item, a table cell or a navigation entry
+    goes, or where an action leads on success: another address, or a page
+    opened over the current one in a dialog or drawer. Provides the address and how
+    it opens, resolved in the browser from the values in scope.
+capability: Telo.Provider
+outputType: !ref DestinationSpec
+schema:
+  type: object
+  x-telo-context:
+    type: object
+    properties:
+      row: { x-telo-context-eval: accessor, x-telo-context-from-referrer: row, x-telo-context-withheld: a destination reads only the roots bound where it is written }
+      data: { x-telo-context-eval: accessor, x-telo-context-from-referrer: data, x-telo-context-withheld: a destination reads only the roots bound where it is written }
+      query: { x-telo-context-eval: accessor, x-telo-context-from-referrer: query, x-telo-context-withheld: a destination reads only the roots bound where it is written }
+      params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, x-telo-context-withheld: a destination reads only the roots bound where it is written }
+      values: { x-telo-context-eval: accessor, x-telo-context-from-referrer: values, x-telo-context-withheld: a destination reads only the roots bound where it is written }
+      result: { x-telo-context-eval: accessor, x-telo-context-from-referrer: result, x-telo-context-withheld: a destination reads only the roots bound where it is written }
+      input: { x-telo-context-eval: accessor, x-telo-context-from-referrer: input, x-telo-context-withheld: a destination reads only the roots bound where it is written }
+---
+kind: Telo.Definition
+metadata:
+  name: Navigate
+  description: >-
+    Goes to an address: a page of the application, a path built from the
+    record or page values in scope, or an outside https, http or mailto
+    address. An address that does not resolve goes nowhere.
+capability: Telo.Provider
+extends: Self.Destination
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#NavigateController]
+schema:
+  type: object
+  additionalProperties: false
+  required: [href]
+  properties:
+    href:
+      title: Address
+      description: Where it goes, its values read from the roots bound where it is written.
+      $ref: "telo://Self/Address"
+---
+kind: Telo.Definition
+metadata:
+  name: OpenPage
+  description: >-
+    Opens a page of the application over the current one, in a dialog or a
+    drawer, with its path variables and query parameters filled from the
+    record or page values in scope. The page keeps its own address, so it can
+    also be opened in a new tab or reloaded.
+capability: Telo.Provider
+extends: Self.Destination
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#OpenPageController]
+schema:
+  type: object
+  additionalProperties: false
+  required: [page]
+  properties:
+    page:
+      title: Page
+      description: The page opened, one the application lists in its pages.
+      x-telo-ref: { kind: Self.Page, use: schema }
+    pathParams:
+      title: Path parameters
+      description: >-
+        The value of each `{name}` segment of the page's path: a path into a
+        root in scope, or a fixed value. One that holds nothing leaves the page
+        unopened.
+      type: object
+      x-telo-path-params-for: { template: /page, through: path }
+      additionalProperties: { type: [string, integer, "null"], x-telo-eval: accessor }
+    queryParams:
+      title: Query parameters
+      description: >-
+        Parameters appended to the page's address in the order written: a path
+        into a root in scope, or a fixed value. A list repeats its key; null
+        and an empty list are left out.
+      $ref: "telo://Self/Address#/anyOf/1/properties/queryParams"
+    surface:
+      title: Surface
+      description: >-
+        Where the page opens: a dialog or a drawer. Omitted, the surface it is
+        pressed in — inside an opened page that page's, anywhere else a dialog.
+      x-telo-ref: { kind: Self.ViewportOverlay, use: dependency }
 ---
 # One page of an application: its address, its title and its nodes. Its
 # composites are resolved once, when it is created; the application invokes it
@@ -4375,10 +4534,10 @@ schema:
               type: object
               properties:
                 row: { x-telo-context-eval: accessor, x-telo-context-ref-from: source/collection/model }
-          href:
-            title: Link
-            description: Where a related record links to, an address over the related `row`.
-            $ref: "telo:Ui/Address"
+          to:
+            title: To
+            description: Where a related record's label goes, a destination over the related `row`.
+            x-telo-ref: { kind: Self.Destination, use: dependency }
             x-telo-context:
               type: object
               properties:
@@ -4654,6 +4813,19 @@ schema:
         when they do not fit.
       $ref: "telo://Self/RowActionsDisplay"
       default: auto
+    press:
+      title: Press
+      description: >-
+        What pressing a record does, and its name, over `row`, `query` and
+        `params`. Written, editing is the record's edit button; omitted,
+        pressing a record opens `edit`.
+      $ref: "telo://Self/Press"
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
+          query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
+          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
     empty:
       title: Empty
       description: >-
@@ -4783,10 +4955,10 @@ schema:
               properties:
                 row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
                 params: { x-telo-context-from-referrer: params, x-telo-context-eval: accessor, type: object, additionalProperties: { type: string } }
-          href:
-            title: Link
-            description: Draws the value as the text of a link, an address over `row` and `params`.
-            $ref: "telo://Self/Address"
+          to:
+            title: To
+            description: Draws the value as the text of a link to a destination over `row` and `params`.
+            x-telo-ref: { kind: Self.Destination, use: dependency }
             x-telo-context:
               type: object
               properties:
@@ -4819,7 +4991,7 @@ schema:
         oneOf:
           - { required: [value] }
           - { required: [cell] }
-        dependencies: { href: [value] }
+        dependencies: { to: [value] }
   $defs:
     StyleName: { enum: [heading, subheading, muted, strong, accent, danger, warning, success] }
     Style:
@@ -5679,8 +5851,8 @@ metadata:
     or DELETE request, with an optional input form generated from the
     request's data model and validated before anything is sent. Input
     properties can fill the request path or query instead of the body. Draws the answer as content — generated files, report links,
-    search hits — and a refusal as an error, then navigates or refreshes data
-    on success; presses run in parallel or one at a time. Data grids and lists
+    search hits — and a refusal as an error, then goes to another page or
+    refreshes data on success; presses run in parallel or one at a time. Data grids and lists
     offer one on every row.
 capability: Telo.Provider
 extends: Self.Composite
@@ -5855,14 +6027,13 @@ schema:
       type: object
       additionalProperties: false
       properties:
-        navigate:
-          title: Navigate
+        to:
+          title: To
           description: >-
-            Where the page goes, over `result` and `input`. An app-relative
-            address of a declared page moves within the application, any other
-            loads it; an `https://` or `http://` address replaces the page. An
-            address that does not resolve navigates nowhere.
-          $ref: "telo://Self/Address"
+            Where a success goes, a destination over `result` and `input`. One
+            reading `result` makes the success's body read; an address that
+            does not resolve goes nowhere.
+          x-telo-ref: { kind: Self.Destination, use: dependency }
           x-telo-context:
             type: object
             properties:
@@ -6744,7 +6915,7 @@ schema:
         Remove `initialPreset`, or the property's `default`.
 ---
 # Where a field's options come from. Each option is a record of `model`, read
-# as its `value`, its `label`, and an optional `hint` and `href`.
+# as its `value`, its `label`, and an optional `hint` and `to`.
 kind: Telo.Abstract
 metadata:
   name: OptionSource
@@ -6786,10 +6957,10 @@ schema:
       x-telo-context:
         type: object
         properties: { row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor } }
-    href:
-      title: Link
-      description: Where the chosen option links to, an address over the record's `row`.
-      $ref: "telo://Self/Address"
+    to:
+      title: To
+      description: Where the chosen option goes, a destination over the record's `row`.
+      x-telo-ref: { kind: Self.Destination, use: dependency }
       x-telo-context:
         type: object
         properties: { row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor } }

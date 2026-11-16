@@ -8,6 +8,7 @@ import {
 } from "@telorun/sdk";
 import { addressSpec, type AddressConfig } from "./address-spec.js";
 import type { AddressSpec } from "./address-expansion.js";
+import { destinationAt } from "./destination.js";
 import { mergeAssets, type Provided, type SpecNode } from "./composite.js";
 import { DEFAULT_FAILURE, NOTHING } from "./request-failure.js";
 import { enteredFields, type GroupConfig, type GroupSpec } from "./entered-fields.js";
@@ -31,7 +32,7 @@ type ActionResource = RuntimeResource & {
   enabled?: (Condition & { disabledText: unknown }) | null;
   result?: AuthoredNode | null;
   failure?: AuthoredNode | null;
-  onSuccess?: { navigate?: AddressConfig | null; refreshes?: AddressConfig[] | null } | null;
+  onSuccess?: { to?: unknown; refreshes?: AddressConfig[] | null } | null;
   concurrency?: "parallel" | "serial" | null;
   clearAnswerOn?: string[] | null;
 };
@@ -128,8 +129,9 @@ class Action implements ResourceInstance, ActionInstance {
       input,
       values: input,
     })) ?? { node: NOTHING, assets: [] };
-    const navigate = resource.onSuccess?.navigate;
     const onSuccessWhere = `${this.owner} onSuccess`;
+    const to = resource.onSuccess?.to;
+    const destination = to == null ? undefined : await destinationAt(to, this.ctx, () => `'onSuccess.to' of ${this.owner}`);
     const node: SpecNode = {
       type: "action",
       schema,
@@ -143,7 +145,7 @@ class Action implements ResourceInstance, ActionInstance {
       ...(drawn ? { result: drawn.node ?? NOTHING } : {}),
       failure: failure.node ?? NOTHING,
       onSuccess: {
-        ...(navigate != null ? { navigate: addressSpec(navigate, this.ctx, `${onSuccessWhere}.navigate`) } : {}),
+        ...(destination ? { to: destination } : {}),
         refreshes: (resource.onSuccess?.refreshes ?? []).map((refresh, index) =>
           addressSpec(refresh, this.ctx, `${onSuccessWhere}.refreshes[${index}]`),
         ),

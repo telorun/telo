@@ -1,0 +1,5 @@
+units:
+  modules/ui-react-radix: Added
+body: The Radix theme rings a pressed node or record in the text colour while its
+  `press` has the keyboard focus, so the theme styles the renderer's new `press` part
+  and passes `CheckTheme` against it.

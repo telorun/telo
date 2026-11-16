@@ -1,7 +1,6 @@
 import type { ResourceContext, ResourceInstance, RuntimeResource, TextRecord } from "@telorun/sdk";
-import { addressSpec, type AddressConfig } from "./address-spec.js";
-import type { AddressSpec } from "./address-expansion.js";
 import { isComposite, mergeAssets, type AssetFile } from "./composite.js";
+import { destinationAt, type DestinationSpec } from "./destination.js";
 import type { LayoutAnswer, LayoutInputs, LayoutInstance } from "./listing-layout.js";
 import { headerOf, modelShape, presentation, propertiesOf, schemaAt, shapeLabels, type JsonSchema, type Shape, type ShapeReader } from "./model-schema.js";
 import { isChain, type Binding, type StyleRule } from "./row-binding.js";
@@ -10,7 +9,7 @@ import { schemaText, type ValueLabel } from "./spec-texts.js";
 export interface ColumnConfig {
   header?: TextRecord;
   value?: Binding;
-  href?: AddressConfig | null;
+  to?: unknown;
   cell?: unknown;
   style?: StyleRule;
 }
@@ -18,7 +17,7 @@ export interface ColumnConfig {
 export interface ValueColumn {
   header: TextRecord;
   value: Binding;
-  href?: AddressSpec;
+  to?: DestinationSpec;
   sort?: string;
   relation?: string;
   present?: JsonSchema;
@@ -31,21 +30,18 @@ export interface ValueColumn {
  * the model property the value names; it sorts where the collection lists that
  * property, and is labelled through a relation where the listing presents one
  * for it — so a column written by hand and one derived from the model are the
- * same column.
+ * same column. Its destination arrives resolved.
  */
 export function valueColumn(
   model: Shape,
   reader: ShapeReader,
   inputs: LayoutInputs,
-  column: { header?: TextRecord; value: Binding; href?: AddressConfig | null; style?: StyleRule },
-  ctx: ResourceContext,
-  owner: string,
-  index: number,
+  column: { header?: TextRecord; value: Binding; to?: DestinationSpec; style?: StyleRule },
 ): ValueColumn {
   const { value, style } = column;
-  const href = column.href == null ? {} : { href: addressSpec(column.href, ctx, `${owner} columns[${index}].href`) };
+  const to = column.to === undefined ? {} : { to: column.to };
   if (!isChain(value)) {
-    return { header: column.header ?? schemaText("", null), value, ...href, labels: [], ...(style ? { style } : {}) };
+    return { header: column.header ?? schemaText("", null), value, ...to, labels: [], ...(style ? { style } : {}) };
   }
   const target = schemaAt(model, value.path, reader, "model");
   const last = value.path[value.path.length - 1];
@@ -54,7 +50,7 @@ export function valueColumn(
   return {
     header: column.header ?? headerOf(last ?? "", target),
     value,
-    ...href,
+    ...to,
     ...(own !== undefined && inputs.collection.query.sort.some((sort) => sort.property === own) ? { sort: own } : {}),
     ...(own !== undefined && Object.hasOwn(inputs.relations, own) ? { relation: own } : {}),
     ...(present ? { present } : {}),
@@ -81,12 +77,14 @@ export async function tableLayout(
   const drawn: Record<string, unknown>[] = [];
   if (!columns) {
     for (const [name] of propertiesOf(inputs.model)) {
-      if (name !== inputs.collection.key) drawn.push({ ...valueColumn(model, reader, inputs, { value: { root: "row", path: [name] } }, ctx, owner, drawn.length) });
+      if (name !== inputs.collection.key) drawn.push({ ...valueColumn(model, reader, inputs, { value: { root: "row", path: [name] } }) });
     }
   } else {
     for (const [index, column] of columns.entries()) {
       if (column.value != null) {
-        drawn.push({ ...valueColumn(model, reader, inputs, { ...column, value: column.value }, ctx, owner, index) });
+        const { to, ...written } = column;
+        const destination = to == null ? undefined : await destinationAt(to, ctx, () => `'columns[${index}].to' of ${owner}`);
+        drawn.push({ ...valueColumn(model, reader, inputs, { ...written, value: column.value, ...(destination ? { to: destination } : {}) }) });
         continue;
       }
       const provided = await ctx

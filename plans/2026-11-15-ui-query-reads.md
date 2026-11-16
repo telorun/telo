@@ -4,6 +4,7 @@ priority: medium
 depends-on: [2026-11-15-library-migrations.md, 2026-11-05-ui-press-and-record-detail.md]
 packages: [modules/ui, modules/ui-react, modules/http-server, modules/http-dispatch, analyzer/nodejs, kernel/nodejs, examples/ui-showcase, examples/report-console, examples/notes-web, examples/approval-workflow, examples/feedback-api-repo, examples/support-inbox-mcp, apps/hub, apps/authoring-agent, docs]
 refinement: not-ready
+issue: https://github.com/telorun/telo/issues/822
 ---
 
 # Queries: a declared read, apart from what draws it

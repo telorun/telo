@@ -33,6 +33,12 @@ export const address = (path: string | { root: string; path: string[] }, pathPar
   queryParams,
 });
 
+/** A destination moving to an address, as `ui` provides a `Ui.Navigate`. */
+export const navigateTo = (href: ReturnType<typeof address>) => ({ type: "navigate", href });
+
+/** A destination opening a page over the current one, as `ui` provides a `Ui.OpenPage`: in a dialog that keeps the surface it is pressed in unless told. */
+export const openPageAt = (href: ReturnType<typeof address>, surface: Record<string, unknown> = dialogSurface, keepsSurface = true) => ({ type: "openPage", href, surface, keepsSurface });
+
 export const formNode = (basePath = "/api/todos"): SpecNode => ({
   type: "form",
   schema: todoSchema,
@@ -102,6 +108,7 @@ export const listingNode = ({ columns = todoColumns, layout, ...overrides }: Rec
   relations: {},
   empty: { type: "text", text: uiText("noRows") },
   layout: layout ?? { type: "table", columns, reads: {} },
+  press: null,
   ...overrides,
 });
 

@@ -1,18 +1,21 @@
 import { Component, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { ViewerContext, type Viewer } from "./current-location.js";
+import { PageHostContext } from "./destination.js";
 import { BUILT_IN, ControlsContext, loadControls, type ControlsField, type EffectiveControls } from "./effective-controls.js";
-import { HostContext, HostStore, type Host } from "./host.js";
-import { pageAddress } from "./link-address.js";
+import { HostContext, HostStore } from "./host.js";
+import { anchorMove } from "./link-address.js";
 import { matchPage } from "./page-route.js";
 import { ErrorNode, Loading, Nodes, type SpecNode } from "./nodes.js";
+import { openedLocation, OpenedPageSurface, useOpenedPage, type SearchedDocument } from "./opened-page.js";
 import { PressQueueContext, PressQueues } from "./operation.js";
+import { fetchDocument, fetchNotFound, type PageDocument } from "./page-documents.js";
 import { LayoutFrame, type LayoutDocument } from "./layout.js";
 import { queryRoot } from "./query-root.js";
 import { RendererContext, RootsContext, type RendererEnvironment } from "./renderer-context.js";
 import { Confirmation, PageSlotContext, type PageSlot } from "./surface.js";
-import { errorSpec, networkError, responseError, type ErrorSpec } from "./ui-error.js";
+import { errorSpec, type ErrorSpec } from "./ui-error.js";
 import { formatOwn, formatText, NO_TEXTS, TextsContext, type Texts, type TranslatedText } from "./texts.js";
-import type { JsonSchema } from "./validation.js";
 
 interface AppDocument {
   bundle: string;
@@ -34,20 +37,6 @@ interface AppDocument {
   compactBelow: string;
 }
 
-interface PageDocument {
-  bundle: string;
-  digest: string;
-  path: string;
-  /** Absent for a page with no title: no heading is drawn. */
-  title?: TranslatedText;
-  lang?: string;
-  /** The query parameters the page's nodes read, by name. */
-  query?: Record<string, JsonSchema>;
-  /** How wide its content is drawn, filled by the server. */
-  width: "contained" | "full";
-  children: SpecNode[];
-}
-
 export interface AppProps {
   /** Mount path with no trailing slash; empty at the root. */
   prefix: string;
@@ -56,32 +45,6 @@ export interface AppProps {
   /** What a renderer newer than this one calls for. */
   reload?: () => void;
   loadModule?: RendererEnvironment["loadModule"];
-}
-
-/** Fetch a document, conditionally when one is already held: an unchanged
- *  one comes back as the one in hand. */
-async function fetchDocument<T extends { digest: string }>(host: Host, url: string, holding?: T): Promise<T> {
-  const headers: Record<string, string> = { accept: "application/json" };
-  if (holding) headers["if-none-match"] = `"${holding.digest}"`;
-  const response = await host.fetch(url, { headers }).catch((error) => {
-    throw networkError(error);
-  });
-  if (response.status === 304 && holding) return holding;
-  if (!response.ok) throw await responseError(response);
-  return (await response.json()) as T;
-}
-
-/** The not-found nodes the server answers an undeclared path with: none when it sends none. */
-async function fetchNotFound(host: Host, url: string): Promise<SpecNode[] | undefined> {
-  const response = await host.fetch(url, { headers: { accept: "application/json" } }).catch((error) => {
-    throw networkError(error);
-  });
-  if (response.status !== 404) {
-    if (!response.ok) throw await responseError(response);
-    throw errorSpec(new Error(`The server answered a page for '${new URL(url, window.location.href).searchParams.get("path")}', which the application does not declare.`), "ERR_UI_REQUEST_FAILED");
-  }
-  const body = (await response.json().catch(() => undefined)) as { children?: SpecNode[] } | undefined;
-  return body?.children;
 }
 
 /** How long a stylesheet may hold the first drawing back before the page is
@@ -298,14 +261,8 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
   /** A plain click on an anchor to a page this application declares moves the
    *  page without leaving it. Anything else is the browser's. */
   const followAnchor = (event: MouseEvent) => {
-    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    const anchor = (event.target as Element).closest?.("a");
-    const href = anchor?.getAttribute("href");
-    if (!anchor || href == null || anchor.getAttribute("target") || anchor.hasAttribute("download")) return;
-    const to = pageAddress(prefix, base.pages, href);
-    if (to === undefined) return;
-    event.preventDefault();
-    host.navigate(to);
+    const to = anchorMove(event, prefix, base.pages);
+    if (to !== undefined) host.navigate(to);
   };
 
   const shown = declared !== undefined && page?.path === declared.path ? page : undefined;
@@ -327,6 +284,23 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
   const width = declared ? (shown ?? held.current.page)?.width : undefined;
   // A page fills while one of its own nodes does and no page surface stands in for it.
   const fill = !failure && claims === 0 && shown?.children.some((child: SpecNode) => child.fill === true) ? "true" : undefined;
+  // What a page key's surface is looked for in, once the route's documents are in: the page's nodes, then its layout's regions.
+  const layoutRoots = useMemo(() => ({ query: queryRoot(undefined, host.location.search), params: {} }), [host.location.search]);
+  const routeNodes = !app || !arranged ? undefined : declared ? shown?.children : absent ? (absent.children ?? []) : undefined;
+  const documents = useMemo<SearchedDocument[] | undefined>(
+    () =>
+      routeNodes === undefined
+        ? undefined
+        : [
+            { nodes: routeNodes, roots: pageRoots },
+            ...(layout === undefined ? [] : [layout.header, layout.aside, layout.footer].map((nodes) => ({ nodes, roots: layoutRoots }))),
+          ],
+    [routeNodes, layout, pageRoots, layoutRoots],
+  );
+  const untitled = app === undefined ? "" : formatText(app.texts, app.title, {});
+  const pages = useOpenedPage({ store, location: host.location, documents, untitled });
+  const opened = openedLocation(pages.opened);
+  const viewer = useMemo<Viewer>(() => ({ location: host.location, ...(opened === undefined ? {} : { opened }) }), [host.location, opened?.path, opened?.search]);
   // A failure is drawn whatever the styles: it must never be a spinner forever.
   if (!failure && (!styled || !controls)) return null;
   const texts = app?.texts ?? NO_TEXTS;
@@ -336,6 +310,8 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
     <ControlsContext.Provider value={controls ?? BUILT_IN}>
     <HostContext.Provider value={store}>
       <RendererContext.Provider value={base}>
+      <ViewerContext.Provider value={viewer}>
+      <PageHostContext.Provider value={pages.outside}>
         <LayoutFrame key={layoutId ?? ""} layout={layout} compact={compact} fill={fill} onClick={followAnchor}>
           <main data-telo-part="main" data-fill={fill}>
             <div data-telo-part="page" data-state={state} data-width={width} data-fill={fill}>
@@ -373,6 +349,10 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
             </div>
           </main>
         </LayoutFrame>
+        {pages.opened && app && (
+          <OpenedPageSurface opened={pages.opened} pages={app.pages} inside={pages.inside} accept={accept} refreshes={refreshes} onClose={pages.close} />
+        )}
+      </PageHostContext.Provider>
         {asking && (
           <Confirmation
             title={say("unsavedQuestion")}
@@ -383,6 +363,7 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
             onClose={() => store.answer(false)}
           />
         )}
+      </ViewerContext.Provider>
       </RendererContext.Provider>
     </HostContext.Provider>
     </ControlsContext.Provider>

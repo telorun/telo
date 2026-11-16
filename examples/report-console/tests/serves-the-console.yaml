@@ -160,7 +160,7 @@ steps:
         connect:
           path: /api/auth/connect
           label: { lang: en, message: [ Connect Google ] }
-          onSuccess: { navigate: { path: { root: result, path: [ url ] }, pathParams: {}, queryParams: {} }, refreshes: [] }
+          onSuccess: { to: { type: navigate, href: { path: { root: result, path: [ url ] }, pathParams: {}, queryParams: {} } }, refreshes: [] }
         account:
           type: data
           source: { path: { value: /api/auth/user }, pathParams: {}, queryParams: {} }
@@ -184,7 +184,7 @@ steps:
             'basePath': f.options.basePath, 'filters': f.options.filters, 'pageSize': f.options.pageSize,
             'value': f.options.value, 'label': f.options.label,
             'hint': 'hint' in f.options ? f.options.hint : null,
-            'href': 'href' in f.options ? f.options.href : null,
+            'to': 'to' in f.options ? f.options.to : null,
             'search': 'search' in f.options ? f.options.search : null})
         surfaces: !cel "steps.nodes.result.form.fields.filter(f, 'surface' in f).map(f, f.surface.type)"
         period: !cel >-
@@ -219,7 +219,7 @@ steps:
             value: &rowId { root: row, path: [ id ] }
             label: &rowName { root: row, path: [ name ] }
             hint: { root: row, path: [ owner ] }
-            href: &rowUrl { path: { root: row, path: [ url ] }, pathParams: {}, queryParams: {} }
+            to: &rowUrl { type: navigate, href: { path: { root: row, path: [ url ] }, pathParams: {}, queryParams: {} } }
             search: &byName { property: name, operator: contains }
           - basePath: /api/drive/files
             filters: { kind: { value: folder } }
@@ -227,7 +227,7 @@ steps:
             value: *rowId
             label: *rowName
             hint: null
-            href: *rowUrl
+            to: *rowUrl
             search: *byName
           - basePath: /api/projects
             filters: { spreadsheetId: { root: values, path: [ spreadsheetId ] } }
@@ -235,7 +235,7 @@ steps:
             value: *rowId
             label: *rowName
             hint: { root: row, path: [ email ] }
-            href: null
+            to: null
             search: null
         surfaces: [ popover, dialog ]
         period:
@@ -301,6 +301,7 @@ steps:
           type: stack
           style: danger
           fill: false
+          press: null
           children:
             - type: text
               fill: false

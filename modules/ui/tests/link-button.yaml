@@ -17,10 +17,10 @@ metadata: { name: links }
 content:
   type: stack
   children:
-    - { type: link, text: Plain, href: /plain }
-    - { type: link, text: Text, href: /text, style: accent, button: { kind: Ui.TextButton } }
-    - { type: link, text: Glyph, href: /glyph, button: { kind: Ui.IconButton, label: shown } }
-    - { type: link, text: Mark, href: /mark, button: { kind: Ui.IconButton, icon: { kind: Ui.FileIcon, file: !module-path ./__fixtures__/chat-icons/mark.svg } } }
+    - { type: link, text: Plain, to: { kind: Ui.Navigate, href: /plain } }
+    - { type: link, text: Text, to: { kind: Ui.Navigate, href: /text }, style: accent, button: { kind: Ui.TextButton } }
+    - { type: link, text: Glyph, to: { kind: Ui.Navigate, href: /glyph }, button: { kind: Ui.IconButton, label: shown } }
+    - { type: link, text: Mark, to: { kind: Ui.Navigate, href: /mark }, button: { kind: Ui.IconButton, icon: { kind: Ui.FileIcon, file: !module-path ./__fixtures__/chat-icons/mark.svg } } }
 ---
 kind: Telo.Sequence
 metadata: { name: check }

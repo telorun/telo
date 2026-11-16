@@ -13,12 +13,9 @@ metadata:
     reporting. Run from a theme module's own tests; an empty list means it
     conforms.
 requires:
-  # The checks resolve the renderer's built entries through this module's
-  # direct import of ui-react, which runtimes before this release do not do.
-  # On 0.120.1 the import of ui-react is refused first: this block makes the
-  # refusal name this module too (MODULE_REQUIRES_NEWER_RUNTIME), verified by
-  # execution of `check`.
-  telo: ">=0.136.0"
+  # The checks resolve the renderer's built entries through ui-react;
+  # its floor is this module's.
+  telo: ">=unreleased"
 imports:
   # The design token names come from `ui`'s code entry, their CSS spelling
   # from ui-react's contract entry.

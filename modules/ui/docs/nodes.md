@@ -8,17 +8,17 @@ expression selects nothing.
 
 | `type` | Fields | Is |
 | --- | --- | --- |
-| `box` | `children` | a group |
-| `stack` | `children` | its children one under another |
-| `columns` | `children` | its children side by side |
+| `box` | `children`, `press?` | a group |
+| `stack` | `children`, `press?` | its children one under another |
+| `columns` | `children`, `press?` | its children side by side |
 | `text` | `text` | a run of text |
 | `badge` | `text` | a short label |
-| `link` | `text`, `href`, `button?` | a link, inline or drawn as a button |
+| `link` | `text`, `to`, `button?` | a link to a [destination](presses.md), inline or drawn as a button |
 | `menu` | `text`, `items` | a button opening a list of links |
 | `tabs` | `tabs`, `address?` | content under tabs, one tab at a time |
 | `image` | `src`, `alt` | an image |
 | `svg` | `markup`, `alt` | SVG markup, drawn as an image |
-| `value` | `value`, `text?`, `href?` | one value of a data scope, presented as its schema says |
+| `value` | `value`, `text?`, `to?` | one value of a data scope, presented as its schema says |
 | `time` | `value`, `relative?` | a [date or a date-time](#times), relative to now or absolute |
 | `list` | `rows`, `columns`, `heading?`, `rowStyle?` | the rows of a list one answer holds, a column per value |
 | `markdown` | `value`, `annotations?` | [Markdown text](#markdown), with a control on each item the server names |
@@ -45,6 +45,25 @@ Every node also takes:
 - `fill` — `true` stretches the node to the bottom of the room it is in; see
   [filling the room](#filling-the-room). Refused on a menu item.
 
+## Pressed regions
+
+`press` on a `box`, `stack` or `columns` node makes the whole region one press
+target: a [`Ui.Press`](presses.md#presses) — `to`, the destination, and
+`label`, the press's name. The region's own links and buttons stay targets of
+their own. A pressed `badge`, `image`, `svg` or `time` is a `box` with `press`
+around it, and a pressed text is a `link`; `press` on any other node is a
+`SCHEMA_VIOLATION`.
+
+```yaml
+- type: box
+  press:
+    to: { kind: Ui.OpenPage, page: !ref helpPage, queryParams: { topic: getting-started } }
+    label: Getting started
+  children:
+    - { type: badge, text: New }
+    - { type: text, style: heading, text: Getting started }
+```
+
 ## Bars
 
 A `bar` lays out a row in three regions — `start`, `center` and `end`, each a
@@ -57,7 +76,7 @@ written.
 ```yaml
 - type: bar
   start: [{ type: text, text: Orders, style: heading }]
-  end: [{ type: link, text: New order, href: /orders/new, button: { kind: Ui.TextButton } }]
+  end: [{ type: link, text: New order, to: { kind: Ui.Navigate, href: /orders/new }, button: { kind: Ui.TextButton } }]
 ```
 
 ## Commands
@@ -118,15 +137,15 @@ gives one row's records one height; a list record is as tall as its content.
 A `link` is inline text unless it names a `button`, a
 [`Ui.ButtonDisplay`](chat.md#buttons-as-icons) — `{ kind: Ui.TextButton }` or
 `{ kind: Ui.IconButton }`. It is then drawn as a button-shaped anchor, never a
-`<button>`: it is still an `<a>` with the address, so it opens in a new tab and
-is announced as a link. The look of the button is the node's `style`: `accent`
+`<button>`: it is still an `<a>` to its destination's address, so it opens in a
+new tab and is announced as a link. The look of the button is the node's `style`: `accent`
 is an emphasised button, no style a neutral one.
 
 ```yaml
 - type: link
   text: New conversation
   style: accent
-  href: { path: !ref assistant }
+  to: { kind: Ui.Navigate, href: { path: !ref assistant } }
   button: { kind: Ui.IconButton, label: shown, icon: { kind: UiLucide.Icon, name: plus } }
 ```
 
@@ -139,20 +158,21 @@ for an inline link.
 ## Menus
 
 A `menu` is a button labelled `text` that opens its `items`, each a `link`
-node — `text`, `href` and the keys every node takes:
+node — `text`, `to` and the keys every node takes:
 
 ```yaml
 - type: menu
   text: Language
   items:
-    - { type: link, text: English, href: "/api/lang?set=en", style: strong }
-    - { type: link, text: Polski, href: "/api/lang?set=pl" }
-    - { type: link, text: Beta features, href: /beta, when: !cel "variables.beta" }
+    - { type: link, text: English, to: { kind: Ui.Navigate, href: "/api/lang?set=en" }, style: strong }
+    - { type: link, text: Polski, to: { kind: Ui.Navigate, href: "/api/lang?set=pl" } }
+    - { type: link, text: Beta features, to: { kind: Ui.Navigate, href: /beta }, when: !cel "variables.beta" }
 ```
 
-Choosing an item follows its `href` exactly as clicking that link would: a
-page the application declares is a move within it, anything else an ordinary
-load, under the same [address rule](#addresses). An item is the current choice
+Choosing an item goes where its `to` says exactly as clicking that link would:
+a page the application declares is a move within it, anything else an ordinary
+load, under the same [address rule](#addresses), and a
+[`Ui.OpenPage`](presses.md#uiopenpage) opens its page over the current one. An item is the current choice
 when its address [leads to where the viewer is](#the-current-location) or its
 `style` holds `strong`, and a renderer marks it so. Each item is
 delivered by its own `when` and drawn by its own `shown`; a menu none of whose
@@ -215,18 +235,18 @@ variables](page.md#params) — wherever a page's nodes are, `error` in a reader'
 
 A value is presented as its schema says: a `format: uri` / `uri-reference`
 string is a link, held to the address rule below, drawn as `text` when that is
-given; a value with an `href` is drawn as a link to that [address](#addresses),
-the presented value as its text; a date and a time as a date; a boolean as yes or no. A `list` draws the
+given; a value with a `to` is drawn as a link to that
+[destination](presses.md), the presented value as its text; a date and a time as a date; a boolean as yes or no. A `list` draws the
 rows of one answer and is bounded by it — it never pages; a set that grows
 without limit is a [`Ui.Listing`](listing.md) over the collection contract. A
-column's header defaults to the `title` of the value it reads, its `href` is an
-[address](#addresses) the cell links to over `row` and the roots the list is
+column's header defaults to the `title` of the value it reads, its `to` is a
+[destination](presses.md) the cell links to over `row` and the roots the list is
 drawn under, and its `shown` reads the roots the list is drawn under, never
 `row`. `row` is typed as an
 element of what `rows` names, so `row.nmae` is refused by `telo check`.
 
 A column is a value unless it says `type: time`: `{ type: time, header?, value,
-relative?, href?, shown?, style? }` draws its value as a [`time` node](#times)
+relative?, to?, shown?, style? }` draws its value as a [`time` node](#times)
 does, and takes every other member a value column takes.
 
 A list's `rowStyle` and a column's `style` are [style rules](#style-rules) over
@@ -366,13 +386,12 @@ on its records; a `menu`'s button only opens its links.
 ## Addresses
 
 - An **address** is where a link leads: a literal string, or
-  `{ path, pathParams, queryParams }`. It is the `href` of a `link` — a menu
-  item's included — and of a `value` node, a `list` column, a
-  [`Ui.TableLayout`](listing-layouts.md) column, and a relation of a
-  [presentation](collection-presentation.md#relations) or a
-  [`Ui.CollectionOptions`](field-kinds.md). `Ui.NavigationItem.href` stays a
-  string; `image.src` stays literal. A request is addressed the same way, as a
-  `Ui.RequestTarget` (a reader's [`source`](data.md)).
+  `{ path, pathParams, queryParams }`. It is the `href` of a
+  [`Ui.Navigate`](presses.md#uinavigate), the destination going to it, at any
+  [`to`](presses.md#the-to-key); a [`Ui.OpenPage`](presses.md#uiopenpage) takes
+  an address's `pathParams` and `queryParams` for its page. `image.src` stays
+  literal. A request is addressed the same way, as a `Ui.RequestTarget` (a
+  reader's [`source`](data.md)).
 
   | Member | |
   | --- | --- |
@@ -383,27 +402,29 @@ on its records; a `menu`'s button only opens its links.
   ```yaml
   - type: link
     text: Item
-    href:
-      path: "/items/{id}"
-      pathParams: { id: !cel "query.id" }
-      queryParams: { tab: details }
-  - { type: link, text: Home, href: { path: !ref home } }
-  - { type: link, text: Docs, href: /docs }
+    to:
+      kind: Ui.Navigate
+      href:
+        path: "/items/{id}"
+        pathParams: { id: !cel "query.id" }
+        queryParams: { tab: details }
+  - { type: link, text: Home, to: { kind: Ui.Navigate, href: { path: !ref home } } }
+  - { type: link, text: Docs, to: { kind: Ui.Navigate, href: /docs } }
   ```
 
   A bare string is a literal path with no `{` or `}`. Quote a template in flow
-  style: `{` starts a mapping in YAML. The address binds no root: the place it
-  is written does — a page's `query` and `params`, a reader's `data`, a list's and a
+  style: `{` starts a mapping in YAML. The address binds no root: the place its
+  `to` is written does — a page's `query` and `params`, a reader's `data`, a list's and a
   listing's `row`, a relation's related `row` — so `row.nmae` is refused by
-  `telo check` like any other read. Every `{name}` has exactly one entry in
+  `telo check` like any other read, and so is a root the place does not bind. Every `{name}` has exactly one entry in
   `pathParams` and every entry names a `{name}` (`PATH_PARAMETER_UNBOUND`,
   `PATH_PARAMETER_UNUSED`, with a `!ref` checked against the page's own `path`,
   its [variables](page.md#path-variables) included);
   a path read from data is never expanded, so it takes no `pathParams`.
   [Path templates](https://telo.run/extend/path-templates) has the rules.
 
-  An address is **not evaluated per request**: `href: !cel "request…"` is
-  `CEL_UNKNOWN_IDENTIFIER`. A link that differs by request is two `link` nodes
+  An address is **not evaluated per request**: a destination reading
+  `request` is `CEL_UNKNOWN_IDENTIFIER`. A link that differs by request is two `link` nodes
   with a `when` each.
 
   A renderer expands it one way, pinned by `conformance/addresses.json`:
@@ -436,16 +457,15 @@ on its records; a `menu`'s button only opens its links.
   | `/` followed by a tab, then `/x` | refused: a browser drops the tab and reads `//x` |
 
   It is one exported shape, `Ui.AppRelativeReference`, named by every field
-  holding an address — a navigation entry's `href`, a page's `path`, an
-  address's and a request target's `path`, an action's `request.target`,
-  `onSuccess.navigate` and `refreshes`, and a collection source's `basePath`
-  and its template's `path` —
+  holding an address — a page's `path`, an address's and a request target's
+  `path`, an action's `request.target` and `refreshes`, and a collection
+  source's `basePath` and its template's `path` —
   so a kind of another module holding one references it too. A literal one is
   refused by `telo check`; a computed `src` that breaks it is replaced by an
   `error` node for that request, and an address read from data that breaks it is
   drawn as text.
 - An app-relative path is the application's own: a renderer mounted under a
-  prefix resolves every one under that prefix — a `link`'s `href`, an
+  prefix resolves every one under that prefix — a destination's address, an
   `image`'s `src`, a collection source's `basePath` and an action's
   `request.target` alike.
 - `svg.markup` is never inserted into the page. A renderer draws it as an
@@ -455,8 +475,8 @@ on its records; a `menu`'s button only opens its links.
 
 A renderer marks the link that leads to where the viewer is, with no key to
 write: every link to an address under the application's mount that it draws —
-a `link` node (a button-shaped one too), a `menu` item, a `value`'s `href`, a
-column's `href`, a related record's label, a value the model calls a
+a `link` node (a button-shaped one too), a `menu` item, a `value`'s `to`, a
+column's `to`, a related record's label, a value the model calls a
 `uri` — is `aria-current="page"` while its path equals the current path
 exactly (the fragment ignored) and its query equals the current query. The
 renderer's own parameters (`_telo*`) are set aside from both; key order is free,
@@ -523,14 +543,18 @@ node that could not be produced. Every node carries `fill`, `true` exactly where
 room it passes on was written filling. A `value` and a `time` node carry
 `present` — what the schema it reads says (`type`, `format`) — and each `list`
 column its `header` and `present`, all resolved on the server, a time column
-`type: time` and a value column no `type`; a `value` node and a value column carry `labels`, the label of
+`type: time` and a value column no `type`; a `to` is a
+[`Ui.DestinationSpec`](presses.md#what-a-renderer-receives), present on a
+`value` node and a column exactly when written; a `box`, `stack` and
+`columns` node carry `press`, a [`Ui.PressSpec`](presses.md#what-a-renderer-receives),
+`null` when none is written; a `value` node and a value column carry `labels`, the label of
 each value an enumeration offers (`[]` when none), and a `time` node and a time
 column `relative`, `false` when not written. Every text is a text record, a
 `{ text, values }` text is the record with its `values` beside it, and a text
 `ui` fills itself is a keyed text `{ set: Ui.Translations, key }` — see
 [what a renderer receives](texts.md#what-a-renderer-receives). A composite placed with a `shown` of its own around a
-provided node that has one is wrapped in a `box` carrying the placement's, so
-both must hold. It carries no resource name. Row-bound values in it are **bindings** — `{ root, path }` for a
+provided node that has one is wrapped in a `box` carrying the placement's (and
+no press), so both must hold. It carries no resource name. Row-bound values in it are **bindings** — `{ root, path }` for a
 chain, `{ value }` for a literal — which a renderer resolves by following the
 path; no expression engine runs in the browser.
 
@@ -545,7 +569,8 @@ own.
 A `listing` node always carries `query` (its declared parameters, empty when
 none), `rowActions` (an empty list when the listing declares none),
 `rowActionsDisplay`, `sort` (`{ sortable, initial }`), `show` (`{ count }`),
-`relations`, `empty` and its `layout`; a `list` node always carries
+`relations`, `empty`, its `layout` and `press` (its record press, `null` when
+none is written); a `list` node always carries
 `rowActionsDisplay` and carries `rowActions` when it declares them, and
 `rowStyle` and a column's `style` — each `{ by, cases, default? }`, `by` a
 binding — when declared. A bound action is

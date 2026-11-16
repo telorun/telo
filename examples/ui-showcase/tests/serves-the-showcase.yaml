@@ -312,6 +312,7 @@ steps:
           - [ /components, Components ]
           - [ /crud, CRUD ]
           - [ /records, Related records ]
+          - [ "/records/{id}", Post ]
           - [ /search, Search posts ]
           - [ /search-beside, Posts beside their filters ]
           - [ /search-releases, Release posts ]
@@ -384,18 +385,18 @@ steps:
         start: !cel "steps.appLayout.result.body.header[0].start"
         end: !cel >-
           steps.appLayout.result.body.header[0].end.map(n, [n.type, n.text.message[0],
-            n.items.map(i, [i.text.message[0], i.href.path.value, has(i.style) ? i.style : null])])
+            n.items.map(i, [i.text.message[0], i.to.href.path.value, has(i.style) ? i.style : null])])
         acmeTheme: !cel "steps.acmeAppLayout.result.body.header[0].end[1].items.map(i, i.text.message[0])"
         radixStart: !cel "steps.radixAppLayout.result.body.header[0].start == steps.appLayout.result.body.header[0].start"
         radixEnd: !cel >-
           steps.radixAppLayout.result.body.header[0].end.map(n, [n.text.message[0],
-            n.items.map(i, [i.text.message[0], i.href.path.value, has(i.style) ? i.style : null])])
+            n.items.map(i, [i.text.message[0], i.to.href.path.value, has(i.style) ? i.style : null])])
         brandEnd: !cel >-
           steps.brandAppLayout.result.body.header[0].end.map(n, [n.text.message[0],
-            n.items.map(i, [i.text.message[0], i.href.path.value, has(i.style) ? i.style : null])])
+            n.items.map(i, [i.text.message[0], i.to.href.path.value, has(i.style) ? i.style : null])])
         sidebarEnd: !cel >-
           steps.sidebarAppLayout.result.body.header[0].end.map(n, [n.text.message[0],
-            n.items.map(i, [i.text.message[0], i.href.path.value, has(i.style) ? i.style : null])])
+            n.items.map(i, [i.text.message[0], i.to.href.path.value, has(i.style) ? i.style : null])])
       expected:
         start: [ { type: image, src: /files/mark.svg, fill: false, alt: { lang: en, message: [ UI showcase logo ] } } ]
         end:
@@ -472,7 +473,7 @@ steps:
       expected:
         polish:
           lang: pl
-          pages: [ Przegląd, Warunki, Dane, Tabele, Filtry, Formularze, Akcje, Komponenty, CRUD, Powiązane rekordy, Szukaj wpisów, Wpisy obok swoich filtrów, Wpisy o wydaniach, Recenzje, Recenzja, Zmiany, Wykonawca, Motywy ]
+          pages: [ Przegląd, Warunki, Dane, Tabele, Filtry, Formularze, Akcje, Komponenty, CRUD, Powiązane rekordy, Wpis, Szukaj wpisów, Wpisy obok swoich filtrów, Wpisy o wydaniach, Recenzje, Recenzja, Zmiany, Wykonawca, Motywy ]
           logo: { lang: pl, message: [ Logo pokazu interfejsu ] }
           menus: [ Język, Motyw ]
         english: { lang: en, title: { lang: en, message: [UI showcase] } }
@@ -537,7 +538,7 @@ steps:
       expected:
         lang: pl
         title: { lang: pl, message: [ Pokaz interfejsu ] }
-        pages: [ Przegląd, Warunki, Dane, Tabele, Filtry, Formularze, Akcje, Komponenty, CRUD, Powiązane rekordy, Szukaj wpisów, Wpisy obok swoich filtrów, Wpisy o wydaniach, Recenzje, Recenzja, Zmiany, Wykonawca, Motywy ]
+        pages: [ Przegląd, Warunki, Dane, Tabele, Filtry, Formularze, Akcje, Komponenty, CRUD, Powiązane rekordy, Wpis, Szukaj wpisów, Wpisy obok swoich filtrów, Wpisy o wydaniach, Recenzje, Recenzja, Zmiany, Wykonawca, Motywy ]
         save: { lang: pl, message: [ Zapisz ] }
         heading: { lang: pl, message: [ Każdy rodzaj węzła ] }
 
@@ -552,7 +553,7 @@ steps:
         containers: !cel "steps.nodes.result.overview[2].children.map(c, c.type)"
         styles: !cel "steps.nodes.result.overview[5].children.map(c, c.style)"
         badges: !cel "steps.nodes.result.overview[6].children.map(c, [c.type, 'style' in c ? c.style : '-'])"
-        links: !cel "steps.nodes.result.overview[9].children.map(c, [c.type, c.href.path.value])"
+        links: !cel "steps.nodes.result.overview[9].children.map(c, [c.type, c.to.href.path.value])"
         images: !cel "steps.nodes.result.overview[12].children.map(c, [c.type, 'src' in c ? c.src : '-', c.alt.message])"
         markup: !cel "steps.nodes.result.overview[12].children[2].markup.startsWith('<svg')"
         tabs: !cel >-
@@ -680,6 +681,7 @@ steps:
           type: box
           style: accent
           fill: false
+          press: null
           children:
             - { type: text, fill: false, style: subheading, text: { lang: en, message: [ A callout ] } }
             - type: text
@@ -718,7 +720,7 @@ steps:
         wrapped: !cel "steps.nodes.result.reader.content.children[5]"
         keywords: !cel "steps.nodes.result.reader.content.children.filter(c, 'shown' in c && 'root' in c.shown.at && c.shown.at.root == 'data').map(c, [c.shown.at.path, c.shown.matches])"
         byQuery: !cel "steps.nodes.result.reader.content.children.filter(c, 'shown' in c && 'root' in c.shown.at && c.shown.at.root == 'query').map(c, [c.shown.at.path, c.shown.matches])"
-        links: !cel "steps.nodes.result.reader.content.children[37].children.map(c, c.href.path.value)"
+        links: !cel "steps.nodes.result.reader.content.children[37].children.map(c, c.to.href.path.value)"
         pageQuery: !cel "steps.conditions.result.body.query"
         pageOwn: !cel "steps.conditions.result.body.children[2].children[2].shown"
       expected:
@@ -734,6 +736,7 @@ steps:
           type: box
           fill: false
           shown: { at: { value: true }, matches: { const: true } }
+          press: null
           children:
             - type: text
               fill: false
@@ -889,7 +892,7 @@ steps:
           source: !cel "[steps.nodes.result.tables[8].basePath, steps.nodes.result.tables[8].pageSize]"
           columns: !cel "steps.nodes.result.tables[8].layout.columns.map(c, [c.header.message[0], c.value.path, c.present])"
         byQuery:
-          links: !cel "steps.nodes.result.tables[11].children.map(c, c.href.path.value)"
+          links: !cel "steps.nodes.result.tables[11].children.map(c, c.to.href.path.value)"
           query: !cel "steps.nodes.result.tables[12].query"
           filters: !cel "steps.nodes.result.tables[12].filters"
           fixed: !cel "steps.nodes.result.tables[15].filters"
@@ -1201,10 +1204,10 @@ steps:
               has(f.shown) ? f.shown : null])
           projectSource: !cel >-
             cel.bind(o, steps.nodes.result.forms[13].fields[0].options,
-              [o.basePath, o.filters, o.pageSize, o.value, o.label, o.hint, 'href' in o, 'search' in o])
+              [o.basePath, o.filters, o.pageSize, o.value, o.label, o.hint, 'to' in o, 'search' in o])
           lead: !cel >-
             cel.bind(o, steps.nodes.result.forms[13].fields[2].options,
-              [o.basePath, o.filters, o.pageSize, o.value, o.label, o.hint, o.href, o.search])
+              [o.basePath, o.filters, o.pageSize, o.value, o.label, o.hint, o.to, o.search])
           surfaces: !cel "[steps.nodes.result.forms[13].fields[2].surface, steps.nodes.result.forms[13].fields[3].surface, steps.nodes.result.forms[13].fields[4].surface]"
           team: !cel "steps.nodes.result.forms[13].fields[3].options == steps.nodes.result.forms[13].fields[4].options && steps.nodes.result.forms[13].fields[3].options.filters == {'active': {'value': true}}"
           helpers: !cel "[steps.nodes.result.forms[13].fields[5].options.pageSize, steps.nodes.result.forms[13].fields[5].options.filters]"
@@ -1281,7 +1284,7 @@ steps:
             - { root: row, path: [ email ] }
             - { root: row, path: [ name ] }
             - { root: row, path: [ location ] }
-            - { path: { root: row, path: [ contact ] }, pathParams: {}, queryParams: {} }
+            - { type: navigate, href: { path: { root: row, path: [ contact ] }, pathParams: {}, queryParams: {} } }
             - { property: name, operator: contains }
           surfaces:
             - { type: dialog, size: small, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
@@ -1357,7 +1360,7 @@ steps:
             a.onSuccess, a.failure.children.map(c, c.value)])
         loop: !cel "cel.bind(a, steps.nodes.result.actions[34], [a.request.target.path.value, 'answer' in a, a.failure.children.map(c, 'shown' in c ? c.shown.matches : null)])"
         byAddress:
-          links: !cel "steps.nodes.result.actions[37].children.map(c, c.href.path.value)"
+          links: !cel "steps.nodes.result.actions[37].children.map(c, c.to.href.path.value)"
           query: !cel "steps.nodes.result.actions[38].query"
           filters: !cel "steps.nodes.result.actions[38].filters"
           rowActions: !cel >-
@@ -1416,8 +1419,8 @@ steps:
             - { code: { root: error, path: [ code ] } }
             - { root: error, path: [ message ] }
         navigate:
-          - [ /api/project-page, [ choice ], { navigate: { path: { root: result, path: [ page ] }, pathParams: {}, queryParams: {} }, refreshes: [] } ]
-          - [ /api/homepage, [], { navigate: { path: { root: result, path: [ homepage ] }, pathParams: {}, queryParams: {} }, refreshes: [] } ]
+          - [ /api/project-page, [ choice ], { to: { type: navigate, href: { path: { root: result, path: [ page ] }, pathParams: {}, queryParams: {} } }, refreshes: [] } ]
+          - [ /api/homepage, [], { to: { type: navigate, href: { path: { root: result, path: [ homepage ] }, pathParams: {}, queryParams: {} } }, refreshes: [] } ]
         counts: [ { path: { value: /api/task-counts }, pathParams: {}, queryParams: { code: { value: TEL-42 } } }, { root: data, path: [ code ] } ]
         move: [ /api/task-status, [ id, status ], { refreshes: [ { path: { value: /api/task-counts }, pathParams: {}, queryParams: {} }, { path: { value: /api/tasks }, pathParams: {}, queryParams: {} } ] }, [ text, value ] ]
         comment:
@@ -1481,9 +1484,9 @@ steps:
               - []
               - { refreshes: [ { path: { value: /api/comments }, pathParams: {}, queryParams: {} } ] }
         more:
-          - [ /api/tasks, Add it and open the tables, [ [ input, title ], [ choice, projectCode ] ], { navigate: { path: { value: /tables }, pathParams: {}, queryParams: {} }, refreshes: [ { path: { value: /api/tasks }, pathParams: {}, queryParams: {} } ] }, false ]
-          - [ /api/team-links, Open the handbook, [], { navigate: { path: { root: result, path: [ handbook ] }, pathParams: {}, queryParams: {} }, refreshes: [] }, true ]
-          - [ /api/team-links, Open the mirror, [], { navigate: { path: { root: result, path: [ mirror ] }, pathParams: {}, queryParams: {} }, refreshes: [] }, true ]
+          - [ /api/tasks, Add it and open the tables, [ [ input, title ], [ choice, projectCode ] ], { to: { type: navigate, href: { path: { value: /tables }, pathParams: {}, queryParams: {} } }, refreshes: [ { path: { value: /api/tasks }, pathParams: {}, queryParams: {} } ] }, false ]
+          - [ /api/team-links, Open the handbook, [], { to: { type: navigate, href: { path: { root: result, path: [ handbook ] }, pathParams: {}, queryParams: {} } }, refreshes: [] }, true ]
+          - [ /api/team-links, Open the mirror, [], { to: { type: navigate, href: { path: { root: result, path: [ mirror ] }, pathParams: {}, queryParams: {} } }, refreshes: [] }, true ]
         mirrorResult: { mirror: { root: result, path: [ mirror ] } }
         pause:
           - /api/private/pause
@@ -1594,7 +1597,7 @@ steps:
         kinds: !cel "steps.nodes.result.themes.map(c, c.type)"
         mounts: !cel "steps.nodes.result.themes[2].children.map(b, b.children[0].text.message[0])"
         components: !cel "[steps.nodes.result.themes[6], steps.nodes.result.themes[9]].map(c, [c.export, c.props, c.module == steps.nodes.result.components[2].module])"
-        rootLinks: !cel "[steps.themes.result.body.children[2].children[2], steps.themes.result.body.children[2].children[4]].map(c, c.children.map(l, l.href.path.value))"
+        rootLinks: !cel "[steps.themes.result.body.children[2].children[2], steps.themes.result.body.children[2].children[4]].map(c, c.children.map(l, l.to.href.path.value))"
         badge: !cel "[steps.themes, steps.acmeThemes].map(p, p.result.body.children[2].children.exists(c, c.type == 'badge'))"
         polish: !cel "[steps.polishThemes.result.body.children[1].children[0].text, steps.polishThemes.result.body.children[2].children[0].text]"
       expected:
@@ -1653,3 +1656,45 @@ steps:
         root: contained
         sidebar: full
         headers: [ contained, contained, contained, full ]
+
+  # Records that open in place: a card's press opens the post's page in an
+  # addressed drawer, its own link is a plain navigation to the full page, and
+  # a menu item opens the same page in a dialog with no address. A press is
+  # `null` on every other pressable node.
+  - name: records
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/records" }
+  - name: recordPage
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/records/1" }
+  - name: verifyRecords
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        menu: !cel "steps.records.result.body.children[0].children[20].items.map(i, i.to)"
+        press: !cel "steps.records.result.body.children[0].children[21].press"
+        fullPage: !cel "steps.records.result.body.children[0].children[21].layout.content.children[1].to"
+        page: !cel "[steps.recordPage.result.body.path, steps.recordPage.result.body.title.message[0], steps.recordPage.result.body.children[0].source]"
+      expected:
+        menu:
+          - type: openPage
+            href: { path: { value: "/records/{id}" }, pathParams: { id: { value: 1 } }, queryParams: {} }
+            surface: { type: dialog, modal: true, size: medium, dismiss: { escape: true, outside: true, closeButton: true } }
+            keepsSurface: false
+        press:
+          to:
+            type: openPage
+            href: { path: { value: "/records/{id}" }, pathParams: { id: { root: row, path: [id] } }, queryParams: {} }
+            surface: { type: drawer, side: end, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true }, address: { name: post } }
+            keepsSurface: false
+          label:
+            lang: en
+            message: [ "Open ", { placeholder: title } ]
+            values: { title: { root: row, path: [ title ] } }
+        fullPage:
+          type: navigate
+          href: { path: { value: "/records/{id}" }, pathParams: { id: { root: row, path: [id] } }, queryParams: {} }
+        page:
+          - "/records/{id}"
+          - Post
+          - path: { value: "/api/posts/{id}" }
+            pathParams: { id: { root: params, path: [id] } }
+            queryParams: {}

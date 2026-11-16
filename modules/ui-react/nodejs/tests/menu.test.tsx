@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HostStore } from "../src/browser/host.js";
 import { HEADER_NAVIGATION, render, type Page, type Rendered } from "./harness.js";
-import { address } from "./spec-nodes.js";
+import { address, navigateTo } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => {
@@ -24,9 +24,9 @@ describe("a menu node", () => {
   it("is one disclosure and no landmark, its items links and the current one marked", async () => {
     rendered = await show([
       menu([
-        { type: "link", text: "English", href: address("/done"), style: ["muted", "strong"] },
-        { type: "link", text: "Polski", href: address("/done?lang=pl") },
-        { type: "link", text: "Home", href: address("/"), style: "strong" },
+        { type: "link", text: "English", to: navigateTo(address("/done")), style: ["muted", "strong"] },
+        { type: "link", text: "Polski", to: navigateTo(address("/done?lang=pl")) },
+        { type: "link", text: "Home", to: navigateTo(address("/")), style: "strong" },
       ]),
     ]);
     const root = rendered.part("navigation");
@@ -54,9 +54,9 @@ describe("a menu node", () => {
     rendered = await show(
       [
         menu([
-          { type: "link", text: "Done", href: address("/done?lang=pl") },
-          { type: "link", text: "A file", href: address("/files/a.pdf") },
-          { type: "link", text: "Elsewhere", href: address("https://example.com/x") },
+          { type: "link", text: "Done", to: navigateTo(address("/done?lang=pl")) },
+          { type: "link", text: "A file", to: navigateTo(address("/files/a.pdf")) },
+          { type: "link", text: "Elsewhere", to: navigateTo(address("https://example.com/x")) },
         ]),
       ],
       "/admin",
@@ -79,8 +79,8 @@ describe("a menu node", () => {
   it("offers only the links whose condition holds", async () => {
     rendered = await show([
       menu([
-        { type: "link", text: "Shown", href: address("/done") },
-        { type: "link", text: "Hidden", href: address("/done"), shown: { at: { value: 1 }, matches: { const: 2 } } },
+        { type: "link", text: "Shown", to: navigateTo(address("/done")) },
+        { type: "link", text: "Hidden", to: navigateTo(address("/done")), shown: { at: { value: 1 }, matches: { const: 2 } } },
       ]),
     ]);
     await rendered.click(rendered.part("nav-toggle"));
@@ -88,7 +88,7 @@ describe("a menu node", () => {
   });
 
   it("leaves out an item whose address does not resolve", async () => {
-    rendered = await show([menu([{ type: "link", text: "Here", href: address("/done") }, { type: "link", text: "Away", href: address("javascript:alert(1)") }])]);
+    rendered = await show([menu([{ type: "link", text: "Here", to: navigateTo(address("/done")) }, { type: "link", text: "Away", to: navigateTo(address("javascript:alert(1)")) }])]);
     await rendered.click(rendered.part("nav-toggle"));
     expect(rendered.parts("nav-item").map((item) => item.textContent)).toEqual(["Here"]);
   });

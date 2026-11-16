@@ -82,8 +82,8 @@ inline; `taskTable` is used twice. List a `Telo.OpenUrl` after the server in
   another) are required. `pages` (at least one) are `Ui.Page`s — `{ path,
   title?, query?, width?, children }`, each path unique — inline, by `!ref`, or
   `{ page, layout }`. A page's `title` draws no heading: put `{ type: text,
-  text, style: title }` (the one `h1`) first. A page a link or navigation entry
-  names must be listed (`UI_PAGE_UNROUTED`).
+  text, style: title }` (the one `h1`) first. A page an address, a navigation
+  entry or a `Ui.OpenPage` names must be listed (`UI_PAGE_UNROUTED`).
 - `layout` is the `Ui.PageLayout` every page is drawn in (omitted: no chrome):
   `{ width?, header?, aside?, footer? }`; `{ page, layout: { kind: Ui.PageLayout } }`
   is an empty layout: no chrome. `notFound` is the nodes drawn for an unknown
@@ -97,10 +97,10 @@ inline; `taskTable` is used twice. List a `Telo.OpenUrl` after the server in
 - A path segment may be a variable: `/reviews/{id}` matches one percent-decoded
   segment, a literal one winning. Nodes, readers and sources
   the page places read it as `params.id` (a string); `telo check` refuses a
-  variable the page lacks. A navigation entry cannot name such a page: reach it
-  with a link `href: { path: !ref review, pathParams: { id: !cel "row.id" } }`.
+  variable the page lacks. A navigation `page` entry cannot name such a page:
+  reach it with a `to` (*Where a press goes*).
 - `navigation: { items }` (required, never derived) names pages by `!ref`:
-  `{ type: page, page, text? }`, `{ type: link, text, href }`,
+  `{ type: page, page, text? }`, `{ type: link, text, to }`,
   `{ type: group, text, items }`, each with `when?` and `icon?` (`UiLucide.Icon`
   or `Ui.FileIcon`).
 - Optional: `translations: { catalogs }` of `Telo.TextTranslations` serve texts
@@ -117,14 +117,14 @@ A page's `children` are nodes, plain data with a `type`:
 
 | `type` | Fields |
 | --- | --- |
-| `box`, `stack`, `columns` | `children` |
+| `box`, `stack`, `columns` | `children`, `press?` |
 | `text`, `badge` | `text` |
-| `link` | `text`, `href` (an address), `button` (a `Ui.TextButton` / `Ui.IconButton` draws it as a button; `style: accent` emphasises) |
+| `link` | `text`, `to`, `button` (a `Ui.TextButton` / `Ui.IconButton` draws it as a button; `style: accent` emphasises) |
 | `menu` | `text`, `items` (`link`s behind a button; `strong` marks the current) |
 | `tabs` | `tabs: [{ text, children, when? }]`, `address?` (the chosen tab in the page address) |
 | `image` | `src`, `alt` (required, may be empty) |
 | `svg` | `markup`, `alt` (drawn as an image) |
-| `value` | `value` (an accessor), `text?`, `href?` — one value, presented as its schema says |
+| `value` | `value` (an accessor), `text?`, `to?` — one value, presented as its schema says |
 | `list` | `rows` (an accessor), `columns: [{ header?, value, shown?, style? }]` (or `{ type: time, value, relative? }`), `heading?`, `rowStyle?` |
 | `markdown` | `value` (an accessor to a string), `annotations?` |
 | `time` | `value` (an accessor to a `date` / `date-time` string), `relative?` — `true` draws "3 hours ago", the exact time on hover |
@@ -142,29 +142,40 @@ and conditions") and `fill: true` (reach the page's bottom; the innermost
 filling node scrolls; not on menu items).
 
 **Markdown.** A `markdown` node draws CommonMark with GFM; raw HTML is never
-inserted. `annotations: { rows, line, count?, action }` puts a control on each
-item the server names: `rows` an accessor to a list (each is `row`), `line` its
-1-based source line, `count` a badge, `action` a bound action over `row`.
+inserted. `annotations: { rows, line, count?, action }` puts `action`, a bound
+action over each `row` of `rows`, on its 1-based source `line`, `count` a badge.
 
 **Texts.** Every label, heading and node text is in the module's `lang:`. A
 text over data names its values (`text: { text: "{$n} tasks", values: { n:
 !cel "data.open" } }`; plurals are `{ plural: n, cases: { one, other } }`).
 
-**Addresses.** An address inside the application (a page `path`, a `link`'s
-`href`, an `image`'s `src`, a `basePath`, a request target's `path`) is
-app-relative: `/` followed by anything but `/` or `\`. A `link` may also start `https://`, `http://` or `mailto:`; an `image`, `https://` or `http://`. It resolves under the mount: at `/admin`,
+**Addresses.** An address inside the application (a page `path`, a
+`Ui.Navigate`'s `href`, an `image`'s `src`, a `basePath`, a request target's
+`path`) is app-relative: `/` followed by anything but `/` or `\`. An `href` may also start `https://`, `http://` or `mailto:`; an `image`, `https://` or `http://`. It resolves under the mount: at `/admin`,
 `/api/reports` is requested at `/admin/api/reports`.
 
-Links, `href`s, menu items, `navigate` and request targets take a string, or
+An `href` or request target is a string, or
 `{ path, pathParams, queryParams }`: `path` a template whose `{name}`
 placeholders are whole segments (`/tasks/{id}`), filled from `pathParams`
 (accessors or literals, percent-encoded); `queryParams` the query (null and
-empty left out). A link's `path` may be a `!ref` to a `Ui.Page`. An unbound
+empty left out). An `href`'s `path` may be a `!ref` to a `Ui.Page`. An unbound
 placeholder or unused `pathParams` entry is refused by `telo check`. A
 parameter may read a nullable value: null leaves the address unresolved.
 
+**Where a press goes.** `to` holds a destination: `{ kind: Ui.Navigate, href }`
+moves to an address; `{ kind: Ui.OpenPage, page: !ref <page>, pathParams?,
+queryParams?, surface? }` opens a listed page over this one in a `Ui.Dialog` or
+`Ui.Drawer` (`surface` omitted: the one it is pressed in, else a dialog;
+`address: { name: post }` keeps it as `_telo.page.post`). `to` sits on
+`link`, menu items, `value`, `list` and table columns, relations,
+`Ui.CollectionOptions`, navigation `link` entries and `onSuccess`. A region —
+`box`, `stack`, `columns`, a listing's records, `CrudUi.Admin`'s rows — takes
+`press: { to, label }`, `label` a required text (`{ text: "Open {$title}",
+values: { title: !cel "row.title" } }`). A destination reads only the roots
+bound where it is written.
+
 **Per request.** In a page's `children` and a layout's regions, `when` and leaf values
-(`text`, `src`, `alt`, `markup`, `style`; not a link's `href`) may be `!cel`
+(`text`, `src`, `alt`, `markup`, `style`; never a `to`) may be `!cel`
 over `request.headers` (lower-case names; test with `in` first) and
 `request.ip`. Structure and every `ref` stay literal.
 
@@ -214,8 +225,8 @@ relations: { authorId: { collection: !ref authors } }
 A `Ui.CollectionSource` is a collection as the browser reaches it
 (`collection`, `basePath`), one per collection; a `Ui.CollectionPresentation`
 shows it (a relation becomes a name in a column, a filter's choices, a picker):
-`source`, and `relations: { <property>: { source, label, hint?, href?, search?,
-pageSize? } }` — `label`, `hint` and `href` read `row`, the related record. A
+`source`, and `relations: { <property>: { source, label, hint?, to?, search?,
+pageSize? } }` — `label`, `hint` and `to` read `row`, the related record. A
 presentation holds no keys: a related value is always the target's `key`.
 
 A `Ui.Listing` draws records: `presentation`, `model` (row shape), `filters`
@@ -224,7 +235,8 @@ A `Ui.Listing` draws records: `presentation`, `model` (row shape), `filters`
 `layout` (a kind under `Ui.ListingLayout`; default `Ui.TableLayout`, a column
 per model property but the key) and `compact` (the layout below `compactBelow`). Also `sort: { by?: { property,
 direction }, choosable }` (`choosable: false` fixes the order), `show: { count }` and
-`rowActionsDisplay` (`auto` | `inline` | `menu`).
+`rowActionsDisplay` (`auto` | `inline` | `menu`). `press` says what pressing a
+record does (editing then stays on its edit button).
 
 - Layouts: `Ui.TableLayout` (`columns`), `Ui.ListLayout`, `Ui.CardLayout`
   (`content`, `size`), `Ui.BoardLayout` (`groups`), `Ui.CalendarLayout` and
@@ -304,11 +316,9 @@ content: { type: composite, ref: !ref taskList }
 - `search: { pinned?, default? }` adds a text search (sent as `search`, first
   among the controls). Left out, a bar without `fields` has it when the
   collection declares `query.search`; a bar with `fields` only by writing it.
-- `Ui.SearchBoxPlacement` (`placeholder?`) draws the bar as one box: filters
-  are chips, suggestions offer the search and a filter per field. It takes no
-  `show`, `controls`, `summary` or `compact`. Tokens are typed as
-  `<property><op><value>` (`:` contains, else in, else eq; `=`; `>`, `>=`, `<`,
-  `<=`); commas split values under `in`; a relation is picked by name.
+- `Ui.SearchBoxPlacement` (`placeholder?`) draws the bar as one box, filters
+  as chips. It takes no
+  `show`, `controls`, `summary` or `compact`.
 
 ## Forms and where they open — `Ui.Form` and surfaces
 
@@ -396,7 +406,7 @@ onSuccess: { refreshes: [/api/reports] }
 ```
 
 The route answers the **action contract**: a 2xx with a JSON object valid
-against `outputModel` (read only when `result` or `navigate` does), and a
+against `outputModel` (read only when `result` or `onSuccess.to` does), and a
 problem for any failure. An `Http.Api` route's `request.schema.body` takes the
 JSON Schema inline (a `!ref` there passes `telo check` and fails at boot), so
 write the shape out and keep it equal to `inputModel`.
@@ -413,10 +423,9 @@ write the shape out and keep it equal to `inputModel`.
   { id: !cel "input.id" }`. An input read as exactly `input.<property>` is
   consumed: it travels in the target, not the body. `DELETE` sends no body and
   must consume every input property. A 2xx with no body (204) is a success
-  unless `result`, `navigate` or `refreshes` reads `result`.
-- `onSuccess.navigate` is an address over `result` and `input`: a declared
-  page moves within the app, an `https://` address replaces the page.
-  `onSuccess.refreshes` lists request targets; after a 2xx those, the target
+  unless `result`, `onSuccess.to` or `refreshes` reads `result`.
+- `onSuccess.to` is a destination over `result` and `input`;
+  `refreshes` lists request targets; after a 2xx those, the target
   and a listing's `basePath` are announced and every reader of exactly that
   path (`Ui.Data`, `Ui.Listing`, `Ui.Chat`) reads again. A literal segment may
   be `*` (one) or `**` (any): `/api/projects/{id}/**`.
@@ -472,8 +481,7 @@ drawn over `data`. It is a composite; place it on a page. A sign-in gate is a re
 
 - `loading` / `failure` are node trees; left out, `ui` fills them.
 - `reloadEvery: 30s` (at least `5s`; on `Ui.Data` and `Ui.Listing`) reads again
-  on a timer, keeping loaded pages, scroll and open forms; skipped while hidden
-  or a read is in flight.
+  on a timer.
 - `reloadOn: [focus]` reads again on window focus, `[unauthorized]` on a 401
   inside `content`.
 - A condition is `{ at, matches }`: `at` a plain chain over the roots in
@@ -497,16 +505,14 @@ One composite, no conversation list. A `Ui.ConversationSource` pairs a
 `Conversation.Conversation` (`ai-chat`'s) with its `basePath`; `Ui.Chat` names
 it plus `placeholder`, `starters` (a text, or `{ prompt, onChoose: send | fill }`),
 `show: { reasoning, toolDetail, usage, copy }`, `composer: { actions: inside | outside }`,
-`buttons` (`copy`, `edit`, `regenerate`, `attach`, `send`, `stop`:
-`Ui.TextButton`/`Ui.IconButton { icon?, label }`) and `header` (nodes over
+`buttons` (`Ui.TextButton` / `Ui.IconButton`) and `header` (nodes over
 `conversation` and `chat`'s commands `exportTranscript`, `copyTranscript`,
 `stop`, `newConversation`; default a `bar` holding export, `[]` none).
 
-- `conversation: { parameter: conversation }` follows that query parameter
-  (absent: a new conversation; a created one is written back); omitted, the
-  choice is in memory. `refreshes: [/api/chat/conversations]` re-reads that
+- `conversation: { parameter: conversation }` follows that query parameter;
+  omitted, the choice is in memory. `refreshes: [/api/chat/conversations]` re-reads that
   path when a send is admitted and a turn ends.
-- Upload shows only when the endpoint offers attachments. Mount
+- Mount
   `{ kind: Chat.Api, conversation: !ref … }` at the same `basePath`; import
   `ai-chat` as `Chat`, never `AiChat`.
 - Compose the list: a `Ui.SplitView`, `aside.actions` a button `link` (New
@@ -522,7 +528,7 @@ A composite placing `aside` by `content`; the same `Ui.Aside` shape a layout's
 `aside` is: `{ side` (`start` | `end`), `size` (`small` | `medium` | `large`),
 `label` (required), `collapse: { collapsed?, state: { key, store } }`,
 `compact` (default a `Ui.Drawer` below `compactBelow`), `frame` (`flush` |
-`framed`), `toggle` (`Ui.IconButton` | `Ui.TextButton`), `actions?`, `content }`. The aside makes no request while hidden.
+`framed`), `toggle` (`Ui.IconButton` | `Ui.TextButton`), `actions?`, `content }`.
 Trees hold no root: put `value` / `list` in a composite that declares one.
 
 ## An admin screen over one table — `crud` and `crud-ui`
@@ -543,7 +549,7 @@ declaration. `crud` imports no `ui`; `crud-ui` imports
 - `CrudUi.Admin` is the whole screen (filter bar, sortable paged listing,
   create and edit forms, confirmed delete) from `source` and, optionally,
   `relations`, `filters` (the bar's `policy`), `create` and `edit` (`{ surface?,
-  afterSubmit?, unsaved? }`), `paging`, `layout` and `compact`; a key left out
+  afterSubmit?, unsaved? }`), `press`, `paging`, `layout` and `compact`; a key left out
   takes the listing's default.
 
 ```yaml
@@ -603,9 +609,9 @@ shape and a `Ui.Filters` holding it.
   `react`, `react/jsx-runtime`, `react-dom` and `@telorun/ui-react` `external`. `useHost()` from
   `@telorun/ui-react` gives `location`, `navigate`, `href`, `fetch`,
   `notifyChanged(path)` and `onChanged(path, listener)`.
-- **Your own listing layout.** A component for `ui_react_layouts-1` is drawn by
+- **Your own listing layout.** A component for `ui_react_layouts-2` is drawn by
   `Ui.ComponentLayout` (`component`, `props`, the `groups` / `span` / `parent`
-  plan).
+  plan); it places each `record.press` first in the element it covers.
 - **Reusable sections.** `Ui.View` holds one node tree (`content`).
 
 ## Manifests wire no events
@@ -633,7 +639,5 @@ and request its documents:
 
 ## Before you finish
 
-- `telo check` is clean: it reports an unknown column or filter, a layout it
-  cannot serve, a key a surface does not take, a malformed address, an unbound
-  path parameter and a page no `pages` entry lists.
+- `telo check` is clean.
 - Every listing, filter bar and action names a route answering its contract.

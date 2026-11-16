@@ -113,7 +113,7 @@ expect:
     - code: CEL_UNKNOWN_FIELD
       message: "Ui.Listing/commands: !cel: 'params.name' is not defined (available: none) (as Ui.Page/runners references it)"
     - code: PATH_PARAMETER_UNBOUND
-      message: "Ui.Page/inbox: the template 'path: /plans/{id}' of 'plan' (named at 'children[3].href.path') reads '{id}'"
+      message: "Ui.Page/inbox: the template 'path: /plans/{id}' of 'plan' (named at 'href.path') reads '{id}'"
     - code: SCHEMA_VIOLATION
       message: "Ui.Page/textBeside: /path must match pattern"
     - code: SCHEMA_VIOLATION

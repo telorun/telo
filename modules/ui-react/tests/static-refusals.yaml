@@ -68,7 +68,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: computedChildrenAtRuntime }
 source: ./__fixtures__/invalid/computed-children/telo.yaml
-expect: { errors: [{ code: REF_SLOT_COMPUTED, message: "UiReact.App/computed: 'children: !cel \"[]\"' computes a value that holds the reference slot 'children[].button'. CEL values are data, so the reference cannot survive the expression. Write the slot itself as '!ref'." }], runFails: "ERR_REF_SLOT_COMPUTED" }
+expect: { errors: [{ code: REF_SLOT_COMPUTED, message: "UiReact.App/computed: 'children: !cel \"[]\"' computes a value that holds the reference slot 'children[].to'. CEL values are data, so the reference cannot survive the expression. Write the slot itself as '!ref'." }], runFails: "ERR_REF_SLOT_COMPUTED" }
 ---
 kind: Assert.Manifest
 metadata: { name: duplicatePath }
@@ -131,7 +131,7 @@ expect:
     - code: SCHEMA_VIOLATION
       message: "UiReact.App/offsitePath: /pages/0/path must match pattern"
     - code: SCHEMA_VIOLATION
-      message: "UiReact.App/offsiteLink: /pages/0/children/0/href must match a schema in anyOf"
+      message: "UiReact.App/offsiteLink: /pages/0/children/0/to/href must match pattern"
 ---
 kind: Telo.Sequence
 metadata: { name: ruleRuns }
@@ -257,8 +257,8 @@ source: ./__fixtures__/theme-control-disjoint/telo.yaml
 expect: { errors: [], runs: true }
 ---
 # A page reference reachable from the application, written in a navbar, a link,
-# a navigation column in the aside, another module's pane and a library's
-# navbar. The library's page the application lists through its alias is never
+# a page a link opens, a navigation column in the aside, another module's pane
+# and a library's navbar. The library's page the application lists through its alias is never
 # reported. There is no runtime twin: the running application answers such a
 # link with the not-found page.
 kind: Assert.Manifest
@@ -275,10 +275,12 @@ expect:
     - code: RESOURCE_RULE_VIOLATED
       message: "UiReact.App/draft: names a page the application does not list in its pages, so it leads nowhere"
     - code: RESOURCE_RULE_VIOLATED
+      message: "UiReact.App/draft: names a page the application does not list in its pages, so it leads nowhere"
+    - code: RESOURCE_RULE_VIOLATED
       message: "(the Ui.Page UiReactUnroutedDocs.guide, reached through Docs.nav)"
 ---
-# One finding for each of the five references: the count is what a message
-# alone, identical for four of them, cannot pin.
+# One finding for each of the six references: the count is what a message
+# alone, identical for five of them, cannot pin.
 kind: Telo.Sequence
 metadata: { name: unroutedPageCount }
 steps:
@@ -288,7 +290,7 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual: !cel "steps.check.result.codes"
-      expected: [RESOURCE_RULE_VIOLATED, RESOURCE_RULE_VIOLATED, RESOURCE_RULE_VIOLATED, RESOURCE_RULE_VIOLATED, RESOURCE_RULE_VIOLATED]
+      expected: [RESOURCE_RULE_VIOLATED, RESOURCE_RULE_VIOLATED, RESOURCE_RULE_VIOLATED, RESOURCE_RULE_VIOLATED, RESOURCE_RULE_VIOLATED, RESOURCE_RULE_VIOLATED]
 ---
 # `ui` imported as `Kit`: the navigation rules a navbar inherits and the page
 # check reach every entry all the same.

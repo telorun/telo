@@ -6,7 +6,7 @@
     ],
     "structure": [
       "box", "stack", "columns", "column", "text", "badge", "link", "image", "svg", "value", "time", "list",
-      "list-heading", "list-empty", "data", "bar", "bar-start", "bar-center", "bar-end", "command", "button"
+      "list-heading", "list-empty", "data", "bar", "bar-start", "bar-center", "bar-end", "command", "button", "press"
     ],
     "markdown": [
       "markdown", "markdown-paragraph", "markdown-heading", "markdown-quote", "markdown-list",
@@ -167,6 +167,9 @@
     { "part": "tab-bar", "properties": ["position", "bottom"], "because": "a tab bar stays at the bottom edge" },
     { "part": "glyph", "properties": ["background-color", "mask-image"], "because": "a glyph is its file's shape in the colour of the text around it" },
     { "part": "page", "properties": ["max-width", "margin-inline"], "because": "a contained page is no wider than the width.page token, centred" },
+    { "part": "press", "properties": ["position", "inset", "z-index"], "because": "a press spans the element it covers, beneath the interactive content after it" },
+    { "holding": "press", "properties": ["position"], "because": "the element a press covers is its containing block" },
+    { "after": "press", "interactive": ["a", "button", "input", "select", "textarea", "label", "summary", "[tabindex]", "[contenteditable]"], "properties": ["position"], "because": "interactive content after a press paints above it and stays a target of its own" },
     { "part": "header", "properties": ["display", "grid-column", "padding-inline"], "because": "the header spans the application, above the aside and the page, and its content holds the inset" },
     { "part": "header-content", "properties": ["padding-inline"], "because": "a contained header's content starts and ends where a contained page does" },
     { "part": "footer", "properties": ["display", "grid-column", "padding-inline"], "because": "the footer spans the application, below the aside and the page, and its content holds the inset" },

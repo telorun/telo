@@ -1,5 +1,6 @@
 # Page references the application does not list, written in a navbar, a link,
-# a navigation column, another module's pane and a library's navbar.
+# a page a link opens, a navigation column, another module's pane and a
+# library's navbar.
 kind: Telo.Library
 metadata:
   name: UiReactUnroutedPage
@@ -51,6 +52,12 @@ path: /fifth
 title: Fifth
 children: []
 ---
+kind: Ui.Page
+metadata: { name: sixth }
+path: /sixth
+title: Sixth
+children: []
+---
 kind: UiReact.App
 metadata: { name: draft }
 title: Draft
@@ -77,4 +84,5 @@ layout:
           items:
             - { type: page, page: !ref fourth }
   footer:
-    - { type: link, text: Fifth, href: { path: !ref fifth } }
+    - { type: link, text: Fifth, to: { kind: Ui.Navigate, href: { path: !ref fifth } } }
+    - { type: link, text: Sixth, to: { kind: Ui.OpenPage, page: !ref sixth } }

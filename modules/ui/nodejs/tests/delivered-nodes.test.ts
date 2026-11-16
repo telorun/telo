@@ -2,23 +2,22 @@ import type { ResourceContext } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
 import { judgedComposite, producedNode, RequestNodes, type EvaluatedNode } from "../src/delivered-nodes.js";
 
-/** Refuses a `link` with no `href`, a menu holding one, and an item that
+/** Refuses a `link` with no `to`, a menu holding one, and an item that
  *  still carries `when`; records everything it was asked about. */
 function validator() {
   const judged: unknown[] = [];
   return {
     judged,
-    validate(node: { type: string; href?: unknown; items?: { href?: unknown; when?: unknown }[] }) {
+    validate(node: { type: string; to?: unknown; items?: { to?: unknown; when?: unknown }[] }) {
       judged.push(node);
-      if (node.type === "link" && typeof node.href !== "string") throw new Error("must have an href");
-      if (node.items?.some((item) => typeof item.href !== "string")) throw new Error("an item must have an href");
+      const held = (to: unknown) => to !== null && typeof to === "object";
+      if (node.type === "link" && !held(node.to)) throw new Error("must have a to");
+      if (node.items?.some((item) => !held(item.to))) throw new Error("an item must have a to");
       if (node.items?.some((item) => "when" in item)) throw new Error("an item takes no when");
     },
     isValid: () => true,
   };
 }
-
-const sizeOf = (node: unknown): number => JSON.stringify(node).length;
 
 describe("a page's nodes for a request", () => {
   it("are each judged once, a container with its children already judged", () => {
@@ -37,7 +36,8 @@ describe("a page's nodes for a request", () => {
     // Seven nodes are produced; each is handed over once, with nothing beneath
     // it but stand-ins for what was already judged.
     expect(check.judged).toHaveLength(7);
-    expect(Math.max(...check.judged.map(sizeOf))).toBeLessThan(120);
+    const beneath = (node: unknown) => JSON.stringify((node as { children?: unknown }).children ?? []);
+    expect(check.judged.filter((node) => /"type":"(text|link|box)"/.test(beneath(node)))).toEqual([]);
     expect(refused).toEqual(["link"]);
     expect(produced).toEqual({
       type: "stack",
@@ -100,11 +100,12 @@ describe("a page's nodes for a request", () => {
     const produced = (ref: number) =>
       producedNode({ type: "composite", ref, shown: condition("query") }, (index) => composites[index as number], validator(), () => {});
     expect(produced(0)).toEqual({ type: "text", text: "plain", shown: condition("query"), fill: false });
-    expect(produced(1)).toEqual({ type: "box", children: [composites[1]], shown: condition("query"), fill: false });
+    expect(produced(1)).toEqual({ type: "box", children: [composites[1]], press: null, shown: condition("query"), fill: false });
   });
 
   it("keep a menu's items delivered for this request, leave out a menu with none, and replace one holding an item not valid", () => {
-    const link = (text: string, when?: boolean, href: string | null = "/x") => ({ type: "link", text, href, ...(when === undefined ? {} : { when }) });
+    const to = { type: "navigate", href: { path: { value: "/x" }, pathParams: {}, queryParams: {} } };
+    const link = (text: string, when?: boolean, destination: unknown = to) => ({ type: "link", text, to: destination, ...(when === undefined ? {} : { when }) });
     const produce = (items: Record<string, unknown>[]) =>
       producedNode({ type: "menu", text: "Theme", items, when: true }, () => undefined, validator(), () => {});
     expect(produce([link("Default", true), link("Brand", false), link("Radix")])).toEqual({

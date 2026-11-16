@@ -1,0 +1,7 @@
+units:
+  modules/crud-ui: Added
+body: "`CrudUi.Admin.press` says what pressing a record does — `{ to, label }`, the `ui`
+  module's press — and is handed to the admin's listing whole, its `row` one record of
+  the collection's list shape as a layout's is. With `press` written, editing a record
+  is its edit button; without it, pressing a record opens the edit form as before.
+  Related records' `relations` entries take `to` where they took `href`."

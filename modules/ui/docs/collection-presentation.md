@@ -8,7 +8,7 @@ the same records name one presentation.
 | Field | | |
 | --- | --- | --- |
 | `source` | required | the [`Ui.CollectionSource`](collection-source.md) the records are read from, `!ref` or inline |
-| `relations` | none | `<property>: { source, label, hint?, href?, search?, pageSize? }`, the shape `Ui.Relations` |
+| `relations` | none | `<property>: { source, label, hint?, to?, search?, pageSize? }`, the shape `Ui.Relations` |
 
 ```yaml
 kind: Ui.CollectionPresentation
@@ -34,7 +34,7 @@ with `in`.
 | `source` | required | the [`Ui.CollectionSource`](collection-source.md) the related records are read from; its collection is the relation's target |
 | `label` | required | how a related record is shown: a path into it (`row.name`) or a fixed text |
 | `hint` | none | text shown beside the label, a path into the record |
-| `href` | none | where a related record links to: an [address](nodes.md#addresses) over `row`, the related record — a string, or `{ path, pathParams, queryParams }` such as `{ path: "/authors/{id}", pathParams: { id: !cel "row.id" } }` |
+| `to` | none | where a related record's label goes: a [destination](presses.md) over `row`, the related record, such as `{ kind: Ui.OpenPage, page: !ref authorPage, pathParams: { id: !cel "row.id" } }` |
 | `search` | none | the filter what the viewer types is sent as when choosing one: a `{ property, operator }` pair the target collection accepts |
 | `pageSize` | `25` | related records per request, 1–100: a page of choices, and at most this many keys per label lookup |
 
@@ -48,7 +48,7 @@ From one relation:
   unless a field is written for it.
 
 A relation the presentation does not present is shown, filtered and entered
-by its key. `label`, `hint` and `href` read `row`, the related record, typed
+by its key. `label`, `hint` and `to` read `row`, the related record, typed
 from the `model` of the entry's own source's collection: `row.nmae` is refused
 by `telo check` where it is written, naming the members the record has.
 

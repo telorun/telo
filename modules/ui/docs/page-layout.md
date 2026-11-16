@@ -21,7 +21,7 @@ header:
           - { type: page, page: !ref home }
           - { type: page, page: !ref reports, when: !cel "'x-role' in request.headers" }
       end:
-        - { type: link, text: Sign in, href: { path: !ref signIn } }
+        - { type: link, text: Sign in, to: { kind: Ui.Navigate, href: { path: !ref signIn } } }
 aside:
   label: Shortcuts
   collapse: { state: { key: shortcuts, store: { kind: Ui.LocalStore } } }
@@ -32,7 +32,7 @@ aside:
       state: { key: shortcuts, store: { kind: Ui.LocalStore } }
       navigation:
         items:
-          - { type: link, text: Status, href: "https://status.acme.test" }
+          - { type: link, text: Status, to: { kind: Ui.Navigate, href: "https://status.acme.test" } }
 footer:
   - { type: text, text: Acme Corporation, style: muted }
 ```
@@ -120,7 +120,7 @@ answers `{ width, header, aside?, footer }`:
       "type": "navbar",
       "title": { "text": "Acme", "context": null, "lang": "en", "computed": false },
       "start": [],
-      "end": [ { "type": "link", "text": { "…": "…" }, "href": { "path": { "value": "/sign-in" }, "pathParams": {}, "queryParams": {} }, "button": null, "fill": false } ],
+      "end": [ { "type": "link", "text": { "…": "…" }, "to": { "type": "navigate", "href": { "path": { "value": "/sign-in" }, "pathParams": {}, "queryParams": {} } }, "button": null, "fill": false } ],
       "navigation": { "items": [ { "type": "page", "key": "home", "path": "/", "text": { "text": "Home", "context": null, "lang": "und", "computed": false } } ] },
       "placement": { "type": "header", "compact": { "type": "overlay", "surface": { "type": "drawer", "side": "start", "size": "medium", "modal": true, "dismiss": { "escape": true, "outside": true, "closeButton": true } } } },
       "fill": false
