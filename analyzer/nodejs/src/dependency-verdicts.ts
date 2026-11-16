@@ -1,17 +1,18 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { AnalysisRegistry } from "./analysis-registry.js";
 import { StaticAnalyzer } from "./analyzer.js";
-import { collectModuleDocuments, flattenForAnalyzer } from "./flatten-for-analyzer.js";
+import { flattenForAnalyzer } from "./flatten-for-analyzer.js";
+import { registerLoadedGraph } from "./graph-registration.js";
 import { importsOfLibrary, libraryDocumentOf, reachableByImports } from "./dependency-configurations.js";
 import { partitionAnalysisDiagnostics } from "./graph-diagnostics.js";
 import type { ImportEdge, LoadedGraph, LoadedModule, ScopedImportEdge } from "./loaded-types.js";
+import { libraryMigrationDiagnostics, withLibraryMigrationsApplied } from "./library-migrations/report.js";
 import { isModuleKind } from "./module-kinds.js";
 import { moduleOrigins, reachedModuleSources, type ModuleOrigin } from "./module-origin.js";
 import { importAnchoredDiagnostic, importAnchoredMessage, importReach, type ReachingImport } from "./reaching-import.js";
 import type { HostVersions } from "./requires-block.js";
 import { isTaggedSentinel } from "@telorun/templating";
 import { FOUND_HEAD, foundEntryOf } from "./module-file-existence.js";
-import { collectApplicationSources } from "./child-application.js";
 import { sha256Base64Url } from "./sources/integrity.js";
 import { TELO_RUNNING_SURFACE } from "./telo-version.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
@@ -382,6 +383,7 @@ export function libraryGraph(graph: LoadedGraph, librarySource: string): LoadedG
     importEdges,
     scopedImportEdges,
     overrides: graph.overrides,
+    migrate: graph.migrate,
     // A migration reports only for the entry's own files: here the library's.
     migrationDiagnostics: [entry.owner, ...entry.partials].flatMap((file) => file.migrations.diagnostics),
     versionDiagnostics: graph.versionDiagnostics.filter(inClosure),
@@ -389,6 +391,9 @@ export function libraryGraph(graph: LoadedGraph, librarySource: string): LoadedG
     parseDiagnostics: graph.parseDiagnostics.filter(inClosure),
     errors: graph.errors.filter((e) => e.fromSource !== null && files.has(e.fromSource)),
     applicationSources: new Map([...(graph.moduleApplicationSources ?? [])].filter(([file]) => files.has(file))),
+    // The consuming graph's migrated copies are already in `modules`; the
+    // stage is not run again over them.
+    ...(graph.libraryMigrations ? { libraryMigrations: graph.libraryMigrations } : {}),
   };
 }
 
@@ -399,19 +404,22 @@ const RULE_EXERCISE_CODES: ReadonlySet<string> = new Set(["RESOURCE_RULE_UNEXERC
 /** The library's own verdict over its re-rooted graph: its migration findings
  *  and its live analysis, as `telo check <library>` reports them. */
 function judgeLibrary(graph: LoadedGraph, analyzer: StaticAnalyzer, hostVersions?: HostVersions): DependencyVerdict {
-  const manifests = flattenForAnalyzer(graph);
-  const analysis = analyzer.analyze(
-    manifests,
-    {
-      moduleDocuments: collectModuleDocuments(graph),
-      applicationSources: collectApplicationSources(graph),
-      ...(hostVersions ? { hostVersions } : {}),
-    },
+  const { registration, manifests, moduleDocuments, applicationSources } = registerLoadedGraph(
+    graph,
     new AnalysisRegistry(),
+  );
+  const analysis = analyzer.analyzeRegistered(
+    manifests,
+    { moduleDocuments, applicationSources, ...(hostVersions ? { hostVersions } : {}) },
+    registration,
   );
   const module = libraryDocumentOf(graph, graph.rootSource)!.metadata!.name as string;
   return {
     module,
-    diagnostics: [...graph.migrationDiagnostics, ...partitionAnalysisDiagnostics(graph, analysis).live],
+    diagnostics: [
+      ...graph.migrationDiagnostics,
+      ...libraryMigrationDiagnostics(graph),
+      ...partitionAnalysisDiagnostics(graph, withLibraryMigrationsApplied(graph, analysis)).live,
+    ],
   };
 }

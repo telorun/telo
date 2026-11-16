@@ -1,0 +1,11 @@
+{
+  "diagnostics": [
+    {
+      "code": "MIGRATION_TYPE_UNKNOWN",
+      "severity": 1,
+      "file": "telo.yaml",
+      "path": "migrations.UI_GONE_RENAMED.rules[0].rewrite",
+      "message": "Telo.Library/Ui: `rewrite: Self.Gone` names no type Ui declares. Name the current type that now holds the position, or, for a removed kind, give it a replacement with a rule writing `set: { kind: Self.<Kind> }` at its root."
+    }
+  ]
+}

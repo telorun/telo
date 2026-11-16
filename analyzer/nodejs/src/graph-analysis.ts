@@ -1,7 +1,6 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { AnalysisRegistry } from "./analysis-registry.js";
 import { StaticAnalyzer } from "./analyzer.js";
-import { collectApplicationSources } from "./child-application.js";
 import {
   analyzeDependencies,
   withoutCoveredArtifactWarnings,
@@ -10,8 +9,9 @@ import {
   type DependencyAnalysisOptions,
 } from "./dependency-verdicts.js";
 import { unionDiagnostics } from "./diagnostic-identity.js";
-import { collectModuleDocuments, flattenForAnalyzer } from "./flatten-for-analyzer.js";
+import { registerLoadedGraph } from "./graph-registration.js";
 import { assembleGraphDiagnostics } from "./graph-diagnostics.js";
+import { libraryMigrationDiagnostics, withLibraryMigrationsApplied } from "./library-migrations/report.js";
 import type { LoadedGraph } from "./loaded-types.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
@@ -46,18 +46,15 @@ export async function analyzeLoadedGraph(
 ): Promise<GraphAnalysis> {
   const analyzer = options.analyzer ?? new StaticAnalyzer();
   const registry = options.registry ?? new AnalysisRegistry();
-  const manifests = flattenForAnalyzer(graph);
-  const analysis = analyzer.analyze(
+  const { registration, manifests, moduleDocuments, applicationSources } = registerLoadedGraph(graph, registry);
+  const analysis = analyzer.analyzeRegistered(
     manifests,
-    {
-      moduleDocuments: collectModuleDocuments(graph),
-      applicationSources: collectApplicationSources(graph),
-      ...(options.hostVersions ? { hostVersions: options.hostVersions } : {}),
-    },
-    registry,
+    { moduleDocuments, applicationSources, ...(options.hostVersions ? { hostVersions: options.hostVersions } : {}) },
+    registration,
   );
   const dependencies = await analyzeDependencies(graph, { ...options, analyzer, entryManifests: manifests });
-  const assembled = assembleGraphDiagnostics(graph, withoutCoveredDependencyFindings(analysis, dependencies));
+  const entryFindings = [...libraryMigrationDiagnostics(graph), ...withLibraryMigrationsApplied(graph, analysis)];
+  const assembled = assembleGraphDiagnostics(graph, withoutCoveredDependencyFindings(entryFindings, dependencies));
   const diagnostics = unionDiagnostics(
     assembled.diagnostics,
     withoutCoveredArtifactWarnings(dependencies, assembled.diagnostics),

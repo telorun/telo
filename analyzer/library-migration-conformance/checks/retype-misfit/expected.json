@@ -1,0 +1,18 @@
+{
+  "diagnostics": [
+    {
+      "code": "REFERENCE_KIND_MISMATCH",
+      "severity": 1,
+      "file": "telo.yaml",
+      "path": "children[0].query",
+      "message": "V.Page/summary: reference at 'children[0].query' → 'V.View' (resolved: 'Views.View') does not match required 'Views.Query'"
+    },
+    {
+      "code": "VIEWS_DATA_REPLACED",
+      "severity": 2,
+      "file": "telo.yaml",
+      "path": "resources.data",
+      "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
+    }
+  ]
+}

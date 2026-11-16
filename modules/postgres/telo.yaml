@@ -23,9 +23,16 @@ requires:
   # `Connection.access` observes it (`observes:`). 0.116.0 rejects the document
   # kind (`UNDEFINED_KIND`) and the `observes` key (`X_TELO_REF_UNKNOWN_KEY`).
   # Verified by execution against 0.116.0.
-  telo: ">=0.133.0"
+  telo: ">=unreleased"
 imports: { Sql: ../sql }
 exports: { kinds: [DatabaseAccess, Connection, Table, Enum, Schema] }
+migrations:
+  SQL_BEFORE_MIGRATIONS_RENAMED:
+    reason: "`beforeMigrations:` is now `prepare:`; nothing re-runs, because the ledger stores the migration key alone."
+    rules:
+      - rewrite: Self.Schema
+        match: { type: object, required: [beforeMigrations] }
+        move: { /beforeMigrations: /prepare }
 ---
 kind: Telo.NeedType
 metadata:

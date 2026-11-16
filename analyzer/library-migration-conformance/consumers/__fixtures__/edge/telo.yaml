@@ -1,0 +1,48 @@
+kind: Telo.Library
+metadata: { name: Edge }
+lang: en
+migrations:
+  EDGE_A_TO_B:
+    reason: A became B.
+    rules:
+      - { rewrite: Self.Cycle, match: { type: object, required: [a] }, move: { /a: /b } }
+  EDGE_B_TO_A:
+    reason: B became A.
+    rules:
+      - { rewrite: Self.Cycle, match: { type: object, required: [b] }, move: { /b: /a } }
+  EDGE_X_RENAMED:
+    reason: X is Y.
+    rules:
+      - { rewrite: Self.Pair, match: { type: object, required: [x] }, move: { /x: /y } }
+      - { rewrite: Self.Leftover, match: { type: object, required: [old] }, set: { fresh: 1 } }
+      - { rewrite: Self.Clash, match: { type: object, required: [left] }, move: { /left: /both, /right: /both } }
+      - { rewrite: Self.Misspelled, match: { type: object, required: [label] }, remove: [/label], set: { tittle: Untitled } }
+  EDGE_P_RENAMED:
+    reason: P is Q.
+    rules:
+      - { rewrite: Self.Pair, match: { type: object, required: [p] }, move: { /p: /q } }
+---
+kind: Telo.Definition
+metadata: { name: Cycle }
+capability: Telo.Invocable
+schema: { type: object, additionalProperties: false, properties: { c: { type: integer } } }
+---
+kind: Telo.Definition
+metadata: { name: Pair }
+capability: Telo.Invocable
+schema: { type: object, additionalProperties: false, properties: { y: { type: integer }, q: { type: integer }, keep1: {}, keep2: {}, keep3: {}, keep4: {}, keep5: {} } }
+---
+kind: Telo.Definition
+metadata: { name: Leftover }
+capability: Telo.Invocable
+schema: { type: object, additionalProperties: false, properties: { fresh: { type: integer } } }
+---
+kind: Telo.Definition
+metadata: { name: Clash }
+capability: Telo.Invocable
+schema: { type: object, additionalProperties: false, properties: { both: { type: integer } } }
+---
+kind: Telo.Definition
+metadata: { name: Misspelled }
+capability: Telo.Invocable
+schema: { type: object, additionalProperties: false, properties: { title: { type: string } } }

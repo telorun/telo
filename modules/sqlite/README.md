@@ -220,3 +220,7 @@ Foreign keys are described in [Foreign keys](docs/foreign-keys.md).
 
 See [Declarative schema](https://hub.telo.run/module/oci/ghcr.io/telorun/sql/) for tombstoning,
 reclamation, renames, seeds and the ledger rule.
+
+## Legacy spelling
+
+`beforeMigrations:` on a `Schema` is now `prepare:`. The module declares the rename itself (`SQL_BEFORE_MIGRATIONS_RENAMED`), so a manifest still using the old key loads migrated under any import alias and `telo check` reports a warning on its own line; `telo migrate` rewrites the file. Nothing re-runs, because the ledger stores the migration key alone.

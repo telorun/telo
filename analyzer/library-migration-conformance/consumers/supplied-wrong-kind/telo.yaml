@@ -1,0 +1,12 @@
+kind: Telo.Application
+metadata: { name: SuppliedWrongKind }
+lang: en
+imports:
+  V: ../__fixtures__/views
+  Panel: { source: ./panel, resources: { data: !ref pg } }
+targets: []
+---
+kind: V.Page
+metadata: { name: pg }
+path: /
+children: [{ type: text, text: Hello }]

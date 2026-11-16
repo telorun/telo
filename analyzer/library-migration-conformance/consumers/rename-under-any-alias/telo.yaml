@@ -1,0 +1,16 @@
+kind: Telo.Application
+metadata: { name: Accounts }
+lang: en
+imports: { Db: ../__fixtures__/sqlite }
+targets: []
+---
+kind: Db.Schema
+metadata: { name: schema }
+tables: [users]
+beforeMigrations:
+  20260501_backfill_names: { statement: "UPDATE users SET name = '' WHERE name IS NULL" }
+---
+kind: Db.Schema
+metadata: { name: both }
+beforeMigrations: { a: { statement: "SELECT 1" } }
+prepare: { b: { statement: "SELECT 2" } }

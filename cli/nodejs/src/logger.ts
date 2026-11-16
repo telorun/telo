@@ -1,4 +1,9 @@
-import type { AnalysisDiagnostic, DiagnosticFix, LoadedGraph } from "@telorun/analyzer";
+import type {
+  AnalysisDiagnostic,
+  DiagnosticFix,
+  LibraryMigrationDiagnosticData,
+  LoadedGraph,
+} from "@telorun/analyzer";
 import { DiagnosticSeverity, describeModuleSource, diagnosticFix, locateDiagnostic } from "@telorun/analyzer";
 import {
   describeBlockedGroup,
@@ -74,6 +79,26 @@ export function resolveLocation(
   return parts && `${parts.file}:${parts.line}:${parts.column}`;
 }
 
+/** An analysis diagnostic's severity as `telo check` prints and reports it. */
+export type JsonSeverity = "error" | "warning" | "info" | "hint";
+
+function severityOf(d: AnalysisDiagnostic): JsonSeverity {
+  const severity = d.severity ?? DiagnosticSeverity.Warning;
+  if (severity <= DiagnosticSeverity.Error) return "error";
+  if (severity === DiagnosticSeverity.Information) return "info";
+  if (severity === DiagnosticSeverity.Hint) return "hint";
+  return "warning";
+}
+
+/** Where `telo migrate` is pointed to apply a library migration to the module
+ *  owning `modulePath`: the entry's own file as given, another module by its
+ *  directory when its owner is a `telo.yaml`. */
+function migrateTargetOf(modulePath: string, graph: LoadedGraph): string {
+  const shown = displaySourcePath(modulePath);
+  if (modulePath === graph.rootSource || shown.includes("://")) return shown;
+  return path.basename(shown) === "telo.yaml" ? path.dirname(shown) || "." : shown;
+}
+
 /** One diagnostic as `-o json` reports it. The shape is the machine contract
  *  that replaces parsing the prose form: `code` is what a caller branches on,
  *  and the location is pre-resolved because deriving it needs the loaded graph,
@@ -82,7 +107,7 @@ export interface JsonDiagnostic {
   file: string;
   line: number;
   column: number;
-  severity: "error" | "warning";
+  severity: JsonSeverity;
   code?: string;
   message: string;
   /** `<kind>/<name>` of the resource the diagnostic is pinned to. */
@@ -258,14 +283,26 @@ export function formatAnalysisDiagnostics(
       line: 1,
       column: 1,
     };
-    const isError = (d.severity ?? DiagnosticSeverity.Warning) <= DiagnosticSeverity.Error;
-    const severityLabel = isError ? log.error("error") : log.warn("warning");
+    const severity = severityOf(d);
+    const isError = severity === "error";
+    const severityLabel = isError ? log.error(severity) : log.warn(severity);
     const code = d.code ? `  ${log.dim(String(d.code))}` : "";
+    const migration = (d.data as { libraryMigration?: LibraryMigrationDiagnosticData } | undefined)
+      ?.libraryMigration;
 
     // Silent under `-o json`: the structured payload carries the same
     // diagnostics with their location resolved, so printing here too would
     // interleave prose into a document a consumer parses.
-    out.line(`${parts.file}:${parts.line}:${parts.column}  ${severityLabel}  ${d.message}${code}`);
+    if (migration && !isError) {
+      // A library migration that applied names the library responsible and the
+      // command that writes it, each on a line of its own, then its code.
+      out.line(`${parts.file}:${parts.line}:${parts.column}  ${severityLabel}  ${d.message}`);
+      out.line(`declared by ${migration.module} (${displaySourcePath(migration.source)})`);
+      out.line(`run \`telo migrate ${migrateTargetOf(migration.modulePath, graph)}\` to apply`);
+      if (d.code) out.line(log.dim(String(d.code)));
+    } else {
+      out.line(`${parts.file}:${parts.line}:${parts.column}  ${severityLabel}  ${d.message}${code}`);
+    }
 
     // stdout under `-o json` is the machine surface, and a repair the analyzer
     // already computed is the most actionable thing on it — dropping it forced
@@ -279,7 +316,7 @@ export function formatAnalysisDiagnostics(
       | undefined;
     collected.push({
       ...parts,
-      severity: isError ? "error" : "warning",
+      severity,
       ...(d.code === undefined ? {} : { code: String(d.code) }),
       message: d.message,
       ...(stamp?.resource ? { resource: `${stamp.resource.kind}/${stamp.resource.name}` } : {}),

@@ -299,13 +299,24 @@ ref-slot-scalar-type  modules/mine/telo.yaml  3 rewrites
 3 rewrites in 1 file. Imported modules were not touched.
 ```
 
-A rewrite the loader applies in memory can still be unwritable in place — a flow-style sequence has no item line to extend, a block scalar's span covers the newline that ended its mapping entry, and two rewrites whose byte spans overlap cannot both be spliced. Those locations are reported on stderr rather than skipped silently, since the diagnostic that sent you here says to run this command; each needs a hand edit:
+`telo migrate` also applies the migrations the libraries you import declare about their own vocabulary (`migrations:` on a `Telo.Library`), over the whole import closure, writing only the named module's own files. A path may name a Library as well as an Application; a library is repaired by naming it, never through a consumer.
+
+Inside a rewritten node, an entry kept at the same key or index with an equal value keeps its text byte for byte; anything rendered fresh loses its comments, and each is named on stderr:
 
 ```text
-!  ref-slot-scalar-type  modules/mine/telo.yaml  targets  could not be rewritten in place (the YAML there cannot carry the edit) — fix it by hand
+  telo.yaml:18:1  comment dropped: # Backfill before `name` becomes NOT NULL.
 ```
 
-Under `-o json` the payload is `{ ok, rewrites, unwritable, files: [{ file, rewrites: [{ migration, count }], unwritable: [{ migration, path }] }] }`.
+A rewrite that cannot be written in place — a block scalar's span, a node holding an anchor or an alias, or a hand-over group with such a member — is left as written and reported on stderr with its reason; each needs a hand edit:
+
+```text
+untagged-interpolation  telo.yaml
+  not written: telo.yaml:12:20 (/targets/0/inputs/url) sits in a block scalar, which cannot carry the edit. Fix it by hand.
+```
+
+Every node that converged and is writable is written; the command exits `1` while any `MIGRATION_FAILED` remains in the loaded graph or anything is not written, and `0` otherwise. `telo upgrade` moves pins only: upgrade first, then run `telo migrate`.
+
+Under `-o json` the payload is `{ ok, rewrites, unwritable, files: [{ file, rewrites: [{ migration, module?, count }], unwritable: [{ migration, path, reason }] }], failed: [{ migration, module, file, path, message }] }`, and `ok` is false exactly when the exit status is 1.
 
 
 ---

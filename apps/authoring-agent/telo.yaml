@@ -44,7 +44,7 @@ metadata:
 # 0.129.0: the hub's `retry:` durations, which 0.128.0 refuses (verified by execution).
 # 0.131.0: the modules the chat library now imports; 0.129.0 reads their
 # handlers as `{∅}` and rejects the routes' catches (verified by execution).
-requires: { telo: ">=0.133.0" }
+requires: { telo: ">=unreleased" }
 imports:
   Chat:
     source: ./chat

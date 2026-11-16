@@ -1,0 +1,18 @@
+kind: Telo.Application
+metadata: { name: BindingShadowedTemplate }
+lang: en
+imports: { V: ../__fixtures__/views }
+targets: []
+---
+kind: V.Data
+metadata: { name: me }
+source: { path: /api/me }
+content: { type: text, text: TOPLEVEL }
+---
+kind: Telo.Definition
+metadata: { name: Wrapped }
+capability: Telo.Invocable
+resources:
+  - { kind: V.View, metadata: { name: me }, content: { type: text, text: SCOPED } }
+  - { kind: V.Page, metadata: { name: pg }, path: /, children: [{ type: composite, ref: !ref me }] }
+invoke: !ref pg

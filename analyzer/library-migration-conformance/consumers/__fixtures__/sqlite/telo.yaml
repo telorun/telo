@@ -1,0 +1,20 @@
+kind: Telo.Library
+metadata: { name: SQLite }
+lang: en
+migrations:
+  SQL_BEFORE_MIGRATIONS_RENAMED:
+    reason: "`beforeMigrations:` is now `prepare:`."
+    rules:
+      - rewrite: Self.Schema
+        match: { type: object, required: [beforeMigrations] }
+        move: { /beforeMigrations: /prepare }
+---
+kind: Telo.Definition
+metadata: { name: Schema }
+capability: Telo.Invocable
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    tables: { type: array, items: { type: string } }
+    prepare: { type: object, additionalProperties: { type: object, properties: { statement: { type: string } } } }

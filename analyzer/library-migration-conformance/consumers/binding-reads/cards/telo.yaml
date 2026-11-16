@@ -1,0 +1,34 @@
+kind: Telo.Library
+metadata: { name: Cards }
+lang: en
+exports: { kinds: [Card, Label] }
+migrations:
+  CARDS_TITLE_FROM_TARGET:
+    reason: A card states its title.
+    rules:
+      - rewrite: Self.Card
+        match: { type: object, required: [ref, inheritTitle] }
+        resolve: { target: { at: /ref } }
+        remove: [/inheritTitle]
+        copy: { target#/title: /title }
+  CARDS_LABEL_TEXT_RENAMED:
+    reason: A label's text is its title.
+    rules:
+      - rewrite: Self.Label
+        match: { type: object, required: [text] }
+        move: { /text: /title }
+---
+kind: Telo.Definition
+metadata: { name: Card }
+capability: Telo.Invocable
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    ref: { x-telo-ref: { kind: [Self.Label, Self.Card], use: dependency } }
+    title: { type: string }
+---
+kind: Telo.Definition
+metadata: { name: Label }
+capability: Telo.Invocable
+schema: { type: object, additionalProperties: false, properties: { title: { type: string } } }

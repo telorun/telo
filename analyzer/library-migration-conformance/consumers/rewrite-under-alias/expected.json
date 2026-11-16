@@ -1,0 +1,101 @@
+{
+  "diagnostics": [
+    {
+      "code": "UI_BOX_REPLACED",
+      "severity": 4,
+      "file": "rewrite-under-alias/telo.yaml",
+      "path": "pages[0].panel",
+      "message": "A box is a panel."
+    },
+    {
+      "code": "UI_LINK_HREF_MOVED",
+      "severity": 2,
+      "file": "rewrite-under-alias/telo.yaml",
+      "path": "children[0]",
+      "message": "A link's destination is a navigation effect."
+    },
+    {
+      "code": "UI_LINK_HREF_MOVED",
+      "severity": 2,
+      "file": "rewrite-under-alias/telo.yaml",
+      "path": "pages[0].children[0]",
+      "message": "A link's destination is a navigation effect."
+    },
+    {
+      "code": "UI_NAVIGATE_HREF_RENAMED",
+      "severity": 3,
+      "file": "rewrite-under-alias/telo.yaml",
+      "path": "children[0]",
+      "message": "Every destination names where it goes as its address."
+    },
+    {
+      "code": "UI_NAVIGATE_HREF_RENAMED",
+      "severity": 3,
+      "file": "rewrite-under-alias/telo.yaml",
+      "path": "pages[0].children[0]",
+      "message": "Every destination names where it goes as its address."
+    }
+  ],
+  "migrated": {
+    "rewrite-under-alias/telo.yaml": {
+      "1": {
+        "kind": "U.Page",
+        "metadata": {
+          "name": "authors"
+        },
+        "path": "/authors",
+        "children": [
+          {
+            "type": "link",
+            "text": "Authors",
+            "to": {
+              "kind": "U.Navigate",
+              "address": {
+                "path": "/authors"
+              }
+            }
+          },
+          "Plain text",
+          {
+            "type": "text",
+            "text": "Unchanged"
+          }
+        ],
+        "extra": {
+          "kind": "U.Navigate",
+          "href": {
+            "path": "/open"
+          }
+        }
+      },
+      "2": {
+        "kind": "U.Shelf",
+        "metadata": {
+          "name": "shelf"
+        },
+        "pages": [
+          {
+            "kind": "U.Page",
+            "path": "/",
+            "children": [
+              {
+                "type": "link",
+                "text": "Home",
+                "to": {
+                  "kind": "U.Navigate",
+                  "address": {
+                    "path": "/"
+                  }
+                }
+              }
+            ],
+            "panel": {
+              "kind": "U.Panel",
+              "title": "Welcome"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

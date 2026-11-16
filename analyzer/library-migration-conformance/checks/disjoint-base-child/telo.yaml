@@ -1,0 +1,27 @@
+kind: Telo.Library
+metadata: { name: Base }
+migrations:
+  BASE_ADDRESS_RENAMED:
+    reason: A page names its address as `path`.
+    rules:
+      - rewrite: Self.Page
+        match: { type: object, required: [address] }
+        move: { /address: /path }
+---
+kind: Telo.Definition
+metadata: { name: Route }
+capability: Telo.Type
+schema:
+  type: object
+  additionalProperties: false
+  properties: { address: { type: string }, method: { type: string } }
+---
+kind: Telo.Definition
+metadata: { name: Page }
+extends: Self.Route
+base: { address: !cel "self.path" }
+schema:
+  type: object
+  additionalProperties: false
+  required: [path]
+  properties: { path: { type: string } }

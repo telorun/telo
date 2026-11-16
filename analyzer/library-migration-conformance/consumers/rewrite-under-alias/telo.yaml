@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata: { name: Library }
+lang: en
+imports: { U: ../__fixtures__/ui }
+targets: []
+---
+kind: U.Page
+metadata: { name: authors }
+path: /authors
+children:
+  - { type: link, text: Authors, href: { path: /authors } }
+  - Plain text
+  - { type: text, text: Unchanged }
+extra: { kind: U.Navigate, href: { path: /open } }
+---
+kind: U.Shelf
+metadata: { name: shelf }
+pages:
+  - kind: U.Page
+    path: /
+    children:
+      - { type: link, text: Home, href: { path: / } }
+    panel: { kind: U.Box, label: Welcome }

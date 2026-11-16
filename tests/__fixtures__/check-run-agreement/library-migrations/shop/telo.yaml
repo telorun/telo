@@ -1,0 +1,45 @@
+# A library that renamed a field and removed a kind, and declares the
+# migrations repairing its consumers.
+kind: Telo.Library
+metadata: { name: Shop }
+lang: en
+migrations:
+  SHOP_LABEL_RENAMED:
+    reason: A box names what it holds as its value.
+    rules:
+      - rewrite: Self.Box
+        match: { type: object, required: [label] }
+        move: { /label: /value }
+  SHOP_CRATE_REPLACED:
+    reason: A crate is a box.
+    rules:
+      - rewrite: Self.Crate
+        match: { type: object, required: [contents] }
+        set: { kind: Self.Box, value: shelved }
+        remove: [/contents]
+      - rewrite: Self.Crate
+        match: { type: object, required: [contents] }
+        set: { kind: Self.Box }
+        move: { /contents: /value }
+      - rewrite: Self.Shelf
+        match: { type: object, required: [crate] }
+        resolve: { held: { at: /crate, before: Self.Crate } }
+        move: { /crate: /item }
+        copy: { held#/contents: /value }
+---
+kind: Telo.Definition
+metadata: { name: Box }
+extends: Telo.Value
+---
+kind: Telo.Definition
+metadata: { name: Shelf }
+extends: Telo.Value
+schema:
+  type: object
+  additionalProperties: false
+  required: [value]
+  properties:
+    item: { x-telo-ref: { kind: Self.Box, use: dependency } }
+    value: { type: string }
+base:
+  value: !cel "self.value"

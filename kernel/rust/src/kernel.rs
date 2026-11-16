@@ -16,7 +16,7 @@ use std::rc::Rc;
 use serde_json::{json, Value};
 use telo_analyzer::sources::oci_ref::is_oci_ref;
 use telo_analyzer::{
-    analyze, as_resolved_ref, load_graph, AnalysisDiagnostic, AnalysisOptions, DiagnosticSeverity,
+    analyze, as_resolved_ref, load_graph, unapplied_library_migrations, AnalysisDiagnostic, AnalysisOptions, DiagnosticSeverity,
     ImportTargetPort, LoadedFile, LoadedGraph, ManifestLoader, ManifestSource, ParseErrorOrigin, DEFAULT_MANIFEST_FILENAME,
 };
 
@@ -223,10 +223,10 @@ fn load_env(entry: &str) -> Result<LoadEnv, KernelError> {
 }
 
 /// What the load refuses before any module is created, in the Node kernel's
-/// order: a construct this kernel cannot read at all; the import failures, as
-/// one error of the first failure's code; the parse failures, as one
-/// `ERR_MANIFEST_VALIDATION_FAILED` naming each file; the analysis's errors, as
-/// one `ERR_MANIFEST_VALIDATION_FAILED`. Each carries its diagnostics.
+/// order: a construct this kernel cannot read at all; a library migration it does not
+/// apply, where one may apply; the import failures, as one error of the first failure's
+/// code; the parse failures, as one `ERR_MANIFEST_VALIDATION_FAILED` naming each file; the
+/// analysis's errors, as one `ERR_MANIFEST_VALIDATION_FAILED`. Each carries its diagnostics.
 fn refuse_static_findings(graph: &LoadedGraph) -> Result<(), KernelError> {
     for module in graph.modules.values() {
         let file = &module.owner;
@@ -246,6 +246,9 @@ fn refuse_static_findings(graph: &LoadedGraph) -> Result<(), KernelError> {
                 format!("'{}', {place}: {}", file.source, construct.message()),
             ));
         }
+    }
+    if let Some(refusal) = unapplied_library_migrations(graph).into_iter().next() {
+        return Err(KernelError::new("ERR_UNSUPPORTED_MANIFEST_FEATURE", refusal.message(str::to_string)));
     }
     if let Some(failure) = import_load_failure(graph) {
         return Err(failure);

@@ -1,0 +1,13 @@
+kind: Telo.Library
+metadata: { name: Shop }
+lang: en
+imports: { U: ../../__fixtures__/ui }
+exports: { kinds: [Home] }
+---
+kind: Telo.Definition
+metadata: { name: Home }
+capability: Telo.Invocable
+schema:
+  type: object
+  additionalProperties: false
+  properties: { notFound: { type: array, items: { $ref: "telo://U/Node" } } }

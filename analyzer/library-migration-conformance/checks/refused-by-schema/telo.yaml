@@ -1,0 +1,36 @@
+kind: Telo.Library
+metadata: { name: Ui }
+lang: en
+migrations:
+  UI_LINK_HREF_MOVED:
+    reason: A link's destination is a navigation effect, so every press target is written one way.
+    rules:
+      - rewrite: Self.Node
+        match: { anyOf: [{ required: [href] }, { required: [url] }] }
+        move: { /href: /to/href }
+        set: { to: { kind: Self.Navigate, title: !cel "self.text" } }
+  UI_LINK_SLOT_MATCHED:
+    reason: A link's destination is a navigation effect.
+    rules:
+      - rewrite: Self.Node
+        match: { type: object, properties: { to: { x-telo-ref: { kind: Self.Navigate, use: dependency } } } }
+        remove: [/to]
+  linkPress:
+    reason: A link is pressed.
+    rules:
+      - rewrite: Self.Node
+        match: { type: object, required: [press] }
+        remove: [/press]
+---
+kind: Telo.JsonSchema
+metadata: { name: Node }
+schema:
+  type: object
+  required: [type, text]
+  additionalProperties: false
+  properties: { type: { const: link }, text: { type: string }, to: { x-telo-ref: { kind: Self.Navigate, use: dependency } } }
+---
+kind: Telo.Definition
+metadata: { name: Navigate }
+capability: Telo.Type
+schema: { type: object, additionalProperties: false, properties: { href: { type: string } } }

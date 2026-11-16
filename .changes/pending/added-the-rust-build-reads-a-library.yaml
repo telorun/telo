@@ -1,0 +1,11 @@
+units:
+  analyzer: Added
+  kernel: Added
+  cli: Added
+body: "The Rust build reads a library's `migrations:` and, since it does not apply them,
+  its `telo check` and kernel refuse the `imports:` entry first reaching such a library
+  with `ERR_UNSUPPORTED_MANIFEST_FEATURE` wherever a node of a file reaching it could be
+  a candidate of one of its rules, naming the library, the migration and the node; `telo
+  check` reports it on stderr with `ok: false` and no diagnostic, and the kernel refuses
+  before any resource is created. A consumer holding only current spelling checks and
+  runs."

@@ -1,7 +1,7 @@
 ---
 sidebar_label: Manifest Migrations
 slug: /extend/manifest-migrations
-description: "How a renamed keyword or annotation keeps loading: migrations rewrite a legacy spelling to the current one at load, report it in your own files, and telo migrate writes the repair back to disk."
+description: "How a renamed keyword, annotation or library kind keeps loading: migrations rewrite a legacy spelling to the current one at load, report it in your own files, and telo migrate writes the repair back to disk."
 ---
 
 # Manifest migrations
@@ -11,6 +11,8 @@ Telo occasionally renames something a manifest can say — a schema annotation, 
 A **migration** is how that rename ships. It is a matcher plus a patch: the loader finds every occurrence of the legacy spelling and rewrites it to the current one, in memory, before anything else reads the manifest. The old form and the new one then behave identically, on every kernel, for every artifact ever published.
 
 This is deliberately not the same mechanism as a **normalization** — desugaring an `imports:` map, extracting an inline resource, resolving a `!ref` sentinel. Those fold authoring sugar into an internal form, are never written back to source and are correctly invisible. A migration is author-visible: it reports what it rewrote and offers a way to make the file say it.
+
+Migrations come in two layers. **Core migrations** repair the grammar every manifest is written in — tags, definitions, annotations, the built-in documents — and are data files shipped with Telo. **Library migrations** repair a library's own vocabulary (its kinds and shapes) and are declared by the library, so they reach a consumer under whatever alias it imports the library as. A library migration is the way to rename or reshape what a library offers without breaking the manifests written against it.
 
 ## What an author sees
 
@@ -38,7 +40,31 @@ Three properties of that output are worth naming, because each is a rule rather 
 - **The warning is only about your own files.** A migration *rewrites* always — the runtime must read artifacts published years ago — but *reports* only for the manifest you named and its `include:` partials. A published dependency is not yours to fix, and its author is the only person who can.
 - **Whether a quick fix exists is stated, not silently absent.** A key rename has no honest whole-value replacement, so the editor offers none and the diagnostic says why. `telo migrate` does that repair through the file instead.
 
-## Writing one
+## `telo migrate`
+
+`telo migrate <paths..>` writes the repairs into the files of each module you name — core migrations first, then the **library migrations** that the libraries it imports declare about their own vocabulary (rewritten under whatever alias you import them as, over the module's whole import closure). A path may name a **Library** as well as an Application. Only the named module's own files (its entry file and `include:` partials) are written: a dependency is repaired by naming it, so a library's files are never changed through a consumer's load, whose reconciliation could put a spelling into them that the library's own pins refuse. Naming an application and its library, in either order, gives the same files.
+
+```text
+$ telo migrate telo.yaml
+SQL_BEFORE_MIGRATIONS_RENAMED (sqlite)  telo.yaml  1 rewrite
+  telo.yaml:18:1  comment dropped: # Backfill before `name` becomes NOT NULL.
+
+1 rewrite in 1 file. Imported modules were not touched.
+```
+
+What a rewrite keeps and loses:
+
+- The node's span is replaced by its converged value, rendered in the node's own style (block or flow, its indentation). An entry kept at the same key with an equal value, and an item kept at the same index with an equal value, keeps its original text byte for byte, comments included. Values that moved keep their text; everything else is rendered fresh.
+- A comment inside a part that is rendered fresh is lost, and the command names each one (`comment dropped:`, with its file, line and column).
+- A rewrite whose span holds an **anchor or an alias** is not written (`not written: <reason>`), and neither is anything in a hand-over group with such a member: the referent and every node that takes over what it drops are written together or not at all.
+
+**Partial runs.** Every node that converged and is writable is written; a node that failed (`MIGRATION_FAILED`, in your own files or in a dependency's) or could not be written is left as written and reported, with its reason. The command exits `1` while anything is pending, and `0` otherwise; a second run reports nothing new. `-o json` carries `ok` (true exactly when the exit status is 0), `rewrites`, `unwritable` and, per file, each rewrite and each unwritable node with its `reason`, and `failed` for every `MIGRATION_FAILED`.
+
+`telo upgrade` moves pins only. A node that needs a hand edit needs the new spelling, which only the new pin accepts, so withholding the pin until the repair succeeds would deadlock: upgrade first, then run `telo migrate`. When a migration reaches a library you own only because a consumer moved a dependency to a newer version, run `telo upgrade` on the library, then `telo migrate` on it.
+
+The editor offers the same edit set as one quick fix, when none of it is unwritable.
+
+## Writing a core migration
 
 **A migration entry is one JSON file under `analyzer/migrations/`.** The set is read as one lexically ordered list, so adding a migration is one file and retiring one is deleting it — nothing lists the entries by hand. The files sit beside the language implementations rather than inside any one of them, because every kernel must apply the identical rewrite: a rewrite described twice, in two languages, is the divergence this design exists to prevent, and it would be invisible, since a migration that succeeds is silent. Both halves read the identical files: the Node analyzer imports them, and the Rust analyzer embeds them at build from the same directory listing.
 
@@ -165,17 +191,107 @@ The file applier is stricter than the tree applier in one direction, and says so
 
 What is *not* unwritable is a mapping entry that opens a sequence item (`- type: string`, the shape a legacy `anyOf` branch takes). Removing it splices out to the following key, which slides onto the dash at the column it already occupies — the block-style case a whole-line removal cannot express, and the one the shipped entry meets most often.
 
-## Module-authored migrations
+## Library migrations
 
-A module author has the same problem one boundary out: renaming a field on a kind they own breaks every consumer manifest written against the old name.
+A library declares its migrations under `migrations:` on its `Telo.Library` document, beside the definitions they repair. A migration is data: no controller, no lifecycle, nothing created. Its **key is its diagnostic code** (`SQL_BEFORE_MIGRATIONS_RENAMED`), which names it in a consumer's diagnostic, in `telo migrate` and in a refusal. A `Telo.Application` has no `migrations:` key, since nobody imports it. A migration is not exported and not gated: it applies to every file whose import closure reaches the library, published dependencies included.
 
-The mechanism is the same one — an entry of the same shape, travelling in the module's artifact, collected by one driver that cares about neither source. What differs is **scope of match and provenance**: a core entry may name any `inKind`, while a module's may name only kinds that module owns.
+```yaml
+kind: Telo.Library
+metadata: { name: SQLite, version: 0.15.0 }
+migrations:
+  SQL_BEFORE_MIGRATIONS_RENAMED:
+    reason: "`beforeMigrations:` is now `prepare:`; nothing re-runs, because the ledger stores the migration key alone."
+    rules:
+      - rewrite: Self.Schema
+        match: { type: object, required: [beforeMigrations] }
+        move: { /beforeMigrations: /prepare }
+```
 
-That is why containment is positive and required today, before the surface exists. The guarantee a consumer needs — *a dependency can rename its own field in your manifest and provably nothing else* — is a statement about what a rule may **reach**, and a rule that says where it may reach can be checked against what its module owns. A rule that only said where it may *not* reach could not be checked at all. Adding the anchor after third-party entries exist and the grammar is frozen would be far more expensive than requiring it now.
+A consumer importing the library as `Db`, `Store` or `SQLite` gets the same warning on its own line, naming the library that declared it, and the same repair; `telo migrate` writes it back:
 
-That surface is planned separately and is not built yet.
+```text
+telo.yaml:9:1  warning  `beforeMigrations:` is now `prepare:`; nothing re-runs, because the ledger stores the migration key alone.
+declared by sqlite (oci://ghcr.io/telorun/sqlite@<version>)
+run `telo migrate telo.yaml` to apply
+SQL_BEFORE_MIGRATIONS_RENAMED
+```
 
-## Retirement
+### Which nodes a rule reaches
+
+- **`rewrite: Self.<Name>`** names one type of the library's own module: a kind, a named shape, or a kind the library no longer declares. Another library's type, or a re-exported one, is refused — a type has one owner, who knows its history.
+- A kind's rules reach every declaration of it: top-level documents, inline declarations at slots and at an import's `resources:`, template-body entries, `with:` members and the branches of `!if` / `!switch` / `!for-each`. A shape's rules reach every value at a position a current kind schema types by that shape. A rule also reaches the positions the current schema no longer types inside a value of the library's own types, so a map there whose `kind:` names an own type is migrated; payload held by an open schema is never scanned.
+- A rule reaches only its own module's types. A foreign declaration inside a matched node can be moved or copied, never read or changed.
+- A kind-only declaration — a library's `resources:` entry or `needs:` entry naming a kind the library no longer declares — is retyped to that kind's replacement: the kind the rules of the removed kind write at the declaration's root, followed onward while it is itself removed. It is kept, and how the new kind fits the library's body is judged by the library's own analysis. A replacement that is not exactly one declared kind leaves the entry as written with `MIGRATION_FAILED`.
+
+### `match`: telling the legacy spelling apart
+
+`match` is a closed vocabulary read as data: `type`, `required`, `const`, `enum`, and `properties` / `items` holding the same vocabulary, with `<key>: false` under `properties` meaning the key is absent. Anything else — `anyOf`, `$ref`, `x-telo-ref` — is `SCHEMA_VIOLATION` at the library. A tagged value (`!cel`, `!ref`, …) never satisfies `type`, `const` or `enum`, and does satisfy `required`.
+
+A rule fires only where its `match` holds, and the library's own `telo check` proves the `match` disjoint from the current schema (`MIGRATION_MATCH_OVERLAPS_SCHEMA` otherwise: require a key, or pin a `const` / `enum`, the current schema refuses). That proof is what makes migrations idempotent without version stamps.
+
+### The change
+
+A rule writes only what changes; everything it does not mention is kept as written, tags, choices (`!if`, `!switch`, `!for-each`) and foreign content included.
+
+- **`remove`**, **`move`** and **`copy`** are positional operations over JSON pointers into the matched node. `move: { /href: /to/href }` takes a value from one place to another; `copy` leaves the source. A destination follows JSON Patch `add`: a member is set, an index inserts, `-` appends, missing containers are created. A missing source writes nothing, so a key can be conditional.
+- **`set`** holds literal data only; a tag in it is `SCHEMA_VIOLATION`. A computed value reaches a new position by being moved or copied, never written.
+- A `kind:` in `set:` is written library-relative (`Self.Navigate`) and spelled in the consumer's alias (`U.Navigate`). At the declaration's root it renames the kind and keeps `metadata`, so the name and every reference to it survive. This is how a library renames a kind at its declarations; a kind named in another library's definition (`extends:`, an `x-telo-ref` kind) is renamed by deprecating the old kind with `replacedBy` for a release, then removing it.
+- A rule whose result still satisfies its own `match`, two writes reaching one position, or a move onto a position the node already holds is `MIGRATION_FAILED` at the consumer, naming the cause; the node is left as written.
+
+### Reading other nodes: `resolve`
+
+A rule can bind a declaration its node places, at a pointer into the node (inline or by `!ref`): `resolve: { data: { at: /data } }`. A bound declaration is read in one of two ways:
+
+- **As migrated** (no `before`): it is read in its current spelling, typed by its kind's current schema.
+- **As it was** (`before: Self.<Type>`): it is read as it was before this migration's rule of that type rewrote it, typed by that rule's `match`. This is how a node that places a declaration takes over the fields the declaration's own rewrite drops.
+
+`copy: { data#/loading: /loading/0 }` then reads from the binding. Bindings are declared, never written in values, and a rule never moves *from* a binding.
+
+**The hand-over rule.** The first rule of a type that another rule of the same migration reads with `before` is its hand-over rule; later rules of the type are its fallbacks. A referent is a declaration other nodes place by `!ref`, and its **members** are every `!ref` in its module instance that resolves to it — at a reference slot or not, own or foreign kind, a `targets:` entry, a step `invoke:`, a `with:` slot, an import's supply, plus every `exports.resources` entry naming it. The hand-over rule fires on the referent only when it has at least one member, every member position is the `at` of a `before` binding in a rule that fired and converged on the node holding it, and every rewritten node passes the current schema; the group is committed whole. Otherwise — a member that no rule can sit at (a foreign slot, an export, an import's supply), or no member at all — the referent takes the fallback rule, the readers see no hand-over, and every node placing it is left as written and still current. With no fallback the referent stays as written and reports `MIGRATION_FAILED` naming the position that kept the hand-over from firing. A CEL read of `resources.<referent>` is not a member.
+
+**Content never crosses a module-instance boundary.** A library supplied the referent, or an importer of an exported one, keeps placing it whole, so the fallback keeps the content on the referent; every module's result depends on its own source and its libraries' types alone, and an application and the library it supplies migrate to the same files in either order. A migration never creates a top-level document or changes another document.
+
+### Chains, order and failure
+
+A consumer several releases behind needs several migrations on one node. Each node is brought to a fixpoint: the first rule (ordered by migration code, then position) whose type and `match` hold for the node's current value and that has not fired on it applies, each rule fires at most once per node, and a leftover match when none applies is `MIGRATION_FAILED` (a cycle). A node reports one diagnostic per migration that fired, with the migration's `severity` (`info`, `hint`, `warning`).
+
+Any failure leaves the node untouched and reports `MIGRATION_FAILED` at the node — at the `imports:` entry for a dependency's file — naming the migration and the cause; the kernel raises `ERR_MIGRATION_FAILED` at load. Findings of the current schema under that node are held back.
+
+The stage runs over the whole loaded graph, once every import has loaded and before any analysis, on every host including the browser. The Rust build refuses an `imports:` entry reaching a library that declares `migrations:` where a rule could apply (`ERR_UNSUPPORTED_MANIFEST_FEATURE`); a manifest in current spelling still checks and runs there.
+
+### Removed types and shapes
+
+A `rewrite:` naming a type the library no longer declares is valid only for a removed **kind**, provided some rule of the library rewriting it writes `kind:` at its root (`MIGRATION_TYPE_UNKNOWN` otherwise). A removed **shape** is never a target: a shape value carries no name. To migrate a value whose shape was removed or replaced, write a rule of the type that holds that position now — the current shape there, or the nearest own kind or shape enclosing it.
+
+### Checks at the library
+
+`telo check` of the library refuses a migration that cannot be trusted; a consumer sees these through its dependency verdict, and the kernel never runs them:
+
+- `MIGRATION_MATCH_OVERLAPS_SCHEMA` — the `match` is not proved disjoint from the current schema.
+- `MIGRATION_KIND_FOREIGN` — a `kind:` in `set:` names a kind the library neither declares, re-exports, nor removed.
+- `MIGRATION_TYPE_UNKNOWN` — `rewrite:` names a type that is neither declared nor a removed kind.
+- `MIGRATION_BINDING_INVALID` — a `resolve` `at` names no reference slot or required key, a `before` names a type no rule of the migration rewrites, a `copy:` source names no binding or a `move:` source names one.
+
+`set:` is not judged against the current schema at the library: a migration is written against the vocabulary of its own release, and the converged result is validated at each consumer.
+
+### Proving a migration
+
+A rule's result is not proved at the library; a fixture is. Keep one legacy-spelling manifest per migration in `tests/__fixtures__/manifest-migrations/<code in kebab case>/` and assert it from `tests/manifest-migrations.yaml` with `Assert.Manifest`, expecting that migration's diagnostic, those of the migrations chained after it, and nothing else; add `runs: true` where the fixture can boot. Import the library under an alias other than its own name, so the fixture shows the migration reaching any alias.
+
+```yaml
+kind: Assert.Manifest
+metadata: { name: sqlBeforeMigrationsRenamed }
+source: ./__fixtures__/manifest-migrations/sql-before-migrations-renamed/telo.yaml
+expect:
+  warnings: [{ code: SQL_BEFORE_MIGRATIONS_RENAMED }]
+  runs: true
+```
+
+### Renaming a kind, and retiring a migration
+
+Rename a kind by declaring the new one, deleting the old declaration and adding a migration whose rule is `rewrite: Self.<OldName>` with `set: { kind: Self.<NewName> }`. A migration carries no version stamp: a consumer's import pin is not the version its file was written against, and a published dependency must be rewritten whatever it pinned. Deleting a migration is therefore a **breaking removal** — a published dependent still in the old spelling stops loading — so retire one only when the library's dependents on the hub no longer carry the spelling, and release it as a breaking change (an `Added` fragment describing the break; breaking changes ship as minors).
+
+## Retiring a core migration
 
 An entry carries **no version stamp**. "Can this be deleted?" turns on whether any published artifact still carries the legacy spelling, which the artifact's own release version cannot answer — the hub can, since it caches every tracked module version's `telo.yaml`. A stamp would record when an entry was written, which git already does, while looking like an answer to a question it does not address.
 

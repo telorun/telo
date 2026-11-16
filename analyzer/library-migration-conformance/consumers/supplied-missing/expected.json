@@ -1,0 +1,42 @@
+{
+  "diagnostics": [
+    {
+      "code": "RESOURCE_INPUT_MISSING",
+      "severity": 1,
+      "file": "supplied-missing/telo.yaml",
+      "path": "resources",
+      "message": "Import 'Panel' does not supply the resource input 'data', which module 'Panel' requires (kind 'Views.View'). Add `resources: { data: !ref <name> }` to the import."
+    },
+    {
+      "code": "VIEWS_DATA_REPLACED",
+      "severity": 2,
+      "file": "supplied-missing/panel/telo.yaml",
+      "path": "resources.data",
+      "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
+    }
+  ],
+  "migrated": {
+    "supplied-missing/panel/telo.yaml": {
+      "0": {
+        "kind": "Telo.Library",
+        "metadata": {
+          "name": "Panel"
+        },
+        "lang": "en",
+        "imports": {
+          "V": "../../__fixtures__/views"
+        },
+        "resources": {
+          "data": {
+            "kind": "V.View"
+          }
+        },
+        "exports": {
+          "resources": [
+            "summary"
+          ]
+        }
+      }
+    }
+  }
+}

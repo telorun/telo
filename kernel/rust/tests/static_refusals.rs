@@ -288,3 +288,39 @@ fn a_literal_holding_an_interpolation_is_no_untagged_one() {
     ]);
     assert_ne!(err.code, "ERR_UNTAGGED_INTERPOLATION", "{err}");
 }
+
+const MIGRATING_LIBRARY: &str = "kind: Telo.Library\nmetadata: { name: Lib }\nexports: { kinds: [Thing] }\nmigrations:\n  LIB_OLD_RENAMED:\n    reason: Renamed.\n    rules:\n      - { rewrite: Self.Thing, match: { type: object, required: [old] }, move: { /old: /new } }\n---\nkind: Telo.Definition\nmetadata: { name: Thing }\ncapability: Telo.Invocable\nschema: { type: object, properties: { new: { type: string } } }\n";
+
+/// A library migration this kernel does not apply is refused before any resource is created,
+/// where a node may be its candidate.
+#[test]
+fn a_library_migration_that_may_apply_is_refused_at_load() {
+    let (dir, err) = load(&[
+        ("app/telo.yaml", &app("imports: { Lib: ../lib }\n---\nkind: Lib.Thing\nmetadata: { name: thing }\nold: x\n")),
+        ("lib/telo.yaml", MIGRATING_LIBRARY),
+    ]);
+    assert_eq!(err.code, "ERR_UNSUPPORTED_MANIFEST_FEATURE", "{err}");
+    let entry = source(dir.path(), "app/telo.yaml");
+    assert_eq!(
+        err.message,
+        format!(
+            "'{entry}', imports.Lib: Lib ({}) declares the manifest migration LIB_OLD_RENAMED, which may apply at {entry}:5:1, and this build does not apply library migrations",
+            source(dir.path(), "lib")
+        )
+    );
+}
+
+#[test]
+fn a_node_no_rule_may_rewrite_is_not_refused_for_the_library() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    for (path, text) in [
+        ("app/telo.yaml", app("imports: { Lib: ../lib }\n---\nkind: Other.Gadget\nmetadata: { name: other }\nold: x\n")),
+        ("lib/telo.yaml", MIGRATING_LIBRARY.to_string()),
+    ] {
+        let path = dir.path().join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).expect("create dir");
+        std::fs::write(path, text).expect("write manifest");
+    }
+    let err = Kernel::new().load(&dir.path().join("app/telo.yaml").display().to_string()).expect_err("Other names no import");
+    assert_ne!(err.code, "ERR_UNSUPPORTED_MANIFEST_FEATURE", "{err}");
+}

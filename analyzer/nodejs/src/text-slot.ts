@@ -35,7 +35,19 @@
  * values a resource is created with. Browser-safe: no Node built-ins.
  */
 import { manifestFragmentOf } from "./manifest-schemas.js";
-import { resolveSchemaReference } from "./schema-reference.js";
+import {
+  referenceTarget,
+  renderValuePath,
+  safeRegExp,
+  schemaReachGate,
+  walkValueSchema,
+  type Holder,
+  type NamedShapeResolver,
+  type SchemaVisit,
+  type ValuePath,
+} from "./value-schema-walk.js";
+
+export { referenceTarget, renderValuePath, safeRegExp, type ValuePath };
 
 export const MESSAGE_FRAGMENT = "Message";
 export const TEXT_FRAGMENT = "Text";
@@ -130,19 +142,6 @@ export function producesTextRecord(
   return record;
 }
 
-/** A path into a value: property names and array indices. */
-export type ValuePath = readonly (string | number)[];
-
-/** `a.b[0].c` — the spelling `data.path` and every kernel message use. */
-export function renderValuePath(path: ValuePath): string {
-  let out = "";
-  for (const segment of path) {
-    if (typeof segment === "number") out += `[${segment}]`;
-    else out += out === "" ? segment : `.${segment}`;
-  }
-  return out;
-}
-
 /** One place a resource holds text of a text fragment. */
 export interface TextSite {
   readonly fragment: TextFragment;
@@ -173,7 +172,7 @@ export interface TextWalkOptions {
   readonly isExpression: (value: unknown) => boolean;
   /** Resolves a non-local `$ref` (a named shape) to the shape and the document its
    *  own `#…` references resolve against. */
-  readonly resolveRef?: (ref: string) => { schema: Record<string, any>; root: Record<string, any> } | undefined;
+  readonly resolveRef?: NamedShapeResolver;
 }
 
 /** An expression met where text may lie beneath it: what it produces is text-bearing
@@ -192,52 +191,20 @@ export interface TextWalk {
   readonly expressions: TextExpressionSite[];
 }
 
-/** What `ref`, written in the document `root`, names — a named shape and a
- *  pointer into one read through `resolveRef`'s document — and that node's
- *  document. */
-export function referenceTarget(
-  ref: string,
-  root: Record<string, any>,
-  resolveRef: TextWalkOptions["resolveRef"],
-): { schema: Record<string, any>; root: Record<string, any> } | undefined {
-  const target = resolveSchemaReference(ref, root, resolveRef && ((id) => resolveRef(id)?.root));
-  return target ? { schema: target.node, root: target.document } : undefined;
-}
-
 const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
 };
 
-const declaring = new WeakMap<object, WeakMap<object, boolean>>();
-
 /** True when `schema` reaches a text fragment or a values pairing anywhere — its
  *  `#…` references followed against `root`, a named shape assumed to — asked
  *  before a value is walked, since most kinds hold no text. Memoized. */
-function declaresText(schema: Record<string, any>, root: Record<string, any> = schema): boolean {
-  let byNode = declaring.get(root);
-  if (!byNode) declaring.set(root, (byNode = new WeakMap()));
-  let known = byNode.get(schema);
-  if (known === undefined) {
-    const seen = new Set<object>();
-    const scan = (node: unknown): boolean => {
-      if (!node || typeof node !== "object" || seen.has(node)) return false;
-      seen.add(node);
-      if (Array.isArray(node)) return node.some(scan);
-      if (isTextRecordSchema(node)) return false;
-      if (textFragmentOf(node) !== undefined || TEXT_VALUES_FOR_ANNOTATION in node) return true;
-      const ref = (node as Record<string, unknown>).$ref;
-      if (typeof ref === "string") {
-        if (!ref.startsWith("#")) return true;
-        if (scan(referenceTarget(ref, root, undefined)?.schema)) return true;
-      }
-      return Object.values(node).some(scan);
-    };
-    byNode.set(schema, (known = scan(schema)));
-  }
-  return known;
-}
+const declaresText = schemaReachGate(
+  (node) =>
+    isTextRecordSchema(node) ? false : textFragmentOf(node) !== undefined || TEXT_VALUES_FOR_ANNOTATION in node ? true : undefined,
+  "assume",
+);
 
 /** The pointer's segments, or undefined for a value that is no JSON Pointer. */
 export function pointerSegments(pointer: unknown): string[] | undefined {
@@ -293,68 +260,6 @@ export function fragmentAdmits(
   return admits(fragmentNode, root);
 }
 
-/** Members of a resource's own value that its kind's schema never declares. */
-const RESOURCE_ENVELOPE = new Set(["kind", "metadata"]);
-
-/**
- * Whether a union branch definitely cannot hold `value`, a plain object: the
- * branch — or a schema it references, an `allOf` member, or every alternative of
- * a union it holds — requires a member the value lacks, or is closed and the
- * value holds a member it neither declares nor matches by pattern. Any doubt
- * keeps the branch: a reference that does not resolve says nothing. At a
- * resource's root the value carries `kind` and `metadata`, which no branch
- * declares, so they never count as extra.
- */
-function branchExcludes(
-  branch: unknown,
-  root: Record<string, any>,
-  value: unknown,
-  path: ValuePath,
-  resolveRef: TextWalkOptions["resolveRef"],
-): boolean {
-  if (!isPlainObject(value)) return false;
-  const keys = Object.keys(value).filter((key) => path.length > 0 || !RESOURCE_ENVELOPE.has(key));
-  const ancestry = new Set<object>();
-  const excludes = (node: unknown, at: Record<string, any>): boolean => {
-    if (!isPlainObject(node) || ancestry.has(node)) return false;
-    ancestry.add(node);
-    try {
-      if (typeof node.$ref === "string") {
-        const target = referenceTarget(node.$ref, at, resolveRef);
-        if (target && excludes(target.schema, target.root)) return true;
-      }
-      const required: unknown[] = Array.isArray(node.required) ? node.required : [];
-      if (required.some((name) => typeof name === "string" && !Object.hasOwn(value, name))) return true;
-      if (node.additionalProperties === false) {
-        const properties = isPlainObject(node.properties) ? node.properties : {};
-        const patterns = isPlainObject(node.patternProperties) ? Object.keys(node.patternProperties) : [];
-        const extra = keys.some(
-          (key) => !Object.hasOwn(properties, key) && !patterns.some((pattern) => safeRegExp(pattern)?.test(key)),
-        );
-        if (extra) return true;
-      }
-      if (Array.isArray(node.allOf) && node.allOf.some((member: unknown) => excludes(member, at))) return true;
-      for (const union of ["anyOf", "oneOf"] as const) {
-        const alternatives = node[union];
-        if (Array.isArray(alternatives) && alternatives.length > 0) {
-          if (alternatives.every((alternative: unknown) => excludes(alternative, at))) return true;
-        }
-      }
-      return false;
-    } finally {
-      ancestry.delete(node);
-    }
-  };
-  return excludes(branch, root);
-}
-
-/** The object a walked field sits in, and the ones enclosing it. */
-interface Holder {
-  readonly value: Record<string, unknown>;
-  readonly path: ValuePath;
-  readonly outer?: Holder;
-}
-
 /** A relative JSON pointer's parts, or undefined for a value that is none. */
 export function relativePointerOf(pointer: unknown): { up: number; segments: string[] } | undefined {
   if (typeof pointer !== "string") return undefined;
@@ -378,14 +283,12 @@ function valuesFromAt(pointer: unknown, holder: Holder | undefined): TextSite["v
 }
 
 /**
- * Every text site and every values pairing `data` holds, found by walking `schema`
- * and the value in tandem: through `properties`, a map's `additionalProperties` /
- * `patternProperties`, a list's `items`, every `allOf` member and each `oneOf` /
- * `anyOf` branch the value can hold (never one it definitely cannot), a
- * document-local `$ref` (resolved against `root`, the document `schema` lies in),
- * and a named shape through `resolveRef`. A site is not descended into, and
- * neither is an expression — listed instead when text may lie beneath it — a
- * non-plain value (a live instance) or a value no branch declares.
+ * Every text site and every values pairing `data` holds, read off the value/schema
+ * co-walk (`value-schema-walk.ts`): each `oneOf` / `anyOf` branch the value can
+ * hold (never one it definitely cannot), a named shape through `resolveRef`. A
+ * site is not descended into, and neither is an expression — listed instead when
+ * text may lie beneath it — a non-plain value (a live instance) or a value no
+ * branch declares.
  */
 export function textSites(
   schema: Record<string, any>,
@@ -396,110 +299,57 @@ export function textSites(
   const texts = new Map<string, TextSite>();
   const values = new Map<string, TextValuesSite>();
   const expressions: TextExpressionSite[] = [];
-  if (!declaresText(schema, root)) return { texts: [], values: [], expressions };
-  const entered = new Set<string>();
-  const ids = new WeakMap<object, number>();
-  let nextId = 0;
-  const nodeId = (node: object) => {
-    let id = ids.get(node);
-    if (id === undefined) ids.set(node, (id = nextId++));
-    return id;
+  /** The first value an annotation takes along the node and the `$ref`s leading to it. */
+  const carried = (visit: SchemaVisit, read: (node: Record<string, any>) => unknown): unknown => {
+    for (let at: SchemaVisit | undefined = visit; at; at = at.referrer) {
+      const found = read(at.node);
+      if (found !== undefined) return found;
+    }
+    return undefined;
   };
-
-  const walk = (
-    node: unknown,
-    root: Record<string, any>,
-    value: unknown,
-    path: ValuePath,
-    holder: Holder | undefined,
-    inheritedValues?: Readonly<Record<string, unknown>>,
-    inheritedFrom?: unknown,
-  ): void => {
-    if (!node || typeof node !== "object" || Array.isArray(node) || value === undefined) return;
-    const declared = node as Record<string, any>;
-    const key = `${nodeId(declared)}\0${renderValuePath(path)}`;
-    if (entered.has(key)) return;
-    entered.add(key);
-
-    if (isTextRecordSchema(declared)) return;
-    const fragment = textFragmentOf(declared);
-    if (fragment !== undefined) {
-      const at = renderValuePath(path);
-      const admitted =
-        options.isExpression(value) ||
-        fragmentAdmits(declared, path.length === 0 ? siteValueOf({ path, value }) : value, root, options.resolveRef);
-      if (admitted && !texts.has(at)) {
-        const declaredValues = declaredTextValuesOf(declared) ?? inheritedValues;
-        const valuesFrom = valuesFromAt(declared[TEXT_VALUES_FROM_ANNOTATION] ?? inheritedFrom, holder);
-        texts.set(at, {
-          fragment,
-          path,
-          value,
-          ...(declaredValues ? { declaredValues } : {}),
-          ...(valuesFrom ? { valuesFrom } : {}),
-        });
-      }
-      return;
-    }
-    const pairing = pointerSegments(declared[TEXT_VALUES_FOR_ANNOTATION]);
-    if (pairing && holder && !values.has(renderValuePath(path))) {
-      let text: unknown = holder.value;
-      for (const segment of pairing) text = isPlainObject(text) ? text[segment] : undefined;
-      values.set(renderValuePath(path), {
-        path,
-        values: value,
-        textPath: [...holder.path, ...pairing],
-        text,
-      });
-    }
-    if (options.isExpression(value)) {
-      if (declaresText(declared, root)) expressions.push({ path, schema: declared, root });
-      return;
-    }
-
-    if (typeof declared.$ref === "string") {
-      const carried = declaredTextValuesOf(declared) ?? inheritedValues;
-      const carriedFrom = declared[TEXT_VALUES_FROM_ANNOTATION] ?? inheritedFrom;
-      const target = referenceTarget(declared.$ref, root, options.resolveRef);
-      if (target) walk(target.schema, target.root, value, path, holder, carried, carriedFrom);
-    }
-    for (const union of ["oneOf", "anyOf", "allOf"] as const) {
-      if (Array.isArray(declared[union])) {
-        for (const branch of declared[union]) {
-          if (union !== "allOf" && branchExcludes(branch, root, value, path, options.resolveRef)) continue;
-          walk(branch, root, value, path, holder);
+  walkValueSchema(
+    schema,
+    data,
+    {
+      resolveRef: options.resolveRef,
+      reaches: (node, at) => declaresText(node, at),
+      standing: (value) => (options.isExpression(value) ? [] : undefined),
+      visit: (visit) => {
+        const { node, root, value, path, holder } = visit;
+        if (visit.excluded || isTextRecordSchema(node)) return "stop";
+        const fragment = textFragmentOf(node);
+        if (fragment !== undefined) {
+          const at = renderValuePath(path);
+          const admitted =
+            visit.boundary ||
+            fragmentAdmits(node, path.length === 0 ? siteValueOf({ path, value }) : value, root, options.resolveRef);
+          if (admitted && !texts.has(at)) {
+            const declaredValues = carried(visit, declaredTextValuesOf) as TextSite["declaredValues"];
+            const valuesFrom = valuesFromAt(
+              carried(visit, (node) => node[TEXT_VALUES_FROM_ANNOTATION]),
+              holder,
+            );
+            texts.set(at, {
+              fragment,
+              path,
+              value,
+              ...(declaredValues ? { declaredValues } : {}),
+              ...(valuesFrom ? { valuesFrom } : {}),
+            });
+          }
+          return "stop";
         }
-      }
-    }
-    if (Array.isArray(value)) {
-      if (declared.items && typeof declared.items === "object" && !Array.isArray(declared.items)) {
-        value.forEach((item, index) => walk(declared.items, root, item, [...path, index], holder));
-      }
-      return;
-    }
-    if (!isPlainObject(value)) return;
-    const properties = isPlainObject(declared.properties) ? declared.properties : {};
-    const patterns = isPlainObject(declared.patternProperties) ? declared.patternProperties : {};
-    const here: Holder = { value, path, outer: holder };
-    for (const [name, child] of Object.entries(value)) {
-      const childPath = [...path, name];
-      if (name in properties) {
-        walk(properties[name], root, child, childPath, here);
-        continue;
-      }
-      let matched = false;
-      for (const [pattern, patternSchema] of Object.entries(patterns)) {
-        if (safeRegExp(pattern)?.test(name)) {
-          matched = true;
-          walk(patternSchema, root, child, childPath, here);
+        const pairing = pointerSegments(node[TEXT_VALUES_FOR_ANNOTATION]);
+        if (pairing && holder && !values.has(renderValuePath(path))) {
+          let text: unknown = holder.value;
+          for (const segment of pairing) text = isPlainObject(text) ? text[segment] : undefined;
+          values.set(renderValuePath(path), { path, values: value, textPath: [...holder.path, ...pairing], text });
         }
-      }
-      if (!matched && declared.additionalProperties && typeof declared.additionalProperties === "object") {
-        walk(declared.additionalProperties, root, child, childPath, here);
-      }
-    }
-  };
-  walk(schema, root, data, [], undefined);
+        if (visit.boundary && declaresText(node, root)) expressions.push({ path, schema: node, root });
+      },
+    },
+    root,
+  );
   return { texts: [...texts.values()], values: [...values.values()], expressions };
 }
 
@@ -512,36 +362,12 @@ export function siteValueOf(site: Pick<TextSite, "path" | "value">): unknown {
   return fields;
 }
 
-const reachingCatalog = new WeakMap<object, WeakMap<object, boolean>>();
-
 /** True when `schema` reaches the `TextCatalog` fragment — its `#…` references
  *  followed against `root`, a named shape through `resolveRef`. Memoized. */
-function reachesTextCatalog(
-  schema: Record<string, any>,
-  root: Record<string, any>,
-  resolveRef: TextWalkOptions["resolveRef"],
-): boolean {
-  let byNode = reachingCatalog.get(root);
-  if (!byNode) reachingCatalog.set(root, (byNode = new WeakMap()));
-  let known = byNode.get(schema);
-  if (known === undefined) {
-    const seen = new Set<object>();
-    const scan = (node: unknown, at: Record<string, any>): boolean => {
-      if (!node || typeof node !== "object" || seen.has(node)) return false;
-      seen.add(node);
-      if (Array.isArray(node)) return node.some((item) => scan(item, at));
-      if (textFragmentOf(node) === TEXT_CATALOG_FRAGMENT) return true;
-      const ref = (node as Record<string, unknown>).$ref;
-      if (typeof ref === "string") {
-        const target = referenceTarget(ref, at, resolveRef);
-        if (target && scan(target.schema, target.root)) return true;
-      }
-      return Object.values(node).some((child) => scan(child, at));
-    };
-    byNode.set(schema, (known = scan(schema, root)));
-  }
-  return known;
-}
+const reachesTextCatalog = schemaReachGate(
+  (node) => (textFragmentOf(node) === TEXT_CATALOG_FRAGMENT ? true : undefined),
+  "follow",
+);
 
 /** Where an expression stands ABOVE a `TextCatalog` slot: a catalog it produced
  *  would be computed, which a catalog never is. One at the slot is the catalog's
@@ -555,24 +381,6 @@ export function catalogsComputedAbove(walk: TextWalk, options: TextWalkOptions):
     }
   }
   return [...out.values()];
-}
-
-const patternCache = new Map<string, RegExp | null>();
-
-/** A `patternProperties` key compiled, or null for one that does not compile. */
-export function safeRegExp(pattern: string): RegExp | null {
-  let compiled = patternCache.get(pattern);
-  if (compiled === undefined) {
-    try {
-      compiled = new RegExp(pattern, "u");
-    } catch {
-      // An unreadable `patternProperties` key is the schema's own defect, which
-      // schema validation reports; here it matches nothing.
-      compiled = null;
-    }
-    patternCache.set(pattern, compiled);
-  }
-  return compiled;
 }
 
 /** Every value inside `value` that `isExpression` holds, with its path below it —

@@ -4,12 +4,20 @@ import {
   flattenLoadedModule,
   importPathOf,
   stampScopedImportsIn,
+  withLibraryMigrationsApplied,
   type AnalysisDiagnostic,
+  type LoadedGraph,
   type LoadedModule,
+  type ModuleMigrationRecord,
 } from "@telorun/analyzer";
 import type { ResourceManifest } from "@telorun/sdk";
 import { RuntimeError } from "@telorun/sdk";
 import type { BuiltinControllerContext } from "../../internal-context.js";
+import {
+  libraryMigrationRecordOf,
+  refuseFailedMigrations,
+  withLibraryMigrations,
+} from "../../library-migration-replay.js";
 import { staticDiagnosticToRuntime } from "../../static-analysis-diagnostics.js";
 import { rootContextOf } from "./shared-libraries.js";
 
@@ -50,7 +58,9 @@ export interface LibraryScope {
 
 interface LibraryEntry {
   target?: Promise<LoadedModule>;
-  scope?: Promise<LibraryScope>;
+  /** The scope, with the graph whose migration record it was built from: a
+   *  scope built under one graph's record is never served under another's. */
+  scope?: { graph: LoadedGraph | undefined; pending: Promise<LibraryScope> };
 }
 
 const caches = new WeakMap<object, Map<string, LibraryEntry>>();
@@ -93,16 +103,18 @@ export function resolveLibraryScope(
   ctx: BuiltinControllerContext,
 ): Promise<LibraryScope> {
   const entry = libraryEntry(resolvedUrl, ctx);
-  if (!entry.scope) {
+  const graph = ctx.libraryAnalysisHost().loadedGraph;
+  if (!entry.scope || entry.scope.graph !== graph) {
     const pending = computeLibraryScope(resolvedUrl, module, ctx);
-    entry.scope = pending;
+    const scope = { graph, pending };
+    entry.scope = scope;
     // A validation failure is a hard boot error, not a deferral — but don't
     // let a rejected promise permanently poison the entry for this URL.
     pending.catch(() => {
-      if (entry.scope === pending) entry.scope = undefined;
+      if (entry.scope === scope) entry.scope = undefined;
     });
   }
-  return entry.scope;
+  return entry.scope.pending;
 }
 
 async function computeLibraryScope(
@@ -111,15 +123,22 @@ async function computeLibraryScope(
   ctx: BuiltinControllerContext,
 ): Promise<LibraryScope> {
   const host = ctx.libraryAnalysisHost();
-  const rawManifests = flattenLoadedModule(await loadLibraryTarget(resolvedUrl, ctx));
-  // The library's own scoped `Telo.Import`s carry the identity the load gave them.
-  if (host.loadedGraph) stampScopedImportsIn(host.loadedGraph, rawManifests);
+  const target = await loadLibraryTarget(resolvedUrl, ctx);
+  // The library's trees as the stage migrated them: the record of the load's
+  // graph, or — for a library it did not reach — of the library's own graph.
+  const manifestsUnder = (record: ModuleMigrationRecord | undefined): ResourceManifest[] => {
+    const rawManifests = flattenLoadedModule(withLibraryMigrations(target, record));
+    // The library's own scoped `Telo.Import`s carry the identity the load gave them.
+    if (host.loadedGraph) stampScopedImportsIn(host.loadedGraph, rawManifests);
+    return rawManifests;
+  };
 
   if (module === host.entryModule) {
-    return ownRegistryScope(resolvedUrl, ctx, rawManifests);
+    return ownRegistryScope(resolvedUrl, ctx, target, manifestsUnder);
   }
   const registry = host.registry.forModule(module);
   if (ctx.isImportValidatedAtLoad(resolvedUrl)) {
+    const rawManifests = manifestsUnder(libraryMigrationRecordOf(host.loadedGraph, target.owner.source));
     return {
       rawManifests,
       registry,
@@ -132,10 +151,18 @@ async function computeLibraryScope(
     };
   }
 
-  const { manifests: graphManifests, moduleDocuments, applicationSources } = await host.loadLibrary(resolvedUrl);
+  const {
+    graph,
+    registration,
+    manifests: graphManifests,
+    moduleDocuments,
+    applicationSources,
+  } = await host.loadLibrary(resolvedUrl, registry);
   refuseLibraryAnalysis(
-    host.analyzer.analyze(graphManifests, { moduleDocuments, applicationSources }, registry),
+    graph,
+    host.analyzer.analyzeRegistered(graphManifests, { moduleDocuments, applicationSources }, registration),
   );
+  const rawManifests = manifestsUnder(libraryMigrationRecordOf(graph, target.owner.source));
   return { rawManifests, registry, targetsAt: () => graphManifests };
 }
 
@@ -172,26 +199,39 @@ function applicationTargets(targets: ResourceManifest[]): (instancePath: readonl
 async function ownRegistryScope(
   resolvedUrl: string,
   ctx: BuiltinControllerContext,
-  rawManifests: ResourceManifest[],
+  target: LoadedModule,
+  manifestsUnder: (record: ModuleMigrationRecord | undefined) => ResourceManifest[],
 ): Promise<LibraryScope> {
   const host = ctx.libraryAnalysisHost();
-  const { manifests: graphManifests, moduleDocuments, applicationSources } = await host.loadLibrary(resolvedUrl);
   const registry = new AnalysisRegistry();
+  const {
+    graph,
+    registration,
+    manifests: graphManifests,
+    moduleDocuments,
+    applicationSources,
+  } = await host.loadLibrary(resolvedUrl, registry);
   refuseLibraryAnalysis(
-    host.analyzer.analyze(
+    graph,
+    host.analyzer.analyzeRegistered(
       graphManifests,
       { skipValidation: ctx.isImportValidatedAtLoad(resolvedUrl), moduleDocuments, applicationSources },
-      registry,
+      registration,
     ),
   );
+  const rawManifests = manifestsUnder(libraryMigrationRecordOf(graph, target.owner.source));
   return { rawManifests, registry, targetsAt: () => graphManifests };
 }
 
 /** A library's own analysis refused, each error carried as a structured
  *  diagnostic under its code — so a run renders `[<CODE>] …` for a library the
- *  load did not reach as it does for the entry. */
-function refuseLibraryAnalysis(diagnostics: readonly AnalysisDiagnostic[]): void {
-  const errors = diagnostics.filter((d) => d.severity === DiagnosticSeverity.Error);
+ *  load did not reach as it does for the entry. A migration that failed in its
+ *  closure is `ERR_MIGRATION_FAILED`, the findings beneath its node held back. */
+function refuseLibraryAnalysis(graph: LoadedGraph, diagnostics: readonly AnalysisDiagnostic[]): void {
+  const errors = withLibraryMigrationsApplied(graph, diagnostics).filter(
+    (d) => d.severity === DiagnosticSeverity.Error,
+  );
+  refuseFailedMigrations(graph, errors);
   if (errors.length === 0) return;
   throw new RuntimeError(
     "ERR_MANIFEST_VALIDATION_FAILED",

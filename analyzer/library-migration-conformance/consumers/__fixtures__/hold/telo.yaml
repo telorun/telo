@@ -1,0 +1,9 @@
+kind: Telo.Library
+metadata: { name: Hold }
+lang: en
+exports: { kinds: [Pin] }
+---
+kind: Telo.Definition
+metadata: { name: Pin }
+capability: Telo.Invocable
+schema: { type: object, additionalProperties: false, properties: { target: { x-telo-ref: { kind: Telo.Invocable, use: dependency } } } }

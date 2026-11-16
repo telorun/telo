@@ -1,0 +1,7 @@
+units:
+  apps/hub: Added
+  apps/authoring-agent: Added
+body: "The design-library guide and the authoring primer cover library `migrations:`:
+  when a library author writes one, the `Self.<Name>` rule, the closed `match`,
+  legacy-spelling fixtures under `tests/__fixtures__/manifest-migrations/`, and retiring
+  one as a breaking removal."

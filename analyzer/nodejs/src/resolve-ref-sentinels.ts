@@ -373,7 +373,7 @@ interface WalkSite {
   writer?: ResourceManifest;
 }
 
-interface WalkHolder {
+export interface WalkHolder {
   address: ScopeAddress;
   scopes: readonly DeclaredScope[];
 }
@@ -389,7 +389,7 @@ type Resolve = (
  * declaration — an inline one at a slot — by the place it is written, in the
  * scope it is read in.
  */
-function nestedAddress(
+export function nestedAddress(
   holder: WalkHolder,
   keys: readonly (string | number)[],
   declaration: Record<string, unknown>,

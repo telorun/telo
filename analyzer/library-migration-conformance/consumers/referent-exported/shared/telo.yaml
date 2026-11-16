@@ -1,0 +1,15 @@
+kind: Telo.Library
+metadata: { name: Shared }
+lang: en
+imports: { V: ../../__fixtures__/views }
+exports: { resources: [me] }
+---
+kind: V.Data
+metadata: { name: me }
+source: { path: /api/me }
+content: { type: text, text: Signed in }
+---
+kind: V.Page
+metadata: { name: home }
+path: /
+children: [{ type: composite, ref: !ref me }]

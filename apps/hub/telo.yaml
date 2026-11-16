@@ -49,7 +49,7 @@ requires:
   # 0.117.0: the database is a `needs:` entry of the application, a key an older
   # analyzer refuses on a `Telo.Application`, and `postgres@0.9.0` opens a
   # connection over it.
-  telo: ">=0.136.0"
+  telo: ">=unreleased"
 imports:
   Http: ../../modules/http-server
   Sql: ../../modules/sql

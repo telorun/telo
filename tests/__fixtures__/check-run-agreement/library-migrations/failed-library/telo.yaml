@@ -1,0 +1,10 @@
+# A library holding a box spelled both ways.
+kind: Telo.Library
+metadata: { name: FailedShelf }
+lang: en
+imports: { Shop: ../shop }
+---
+kind: Shop.Box
+metadata: { name: box }
+label: old
+value: new

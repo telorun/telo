@@ -1,0 +1,71 @@
+kind: Telo.Library
+metadata: { name: Ui }
+lang: en
+imports: { DataModel: ./data-model }
+migrations:
+  UI_LINK_PRESS_LOOSE:
+    reason: A link's destination is a navigation effect.
+    rules:
+      - rewrite: Self.Node
+        match: { type: object, properties: { type: { const: link } } }
+        remove: [/href]
+  UI_DATA_PLACEMENT_MOVED:
+    reason: What is drawn over a read belongs to the node that places it.
+    rules:
+      - rewrite: Self.Node
+        match: { type: object, required: [type, ref], properties: { type: { const: composite } } }
+        resolve: { data: { at: /ref, before: Self.Data } }
+        move: { /ref: /query }
+        copy: { data#/content: /children/0 }
+        set: { type: query }
+  UI_COLLECTION_KEY_RENAMED:
+    reason: A collection names its key as `key`.
+    rules:
+      - rewrite: DataModel.Collection
+        match: { type: object, required: [keyProperty] }
+        move: { /keyProperty: /key }
+  UI_SOURCE_COLLECTION_INLINED:
+    reason: A source names its collection.
+    rules:
+      - rewrite: Self.CollectionSource
+        match: { type: object, required: [model] }
+        set: { kind: DataModel.Collection }
+  UI_PRESS_TARGET_NAMED:
+    reason: A press names its target as a navigation.
+    rules:
+      - rewrite: Self.Node
+        match: { type: object, required: [type, target], properties: { type: { const: link } } }
+        move: { /target: /to/href }
+        set: { to: { kind: Self.Navgate } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Node }
+schema:
+  oneOf:
+    - type: object
+      required: [type, text]
+      additionalProperties: false
+      properties: { type: { const: text }, text: { type: string } }
+    - type: object
+      required: [type, text, to]
+      additionalProperties: false
+      properties: { type: { const: link }, text: { type: string }, to: { x-telo-ref: { kind: Self.Navigate, use: dependency } } }
+    - type: object
+      required: [type, ref]
+      additionalProperties: false
+      properties: { type: { const: composite }, ref: { x-telo-ref: { kind: Self.Data, use: dependency } } }
+---
+kind: Telo.Definition
+metadata: { name: Navigate }
+capability: Telo.Type
+schema: { type: object, additionalProperties: false, properties: { href: { type: string } } }
+---
+kind: Telo.Definition
+metadata: { name: Data }
+capability: Telo.Type
+schema: { type: object, additionalProperties: false, properties: { url: { type: string } } }
+---
+kind: Telo.Definition
+metadata: { name: CollectionSource }
+capability: Telo.Type
+schema: { type: object, additionalProperties: false, properties: { collection: { type: string } } }

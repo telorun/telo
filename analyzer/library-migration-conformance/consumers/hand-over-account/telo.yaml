@@ -1,0 +1,35 @@
+kind: Telo.Application
+metadata: { name: Account }
+lang: en
+imports: { V: ../__fixtures__/views }
+targets: []
+---
+kind: V.Data
+metadata: { name: me }
+source: { path: /api/me }
+reloadOn: [focus, unauthorized]
+content: { type: text, text: Signed in }
+---
+kind: V.Data
+metadata: { name: orders }
+source: { path: /api/orders }
+content: { type: text, text: Orders }
+loading: { type: text, text: Loading }
+---
+kind: V.View
+metadata: { name: card }
+content: { type: text, text: Card }
+---
+kind: V.Screen
+metadata: { name: app }
+pages:
+  - kind: V.Page
+    path: /
+    children: [{ type: composite, ref: !ref me }, { type: composite, ref: !ref orders }]
+  - kind: V.Page
+    path: /settings
+    children: [{ type: composite, ref: !ref me }, { type: composite, ref: !ref card }]
+---
+kind: Telo.Value
+metadata: { name: reader }
+value: !cel "resources.me"

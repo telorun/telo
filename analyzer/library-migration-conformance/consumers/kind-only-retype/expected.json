@@ -1,0 +1,49 @@
+{
+  "diagnostics": [
+    {
+      "code": "MIGRATION_FAILED",
+      "severity": 1,
+      "file": "kind-only-retype/panel/telo.yaml",
+      "path": "resources.read",
+      "message": "The migration SHAPES_DATA_QUERIED of Shapes could not be applied: `S.Data` has no single replacement: migrations.SHAPES_DATA_QUERIED.rules[0] writes `Self.Query`, migrations.SHAPES_DATA_REPLACED.rules[2] writes `Self.View`."
+    },
+    {
+      "code": "SHAPES_MID_RENAMED",
+      "severity": 2,
+      "file": "kind-only-retype/panel/telo.yaml",
+      "path": "resources.renamed",
+      "message": "Mid is New."
+    },
+    {
+      "code": "SHAPES_OLD_RENAMED",
+      "severity": 2,
+      "file": "kind-only-retype/panel/telo.yaml",
+      "path": "resources.renamed",
+      "message": "Old is Mid."
+    }
+  ],
+  "migrated": {
+    "kind-only-retype/panel/telo.yaml": {
+      "0": {
+        "kind": "Telo.Library",
+        "metadata": {
+          "name": "Panel"
+        },
+        "lang": "en",
+        "imports": {
+          "S": "../shapes"
+        },
+        "resources": {
+          "renamed": {
+            "kind": "S.New",
+            "optional": true
+          },
+          "read": {
+            "kind": "S.Data",
+            "optional": true
+          }
+        }
+      }
+    }
+  }
+}

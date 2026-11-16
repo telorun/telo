@@ -1,0 +1,28 @@
+kind: Telo.Library
+metadata: { name: Branches }
+migrations:
+  BRANCHES_HREF_MOVED:
+    reason: A link names its destination as `to`.
+    rules:
+      - rewrite: Self.Node
+        match: { type: object, required: [href] }
+        move: { /href: /to }
+  BRANCHES_LABEL_RENAMED:
+    reason: A node names its text as `text`.
+    rules:
+      - rewrite: Self.Node
+        match: { type: object, required: [type], properties: { type: { const: text } } }
+        move: { /label: /text }
+---
+kind: Telo.JsonSchema
+metadata: { name: Node }
+schema:
+  oneOf:
+    - type: object
+      required: [type, text]
+      additionalProperties: false
+      properties: { type: { const: text }, text: { type: string } }
+    - type: object
+      required: [type, to]
+      additionalProperties: false
+      properties: { type: { const: link }, to: { type: string } }

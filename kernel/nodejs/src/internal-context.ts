@@ -1,9 +1,8 @@
 import type {
   LoadedGraph,
   AnalysisRegistry,
-  ApplicationSourceRecords,
   LoadedModule,
-  ModuleDocuments,
+  RegisteredGraph,
   StaticAnalyzer,
 } from "@telorun/analyzer";
 import type { LoadOptions, ResourceContext, ResourceManifest } from "@telorun/sdk";
@@ -31,14 +30,12 @@ export interface LibraryAnalysisHost {
   /** An import target as the loader read it — what the import's identity is
    *  judged on — with its expressions adopted like any loaded module's. */
   loadModule(url: string, options?: LoadOptions): Promise<LoadedModule>;
-  /** A library's flattened analysis set, the full documents of every library
-   *  it imports — what its analysis resolves a projection hop into another
-   *  library's internals against — and the child applications its resources run. */
-  loadLibrary(url: string): Promise<{
-    manifests: ResourceManifest[];
-    moduleDocuments: ModuleDocuments[];
-    applicationSources: ApplicationSourceRecords;
-  }>;
+  /** A library's graph registered into `registry` and flattened: the graph,
+   *  which carries its library migration stage's result, its registration, its
+   *  analysis set, the full documents of every library it imports — what its
+   *  analysis resolves a projection hop into another library's internals
+   *  against — and the child applications its resources run. */
+  loadLibrary(url: string, registry: AnalysisRegistry): Promise<RegisteredGraph & { graph: LoadedGraph }>;
 }
 
 /**

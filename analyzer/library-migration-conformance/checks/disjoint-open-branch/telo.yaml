@@ -1,0 +1,13 @@
+kind: Telo.Library
+metadata: { name: Open }
+migrations:
+  OPEN_HREF_MOVED:
+    reason: A link names its destination as `to`.
+    rules:
+      - rewrite: Self.Link
+        match: { type: object, required: [href] }
+        move: { /href: /to }
+---
+kind: Telo.JsonSchema
+metadata: { name: Link }
+schema: { type: object, required: [to], properties: { to: { type: string } } }

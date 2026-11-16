@@ -1,0 +1,47 @@
+{
+  "diagnostics": [
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "referent-legacy-key/telo.yaml",
+      "path": "",
+      "message": "V.Page/home: / must NOT have additional properties ('legacy' is not allowed)"
+    },
+    {
+      "code": "VIEWS_DATA_REPLACED",
+      "severity": 2,
+      "file": "referent-legacy-key/telo.yaml",
+      "path": "",
+      "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
+    }
+  ],
+  "migrated": {
+    "referent-legacy-key/telo.yaml": {
+      "1": {
+        "kind": "V.View",
+        "metadata": {
+          "name": "me"
+        },
+        "content": {
+          "type": "query",
+          "query": {
+            "kind": "V.Query",
+            "url": {
+              "path": "/api/me"
+            },
+            "reloadOn": [
+              "focus",
+              "unauthorized"
+            ]
+          },
+          "children": [
+            {
+              "type": "text",
+              "text": "Signed in"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

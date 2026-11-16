@@ -1,0 +1,8 @@
+kind: Telo.Library
+metadata: { name: Parts }
+exports: { kinds: [Panel] }
+---
+kind: Telo.Definition
+metadata: { name: Panel }
+capability: Telo.Type
+schema: { type: object, additionalProperties: false, properties: { url: { type: string } } }

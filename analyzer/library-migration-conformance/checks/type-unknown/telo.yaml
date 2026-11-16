@@ -1,0 +1,51 @@
+kind: Telo.Library
+metadata: { name: Ui }
+lang: en
+migrations:
+  UI_GONE_RENAMED:
+    reason: Gone was renamed.
+    rules:
+      - rewrite: Self.Gone
+        match: { type: object, required: [old] }
+        move: { /old: /title }
+  UI_DATA_REPLACED:
+    reason: A read is a query.
+    rules:
+      - rewrite: Self.Data
+        match: { type: object, required: [source, content] }
+        move: { /source: /url }
+        remove: [/content]
+        set: { kind: Self.Query }
+      - rewrite: Self.Node
+        match: { type: object, required: [type, ref], properties: { type: { const: composite } } }
+        resolve: { data: { at: /ref, before: Self.Data } }
+        move: { /ref: /query }
+        copy: { data#/content: /children/0 }
+        set: { type: query }
+      - rewrite: Self.Data
+        match: { type: object, required: [source, content] }
+        move: { /source: /content/query/url, /content: /content/children/0 }
+        set: { kind: Self.View, content: { type: query, query: { kind: Self.Query } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Node }
+schema:
+  oneOf:
+    - type: object
+      required: [type, text]
+      additionalProperties: false
+      properties: { type: { const: text }, text: { type: string } }
+    - type: object
+      required: [type, query]
+      additionalProperties: false
+      properties: { type: { const: query }, query: { x-telo-ref: { kind: Self.Query, use: dependency } }, children: { type: array } }
+---
+kind: Telo.Definition
+metadata: { name: Query }
+capability: Telo.Invocable
+schema: { type: object, additionalProperties: false, properties: { url: { type: string } } }
+---
+kind: Telo.Definition
+metadata: { name: View }
+capability: Telo.Invocable
+schema: { type: object, additionalProperties: false, properties: { content: { $ref: "telo://Self/Node" } } }

@@ -1,0 +1,11 @@
+{
+  "diagnostics": [
+    {
+      "code": "MIGRATION_MATCH_OVERLAPS_SCHEMA",
+      "severity": 1,
+      "file": "telo.yaml",
+      "path": "migrations.PATTERN_LEGACY_SCHEME.rules[0].match",
+      "message": "Telo.Library/Pattern: `match` also accepts the current schema of Self.Link: a value matches it, since it declares `href`; `pattern` at `/href` is read as accepting every value. Require a key the schema refuses, or pin a `const` / `enum` it refuses."
+    }
+  ]
+}

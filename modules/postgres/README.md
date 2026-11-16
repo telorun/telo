@@ -327,3 +327,7 @@ logged and does not stop the other subscribers'.
 
 Failing to subscribe in the first place is *not* swallowed: `listen()` rejects,
 because a subscription nobody established is one the caller thinks it has.
+
+## Legacy spelling
+
+`beforeMigrations:` on a `Schema` is now `prepare:`. The module declares the rename itself (`SQL_BEFORE_MIGRATIONS_RENAMED`), so a manifest still using the old key loads migrated under any import alias and `telo check` reports a warning on its own line; `telo migrate` rewrites the file. Nothing re-runs, because the ledger stores the migration key alone.

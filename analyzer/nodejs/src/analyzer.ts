@@ -37,6 +37,7 @@ import {
   scopeResolverForModule,
 } from "./alias-resolver.js";
 import { AnalysisRegistry } from "./analysis-registry.js";
+import { registerDefinitions, type DefinitionRegistration } from "./definition-registration.js";
 import { BUILTIN_VOCABULARY_KIND, BUILTIN_VOCABULARY_NOT_A_MODULE } from "./builtin-vocabulary.js";
 import {
   buildCelEnvironment,
@@ -383,6 +384,7 @@ import { coReferrerScopedDiagnostics } from "./validate-co-referrers.js";
 import { coReferrerStandIns } from "./co-referrer-stand-ins.js";
 import { validateResourceInputs } from "./validate-resource-inputs.js";
 import { validateExports } from "./validate-exports.js";
+import { validateLibraryMigrations } from "./validate-library-migrations.js";
 import { validateTemplateBody } from "./validate-template-body.js";
 import { dispatchTargetOf, templateBodies } from "./template-body.js";
 import {
@@ -1031,16 +1033,6 @@ function contractOwnerLabel(
   return canonical;
 }
 
-/** The built-in namespace: globally resolvable, crossing no import boundary. */
-const TELO_BUILTIN_MODULE = "Telo";
-
-/** A library's own alias table, which names the built-ins as every module's does. */
-function libraryAliasTable(tables: Map<string, AliasResolver>, module: string): AliasResolver {
-  const table = new AliasResolver();
-  table.registerUngatedAlias(TELO_BUILTIN_MODULE, TELO_BUILTIN_MODULE);
-  tables.set(module, table);
-  return table;
-}
 
 /** One mapping from a ref-slot issue to a diagnostic — the shape is identical
  *  for the schema-level and the manifest-level (dynamic selector) checks. */
@@ -4431,6 +4423,21 @@ export class StaticAnalyzer {
     registry?: AnalysisRegistry,
     zoneExportCache?: ZoneExportCache,
   ): AnalysisDiagnostic[] {
+    const registration = registerDefinitions(manifests, registry ?? new AnalysisRegistry(), options?.moduleDocuments);
+    return this.analyzeRegistered(manifests, options, registration, zoneExportCache);
+  }
+
+  /**
+   * {@link analyze} over a set whose declaration plane `registration` already
+   * registered — the graph entry point's form, where registration runs before
+   * flatten. Registers nothing: every configuration run reads `registration`.
+   */
+  analyzeRegistered(
+    manifests: ResourceManifest[],
+    options: AnalysisOptions | undefined,
+    registration: DefinitionRegistration,
+    zoneExportCache?: ZoneExportCache,
+  ): AnalysisDiagnostic[] {
     assertManifestPositions(manifests);
     const within = options?.within ?? {};
     // Every `!if` / `!switch` outside a template body: the configurations they
@@ -4449,9 +4456,9 @@ export class StaticAnalyzer {
       !manifests.some(holdsTemplateConstructs)
     ) {
       restrictConfigurations([], [{}], within);
-      return this.analyzeConfiguration(manifests, options, registry, zoneExportCache).diagnostics;
+      return this.analyzeConfiguration(manifests, options, registration, zoneExportCache).diagnostics;
     }
-    const read = this.readConfigurations(manifests, options, registry, written);
+    const read = this.readConfigurations(manifests, options, registration, written);
     const { choices } = read;
     const scopeRegistry = read.registry;
     // Every template definition's body, read once: the variants it is checked
@@ -4850,7 +4857,7 @@ export class StaticAnalyzer {
       for (const assignment of configurations) {
         const at = space.assignment(assignment);
         for (let variant = 0; variant < variants; variant++) {
-          const run = inShapeLayer(() => this.analyzeConfiguration(manifests, options, registry, zoneExportCache, {
+          const run = inShapeLayer(() => this.analyzeConfiguration(manifests, options, registration, zoneExportCache, {
             run: "configuration",
             decisions: choices.decide(assignment),
             narrowing: choices.narrowing(assignment),
@@ -4951,7 +4958,7 @@ export class StaticAnalyzer {
         const decisions = new Map(choices.decide(unreachable.baseline));
         decisions.set(unreachable.site.sentinel, unreachable.branch);
         const verdictOf = (site: string) => solution?.verdictInDeadBranch(site, unreachable.site.sentinel as object, unreachable.branch);
-        const run = inShapeLayer(() => this.analyzeConfiguration(manifests, options, registry, zoneExportCache, {
+        const run = inShapeLayer(() => this.analyzeConfiguration(manifests, options, registration, zoneExportCache, {
           run: "unreachable",
           decisions,
           narrowing: choices.narrowing(unreachable.baseline),
@@ -5044,7 +5051,7 @@ export class StaticAnalyzer {
     const { choices, refused, registry: scopeRegistry } = this.readConfigurations(
       manifests,
       options,
-      registry,
+      registerDefinitions(manifests, registry ?? new AnalysisRegistry(), options?.moduleDocuments),
       readChoices(declarations, documents),
     );
     const restricted = restrictConfigurations(choices.dimensions, choices.configurations, options?.within ?? {});
@@ -5418,7 +5425,7 @@ export class StaticAnalyzer {
   private readConfigurations(
     manifests: ResourceManifest[],
     options: AnalysisOptions | undefined,
-    registry: AnalysisRegistry | undefined,
+    registration: DefinitionRegistration,
     written: ChoiceReading,
   ): {
     choices: ChoiceReading;
@@ -5432,33 +5439,33 @@ export class StaticAnalyzer {
     const documents = manifests.filter(isExpansionSentinel);
     const declarations = documents.length > 0 ? manifests.filter((m) => !isExpansionSentinel(m)) : manifests;
     // A choice's module calls and its branches' kinds are read in the scope the
-    // set's own declarations register, so they are registered first.
-    const scopeRegistry = registry ?? new AnalysisRegistry();
+    // set's own declarations registered.
+    const scopeRegistry = registration.registry;
     const first = written.configurations[0]!;
     // Which named shapes a configuration varies is read off the union, which
     // the choices read here decide: until then every shape stays this run's.
     const defs = scopeRegistry._context().definitions!;
-    let registration: ReturnType<StaticAnalyzer["analyzeConfiguration"]> | undefined;
+    let setup: ReturnType<StaticAnalyzer["analyzeConfiguration"]> | undefined;
     let choices = written;
     const shapes = withShapeLayer(defs, () => false, () => {
-      registration = this.analyzeConfiguration(manifests, { ...options, skipValidation: true }, scopeRegistry, undefined, {
+      setup = this.analyzeConfiguration(manifests, { ...options, skipValidation: true }, registration, undefined, {
         run: "setup",
         decisions: written.decide(first),
         narrowing: written.narrowing(first),
       });
-      const consumerReads = registration.consumerReads ?? [];
+      const consumerReads = setup.consumerReads ?? [];
       if (written.sites.length > 0 || consumerReads.length > 0) {
         choices = readChoices(
           declarations,
           documents,
           choiceScopeOf(manifests, scopeRegistry, [], registeredNeedTable(manifests, scopeRegistry, options?.moduleDocuments)),
           consumerReads,
-          refusedSentinels(registration.expansion),
+          refusedSentinels(setup.expansion),
         );
       }
     }).registered;
-    const refused = refusedSentinels(registration!.expansion);
-    return { choices, registry: scopeRegistry, refused, expansion: registration!.expansion, shapes };
+    const refused = refusedSentinels(setup!.expansion);
+    return { choices, registry: scopeRegistry, refused, expansion: setup!.expansion, shapes };
   }
 
   /** What every key's environment reads, built once per analysis. */
@@ -6964,17 +6971,17 @@ export class StaticAnalyzer {
    *  types each input it decides; without one, the manifests hold none. */
   private analyzeConfiguration(
     manifests: ResourceManifest[],
-    options?: AnalysisOptions,
-    registry?: AnalysisRegistry,
+    options: AnalysisOptions | undefined,
+    registration: DefinitionRegistration,
     zoneExportCache?: ZoneExportCache,
     configuration?: AnalysisConfiguration,
   ): ConfigurationAnalysis {
     const purpose = configuration?.run ?? "whole";
     reportAnalysisRun(purpose);
-    if (!observingKeyCosts()) return this.analyzeConfigurationIn(manifests, options, registry, zoneExportCache, configuration);
+    if (!observingKeyCosts()) return this.analyzeConfigurationIn(manifests, options, registration, zoneExportCache, configuration);
     const started = performance.now();
     try {
-      return this.analyzeConfigurationIn(manifests, options, registry, zoneExportCache, configuration);
+      return this.analyzeConfigurationIn(manifests, options, registration, zoneExportCache, configuration);
     } finally {
       reportKeyCost({ kind: "run", purpose, milliseconds: performance.now() - started });
     }
@@ -6982,8 +6989,8 @@ export class StaticAnalyzer {
 
   private analyzeConfigurationIn(
     manifests: ResourceManifest[],
-    options?: AnalysisOptions,
-    registry?: AnalysisRegistry,
+    options: AnalysisOptions | undefined,
+    registration: DefinitionRegistration,
     zoneExportCache?: ZoneExportCache,
     configuration?: AnalysisConfiguration,
   ): ConfigurationAnalysis {
@@ -7000,18 +7007,13 @@ export class StaticAnalyzer {
     let expansion: ExpansionReading | undefined;
     let choiceExpansion: ChoiceExpansion | undefined;
 
-    // Use pre-seeded registries from the provided AnalysisRegistry, or create fresh ones.
-    // New aliases/definitions found in the manifests are accumulated into the provided instance
-    // so state builds up across successive calls (e.g. incremental editor validation).
-    const ctx = registry?._context();
-    const aliases = ctx?.aliases ?? new AliasResolver();
-    // `Telo` crosses no import boundary — the kernel built-ins are globally
-    // resolvable, which is what lets `kind: Telo.ConsoleSink` and
-    // `extends: Telo.LogSink` work with no `imports:` entry (§10.2). The kernel
-    // registers the same ungated alias at boot; registering it here keeps the
-    // static and runtime halves agreeing.
-    aliases.registerUngatedAlias(TELO_BUILTIN_MODULE, TELO_BUILTIN_MODULE);
-    const defs = ctx?.definitions ?? new DefinitionRegistry();
+    // The registration this root's runs all consume: the registry it added
+    // the set's declaration plane to, the entry's modules and every library's
+    // own declarations. Analysis reads it and registers nothing.
+    const registry = registration.registry;
+    const ctx = registry._context();
+    const aliases = ctx.aliases!;
+    const defs = ctx.definitions!;
     // The one validator for a value checked against a schema that may name a
     // registered shape: a module-level AJV holds none, so it compiles such a
     // schema nowhere and the value goes unchecked.
@@ -7020,187 +7022,13 @@ export class StaticAnalyzer {
       external: (ref) => defs.schemaForId(ref),
     };
 
-    // Register module identities and aliases.
-    // The root module doc (Telo.Application or Telo.Library) provides its own
-    // identity; imported modules surface their identity via resolvedModuleName/
-    // resolvedNamespace stamped onto the Telo.Import by the loader.
-    //
-    // Two alias scopes are tracked:
-    //  - `aliases` — the consumer's aliases, populated from Telo.Imports declared in
-    //    the entry manifest (its own module).
-    //  - `aliasesByModule` — per-imported-library aliases, populated from Telo.Imports
-    //    forwarded by the loader from inside imported libraries. A library may use
-    //    different alias names than the consumer for the same dependency; resolving
-    //    a forwarded def's `extends` / `capability` against the consumer's scope
-    //    would either fail or pick the wrong target. Each forwarded def is normalized
-    //    in its own library's scope.
-    const rootModules = new Set<string>();
-    for (const m of manifests) {
-      if (isModuleKind(m.kind) && m.metadata?.name) {
-        rootModules.add(m.metadata.name as string);
-      }
-    }
-    const aliasesByModule = ctx?.aliasesByModule ?? new Map<string, AliasResolver>();
+    const rootModules = new Set(registration.rootModules);
+    const aliasesByModule = ctx.aliasesByModule!;
     // Every import in the set, by the module it loads: what tells a kind spelled
     // by the canonical name of a module some import loads from one nothing loads.
     const importersByModule = importersByModuleOf(manifests, rootModules);
-    // Every imported library's own declarations, read by a projection hop into
-    // a library's internals. Shared with the registry so an editor's contract
-    // query resolves the same hops `telo check` does.
-    const libraries = libraryDeclarations(options?.moduleDocuments ?? []);
-    registry?._setLibraries(libraries, options?.moduleDocuments ?? []);
-    // Per-module-scope seen aliases for DUPLICATE_IMPORT_ALIAS. Authored
-    // Telo.Import docs and synthetic-from-inline-`imports:` share one alias
-    // namespace per module, so a repeat — across either form — is an error
-    // rather than the silent last-writer-wins the resolver would otherwise do.
-    const seenAliasByScope = new Map<string, Set<string>>();
-    for (const m of manifests) {
-      if (isModuleKind(m.kind)) {
-        const namespace = ((m.metadata as any).namespace as string | undefined) ?? null;
-        const moduleName = m.metadata.name as string;
-        if (moduleName) defs.registerModuleIdentity(namespace, moduleName);
-        // Auto-register `Self` as an alias for this library's own module name.
-        // Lets same-library `extends:` work (e.g. `extends: Self.Encoder` for a
-        // concrete kind whose abstract lives in the same Telo.Library) without
-        // requiring a self-import (which would loop the loader). Resolves
-        // through the same alias machinery as user-declared Telo.Imports.
-        if (moduleName) {
-          // `Self` resolves the library's own kinds UNGATED — a library may reference
-          // its own kinds regardless of `exports.kinds`, which gates importers, not
-          // internal use. This is what lets a library declare an instance of a kind it
-          // does not export (e.g. console's `writeLine`) to enforce a singleton.
-          // A module's OWN NAME resolves its kinds too, beside `Self` and for
-          // the same reason: `<module>.<Kind>` IS the canonical identity the
-          // registry keys on and every diagnostic prints, and `<module>.fn(…)`
-          // is one of the names a CEL call resolves through. The kernel
-          // registers both in every context; registering only `Self` here is
-          // what let a spelling pass `telo check` and fail at boot.
-          if (rootModules.has(moduleName)) {
-            aliases.registerUngatedAlias("Self", moduleName);
-            aliases.registerUngatedAlias(moduleName, moduleName);
-          } else {
-            let libResolver = aliasesByModule.get(moduleName);
-            if (!libResolver) {
-              libResolver = new AliasResolver();
-              libResolver.registerUngatedAlias(TELO_BUILTIN_MODULE, TELO_BUILTIN_MODULE);
-              aliasesByModule.set(moduleName, libResolver);
-            }
-            libResolver.registerUngatedAlias("Self", moduleName);
-            libResolver.registerUngatedAlias(moduleName, moduleName);
-          }
-        }
-      }
-      if (m.kind === "Telo.Import") {
-        const alias = m.metadata.name as string;
-        const source = (m as any).source as string | undefined;
-        // The target's `exports.kinds` gate, stamped onto this import by
-        // `stampExportedKinds` (the `Telo.Import` doc has no `exports` field of its own —
-        // the target `Telo.Library` doc it comes from is dropped for non-root modules).
-        // Undefined means the target declares no gate, i.e. unrestricted.
-        const exportedKinds = (m.metadata as { exportedKinds?: string[] } | undefined)
-          ?.exportedKinds;
-        const resolvedModuleName = (m.metadata as any).resolvedModuleName as string | undefined;
-        const resolvedNamespace = (m.metadata as any).resolvedNamespace as
-          | string
-          | null
-          | undefined;
-        const ownModule = (m.metadata as { module?: string } | undefined)?.module;
-        // A module NAME is not a module INSTANCE: the same library may be
-        // reached twice in one graph through two different sources (a local
-        // checkout alongside its own published artifact — the diamond the
-        // "resolves to two modules in this graph" warning already tolerates
-        // as two scopes). Each instance's own `imports:` is declared in its
-        // own file, so folding the declaring file's stamped `source` into the
-        // scope key keeps the two instances' aliases apart, while every
-        // import actually declared in ONE file — inline map entries and
-        // authored `Telo.Import` docs alike — still shares one scope.
-        const ownSource = (m.metadata as { source?: string } | undefined)?.source;
-        if (alias) {
-          const scopeKey = ownModule ? `${ownModule}\0${ownSource ?? ""}` : "";
-          let seen = seenAliasByScope.get(scopeKey);
-          if (!seen) {
-            seen = new Set<string>();
-            seenAliasByScope.set(scopeKey, seen);
-          }
-          if (seen.has(alias)) {
-            diagnostics.push({
-              severity: DiagnosticSeverity.Error,
-              code: "DUPLICATE_IMPORT_ALIAS",
-              source: SOURCE,
-              message:
-                `Duplicate import alias '${alias}'. An alias may be declared once per module — ` +
-                `across both inline 'imports:' entries and 'Telo.Import' documents. ` +
-                `Rename or remove the duplicate.`,
-              data: {
-                resource: { kind: "Telo.Import", name: alias },
-                filePath: (m.metadata as { source?: string } | undefined)?.source,
-                path: "metadata.name",
-              },
-            });
-            // Keep the first alias→target mapping intact; don't re-register the
-            // duplicate (last-writer-wins would shadow the original and cascade
-            // misleading follow-on diagnostics).
-            continue;
-          }
-          seen.add(alias);
-        }
-        // An import whose target identity was never established registers NO
-        // alias. The name is never guessed from the source string: a guess that
-        // is usually right is what turned "this import did not resolve" into an
-        // assertion that a published dependency was malformed, naming a module
-        // no registry could ever hold. With no alias, every use degrades to
-        // "cannot resolve alias '<X>'" — which points at the import the author
-        // has to fix, and which the loader has already reported on its own line.
-        if (alias && source && resolvedModuleName) {
-          const targetModule = resolvedModuleName;
-          // Module identity is registered globally so x-telo-ref resolution sees
-          // transitively-imported modules regardless of which scope brought them in.
-          defs.registerModuleIdentity(resolvedNamespace ?? null, resolvedModuleName);
-          // `metadata.reExportedKinds` (stamped by flattenForAnalyzer / the editor projection)
-          // maps an exported suffix to the true owning module's canonical kind for kinds this
-          // import transitively re-exports (`exports.kinds: [Alias.Kind]`).
-          const reExportedKinds = ((m.metadata as any)?.reExportedKinds ?? {}) as Record<
-            string,
-            string
-          >;
-          // Alias registration is scoped: consumer imports vs. imported-library imports.
-          const resolver =
-            !ownModule || rootModules.has(ownModule)
-              ? aliases
-              : (aliasesByModule.get(ownModule) ?? libraryAliasTable(aliasesByModule, ownModule));
-          resolver.registerImport(alias, targetModule, exportedKinds);
-          for (const [suffix, canonical] of Object.entries(reExportedKinds)) {
-            resolver.registerKindReExport(alias, suffix, canonical);
-          }
-        }
-      }
-    }
-
-    // Seed `Self` for every module that contributes definitions but whose own
-    // Telo.Library doc isn't in this manifest set. `flattenForAnalyzer` forwards an
-    // imported library's definitions/abstracts/imports but NOT its module doc, so the
-    // module-doc loop above can't register `Self` for imported modules. Without this, a
-    // definition's `extends: Self.X` (a kind defined in the same library as the abstract)
-    // can't resolve and its `extendedBy` edge mis-keys under the literal "Self.X" — which
-    // stays invisible until another module also implements that abstract and flips the
-    // reference check from lenient to strict. `Self` always maps a module to its own name.
-    for (const m of manifests) {
-      if (!isKindDocument(m)) continue;
-      const ownModule = (m.metadata as { module?: string } | undefined)?.module;
-      if (!ownModule || rootModules.has(ownModule)) continue;
-      let libResolver = aliasesByModule.get(ownModule);
-      if (!libResolver) {
-        libResolver = new AliasResolver();
-        libResolver.registerUngatedAlias(TELO_BUILTIN_MODULE, TELO_BUILTIN_MODULE);
-        aliasesByModule.set(ownModule, libResolver);
-      }
-      if (!libResolver.hasAlias("Self")) {
-        libResolver.registerUngatedAlias("Self", ownModule);
-      }
-      if (!libResolver.hasAlias(ownModule)) {
-        libResolver.registerUngatedAlias(ownModule, ownModule);
-      }
-    }
+    const libraries = registration.libraries;
+    if (!options?.skipValidation) diagnostics.push(...registration.duplicateAliases);
 
     // The names a CEL call's receiver may be, per declaring module: the module's
     // `imports:` keys, `Self`, its own `metadata.name` and `Telo`. Derived from
@@ -7338,124 +7166,34 @@ export class StaticAnalyzer {
     // canonicalized) holds the document's fields by reference, so a shape
     // reference at a contract's root, replaced on the document, is resolved
     // on the copy too.
-    const registeredCopies: ResourceManifest[] = [];
-    for (const m of manifests) {
-      const declared = kindDeclarationOf(m);
-      if (!declared) continue;
-      // A need type registers the Provider kind its fulfilments are, and a keyed
-      // declaration the translations kind of its keys — the synthesized
-      // definition the kernel registers from the same document.
-      if (needTypeOf(declared) || keyedTranslationsOf(declared)) {
-        defs.register(declared);
-        continue;
-      }
-      const def = m as unknown as ResourceDefinition;
-      const ownModule = (def.metadata as { module?: string } | undefined)?.module;
-      const scopeResolver = declaringModuleScope(ownModule, aliases, {
-        aliasesByModule,
-        rootModules,
-      });
-      // Canonicalize alias-form `x-telo-ref` constraints in the DECLARING module's
-      // scope, before the schema reaches `register()` and the lazily-built field
-      // maps. Same pre-resolution `capability` / `extends` get below.
-      const issues = resolveSchemaRefKinds(m, scopeResolver);
-      // Report only for definitions the author can edit. A published dependency
-      // still on the deprecated form — or with a constraint that no longer
-      // resolves — is not the consumer's to fix, and every import would
-      // otherwise flood `telo check` with unactionable noise.
-      if (!ownModule || rootModules.has(ownModule)) {
-        refConstraintIssues.push(...issues);
-        refSlotIssues.push(...validateRefSlotDeclarations(m as unknown as ResourceManifest));
-        for (const problem of serializableAnnotationProblems((def as { schema?: unknown }).schema)) {
-          scopeSlotDiagnostics.push({
-            severity: DiagnosticSeverity.Error,
-            code: "SERIALIZABLE_ANNOTATION_INVALID",
-            source: SOURCE,
-            message: problem.message,
-            data: {
-              resource: { kind: m.kind, name: def.metadata?.name as string },
-              filePath: (def.metadata as { source?: string } | undefined)?.source,
-              path: pointerToPath(`/schema${problem.pointer}`),
-            },
-          });
-        }
-        for (const problem of retryForProblems(def)) {
-          scopeSlotDiagnostics.push({
-            severity: DiagnosticSeverity.Error,
-            code: "RETRY_FOR_INVALID",
-            source: SOURCE,
-            message: problem.message,
-            data: {
-              resource: { kind: m.kind, name: def.metadata?.name as string },
-              filePath: (def.metadata as { source?: string } | undefined)?.source,
-              path: problem.path,
-            },
-          });
-        }
-        for (const problem of scopeSlotProblems(def)) {
-          scopeSlotDiagnostics.push({
-            severity: DiagnosticSeverity.Error,
-            code: "SCOPE_SLOT_MISPLACED",
-            source: SOURCE,
-            message: `${m.kind} ${problem.message}`,
-            data: {
-              resource: { kind: m.kind, name: def.metadata?.name as string },
-              filePath: (def.metadata as { source?: string } | undefined)?.source,
-              path: problem.path,
-            },
-          });
-        }
-        const capability = inheritedCapability(
-          def,
-          (k) => defs.resolve(scopeResolver.resolveKind(k) ?? k) ?? defs.resolve(k),
-        );
-        for (const problem of scopeOpenedByProblems(def, capability)) {
-          scopeSlotDiagnostics.push({
-            severity: DiagnosticSeverity.Error,
-            code: "SCOPE_OPENED_BY_INVALID",
-            source: SOURCE,
-            message: `${m.kind} ${problem.message}`,
-            data: {
-              resource: { kind: m.kind, name: def.metadata?.name as string },
-              filePath: (def.metadata as { source?: string } | undefined)?.source,
-              path: problem.path,
-            },
-          });
-        }
-        zoneSlotIssues.push(...validateZoneSlotDeclarations(m as unknown as ResourceManifest));
-        // Both rule families are checked after the registration loop: a
-        // resource rule against the MERGED schema, whose parent may be declared
-        // later in the file or in an imported module, and a referrer rule's
-        // `peers:` against the REFERRER kind's schema.
-        ownRuleDeclarers.push(m as unknown as ResourceManifest);
-        for (const rule of readReferrerRules((m as Record<string, unknown>).schema)) {
-          referrerRuleExercise.set(`${m.metadata?.module}.${m.metadata?.name}#${rule.code}`, {
-            manifest: m as unknown as ResourceManifest,
-            rule,
-            exercised: false,
-            seen: false,
-          });
-        }
-      }
-      // The closed roster: a `capability:` names a lifecycle role a kernel
-      // implements, or the kernel refuses the definition at registration. So a
-      // DEPENDENCY's definition is reported too — anchored at the `imports:`
-      // entry reaching it, the line the consumer can act on — since the manifest
+    const registeredCopies = [...registration.registeredCopies];
+    for (const registered of registration.definitions) {
+      const { manifest: m, module: ownModule } = registered;
+      // A refused capability is reported for a dependency's definition too —
+      // anchored at the `imports:` entry reaching it — since the manifest
       // importing it cannot start.
-      const capabilityIssue = capabilityProblem(def.capability, def.extends !== undefined);
-      if (capabilityIssue) diagnostics.push(capabilityDiagnostic(m, ownModule, capabilityIssue));
-      const resolvedExtends = def.extends
-        ? (scopeResolver.resolveKind(def.extends) ?? def.extends)
-        : def.extends;
-      // A named shape the schema names is canonical in THIS module's scope
-      // before a kind of another module can inherit it.
-      const normalized = withCanonicalSchemaTypeRefs(
-        resolvedExtends !== def.extends ? { ...def, extends: resolvedExtends } : def,
-        aliases,
-        aliasesByModule,
-      );
-      if (normalized !== def) registeredCopies.push(normalized as unknown as ResourceManifest);
-      defs.register(normalized);
+      if (registered.capability && !options?.skipValidation) {
+        diagnostics.push(capabilityDiagnostic(m, ownModule, registered.capability));
+      }
+      // The rest only for definitions the author can edit: a published
+      // dependency's is not the consumer's to fix.
+      if (ownModule && !rootModules.has(ownModule)) continue;
+      refConstraintIssues.push(...registered.refConstraintIssues);
+      refSlotIssues.push(...registered.refSlotIssues);
+      scopeSlotDiagnostics.push(...registered.slotDiagnostics);
+      zoneSlotIssues.push(...registered.zoneSlotIssues);
+      // Both rule families are checked once every kind is registered: a
+      // resource rule against the MERGED schema, a referrer rule's `peers:`
+      // against the REFERRER kind's schema.
+      ownRuleDeclarers.push(m);
+      for (const rule of registered.referrerRules) {
+        referrerRuleExercise.set(`${m.metadata?.module}.${m.metadata?.name}#${rule.code}`, {
+          manifest: m,
+          rule,
+          exercised: false,
+          seen: false,
+        });
+      }
     }
 
     // Where every expansion construct stands, read once every kind is known;
@@ -9740,6 +9478,10 @@ export class StaticAnalyzer {
     // listed name that exists nowhere fails in the consumer's file.
     diagnostics.push(...validateExports(allManifests, defs, aliases, rootModules));
 
+    // A library's migrations: the tags, kinds and bindings they may hold, and
+    // each `match` proved disjoint from the current spelling it rewrites.
+    diagnostics.push(...validateLibraryMigrations(allManifests, defs, rootModules));
+
     // A library's declared resource inputs, and every import that supplies them.
     diagnostics.push(
       ...validateResourceInputs(
@@ -9804,7 +9546,7 @@ export class StaticAnalyzer {
       ...this.omittedInputReferences(
         allManifests as unknown as ResourceManifest[],
         rootModules,
-        registry ?? new AnalysisRegistry({ defs, aliases, aliasesByModule, views: new Map(), libraries: {} }),
+        registry,
         options?.moduleDocuments ?? [],
       ),
     );

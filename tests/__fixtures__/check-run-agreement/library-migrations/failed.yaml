@@ -1,0 +1,11 @@
+# A box spelled both ways: the move lands on a value the node already holds.
+kind: Telo.Application
+metadata: { name: FailedBox }
+lang: en
+imports: { Shop: ./shop }
+targets: []
+---
+kind: Shop.Box
+metadata: { name: box }
+label: old
+value: new

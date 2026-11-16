@@ -584,24 +584,31 @@ it proves the translations complete.
   words a searcher would type. No kind or capability names, no backend names
   in a generic library, no comparison with siblings, nothing that only makes
   sense against history. A kind's description states its operation, inputs,
-  outputs and what a failure means. Rationale goes in comments and docs.
-- **`metadata.categories`** is a short list of display labels (`[Data,
-  Storage]`) — a grouping facet, never repeated in the description. Reuse an
+  outputs and what a failure means.
+- **`metadata.categories`** is a short list of display labels — a grouping
+  facet, never repeated in the description. Reuse an
   existing label: `AI`, `Compute`, `Configuration`, `Coordination`, `Data`,
   `Observability`, `Performance`, `Reliability`, `Scheduling`, `Storage`,
   `Streaming`, `Testing`, `Transport`, `Visualization`.
 - **`metadata.license`** names the license of the library's own files (an
   SPDX identifier) and the license file ships beside `telo.yaml`.
 
+## Keeping consumers working
+
+A library that renames or reshapes what importers write ships the repair as
+`migrations:` on its `Telo.Library`, keyed by diagnostic code: rules
+`rewrite: Self.<Type>` with a closed `match` disjoint from the current schema,
+changing only what it names (`remove`, `move`, `copy`, literal `set`). Prove
+each with a fixture under `tests/__fixtures__/manifest-migrations/`; deleting
+one breaks dependents.
+
 ## Declaring the runtime it needs — `requires:`
 
-`requires: { telo: ">=<release>" }` is the oldest Telo that reads your syntax
-(a new annotation, a new key on a built-in document, a new shape of an existing
-field), so an older runtime reports one `MODULE_REQUIRES_NEWER_RUNTIME` instead
-of a schema error in your file. It is a floor only; an upper bound, `^`, `~`, a
+`requires: { telo: ">=<release>" }` is the oldest Telo that reads your syntax,
+so an older runtime reports one `MODULE_REQUIRES_NEWER_RUNTIME` instead of a
+schema error in your file. It is a floor only; an upper bound, `^`, `~`, a
 bare version, `||` and wildcards are `REQUIRES_INVALID`. In a Telo workspace
-`telo release floor` measures it; elsewhere write it by hand and check it with
-that release's `telo check`.
+`telo release floor` measures it.
 
 What measurement cannot see goes in `restrictions:`, each entry with a
 `reason`: a runtime feature, a Node bound, a ceiling found after publishing.
@@ -616,10 +623,8 @@ Declare a resource **inline at its use site** when it is used exactly once
 must name it: it is referenced more than once, listed in `targets:`, or
 exported. A router mounted on a server stays named, so it can be tested on
 its own. In a template body, entries are always named (the dispatch verb
-names one). An inline declaration holds the kind's own fields, a `name` among
-them when the kind declares one (`icon: { kind: UiLucide.Icon, name: house }`);
-for a kind declaring no `name` field, `{ kind, name }` is the removed form of a
-reference (`INVALID_REFERENCE_FORM`) — write `!ref <name>`.
+names one). For a kind declaring no `name` field, `{ kind, name }` is the
+removed reference form (`INVALID_REFERENCE_FORM`) — write `!ref <name>`.
 
 ## Testing a library
 

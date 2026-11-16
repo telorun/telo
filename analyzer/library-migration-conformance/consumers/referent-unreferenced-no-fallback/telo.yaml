@@ -1,0 +1,11 @@
+kind: Telo.Application
+metadata: { name: UnreferencedStrict }
+lang: en
+imports: { V: ./views }
+targets: []
+---
+kind: V.Data
+metadata: { name: me }
+source: { path: /api/me }
+reloadOn: [focus, unauthorized]
+content: { type: text, text: Signed in }

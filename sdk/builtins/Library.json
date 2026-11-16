@@ -144,6 +144,47 @@
         },
         "additionalProperties": true
       },
+      "migrations": {
+        "title": "Migrations",
+        "description": "Rewrites of the legacy spellings of this library's own vocabulary, applied to every module importing it, each keyed by the diagnostic code it reports with.",
+        "type": "object",
+        "patternProperties": {
+          "^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$": {
+            "type": "object",
+            "required": [
+              "reason",
+              "rules"
+            ],
+            "properties": {
+              "severity": {
+                "description": "The severity the migration reports with at every node it rewrites.",
+                "type": "string",
+                "enum": [
+                  "warning",
+                  "info",
+                  "hint"
+                ],
+                "default": "warning"
+              },
+              "reason": {
+                "description": "The migration's message, shown at every node it rewrites.",
+                "type": "string",
+                "minLength": 1
+              },
+              "rules": {
+                "description": "The migration's rewrite rules, in order.",
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "$ref": "#/$defs/migrationRule"
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
       "requires": {
         "$ref": "telo://manifest#/$defs/Requires"
       },
@@ -155,6 +196,154 @@
         "description": "The language this module's own texts are written in, as an RFC 5646 language tag. A plural source text is selected with this language's plural rules; a module without it writes in `und`, whose only category is `other`.",
         "type": "string",
         "format": "language-tag"
+      }
+    },
+    "$defs": {
+      "migrationRule": {
+        "type": "object",
+        "required": [
+          "rewrite",
+          "match"
+        ],
+        "properties": {
+          "rewrite": {
+            "description": "The type of this library a legacy value of which the rule rewrites, written `Self.<Name>`: a kind, a named shape, or a kind the library no longer declares.",
+            "type": "string",
+            "pattern": "^Self\\.[A-Z][A-Za-z0-9_]*$"
+          },
+          "match": {
+            "description": "The legacy spelling's recognizer.",
+            "$ref": "#/$defs/migrationMatch",
+            "type": "object"
+          },
+          "remove": {
+            "description": "JSON Pointers into the matched node, deleted from it.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(?:/(?:[^~/]|~[01])*)+$"
+            }
+          },
+          "move": {
+            "description": "Source to destination JSON Pointers within the matched node; the node at the source lands at the destination as written and the source is deleted.",
+            "type": "object",
+            "propertyNames": {
+              "pattern": "^(?:[A-Za-z_][A-Za-z0-9_]*#(?:/(?:[^~/]|~[01])*)*|(?:/(?:[^~/]|~[01])*)+)$"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^(?:/(?:[^~/]|~[01])*)+$"
+            }
+          },
+          "copy": {
+            "description": "As `move`, with the source kept; a source may also be `<binding>#<pointer>`, into a `resolve` binding.",
+            "type": "object",
+            "propertyNames": {
+              "pattern": "^(?:[A-Za-z_][A-Za-z0-9_]*#(?:/(?:[^~/]|~[01])*)*|(?:/(?:[^~/]|~[01])*)+)$"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^(?:/(?:[^~/]|~[01])*)+$"
+            }
+          },
+          "set": {
+            "description": "A partial node merged over the matched node. Literals only: it carries nothing.",
+            "type": "object"
+          },
+          "resolve": {
+            "description": "Bindings to the declarations at pointers into the matched node, read as migrated or, with `before`, as they were before this migration's hand-over rule of that type.",
+            "type": "object",
+            "propertyNames": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "required": [
+                "at"
+              ],
+              "properties": {
+                "at": {
+                  "description": "The pointer into the matched node holding the declaration, inline or by `!ref`.",
+                  "type": "string",
+                  "pattern": "^(?:/(?:[^~/]|~[01])*)+$"
+                },
+                "before": {
+                  "description": "The type whose hand-over rule the declaration is read before, written `Self.<Name>`.",
+                  "type": "string",
+                  "pattern": "^Self\\.[A-Z][A-Za-z0-9_]*$"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "migrationMatch": {
+        "description": "A closed recognizer, spelled as a subset of JSON Schema; `false` stands only under `properties`, for a key that is absent.",
+        "type": [
+          "object",
+          "boolean"
+        ],
+        "not": {
+          "const": true
+        },
+        "properties": {
+          "type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "null",
+                  "boolean",
+                  "object",
+                  "array",
+                  "number",
+                  "integer",
+                  "string"
+                ]
+              },
+              {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "null",
+                    "boolean",
+                    "object",
+                    "array",
+                    "number",
+                    "integer",
+                    "string"
+                  ]
+                }
+              }
+            ]
+          },
+          "required": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string"
+            }
+          },
+          "const": {},
+          "enum": {
+            "type": "array",
+            "minItems": 1
+          },
+          "properties": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/$defs/migrationMatch"
+            }
+          },
+          "items": {
+            "$ref": "#/$defs/migrationMatch",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false
       }
     },
     "required": [

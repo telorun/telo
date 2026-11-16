@@ -1,0 +1,20 @@
+kind: Telo.Application
+metadata: { name: Foreign }
+lang: en
+imports: { V: ../__fixtures__/views, H: ../__fixtures__/hold }
+targets: []
+---
+kind: V.Data
+metadata: { name: me }
+source: { path: /api/me }
+reloadOn: [focus]
+content: { type: text, text: Signed in }
+---
+kind: V.Page
+metadata: { name: home }
+path: /
+children: [{ type: composite, ref: !ref me }]
+---
+kind: H.Pin
+metadata: { name: pinned }
+target: !ref me

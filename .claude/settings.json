@@ -30,6 +30,15 @@
             "command": "node .claude/hooks/telo-check.js"
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/module-mentions.mjs"
+          }
+        ]
       }
     ]
   },

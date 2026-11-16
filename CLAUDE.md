@@ -331,7 +331,7 @@ So, on the same change that widens the surface, **run `telo release floor`**. It
 
 ## Manifest migrations
 
-A legacy spelling that published artifacts still carry is rewritten to the current one at load, by data entries under `analyzer/migrations/` (JSON, no code); `telo migrate` applies them to files; a load reports a migration only for the entry module's own files, and `telo check` also reports each path-imported library's own, through its dependency verdict. Guide: `docs/extend/manifest-migrations.md`; internals: `analyzer/nodejs/src/migrations/CLAUDE.md`.
+A legacy spelling that published artifacts still carry is rewritten to the current one at load, by data entries under `analyzer/migrations/` (JSON, no code); `telo migrate` applies them to files; a load reports a migration only for the entry module's own files, and `telo check` also reports each path-imported library's own, through its dependency verdict. Guide: `docs/extend/manifest-migrations.md`; internals: `analyzer/nodejs/src/migrations/CLAUDE.md`. **Two layers**: those core entries repair the grammar loading itself depends on; a library repairs its own vocabulary with `migrations:` on its `Telo.Library` doc (keyed by diagnostic code, `rewrite: Self.<Type>` with a closed `match` and `remove` / `move` / `copy` / `set` / `resolve`), applied as one stage over the whole loaded graph after the closure has loaded and before analysis, under whatever alias a consumer imports it as (`ERR_MIGRATION_FAILED` / `MIGRATION_FAILED` when one cannot apply); `telo migrate <path>` writes both back, and the Rust build refuses a library whose migration may apply (`ERR_UNSUPPORTED_MANIFEST_FEATURE`). Normative: `kernel/specs/manifest-migrations.md`.
 
 ## Where to Look
 

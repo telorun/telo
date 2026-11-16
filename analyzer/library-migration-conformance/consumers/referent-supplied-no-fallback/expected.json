@@ -1,0 +1,19 @@
+{
+  "diagnostics": [
+    {
+      "code": "MIGRATION_FAILED",
+      "severity": 1,
+      "file": "referent-supplied-no-fallback/panel/telo.yaml",
+      "path": "resources.data",
+      "message": "The migration VIEWS_DATA_REPLACED of Strict could not be applied: `V.Data` has no replacement, since no rule of Strict other than a hand-over rule writes the kind of `Self.Data`."
+    },
+    {
+      "code": "MIGRATION_FAILED",
+      "severity": 1,
+      "file": "referent-supplied-no-fallback/telo.yaml",
+      "path": "",
+      "message": "The migration VIEWS_DATA_REPLACED of Strict could not be applied: the hand-over of `me` cannot fire because of telo.yaml:6:53 (`imports.Panel.resources.data`), a reference no rule of VIEWS_DATA_REPLACED reads, and no later `rewrite: Self.Data` rule takes it instead."
+    }
+  ],
+  "migrated": {}
+}

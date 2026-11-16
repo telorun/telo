@@ -1,0 +1,51 @@
+{
+  "diagnostics": [
+    {
+      "code": "CARDS_LABEL_TEXT_RENAMED",
+      "severity": 2,
+      "file": "binding-reads/telo.yaml",
+      "path": "",
+      "message": "A label's text is its title."
+    },
+    {
+      "code": "CARDS_TITLE_FROM_TARGET",
+      "severity": 2,
+      "file": "binding-reads/telo.yaml",
+      "path": "",
+      "message": "A card states its title."
+    },
+    {
+      "code": "MIGRATION_FAILED",
+      "severity": 1,
+      "file": "binding-reads/telo.yaml",
+      "path": "",
+      "message": "The migration CARDS_TITLE_FROM_TARGET of Cards could not be applied: the `resolve:` bindings of `first` → `second` → `first` read each other, a cycle among binding reads."
+    },
+    {
+      "code": "MIGRATION_FAILED",
+      "severity": 1,
+      "file": "binding-reads/telo.yaml",
+      "path": "",
+      "message": "The migration CARDS_TITLE_FROM_TARGET of Cards could not be applied: the `resolve:` bindings of `first` → `second` → `first` read each other, a cycle among binding reads."
+    }
+  ],
+  "migrated": {
+    "binding-reads/telo.yaml": {
+      "1": {
+        "kind": "C.Card",
+        "metadata": {
+          "name": "greeting"
+        },
+        "ref": "!ref hello",
+        "title": "Hello"
+      },
+      "2": {
+        "kind": "C.Label",
+        "metadata": {
+          "name": "hello"
+        },
+        "title": "Hello"
+      }
+    }
+  }
+}

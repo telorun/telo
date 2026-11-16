@@ -140,6 +140,34 @@ fn a_construct_this_reader_cannot_hold_is_held_back_and_reported_on_stderr_while
     assert_eq!(stdout(&alone), "");
 }
 
+/// A library renaming `beforeMigrations:` to `prepare:` on its `Schema` kind.
+const MIGRATING_LIBRARY: &str = "kind: Telo.Library\nmetadata: { name: Store }\nexports: { kinds: [Schema] }\nmigrations:\n  STORE_BEFORE_RENAMED:\n    reason: Renamed.\n    rules:\n      - { rewrite: Self.Schema, match: { type: object, required: [beforeMigrations] }, move: { /beforeMigrations: /prepare } }\n---\nkind: Telo.Definition\nmetadata: { name: Schema }\ncapability: Telo.Provider\nschema: { type: object, properties: { prepare: { type: array } } }\n";
+
+fn consumer(schema_field: &str) -> String {
+    format!("kind: Telo.Application\nmetadata: {{ name: Shop }}\nimports: {{ Db: ./store }}\n---\nkind: Db.Schema\nmetadata: {{ name: schema }}\n{schema_field}: []\n")
+}
+
+#[test]
+fn a_library_migration_that_may_apply_is_a_host_refusal_and_current_spelling_checks() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join("store")).unwrap();
+    write(&dir.path().join("store"), "telo.yaml", MIGRATING_LIBRARY.as_bytes());
+    write(dir.path(), "legacy.yaml", consumer("beforeMigrations").as_bytes());
+    write(dir.path(), "current.yaml", consumer("prepare").as_bytes());
+
+    let legacy = telo(dir.path(), &["check", "-o", "json", "legacy.yaml"]);
+    assert_eq!(legacy.status.code(), Some(1));
+    assert_eq!(
+        stderr(&legacy),
+        "[ERR_UNSUPPORTED_MANIFEST_FEATURE] 'legacy.yaml', imports.Db: Store (store) declares the manifest migration STORE_BEFORE_RENAMED, which may apply at legacy.yaml:5:1, and this build does not apply library migrations\n"
+    );
+    assert_eq!(envelope(&legacy), json!({ "ok": false, "errorCount": 0, "warnCount": 0, "diagnostics": [] }));
+
+    let current = telo(dir.path(), &["check", "-o", "json", "current.yaml"]);
+    assert_eq!(stderr(&current), "");
+    assert_eq!(current.status.code(), Some(0));
+}
+
 /// A packaged executable's trailer: version, length, sha256 and the magic.
 fn trailer() -> Vec<u8> {
     let mut bytes = Vec::new();

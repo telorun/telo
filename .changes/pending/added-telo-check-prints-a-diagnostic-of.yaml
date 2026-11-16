@@ -1,0 +1,6 @@
+units:
+  cli: Added
+body: "telo check prints a diagnostic of severity `info` or `hint` under that label, and
+  reports it as its `-o json` `severity`. A library migration that rewrote a node prints
+  two lines more: `declared by <module> (<source>)`, naming the library responsible, and
+  the `telo migrate <path>` command that applies it."

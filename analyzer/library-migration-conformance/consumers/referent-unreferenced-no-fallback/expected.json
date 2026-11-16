@@ -1,0 +1,12 @@
+{
+  "diagnostics": [
+    {
+      "code": "MIGRATION_FAILED",
+      "severity": 1,
+      "file": "referent-unreferenced-no-fallback/telo.yaml",
+      "path": "",
+      "message": "The migration VIEWS_DATA_REPLACED of Strict could not be applied: the hand-over of `me` cannot fire: nothing in its module references it, so no node would take over what its hand-over rule drops, and no later `rewrite: Self.Data` rule takes it instead."
+    }
+  ],
+  "migrated": {}
+}

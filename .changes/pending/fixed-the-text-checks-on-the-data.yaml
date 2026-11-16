@@ -1,0 +1,5 @@
+units:
+  analyzer: Fixed
+body: "The text checks on the data schemas a resource holds now also reach a schema
+  under a `patternProperties` map of its kind's schema, as the text sites already did:
+  both are read from one walk of a value against its schema."

@@ -1,0 +1,11 @@
+{
+  "diagnostics": [
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "telo.yaml",
+      "path": "",
+      "message": "Telo.Application/Library: / must NOT have additional properties ('migrations' is not allowed)"
+    }
+  ]
+}
