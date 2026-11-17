@@ -26,8 +26,10 @@ import {
   type ReleasePlan,
   type UnitEvidence,
 } from "../release-plan.js";
+import { renderTag } from "../tag-format.js";
 import { readUnitVersions, stampUnitVersion, type ResolvedUnit } from "../units.js";
 import { carriedBy } from "./carried-changes.js";
+import { declaredPayload } from "./declared-payload.js";
 import {
   collectEvidence,
   destinationDiagnostics,
@@ -217,7 +219,8 @@ export async function applyPlan(
       }
       for (const anchor of unit.anchors) {
         const session = sessionOf(run.sessions, anchor.ecosystem);
-        for (const file of (await session.afterStamp?.({ unit, anchor }, planned.to, plan)) ?? []) {
+        const journaled = (file: string) => journal.remember(file);
+        for (const file of (await session.afterStamp?.({ unit, anchor }, planned.to, plan, journaled)) ?? []) {
           hookWrites.push(file);
           if (!files.includes(file)) files.push(file);
         }
@@ -280,6 +283,8 @@ export interface OrderRow {
   /** The workspace-relative directory to publish from. */
   readonly path: string;
   readonly version: string;
+  /** The tag `version` is released under. */
+  readonly tag: string;
   readonly destination?: string;
   readonly group?: string;
   /** The units this one's payload names, which publish first. */
@@ -313,7 +318,13 @@ export async function orderRows(host: ReleaseHost, workspace: ReleaseWorkspace, 
   const rows: OrderRow[] = [];
   for (const { unit, imports } of orderByImports(units)) {
     const version = readUnitVersions(unit, (relative) => workspace.tree.readFile(relative), workspace.adapters)[0]?.value ?? "";
-    const common = { key: unit.key, version, ...(unit.group ? { group: unit.group } : {}), imports };
+    const common = {
+      key: unit.key,
+      version,
+      tag: renderTag(unit.tagPattern, version),
+      ...(unit.group ? { group: unit.group } : {}),
+      imports,
+    };
     if (unit.anchors.length === 0) {
       rows.push({ ...common, path: unit.dir || "." });
       continue;
@@ -478,14 +489,112 @@ async function reconcile(
 }
 
 // ---------------------------------------------------------------------------
+// baseline
+// ---------------------------------------------------------------------------
+
+export interface BaselineResult {
+  readonly recorded: readonly { key: UnitKey; version: string }[];
+  /** Units that already have an entry, left as they are. */
+  readonly skipped: readonly UnitKey[];
+  /** Units left without an entry, and why. */
+  readonly unrecorded: readonly { key: UnitKey; reason: string }[];
+  readonly ledger: Ledger;
+  readonly diagnostics: ReleaseDiagnostic[];
+}
+
+/**
+ * Record the current state of every unit with no ledger entry, at its current
+ * version: each layer with a registry read-back takes the registry's answer, any
+ * other the working-copy digest `apply` would record, with the registry base it
+ * was built against. A unit with an entry is skipped (naming one is an error:
+ * an entry records a publish, and overwriting it would hide unreleased drift).
+ */
+export async function baselineLedger(
+  host: ReleaseHost,
+  workspace: ReleaseWorkspace,
+  argv: Argv,
+  only: readonly UnitKey[] | undefined,
+  progress: (text: string) => void,
+): Promise<BaselineResult> {
+  const ledger = readLedger(workspace.root, host.ledger ?? {});
+  for (const key of only ?? []) {
+    if (ledger.units.has(key)) {
+      throw new Error(
+        `'${key}' already has a ledger entry, which records a publish; baseline never overwrites one. ` +
+          `Run '${host.command} verify --write' to re-record it from the registries.`,
+      );
+    }
+  }
+  const sessions = await openSessions(workspace, host.evidence, { ledger, argv });
+  const diagnostics = upfrontDiagnostics(host, workspace, sessions);
+  const result = { recorded: [] as { key: UnitKey; version: string }[], skipped: [] as UnitKey[], unrecorded: [] as { key: UnitKey; reason: string }[] };
+  if (diagnostics.some((diagnostic) => diagnostic.severity === "error")) return { ...result, ledger, diagnostics };
+
+  const units = new Map<UnitKey, LedgerEntry>(ledger.units);
+  const targets = workspace.units.filter((unit) => !only || only.includes(unit.key));
+  for (const [index, unit] of targets.entries()) {
+    progress(`  [${index + 1}/${targets.length}] ${unit.key}`);
+    if (ledger.units.has(unit.key)) {
+      result.skipped.push(unit.key);
+      continue;
+    }
+    const version = readUnitVersions(unit, (relative) => workspace.tree.readFile(relative), workspace.adapters)[0]?.value;
+    if (!version) {
+      result.unrecorded.push({ key: unit.key, reason: "its version cannot be read" });
+      continue;
+    }
+    if (parseCandidateVersion(version)) {
+      result.unrecorded.push({ key: unit.key, reason: `it carries the candidate version ${version}; baseline records final versions only` });
+      continue;
+    }
+    if (!isReleaseVersion(version)) {
+      result.unrecorded.push({ key: unit.key, reason: `'${version}' is not a release version` });
+      continue;
+    }
+    const ecosystems: Record<string, Record<string, AnchorDigest>> = {};
+    let registry = registryOf(unit, sessions);
+    let absent: string | undefined;
+    for (const anchor of unit.anchors) {
+      if (!publishes(anchor)) continue;
+      const ref: AnchorRef = { unit, anchor };
+      const session = sessionOf(sessions, anchor.ecosystem);
+      const answer = session.readBack ? await session.readBack(ref, version, undefined) : undefined;
+      if (answer?.kind === "absent") {
+        absent = `${anchor.ecosystem}/${anchor.anchor}`;
+        break;
+      }
+      if (answer?.kind === "published") {
+        (ecosystems[anchor.ecosystem] ??= {})[anchor.anchor] = answer.layer;
+        continue;
+      }
+      const found = await session.collect(ref);
+      if (found.layer !== undefined) (ecosystems[anchor.ecosystem] ??= {})[anchor.anchor] = found.layer;
+      registry ??= found.registry;
+    }
+    if (absent !== undefined) {
+      result.unrecorded.push({ key: unit.key, reason: `${version} is not published at the ${absent} registry` });
+      continue;
+    }
+    const payload = unit.payload ? declaredPayload(workspace.root, unit).digest : undefined;
+    units.set(unit.key, {
+      version,
+      ...(registry ? { registry } : {}),
+      layers: { ecosystems, ...(payload !== undefined ? { payload } : {}) },
+    });
+    result.recorded.push({ key: unit.key, version });
+  }
+  return { ...result, ledger: { units }, diagnostics };
+}
+
+// ---------------------------------------------------------------------------
 // tag
 // ---------------------------------------------------------------------------
 
 /**
- * The tags `<unit key>@<version>` of what the last apply moved: every unit whose
- * final or candidate version in HEAD's ledger differs from its first parent's.
- * The apply must be committed — a tag on a commit that does not hold the
- * versions would name a release nothing can rebuild.
+ * The tags of what the last apply moved, each unit's own tag format rendered:
+ * every unit whose final or candidate version in HEAD's ledger differs from its
+ * first parent's. The apply must be committed — a tag on a commit that does not
+ * hold the versions would name a release nothing can rebuild.
  */
 export function tagsToCreate(host: ReleaseHost, workspace: ReleaseWorkspace): { tag: string; exists: boolean }[] {
   const at = (rev: string) => {
@@ -508,8 +617,16 @@ export function tagsToCreate(host: ReleaseHost, workspace: ReleaseWorkspace): { 
     const moved: string[] = [];
     if (entry.version !== undefined && entry.version !== before?.version) moved.push(entry.version);
     if (entry.candidate && entry.candidate.version !== before?.candidate?.version) moved.push(entry.candidate.version);
+    if (moved.length === 0) continue;
+    const unit = workspace.units.find((candidate) => candidate.key === key);
+    if (!unit) {
+      throw new Error(
+        `${LEDGER_PATH} moves '${key}', which is not a unit of this workspace, so no tag format names its tag. ` +
+          `Restore its entry in 'release.units', or tag it by hand.`,
+      );
+    }
     for (const version of moved) {
-      const tag = `${key}@${version}`;
+      const tag = renderTag(unit.tagPattern, version);
       const existing = tagCommit(workspace.root, tag);
       if (existing !== undefined && existing !== headSha) {
         throw new Error(`Tag '${tag}' already exists on ${existing.slice(0, 12)}, not on HEAD. A version is tagged once.`);

@@ -1,5 +1,5 @@
 //! The release command tree — `add`, `status`, `order`, `check`, `apply`,
-//! `verify`, `tag`, `adopt changesets` — over whatever host mounts it. The
+//! `verify`, `baseline`, `tag`, `adopt changesets` — over whatever host mounts it. The
 //! Node twin registers these onto a yargs instance; here the same options are
 //! declared as data and read by one small parser with yargs' reading of them:
 //! `--name value` and `--name=value`, `--no-<flag>`, a list option taking every
@@ -14,7 +14,8 @@ use crate::bump_level::FragmentKind;
 use crate::fragment::{normalize_unit_key, serialize_fragment, UnitKey};
 use crate::ledger::LEDGER_PATH;
 use crate::marker_reader::Severity;
-use crate::release_plan::ReleaseDiagnostic;
+use crate::plan_markdown::{render_plan_markdown, NOTHING_TO_RELEASE};
+use crate::release_plan::{ReleaseDiagnostic, ReleasePlan};
 use crate::ReleaseError;
 
 use super::adopt_changesets::adopt_changesets;
@@ -22,7 +23,7 @@ use super::evidence::Argv;
 use super::host::ReleaseHost;
 use super::ledger_store::{write_fragment, write_ledger};
 use super::operations::{
-    apply_plan, candidate_id, create_tags, load_workspace_for, order_rows, plan_workspace_release, tags_to_create, verify_ledger, PlanOptions, PlanRun,
+    apply_plan, baseline_ledger, candidate_id, create_tags, load_workspace_for, order_rows, plan_workspace_release, tags_to_create, verify_ledger, PlanOptions, PlanRun,
 };
 use super::render::{diagnostics_json, plan_payload, render_diagnostics, render_plan};
 use super::workspace::ReleaseWorkspace;
@@ -117,13 +118,60 @@ struct Command {
     describe: &'static str,
     options: Vec<OptionSpec>,
     positional: Option<(&'static str, &'static [&'static str])>,
+    /// Its result is a plan: `-o markdown` and `--max-length` are taken.
+    plan: bool,
+}
+
+const FORMATS: &[&str] = &["text", "json"];
+const PLAN_FORMATS: &[&str] = &["text", "json", "markdown"];
+const LARGEST_LENGTH: u64 = 9_007_199_254_740_991;
+
+fn max_length_option() -> OptionSpec {
+    OptionSpec::new(
+        "max-length",
+        OptionKind::String,
+        "With -o markdown, the most Unicode code points the document may hold; it is shortened in stated stages to fit",
+    )
+}
+
+/// Why a plan command's `--max-length` cannot be read, if it cannot.
+pub fn max_length_refusal(command: &str, output: Option<&str>, max_length: Option<&str>, writes_markdown: bool) -> Option<String> {
+    let text = max_length?;
+    if !writes_markdown {
+        return Some(format!("--max-length applies only to -o markdown; {command} writes text or json."));
+    }
+    if output != Some("markdown") {
+        return Some(format!("--max-length applies only to -o markdown; {command} writes text, json or markdown."));
+    }
+    let digits = !text.is_empty() && !text.starts_with('0') && text.chars().all(|c| c.is_ascii_digit());
+    if !digits || text.parse::<u64>().map_or(true, |n| n > LARGEST_LENGTH) {
+        return Some(format!("--max-length takes a positive whole number of code points, not '{text}'."));
+    }
+    None
+}
+
+/// The plan's markdown document under `-o markdown`; an error when no stage fits.
+fn markdown_of(args: &ParsedArgs, plan: &ReleasePlan) -> Result<Option<String>, ReleaseError> {
+    if args.string("output") != Some("markdown") {
+        return Ok(None);
+    }
+    let max_length = match args.string("max-length") {
+        Some(text) => {
+            let n = text
+                .parse::<u64>()
+                .map_err(|_| ReleaseError::new(format!("--max-length takes a positive whole number of code points, not '{text}'.")))?;
+            Some(usize::try_from(n).unwrap_or(usize::MAX))
+        }
+        None => None,
+    };
+    render_plan_markdown(plan, max_length).map(Some)
 }
 
 fn global_options(host: &ReleaseHost) -> Vec<OptionSpec> {
     let mut options = vec![OptionSpec {
         short: Some('o'),
         default: Some(Value::String("text".into())),
-        choices: &["text", "json"],
+        choices: FORMATS,
         ..OptionSpec::new("output", OptionKind::String, "Output format")
     }];
     options.extend(host.global_options.iter().cloned());
@@ -162,16 +210,31 @@ fn commands() -> Vec<Command> {
                     ..OptionSpec::new("kind", OptionKind::String, "Added | Changed | Deprecated | Removed | Fixed | Security")
                 },
                 OptionSpec { demand: true, ..OptionSpec::new("body", OptionKind::String, "The changelog line") },
+                max_length_option(),
             ],
             positional: None,
+            plan: false,
         },
-        Command { name: "status", describe: "Show what would bump, from what to what, and why", options: Vec::new(), positional: None },
-        Command { name: "order", describe: "List the units in publish order, one row per unit and package", options: Vec::new(), positional: None },
+        Command {
+            name: "status",
+            describe: "Show what would bump, from what to what, and why",
+            options: vec![max_length_option()],
+            positional: None,
+            plan: true,
+        },
+        Command {
+            name: "order",
+            describe: "List the units in publish order, one row per unit and package",
+            options: vec![max_length_option()],
+            positional: None,
+            plan: false,
+        },
         Command {
             name: "check",
             describe: "The pull-request gate: fail when no consistent release plan can be formed",
-            options: Vec::new(),
+            options: vec![max_length_option()],
             positional: None,
+            plan: true,
         },
         Command {
             name: "apply",
@@ -183,32 +246,61 @@ fn commands() -> Vec<Command> {
                     "Version each planned unit as a candidate, <final>-<id>.<k> (id default rc); consumes no fragment",
                 ),
                 OptionSpec::new("date", OptionKind::String, "Release date for the changelog entries (YYYY-MM-DD). Defaults to today."),
+                max_length_option(),
             ],
             positional: None,
+            plan: true,
         },
         Command {
             name: "verify",
             describe: "Reconcile the ledger against the registries, per layer",
-            options: vec![OptionSpec {
-                default: Some(Value::Bool(false)),
-                ..OptionSpec::new("write", OptionKind::Boolean, "Re-record the ledger from what the registries serve")
-            }],
+            options: vec![
+                OptionSpec {
+                    default: Some(Value::Bool(false)),
+                    ..OptionSpec::new("write", OptionKind::Boolean, "Re-record the ledger from what the registries serve")
+                },
+                max_length_option(),
+            ],
             positional: None,
+            plan: false,
+        },
+        Command {
+            name: "baseline",
+            describe: "Record the current state of every unit with no ledger entry, without bumping anything",
+            options: vec![
+                OptionSpec::new(
+                    "unit",
+                    OptionKind::List,
+                    "Record this unit only (repeatable). A unit that already has an entry is an error: use verify --write.",
+                ),
+                OptionSpec {
+                    default: Some(Value::Bool(false)),
+                    ..OptionSpec::new("dry-run", OptionKind::Boolean, "List what would be recorded without writing the ledger")
+                },
+                max_length_option(),
+            ],
+            positional: None,
+            plan: false,
         },
         Command {
             name: "tag",
-            describe: "Tag <unit key>@<version> for each unit the last apply moved, on HEAD",
-            options: vec![OptionSpec {
-                default: Some(Value::Bool(false)),
-                ..OptionSpec::new("dry-run", OptionKind::Boolean, "List the tags without creating them")
-            }],
+            describe: "Tag each unit the last apply moved, by its tag format, on HEAD",
+            options: vec![
+                OptionSpec {
+                    default: Some(Value::Bool(false)),
+                    ..OptionSpec::new("dry-run", OptionKind::Boolean, "List the tags without creating them")
+                },
+                max_length_option(),
+            ],
             positional: None,
+            plan: false,
         },
         Command {
             name: "adopt",
             describe: "Import a changesets setup once: units, groups, pending fragments and the npm ledger",
-            options: Vec::new(),
+            options: vec![max_length_option()],
             positional: Some(("tool", &["changesets"])),
+            plan: false,
         },
     ]
 }
@@ -348,6 +440,16 @@ fn validate(parsed: &ParsedArgs, specs: &[OptionSpec], command: Option<&Command>
                 )));
             }
         }
+    }
+    match command {
+        Some(command) => {
+            if let Some(message) = max_length_refusal(command.name, parsed.string("output"), parsed.string("max-length"), command.plan) {
+                return Err(UsageError(message));
+            }
+        }
+        // As yargs' strict mode words an option only the plan commands declare.
+        _ if parsed.argv.contains_key("max-length") => return Err(UsageError("Unknown arguments: max-length, maxLength".into())),
+        _ => {}
     }
     Ok(())
 }
@@ -531,9 +633,13 @@ fn run_command(host: &ReleaseHost, name: &str, args: &ParsedArgs, cwd: &Path) ->
                 out.line(&line);
             }
             report(host, &run.plan.diagnostics);
+            let document = markdown_of(args, &run.plan)?;
             let mut payload = ok_payload(true);
             merge(&mut payload, plan_payload(&run.plan));
             out.emit(payload);
+            if let Some(document) = document {
+                out.document(&document);
+            }
             Ok(0)
         }
         "order" => {
@@ -569,10 +675,14 @@ fn run_command(host: &ReleaseHost, name: &str, args: &ParsedArgs, cwd: &Path) ->
                 None => (true, Map::new()),
             };
             let ok = errors == 0 && extra_ok;
+            let document = if ok { markdown_of(args, &run.plan)? } else { None };
             let mut payload = ok_payload(ok);
             merge(&mut payload, plan_payload(&run.plan));
             merge(&mut payload, extra);
             out.emit(payload);
+            if let Some(document) = document {
+                out.document(&document);
+            }
             Ok(if ok { 0 } else { 1 })
         }
         "apply" => {
@@ -585,12 +695,17 @@ fn run_command(host: &ReleaseHost, name: &str, args: &ParsedArgs, cwd: &Path) ->
                 out.emit(payload);
                 return Ok(1);
             }
+            // Before anything is written: a document no stage fits refuses the apply.
+            let document = markdown_of(args, &run.plan)?;
             if run.plan.units.is_empty() {
-                out.line("Nothing to release — every unit matches the ledger.");
+                out.line(NOTHING_TO_RELEASE);
                 let mut payload = ok_payload(true);
                 payload.insert("units".into(), Value::Array(Vec::new()));
                 payload.insert("written".into(), Value::Array(Vec::new()));
                 out.emit(payload);
+                if let Some(document) = document {
+                    out.document(&document);
+                }
                 return Ok(0);
             }
             let date = args.string("date").map(str::to_string).unwrap_or_else(today);
@@ -605,6 +720,9 @@ fn run_command(host: &ReleaseHost, name: &str, args: &ParsedArgs, cwd: &Path) ->
             merge(&mut payload, plan_payload(&run.plan));
             payload.insert("written".into(), strings(written));
             out.emit(payload);
+            if let Some(document) = document {
+                out.document(&document);
+            }
             Ok(0)
         }
         "verify" => {
@@ -635,6 +753,56 @@ fn run_command(host: &ReleaseHost, name: &str, args: &ParsedArgs, cwd: &Path) ->
             );
             out.emit(payload);
             Ok(if !drifted.is_empty() && !write { 1 } else { 0 })
+        }
+        "baseline" => {
+            let dry_run = args.flag("dry-run");
+            let workspace = load_workspace_for(host, cwd)?;
+            let only = match args.argv.contains_key("unit") {
+                true => Some(args.list("unit").iter().map(|key| require_unit(&workspace, key)).collect::<Result<Vec<_>, _>>()?),
+                false => None,
+            };
+            let progress_out = out.clone();
+            let progress = move |text: &str| progress_out.progress(&progress_out.err_style().dim(text));
+            let result = baseline_ledger(host, &workspace, &args.argv, only.as_deref(), &progress)?;
+            if let Some(code) = refuse_on_errors(host, &result.diagnostics) {
+                return Ok(code);
+            }
+            if !dry_run && !result.recorded.is_empty() {
+                write_ledger(&workspace.root, &result.ledger)?;
+            }
+            for (key, version) in &result.recorded {
+                let note = if dry_run { out.style().dim("  (would record)") } else { String::new() };
+                out.line(&format!("{}  {key}  {version}{note}", out.style().ok("✓")));
+            }
+            for key in &result.skipped {
+                out.line(&out.style().dim(&format!("   {key}  skipped: it already has a ledger entry")));
+            }
+            for (key, reason) in &result.unrecorded {
+                out.err_line(&format!("{}  {key}: {reason}", out.err_style().warn("unrecorded")));
+            }
+            if result.recorded.is_empty() {
+                out.line(&format!("Nothing to record — no unit lacks a {LEDGER_PATH} entry that can be recorded."));
+            }
+            let mut payload = ok_payload(true);
+            let entries = |items: &[(UnitKey, String)], second: &str| {
+                Value::Array(
+                    items
+                        .iter()
+                        .map(|(key, text)| {
+                            let mut entry = Map::new();
+                            entry.insert("key".into(), Value::String(key.clone()));
+                            entry.insert(second.into(), Value::String(text.clone()));
+                            Value::Object(entry)
+                        })
+                        .collect(),
+                )
+            };
+            payload.insert("recorded".into(), entries(&result.recorded, "version"));
+            payload.insert("skipped".into(), strings(result.skipped.clone()));
+            payload.insert("unrecorded".into(), entries(&result.unrecorded, "reason"));
+            payload.insert("dryRun".into(), Value::Bool(dry_run));
+            out.emit(payload);
+            Ok(0)
         }
         "tag" => {
             let dry_run = args.flag("dry-run");
@@ -708,9 +876,12 @@ pub fn release_commands_with(host: &ReleaseHost, args: &[String], cwd: &Path, mi
         host.output.err_line(&format!("Unknown argument: {name}"));
         return 2;
     };
-    let mut specs = globals.clone();
+    let command = all.iter().find(|c| c.name == name);
+    let formats = if command.is_some_and(|c| c.plan) { PLAN_FORMATS } else { FORMATS };
+    let mut specs: Vec<OptionSpec> =
+        globals.iter().map(|spec| if spec.name == "output" { OptionSpec { choices: formats, ..spec.clone() } } else { spec.clone() }).collect();
     specs.extend(command_options.iter().cloned());
-    if let Err(UsageError(message)) = validate(&parsed, &specs, all.iter().find(|c| c.name == name)) {
+    if let Err(UsageError(message)) = validate(&parsed, &specs, command) {
         host.output.err_line(&message);
         return 2;
     }

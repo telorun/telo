@@ -66,6 +66,13 @@ const MAX_BUMP: WorkspaceKeySchema = {
   examples: ["patch", "minor", "major"],
 };
 
+const TAG_FORMAT: WorkspaceKeySchema = {
+  type: "string",
+  description:
+    "The tag a released version gets: text with the placeholders {key}, {name} and {version}. Default {key}@{version}; v{version} for the unit at the workspace root.",
+  examples: ["{key}@{version}", "{name}/{version}", "v{version}"],
+};
+
 /** Keys every `release.units` entry may carry, whatever its ecosystems. */
 export const UNIT_ENTRY_KEYS: Readonly<Record<string, WorkspaceKeySchema>> = {
   path: {
@@ -73,11 +80,16 @@ export const UNIT_ENTRY_KEYS: Readonly<Record<string, WorkspaceKeySchema>> = {
     description:
       "The unit's directory, or a gitignore-style pattern of them, workspace-relative. Last match wins; a leading ! excludes. A unit's key is its path.",
   },
+  name: {
+    type: "string",
+    description:
+      "A short label for the unit, read by {name} in a tag format and shown as its name in the plan. Default: the last segment of its key; the root unit has none.",
+  },
   ecosystem: {
     type: "ecosystem",
     description:
       "The ecosystems the unit ships through: a name, a list of names, or a map of name to the anchor directory inside the unit holding that ecosystem's package — a directory, a list of them, or a map of directory to that anchor's settings. A name alone anchors at the unit's own directory. Absent: the unit declares its own version and payload.",
-    examples: ["npm", "cargo", "docker", "helm"],
+    examples: ["npm", "cargo", "docker", "helm", "pypi"],
   },
   version: {
     type: "version-location",
@@ -101,6 +113,7 @@ export const UNIT_ENTRY_KEYS: Readonly<Record<string, WorkspaceKeySchema>> = {
   },
   ignore: IGNORE,
   maxBump: MAX_BUMP,
+  tagFormat: TAG_FORMAT,
 };
 
 /** The release block's own keys. */
@@ -124,6 +137,7 @@ export const RELEASE_BLOCK_KEYS: Readonly<Record<string, WorkspaceKeySchema>> = 
   },
   ignore: IGNORE,
   maxBump: MAX_BUMP,
+  tagFormat: TAG_FORMAT,
 };
 
 /**

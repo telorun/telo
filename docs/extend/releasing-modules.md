@@ -89,17 +89,51 @@ Edges come from three places, and are never declared by hand:
   would otherwise bump the whole standard library on every SDK change. An inline
   edge only explains drift the digest already saw.
 - **Imports**: in-repo relative `imports:` for modules, `workspace:` ranges for
-  npm, path dependencies for cargo — and any version file of another unit that
-  sits inside a unit's payload, such as an image whose build context holds a
-  sibling package's `package.json`. A pinned remote ref is deliberately *not* an
-  edge: pinning is the statement "I am not affected until I choose to be", and
-  moving it is `telo upgrade`'s job.
+  npm, path dependencies for cargo and for Python — and any version file of
+  another unit that sits inside a unit's payload, such as an image whose build
+  context holds a sibling package's `package.json`. A pinned remote ref is
+  deliberately *not* an edge: pinning is the statement "I am not affected until I
+  choose to be", and moving it is `telo upgrade`'s job.
 - **Groups**: `release.groups` lists units that share one version; a group
   releases every member at the highest level any of them needs.
 
 A payload that moved with nothing to attribute it to — a third-party dependency,
 a toolchain bump — takes a **patch** and is reported as *unattributed*. It is
 never silent, and it never asks anyone to write prose.
+
+### Linking units without an adapter
+
+No unit-entry key declares an edge: `dependsOn` is an unknown key. An edge is read
+from files so that it can be true — a hand-written one that went stale would
+release identical bytes, and nothing could check it. A version range a dependent
+states at runtime is a pin: the dependent is unaffected until its author edits the
+range, which moves its own digest. Which mechanism covers a case:
+
+1. **The dependent really consumes the other's files.** An image whose docker
+   `context` spans both units, or a declared payload that holds the other unit's
+   version file (a `{ command }` payload reaches a sibling's file), adds the edge
+   by itself:
+
+   ```yaml
+   units:
+     - { path: apps/proxy, version: VERSION, payload: ["**"] }
+     - path: apps/gateway
+       ecosystem: { docker: { ".": { context: apps, name: gateway } } }
+       version: VERSION
+   ```
+
+   `apps/gateway`'s build context holds `apps/proxy/VERSION`, so it bumps when
+   `apps/proxy` does.
+2. **A manifest declares the dependency.** The adapters read `workspace:` ranges
+   (npm), path dependencies (cargo), Python path dependencies (see below) and a
+   module's relative imports.
+3. **The two must ship together**, with nothing in the files to say so: put them
+   in a group.
+
+   ```yaml
+   groups:
+     core: [apps/api, apps/worker]
+   ```
 
 ## The ledger
 
@@ -166,17 +200,35 @@ bytes.
 An empty ledger is a valid state: every unit reads as never-published, so
 nothing drifts and only declared fragments and their propagation appear in a
 plan. That is correct but blind — the digest half of the system is switched off
-until the ledger knows what is out there. Seed it once, against the registry:
+until the ledger knows what is out there, and a unit that no fragment ever named
+is never planned from its edits. Adopt a repository that already has published
+things in two steps. First, against the registries:
 
 ```console
 $ telo release verify --write --registry oci://ghcr.io/telorun
 ```
 
-That is also the repair for a ledger that has drifted out of step with what is
-actually published. It records everything the registry can answer for; a
-module's `manifest` digest is filled in by the first `apply`, and until then
-`check` reads its absence as drift and plans a patch — the safe direction, since
-a bump that was not needed costs a version while a missed one ships to nobody.
+That records everything a registry can answer for (it is also the repair for a
+ledger that has drifted out of step with what is published). A module's `manifest`
+digest is filled in by the first `apply`, and until then `check` reads its absence
+as drift and plans a patch — the safe direction, since a bump that was not needed
+costs a version while a missed one ships to nobody. Then:
+
+```console
+$ telo release baseline
+```
+
+`baseline` records, at its current version, every unit that still has no ledger
+entry — the ones with no registry read-back (an image, a declared payload, a
+`pypi` unit with no `registry`) take the digest of the working copy, the same one
+`apply` would record — and changes nothing else: no version, changelog, fragment
+or tag. A unit that already has an entry is skipped, since an entry records a
+publish and overwriting it would hide unreleased drift; naming one with
+`--unit <key>` is an error pointing to `verify --write`. A version a registry says
+is not published, and a unit at a candidate version, are reported and left without
+an entry. `--unit` (repeatable) narrows it and `--dry-run` lists what it would
+record. A second run records nothing and exits 0, and `verify --write` keeps what
+`baseline` recorded for layers with no read-back.
 
 ## Writing a fragment
 
@@ -223,8 +275,10 @@ $ telo release check      # the same computation, with an exit code
 $ telo release order      # one row per unit and anchor, in publish order
 $ telo release apply      # write versions, changelogs and the ledger
 $ telo release apply --candidate   # version each planned unit <final>-rc.<k>
-$ telo release tag        # tag <unit key>@<version> for each unit apply moved
+$ telo release tag        # tag each unit apply moved, by its tag format
 $ telo release verify     # reconcile the ledger against the registry
+$ telo release baseline   # record units with no ledger entry, bumping nothing
+$ telo release status -o markdown   # the plan as a document, for a PR or notes
 $ telo release adopt changesets    # one-time import of a changesets setup
 $ telo release stage      # fetch and verify the files `sources:` declares
 $ telo release floor      # measure and write each module's requires.telo
@@ -239,7 +293,7 @@ modules/sql-repository  0.4.0  → 0.4.1   patch — imports modules/sql
 modules/test            0.9.3  → 0.9.4   patch — payload changed, unattributed
 ```
 
-`order -o json` emits `{ key, ecosystem?, path, version, destination?, group? }`
+`order -o json` emits `{ key, ecosystem?, path, version, destination?, group?, tag }`
 per unit and anchor, a dependency before its dependents; `path` is the directory
 to publish from. A publish script walks it and dispatches each row on its
 `ecosystem`.
@@ -305,11 +359,6 @@ only when a layer differs from the unit's `candidate:` record, so planning twice
 from one ledger gives the same version and the next candidate republishes only
 what moved. Candidacy is a flag the caller passes, never repo state.
 
-**Tags.** `telo release tag` tags the commit it runs at `<unit key>@<version>`
-(`kernel@0.136.0`) for each unit the last `apply` moved, candidates included. Run
-it on the release commit and push the tags before anything publishes; a package's
-links then name `blob/<unit key>@<version>/…`.
-
 `stage` fetches the prebuilt files a module's `sources:` block declares from
 their pinned upstream archives and verifies each against its `sha256` and
 executable bit; a file already on disk and matching its pin is not fetched.
@@ -320,6 +369,55 @@ exactly those pins. `--module <path>` narrows either to named modules. A kernel
 running from a source checkout stages the one file it needs on first use, so
 running a manifest needs no `stage`; publish, which reads every tuple, does. See
 [Native Files](./native-files.md#where-the-files-come-from-sources).
+
+**Markdown.** `-o markdown` on `status`, `check` and `apply` prints the plan as a
+CommonMark document on stdout, so a pipeline can use it as a release PR body or as
+release notes with no renderer of its own; it is written only when the command
+succeeds, and any other command refuses the format. Units with changelog entries
+come first, each under a level-2 heading with its key and `<from> → <to>`, the
+level and reasons, the release group and its tag, and its entries under level-3
+kind headings exactly as `CHANGELOG.md` shows them; the units with no entry follow
+in one closing section. Nothing is cut unless you pass `--max-length <n>`, the
+most Unicode code points the document may hold. The first of these stages that
+fits is printed: the full document; the no-entry section as one paragraph; that
+plus every entry cut to a computed length; every unit as one paragraph with no
+entries; one sentence with the counts. A plan that fits in none exits 1, naming
+the shortest length its document can take. `--max-length` without `-o markdown`
+is a usage error.
+
+## Tags
+
+`telo release tag` tags the commit it runs at, for each unit the last `apply`
+moved (candidates included), with the unit's **tag format** rendered at its new
+version. Run it on the release commit and push the tags before anything
+publishes. The format is text with the placeholders `{key}` (the unit's path),
+`{name}` (its short label) and `{version}`; it must contain `{version}`.
+
+```yaml
+release:
+  tagFormat: "{name}/{version}"
+  units:
+    - path: apps/web
+    - { path: apps/api, tagFormat: "api-v{version}" }
+```
+
+- The default is `{key}@{version}` (`kernel@0.136.0`), and `v{version}` for the
+  unit at the workspace root, since `.@1.0.0` is not a legal git ref.
+- `release.tagFormat` sets the workspace's format, and a unit entry's own
+  `tagFormat` wins over it.
+- `name` on a unit entry is a label only `{name}` reads, defaulting to the last
+  segment of the unit's key; the root unit has none, so a `{name}` format there
+  needs one. Nothing addresses a unit by `name`.
+- A format with no `{version}`, an unknown placeholder or a stray brace is refused
+  when the marker is read (`WORKSPACE_TAG_INVALID`); `{name}` on a unit with no name, or a tag git refuses,
+  when the units are resolved (`WORKSPACE_TAG_INVALID`); and two units whose formats could render the same
+  tag (`{name}{version}` over units named `a` and `a1`) are refused before any tag
+  exists (`WORKSPACE_TAG_COLLISION`).
+- The ledger, never a tag, is what the planner reads, so changing a format replans
+  nothing and only shapes future tags.
+- Read a tag from the `tag` field of the `status`, `check`, `apply` or `order`
+  JSON instead of formatting it yourself; a package's links name that tag
+  (`blob/<tag>/…`).
 
 ## When units publish
 
@@ -516,11 +614,47 @@ the artifact carries the text `metadata.license` names. Keep it beside
 `telo.yaml`: a license file in a parent directory is outside the module and is
 not published. `telo package` carries it into a packaged application too.
 
+## Python projects
+
+`ecosystem: pypi` ships a Python project through an index. An anchor is a
+directory holding a `pyproject.toml` whose `[project]` table has a `name`; a
+Poetry 1 file with only `[tool.poetry]` is not one, so that unit declares
+`version: { file: pyproject.toml, pointer: /tool/poetry/version }` and a `payload:`.
+
+- **Version.** `project.version`; `apply` rewrites it as a one-line splice. When
+  `project.dynamic` lists `version`, the anchor keeps no static version and the
+  unit declares `version:` itself, a plain version file the build backend reads
+  (a version derived from git cannot be planned).
+- **Payload.** The files of the sdist the project's `[build-system]` backend
+  builds through PEP 517 in a fresh virtual environment, so the backend's own
+  include and exclude rules decide what ships; the planner keeps no ignore list.
+  Building needs Python 3 with `venv`, and the build requirements come from the
+  index pip is configured with. A `pyproject.toml` with no `[build-system]` ships
+  nothing: declare `payload:` on the same entry beside `ecosystem: pypi`.
+- **Registry.** With `registry` set (a simple-API index base URL, at the anchor
+  or under `release.ecosystems.pypi`), `verify` and `baseline` fetch the published
+  sdist at the version's normalized spelling (`1.0.0-rc.1` is served as `1.0.0rc1`)
+  and digest it by the same rule; a version the index does not serve reads as
+  unpublished. With none the layer cannot be verified and keeps its recorded
+  digest.
+- **Edges.** From runtime requirements (`project.dependencies`,
+  `project.optional-dependencies`) whose source is a sibling project's directory:
+  `[tool.uv.sources]` with `path = "<dir>"` or `workspace = true`,
+  `[tool.poetry.dependencies]` with `path`, or a PEP 508 `file:` reference rooted at
+  `${PROJECT_ROOT}` (PDM) or `{root:uri}` (Hatch). Requirements from an index, git
+  or a URL are pins, and dependency groups and dev tables are never edges; any
+  other `file:` reference, or a path leaving the workspace, fails the plan naming
+  the requirement.
+- **On apply.** A linked requirement with a single `==`, `>=` or `~=` specifier is
+  rewritten to the sibling's new version, and the `uv.lock`, `poetry.lock` and
+  `pdm.lock` entries that record a moved version are moved with it.
+
 ## npm packages, crates, images and charts
 
 Packages beside the modules are units of the same workspace, versioned by the same
 commands: `{ path: packages/glob, ecosystem: npm }`, or `{ npm: nodejs, cargo: rust }`
-for a Node package with a Rust twin. An `npm` anchor's layer is what the package
+for a Node package with a Rust twin; a component with only a Dockerfile is a unit
+declaring `version:` and `payload:` (or a `docker` anchor). An `npm` anchor's layer is what the package
 manager packs, a `cargo` anchor's what `cargo package --list` selects, a `docker`
 anchor's the build context minus its ignore file plus the Dockerfile, a `helm`
 anchor's what `helm package` includes. A crate that builds a binary or a linked

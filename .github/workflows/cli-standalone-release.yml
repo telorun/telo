@@ -111,7 +111,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # The build writes the version modules, and this tree IS the release: with
+      # the flag they hold exactly `<version>`, not `<version>+unreleased`.
       - name: Build workspace
+        env:
+          TELO_RELEASE_BUILD: "1"
         run: pnpm --filter "@telorun/cli..." build
 
       - name: Build standalone binary

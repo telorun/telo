@@ -73,25 +73,64 @@ release:
       payload: { command: vsce ls }
 ```
 
+A Python project, a plain-text version file and a tag format:
+
+```yaml
+release:
+  tagFormat: "{name}/{version}"
+  units:
+    - { path: apps/api, ecosystem: pypi }
+    - { path: apps/proxy, version: VERSION, payload: ["**"] }
+    - path: apps/legacy
+      version: { file: pyproject.toml, pointer: /tool/poetry/version }
+      payload: ["**"]
+```
+
 Rules worth knowing:
 
 - `ecosystem` is a name (`npm`), an order-free set (`[npm, docker]`), or a map of
   ecosystem to an anchor, an anchor list, or anchor → settings. An **anchor** is a
   literal directory inside the unit holding exactly one package of that ecosystem;
   the name and set forms mean anchor `.`.
+- `version:` names a file a handler reads — `package.json`, `Cargo.toml`,
+  `Chart.yaml`, `pyproject.toml` (`[project].version`, also with no ecosystem) — or,
+  for any other file name, a **plain version file** holding only the version line
+  (`version: VERSION`). `{ file, pointer }` points into JSON, YAML or TOML; a TOML
+  pointer reads a `[table]` header and a `key = "value"` line, and dotted keys and
+  inline tables are refused.
 - The version is the `version:` you declare, else the one anchor whose ecosystem
   defaults a version location (`docker` defaults none). Zero or several is
   `WORKSPACE_UNIT_VERSION_UNRESOLVED`, never a precedence by list order.
 - Settings (`registry`; docker `name` and `context`) sit at an anchor or under
   `release.ecosystems.<ecosystem>`, never flat on a unit entry. `npm` and `cargo`
-  read none.
+  read none; `pypi`'s optional `registry` is a simple-API index base
+  (`https://pypi.org/simple`), the one it reads a published sdist back from.
+- A `pypi` anchor holds a `pyproject.toml` whose `[project]` carries `name`; its
+  version is `project.version` (one listed in `project.dynamic` needs the unit's
+  own `version:`), and its layer is the sdist its `[build-system]` backend builds
+  through PEP 517 in a fresh virtual environment (Python 3 with `venv`; the build
+  requirements come from the index pip is configured with, or pip's cache), less
+  `PKG-INFO` and `*.egg-info`. A `pyproject.toml` with no `[build-system]` ships no
+  layer: declare `payload:` beside `ecosystem: pypi`.
 - `groups` release every member at the highest level any needs; `maxBump` caps
   the level (`major` by default) and a plan above it is refused.
 - Edges between units are never declared: they come from `workspace:` ranges,
-  cargo path dependencies, any unit's version file inside another's payload, and a
-  `metafile:`.
-- A unit with no layer is `WORKSPACE_UNIT_PAYLOAD_EMPTY`; a package directory
-  claimed by two units is `WORKSPACE_ANCHOR_CLAIMED`.
+  cargo path dependencies, Python runtime requirements whose source is a sibling's
+  directory (`[tool.uv.sources]` `path` or `workspace = true`,
+  `[tool.poetry.dependencies]` `path`, a `file:` reference rooted at
+  `${PROJECT_ROOT}` or `{root:uri}`), any unit's version file inside another's
+  payload, and a `metafile:`.
+- A unit with no layer (no ecosystem and no `payload:`, or only packages that
+  publish nothing — a private npm package) is `WORKSPACE_UNIT_PAYLOAD_EMPTY`: declare
+  `payload:` on the same entry beside `ecosystem:` (its packages still supply
+  version and edges), or exclude it with `'!<path>'`. A package directory claimed
+  by two units is `WORKSPACE_ANCHOR_CLAIMED`.
+- `tagFormat` (the block's, or a unit entry's own, which wins) is the tag a version
+  gets: text with `{key}`, `{name}` and `{version}`, which it must contain. The
+  default is `{key}@{version}` and `v{version}` for the unit at the root. A unit's
+  `name` is a label only `{name}` reads, default the last segment of its key.
+  `WORKSPACE_TAG_INVALID` refuses a bad format or `{name}` on a unit with none, and
+  `WORKSPACE_TAG_COLLISION` two units whose formats could render one tag.
 - No layer holds the workspace's `.changes/` directory (the ledger and the pending
   fragments), even a build context at the root or a `payload: ["**"]`: `apply`
   rewrites it, so a layer holding it would move with every release.
@@ -101,12 +140,14 @@ Rules worth knowing:
 ```sh
 npx telo-release add --unit packages/core --kind Fixed --body "…"   # describe a change
 npx telo-release status                                             # what bumps, from what to what, and why
+npx telo-release status -o markdown --max-length 60000              # the same plan as release notes
 npx telo-release check                                              # the pull-request gate
 npx telo-release apply                                              # version the final
 npx telo-release apply --candidate                                  # version a candidate, <final>-rc.<k>
-npx telo-release tag                                                # tag <unit key>@<version> on the release commit
+npx telo-release tag                                                # tag each moved unit on the release commit
 npx telo-release order -o json                                      # what to publish, in order
 npx telo-release verify --write                                     # reconcile the ledger with the registries
+npx telo-release baseline                                           # record every unit with no ledger entry, bumping nothing
 ```
 
 - **`add`** writes a fragment under `.changes/pending/` (never write one by hand).
@@ -124,20 +165,40 @@ npx telo-release verify --write                                     # reconcile 
   (`NO_DESTINATION_KNOWN`). A changed unit with no fragment only warns
   (`CHANGELOG_ENTRY_REQUESTED`) and still releases.
 - **`apply`** writes every unit's version to every anchor (a `Cargo.toml` also
-  moves its `Cargo.lock` entry), the changelog, and the ledger
+  moves its `Cargo.lock` entry; a `pyproject.toml` its entries in `uv.lock`,
+  `poetry.lock` and `pdm.lock`, and a dependent's single `==`, `>=` or `~=`
+  requirement on it), the changelog, and the ledger
   `.changes/ledger.yaml`, and consumes the fragments.
 - **`order`** emits one row per unit and anchor in dependency order, `{ key,
-  ecosystem, path, version, destination }` — publish each row from its `path`.
+  ecosystem, path, version, destination, tag }` — publish each row from its `path`.
 - **`verify`** reconciles the ledger per layer through each ecosystem's read-back
   from the registry; a layer with no read-back (`docker`, a declared payload) is
   reported unverifiable and keeps its digest. Run `verify --write` once to seed
-  the ledger.
+  the ledger, then `baseline` for the units it left without an entry.
+- **`baseline`** adopts a repository that already has published things: it records,
+  at its current version, every unit with no ledger entry (`--unit` narrows,
+  `--dry-run` lists) — a layer with a read-back takes the registry's answer, any
+  other the working-copy digest — and writes only the ledger. A unit that has an
+  entry is skipped, and naming one is an error pointing to `verify --write`; a
+  version the registry does not serve, or a candidate, is reported and not recorded.
+- **`-o markdown`** (on `status`, `check` and `apply` only) prints the plan as a
+  CommonMark document — units with changelog entries first, each under a level-2
+  heading with its entries as its `CHANGELOG.md` shows them, then one section for
+  the units with none — only when the command succeeds. `--max-length <n>` caps it
+  at `n` code points, shortening it in stated stages (the no-entry section
+  compacted, long entries cut, every unit on one line, one counting sentence); a
+  plan no stage fits exits 1 naming the shortest length it can take.
 - A command line the parser refuses — an unknown command or option, a missing
-  argument, a value outside its choices — runs nothing and exits 2.
-- **`tag`** tags the commit it runs at `<unit key>@<version>` for each unit the last
-  `apply` moved, candidates included (`--dry-run` lists them).
+  argument, a value outside its choices, `-o markdown` on any other command,
+  `--max-length` without `-o markdown` — runs nothing and exits 2.
+- **`tag`** tags the commit it runs at each unit's tag format rendered at its new
+  version, for each unit the last `apply` moved, candidates included (`--dry-run`
+  lists them). The format is `release.tagFormat` or the entry's own `tagFormat`
+  (placeholders `{key}`, `{name}`, `{version}`); the default is `{key}@{version}`,
+  and `v{version}` for the unit at the workspace root. `status`, `check`, `apply`
+  and `order` carry the rendered `tag` per unit or row.
 
-Options on every command: `-o json` for machine output, `--base <ref>` (the diff the
+Options on every command: `-o json` for machine output (`-o markdown` on the plan commands), `--base <ref>` (the diff the
 changed-files reading uses; it only decides whether a changelog entry is requested)
 and `--carried-by <ref>` (drop every pending fragment that ref already carries, so a
 fix cherry-picked to a release branch with its fragment plans nothing twice on main).
@@ -177,7 +238,7 @@ left for you to rewrite.
   `path` with its ecosystem's own tool (`npm publish`, `cargo publish`,
   `docker push`, `helm push`). Rows already published are skipped by the
   registry, so a re-run is safe.
-- Published npm links can name the tag `blob/<unit key>@<version>/…`.
+- Published npm links can name the tag `blob/<tag>/…`, the `tag` the `order` row carries.
 
 ## Entries
 

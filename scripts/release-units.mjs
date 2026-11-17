@@ -9,8 +9,9 @@
 // `version`, a candidate as its `candidate.version` — so the ledger, not a diff of
 // manifests, says which units a commit released and at which version. Each moved
 // unit is then given one row per package it ships, from `telo release order`:
-// `{ key, name, version, ecosystem }`, `name` being what the ecosystem publishes it
-// as (the npm package, the crate, or the image, chart or module destination).
+// `{ key, name, version, ecosystem, tag }`, `name` being what the ecosystem publishes it
+// as (the npm package, the crate, or the image, chart or module destination) and `tag`
+// the release tag the order row renders for that version.
 //
 // Usage: node scripts/release-units.mjs        writes `commit` and `units` (JSON) as step outputs
 
@@ -92,6 +93,7 @@ export function movedUnits({ moved, order, read }) {
       name: publishedName(row, read),
       version: versions.get(row.key),
       ...(row.ecosystem ? { ecosystem: row.ecosystem } : {}),
+      ...(row.tag ? { tag: row.tag } : {}),
     }));
 }
 

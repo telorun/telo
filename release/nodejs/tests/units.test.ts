@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   AdapterRegistry,
   SHIPPED_ADAPTERS,
+  type EcosystemAdapter,
   readReleaseMarker,
   readUnitVersions,
   resolveUnits,
@@ -118,7 +119,54 @@ describe("resolving units", () => {
     });
     expect(units).toEqual([]);
     expect(diagnostics.map((d) => d.code)).toEqual(["WORKSPACE_UNIT_PAYLOAD_EMPTY"]);
-    expect(diagnostics[0]!.message).toContain("declare 'payload:', or exclude it with '!tools'");
+    expect(diagnostics[0]!.message).toBe(
+      "Unit 'tools' ships no layer: npm at `.` is `private: true`. Declare 'payload:' on the same entry beside " +
+        "'ecosystem:' (its packages still supply version and edges), or exclude the unit with '!tools'.",
+    );
+  });
+
+  describe("an adapter reporting no static version and no layer", () => {
+    const fake: EcosystemAdapter = {
+      ecosystem: "fake",
+      anchorDescription: "a directory holding a fake.json",
+      versionFile: { file: "fake.json" },
+      recognize: (probe) =>
+        probe.readFile("fake.json") === undefined
+          ? undefined
+          : {
+              contributesLayer: false,
+              noLayerReason: `fake at \`${probe.anchor}\` declares no build`,
+              noStaticVersion: `fake at \`${probe.anchor}\` keeps its version dynamic`,
+            },
+    };
+    const adapters = [...SHIPPED_ADAPTERS, fake];
+    const resolveFake = (unit: string) => {
+      const read = readReleaseMarker(`release:\n  units:\n    - ${unit}\n`, "telo-workspace.yaml", adapters);
+      return resolveUnits(read.release!, tree({ "svc/fake.json": "{}", "svc/VERSION": "1.0.0\n" }), new AdapterRegistry(adapters));
+    };
+
+    it("asks for a declared version, giving the adapter's reason", () => {
+      const { units, diagnostics } = resolveFake("{ path: svc, ecosystem: fake, payload: ['**'] }");
+      expect(units).toEqual([]);
+      expect(diagnostics.map((d) => [d.code, d.message])).toEqual([
+        [
+          "WORKSPACE_UNIT_VERSION_UNRESOLVED",
+          "Unit 'svc' declares no 'version:' and fake at `.` keeps its version dynamic. Declare 'version: <file>' " +
+            "or 'version: { file, pointer }', naming the file that holds the unit's version.",
+        ],
+      ]);
+    });
+
+    it("resolves with a declared version and leaves the anchor's own file unwritten", () => {
+      const { units, diagnostics } = resolveFake("{ path: svc, ecosystem: fake, version: VERSION, payload: ['**'] }");
+      expect(diagnostics).toEqual([]);
+      expect(units[0]!.versionLocations.map((l) => l.file)).toEqual(["svc/VERSION"]);
+    });
+
+    it("lists the adapter's reason for no layer", () => {
+      const { diagnostics } = resolveFake("{ path: svc, ecosystem: fake, version: VERSION }");
+      expect(diagnostics[0]!.message).toContain("Unit 'svc' ships no layer: fake at `.` declares no build. Declare");
+    });
   });
 
   it("keeps a private package's version location when a declared payload gives the unit a layer", () => {

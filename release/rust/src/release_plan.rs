@@ -23,6 +23,7 @@ use crate::bump_level::{
 use crate::fragment::{ReleaseFragment, UnitKey};
 use crate::ledger::{diff_layers, CandidateRecord, LayerChange, Ledger, LedgerEntry, UnitLayers};
 use crate::marker_reader::Severity;
+use crate::tag_format::{default_tag_pattern, render_tag, TagPattern};
 use crate::units::VersionReading;
 use crate::ReleaseError;
 
@@ -51,6 +52,8 @@ pub struct UnitEvidence {
     pub own_files_changed: bool,
     /// The highest bump allowed (`major` when absent).
     pub max_bump: Option<BumpLevel>,
+    /// The unit's tag pattern (the default format's when absent).
+    pub tag_pattern: Option<TagPattern>,
 }
 
 pub struct ReleaseEvidence<'a> {
@@ -104,6 +107,8 @@ pub struct PlannedUnit {
     pub name: String,
     pub from: String,
     pub to: String,
+    /// The tag `to` is released under.
+    pub tag: String,
     pub level: BumpLevel,
     pub reasons: Vec<BumpReason>,
     /// Layers whose digest differs from the final entry's.
@@ -292,6 +297,7 @@ pub fn plan_release(evidence: &ReleaseEvidence<'_>, options: &PlanOptions) -> Re
             name: unit.name.clone().unwrap_or_else(|| unit.key.clone()),
             from: unit.version.clone(),
             to: to.clone(),
+            tag: render_tag(unit.tag_pattern.as_ref().unwrap_or(&default_tag_pattern(&unit.key)), to),
             level,
             reasons: reasons.by_unit.get(&unit.key).cloned().unwrap_or_default(),
             changed: drift.get(&unit.key).cloned().unwrap_or_default(),

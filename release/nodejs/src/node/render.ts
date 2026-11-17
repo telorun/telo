@@ -3,40 +3,13 @@
  * group — because "why is this unit in the list" is the question to answer.
  */
 
-import type { BumpReason, PlannedUnit, ReleaseDiagnostic, ReleasePlan } from "../release-plan.js";
+import { describeReason, describeReasons } from "../bump-reason-text.js";
+import { NOTHING_TO_RELEASE } from "../plan-markdown.js";
+import type { ReleaseDiagnostic, ReleasePlan } from "../release-plan.js";
 import type { Style } from "./host.js";
 
-const MAX_NAMED_FILES = 2;
-
-export function describeReason(reason: BumpReason): string {
-  switch (reason.kind) {
-    case "declared":
-      return "declared";
-    case "imports":
-      return `imports ${reason.unit}`;
-    case "version-location":
-      return `holds the version of ${reason.unit}`;
-    case "group":
-      return `group ${reason.group}`;
-    case "inlines": {
-      const shown = reason.files.slice(0, MAX_NAMED_FILES).join(", ");
-      const rest = reason.files.length - MAX_NAMED_FILES;
-      return `inlines ${shown}${rest > 0 ? ` and ${rest} more` : ""}`;
-    }
-    case "unattributed":
-      return "payload changed, unattributed";
-  }
-}
-
-const ORDER: BumpReason["kind"][] = ["declared", "inlines", "imports", "version-location", "group", "unattributed"];
-
-function describeReasons(unit: PlannedUnit): string {
-  const sorted = [...unit.reasons].sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind));
-  return [...new Set(sorted.map(describeReason))].join("; ");
-}
-
 export function renderPlan(plan: ReleasePlan, style: Style): string[] {
-  if (plan.units.length === 0) return ["Nothing to release — every unit matches the ledger."];
+  if (plan.units.length === 0) return [NOTHING_TO_RELEASE];
   const keyWidth = Math.max(...plan.units.map((unit) => unit.key.length));
   const moveWidth = Math.max(...plan.units.map((unit) => `${unit.from} → ${unit.to}`.length));
   return plan.units.map((unit) => {
@@ -61,6 +34,7 @@ export function planPayload(plan: ReleasePlan): Record<string, unknown> {
       name: unit.name,
       from: unit.from,
       to: unit.to,
+      tag: unit.tag,
       level: unit.level,
       ...(unit.group ? { group: unit.group } : {}),
       reasons: unit.reasons.map(describeReason),

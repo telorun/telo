@@ -55,7 +55,7 @@ impl EcosystemAdapter for DockerAdapter {
 
     fn recognize(&self, probe: &AnchorProbe<'_>) -> Option<RecognizedPackage> {
         probe.read_file(DOCKERFILE)?;
-        Some(RecognizedPackage { name: None, contributes_layer: true, version_files: Vec::new() })
+        Some(RecognizedPackage { name: None, contributes_layer: true, no_layer_reason: None, no_static_version: None, version_files: Vec::new() })
     }
 }
 

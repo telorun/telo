@@ -7,8 +7,8 @@
 // Usage: node scripts/rewrite-pack-links.mjs <pkg-dir> [--readme-from <md>]
 //        node scripts/rewrite-pack-links.mjs <pkg-dir> --restore
 //
-// The tag is the release unit's own, `<unit key>@<version>`, which `telo release
-// tag` places on the release commit — derived from the package alone, so every
+// The tag is the release unit's own — its tag format rendered at its version, as
+// `telo release tag` places it on the release commit — derived from the package alone, so every
 // pack of one version writes the same bytes and the planner's digest of a pack
 // equals the published tarball's. The unit is found through `@telorun/release`'s
 // own marker reader (its built dist, with the telo ecosystem the analyzer's built
@@ -79,7 +79,7 @@ if (rest.includes("--restore")) {
 }
 
 /**
- * `<unit key>@<version>` of the release unit that ships `dir`: the unit whose
+ * The release tag of the unit that ships `dir`, at its version: the unit whose
  * directory is `dir` or one of its anchors' is. Only the marker entries that can
  * claim it are resolved — a unit's directory is an ancestor of `dir` and its
  * anchors lie beneath that directory — so a pack does not read every module.
@@ -120,7 +120,7 @@ async function unitTag(dir) {
   if (!unit) throw new Error(`no release unit of telo-workspace.yaml ships ${key}, so its links name no release tag.`);
   const version = release.readUnitVersions(unit, tree.readFile, adapters)[0]?.value;
   if (!version) throw new Error(`release unit ${unit.key} records no version, so its links name no release tag.`);
-  return `${unit.key}@${version}`;
+  return release.renderTag(unit.tagPattern, version);
 }
 
 const pkg = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8"));

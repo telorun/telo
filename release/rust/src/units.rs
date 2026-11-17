@@ -6,7 +6,7 @@
 //! directory whose anchors are not all recognised; a literal one refuses it.
 //! This file names no ecosystem.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use indexmap::IndexMap;
 use serde_json::Value;
@@ -18,6 +18,10 @@ use telorun_glob::{last_match_index, select_by_patterns, SelectOptions};
 use crate::marker_reader::{KeyPath, PathSeg, Severity, WorkspaceDiagnostic};
 use crate::marker_schema::{KeyType, DEFAULT_RELEASE_IGNORE};
 use crate::release_settings::{PayloadSpec, ReleaseSettings, Settings, UnitEntry, VersionFileSpec};
+use crate::tag_format::{
+    default_tag_format, git_tag_refusal, parse_tag_format, render_tag, tag_collision, tag_pattern_of, TagPattern, SAMPLE_TAG_VERSION,
+};
+use crate::yaml::json_string;
 use crate::version_files::{read_version_at, write_version_at};
 use crate::ReleaseError;
 
@@ -64,6 +68,13 @@ pub struct ResolvedUnit {
     pub ignore: Vec<String>,
     pub max_bump: BumpLevel,
     pub group: Option<String>,
+    /// The unit's label: its entry's `name`, else the last segment of its
+    /// key; the root unit has none unless it names one.
+    pub name: Option<String>,
+    /// The tag format in force: the entry's, `release.tagFormat`, or the default.
+    pub tag_format: String,
+    /// That format resolved for this unit — the text around each version.
+    pub tag_pattern: TagPattern,
 }
 
 pub struct UnitResolution {
@@ -207,27 +218,56 @@ pub fn resolve_units(release: &ReleaseSettings, tree: &dyn WorkspaceTree, adapte
             continue;
         }
 
-        let Some(version) = primary_version(entry, &dir, &anchors, adapters) else { continue };
+        let Some(version) = primary_version(entry, &dir, &anchors, adapters) else {
+            // Zero or several defaulting anchors is reported where the entry is read;
+            // an anchor that keeps no static version is known only here.
+            let unversioned: Vec<&str> = anchors.iter().filter_map(|a| a.package.no_static_version.as_deref()).collect();
+            if !unversioned.is_empty() {
+                report(
+                    format!(
+                        "Unit '{key}' declares no 'version:' and {}. Declare 'version: <file>' or 'version: {{ file, pointer }}', naming the file that holds the unit's version.",
+                        unversioned.join("; ")
+                    ),
+                    "WORKSPACE_UNIT_VERSION_UNRESOLVED",
+                    at.clone(),
+                );
+            }
+            continue;
+        };
 
         let layers = anchors.iter().filter(|a| a.package.contributes_layer).count() + usize::from(entry.payload.is_some());
         if layers == 0 {
-            let why = if anchors.is_empty() {
-                "it lists no ecosystem".to_string()
-            } else {
+            let message = if anchors.is_empty() {
                 format!(
-                    "its packages ({}) publish nothing",
-                    anchors.iter().map(|a| format!("{} at {}", a.ecosystem, a.anchor)).collect::<Vec<_>>().join(", ")
+                    "Unit '{key}' ships no layer: it lists no ecosystem. List the ecosystem it ships through, declare 'payload:' (for example payload: [\"**\"]), or exclude the unit with '!{key}'."
+                )
+            } else {
+                let reasons: Vec<String> = anchors
+                    .iter()
+                    .map(|a| a.package.no_layer_reason.clone().unwrap_or_else(|| format!("{} at `{}` publishes nothing", a.ecosystem, a.anchor)))
+                    .collect();
+                format!(
+                    "Unit '{key}' ships no layer: {}. Declare 'payload:' on the same entry beside 'ecosystem:' (its packages still supply version and edges), or exclude the unit with '!{key}'.",
+                    reasons.join("; ")
                 )
             };
             report(
-                format!(
-                    "Unit '{key}' ships no layer: {why}. List the ecosystem it ships through, declare 'payload:', or exclude it with '!{key}'."
-                ),
+                message,
                 "WORKSPACE_UNIT_PAYLOAD_EMPTY",
                 at.clone(),
             );
             continue;
         }
+
+        let name = entry.name.clone().or_else(|| (key != ".").then(|| key.rsplit('/').next().unwrap_or(key).to_string()));
+        let tag_format = entry
+            .tag_format
+            .clone()
+            .or_else(|| release.tag_format.clone())
+            .unwrap_or_else(|| default_tag_format(key).to_string());
+        let Some(tag_pattern) = unit_tag_pattern(key, name.as_deref(), &tag_format, tag_at(entry), &mut report) else {
+            continue;
+        };
 
         for anchor in &anchors {
             let claim = format!("{}\0{}", anchor.ecosystem, anchor.dir);
@@ -263,7 +303,40 @@ pub fn resolve_units(release: &ReleaseSettings, tree: &dyn WorkspaceTree, adapte
                 .unwrap_or_else(|| DEFAULT_RELEASE_IGNORE.iter().map(|s| s.to_string()).collect()),
             max_bump: entry.max_bump.or(release.max_bump).unwrap_or(BumpLevel::Major),
             group: group_of.get(key).cloned(),
+            name,
+            tag_format,
+            tag_pattern,
         });
+    }
+
+    // Identical patterns collide by construction: one diagnostic per such group, the
+    // automaton walk only across distinct patterns.
+    let mut pattern_groups: Vec<Vec<&ResolvedUnit>> = Vec::new();
+    let mut group_of_pattern: HashMap<&TagPattern, usize> = HashMap::new();
+    for unit in &units {
+        match group_of_pattern.get(&unit.tag_pattern) {
+            Some(&index) => pattern_groups[index].push(unit),
+            None => {
+                group_of_pattern.insert(&unit.tag_pattern, pattern_groups.len());
+                pattern_groups.push(vec![unit]);
+            }
+        }
+    }
+    let mut report_collision = |members: &[&ResolvedUnit], tag: &str| {
+        report(tag_collision_message(members, tag), "WORKSPACE_TAG_COLLISION", tag_at(&members[members.len() - 1].entry));
+    };
+    for (i, a) in pattern_groups.iter().enumerate() {
+        if a.len() > 1 {
+            if let Some(tag) = tag_collision(&a[0].tag_pattern, &a[0].tag_pattern) {
+                report_collision(a, &tag);
+            }
+        }
+        for b in &pattern_groups[i + 1..] {
+            if let Some(tag) = tag_collision(&a[0].tag_pattern, &b[0].tag_pattern) {
+                let members: Vec<&ResolvedUnit> = a.iter().chain(b.iter()).copied().collect();
+                report_collision(&members, &tag);
+            }
+        }
     }
 
     let resolved: BTreeSet<&str> = units.iter().map(|u| u.key.as_str()).collect();
@@ -282,6 +355,85 @@ pub fn resolve_units(release: &ReleaseSettings, tree: &dyn WorkspaceTree, adapte
     UnitResolution { units, diagnostics }
 }
 
+/// The pattern `format` resolves to for one unit, or `None` with the reason
+/// reported: `{name}` on a unit with none, or a tag git refuses.
+fn unit_tag_pattern(
+    key: &str,
+    name: Option<&str>,
+    format: &str,
+    at: KeyPath,
+    report: &mut impl FnMut(String, &'static str, KeyPath),
+) -> Option<TagPattern> {
+    let parts = match parse_tag_format(format) {
+        Ok(parts) => parts,
+        Err(problem) => {
+            report(format!("Unit '{key}' has the tag format {}, {problem}.", json_string(format)), "WORKSPACE_TAG_INVALID", at);
+            return None;
+        }
+    };
+    let Some(pattern) = tag_pattern_of(&parts, key, name) else {
+        report(
+            format!(
+                "Unit '{key}' has no name, so its tag format '{format}' cannot render {{name}}. Give its entry a 'name:', or a 'tagFormat' without {{name}}."
+            ),
+            "WORKSPACE_TAG_INVALID",
+            at,
+        );
+        return None;
+    };
+    let sample = render_tag(&pattern, SAMPLE_TAG_VERSION);
+    if let Some(refusal) = git_tag_refusal(&sample) {
+        report(
+            format!(
+                "Unit '{key}' renders its tag format '{format}' as '{sample}' for version {SAMPLE_TAG_VERSION}, which git refuses as a tag: {refusal}. Give it a 'tagFormat' that renders a legal tag."
+            ),
+            "WORKSPACE_TAG_INVALID",
+            at,
+        );
+        return None;
+    }
+    Some(pattern)
+}
+
+/// Where a unit's tag is fixed: its entry's `tagFormat`, else the entry.
+fn quoted_list(items: &[String]) -> String {
+    let quoted: Vec<String> = items.iter().map(|item| format!("'{item}'")).collect();
+    match quoted.len() {
+        0 | 1 => quoted.join(""),
+        n => format!("{} and {}", quoted[..n - 1].join(", "), quoted[n - 1]),
+    }
+}
+
+fn tag_collision_message(members: &[&ResolvedUnit], tag: &str) -> String {
+    if let [a, b] = members {
+        return format!(
+            "Units '{}' and '{}' can be tagged alike: '{tag}' renders from both tag formats ('{}' and '{}'). Give one of them a 'tagFormat' no version of the other can render.",
+            a.key, b.key, a.tag_format, b.tag_format
+        );
+    }
+    let mut formats: Vec<String> = Vec::new();
+    for unit in members {
+        if !formats.contains(&unit.tag_format) {
+            formats.push(unit.tag_format.clone());
+        }
+    }
+    let keys: Vec<String> = members.iter().map(|unit| unit.key.clone()).collect();
+    format!(
+        "Units {} can be tagged alike: '{tag}' renders from all their tag formats ({}). Give all but one of them a 'tagFormat' no version of the others can render.",
+        quoted_list(&keys),
+        quoted_list(&formats)
+    )
+}
+
+fn tag_at(entry: &UnitEntry) -> KeyPath {
+    let at: KeyPath = vec!["release".into(), "units".into(), PathSeg::Index(entry.index)];
+    if entry.tag_format.is_some() {
+        with_key(&at, "tagFormat")
+    } else {
+        at
+    }
+}
+
 fn with_key(at: &KeyPath, key: &str) -> KeyPath {
     let mut out = at.clone();
     out.push(key.into());
@@ -298,6 +450,7 @@ fn primary_version(entry: &UnitEntry, dir: &str, anchors: &[ResolvedAnchor], ada
     }
     let defaulting: Vec<VersionLocation> = anchors
         .iter()
+        .filter(|anchor| anchor.package.no_static_version.is_none())
         .filter_map(|anchor| adapters.get(&anchor.ecosystem)?.version_file().map(|spec| located(&anchor.dir, &spec)))
         .collect();
     if defaulting.len() == 1 {
@@ -322,7 +475,7 @@ fn version_locations(
         }
     };
     for anchor in anchors {
-        if let Some(spec) = adapters.get(&anchor.ecosystem).and_then(|a| a.version_file()) {
+        if let Some(spec) = adapters.get(&anchor.ecosystem).and_then(|a| a.version_file()).filter(|_| anchor.package.no_static_version.is_none()) {
             add(located(&anchor.dir, &spec));
         }
         for file in &anchor.package.version_files {

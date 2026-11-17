@@ -124,6 +124,15 @@ describe("Output", () => {
       out.emit({ ok: true });
       expect(JSON.parse(stdout.text)).toEqual({ ok: true });
     });
+
+    it("carries only the raw document under markdown: no prose, no envelope", () => {
+      const { out, stdout } = build("markdown", { outTTY: true, env: { FORCE_COLOR: "1" } });
+      out.line("✓  No issues found");
+      out.emit({ ok: true });
+      out.raw("## `a` 1.0.0 → 1.0.1\n");
+      expect(stdout.text).toBe("## `a` 1.0.0 → 1.0.1\n");
+      expect(out.stdout.ok("fine")).toBe("fine");
+    });
   });
 
   describe("emit", () => {
@@ -187,6 +196,11 @@ describe("Output", () => {
   describe("parseOutputFormat", () => {
     it.each(OUTPUT_FORMATS)("accepts %s", (format) => {
       expect(parseOutputFormat(format)).toBe(format);
+    });
+
+    it("accepts markdown, which only the commands writing a document offer", () => {
+      expect(OUTPUT_FORMATS).not.toContain("markdown");
+      expect(parseOutputFormat("markdown")).toBe("markdown");
     });
 
     it("throws rather than degrading an unknown format to text", () => {

@@ -89,5 +89,24 @@
     "expected": {
       "text": "# Changelog\n\n## 0.1.0 - 2026-01-02\n### Added\n* A.\n"
     }
+  },
+  {
+    "name": "multi-line-body",
+    "existing": null,
+    "version": "1.1.0",
+    "date": "2026-01-02",
+    "entries": [
+      {
+        "kind": "Added",
+        "body": "Adds a thing.\n\n- first\n- second\n  - nested\n\n```yaml\nkey: value\n\nother: 1\n```"
+      },
+      {
+        "kind": "Added",
+        "body": "One line."
+      }
+    ],
+    "expected": {
+      "text": "# Changelog\n\n## 1.1.0 - 2026-01-02\n### Added\n* Adds a thing.\n\n  - first\n  - second\n    - nested\n\n  ```yaml\n  key: value\n\n  other: 1\n  ```\n* One line.\n"
+    }
   }
 ]

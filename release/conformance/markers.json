@@ -12,7 +12,7 @@
         {
           "code": "WORKSPACE_UNIT_PAYLOAD_EMPTY",
           "severity": "error",
-          "message": "Unit 'packages/b' ships no layer: its packages (npm at .) publish nothing. List the ecosystem it ships through, declare 'payload:', or exclude it with '!packages/b'.",
+          "message": "Unit 'packages/b' ships no layer: npm at `.` is `private: true`. Declare 'payload:' on the same entry beside 'ecosystem:' (its packages still supply version and edges), or exclude the unit with '!packages/b'.",
           "path": [
             "release",
             "units",
@@ -49,7 +49,13 @@
             "**/CHANGELOG.md"
           ],
           "maxBump": "major",
-          "group": null
+          "group": null,
+          "name": "a",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "packages/a@",
+            ""
+          ]
         }
       ]
     }
@@ -93,7 +99,13 @@
             "**/CHANGELOG.md"
           ],
           "maxBump": "major",
-          "group": null
+          "group": null,
+          "name": "a",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "packages/a@",
+            ""
+          ]
         },
         {
           "key": "packages/c",
@@ -123,7 +135,13 @@
             "**/CHANGELOG.md"
           ],
           "maxBump": "patch",
-          "group": null
+          "group": null,
+          "name": "c",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "packages/c@",
+            ""
+          ]
         }
       ]
     }
@@ -192,7 +210,13 @@
             "**/notes/**"
           ],
           "maxBump": "minor",
-          "group": null
+          "group": null,
+          "name": "engine",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "engine@",
+            ""
+          ]
         }
       ]
     }
@@ -210,7 +234,7 @@
         {
           "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
           "severity": "error",
-          "message": "telo-workspace.yaml: 'release.units.0' (napi) declares no 'version:' and 2 anchors keep one (npm at ., cargo at .). Declare 'version:', naming the one that holds the unit's version.",
+          "message": "telo-workspace.yaml: 'release.units.0' (napi) declares no 'version:' and 2 anchors keep one (npm at ., cargo at .). Declare 'version: <file>' or 'version: { file, pointer }', naming the one that holds the unit's version.",
           "path": [
             "release",
             "units",
@@ -220,7 +244,7 @@
         {
           "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
           "severity": "error",
-          "message": "telo-workspace.yaml: 'release.units.1' (img) declares no 'version:' and none of its ecosystems (docker) keeps a version. Declare 'version:', naming the file that holds it.",
+          "message": "telo-workspace.yaml: 'release.units.1' (img) declares no 'version:' and none of its ecosystems (docker) keeps a version. Declare 'version: <file>' or 'version: { file, pointer }', naming the file that holds it.",
           "path": [
             "release",
             "units",
@@ -230,7 +254,7 @@
         {
           "code": "WORKSPACE_UNIT_PAYLOAD_EMPTY",
           "severity": "error",
-          "message": "telo-workspace.yaml: 'release.units.2' (bare) lists no ecosystem and declares no 'payload:', so nothing it ships can be digested. List the ecosystem it ships through, declare 'payload:', or exclude it with '!'.",
+          "message": "telo-workspace.yaml: 'release.units.2' (bare) lists no ecosystem and declares no 'payload:', so nothing it ships can be digested. List the ecosystem it ships through, declare 'payload:' (for example payload: [\"**\"]), or exclude it with '!bare'.",
           "path": [
             "release",
             "units",
@@ -240,7 +264,7 @@
         {
           "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
           "severity": "error",
-          "message": "telo-workspace.yaml: 'release.units.2' (bare) declares no 'version:' and lists no ecosystem. Declare 'version:', naming the file that holds it.",
+          "message": "telo-workspace.yaml: 'release.units.2' (bare) declares no 'version:' and lists no ecosystem. Declare 'version: <file>' or 'version: { file, pointer }', naming the file that holds it.",
           "path": [
             "release",
             "units",
@@ -274,7 +298,7 @@
         {
           "code": "WORKSPACE_ECOSYSTEM_UNAVAILABLE",
           "severity": "error",
-          "message": "telo-workspace.yaml: the 'pip' ecosystem is not served here — no adapter for it is registered in this host, so it cannot be planned. Run the release through a host that serves 'pip'. Served here: npm, cargo, docker, helm.",
+          "message": "telo-workspace.yaml: the 'pip' ecosystem is not served here — no adapter for it is registered in this host, so it cannot be planned. Run the release through a host that serves 'pip'. Served here: npm, cargo, docker, helm, pypi.",
           "path": [
             "release",
             "ecosystems",
@@ -295,7 +319,7 @@
         {
           "code": "WORKSPACE_ECOSYSTEM_UNAVAILABLE",
           "severity": "error",
-          "message": "telo-workspace.yaml: the 'pip' ecosystem is not served here — no adapter for it is registered in this host, so it cannot be planned. Run the release through a host that serves 'pip'. Served here: npm, cargo, docker, helm.",
+          "message": "telo-workspace.yaml: the 'pip' ecosystem is not served here — no adapter for it is registered in this host, so it cannot be planned. Run the release through a host that serves 'pip'. Served here: npm, cargo, docker, helm, pypi.",
           "path": [
             "release",
             "units",
@@ -349,7 +373,7 @@
         {
           "code": "WORKSPACE_UNKNOWN_KEY",
           "severity": "error",
-          "message": "telo-workspace.yaml: 'release.units.0.registry' is a setting of the docker / helm ecosystem, which is never written flat on an entry. Write it at the anchor (ecosystem: { docker: { \".\": { registry: … } } }) or for every docker anchor under 'release.ecosystems.docker'.",
+          "message": "telo-workspace.yaml: 'release.units.0.registry' is a setting of the docker / helm / pypi ecosystem, which is never written flat on an entry. Write it at the anchor (ecosystem: { docker: { \".\": { registry: … } } }) or for every docker anchor under 'release.ecosystems.docker'.",
           "path": [
             "release",
             "units",
@@ -371,7 +395,7 @@
         {
           "code": "WORKSPACE_UNKNOWN_KEY",
           "severity": "error",
-          "message": "telo-workspace.yaml: unknown key 'release.units.2.verison'. Known keys: 'path', 'ecosystem', 'version', 'payload', 'metafile', 'versionFiles', 'ignore', 'maxBump'.",
+          "message": "telo-workspace.yaml: unknown key 'release.units.2.verison'. Known keys: 'path', 'name', 'ecosystem', 'version', 'payload', 'metafile', 'versionFiles', 'ignore', 'maxBump', 'tagFormat'.",
           "path": [
             "release",
             "units",
@@ -382,7 +406,7 @@
         {
           "code": "WORKSPACE_UNKNOWN_KEY",
           "severity": "error",
-          "message": "telo-workspace.yaml: unknown key 'release.units.3.frobnicate'. Known keys: 'path', 'ecosystem', 'version', 'payload', 'metafile', 'versionFiles', 'ignore', 'maxBump'.",
+          "message": "telo-workspace.yaml: unknown key 'release.units.3.frobnicate'. Known keys: 'path', 'name', 'ecosystem', 'version', 'payload', 'metafile', 'versionFiles', 'ignore', 'maxBump', 'tagFormat'.",
           "path": [
             "release",
             "units",
@@ -420,7 +444,13 @@
             "**/CHANGELOG.md"
           ],
           "maxBump": "major",
-          "group": null
+          "group": null,
+          "name": "a",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "a@",
+            ""
+          ]
         },
         {
           "key": "b",
@@ -450,7 +480,13 @@
             "**/CHANGELOG.md"
           ],
           "maxBump": "major",
-          "group": null
+          "group": null,
+          "name": "b",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "b@",
+            ""
+          ]
         },
         {
           "key": "c",
@@ -480,7 +516,13 @@
             "**/CHANGELOG.md"
           ],
           "maxBump": "major",
-          "group": null
+          "group": null,
+          "name": "c",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "c@",
+            ""
+          ]
         },
         {
           "key": "d",
@@ -510,7 +552,13 @@
             "**/CHANGELOG.md"
           ],
           "maxBump": "major",
-          "group": null
+          "group": null,
+          "name": "d",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "d@",
+            ""
+          ]
         }
       ]
     }
@@ -540,7 +588,7 @@
         {
           "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
           "severity": "error",
-          "message": "telo-workspace.yaml: 'release.units.0' (a) declares no 'version:' and none of its ecosystems (npm) keeps a version. Declare 'version:', naming the file that holds it.",
+          "message": "telo-workspace.yaml: 'release.units.0' (a) declares no 'version:' and none of its ecosystems (npm) keeps a version. Declare 'version: <file>' or 'version: { file, pointer }', naming the file that holds it.",
           "path": [
             "release",
             "units",
@@ -562,7 +610,7 @@
         {
           "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
           "severity": "error",
-          "message": "telo-workspace.yaml: 'release.units.1' (b) declares no 'version:' and none of its ecosystems (npm) keeps a version. Declare 'version:', naming the file that holds it.",
+          "message": "telo-workspace.yaml: 'release.units.1' (b) declares no 'version:' and none of its ecosystems (npm) keeps a version. Declare 'version: <file>' or 'version: { file, pointer }', naming the file that holds it.",
           "path": [
             "release",
             "units",
@@ -610,7 +658,7 @@
         {
           "code": "WORKSPACE_UNIT_PAYLOAD_EMPTY",
           "severity": "error",
-          "message": "telo-workspace.yaml: 'release.units.6' (f) lists no ecosystem and declares no 'payload:', so nothing it ships can be digested. List the ecosystem it ships through, declare 'payload:', or exclude it with '!'.",
+          "message": "telo-workspace.yaml: 'release.units.6' (f) lists no ecosystem and declares no 'payload:', so nothing it ships can be digested. List the ecosystem it ships through, declare 'payload:' (for example payload: [\"**\"]), or exclude it with '!f'.",
           "path": [
             "release",
             "units",
@@ -620,7 +668,7 @@
         {
           "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
           "severity": "error",
-          "message": "telo-workspace.yaml: 'release.units.6' (f) declares no 'version:' and lists no ecosystem. Declare 'version:', naming the file that holds it.",
+          "message": "telo-workspace.yaml: 'release.units.6' (f) declares no 'version:' and lists no ecosystem. Declare 'version: <file>' or 'version: { file, pointer }', naming the file that holds it.",
           "path": [
             "release",
             "units",
@@ -691,7 +739,13 @@
             "**/CHANGELOG.md"
           ],
           "maxBump": "major",
-          "group": null
+          "group": null,
+          "name": null,
+          "tagFormat": "v{version}",
+          "tagPattern": [
+            "v",
+            ""
+          ]
         },
         {
           "key": "shared",
@@ -721,7 +775,13 @@
             "**/CHANGELOG.md"
           ],
           "maxBump": "major",
-          "group": null
+          "group": null,
+          "name": "shared",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "shared@",
+            ""
+          ]
         }
       ]
     }
@@ -836,7 +896,13 @@
             "**/CHANGELOG.md"
           ],
           "maxBump": "major",
-          "group": null
+          "group": null,
+          "name": "svc",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "svc@",
+            ""
+          ]
         }
       ]
     }
@@ -872,7 +938,7 @@
         {
           "code": "WORKSPACE_UNIT_PAYLOAD_EMPTY",
           "severity": "error",
-          "message": "telo-workspace.yaml: 'release.units.0' (a) lists no ecosystem and declares no 'payload:', so nothing it ships can be digested. List the ecosystem it ships through, declare 'payload:', or exclude it with '!'.",
+          "message": "telo-workspace.yaml: 'release.units.0' (a) lists no ecosystem and declares no 'payload:', so nothing it ships can be digested. List the ecosystem it ships through, declare 'payload:' (for example payload: [\"**\"]), or exclude it with '!a'.",
           "path": [
             "release",
             "units",
@@ -882,7 +948,7 @@
         {
           "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
           "severity": "error",
-          "message": "telo-workspace.yaml: 'release.units.0' (a) declares no 'version:' and lists no ecosystem. Declare 'version:', naming the file that holds it.",
+          "message": "telo-workspace.yaml: 'release.units.0' (a) declares no 'version:' and lists no ecosystem. Declare 'version: <file>' or 'version: { file, pointer }', naming the file that holds it.",
           "path": [
             "release",
             "units",
@@ -892,7 +958,7 @@
         {
           "code": "WORKSPACE_UNIT_PAYLOAD_EMPTY",
           "severity": "error",
-          "message": "telo-workspace.yaml: 'release.units.1' (b) lists no ecosystem and declares no 'payload:', so nothing it ships can be digested. List the ecosystem it ships through, declare 'payload:', or exclude it with '!'.",
+          "message": "telo-workspace.yaml: 'release.units.1' (b) lists no ecosystem and declares no 'payload:', so nothing it ships can be digested. List the ecosystem it ships through, declare 'payload:' (for example payload: [\"**\"]), or exclude it with '!b'.",
           "path": [
             "release",
             "units",
@@ -902,7 +968,7 @@
         {
           "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
           "severity": "error",
-          "message": "telo-workspace.yaml: 'release.units.1' (b) declares no 'version:' and lists no ecosystem. Declare 'version:', naming the file that holds it.",
+          "message": "telo-workspace.yaml: 'release.units.1' (b) declares no 'version:' and lists no ecosystem. Declare 'version: <file>' or 'version: { file, pointer }', naming the file that holds it.",
           "path": [
             "release",
             "units",
@@ -1017,7 +1083,7 @@
         {
           "code": "WORKSPACE_UNIT_PAYLOAD_EMPTY",
           "severity": "error",
-          "message": "telo-workspace.yaml: 'release.units.4' (a) lists no ecosystem and declares no 'payload:', so nothing it ships can be digested. List the ecosystem it ships through, declare 'payload:', or exclude it with '!'.",
+          "message": "telo-workspace.yaml: 'release.units.4' (a) lists no ecosystem and declares no 'payload:', so nothing it ships can be digested. List the ecosystem it ships through, declare 'payload:' (for example payload: [\"**\"]), or exclude it with '!a'.",
           "path": [
             "release",
             "units",
@@ -1027,7 +1093,7 @@
         {
           "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
           "severity": "error",
-          "message": "telo-workspace.yaml: 'release.units.4' (a) declares no 'version:' and lists no ecosystem. Declare 'version:', naming the file that holds it.",
+          "message": "telo-workspace.yaml: 'release.units.4' (a) declares no 'version:' and lists no ecosystem. Declare 'version: <file>' or 'version: { file, pointer }', naming the file that holds it.",
           "path": [
             "release",
             "units",
@@ -1048,7 +1114,7 @@
         {
           "code": "WORKSPACE_UNIT_PAYLOAD_EMPTY",
           "severity": "error",
-          "message": "telo-workspace.yaml: 'release.units.5' (b) lists no ecosystem and declares no 'payload:', so nothing it ships can be digested. List the ecosystem it ships through, declare 'payload:', or exclude it with '!'.",
+          "message": "telo-workspace.yaml: 'release.units.5' (b) lists no ecosystem and declares no 'payload:', so nothing it ships can be digested. List the ecosystem it ships through, declare 'payload:' (for example payload: [\"**\"]), or exclude it with '!b'.",
           "path": [
             "release",
             "units",
@@ -1058,7 +1124,7 @@
         {
           "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
           "severity": "error",
-          "message": "telo-workspace.yaml: 'release.units.5' (b) declares no 'version:' and lists no ecosystem. Declare 'version:', naming the file that holds it.",
+          "message": "telo-workspace.yaml: 'release.units.5' (b) declares no 'version:' and lists no ecosystem. Declare 'version: <file>' or 'version: { file, pointer }', naming the file that holds it.",
           "path": [
             "release",
             "units",
@@ -1091,7 +1157,7 @@
         {
           "code": "WORKSPACE_UNIT_PAYLOAD_EMPTY",
           "severity": "error",
-          "message": "telo-workspace.yaml: 'release.units.6' (c) lists no ecosystem and declares no 'payload:', so nothing it ships can be digested. List the ecosystem it ships through, declare 'payload:', or exclude it with '!'.",
+          "message": "telo-workspace.yaml: 'release.units.6' (c) lists no ecosystem and declares no 'payload:', so nothing it ships can be digested. List the ecosystem it ships through, declare 'payload:' (for example payload: [\"**\"]), or exclude it with '!c'.",
           "path": [
             "release",
             "units",
@@ -1101,7 +1167,7 @@
         {
           "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
           "severity": "error",
-          "message": "telo-workspace.yaml: 'release.units.6' (c) declares no 'version:' and lists no ecosystem. Declare 'version:', naming the file that holds it.",
+          "message": "telo-workspace.yaml: 'release.units.6' (c) declares no 'version:' and lists no ecosystem. Declare 'version: <file>' or 'version: { file, pointer }', naming the file that holds it.",
           "path": [
             "release",
             "units",
@@ -1122,7 +1188,7 @@
         {
           "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
           "severity": "error",
-          "message": "telo-workspace.yaml: 'release.units.7' (d) declares no 'version:' and lists no ecosystem. Declare 'version:', naming the file that holds it.",
+          "message": "telo-workspace.yaml: 'release.units.7' (d) declares no 'version:' and lists no ecosystem. Declare 'version: <file>' or 'version: { file, pointer }', naming the file that holds it.",
           "path": [
             "release",
             "units",
@@ -1144,7 +1210,7 @@
         {
           "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
           "severity": "error",
-          "message": "telo-workspace.yaml: 'release.units.8' (e) declares no 'version:' and lists no ecosystem. Declare 'version:', naming the file that holds it.",
+          "message": "telo-workspace.yaml: 'release.units.8' (e) declares no 'version:' and lists no ecosystem. Declare 'version: <file>' or 'version: { file, pointer }', naming the file that holds it.",
           "path": [
             "release",
             "units",
@@ -1221,7 +1287,13 @@
             "**/CHANGELOG.md"
           ],
           "maxBump": "major",
-          "group": null
+          "group": null,
+          "name": "f",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "f@",
+            ""
+          ]
         },
         {
           "key": "g",
@@ -1245,7 +1317,13 @@
             "**/CHANGELOG.md"
           ],
           "maxBump": "major",
-          "group": null
+          "group": null,
+          "name": "g",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "g@",
+            ""
+          ]
         },
         {
           "key": "h",
@@ -1269,7 +1347,13 @@
             "**/CHANGELOG.md"
           ],
           "maxBump": "patch",
-          "group": null
+          "group": null,
+          "name": "h",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "h@",
+            ""
+          ]
         }
       ]
     }
@@ -1391,7 +1475,13 @@
             "**/CHANGELOG.md"
           ],
           "maxBump": "major",
-          "group": null
+          "group": null,
+          "name": "chart",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "chart@",
+            ""
+          ]
         },
         {
           "key": "tool",
@@ -1421,7 +1511,1200 @@
             "**/CHANGELOG.md"
           ],
           "maxBump": "major",
-          "group": null
+          "group": null,
+          "name": "tool",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "tool@",
+            ""
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "tag-formats-cascade",
+    "files": {
+      "telo-workspace.yaml": "release:\n  tagFormat: \"{name}/{version}\"\n  units:\n    - { path: ., version: release.txt, payload: [release.txt], tagFormat: \"v{version}\" }\n    - { path: apps/web, version: VERSION, payload: [\"**\"] }\n    - { path: apps/api, version: VERSION, payload: [\"**\"], name: backend }\n    - { path: libs/core, version: VERSION, payload: [\"**\"], tagFormat: \"{key}@{version}\" }\n",
+      "release.txt": "1.0.0\n",
+      "apps/web/VERSION": "1.0.0\n",
+      "apps/api/VERSION": "1.0.0\n",
+      "libs/core/VERSION": "1.0.0\n"
+    },
+    "expected": {
+      "diagnostics": [],
+      "units": [
+        {
+          "key": ".",
+          "dir": "",
+          "anchors": [],
+          "version": "release.txt",
+          "versionLocations": [
+            "release.txt"
+          ],
+          "payload": {
+            "patterns": [
+              "release.txt"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": null,
+          "tagFormat": "v{version}",
+          "tagPattern": [
+            "v",
+            ""
+          ]
+        },
+        {
+          "key": "apps/api",
+          "dir": "apps/api",
+          "anchors": [],
+          "version": "apps/api/VERSION",
+          "versionLocations": [
+            "apps/api/VERSION"
+          ],
+          "payload": {
+            "patterns": [
+              "**"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "backend",
+          "tagFormat": "{name}/{version}",
+          "tagPattern": [
+            "backend/",
+            ""
+          ]
+        },
+        {
+          "key": "apps/web",
+          "dir": "apps/web",
+          "anchors": [],
+          "version": "apps/web/VERSION",
+          "versionLocations": [
+            "apps/web/VERSION"
+          ],
+          "payload": {
+            "patterns": [
+              "**"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "web",
+          "tagFormat": "{name}/{version}",
+          "tagPattern": [
+            "web/",
+            ""
+          ]
+        },
+        {
+          "key": "libs/core",
+          "dir": "libs/core",
+          "anchors": [],
+          "version": "libs/core/VERSION",
+          "versionLocations": [
+            "libs/core/VERSION"
+          ],
+          "payload": {
+            "patterns": [
+              "**"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "core",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "libs/core@",
+            ""
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "tag-formats-default",
+    "files": {
+      "telo-workspace.yaml": "release:\n  units:\n    - { path: ., version: release.txt, payload: [release.txt] }\n    - { path: packages/a, version: VERSION, payload: [\"**\"], name: alpha }\n",
+      "release.txt": "1.0.0\n",
+      "packages/a/VERSION": "1.0.0\n"
+    },
+    "expected": {
+      "diagnostics": [],
+      "units": [
+        {
+          "key": ".",
+          "dir": "",
+          "anchors": [],
+          "version": "release.txt",
+          "versionLocations": [
+            "release.txt"
+          ],
+          "payload": {
+            "patterns": [
+              "release.txt"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": null,
+          "tagFormat": "v{version}",
+          "tagPattern": [
+            "v",
+            ""
+          ]
+        },
+        {
+          "key": "packages/a",
+          "dir": "packages/a",
+          "anchors": [],
+          "version": "packages/a/VERSION",
+          "versionLocations": [
+            "packages/a/VERSION"
+          ],
+          "payload": {
+            "patterns": [
+              "**"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "alpha",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "packages/a@",
+            ""
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "tag-formats-refused-when-read",
+    "files": {
+      "telo-workspace.yaml": "release:\n  tagFormat: \"{name}\"\n  tag: \"{version}\"\n  units:\n    - { path: a, version: VERSION, payload: [\"**\"], tagFormat: \"{nme}/{version}\" }\n    - { path: b, version: VERSION, payload: [\"**\"], tagFormat: \"{name/{version}\" }\n    - { path: c, version: VERSION, payload: [\"**\"], tagFormat: \"{name}}/{version}\" }\n    - { path: d, version: VERSION, payload: [\"**\"], tagFormat: \"\" }\n    - { path: e, version: VERSION, payload: [\"**\"], name: }\n    - { path: f, version: VERSION, payload: [\"**\"], tag: \"{version}\" }\n    - { path: g, version: VERSION, payload: [\"**\"], name: 7, tagFormat: { version: x } }\n",
+      "a/VERSION": "1.0.0\n",
+      "b/VERSION": "1.0.0\n",
+      "c/VERSION": "1.0.0\n",
+      "d/VERSION": "1.0.0\n",
+      "e/VERSION": "1.0.0\n",
+      "f/VERSION": "1.0.0\n",
+      "g/VERSION": "1.0.0\n"
+    },
+    "expected": {
+      "diagnostics": [
+        {
+          "code": "WORKSPACE_UNKNOWN_KEY",
+          "severity": "error",
+          "message": "telo-workspace.yaml: unknown key 'release.tag'. Known keys: 'units', 'ecosystems', 'groups', 'ignore', 'maxBump', 'tagFormat'.",
+          "path": [
+            "release",
+            "tag"
+          ]
+        },
+        {
+          "code": "WORKSPACE_TAG_INVALID",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.tagFormat' is \"{name}\", which holds no {version}, so every version of a unit would get the same tag. A tag format is text with the placeholders {key}, {name} and {version}, e.g. '{key}@{version}'.",
+          "path": [
+            "release",
+            "tagFormat"
+          ]
+        },
+        {
+          "code": "WORKSPACE_TAG_INVALID",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.0.tagFormat' is \"{nme}/{version}\", whose '{nme}' is no placeholder. A tag format is text with the placeholders {key}, {name} and {version}, e.g. '{key}@{version}'.",
+          "path": [
+            "release",
+            "units",
+            0,
+            "tagFormat"
+          ]
+        },
+        {
+          "code": "WORKSPACE_TAG_INVALID",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.1.tagFormat' is \"{name/{version}\", which holds a '{' that opens no placeholder. A tag format is text with the placeholders {key}, {name} and {version}, e.g. '{key}@{version}'.",
+          "path": [
+            "release",
+            "units",
+            1,
+            "tagFormat"
+          ]
+        },
+        {
+          "code": "WORKSPACE_TAG_INVALID",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.2.tagFormat' is \"{name}}/{version}\", which holds a '}' that closes no placeholder. A tag format is text with the placeholders {key}, {name} and {version}, e.g. '{key}@{version}'.",
+          "path": [
+            "release",
+            "units",
+            2,
+            "tagFormat"
+          ]
+        },
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.3.tagFormat' is empty.",
+          "path": [
+            "release",
+            "units",
+            3,
+            "tagFormat"
+          ]
+        },
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.4.name' must be a string.",
+          "path": [
+            "release",
+            "units",
+            4,
+            "name"
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNKNOWN_KEY",
+          "severity": "error",
+          "message": "telo-workspace.yaml: unknown key 'release.units.5.tag'. Known keys: 'path', 'name', 'ecosystem', 'version', 'payload', 'metafile', 'versionFiles', 'ignore', 'maxBump', 'tagFormat'.",
+          "path": [
+            "release",
+            "units",
+            5,
+            "tag"
+          ]
+        },
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.6.name' must be a string.",
+          "path": [
+            "release",
+            "units",
+            6,
+            "name"
+          ]
+        },
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.6.tagFormat' must be a string.",
+          "path": [
+            "release",
+            "units",
+            6,
+            "tagFormat"
+          ]
+        }
+      ],
+      "units": [
+        {
+          "key": "a",
+          "dir": "a",
+          "anchors": [],
+          "version": "a/VERSION",
+          "versionLocations": [
+            "a/VERSION"
+          ],
+          "payload": {
+            "patterns": [
+              "**"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "a",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "a@",
+            ""
+          ]
+        },
+        {
+          "key": "b",
+          "dir": "b",
+          "anchors": [],
+          "version": "b/VERSION",
+          "versionLocations": [
+            "b/VERSION"
+          ],
+          "payload": {
+            "patterns": [
+              "**"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "b",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "b@",
+            ""
+          ]
+        },
+        {
+          "key": "c",
+          "dir": "c",
+          "anchors": [],
+          "version": "c/VERSION",
+          "versionLocations": [
+            "c/VERSION"
+          ],
+          "payload": {
+            "patterns": [
+              "**"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "c",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "c@",
+            ""
+          ]
+        },
+        {
+          "key": "d",
+          "dir": "d",
+          "anchors": [],
+          "version": "d/VERSION",
+          "versionLocations": [
+            "d/VERSION"
+          ],
+          "payload": {
+            "patterns": [
+              "**"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "d",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "d@",
+            ""
+          ]
+        },
+        {
+          "key": "e",
+          "dir": "e",
+          "anchors": [],
+          "version": "e/VERSION",
+          "versionLocations": [
+            "e/VERSION"
+          ],
+          "payload": {
+            "patterns": [
+              "**"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "e",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "e@",
+            ""
+          ]
+        },
+        {
+          "key": "f",
+          "dir": "f",
+          "anchors": [],
+          "version": "f/VERSION",
+          "versionLocations": [
+            "f/VERSION"
+          ],
+          "payload": {
+            "patterns": [
+              "**"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "f",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "f@",
+            ""
+          ]
+        },
+        {
+          "key": "g",
+          "dir": "g",
+          "anchors": [],
+          "version": "g/VERSION",
+          "versionLocations": [
+            "g/VERSION"
+          ],
+          "payload": {
+            "patterns": [
+              "**"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "g",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "g@",
+            ""
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "tag-format-null-at-the-workspace",
+    "files": {
+      "telo-workspace.yaml": "release:\n  tagFormat:\n  units:\n    - { path: a, version: VERSION, payload: [\"**\"] }\n",
+      "a/VERSION": "1.0.0\n"
+    },
+    "expected": {
+      "diagnostics": [
+        {
+          "code": "WORKSPACE_INVALID_VALUE",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.tagFormat' must be a string.",
+          "path": [
+            "release",
+            "tagFormat"
+          ]
+        }
+      ],
+      "units": [
+        {
+          "key": "a",
+          "dir": "a",
+          "anchors": [],
+          "version": "a/VERSION",
+          "versionLocations": [
+            "a/VERSION"
+          ],
+          "payload": {
+            "patterns": [
+              "**"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "a",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "a@",
+            ""
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "tag-formats-refused-when-resolved",
+    "files": {
+      "telo-workspace.yaml": "release:\n  tagFormat: \"{name}/{version}\"\n  units:\n    - { path: ., version: release.txt, payload: [release.txt] }\n    - { path: bad name, version: VERSION, payload: [\"**\"] }\n    - { path: x, version: VERSION, payload: [\"**\"], tagFormat: \"{version}.lock\" }\n    - { path: z, version: VERSION, payload: [\"**\"], name: \"a..b\" }\n    - { path: y, version: VERSION, payload: [\"**\"], name: ok }\n",
+      "release.txt": "1.0.0\n",
+      "bad name/VERSION": "1.0.0\n",
+      "x/VERSION": "1.0.0\n",
+      "y/VERSION": "1.0.0\n",
+      "z/VERSION": "1.0.0\n"
+    },
+    "expected": {
+      "diagnostics": [
+        {
+          "code": "WORKSPACE_TAG_INVALID",
+          "severity": "error",
+          "message": "Unit '.' has no name, so its tag format '{name}/{version}' cannot render {name}. Give its entry a 'name:', or a 'tagFormat' without {name}.",
+          "path": [
+            "release",
+            "units",
+            0
+          ]
+        },
+        {
+          "code": "WORKSPACE_TAG_INVALID",
+          "severity": "error",
+          "message": "Unit 'bad name' renders its tag format '{name}/{version}' as 'bad name/0.0.0' for version 0.0.0, which git refuses as a tag: it holds a space. Give it a 'tagFormat' that renders a legal tag.",
+          "path": [
+            "release",
+            "units",
+            1
+          ]
+        },
+        {
+          "code": "WORKSPACE_TAG_INVALID",
+          "severity": "error",
+          "message": "Unit 'x' renders its tag format '{version}.lock' as '0.0.0.lock' for version 0.0.0, which git refuses as a tag: a part of it ends with '.lock'. Give it a 'tagFormat' that renders a legal tag.",
+          "path": [
+            "release",
+            "units",
+            2,
+            "tagFormat"
+          ]
+        },
+        {
+          "code": "WORKSPACE_TAG_INVALID",
+          "severity": "error",
+          "message": "Unit 'z' renders its tag format '{name}/{version}' as 'a..b/0.0.0' for version 0.0.0, which git refuses as a tag: it holds '..'. Give it a 'tagFormat' that renders a legal tag.",
+          "path": [
+            "release",
+            "units",
+            3
+          ]
+        }
+      ],
+      "units": [
+        {
+          "key": "y",
+          "dir": "y",
+          "anchors": [],
+          "version": "y/VERSION",
+          "versionLocations": [
+            "y/VERSION"
+          ],
+          "payload": {
+            "patterns": [
+              "**"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "ok",
+          "tagFormat": "{name}/{version}",
+          "tagPattern": [
+            "ok/",
+            ""
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "tag-format-root-key",
+    "files": {
+      "telo-workspace.yaml": "release:\n  units:\n    - { path: ., version: release.txt, payload: [release.txt], tagFormat: \"{key}@{version}\" }\n",
+      "release.txt": "1.0.0\n"
+    },
+    "expected": {
+      "diagnostics": [
+        {
+          "code": "WORKSPACE_TAG_INVALID",
+          "severity": "error",
+          "message": "Unit '.' renders its tag format '{key}@{version}' as '.@0.0.0' for version 0.0.0, which git refuses as a tag: a part of it starts with '.'. Give it a 'tagFormat' that renders a legal tag.",
+          "path": [
+            "release",
+            "units",
+            0,
+            "tagFormat"
+          ]
+        }
+      ],
+      "units": []
+    }
+  },
+  {
+    "name": "tag-collisions",
+    "files": {
+      "telo-workspace.yaml": "release:\n  tagFormat: \"{name}{version}\"\n  units:\n    - { path: libs/a, version: VERSION, payload: [\"**\"] }\n    - { path: libs/a1, version: VERSION, payload: [\"**\"] }\n    - { path: apps/web, version: VERSION, payload: [\"**\"], tagFormat: \"{name}/{version}\" }\n    - { path: sites/web, version: VERSION, payload: [\"**\"], tagFormat: \"{name}/{version}\" }\n    - { path: tools/p, version: VERSION, payload: [\"**\"], tagFormat: \"{version}\" }\n    - { path: tools/q, version: VERSION, payload: [\"**\"], tagFormat: \"{version}-rc.1\" }\n    - { path: tools/r, version: VERSION, payload: [\"**\"], tagFormat: \"r-{version}-x\" }\n    - { path: tools/s, version: VERSION, payload: [\"**\"], tagFormat: \"s{version}{version}\" }\n",
+      "libs/a/VERSION": "1.0.0\n",
+      "libs/a1/VERSION": "1.0.0\n",
+      "apps/web/VERSION": "1.0.0\n",
+      "sites/web/VERSION": "1.0.0\n",
+      "tools/p/VERSION": "1.0.0\n",
+      "tools/q/VERSION": "1.0.0\n",
+      "tools/r/VERSION": "1.0.0\n",
+      "tools/s/VERSION": "1.0.0\n"
+    },
+    "expected": {
+      "diagnostics": [
+        {
+          "code": "WORKSPACE_TAG_COLLISION",
+          "severity": "error",
+          "message": "Units 'apps/web' and 'sites/web' can be tagged alike: 'web/0.0.0' renders from both tag formats ('{name}/{version}' and '{name}/{version}'). Give one of them a 'tagFormat' no version of the other can render.",
+          "path": [
+            "release",
+            "units",
+            3,
+            "tagFormat"
+          ]
+        },
+        {
+          "code": "WORKSPACE_TAG_COLLISION",
+          "severity": "error",
+          "message": "Units 'libs/a' and 'libs/a1' can be tagged alike: 'a10.0.0' renders from both tag formats ('{name}{version}' and '{name}{version}'). Give one of them a 'tagFormat' no version of the other can render.",
+          "path": [
+            "release",
+            "units",
+            1
+          ]
+        },
+        {
+          "code": "WORKSPACE_TAG_COLLISION",
+          "severity": "error",
+          "message": "Units 'tools/p' and 'tools/q' can be tagged alike: '0.0.0-rc.1' renders from both tag formats ('{version}' and '{version}-rc.1'). Give one of them a 'tagFormat' no version of the other can render.",
+          "path": [
+            "release",
+            "units",
+            5,
+            "tagFormat"
+          ]
+        }
+      ],
+      "units": [
+        {
+          "key": "apps/web",
+          "dir": "apps/web",
+          "anchors": [],
+          "version": "apps/web/VERSION",
+          "versionLocations": [
+            "apps/web/VERSION"
+          ],
+          "payload": {
+            "patterns": [
+              "**"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "web",
+          "tagFormat": "{name}/{version}",
+          "tagPattern": [
+            "web/",
+            ""
+          ]
+        },
+        {
+          "key": "libs/a",
+          "dir": "libs/a",
+          "anchors": [],
+          "version": "libs/a/VERSION",
+          "versionLocations": [
+            "libs/a/VERSION"
+          ],
+          "payload": {
+            "patterns": [
+              "**"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "a",
+          "tagFormat": "{name}{version}",
+          "tagPattern": [
+            "a",
+            ""
+          ]
+        },
+        {
+          "key": "libs/a1",
+          "dir": "libs/a1",
+          "anchors": [],
+          "version": "libs/a1/VERSION",
+          "versionLocations": [
+            "libs/a1/VERSION"
+          ],
+          "payload": {
+            "patterns": [
+              "**"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "a1",
+          "tagFormat": "{name}{version}",
+          "tagPattern": [
+            "a1",
+            ""
+          ]
+        },
+        {
+          "key": "sites/web",
+          "dir": "sites/web",
+          "anchors": [],
+          "version": "sites/web/VERSION",
+          "versionLocations": [
+            "sites/web/VERSION"
+          ],
+          "payload": {
+            "patterns": [
+              "**"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "web",
+          "tagFormat": "{name}/{version}",
+          "tagPattern": [
+            "web/",
+            ""
+          ]
+        },
+        {
+          "key": "tools/p",
+          "dir": "tools/p",
+          "anchors": [],
+          "version": "tools/p/VERSION",
+          "versionLocations": [
+            "tools/p/VERSION"
+          ],
+          "payload": {
+            "patterns": [
+              "**"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "p",
+          "tagFormat": "{version}",
+          "tagPattern": [
+            "",
+            ""
+          ]
+        },
+        {
+          "key": "tools/q",
+          "dir": "tools/q",
+          "anchors": [],
+          "version": "tools/q/VERSION",
+          "versionLocations": [
+            "tools/q/VERSION"
+          ],
+          "payload": {
+            "patterns": [
+              "**"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "q",
+          "tagFormat": "{version}-rc.1",
+          "tagPattern": [
+            "",
+            "-rc.1"
+          ]
+        },
+        {
+          "key": "tools/r",
+          "dir": "tools/r",
+          "anchors": [],
+          "version": "tools/r/VERSION",
+          "versionLocations": [
+            "tools/r/VERSION"
+          ],
+          "payload": {
+            "patterns": [
+              "**"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "r",
+          "tagFormat": "r-{version}-x",
+          "tagPattern": [
+            "r-",
+            "-x"
+          ]
+        },
+        {
+          "key": "tools/s",
+          "dir": "tools/s",
+          "anchors": [],
+          "version": "tools/s/VERSION",
+          "versionLocations": [
+            "tools/s/VERSION"
+          ],
+          "payload": {
+            "patterns": [
+              "**"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "s",
+          "tagFormat": "s{version}{version}",
+          "tagPattern": [
+            "s",
+            "",
+            ""
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "pyproject-version-without-ecosystem",
+    "files": {
+      "telo-workspace.yaml": "release:\n  units:\n    - { path: svc, version: pyproject.toml, payload: [\"**\"] }\n",
+      "svc/pyproject.toml": "[project]\nname = \"svc\"\nversion = \"0.3.0\"\n"
+    },
+    "expected": {
+      "diagnostics": [],
+      "units": [
+        {
+          "key": "svc",
+          "dir": "svc",
+          "anchors": [],
+          "version": "svc/pyproject.toml",
+          "versionLocations": [
+            "svc/pyproject.toml"
+          ],
+          "payload": {
+            "patterns": [
+              "**"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "svc",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "svc@",
+            ""
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "tag-collision-identical-formats-one-diagnostic",
+    "files": {
+      "telo-workspace.yaml": "release:\n  tagFormat: \"v{version}\"\n  units:\n    - { path: a, version: VERSION, payload: [\"**\"] }\n    - { path: b, version: VERSION, payload: [\"**\"] }\n    - { path: c, version: VERSION, payload: [\"**\"] }\n    - { path: d, version: VERSION, payload: [\"**\"], tagFormat: \"{name}-{version}\" }\n",
+      "a/VERSION": "1.0.0\n",
+      "b/VERSION": "1.0.0\n",
+      "c/VERSION": "1.0.0\n",
+      "d/VERSION": "1.0.0\n"
+    },
+    "expected": {
+      "diagnostics": [
+        {
+          "code": "WORKSPACE_TAG_COLLISION",
+          "severity": "error",
+          "message": "Units 'a', 'b' and 'c' can be tagged alike: 'v0.0.0' renders from all their tag formats ('v{version}'). Give all but one of them a 'tagFormat' no version of the others can render.",
+          "path": [
+            "release",
+            "units",
+            2
+          ]
+        }
+      ],
+      "units": [
+        {
+          "key": "a",
+          "dir": "a",
+          "anchors": [],
+          "version": "a/VERSION",
+          "versionLocations": [
+            "a/VERSION"
+          ],
+          "payload": {
+            "patterns": [
+              "**"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "a",
+          "tagFormat": "v{version}",
+          "tagPattern": [
+            "v",
+            ""
+          ]
+        },
+        {
+          "key": "b",
+          "dir": "b",
+          "anchors": [],
+          "version": "b/VERSION",
+          "versionLocations": [
+            "b/VERSION"
+          ],
+          "payload": {
+            "patterns": [
+              "**"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "b",
+          "tagFormat": "v{version}",
+          "tagPattern": [
+            "v",
+            ""
+          ]
+        },
+        {
+          "key": "c",
+          "dir": "c",
+          "anchors": [],
+          "version": "c/VERSION",
+          "versionLocations": [
+            "c/VERSION"
+          ],
+          "payload": {
+            "patterns": [
+              "**"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "c",
+          "tagFormat": "v{version}",
+          "tagPattern": [
+            "v",
+            ""
+          ]
+        },
+        {
+          "key": "d",
+          "dir": "d",
+          "anchors": [],
+          "version": "d/VERSION",
+          "versionLocations": [
+            "d/VERSION"
+          ],
+          "payload": {
+            "patterns": [
+              "**"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "d",
+          "tagFormat": "{name}-{version}",
+          "tagPattern": [
+            "d-",
+            ""
+          ]
         }
       ]
     }

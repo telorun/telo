@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { npmEvidence } from "../../src/node/adapters/npm-evidence.js";
-import type { EvidenceAdapter } from "../../src/node/evidence.js";
+import type { EvidenceAdapter, ReadBack } from "../../src/node/evidence.js";
 import { teloRelease } from "../../src/node/bin.js";
 import type { ReleaseOutput } from "../../src/node/host.js";
 import { SHIPPED_EVIDENCE } from "../../src/node/index.js";
@@ -49,8 +49,8 @@ describe.skipIf(!npm)("telo-release over a repo of package.json files", () => {
 
     const order = await run(h, recorded, root, ["order"]);
     expect(order.payload.order).toEqual([
-      { key: "packages/a", ecosystem: "npm", path: "packages/a", version: "1.0.0", imports: [] },
-      { key: "packages/b", ecosystem: "npm", path: "packages/b", version: "1.0.0", imports: ["packages/a"] },
+      { key: "packages/a", ecosystem: "npm", path: "packages/a", version: "1.0.0", tag: "packages/a@1.0.0", imports: [] },
+      { key: "packages/b", ecosystem: "npm", path: "packages/b", version: "1.0.0", tag: "packages/b@1.0.0", imports: ["packages/a"] },
     ]);
     expect((await run(h, recorded, root, ["check", "--base", "HEAD"])).exitCode).toBe(0);
 
@@ -170,6 +170,7 @@ describe("the telo-release command line", () => {
       line: () => {},
       errLine: (text) => stderr.push(text),
       emit: () => {},
+      document: () => {},
       progress: () => {},
       style: plain,
       errStyle: plain,
@@ -189,4 +190,58 @@ describe("the telo-release command line", () => {
     }
     expect(git(root, "status", "--porcelain")).toBe("");
   }, 60_000);
+});
+
+/** The shipped docker evidence, plus a registry read-back answering `answer`. */
+function dockerServing(answer: ReadBack): EvidenceAdapter[] {
+  return SHIPPED_EVIDENCE.map((adapter) =>
+    adapter.ecosystem === "docker"
+      ? {
+          ...adapter,
+          async open(workspace, options) {
+            return { ...(await adapter.open(workspace, options)), readBack: async () => answer };
+          },
+        }
+      : adapter,
+  );
+}
+
+describe("telo-release baseline", () => {
+  const files = {
+    "telo-workspace.yaml":
+      "release:\n  ecosystems: { docker: { registry: ghcr.io/acme } }\n  units:\n    - { path: app, version: VERSION, ecosystem: docker }\n    - { path: lib, version: VERSION, payload: [\"**\"] }\n",
+    "app/VERSION": "1.0.0\n",
+    "app/Dockerfile": "FROM scratch\n",
+    "lib/VERSION": "0.3.0\n",
+    "lib/index.txt": "lib\n",
+  };
+
+  it("takes the registry's answer where there is a read-back, and leaves a version it does not serve unrecorded", async () => {
+    const root = tempRepo(files);
+    roots.push(root);
+    const served = host({ evidence: dockerServing({ kind: "published", layer: "sha256-registry", drift: [] }) });
+    await run(served.host, served.recorded, root, ["baseline"]);
+    expect(read(root, ".changes/ledger.yaml")).toContain("sha256-registry");
+    fs.rmSync(path.join(root, ".changes"), { recursive: true });
+
+    const missing = host({ evidence: dockerServing({ kind: "absent" }) });
+    const { payload } = await run(missing.host, missing.recorded, root, ["baseline"]);
+    expect(payload).toMatchObject({
+      recorded: [{ key: "lib", version: "0.3.0" }],
+      unrecorded: [{ key: "app", reason: "1.0.0 is not published at the docker/. registry" }],
+    });
+  });
+
+  it("gives the same ledger whichever of verify --write and baseline runs first", async () => {
+    const ledgers: string[] = [];
+    for (const order of [["baseline", "verify"], ["verify", "baseline"]]) {
+      const root = tempRepo(files);
+      roots.push(root);
+      const { host: h, recorded } = host();
+      for (const command of order) await run(h, recorded, root, command === "verify" ? ["verify", "--write"] : [command]);
+      ledgers.push(read(root, ".changes/ledger.yaml"));
+    }
+    expect(ledgers[0]).toBe(ledgers[1]);
+    expect(ledgers[0]).toContain("app:");
+  });
 });

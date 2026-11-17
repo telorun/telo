@@ -1,5 +1,5 @@
 //! `telo-release` — the release commands over the ecosystems this crate ships
-//! (npm, cargo, docker, helm). A Telo module is served by `telo release`.
+//! (npm, cargo, docker, helm, pypi). A Telo module is served by `telo release`.
 
 use std::cell::Cell;
 use std::io::{IsTerminal, Write};
@@ -14,8 +14,16 @@ use telorun_release::node::shipped_evidence;
 use telorun_release::release_settings::ReadReleaseOptions;
 use telorun_release::shipped_adapters;
 
+/// What `-o` selects: `markdown` is taken only by the plan commands.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Format {
+    Text,
+    Json,
+    Markdown,
+}
+
 struct Terminal {
-    json: Cell<bool>,
+    format: Cell<Format>,
     progress_shown: Cell<bool>,
     stdout_style: Style,
     stderr_style: Style,
@@ -32,7 +40,7 @@ impl Terminal {
 
 impl ReleaseOutput for Terminal {
     fn line(&self, text: &str) {
-        if !self.json.get() {
+        if self.format.get() == Format::Text {
             let _ = writeln!(std::io::stdout(), "{text}");
         }
     }
@@ -43,10 +51,15 @@ impl ReleaseOutput for Terminal {
     }
 
     fn emit(&self, payload: Map<String, Value>) {
-        if self.json.get() {
+        if self.format.get() == Format::Json {
             let text = serde_json::to_string_pretty(&Value::Object(payload)).unwrap_or_default();
             let _ = writeln!(std::io::stdout(), "{text}");
         }
+    }
+
+    fn document(&self, text: &str) {
+        self.end_progress();
+        let _ = std::io::stdout().write_all(text.as_bytes());
     }
 
     fn progress(&self, text: &str) {
@@ -70,7 +83,7 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let colors = std::env::var_os("NO_COLOR").is_none();
     let terminal = Rc::new(Terminal {
-        json: Cell::new(false),
+        format: Cell::new(Format::Text),
         progress_shown: Cell::new(false),
         stdout_style: Style { on: colors && std::io::stdout().is_terminal() },
         stderr_style: Style { on: colors && std::io::stderr().is_terminal() },
@@ -92,7 +105,13 @@ fn main() {
         after_apply: None,
     };
     let cwd = std::env::current_dir().unwrap_or_default();
-    let code = release_commands_with(&host, &args, &cwd, &|parsed| terminal.json.set(parsed.string("output") == Some("json")));
+    let code = release_commands_with(&host, &args, &cwd, &|parsed| {
+        terminal.format.set(match parsed.string("output") {
+            Some("json") => Format::Json,
+            Some("markdown") => Format::Markdown,
+            _ => Format::Text,
+        })
+    });
     terminal.end_progress();
     std::process::exit(code);
 }

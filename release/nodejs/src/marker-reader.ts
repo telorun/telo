@@ -27,7 +27,9 @@ export type WorkspaceDiagnosticCode =
   | "WORKSPACE_ANCHOR_CLAIMED"
   | "WORKSPACE_ENTRY_MATCHES_NOTHING"
   | "WORKSPACE_ENTRY_SHADOWED"
-  | "WORKSPACE_MARKER_SHADOWED";
+  | "WORKSPACE_MARKER_SHADOWED"
+  | "WORKSPACE_TAG_INVALID"
+  | "WORKSPACE_TAG_COLLISION";
 
 export interface WorkspaceDiagnostic {
   readonly code: WorkspaceDiagnosticCode;

@@ -1,57 +1,67 @@
 #!/usr/bin/env node
-// The body of a release PR: a line saying whether merging it publishes candidates
-// or finals, then the unit section `module-release-pr-body.mjs` renders from the
-// plan `telo release apply` printed.
+// The body of a release PR: what the workflow says first (Publish final release's
+// own lines), a line saying whether merging it publishes candidates or finals and
+// pointing to the PR's diff, then the plan's document `telo release apply -o
+// markdown` wrote.
 //
 // GitHub refuses a body over 65536 characters rather than truncating it, so the
-// unit section degrades in stated stages until the whole fits: the full section,
-// then one line naming every unit and its version, then a sentence with the count.
+// document's budget is that limit less what precedes it and the headroom the PR
+// action appends: `--budget` prints it for the apply's `--max-length`, and the
+// planner shortens the document in stated stages to fit.
 //
-// Usage: node scripts/release-pr-body.mjs <plan.json> [--candidate] [> body.md]
+// Usage: node scripts/release-pr-body.mjs --budget [--candidate] [--preamble <file>]
+//        node scripts/release-pr-body.mjs <document.md> [--candidate] [--preamble <file>] [> body.md]
 
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 
-const MAX_BODY = 65_000;
+/** GitHub's limit on a pull request body. */
+export const BODY_LIMIT = 65_536;
 
-/** The whole body. `units` is the rendered unit section, `plan` the plan it was
- *  rendered from, `candidate` whether the PR versions candidates. */
-export function composeReleasePrBody({ units, plan, candidate }) {
-  const moved = plan.units ?? [];
-  const head = candidate
-    ? "Merging this publishes the **candidates** below: every version is `<final>-rc.<k>` and moves no pointer."
-    : "Merging this publishes the **finals** below.";
-  if (moved.length === 0) return `${head}\n\nNo unit version moved.\n`;
-  const count = `${moved.length} unit${moved.length === 1 ? "" : "s"}`;
-  const stages = [
-    units.trim(),
-    `Merging this publishes ${count}: ${moved.map((m) => `\`${m.key}\` ${m.from} → ${m.to}`).join(", ")}.\n\n` +
-      "_Listed compactly to fit GitHub's body limit; each unit's CHANGELOG in this PR's diff has its entries._",
-    `Merging this publishes ${count}. They did not fit GitHub's body limit: their versions and changelogs ` +
-      "are in this PR's diff and `.changes/ledger.yaml`.",
-  ];
-  for (const section of stages) {
-    const body = `${head}\n\n${section}\n`;
-    if (body.length <= MAX_BODY) return body;
-  }
-  return `${head}\n\n${stages.at(-1)}\n`;
+/** Room left for what `create-pull-request` appends to the body. */
+export const ACTION_HEADROOM = 536;
+
+function introLine(candidate) {
+  return candidate
+    ? "Merging this publishes the **candidates** below: every version is `<final>-rc.<k>` and moves no pointer. " +
+        "Each unit's version and `.changes/ledger.yaml` are in this PR's diff."
+    : "Merging this publishes the **finals** below. Each unit's version, its CHANGELOG and `.changes/ledger.yaml` are in this PR's diff.";
+}
+
+/** Everything the body holds before the plan's document. */
+function bodyHead({ candidate, preamble }) {
+  return `${preamble ? `${preamble.trimEnd()}\n\n` : ""}${introLine(candidate)}\n\n`;
+}
+
+/** The most code points the plan's document may take. */
+export function documentBudget({ candidate, preamble }) {
+  return BODY_LIMIT - ACTION_HEADROOM - [...bodyHead({ candidate, preamble })].length;
+}
+
+export function composeReleasePrBody({ candidate, preamble, document }) {
+  return `${bodyHead({ candidate, preamble })}${document}`;
+}
+
+function option(args, name) {
+  const at = args.indexOf(name);
+  if (at === -1) return undefined;
+  const value = args[at + 1];
+  if (!value || value.startsWith("--")) throw new Error(`${name} needs a value.`);
+  return value;
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   try {
-    const [planFile] = process.argv.slice(2).filter((arg) => !arg.startsWith("--"));
-    if (!planFile) throw new Error("usage: release-pr-body.mjs <plan.json> [--candidate]");
-    const renderer = join(dirname(fileURLToPath(import.meta.url)), "module-release-pr-body.mjs");
-    const units = execFileSync(process.execPath, [renderer, planFile], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-    process.stdout.write(
-      composeReleasePrBody({
-        units,
-        plan: JSON.parse(readFileSync(planFile, "utf8")),
-        candidate: process.argv.includes("--candidate"),
-      }),
-    );
+    const args = process.argv.slice(2);
+    const preambleFile = option(args, "--preamble");
+    const head = { candidate: args.includes("--candidate"), preamble: preambleFile ? readFileSync(preambleFile, "utf8") : undefined };
+    if (args.includes("--budget")) {
+      process.stdout.write(`${documentBudget(head)}\n`);
+    } else {
+      const [documentFile] = args.filter((arg, i) => !arg.startsWith("--") && args[i - 1] !== "--preamble");
+      if (!documentFile) throw new Error("usage: release-pr-body.mjs <document.md> | --budget [--candidate] [--preamble <file>]");
+      process.stdout.write(composeReleasePrBody({ ...head, document: readFileSync(documentFile, "utf8") }));
+    }
   } catch (error) {
     console.error(`::error::release-pr-body: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);

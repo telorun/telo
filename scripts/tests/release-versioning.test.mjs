@@ -45,7 +45,12 @@ function generatorWorkspace(version) {
 }
 
 function generate(root, cwd, ...args) {
-  const result = spawnSync(process.execPath, [join(root, "scripts", "generate-telo-version.mjs"), ...args], { cwd, encoding: "utf8" });
+  const env = { ...process.env, TELO_RELEASE_BUILD: undefined };
+  return generateWith(root, cwd, env, args);
+}
+
+function generateWith(root, cwd, env, args) {
+  const result = spawnSync(process.execPath, [join(root, "scripts", "generate-telo-version.mjs"), ...args], { cwd, encoding: "utf8", env });
   assert.equal(result.status, 0, result.stdout + result.stderr);
 }
 
@@ -69,6 +74,13 @@ describe("the version modules", () => {
     assert.match(read(root, "cel/nodejs/src/engine-version.ts"), /ENGINE_VERSION = "0\.85\.0";/);
     assert.match(read(root, "kernel/nodejs/src/telo-runtime-version.ts"), /\+unreleased/);
     generate(root, join(root, "analyzer/nodejs"), "--published");
+    assert.match(read(root, "analyzer/nodejs/src/telo-version.ts"), /TELO_RUNNING_SURFACE = "0\.85\.0";/);
+  });
+
+  it("embed exactly the version in a release build, from the repository root", () => {
+    const root = generatorWorkspace("0.85.0");
+    generateWith(root, root, { ...process.env, TELO_RELEASE_BUILD: "1" }, []);
+    assert.match(read(root, "kernel/nodejs/src/telo-runtime-version.ts"), /TELO_RUNTIME_VERSION = "0\.85\.0";/);
     assert.match(read(root, "analyzer/nodejs/src/telo-version.ts"), /TELO_RUNNING_SURFACE = "0\.85\.0";/);
   });
 

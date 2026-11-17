@@ -33,6 +33,7 @@ function cliOutput(): ReleaseOutput {
     line: (text) => out.line(text),
     errLine: (text) => out.errLine(text),
     emit: (payload) => out.emit(payload),
+    document: (text) => out.raw(text),
     progress: (text) => out.progress(text),
     style: out.stdout,
     errStyle: out.stderr,

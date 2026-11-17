@@ -11,6 +11,7 @@
  */
 
 import type { WorkspaceKeySchema } from "./marker-schema.js";
+import { pyprojectTomlHandler } from "./version-files.js";
 
 /** A version location: a file, and optionally an RFC 6901 pointer into it when
  *  the file is JSON, YAML or TOML. Paths here are relative to whatever declared
@@ -41,6 +42,12 @@ export interface RecognizedPackage {
    *  that is never published (a private npm package) supplies its version
    *  location and edges, but no layer. */
   readonly contributesLayer: boolean;
+  /** Why the package contributes no layer, in a sentence a diagnostic can list
+   *  (`npm at \`.\` is \`private: true\``); read only when it contributes none. */
+  readonly noLayerReason?: string;
+  /** Present when the package keeps no static version, and why (`project.dynamic`
+   *  lists `version`): the unit must declare `version:` itself. */
+  readonly noStaticVersion?: string;
   /** Further anchor-relative files carrying the unit's version, written with it
    *  by `apply` (a module's own npm and Cargo packages). */
   readonly versionFiles?: readonly string[];
@@ -90,7 +97,9 @@ export const RESERVED_ECOSYSTEMS: ReadonlySet<string> = new Set(["payload"]);
  *  handlers by file name. */
 export class AdapterRegistry {
   private readonly byEcosystem = new Map<string, EcosystemAdapter>();
-  private readonly handlers = new Map<string, VersionFileHandler>();
+  /** Handlers every registry holds, so a unit with no ecosystem reads them too;
+   *  an adapter may list the same handler. */
+  private readonly handlers = new Map<string, VersionFileHandler>([[pyprojectTomlHandler.fileName, pyprojectTomlHandler]]);
 
   constructor(adapters: readonly EcosystemAdapter[]) {
     for (const adapter of adapters) {

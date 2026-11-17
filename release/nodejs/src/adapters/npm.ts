@@ -56,6 +56,7 @@ export const npmAdapter: EcosystemAdapter = {
     return {
       ...(typeof pkg.name === "string" ? { name: pkg.name } : {}),
       contributesLayer: pkg.private !== true,
+      ...(pkg.private === true ? { noLayerReason: `npm at \`${probe.anchor}\` is \`private: true\`` } : {}),
     };
   },
   versionFileHandlers: [packageJsonHandler],

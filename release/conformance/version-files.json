@@ -287,6 +287,136 @@
           "error": "n.json#/v holds no string at /v."
         }
       }
+    },
+    {
+      "name": "pyproject-default-pointer",
+      "file": "pyproject.toml",
+      "text": "[build-system]\nrequires = [\"hatchling\"]\n\n[project]\nname = \"svc\"  # the name\nversion = '0.3.0' # bumped by release\ndependencies = [\"x>=1\"]\n\n[tool.poetry]\nversion = \"9.9.9\"\n",
+      "version": "0.4.0",
+      "expected": {
+        "read": {
+          "value": "0.3.0"
+        },
+        "write": {
+          "text": "[build-system]\nrequires = [\"hatchling\"]\n\n[project]\nname = \"svc\"  # the name\nversion = '0.4.0' # bumped by release\ndependencies = [\"x>=1\"]\n\n[tool.poetry]\nversion = \"9.9.9\"\n"
+        }
+      }
+    },
+    {
+      "name": "pyproject-explicit-pointer-poetry",
+      "file": "pyproject.toml",
+      "pointer": "/tool/poetry/version",
+      "text": "[build-system]\nrequires = [\"hatchling\"]\n\n[project]\nname = \"svc\"  # the name\nversion = '0.3.0' # bumped by release\ndependencies = [\"x>=1\"]\n\n[tool.poetry]\nversion = \"9.9.9\"\n",
+      "version": "0.4.0",
+      "expected": {
+        "read": {
+          "value": "9.9.9"
+        },
+        "write": {
+          "text": "[build-system]\nrequires = [\"hatchling\"]\n\n[project]\nname = \"svc\"  # the name\nversion = '0.3.0' # bumped by release\ndependencies = [\"x>=1\"]\n\n[tool.poetry]\nversion = \"0.4.0\"\n"
+        }
+      }
+    },
+    {
+      "name": "pyproject-nested-in-directory",
+      "file": "svc/pyproject.toml",
+      "text": "[project]\r\nname = \"svc\"\r\nversion = \"1.0.0\"\r\n",
+      "version": "1.0.1",
+      "expected": {
+        "read": {
+          "value": "1.0.0"
+        },
+        "write": {
+          "text": "[project]\r\nname = \"svc\"\r\nversion = \"1.0.1\"\r\n"
+        }
+      }
+    },
+    {
+      "name": "pyproject-no-version",
+      "file": "pyproject.toml",
+      "text": "[project]\nname = \"svc\"\ndynamic = [\"version\"]\n",
+      "version": "0.4.0",
+      "expected": {
+        "read": {
+          "value": null
+        },
+        "write": {
+          "error": "pyproject.toml carries no version to write."
+        }
+      }
+    },
+    {
+      "name": "pyproject-dotted-key",
+      "file": "pyproject.toml",
+      "text": "[project]\nname = \"svc\"\nversion.x = \"1.0.0\"\n",
+      "version": "0.4.0",
+      "expected": {
+        "read": {
+          "value": null
+        },
+        "write": {
+          "error": "pyproject.toml carries no version to write."
+        }
+      }
+    },
+    {
+      "name": "pyproject-inline-table",
+      "file": "pyproject.toml",
+      "text": "project = { name = \"svc\", version = \"1.0.0\" }\n",
+      "version": "0.4.0",
+      "expected": {
+        "read": {
+          "value": null
+        },
+        "write": {
+          "error": "pyproject.toml carries no version to write."
+        }
+      }
+    },
+    {
+      "name": "toml-pointer-dotted-key-refused",
+      "file": "t.toml",
+      "pointer": "/tool/meta/version",
+      "text": "[tool]\nmeta.version = \"1.0.0\"\n",
+      "version": "1.0.1",
+      "expected": {
+        "read": {
+          "value": null
+        },
+        "write": {
+          "error": "t.toml#/tool/meta/version holds no string at /tool/meta/version. A TOML pointer reads a [table] header and a key = \"value\" line; dotted keys and inline tables are not read."
+        }
+      }
+    },
+    {
+      "name": "toml-pointer-inline-table-refused",
+      "file": "t.toml",
+      "pointer": "/tool/meta/version",
+      "text": "[tool]\nmeta = { version = \"1.0.0\" }\n",
+      "version": "1.0.1",
+      "expected": {
+        "read": {
+          "value": null
+        },
+        "write": {
+          "error": "t.toml#/tool/meta/version holds no string at /tool/meta/version. A TOML pointer reads a [table] header and a key = \"value\" line; dotted keys and inline tables are not read."
+        }
+      }
+    },
+    {
+      "name": "toml-pointer-keeps-other-text",
+      "file": "t.toml",
+      "pointer": "/a/b/c/v",
+      "text": "# top\n[a.b.c] # table\nother = 1\nv = \"1.0.0\" # keep\n\n[a.b]\nv = \"2\"\n",
+      "version": "1.2.3",
+      "expected": {
+        "read": {
+          "value": "1.0.0"
+        },
+        "write": {
+          "text": "# top\n[a.b.c] # table\nother = 1\nv = \"1.2.3\" # keep\n\n[a.b]\nv = \"2\"\n"
+        }
+      }
     }
   ],
   "lockfiles": [

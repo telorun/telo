@@ -10,7 +10,7 @@
  */
 
 import { isScalar, parseDocument, type Scalar } from "yaml";
-import type { AdapterRegistry, VersionLocationSpec } from "./adapter.js";
+import type { AdapterRegistry, VersionFileHandler, VersionLocationSpec } from "./adapter.js";
 
 export class VersionFileError extends Error {}
 
@@ -117,7 +117,12 @@ function writePointer(
   const format = formatOf(location.file);
   if (format === "toml") {
     const found = tomlString(text, tokens, where);
-    if (!found) throw new VersionFileError(`${where} holds no string at ${location.pointer}.`);
+    if (!found) {
+      throw new VersionFileError(
+        `${where} holds no string at ${location.pointer}. A TOML pointer reads a [table] header and a ` +
+          `key = "value" line; dotted keys and inline tables are not read.`,
+      );
+    }
     return spliceText(text, found.start, found.end, `${found.quote}${version}${found.quote}`);
   }
   if (format === undefined) throw unpointable(where);
@@ -163,6 +168,16 @@ export function spliceScalar(text: string, node: Scalar, version: string, where:
   }
   return spliceText(text, start, end, quoted);
 }
+
+/** `pyproject.toml`'s `[project].version`, served wherever the file is named. */
+export const pyprojectTomlHandler: VersionFileHandler = {
+  fileName: "pyproject.toml",
+  read: (text, where) => tomlString(text, ["project", "version"], where)?.value,
+  write(text, version, where) {
+    const found = tomlString(text, ["project", "version"], where);
+    return found && spliceText(text, found.start, found.end, `${found.quote}${version}${found.quote}`);
+  },
+};
 
 interface TomlString {
   readonly value: string;

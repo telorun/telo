@@ -243,7 +243,8 @@ impl EvidenceSession for NpmSession<'_> {
         })())
     }
 
-    fn after_stamp(&self, reference: AnchorRef<'_>, version: &str, _plan: &ReleasePlan) -> Result<Vec<String>, ReleaseError> {
+    fn after_stamp(&self, reference: AnchorRef<'_>, version: &str, _plan: &ReleasePlan, journal: &mut dyn FnMut(&str) -> Result<(), ReleaseError>) -> Result<Vec<String>, ReleaseError> {
+        let _ = journal;
         let Some(name) = reference.anchor.package.name.as_ref().filter(|n| !n.is_empty()) else { return Ok(Vec::new()) };
         let mut written = Vec::new();
         for unit in &self.workspace.units {

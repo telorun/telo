@@ -260,7 +260,8 @@ impl EvidenceSession for CargoSession<'_> {
         Some(self.read_back_inner(reference, version, recorded))
     }
 
-    fn after_stamp(&self, reference: AnchorRef<'_>, version: &str, _plan: &ReleasePlan) -> Result<Vec<String>, ReleaseError> {
+    fn after_stamp(&self, reference: AnchorRef<'_>, version: &str, _plan: &ReleasePlan, journal: &mut dyn FnMut(&str) -> Result<(), ReleaseError>) -> Result<Vec<String>, ReleaseError> {
+        let _ = journal;
         let mut written = Vec::new();
         for unit in &self.workspace.units {
             for anchor in &unit.anchors {

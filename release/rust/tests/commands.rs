@@ -8,10 +8,17 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use serde_json::{json, Map, Value};
 
+use telorun_release::ledger::AnchorDigest;
+use telorun_release::node::adapters::docker_evidence::DockerEvidence;
 use telorun_release::node::commands::release_commands;
+use telorun_release::node::evidence::{AnchorEvidence, AnchorRef, EvidenceAdapter, EvidenceSession, ReadBack, SessionOptions};
+use telorun_release::node::workspace::ReleaseWorkspace;
+use telorun_release::fragment::UnitKey;
+use telorun_release::ReleaseError;
 use telorun_release::node::host::{ReleaseHost, ReleaseOutput, Style};
 use telorun_release::node::shipped_evidence;
 use telorun_release::release_settings::ReadReleaseOptions;
@@ -21,6 +28,7 @@ use telorun_release::shipped_adapters;
 struct Recorded {
     stderr: RefCell<Vec<String>>,
     payloads: RefCell<Vec<Map<String, Value>>>,
+    documents: RefCell<Vec<String>>,
 }
 
 impl ReleaseOutput for Recorded {
@@ -30,6 +38,9 @@ impl ReleaseOutput for Recorded {
     }
     fn emit(&self, payload: Map<String, Value>) {
         self.payloads.borrow_mut().push(payload);
+    }
+    fn document(&self, text: &str) {
+        self.documents.borrow_mut().push(text.to_string());
     }
     fn progress(&self, _text: &str) {}
     fn style(&self) -> Style {
@@ -73,11 +84,15 @@ fn commit(root: &Path, message: &str) {
 
 /// Run one command line in `root`: the last envelope and the exit status.
 fn run(root: &Path, args: &[&str]) -> (Value, i32, Rc<Recorded>) {
+    run_with(root, args, shipped_evidence())
+}
+
+fn run_with(root: &Path, args: &[&str], evidence: Vec<Arc<dyn EvidenceAdapter>>) -> (Value, i32, Rc<Recorded>) {
     let recorded = Rc::new(Recorded::default());
     let host = ReleaseHost {
         command: "telo-release".into(),
         adapters: shipped_adapters(),
-        evidence: shipped_evidence(),
+        evidence,
         ecosystem_hosts: ReadReleaseOptions::default(),
         ledger: None,
         read_marker: None,
@@ -116,8 +131,8 @@ fn docker_anchors_publish_from_their_own_rows() {
     assert_eq!(
         order["order"],
         json!([
-            { "key": "app", "version": "1.0.0", "imports": [], "ecosystem": "docker", "path": "app", "destination": "ghcr.io/acme/app" },
-            { "key": "app", "version": "1.0.0", "imports": [], "ecosystem": "docker", "path": "app/worker", "destination": "ghcr.io/acme/app-worker" },
+            { "key": "app", "version": "1.0.0", "tag": "app@1.0.0", "imports": [], "ecosystem": "docker", "path": "app", "destination": "ghcr.io/acme/app" },
+            { "key": "app", "version": "1.0.0", "tag": "app@1.0.0", "imports": [], "ecosystem": "docker", "path": "app/worker", "destination": "ghcr.io/acme/app-worker" },
         ])
     );
 }
@@ -235,4 +250,77 @@ fn a_packed_manifest_digests_its_dependency_maps_in_name_order() {
     // The same bytes the Node half writes (`tests/node/evidence.test.ts`).
     let FileSetEntry::File { content, .. } = &one[0] else { panic!("a file") };
     assert_eq!(String::from_utf8_lossy(content), r#"{"name":"a","dependencies":{"a":"2.0.0","b":"1.0.0"}}"#);
+}
+
+/// The docker evidence with a registry read-back answering `answer`.
+struct DockerServing(ReadBack);
+
+struct ServingSession<'a>(Box<dyn EvidenceSession + 'a>, ReadBack);
+
+impl EvidenceSession for ServingSession<'_> {
+    fn collect(&self, reference: AnchorRef<'_>) -> Result<AnchorEvidence, ReleaseError> {
+        self.0.collect(reference)
+    }
+    fn imports(&self, reference: AnchorRef<'_>) -> Result<Vec<UnitKey>, ReleaseError> {
+        self.0.imports(reference)
+    }
+    fn destination(&self, reference: AnchorRef<'_>) -> Option<String> {
+        self.0.destination(reference)
+    }
+    fn read_back(&self, _reference: AnchorRef<'_>, _version: &str, _recorded: Option<&AnchorDigest>) -> Option<Result<ReadBack, ReleaseError>> {
+        Some(Ok(self.1.clone()))
+    }
+}
+
+impl EvidenceAdapter for DockerServing {
+    fn ecosystem(&self) -> &'static str {
+        "docker"
+    }
+    fn needs_destination(&self) -> bool {
+        true
+    }
+    fn open<'a>(&self, workspace: &'a ReleaseWorkspace, options: &SessionOptions<'_>) -> Result<Box<dyn EvidenceSession + 'a>, ReleaseError> {
+        Ok(Box::new(ServingSession(DockerEvidence.open(workspace, options)?, self.0.clone())))
+    }
+}
+
+const BASELINE_FILES: [(&str, &str); 5] = [
+    (
+        "telo-workspace.yaml",
+        "release:\n  ecosystems: { docker: { registry: ghcr.io/acme } }\n  units:\n    - { path: app, version: VERSION, ecosystem: docker }\n    - { path: lib, version: VERSION, payload: [\"**\"] }\n",
+    ),
+    ("app/VERSION", "1.0.0\n"),
+    ("app/Dockerfile", "FROM scratch\n"),
+    ("lib/VERSION", "0.3.0\n"),
+    ("lib/index.txt", "lib\n"),
+];
+
+#[test]
+fn baseline_takes_the_registrys_answer_and_leaves_an_unpublished_version_unrecorded() {
+    let dir = repo(&BASELINE_FILES);
+    let served: Vec<Arc<dyn EvidenceAdapter>> = vec![Arc::new(DockerServing(ReadBack::Published { layer: AnchorDigest::One("sha256-registry".into()), drift: Vec::new() }))];
+    run_with(dir.path(), &["baseline"], served);
+    assert!(fs::read_to_string(dir.path().join(".changes/ledger.yaml")).expect("a ledger").contains("sha256-registry"));
+    fs::remove_dir_all(dir.path().join(".changes")).expect("removed");
+
+    let missing: Vec<Arc<dyn EvidenceAdapter>> = vec![Arc::new(DockerServing(ReadBack::Absent))];
+    let (payload, code, _) = run_with(dir.path(), &["baseline"], missing);
+    assert_eq!(code, 0);
+    assert_eq!(payload["recorded"], json!([{ "key": "lib", "version": "0.3.0" }]));
+    assert_eq!(payload["unrecorded"], json!([{ "key": "app", "reason": "1.0.0 is not published at the docker/. registry" }]));
+}
+
+#[test]
+fn baseline_and_verify_write_give_the_same_ledger_in_either_order() {
+    let mut ledgers = Vec::new();
+    for order in [["baseline", "verify"], ["verify", "baseline"]] {
+        let dir = repo(&BASELINE_FILES);
+        for command in order {
+            let args: Vec<&str> = if command == "verify" { vec!["verify", "--write"] } else { vec![command] };
+            run(dir.path(), &args);
+        }
+        ledgers.push(fs::read_to_string(dir.path().join(".changes/ledger.yaml")).expect("a ledger"));
+    }
+    assert_eq!(ledgers[0], ledgers[1]);
+    assert!(ledgers[0].contains("app:"));
 }

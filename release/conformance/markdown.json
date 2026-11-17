@@ -1,0 +1,1356 @@
+[
+  {
+    "name": "an empty plan says nothing moves",
+    "plan": {
+      "units": []
+    },
+    "maxLength": null,
+    "expected": {
+      "document": "Nothing to release — every unit matches the ledger.\n"
+    }
+  },
+  {
+    "name": "entries only, each kind under its own heading in the changelog's order",
+    "plan": {
+      "units": [
+        {
+          "key": "packages/core",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "packages/core@1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Fixed"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Fixed",
+              "body": "A fix."
+            },
+            {
+              "kind": "Added",
+              "body": "A feature."
+            },
+            {
+              "kind": "Security",
+              "body": "A patched hole."
+            }
+          ]
+        }
+      ]
+    },
+    "maxLength": null,
+    "expected": {
+      "document": "## `packages/core` 1.0.0 → 1.1.0\n\nminor — declared\n\nTag `packages/core@1.1.0`\n\n### Added\n* A feature.\n### Fixed\n* A fix.\n### Security\n* A patched hole.\n"
+    }
+  },
+  {
+    "name": "units with no entry only share the closing section",
+    "plan": {
+      "units": [
+        {
+          "key": "apps/web",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/web@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            },
+            {
+              "kind": "unattributed"
+            }
+          ],
+          "entries": []
+        },
+        {
+          "key": "apps/api",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/api@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "group",
+              "group": "apps"
+            },
+            {
+              "kind": "inlines",
+              "unit": "packages/x",
+              "files": [
+                "a.ts",
+                "b.ts",
+                "c.ts"
+              ]
+            }
+          ],
+          "entries": [],
+          "group": "apps"
+        }
+      ]
+    },
+    "maxLength": null,
+    "expected": {
+      "document": "## Units with no changelog entry\n\n- `apps/web` 1.0.0 → 1.0.1 · patch — imports `packages/core`; payload changed, unattributed · tag `apps/web@1.0.1`\n- `apps/api` 1.0.0 → 1.0.1 · patch — inlines `a.ts`, `b.ts` and 1 more; group `apps` · group `apps` · tag `apps/api@1.0.1`\n"
+    }
+  },
+  {
+    "name": "units with entries come first, then the closing section; a group and a tag",
+    "plan": {
+      "units": [
+        {
+          "key": "apps/worker",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/worker@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        },
+        {
+          "key": "packages/core",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "v1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "group",
+              "group": "line"
+            },
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Added"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Added",
+              "body": "A feature."
+            }
+          ],
+          "group": "line"
+        }
+      ]
+    },
+    "maxLength": null,
+    "expected": {
+      "document": "## `packages/core` 1.0.0 → 1.1.0\n\nminor — declared; group `line`\n\nGroup `line` · tag `v1.1.0`\n\n### Added\n* A feature.\n\n## Units with no changelog entry\n\n- `apps/worker` 1.0.0 → 1.0.1 · patch — imports `packages/core` · tag `apps/worker@1.0.1`\n"
+    }
+  },
+  {
+    "name": "a multi-line body keeps its sub-list and fenced block as CHANGELOG.md shows them; markdown passes through",
+    "plan": {
+      "units": [
+        {
+          "key": "packages/core",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "packages/core@1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Changed"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Changed",
+              "body": "Reads `-o markdown`:\n\n- first *item* with <html> & `code`\n  - nested_item | pipe\n\n```yaml\nkey: value # comment\n```\n\nTrailing **bold** [link](https://example.com) \\ #hash"
+            }
+          ]
+        },
+        {
+          "key": "`odd`key_",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "odd@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "unattributed"
+            }
+          ],
+          "entries": []
+        }
+      ]
+    },
+    "maxLength": null,
+    "expected": {
+      "document": "## `packages/core` 1.0.0 → 1.1.0\n\nminor — declared\n\nTag `packages/core@1.1.0`\n\n### Changed\n* Reads `-o markdown`:\n\n  - first *item* with <html> & `code`\n    - nested_item | pipe\n\n  ```yaml\n  key: value # comment\n  ```\n\n  Trailing **bold** [link](https://example.com) \\ #hash\n\n## Units with no changelog entry\n\n- `` `odd`key_ `` 1.0.0 → 1.0.1 · patch — payload changed, unattributed · tag `odd@1.0.1`\n"
+    }
+  },
+  {
+    "name": "stage 1 at exactly its length",
+    "plan": {
+      "units": [
+        {
+          "key": "packages/core",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "packages/core@1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Added"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Added",
+              "body": "word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9\nwrapped onto a second line"
+            },
+            {
+              "kind": "Fixed",
+              "body": "Short."
+            }
+          ]
+        },
+        {
+          "key": "packages/util",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "packages/util@1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Fixed"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Fixed",
+              "body": "term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9"
+            }
+          ]
+        },
+        {
+          "key": "apps/a",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/a@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        },
+        {
+          "key": "apps/b",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/b@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        },
+        {
+          "key": "apps/c",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/c@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        }
+      ]
+    },
+    "maxLength": 1340,
+    "expected": {
+      "document": "## `packages/core` 1.0.0 → 1.1.0\n\nminor — declared\n\nTag `packages/core@1.1.0`\n\n### Added\n* word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9\n  wrapped onto a second line\n### Fixed\n* Short.\n\n## `packages/util` 1.0.0 → 1.1.0\n\nminor — declared\n\nTag `packages/util@1.1.0`\n\n### Fixed\n* term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9\n\n## Units with no changelog entry\n\n`apps/a` 1.0.1, `apps/b` 1.0.1, `apps/c` 1.0.1.\n\n_Their reasons, groups and tags are left out to fit the length limit._\n"
+    }
+  },
+  {
+    "name": "stage 2 one under stage 1: the no-entry section compacted",
+    "plan": {
+      "units": [
+        {
+          "key": "packages/core",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "packages/core@1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Added"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Added",
+              "body": "word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9\nwrapped onto a second line"
+            },
+            {
+              "kind": "Fixed",
+              "body": "Short."
+            }
+          ]
+        },
+        {
+          "key": "packages/util",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "packages/util@1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Fixed"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Fixed",
+              "body": "term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9"
+            }
+          ]
+        },
+        {
+          "key": "apps/a",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/a@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        },
+        {
+          "key": "apps/b",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/b@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        },
+        {
+          "key": "apps/c",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/c@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        }
+      ]
+    },
+    "maxLength": 1339,
+    "expected": {
+      "document": "## `packages/core` 1.0.0 → 1.1.0\n\nminor — declared\n\nTag `packages/core@1.1.0`\n\n### Added\n* word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9\n  wrapped onto a second line\n### Fixed\n* Short.\n\n## `packages/util` 1.0.0 → 1.1.0\n\nminor — declared\n\nTag `packages/util@1.1.0`\n\n### Fixed\n* term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9\n\n## Units with no changelog entry\n\n`apps/a` 1.0.1, `apps/b` 1.0.1, `apps/c` 1.0.1.\n\n_Their reasons, groups and tags are left out to fit the length limit._\n"
+    }
+  },
+  {
+    "name": "stage 2 at exactly its length",
+    "plan": {
+      "units": [
+        {
+          "key": "packages/core",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "packages/core@1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Added"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Added",
+              "body": "word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9\nwrapped onto a second line"
+            },
+            {
+              "kind": "Fixed",
+              "body": "Short."
+            }
+          ]
+        },
+        {
+          "key": "packages/util",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "packages/util@1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Fixed"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Fixed",
+              "body": "term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9"
+            }
+          ]
+        },
+        {
+          "key": "apps/a",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/a@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        },
+        {
+          "key": "apps/b",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/b@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        },
+        {
+          "key": "apps/c",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/c@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        }
+      ]
+    },
+    "maxLength": 1226,
+    "expected": {
+      "document": "## `packages/core` 1.0.0 → 1.1.0\n\nminor — declared\n\nTag `packages/core@1.1.0`\n\n### Added\n* word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9\n  wrapped onto a second line\n### Fixed\n* Short.\n\n## `packages/util` 1.0.0 → 1.1.0\n\nminor — declared\n\nTag `packages/util@1.1.0`\n\n### Fixed\n* term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9\n\n## Units with no changelog entry\n\n`apps/a` 1.0.1, `apps/b` 1.0.1, `apps/c` 1.0.1.\n\n_Their reasons, groups and tags are left out to fit the length limit._\n"
+    }
+  },
+  {
+    "name": "stage 3 one under stage 2: entries cut at the largest cap above 200 that fits",
+    "plan": {
+      "units": [
+        {
+          "key": "packages/core",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "packages/core@1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Added"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Added",
+              "body": "word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9\nwrapped onto a second line"
+            },
+            {
+              "kind": "Fixed",
+              "body": "Short."
+            }
+          ]
+        },
+        {
+          "key": "packages/util",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "packages/util@1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Fixed"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Fixed",
+              "body": "term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9"
+            }
+          ]
+        },
+        {
+          "key": "apps/a",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/a@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        },
+        {
+          "key": "apps/b",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/b@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        },
+        {
+          "key": "apps/c",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/c@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        }
+      ]
+    },
+    "maxLength": 1225,
+    "expected": {
+      "document": "_Entries cut to fit the length limit end in “…”._\n\n## `packages/core` 1.0.0 → 1.1.0\n\nminor — declared\n\nTag `packages/core@1.1.0`\n\n### Added\n* word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5…\n### Fixed\n* Short.\n\n## `packages/util` 1.0.0 → 1.1.0\n\nminor — declared\n\nTag `packages/util@1.1.0`\n\n### Fixed\n* term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9\n\n## Units with no changelog entry\n\n`apps/a` 1.0.1, `apps/b` 1.0.1, `apps/c` 1.0.1.\n\n_Their reasons, groups and tags are left out to fit the length limit._\n"
+    }
+  },
+  {
+    "name": "stage 3 at its cap of 200",
+    "plan": {
+      "units": [
+        {
+          "key": "packages/core",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "packages/core@1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Added"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Added",
+              "body": "word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9\nwrapped onto a second line"
+            },
+            {
+              "kind": "Fixed",
+              "body": "Short."
+            }
+          ]
+        },
+        {
+          "key": "packages/util",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "packages/util@1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Fixed"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Fixed",
+              "body": "term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9"
+            }
+          ]
+        },
+        {
+          "key": "apps/a",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/a@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        },
+        {
+          "key": "apps/b",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/b@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        },
+        {
+          "key": "apps/c",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/c@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        }
+      ]
+    },
+    "maxLength": 806,
+    "expected": {
+      "document": "_Entries cut to fit the length limit end in “…”._\n\n## `packages/core` 1.0.0 → 1.1.0\n\nminor — declared\n\nTag `packages/core@1.1.0`\n\n### Added\n* word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2…\n### Fixed\n* Short.\n\n## `packages/util` 1.0.0 → 1.1.0\n\nminor — declared\n\nTag `packages/util@1.1.0`\n\n### Fixed\n* term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2…\n\n## Units with no changelog entry\n\n`apps/a` 1.0.1, `apps/b` 1.0.1, `apps/c` 1.0.1.\n\n_Their reasons, groups and tags are left out to fit the length limit._\n"
+    }
+  },
+  {
+    "name": "stage 4 one under stage 3's cap of 200: a cap below 200 is never taken",
+    "plan": {
+      "units": [
+        {
+          "key": "packages/core",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "packages/core@1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Added"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Added",
+              "body": "word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9\nwrapped onto a second line"
+            },
+            {
+              "kind": "Fixed",
+              "body": "Short."
+            }
+          ]
+        },
+        {
+          "key": "packages/util",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "packages/util@1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Fixed"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Fixed",
+              "body": "term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9"
+            }
+          ]
+        },
+        {
+          "key": "apps/a",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/a@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        },
+        {
+          "key": "apps/b",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/b@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        },
+        {
+          "key": "apps/c",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/c@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        }
+      ]
+    },
+    "maxLength": 805,
+    "expected": {
+      "document": "`packages/core` 1.1.0, `packages/util` 1.1.0, `apps/a` 1.0.1, `apps/b` 1.0.1, `apps/c` 1.0.1.\n\n_Changelog entries, reasons and tags are left out to fit the length limit._\n"
+    }
+  },
+  {
+    "name": "stage 4 at exactly its length",
+    "plan": {
+      "units": [
+        {
+          "key": "packages/core",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "packages/core@1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Added"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Added",
+              "body": "word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9\nwrapped onto a second line"
+            },
+            {
+              "kind": "Fixed",
+              "body": "Short."
+            }
+          ]
+        },
+        {
+          "key": "packages/util",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "packages/util@1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Fixed"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Fixed",
+              "body": "term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9"
+            }
+          ]
+        },
+        {
+          "key": "apps/a",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/a@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        },
+        {
+          "key": "apps/b",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/b@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        },
+        {
+          "key": "apps/c",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/c@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        }
+      ]
+    },
+    "maxLength": 171,
+    "expected": {
+      "document": "`packages/core` 1.1.0, `packages/util` 1.1.0, `apps/a` 1.0.1, `apps/b` 1.0.1, `apps/c` 1.0.1.\n\n_Changelog entries, reasons and tags are left out to fit the length limit._\n"
+    }
+  },
+  {
+    "name": "stage 5 one under stage 4",
+    "plan": {
+      "units": [
+        {
+          "key": "packages/core",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "packages/core@1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Added"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Added",
+              "body": "word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9\nwrapped onto a second line"
+            },
+            {
+              "kind": "Fixed",
+              "body": "Short."
+            }
+          ]
+        },
+        {
+          "key": "packages/util",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "packages/util@1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Fixed"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Fixed",
+              "body": "term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9"
+            }
+          ]
+        },
+        {
+          "key": "apps/a",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/a@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        },
+        {
+          "key": "apps/b",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/b@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        },
+        {
+          "key": "apps/c",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/c@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        }
+      ]
+    },
+    "maxLength": 170,
+    "expected": {
+      "document": "5 units move, 2 with changelog entries; the list is left out to fit the length limit.\n"
+    }
+  },
+  {
+    "name": "stage 5 at exactly its length",
+    "plan": {
+      "units": [
+        {
+          "key": "packages/core",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "packages/core@1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Added"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Added",
+              "body": "word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9\nwrapped onto a second line"
+            },
+            {
+              "kind": "Fixed",
+              "body": "Short."
+            }
+          ]
+        },
+        {
+          "key": "packages/util",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "packages/util@1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Fixed"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Fixed",
+              "body": "term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9"
+            }
+          ]
+        },
+        {
+          "key": "apps/a",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/a@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        },
+        {
+          "key": "apps/b",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/b@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        },
+        {
+          "key": "apps/c",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/c@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        }
+      ]
+    },
+    "maxLength": 86,
+    "expected": {
+      "document": "5 units move, 2 with changelog entries; the list is left out to fit the length limit.\n"
+    }
+  },
+  {
+    "name": "refused one under stage 5, naming the shortest length",
+    "plan": {
+      "units": [
+        {
+          "key": "packages/core",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "packages/core@1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Added"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Added",
+              "body": "word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word0 word1 word2 word3 word4 word5 word6 word7 word8 word9\nwrapped onto a second line"
+            },
+            {
+              "kind": "Fixed",
+              "body": "Short."
+            }
+          ]
+        },
+        {
+          "key": "packages/util",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "packages/util@1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Fixed"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Fixed",
+              "body": "term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9 term0 term1 term2 term3 term4 term5 term6 term7 term8 term9"
+            }
+          ]
+        },
+        {
+          "key": "apps/a",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/a@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        },
+        {
+          "key": "apps/b",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/b@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        },
+        {
+          "key": "apps/c",
+          "from": "1.0.0",
+          "to": "1.0.1",
+          "tag": "apps/c@1.0.1",
+          "level": "patch",
+          "reasons": [
+            {
+              "kind": "imports",
+              "unit": "packages/core"
+            }
+          ],
+          "entries": []
+        }
+      ]
+    },
+    "maxLength": 85,
+    "expected": {
+      "error": "No markdown document of this plan fits in 85 code points: the shortest takes 86."
+    }
+  },
+  {
+    "name": "an empty plan refused under its one sentence",
+    "plan": {
+      "units": []
+    },
+    "maxLength": 10,
+    "expected": {
+      "error": "No markdown document of this plan fits in 10 code points: the shortest takes 52."
+    }
+  },
+  {
+    "name": "stages 2 and 3 are skipped when they would change nothing",
+    "plan": {
+      "units": [
+        {
+          "key": "packages/core",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "packages/core@1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Fixed"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Fixed",
+              "body": "Short."
+            }
+          ]
+        },
+        {
+          "key": "packages/util",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "packages/util@1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Added"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Added",
+              "body": "Also short."
+            }
+          ]
+        }
+      ]
+    },
+    "maxLength": 201,
+    "expected": {
+      "document": "`packages/core` 1.1.0, `packages/util` 1.1.0.\n\n_Changelog entries, reasons and tags are left out to fit the length limit._\n"
+    }
+  },
+  {
+    "name": "a cut ends at the last space before the cap",
+    "plan": {
+      "units": [
+        {
+          "key": "packages/core",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "packages/core@1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Fixed"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Fixed",
+              "body": "abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcdefghij more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more"
+            }
+          ]
+        }
+      ]
+    },
+    "maxLength": 338,
+    "expected": {
+      "document": "_Entries cut to fit the length limit end in “…”._\n\n## `packages/core` 1.0.0 → 1.1.0\n\nminor — declared\n\nTag `packages/core@1.1.0`\n\n### Fixed\n* abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd…\n"
+    }
+  },
+  {
+    "name": "a body with no space is cut hard at the cap",
+    "plan": {
+      "units": [
+        {
+          "key": "packages/core",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "packages/core@1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Fixed"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Fixed",
+              "body": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            }
+          ]
+        }
+      ]
+    },
+    "maxLength": 343,
+    "expected": {
+      "document": "_Entries cut to fit the length limit end in “…”._\n\n## `packages/core` 1.0.0 → 1.1.0\n\nminor — declared\n\nTag `packages/core@1.1.0`\n\n### Fixed\n* xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\n"
+    }
+  },
+  {
+    "name": "an astral character at the cut counts as one code point",
+    "plan": {
+      "units": [
+        {
+          "key": "packages/core",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "packages/core@1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Fixed"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Fixed",
+              "body": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy😀😀 tail z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z z"
+            }
+          ]
+        }
+      ]
+    },
+    "maxLength": 343,
+    "expected": {
+      "document": "_Entries cut to fit the length limit end in “…”._\n\n## `packages/core` 1.0.0 → 1.1.0\n\nminor — declared\n\nTag `packages/core@1.1.0`\n\n### Fixed\n* yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy😀…\n"
+    }
+  },
+  {
+    "name": "an entry exactly at the cap is not cut",
+    "plan": {
+      "units": [
+        {
+          "key": "packages/core",
+          "from": "1.0.0",
+          "to": "1.1.0",
+          "tag": "packages/core@1.1.0",
+          "level": "minor",
+          "reasons": [
+            {
+              "kind": "declared",
+              "fragment": ".changes/pending/x.yaml",
+              "as": "Fixed"
+            }
+          ],
+          "entries": [
+            {
+              "kind": "Fixed",
+              "body": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"
+            },
+            {
+              "kind": "Added",
+              "body": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee!"
+            }
+          ]
+        }
+      ]
+    },
+    "maxLength": 656,
+    "expected": {
+      "document": "_Entries cut to fit the length limit end in “…”._\n\n## `packages/core` 1.0.0 → 1.1.0\n\nminor — declared\n\nTag `packages/core@1.1.0`\n\n### Added\n* eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee!\n### Fixed\n* nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn…\n"
+    }
+  }
+]

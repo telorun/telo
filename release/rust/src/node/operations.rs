@@ -18,10 +18,12 @@ use crate::release_plan::{
     order_by_imports, plan_release, record_release, Imports, PlanOptions as CorePlanOptions, RecordedReading, ReleaseDiagnostic,
     ReleaseEvidence, ReleasePlan, UnitEvidence,
 };
+use crate::tag_format::render_tag;
 use crate::units::{read_unit_versions, stamp_unit_version, ResolvedUnit};
 use crate::ReleaseError;
 
 use super::carried_changes::{carried_by, CarriedQuery};
+use super::declared_payload::declared_payload;
 use super::evidence::{
     collect_evidence, destination_diagnostics, open_sessions, publishes, session_of, unit_evidence, AnchorRef, Argv, CollectOptions,
     ReadBack, SessionOptions, Sessions, UnitProgress,
@@ -142,13 +144,20 @@ struct ApplyJournal<'a> {
 }
 
 impl ApplyJournal<'_> {
-    fn remember(&mut self, file: &str) {
+    /// A file that exists but cannot be read is an error: recording it as absent
+    /// would make a restore delete it.
+    fn remember(&mut self, file: &str) -> Result<(), ReleaseError> {
         if self.originals.contains_key(file) {
-            return;
+            return Ok(());
         }
         let path = self.root.join(file);
-        let text = if path.exists() { fs::read_to_string(&path).ok() } else { None };
+        let text = match fs::read_to_string(&path) {
+            Ok(text) => Some(text),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
+            Err(err) => return Err(ReleaseError::new(format!("{}: {err}", path.display()))),
+        };
         self.originals.insert(file.to_string(), text);
+        Ok(())
     }
 
     /// Every file put back as it was; the ones that could not be, with why.
@@ -187,12 +196,12 @@ pub fn apply_plan(
     // location in the workspace is what a hook moves, so all are kept up front.
     for unit in &workspace.units {
         for location in &unit.version_locations {
-            journal.remember(&location.file);
+            journal.remember(&location.file)?;
         }
     }
-    journal.remember(LEDGER_PATH);
+    journal.remember(LEDGER_PATH)?;
     for fragment in &run.plan.fragments {
-        journal.remember(fragment);
+        journal.remember(fragment)?;
     }
     let mut hook_writes: Vec<String> = Vec::new();
     match apply_journaled(host, workspace, run, argv, date, &mut journal, &mut hook_writes) {
@@ -229,8 +238,8 @@ fn apply_journaled(
     for planned in &plan.units {
         let Some(unit) = workspace.units.iter().find(|u| u.key == planned.key) else { continue };
         let mut files: Vec<String> = Vec::new();
-        let mut write = |file: &str, text: &str, files: &mut Vec<String>| -> Result<(), ReleaseError> {
-            journal.remember(file);
+        let write = |journal: &mut ApplyJournal<'_>, file: &str, text: &str, files: &mut Vec<String>| -> Result<(), ReleaseError> {
+            journal.remember(file)?;
             write_file(&workspace.root, file, text)?;
             if !files.iter().any(|f| f == file) {
                 files.push(file.to_string());
@@ -238,19 +247,20 @@ fn apply_journaled(
             Ok(())
         };
         for (file, text) in stamp_unit_version(unit, &planned.to, &read, &workspace.adapters)? {
-            write(&file, &text, &mut files)?;
+            write(journal, &file, &text, &mut files)?;
         }
         for location in &unit.version_locations {
             let base = location.file.rsplit('/').next().unwrap_or(&location.file);
             if let Some(handler) = workspace.adapters.handler_for(base) {
                 for companion in handler.companions(&location.file, &planned.to, &read)? {
-                    write(&companion.file, &companion.text, &mut files)?;
+                    write(journal, &companion.file, &companion.text, &mut files)?;
                 }
             }
         }
         for anchor in &unit.anchors {
             let session = session_of(&sessions, &anchor.ecosystem)?;
-            for file in session.after_stamp(AnchorRef { unit, anchor }, &planned.to, plan)? {
+            let mut journaled = |file: &str| journal.remember(file);
+            for file in session.after_stamp(AnchorRef { unit, anchor }, &planned.to, plan, &mut journaled)? {
                 hook_writes.push(file.clone());
                 if !files.contains(&file) {
                     files.push(file);
@@ -265,7 +275,7 @@ fn apply_journaled(
                 entries: planned.entries.iter().map(|e| (e.kind, e.body.as_str())).collect(),
             };
             let text = prepend_changelog_release(read(&changelog).as_deref(), &render_changelog_release(&release));
-            write(&changelog, &text, &mut files)?;
+            write(journal, &changelog, &text, &mut files)?;
         }
         applied.push(Applied { key: planned.key.clone(), from: planned.from.clone(), to: planned.to.clone(), files });
     }
@@ -316,6 +326,8 @@ pub struct OrderRow {
     /// The workspace-relative directory to publish from.
     pub path: String,
     pub version: String,
+    /// The tag `version` is released under.
+    pub tag: String,
     pub destination: Option<String>,
     pub group: Option<String>,
     /// The units this one's payload names, which publish first.
@@ -328,6 +340,7 @@ impl OrderRow {
         let mut row = Map::new();
         row.insert("key".into(), Value::String(self.key.clone()));
         row.insert("version".into(), Value::String(self.version.clone()));
+        row.insert("tag".into(), Value::String(self.tag.clone()));
         if let Some(group) = &self.group {
             row.insert("group".into(), Value::String(group.clone()));
         }
@@ -384,12 +397,14 @@ pub fn order_rows(host: &ReleaseHost, workspace: &ReleaseWorkspace, argv: &Argv)
     let mut rows = Vec::new();
     for OrderUnit { unit, imports, .. } in order_by_imports(units) {
         let version = read_unit_versions(unit, &read, &workspace.adapters).first().and_then(|r| r.value.clone()).unwrap_or_default();
+        let tag = render_tag(&unit.tag_pattern, &version);
         if unit.anchors.is_empty() {
             rows.push(OrderRow {
                 key: unit.key.clone(),
                 ecosystem: None,
                 path: if unit.dir.is_empty() { ".".into() } else { unit.dir.clone() },
                 version,
+                tag,
                 destination: None,
                 group: unit.group.clone(),
                 imports,
@@ -414,6 +429,7 @@ pub fn order_rows(host: &ReleaseHost, workspace: &ReleaseWorkspace, argv: &Argv)
                 ecosystem: Some(anchor.ecosystem.clone()),
                 path: if anchor.dir.is_empty() { ".".into() } else { anchor.dir.clone() },
                 version: version.clone(),
+                tag: tag.clone(),
                 destination,
                 group: unit.group.clone(),
                 imports: imports.clone(),
@@ -631,6 +647,110 @@ fn reconcile(
 }
 
 // ---------------------------------------------------------------------------
+// baseline
+// ---------------------------------------------------------------------------
+
+pub struct Baselined {
+    /// Each recorded unit and its version.
+    pub recorded: Vec<(UnitKey, String)>,
+    /// Units that already have an entry, left as they are.
+    pub skipped: Vec<UnitKey>,
+    /// Units left without an entry, and why.
+    pub unrecorded: Vec<(UnitKey, String)>,
+    pub ledger: Ledger,
+    pub diagnostics: Vec<ReleaseDiagnostic>,
+}
+
+/// Record the current state of every unit with no ledger entry, at its current
+/// version: each layer with a registry read-back takes the registry's answer, any
+/// other the working-copy digest `apply` would record, with the registry base it
+/// was built against. A unit with an entry is skipped (naming one is an error:
+/// an entry records a publish, and overwriting it would hide unreleased drift).
+pub fn baseline_ledger(
+    host: &ReleaseHost,
+    workspace: &ReleaseWorkspace,
+    argv: &Argv,
+    only: Option<&[UnitKey]>,
+    progress: &dyn Fn(&str),
+) -> Result<Baselined, ReleaseError> {
+    let ledger = read_ledger(&workspace.root, &ledger_options(host))?;
+    for key in only.unwrap_or_default() {
+        if ledger.units.contains_key(key) {
+            return Err(ReleaseError::new(format!(
+                "'{key}' already has a ledger entry, which records a publish; baseline never overwrites one. Run '{} verify --write' to re-record it from the registries.",
+                host.command
+            )));
+        }
+    }
+    let sessions = open_sessions(workspace, &host.evidence, &SessionOptions { ledger: &ledger, argv })?;
+    let diagnostics = upfront_diagnostics(host, workspace, &sessions);
+    let mut result = Baselined { recorded: Vec::new(), skipped: Vec::new(), unrecorded: Vec::new(), ledger: ledger.clone(), diagnostics };
+    if result.diagnostics.iter().any(|d| d.severity == crate::marker_reader::Severity::Error) {
+        return Ok(result);
+    }
+    let read = |relative: &str| workspace.tree_read(relative);
+    let targets: Vec<&ResolvedUnit> = workspace.units.iter().filter(|u| only.is_none_or(|keys| keys.contains(&u.key))).collect();
+    for (index, unit) in targets.iter().enumerate() {
+        progress(&format!("  [{}/{}] {}", index + 1, targets.len(), unit.key));
+        if ledger.units.contains_key(&unit.key) {
+            result.skipped.push(unit.key.clone());
+            continue;
+        }
+        let Some(version) = read_unit_versions(unit, &read, &workspace.adapters).first().and_then(|r| r.value.clone()).filter(|v| !v.is_empty()) else {
+            result.unrecorded.push((unit.key.clone(), "its version cannot be read".into()));
+            continue;
+        };
+        if parse_candidate_version(&version).is_some() {
+            result.unrecorded.push((unit.key.clone(), format!("it carries the candidate version {version}; baseline records final versions only")));
+            continue;
+        }
+        if !is_release_version(&version) {
+            result.unrecorded.push((unit.key.clone(), format!("'{version}' is not a release version")));
+            continue;
+        }
+        let mut ecosystems: IndexMap<String, IndexMap<String, AnchorDigest>> = IndexMap::new();
+        let mut registry = registry_of(unit, &sessions);
+        let mut absent: Option<String> = None;
+        for anchor in &unit.anchors {
+            if !publishes(anchor) {
+                continue;
+            }
+            let reference = AnchorRef { unit, anchor };
+            let session = session_of(&sessions, &anchor.ecosystem)?;
+            match session.read_back(reference, &version, None).transpose()? {
+                Some(ReadBack::Absent) => {
+                    absent = Some(format!("{}/{}", anchor.ecosystem, anchor.anchor));
+                    break;
+                }
+                Some(ReadBack::Published { layer, .. }) => {
+                    ecosystems.entry(anchor.ecosystem.clone()).or_default().insert(anchor.anchor.clone(), layer);
+                }
+                Some(ReadBack::Unverifiable { .. }) | None => {
+                    let found = session.collect(reference)?;
+                    if let Some(layer) = found.layer {
+                        ecosystems.entry(anchor.ecosystem.clone()).or_default().insert(anchor.anchor.clone(), layer);
+                    }
+                    if registry.is_none() {
+                        registry = found.registry.filter(|r| !r.is_empty());
+                    }
+                }
+            }
+        }
+        if let Some(layer) = absent {
+            result.unrecorded.push((unit.key.clone(), format!("{version} is not published at the {layer} registry")));
+            continue;
+        }
+        let payload = if unit.payload.is_some() { Some(declared_payload(&workspace.root, unit)?.digest) } else { None };
+        result
+            .ledger
+            .units
+            .insert(unit.key.clone(), LedgerEntry { version: Some(version.clone()), registry, layers: UnitLayers { ecosystems, payload }, candidate: None });
+        result.recorded.push((unit.key.clone(), version));
+    }
+    Ok(result)
+}
+
+// ---------------------------------------------------------------------------
 // tag
 // ---------------------------------------------------------------------------
 
@@ -639,9 +759,9 @@ pub struct TagToCreate {
     pub exists: bool,
 }
 
-/// The tags `<unit key>@<version>` of what the last apply moved: every unit
-/// whose final or candidate version in HEAD's ledger differs from its first
-/// parent's. The apply must be committed.
+/// The tags of what the last apply moved, each unit's own tag format
+/// rendered: every unit whose final or candidate version in HEAD's ledger
+/// differs from its first parent's. The apply must be committed.
 pub fn tags_to_create(host: &ReleaseHost, workspace: &ReleaseWorkspace) -> Result<Vec<TagToCreate>, ReleaseError> {
     let at = |rev: &str| -> Result<Ledger, ReleaseError> {
         match file_at(&workspace.root, rev, LEDGER_PATH)? {
@@ -674,8 +794,16 @@ pub fn tags_to_create(host: &ReleaseHost, workspace: &ReleaseWorkspace) -> Resul
                 moved.push(candidate.version.clone());
             }
         }
+        if moved.is_empty() {
+            continue;
+        }
+        let Some(unit) = workspace.units.iter().find(|candidate| &candidate.key == key) else {
+            return Err(ReleaseError::new(format!(
+                "{LEDGER_PATH} moves '{key}', which is not a unit of this workspace, so no tag format names its tag. Restore its entry in 'release.units', or tag it by hand."
+            )));
+        };
         for version in moved {
-            let tag = format!("{key}@{version}");
+            let tag = render_tag(&unit.tag_pattern, &version);
             let existing = tag_commit(&workspace.root, &tag);
             if let Some(existing) = &existing {
                 if *existing != head_sha {
@@ -698,4 +826,19 @@ pub fn create_tags(workspace: &ReleaseWorkspace, tags: &[TagToCreate]) -> Result
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_missing_file_is_recorded_as_absent_and_an_unreadable_one_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir(dir.path().join("unreadable")).unwrap();
+        let mut journal = ApplyJournal { root: dir.path(), originals: IndexMap::new() };
+        journal.remember("missing").unwrap();
+        assert_eq!(journal.originals.get("missing"), Some(&None));
+        assert!(journal.remember("unreadable").is_err());
+    }
 }

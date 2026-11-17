@@ -1,8 +1,8 @@
 //! A unit's `CHANGELOG.md` entry, and splicing it into the file.
 //!
-//! The block is `## <version> - <date>`, `### <Kind>`, `* <body>`, prepended
-//! below the file's `# Changelog` heading; everything already written stays
-//! untouched bytes. A changelog started under another first heading keeps its
+//! The block is `## <version> - <date>`, `### <Kind>`, `* <body>` (a multi-line
+//! body's continuation lines indented), prepended below the file's `# Changelog`
+//! heading; everything already written stays untouched bytes. A changelog started under another first heading keeps its
 //! history below, its heading becoming `# Changelog`.
 
 use crate::bump_level::{FragmentKind, FRAGMENT_KIND_ORDER};
@@ -21,17 +21,36 @@ pub struct ChangelogRelease<'a> {
 
 pub fn render_changelog_release(release: &ChangelogRelease<'_>) -> String {
     let mut lines = vec![format!("## {} - {}", release.version, release.date)];
+    lines.extend(render_changelog_entries(&release.entries));
+    lines.join("\n") + "\n"
+}
+
+/// The entries' lines, under a `### <Kind>` heading per kind in the
+/// vocabulary's order: what a release block and a plan's markdown document
+/// both show.
+pub fn render_changelog_entries(entries: &[(FragmentKind, &str)]) -> Vec<String> {
+    let mut lines = Vec::new();
     for kind in FRAGMENT_KIND_ORDER {
-        let bodies: Vec<&str> = release.entries.iter().filter(|(k, _)| *k == kind).map(|(_, body)| *body).collect();
+        let bodies: Vec<&str> = entries.iter().filter(|(k, _)| *k == kind).map(|(_, body)| *body).collect();
         if bodies.is_empty() {
             continue;
         }
         lines.push(format!("### {}", kind.as_str()));
         for body in bodies {
-            lines.push(format!("* {body}"));
+            lines.push(format!("* {}", indent_continuation(body)));
         }
     }
-    lines.join("\n") + "\n"
+    lines
+}
+
+/// Continuation lines indented two spaces so a list or code block stays inside
+/// its item; blank lines stay empty.
+fn indent_continuation(body: &str) -> String {
+    body.split('\n')
+        .enumerate()
+        .map(|(i, line)| if i == 0 || line.is_empty() { line.to_string() } else { format!("  {line}") })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// `/^#[ \t]+[^\n]*(\n|$)/`: the first line when it is a first-level heading.

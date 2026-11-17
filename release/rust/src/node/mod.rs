@@ -1,6 +1,6 @@
 //! The host half: evidence (git reads, the ledger store, carried changes,
 //! layer file sets, edges, read-back), the evidence halves of the shipped
-//! `npm`, `cargo`, `docker` and `helm` ecosystems, and the release command
+//! `npm`, `cargo`, `docker`, `helm` and `pypi` ecosystems, and the release command
 //! tree a host mounts. The directory keeps its twin's name, `node/`, the Node
 //! package's entry for the same half; this file twins its `index.ts`.
 
@@ -32,5 +32,6 @@ pub fn shipped_evidence() -> Vec<Arc<dyn EvidenceAdapter>> {
         Arc::new(adapters::cargo_evidence::CargoEvidence),
         Arc::new(adapters::docker_evidence::DockerEvidence),
         Arc::new(adapters::helm_evidence::HelmEvidence),
+        Arc::new(adapters::pypi_evidence::pypi_evidence()),
     ]
 }

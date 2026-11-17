@@ -9,6 +9,7 @@ use std::process::Command;
 use std::rc::Rc;
 
 use base64::Engine;
+use sha2::Digest;
 use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
 
@@ -19,13 +20,22 @@ use telorun_release::fragment::{parse_fragment, serialize_fragment};
 use telorun_release::ledger::{parse_ledger, serialize_ledger, AnchorDigest, LayerChange, Ledger, ParseLedgerOptions, UnitLayers};
 use telorun_release::marker_reader::{PathSeg, WORKSPACE_FILENAME};
 use telorun_release::node::files_digest::{digest_file_set, FileSetEntry};
-use telorun_release::release_plan::{plan_release, record_release, BumpReason, PlanOptions, RecordedReading, ReleaseEvidence, UnitEvidence};
+use telorun_release::plan_markdown::render_plan_markdown;
+use telorun_release::release_plan::{
+    plan_release, record_release, BumpReason, ChangelogEntry, PlanOptions, PlannedUnit, RecordedReading, ReleaseEvidence, ReleasePlan, UnitEvidence,
+};
 use telorun_release::release_settings::{read_release_marker, PayloadSpec, ReadReleaseOptions};
 use telorun_release::units::{resolve_units, VersionReading, WorkspaceTree};
 use telorun_release::version_files::{read_version_at, write_version_at};
 use telorun_release::adapter::VersionLocationSpec;
 use telorun_release::adapters::cargo::stamp_locked_crate_version;
 use telorun_release::adapters::cargo_closure::{closure_from_lock, closure_from_metadata, links_artifact};
+use telorun_release::adapters::pypi::{
+    is_generated_sdist_member, move_pypi_lock_content_hash, normalize_pypi_name, normalize_pypi_version, pypi_build_system,
+    pypi_project_index, pypi_version_problem, read_pypi_project, sdist_in_index, simple_index_files, stamp_linked_requirements,
+    stamp_pypi_lockfile, versions_in_index, IndexFile, PypiProjectFile,
+};
+use telorun_release::adapters::toml_document::{read_toml_document, TomlTable, TomlValue};
 use telorun_release::node::commands::release_commands;
 use telorun_release::node::host::{ReleaseHost, ReleaseOutput, Style};
 use telorun_release::node::shipped_evidence;
@@ -177,6 +187,9 @@ fn marker_answer(row: &Value) -> Value {
                         "ignore": u.ignore,
                         "maxBump": u.max_bump.as_str(),
                         "group": u.group,
+                        "name": u.name,
+                        "tagFormat": u.tag_format,
+                        "tagPattern": u.tag_pattern,
                     })
                 })
                 .collect(),
@@ -236,6 +249,7 @@ fn evidence_of(raw: &Value) -> UnitEvidence {
             .collect(),
         own_files_changed: raw["ownFilesChanged"].as_bool().unwrap_or(false),
         max_bump: raw.get("maxBump").and_then(Value::as_str).and_then(BumpLevel::parse),
+        tag_pattern: raw.get("tagPattern").map(strings),
     }
 }
 
@@ -296,6 +310,7 @@ fn plan_answer(row: &Value) -> Value {
                 "name": p.name,
                 "from": p.from,
                 "to": p.to,
+                "tag": p.tag,
                 "level": p.level.as_str(),
                 "reasons": p.reasons.iter().map(reason_json).collect::<Vec<_>>(),
                 "changed": p.changed.iter().map(change_json).collect::<Vec<_>>(),
@@ -308,6 +323,54 @@ fn plan_answer(row: &Value) -> Value {
         },
         "recorded": serialize_ledger(&record_release(&ledger, &plan, &readings)),
     })
+}
+
+fn reason_of(raw: &Value) -> BumpReason {
+    let unit = || text(&raw["unit"]).to_string();
+    match text(&raw["kind"]) {
+        "declared" => BumpReason::Declared {
+            fragment: text(&raw["fragment"]).to_string(),
+            kind: FragmentKind::parse(text(&raw["as"])).expect("a kind"),
+        },
+        "inlines" => BumpReason::Inlines { unit: unit(), files: strings(&raw["files"]) },
+        "imports" => BumpReason::Imports { unit: unit() },
+        "version-location" => BumpReason::VersionLocation { unit: unit(), files: strings(&raw["files"]) },
+        "group" => BumpReason::Group { group: text(&raw["group"]).to_string() },
+        "unattributed" => BumpReason::Unattributed,
+        other => panic!("no reason kind '{other}'"),
+    }
+}
+
+/// A row's plan rendered as markdown under its limit.
+fn markdown_answer(row: &Value) -> Value {
+    let units = rows(&row["plan"]["units"], None)
+        .iter()
+        .map(|raw| PlannedUnit {
+            key: text(&raw["key"]).to_string(),
+            name: text(&raw["key"]).to_string(),
+            from: text(&raw["from"]).to_string(),
+            to: text(&raw["to"]).to_string(),
+            tag: text(&raw["tag"]).to_string(),
+            level: BumpLevel::parse(text(&raw["level"])).expect("a level"),
+            reasons: rows(&raw["reasons"], None).iter().map(reason_of).collect(),
+            changed: Vec::new(),
+            entries: rows(&raw["entries"], None)
+                .iter()
+                .map(|e| ChangelogEntry {
+                    kind: FragmentKind::parse(text(&e["kind"])).expect("a kind"),
+                    body: text(&e["body"]).to_string(),
+                    fragment: String::new(),
+                })
+                .collect(),
+            group: raw.get("group").and_then(Value::as_str).map(str::to_string),
+        })
+        .collect();
+    let plan = ReleasePlan { units, ..ReleasePlan::default() };
+    let max_length = row["maxLength"].as_u64().map(|n| n as usize);
+    match render_plan_markdown(&plan, max_length) {
+        Ok(document) => json!({ "document": document }),
+        Err(err) => error(err),
+    }
 }
 
 fn digest_answer(row: &Value) -> Value {
@@ -331,23 +394,83 @@ fn digest_answer(row: &Value) -> Value {
     }
 }
 
+/// A TOML value as the vectors write it.
+fn toml_json(value: &TomlValue) -> Value {
+    match value {
+        TomlValue::String(s) => json!(s.value),
+        TomlValue::Boolean(b) => json!(b),
+        TomlValue::Integer(i) => json!({ "integer": i }),
+        TomlValue::Float(f) => json!({ "float": f }),
+        TomlValue::Datetime(d) => json!({ "datetime": d }),
+        TomlValue::Array { items, .. } => Value::Array(items.iter().map(toml_json).collect()),
+        TomlValue::Table(table) => table_json(table),
+    }
+}
+
+fn table_json(table: &TomlTable) -> Value {
+    Value::Object(table.entries.iter().map(|(k, v)| (k.clone(), toml_json(v))).collect())
+}
+
+fn pypi_toml_answer(row: &Value) -> Value {
+    match read_toml_document(text(&row["text"]), "pyproject.toml") {
+        Ok(doc) => json!({ "value": table_json(&doc) }),
+        Err(err) => json!({ "error": err.message }),
+    }
+}
+
+fn pypi_projects(row: &Value) -> Vec<PypiProjectFile> {
+    rows(&row["projects"], None)
+        .iter()
+        .map(|p| PypiProjectFile { unit: text(&p["unit"]).to_string(), dir: text(&p["dir"]).to_string(), text: text(&p["text"]).to_string() })
+        .collect()
+}
+
+fn pypi_projects_answer(row: &Value) -> Value {
+    let projects = pypi_projects(row);
+    let index = pypi_project_index(&projects);
+    let mut answer = Map::new();
+    for project in &projects {
+        let read = match read_pypi_project(&project.dir, &project.text, &index) {
+            Ok(read) => read,
+            Err(err) => return error(err),
+        };
+        let links: Vec<Value> = read.links.iter().map(|l| json!({ "requirement": l.requirement, "at": l.at, "target": l.target })).collect();
+        answer.insert(project.dir.clone(), json!({ "links": links, "problems": read.problems }));
+    }
+    Value::Object(answer)
+}
+
+fn index_file_json(file: &IndexFile) -> Value {
+    let mut out = Map::new();
+    out.insert("filename".into(), json!(file.filename));
+    out.insert("href".into(), json!(file.href));
+    if let Some(sha256) = &file.sha256 {
+        out.insert("sha256".into(), json!(sha256));
+    }
+    Value::Object(out)
+}
+
 #[test]
 fn the_release_vectors_answer_as_recorded() {
     let mut misses = Misses(Vec::new());
     let mut counts = IndexMap::new();
     let mut count = |family: &str, n: usize| *counts.entry(family.to_string()).or_insert(0) += n;
 
-    let markers = read("conformance/markers.json");
-    for row in rows(&markers, None) {
-        misses.check("marker", row, marker_answer(row));
+    for (file, family) in [("markers.json", "markers"), ("pypi-markers.json", "pypi markers")] {
+        let markers = read(&format!("conformance/{file}"));
+        for row in rows(&markers, None) {
+            misses.check("marker", row, marker_answer(row));
+        }
+        count(family, rows(&markers, None).len());
     }
-    count("markers", rows(&markers, None).len());
 
-    let plans = read("conformance/plans.json");
-    for row in rows(&plans, None) {
-        misses.check("plan", row, plan_answer(row));
+    for (file, family) in [("plans.json", "plans"), ("pypi-plans.json", "pypi plans")] {
+        let plans = read(&format!("conformance/{file}"));
+        for row in rows(&plans, None) {
+            misses.check("plan", row, plan_answer(row));
+        }
+        count(family, rows(&plans, None).len());
     }
-    count("plans", rows(&plans, None).len());
 
     let digests = read("conformance/digests.json");
     for row in rows(&digests, None) {
@@ -436,6 +559,56 @@ fn the_release_vectors_answer_as_recorded() {
     }
     count("cargo closures", rows(&closures, Some("metadata")).len() + rows(&closures, Some("locks")).len());
 
+    let pypi = read("conformance/pypi.json");
+    for (section, answer) in [
+        ("toml", pypi_toml_answer as fn(&Value) -> Value),
+        ("names", |row| json!({ "normalized": normalize_pypi_name(text(&row["input"])) })),
+        ("versions", |row| {
+            json!({ "normalized": normalize_pypi_version(text(&row["version"])), "problem": pypi_version_problem(text(&row["version"])) })
+        }),
+        ("buildSystems", |row| match pypi_build_system(text(&row["text"]), "pyproject.toml") {
+            Ok(system) => json!({ "system": system.map(|s| json!({ "requires": s.requires, "backend": s.backend, "backendPath": s.backend_path })) }),
+            Err(err) => error(err),
+        }),
+        ("members", |row| json!({ "kept": strings(&row["paths"]).into_iter().filter(|p| !is_generated_sdist_member(p)).collect::<Vec<_>>() })),
+        ("projects", pypi_projects_answer),
+        ("requirements", |row| {
+            let projects = pypi_projects(row);
+            let dir = text(&row["dir"]);
+            let project = projects.iter().find(|p| p.dir == dir).expect("the row's project");
+            match stamp_linked_requirements(&project.text, dir, &pypi_project_index(&projects), text(&row["target"]), text(&row["version"])) {
+                Ok(written) => json!({ "text": written }),
+                Err(err) => error(err),
+            }
+        }),
+        ("lockfiles", |row| {
+            let target = &row["target"];
+            match stamp_pypi_lockfile(text(&row["text"]), text(&row["file"]), text(&target["name"]), text(&target["dir"]), text(&row["version"])) {
+                Ok(written) => json!({ "text": written }),
+                Err(err) => error(err),
+            }
+        }),
+        ("contentHashes", |row| {
+            let sha256 = |input: &str| -> String { sha2::Sha256::digest(input.as_bytes()).iter().map(|b| format!("{b:02x}")).collect() };
+            match move_pypi_lock_content_hash(text(&row["text"]), text(&row["file"]), text(&row["before"]), text(&row["after"]), "pyproject.toml", &sha256) {
+                Ok(written) => json!({ "text": written }),
+                Err(err) => error(err),
+            }
+        }),
+        ("indexes", |row| {
+            let answer = simple_index_files(text(&row["body"]), row["json"].as_bool().unwrap_or(false), "index").and_then(|files| {
+                let sdist = sdist_in_index(&files, text(&row["project"]), text(&row["version"]), "index")?;
+                Ok(json!({ "sdist": sdist.as_ref().map(index_file_json), "versions": versions_in_index(&files, text(&row["project"])) }))
+            });
+            answer.unwrap_or_else(error)
+        }),
+    ] {
+        for row in rows(&pypi, Some(section)) {
+            misses.check(&format!("pypi {section}"), row, answer(row));
+        }
+        count("pypi", rows(&pypi, Some(section)).len());
+    }
+
     let changelogs = read("conformance/changelogs.json");
     for row in rows(&changelogs, None) {
         let entries: Vec<(FragmentKind, &str)> = rows(&row["entries"], None)
@@ -448,17 +621,39 @@ fn the_release_vectors_answer_as_recorded() {
     }
     count("changelogs", rows(&changelogs, None).len());
 
-    let commands = read("conformance/commands.json");
-    for row in rows(&commands, None) {
-        let answer = commands_answer(row);
-        if answer != json!(rows(&row["steps"], None).iter().map(|step| step["expected"].clone()).collect::<Vec<_>>()) {
-            misses.0.push(format!("commands {}:\n  answered {}", row["name"], serde_json::to_string_pretty(&answer).unwrap_or_default()));
-        }
+    let markdown = read("conformance/markdown.json");
+    for row in rows(&markdown, None) {
+        misses.check("markdown", row, markdown_answer(row));
     }
-    count("commands", rows(&commands, None).len());
+    count("markdown", rows(&markdown, None).len());
+
+    for (file, family) in [("commands.json", "commands"), ("pypi-commands.json", "pypi commands")] {
+        let commands = read(&format!("conformance/{file}"));
+        for row in rows(&commands, None) {
+            let answer = commands_answer(row);
+            if answer != json!(rows(&row["steps"], None).iter().map(|step| step["expected"].clone()).collect::<Vec<_>>()) {
+                misses.0.push(format!("commands {}:\n  answered {}", row["name"], serde_json::to_string_pretty(&answer).unwrap_or_default()));
+            }
+        }
+        count(family, rows(&commands, None).len());
+    }
 
     assert!(misses.0.is_empty(), "{} of the vectors answered otherwise:\n{}", misses.0.len(), misses.0.join("\n"));
-    let expected: IndexMap<String, usize> = [("markers", 15), ("plans", 17), ("digests", 7), ("yaml", 38), ("version files", 24), ("cargo closures", 8), ("changelogs", 5), ("commands", 1)]
+    let expected: IndexMap<String, usize> = [
+        ("markers", 24),
+        ("pypi markers", 8),
+        ("plans", 19),
+        ("pypi plans", 2),
+        ("digests", 7),
+        ("yaml", 38),
+        ("version files", 33),
+        ("cargo closures", 8),
+        ("pypi", 65),
+        ("changelogs", 6),
+        ("markdown", 21),
+        ("commands", 7),
+        ("pypi commands", 6),
+    ]
         .into_iter()
         .map(|(k, v)| (k.to_string(), v))
         .collect();
@@ -466,13 +661,16 @@ fn the_release_vectors_answer_as_recorded() {
 }
 
 #[derive(Default)]
-struct Envelopes(RefCell<Vec<Map<String, Value>>>);
+struct Envelopes(RefCell<Vec<Map<String, Value>>>, RefCell<Vec<String>>);
 
 impl ReleaseOutput for Envelopes {
     fn line(&self, _text: &str) {}
     fn err_line(&self, _text: &str) {}
     fn emit(&self, payload: Map<String, Value>) {
         self.0.borrow_mut().push(payload);
+    }
+    fn document(&self, text: &str) {
+        self.1.borrow_mut().push(text.to_string());
     }
     fn progress(&self, _text: &str) {}
     fn style(&self) -> Style {
@@ -499,7 +697,8 @@ fn commit(root: &Path, message: &str) {
 }
 
 /// A row's files committed to a scratch repository, each step run there and
-/// committed: per step, the exit status and the last envelope it emitted.
+/// committed: per step, the exit status, the last envelope it emitted and,
+/// for a step marked `stdout`, the document it wrote.
 fn commands_answer(row: &Value) -> Value {
     let dir = tempfile::tempdir().expect("a scratch directory");
     let root = dir.path();
@@ -528,10 +727,15 @@ fn commands_answer(row: &Value) -> Value {
     for step in rows(&row["steps"], None) {
         let args = strings(&step["args"]);
         let before = envelopes.0.borrow().len();
+        let documents = envelopes.1.borrow().len();
         let code = release_commands(&host, &args, root);
         let emitted = envelopes.0.borrow();
         let payload = if emitted.len() > before { emitted.last().cloned().map(Value::Object).unwrap_or(Value::Null) } else { Value::Null };
-        answers.push(json!({ "exitCode": code, "payload": payload }));
+        let mut answer = json!({ "exitCode": code, "payload": payload });
+        if step["stdout"].as_bool() == Some(true) {
+            answer["stdout"] = Value::String(envelopes.1.borrow()[documents..].concat());
+        }
+        answers.push(answer);
         drop(emitted);
         commit(root, &args.join(" "));
     }

@@ -1,6 +1,6 @@
 /**
  * The release command tree — `add`, `status`, `order`, `check`, `apply`,
- * `verify`, `tag`, `adopt changesets` — registered onto whatever yargs instance
+ * `verify`, `baseline`, `tag`, `adopt changesets` — registered onto whatever yargs instance
  * the host mounts it on: `telo release …` in the Telo CLI, the top level in
  * `telo-release`.
  */
@@ -9,12 +9,14 @@ import type { Argv } from "yargs";
 import { isFragmentKind, type FragmentKind } from "../bump-level.js";
 import { normalizeUnitKey, serializeFragment, type UnitKey } from "../fragment.js";
 import { LEDGER_PATH } from "../ledger.js";
-import type { ReleaseDiagnostic } from "../release-plan.js";
+import { NOTHING_TO_RELEASE, renderPlanMarkdown } from "../plan-markdown.js";
+import type { ReleaseDiagnostic, ReleasePlan } from "../release-plan.js";
 import { adoptChangesets } from "./adopt-changesets.js";
 import type { Guard, ReleaseHost } from "./host.js";
 import { writeFragment, writeLedger } from "./ledger-store.js";
 import {
   applyPlan,
+  baselineLedger,
   candidateId,
   createTags,
   loadWorkspaceFor,
@@ -30,7 +32,51 @@ import type { ReleaseWorkspace } from "./workspace.js";
 interface CommonArgv {
   base: string;
   carriedBy?: string;
+  output?: string;
+  maxLength?: string;
   [key: string]: unknown;
+}
+
+const LARGEST_LENGTH = Number.MAX_SAFE_INTEGER;
+
+/** Why a plan command's `--max-length` cannot be read, if it cannot. */
+export function maxLengthRefusal(command: string, output: unknown, maxLength: unknown, writesMarkdown = true): string | undefined {
+  if (maxLength === undefined) return undefined;
+  if (!writesMarkdown) return `--max-length applies only to -o markdown; ${command} writes text or json.`;
+  if (output !== "markdown") return `--max-length applies only to -o markdown; ${command} writes text, json or markdown.`;
+  const text = String(maxLength);
+  if (!/^[1-9][0-9]*$/.test(text) || Number(text) > LARGEST_LENGTH) {
+    return `--max-length takes a positive whole number of code points, not '${text}'.`;
+  }
+  return undefined;
+}
+
+/** `-o markdown` and `--max-length` on a command whose result is a plan;
+ *  every other command keeps the host's `text` and `json`. */
+function planFormats(command: string) {
+  return <T>(c: Argv<T>): Argv<T> =>
+    c
+      .choices("output", ["markdown"])
+      .option("max-length", {
+        type: "string",
+        describe: "With -o markdown, the most Unicode code points the document may hold; it is shortened in stated stages to fit",
+      })
+      .check((argv) => maxLengthRefusal(command, argv.output, argv.maxLength) ?? true) as unknown as Argv<T>;
+}
+
+/** `--max-length` on a command that never writes markdown: declared hidden so it is
+ *  refused naming the formats the command can write, not as an unknown option. */
+function noMarkdown(command: string) {
+  return <T>(c: Argv<T>): Argv<T> =>
+    c
+      .option("max-length", { type: "string", hidden: true })
+      .check((argv) => maxLengthRefusal(command, argv.output, argv.maxLength, false) ?? true) as unknown as Argv<T>;
+}
+
+/** The plan's markdown document under `-o markdown`; throws when no stage fits. */
+function markdownOf(argv: CommonArgv, plan: ReleasePlan): string | undefined {
+  if (argv.output !== "markdown") return undefined;
+  return renderPlanMarkdown(plan, argv.maxLength === undefined ? undefined : Number(argv.maxLength));
 }
 
 /** A failure is one line naming what to fix, an `ok: false` envelope and exit 1. */
@@ -116,7 +162,7 @@ export function releaseCommands(yargs: Argv, host: ReleaseHost): Argv {
       "add",
       "Write a pending fragment describing a change",
       (c) =>
-        c
+        noMarkdown("add")(c)
           .option("unit", {
             type: "string",
             array: true,
@@ -141,19 +187,21 @@ export function releaseCommands(yargs: Argv, host: ReleaseHost): Argv {
     .command(
       "status",
       "Show what would bump, from what to what, and why",
-      (c) => c,
+      (c) => planFormats("status")(c),
       guarded(async (argv: CommonArgv) => {
         const out = host.output();
         const run = await plan(host, argv);
         for (const line of renderPlan(run.plan, out.style)) out.line(line);
         report(host, run.plan.diagnostics);
+        const document = markdownOf(argv, run.plan);
         out.emit({ ok: true, ...planPayload(run.plan) });
+        if (document !== undefined) out.document(document);
       }),
     )
     .command(
       "order",
       "List the units in publish order, one row per unit and package",
-      (c) => c,
+      (c) => noMarkdown("order")(c),
       guarded(async (argv: CommonArgv) => {
         const out = host.output();
         const workspace = loadWorkspaceFor(host);
@@ -169,7 +217,7 @@ export function releaseCommands(yargs: Argv, host: ReleaseHost): Argv {
     .command(
       "check",
       "The pull-request gate: fail when no consistent release plan can be formed",
-      (c) => c,
+      (c) => planFormats("check")(c),
       guarded(async (argv: CommonArgv) => {
         const out = host.output();
         const run = await plan(host, argv);
@@ -177,7 +225,9 @@ export function releaseCommands(yargs: Argv, host: ReleaseHost): Argv {
         const errors = report(host, run.plan.diagnostics);
         const extra = host.check ? await host.check(run.workspace, run.plan, argv as ParsedArgv) : { ok: true, payload: {} };
         const ok = errors === 0 && extra.ok;
+        const document = ok ? markdownOf(argv, run.plan) : undefined;
         out.emit({ ok, ...planPayload(run.plan), ...extra.payload });
+        if (document !== undefined) out.document(document);
         if (!ok) process.exitCode = 1;
       }),
     )
@@ -185,7 +235,7 @@ export function releaseCommands(yargs: Argv, host: ReleaseHost): Argv {
       "apply",
       "Write versions, changelogs and the ledger, and consume the fragments",
       (c) =>
-        c
+        planFormats("apply")(c)
           .option("candidate", {
             type: "string",
             describe: "Version each planned unit as a candidate, <final>-<id>.<k> (id default rc); consumes no fragment",
@@ -200,21 +250,25 @@ export function releaseCommands(yargs: Argv, host: ReleaseHost): Argv {
           process.exitCode = 1;
           return;
         }
+        // Before anything is written: a document no stage fits refuses the apply.
+        const document = markdownOf(argv, run.plan);
         if (run.plan.units.length === 0) {
-          out.line("Nothing to release — every unit matches the ledger.");
+          out.line(NOTHING_TO_RELEASE);
           out.emit({ ok: true, units: [], written: [] });
+          if (document !== undefined) out.document(document);
           return;
         }
         const { applied, written } = await applyPlan(host, run, argv as ParsedArgv, argv.date ?? new Date().toISOString().slice(0, 10));
         for (const unit of applied) out.line(`${out.style.ok("✓")}  ${unit.key}  ${unit.from} → ${unit.to}`);
         for (const file of written) out.line(`   ${out.style.dim(file)}`);
         out.emit({ ok: true, ...planPayload(run.plan), written });
+        if (document !== undefined) out.document(document);
       }),
     )
     .command(
       "verify",
       "Reconcile the ledger against the registries, per layer",
-      (c) => c.option("write", { type: "boolean", default: false, describe: "Re-record the ledger from what the registries serve" }),
+      (c) => noMarkdown("verify")(c).option("write", { type: "boolean", default: false, describe: "Re-record the ledger from what the registries serve" }),
       guarded(async (argv: CommonArgv & { write: boolean }) => {
         const out = host.output();
         const workspace = loadWorkspaceFor(host);
@@ -238,9 +292,38 @@ export function releaseCommands(yargs: Argv, host: ReleaseHost): Argv {
       }),
     )
     .command(
+      "baseline",
+      "Record the current state of every unit with no ledger entry, without bumping anything",
+      (c) =>
+        noMarkdown("baseline")(c)
+          .option("unit", {
+            type: "string",
+            array: true,
+            describe: "Record this unit only (repeatable). A unit that already has an entry is an error: use verify --write.",
+          })
+          .option("dry-run", { type: "boolean", default: false, describe: "List what would be recorded without writing the ledger" }),
+      guarded(async (argv: { unit?: string[]; dryRun: boolean }) => {
+        const out = host.output();
+        const workspace = loadWorkspaceFor(host);
+        const only = argv.unit?.map((key) => requireUnit(workspace, key));
+        const result = await baselineLedger(host, workspace, argv as unknown as ParsedArgv, only, (text) =>
+          out.progress(out.errStyle.dim(text)),
+        );
+        if (refuseOnErrors(host, result.diagnostics)) return;
+        if (!argv.dryRun && result.recorded.length > 0) writeLedger(workspace.root, result.ledger);
+        for (const { key, version } of result.recorded) {
+          out.line(`${out.style.ok("✓")}  ${key}  ${version}${argv.dryRun ? out.style.dim("  (would record)") : ""}`);
+        }
+        for (const key of result.skipped) out.line(out.style.dim(`   ${key}  skipped: it already has a ledger entry`));
+        for (const { key, reason } of result.unrecorded) out.errLine(`${out.errStyle.warn("unrecorded")}  ${key}: ${reason}`);
+        if (result.recorded.length === 0) out.line(`Nothing to record — no unit lacks a ${LEDGER_PATH} entry that can be recorded.`);
+        out.emit({ ok: true, recorded: result.recorded, skipped: result.skipped, unrecorded: result.unrecorded, dryRun: argv.dryRun });
+      }),
+    )
+    .command(
       "tag",
-      "Tag <unit key>@<version> for each unit the last apply moved, on HEAD",
-      (c) => c.option("dry-run", { type: "boolean", default: false, describe: "List the tags without creating them" }),
+      "Tag each unit the last apply moved, by its tag format, on HEAD",
+      (c) => noMarkdown("tag")(c).option("dry-run", { type: "boolean", default: false, describe: "List the tags without creating them" }),
       guarded(async (argv: { dryRun: boolean }) => {
         const out = host.output();
         const workspace = loadWorkspaceFor(host);
@@ -255,7 +338,7 @@ export function releaseCommands(yargs: Argv, host: ReleaseHost): Argv {
       "adopt <tool>",
       "Import a changesets setup once: units, groups, pending fragments and the npm ledger",
       (c) =>
-        c.positional("tool", { type: "string", choices: ["changesets"], demandOption: true, describe: "The tool to adopt from" }),
+        noMarkdown("adopt")(c).positional("tool", { type: "string", choices: ["changesets"], demandOption: true, describe: "The tool to adopt from" }),
       guarded(async (argv: CommonArgv & { tool: string }) => {
         const out = host.output();
         const result = await adoptChangesets(host, process.cwd(), argv as ParsedArgv);

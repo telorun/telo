@@ -31,6 +31,7 @@ import {
 } from "./bump-level.js";
 import type { ReleaseFragment, UnitKey } from "./fragment.js";
 import { diffLayers, type LayerChange, type Ledger, type LedgerEntry, type UnitLayers } from "./ledger.js";
+import { defaultTagPattern, renderTag, type TagPattern } from "./tag-format.js";
 import type { VersionReading } from "./units.js";
 
 export interface UnitEvidence {
@@ -62,6 +63,8 @@ export interface UnitEvidence {
   readonly ownFilesChanged: boolean;
   /** The highest bump allowed (`major` when absent). */
   readonly maxBump?: BumpLevel;
+  /** The unit's tag pattern (the default format's when absent). */
+  readonly tagPattern?: TagPattern;
 }
 
 export interface ReleaseEvidence {
@@ -100,6 +103,8 @@ export interface PlannedUnit {
   readonly name: string;
   readonly from: string;
   readonly to: string;
+  /** The tag `to` is released under. */
+  readonly tag: string;
   readonly level: BumpLevel;
   readonly reasons: readonly BumpReason[];
   /** Layers whose digest differs from the final entry's. */
@@ -255,6 +260,7 @@ export function planRelease(evidence: ReleaseEvidence, options: PlanOptions = {}
       name: unit.name ?? unit.key,
       from: unit.version,
       to,
+      tag: renderTag(unit.tagPattern ?? defaultTagPattern(unit.key), to),
       level,
       reasons: reasons.get(unit.key) ?? [],
       changed: drift.get(unit.key) ?? [],

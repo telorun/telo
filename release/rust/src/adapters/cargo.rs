@@ -191,7 +191,7 @@ impl EcosystemAdapter for CargoAdapter {
 
     fn recognize(&self, probe: &AnchorProbe<'_>) -> Option<RecognizedPackage> {
         let name = read_crate_name(&probe.read_file(CARGO_TOML)?)?;
-        Some(RecognizedPackage { name: Some(name), contributes_layer: true, version_files: Vec::new() })
+        Some(RecognizedPackage { name: Some(name), contributes_layer: true, no_layer_reason: None, no_static_version: None, version_files: Vec::new() })
     }
 
     fn version_file_handlers(&self) -> Vec<Arc<dyn VersionFileHandler>> {

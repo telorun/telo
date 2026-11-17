@@ -4,46 +4,13 @@
 
 use serde_json::{Map, Value};
 
+pub use crate::bump_reason_text::describe_reason;
+use crate::bump_reason_text::describe_reasons;
 use crate::marker_reader::Severity;
-use crate::release_plan::{BumpReason, PlannedUnit, ReleaseDiagnostic, ReleasePlan};
+use crate::plan_markdown::NOTHING_TO_RELEASE;
+use crate::release_plan::{ReleaseDiagnostic, ReleasePlan};
 
 use super::host::Style;
-
-const MAX_NAMED_FILES: usize = 2;
-
-pub fn describe_reason(reason: &BumpReason) -> String {
-    match reason {
-        BumpReason::Declared { .. } => "declared".into(),
-        BumpReason::Imports { unit } => format!("imports {unit}"),
-        BumpReason::VersionLocation { unit, .. } => format!("holds the version of {unit}"),
-        BumpReason::Group { group } => format!("group {group}"),
-        BumpReason::Inlines { files, .. } => {
-            let shown = files.iter().take(MAX_NAMED_FILES).cloned().collect::<Vec<_>>().join(", ");
-            let rest = files.len().saturating_sub(MAX_NAMED_FILES);
-            if rest > 0 {
-                format!("inlines {shown} and {rest} more")
-            } else {
-                format!("inlines {shown}")
-            }
-        }
-        BumpReason::Unattributed => "payload changed, unattributed".into(),
-    }
-}
-
-const ORDER: [&str; 6] = ["declared", "inlines", "imports", "version-location", "group", "unattributed"];
-
-fn describe_reasons(unit: &PlannedUnit) -> String {
-    let mut sorted: Vec<&BumpReason> = unit.reasons.iter().collect();
-    sorted.sort_by_key(|reason| ORDER.iter().position(|kind| *kind == reason.kind()));
-    let mut seen: Vec<String> = Vec::new();
-    for reason in sorted {
-        let text = describe_reason(reason);
-        if !seen.contains(&text) {
-            seen.push(text);
-        }
-    }
-    seen.join("; ")
-}
 
 fn width(text: &str) -> usize {
     text.encode_utf16().count()
@@ -55,7 +22,7 @@ fn pad_end(text: &str, to: usize) -> String {
 
 pub fn render_plan(plan: &ReleasePlan, style: Style) -> Vec<String> {
     if plan.units.is_empty() {
-        return vec!["Nothing to release — every unit matches the ledger.".into()];
+        return vec![NOTHING_TO_RELEASE.into()];
     }
     let key_width = plan.units.iter().map(|u| width(&u.key)).max().unwrap_or(0);
     let move_width = plan.units.iter().map(|u| width(&format!("{} → {}", u.from, u.to))).max().unwrap_or(0);
@@ -68,7 +35,7 @@ pub fn render_plan(plan: &ReleasePlan, style: Style) -> Vec<String> {
                 "{}  {}  {}{group}",
                 pad_end(&unit.key, key_width),
                 pad_end(&movement, move_width),
-                style.dim(&format!("{} — {}", unit.level.as_str(), describe_reasons(unit)))
+                style.dim(&format!("{} — {}", unit.level.as_str(), describe_reasons(&unit.reasons)))
             )
         })
         .collect()
@@ -111,6 +78,7 @@ pub fn plan_payload(plan: &ReleasePlan) -> Map<String, Value> {
             out.insert("name".into(), Value::String(unit.name.clone()));
             out.insert("from".into(), Value::String(unit.from.clone()));
             out.insert("to".into(), Value::String(unit.to.clone()));
+            out.insert("tag".into(), Value::String(unit.tag.clone()));
             out.insert("level".into(), Value::String(unit.level.as_str().into()));
             if let Some(group) = &unit.group {
                 out.insert("group".into(), Value::String(group.clone()));

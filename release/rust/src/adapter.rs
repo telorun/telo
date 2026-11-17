@@ -11,6 +11,7 @@ use std::sync::Arc;
 use indexmap::IndexMap;
 
 use crate::marker_schema::KeySchemas;
+use crate::version_files::PYPROJECT_TOML_HANDLER;
 use crate::ReleaseError;
 
 /// A version location: a file and, for JSON, YAML or TOML, an RFC 6901 pointer.
@@ -44,6 +45,10 @@ pub struct RecognizedPackage {
     pub name: Option<String>,
     /// Whether the package contributes a layer (a private npm package does not).
     pub contributes_layer: bool,
+    /// Why the package contributes no layer, as a sentence a diagnostic can list.
+    pub no_layer_reason: Option<String>,
+    /// Present when the package keeps no static version, and why.
+    pub no_static_version: Option<String>,
     /// Further anchor-relative files carrying the unit's version.
     pub version_files: Vec<String>,
 }
@@ -100,7 +105,9 @@ pub struct AdapterRegistry {
 impl AdapterRegistry {
     pub fn new(adapters: &[Arc<dyn EcosystemAdapter>]) -> Result<AdapterRegistry, ReleaseError> {
         let mut by_ecosystem: IndexMap<String, Arc<dyn EcosystemAdapter>> = IndexMap::new();
+        // Held by every registry, so a unit with no ecosystem reads it too.
         let mut handlers: IndexMap<String, Arc<dyn VersionFileHandler>> = IndexMap::new();
+        handlers.insert(PYPROJECT_TOML_HANDLER.file_name().to_string(), PYPROJECT_TOML_HANDLER.clone());
         for adapter in adapters {
             let name = adapter.ecosystem();
             if RESERVED_ECOSYSTEMS.contains(&name) {

@@ -5,7 +5,9 @@
 //! 6901 pointer into it; with no pointer the file is read by the handler
 //! registered for its name, or — for any other file — as a plain version file.
 
-use crate::adapter::{AdapterRegistry, VersionLocationSpec};
+use std::sync::{Arc, LazyLock};
+
+use crate::adapter::{AdapterRegistry, VersionFileHandler, VersionLocationSpec};
 use crate::yaml::{json_string, parse_document, scalar_at, Scalar, ScalarStyle};
 use crate::ReleaseError;
 
@@ -115,7 +117,11 @@ fn write_pointer(text: &str, file: &str, pointer: &str, version: &str, at: &str)
     let tokens = pointer_tokens(pointer, at)?;
     match format_of(file) {
         Some(Format::Toml) => {
-            let found = toml_string(text, &tokens, at)?.ok_or_else(|| err(format!("{at} holds no string at {pointer}.")))?;
+            let found = toml_string(text, &tokens, at)?.ok_or_else(|| {
+                err(format!(
+                    "{at} holds no string at {pointer}. A TOML pointer reads a [table] header and a key = \"value\" line; dotted keys and inline tables are not read."
+                ))
+            })?;
             Ok(splice_text(text, found.start, found.end, &format!("{}{version}{}", found.quote, found.quote)))
         }
         None => Err(unpointable(at)),
@@ -160,6 +166,26 @@ pub fn splice_scalar(text: &str, node: &Scalar, version: &str, at: &str) -> Resu
     };
     Ok(splice_text(text, start, end, &quoted))
 }
+
+/// `pyproject.toml`'s `[project].version`, served wherever the file is named.
+struct PyprojectTomlHandler;
+
+impl VersionFileHandler for PyprojectTomlHandler {
+    fn file_name(&self) -> &'static str {
+        "pyproject.toml"
+    }
+
+    fn read(&self, text: &str, at: &str) -> Result<Option<String>, ReleaseError> {
+        Ok(toml_string(text, &["project".into(), "version".into()], at)?.map(|found| found.value))
+    }
+
+    fn write(&self, text: &str, version: &str, at: &str) -> Result<Option<String>, ReleaseError> {
+        Ok(toml_string(text, &["project".into(), "version".into()], at)?
+            .map(|found| splice_text(text, found.start, found.end, &format!("{}{version}{}", found.quote, found.quote))))
+    }
+}
+
+pub static PYPROJECT_TOML_HANDLER: LazyLock<Arc<dyn VersionFileHandler>> = LazyLock::new(|| Arc::new(PyprojectTomlHandler));
 
 #[derive(Debug, Clone)]
 pub struct TomlString {

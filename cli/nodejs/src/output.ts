@@ -2,10 +2,15 @@ import { decideColor } from "@telorun/kernel";
 import { writePlainJson } from "@telorun/sdk";
 
 /** Output encodings the CLI can produce. `yaml` is deliberately absent: the flag
- *  is an enum precisely so it can gain a value later without a second flag. */
-export type OutputFormat = "text" | "json";
+ *  is an enum precisely so it can gain a value later without a second flag.
+ *  `markdown` is a document only `telo release status|check|apply` write: they
+ *  add it to their own `-o`, so every other command refuses it. */
+export type OutputFormat = "text" | "json" | "markdown";
 
+/** What every command's `-o` offers. */
 export const OUTPUT_FORMATS: OutputFormat[] = ["text", "json"];
+
+const KNOWN_FORMATS: OutputFormat[] = [...OUTPUT_FORMATS, "markdown"];
 
 /** A colour palette bound to ONE stream.
  *
@@ -212,11 +217,11 @@ export class Output {
 
   /** Write verbatim content to stdout, unconditionally and with no framing.
    *
-   *  For the one case that is neither prose nor a JSON payload: `telo module
-   *  manifest` printing a module's `telo.yaml` bytes, which ARE the output. It
-   *  bypasses format handling because the bytes are the answer in every format
-   *  — the `--json` path wraps them in a document instead and never reaches
-   *  here. */
+   *  For what is neither prose nor a JSON payload: `telo module manifest`
+   *  printing a module's `telo.yaml` bytes, which ARE the output, and the
+   *  `-o markdown` document of `telo release`. It bypasses format handling
+   *  because the bytes are the answer in every format — the `--json` path wraps
+   *  them in a document instead and never reaches here. */
   raw(content: string): void {
     this.clearTransient();
     this.outStream.write(content);
@@ -292,9 +297,9 @@ export function output(): Output {
  *  not updated. Throwing is the point: silently degrading `-o yaml` to text is
  *  the worst failure a format flag can have. */
 export function parseOutputFormat(value: unknown): OutputFormat {
-  if (OUTPUT_FORMATS.includes(value as OutputFormat)) return value as OutputFormat;
+  if (KNOWN_FORMATS.includes(value as OutputFormat)) return value as OutputFormat;
   throw new Error(
-    `Unsupported --output format '${String(value)}'. Expected one of: ${OUTPUT_FORMATS.join(", ")}.`,
+    `Unsupported --output format '${String(value)}'. Expected one of: ${KNOWN_FORMATS.join(", ")}.`,
   );
 }
 

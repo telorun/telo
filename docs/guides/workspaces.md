@@ -49,6 +49,12 @@ release:
   # set its own.
   maxBump: minor
 
+  # How a released version is tagged: text with the placeholders {key} (the
+  # unit's path), {name} (its short label) and {version}. Default
+  # `{key}@{version}`, and `v{version}` for a unit at the workspace root. A unit
+  # entry may set its own.
+  tagFormat: "{name}/{version}"
+
   # Paths under a unit whose changes are not release-relevant, so no changelog
   # fragment is asked for. Unit-relative, gitignore-style. Declaring it
   # REPLACES the built-in default (shown here verbatim); `[]` ignores nothing.
@@ -65,6 +71,7 @@ release:
     telo: { registry: oci://ghcr.io/telorun }
     docker: { registry: ghcr.io/telorun }
     helm: { registry: oci://ghcr.io/telorun/charts }
+    pypi: { registry: https://pypi.org/simple }
 
   # The release units. A unit is a directory with one version, one changelog
   # (`<unit>/CHANGELOG.md`) and one fragment target; its key is its
@@ -100,6 +107,16 @@ release:
     - path: ide/vscode
       version: package.json
       payload: { command: pnpm exec vsce ls --no-dependencies }
+
+    # No ecosystem, a plain-text version file: a file holding only the version
+    # line, and a pointer into a TOML file the unit does not read as a package.
+    - { path: apps/proxy, version: VERSION, payload: ["**"] }
+    - path: apps/legacy
+      version: { file: pyproject.toml, pointer: /tool/poetry/version }
+      payload: ["**"]
+
+    # A Python project. Its `name` labels it in a tag format.
+    - { path: apps/worker, ecosystem: pypi, name: jobs }
 
     # A bundled package: a bundler metafile whose inputs from other units are
     # inline edges.
@@ -149,18 +166,25 @@ release:
 
 - **`path`** — the directory, or a pattern of them. A directory is at most one unit.
 - **`ecosystem`** — what the unit ships through, each served by an adapter the host
-  registered: `telo` (modules), `npm`, `cargo`, `docker`, `helm`. A name (`npm`),
+  registered: `telo` (modules), `npm`, `cargo`, `docker`, `helm`, `pypi`. A name (`npm`),
   an order-free set (`[npm, docker]`) or a map of ecosystem to anchor, anchor list,
   or anchor to settings (`{ npm: nodejs, cargo: [rust, rust/value] }`). An
   **anchor** is a literal directory inside the unit holding exactly one package of
   that ecosystem, recognised by its adapter (`npm`: a `package.json` with a
   version; `cargo`: a `Cargo.toml`; `docker`: a Dockerfile; `helm`: a `Chart.yaml`;
+  `pypi`: a `pyproject.toml` whose `[project]` table has a `name`;
   `telo`: a module doc with a version); the name and set forms mean anchor `.`.
   An anchor is one package and covers nothing beneath it. Absent: the unit
   declares `version:` and `payload:` itself. A module lists no anchors for its own
   npm and Cargo packages; they are read from the module doc.
 - **`version`** — where the version lives: a file a handler reads, or
-  `{ file, pointer }` into JSON, YAML or TOML. Required unless exactly one anchor's
+  `{ file, pointer }` into JSON, YAML or TOML. `package.json`, `Cargo.toml`,
+  `Chart.yaml`, `telo.yaml` and `pyproject.toml` (`version: pyproject.toml` reads
+  `[project].version`, also on a unit with no ecosystem) are read as what they are;
+  any other file name is a **plain version file** holding only the version line
+  (`version: VERSION`). A pointer into TOML (`/tool/poetry/version`) reads a
+  `[table]` header and a `key = "value"` line; dotted keys and inline tables are
+  refused. Required unless exactly one anchor's
   ecosystem defaults a location (`docker` defaults none). Every anchor's location
   and every `versionFiles` entry is written with it, and `telo release check`
   refuses a unit whose locations disagree.
@@ -171,16 +195,23 @@ release:
 - **`metafile`** — a bundler metafile whose entries are inline edges.
 - **`versionFiles`** — patterns or `{ path, pointer }` of further files carrying the
   unit's version; a `Cargo.toml` also moves its `Cargo.lock` entry.
+- **`name`** — a short label for the unit, read by `{name}` in a tag format and
+  shown as its name in the plan. Default: the last segment of its key; the unit at
+  the workspace root has none, so a `{name}` tag format needs one there.
+- **`tagFormat`** — the tag format for this entry, winning over the block's. See
+  [Releasing modules](../extend/releasing-modules.md#tags).
 - **`ignore`**, **`maxBump`** — as the block's, for this entry.
 
 An ecosystem's own keys sit at an anchor or in `release.ecosystems.<ecosystem>`,
 never flat on the entry: `registry` for `telo`, `docker` and `helm` (the base
 a package publishes under — `<registry>/<unit directory name>`, `<registry>/<name>`
 and `<registry>/<Chart.yaml name>`; `npm` and `cargo` read none, since the package
-says where it goes), docker `name` (default the anchor directory's name) and
+says where it goes), docker `name` (default the anchor directory's name),
 docker `context` (default the anchor directory; the ignore file is
 `<Dockerfile>.dockerignore` beside the Dockerfile, else `<context>/.dockerignore`,
-its patterns anchored at the context). A key none of the entry's ecosystems reads
+its patterns anchored at the context) and `pypi`'s optional `registry` (a simple-API
+index base URL with no default, which a published sdist is read back from; with
+none the layer cannot be verified and keeps its recorded digest). A key none of the entry's ecosystems reads
 is `WORKSPACE_UNKNOWN_KEY`, naming the ecosystem.
 
 ## Two rules to keep in mind

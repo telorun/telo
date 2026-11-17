@@ -116,7 +116,8 @@ export function finalPublished({ cwd = ROOT, branch }) {
  *  - `surface`: `V`'s triple — the manifest generation `requires: telo:` is
  *    checked against, so a candidate reports the release it previews;
  *  - `identity`: what a build of this tree reports itself as — `V+unreleased`,
- *    or exactly `V` for the published payload (`published`).
+ *    or exactly `V` for the published payload (`published`, or `TELO_RELEASE_BUILD=1`,
+ *    which the standalone CLI's release workflow sets for the build that IS the release).
  *
  * `generate-telo-version.mjs` writes the surface and the identity;
  * `render-builtin-vocabulary.mjs` stamps the identity on the archive. Throws
@@ -127,5 +128,6 @@ export function teloGeneration({ published = false } = {}) {
   if (typeof version !== "string" || !VERSION.test(version)) {
     throw new Error(`analyzer/nodejs/package.json's version '${version}' is not a semantic version.`);
   }
-  return { version, surface: releaseTriple(version), identity: published ? version : `${version}+unreleased` };
+  const isPublished = published || process.env.TELO_RELEASE_BUILD === "1";
+  return { version, surface: releaseTriple(version), identity: isPublished ? version : `${version}+unreleased` };
 }

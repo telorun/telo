@@ -86,7 +86,7 @@ impl EcosystemAdapter for HelmAdapter {
         let Ok(Value::Object(chart)) = parse_json(&probe.read_file(CHART_YAML)?) else { return None };
         let name = chart.get("name").and_then(Value::as_str)?;
         chart.get("version").and_then(Value::as_str)?;
-        Some(RecognizedPackage { name: Some(name.to_string()), contributes_layer: true, version_files: Vec::new() })
+        Some(RecognizedPackage { name: Some(name.to_string()), contributes_layer: true, no_layer_reason: None, no_static_version: None, version_files: Vec::new() })
     }
 
     fn version_file_handlers(&self) -> Vec<Arc<dyn VersionFileHandler>> {
