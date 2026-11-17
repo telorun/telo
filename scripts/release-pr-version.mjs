@@ -5,11 +5,13 @@
 // on the tree — `--candidate` while the branch is in candidates — writing every
 // planned unit's version into each of its packages, its changelog on a final, the
 // ledger, and the `>=unreleased` floors the line's release names. The plan the
-// apply printed, captured before it consumed the fragments, goes to
-// RELEASE_PLAN_FILE for the PR body.
+// apply printed as markdown, from before it consumed the fragments and within
+// RELEASE_NOTES_MAX_LENGTH code points (`release-pr-body.mjs --budget`), goes to
+// RELEASE_NOTES_FILE for the PR body.
 //
 // Usage: node scripts/release-pr-version.mjs [--final] [--branch <release/x.y>]
-//        (env GITHUB_REF_NAME, TELO_OCI_REGISTRY, RELEASE_PLAN_FILE optional)
+//        (env GITHUB_REF_NAME, TELO_OCI_REGISTRY; RELEASE_NOTES_FILE and
+//        RELEASE_NOTES_MAX_LENGTH optional, together)
 
 import { closeSync, openSync } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -31,17 +33,25 @@ function runCommand(command, args, { cwd, stdoutFile } = {}) {
   }
 }
 
-/** Versions the release PR's tree at `cwd`; `candidate` decides the apply's flag. */
-export function versionReleasePr({ cwd = ROOT, candidate, planFile, run = runCommand }) {
-  const apply = [...CLI, "release", "apply", "--base", "HEAD", ...(candidate ? ["--candidate"] : []), ...(planFile ? ["-o", "json"] : [])];
-  run(process.execPath, apply, { cwd, ...(planFile ? { stdoutFile: planFile } : {}) });
+/** Versions the release PR's tree at `cwd`; `candidate` decides the apply's flag,
+ *  and `notesFile` receives the plan's document within `maxLength`. */
+export function versionReleasePr({ cwd = ROOT, candidate, notesFile, maxLength, run = runCommand }) {
+  if (notesFile && !(Number.isSafeInteger(maxLength) && maxLength > 0)) throw new Error(`The release notes need a length limit, not '${maxLength}'.`);
+  const notes = notesFile ? ["-o", "markdown", "--max-length", String(maxLength)] : [];
+  const apply = [...CLI, "release", "apply", "--base", "HEAD", ...(candidate ? ["--candidate"] : []), ...notes];
+  run(process.execPath, apply, { cwd, ...(notesFile ? { stdoutFile: notesFile } : {}) });
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   try {
     const candidate = candidacyFromArgs(process.argv.slice(2));
     console.log(`release-pr-version: versioning ${candidate ? "candidates" : "finals"}.`);
-    versionReleasePr({ candidate, planFile: process.env.RELEASE_PLAN_FILE || undefined });
+    const notesFile = process.env.RELEASE_NOTES_FILE || undefined;
+    versionReleasePr({
+      candidate,
+      notesFile,
+      ...(notesFile ? { maxLength: Number(process.env.RELEASE_NOTES_MAX_LENGTH) } : {}),
+    });
   } catch (error) {
     console.error(`::error::release-pr-version: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);

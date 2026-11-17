@@ -1,6 +1,6 @@
 /**
  * `telo-release` — the release commands over the ecosystems this package ships
- * (npm, cargo, docker, helm). A Telo module is served by `telo release`. The
+ * (npm, cargo, docker, helm, pypi). A Telo module is served by `telo release`. The
  * executable (`bin/telo-release.mjs`) runs {@link teloRelease} over the
  * process's arguments and streams.
  */
@@ -20,9 +20,12 @@ function palette(stream: NodeJS.WriteStream): Style {
 /** A command line the parser refused: its reason, printed alone, exit status 2. */
 class UsageError extends Error {}
 
+/** What `-o` selects: `markdown` is taken only by the plan commands. */
+export type OutputFormat = "text" | "json" | "markdown";
+
 /** The process's own streams, colour decided per stream, progress only on a terminal. */
-export function terminalOutput(): { output: ReleaseOutput; setJson(json: boolean): void; endProgress(): void } {
-  let json = false;
+export function terminalOutput(): { output: ReleaseOutput; setFormat(format: OutputFormat): void; endProgress(): void } {
+  let format: OutputFormat = "text";
   let progressShown = false;
   const endProgress = () => {
     if (progressShown) process.stderr.write("\r\u001b[K");
@@ -30,14 +33,18 @@ export function terminalOutput(): { output: ReleaseOutput; setJson(json: boolean
   };
   const output: ReleaseOutput = {
     line: (text) => {
-      if (!json) process.stdout.write(`${text}\n`);
+      if (format === "text") process.stdout.write(`${text}\n`);
     },
     errLine: (text) => {
       endProgress();
       process.stderr.write(`${text}\n`);
     },
     emit: (payload) => {
-      if (json) process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+      if (format === "json") process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+    },
+    document: (text) => {
+      endProgress();
+      process.stdout.write(text);
     },
     progress: (text) => {
       if (!process.stderr.isTTY) return;
@@ -47,7 +54,7 @@ export function terminalOutput(): { output: ReleaseOutput; setJson(json: boolean
     style: palette(process.stdout),
     errStyle: palette(process.stderr),
   };
-  return { output, setJson: (value) => (json = value), endProgress };
+  return { output, setFormat: (value) => (format = value), endProgress };
 }
 
 /**
@@ -59,12 +66,12 @@ export function terminalOutput(): { output: ReleaseOutput; setJson(json: boolean
 export async function teloRelease(
   args: readonly string[],
   output: ReleaseOutput,
-  setJson: (json: boolean) => void = () => {},
+  setFormat: (format: OutputFormat) => void = () => {},
 ): Promise<void> {
   const cli = yargs([...args])
     .scriptName("telo-release")
     .option("output", { alias: "o", choices: ["text", "json"] as const, default: "text", describe: "Output format" })
-    .middleware((argv) => setJson(argv.output === "json"))
+    .middleware((argv) => setFormat(argv.output as OutputFormat))
     .strict()
     .help()
     .version(false);
@@ -76,8 +83,10 @@ export async function teloRelease(
       ecosystemHosts: { telo: "the `telo` CLI (`telo release`), which serves Telo modules" },
       output: () => output,
     })
+      // A message is a refused command line (a failed `.check` also hands its
+      // message over as the error); none is a handler's own failure.
       .fail((message, error) => {
-        if (error) throw error;
+        if (message === null) throw error;
         throw new UsageError(message);
       })
       .parseAsync();

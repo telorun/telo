@@ -51,12 +51,16 @@ impl Style {
 }
 
 /// Stdout is the machine surface: under `-o json` it carries the `emit`
-/// envelope and nothing else, so `line` goes silent there. Stderr is the human
-/// surface in both formats.
+/// envelope and nothing else, under `-o markdown` the `document` and nothing
+/// else, so `line` writes only under `-o text`. Stderr is the human surface in
+/// every format. `-o` offers `text` and `json`; the plan commands (`status`,
+/// `check`, `apply`) add `markdown`.
 pub trait ReleaseOutput {
     fn line(&self, text: &str);
     fn err_line(&self, text: &str);
     fn emit(&self, payload: Map<String, Value>);
+    /// The whole of stdout under `-o markdown`, written once on success.
+    fn document(&self, text: &str);
     fn progress(&self, text: &str);
     fn style(&self) -> Style;
     fn err_style(&self) -> Style;

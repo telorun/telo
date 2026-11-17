@@ -4,6 +4,7 @@
  * whole with what the row records.
  */
 
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,19 +22,37 @@ import {
   readVersionAt,
   recordRelease,
   renderChangelogRelease,
+  renderPlanMarkdown,
   resolveUnits,
   serializeFragment,
   serializeLedger,
   stampLockedCrateVersion,
   writeVersionAt,
+  isGeneratedSdistMember,
+  movePypiLockContentHash,
+  normalizePypiName,
+  normalizePypiVersion,
+  pypiBuildSystem,
+  pypiProjectIndex,
+  readPypiProject,
+  pypiVersionProblem,
+  readTomlDocument,
+  sdistInIndex,
+  simpleIndexFiles,
+  stampLinkedRequirements,
+  stampPypiLockfile,
+  versionsInIndex,
+  type PypiProjectFile,
+  type TomlValue,
   type FragmentKind,
+  type PlannedUnit,
   type UnitEvidence,
   type UnitLayers,
   type WorkspaceTree,
 } from "../src/index.js";
 import { closureFromLock, closureFromMetadata, linksArtifact } from "../src/adapters/cargo-closure.js";
 import { digestFileSet, type FileSetEntry } from "../src/node/files-digest.js";
-import { commit, host, run, tempRepo } from "./node/fixture.js";
+import { commit, host, runCommandLine, tempRepo } from "./node/fixture.js";
 
 const vectors = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../conformance");
 const read = (name: string) => JSON.parse(fs.readFileSync(path.join(vectors, name), "utf8"));
@@ -76,7 +95,7 @@ function layersOf(raw: Record<string, unknown> | undefined): UnitLayers {
 }
 
 describe("release conformance vectors", () => {
-  it.each(read("markers.json").map((row: { name: string }) => [row.name, row]))("marker %s", (_name, row) => {
+  it.each([...read("markers.json"), ...read("pypi-markers.json")].map((row: { name: string }) => [row.name, row]))("marker %s", (_name, row) => {
     const read = readReleaseMarker(row.files[WORKSPACE_FILENAME], WORKSPACE_FILENAME, SHIPPED_ADAPTERS, {
       ...(row.ecosystemHosts ? { ecosystemHosts: row.ecosystemHosts } : {}),
     });
@@ -104,12 +123,15 @@ describe("release conformance vectors", () => {
         ignore: u.ignore,
         maxBump: u.maxBump,
         group: u.group ?? null,
+        name: u.name ?? null,
+        tagFormat: u.tagFormat,
+        tagPattern: u.tagPattern,
       }));
     }
     expect({ diagnostics, units }).toEqual(row.expected);
   });
 
-  it.each(read("plans.json").map((row: { name: string }) => [row.name, row]))("plan %s", (_name, row) => {
+  it.each([...read("plans.json"), ...read("pypi-plans.json")].map((row: { name: string }) => [row.name, row]))("plan %s", (_name, row) => {
     const evidence: UnitEvidence[] = row.units.map((u: Record<string, unknown>) => ({
       ...u,
       layers: layersOf(u.layers as Record<string, unknown>),
@@ -192,19 +214,104 @@ describe("release conformance vectors", () => {
     ).toEqual(row.expected);
   });
 
+  const pypi = read("pypi.json");
+  const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
+  const tomlJson = (value: TomlValue): unknown => {
+    switch (value.kind) {
+      case "string":
+      case "boolean":
+        return value.value;
+      case "integer":
+        return { integer: value.value.toString() };
+      case "float":
+        return { float: value.text };
+      case "datetime":
+        return { datetime: value.text };
+      case "array":
+        return value.items.map(tomlJson);
+      case "table":
+        return Object.fromEntries([...value.entries].map(([key, item]) => [key, tomlJson(item)]));
+    }
+  };
+  const rowsOf = (section: string) => pypi[section].map((row: { name: string }) => [row.name, row]);
+  it.each(rowsOf("toml"))("pypi toml %s", (_name, row) => {
+    expect(attempt(() => ({ value: tomlJson(readTomlDocument(row.text, "pyproject.toml")) }))).toEqual(row.expected);
+  });
+  it.each(rowsOf("names"))("pypi name %s", (_name, row) => {
+    expect({ normalized: normalizePypiName(row.input) }).toEqual(row.expected);
+  });
+  it.each(rowsOf("versions"))("pypi version %s", (_name, row) => {
+    expect({ normalized: normalizePypiVersion(row.version) ?? null, problem: pypiVersionProblem(row.version) ?? null }).toEqual(row.expected);
+  });
+  it.each(rowsOf("buildSystems"))("pypi build system %s", (_name, row) => {
+    expect(attempt(() => ({ system: pypiBuildSystem(row.text, "pyproject.toml") ?? null }))).toEqual(row.expected);
+  });
+  it.each(rowsOf("members"))("pypi sdist members %s", (_name, row) => {
+    expect({ kept: row.paths.filter((member: string) => !isGeneratedSdistMember(member)) }).toEqual(row.expected);
+  });
+  it.each(rowsOf("projects"))("pypi project %s", (_name, row) => {
+    const index = pypiProjectIndex(row.projects);
+    const answer = Object.fromEntries(
+      row.projects.map((project: PypiProjectFile) => {
+        const { links, problems } = readPypiProject(project, index);
+        return [project.dir, { links: links.map(({ requirement, at, target }) => ({ requirement, at, target })), problems }];
+      }),
+    );
+    expect(answer).toEqual(row.expected);
+  });
+  it.each(rowsOf("requirements"))("pypi requirements %s", (_name, row) => {
+    const project = row.projects.find((p: PypiProjectFile) => p.dir === row.dir);
+    expect(
+      attempt(() => ({ text: stampLinkedRequirements(project.text, row.dir, pypiProjectIndex(row.projects), row.target, row.version) })),
+    ).toEqual(row.expected);
+  });
+  it.each(rowsOf("lockfiles"))("pypi lockfile %s", (_name, row) => {
+    expect(attempt(() => ({ text: stampPypiLockfile(row.text, row.file, row.target, row.version) ?? null }))).toEqual(row.expected);
+  });
+  it.each(rowsOf("contentHashes"))("pypi content hash %s", (_name, row) => {
+    expect(
+      attempt(() => ({ text: movePypiLockContentHash(row.text, row.file, row.before, row.after, "pyproject.toml", sha256) ?? null })),
+    ).toEqual(row.expected);
+  });
+  it.each(rowsOf("indexes"))("pypi index %s", (_name, row) => {
+    expect(
+      attempt(() => {
+        const files = simpleIndexFiles(row.body, row.json, "index");
+        return { sdist: sdistInIndex(files, row.project, row.version, "index") ?? null, versions: versionsInIndex(files, row.project) };
+      }),
+    ).toEqual(row.expected);
+  });
+
   it.each(read("changelogs.json").map((row: { name: string }) => [row.name, row]))("changelog %s", (_name, row) => {
     expect({ text: prependChangelogRelease(row.existing ?? undefined, renderChangelogRelease(row)) }).toEqual(row.expected);
   });
 
-  it.each(read("commands.json").map((row: { name: string }) => [row.name, row]))("commands %s", async (_name, row) => {
+  it.each(read("markdown.json").map((row: { name: string }) => [row.name, row]))("markdown %s", (_name, row) => {
+    const units: PlannedUnit[] = row.plan.units.map((unit: Omit<PlannedUnit, "name" | "changed">) => ({
+      ...unit,
+      name: unit.key,
+      changed: [],
+      entries: unit.entries.map((entry) => ({ kind: entry.kind, body: entry.body, fragment: "" })),
+    }));
+    expect(
+      attempt(() => ({ document: renderPlanMarkdown({ units, fragments: [], diagnostics: [] }, row.maxLength ?? undefined) })),
+    ).toEqual(row.expected);
+  });
+
+  it.each([...read("commands.json"), ...read("pypi-commands.json")].map((row: { name: string }) => [row.name, row]))("commands %s", async (_name, row) => {
     const root = tempRepo(row.files);
     try {
       const { host: h, recorded } = host();
       const answers: unknown[] = [];
-      for (const step of row.steps as { args: string[] }[]) {
+      for (const step of row.steps as { args: string[]; stdout?: boolean }[]) {
         const before = recorded.payloads.length;
-        const { exitCode } = await run(h, recorded, root, step.args);
-        answers.push({ exitCode, payload: recorded.payloads.length > before ? recorded.payloads[recorded.payloads.length - 1] : null });
+        const documents = recorded.documents.length;
+        const exitCode = await runCommandLine(h.output(), root, step.args);
+        answers.push({
+          exitCode,
+          payload: recorded.payloads.length > before ? recorded.payloads[recorded.payloads.length - 1] : null,
+          ...(step.stdout ? { stdout: recorded.documents.slice(documents).join("") } : {}),
+        });
         commit(root, step.args.join(" "));
       }
       expect(answers).toEqual(row.steps.map((step: { expected: unknown }) => step.expected));

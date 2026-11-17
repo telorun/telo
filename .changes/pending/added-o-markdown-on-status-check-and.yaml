@@ -1,0 +1,6 @@
+units:
+  release: Added
+body: "`-o markdown` on `status`, `check` and `apply` prints the plan as a CommonMark
+  document for a release PR or release notes, and `--max-length <n>` fits it to `n` code
+  points in stated stages, refusing when none fits. A multi-line changelog entry now
+  keeps its continuation lines indented, so a list or code block stays inside its item."

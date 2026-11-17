@@ -172,8 +172,8 @@ describe("keys and ecosystems", () => {
   });
 
   it("refuses a release.ecosystems key naming an unregistered ecosystem", () => {
-    expect(findings("release:\n  ecosystems: { pypi: { index: x } }\n  units: [{ path: a, ecosystem: npm }]\n")).toEqual([
-      ["WORKSPACE_ECOSYSTEM_UNAVAILABLE", "release.ecosystems.pypi"],
+    expect(findings("release:\n  ecosystems: { conda: { index: x } }\n  units: [{ path: a, ecosystem: npm }]\n")).toEqual([
+      ["WORKSPACE_ECOSYSTEM_UNAVAILABLE", "release.ecosystems.conda"],
     ]);
   });
 

@@ -7,3 +7,5 @@ pub mod cargo_closure;
 pub mod docker;
 pub mod helm;
 pub mod npm;
+pub mod pypi;
+pub mod toml_document;

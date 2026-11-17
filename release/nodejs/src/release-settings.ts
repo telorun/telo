@@ -28,6 +28,7 @@ import {
   type WorkspaceDiagnostic,
 } from "./marker-reader.js";
 import { RELEASE_BLOCK_KEYS, UNIT_ENTRY_KEYS } from "./marker-schema.js";
+import { TAG_FORMAT_HINT, parseTagFormat } from "./tag-format.js";
 
 /** A declared payload: unit-relative patterns, or a command printing paths. */
 export type PayloadSpec =
@@ -51,6 +52,10 @@ export interface UnitEntry {
   readonly versionFiles?: readonly VersionFileSpec[];
   readonly ignore?: readonly string[];
   readonly maxBump?: BumpLevel;
+  /** The unit's label, read by `{name}`. */
+  readonly name?: string;
+  /** The unit's own tag format, over `release.tagFormat`. */
+  readonly tagFormat?: string;
   /** Ecosystem → anchor → the settings written at that anchor, read against the
    *  ecosystem's own keys. An anchor written without settings has none here. */
   readonly anchorSettings: ReadonlyMap<string, ReadonlyMap<string, Readonly<Record<string, unknown>>>>;
@@ -64,6 +69,8 @@ export interface ReleaseSettings {
   readonly groups: ReadonlyMap<string, readonly UnitKey[]>;
   readonly ignore?: readonly string[];
   readonly maxBump?: BumpLevel;
+  /** The tag format of every unit naming none. */
+  readonly tagFormat?: string;
 }
 
 export interface ReadReleaseOptions {
@@ -108,6 +115,10 @@ export function readReleaseBlock(
 
   const ignore = readStringList(block.ignore, where, [...at, "ignore"], report);
   const maxBump = readBumpLevel(block.maxBump, where, [...at, "maxBump"], report);
+  if (block.tagFormat === null) {
+    report("WORKSPACE_INVALID_VALUE", `${where}: 'release.tagFormat' must be a string.`, [...at, "tagFormat"]);
+  }
+  const tagFormat = readTagFormat(block.tagFormat, where, [...at, "tagFormat"], report);
   const groups = readGroups(block.groups, where, [...at, "groups"], report);
   const ecosystems = readEcosystemDefaults(block.ecosystems, where, [...at, "ecosystems"], report, adapters, options);
   const units = readUnits(block.units, where, [...at, "units"], report, adapters, options);
@@ -117,6 +128,7 @@ export function readReleaseBlock(
     groups,
     ...(ignore !== undefined ? { ignore } : {}),
     ...(maxBump !== undefined ? { maxBump } : {}),
+    ...(tagFormat !== undefined ? { tagFormat } : {}),
   };
 }
 
@@ -192,6 +204,8 @@ function readUnits(
     const versionFiles = readVersionFiles(fields.versionFiles, where, [...itemAt, "versionFiles"], report);
     const ignore = readStringList(fields.ignore, where, [...itemAt, "ignore"], report);
     const maxBump = readBumpLevel(fields.maxBump, where, [...itemAt, "maxBump"], report);
+    const name = readString(fields.name, where, [...itemAt, "name"], report);
+    const tagFormat = readTagFormat(fields.tagFormat, where, [...itemAt, "tagFormat"], report);
     const entry: UnitEntry = {
       index,
       path,
@@ -202,6 +216,8 @@ function readUnits(
       ...(versionFiles ? { versionFiles } : {}),
       ...(ignore ? { ignore } : {}),
       ...(maxBump ? { maxBump } : {}),
+      ...(name !== undefined ? { name } : {}),
+      ...(tagFormat !== undefined ? { tagFormat } : {}),
       anchorSettings: read?.settings ?? new Map(),
     };
     checkResolvable(entry, where, itemAt, report, adapters);
@@ -409,7 +425,8 @@ function checkResolvable(
     report(
       "WORKSPACE_UNIT_PAYLOAD_EMPTY",
       `${where}: ${name} lists no ecosystem and declares no 'payload:', so nothing it ships can ` +
-        `be digested. List the ecosystem it ships through, declare 'payload:', or exclude it with '!'.`,
+        `be digested. List the ecosystem it ships through, declare 'payload:' (for example payload: ["**"]), ` +
+        `or exclude it with '!${entry.path}'.`,
       at,
     );
   }
@@ -425,9 +442,10 @@ function checkResolvable(
           listed.length === 0
             ? "lists no ecosystem"
             : `none of its ecosystems (${listed.map(([e]) => e).join(", ")}) keeps a version`
-        }. Declare 'version:', naming the file that holds it.`
+        }. Declare 'version: <file>' or 'version: { file, pointer }', naming the file that holds it.`
       : `${where}: ${name} declares no 'version:' and ${defaulting.length} anchors keep one ` +
-          `(${defaulting.join(", ")}). Declare 'version:', naming the one that holds the unit's version.`,
+          `(${defaulting.join(", ")}). Declare 'version: <file>' or 'version: { file, pointer }', ` +
+          `naming the one that holds the unit's version.`,
     at,
   );
 }
@@ -694,6 +712,24 @@ function readVersionFiles(
     );
   }
   return out;
+}
+
+/** A tag format whose text alone is sound; what it renders for a unit is the
+ *  resolution's question. */
+function readTagFormat(
+  raw: unknown,
+  where: string,
+  at: (string | number)[],
+  report: MarkerReport,
+): string | undefined {
+  const value = readString(raw, where, at, report);
+  if (value === undefined) return undefined;
+  const parsed = parseTagFormat(value);
+  if ("problem" in parsed) {
+    report("WORKSPACE_TAG_INVALID", `${where}: '${at.join(".")}' is ${JSON.stringify(value)}, ${parsed.problem}. ${TAG_FORMAT_HINT}`, at);
+    return undefined;
+  }
+  return value;
 }
 
 function readBumpLevel(

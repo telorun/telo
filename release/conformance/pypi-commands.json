@@ -1,0 +1,252 @@
+[
+  {
+    "name": "pypi: order publishes a dependency first, each to its index",
+    "files": {
+      "telo-workspace.yaml": "release:\n  ecosystems: { pypi: { registry: https://pypi.org/simple } }\n  units:\n    - { path: apps/api, ecosystem: pypi }\n    - { path: apps/worker, ecosystem: pypi }\n",
+      "apps/api/pyproject.toml": "[project]\nname = \"acme-api\"\nversion = \"1.0.0\"\n[build-system]\nrequires = [\"hatchling\"]\nbuild-backend = \"hatchling.build\"\n",
+      "apps/worker/pyproject.toml": "[project]\nname = \"worker\"\nversion = \"0.3.0\"\ndependencies = [\"acme-api>=1.0.0\"]\n[build-system]\nrequires = [\"hatchling\"]\nbuild-backend = \"hatchling.build\"\n[tool.uv.sources]\nacme-api = { workspace = true }\n"
+    },
+    "steps": [
+      {
+        "args": [
+          "order",
+          "-o",
+          "json"
+        ],
+        "expected": {
+          "exitCode": 0,
+          "payload": {
+            "ok": true,
+            "order": [
+              {
+                "key": "apps/api",
+                "version": "1.0.0",
+                "tag": "apps/api@1.0.0",
+                "imports": [],
+                "ecosystem": "pypi",
+                "path": "apps/api",
+                "destination": "https://pypi.org/simple/acme-api"
+              },
+              {
+                "key": "apps/worker",
+                "version": "0.3.0",
+                "tag": "apps/worker@0.3.0",
+                "imports": [
+                  "apps/api"
+                ],
+                "ecosystem": "pypi",
+                "path": "apps/worker",
+                "destination": "https://pypi.org/simple/worker"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "pypi: a file reference not rooted at the project fails the plan",
+    "files": {
+      "telo-workspace.yaml": "release:\n  ecosystems: { pypi: { registry: https://pypi.org/simple } }\n  units:\n    - { path: apps/api, ecosystem: pypi }\n    - { path: apps/worker, ecosystem: pypi }\n",
+      "apps/api/pyproject.toml": "[project]\nname = \"acme-api\"\nversion = \"1.0.0\"\n[build-system]\nrequires = [\"hatchling\"]\nbuild-backend = \"hatchling.build\"\n",
+      "apps/worker/pyproject.toml": "[project]\nname = \"worker\"\nversion = \"0.3.0\"\ndependencies = [\"acme-api @ file:///srv/acme-api\"]\n[build-system]\nrequires = [\"hatchling\"]\nbuild-backend = \"hatchling.build\"\n"
+    },
+    "steps": [
+      {
+        "args": [
+          "status",
+          "--base",
+          "HEAD",
+          "-o",
+          "json"
+        ],
+        "expected": {
+          "exitCode": 1,
+          "payload": {
+            "ok": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "pypi: a version no release can be planned from fails the plan",
+    "files": {
+      "telo-workspace.yaml": "release:\n  ecosystems: { pypi: { registry: https://pypi.org/simple } }\n  units:\n    - { path: apps/api, ecosystem: pypi }\n    - { path: apps/worker, ecosystem: pypi }\n",
+      "apps/api/pyproject.toml": "[project]\nname = \"acme-api\"\nversion = \"1.0\"\n[build-system]\nrequires = [\"hatchling\"]\nbuild-backend = \"hatchling.build\"\n",
+      "apps/worker/pyproject.toml": "[project]\nname = \"worker\"\nversion = \"0.3.0\"\ndependencies = []\n[build-system]\nrequires = [\"hatchling\"]\nbuild-backend = \"hatchling.build\"\n"
+    },
+    "steps": [
+      {
+        "args": [
+          "status",
+          "--base",
+          "HEAD",
+          "-o",
+          "json"
+        ],
+        "expected": {
+          "exitCode": 1,
+          "payload": {
+            "ok": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "pypi: check refuses a dynamic version and a package that builds nothing",
+    "files": {
+      "telo-workspace.yaml": "release:\n  ecosystems: { pypi: { registry: https://pypi.org/simple } }\n  units:\n    - { path: a, ecosystem: pypi }\n    - { path: b, ecosystem: pypi }\n",
+      "a/pyproject.toml": "[project]\nname = \"a\"\ndynamic = [\"version\"]\n[build-system]\nrequires = [\"hatchling\"]\nbuild-backend = \"hatchling.build\"\n",
+      "b/pyproject.toml": "[project]\nname = \"b\"\nversion = \"1.0.0\"\n"
+    },
+    "steps": [
+      {
+        "args": [
+          "check",
+          "--base",
+          "HEAD",
+          "-o",
+          "json"
+        ],
+        "expected": {
+          "exitCode": 1,
+          "payload": {
+            "ok": false,
+            "units": [],
+            "fragments": [],
+            "diagnostics": [
+              {
+                "severity": "error",
+                "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
+                "message": "telo-workspace.yaml: Unit 'a' declares no 'version:' and pypi at `.` lists `version` in `project.dynamic`. Declare 'version: <file>' or 'version: { file, pointer }', naming the file that holds the unit's version."
+              },
+              {
+                "severity": "error",
+                "code": "WORKSPACE_UNIT_PAYLOAD_EMPTY",
+                "message": "telo-workspace.yaml: Unit 'b' ships no layer: pypi at `.` declares no `[build-system]`. Declare 'payload:' on the same entry beside 'ecosystem:' (its packages still supply version and edges), or exclude the unit with '!b'."
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "pypi: a package that builds nothing ships its declared payload",
+    "files": {
+      "telo-workspace.yaml": "release:\n  ecosystems: { pypi: { registry: https://pypi.org/simple } }\n  units:\n    - { path: svc, ecosystem: pypi, payload: ['**'] }\n",
+      "svc/pyproject.toml": "[project]\nname = \"svc\"\nversion = \"1.0.0\"\n",
+      "svc/main.py": "print(1)\n"
+    },
+    "steps": [
+      {
+        "args": [
+          "baseline",
+          "-o",
+          "json"
+        ],
+        "expected": {
+          "exitCode": 0,
+          "payload": {
+            "ok": true,
+            "recorded": [
+              {
+                "key": "svc",
+                "version": "1.0.0"
+              }
+            ],
+            "skipped": [],
+            "unrecorded": [],
+            "dryRun": false
+          }
+        }
+      },
+      {
+        "args": [
+          "status",
+          "--base",
+          "HEAD",
+          "-o",
+          "json"
+        ],
+        "expected": {
+          "exitCode": 0,
+          "payload": {
+            "ok": true,
+            "units": [],
+            "fragments": [],
+            "diagnostics": []
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "pypi: a candidate id PEP 440 cannot spell is refused before anything is written",
+    "files": {
+      "telo-workspace.yaml": "release:\n  ecosystems: { pypi: { registry: https://pypi.org/simple } }\n  units:\n    - { path: svc, ecosystem: pypi, payload: ['**'] }\n",
+      "svc/pyproject.toml": "[project]\nname = \"svc\"\nversion = \"1.0.0\"\n",
+      "svc/main.py": "print(1)\n",
+      ".changes/pending/fixed-a-bug.yaml": "units: { svc: Fixed }\nbody: A fix.\n"
+    },
+    "steps": [
+      {
+        "args": [
+          "apply",
+          "--candidate=next",
+          "--base",
+          "HEAD",
+          "-o",
+          "json"
+        ],
+        "expected": {
+          "exitCode": 1,
+          "payload": {
+            "ok": false
+          }
+        }
+      },
+      {
+        "args": [
+          "status",
+          "--base",
+          "HEAD",
+          "-o",
+          "json"
+        ],
+        "expected": {
+          "exitCode": 0,
+          "payload": {
+            "ok": true,
+            "units": [
+              {
+                "key": "svc",
+                "name": "svc",
+                "from": "1.0.0",
+                "to": "1.0.1",
+                "tag": "svc@1.0.1",
+                "level": "patch",
+                "reasons": [
+                  "declared"
+                ],
+                "changedLayers": [],
+                "entries": [
+                  {
+                    "kind": "Fixed",
+                    "body": "A fix."
+                  }
+                ]
+              }
+            ],
+            "fragments": [
+              ".changes/pending/fixed-a-bug.yaml"
+            ],
+            "diagnostics": []
+          }
+        }
+      }
+    ]
+  }
+]

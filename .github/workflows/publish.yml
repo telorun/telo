@@ -179,7 +179,8 @@ jobs:
 
       # Writes every planned version into each package of its unit, the changelogs
       # (a final), the ledger and the `>=unreleased` floors the line's release names;
-      # the plan it printed, captured before it consumed the fragments, is the body.
+      # the plan it printed as markdown, before it consumed the fragments and within
+      # the body's budget, is the body.
       - name: Apply the release plan
         env:
           TELO_OCI_REGISTRY: ${{ vars.TELO_OCI_REGISTRY }}
@@ -187,7 +188,8 @@ jobs:
         run: |
           flag=""
           if [ "$CANDIDATE" = "true" ]; then flag="--candidate"; fi
-          node ./cli/nodejs/bin/telo.mjs release apply --base HEAD $flag -o json > "$RUNNER_TEMP/release-plan.json"
+          budget="$(node scripts/release-pr-body.mjs --budget $flag)"
+          node ./cli/nodejs/bin/telo.mjs release apply --base HEAD $flag -o markdown --max-length "$budget" > "$RUNNER_TEMP/release-notes.md"
 
       - name: Render the PR body
         env:
@@ -195,7 +197,7 @@ jobs:
         run: |
           flag=""
           if [ "$CANDIDATE" = "true" ]; then flag="--candidate"; fi
-          node scripts/release-pr-body.mjs "$RUNNER_TEMP/release-plan.json" $flag > "$RUNNER_TEMP/release-body.md"
+          node scripts/release-pr-body.mjs "$RUNNER_TEMP/release-notes.md" $flag > "$RUNNER_TEMP/release-body.md"
 
       # The bot token pushes the PR branch and opens the PR, so the required checks
       # run on it; `telo release check` skips coverage on its head branch.

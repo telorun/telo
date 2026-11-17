@@ -1,0 +1,345 @@
+[
+  {
+    "name": "a pypi unit keeps its version in project.version and takes the block's registry",
+    "files": {
+      "telo-workspace.yaml": "release:\n  ecosystems: { pypi: { registry: https://pypi.org/simple } }\n  units:\n    - { path: apps/api, ecosystem: pypi }\n",
+      "apps/api/pyproject.toml": "[project]\nname = \"Acme.API\"\nversion = \"1.0.0\"\n[build-system]\nrequires = [\"hatchling\"]\nbuild-backend = \"hatchling.build\"\n"
+    },
+    "expected": {
+      "diagnostics": [],
+      "units": [
+        {
+          "key": "apps/api",
+          "dir": "apps/api",
+          "anchors": [
+            {
+              "ecosystem": "pypi",
+              "anchor": ".",
+              "dir": "apps/api",
+              "name": "Acme.API",
+              "contributesLayer": true,
+              "versionFiles": [],
+              "settings": {
+                "registry": "https://pypi.org/simple"
+              }
+            }
+          ],
+          "version": "apps/api/pyproject.toml",
+          "versionLocations": [
+            "apps/api/pyproject.toml"
+          ],
+          "payload": null,
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "api",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "apps/api@",
+            ""
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "a dynamic version asks for version:",
+    "files": {
+      "telo-workspace.yaml": "release:\n  ecosystems: { pypi: { registry: https://pypi.org/simple } }\n  units:\n    - { path: apps/api, ecosystem: pypi }\n",
+      "apps/api/pyproject.toml": "[project]\nname = \"api\"\ndynamic = [\"version\"]\n[build-system]\nrequires = [\"hatchling\"]\nbuild-backend = \"hatchling.build\"\n[tool.hatch.version]\npath = \"src/api/__about__.py\"\n"
+    },
+    "expected": {
+      "diagnostics": [
+        {
+          "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
+          "severity": "error",
+          "message": "Unit 'apps/api' declares no 'version:' and pypi at `.` lists `version` in `project.dynamic`. Declare 'version: <file>' or 'version: { file, pointer }', naming the file that holds the unit's version.",
+          "path": [
+            "release",
+            "units",
+            0
+          ]
+        }
+      ],
+      "units": []
+    }
+  },
+  {
+    "name": "a version from git cannot be planned",
+    "files": {
+      "telo-workspace.yaml": "release:\n  ecosystems: { pypi: { registry: https://pypi.org/simple } }\n  units:\n    - { path: a, ecosystem: pypi }\n    - { path: b, ecosystem: pypi }\n",
+      "a/pyproject.toml": "[project]\nname = \"a\"\ndynamic = [\"version\"]\n[build-system]\nrequires = [\"setuptools>=64\", \"setuptools_scm>=8\"]\nbuild-backend = \"setuptools.build_meta\"\n",
+      "b/pyproject.toml": "[project]\nname = \"b\"\ndynamic = [\"version\"]\n[build-system]\nrequires = [\"hatchling\"]\nbuild-backend = \"hatchling.build\"\n[tool.hatch.version]\nsource = \"vcs\"\n"
+    },
+    "expected": {
+      "diagnostics": [
+        {
+          "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
+          "severity": "error",
+          "message": "Unit 'a' declares no 'version:' and pypi at `.` lists `version` in `project.dynamic` and derives it from git through setuptools-scm, which no release can plan; make its build backend read the version from a file instead. Declare 'version: <file>' or 'version: { file, pointer }', naming the file that holds the unit's version.",
+          "path": [
+            "release",
+            "units",
+            0
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
+          "severity": "error",
+          "message": "Unit 'b' declares no 'version:' and pypi at `.` lists `version` in `project.dynamic` and derives it from git through hatch-vcs, which no release can plan; make its build backend read the version from a file instead. Declare 'version: <file>' or 'version: { file, pointer }', naming the file that holds the unit's version.",
+          "path": [
+            "release",
+            "units",
+            1
+          ]
+        }
+      ],
+      "units": []
+    }
+  },
+  {
+    "name": "a dynamic version read from a declared version file",
+    "files": {
+      "telo-workspace.yaml": "release:\n  ecosystems: { pypi: { registry: https://pypi.org/simple } }\n  units:\n    - { path: apps/api, ecosystem: pypi, version: VERSION }\n",
+      "apps/api/pyproject.toml": "[project]\nname = \"api\"\ndynamic = [\"version\"]\n[build-system]\nrequires = [\"setuptools>=64\"]\nbuild-backend = \"setuptools.build_meta\"\n[tool.setuptools.dynamic]\nversion = { file = \"VERSION\" }\n",
+      "apps/api/VERSION": "1.0.0\n"
+    },
+    "expected": {
+      "diagnostics": [],
+      "units": [
+        {
+          "key": "apps/api",
+          "dir": "apps/api",
+          "anchors": [
+            {
+              "ecosystem": "pypi",
+              "anchor": ".",
+              "dir": "apps/api",
+              "name": "api",
+              "contributesLayer": true,
+              "versionFiles": [],
+              "settings": {
+                "registry": "https://pypi.org/simple"
+              }
+            }
+          ],
+          "version": "apps/api/VERSION",
+          "versionLocations": [
+            "apps/api/VERSION"
+          ],
+          "payload": null,
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "api",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "apps/api@",
+            ""
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "no build system ships no layer, and a payload beside it does",
+    "files": {
+      "telo-workspace.yaml": "release:\n  ecosystems: { pypi: { registry: https://pypi.org/simple } }\n  units:\n    - { path: svc, ecosystem: pypi }\n    - { path: app, ecosystem: pypi, payload: ['**'] }\n",
+      "svc/pyproject.toml": "[project]\nname = \"svc\"\nversion = \"1.0.0\"\n",
+      "app/pyproject.toml": "[project]\nname = \"app\"\nversion = \"1.0.0\"\n"
+    },
+    "expected": {
+      "diagnostics": [
+        {
+          "code": "WORKSPACE_UNIT_PAYLOAD_EMPTY",
+          "severity": "error",
+          "message": "Unit 'svc' ships no layer: pypi at `.` declares no `[build-system]`. Declare 'payload:' on the same entry beside 'ecosystem:' (its packages still supply version and edges), or exclude the unit with '!svc'.",
+          "path": [
+            "release",
+            "units",
+            0
+          ]
+        }
+      ],
+      "units": [
+        {
+          "key": "app",
+          "dir": "app",
+          "anchors": [
+            {
+              "ecosystem": "pypi",
+              "anchor": ".",
+              "dir": "app",
+              "name": "app",
+              "contributesLayer": false,
+              "versionFiles": [],
+              "settings": {
+                "registry": "https://pypi.org/simple"
+              }
+            }
+          ],
+          "version": "app/pyproject.toml",
+          "versionLocations": [
+            "app/pyproject.toml"
+          ],
+          "payload": {
+            "patterns": [
+              "**"
+            ]
+          },
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "app",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "app@",
+            ""
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "a Poetry 1 file is no anchor",
+    "files": {
+      "telo-workspace.yaml": "release:\n  ecosystems: { pypi: { registry: https://pypi.org/simple } }\n  units:\n    - { path: legacy, ecosystem: pypi }\n",
+      "legacy/pyproject.toml": "[tool.poetry]\nname = \"legacy\"\nversion = \"1.0.0\"\n"
+    },
+    "expected": {
+      "diagnostics": [
+        {
+          "code": "WORKSPACE_ANCHOR_INVALID",
+          "severity": "error",
+          "message": "'legacy' is anchored as pypi by unit 'legacy', but it is not a directory holding a pyproject.toml with a [project] table carrying name.",
+          "path": [
+            "release",
+            "units",
+            0,
+            "ecosystem"
+          ]
+        }
+      ],
+      "units": []
+    }
+  },
+  {
+    "name": "a version written as a dotted key",
+    "files": {
+      "telo-workspace.yaml": "release:\n  ecosystems: { pypi: { registry: https://pypi.org/simple } }\n  units:\n    - { path: dotted, ecosystem: pypi }\n",
+      "dotted/pyproject.toml": "project.name = \"dotted\"\nproject.version = \"1.0.0\"\n[build-system]\nrequires = [\"hatchling\"]\nbuild-backend = \"hatchling.build\"\n"
+    },
+    "expected": {
+      "diagnostics": [
+        {
+          "code": "WORKSPACE_UNIT_VERSION_UNRESOLVED",
+          "severity": "error",
+          "message": "Unit 'dotted' declares no 'version:' and pypi at `.` writes `project.version` in a form that cannot be rewritten in place; write it as version = \"<version>\" in the [project] table. Declare 'version: <file>' or 'version: { file, pointer }', naming the file that holds the unit's version.",
+          "path": [
+            "release",
+            "units",
+            0
+          ]
+        }
+      ],
+      "units": []
+    }
+  },
+  {
+    "name": "keys pypi does not read",
+    "files": {
+      "telo-workspace.yaml": "release:\n  ecosystems: { pypi: { registry: https://pypi.org/simple, index: x } }\n  units:\n    - path: apps/api\n      ecosystem: { pypi: { '.': { name: y } } }\n",
+      "apps/api/pyproject.toml": "[project]\nname = \"api\"\nversion = \"1.0.0\"\n[build-system]\nrequires = [\"hatchling\"]\nbuild-backend = \"hatchling.build\"\n"
+    },
+    "expected": {
+      "diagnostics": [
+        {
+          "code": "WORKSPACE_UNKNOWN_KEY",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.ecosystems.pypi.index' is not read by the pypi ecosystem. It reads 'registry'.",
+          "path": [
+            "release",
+            "ecosystems",
+            "pypi",
+            "index"
+          ]
+        },
+        {
+          "code": "WORKSPACE_UNKNOWN_KEY",
+          "severity": "error",
+          "message": "telo-workspace.yaml: 'release.units.0.ecosystem.pypi...name' is not read by the pypi ecosystem. It reads 'registry'.",
+          "path": [
+            "release",
+            "units",
+            0,
+            "ecosystem",
+            "pypi",
+            ".",
+            "name"
+          ]
+        }
+      ],
+      "units": [
+        {
+          "key": "apps/api",
+          "dir": "apps/api",
+          "anchors": [
+            {
+              "ecosystem": "pypi",
+              "anchor": ".",
+              "dir": "apps/api",
+              "name": "api",
+              "contributesLayer": true,
+              "versionFiles": [],
+              "settings": {
+                "registry": "https://pypi.org/simple"
+              }
+            }
+          ],
+          "version": "apps/api/pyproject.toml",
+          "versionLocations": [
+            "apps/api/pyproject.toml"
+          ],
+          "payload": null,
+          "metafile": null,
+          "ignore": [
+            "**/tests/**",
+            "**/docs/**",
+            "**/plans/**",
+            "**/README.md",
+            "**/CHANGELOG.md"
+          ],
+          "maxBump": "major",
+          "group": null,
+          "name": "api",
+          "tagFormat": "{key}@{version}",
+          "tagPattern": [
+            "apps/api@",
+            ""
+          ]
+        }
+      ]
+    }
+  }
+]

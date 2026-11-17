@@ -2,7 +2,7 @@
  * `@telorun/release` — the release model, browser-safe: units and their anchors,
  * the `release:` block of `telo-workspace.yaml`, fragments, the ledger, the edge
  * graph, groups, version planning, candidates and changelogs, plus the pure
- * halves of the `npm`, `cargo`, `docker` and `helm` ecosystems.
+ * halves of the `npm`, `cargo`, `docker`, `helm` and `pypi` ecosystems.
  *
  * Pure data in, plan out. Reading a tree, building payloads and talking to a
  * registry are a host's — it hands this package file text and digests.
@@ -36,7 +36,15 @@ export type {
   VersionLocationSpec,
 } from "./adapter.js";
 
-export { CHANGELOG_FILE, CHANGELOG_HEADER, prependChangelogRelease, renderChangelogRelease } from "./changelog.js";
+export {
+  CHANGELOG_FILE,
+  CHANGELOG_HEADER,
+  prependChangelogRelease,
+  renderChangelogEntries,
+  renderChangelogRelease,
+} from "./changelog.js";
+export { describeReason, describeReasons } from "./bump-reason-text.js";
+export { MIN_ENTRY_CAP, NOTHING_TO_RELEASE, codePointLength, cutEntry, renderPlanMarkdown } from "./plan-markdown.js";
 export type { ChangelogRelease } from "./changelog.js";
 
 export { FragmentError, normalizeUnitKey, parseFragment, serializeFragment } from "./fragment.js";
@@ -122,9 +130,25 @@ export type {
 } from "./units.js";
 
 export {
+  DEFAULT_TAG_FORMAT,
+  ROOT_TAG_FORMAT,
+  SAMPLE_TAG_VERSION,
+  TAG_PLACEHOLDERS,
+  defaultTagFormat,
+  defaultTagPattern,
+  gitTagRefusal,
+  parseTagFormat,
+  renderTag,
+  tagCollision,
+  tagPatternOf,
+} from "./tag-format.js";
+export type { TagFormatPart, TagPattern, TagPlaceholder } from "./tag-format.js";
+
+export {
   VersionFileError,
   documentScalar,
   pointerTokens,
+  pyprojectTomlHandler,
   readVersionAt,
   spliceScalar,
   spliceText,
@@ -158,12 +182,35 @@ export {
 } from "./adapters/cargo.js";
 export { DOCKERFILE, dockerAdapter } from "./adapters/docker.js";
 export { CHART_YAML, helmAdapter, stampChartVersion } from "./adapters/helm.js";
+export {
+  PYPI_LOCKFILES,
+  PYPROJECT_TOML,
+  isGeneratedSdistMember,
+  movePypiLockContentHash,
+  normalizePypiName,
+  normalizePypiVersion,
+  pypiAdapter,
+  pypiBuildSystem,
+  pypiDestination,
+  pypiProjectIndex,
+  pypiVersionProblem,
+  readPypiProject,
+  sdistInIndex,
+  simpleIndexFiles,
+  stampLinkedRequirements,
+  stampPypiLockfile,
+  versionsInIndex,
+} from "./adapters/pypi.js";
+export type { IndexFile, PypiBuildSystem, PypiLink, PypiProjectFile, PypiProjectIndex } from "./adapters/pypi.js";
+export { TomlError, readTomlDocument, respellTomlString, tomlAt, tomlBasicString } from "./adapters/toml-document.js";
+export type { TomlString, TomlTable, TomlValue } from "./adapters/toml-document.js";
 
 import { cargoAdapter } from "./adapters/cargo.js";
 import { dockerAdapter } from "./adapters/docker.js";
 import { helmAdapter } from "./adapters/helm.js";
 import { npmAdapter } from "./adapters/npm.js";
+import { pypiAdapter } from "./adapters/pypi.js";
 import type { EcosystemAdapter } from "./adapter.js";
 
 /** The adapters this package ships, for a host to register. */
-export const SHIPPED_ADAPTERS: readonly EcosystemAdapter[] = [npmAdapter, cargoAdapter, dockerAdapter, helmAdapter];
+export const SHIPPED_ADAPTERS: readonly EcosystemAdapter[] = [npmAdapter, cargoAdapter, dockerAdapter, helmAdapter, pypiAdapter];

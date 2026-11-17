@@ -8,3 +8,5 @@ pub mod dockerignore_patterns;
 pub mod helm_evidence;
 pub mod npm_evidence;
 pub mod package_manager;
+pub mod pypi_build_sdist;
+pub mod pypi_evidence;

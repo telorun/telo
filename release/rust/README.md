@@ -1,6 +1,6 @@
 # telorun-release
 
-The Rust half of `@telorun/release` (`release/nodejs`): the same release planner, and a `telo-release` binary that reads the same `telo-workspace.yaml`, refuses the same markers in the same words, plans the same versions, writes the same ledger, fragments and changelogs byte for byte, and answers the same JSON under `-o json`. It serves the `npm`, `cargo`, `docker` and `helm` ecosystems; a Telo module is served by `telo release`.
+The Rust half of `@telorun/release` (`release/nodejs`): the same release planner, and a `telo-release` binary that reads the same `telo-workspace.yaml`, refuses the same markers in the same words, plans the same versions, writes the same ledger, fragments and changelogs byte for byte, and answers the same JSON under `-o json` and the same document under `-o markdown`, renders the same tags from `tagFormat`, reads the same version files (a plain-text file, a TOML pointer, `pyproject.toml`) and runs the same `baseline`. It serves the `npm`, `cargo`, `docker`, `helm` and `pypi` ecosystems — `pypi` running the Node half's own PEP 517 frontend (`pypi-build-sdist.py`, embedded at build) — and a Telo module is served by `telo release`.
 
 ## The twin rule
 
@@ -12,6 +12,8 @@ The Rust half of `@telorun/release` (`release/nodejs`): the same release planner
 
 - **Malformed YAML.** Node's `yaml` recovers and reads what it can; this crate refuses the file, naming the fault in `saphyr-parser`'s words.
 - **Sorting non-ASCII names.** `localeCompare` order is reproduced for ASCII only.
+- **Unknown options.** Node refuses an option no command declares (exit 2); this binary ignores it, except `--max-length`, which every release command declares (hidden off the plan commands) and refuses in Node's words.
+- **A simple index's file links.** Resolved against the project page by RFC 3986, with the WHATWG URL standard's percent-encoding of the path and query; Node's `URL` also normalizes the host (IDNA, letter case) and a default port.
 
 ## Run
 

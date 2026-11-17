@@ -18,6 +18,7 @@ use crate::marker_reader::{
     with, KeyPath, MarkerReport, PathSeg, Severity, WorkspaceDiagnostic,
 };
 use crate::marker_schema::{has_key, key_names, KeyType, RELEASE_BLOCK_KEYS, UNIT_ENTRY_KEYS};
+use crate::tag_format::{parse_tag_format, TAG_FORMAT_HINT};
 use crate::yaml::json_string;
 use crate::ReleaseError;
 
@@ -49,6 +50,10 @@ pub struct UnitEntry {
     pub version_files: Option<Vec<VersionFileSpec>>,
     pub ignore: Option<Vec<String>>,
     pub max_bump: Option<BumpLevel>,
+    /// The unit's label, read by `{name}`.
+    pub name: Option<String>,
+    /// The unit's own tag format, over `release.tagFormat`.
+    pub tag_format: Option<String>,
     /// Ecosystem → anchor → the settings written at that anchor.
     pub anchor_settings: IndexMap<String, IndexMap<String, Settings>>,
 }
@@ -65,6 +70,8 @@ impl UnitEntry {
             version_files: None,
             ignore: None,
             max_bump: None,
+            name: None,
+            tag_format: None,
             anchor_settings: IndexMap::new(),
         }
     }
@@ -78,6 +85,8 @@ pub struct ReleaseSettings {
     pub groups: IndexMap<String, Vec<UnitKey>>,
     pub ignore: Option<Vec<String>>,
     pub max_bump: Option<BumpLevel>,
+    /// The tag format of every unit naming none.
+    pub tag_format: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -130,10 +139,14 @@ pub fn read_release_block(
     }
     let ignore = read_string_list(block.get("ignore"), at_file, &with(&at, "ignore"), report);
     let max_bump = read_bump_level(block.get("maxBump"), at_file, &with(&at, "maxBump"), report);
+    if matches!(block.get("tagFormat"), Some(Value::Null)) {
+        invalid(report, format!("{at_file}: 'release.tagFormat' must be a string."), with(&at, "tagFormat"));
+    }
+    let tag_format = read_tag_format(block.get("tagFormat"), at_file, &with(&at, "tagFormat"), report);
     let groups = read_groups(block.get("groups"), at_file, &with(&at, "groups"), report);
     let ecosystems = read_ecosystem_defaults(block.get("ecosystems"), at_file, &with(&at, "ecosystems"), report, adapters, options);
     let units = read_units(block.get("units"), at_file, &with(&at, "units"), report, adapters, options);
-    Some(ReleaseSettings { units, ecosystems, groups, ignore, max_bump })
+    Some(ReleaseSettings { units, ecosystems, groups, ignore, max_bump, tag_format })
 }
 
 fn read_units(
@@ -209,11 +222,26 @@ fn read_units(
         let version_files = read_version_files(fields.get("versionFiles"), at_file, &with(&item_at, "versionFiles"), report);
         let ignore = read_string_list(fields.get("ignore"), at_file, &with(&item_at, "ignore"), report);
         let max_bump = read_bump_level(fields.get("maxBump"), at_file, &with(&item_at, "maxBump"), report);
+        let name = read_string(fields.get("name"), at_file, &with(&item_at, "name"), report);
+        let tag_format = read_tag_format(fields.get("tagFormat"), at_file, &with(&item_at, "tagFormat"), report);
         let (ecosystem, anchor_settings) = match read {
             Some((anchors, settings)) => (Some(anchors), settings),
             None => (None, IndexMap::new()),
         };
-        let entry = UnitEntry { index, path, ecosystem, version, payload, metafile, version_files, ignore, max_bump, anchor_settings };
+        let entry = UnitEntry {
+            index,
+            path,
+            ecosystem,
+            version,
+            payload,
+            metafile,
+            version_files,
+            ignore,
+            max_bump,
+            name,
+            tag_format,
+            anchor_settings,
+        };
         check_resolvable(&entry, at_file, &item_at, report, adapters);
         entries.push(entry);
     }
@@ -419,7 +447,8 @@ fn check_resolvable(entry: &UnitEntry, at_file: &str, at: &[PathSeg], report: &m
         report(
             "WORKSPACE_UNIT_PAYLOAD_EMPTY",
             format!(
-                "{at_file}: {name} lists no ecosystem and declares no 'payload:', so nothing it ships can be digested. List the ecosystem it ships through, declare 'payload:', or exclude it with '!'."
+                "{at_file}: {name} lists no ecosystem and declares no 'payload:', so nothing it ships can be digested. List the ecosystem it ships through, declare 'payload:' (for example payload: [\"**\"]), or exclude it with '!{}'.",
+                entry.path
             ),
             at.to_vec(),
             Severity::Error,
@@ -447,10 +476,10 @@ fn check_resolvable(entry: &UnitEntry, at_file: &str, at: &[PathSeg], report: &m
                 listed.iter().map(|(e, _)| e.as_str()).collect::<Vec<_>>().join(", ")
             )
         };
-        format!("{at_file}: {name} declares no 'version:' and {why}. Declare 'version:', naming the file that holds it.")
+        format!("{at_file}: {name} declares no 'version:' and {why}. Declare 'version: <file>' or 'version: {{ file, pointer }}', naming the file that holds it.")
     } else {
         format!(
-            "{at_file}: {name} declares no 'version:' and {} anchors keep one ({}). Declare 'version:', naming the one that holds the unit's version.",
+            "{at_file}: {name} declares no 'version:' and {} anchors keep one ({}). Declare 'version: <file>' or 'version: {{ file, pointer }}', naming the one that holds the unit's version.",
             defaulting.len(),
             defaulting.join(", ")
         )
@@ -748,6 +777,22 @@ fn read_version_files(raw: Option<&Value>, at_file: &str, at: &[PathSeg], report
         }
     }
     Some(out)
+}
+
+/// A tag format whose text alone is sound; what it renders for a unit is the
+/// resolution's question.
+fn read_tag_format(raw: Option<&Value>, at_file: &str, at: &[PathSeg], report: &mut MarkerReport<'_>) -> Option<String> {
+    let value = read_string(raw, at_file, at, report)?;
+    if let Err(problem) = parse_tag_format(&value) {
+        report(
+            "WORKSPACE_TAG_INVALID",
+            format!("{at_file}: '{}' is {}, {problem}. {TAG_FORMAT_HINT}", join_path(at), json_string(&value)),
+            at.to_vec(),
+            Severity::Error,
+        );
+        return None;
+    }
+    Some(value)
 }
 
 fn read_bump_level(raw: Option<&Value>, at_file: &str, at: &[PathSeg], report: &mut MarkerReport<'_>) -> Option<BumpLevel> {

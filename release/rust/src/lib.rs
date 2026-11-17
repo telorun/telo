@@ -1,7 +1,7 @@
 //! `telorun-release` — the release model: units and their anchors, the
 //! `release:` block of `telo-workspace.yaml`, fragments, the ledger, the edge
 //! graph, groups, version planning, candidates and changelogs, plus the pure
-//! halves of the `npm`, `cargo`, `docker` and `helm` ecosystems. `node` holds
+//! halves of the `npm`, `cargo`, `docker`, `helm` and `pypi` ecosystems. `node` holds
 //! the host half — evidence, the evidence halves of those ecosystems and the
 //! command tree.
 //!
@@ -15,6 +15,7 @@ use std::sync::Arc;
 pub mod adapter;
 pub mod adapters;
 pub mod bump_level;
+pub mod bump_reason_text;
 pub mod changelog;
 pub mod fragment;
 pub mod ledger;
@@ -22,8 +23,10 @@ pub mod locale_order;
 pub mod marker_reader;
 pub mod marker_schema;
 pub mod node;
+pub mod plan_markdown;
 pub mod release_plan;
 pub mod release_settings;
+pub mod tag_format;
 pub mod units;
 pub mod version_files;
 pub mod yaml;
@@ -58,5 +61,6 @@ pub fn shipped_adapters() -> Vec<Arc<dyn EcosystemAdapter>> {
         adapters::cargo::CARGO_ADAPTER.clone(),
         adapters::docker::DOCKER_ADAPTER.clone(),
         adapters::helm::HELM_ADAPTER.clone(),
+        adapters::pypi::PYPI_ADAPTER.clone(),
     ]
 }

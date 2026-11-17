@@ -1,0 +1,990 @@
+{
+  "toml": [
+    {
+      "name": "tables, dotted keys, inline tables and arrays of tables",
+      "text": "# a comment\ntitle = \"t\"\n[project]\nname = \"acme\"  # trailing comment\nurls.home = \"https://acme.example\"\ndependencies = [\n  \"a>=1\",  # first\n\n  'b',\n]\n[tool.uv.sources]\na = { path = \"../a\", editable = true }\n\"quoted.key\" = { workspace = true }\n[[package]]\nname = \"x\"\n[package.source]\ntype = \"directory\"\n[[package]]\nname = \"y\"\n",
+      "expected": {
+        "value": {
+          "title": "t",
+          "project": {
+            "name": "acme",
+            "urls": {
+              "home": "https://acme.example"
+            },
+            "dependencies": [
+              "a>=1",
+              "b"
+            ]
+          },
+          "tool": {
+            "uv": {
+              "sources": {
+                "a": {
+                  "path": "../a",
+                  "editable": true
+                },
+                "quoted.key": {
+                  "workspace": true
+                }
+              }
+            }
+          },
+          "package": [
+            {
+              "name": "x",
+              "source": {
+                "type": "directory"
+              }
+            },
+            {
+              "name": "y"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "every string form",
+      "text": "basic = \"tab\\there \\\"q\\\" \\u00e9 \\U0001F600\"\nliteral = 'C:\\path\\x'\nmulti = \"\"\"\nline one\n  folded \\\n    here\"\"\"\nraw = '''\nkeep \\n as is'''\nquotes = \"\"\"a\"\"\"\"\n",
+      "expected": {
+        "value": {
+          "basic": "tab\there \"q\" é 😀",
+          "literal": "C:\\path\\x",
+          "multi": "line one\n  folded here",
+          "raw": "keep \\n as is",
+          "quotes": "a\""
+        }
+      }
+    },
+    {
+      "name": "numbers, booleans and dates",
+      "text": "int = 1_000\nneg = -17\nhex = 0xDEAD_beef\noct = 0o755\nbin = 0b1101\nfloat = 6.626e-34\ninf = -inf\nyes = true\nno = false\nwhen = 1979-05-27T07:32:00-08:00\nlocal = 1979-05-27 07:32:00\nday = 1979-05-27\ntime = 07:32:00.999\n",
+      "expected": {
+        "value": {
+          "int": {
+            "integer": "1000"
+          },
+          "neg": {
+            "integer": "-17"
+          },
+          "hex": {
+            "integer": "3735928559"
+          },
+          "oct": {
+            "integer": "493"
+          },
+          "bin": {
+            "integer": "13"
+          },
+          "float": {
+            "float": "6.626e-34"
+          },
+          "inf": {
+            "float": "-inf"
+          },
+          "yes": true,
+          "no": false,
+          "when": {
+            "datetime": "1979-05-27T07:32:00-08:00"
+          },
+          "local": {
+            "datetime": "1979-05-27 07:32:00"
+          },
+          "day": {
+            "datetime": "1979-05-27"
+          },
+          "time": {
+            "datetime": "07:32:00.999"
+          }
+        }
+      }
+    },
+    {
+      "name": "an inline table across lines with a trailing comma",
+      "text": "a = {\n  x = 1,\n  y.z = \"w\",\n}\n",
+      "expected": {
+        "value": {
+          "a": {
+            "x": {
+              "integer": "1"
+            },
+            "y": {
+              "z": "w"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "a header reopening a table its dotted keys made, and a sub-table of a dotted one",
+      "text": "[fruit]\napple.color = \"red\"\n[fruit.apple.texture]\nsmooth = true\n[a.b]\nx = 1\n[a]\ny = 2\n",
+      "expected": {
+        "value": {
+          "fruit": {
+            "apple": {
+              "color": "red",
+              "texture": {
+                "smooth": true
+              }
+            }
+          },
+          "a": {
+            "b": {
+              "x": {
+                "integer": "1"
+              }
+            },
+            "y": {
+              "integer": "2"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "a key defined twice",
+      "text": "a = 1\na = 2\n",
+      "expected": {
+        "error": "pyproject.toml:2: 'a' is defined twice"
+      }
+    },
+    {
+      "name": "a table defined twice",
+      "text": "[a]\nx = 1\n[a]\ny = 2\n",
+      "expected": {
+        "error": "pyproject.toml:4: the table 'a' is defined twice"
+      }
+    },
+    {
+      "name": "a dotted key through a value",
+      "text": "a = 1\na.b = 2\n",
+      "expected": {
+        "error": "pyproject.toml:2: 'a.b' extends 'a', which is already defined as a value"
+      }
+    },
+    {
+      "name": "a header over a dotted-key table",
+      "text": "a.b = 1\n[a]\nc = 2\n",
+      "expected": {
+        "error": "pyproject.toml:3: the table 'a' is defined twice"
+      }
+    },
+    {
+      "name": "an inline table extended",
+      "text": "a = { x = 1 }\n[a.y]\nz = 1\n",
+      "expected": {
+        "error": "pyproject.toml:3: the header 'a.y' passes through 'a', which is not a table"
+      }
+    },
+    {
+      "name": "an unclosed string",
+      "text": "a = \"open\n",
+      "expected": {
+        "error": "pyproject.toml:1: a string is not closed on its line"
+      }
+    },
+    {
+      "name": "a value TOML does not know",
+      "text": "a = maybe\n",
+      "expected": {
+        "error": "pyproject.toml:1: 'maybe' is not a TOML value"
+      }
+    },
+    {
+      "name": "two values on a line",
+      "text": "a = \"x\" \"y\"\n",
+      "expected": {
+        "error": "pyproject.toml:1: expected the end of the line, found '\"'"
+      }
+    },
+    {
+      "name": "two bare values on a line",
+      "text": "a = 1 2\n",
+      "expected": {
+        "error": "pyproject.toml:1: '1 2' is not a TOML value"
+      }
+    },
+    {
+      "name": "a digit its radix does not have",
+      "text": "a = 0o9\n",
+      "expected": {
+        "error": "pyproject.toml:1: '0o9' is not a TOML value"
+      }
+    },
+    {
+      "name": "an escape TOML does not know",
+      "text": "a = \"\\q\"\n",
+      "expected": {
+        "error": "pyproject.toml:1: '\\q' is not an escape a TOML string knows"
+      }
+    }
+  ],
+  "names": [
+    {
+      "name": "dots and capitals",
+      "input": "Acme.API",
+      "expected": {
+        "normalized": "acme-api"
+      }
+    },
+    {
+      "name": "runs of separators",
+      "input": "a__b--c._d",
+      "expected": {
+        "normalized": "a-b-c-d"
+      }
+    }
+  ],
+  "versions": [
+    {
+      "name": "a final",
+      "version": "1.2.3",
+      "expected": {
+        "normalized": "1.2.3",
+        "problem": null
+      }
+    },
+    {
+      "name": "an rc candidate",
+      "version": "1.0.0-rc.1",
+      "expected": {
+        "normalized": "1.0.0rc1",
+        "problem": null
+      }
+    },
+    {
+      "name": "a beta candidate",
+      "version": "1.0.0-beta.2",
+      "expected": {
+        "normalized": "1.0.0b2",
+        "problem": null
+      }
+    },
+    {
+      "name": "an alpha candidate",
+      "version": "1.0.0-ALPHA.1",
+      "expected": {
+        "normalized": "1.0.0a1",
+        "problem": null
+      }
+    },
+    {
+      "name": "a preview candidate",
+      "version": "1.0.0-preview.3",
+      "expected": {
+        "normalized": "1.0.0rc3",
+        "problem": null
+      }
+    },
+    {
+      "name": "a dev candidate",
+      "version": "1.0.0-dev.3",
+      "expected": {
+        "normalized": "1.0.0.dev3",
+        "problem": null
+      }
+    },
+    {
+      "name": "a candidate PEP 440 cannot spell",
+      "version": "1.0.0-next.1",
+      "expected": {
+        "normalized": null,
+        "problem": "'1.0.0-next.1' is not a version PEP 440 can spell: a candidate's identifier must be one of a, alpha, b, beta, c, rc, pre, preview, dev or post"
+      }
+    },
+    {
+      "name": "two segments",
+      "version": "1.0",
+      "expected": {
+        "normalized": "1.0",
+        "problem": "'1.0' is not a version a release can be planned from: write it as major.minor.patch (1.2.3), or a candidate of one (1.2.3-rc.1)"
+      }
+    },
+    {
+      "name": "leading zeros and a v",
+      "version": "v01.02.03",
+      "expected": {
+        "normalized": "1.2.3",
+        "problem": "'v01.02.03' is not a version a release can be planned from: write it as major.minor.patch (1.2.3), or a candidate of one (1.2.3-rc.1)"
+      }
+    },
+    {
+      "name": "an epoch, a post, a dev and a local part",
+      "version": "1!1.0.0.post2.dev1+Ubuntu-01",
+      "expected": {
+        "normalized": "1!1.0.0.post2.dev1+ubuntu.1",
+        "problem": "'1!1.0.0.post2.dev1+Ubuntu-01' is not a version a release can be planned from: write it as major.minor.patch (1.2.3), or a candidate of one (1.2.3-rc.1)"
+      }
+    },
+    {
+      "name": "an implicit post release",
+      "version": "1.0.0-1",
+      "expected": {
+        "normalized": "1.0.0.post1",
+        "problem": "'1.0.0-1' is not a version a release can be planned from: write it as major.minor.patch (1.2.3), or a candidate of one (1.2.3-rc.1)"
+      }
+    },
+    {
+      "name": "not a version",
+      "version": "garbage",
+      "expected": {
+        "normalized": null,
+        "problem": "'garbage' is not a version a release can be planned from: write it as major.minor.patch (1.2.3), or a candidate of one (1.2.3-rc.1)"
+      }
+    }
+  ],
+  "buildSystems": [
+    {
+      "name": "a backend with a backend path",
+      "text": "[build-system]\nrequires = [\"hatchling>=1\", \"hatch-vcs\"]\nbuild-backend = \"backend:api\"\nbackend-path = [\"_build\"]\n",
+      "expected": {
+        "system": {
+          "requires": [
+            "hatchling>=1",
+            "hatch-vcs"
+          ],
+          "backend": "backend:api",
+          "backendPath": [
+            "_build"
+          ]
+        }
+      }
+    },
+    {
+      "name": "no backend falls back to setuptools' legacy one",
+      "text": "[build-system]\nrequires = [\"setuptools\"]\n",
+      "expected": {
+        "system": {
+          "requires": [
+            "setuptools"
+          ],
+          "backend": "setuptools.build_meta:__legacy__",
+          "backendPath": []
+        }
+      }
+    },
+    {
+      "name": "no build system",
+      "text": "[project]\nname = \"a\"\n",
+      "expected": {
+        "system": null
+      }
+    },
+    {
+      "name": "requires missing",
+      "text": "[build-system]\nbuild-backend = \"x\"\n",
+      "expected": {
+        "error": "pyproject.toml: [build-system].requires must be a list of strings."
+      }
+    },
+    {
+      "name": "requires not strings",
+      "text": "[build-system]\nrequires = [1]\n",
+      "expected": {
+        "error": "pyproject.toml: [build-system].requires must be a list of strings."
+      }
+    },
+    {
+      "name": "a backend that is not a string",
+      "text": "[build-system]\nrequires = []\nbuild-backend = 1\n",
+      "expected": {
+        "error": "pyproject.toml: [build-system].build-backend must be a string."
+      }
+    }
+  ],
+  "members": [
+    {
+      "name": "derived metadata left out, everything else kept",
+      "paths": [
+        "PKG-INFO",
+        "pyproject.toml",
+        "setup.cfg",
+        "src/acme.egg-info/PKG-INFO",
+        "src/acme.egg-info/SOURCES.txt",
+        "acme.egg-info/top_level.txt",
+        "src/acme/__init__.py",
+        "src/acme/PKG-INFO",
+        "notes.egg-info"
+      ],
+      "expected": {
+        "kept": [
+          "pyproject.toml",
+          "setup.cfg",
+          "src/acme/__init__.py",
+          "src/acme/PKG-INFO",
+          "notes.egg-info"
+        ]
+      }
+    }
+  ],
+  "projects": [
+    {
+      "name": "uv workspace members by normalized name, pins and dev tables never edges",
+      "projects": [
+        {
+          "unit": "apps/api",
+          "dir": "apps/api",
+          "text": "[project]\nname = \"Acme.API\"\nversion = \"1.0.0\"\n"
+        },
+        {
+          "unit": "libs/util",
+          "dir": "libs/util",
+          "text": "[project]\nname = \"util\"\nversion = \"1.0.0\"\n"
+        },
+        {
+          "unit": "apps/worker",
+          "dir": "apps/worker",
+          "text": "[project]\nname = \"worker\"\nversion = \"0.3.0\"\ndependencies = [\n  \"acme_api[x]>=1.0.0 ; python_version >= '3.10'\",\n  \"requests>=2\",\n  \"flask @ https://example.com/flask.tar.gz\",\n  \"worker[extra]\",\n]\n[project.optional-dependencies]\ntools = [\"util\"]\n[dependency-groups]\ndev = [\"acme-api\"]\n[tool.uv]\ndev-dependencies = [\"util\"]\n[tool.uv.sources]\nacme-api = { workspace = true }\nUtil = { workspace = true }\nrequests = { git = \"https://github.com/psf/requests\" }\n"
+        }
+      ],
+      "expected": {
+        "apps/api": {
+          "links": [],
+          "problems": []
+        },
+        "libs/util": {
+          "links": [],
+          "problems": []
+        },
+        "apps/worker": {
+          "links": [
+            {
+              "requirement": "acme_api[x]>=1.0.0 ; python_version >= '3.10'",
+              "at": "project.dependencies",
+              "target": "apps/api"
+            },
+            {
+              "requirement": "util",
+              "at": "project.optional-dependencies.tools",
+              "target": "libs/util"
+            }
+          ],
+          "problems": []
+        }
+      }
+    },
+    {
+      "name": "uv and poetry paths, one naming no anchor and one a wheel",
+      "projects": [
+        {
+          "unit": "apps/api",
+          "dir": "apps/api",
+          "text": "[project]\nname = \"api\"\nversion = \"1.0.0\"\n"
+        },
+        {
+          "unit": "apps",
+          "dir": "apps/core",
+          "text": "[project]\nname = \"core\"\nversion = \"1.0.0\"\n"
+        },
+        {
+          "unit": "apps/worker",
+          "dir": "apps/worker",
+          "text": "[project]\nname = \"worker\"\nversion = \"0.3.0\"\ndependencies = [\"api\", \"core>=1\", \"other\", \"wheel-dep\"]\n[tool.uv.sources]\napi = { path = \"../api\", editable = true }\nother = { path = \"../../tools/other\" }\nwheel-dep = { path = \"../dist/wheel_dep-1.0-py3-none-any.whl\" }\n[tool.poetry.dependencies]\ncore = [{ path = \"../core\", markers = \"sys_platform == 'linux'\" }, { version = \">=1\" }]\n[tool.poetry.group.dev.dependencies]\napi = { path = \"../api\" }\n"
+        }
+      ],
+      "expected": {
+        "apps/api": {
+          "links": [],
+          "problems": []
+        },
+        "apps/core": {
+          "links": [],
+          "problems": []
+        },
+        "apps/worker": {
+          "links": [
+            {
+              "requirement": "api",
+              "at": "project.dependencies",
+              "target": "apps/api"
+            },
+            {
+              "requirement": "core>=1",
+              "at": "project.dependencies",
+              "target": "apps/core"
+            }
+          ],
+          "problems": []
+        }
+      }
+    },
+    {
+      "name": "PDM and Hatch file references rooted at the project",
+      "projects": [
+        {
+          "unit": "packages/api",
+          "dir": "packages/api",
+          "text": "[project]\nname = \"api\"\nversion = \"1.0.0\"\n"
+        },
+        {
+          "unit": "packages/core",
+          "dir": "packages/core",
+          "text": "[project]\nname = \"core\"\nversion = \"1.0.0\"\n"
+        },
+        {
+          "unit": "packages/worker",
+          "dir": "packages/worker",
+          "text": "[project]\nname = \"worker\"\nversion = \"0.3.0\"\ndependencies = [\"api @ file:///${PROJECT_ROOT}/../api\", \"core @ {root:parent:uri}/core\"]\n[project.optional-dependencies]\nall = [\"api @ {root:uri}/../api\"]\n"
+        }
+      ],
+      "expected": {
+        "packages/api": {
+          "links": [],
+          "problems": []
+        },
+        "packages/core": {
+          "links": [],
+          "problems": []
+        },
+        "packages/worker": {
+          "links": [
+            {
+              "requirement": "api @ file:///${PROJECT_ROOT}/../api",
+              "at": "project.dependencies",
+              "target": "packages/api"
+            },
+            {
+              "requirement": "core @ {root:parent:uri}/core",
+              "at": "project.dependencies",
+              "target": "packages/core"
+            },
+            {
+              "requirement": "api @ {root:uri}/../api",
+              "at": "project.optional-dependencies.all",
+              "target": "packages/api"
+            }
+          ],
+          "problems": []
+        }
+      }
+    },
+    {
+      "name": "what cannot be read fails, naming the requirement",
+      "projects": [
+        {
+          "unit": "api",
+          "dir": "api",
+          "text": "[project]\nname = \"api\"\nversion = \"1.0.0\"\n"
+        },
+        {
+          "unit": "twin/api",
+          "dir": "twin/api",
+          "text": "[project]\nname = \"api\"\nversion = \"1.0.0\"\n"
+        },
+        {
+          "unit": "worker",
+          "dir": "worker",
+          "text": "[project]\nname = \"worker\"\nversion = \"0.3.0\"\ndependencies = [\"x @ file:///srv/x\", \"up\", \"abs\", \"api\", \"!!\"]\n[tool.uv.sources]\nup = { path = \"../../up\" }\nabs = { path = \"/srv/abs\" }\napi = { workspace = true }\n"
+        },
+        {
+          "unit": "broken",
+          "dir": "broken",
+          "text": "[project]\nname = \"broken\"\ndependencies = [1]\n"
+        },
+        {
+          "unit": "unparsed",
+          "dir": "unparsed",
+          "text": "[project]\nname = \"unparsed\"\ndependencies = [\"a\",\n"
+        },
+        {
+          "unit": "old",
+          "dir": "old",
+          "text": "[project]\nname = \"old\"\nversion = \"1.0\"\n"
+        },
+        {
+          "unit": "next",
+          "dir": "next",
+          "text": "[project]\nname = \"next\"\nversion = \"1.0.0-next.1\"\n"
+        },
+        {
+          "unit": "dynamic",
+          "dir": "dynamic",
+          "text": "[project]\nname = \"dynamic\"\ndynamic = [\"version\"]\nversion = \"1.0\"\n"
+        }
+      ],
+      "expected": {
+        "api": {
+          "links": [],
+          "problems": []
+        },
+        "twin/api": {
+          "links": [],
+          "problems": []
+        },
+        "worker": {
+          "links": [],
+          "problems": [
+            "worker/pyproject.toml: 'x @ file:///srv/x' in project.dependencies is a file: reference not rooted at the project, so which sibling it names cannot be read. A sibling is read from [tool.uv.sources] (path = \"<dir>\" or workspace = true), [tool.poetry.dependencies] (path = \"<dir>\"), or a file: reference rooted at ${PROJECT_ROOT} (PDM) or {root:uri} (Hatch).",
+            "worker/pyproject.toml: 'up' in project.dependencies names '../../up' through [tool.uv.sources], which leaves the workspace; a release plans only along paths inside it.",
+            "worker/pyproject.toml: 'abs' in project.dependencies names the absolute path '/srv/abs' through [tool.uv.sources]; only a path relative to the project is read.",
+            "worker/pyproject.toml: 'api' in project.dependencies names a workspace member through [tool.uv.sources], and 'api' and 'twin/api' are each called 'api'.",
+            "worker/pyproject.toml: '!!' in project.dependencies cannot be read as a PEP 508 requirement."
+          ]
+        },
+        "broken": {
+          "links": [],
+          "problems": [
+            "broken/pyproject.toml: project.dependencies is not a list of strings."
+          ]
+        },
+        "unparsed": {
+          "links": [],
+          "problems": [
+            "unparsed/pyproject.toml:4: expected a value, found 'the end'"
+          ]
+        },
+        "old": {
+          "links": [],
+          "problems": [
+            "old/pyproject.toml: project.version '1.0' is not a version a release can be planned from: write it as major.minor.patch (1.2.3), or a candidate of one (1.2.3-rc.1)."
+          ]
+        },
+        "next": {
+          "links": [],
+          "problems": [
+            "next/pyproject.toml: project.version '1.0.0-next.1' is not a version PEP 440 can spell: a candidate's identifier must be one of a, alpha, b, beta, c, rc, pre, preview, dev or post."
+          ]
+        },
+        "dynamic": {
+          "links": [],
+          "problems": []
+        }
+      }
+    }
+  ],
+  "requirements": [
+    {
+      "name": "one ==, >= or ~= clause moves, every other shape stays",
+      "projects": [
+        {
+          "unit": "apps/api",
+          "dir": "apps/api",
+          "text": "[project]\nname = \"acme-api\"\nversion = \"1.0.0\"\n"
+        },
+        {
+          "unit": "apps/worker",
+          "dir": "apps/worker",
+          "text": "[project]\nname = \"worker\"\nversion = \"0.3.0\"\ndependencies = [\n  \"acme-api>=1.0.0\",\n  'acme-api==1.0.0 ; python_version >= \"3.10\"',\n  \"acme-api~=1.0.0\",\n  \"acme-api (>=1.0.0)\",\n  \"acme-api[x]>=1.0,<2\",\n  \"acme-api>1.0\",\n  \"acme-api==1.0.*\",\n  \"acme-api\",\n  \"requests>=1.0.0\",\n]\n[project.optional-dependencies]\nesc = [\"acme-api>=1.0.0\\u0020\"]\n[tool.uv.sources]\nacme-api = { workspace = true }\n"
+        }
+      ],
+      "dir": "apps/worker",
+      "target": "apps/api",
+      "version": "1.1.0",
+      "expected": {
+        "text": "[project]\nname = \"worker\"\nversion = \"0.3.0\"\ndependencies = [\n  \"acme-api>=1.1.0\",\n  'acme-api==1.1.0 ; python_version >= \"3.10\"',\n  \"acme-api~=1.1.0\",\n  \"acme-api (>=1.1.0)\",\n  \"acme-api[x]>=1.0,<2\",\n  \"acme-api>1.0\",\n  \"acme-api==1.0.*\",\n  \"acme-api\",\n  \"requests>=1.0.0\",\n]\n[project.optional-dependencies]\nesc = [\"acme-api>=1.1.0 \"]\n[tool.uv.sources]\nacme-api = { workspace = true }\n"
+      }
+    },
+    {
+      "name": "to a candidate",
+      "projects": [
+        {
+          "unit": "apps/api",
+          "dir": "apps/api",
+          "text": "[project]\nname = \"acme-api\"\nversion = \"1.0.0\"\n"
+        },
+        {
+          "unit": "apps/worker",
+          "dir": "apps/worker",
+          "text": "[project]\nname = \"worker\"\nversion = \"0.3.0\"\ndependencies = [\n  \"acme-api>=1.0.0\",\n  'acme-api==1.0.0 ; python_version >= \"3.10\"',\n  \"acme-api~=1.0.0\",\n  \"acme-api (>=1.0.0)\",\n  \"acme-api[x]>=1.0,<2\",\n  \"acme-api>1.0\",\n  \"acme-api==1.0.*\",\n  \"acme-api\",\n  \"requests>=1.0.0\",\n]\n[project.optional-dependencies]\nesc = [\"acme-api>=1.0.0\\u0020\"]\n[tool.uv.sources]\nacme-api = { workspace = true }\n"
+        }
+      ],
+      "dir": "apps/worker",
+      "target": "apps/api",
+      "version": "1.1.0-rc.1",
+      "expected": {
+        "text": "[project]\nname = \"worker\"\nversion = \"0.3.0\"\ndependencies = [\n  \"acme-api>=1.1.0-rc.1\",\n  'acme-api==1.1.0-rc.1 ; python_version >= \"3.10\"',\n  \"acme-api~=1.1.0-rc.1\",\n  \"acme-api (>=1.1.0-rc.1)\",\n  \"acme-api[x]>=1.0,<2\",\n  \"acme-api>1.0\",\n  \"acme-api==1.0.*\",\n  \"acme-api\",\n  \"requests>=1.0.0\",\n]\n[project.optional-dependencies]\nesc = [\"acme-api>=1.1.0-rc.1 \"]\n[tool.uv.sources]\nacme-api = { workspace = true }\n"
+      }
+    },
+    {
+      "name": "a target it does not link to",
+      "projects": [
+        {
+          "unit": "apps/api",
+          "dir": "apps/api",
+          "text": "[project]\nname = \"acme-api\"\nversion = \"1.0.0\"\n"
+        },
+        {
+          "unit": "apps/worker",
+          "dir": "apps/worker",
+          "text": "[project]\nname = \"worker\"\nversion = \"0.3.0\"\ndependencies = [\n  \"acme-api>=1.0.0\",\n  'acme-api==1.0.0 ; python_version >= \"3.10\"',\n  \"acme-api~=1.0.0\",\n  \"acme-api (>=1.0.0)\",\n  \"acme-api[x]>=1.0,<2\",\n  \"acme-api>1.0\",\n  \"acme-api==1.0.*\",\n  \"acme-api\",\n  \"requests>=1.0.0\",\n]\n[project.optional-dependencies]\nesc = [\"acme-api>=1.0.0\\u0020\"]\n[tool.uv.sources]\nacme-api = { workspace = true }\n"
+        }
+      ],
+      "dir": "apps/worker",
+      "target": "apps/other",
+      "version": "2.0.0",
+      "expected": {
+        "text": "[project]\nname = \"worker\"\nversion = \"0.3.0\"\ndependencies = [\n  \"acme-api>=1.0.0\",\n  'acme-api==1.0.0 ; python_version >= \"3.10\"',\n  \"acme-api~=1.0.0\",\n  \"acme-api (>=1.0.0)\",\n  \"acme-api[x]>=1.0,<2\",\n  \"acme-api>1.0\",\n  \"acme-api==1.0.*\",\n  \"acme-api\",\n  \"requests>=1.0.0\",\n]\n[project.optional-dependencies]\nesc = [\"acme-api>=1.0.0\\u0020\"]\n[tool.uv.sources]\nacme-api = { workspace = true }\n"
+      }
+    },
+    {
+      "name": "a requirement that cannot be read refuses",
+      "projects": [
+        {
+          "unit": "apps/api",
+          "dir": "apps/api",
+          "text": "[project]\nname = \"acme-api\"\nversion = \"1.0.0\"\n"
+        },
+        {
+          "unit": "apps/worker",
+          "dir": "apps/worker",
+          "text": "[project]\nname = \"worker\"\ndependencies = [\"x @ file:///srv/x\"]\n"
+        }
+      ],
+      "dir": "apps/worker",
+      "target": "apps/api",
+      "version": "1.1.0",
+      "expected": {
+        "error": "apps/worker/pyproject.toml: 'x @ file:///srv/x' in project.dependencies is a file: reference not rooted at the project, so which sibling it names cannot be read. A sibling is read from [tool.uv.sources] (path = \"<dir>\" or workspace = true), [tool.poetry.dependencies] (path = \"<dir>\"), or a file: reference rooted at ${PROJECT_ROOT} (PDM) or {root:uri} (Hatch)."
+      }
+    }
+  ],
+  "lockfiles": [
+    {
+      "name": "uv: a workspace member moves, its registry namesake stays",
+      "file": "uv.lock",
+      "text": "version = 1\nrequires-python = \">=3.10\"\n\n[[package]]\nname = \"acme-api\"\nversion = \"1.0.0\"\nsource = { editable = \"apps/api\" }\n\n[[package]]\nname = \"acme-api\"\nversion = \"0.9.0\"\nsource = { registry = \"https://pypi.org/simple\" }\n\n[[package]]\nname = \"root\"\nversion = \"0.1.0\"\nsource = { virtual = \".\" }\n\n[[package]]\nname = \"worker\"\nsource = { editable = \"apps/worker\" }\ndependencies = [\n    { name = \"acme-api\" },\n]\n\n[package.metadata]\nrequires-dist = [{ name = \"acme-api\", editable = \"apps/api\" }]\n",
+      "target": {
+        "name": "Acme_API",
+        "dir": "apps/api"
+      },
+      "version": "1.1.0-rc.1",
+      "expected": {
+        "text": "version = 1\nrequires-python = \">=3.10\"\n\n[[package]]\nname = \"acme-api\"\nversion = \"1.1.0rc1\"\nsource = { editable = \"apps/api\" }\n\n[[package]]\nname = \"acme-api\"\nversion = \"0.9.0\"\nsource = { registry = \"https://pypi.org/simple\" }\n\n[[package]]\nname = \"root\"\nversion = \"0.1.0\"\nsource = { virtual = \".\" }\n\n[[package]]\nname = \"worker\"\nsource = { editable = \"apps/worker\" }\ndependencies = [\n    { name = \"acme-api\" },\n]\n\n[package.metadata]\nrequires-dist = [{ name = \"acme-api\", editable = \"apps/api\" }]\n"
+      }
+    },
+    {
+      "name": "uv: the root project",
+      "file": "uv.lock",
+      "text": "version = 1\nrequires-python = \">=3.10\"\n\n[[package]]\nname = \"acme-api\"\nversion = \"1.0.0\"\nsource = { editable = \"apps/api\" }\n\n[[package]]\nname = \"acme-api\"\nversion = \"0.9.0\"\nsource = { registry = \"https://pypi.org/simple\" }\n\n[[package]]\nname = \"root\"\nversion = \"0.1.0\"\nsource = { virtual = \".\" }\n\n[[package]]\nname = \"worker\"\nsource = { editable = \"apps/worker\" }\ndependencies = [\n    { name = \"acme-api\" },\n]\n\n[package.metadata]\nrequires-dist = [{ name = \"acme-api\", editable = \"apps/api\" }]\n",
+      "target": {
+        "name": "root",
+        "dir": ""
+      },
+      "version": "0.2.0",
+      "expected": {
+        "text": "version = 1\nrequires-python = \">=3.10\"\n\n[[package]]\nname = \"acme-api\"\nversion = \"1.0.0\"\nsource = { editable = \"apps/api\" }\n\n[[package]]\nname = \"acme-api\"\nversion = \"0.9.0\"\nsource = { registry = \"https://pypi.org/simple\" }\n\n[[package]]\nname = \"root\"\nversion = \"0.2.0\"\nsource = { virtual = \".\" }\n\n[[package]]\nname = \"worker\"\nsource = { editable = \"apps/worker\" }\ndependencies = [\n    { name = \"acme-api\" },\n]\n\n[package.metadata]\nrequires-dist = [{ name = \"acme-api\", editable = \"apps/api\" }]\n"
+      }
+    },
+    {
+      "name": "uv: a dynamic version records none",
+      "file": "uv.lock",
+      "text": "version = 1\nrequires-python = \">=3.10\"\n\n[[package]]\nname = \"acme-api\"\nversion = \"1.0.0\"\nsource = { editable = \"apps/api\" }\n\n[[package]]\nname = \"acme-api\"\nversion = \"0.9.0\"\nsource = { registry = \"https://pypi.org/simple\" }\n\n[[package]]\nname = \"root\"\nversion = \"0.1.0\"\nsource = { virtual = \".\" }\n\n[[package]]\nname = \"worker\"\nsource = { editable = \"apps/worker\" }\ndependencies = [\n    { name = \"acme-api\" },\n]\n\n[package.metadata]\nrequires-dist = [{ name = \"acme-api\", editable = \"apps/api\" }]\n",
+      "target": {
+        "name": "worker",
+        "dir": "apps/worker"
+      },
+      "version": "0.4.0",
+      "expected": {
+        "text": null
+      }
+    },
+    {
+      "name": "uv: another directory of the same name",
+      "file": "uv.lock",
+      "text": "version = 1\nrequires-python = \">=3.10\"\n\n[[package]]\nname = \"acme-api\"\nversion = \"1.0.0\"\nsource = { editable = \"apps/api\" }\n\n[[package]]\nname = \"acme-api\"\nversion = \"0.9.0\"\nsource = { registry = \"https://pypi.org/simple\" }\n\n[[package]]\nname = \"root\"\nversion = \"0.1.0\"\nsource = { virtual = \".\" }\n\n[[package]]\nname = \"worker\"\nsource = { editable = \"apps/worker\" }\ndependencies = [\n    { name = \"acme-api\" },\n]\n\n[package.metadata]\nrequires-dist = [{ name = \"acme-api\", editable = \"apps/api\" }]\n",
+      "target": {
+        "name": "acme-api",
+        "dir": "libs/api"
+      },
+      "version": "1.1.0",
+      "expected": {
+        "text": null
+      }
+    },
+    {
+      "name": "poetry: a directory source, spelled as written",
+      "file": "apps/worker/poetry.lock",
+      "text": "# This file is automatically @generated by Poetry 2.1.1 and should not be changed by hand.\n\n[[package]]\nname = \"acme-api\"\nversion = \"1.0.0\"\ndescription = \"\"\noptional = false\npython-versions = \">=3.10\"\ngroups = [\"main\"]\nfiles = []\ndevelop = true\n\n[package.source]\ntype = \"directory\"\nurl = \"../api\"\n\n[metadata]\nlock-version = \"2.1\"\npython-versions = \">=3.10\"\ncontent-hash = \"546976d587c9d9d92a27c20f6e79e7f04dc6aaa1875f0e0063e32960f6fe86b6\"\n",
+      "target": {
+        "name": "acme-api",
+        "dir": "apps/api"
+      },
+      "version": "1.1.0-rc.1",
+      "expected": {
+        "text": "# This file is automatically @generated by Poetry 2.1.1 and should not be changed by hand.\n\n[[package]]\nname = \"acme-api\"\nversion = \"1.1.0-rc.1\"\ndescription = \"\"\noptional = false\npython-versions = \">=3.10\"\ngroups = [\"main\"]\nfiles = []\ndevelop = true\n\n[package.source]\ntype = \"directory\"\nurl = \"../api\"\n\n[metadata]\nlock-version = \"2.1\"\npython-versions = \">=3.10\"\ncontent-hash = \"546976d587c9d9d92a27c20f6e79e7f04dc6aaa1875f0e0063e32960f6fe86b6\"\n"
+      }
+    },
+    {
+      "name": "pdm: a path, normalized",
+      "file": "apps/worker/pdm.lock",
+      "text": "# This file is @generated by PDM.\n# It is not intended for manual editing.\n\n[metadata]\ngroups = [\"default\"]\nstrategy = [\"inherit_metadata\"]\nlock_version = \"4.5.1\"\ncontent_hash = \"sha256:3d182f65ae7dc0869122a1907cf3f26a4943792e808999990df6b8d8e92ba934\"\n\n[[metadata.targets]]\nrequires_python = \">=3.10\"\n\n[[package]]\nname = \"acme-api\"\nversion = \"1.0.0\"\nrequires_python = \">=3.10\"\npath = \"../api\"\nsummary = \"\"\ngroups = [\"default\"]\n",
+      "target": {
+        "name": "acme-api",
+        "dir": "apps/api"
+      },
+      "version": "1.1.0-rc.1",
+      "expected": {
+        "text": "# This file is @generated by PDM.\n# It is not intended for manual editing.\n\n[metadata]\ngroups = [\"default\"]\nstrategy = [\"inherit_metadata\"]\nlock_version = \"4.5.1\"\ncontent_hash = \"sha256:3d182f65ae7dc0869122a1907cf3f26a4943792e808999990df6b8d8e92ba934\"\n\n[[metadata.targets]]\nrequires_python = \">=3.10\"\n\n[[package]]\nname = \"acme-api\"\nversion = \"1.1.0rc1\"\nrequires_python = \">=3.10\"\npath = \"../api\"\nsummary = \"\"\ngroups = [\"default\"]\n"
+      }
+    },
+    {
+      "name": "a recorded version that is not a string",
+      "file": "uv.lock",
+      "text": "[[package]]\nname = \"a\"\nversion = 1\nsource = { editable = \"a\" }\n",
+      "target": {
+        "name": "a",
+        "dir": "a"
+      },
+      "version": "1.0.0",
+      "expected": {
+        "error": "uv.lock: the 'a' package records a version that is not a string."
+      }
+    },
+    {
+      "name": "a file that is no lockfile",
+      "file": "Pipfile.lock",
+      "text": "",
+      "target": {
+        "name": "a",
+        "dir": "a"
+      },
+      "version": "1.0.0",
+      "expected": {
+        "error": "Pipfile.lock is not a lockfile the pypi ecosystem reads."
+      }
+    }
+  ],
+  "contentHashes": [
+    {
+      "name": "poetry 2, its hash as poetry lock writes it",
+      "file": "poetry.lock",
+      "text": "# This file is automatically @generated by Poetry 2.1.1 and should not be changed by hand.\n\n[[package]]\nname = \"acme-api\"\nversion = \"1.0.0\"\ndescription = \"\"\noptional = false\npython-versions = \">=3.10\"\ngroups = [\"main\"]\nfiles = []\ndevelop = true\n\n[package.source]\ntype = \"directory\"\nurl = \"../api\"\n\n[metadata]\nlock-version = \"2.1\"\npython-versions = \">=3.10\"\ncontent-hash = \"546976d587c9d9d92a27c20f6e79e7f04dc6aaa1875f0e0063e32960f6fe86b6\"\n",
+      "before": "[project]\nname = \"worker\"\nversion = \"0.3.0\"\nrequires-python = \">=3.10\"\ndependencies = [\"acme-api>=1.0.0\"]\n\n[tool.poetry.dependencies]\nacme-api = { path = \"../api\", develop = true }\n\n[build-system]\nrequires = [\"poetry-core>=2.0\"]\nbuild-backend = \"poetry.core.masonry.api\"\n",
+      "after": "[project]\nname = \"worker\"\nversion = \"0.3.0\"\nrequires-python = \">=3.10\"\ndependencies = [\"acme-api>=1.1.0\"]\n\n[tool.poetry.dependencies]\nacme-api = { path = \"../api\", develop = true }\n\n[build-system]\nrequires = [\"poetry-core>=2.0\"]\nbuild-backend = \"poetry.core.masonry.api\"\n",
+      "expected": {
+        "text": "# This file is automatically @generated by Poetry 2.1.1 and should not be changed by hand.\n\n[[package]]\nname = \"acme-api\"\nversion = \"1.0.0\"\ndescription = \"\"\noptional = false\npython-versions = \">=3.10\"\ngroups = [\"main\"]\nfiles = []\ndevelop = true\n\n[package.source]\ntype = \"directory\"\nurl = \"../api\"\n\n[metadata]\nlock-version = \"2.1\"\npython-versions = \">=3.10\"\ncontent-hash = \"f841d4df69c2ac471d339a27b5c6e3b83e8f24d69fa070d85b1323d579b393aa\"\n"
+      }
+    },
+    {
+      "name": "pdm, its hash as pdm lock writes it",
+      "file": "pdm.lock",
+      "text": "# This file is @generated by PDM.\n# It is not intended for manual editing.\n\n[metadata]\ngroups = [\"default\"]\nstrategy = [\"inherit_metadata\"]\nlock_version = \"4.5.1\"\ncontent_hash = \"sha256:3d182f65ae7dc0869122a1907cf3f26a4943792e808999990df6b8d8e92ba934\"\n\n[[metadata.targets]]\nrequires_python = \">=3.10\"\n\n[[package]]\nname = \"acme-api\"\nversion = \"1.0.0\"\nrequires_python = \">=3.10\"\npath = \"../api\"\nsummary = \"\"\ngroups = [\"default\"]\n",
+      "before": "[project]\nname = \"worker\"\nversion = \"0.3.0\"\nrequires-python = \">=3.10\"\ndependencies = [\"acme-api @ file:///${PROJECT_ROOT}/../api\"]\n\n[build-system]\nrequires = [\"pdm-backend\"]\nbuild-backend = \"pdm.backend\"\n",
+      "after": "[project]\nname = \"worker\"\nversion = \"0.3.0\"\nrequires-python = \">=3.10\"\ndependencies = [\"acme-api @ file:///${PROJECT_ROOT}/../apx\"]\n\n[build-system]\nrequires = [\"pdm-backend\"]\nbuild-backend = \"pdm.backend\"\n",
+      "expected": {
+        "text": "# This file is @generated by PDM.\n# It is not intended for manual editing.\n\n[metadata]\ngroups = [\"default\"]\nstrategy = [\"inherit_metadata\"]\nlock_version = \"4.5.1\"\ncontent_hash = \"sha256:4ee30d73faae1828b975e5ced80cbf567753479285288711caf04865ac2af8c3\"\n\n[[metadata.targets]]\nrequires_python = \">=3.10\"\n\n[[package]]\nname = \"acme-api\"\nversion = \"1.0.0\"\nrequires_python = \">=3.10\"\npath = \"../api\"\nsummary = \"\"\ngroups = [\"default\"]\n"
+      }
+    },
+    {
+      "name": "a stale hash refuses",
+      "file": "poetry.lock",
+      "text": "# This file is automatically @generated by Poetry 2.1.1 and should not be changed by hand.\n\n[[package]]\nname = \"acme-api\"\nversion = \"1.0.0\"\ndescription = \"\"\noptional = false\npython-versions = \">=3.10\"\ngroups = [\"main\"]\nfiles = []\ndevelop = true\n\n[package.source]\ntype = \"directory\"\nurl = \"../api\"\n\n[metadata]\nlock-version = \"2.1\"\npython-versions = \">=3.10\"\ncontent-hash = \"546976d587c9d9d92a27c20f6e79e7f04dc6aaa1875f0e0063e32960f6fe86b6\"\n",
+      "before": "[project]\nname = \"worker\"\nversion = \"0.3.0\"\nrequires-python = \">=3.11\"\ndependencies = [\"acme-api>=1.0.0\"]\n\n[tool.poetry.dependencies]\nacme-api = { path = \"../api\", develop = true }\n\n[build-system]\nrequires = [\"poetry-core>=2.0\"]\nbuild-backend = \"poetry.core.masonry.api\"\n",
+      "after": "[project]\nname = \"worker\"\nversion = \"0.3.0\"\nrequires-python = \">=3.10\"\ndependencies = [\"acme-api>=1.0.0\"]\n\n[tool.poetry.dependencies]\nacme-api = { path = \"../api\", develop = true }\n\n[build-system]\nrequires = [\"poetry-core>=2.0\"]\nbuild-backend = \"poetry.core.masonry.api\"\n",
+      "expected": {
+        "error": "poetry.lock: its content hash is not the one pyproject.toml as it stands gives, so it cannot be moved with the requirement a release rewrites there. Run `poetry lock` so the lockfile matches pyproject.toml, then apply again."
+      }
+    },
+    {
+      "name": "a hash that is not sha256",
+      "file": "pdm.lock",
+      "text": "# This file is @generated by PDM.\n# It is not intended for manual editing.\n\n[metadata]\ngroups = [\"default\"]\nstrategy = [\"inherit_metadata\"]\nlock_version = \"4.5.1\"\ncontent_hash = \"md5:3d182f65ae7dc0869122a1907cf3f26a4943792e808999990df6b8d8e92ba934\"\n\n[[metadata.targets]]\nrequires_python = \">=3.10\"\n\n[[package]]\nname = \"acme-api\"\nversion = \"1.0.0\"\nrequires_python = \">=3.10\"\npath = \"../api\"\nsummary = \"\"\ngroups = [\"default\"]\n",
+      "before": "[project]\nname = \"worker\"\nversion = \"0.3.0\"\nrequires-python = \">=3.10\"\ndependencies = [\"acme-api @ file:///${PROJECT_ROOT}/../api\"]\n\n[build-system]\nrequires = [\"pdm-backend\"]\nbuild-backend = \"pdm.backend\"\n",
+      "after": "[project]\nname = \"worker\"\nversion = \"0.3.0\"\nrequires-python = \">=3.10\"\ndependencies = [\"acme-api @ file:///${PROJECT_ROOT}/../api\"]\n\n[build-system]\nrequires = [\"pdm-backend\"]\nbuild-backend = \"pdm.backend\"\n",
+      "expected": {
+        "error": "pdm.lock: its content hash 'md5:3d182f65ae7dc0869122a1907cf3f26a4943792e808999990df6b8d8e92ba934' is not a sha256 one, so it cannot be moved with pyproject.toml."
+      }
+    },
+    {
+      "name": "uv records none",
+      "file": "uv.lock",
+      "text": "version = 1\nrequires-python = \">=3.10\"\n\n[[package]]\nname = \"acme-api\"\nversion = \"1.0.0\"\nsource = { editable = \"apps/api\" }\n\n[[package]]\nname = \"acme-api\"\nversion = \"0.9.0\"\nsource = { registry = \"https://pypi.org/simple\" }\n\n[[package]]\nname = \"root\"\nversion = \"0.1.0\"\nsource = { virtual = \".\" }\n\n[[package]]\nname = \"worker\"\nsource = { editable = \"apps/worker\" }\ndependencies = [\n    { name = \"acme-api\" },\n]\n\n[package.metadata]\nrequires-dist = [{ name = \"acme-api\", editable = \"apps/api\" }]\n",
+      "before": "[project]\nname = \"worker\"\nversion = \"0.3.0\"\nrequires-python = \">=3.10\"\ndependencies = [\"acme-api @ file:///${PROJECT_ROOT}/../api\"]\n\n[build-system]\nrequires = [\"pdm-backend\"]\nbuild-backend = \"pdm.backend\"\n",
+      "after": "[project]\nname = \"worker\"\nversion = \"0.3.0\"\nrequires-python = \">=3.10\"\ndependencies = [\"acme-api @ file:///${PROJECT_ROOT}/../api\"]\n\n[build-system]\nrequires = [\"pdm-backend\"]\nbuild-backend = \"pdm.backend\"\n",
+      "expected": {
+        "text": null
+      }
+    },
+    {
+      "name": "a lockfile with no hash",
+      "file": "poetry.lock",
+      "text": "[[package]]\nname = \"a\"\n",
+      "before": "[project]\nname = \"worker\"\nversion = \"0.3.0\"\nrequires-python = \">=3.10\"\ndependencies = [\"acme-api>=1.0.0\"]\n\n[tool.poetry.dependencies]\nacme-api = { path = \"../api\", develop = true }\n\n[build-system]\nrequires = [\"poetry-core>=2.0\"]\nbuild-backend = \"poetry.core.masonry.api\"\n",
+      "after": "[project]\nname = \"worker\"\nversion = \"0.3.0\"\nrequires-python = \">=3.10\"\ndependencies = [\"acme-api>=1.0.0\"]\n\n[tool.poetry.dependencies]\nacme-api = { path = \"../api\", develop = true }\n\n[build-system]\nrequires = [\"poetry-core>=2.0\"]\nbuild-backend = \"poetry.core.masonry.api\"\n",
+      "expected": {
+        "text": null
+      }
+    },
+    {
+      "name": "poetry 2, a DEL in a requirement is escaped as json.dumps writes it",
+      "file": "poetry.lock",
+      "text": "# This file is automatically @generated by Poetry 2.1.1 and should not be changed by hand.\n\n[[package]]\nname = \"acme-api\"\nversion = \"1.0.0\"\ndescription = \"\"\noptional = false\npython-versions = \">=3.10\"\ngroups = [\"main\"]\nfiles = []\ndevelop = true\n\n[package.source]\ntype = \"directory\"\nurl = \"../api\"\n\n[metadata]\nlock-version = \"2.1\"\npython-versions = \">=3.10\"\ncontent-hash = \"17286abea27ad38f62b91cee882c2b51311483b1d278af4f64a9edeab6fa12f5\"\n",
+      "before": "[project]\nname = \"worker\"\nversion = \"0.3.0\"\nrequires-python = \">=3.10\"\ndependencies = [\"acme-api>=1.0.0; extra == ''\"]\n\n[tool.poetry.dependencies]\nacme-api = { path = \"../api\", develop = true }\n\n[build-system]\nrequires = [\"poetry-core>=2.0\"]\nbuild-backend = \"poetry.core.masonry.api\"\n",
+      "after": "[project]\nname = \"worker\"\nversion = \"0.3.0\"\nrequires-python = \">=3.10\"\ndependencies = [\"acme-api>=1.1.0; extra == ''\"]\n\n[tool.poetry.dependencies]\nacme-api = { path = \"../api\", develop = true }\n\n[build-system]\nrequires = [\"poetry-core>=2.0\"]\nbuild-backend = \"poetry.core.masonry.api\"\n",
+      "expected": {
+        "text": "# This file is automatically @generated by Poetry 2.1.1 and should not be changed by hand.\n\n[[package]]\nname = \"acme-api\"\nversion = \"1.0.0\"\ndescription = \"\"\noptional = false\npython-versions = \">=3.10\"\ngroups = [\"main\"]\nfiles = []\ndevelop = true\n\n[package.source]\ntype = \"directory\"\nurl = \"../api\"\n\n[metadata]\nlock-version = \"2.1\"\npython-versions = \">=3.10\"\ncontent-hash = \"f7f300ee2a1b72aaa574a3e1fa53102f7fe8a941df44a14cf963b9e8b46d78eb\"\n"
+      }
+    }
+  ],
+  "indexes": [
+    {
+      "name": "a JSON page, its sdist at the normalized version",
+      "json": true,
+      "body": "{\"meta\":{\"api-version\":\"1.1\"},\"name\":\"acme-api\",\"files\":[{\"filename\":\"acme_api-1.0.0rc1.tar.gz\",\"url\":\"../../files/acme_api-1.0.0rc1.tar.gz\",\"hashes\":{\"sha256\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}},{\"filename\":\"acme_api-1.0.0rc1-py3-none-any.whl\",\"url\":\"https://files.example/w.whl\",\"hashes\":{}},{\"filename\":\"acme_api-0.9.tar.gz\",\"url\":\"https://files.example/old.tar.gz#sha256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"hashes\":{}}]}",
+      "project": "Acme.API",
+      "version": "1.0.0-rc.1",
+      "expected": {
+        "sdist": {
+          "filename": "acme_api-1.0.0rc1.tar.gz",
+          "href": "../../files/acme_api-1.0.0rc1.tar.gz",
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "versions": [
+          "1.0.0rc1",
+          "0.9"
+        ]
+      }
+    },
+    {
+      "name": "an HTML page, a legacy name and a two-segment version",
+      "json": false,
+      "body": "<!DOCTYPE html><html><body>\n<a href=\"https://files.example/acme-api-1.0.tar.gz#sha256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" data-requires-python=\"&gt;=3.8\">acme-api-1.0.tar.gz</a><br/>\n<a href='/f/acme_api-1.1.0.tar.gz?x=1&amp;y=2'>acme_api-1.1.0.tar.gz</a>\n<a href=/f/other-1.0.0.tar.gz>other-1.0.0.tar.gz</a>\n</body></html>",
+      "project": "acme-api",
+      "version": "1.0.0",
+      "expected": {
+        "sdist": {
+          "filename": "acme-api-1.0.tar.gz",
+          "href": "https://files.example/acme-api-1.0.tar.gz",
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "versions": [
+          "1.0",
+          "1.1.0"
+        ]
+      }
+    },
+    {
+      "name": "no sdist at the version",
+      "json": true,
+      "body": "{\"files\":[{\"filename\":\"acme_api-1.0.0-py3-none-any.whl\",\"url\":\"w.whl\"}]}",
+      "project": "acme-api",
+      "version": "1.0.0",
+      "expected": {
+        "sdist": null,
+        "versions": [
+          "1.0.0"
+        ]
+      }
+    },
+    {
+      "name": "two sdists of one version refuse",
+      "json": false,
+      "body": "<a href=\"a/acme_api-1.0.0.tar.gz\">acme_api-1.0.0.tar.gz</a><a href=\"b/acme-api-1.0.0.tar.gz\">acme-api-1.0.0.tar.gz</a>",
+      "project": "acme-api",
+      "version": "1.0.0",
+      "expected": {
+        "error": "index lists 2 sdists of acme-api 1.0.0 (a/acme_api-1.0.0.tar.gz, b/acme-api-1.0.0.tar.gz), so which one is published cannot be decided."
+      }
+    },
+    {
+      "name": "a JSON page that is not JSON",
+      "json": true,
+      "body": "<html>",
+      "project": "a",
+      "version": "1.0.0",
+      "expected": {
+        "error": "index is not a JSON project page."
+      }
+    }
+  ]
+}

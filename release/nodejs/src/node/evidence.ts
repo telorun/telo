@@ -75,8 +75,10 @@ export interface EvidenceSession {
   /** Every version published, for seeding a candidate's final entry. */
   publishedVersions?(ref: AnchorRef): Promise<readonly string[]>;
   /** Writes `apply` makes beside the version locations once the unit carries
-   *  `version` (a dependent's range, a manifest's self pin), workspace-relative. */
-  afterStamp?(ref: AnchorRef, version: string, plan: ReleasePlan): Promise<readonly string[]>;
+   *  `version` (a dependent's range, a manifest's self pin), workspace-relative.
+   *  `journal` is told each file before it is written, so a failed apply
+   *  restores it. */
+  afterStamp?(ref: AnchorRef, version: string, plan: ReleasePlan, journal: (file: string) => void): Promise<readonly string[]>;
 }
 
 export interface EvidenceAdapter {
@@ -211,9 +213,10 @@ export async function unitEvidence(
   const readings = readUnitVersions(unit, (relative) => workspace.tree.readFile(relative), workspace.adapters);
   const primary = readings[0];
   const layers: UnitLayers = { ecosystems, ...(payload !== undefined ? { payload } : {}) };
+  const name = unit.entry.name ?? unit.anchors[0]?.package.name;
   return {
     key: unit.key,
-    ...(unit.anchors[0]?.package.name ? { name: unit.anchors[0].package.name } : {}),
+    ...(name ? { name } : {}),
     version: primary?.value ?? "",
     layers,
     ...(registry ? { registry } : {}),
@@ -224,6 +227,7 @@ export async function unitEvidence(
     versionReadings: readings,
     ownFilesChanged,
     maxBump: unit.maxBump,
+    tagPattern: unit.tagPattern,
   };
 }
 

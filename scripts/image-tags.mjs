@@ -3,7 +3,7 @@
 // release commit moved (`release-units.mjs`): `<destination>:<version><suffix>` and
 // `<destination>:sha-<commit><suffix>`, plus `<destination>:latest<suffix>` for a
 // final version no released one of the unit exceeds — forward only, judged against
-// the unit's own `<unit key>@<version>` tags, so re-running an old publish moves
+// the unit's own release tags (the row's `tag` with its version varied), so re-running an old publish moves
 // nothing. A candidate (`<final>-rc.<k>`) moves no pointer. A unit the release did
 // not move gets no tags, and its image is not built.
 //
@@ -27,12 +27,18 @@ export function imageTags({ units, key, sha, suffix = "", releasedVersions }) {
   return { version: row.version, tags };
 }
 
-/** Every version of `key` its `<key>@<version>` tags name. */
-function unitTagVersions(key) {
-  return execFileSync("git", ["tag", "--list", `${key}@*`], { cwd: ROOT, encoding: "utf8" })
+/** Every version the unit's release tags name: the text the row's own `tag` holds
+ *  around its version, with any version between. */
+function unitTagVersions(row) {
+  if (!row) return [];
+  const at = row.tag?.lastIndexOf(row.version) ?? -1;
+  if (at < 0) throw new Error(`the ${row.key} row carries no release tag holding its version ${row.version}.`);
+  const before = row.tag.slice(0, at);
+  const after = row.tag.slice(at + row.version.length);
+  return execFileSync("git", ["tag", "--list", `${before}*${after}`], { cwd: ROOT, encoding: "utf8" })
     .split("\n")
-    .filter(Boolean)
-    .map((tag) => tag.slice(key.length + 1));
+    .filter((tag) => tag.length > before.length + after.length && tag.startsWith(before) && tag.endsWith(after))
+    .map((tag) => tag.slice(before.length, tag.length - after.length));
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
@@ -43,7 +49,8 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
     const sha = flag("--sha");
     if (!key || !sha) throw new Error("usage: image-tags.mjs --key <unit key> --sha <short sha> [--suffix <s>]");
     const units = JSON.parse(process.env.MOVED_UNITS || "[]");
-    const { version, tags } = imageTags({ units, key, sha, suffix: flag("--suffix") ?? "", releasedVersions: unitTagVersions(key) });
+    const row = units.find((unit) => unit.key === key && unit.ecosystem === "docker");
+    const { version, tags } = imageTags({ units, key, sha, suffix: flag("--suffix") ?? "", releasedVersions: unitTagVersions(row) });
     setOutput("version", version);
     setOutput("tags", tags.join(","));
     console.log(version ? `image-tags: ${key} ${version} → ${tags.join(", ")}` : `image-tags: the release did not move ${key}.`);

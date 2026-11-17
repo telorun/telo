@@ -20,6 +20,7 @@ A multi-tenant application keeps its tenants in one of two layouts, or both — 
 - Ownership must be statically enforced, forgetting to add tenant_id on a SQL query must be caught by analyzer. Alternatively the tenant_id could be inferred automatically and added to the query (could be just in the sql-repository, not raw SQL query).
 - Entering the ownership zone must be possible without need for additional resource kind (annotation + SDK).
 - Usage of tenant must be declared by ref to the ownership resource, not ambient.
+- Telo does not behave differently whether it has ownership (`tenant` or `user`) in CEL expression or not. Having variable in CEL does not express relationship, just dependency which does not resolve automatically.
 
 ## Solution
 

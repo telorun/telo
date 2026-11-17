@@ -75,7 +75,7 @@ describe("marker completion", () => {
   it("offers a block's own keys inside it", () => {
     const text = "release:\n  \n";
     const items = workspaceCompletions(text, { line: 1, character: 2 });
-    expect(items.map((i) => i.label)).toEqual(["units", "ecosystems", "groups", "ignore", "maxBump"]);
+    expect(items.map((i) => i.label)).toEqual(["units", "ecosystems", "groups", "ignore", "maxBump", "tagFormat"]);
   });
 
   it("offers directories under release.units", () => {
@@ -124,6 +124,7 @@ describe("marker completion", () => {
     const items = workspaceCompletions(text, { line: 3, character: 6 });
     expect(items.map((i) => i.label)).toEqual([
       "path",
+      "name",
       "ecosystem",
       "version",
       "payload",
@@ -131,6 +132,7 @@ describe("marker completion", () => {
       "versionFiles",
       "ignore",
       "maxBump",
+      "tagFormat",
     ]);
   });
 

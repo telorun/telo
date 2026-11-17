@@ -21,13 +21,17 @@ export interface Style {
 
 /**
  * Stdout is the machine surface: under `-o json` it carries the `emit` envelope
- * and nothing else, so `line` goes silent there. Stderr is the human surface in
- * both formats.
+ * and nothing else, under `-o markdown` the `document` and nothing else, so
+ * `line` writes only under `-o text`. Stderr is the human surface in every
+ * format. The host declares `-o` / `--output` with `text` and `json`; the plan
+ * commands (`status`, `check`, `apply`) add `markdown`.
  */
 export interface ReleaseOutput {
   line(text: string): void;
   errLine(text: string): void;
   emit(payload: Record<string, unknown>): void;
+  /** The whole of stdout under `-o markdown`, written once on success. */
+  document(text: string): void;
   progress(text: string): void;
   readonly style: Style;
   readonly errStyle: Style;

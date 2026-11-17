@@ -1,7 +1,7 @@
 /**
  * `@telorun/release/node` — the Node half: evidence (git reads, the ledger
  * store, carried changes, layer file sets, edges, read-back), the evidence
- * halves of the shipped `npm`, `cargo`, `docker` and `helm` ecosystems, and the
+ * halves of the shipped `npm`, `cargo`, `docker`, `helm` and `pypi` ecosystems, and the
  * release command tree a host mounts.
  */
 
@@ -49,8 +49,11 @@ export { npmEvidence } from "./adapters/npm-evidence.js";
 export { cargoEvidence } from "./adapters/cargo-evidence.js";
 export { dockerContext, dockerDestination, dockerEvidence, dockerFileSet } from "./adapters/docker-evidence.js";
 export { helmEvidence } from "./adapters/helm-evidence.js";
+export { isolatedSdistBuilder, pypiEvidence, pypiEvidenceWith, sdistMembers } from "./adapters/pypi-evidence.js";
+export type { PypiEvidenceOptions, SdistBuilder } from "./adapters/pypi-evidence.js";
 export {
   applyPlan,
+  baselineLedger,
   candidateId,
   createTags,
   loadWorkspaceFor,
@@ -62,8 +65,9 @@ export {
   upfrontDiagnostics,
   verifyLedger,
 } from "./operations.js";
-export type { Applied, OrderRow, PlanOptions, PlanRun, VerifyFinding } from "./operations.js";
-export { describeReason, planPayload, renderDiagnostics, renderPlan } from "./render.js";
+export type { Applied, BaselineResult, OrderRow, PlanOptions, PlanRun, VerifyFinding } from "./operations.js";
+export { describeReason } from "../bump-reason-text.js";
+export { planPayload, renderDiagnostics, renderPlan } from "./render.js";
 export { adoptChangesets } from "./adopt-changesets.js";
 export type { AdoptResult } from "./adopt-changesets.js";
 export { fragmentFilename, guardWith, releaseCommands, requireUnit } from "./commands.js";
@@ -73,7 +77,8 @@ import { cargoEvidence } from "./adapters/cargo-evidence.js";
 import { dockerEvidence } from "./adapters/docker-evidence.js";
 import { helmEvidence } from "./adapters/helm-evidence.js";
 import { npmEvidence } from "./adapters/npm-evidence.js";
+import { pypiEvidence } from "./adapters/pypi-evidence.js";
 import type { EvidenceAdapter } from "./evidence.js";
 
 /** The evidence halves of the ecosystems this package ships. */
-export const SHIPPED_EVIDENCE: readonly EvidenceAdapter[] = [npmEvidence, cargoEvidence, dockerEvidence, helmEvidence];
+export const SHIPPED_EVIDENCE: readonly EvidenceAdapter[] = [npmEvidence, cargoEvidence, dockerEvidence, helmEvidence, pypiEvidence];

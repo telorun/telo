@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
-import { composeReleasePrBody } from "../release-pr-body.mjs";
+import { ACTION_HEADROOM, BODY_LIMIT, composeReleasePrBody, documentBudget } from "../release-pr-body.mjs";
 import { versionReleasePr } from "../release-pr-version.mjs";
 import { branchRecordsFinal, headCarriesFinal, isCandidate, versionPrBranch } from "../release-version.mjs";
 
@@ -80,42 +80,43 @@ describe("release PR candidacy", () => {
 });
 
 describe("release PR version command", () => {
-  const ran = (candidate) => {
+  const ran = (candidate, maxLength = 64_000) => {
     const commands = [];
     versionReleasePr({
       cwd: "/repo",
       candidate,
-      planFile: "/plan.json",
+      notesFile: "/notes.md",
+      maxLength,
       run: (command, args, { stdoutFile } = {}) =>
-        commands.push([command === process.execPath ? "node" : command, ...args].join(" ") + (stdoutFile ? " > plan" : "")),
+        commands.push([command === process.execPath ? "node" : command, ...args].join(" ") + (stdoutFile ? " > notes" : "")),
     });
     return commands;
   };
 
-  it("applies the plan, a candidate's with --candidate, printing it for the body", () => {
-    assert.deepEqual(ran(false), ["node ./cli/nodejs/bin/telo.mjs release apply --base HEAD -o json > plan"]);
-    assert.deepEqual(ran(true), ["node ./cli/nodejs/bin/telo.mjs release apply --base HEAD --candidate -o json > plan"]);
+  it("applies the plan, a candidate's with --candidate, printing its document within the budget for the body", () => {
+    assert.deepEqual(ran(false), ["node ./cli/nodejs/bin/telo.mjs release apply --base HEAD -o markdown --max-length 64000 > notes"]);
+    assert.deepEqual(ran(true), [
+      "node ./cli/nodejs/bin/telo.mjs release apply --base HEAD --candidate -o markdown --max-length 64000 > notes",
+    ]);
+    assert.throws(() => ran(false, Number.NaN), /need a length limit/);
   });
 });
 
 describe("release PR body", () => {
-  const plan = (n) => ({ units: Array.from({ length: n }, (_, i) => ({ key: `modules/m${i}`, from: "0.1.0", to: "0.1.1" })) });
-
-  it("leads with candidate or final and carries the unit section whole when it fits", () => {
+  it("leads with the workflow's lines, then candidate or final and the pointer to the diff, then the document", () => {
     assert.equal(
-      composeReleasePrBody({ units: "Merging this publishes **1 unit**.\n", plan: plan(1), candidate: false }),
-      "Merging this publishes the **finals** below.\n\nMerging this publishes **1 unit**.\n",
+      composeReleasePrBody({ candidate: false, preamble: "Publishes `0.85.0`.\n", document: "## `kernel` 0.84.2 → 0.85.0\n" }),
+      "Publishes `0.85.0`.\n\nMerging this publishes the **finals** below. Each unit's version, its CHANGELOG and " +
+        "`.changes/ledger.yaml` are in this PR's diff.\n\n## `kernel` 0.84.2 → 0.85.0\n",
     );
-    assert.match(composeReleasePrBody({ units: "", plan: plan(0), candidate: true }), /\*\*candidates\*\*[\s\S]*No unit version moved/);
+    assert.match(composeReleasePrBody({ candidate: true, document: "x\n" }), /^Merging this publishes the \*\*candidates\*\*/);
   });
 
-  it("degrades the unit section in stages to stay under GitHub's body limit", () => {
-    const compact = composeReleasePrBody({ units: "y".repeat(70_000), plan: plan(2), candidate: false });
-    assert.ok(compact.length <= 65_000);
-    assert.match(compact, /Merging this publishes 2 units: `modules\/m0` 0\.1\.0 → 0\.1\.1, `modules\/m1` 0\.1\.0 → 0\.1\.1\./);
-
-    const counted = composeReleasePrBody({ units: "y".repeat(70_000), plan: plan(3_000), candidate: false });
-    assert.ok(counted.length <= 65_000);
-    assert.match(counted, /Merging this publishes 3000 units\. They did not fit GitHub's body limit/);
+  it("budgets the document to what GitHub's body limit leaves, so the whole body fits", () => {
+    for (const head of [{ candidate: false }, { candidate: true, preamble: "Publishes `0.85.0` — “final”.\n\nAnd more.\n" }]) {
+      const budget = documentBudget(head);
+      const body = composeReleasePrBody({ ...head, document: "é".repeat(budget) });
+      assert.equal([...body].length, BODY_LIMIT - ACTION_HEADROOM);
+    }
   });
 });

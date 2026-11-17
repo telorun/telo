@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import yargs from "yargs";
 import { SHIPPED_ADAPTERS, type EcosystemAdapter } from "../../src/index.js";
+import { teloRelease } from "../../src/node/bin.js";
 import { releaseCommands } from "../../src/node/commands.js";
 import type { EvidenceAdapter } from "../../src/node/evidence.js";
 import type { ReleaseHost, ReleaseOutput, Style } from "../../src/node/host.js";
@@ -44,6 +45,8 @@ const plain: Style = { ok: (t) => t, dim: (t) => t, error: (t) => t, warn: (t) =
 
 export interface Recorded {
   stdout: string[];
+  /** What `document` wrote: stdout under `-o markdown`. */
+  documents: string[];
   stderr: string[];
   payloads: Record<string, unknown>[];
 }
@@ -52,11 +55,12 @@ export function host(options: { adapters?: EcosystemAdapter[]; evidence?: Eviden
   host: ReleaseHost;
   recorded: Recorded;
 } {
-  const recorded: Recorded = { stdout: [], stderr: [], payloads: [] };
+  const recorded: Recorded = { stdout: [], documents: [], stderr: [], payloads: [] };
   const output: ReleaseOutput = {
     line: (text) => recorded.stdout.push(text),
     errLine: (text) => recorded.stderr.push(text),
     emit: (payload) => recorded.payloads.push(payload),
+    document: (text) => recorded.documents.push(text),
     progress: () => {},
     style: plain,
     errStyle: plain,
@@ -92,6 +96,22 @@ export async function run(
   const exitCode = Number(process.exitCode ?? 0);
   process.exitCode = 0;
   return { payload: recorded.payloads[recorded.payloads.length - 1] ?? {}, exitCode };
+}
+
+/** Run one `telo-release` command line in `root` as the executable reads it,
+ *  usage errors exiting 2; returns the exit status. */
+export async function runCommandLine(output: ReleaseOutput, root: string, args: string[]): Promise<number> {
+  const cwd = process.cwd();
+  process.exitCode = 0;
+  process.chdir(root);
+  try {
+    await teloRelease(args, output);
+  } finally {
+    process.chdir(cwd);
+  }
+  const exitCode = Number(process.exitCode ?? 0);
+  process.exitCode = 0;
+  return exitCode;
 }
 
 export function has(command: string, args: string[] = ["--version"], cwd?: string): string | undefined {

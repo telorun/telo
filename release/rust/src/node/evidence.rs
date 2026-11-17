@@ -98,8 +98,10 @@ pub trait EvidenceSession {
         None
     }
     /// Writes `apply` makes beside the version locations, workspace-relative.
-    fn after_stamp(&self, reference: AnchorRef<'_>, version: &str, plan: &ReleasePlan) -> Result<Vec<String>, ReleaseError> {
-        let _ = (reference, version, plan);
+    /// `journal` is told each file before it is written, so a failed apply
+    /// restores it.
+    fn after_stamp(&self, reference: AnchorRef<'_>, version: &str, plan: &ReleasePlan, journal: &mut dyn FnMut(&str) -> Result<(), ReleaseError>) -> Result<Vec<String>, ReleaseError> {
+        let _ = (reference, version, plan, journal);
         Ok(Vec::new())
     }
 }
@@ -254,7 +256,7 @@ pub fn unit_evidence(
     }
     Ok(UnitEvidence {
         key: unit.key.clone(),
-        name: unit.anchors.first().and_then(|a| a.package.name.clone()).filter(|n| !n.is_empty()),
+        name: unit.entry.name.clone().or_else(|| unit.anchors.first().and_then(|a| a.package.name.clone())).filter(|n| !n.is_empty()),
         version: readings.first().and_then(|r| r.value.clone()).unwrap_or_default(),
         layers,
         registry: registry.filter(|r| !r.is_empty()),
@@ -265,6 +267,7 @@ pub fn unit_evidence(
         version_readings: readings,
         own_files_changed,
         max_bump: Some(unit.max_bump),
+        tag_pattern: Some(unit.tag_pattern.clone()),
     })
 }
 

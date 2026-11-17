@@ -17,6 +17,16 @@ import { normalizeUnitKey, type UnitKey } from "./fragment.js";
 import type { WorkspaceDiagnostic } from "./marker-reader.js";
 import { DEFAULT_RELEASE_IGNORE } from "./marker-schema.js";
 import type { PayloadSpec, ReleaseSettings, UnitEntry } from "./release-settings.js";
+import {
+  SAMPLE_TAG_VERSION,
+  defaultTagFormat,
+  gitTagRefusal,
+  parseTagFormat,
+  renderTag,
+  tagCollision,
+  tagPatternOf,
+  type TagPattern,
+} from "./tag-format.js";
 import { VersionFileError, readVersionAt, writeVersionAt } from "./version-files.js";
 
 /** What a host lets the resolver see of the tree, every path workspace-relative
@@ -64,6 +74,13 @@ export interface ResolvedUnit {
   readonly ignore: readonly string[];
   readonly maxBump: BumpLevel;
   readonly group?: string;
+  /** The unit's label: its entry's `name`, else the last segment of its key;
+   *  the root unit has none unless it names one. */
+  readonly name?: string;
+  /** The tag format in force: the entry's, `release.tagFormat`, or the default. */
+  readonly tagFormat: string;
+  /** That format resolved for this unit — the text around each version. */
+  readonly tagPattern: TagPattern;
 }
 
 export interface UnitResolution {
@@ -188,22 +205,43 @@ export function resolveUnits(
     if (skipped || unavailable) continue;
 
     const version = primaryVersion(entry, dir, anchors, adapters);
-    // Zero or several defaulting anchors is reported where the entry is read.
-    if (!version) continue;
+    if (!version) {
+      // Zero or several defaulting anchors is reported where the entry is read;
+      // an anchor that keeps no static version is known only here.
+      const unversioned = anchors.flatMap((anchor) =>
+        anchor.package.noStaticVersion === undefined ? [] : [anchor.package.noStaticVersion],
+      );
+      if (unversioned.length > 0) {
+        report(
+          `Unit '${key}' declares no 'version:' and ${unversioned.join("; ")}. ` +
+            `Declare 'version: <file>' or 'version: { file, pointer }', naming the file that holds the unit's version.`,
+          "WORKSPACE_UNIT_VERSION_UNRESOLVED",
+          at,
+        );
+      }
+      continue;
+    }
 
     const layers = anchors.filter((anchor) => anchor.package.contributesLayer).length + (entry.payload ? 1 : 0);
     if (layers === 0) {
       report(
-        `Unit '${key}' ships no layer: ${
-          anchors.length === 0
-            ? "it lists no ecosystem"
-            : `its packages (${anchors.map((a) => `${a.ecosystem} at ${a.anchor}`).join(", ")}) publish nothing`
-        }. List the ecosystem it ships through, declare 'payload:', or exclude it with '!${key}'.`,
+        anchors.length === 0
+          ? `Unit '${key}' ships no layer: it lists no ecosystem. List the ecosystem it ships through, ` +
+              `declare 'payload:' (for example payload: ["**"]), or exclude the unit with '!${key}'.`
+          : `Unit '${key}' ships no layer: ${anchors
+              .map((a) => a.package.noLayerReason ?? `${a.ecosystem} at \`${a.anchor}\` publishes nothing`)
+              .join("; ")}. Declare 'payload:' on the same entry beside 'ecosystem:' (its packages still ` +
+              `supply version and edges), or exclude the unit with '!${key}'.`,
         "WORKSPACE_UNIT_PAYLOAD_EMPTY",
         at,
       );
       continue;
     }
+
+    const name = entry.name ?? (key === "." ? undefined : key.slice(key.lastIndexOf("/") + 1));
+    const tagFormat = entry.tagFormat ?? release.tagFormat ?? defaultTagFormat(key);
+    const tagPattern = unitTagPattern(key, name, tagFormat, tagAt(entry), report);
+    if (!tagPattern) continue;
 
     for (const anchor of anchors) {
       const claim = `${anchor.ecosystem}\0${anchor.dir}`;
@@ -233,7 +271,31 @@ export function resolveUnits(
       ignore: entry.ignore ?? release.ignore ?? DEFAULT_RELEASE_IGNORE,
       maxBump: entry.maxBump ?? release.maxBump ?? "major",
       ...(group !== undefined ? { group } : {}),
+      ...(name !== undefined ? { name } : {}),
+      tagFormat,
+      tagPattern,
     });
+  }
+
+  // Identical patterns collide by construction: one diagnostic per such group, the
+  // automaton walk only across distinct patterns.
+  const byPattern = new Map<string, ResolvedUnit[]>();
+  for (const unit of units) {
+    const identity = JSON.stringify(unit.tagPattern);
+    const group = byPattern.get(identity);
+    if (group) group.push(unit);
+    else byPattern.set(identity, [unit]);
+  }
+  const patternGroups = [...byPattern.values()];
+  const reportCollision = (members: readonly ResolvedUnit[], tag: string): void => {
+    report(tagCollisionMessage(members, tag), "WORKSPACE_TAG_COLLISION", tagAt(members[members.length - 1]!.entry));
+  };
+  for (const [i, a] of patternGroups.entries()) {
+    if (a.length > 1) reportCollision(a, tagCollision(a[0]!.tagPattern, a[0]!.tagPattern)!);
+    for (const b of patternGroups.slice(i + 1)) {
+      const tag = tagCollision(a[0]!.tagPattern, b[0]!.tagPattern);
+      if (tag !== undefined) reportCollision([...a, ...b], tag);
+    }
   }
 
   const resolved = new Set(units.map((unit) => unit.key));
@@ -250,6 +312,70 @@ export function resolveUnits(
   return { units, diagnostics };
 }
 
+/** The pattern `format` resolves to for one unit, or `undefined` with the
+ *  reason reported: `{name}` on a unit with none, or a tag git refuses. */
+function unitTagPattern(
+  key: UnitKey,
+  name: string | undefined,
+  format: string,
+  at: (string | number)[],
+  report: (message: string, code: WorkspaceDiagnostic["code"], path: (string | number)[]) => void,
+): TagPattern | undefined {
+  const parsed = parseTagFormat(format);
+  if ("problem" in parsed) {
+    report(`Unit '${key}' has the tag format ${JSON.stringify(format)}, ${parsed.problem}.`, "WORKSPACE_TAG_INVALID", at);
+    return undefined;
+  }
+  const pattern = tagPatternOf(parsed.parts, key, name);
+  if (!pattern) {
+    report(
+      `Unit '${key}' has no name, so its tag format '${format}' cannot render {name}. Give its entry a 'name:', ` +
+        `or a 'tagFormat' without {name}.`,
+      "WORKSPACE_TAG_INVALID",
+      at,
+    );
+    return undefined;
+  }
+  const sample = renderTag(pattern, SAMPLE_TAG_VERSION);
+  const refusal = gitTagRefusal(sample);
+  if (refusal) {
+    report(
+      `Unit '${key}' renders its tag format '${format}' as '${sample}' for version ${SAMPLE_TAG_VERSION}, which git ` +
+        `refuses as a tag: ${refusal}. Give it a 'tagFormat' that renders a legal tag.`,
+      "WORKSPACE_TAG_INVALID",
+      at,
+    );
+    return undefined;
+  }
+  return pattern;
+}
+
+/** Where a unit's tag is fixed: its entry's `tagFormat`, else the entry. */
+function quotedList(items: readonly string[]): string {
+  const quoted = items.map((item) => `'${item}'`);
+  return quoted.length < 2 ? quoted.join("") : `${quoted.slice(0, -1).join(", ")} and ${quoted[quoted.length - 1]}`;
+}
+
+function tagCollisionMessage(members: readonly ResolvedUnit[], tag: string): string {
+  if (members.length === 2) {
+    const [a, b] = members as [ResolvedUnit, ResolvedUnit];
+    return (
+      `Units '${a.key}' and '${b.key}' can be tagged alike: '${tag}' renders from both tag formats ` +
+      `('${a.tagFormat}' and '${b.tagFormat}'). Give one of them a 'tagFormat' no version of the other can render.`
+    );
+  }
+  const formats = [...new Set(members.map((unit) => unit.tagFormat))];
+  return (
+    `Units ${quotedList(members.map((unit) => unit.key))} can be tagged alike: '${tag}' renders from all their tag formats ` +
+    `(${quotedList(formats)}). Give all but one of them a 'tagFormat' no version of the others can render.`
+  );
+}
+
+function tagAt(entry: UnitEntry): (string | number)[] {
+  const at: (string | number)[] = ["release", "units", entry.index];
+  return entry.tagFormat !== undefined ? [...at, "tagFormat"] : at;
+}
+
 function primaryVersion(
   entry: UnitEntry,
   dir: string,
@@ -259,7 +385,7 @@ function primaryVersion(
   if (entry.version) return located(dir, entry.version);
   const defaulting = anchors.flatMap((anchor) => {
     const spec = adapters.get(anchor.ecosystem)!.versionFile;
-    return spec ? [located(anchor.dir, spec)] : [];
+    return spec && anchor.package.noStaticVersion === undefined ? [located(anchor.dir, spec)] : [];
   });
   return defaulting.length === 1 ? defaulting[0] : undefined;
 }
@@ -282,7 +408,7 @@ function versionLocations(
   };
   for (const anchor of anchors) {
     const spec = adapters.get(anchor.ecosystem)!.versionFile;
-    if (spec) add(located(anchor.dir, spec));
+    if (spec && anchor.package.noStaticVersion === undefined) add(located(anchor.dir, spec));
     for (const file of anchor.package.versionFiles ?? []) add({ file: joinPath(anchor.dir, file) });
   }
   const patterns = (entry.versionFiles ?? []).flatMap((spec) => ("pattern" in spec ? [spec.pattern] : []));

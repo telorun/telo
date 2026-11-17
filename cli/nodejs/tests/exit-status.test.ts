@@ -31,6 +31,8 @@ describe("exit status", () => {
       [["module", "nope"], /Specify a module subcommand/],
       [["check"], /Not enough non-option arguments: got 0, need at least 1$/],
       [["check", "-o", "yaml", "x.yaml"], /Invalid values:[\s\S]*Argument: output, Given: "yaml"/],
+      [["check", "-o", "markdown", "x.yaml"], /Argument: output, Given: "markdown", Choices: "text", "json"$/],
+      [["release", "order", "-o", "markdown"], /Argument: output, Given: "markdown", Choices: "text", "json"$/],
     ] as const) {
       const refused = await telo([...args]);
       expect(refused.status, args.join(" ")).toBe(2);

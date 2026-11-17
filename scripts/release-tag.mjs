@@ -11,8 +11,8 @@
 // pushes to `origin` as the checkout is configured. The local tag is written after the
 // push, so later steps of the same job read it.
 //
-// `--units` tags each release unit the release commit moved, `<unit key>@<version>`
-// — the names `telo release tag` gives, read with the release commit checked out
+// `--units` tags each release unit the release commit moved with the names `telo
+// release tag` renders from each unit's tag format, read with the release commit checked out
 // (it compares that commit's ledger with its parent's) — on the release commit
 // itself, so the links a packed package names exist before anything publishes.
 //

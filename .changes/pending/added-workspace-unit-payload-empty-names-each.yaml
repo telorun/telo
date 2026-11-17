@@ -1,0 +1,7 @@
+units:
+  release: Added
+body: "`WORKSPACE_UNIT_PAYLOAD_EMPTY` names each anchor's reason and says to declare
+  `payload:` beside `ecosystem:` or exclude the unit, and
+  `WORKSPACE_UNIT_VERSION_UNRESOLVED` shows both `version: <file>` and `version: { file,
+  pointer }`. An ecosystem hook `afterStamp` receives a journal callback, and an apply
+  refuses a file that exists but cannot be read instead of recording it as absent."

@@ -26,6 +26,7 @@
                 "name": "app",
                 "from": "1.0.0",
                 "to": "1.0.1",
+                "tag": "app@1.0.1",
                 "level": "patch",
                 "reasons": [
                   "declared"
@@ -66,6 +67,1070 @@
             "fragments": [],
             "diagnostics": []
           }
+        }
+      }
+    ]
+  },
+  {
+    "name": "tag formats render on order rows, plans and tags, candidates included",
+    "files": {
+      "telo-workspace.yaml": "release:\n  units:\n    - { path: ., version: release.txt, payload: [release.txt] }\n    - { path: apps/web, version: VERSION, payload: [\"**\"], name: web, tagFormat: \"{name}/{version}\" }\n",
+      "release.txt": "1.0.0\n",
+      "apps/web/VERSION": "1.3.0\n",
+      "apps/web/index.js": "export {};\n",
+      ".changes/pending/added-web.yaml": "units: { \".\": Fixed, apps/web: Added }\nbody: A web page.\n"
+    },
+    "steps": [
+      {
+        "args": [
+          "order"
+        ],
+        "expected": {
+          "exitCode": 0,
+          "payload": {
+            "ok": true,
+            "order": [
+              {
+                "key": ".",
+                "version": "1.0.0",
+                "tag": "v1.0.0",
+                "imports": [],
+                "path": "."
+              },
+              {
+                "key": "apps/web",
+                "version": "1.3.0",
+                "tag": "web/1.3.0",
+                "imports": [],
+                "path": "apps/web"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "args": [
+          "status",
+          "--base",
+          "HEAD"
+        ],
+        "expected": {
+          "exitCode": 0,
+          "payload": {
+            "ok": true,
+            "units": [
+              {
+                "key": ".",
+                "name": ".",
+                "from": "1.0.0",
+                "to": "1.0.1",
+                "tag": "v1.0.1",
+                "level": "patch",
+                "reasons": [
+                  "declared"
+                ],
+                "changedLayers": [],
+                "entries": [
+                  {
+                    "kind": "Fixed",
+                    "body": "A web page."
+                  }
+                ]
+              },
+              {
+                "key": "apps/web",
+                "name": "web",
+                "from": "1.3.0",
+                "to": "1.4.0",
+                "tag": "web/1.4.0",
+                "level": "minor",
+                "reasons": [
+                  "declared"
+                ],
+                "changedLayers": [],
+                "entries": [
+                  {
+                    "kind": "Added",
+                    "body": "A web page."
+                  }
+                ]
+              }
+            ],
+            "fragments": [
+              ".changes/pending/added-web.yaml"
+            ],
+            "diagnostics": []
+          }
+        }
+      },
+      {
+        "args": [
+          "apply",
+          "--candidate",
+          "--base",
+          "HEAD",
+          "--date",
+          "2026-01-02"
+        ],
+        "expected": {
+          "exitCode": 0,
+          "payload": {
+            "ok": true,
+            "units": [
+              {
+                "key": ".",
+                "name": ".",
+                "from": "1.0.0",
+                "to": "1.0.1-rc.1",
+                "tag": "v1.0.1-rc.1",
+                "level": "patch",
+                "reasons": [
+                  "declared"
+                ],
+                "changedLayers": [],
+                "entries": [
+                  {
+                    "kind": "Fixed",
+                    "body": "A web page."
+                  }
+                ]
+              },
+              {
+                "key": "apps/web",
+                "name": "web",
+                "from": "1.3.0",
+                "to": "1.4.0-rc.1",
+                "tag": "web/1.4.0-rc.1",
+                "level": "minor",
+                "reasons": [
+                  "declared"
+                ],
+                "changedLayers": [],
+                "entries": [
+                  {
+                    "kind": "Added",
+                    "body": "A web page."
+                  }
+                ]
+              }
+            ],
+            "fragments": [],
+            "candidate": "rc",
+            "diagnostics": [],
+            "written": [
+              "release.txt",
+              "apps/web/VERSION",
+              ".changes/ledger.yaml"
+            ]
+          }
+        }
+      },
+      {
+        "args": [
+          "tag",
+          "--dry-run"
+        ],
+        "expected": {
+          "exitCode": 0,
+          "payload": {
+            "ok": true,
+            "tags": [
+              "v1.0.1-rc.1",
+              "web/1.4.0-rc.1"
+            ],
+            "dryRun": true
+          }
+        }
+      },
+      {
+        "args": [
+          "apply",
+          "--base",
+          "HEAD",
+          "--date",
+          "2026-01-03"
+        ],
+        "expected": {
+          "exitCode": 0,
+          "payload": {
+            "ok": true,
+            "units": [
+              {
+                "key": ".",
+                "name": ".",
+                "from": "1.0.1-rc.1",
+                "to": "1.0.1",
+                "tag": "v1.0.1",
+                "level": "patch",
+                "reasons": [
+                  "declared"
+                ],
+                "changedLayers": [],
+                "entries": [
+                  {
+                    "kind": "Fixed",
+                    "body": "A web page."
+                  }
+                ]
+              },
+              {
+                "key": "apps/web",
+                "name": "web",
+                "from": "1.4.0-rc.1",
+                "to": "1.4.0",
+                "tag": "web/1.4.0",
+                "level": "minor",
+                "reasons": [
+                  "declared"
+                ],
+                "changedLayers": [],
+                "entries": [
+                  {
+                    "kind": "Added",
+                    "body": "A web page."
+                  }
+                ]
+              }
+            ],
+            "fragments": [
+              ".changes/pending/added-web.yaml"
+            ],
+            "diagnostics": [],
+            "written": [
+              "release.txt",
+              "CHANGELOG.md",
+              "apps/web/VERSION",
+              "apps/web/CHANGELOG.md",
+              ".changes/ledger.yaml",
+              ".changes/pending/added-web.yaml"
+            ]
+          }
+        }
+      },
+      {
+        "args": [
+          "tag",
+          "--dry-run"
+        ],
+        "expected": {
+          "exitCode": 0,
+          "payload": {
+            "ok": true,
+            "tags": [
+              "v1.0.1",
+              "web/1.4.0"
+            ],
+            "dryRun": true
+          }
+        }
+      },
+      {
+        "args": [
+          "order"
+        ],
+        "expected": {
+          "exitCode": 0,
+          "payload": {
+            "ok": true,
+            "order": [
+              {
+                "key": ".",
+                "version": "1.0.1",
+                "tag": "v1.0.1",
+                "imports": [],
+                "path": "."
+              },
+              {
+                "key": "apps/web",
+                "version": "1.4.0",
+                "tag": "web/1.4.0",
+                "imports": [],
+                "path": "apps/web"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "baseline records every unit with no entry once, reports a candidate, and refuses to overwrite an entry",
+    "files": {
+      "app/VERSION": "1.0.0\n",
+      "app/Dockerfile": "FROM scratch\n",
+      "lib/VERSION": "0.3.0\n",
+      "lib/index.txt": "lib\n",
+      "telo-workspace.yaml": "release:\n  ecosystems: { docker: { registry: ghcr.io/acme } }\n  units:\n    - path: app\n      version: VERSION\n      ecosystem: { docker: { \".\": {} } }\n    - { path: lib, version: VERSION, payload: [\"**\"] }\n    - { path: cand, version: VERSION, payload: [\"**\"] }\n",
+      "cand/VERSION": "2.0.0-rc.1\n",
+      "cand/a.txt": "a\n"
+    },
+    "steps": [
+      {
+        "args": [
+          "baseline",
+          "--dry-run"
+        ],
+        "expected": {
+          "exitCode": 0,
+          "payload": {
+            "ok": true,
+            "recorded": [
+              {
+                "key": "app",
+                "version": "1.0.0"
+              },
+              {
+                "key": "lib",
+                "version": "0.3.0"
+              }
+            ],
+            "skipped": [],
+            "unrecorded": [
+              {
+                "key": "cand",
+                "reason": "it carries the candidate version 2.0.0-rc.1; baseline records final versions only"
+              }
+            ],
+            "dryRun": true
+          }
+        }
+      },
+      {
+        "args": [
+          "baseline",
+          "--dry-run"
+        ],
+        "expected": {
+          "exitCode": 0,
+          "payload": {
+            "ok": true,
+            "recorded": [
+              {
+                "key": "app",
+                "version": "1.0.0"
+              },
+              {
+                "key": "lib",
+                "version": "0.3.0"
+              }
+            ],
+            "skipped": [],
+            "unrecorded": [
+              {
+                "key": "cand",
+                "reason": "it carries the candidate version 2.0.0-rc.1; baseline records final versions only"
+              }
+            ],
+            "dryRun": true
+          }
+        }
+      },
+      {
+        "args": [
+          "baseline"
+        ],
+        "expected": {
+          "exitCode": 0,
+          "payload": {
+            "ok": true,
+            "recorded": [
+              {
+                "key": "app",
+                "version": "1.0.0"
+              },
+              {
+                "key": "lib",
+                "version": "0.3.0"
+              }
+            ],
+            "skipped": [],
+            "unrecorded": [
+              {
+                "key": "cand",
+                "reason": "it carries the candidate version 2.0.0-rc.1; baseline records final versions only"
+              }
+            ],
+            "dryRun": false
+          }
+        }
+      },
+      {
+        "args": [
+          "baseline"
+        ],
+        "expected": {
+          "exitCode": 0,
+          "payload": {
+            "ok": true,
+            "recorded": [],
+            "skipped": [
+              "app",
+              "lib"
+            ],
+            "unrecorded": [
+              {
+                "key": "cand",
+                "reason": "it carries the candidate version 2.0.0-rc.1; baseline records final versions only"
+              }
+            ],
+            "dryRun": false
+          }
+        }
+      },
+      {
+        "args": [
+          "baseline",
+          "--unit",
+          "lib"
+        ],
+        "expected": {
+          "exitCode": 1,
+          "payload": {
+            "ok": false
+          }
+        }
+      },
+      {
+        "args": [
+          "baseline",
+          "--unit",
+          "nowhere"
+        ],
+        "expected": {
+          "exitCode": 1,
+          "payload": {
+            "ok": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "baseline narrows to the named units, and verify --write keeps what it recorded",
+    "files": {
+      "app/VERSION": "1.0.0\n",
+      "app/Dockerfile": "FROM scratch\n",
+      "lib/VERSION": "0.3.0\n",
+      "lib/index.txt": "lib\n",
+      "telo-workspace.yaml": "release:\n  ecosystems: { docker: { registry: ghcr.io/acme } }\n  units:\n    - path: app\n      version: VERSION\n      ecosystem: { docker: { \".\": {} } }\n    - { path: lib, version: VERSION, payload: [\"**\"] }\n"
+    },
+    "steps": [
+      {
+        "args": [
+          "baseline",
+          "--unit",
+          "app"
+        ],
+        "expected": {
+          "exitCode": 0,
+          "payload": {
+            "ok": true,
+            "recorded": [
+              {
+                "key": "app",
+                "version": "1.0.0"
+              }
+            ],
+            "skipped": [],
+            "unrecorded": [],
+            "dryRun": false
+          }
+        }
+      },
+      {
+        "args": [
+          "baseline",
+          "--unit",
+          "app"
+        ],
+        "expected": {
+          "exitCode": 1,
+          "payload": {
+            "ok": false
+          }
+        }
+      },
+      {
+        "args": [
+          "verify",
+          "--write"
+        ],
+        "expected": {
+          "exitCode": 0,
+          "payload": {
+            "ok": true,
+            "drifted": [],
+            "unverifiable": [
+              {
+                "key": "app",
+                "layer": "docker/.",
+                "kind": "unverifiable",
+                "detail": "the docker ecosystem has no registry to read it back from; its recorded digest is kept"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "args": [
+          "baseline"
+        ],
+        "expected": {
+          "exitCode": 0,
+          "payload": {
+            "ok": true,
+            "recorded": [
+              {
+                "key": "lib",
+                "version": "0.3.0"
+              }
+            ],
+            "skipped": [
+              "app"
+            ],
+            "unrecorded": [],
+            "dryRun": false
+          }
+        }
+      },
+      {
+        "args": [
+          "status",
+          "--base",
+          "HEAD"
+        ],
+        "expected": {
+          "exitCode": 0,
+          "payload": {
+            "ok": true,
+            "units": [],
+            "fragments": [],
+            "diagnostics": []
+          }
+        }
+      },
+      {
+        "args": [
+          "verify"
+        ],
+        "expected": {
+          "exitCode": 0,
+          "payload": {
+            "ok": true,
+            "drifted": [],
+            "unverifiable": [
+              {
+                "key": "app",
+                "layer": "docker/.",
+                "kind": "unverifiable",
+                "detail": "the docker ecosystem has no registry to read it back from; its recorded digest is kept"
+              },
+              {
+                "key": "lib",
+                "layer": "payload",
+                "kind": "unverifiable",
+                "detail": "a declared payload has no read-back; its recorded digest is kept"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "-o markdown writes the plan as a document, and refuses with an empty stdout what no stage fits",
+    "files": {
+      "telo-workspace.yaml": "release:\n  units:\n    - { path: lib, version: VERSION, payload: [VERSION] }\n    - { path: app, version: VERSION, payload: [VERSION] }\n  groups: { g: [lib, app] }\n",
+      "lib/VERSION": "1.0.0\n",
+      "app/VERSION": "2.0.0\n",
+      ".changes/pending/added-a-feature.yaml": "units: { lib: Added }\nbody: |-\n  A feature, in two parts:\n\n  - the *first* one\n  - the `second` one\n"
+    },
+    "steps": [
+      {
+        "args": [
+          "status",
+          "--base",
+          "HEAD",
+          "-o",
+          "markdown"
+        ],
+        "stdout": true,
+        "expected": {
+          "exitCode": 0,
+          "payload": {
+            "ok": true,
+            "units": [
+              {
+                "key": "app",
+                "name": "app",
+                "from": "2.0.0",
+                "to": "2.1.0",
+                "tag": "app@2.1.0",
+                "level": "minor",
+                "group": "g",
+                "reasons": [
+                  "group g"
+                ],
+                "changedLayers": [],
+                "entries": []
+              },
+              {
+                "key": "lib",
+                "name": "lib",
+                "from": "1.0.0",
+                "to": "2.1.0",
+                "tag": "lib@2.1.0",
+                "level": "minor",
+                "group": "g",
+                "reasons": [
+                  "declared"
+                ],
+                "changedLayers": [],
+                "entries": [
+                  {
+                    "kind": "Added",
+                    "body": "A feature, in two parts:\n\n- the *first* one\n- the `second` one"
+                  }
+                ]
+              }
+            ],
+            "fragments": [
+              ".changes/pending/added-a-feature.yaml"
+            ],
+            "diagnostics": []
+          },
+          "stdout": "## `lib` 1.0.0 → 2.1.0\n\nminor — declared\n\nGroup `g` · tag `lib@2.1.0`\n\n### Added\n* A feature, in two parts:\n\n  - the *first* one\n  - the `second` one\n\n## Units with no changelog entry\n\n- `app` 2.0.0 → 2.1.0 · minor — group `g` · group `g` · tag `app@2.1.0`\n"
+        }
+      },
+      {
+        "args": [
+          "status",
+          "--base",
+          "HEAD",
+          "-o",
+          "markdown",
+          "--max-length",
+          "10"
+        ],
+        "stdout": true,
+        "expected": {
+          "exitCode": 1,
+          "payload": {
+            "ok": false
+          },
+          "stdout": ""
+        }
+      },
+      {
+        "args": [
+          "apply",
+          "--base",
+          "HEAD",
+          "--date",
+          "2026-01-02",
+          "-o",
+          "markdown",
+          "--max-length",
+          "10"
+        ],
+        "stdout": true,
+        "expected": {
+          "exitCode": 1,
+          "payload": {
+            "ok": false
+          },
+          "stdout": ""
+        }
+      },
+      {
+        "args": [
+          "check",
+          "--base",
+          "HEAD",
+          "-o",
+          "markdown",
+          "--max-length",
+          "120"
+        ],
+        "stdout": true,
+        "expected": {
+          "exitCode": 0,
+          "payload": {
+            "ok": true,
+            "units": [
+              {
+                "key": "app",
+                "name": "app",
+                "from": "2.0.0",
+                "to": "2.1.0",
+                "tag": "app@2.1.0",
+                "level": "minor",
+                "group": "g",
+                "reasons": [
+                  "group g"
+                ],
+                "changedLayers": [],
+                "entries": []
+              },
+              {
+                "key": "lib",
+                "name": "lib",
+                "from": "1.0.0",
+                "to": "2.1.0",
+                "tag": "lib@2.1.0",
+                "level": "minor",
+                "group": "g",
+                "reasons": [
+                  "declared"
+                ],
+                "changedLayers": [],
+                "entries": [
+                  {
+                    "kind": "Added",
+                    "body": "A feature, in two parts:\n\n- the *first* one\n- the `second` one"
+                  }
+                ]
+              }
+            ],
+            "fragments": [
+              ".changes/pending/added-a-feature.yaml"
+            ],
+            "diagnostics": []
+          },
+          "stdout": "`app` 2.1.0, `lib` 2.1.0.\n\n_Changelog entries, reasons and tags are left out to fit the length limit._\n"
+        }
+      },
+      {
+        "args": [
+          "apply",
+          "--base",
+          "HEAD",
+          "--date",
+          "2026-01-02",
+          "-o",
+          "markdown"
+        ],
+        "stdout": true,
+        "expected": {
+          "exitCode": 0,
+          "payload": {
+            "ok": true,
+            "units": [
+              {
+                "key": "app",
+                "name": "app",
+                "from": "2.0.0",
+                "to": "2.1.0",
+                "tag": "app@2.1.0",
+                "level": "minor",
+                "group": "g",
+                "reasons": [
+                  "group g"
+                ],
+                "changedLayers": [],
+                "entries": []
+              },
+              {
+                "key": "lib",
+                "name": "lib",
+                "from": "1.0.0",
+                "to": "2.1.0",
+                "tag": "lib@2.1.0",
+                "level": "minor",
+                "group": "g",
+                "reasons": [
+                  "declared"
+                ],
+                "changedLayers": [],
+                "entries": [
+                  {
+                    "kind": "Added",
+                    "body": "A feature, in two parts:\n\n- the *first* one\n- the `second` one"
+                  }
+                ]
+              }
+            ],
+            "fragments": [
+              ".changes/pending/added-a-feature.yaml"
+            ],
+            "diagnostics": [],
+            "written": [
+              "app/VERSION",
+              "lib/VERSION",
+              "lib/CHANGELOG.md",
+              ".changes/ledger.yaml",
+              ".changes/pending/added-a-feature.yaml"
+            ]
+          },
+          "stdout": "## `lib` 1.0.0 → 2.1.0\n\nminor — declared\n\nGroup `g` · tag `lib@2.1.0`\n\n### Added\n* A feature, in two parts:\n\n  - the *first* one\n  - the `second` one\n\n## Units with no changelog entry\n\n- `app` 2.0.0 → 2.1.0 · minor — group `g` · group `g` · tag `app@2.1.0`\n"
+        }
+      },
+      {
+        "args": [
+          "status",
+          "--base",
+          "HEAD",
+          "-o",
+          "markdown"
+        ],
+        "stdout": true,
+        "expected": {
+          "exitCode": 0,
+          "payload": {
+            "ok": true,
+            "units": [],
+            "fragments": [],
+            "diagnostics": []
+          },
+          "stdout": "Nothing to release — every unit matches the ledger.\n"
+        }
+      }
+    ]
+  },
+  {
+    "name": "-o markdown is refused by every command but status, check and apply, and --max-length without it",
+    "files": {
+      "telo-workspace.yaml": "release:\n  units:\n    - { path: lib, version: VERSION, payload: [VERSION] }\n    - { path: app, version: VERSION, payload: [VERSION] }\n  groups: { g: [lib, app] }\n",
+      "lib/VERSION": "1.0.0\n",
+      "app/VERSION": "2.0.0\n",
+      ".changes/pending/added-a-feature.yaml": "units: { lib: Added }\nbody: |-\n  A feature, in two parts:\n\n  - the *first* one\n  - the `second` one\n"
+    },
+    "steps": [
+      {
+        "args": [
+          "order",
+          "-o",
+          "markdown"
+        ],
+        "stdout": true,
+        "expected": {
+          "exitCode": 2,
+          "payload": null,
+          "stdout": ""
+        }
+      },
+      {
+        "args": [
+          "baseline",
+          "-o",
+          "markdown"
+        ],
+        "stdout": true,
+        "expected": {
+          "exitCode": 2,
+          "payload": null,
+          "stdout": ""
+        }
+      },
+      {
+        "args": [
+          "verify",
+          "-o",
+          "markdown"
+        ],
+        "stdout": true,
+        "expected": {
+          "exitCode": 2,
+          "payload": null,
+          "stdout": ""
+        }
+      },
+      {
+        "args": [
+          "tag",
+          "--dry-run",
+          "-o",
+          "markdown"
+        ],
+        "stdout": true,
+        "expected": {
+          "exitCode": 2,
+          "payload": null,
+          "stdout": ""
+        }
+      },
+      {
+        "args": [
+          "add",
+          "--unit",
+          "lib",
+          "--body",
+          "A fix.",
+          "-o",
+          "markdown"
+        ],
+        "stdout": true,
+        "expected": {
+          "exitCode": 2,
+          "payload": null,
+          "stdout": ""
+        }
+      },
+      {
+        "args": [
+          "adopt",
+          "changesets",
+          "-o",
+          "markdown"
+        ],
+        "stdout": true,
+        "expected": {
+          "exitCode": 2,
+          "payload": null,
+          "stdout": ""
+        }
+      },
+      {
+        "args": [
+          "order",
+          "--max-length",
+          "5"
+        ],
+        "stdout": true,
+        "expected": {
+          "exitCode": 2,
+          "payload": null,
+          "stdout": ""
+        }
+      },
+      {
+        "args": [
+          "status",
+          "--base",
+          "HEAD",
+          "--max-length",
+          "400"
+        ],
+        "stdout": true,
+        "expected": {
+          "exitCode": 2,
+          "payload": null,
+          "stdout": ""
+        }
+      },
+      {
+        "args": [
+          "status",
+          "--base",
+          "HEAD",
+          "-o",
+          "json",
+          "--max-length",
+          "400"
+        ],
+        "stdout": true,
+        "expected": {
+          "exitCode": 2,
+          "payload": null,
+          "stdout": ""
+        }
+      },
+      {
+        "args": [
+          "status",
+          "--base",
+          "HEAD",
+          "-o",
+          "markdown",
+          "--max-length",
+          "0"
+        ],
+        "stdout": true,
+        "expected": {
+          "exitCode": 2,
+          "payload": null,
+          "stdout": ""
+        }
+      },
+      {
+        "args": [
+          "status",
+          "--base",
+          "HEAD",
+          "-o",
+          "markdown",
+          "--max-length",
+          "1.5"
+        ],
+        "stdout": true,
+        "expected": {
+          "exitCode": 2,
+          "payload": null,
+          "stdout": ""
+        }
+      }
+    ]
+  },
+  {
+    "name": "-o markdown leaves stdout empty when check fails",
+    "files": {
+      "telo-workspace.yaml": "release:\n  units:\n    - { path: lib, version: VERSION, payload: [VERSION] }\n    - { path: app, version: VERSION, payload: [VERSION] }\n  groups: { g: [lib, app] }\n",
+      "lib/VERSION": "1.0.0\n",
+      "app/VERSION": "2.0.0\n",
+      ".changes/pending/added-a-feature.yaml": "units: { lib: Added }\nbody: |-\n  A feature, in two parts:\n\n  - the *first* one\n  - the `second` one\n",
+      ".changes/pending/fixed-nowhere.yaml": "units: { nowhere: Fixed }\nbody: A fix.\n"
+    },
+    "steps": [
+      {
+        "args": [
+          "check",
+          "--base",
+          "HEAD",
+          "-o",
+          "markdown"
+        ],
+        "stdout": true,
+        "expected": {
+          "exitCode": 1,
+          "payload": {
+            "ok": false,
+            "units": [
+              {
+                "key": "app",
+                "name": "app",
+                "from": "2.0.0",
+                "to": "2.1.0",
+                "tag": "app@2.1.0",
+                "level": "minor",
+                "group": "g",
+                "reasons": [
+                  "group g"
+                ],
+                "changedLayers": [],
+                "entries": []
+              },
+              {
+                "key": "lib",
+                "name": "lib",
+                "from": "1.0.0",
+                "to": "2.1.0",
+                "tag": "lib@2.1.0",
+                "level": "minor",
+                "group": "g",
+                "reasons": [
+                  "declared"
+                ],
+                "changedLayers": [],
+                "entries": [
+                  {
+                    "kind": "Added",
+                    "body": "A feature, in two parts:\n\n- the *first* one\n- the `second` one"
+                  }
+                ]
+              }
+            ],
+            "fragments": [
+              ".changes/pending/added-a-feature.yaml"
+            ],
+            "diagnostics": [
+              {
+                "severity": "error",
+                "code": "FRAGMENT_UNKNOWN_UNIT",
+                "message": ".changes/pending/fixed-nowhere.yaml names 'nowhere', which is not a unit in this workspace. A fragment names a unit by its workspace-relative directory path."
+              }
+            ]
+          },
+          "stdout": ""
         }
       }
     ]

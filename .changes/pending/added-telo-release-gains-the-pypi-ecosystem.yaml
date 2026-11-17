@@ -1,0 +1,6 @@
+units:
+  cli: Added
+body: "`telo release` gains the `pypi` ecosystem, tag formats (`release.tagFormat`, a
+  unit's `tagFormat` and `name`), `telo release baseline`, and `-o markdown` with
+  `--max-length` on `status`, `check` and `apply`; `-o` of every other command still
+  offers `text` and `json` only."

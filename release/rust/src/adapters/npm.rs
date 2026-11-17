@@ -64,9 +64,12 @@ impl EcosystemAdapter for NpmAdapter {
     fn recognize(&self, probe: &AnchorProbe<'_>) -> Option<RecognizedPackage> {
         let pkg = read_package_json(&probe.read_file(PACKAGE_JSON)?)?;
         pkg.get("version").and_then(Value::as_str)?;
+        let private = pkg.get("private") == Some(&Value::Bool(true));
         Some(RecognizedPackage {
             name: pkg.get("name").and_then(Value::as_str).map(str::to_string),
-            contributes_layer: pkg.get("private") != Some(&Value::Bool(true)),
+            contributes_layer: !private,
+            no_layer_reason: private.then(|| format!("npm at `{}` is `private: true`", probe.anchor)),
+            no_static_version: None,
             version_files: Vec::new(),
         })
     }

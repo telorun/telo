@@ -154,8 +154,8 @@ unattributed patch.
 - the digests of what will be published into `.changes/ledger.yaml`;
 - and it deletes the fragments it consumed.
 
-Then `telo release tag` tags the commit `<unit key>@<version>` for each unit the
-plan moved (`core@1.5.0`), and `telo release order` says what to publish:
+Then `telo release tag` tags the commit for each unit the plan moved, by default
+`<unit key>@<version>` (`core@1.5.0`; a `tagFormat` sets another), and `telo release order` says what to publish:
 
 ```console
 $ telo release order

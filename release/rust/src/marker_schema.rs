@@ -95,10 +95,19 @@ fn max_bump() -> WorkspaceKeySchema {
     )
 }
 
+fn tag_format() -> WorkspaceKeySchema {
+    key(
+        KeyType::String,
+        "The tag a released version gets: text with the placeholders {key}, {name} and {version}. Default {key}@{version}; v{version} for the unit at the workspace root.",
+        &["{key}@{version}", "{name}/{version}", "v{version}"],
+    )
+}
+
 /// Keys every `release.units` entry may carry, whatever its ecosystems.
 pub static UNIT_ENTRY_KEYS: LazyLock<KeySchemas> = LazyLock::new(|| {
     vec![
         ("path", key(KeyType::String, "The unit's directory, or a gitignore-style pattern of them, workspace-relative. Last match wins; a leading ! excludes. A unit's key is its path.", &[])),
+        ("name", key(KeyType::String, "A short label for the unit, read by {name} in a tag format and shown as its name in the plan. Default: the last segment of its key; the root unit has none.", &[])),
         ("ecosystem", key(KeyType::Ecosystem, "The ecosystems the unit ships through: a name, a list of names, or a map of name to the anchor directory inside the unit holding that ecosystem's package — a directory, a list of them, or a map of directory to that anchor's settings. A name alone anchors at the unit's own directory. Absent: the unit declares its own version and payload.", &["npm", "cargo", "docker", "helm"])),
         ("version", key(KeyType::VersionLocation, "Where the unit's version lives: a unit-relative file a handler reads (package.json, Cargo.toml, a plain version file), or { file, pointer } into JSON, YAML or TOML. Required unless exactly one anchor's ecosystem keeps a version.", &[])),
         ("payload", key(KeyType::Payload, "A declared file set beside the ecosystems' own: unit-relative patterns, or { command } printing unit-relative paths. Required when no anchor contributes a layer.", &[])),
@@ -106,6 +115,7 @@ pub static UNIT_ENTRY_KEYS: LazyLock<KeySchemas> = LazyLock::new(|| {
         ("versionFiles", key(KeyType::VersionFiles, "Further files carrying the unit's version, written with it: unit-relative patterns, or { path, pointer }.", &[])),
         ("ignore", ignore()),
         ("maxBump", max_bump()),
+        ("tagFormat", tag_format()),
     ]
 });
 
@@ -123,6 +133,7 @@ pub static RELEASE_BLOCK_KEYS: LazyLock<KeySchemas> = LazyLock::new(|| {
         ("groups", key(KeyType::Groups, "Named groups of unit keys sharing one version: every member releases at the highest level any member needs.", &[])),
         ("ignore", ignore()),
         ("maxBump", max_bump()),
+        ("tagFormat", tag_format()),
     ]
 });
 
