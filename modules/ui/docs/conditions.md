@@ -83,7 +83,7 @@ in.
 | --- | --- |
 | `data` | inside a [`Ui.Data`](data.md)'s `content`, typed from its `model` |
 | `error` | inside a `Ui.Data`'s or a [`Ui.Action`](action.md#the-answer)'s `failure`: a `Ui.RequestError` |
-| `result` | inside an action's `result`, and its `onSuccess` (`navigate`, `refreshes`): the answer, typed from `outputModel` |
+| `result` | inside an action's `result`, and its `onSuccess` (`to`, `refreshes`): the answer, typed from `outputModel` |
 | `input` | inside an action's `request.target`, `result`, `failure` and `onSuccess`: the record sent, typed from `inputModel` |
 | `query` | wherever the resource or the page declares `query:` (a page, a reader, a listing's row actions); with none declared it is closed and empty |
 | `values` | a form's or an action's field `shown`, an action's `enabled`, its `result` and `failure`, typed from the model |

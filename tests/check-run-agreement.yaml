@@ -636,6 +636,7 @@ targets:
   - !ref configurationMixedLevel
   - !ref configurationNarrowedLiteral
   - !ref configurationShapeAccessor
+  - !ref rootContextAccessor
   - !ref needReferencedInBranch
   - !ref needReferencedOutsideBranch
   - !ref needReferencedOutsideBranchInLibrary
@@ -6702,6 +6703,14 @@ expect:
     - code: ACCESSOR_NOT_PLAIN_CHAIN
       message: "is not a plain chain the field can name: it starts at 'variables'"
   runFails: "[ACCESSOR_NOT_PLAIN_CHAIN] Self.Probe/probe: 'result.at: !cel \"variables.mode\"' is not a plain chain"
+---
+# A context at a kind's schema root, inherited by a merge-form child declaring
+# none: a chain rooted at its binding checked as an unknown identifier while
+# the kernel delivered it. Clean and boots, in each configuration's chain.
+kind: Assert.Manifest
+metadata: { name: rootContextAccessor }
+source: ./__fixtures__/check-run-agreement/configurations/root-context/telo.yaml
+expect: { errors: [], runs: true }
 ---
 # A reference to an optional need is legal inside the branch proving it present:
 # clean, and it boots with the need absent…

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import archiveRequest from "../../tests/__fixtures__/action/archive-request.json" with { type: "json" };
 import { loadFixtureComponents, render, type Rendered } from "./harness.js";
 import { FakeIntersections } from "./intersections.js";
-import { filterField, filtersNode, memoryState, operation, listingNode, todos, address } from "./spec-nodes.js";
+import { filterField, filtersNode, memoryState, operation, listingNode, todos, address, navigateTo } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
@@ -700,7 +700,7 @@ export const authorsSource = {
   schema: authorSchema,
   value: row("id"),
   label: row("name"),
-  href: address({ root: "row", path: ["url"] }),
+  to: navigateTo(address({ root: "row", path: ["url"] })),
   basePath: "/api/authors",
   filters: {},
   pageSize: 2,

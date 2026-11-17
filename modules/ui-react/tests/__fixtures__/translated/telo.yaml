@@ -62,7 +62,7 @@ presentation:
 ---
 kind: Ui.View
 metadata: { name: helpLink }
-content: { type: link, text: Help, href: /help }
+content: { type: link, text: Help, to: { kind: Ui.Navigate, href: /help } }
 ---
 # Its layout's header holds a logo, a composite, a menu with an item delivered
 # per request, and a badge delivered per request.
@@ -78,10 +78,10 @@ layout:
     - type: menu
       text: Help
       items:
-        - { type: link, text: Help, href: /help, style: strong }
+        - { type: link, text: Help, to: { kind: Ui.Navigate, href: /help }, style: strong }
         - type: link
           text: Staff
-          href: /staff
+          to: { kind: Ui.Navigate, href: /staff }
           when: !cel "'x-role' in request.headers && request.headers['x-role'] == 'staff'"
     - type: badge
       text: Staff
@@ -98,6 +98,9 @@ pages:
           values: { n: 3 }
       - { type: composite, ref: !ref invoiceForm }
       - { type: badge, text: { text: Open, context: state } }
+      - type: box
+        press: { to: { kind: Ui.Navigate, href: /help }, label: Help }
+        children: [{ type: text, text: Unpaid invoices }]
 ---
 kind: Http.Server
 metadata: { name: server }

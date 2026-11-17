@@ -8,7 +8,7 @@ import { useEndReached, useWindowedBlock } from "../record-window.js";
  * What the built-in layouts share: a record's entry, the end of a read, a
  * read's state, the sort control, the "Move to" menu and drag and drop. Each
  * is drawn from the layout contract's props, inside the renderer's own texts and
- * controls, so a built-in layout is a component of `ui_react_layouts-1` like
+ * controls, so a built-in layout is a component of `ui_react_layouts-2` like
  * any other.
  */
 
@@ -99,9 +99,9 @@ export function MoveMenu({ record, places, word, onMove }: { record: LayoutRecor
 }
 
 /**
- * One record's entry: its content, its actions, its "Move to" menu and its
- * inline edit form when one is open on it — the element `rowStyle` styles, and
- * the one a drag starts from.
+ * One record's entry: its press, its content, its actions, its "Move to" menu
+ * and its inline edit form when one is open on it — the element `rowStyle`
+ * styles, the one its press covers, and the one a drag starts from.
  */
 export function RecordEntry({
   part,
@@ -130,6 +130,7 @@ export function RecordEntry({
       data-selected={record.selected ? "true" : undefined}
       {...(drag && record.movable ? drag.source(record.key) : {})}
     >
+      {record.press}
       {record.props.content as ReactNode}
       {record.actions}
       {move}

@@ -46,7 +46,12 @@ stylesheets and its sets' stylesheets against what was drawn:
    qualified by a state (`data-fill="true"`) counts a rule only where, in some
    snapshot, it matched a part carrying that state — the named part, or any
    part when the reservation names none — so a rule written
-   `:not([data-fill="true"])` keeps the property at rest.
+   `:not([data-fill="true"])` keeps the property at rest. A reservation in a
+   relation to a part counts a rule only where, in some snapshot, it matched a
+   part in that relation: one holding the part as a child (a pressed card, a
+   table's first `table-cell` holding the row's press), or one matching the
+   reservation's interactive elements after the part, inside the element
+   holding it (a `link` or a `row-edit` after a press).
 4. **Every design token has a default.** Each name of the closed token set —
    read from `ui`'s `@telorun/ui` code entry (`DESIGN_TOKENS`) — is given a
    value by the theme's own `tokens`, or its custom property (spelled by
@@ -99,7 +104,7 @@ not load, or lacks a control it implements, is `controls-load-failed`.
 | --- | --- | --- |
 | `part-unstyled` | the part | no rule of the theme styles it, and `unstyled` does not list it |
 | `unstyled-stale` | the part | `unstyled` lists a part the theme styles, or no part at all |
-| `property-reserved` | `<part>: <property>`, `<part>[<state>]: <property>`, or `[<state>]: <property>` for a reservation naming no part | a rule matching the part — while it carries the state, when one is named — sets a property the renderer's layout depends on |
+| `property-reserved` | `<part>: <property>`, `<part>[<state>]: <property>`, `[<state>]: <property>` for a reservation naming no part, or `holding <part>: <property>` / `after <part>: <property>` for one in a relation to a part | a rule matching the part — while it carries the state, when one is named — sets a property the renderer's layout depends on |
 | `token-default-missing` | the token's dotted name | neither the theme's `tokens` nor a `:root` rule of its stylesheets gives the token a value |
 | `token-unread` | the token's dotted name | no `var()` of the theme's stylesheets reads the token |
 | `stylesheet-unparseable` | the stylesheet's absolute path | it does not parse, or one of its selectors cannot be matched |

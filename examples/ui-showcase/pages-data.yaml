@@ -15,11 +15,11 @@ content:
       text: The project is the page address's project parameter, sent with the read; with none the parameter is not sent and the route answers for TEL-42. A code no project has draws the failure tree.
     - type: columns
       children:
-        - { type: link, text: TEL-42, href: "/data?project=TEL-42" }
-        - { type: link, text: OPS-7, href: "/data?project=OPS-7" }
-        - { type: link, text: APP-5, href: "/data?project=APP-5" }
-        - { type: link, text: A code no project has, href: "/data?project=NOPE-1" }
-        - { type: link, text: No project, href: /data }
+        - { type: link, text: TEL-42, to: { kind: Ui.Navigate, href: "/data?project=TEL-42" } }
+        - { type: link, text: OPS-7, to: { kind: Ui.Navigate, href: "/data?project=OPS-7" } }
+        - { type: link, text: APP-5, to: { kind: Ui.Navigate, href: "/data?project=APP-5" } }
+        - { type: link, text: A code no project has, to: { kind: Ui.Navigate, href: "/data?project=NOPE-1" } }
+        - { type: link, text: No project, to: { kind: Ui.Navigate, href: /data } }
     - type: composite
       ref:
         kind: Ui.Data

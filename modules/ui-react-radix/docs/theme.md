@@ -25,7 +25,9 @@ quiet header and footer holding the navbar's title in the accent colour, a
 layout's aside and a bottom tab bar in the header's tint, tabs underlined in the accent, table
 headings in small uppercase letters, a `button` node outlined like a link
 drawn as a button, the controls on Markdown items compact with their count
-beside them, and a relative time underlined with dots over its exact time. It holds:
+beside them, a relative time underlined with dots over its exact time, and a
+pressed node or record ringed in the text colour while its press has the
+keyboard focus. It holds:
 
 - `tokens` — the design tokens' light values, a `Ui.DesignTokens` set, a
   contained page's measure (`width.page`) `72rem` and the page inset

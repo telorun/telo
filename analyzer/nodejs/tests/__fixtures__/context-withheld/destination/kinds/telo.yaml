@@ -1,0 +1,48 @@
+# A destination reads the roots bound where it is written: its abstract declares
+# `row` once at its schema root, typed from the referrer and withheld beside it,
+# and `Go` — a merge-form child declaring no context — inherits it. A listing
+# binds `row` at its press; a page binds nothing at its link.
+kind: Telo.Library
+metadata: { name: Dest }
+exports: { kinds: [Destination, Go, Listing, Page] }
+---
+kind: Telo.Abstract
+metadata: { name: Destination }
+capability: Telo.Invocable
+schema:
+  type: object
+  x-telo-context:
+    type: object
+    properties:
+      row:
+        x-telo-context-from-referrer: row
+        x-telo-context-withheld: a destination reads only the roots bound where it is written.
+  properties: { href: { type: string, x-telo-eval: runtime } }
+---
+kind: Telo.Definition
+metadata: { name: Go }
+extends: Self.Destination
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema: { type: object, properties: { label: { type: string } } }
+---
+kind: Telo.Definition
+metadata: { name: Listing }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  properties:
+    press:
+      x-telo-ref: { kind: Self.Destination, use: call }
+      x-telo-context:
+        type: object
+        properties:
+          row: { type: object, properties: { id: { type: string } }, required: [id], additionalProperties: false }
+---
+kind: Telo.Definition
+metadata: { name: Page }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  properties: { link: { x-telo-ref: { kind: Self.Destination, use: call } } }

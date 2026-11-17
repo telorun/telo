@@ -1,6 +1,6 @@
 /** The query key an open surface is addressed by. Keys beginning `_telo` are
  *  the renderer's own. */
-const keyOf = (name: string) => `_telo.open.${name}`;
+export const openKey = (name: string) => `_telo.open.${name}`;
 
 /** What every query key holding a filter bar's state begins with. */
 export const FILTER_KEYS = "_telo.f.";
@@ -16,15 +16,15 @@ const textOf = (query: URLSearchParams): string => {
  * key of the record being edited.
  */
 export function openValue(search: string, name: string): string | undefined {
-  return new URLSearchParams(search).get(keyOf(name)) ?? undefined;
+  return new URLSearchParams(search).get(openKey(name)) ?? undefined;
 }
 
 /** The query string with the surfaces under each name closed, and — given a
  *  value — the one under `open.name` opened. */
 export function withOpen(search: string, closed: (string | undefined)[], open?: { name: string; value: string }): string {
   const query = new URLSearchParams(search);
-  for (const name of closed) if (name !== undefined) query.delete(keyOf(name));
-  if (open) query.set(keyOf(open.name), open.value);
+  for (const name of closed) if (name !== undefined) query.delete(openKey(name));
+  if (open) query.set(openKey(open.name), open.value);
   return textOf(query);
 }
 

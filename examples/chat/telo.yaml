@@ -269,11 +269,11 @@ layout:
         start:
           - type: link
             text: Telo Assistant
-            href: { path: !ref assistant }
+            to: { kind: Ui.Navigate, href: { path: !ref assistant } }
             style: accent
             button: { kind: Ui.IconButton, icon: { kind: Ui.FileIcon, file: !module-path ./telo-mark.svg } }
         end:
-          - { type: link, text: Built with Telo, href: "https://telo.run" }
+          - { type: link, text: Built with Telo, to: { kind: Ui.Navigate, href: "https://telo.run" } }
         navigation: { items: [] }
 ---
 # The conversations beside the chat: a link per conversation and a link to start
@@ -293,7 +293,7 @@ children:
         actions:
           - type: link
             text: New conversation
-            href: { path: !ref assistant }
+            to: { kind: Ui.Navigate, href: { path: !ref assistant } }
             button: { kind: Ui.IconButton, label: shown, icon: { kind: UiLucide.Icon, name: square-pen } }
         content:
           type: composite
@@ -316,11 +316,11 @@ children:
                 children:
                   - type: value
                     value: !cel "row.title"
-                    href: { path: !ref assistant, queryParams: { conversation: !cel "row.id" } }
+                    to: { kind: Ui.Navigate, href: { path: !ref assistant, queryParams: { conversation: !cel "row.id" } } }
                     shown: { at: !cel "row.title", matches: { type: string } }
                   - type: link
                     text: Untitled conversation
-                    href: { path: !ref assistant, queryParams: { conversation: !cel "row.id" } }
+                    to: { kind: Ui.Navigate, href: { path: !ref assistant, queryParams: { conversation: !cel "row.id" } } }
                     shown: { at: !cel "row.title", matches: { type: "null" } }
                   - { type: badge, text: Replying, shown: { at: !cel "row.running", matches: { const: true } } }
             rowActions:

@@ -5,7 +5,8 @@ import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadFixtureComponents, render, type Rendered } from "./harness.js";
 import { FakeIntersections } from "./intersections.js";
-import { filterField, filtersNode, listingNode, opener, operation, todos } from "./spec-nodes.js";
+import { wireText } from "./harness.js";
+import { address, dialogSurface, filterField, filtersNode, listingNode, opener, openPageAt, operation, todoColumns, todos } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => {
@@ -238,9 +239,57 @@ describe("a calendar layout", () => {
   });
 });
 
+describe("a listing's record press", () => {
+  /** Each todo opening its own page in a dialog, named by its text. */
+  const press = { to: openPageAt(address("/todos/{id}", { id: row("id") }), dialogSurface, false), label: { ...wireText("Open {$text}"), values: { text: row("text") } } };
+  const todoPage = { title: "Todo", children: [{ type: "text", text: "The todo page" }] };
+
+  it("is drawn by a table across the row's first cell alone; the row is selected while its page is open, and the edit stays on its button", async () => {
+    rendered = await render({
+      path: "/",
+      collections: { "/api/todos": todos },
+      pages: { "/": { title: "Todos", children: [listingNode({ columns: todoColumns.slice(0, 2), press })] as never }, "/todos/{id}": todoPage as never },
+    });
+    const rows = rendered.parts("table-row");
+    const presses = rows.map((each) => [...each.querySelectorAll('[data-telo-part="press"]')].map((found) => [found.parentElement === each.children[0] && found === each.children[0].firstElementChild, found.getAttribute("href"), found.getAttribute("aria-label")]));
+    expect(presses).toEqual([[[true, "/todos/1", "Open Write the plan"]], [[true, "/todos/2", "Open Review the plan"]]]);
+    await rendered.click(rendered.parts("press")[1]);
+    expect([rendered.part("surface-title").textContent, rows.map((each) => each.getAttribute("data-selected"))]).toEqual(["Todo", [null, "true"]]);
+    await rendered.escape();
+    await rendered.click(rendered.parts("row-edit")[0]);
+    expect((rendered.part("input") as HTMLInputElement).value).toBe("Write the plan");
+  });
+
+  it("is placed by a component layout, which reports onOpen to run it, and without a press opens the edit form", async () => {
+    const strip = { type: "component", module: { digest: "cc", name: "layouts.js" }, export: "RecordStrip", abi: "ui_react_layouts-2", external: ["react"], stylesheets: [], props: { title: { value: "Tasks" } }, reads: {} };
+    const listing = (more: Record<string, unknown>) => listOf({ layout: strip, ...more });
+    rendered = await render({
+      path: "/",
+      loadModule: async () => fixtureLayouts,
+      collections: { "/api/todos": todos },
+      pages: { "/": { title: "Todos", children: [listing({ press })] as never }, "/todos/{id}": todoPage as never },
+    });
+    const chips = () => [...document.querySelectorAll('[data-fixture="chip"]')];
+    const opens = () => [...document.querySelectorAll('[data-fixture="chip-open"]')];
+    expect(chips().map((chip) => chip.firstElementChild?.getAttribute("data-telo-part"))).toEqual(["press", "press"]);
+    await rendered.click(opens()[1]);
+    expect([rendered.part("surface-title").textContent, chips().map((chip) => chip.getAttribute("data-selected"))]).toEqual(["Todo", [null, "true"]]);
+    rendered.unmount();
+    rendered = await render({
+      path: "/",
+      loadModule: async () => fixtureLayouts,
+      collections: { "/api/todos": todos },
+      pages: { "/": { title: "Todos", children: [listing({ edit: opener() })] as never } },
+    });
+    expect(rendered.parts("press")).toEqual([]);
+    await rendered.click(opens()[0]);
+    expect((rendered.part("input") as HTMLInputElement).value).toBe("Write the plan");
+  });
+});
+
 describe("a component layout", () => {
   it("is given the records with their bound props, and reads the next page on the end it reports", async () => {
-    const strip = { type: "component", module: { digest: "cc", name: "layouts.js" }, export: "RecordStrip", abi: "ui_react_layouts-1", external: ["react"], stylesheets: [], props: { title: { value: "Tasks" }, text: row("text") }, reads: {} };
+    const strip = { type: "component", module: { digest: "cc", name: "layouts.js" }, export: "RecordStrip", abi: "ui_react_layouts-2", external: ["react"], stylesheets: [], props: { title: { value: "Tasks" }, text: row("text") }, reads: {} };
     rendered = await render({
       path: "/",
       loadModule: async () => fixtureLayouts,

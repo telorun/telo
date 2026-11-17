@@ -91,16 +91,15 @@ content:
         in the address it reads nothing.
     - type: columns
       children:
-        - { type: link, text: Atlas redesign tasks, href: "/tables?project=TEL-42" }
-        - { type: link, text: Billing migration tasks, href: "/tables?project=OPS-7" }
-        - { type: link, text: No project, href: /tables }
+        - { type: link, text: Atlas redesign tasks, to: { kind: Ui.Navigate, href: "/tables?project=TEL-42" } }
+        - { type: link, text: Billing migration tasks, to: { kind: Ui.Navigate, href: "/tables?project=OPS-7" } }
+        - { type: link, text: No project, to: { kind: Ui.Navigate, href: /tables } }
     - type: composite
       ref:
         kind: Ui.Listing
         presentation: !ref tasksPresentation
         model: !ref Task
-        query:
-          project: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" }
+        query: { project: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" } }
         filters: { projectCode: !cel "query.project" }
         pageSize: 10
         layout:

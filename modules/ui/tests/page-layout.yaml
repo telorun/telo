@@ -43,7 +43,7 @@ header:
           - { type: page, page: !ref home }
           - { type: page, page: !ref reports, when: !cel "'x-role' in request.headers" }
       end:
-        - { type: link, text: Sign in, href: { path: !ref signIn } }
+        - { type: link, text: Sign in, to: { kind: Ui.Navigate, href: { path: !ref signIn } } }
 aside:
   label: Shortcuts
   collapse: { state: { key: shortcuts, store: { kind: Ui.LocalStore } } }
@@ -56,13 +56,13 @@ aside:
         items:
           - type: link
             text: Status
-            href: "https://status.acme.test"
+            to: { kind: Ui.Navigate, href: "https://status.acme.test" }
             icon: { kind: Ui.FileIcon, file: !module-path ./__fixtures__/chat-icons/mark.svg }
           - type: group
             text: Account
             items:
               - { type: page, page: !ref signIn, text: Switch account }
-              - { type: link, text: Staff handbook, href: "https://handbook.acme.test", when: !cel "'x-role' in request.headers" }
+              - { type: link, text: Staff handbook, to: { kind: Ui.Navigate, href: "https://handbook.acme.test" }, when: !cel "'x-role' in request.headers" }
 footer:
   - { type: text, text: Acme Corporation, style: muted }
 ---
@@ -90,7 +90,7 @@ steps:
               - type: link
                 fill: false
                 text: { text: Sign in, context: null, lang: en, computed: false }
-                href: { path: { value: /sign-in }, pathParams: {}, queryParams: {} }
+                to: { type: navigate, href: { path: { value: /sign-in }, pathParams: {}, queryParams: {} } }
                 button: null
             navigation:
               items:
@@ -117,7 +117,7 @@ steps:
               items:
                 - type: link
                   key: status
-                  href: "https://status.acme.test"
+                  to: { type: navigate, href: { path: { value: "https://status.acme.test" }, pathParams: {}, queryParams: {} } }
                   text: { text: Status, context: null, lang: en, computed: false }
                   icon: { digest: 276ad3aee0a8ee2c8486148005b736534b2a9fea0abe52ccf5e0e7d0b97ae8b2, name: mark.svg }
                 - type: group

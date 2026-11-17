@@ -9,9 +9,7 @@ metadata:
     layout drawing records as chips, and one built for the component ABI rather
     than the layout one — and two control sets over one entry that both
     implement the box control.
-imports:
-  Ui: ../../../../ui
-  UiReact: ../../../
+imports: { Ui: ../../../../ui, UiReact: ../../../ }
 exports:
   kinds: [RecordStrip]
   resources: [hostProbe, counter, statusPill, future, unsupplied, recordStrip, misbuiltStrip, controls, checkboxes]
@@ -37,7 +35,7 @@ exports:
     - specifier: "@fixture/layouts"
       path: ./browser/layouts.js
       source: ./nodejs/src/layouts.tsx
-      abi: ui_react_layouts-1
+      abi: ui_react_layouts-2
       external: [react, react/jsx-runtime]
       exports: [RecordStrip]
     - specifier: "@fixture/misbuilt-layouts"
@@ -54,8 +52,7 @@ exports:
       exports: [Checkbox]
 ---
 kind: Ui.ComponentExport
-metadata:
-  name: hostProbe
+metadata: { name: hostProbe }
 entry: "@fixture/components"
 export: HostProbe
 props:
@@ -64,12 +61,10 @@ props:
     type: object
     additionalProperties: false
     required: [basePath]
-    properties:
-      basePath: { type: string }
+    properties: { basePath: { type: string } }
 ---
 kind: Ui.ComponentExport
-metadata:
-  name: counter
+metadata: { name: counter }
 entry: "@fixture/components"
 export: Counter
 props:
@@ -78,13 +73,10 @@ props:
     type: object
     additionalProperties: false
     required: [step]
-    properties:
-      step: { type: integer }
-      fail: { type: boolean }
+    properties: { step: { type: integer }, fail: { type: boolean } }
 ---
 kind: Ui.ComponentExport
-metadata:
-  name: statusPill
+metadata: { name: statusPill }
 entry: "@fixture/components"
 export: StatusPill
 props:
@@ -92,27 +84,19 @@ props:
   schema:
     type: object
     additionalProperties: false
-    properties:
-      done: { type: boolean }
-      label: { type: string }
+    properties: { done: { type: boolean }, label: { type: string } }
 ---
 kind: Ui.ComponentExport
-metadata:
-  name: future
+metadata: { name: future }
 entry: "@fixture/future"
 export: Future
-props:
-  kind: Telo.JsonSchema
-  schema: { type: object, additionalProperties: false }
+props: { kind: Telo.JsonSchema, schema: { type: object, additionalProperties: false } }
 ---
 kind: Ui.ComponentExport
-metadata:
-  name: unsupplied
+metadata: { name: unsupplied }
 entry: "@fixture/unsupplied"
 export: Unsupplied
-props:
-  kind: Telo.JsonSchema
-  schema: { type: object, additionalProperties: false }
+props: { kind: Telo.JsonSchema, schema: { type: object, additionalProperties: false } }
 ---
 kind: Ui.ComponentExport
 metadata: { name: recordStrip }
@@ -124,9 +108,7 @@ props:
     type: object
     additionalProperties: false
     required: [title]
-    properties:
-      title: { type: string }
-      text: { type: string }
+    properties: { title: { type: string }, text: { type: string } }
 ---
 kind: Ui.ComponentExport
 metadata: { name: misbuiltStrip }
@@ -146,21 +128,18 @@ schema:
   type: object
   additionalProperties: false
   required: [title]
-  properties:
-    title: { type: string, description: The heading drawn above the chips. }
+  properties: { title: { type: string, description: The heading drawn above the chips. } }
 base:
   component: !ref recordStrip
   props: !cel "{'title': self.title}"
 ---
 kind: UiReact.Controls
-metadata:
-  name: controls
+metadata: { name: controls }
 entry: "@fixture/controls"
 implements: [Checkbox]
 ---
 # Implements the box control too: a theme listing it beside `controls` is refused.
 kind: UiReact.Controls
-metadata:
-  name: checkboxes
+metadata: { name: checkboxes }
 entry: "@fixture/controls"
 implements: [Checkbox]

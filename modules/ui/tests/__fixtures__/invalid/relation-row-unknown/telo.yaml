@@ -5,9 +5,7 @@ metadata:
   name: UiInvalidRelationRowUnknown
   version: 1.0.0
   description: Test fixture whose presentation reads a member a related record does not have.
-imports:
-  Ui: ../../../../
-  DataModel: ../../../../../data-model
+imports: { Ui: ../../../../, DataModel: ../../../../../data-model }
 ---
 kind: Telo.JsonSchema
 metadata: { name: Author }
@@ -55,4 +53,4 @@ relations:
   reviewerId:
     source: { kind: Ui.CollectionSource, collection: !ref reviewers, basePath: /api/reviewers }
     label: !cel "row.handle"
-    href: { path: !cel "row.name" }
+    to: { kind: Ui.Navigate, href: { path: !cel "row.name" } }

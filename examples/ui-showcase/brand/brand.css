@@ -224,6 +224,7 @@ h3[data-telo-part="text"] { font-size: var(--telo-font-size-lg); font-style: ita
 [data-telo-part="list-item"]:hover:not([data-selected]) { background: color-mix(in oklab, var(--telo-color-accent) 6%, transparent); }
 [data-telo-part="link"][data-record]:not([data-button]) { color: inherit; text-decoration: none; }
 [data-telo-part="link"][data-record]:not([data-button]):is(:hover, :focus-visible) { text-decoration: underline; }
+[data-telo-part="press"]:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; border-radius: inherit; }
 [data-telo-part="cards-layout"], [data-telo-part="board-layout"] { gap: var(--telo-space-md); }
 [data-telo-part="card"], [data-telo-part="board-card"], [data-telo-part="calendar-event"], [data-telo-part="timeline-bar"] {
   gap: var(--telo-space-xs);

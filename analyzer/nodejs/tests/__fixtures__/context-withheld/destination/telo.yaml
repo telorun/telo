@@ -1,0 +1,29 @@
+# `row` read by destinations: typed at a listing's press, withheld at a page's
+# link, withheld with nothing referencing it, and reached from both at once.
+kind: Telo.Application
+metadata: { name: Destinations }
+imports: { Dest: ./kinds }
+---
+kind: Dest.Listing
+metadata: { name: posts }
+press: { kind: Dest.Go, href: !cel "row.id" }
+---
+kind: Dest.Page
+metadata: { name: home }
+link: { kind: Dest.Go, href: !cel "row.id" }
+---
+kind: Dest.Go
+metadata: { name: orphan }
+href: !cel "row.id"
+---
+kind: Dest.Go
+metadata: { name: shared }
+href: !cel "row.id"
+---
+kind: Dest.Listing
+metadata: { name: archive }
+press: !ref shared
+---
+kind: Dest.Page
+metadata: { name: about }
+link: !ref shared

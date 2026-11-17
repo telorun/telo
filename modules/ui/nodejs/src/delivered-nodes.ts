@@ -1,7 +1,18 @@
 import { canonicalTypeSchemaId, type DataValidator, type InvokeContext, type ResourceContext } from "@telorun/sdk";
 import { mergeAssets, type AssetFile, type SpecNode } from "./composite.js";
 import { filledNode } from "./fill-marking.js";
-import { deliveredMenu, deliveredTabs, nodeLists, placed, presented, withLinkButtons, type AuthoredNode, type AuthoredTab, type RootShapes } from "./node-resolution.js";
+import {
+  deliveredMenu,
+  deliveredTabs,
+  nodeLists,
+  placed,
+  presented,
+  withDestinations,
+  withLinkButtons,
+  type AuthoredNode,
+  type AuthoredTab,
+  type RootShapes,
+} from "./node-resolution.js";
 import { headerReads, type HeaderReads } from "./request-header-reads.js";
 import { boundActionsOf, placedBoundAction, withBoundActions } from "./bound-actions.js";
 import { isPane, paneAssets, paneInputs, type PaneInstance, type PaneRequest } from "./pane.js";
@@ -25,7 +36,7 @@ export interface EvaluatedNode {
 
 /** Stands where a node already judged sits, so judging what holds it does not
  *  judge it again. */
-const JUDGED: SpecNode = { type: "stack", children: [], fill: false };
+const JUDGED: SpecNode = { type: "stack", children: [], press: null, fill: false };
 
 /** Stands where an action already judged sits inside a bound action. */
 const JUDGED_ACTION: SpecNode = {
@@ -239,8 +250,8 @@ function deliveredPanes(node: EvaluatedNode, found: Set<number>): void {
 /**
  * Nodes written for a place delivered per request — a page's children, a
  * layout's region, a navigation bar's sides: prepared once, with what the
- * roots in scope say about the values they name and every composite they place
- * resolved and judged, then evaluated for each request, every pane delivered
+ * roots in scope say about the values they name, every destination they hold
+ * and every composite they place resolved and judged, then evaluated for each request, every pane delivered
  * invoked with it, and produced ({@link producedNode}).
  */
 export class RequestNodes {
@@ -267,7 +278,7 @@ export class RequestNodes {
     const buttons: AssetFile[][] = [];
     const authored: AuthoredNode[] = [];
     for (const [at, child] of (nodes as AuthoredNode[]).entries()) {
-      const drawn = await withLinkButtons(child, ctx, `${where}[${at}]`);
+      const drawn = await withLinkButtons(await withDestinations(child, ctx, `${where}[${at}]`), ctx, `${where}[${at}]`);
       buttons.push(drawn.assets);
       authored.push(presented(drawn.node, roots, reader, `${where}[${at}]`));
     }

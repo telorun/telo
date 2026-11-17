@@ -52,8 +52,8 @@ and re-renders the caller when `location` changes. The object has six fields:
 
 | Field | |
 | --- | --- |
-| `location` | `{ path, search, hash }`. `path` is the current page's declared path, with the mount prefix removed. |
-| `navigate` | `navigate(to, { replace? })` — go to an app-relative reference, resolved against the current page: `/done`, `/chat?c=7`, `?c=7`, `#top`. Adds a history entry, or replaces the current one with `replace: true`. A different page renders that page, and another value of the page's path variables draws it afresh; the same page with a new query or fragment fetches nothing and re-renders the callers of `useHost`; a path no page opens renders the not-found page. A reference with a scheme or a host throws `TypeError`. While a form opened with `unsaved: confirm` holds unsaved input and the reference would close it, the navigation waits for the user's answer and does not happen if they stay. |
+| `location` | `{ path, search, hash }`. `path` is the current page's declared path, with the mount prefix removed. Inside a [page opened in a surface](urls.md#the-page-key) it is that page's location, held in memory. |
+| `navigate` | `navigate(to, { replace? })` — go to an app-relative reference, resolved against the current page: `/done`, `/chat?c=7`, `?c=7`, `#top`. Adds a history entry, or replaces the current one with `replace: true`. A different page renders that page, and another value of the page's path variables draws it afresh; the same page with a new query or fragment fetches nothing and re-renders the callers of `useHost`; a path no page opens renders the not-found page. A reference with a scheme or a host throws `TypeError`. While a form opened with `unsaved: confirm` holds unsaved input and the reference would close it, the navigation waits for the user's answer and does not happen if they stay. Inside a page opened in a surface, a reference to that page's own path moves it in memory, leaving the address alone; any other moves the application, which closes the page. |
 | `href` | `href(to)` — the same resolution, returned as the URL for an anchor, mount prefix included. |
 | `fetch` | `fetch(…)` — the platform `fetch` as the application's own composites call it: same-origin credentials, origin-relative URLs. Returns the platform `Response` untouched, 401 and 403 included. A cross-origin request passes through unchanged. |
 | `notifyChanged` | `notifyChanged(basePath)` — say that the data at this app-relative path changed. Local to the document: every listing whose source's `basePath`, every `data` reader whose resolved source path and every chat whose open conversation path is exactly that path (encoded, its query left out) reloads what it shows, keeping the viewer's place, and every `onChanged` listener for it runs. The renderer's own forms, deletes and actions say the same after a successful write, for the path they wrote. |
@@ -106,7 +106,7 @@ export function useHost(): Host;
 
 | | Is relative to | Used by |
 | --- | --- | --- |
-| **The application's** | the mount: `/done` is the page `/done` wherever the application is mounted | `location`, `navigate`, `href`, an address's resolved path (a `link` node's `href`, a reader's `source`, an action's `request.target`), an `image` node's `src` and a `source.basePath` |
+| **The application's** | the mount: `/done` is the page `/done` wherever the application is mounted | `location`, `navigate`, `href`, an address's resolved path (a destination's `href`, a reader's `source`, an action's `request.target`), an `image` node's `src` and a `source.basePath` |
 | **The origin's** | the origin: `/api/todos` is that path on the server | `fetch` |
 
 A page is addressed in the first; `fetch` requests in the second, so a

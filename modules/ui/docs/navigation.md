@@ -26,11 +26,11 @@ header:
               - { type: page, page: !ref Audit.log, text: Audit trail }
           - type: link
             text: Status
-            href: https://status.example.com
+            to: { kind: Ui.Navigate, href: https://status.example.com }
             when: !cel "'x-role' in request.headers && request.headers['x-role'] == 'staff'"
       placement: { kind: Ui.HeaderNavigation }
       end:
-        - { type: link, text: Sign in, href: { path: !ref signIn } }
+        - { type: link, text: Sign in, to: { kind: Ui.Navigate, href: { path: !ref signIn } } }
 ```
 
 A header with only a title and links needs no navigation pane: it is a
@@ -54,7 +54,7 @@ Tagged by `type`:
 | `type` | Keys | |
 | --- | --- | --- |
 | `page` | `page`, `text?`, `icon?`, `when?` | a page, with no [variable](page.md#path-variables) in its path; `text` defaults to the page's title, and is required for a page with none |
-| `link` | `text`, `href`, `icon?`, `when?` | any address a [`link` node](nodes.md#addresses) may hold: an app-relative path, or `https://`, `http://`, `mailto:` |
+| `link` | `text`, `to`, `icon?`, `when?` | a [destination](presses.md): a `Ui.Navigate` to any [address](nodes.md#addresses), or a `Ui.OpenPage` opening a page over the current one; a navigation binds no root, so each value it reads is fixed |
 | `group` | `text`, `items`, `icon?`, `when?` | entries nested to any depth |
 
 `page` names its page and never holds it (a `use: schema` reference): the
@@ -70,9 +70,11 @@ entry is drawn as a glyph — a navigation column's rail — in the colour of th
 entry's text. The pane publishes its file in its `assets` reading.
 
 A `link` entry is current, and drawn so (`aria-current="page"`), when its
-address leads to where the viewer is under the [rule for
+destination's address leads to where the viewer is under the [rule for
 links](nodes.md#the-current-location): the same path and the same query, the
-renderer's `_telo*` parameters set aside. A `page` entry is current by its path
+renderer's `_telo*` parameters set aside. An entry holding a `Ui.OpenPage` is
+drawn as a link to the page's address like any other; pressing it opens the
+page over the current one instead of moving to it. A `page` entry is current by its path
 alone, whatever the query.
 
 `when` is evaluated over `request` (`request.headers`, `request.ip`) each
@@ -196,7 +198,8 @@ A navigation pane answers a [`Ui.SpecNode`](nodes.md#as-a-renderer-receives-it):
 | `navigation-column` | `navigation`, `state` — `{ key, store }` or `null` — `fill`, `shown?` |
 
 An entry arrives as `{ type: page, key, path, text }`, `{ type: link, key,
-href, text }` or `{ type: group, key, text, items }`, its key and its page's
+to, text }` — `to` a [`Ui.DestinationSpec`](presses.md#what-a-renderer-receives) —
+or `{ type: group, key, text, items }`, its key and its page's
 path filled in, and with `icon` — the `{ digest, name }` address of the
 glyph's file, as every file a node names — when the entry names one.
 

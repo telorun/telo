@@ -13,6 +13,7 @@ export const Links = {
         return {
           node: {
             type: "stack",
+            press: null,
             fill: false,
             children: [
               { type: "text", text: resource.heading, style: "subheading", fill: false },

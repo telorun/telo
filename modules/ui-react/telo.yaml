@@ -12,7 +12,7 @@ metadata:
     and drop and inline editing, validated forms, filter bars, swappable themes
     and custom React components. Mounted on an HTTP server, it turns page
     descriptions into an admin panel with no frontend build.
-requires: { telo: ">=0.136.0" }
+requires: { telo: ">=unreleased" }
 restrictions:
   - requires: { telo: ">=0.129.0" }
     reason: "The App reads the application's translations (`ctx.translations`) and the keyed texts its kind names (`x-telo-text-keys`); 0.128.0 has neither and cannot load the `ui` beneath it."
@@ -21,7 +21,7 @@ exports:
   kinds: [App, Theme, Controls]
   resources: [defaultTheme]
   # The renderer's contracts as data — the parts, the controls of
-  # `ui_react_controls-4` and the layouts of `ui_react_layouts-1` with their
+  # `ui_react_controls-4` and the layouts of `ui_react_layouts-2` with their
   # vectors, the scenes — and the DOM-only interpreter that runs them.
   code:
     - specifier: "@telorun/ui-react-contract"

@@ -6,8 +6,8 @@ metadata:
     An application with translations serves each request in the language the
     server negotiated for it (Accept-Language, a cookie or a query): the
     documents carry the translated message and its tag, a text
-    with context is translated by its context, an enumeration's labels are
-    translated while its values stay as written, ui's own texts arrive as
+    with context is translated by its context, a press's label is translated,
+    an enumeration's labels are translated while its values stay as written, ui's own texts arrive as
     the keyed set the App names, in the language served, and the response
     says `Content-Language` and `Vary: Accept-Language` plus the headers the
     negotiation reads. An application serving English only sends neither and
@@ -144,6 +144,7 @@ steps:
           label: !cel "steps.polishPage.result.body.children[2].fields[0].label"
           states: !cel "steps.polishPage.result.body.children[2].fields[1].labels"
           badge: !cel "steps.polishPage.result.body.children[3].text"
+          pressLabel: !cel "steps.polishPage.result.body.children[4].press.label"
         german:
           lang: !cel "steps.germanApp.result.body.lang"
           title: !cel "steps.germanApp.result.body.title"
@@ -182,31 +183,31 @@ steps:
           layoutVary: "*"
           header:
             - { type: image, fill: false, src: /logo.svg, alt: { lang: pl, message: [Faktury] } }
-            - { type: link, fill: false, text: { lang: pl, message: [Pomoc] }, href: { path: { value: /help }, pathParams: {}, queryParams: {} }, button: null }
+            - { type: link, fill: false, text: { lang: pl, message: [Pomoc] }, to: { type: navigate, href: { path: { value: /help }, pathParams: {}, queryParams: {} } }, button: null }
             - type: menu
               fill: false
               text: { lang: pl, message: [Pomoc] }
-              items: [ { type: link, fill: false, text: { lang: pl, message: [Pomoc] }, href: { path: { value: /help }, pathParams: {}, queryParams: {} }, button: null, style: strong } ]
+              items: [ { type: link, fill: false, text: { lang: pl, message: [Pomoc] }, to: { type: navigate, href: { path: { value: /help }, pathParams: {}, queryParams: {} } }, button: null, style: strong } ]
         english:
           lang: en
           title: { lang: en, message: [Invoices] }
           save: { lang: en, message: [Save] }
           header:
             - { type: image, fill: false, src: /logo.svg, alt: { lang: en, message: [Invoices] } }
-            - { type: link, fill: false, text: { lang: en, message: [Help] }, href: { path: { value: /help }, pathParams: {}, queryParams: {} }, button: null }
+            - { type: link, fill: false, text: { lang: en, message: [Help] }, to: { type: navigate, href: { path: { value: /help }, pathParams: {}, queryParams: {} } }, button: null }
             - type: menu
               fill: false
               text: { lang: en, message: [Help] }
-              items: [ { type: link, fill: false, text: { lang: en, message: [Help] }, href: { path: { value: /help }, pathParams: {}, queryParams: {} }, button: null, style: strong } ]
+              items: [ { type: link, fill: false, text: { lang: en, message: [Help] }, to: { type: navigate, href: { path: { value: /help }, pathParams: {}, queryParams: {} } }, button: null, style: strong } ]
         staffHeader:
           - { type: image, fill: false, src: /logo.svg, alt: { lang: en, message: [Invoices] } }
-          - { type: link, fill: false, text: { lang: en, message: [Help] }, href: { path: { value: /help }, pathParams: {}, queryParams: {} }, button: null }
+          - { type: link, fill: false, text: { lang: en, message: [Help] }, to: { type: navigate, href: { path: { value: /help }, pathParams: {}, queryParams: {} } }, button: null }
           - type: menu
             fill: false
             text: { lang: en, message: [Help] }
             items:
-              - { type: link, fill: false, text: { lang: en, message: [Help] }, href: { path: { value: /help }, pathParams: {}, queryParams: {} }, button: null, style: strong }
-              - { type: link, fill: false, text: { lang: en, message: [Staff] }, href: { path: { value: /staff }, pathParams: {}, queryParams: {} }, button: null }
+              - { type: link, fill: false, text: { lang: en, message: [Help] }, to: { type: navigate, href: { path: { value: /help }, pathParams: {}, queryParams: {} } }, button: null, style: strong }
+              - { type: link, fill: false, text: { lang: en, message: [Staff] }, to: { type: navigate, href: { path: { value: /staff }, pathParams: {}, queryParams: {} } }, button: null }
           - { type: badge, fill: false, text: { lang: en, message: [Staff] } }
         etagsDiffer: true
         page:
@@ -226,6 +227,7 @@ steps:
             - { value: open, label: { lang: pl, message: [Otwarta] } }
             - { value: paid, label: { lang: pl, message: [Opłacona] } }
           badge: { lang: pl, message: [Otwarte] }
+          pressLabel: { lang: pl, message: [Pomoc] }
         german: { lang: en, title: { lang: en, message: [Invoices] }, contentLanguage: en }
         query: { lang: pl, vary: "Accept-Language", contentLanguage: pl }
         shell: { lang: true, contentLanguage: pl }

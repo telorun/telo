@@ -1,6 +1,7 @@
 import { useContext, useId, useRef, useState, type FormEvent } from "react";
 import { conditionHolds, fillAttribute, styleAttribute } from "./bindings.js";
-import { useHost, useHostStore } from "./host.js";
+import { useDestinationContext } from "./destination.js";
+import { useHost } from "./host.js";
 import { Node, type SpecNode } from "./nodes.js";
 import { followSuccess, PressQueueContext, runOperation, type ActionSpec, type Outcome } from "./operation.js";
 import { useRecordEntry, type EntrySpec } from "./record-entry.js";
@@ -15,7 +16,7 @@ import { useSay, useText } from "./texts.js";
  * is drawn under the form — the `result` tree over `result`, `input` and
  * `values` for a success, the `failure` tree over `error`, `input` and
  * `values` for anything else, a refusal also marking the fields it names. A
- * success then refreshes and navigates as `onSuccess` says. The fields keep
+ * success then refreshes and goes where `onSuccess` says. The fields keep
  * what they hold. The form takes no press while its last is pending or queued,
  * and a serial action's presses on this page run one after another. The
  * answer is cleared when a submission starts and when a property
@@ -27,8 +28,8 @@ export function Action({ node }: { node: SpecNode }) {
   const host = useHost();
   const say = useSay();
   const text = useText();
-  const store = useHostStore();
-  const { pages, prefix } = useContext(RendererContext);
+  const destinations = useDestinationContext();
+  const { prefix } = useContext(RendererContext);
   const queues = useContext(PressQueueContext);
   const id = useId();
   const entry = useRecordEntry(action as unknown as EntrySpec);
@@ -65,7 +66,7 @@ export function Action({ node }: { node: SpecNode }) {
       return;
     }
     setState("idle");
-    followSuccess(action, outcome, host, store, pages);
+    followSuccess(action, outcome, host, destinations, text(action.label));
   };
 
   const change = (property: string, next: unknown) => {

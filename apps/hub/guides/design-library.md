@@ -448,13 +448,13 @@ throws:
   raises them, `x-telo-catches-for: { slot, raises: [<CODE>…] }` on each catch
   list that renders them, each code in the kind's `throws.codes`. A catch-all
   there is then typed by them, and no handler owes their coverage.
-- A kind whose resources are referenced from another (a route's inputs) can
-  take a binding's type from whoever references it:
-  `x-telo-context-from-referrer: <binding>[/<member>]` on the binding or a
-  member; `x-telo-context-from-path-template: "0/path"` types one as a path's
-  variables. Add `x-telo-context-nullable-when: { at, equals, absent }` to
-  make it nullable only where the holder's own field says so, so an unguarded
-  read is refused where it can be null.
+- A referenced kind types a binding or member from each referrer:
+  `x-telo-context-from-referrer: <binding>[/<member>]`, with
+  `x-telo-context-withheld: <reason>` beside it to refuse a read no referrer
+  binds. A root `x-telo-context` is in scope at every field, inherited without
+  `base:`. `x-telo-context-from-path-template: "0/path"` types one as a path's
+  variables; `x-telo-context-nullable-when: { at, equals, absent }` makes it
+  nullable where the holder's field says so.
 - `x-telo-ref: { …, outputTo: { slot, member } }` feeds a slot's target output
   to a member of the sibling slot target's input.
 - `x-telo-ref: { …, inputs: /inputs, completedWhen: /prompt }`: where the

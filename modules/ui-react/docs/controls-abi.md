@@ -253,7 +253,8 @@ entries are drawn in.
     it gives the focus to its button.
 - **Following a link.** A plain press on a link — no modifier key, the main
   button — is reported as `onChange` with the link's key; the control keeps
-  the browser from following it, and the renderer moves to it. In
+  the browser from following it, and the renderer goes where the entry leads
+  — the page it names, or its destination. In
   `horizontal` and `rail` it is followed, while a panel is open, by
   `onOpenChange([], "close")`; in `vertical` by nothing — closing whatever
   holds the navigation is the renderer's. Any other press on a link is the

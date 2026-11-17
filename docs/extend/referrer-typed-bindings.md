@@ -79,7 +79,9 @@ lacks the path at that mode, the node keeps the keywords it declares itself, and
 declaring none leaves it untyped. Declare the type that is safe when the
 referrer is unknown. For a value that may be missing, that is a nullable type, so
 an Api nothing mounts yet still has every unguarded `request.principal.subject`
-refused.
+refused. For a value that exists only where a referrer binds it, that is
+`x-telo-context-withheld` beside the annotation (below): typed where a
+referrer's scope holds the path, refused everywhere else.
 
 **Misuse.** Written outside a binding's subtree, or beside another
 `x-telo-context-from*` on the same node, the annotation is
@@ -211,6 +213,42 @@ A binding naming a node by `$ref` is read as that node, its own keys over it,
 so a reason shared by several regions is written once, in a `$defs` entry or
 in a named shape the bindings point at.
 
+**Beside `x-telo-context-from-referrer`.** Written on the same node, the mark is
+the node's own reading: the node is typed where a referrer's scope holds the
+path, and withheld where a referrer's scope lacks it or nothing references the
+resource. Where a referrer lacks the path, the message names that referrer:
+
+```yaml
+# a destination: `row` is the row of the listing pressing it, and nothing elsewhere
+schema:
+  type: object
+  x-telo-context:
+    type: object
+    properties:
+      row:
+        x-telo-context-from-referrer: row
+        x-telo-context-withheld: a destination reads only the roots bound where it is written.
+  properties:
+    href: { type: string, x-telo-eval: runtime }
+```
+
+```
+'row' is not available here — App.Page/home withholds it: a destination reads only the roots bound where it is written.
+```
+
+A resource referenced from a listing that binds `row` and a page that does not
+is refused once, naming the page. Put `x-telo-context-from-referrer` on the
+binding itself; the shared reason may still sit in a `$defs` entry the binding
+names by `$ref`.
+
+**At the schema root, on an abstract.** An `x-telo-context` written at a
+kind's schema root, as above, is in force at every CEL site of the resource: it
+names what each site may read and marks no field as evaluated, which stays
+`x-telo-eval`'s. Declared once on a `Telo.Abstract`, it is inherited by every
+child extending it without `base:`; a child declaring a root context of its own
+adds to it, a binding of the same name replacing the parent's. A `base:`
+child's schema is its own, so it declares the context again.
+
 Write the binding withheld rather than leaving it out, or typing it closed and
 empty: a name nothing declares is reported as unknown, with no reason, and a
 pane typed from its referrers would fall back to its own keywords.
@@ -218,10 +256,11 @@ pane typed from its referrers would fall back to its own keywords.
 The editor offers no withheld name, and hovering one shows the reason.
 
 **Misuse.** Written outside a binding's subtree (other than a `$defs` entry a
-binding may name), or beside anything but `x-telo-context-eval`, `title` and
-`description` — a type keyword, or another typing annotation — the annotation is
-`CONTEXT_WITHHELD_INVALID`, reported at the kind. A value that is not a
-non-empty string is `SCHEMA_VIOLATION`.
+binding may name), or beside anything but `x-telo-context-eval`,
+`x-telo-context-from-referrer`, `title` and `description` — a type keyword, or
+another typing annotation — the annotation is `CONTEXT_WITHHELD_INVALID`,
+reported at the kind. A value that is not a non-empty string is
+`SCHEMA_VIOLATION`.
 
 ## Runtime
 

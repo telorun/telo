@@ -1,0 +1,41 @@
+kind: Telo.Application
+metadata:
+  name: UiPressRefusalsTest
+  version: 1.0.0
+  description: |
+    What a press refuses where it is written, by `telo check` and again when
+    the application loads: a press with no `label`, `press` on a node that is
+    not a `box`, `stack` or `columns`, and a value its place does not hold. A
+    press's label reads the roots of the place holding it, typed, and its
+    destination the roots bound where it is written — `row` in a listing's
+    press, none on a page's own box.
+imports: { Assert: ../../assert }
+targets:
+  - !ref refused
+---
+kind: Assert.Manifest
+metadata: { name: refused }
+source: ./__fixtures__/invalid/presses/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Page/homePage: /children/0/press is missing required property 'label'"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Page/homePage: /children/1 must NOT have additional properties ('press' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Page/homePage: /children/2 must NOT have additional properties ('press' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Page/homePage: /children/3 must NOT have additional properties ('press' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Page/homePage: /children/4 must NOT have additional properties ('press' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Page/homePage: /children/5 must NOT have additional properties ('press' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Page/homePage: /children/6 must NOT have additional properties ('press' is not allowed)"
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "Ui.Page/homePage: !cel: 'row' is not available here — Ui.Page/homePage withholds it: a destination reads only the roots bound where it is written"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Page/homePage: !cel: 'data.titel' is not defined (available: id, title)"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Listing/posts: !cel: 'row.idd' is not defined (available: id, title)"
+  runFails: "/children/0/press is missing required property 'label'"

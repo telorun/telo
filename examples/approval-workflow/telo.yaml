@@ -393,7 +393,7 @@ inputModel: !ref NewExpense
 outputModel: !ref Submitted
 request: { target: /api/expenses }
 label: Submit expense
-onSuccess: { navigate: { path: /expense, queryParams: { run: !cel "result.runId" } } }
+onSuccess: { to: { kind: Ui.Navigate, href: { path: /expense, queryParams: { run: !cel "result.runId" } } } }
 ---
 # The approval, offered on the run's row only while it is parked on the wait.
 kind: Ui.Action

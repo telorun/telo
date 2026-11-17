@@ -56,10 +56,10 @@ content:
       text: A link to a declared page moves within the application; a file served under the mount is an ordinary load; https and mailto leave it.
     - type: columns
       children:
-        - { type: link, text: Go to Conditions, href: /conditions }
-        - { type: link, text: A file the server serves, href: /files/handbook.txt }
-        - { type: link, text: telo.run, href: "https://telo.run" }
-        - { type: link, text: Write to us, href: "mailto:hello@northwind.example" }
+        - { type: link, text: Go to Conditions, to: { kind: Ui.Navigate, href: /conditions } }
+        - { type: link, text: A file the server serves, to: { kind: Ui.Navigate, href: /files/handbook.txt } }
+        - { type: link, text: telo.run, to: { kind: Ui.Navigate, href: "https://telo.run" } }
+        - { type: link, text: Write to us, to: { kind: Ui.Navigate, href: "mailto:hello@northwind.example" } }
 
     - { type: text, text: Images, style: subheading }
     - type: text
@@ -192,7 +192,7 @@ content:
     - type: columns
       children:
         - { type: badge, style: success, text: { text: Open, context: state } }
-        - { type: link, text: { text: Open, context: verb }, href: "/tables?project=TEL-42" }
+        - { type: link, text: { text: Open, context: verb }, to: { kind: Ui.Navigate, href: "/tables?project=TEL-42" } }
 
     # ---- Composites ----
     - { type: text, text: Composites, style: heading }

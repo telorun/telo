@@ -43,7 +43,7 @@ expect:
     - code: SCHEMA_VIOLATION
       message: "Ui.Action/listsRemoved: / must NOT have additional properties ('lists' is not allowed)"
     - code: SCHEMA_VIOLATION
-      message: "Ui.Action/navigateOff: /onSuccess/navigate must match pattern"
+      message: "Ui.Action/navigateOff: /onSuccess/to/href must match pattern"
     - code: SCHEMA_VIOLATION
       message: "Ui.Action/navigateOff: /onSuccess/refreshes/0 must match pattern"
     - code: CEL_UNKNOWN_FIELD

@@ -1,8 +1,8 @@
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
-import { resolveAddress, type AddressWire } from "./address-wire.js";
 import { readBinding, type Binding } from "./bindings.js";
 import { resolveBasePath, unresolvedFailure, type BasePath } from "./base-path.js";
 import { boundFilters, fetchPage, filterParam, type Operator, type Param } from "./collection.js";
+import { resolveDestination, type DestinationWire, type ResolvedDestination } from "./destination.js";
 import { useHost } from "./host.js";
 import { RendererContext, underMount } from "./renderer-context.js";
 import { errorSpec, type ErrorSpec } from "./ui-error.js";
@@ -15,7 +15,7 @@ export interface OptionSourceSpec {
   value: Binding;
   label: Binding;
   hint?: Binding;
-  href?: AddressWire;
+  to?: DestinationWire;
   basePath: BasePath;
   filters: Record<string, Binding>;
   pageSize: number;
@@ -27,7 +27,8 @@ export interface ChoiceOption {
   value: unknown;
   label: string;
   hint?: string;
-  href?: string;
+  /** Where the option leads, over its record. */
+  to?: ResolvedDestination;
 }
 
 /** A value as the key options and chosen values are matched by. */
@@ -43,8 +44,8 @@ export function optionOf(spec: OptionSourceSpec, row: Record<string, unknown>): 
   const value = readBinding(spec.value, { row });
   if (!value.present) return undefined;
   const hint = text(spec.hint, row);
-  const href = spec.href && resolveAddress(spec.href, { row }, "option source href");
-  return { value: value.value, label: text(spec.label, row) ?? String(value.value), ...(hint ? { hint } : {}), ...(href ? { href } : {}) };
+  const to = resolveDestination(spec.to, { row }, "option source to");
+  return { value: value.value, label: text(spec.label, row) ?? String(value.value), ...(hint ? { hint } : {}), ...(to ? { to } : {}) };
 }
 
 /** The filter a chosen value is looked up by: `value`'s one property under `in`. */

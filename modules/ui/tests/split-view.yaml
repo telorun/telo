@@ -35,7 +35,7 @@ aside:
     state: { key: conversations, store: { kind: Ui.SessionStore } }
   compact: { kind: Ui.Dialog, size: small }
   actions:
-    - { type: link, text: New, href: /new, button: { kind: Ui.TextButton } }
+    - { type: link, text: New, to: { kind: Ui.Navigate, href: /new }, button: { kind: Ui.TextButton } }
   content: { type: stack, children: [{ type: text, text: Aside }] }
 content: { type: text, text: Content }
 ---
@@ -92,11 +92,12 @@ steps:
             - type: link
               fill: false
               text: { text: New, context: null, lang: en, computed: false }
-              href: { path: { value: /new }, pathParams: {}, queryParams: {} }
+              to: { type: navigate, href: { path: { value: /new }, pathParams: {}, queryParams: {} } }
               button: { type: text }
           content:
             type: stack
             fill: false
+            press: null
             children: [{ type: text, fill: false, text: { text: Aside, context: null, lang: en, computed: false } }]
         content: { type: text, fill: false, text: { text: Content, context: null, lang: en, computed: false } }
 ---

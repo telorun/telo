@@ -28,7 +28,7 @@ width: contained
 children:
   - { type: text, text: "Hello, world!", style: title }
   - { type: text, text: This page is declared in YAML and drawn by the UI renderer., style: muted }
-  - { type: link, text: Open settings, href: { path: !ref settings }, button: { kind: Ui.TextButton }, style: accent }
+  - { type: link, text: Open settings, to: { kind: Ui.Navigate, href: { path: !ref settings } }, button: { kind: Ui.TextButton }, style: accent }
 ---
 kind: Ui.Page
 metadata: { name: settings }

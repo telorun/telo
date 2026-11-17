@@ -219,7 +219,7 @@ children:
         label: Conversations
         size: small
         actions:
-          - { type: link, text: New conversation, href: { path: !ref assistant }, button: { kind: Ui.IconButton, label: shown } }
+          - { type: link, text: New conversation, to: { kind: Ui.Navigate, href: { path: !ref assistant } }, button: { kind: Ui.IconButton, label: shown } }
         content:
           type: composite
           ref:
@@ -236,7 +236,7 @@ children:
               content:
                 type: stack
                 children:
-                  - { type: value, value: !cel "row.title", href: { path: !ref assistant, queryParams: { conversation: !cel "row.id" } } }
+                  - { type: value, value: !cel "row.title", to: { kind: Ui.Navigate, href: { path: !ref assistant, queryParams: { conversation: !cel "row.id" } } } }
                   - { type: badge, text: Replying, shown: { at: !cel "row.running", matches: { const: true } } }
       content:
         type: composite

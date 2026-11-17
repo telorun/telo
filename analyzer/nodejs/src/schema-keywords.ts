@@ -140,7 +140,8 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
   },
   "x-telo-context": {
     title: "CEL context",
-    description: "The CEL variables in scope inside this field, as a JSON Schema. Analyzer-only.",
+    description:
+      "The CEL variables in scope inside this field, as a JSON Schema. At the schema root, in scope at every CEL site of the resource without marking any field as evaluated, and inherited by an `extends` child without `base:`.",
     type: "object",
   },
   "x-telo-error-context": {
@@ -391,7 +392,7 @@ const FROM_PATH_TEMPLATE_ENTRY = {
 const WITHHELD_ENTRY = {
   title: "Context withheld",
   description:
-    "This node is named here and holds no value: every expression reading it — a null test, `has()` and an accessor chain included — is refused with this reason, naming the referrer that withholds it when the mark arrived through `x-telo-context-from-referrer`. Written beside `x-telo-context-eval`, `title` and `description` only.",
+    "This node is named here and holds no value: every expression reading it — a null test, `has()` and an accessor chain included — is refused with this reason, naming the referrer that withholds it when the mark arrived through `x-telo-context-from-referrer`. Beside `x-telo-context-from-referrer` it is the node's reading wherever no referrer types it. Written beside `x-telo-context-eval`, `x-telo-context-from-referrer`, `title` and `description` only.",
   type: "string",
   minLength: 1,
 };

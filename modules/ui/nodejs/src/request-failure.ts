@@ -13,4 +13,4 @@ export const DEFAULT_FAILURE: AuthoredNode = {
 };
 
 /** A node tree that resolved to nothing still occupies its place. */
-export const NOTHING: SpecNode = { type: "stack", children: [] };
+export const NOTHING: SpecNode = { type: "stack", children: [], press: null };

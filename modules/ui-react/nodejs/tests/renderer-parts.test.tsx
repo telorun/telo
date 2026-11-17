@@ -44,7 +44,13 @@ describe("the styling contract", () => {
     const qualified = contract.reserved.flatMap((entry) => (entry.state === undefined ? [] : [entry.state]));
     /** Each part seen carrying the state of a qualified reservation, as `<part> <attribute>=<value>`. */
     const carrying = new Set<string>();
+    /** Each part seen holding a `press` as a child. */
+    const pressed = new Set<string>();
     const collect = () => {
+      for (const press of document.querySelectorAll('[data-telo-part="press"]')) {
+        const holder = press.parentElement?.closest("[data-telo-part]");
+        if (holder !== null && holder !== undefined) pressed.add(holder.getAttribute("data-telo-part") as string);
+      }
       for (const element of document.querySelectorAll("[data-telo-part]")) {
         const part = element.getAttribute("data-telo-part") as string;
         seen.add(part);
@@ -59,6 +65,10 @@ describe("the styling contract", () => {
     it("every part listed, and only those", () => {
       expect([...seen].filter((part) => !listed.includes(part))).toEqual([]);
       expect(listed.filter((part) => !seen.has(part))).toEqual([]);
+    });
+    it("every record part a press covers, the table's first cell and the timeline's and tree's included, holding one", () => {
+      const records = ["list-item", "card", "board-card", "calendar-event", "timeline-bar", "tree-item", "table-cell"];
+      expect(records.filter((part) => !pressed.has(part))).toEqual([]);
     });
     it("every part a state-qualified reservation reaches, carrying that state", () => {
       const states = contract.states as Record<string, { values: string[]; on: string[] }>;

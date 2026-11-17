@@ -6,8 +6,7 @@ metadata:
     Test fixture shipping a listing layout of its own: bookings drawn on a room
     plan by a browser component, a lane per room, written as a kind over the
     component layout.
-imports:
-  Ui: ../../../
+imports: { Ui: ../../../ }
 exports:
   kinds: [RoomPlan]
   resources: [roomPlanComponent]
@@ -15,7 +14,7 @@ exports:
     - specifier: "@fixture/room-plan"
       path: ./browser/room-plan.js
       source: ./browser/src/room-plan.js
-      abi: ui_react_layouts-1
+      abi: ui_react_layouts-2
       external: [react]
       exports: [RoomPlan]
 ---
@@ -28,8 +27,7 @@ props:
   schema:
     type: object
     additionalProperties: false
-    properties:
-      title: { type: string }
+    properties: { title: { type: string } }
 ---
 # A layout of another module: its own keys, mapped onto the component layout.
 kind: Telo.Definition

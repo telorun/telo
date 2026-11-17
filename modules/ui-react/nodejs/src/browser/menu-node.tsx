@@ -1,16 +1,16 @@
 import { useContext, useState, type ReactNode } from "react";
-import { isCurrentAddress, resolveAddress, type AddressWire } from "./address-wire.js";
 import { conditionHolds, styleAttribute, type Condition, type Style } from "./bindings.js";
+import { useLeadsHere } from "./current-location.js";
+import { leadOf, openDestination, resolveDestination, useDestinationContext, type DestinationWire } from "./destination.js";
 import { useControl } from "./effective-controls.js";
-import { useHost, useHostStore } from "./host.js";
-import { linkAddress, pageAddress } from "./link-address.js";
+import { linkAddress } from "./link-address.js";
 import { type SpecNode } from "./nodes.js";
-import { RendererContext, RootsContext } from "./renderer-context.js";
+import { RootsContext } from "./renderer-context.js";
 import { useSay, useText, type WireText } from "./texts.js";
 
 interface MenuLink {
   text: WireText;
-  href: AddressWire;
+  to: DestinationWire;
   style?: Style;
   shown?: Condition;
 }
@@ -21,14 +21,12 @@ const GROUP = "menu";
 /**
  * A `menu` node: one group of links drawn by the `Navigation` control, a
  * disclosure that is no landmark. An item is offered while its `shown` holds;
- * following one moves within the application to one of its pages, and loads
- * anything else. An item is the current choice when its address leads to where the viewer is, or its style holds `strong`. An
+ * following one goes to its destination. An item is the current choice when its destination leads to where the viewer is, or its style holds `strong`. An
  * item whose address is not one a link may hold makes the menu an error node.
  */
 export function MenuNode({ node }: { node: SpecNode }): ReactNode {
-  const store = useHostStore();
-  const host = useHost();
-  const { prefix, pages } = useContext(RendererContext);
+  const here = useLeadsHere();
+  const context = useDestinationContext();
   const roots = useContext(RootsContext);
   const text = useText();
   const say = useSay();
@@ -36,15 +34,14 @@ export function MenuNode({ node }: { node: SpecNode }): ReactNode {
   const [open, setOpen] = useState<string[]>([]);
   const links = node.items as MenuLink[];
   // An item whose address does not resolve is left out.
-  const expanded = links.map((link) => resolveAddress(link.href, roots, "'menu' item href"));
-  const addresses = expanded.map((resolved) => (resolved === undefined ? undefined : linkAddress(store, resolved)));
+  const expanded = links.map((link) => resolveDestination(link.to, roots, "'menu' item to"));
+  const addresses = expanded.map((resolved) => (resolved === undefined ? undefined : linkAddress(context.store, resolved.address)));
   const offered = links.flatMap((link, index) => (addresses[index] !== undefined && (link.shown === undefined || conditionHolds(link.shown, roots)) ? [{ link, index }] : []));
   if (offered.length === 0) return null;
   const follow = (key: string) => {
-    const href = addresses[Number(key)] as string;
-    const to = pageAddress(prefix, pages, href);
-    if (to === undefined) store.leave(href);
-    else host.navigate(to);
+    const index = Number(key);
+    const destination = expanded[index];
+    if (destination !== undefined) openDestination(destination.to, { ...context, address: destination.address }, { naming: text(links[index].text) });
   };
   const style = styleAttribute(node.style);
   return (
@@ -58,7 +55,7 @@ export function MenuNode({ node }: { node: SpecNode }): ReactNode {
             key: String(index),
             label: text(link.text),
             href: addresses[index] as string,
-            ...(isCurrentAddress(expanded[index] as string, host.location)
+            ...(here(expanded[index] && leadOf(expanded[index]))
               ? { current: "page" as const }
               : [link.style ?? []].flat().includes("strong")
                 ? { current: "true" as const }

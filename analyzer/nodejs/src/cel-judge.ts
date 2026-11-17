@@ -727,8 +727,9 @@ const namesItsWithholder = new WeakSet<AnalysisDiagnostic>();
 /**
  * Who withholds `node` at a site judged under `variant`: the resource whose
  * scope declares it — the outermost link of each referrer's chain, "the inline
- * <Kind>" where its name was generated — when the node reached the site through
- * a referrer; undefined when the site's own region declares it.
+ * <Kind>" where its name was generated — when a referrer gave the node its
+ * reading, its own keywords included where its scope lacks the path; undefined
+ * when nothing references the resource or the site's own region declares it.
  */
 function withholderOf(variant: ReferrerVariant | undefined, node: WithheldNode): string | undefined {
   if (!variant || variant.referrers.length === 0) return undefined;

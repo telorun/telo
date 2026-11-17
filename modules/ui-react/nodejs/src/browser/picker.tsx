@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useControls } from "./effective-controls.js";
 import { useHostStore } from "./host.js";
-import { CurrentAnchor } from "./current-location.js";
+import { DestinationAnchor } from "./destination.js";
 import { linkAddress } from "./link-address.js";
 import { optionKey, useChosenOptions, useOptionPages, type ChoiceOption, type OptionSourceSpec } from "./option-source.js";
 import { Surface, type SurfaceSpec } from "./surface.js";
@@ -24,11 +24,11 @@ interface PickerProps {
 /** A chosen option shown as its label, linked where the source gives a link. */
 function ChosenLabel({ option }: { option: ChoiceOption }) {
   const store = useHostStore();
-  const href = option.href === undefined ? undefined : linkAddress(store, option.href);
-  return href ? (
-    <CurrentAnchor address={option.href} data-telo-part="picker-chosen" href={href}>
+  const href = option.to === undefined ? undefined : linkAddress(store, option.to.address);
+  return option.to && href ? (
+    <DestinationAnchor destination={option.to} naming={option.label} data-telo-part="picker-chosen" href={href}>
       {option.label}
-    </CurrentAnchor>
+    </DestinationAnchor>
   ) : (
     <span data-telo-part="picker-chosen">{option.label}</span>
   );

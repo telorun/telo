@@ -16,6 +16,7 @@
             }
           },
           "labels": {},
+          "press": null,
           "actions": null,
           "selected": false,
           "movable": true
@@ -34,6 +35,7 @@
             }
           },
           "labels": {},
+          "press": null,
           "actions": null,
           "selected": false,
           "movable": true
@@ -251,6 +253,101 @@
             }
           }
         ]
+      },
+      {
+        "name": "draws each record's press as the first child of the record's element, which carries data-selected while the record is selected",
+        "props": {
+          "records": [
+            {
+              "key": "1",
+              "row": {
+                "id": 1,
+                "text": "Write the plan",
+                "status": "open"
+              },
+              "props": {
+                "content": {
+                  "element": "span",
+                  "text": "Write the plan"
+                }
+              },
+              "labels": {},
+              "press": {
+                "element": "a",
+                "attributes": {
+                  "data-telo-part": "press",
+                  "href": "/tasks/1",
+                  "aria-label": "Open Write the plan"
+                }
+              },
+              "actions": null,
+              "selected": true,
+              "movable": true
+            },
+            {
+              "key": "2",
+              "row": {
+                "id": 2,
+                "text": "Review the plan",
+                "status": "done"
+              },
+              "props": {
+                "content": {
+                  "element": "span",
+                  "text": "Review the plan"
+                }
+              },
+              "labels": {},
+              "press": {
+                "element": "a",
+                "attributes": {
+                  "data-telo-part": "press",
+                  "href": "/tasks/2",
+                  "aria-label": "Open Review the plan"
+                }
+              },
+              "actions": null,
+              "selected": false,
+              "movable": true
+            }
+          ]
+        },
+        "steps": [
+          {
+            "expect": {
+              "firstChild": [
+                {
+                  "of": {
+                    "part": "list-item",
+                    "index": 0
+                  },
+                  "is": {
+                    "part": "press",
+                    "index": 0
+                  }
+                }
+              ],
+              "attributes": [
+                {
+                  "of": {
+                    "part": "list-item",
+                    "index": 0
+                  },
+                  "name": "data-selected",
+                  "value": "true"
+                },
+                {
+                  "of": {
+                    "part": "list-item",
+                    "index": 1
+                  },
+                  "name": "data-selected",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
       }
     ]
   },
@@ -271,6 +368,7 @@
             }
           },
           "labels": {},
+          "press": null,
           "actions": null,
           "selected": false,
           "movable": true
@@ -289,6 +387,7 @@
             }
           },
           "labels": {},
+          "press": null,
           "actions": null,
           "selected": false,
           "movable": true
@@ -369,6 +468,101 @@
             }
           }
         ]
+      },
+      {
+        "name": "draws each record's press as the first child of the record's element, which carries data-selected while the record is selected",
+        "props": {
+          "records": [
+            {
+              "key": "1",
+              "row": {
+                "id": 1,
+                "text": "Write the plan",
+                "status": "open"
+              },
+              "props": {
+                "content": {
+                  "element": "span",
+                  "text": "Write the plan"
+                }
+              },
+              "labels": {},
+              "press": {
+                "element": "a",
+                "attributes": {
+                  "data-telo-part": "press",
+                  "href": "/tasks/1",
+                  "aria-label": "Open Write the plan"
+                }
+              },
+              "actions": null,
+              "selected": true,
+              "movable": true
+            },
+            {
+              "key": "2",
+              "row": {
+                "id": 2,
+                "text": "Review the plan",
+                "status": "done"
+              },
+              "props": {
+                "content": {
+                  "element": "span",
+                  "text": "Review the plan"
+                }
+              },
+              "labels": {},
+              "press": {
+                "element": "a",
+                "attributes": {
+                  "data-telo-part": "press",
+                  "href": "/tasks/2",
+                  "aria-label": "Open Review the plan"
+                }
+              },
+              "actions": null,
+              "selected": false,
+              "movable": true
+            }
+          ]
+        },
+        "steps": [
+          {
+            "expect": {
+              "firstChild": [
+                {
+                  "of": {
+                    "part": "card",
+                    "index": 0
+                  },
+                  "is": {
+                    "part": "press",
+                    "index": 0
+                  }
+                }
+              ],
+              "attributes": [
+                {
+                  "of": {
+                    "part": "card",
+                    "index": 0
+                  },
+                  "name": "data-selected",
+                  "value": "true"
+                },
+                {
+                  "of": {
+                    "part": "card",
+                    "index": 1
+                  },
+                  "name": "data-selected",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
       }
     ]
   },
@@ -389,6 +583,7 @@
             }
           },
           "labels": {},
+          "press": null,
           "actions": null,
           "selected": false,
           "movable": true
@@ -407,6 +602,7 @@
             }
           },
           "labels": {},
+          "press": null,
           "actions": null,
           "selected": false,
           "movable": true
@@ -437,6 +633,7 @@
                 }
               },
               "labels": {},
+              "press": null,
               "actions": null,
               "selected": false,
               "movable": true
@@ -465,6 +662,7 @@
                 }
               },
               "labels": {},
+              "press": null,
               "actions": null,
               "selected": false,
               "movable": true
@@ -617,6 +815,175 @@
             }
           }
         ]
+      },
+      {
+        "name": "draws each record's press as the first child of the record's element, which carries data-selected while the record is selected",
+        "props": {
+          "records": [
+            {
+              "key": "1",
+              "row": {
+                "id": 1,
+                "text": "Write the plan",
+                "status": "open"
+              },
+              "props": {
+                "content": {
+                  "element": "span",
+                  "text": "Write the plan"
+                }
+              },
+              "labels": {},
+              "press": {
+                "element": "a",
+                "attributes": {
+                  "data-telo-part": "press",
+                  "href": "/tasks/1",
+                  "aria-label": "Open Write the plan"
+                }
+              },
+              "actions": null,
+              "selected": true,
+              "movable": true
+            },
+            {
+              "key": "2",
+              "row": {
+                "id": 2,
+                "text": "Review the plan",
+                "status": "done"
+              },
+              "props": {
+                "content": {
+                  "element": "span",
+                  "text": "Review the plan"
+                }
+              },
+              "labels": {},
+              "press": {
+                "element": "a",
+                "attributes": {
+                  "data-telo-part": "press",
+                  "href": "/tasks/2",
+                  "aria-label": "Open Review the plan"
+                }
+              },
+              "actions": null,
+              "selected": false,
+              "movable": true
+            }
+          ],
+          "groups": [
+            {
+              "value": "open",
+              "label": "Open",
+              "heading": "Open (1)",
+              "records": [
+                {
+                  "key": "1",
+                  "row": {
+                    "id": 1,
+                    "text": "Write the plan",
+                    "status": "open"
+                  },
+                  "props": {
+                    "content": {
+                      "element": "span",
+                      "text": "Write the plan"
+                    }
+                  },
+                  "labels": {},
+                  "press": {
+                    "element": "a",
+                    "attributes": {
+                      "data-telo-part": "press",
+                      "href": "/tasks/1",
+                      "aria-label": "Open Write the plan"
+                    }
+                  },
+                  "actions": null,
+                  "selected": true,
+                  "movable": true
+                }
+              ],
+              "total": 1,
+              "hasMore": true,
+              "loading": false
+            },
+            {
+              "value": "done",
+              "label": "Done",
+              "heading": "Done (1)",
+              "records": [
+                {
+                  "key": "2",
+                  "row": {
+                    "id": 2,
+                    "text": "Review the plan",
+                    "status": "done"
+                  },
+                  "props": {
+                    "content": {
+                      "element": "span",
+                      "text": "Review the plan"
+                    }
+                  },
+                  "labels": {},
+                  "press": {
+                    "element": "a",
+                    "attributes": {
+                      "data-telo-part": "press",
+                      "href": "/tasks/2",
+                      "aria-label": "Open Review the plan"
+                    }
+                  },
+                  "actions": null,
+                  "selected": false,
+                  "movable": true
+                }
+              ],
+              "total": 1,
+              "hasMore": false,
+              "loading": false
+            }
+          ]
+        },
+        "steps": [
+          {
+            "expect": {
+              "firstChild": [
+                {
+                  "of": {
+                    "part": "board-card",
+                    "index": 0
+                  },
+                  "is": {
+                    "part": "press",
+                    "index": 0
+                  }
+                }
+              ],
+              "attributes": [
+                {
+                  "of": {
+                    "part": "board-card",
+                    "index": 0
+                  },
+                  "name": "data-selected",
+                  "value": "true"
+                },
+                {
+                  "of": {
+                    "part": "board-card",
+                    "index": 1
+                  },
+                  "name": "data-selected",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
       }
     ]
   },
@@ -637,6 +1004,7 @@
             }
           },
           "labels": {},
+          "press": null,
           "actions": null,
           "selected": false,
           "movable": true
@@ -818,6 +1186,67 @@
             }
           }
         ]
+      },
+      {
+        "name": "draws each record's press as the first child of the record's element, which carries data-selected while the record is selected",
+        "props": {
+          "records": [
+            {
+              "key": "1",
+              "row": {
+                "id": 1,
+                "startsOn": "2026-10-07",
+                "endsOn": "2026-10-08"
+              },
+              "props": {
+                "content": {
+                  "element": "span",
+                  "text": "Kick-off"
+                }
+              },
+              "labels": {},
+              "press": {
+                "element": "a",
+                "attributes": {
+                  "data-telo-part": "press",
+                  "href": "/tasks/1",
+                  "aria-label": "Open 1"
+                }
+              },
+              "actions": null,
+              "selected": true,
+              "movable": true
+            }
+          ]
+        },
+        "steps": [
+          {
+            "expect": {
+              "firstChild": [
+                {
+                  "of": {
+                    "part": "calendar-event",
+                    "index": 0
+                  },
+                  "is": {
+                    "part": "press",
+                    "index": 0
+                  }
+                }
+              ],
+              "attributes": [
+                {
+                  "of": {
+                    "part": "calendar-event",
+                    "index": 0
+                  },
+                  "name": "data-selected",
+                  "value": "true"
+                }
+              ]
+            }
+          }
+        ]
       }
     ]
   },
@@ -839,6 +1268,7 @@
             }
           },
           "labels": {},
+          "press": null,
           "actions": null,
           "selected": false,
           "movable": true
@@ -874,6 +1304,7 @@
                 }
               },
               "labels": {},
+              "press": null,
               "actions": null,
               "selected": false,
               "movable": true
@@ -1030,6 +1461,116 @@
             }
           }
         ]
+      },
+      {
+        "name": "draws each record's press as the first child of the record's element, which carries data-selected while the record is selected",
+        "props": {
+          "records": [
+            {
+              "key": "1",
+              "row": {
+                "id": 1,
+                "startsOn": "2026-10-07",
+                "endsOn": "2026-10-09",
+                "team": "core"
+              },
+              "props": {
+                "content": {
+                  "element": "span",
+                  "text": "Kick-off"
+                }
+              },
+              "labels": {},
+              "press": {
+                "element": "a",
+                "attributes": {
+                  "data-telo-part": "press",
+                  "href": "/tasks/1",
+                  "aria-label": "Open 1"
+                }
+              },
+              "actions": null,
+              "selected": true,
+              "movable": true
+            }
+          ],
+          "groups": [
+            {
+              "value": "core",
+              "label": "Core",
+              "heading": "Core (1)",
+              "records": [
+                {
+                  "key": "1",
+                  "row": {
+                    "id": 1,
+                    "startsOn": "2026-10-07",
+                    "endsOn": "2026-10-09",
+                    "team": "core"
+                  },
+                  "props": {
+                    "content": {
+                      "element": "span",
+                      "text": "Kick-off"
+                    }
+                  },
+                  "labels": {},
+                  "press": {
+                    "element": "a",
+                    "attributes": {
+                      "data-telo-part": "press",
+                      "href": "/tasks/1",
+                      "aria-label": "Open 1"
+                    }
+                  },
+                  "actions": null,
+                  "selected": true,
+                  "movable": true
+                }
+              ],
+              "total": 1,
+              "hasMore": false,
+              "loading": false
+            },
+            {
+              "value": "web",
+              "label": "Web",
+              "heading": "Web (0)",
+              "records": [],
+              "total": 0,
+              "hasMore": false,
+              "loading": false
+            }
+          ]
+        },
+        "steps": [
+          {
+            "expect": {
+              "firstChild": [
+                {
+                  "of": {
+                    "part": "timeline-bar",
+                    "index": 0
+                  },
+                  "is": {
+                    "part": "press",
+                    "index": 0
+                  }
+                }
+              ],
+              "attributes": [
+                {
+                  "of": {
+                    "part": "timeline-bar",
+                    "index": 0
+                  },
+                  "name": "data-selected",
+                  "value": "true"
+                }
+              ]
+            }
+          }
+        ]
       }
     ]
   },
@@ -1051,6 +1592,7 @@
             "title": "Ada"
           },
           "labels": {},
+          "press": null,
           "actions": null,
           "selected": false,
           "movable": true
@@ -1070,6 +1612,7 @@
             "title": "Grace"
           },
           "labels": {},
+          "press": null,
           "actions": null,
           "selected": false,
           "movable": true
@@ -1154,6 +1697,7 @@
                         "title": "Linus"
                       },
                       "labels": {},
+                      "press": null,
                       "actions": null,
                       "selected": false,
                       "movable": true
@@ -1233,6 +1777,7 @@
                     "title": "Linus"
                   },
                   "labels": {},
+                  "press": null,
                   "actions": null,
                   "selected": false,
                   "movable": true
@@ -1292,6 +1837,7 @@
                     "title": "Linus"
                   },
                   "labels": {},
+                  "press": null,
                   "actions": null,
                   "selected": false,
                   "movable": true
@@ -1356,6 +1902,104 @@
                     "managerId": null
                   }
                 ]
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "draws each record's press as the first child of the record's element, which carries data-selected while the record is selected",
+        "props": {
+          "records": [
+            {
+              "key": "1",
+              "row": {
+                "id": 1,
+                "name": "Ada",
+                "managerId": null
+              },
+              "props": {
+                "content": {
+                  "element": "span",
+                  "text": "Ada"
+                },
+                "title": "Ada"
+              },
+              "labels": {},
+              "press": {
+                "element": "a",
+                "attributes": {
+                  "data-telo-part": "press",
+                  "href": "/tasks/1",
+                  "aria-label": "Open 1"
+                }
+              },
+              "actions": null,
+              "selected": true,
+              "movable": true
+            },
+            {
+              "key": "2",
+              "row": {
+                "id": 2,
+                "name": "Grace",
+                "managerId": null
+              },
+              "props": {
+                "content": {
+                  "element": "span",
+                  "text": "Grace"
+                },
+                "title": "Grace"
+              },
+              "labels": {},
+              "press": {
+                "element": "a",
+                "attributes": {
+                  "data-telo-part": "press",
+                  "href": "/tasks/2",
+                  "aria-label": "Open 2"
+                }
+              },
+              "actions": null,
+              "selected": false,
+              "movable": true
+            }
+          ],
+          "children": {}
+        },
+        "steps": [
+          {
+            "expect": {
+              "firstChild": [
+                {
+                  "of": {
+                    "part": "tree-item",
+                    "index": 0
+                  },
+                  "is": {
+                    "part": "press",
+                    "index": 0
+                  }
+                }
+              ],
+              "attributes": [
+                {
+                  "of": {
+                    "part": "tree-item",
+                    "index": 0
+                  },
+                  "name": "data-selected",
+                  "value": "true"
+                },
+                {
+                  "of": {
+                    "part": "tree-item",
+                    "index": 1
+                  },
+                  "name": "data-selected",
+                  "value": null
+                }
               ]
             }
           }

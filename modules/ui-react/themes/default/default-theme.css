@@ -187,6 +187,7 @@ button[data-telo-part="button"][data-state="submitting"] { opacity: 0.7; }
 :where(button:not([data-fill="true"]))[data-telo-part] { height: 2rem; }
 :where(button)[data-telo-part]:focus-visible { border-color: var(--ui-react-derived-ring); box-shadow: var(--ui-react-derived-focus); }
 [data-telo-part="link"]:focus-visible { box-shadow: var(--ui-react-derived-focus); }
+[data-telo-part="press"]:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; border-radius: inherit; }
 :where(button)[data-telo-part]:disabled { pointer-events: none; opacity: 0.5; }
 /* Navigation: its entries quiet like the header's links, a group's button
    showing its chevron; an open group's panel is a list over the page, and in

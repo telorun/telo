@@ -102,12 +102,12 @@ content:
               text: This reader declares mode, a list of tag values and a ticket held to a pattern. A parameter the address leaves out, a single one given twice or a value its declaration refuses counts as missing.
             - type: columns
               children:
-                - { type: link, text: Mode detailed, href: "/conditions?mode=detailed" }
-                - { type: link, text: Two tags, href: "/conditions?tag=red&tag=blue" }
-                - { type: link, text: A valid ticket, href: "/conditions?ticket=OPS-7" }
-                - { type: link, text: A refused ticket, href: "/conditions?ticket=nope" }
-                - { type: link, text: Mode given twice, href: "/conditions?mode=detailed&mode=compact" }
-                - { type: link, text: Clear the query, href: /conditions }
+                - { type: link, text: Mode detailed, to: { kind: Ui.Navigate, href: "/conditions?mode=detailed" } }
+                - { type: link, text: Two tags, to: { kind: Ui.Navigate, href: "/conditions?tag=red&tag=blue" } }
+                - { type: link, text: A valid ticket, to: { kind: Ui.Navigate, href: "/conditions?ticket=OPS-7" } }
+                - { type: link, text: A refused ticket, to: { kind: Ui.Navigate, href: "/conditions?ticket=nope" } }
+                - { type: link, text: Mode given twice, to: { kind: Ui.Navigate, href: "/conditions?mode=detailed&mode=compact" } }
+                - { type: link, text: Clear the query, to: { kind: Ui.Navigate, href: /conditions } }
             - { type: text, style: success, text: "mode is detailed.", shown: { at: !cel "query.mode", matches: { const: detailed } } }
             - { type: text, style: success, text: "There are two tag values or more.", shown: { at: !cel "query.tag", matches: { minItems: 2 } } }
             - { type: text, style: success, text: "The ticket matches its pattern.", shown: { at: !cel "query", matches: { required: [ ticket ] } } }

@@ -137,6 +137,7 @@
       "message": "Import 'Inner' binds a value a choice of the library decides on before boot, but 'variables.name' is not declared 'enum', 'const' or 'type: boolean', so its value is open. Bind it to a literal, or to an expression reading only inputs whose values are decided before boot (an 'enum', 'const' or boolean variable, a member an 'enum' argument binds, a presence test)."
     }
   ],
+  "tests/__fixtures__/check-run-agreement/configurations/root-context/telo.yaml": [],
   "tests/__fixtures__/check-run-agreement/configurations/shape-accessor/telo.yaml": [
     {
       "code": "ACCESSOR_NOT_PLAIN_CHAIN",

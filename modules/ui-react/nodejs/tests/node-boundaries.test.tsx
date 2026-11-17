@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BUNDLE, render, type Page, type Rendered } from "./harness.js";
-import { filtersNode, address } from "./spec-nodes.js";
+import { filtersNode, address, navigateTo } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => {
@@ -58,7 +58,7 @@ describe("what the renderer draws", () => {
     ["/", "/"],
     ["/a//b", "/a//b"],
   ])("draws a link to %j as %s", async (href, drawn) => {
-    rendered = await show([{ type: "text", text: "Above" }, { type: "link", text: "There", href: address(href) }, { type: "text", text: "Below" }]);
+    rendered = await show([{ type: "text", text: "Above" }, { type: "link", text: "There", to: navigateTo(address(href)) }, { type: "text", text: "Below" }]);
     if (drawn === "text") {
       // An address that does not resolve is drawn as plain text.
       expect(texts(rendered)).toEqual(["Above", "There", "Below"]);

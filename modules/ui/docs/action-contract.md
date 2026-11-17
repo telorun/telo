@@ -32,7 +32,7 @@ ones. Requests carry the page's same-origin credentials.
 | anything else, or no answer at all | failed | the `failure` tree |
 
 **A 2xx body** is a JSON object valid against `outputModel`. It is read only
-when something reads `result` — the action's `result` tree, `onSuccess.navigate`
+when something reads `result` — the action's `result` tree, `onSuccess.to`
 or a `onSuccess.refreshes` entry; an action whose answer nothing reads may
 answer with anything, or with nothing, a 204 included. A body that is read and
 is not a JSON object, that is empty, or that `outputModel` refuses, is a

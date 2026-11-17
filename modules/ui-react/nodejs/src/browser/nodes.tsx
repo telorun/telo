@@ -2,12 +2,11 @@ import { Component, useContext, type CSSProperties, type ReactNode, type Ref } f
 import { conditionHolds, fillAttribute, readBinding, styleAttribute, type Condition, type Style } from "./bindings.js";
 import { Action } from "./action.js";
 import { Displayed, type ButtonSpec } from "./display-button.js";
-import { resolveAddress, type AddressWire } from "./address-wire.js";
 import { ChatNode, type ChatNodeSpec } from "./chat/chat-node.js";
 import { CommandNode } from "./command-node.js";
 import { ComponentNode } from "./component.js";
-import { CurrentAnchor } from "./current-location.js";
 import { DataNode } from "./data.js";
+import { DestinationAnchor, resolveDestination, type DestinationWire } from "./destination.js";
 import { Filters } from "./filters.js";
 import { Form } from "./form.js";
 import { ControlsContext, useControl } from "./effective-controls.js";
@@ -19,6 +18,7 @@ import type { ActionsSetting } from "./row-actions-display.js";
 import { ButtonNode, type ButtonNodeSpec } from "./button-node.js";
 import { MarkdownNode, type MarkdownNodeSpec } from "./markdown/markdown-node.js";
 import { MenuNode } from "./menu-node.js";
+import { Press, type PressSpec } from "./press.js";
 import { RelatedContext, RelatedValue } from "./related-labels.js";
 import { EmbeddedContext, RecordLinkContext, RendererContext, RootsContext, underMount, VisibleContext } from "./renderer-context.js";
 import { NavbarNode, NavigationColumnNode, type NavbarNodeSpec, type NavigationColumnNodeSpec } from "./site-navigation.js";
@@ -158,6 +158,7 @@ function Drawn({ node, embedded }: { node: SpecNode; embedded: boolean }): React
     case "stack":
       return (
         <div data-telo-part={node.type} data-fill={fill} data-style={style}>
+          {node.press != null && <Press press={node.press as PressSpec} />}
           <Nodes nodes={node.children} />
         </div>
       );
@@ -176,6 +177,7 @@ function Drawn({ node, embedded }: { node: SpecNode; embedded: boolean }): React
     case "columns":
       return (
         <div data-telo-part="columns" data-fill={fill} data-style={style}>
+          {node.press != null && <Press press={node.press as PressSpec} />}
           {(node.children as SpecNode[]).map((child, index) => (
             <div key={index} data-telo-part="column">
               <Node node={child} />
@@ -200,9 +202,9 @@ function Drawn({ node, embedded }: { node: SpecNode; embedded: boolean }): React
       );
     case "link": {
       // An address that does not resolve inside this application, or at all, is plain text.
-      const resolved = resolveAddress(node.href as AddressWire, roots, "'link' href");
-      const href = resolved === undefined ? undefined : linkAddress(store, resolved);
-      if (href === undefined) {
+      const destination = resolveDestination(node.to as DestinationWire, roots, "'link' to");
+      const href = destination === undefined ? undefined : linkAddress(store, destination.address);
+      if (destination === undefined || href === undefined) {
         return (
           <span data-telo-part="text" data-fill={fill} data-style={style}>
             {text(node.text)}
@@ -210,16 +212,17 @@ function Drawn({ node, embedded }: { node: SpecNode; embedded: boolean }): React
         );
       }
       const button = node.button as ButtonSpec | null | undefined;
+      const naming = text(node.text);
       if (button == null) {
         return (
-          <CurrentAnchor address={resolved} data-telo-part="link" data-record={ofRecord ? "true" : undefined} data-fill={fill} data-style={style} href={href}>
-            {text(node.text)}
-          </CurrentAnchor>
+          <DestinationAnchor destination={destination} naming={naming} data-telo-part="link" data-record={ofRecord ? "true" : undefined} data-fill={fill} data-style={style} href={href}>
+            {naming}
+          </DestinationAnchor>
         );
       }
       return (
-        <Displayed display={button} text={text(node.text)} glyph="go">
-          <CurrentAnchor address={resolved} data-telo-part="link" data-record={ofRecord ? "true" : undefined} data-button={button.type} data-fill={fill} data-style={style} href={href} />
+        <Displayed display={button} text={naming} glyph="go">
+          <DestinationAnchor destination={destination} naming={naming} data-telo-part="link" data-record={ofRecord ? "true" : undefined} data-button={button.type} data-fill={fill} data-style={style} href={href} />
         </Displayed>
       );
     }
@@ -260,7 +263,7 @@ function Drawn({ node, embedded }: { node: SpecNode; embedded: boolean }): React
             present={node.present}
             labels={node.labels}
             text={node.text === undefined ? undefined : text(node.text)}
-            href={node.href === undefined ? undefined : resolveAddress(node.href as AddressWire, roots, "'value' href")}
+            to={resolveDestination(node.to as DestinationWire | undefined, roots, "'value' to")}
           />
         </span>
       );

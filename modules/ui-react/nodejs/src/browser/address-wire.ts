@@ -23,6 +23,9 @@ export class AddressUnresolvedError extends Error {
 const APP_RELATIVE = /^\/([^/\\\u0000-\u001f\u007f][^\u0000-\u001f\u007f]*)?$/;
 const ABSOLUTE = /^(https:\/\/|http:\/\/|mailto:)/;
 
+/** Whether a text is an app-relative address: one path, no scheme, host or control character. */
+export const isAppRelative = (text: string): boolean => APP_RELATIVE.test(text);
+
 const isAddress = (text: string): boolean => APP_RELATIVE.test(text) || ABSOLUTE.test(text);
 
 const encoder = new TextEncoder();

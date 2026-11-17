@@ -1,4 +1,5 @@
-# The mark off a binding, beside a type, and holding no sentence.
+# The mark off a binding, beside a type, and holding no sentence; beside
+# `x-telo-context-from-referrer` it is legal.
 kind: Telo.Library
 metadata: { name: WithheldInvalid }
 exports: { kinds: [Bad] }
@@ -18,4 +19,7 @@ schema:
         type: object
         properties:
           request: { type: object, x-telo-context-withheld: typed beside the mark. }
+          rooted: { x-telo-context-from-root: name, x-telo-context-withheld: typed beside the mark. }
           empty: { x-telo-context-withheld: "" }
+          # Legal: withheld wherever no referrer types it.
+          referred: { x-telo-context-from-referrer: row, x-telo-context-withheld: typed only by a referrer. }

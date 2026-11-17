@@ -1,7 +1,7 @@
 import { createContext, Fragment, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { resolveBasePath } from "./base-path.js";
 import { boundFilters, fetchRequest, filterParam, type Param } from "./collection.js";
-import { CurrentAnchor } from "./current-location.js";
+import { DestinationAnchor } from "./destination.js";
 import { useHost, useHostStore } from "./host.js";
 import { linkAddress } from "./link-address.js";
 import { optionKey, optionOf, type ChoiceOption, type OptionSourceSpec } from "./option-source.js";
@@ -152,11 +152,11 @@ export const RelatedContext = createContext<RelatedScope | undefined>(undefined)
 /** A related record's label, linked where its source gives a link. */
 function RelatedLabel({ option }: { option: ChoiceOption }) {
   const store = useHostStore();
-  const href = option.href === undefined ? undefined : linkAddress(store, option.href);
-  return href ? (
-    <CurrentAnchor address={option.href} data-telo-part="link" href={href}>
+  const href = option.to === undefined ? undefined : linkAddress(store, option.to.address);
+  return option.to && href ? (
+    <DestinationAnchor destination={option.to} naming={option.label} data-telo-part="link" href={href}>
       {option.label}
-    </CurrentAnchor>
+    </DestinationAnchor>
   ) : (
     <>{option.label}</>
   );

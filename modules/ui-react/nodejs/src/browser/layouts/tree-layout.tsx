@@ -58,6 +58,7 @@ function TreeItem({ record, tree, above }: { record: LayoutRecord; tree: Tree; a
       {...(props.can.move && record.movable ? drag.source(record.key) : {})}
       {...(props.can.move ? drag.target(takes) : {})}
     >
+      {record.press}
       <button data-telo-part="tree-toggle" type="button" aria-expanded={open} aria-labelledby={name} onClick={() => props.onExpand(record.key, !open)}>
         <Icon name={open ? "collapse" : "expand"} />
       </button>

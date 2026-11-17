@@ -1,7 +1,8 @@
 import { Fragment, useContext, useId, useRef, useState, type ReactNode } from "react";
 import { conditionHolds, readBinding } from "./bindings.js";
 import type { KeptState } from "./form-state.js";
-import { useHost, useHostStore } from "./host.js";
+import { useDestinationContext } from "./destination.js";
+import { useHost } from "./host.js";
 import { Node } from "./nodes.js";
 import { RowMenu, type RowMenuEntry } from "./row-menu.js";
 import { followSuccess, PressQueueContext, runOperation, type Outcome, type RowActionSpec } from "./operation.js";
@@ -96,10 +97,10 @@ export function useRowActions(
   succeeded: (result: Record<string, unknown> | undefined, key: string) => void,
 ): RowActions {
   const host = useHost();
-  const store = useHostStore();
+  const destinations = useDestinationContext();
   const say = useSay();
   const text = useText();
-  const { pages, prefix } = useContext(RendererContext);
+  const { prefix } = useContext(RendererContext);
   const queues = useContext(PressQueueContext);
   const [answers, setAnswers] = useState<ReadonlyMap<string, Outcome>>(new Map());
   // The row action pending or queued per row, by row key. Read on the press
@@ -134,7 +135,7 @@ export function useRowActions(
     if (outcome.ok) {
       setAsking(undefined);
       if (action.result !== undefined) answer(answerKey(index, key), outcome);
-      followSuccess(action, outcome, host, store, pages);
+      followSuccess(action, outcome, host, destinations, text(action.label));
       succeeded(outcome.result, key);
       return outcome;
     }

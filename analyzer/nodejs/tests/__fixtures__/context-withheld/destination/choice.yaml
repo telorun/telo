@@ -1,0 +1,26 @@
+# A choice decides which destination a listing's press holds: the one it holds
+# types `row` from the listing, the other is referenced by the page alone or by
+# nothing, and withholds it.
+kind: Telo.Application
+metadata: { name: DestinationChoice }
+imports: { Dest: ./kinds }
+variables: { listed: { env: LISTED, type: boolean, default: true } }
+---
+kind: Dest.Go
+metadata: { name: target }
+href: !cel "row.id"
+---
+kind: Dest.Go
+metadata: { name: other }
+href: !cel "row.id"
+---
+kind: Dest.Listing
+metadata: { name: posts }
+press: !if
+  if: !cel "variables.listed"
+  then: !ref target
+  else: !ref other
+---
+kind: Dest.Page
+metadata: { name: home }
+link: !ref other

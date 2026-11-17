@@ -6,8 +6,8 @@ metadata:
     An address is a string or a path with its path and query parameters, and
     reaches a renderer with every member present: a string as a literal path, a
     page reference as that page's own path, a chain as data. A link, a value, a
-    list column, a menu item and a reader's source all take one, and a reader's
-    source takes its query parameters under `queryParams`.
+    list column and a menu item go to one through a `Ui.Navigate` destination,
+    a reader's source is one, and takes its query parameters under `queryParams`.
 imports: { Ui: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref main
@@ -24,18 +24,20 @@ path: /
 title: Home
 query: { tag: { type: string } }
 children:
-  - { type: link, text: Docs, href: /docs }
-  - { type: link, text: Archive, href: { path: !ref archive } }
+  - { type: link, text: Docs, to: { kind: Ui.Navigate, href: /docs } }
+  - { type: link, text: Archive, to: { kind: Ui.Navigate, href: { path: !ref archive } } }
   - type: link
     text: Item
-    href:
-      path: "/items/{id}"
-      pathParams: { id: 7 }
-      queryParams: { tag: !cel "query.tag", page: 2, flag: true, labels: [a, b] }
+    to:
+      kind: Ui.Navigate
+      href:
+        path: "/items/{id}"
+        pathParams: { id: 7 }
+        queryParams: { tag: !cel "query.tag", page: 2, flag: true, labels: [a, b] }
   - type: menu
     text: Go
     items:
-      - { type: link, text: Archive, href: { path: !ref archive, queryParams: { tag: x } } }
+      - { type: link, text: Archive, to: { kind: Ui.Navigate, href: { path: !ref archive, queryParams: { tag: x } } } }
   - { type: composite, ref: !ref account }
 ---
 kind: Telo.JsonSchema
@@ -61,12 +63,12 @@ source:
 content:
   type: stack
   children:
-    - { type: value, value: !cel "data.home", href: { path: !cel "data.home" } }
+    - { type: value, value: !cel "data.home", to: { kind: Ui.Navigate, href: { path: !cel "data.home" } } }
     - type: list
       rows: !cel "data.items"
       columns:
         - value: !cel "row.name"
-          href: { path: "/items/{id}", pathParams: { id: !cel "row.id" }, queryParams: { from: !cel "query.tag" } }
+          to: { kind: Ui.Navigate, href: { path: "/items/{id}", pathParams: { id: !cel "row.id" }, queryParams: { from: !cel "query.tag" } } }
 ---
 kind: Telo.Sequence
 metadata: { name: main }
@@ -82,24 +84,26 @@ steps:
         - type: link
           fill: false
           text: { text: Docs, context: null, lang: und, computed: false }
-          href: { path: { value: /docs }, pathParams: {}, queryParams: {} }
+          to: { type: navigate, href: { path: { value: /docs }, pathParams: {}, queryParams: {} } }
           button: null
         - type: link
           fill: false
           text: { text: Archive, context: null, lang: und, computed: false }
-          href: { path: { value: /somewhere/else }, pathParams: {}, queryParams: {} }
+          to: { type: navigate, href: { path: { value: /somewhere/else }, pathParams: {}, queryParams: {} } }
           button: null
         - type: link
           fill: false
           text: { text: Item, context: null, lang: und, computed: false }
-          href:
-            path: { value: "/items/{id}" }
-            pathParams: { id: { value: 7 } }
-            queryParams:
-              tag: { root: query, path: [tag] }
-              page: { value: 2 }
-              flag: { value: true }
-              labels: { value: [a, b] }
+          to:
+            type: navigate
+            href:
+              path: { value: "/items/{id}" }
+              pathParams: { id: { value: 7 } }
+              queryParams:
+                tag: { root: query, path: [tag] }
+                page: { value: 2 }
+                flag: { value: true }
+                labels: { value: [a, b] }
           button: null
         - type: menu
           fill: false
@@ -108,7 +112,7 @@ steps:
             - type: link
               fill: false
               text: { text: Archive, context: null, lang: und, computed: false }
-              href: { path: { value: /somewhere/else }, pathParams: {}, queryParams: { tag: { value: x } } }
+              to: { type: navigate, href: { path: { value: /somewhere/else }, pathParams: {}, queryParams: { tag: { value: x } } } }
               button: null
   - name: reader
     invoke: { kind: Assert.Equals }
@@ -122,11 +126,12 @@ steps:
         content:
           type: stack
           fill: false
+          press: null
           children:
             - type: value
               fill: false
               value: { root: data, path: [home] }
-              href: { path: { root: data, path: [home] }, pathParams: {}, queryParams: {} }
+              to: { type: navigate, href: { path: { root: data, path: [home] }, pathParams: {}, queryParams: {} } }
               present: { type: string }
               labels: []
             - type: list
@@ -138,7 +143,9 @@ steps:
                   value: { root: row, path: [name] }
                   present: { type: string }
                   labels: []
-                  href:
-                    path: { value: "/items/{id}" }
-                    pathParams: { id: { root: row, path: [id] } }
-                    queryParams: { from: { root: query, path: [tag] } }
+                  to:
+                    type: navigate
+                    href:
+                      path: { value: "/items/{id}" }
+                      pathParams: { id: { root: row, path: [id] } }
+                      queryParams: { from: { root: query, path: [tag] } }

@@ -23,4 +23,4 @@ pages:
     path: /
     title: Home
     children:
-      - { type: link, text: Elsewhere, href: //evil.example/x }
+      - { type: link, text: Elsewhere, to: { kind: Ui.Navigate, href: //evil.example/x } }

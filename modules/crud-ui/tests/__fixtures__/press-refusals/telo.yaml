@@ -1,0 +1,64 @@
+# An admin whose press names a record by a property the collection's record
+# shape declares and its list shape does not: a pressed record is one row of
+# the list.
+kind: Telo.Application
+metadata: { name: CrudUiPressRefusalsApp, version: 1.0.0 }
+imports:
+  CrudUi: ../../../
+  Crud: ../../../../crud
+  SQLite: ../../../../sqlite
+  Ui: ../../../../ui
+---
+kind: SQLite.Table
+metadata: { name: tasksTable }
+table: tasks
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  title: { type: text, nullable: false }
+  priority: { type: integer }
+---
+kind: Telo.JsonSchema
+metadata: { name: Task }
+schema:
+  type: object
+  required: [title]
+  additionalProperties: false
+  properties: { title: { type: string }, priority: { type: integer } }
+---
+kind: Telo.JsonSchema
+metadata: { name: TaskRecord }
+extends: Task
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
+---
+# A row of the list: no priority.
+kind: Telo.JsonSchema
+metadata: { name: TaskRow }
+schema:
+  type: object
+  required: [id, title]
+  properties: { id: { type: integer }, title: { type: string } }
+---
+kind: Crud.Collection
+metadata: { name: tasks }
+model: !ref TaskRecord
+table: !ref tasksTable
+schemas: { list: !ref TaskRow, create: !ref Task, update: !ref Task }
+query: { filters: [], sort: [] }
+---
+kind: CrudUi.CollectionSource
+metadata: { name: tasksSource }
+collection: !ref tasks
+basePath: /api/tasks
+---
+kind: Ui.Page
+metadata: { name: taskPage }
+path: /tasks/{id}
+title: Task
+children: [{ type: text, text: Task }]
+---
+kind: CrudUi.Admin
+metadata: { name: misread }
+source: !ref tasksSource
+press:
+  to: { kind: Ui.OpenPage, page: !ref taskPage, pathParams: { id: !cel "row.id" } }
+  label: { text: "Open task {$priority}", values: { priority: !cel "row.priority" } }

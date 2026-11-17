@@ -1,0 +1,3 @@
+[data-telo-part="table-cell"] { position: sticky }
+[data-telo-part="timeline-bar"] { position: static }
+[data-telo-part="tree-item"] { position: static }

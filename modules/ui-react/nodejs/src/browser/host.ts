@@ -1,12 +1,13 @@
 import { createContext, useContext, useMemo, useSyncExternalStore } from "react";
 import type { Host, HostLocation } from "../contract/ui-react.js";
 import { changeKey, refreshCovers, type Refresh } from "./address-wire.js";
-import { openValue, withFiltersOf, withOpen } from "./open-address.js";
+import { openKey, openValue, withFiltersOf, withOpen } from "./open-address.js";
+import { pageKey, withOnlyPage, withPage } from "./page-key.js";
 
 export type { Host, HostLocation };
 
 /** An app-relative reference, resolved. */
-interface Target {
+export interface Target {
   path: string;
   search: string;
   hash: string;
@@ -21,6 +22,27 @@ export interface KeptChange {
   values: Record<string, unknown>;
   address: boolean;
   store: "memory" | "local" | "session";
+  /** The store whose address keeps the values, set by the store told: entries
+   *  share an address only within one store. */
+  at?: HostStore;
+}
+
+/** Who listens for what one application's stores tell each other, shared by
+ *  the application's store and the store of a page opened over it. */
+interface Channels {
+  changes: Map<string, Set<() => void>>;
+  kept: Set<(change: KeptChange) => void>;
+  rereads: Map<string, Set<() => void>>;
+  writes: Map<string, Set<(record: Record<string, unknown>) => void>>;
+}
+
+/** The history entry an opening added: the query key of what it opened, none
+ *  for a page held in memory, and the page it was on. */
+interface Opening {
+  key: string | undefined;
+  path: string;
+  /** Whether it opened a page in a surface, rather than a surface of the page. */
+  page: boolean;
 }
 
 /** A form holding unsaved input, as the store asks about it. */
@@ -41,30 +63,42 @@ function positionOf(state: unknown): number | undefined {
 
 /**
  * The state behind `useHost`: where the page is, who listens for a collection
- * changing, and which forms hold unsaved input. One per rendered application.
+ * changing, and which forms hold unsaved input. One per rendered application, and one per page opened over it.
  *
  * Every move goes through one check: a move that would close a form holding
  * unsaved input waits for the user's answer, and happens only if they leave.
  */
 export class HostStore {
-  private host: Host;
+  protected host: Host;
   private readonly watchers = new Set<() => void>();
-  private readonly changes = new Map<string, Set<() => void>>();
-  private readonly guards = new Set<UnsavedGuard>();
+  private readonly channels: Channels;
+  protected readonly guards = new Set<UnsavedGuard>();
   private question?: { guards: UnsavedGuard[]; perform: () => void };
   /** The index of the current history entry among those this application wrote. */
   private position: number;
-  /** The entries an opening added during this visit, each by the surface it
-   *  opened and the page it was on. One lasts while its entry still shows that
-   *  surface on that page. */
-  private readonly openings = new Map<number, { name: string; path: string }>();
+  /** The entries an opening added during this visit, by position. One lasts
+   *  while its entry still shows what it opened on that page. */
+  private readonly openings = new Map<number, Opening>();
   /** Where a close that steps back is going: the address it leaves, less the surface. */
   private returning?: Target;
   /** A traversal being undone so the question can be asked from the form's entry. */
   private undoing?: { delta: number; guards: UnsavedGuard[] };
 
-  /** `prefix` is the mount path with no trailing slash; empty at the root. */
-  constructor(readonly prefix: string) {
+  /**
+   * `prefix` is the mount path with no trailing slash; empty at the root. With
+   * `memory`, the store keeps its location in memory, starting `at` it, and
+   * tells and hears what `shares` does; otherwise it follows the browser's.
+   */
+  constructor(
+    readonly prefix: string,
+    memory?: { at: HostLocation; shares: HostStore },
+  ) {
+    this.channels = memory?.shares.channels ?? { changes: new Map(), kept: new Set(), rereads: new Map(), writes: new Map() };
+    if (memory) {
+      this.host = this.hostAt(memory.at);
+      this.position = 0;
+      return;
+    }
     this.host = this.hostAt(this.locationOf(window.location));
     const stamped = positionOf(window.history.state);
     this.position = stamped ?? 0;
@@ -124,19 +158,26 @@ export class HostStore {
    *  browser's own prompt on leaving the document is armed while any is held. */
   readonly guard = (guard: UnsavedGuard): (() => void) => {
     this.guards.add(guard);
-    this.armUnload();
+    this.guarded();
     return () => {
       this.guards.delete(guard);
-      this.armUnload();
+      this.guarded();
     };
   };
 
+  /** What follows a form starting or ending to hold unsaved input. */
+  protected guarded(): void {
+    this.armUnload();
+  }
+
   /** Ask whether the input these forms hold may be dropped; `perform` runs
    *  once it is. Several forms are one question. */
-  readonly ask = (guards: UnsavedGuard[], perform: () => void): void => {
+  readonly ask = (guards: UnsavedGuard[], perform: () => void): void => this.askAbout(guards, perform);
+
+  protected askAbout(guards: UnsavedGuard[], perform: () => void): void {
     this.question = { guards, perform };
     this.notify();
-  };
+  }
 
   readonly answer = (leave: boolean): void => {
     const question = this.question;
@@ -153,7 +194,9 @@ export class HostStore {
    * surface it takes the place of, itself included: with one of them already
    * in the address it takes that entry, and otherwise adds one.
    */
-  readonly open = (name: string, value: string, replaces: (string | undefined)[]): void => {
+  readonly open = (name: string, value: string, replaces: (string | undefined)[]): void => this.openSurface(name, value, replaces);
+
+  protected openSurface(name: string, value: string, replaces: (string | undefined)[]): void {
     const { location } = this.host;
     const taken = replaces.some((replaced) => replaced !== undefined && openValue(location.search, replaced) !== undefined);
     const target = { ...location, search: withOpen(location.search, replaces, { name, value }) };
@@ -161,9 +204,10 @@ export class HostStore {
       const added = this.openings.get(this.position);
       this.write(target, taken);
       // An entry added for a surface this one replaces is now this one's.
-      if (!taken || (added && replaces.includes(added.name))) this.openings.set(this.position, { name, path: target.path });
+      const replaced = added !== undefined && !added.page && replaces.some((each) => each !== undefined && added.key === openKey(each));
+      if (!taken || replaced) this.openings.set(this.position, { key: openKey(name), path: target.path, page: false });
     });
-  };
+  }
 
   /**
    * Close one surface: the address as it is, less that surface. Reached by
@@ -171,7 +215,9 @@ export class HostStore {
    * arrived at being brought up to that address; otherwise by replacing the
    * current entry. Nothing is asked: whoever owns a form asks before closing it.
    */
-  readonly close = (name: string): void => {
+  readonly close = (name: string): void => this.closeSurface(name);
+
+  protected closeSurface(name: string): void {
     if (this.returning) {
       // A close already stepping back arrives without this surface too.
       this.returning = { ...this.returning, search: withOpen(this.returning.search, [name]) };
@@ -179,11 +225,77 @@ export class HostStore {
     }
     const { location } = this.host;
     const target = { ...location, search: withOpen(location.search, [name]) };
-    if (this.openings.get(this.position)?.name === name) {
+    const added = this.openings.get(this.position);
+    if (added !== undefined && !added.page && added.key === openKey(name)) {
       this.returning = target;
       window.history.back();
     } else this.write(target, true);
+  }
+
+  /**
+   * Open a page in a surface: its address `value` kept under the page key of
+   * the surface named `name`, or held in memory when `name` is absent. Every
+   * page key the address holds now is dropped. `replacing` says a page is open
+   * now: this one takes its history entry. Otherwise one kept in the address
+   * adds an entry, and one held in memory writes nothing.
+   */
+  readonly openPage = (name: string | undefined, value: string, replacing: boolean): void => {
+    if (!replacing && name === undefined) return;
+    const { location } = this.host;
+    const target = { ...location, search: withPage(location.search, name === undefined ? undefined : { name, value }) };
+    this.request(target, () => {
+      const added = this.openings.get(this.position);
+      this.write(target, replacing);
+      // The entry an opened page added is the page's that takes its place.
+      if (!replacing || added?.page) this.openings.set(this.position, { key: name === undefined ? undefined : pageKey(name), path: target.path, page: true });
+    });
   };
+
+  /**
+   * Close the opened page: the address as it is, less every page key. Reached
+   * by going back when the current entry is the one an opened page added,
+   * otherwise by replacing the current entry where the address names one.
+   */
+  readonly closePage = (): void => {
+    const { location } = this.host;
+    const target = { ...location, search: withPage(location.search) };
+    if (this.returning) {
+      this.returning = { ...this.returning, search: withPage(this.returning.search) };
+      return;
+    }
+    if (this.openings.get(this.position)?.page) {
+      this.returning = target;
+      window.history.back();
+    } else if (target.search !== location.search) this.write(target, true);
+  };
+
+  /** Drop every page key the address holds but the one of the surface named `kept`, replacing the entry. */
+  readonly keepOnlyPage = (kept: string | undefined): void => {
+    const { location } = this.host;
+    const search = withOnlyPage(location.search, kept);
+    if (search !== location.search) this.write({ ...location, search }, true);
+  };
+
+  /**
+   * Move the application to an app-relative reference, asking first about the
+   * unsaved input of the forms the move closes and of `also`; `then` runs as
+   * the move happens.
+   */
+  readonly go = (to: string, then: () => void, also: readonly UnsavedGuard[] = []): void => {
+    const target = this.resolve(to);
+    const closing = [...new Set([...this.closedBy(target), ...also])];
+    const perform = () => {
+      then();
+      this.write(target, false);
+    };
+    if (closing.length === 0) perform();
+    else this.askAbout(closing, perform);
+  };
+
+  /** Move to an address within the application, as a destination moving there does: from a page opened over another, the application moves. */
+  follow(to: string): void {
+    this.navigateTo(to);
+  }
 
   private readonly warnUnload = (event: BeforeUnloadEvent): void => {
     event.preventDefault();
@@ -210,13 +322,13 @@ export class HostStore {
   }
 
   /** Move, unless that would close a form holding unsaved input: then ask. */
-  private request(target: Target, move: () => void): void {
+  protected request(target: Target, move: () => void): void {
     const closing = this.closedBy(target);
     if (closing.length === 0) move();
-    else this.ask(closing, move);
+    else this.askAbout(closing, move);
   }
 
-  private write(target: Target, replace: boolean): void {
+  protected write(target: Target, replace: boolean): void {
     const address = this.prefix + target.path + target.search + target.hash;
     if (replace) {
       const current = this.locationOf(window.location);
@@ -224,7 +336,7 @@ export class HostStore {
         window.history.replaceState({ [POSITION]: this.position }, "", address);
       }
       const added = this.openings.get(this.position);
-      if (added && (added.path !== target.path || openValue(target.search, added.name) === undefined)) this.openings.delete(this.position);
+      if (added && (added.path !== target.path || (added.key !== undefined && !new URLSearchParams(target.search).has(added.key)))) this.openings.delete(this.position);
       // The entry after this one was added from the page this one no longer is.
       if (current.path !== target.path) this.openings.delete(this.position + 1);
     } else {
@@ -244,7 +356,7 @@ export class HostStore {
   private hostAt(location: HostLocation): Host {
     return {
       location,
-      navigate: this.navigate,
+      navigate: (to, options) => this.navigateTo(to, options),
       href: this.href,
       fetch: this.fetch,
       notifyChanged: this.notifyChanged,
@@ -252,7 +364,7 @@ export class HostStore {
     };
   }
 
-  private moveTo(location: HostLocation): void {
+  protected moveTo(location: HostLocation): void {
     const current = this.host.location;
     if (current.path === location.path && current.search === location.search && current.hash === location.hash) return;
     this.host = this.hostAt(location);
@@ -276,7 +388,7 @@ export class HostStore {
     return { path: url.pathname, search: url.search, hash: url.hash };
   }
 
-  private resolve(to: string): Target {
+  protected resolve(to: string): Target {
     const target = this.resolveLocal(to);
     if (!target) {
       throw new TypeError(
@@ -299,10 +411,10 @@ export class HostStore {
     return target && this.prefix + target.path + target.search + target.hash;
   };
 
-  private readonly navigate = (to: string, options?: { replace?: boolean }): void => {
+  protected navigateTo(to: string, options?: { replace?: boolean }): void {
     const target = this.resolve(to);
     this.request(target, () => this.write(target, options?.replace === true));
-  };
+  }
 
   private readonly href = (to: string): string => {
     const target = this.resolve(to);
@@ -317,67 +429,62 @@ export class HostStore {
 
   /** Readers and writers meet at the encoded app-relative path, the query left out. */
   private readonly notifyChanged = (path: string): void => {
-    for (const listener of [...(this.changes.get(changeKey(path) ?? path) ?? [])]) listener();
+    for (const listener of [...(this.channels.changes.get(changeKey(path) ?? path) ?? [])]) listener();
   };
 
   /** Say that every reader a refresh covers changed: the one at its path, or each whose path its wildcards match. */
   readonly notifyRefresh = (refresh: Refresh): void => {
     if (!refresh.wildcard) return this.notifyChanged(refresh.path);
-    for (const [key, listeners] of [...this.changes]) {
+    for (const [key, listeners] of [...this.channels.changes]) {
       if (refreshCovers(refresh, key)) for (const listener of [...listeners]) listener();
     }
   };
 
   private readonly onChanged = (path: string, listener: () => void): (() => void) => {
     const key = changeKey(path) ?? path;
-    const listeners = this.changes.get(key) ?? new Set();
-    this.changes.set(key, listeners);
+    const listeners = this.channels.changes.get(key) ?? new Set();
+    this.channels.changes.set(key, listeners);
     listeners.add(listener);
     return () => listeners.delete(listener);
   };
 
-  private readonly keptListeners = new Set<(change: KeptChange) => void>();
-
-  /** Tell every entry mounted in the document of a change another made to the values it keeps. */
+  /** Tell every entry mounted in the document of a change another made to the values it keeps, at this store's address. */
   readonly kept = (change: KeptChange): void => {
-    for (const listener of [...this.keptListeners]) listener(change);
+    for (const listener of [...this.channels.kept]) listener({ ...change, at: this });
   };
 
   /** Call `listener` with each change an entry makes to the values it keeps. */
   readonly onKept = (listener: (change: KeptChange) => void): (() => void) => {
-    this.keptListeners.add(listener);
-    return () => this.keptListeners.delete(listener);
+    this.channels.kept.add(listener);
+    return () => this.channels.kept.delete(listener);
   };
-
-  private readonly rereads = new Map<string, Set<() => void>>();
 
   /** Say that a listing over the collection at `basePath` reads itself again on
    *  its timer, so the facet requests over it read again with it. Nothing else is told. */
   readonly reread = (basePath: string): void => {
-    for (const listener of [...(this.rereads.get(changeKey(basePath) ?? basePath) ?? [])]) listener();
+    for (const listener of [...(this.channels.rereads.get(changeKey(basePath) ?? basePath) ?? [])]) listener();
   };
 
   /** Call `listener` whenever a listing over `basePath` reads itself again on its timer. */
   readonly onReread = (basePath: string, listener: () => void): (() => void) => {
     const key = changeKey(basePath) ?? basePath;
-    const listeners = this.rereads.get(key) ?? new Set();
-    this.rereads.set(key, listeners);
+    const listeners = this.channels.rereads.get(key) ?? new Set();
+    this.channels.rereads.set(key, listeners);
     listeners.add(listener);
     return () => listeners.delete(listener);
   };
 
-  private readonly writes = new Map<string, Set<(record: Record<string, unknown>) => void>>();
 
   /** Say that a write to the collection at `basePath` answered with this
    *  record, so wherever it is drawn it is drawn from that answer. */
   readonly written = (basePath: string, record: Record<string, unknown>): void => {
-    for (const listener of [...(this.writes.get(basePath) ?? [])]) listener(record);
+    for (const listener of [...(this.channels.writes.get(basePath) ?? [])]) listener(record);
   };
 
   /** Call `listener` with each record a write to the collection answered with. */
   readonly onWritten = (basePath: string, listener: (record: Record<string, unknown>) => void): (() => void) => {
-    const listeners = this.writes.get(basePath) ?? new Set();
-    this.writes.set(basePath, listeners);
+    const listeners = this.channels.writes.get(basePath) ?? new Set();
+    this.channels.writes.set(basePath, listeners);
     listeners.add(listener);
     return () => listeners.delete(listener);
   };

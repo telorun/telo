@@ -122,6 +122,62 @@ describe("a key of a site absent at its witness", () => {
   }, 120_000);
 });
 
+describe("a key of a site a root context covers", () => {
+  /** A provider whose root context types `row` from `model`, and a resource
+   *  of it holding `padding` entries no expression reads. */
+  const rooted = (padding: number) => `kind: Telo.Application
+metadata: { name: Rooted }
+variables:
+  column: { env: COLUMN, type: string, enum: [text, status], default: text }
+---
+kind: Telo.JsonSchema
+metadata: { name: Todo }
+schema: { type: object, properties: { text: { type: string }, status: { type: string } } }
+---
+kind: Telo.Definition
+metadata: { name: Cell }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  x-telo-context:
+    type: object
+    properties:
+      row: { x-telo-context-from-root: model, x-telo-context-eval: accessor }
+  properties:
+    model: { x-telo-ref: { kind: Telo.Type, use: schema } }
+    value: { x-telo-eval: accessor }
+    padding: { type: array, items: { type: string } }
+---
+kind: Self.Cell
+metadata: { name: cell }
+model: !ref Todo
+padding: [${Array.from({ length: padding }, (_, i) => `p${i}`).join(", ")}]
+value: !if
+  if: !cel "variables.column == 'status'"
+  then: !cel "row.status"
+  else: !cel "row.text"
+`;
+  const extents = async (padding: number) => {
+    const loaded = await loadGenerated(`root-context-${padding}.yaml`, rooted(padding));
+    const found: number[] = [];
+    const stop = observeKeyCosts((cost) => {
+      if (cost.kind === "cel-extent" && cost.site.includes('"value')) found.push(cost.nodes);
+    });
+    try {
+      new StaticAnalyzer().analyze(loaded.manifests, { moduleDocuments: loaded.moduleDocuments });
+    } finally {
+      stop();
+    }
+    return found;
+  };
+  it("holds the places its bindings read, never the whole declaration", async () => {
+    const small = await extents(0);
+    expect(small.length).toBeGreaterThan(0);
+    expect(await extents(40)).toEqual(small);
+  }, 120_000);
+});
+
 describe("the analyses one analysis makes", () => {
   const cases: Array<[string, () => ReturnType<typeof loadFixture>]> = [
     ...[1, 2, 4].map((n): [string, () => ReturnType<typeof loadFixture>] => [

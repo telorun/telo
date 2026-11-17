@@ -1,0 +1,30 @@
+kind: Telo.Application
+metadata:
+  name: UiReactConformanceCheckThemePressReservationsTest
+  version: 1.0.0
+  description: |
+    A theme setting `position` on a part a press covers — a table's first
+    cell, a timeline bar, a tree item — is reported by the scenes, which
+    draw a pressed record in every built-in layout.
+imports: { UiReact: ../../ui-react, Conformance: ../, Assert: ../../assert }
+targets:
+  - !ref checkPressReservations
+---
+kind: Telo.Sequence
+metadata: { name: checkPressReservations }
+steps:
+  - name: check
+    invoke:
+      kind: Conformance.CheckTheme
+      theme:
+        kind: UiReact.Theme
+        stylesheets: [!module-path ./__fixtures__/press-reservations/sets-position.css]
+  - name: reported
+    inputs:
+      actual: !cel >-
+        ['table-cell', 'timeline-bar', 'tree-item'].map(part,
+        steps.check.result.problems.exists(p, p.check == 'property-reserved'
+        && p.subject == 'holding press: position'
+        && p.message.contains('[data-telo-part="' + part + '"]')))
+      expected: [true, true, true]
+    invoke: { kind: Assert.Equals }

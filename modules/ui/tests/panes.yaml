@@ -42,7 +42,7 @@ children:
       heading: Need a hand?
       navigation:
         items:
-          - { type: link, text: Status, href: "https://status.acme.test" }
+          - { type: link, text: Status, to: { kind: Ui.Navigate, href: "https://status.acme.test" } }
           - { type: page, page: !ref reports, text: Reading reports, when: !cel "'x-role' in request.headers" }
 ---
 kind: Ui.Page
@@ -71,6 +71,7 @@ steps:
         - { type: text, fill: false, text: { text: invoked 1, context: null, lang: und, computed: false } }
         - type: stack
           fill: false
+          press: null
           children:
             - { type: text, fill: false, style: subheading, text: { text: Need a hand?, context: null, lang: en, computed: false } }
             - type: navigation-column
@@ -78,7 +79,7 @@ steps:
               state: null
               navigation:
                 items:
-                  - { type: link, key: status, href: "https://status.acme.test", text: { text: Status, context: null, lang: en, computed: false } }
+                  - { type: link, key: status, to: { type: navigate, href: { path: { value: "https://status.acme.test" }, pathParams: {}, queryParams: {} } }, text: { text: Status, context: null, lang: en, computed: false } }
   - name: secondIs
     invoke: { kind: Assert.Equals }
     inputs:
@@ -88,6 +89,7 @@ steps:
         - { type: text, fill: false, text: { text: invoked 1, context: null, lang: und, computed: false } }
         - type: stack
           fill: false
+          press: null
           children:
             - { type: text, fill: false, style: subheading, text: { text: Need a hand?, context: null, lang: en, computed: false } }
             - type: navigation-column
@@ -95,7 +97,7 @@ steps:
               state: null
               navigation:
                 items:
-                  - { type: link, key: status, href: "https://status.acme.test", text: { text: Status, context: null, lang: en, computed: false } }
+                  - { type: link, key: status, to: { type: navigate, href: { path: { value: "https://status.acme.test" }, pathParams: {}, queryParams: {} } }, text: { text: Status, context: null, lang: en, computed: false } }
                   - { type: page, key: reading-reports, path: /reports, text: { text: Reading reports, context: null, lang: en, computed: false } }
 ---
 kind: Assert.Manifest

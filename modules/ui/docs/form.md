@@ -19,7 +19,7 @@ property's `title`, else its name.
 A property whose relation the presentation presents is entered with a
 [picker](field-kinds.md#uipickerfield) of the related records — searched with
 the relation's `search`, labelled with its `label` and `hint`, linked with its
-`href` — whether it is named bare in `fields` or `fields` is left out, so a
+`to` — whether it is named bare in `fields` or `fields` is left out, so a
 post form shows an author picker with nothing written beyond the relation. A
 field kind written for the property wins.
 

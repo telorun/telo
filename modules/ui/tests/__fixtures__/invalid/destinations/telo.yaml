@@ -1,0 +1,51 @@
+# Destinations that are refused, each where it is written.
+kind: Telo.Application
+metadata: { name: UiInvalidDestinationsApp, version: 1.0.0 }
+imports: { Ui: ../../../../ }
+---
+kind: Telo.JsonSchema
+metadata: { name: Author }
+schema: { type: object, required: [id], properties: { id: { type: string } } }
+---
+kind: Ui.Page
+metadata: { name: authorPage }
+path: /authors/{id}
+title: Author
+children: [{ type: text, text: Author }]
+---
+kind: Ui.Page
+metadata: { name: homePage }
+path: /
+title: Home
+children:
+  # PATH_PARAMETER_UNBOUND — `/authors/{id}` needs `id`.
+  - { type: link, text: Newest author, to: { kind: Ui.OpenPage, page: !ref authorPage } }
+  # REFERENCE_KIND_MISMATCH — `page` names a Ui.Page.
+  - { type: link, text: Authors, to: { kind: Ui.OpenPage, page: !ref Author } }
+  # CEL_UNKNOWN_IDENTIFIER — a page's own nodes bind no `row`.
+  - { type: link, text: First author, to: { kind: Ui.OpenPage, page: !ref authorPage, pathParams: { id: !cel "row.id" } } }
+  # REFERENCE_KIND_MISMATCH — `to` holds a Ui.Destination.
+  - { type: link, text: Close, to: { kind: Ui.Dialog } }
+  # REFERENCE_KIND_MISMATCH — a page opens in a dialog or a drawer.
+  - type: link
+    text: Ada in a popover
+    to: { kind: Ui.OpenPage, page: !ref authorPage, pathParams: { id: ada }, surface: { kind: Ui.Popover, side: bottom } }
+  # KIND_NOT_EXPORTED — closing is no destination.
+  - { type: link, text: Done, to: { kind: Ui.Close } }
+  # SCHEMA_VIOLATION — `href` is gone from `value`.
+  - type: composite
+    ref:
+      kind: Ui.Data
+      model: !ref Author
+      source: /api/authors/ada
+      content: { type: value, value: !cel "data.id", href: { path: !ref authorPage, pathParams: { id: ada } } }
+  # SCHEMA_VIOLATION — `href` is gone from `link`.
+  - { type: link, text: Authors, href: /authors }
+  # SCHEMA_VIOLATION — `onSuccess.navigate` is gone.
+  - type: composite
+    ref:
+      kind: Ui.Action
+      inputModel: !ref Author
+      request: { target: /api/authors }
+      label: Add
+      onSuccess: { navigate: / }

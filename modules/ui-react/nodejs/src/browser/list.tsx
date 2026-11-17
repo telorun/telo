@@ -1,8 +1,8 @@
 import { useContext, useEffect } from "react";
-import { resolveAddress, type AddressWire } from "./address-wire.js";
-import { conditionHolds, readBinding, ruleStyle, styleAttribute, type Binding, type Condition, type Style, type StyleRule } from "./bindings.js";
-import { useHost } from "./host.js";
-import { anyCurrent, columnAddresses } from "./record-selection.js";
+import { conditionHolds, presentValue, readBinding, ruleStyle, styleAttribute, type Binding, type Condition, type Style, type StyleRule } from "./bindings.js";
+import { resolveDestination, type DestinationWire } from "./destination.js";
+import { useViewer } from "./current-location.js";
+import { anyLeadsHere, columnLeads } from "./record-selection.js";
 import type { RowActionSpec } from "./operation.js";
 import { RecordLinkContext, RootsContext } from "./renderer-context.js";
 import { useRowActions } from "./row-actions.js";
@@ -19,7 +19,7 @@ export interface ListColumn {
   present?: { type?: unknown; format?: unknown };
   labels?: ValueLabel[];
   shown?: Condition;
-  href?: AddressWire;
+  to?: DestinationWire;
   /** A time column's: relative to now, or absolute. */
   relative?: boolean;
   style?: StyleRule;
@@ -54,7 +54,7 @@ export function ListView({
   fill?: boolean;
 }) {
   const roots = useContext(RootsContext);
-  const { location } = useHost();
+  const viewer = useViewer();
   const text = useText();
   const say = useSay();
   const read = readBinding(rows, roots);
@@ -87,21 +87,21 @@ export function ListView({
                   key={index}
                   data-telo-part="table-row"
                   data-style={styleAttribute(ruleStyle(rowStyle, scope))}
-                  data-selected={anyCurrent(columnAddresses(shown, scope, "'list' column href"), location) ? "true" : undefined}
+                  data-selected={anyLeadsHere(columnLeads(shown, scope, "'list' column to"), viewer) ? "true" : undefined}
                 >
                   {shown.map((column, cell) => {
                     const value = readBinding(column.value, scope);
                     const read = value.present ? value.value : undefined;
-                    const href = column.href && resolveAddress(column.href, scope, "'list' column href");
+                    const to = resolveDestination(column.to, scope, "'list' column to");
                     return (
                       <td key={cell} data-telo-part="table-cell" data-style={styleAttribute(ruleStyle(column.style, scope))}>
                         <RecordLinkContext.Provider value={true}>
                           {column.type === "time" ? (
-                            <ValueLink address={href}>
+                            <ValueLink to={to} naming={presentValue(read, column.present, say)}>
                               <TimeValue value={read} relative={column.relative === true} />
                             </ValueLink>
                           ) : (
-                            <Presented value={read} present={column.present} labels={column.labels} href={href} />
+                            <Presented value={read} present={column.present} labels={column.labels} to={to} />
                           )}
                         </RecordLinkContext.Provider>
                       </td>

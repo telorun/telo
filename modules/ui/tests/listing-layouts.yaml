@@ -244,6 +244,7 @@ steps:
           content:
             type: stack
             fill: false
+            press: null
             children:
               - { type: value, fill: false, value: { root: row, path: [title] }, style: strong, present: { type: string }, labels: [] }
               - { type: value, fill: false, value: { root: row, path: [assigneeId] }, present: { type: integer }, labels: [] }
@@ -268,6 +269,7 @@ steps:
           content:
             type: stack
             fill: false
+            press: null
             children:
               - { type: value, fill: false, value: { root: row, path: [title] }, present: { type: string }, labels: [] }
               - type: value
@@ -300,6 +302,7 @@ steps:
         content:
           type: stack
           fill: false
+          press: null
           children:
             - { type: value, fill: false, value: { root: row, path: [title] }, present: { type: string }, labels: [] }
             - { type: value, fill: false, value: { root: row, path: [startsOn] }, present: { type: string, format: date }, labels: [] }
@@ -328,7 +331,7 @@ steps:
         extension:
           type: component
           export: RoomPlan
-          abi: ui_react_layouts-1
+          abi: ui_react_layouts-2
           external: [react]
           entry: room-plan.js
           stylesheets: []

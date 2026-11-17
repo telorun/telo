@@ -11,7 +11,7 @@ metadata:
     or any other layout, create and edit forms and a confirmed delete. Related
     records are shown by name and picked from a list, all derived from the data
     model.
-requires: { telo: ">=0.136.0" }
+requires: { telo: ">=unreleased" }
 restrictions:
   - requires: { telo: ">=0.126.0" }
     reason: "0.125.1 checks this module clean and fails at boot: its forward past a source reads the instance, so the body's forms and listing get no `model` (ERR_RESOURCE_SCHEMA_VALIDATION_FAILED)."
@@ -151,6 +151,18 @@ schema:
         properties:
           row: { x-telo-context-ref-from: source/collection/schemas/list, x-telo-context-eval: accessor }
           query: { x-telo-context-eval: accessor, type: object, properties: {}, additionalProperties: false }
+    press:
+      title: Press
+      description: >-
+        What pressing a record does, and its name, over `row`, one record of the
+        list. Written, editing is the record's edit button; omitted, pressing a
+        record opens the edit form.
+      $ref: "telo://UiKit/Press"
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-ref-from: source/collection/schemas/list, x-telo-context-eval: accessor }
+          query: { x-telo-context-eval: accessor, type: object, properties: {}, additionalProperties: false }
 resources:
   - kind: UiKit.CollectionPresentation
     metadata: { name: presentation }
@@ -182,6 +194,7 @@ resources:
     delete: true
     layout: !cel "self.layout"
     compact: !cel "self.compact"
+    press: !cel "self.press"
   - kind: UiKit.Filters
     metadata: { name: filters }
     presentation: !ref presentation

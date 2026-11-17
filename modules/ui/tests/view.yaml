@@ -31,18 +31,18 @@ content:
     - { type: text, text: Title, style: heading }
     - { type: badge, text: New, style: [accent, strong] }
     - { type: badge, text: { text: Open, context: state } }
-    - { type: link, text: Docs, href: /docs }
+    - { type: link, text: Docs, to: { kind: Ui.Navigate, href: /docs } }
     - type: menu
       text: Language
       style: muted
       items:
-        - { type: link, text: English, href: /lang/en, style: strong }
-        - { type: link, text: Hidden, href: /hidden, when: false }
-        - { type: link, text: Polski, href: "https://example.com/pl" }
+        - { type: link, text: English, to: { kind: Ui.Navigate, href: /lang/en }, style: strong }
+        - { type: link, text: Hidden, to: { kind: Ui.Navigate, href: /hidden }, when: false }
+        - { type: link, text: Polski, to: { kind: Ui.Navigate, href: "https://example.com/pl" } }
     - type: menu
       text: Nothing to choose
       items:
-        - { type: link, text: Hidden, href: /hidden, when: false }
+        - { type: link, text: Hidden, to: { kind: Ui.Navigate, href: /hidden }, when: false }
     - { type: image, src: /logo.png, alt: "" }
     - { type: svg, markup: "<svg xmlns='http://www.w3.org/2000/svg'/>", alt: Chart }
     - { type: text, text: Hidden, when: false }
@@ -71,26 +71,29 @@ steps:
         node:
           type: stack
           fill: false
+          press: null
           style: [strong]
           children:
             - { type: text, fill: false, text: { text: Title, context: null, lang: und, computed: false }, style: heading }
             - { type: badge, fill: false, text: { text: New, context: null, lang: und, computed: false }, style: [accent, strong] }
             - { type: badge, fill: false, text: { text: Open, context: state, lang: und, computed: false } }
-            - { type: link, fill: false, text: { text: Docs, context: null, lang: und, computed: false }, href: { path: { value: /docs }, pathParams: {}, queryParams: {} }, button: null }
+            - { type: link, fill: false, text: { text: Docs, context: null, lang: und, computed: false }, to: { type: navigate, href: { path: { value: /docs }, pathParams: {}, queryParams: {} } }, button: null }
             - type: menu
               fill: false
               text: { text: Language, context: null, lang: und, computed: false }
               style: muted
               items:
-                - { type: link, fill: false, text: { text: English, context: null, lang: und, computed: false }, href: { path: { value: /lang/en }, pathParams: {}, queryParams: {} }, button: null, style: strong }
-                - { type: link, fill: false, text: { text: Polski, context: null, lang: und, computed: false }, href: { path: { value: "https://example.com/pl" }, pathParams: {}, queryParams: {} }, button: null }
+                - { type: link, fill: false, text: { text: English, context: null, lang: und, computed: false }, to: { type: navigate, href: { path: { value: /lang/en }, pathParams: {}, queryParams: {} } }, button: null, style: strong }
+                - { type: link, fill: false, text: { text: Polski, context: null, lang: und, computed: false }, to: { type: navigate, href: { path: { value: "https://example.com/pl" }, pathParams: {}, queryParams: {} } }, button: null }
             - { type: image, fill: false, src: /logo.png, alt: { text: "", context: null, lang: und, computed: false } }
             - { type: svg, fill: false, markup: "<svg xmlns='http://www.w3.org/2000/svg'/>", alt: { text: Chart, context: null, lang: und, computed: false } }
             - type: columns
               fill: false
+              press: null
               children:
                 - type: box
                   fill: false
+                  press: null
                   children:
                     - { type: text, fill: false, text: { text: Inner, context: null, lang: und, computed: false }, style: muted }
                 - { type: text, fill: false, text: { text: v1.0.0, context: null, lang: und, computed: true } }

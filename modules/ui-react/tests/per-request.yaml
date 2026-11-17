@@ -158,20 +158,21 @@ steps:
         banner:
           type: stack
           fill: false
+          press: null
           children:
             - { type: text, fill: false, text: { lang: en, message: [From a library] }, style: heading }
             - { type: text, fill: false, text: { lang: en, message: [Placed as one section] }, style: muted }
         badge: { type: badge, fill: false, text: { lang: en, message: [from 127.0.0.1] }, style: [accent, strong] }
         lastText: { type: text, fill: false, text: { lang: en, message: [unsafe] }, style: muted }
         invalidStyle: ERR_UI_NODE_INVALID
-        restIntact: { type: link, fill: false, text: { lang: en, message: [Back to todos] }, href: { path: { value: / }, pathParams: {}, queryParams: {} }, button: null }
+        restIntact: { type: link, fill: false, text: { lang: en, message: [Back to todos] }, to: { type: navigate, href: { path: { value: / }, pathParams: {}, queryParams: {} } }, button: null }
         offsite:
           status: 200
           node: ERR_UI_NODE_INVALID
-          rest: { type: link, fill: false, text: { lang: en, message: [Back to todos] }, href: { path: { value: / }, pathParams: {}, queryParams: {} }, button: null }
+          rest: { type: link, fill: false, text: { lang: en, message: [Back to todos] }, to: { type: navigate, href: { path: { value: / }, pathParams: {}, queryParams: {} } }, button: null }
         components: [columns, ERR_UI_COMPONENT_ABI_UNSUPPORTED, ERR_UI_COMPONENT_IMPORT_UNSUPPLIED, listing]
         hosted: [HostProbe, Counter]
-        layouts: [ui_react_layouts-1, ui_react_layouts-1, ERR_UI_COMPONENT_ABI_UNSUPPORTED]
+        layouts: [ui_react_layouts-2, ui_react_layouts-2, ERR_UI_COMPONENT_ABI_UNSUPPORTED]
         layoutProps:
           - { title: { value: Todos } }
           - { title: { value: Tasks }, text: { root: row, path: [text] } }

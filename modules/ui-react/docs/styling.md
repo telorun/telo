@@ -57,6 +57,11 @@ breaks — `UiReact.defaultTheme` declares none. A reservation with a state in
 **While** holds only while the part carries it, and one naming no part holds on
 every part carrying the state — so a theme scopes a rule it means for parts at
 rest, `[data-telo-part="component"]:not([data-fill="true"]) { min-height: 4rem }`.
+A reservation on **any part holding** a part holds on each part that part is a
+child of — every pressed node and record, and in a table the first
+`table-cell` of a pressed `table-row` — and one on the elements listed
+**after** a part holds on each of them after it inside the element holding it:
+a `link`, a `row-edit` or a control in a pressed card.
 
 | Part | While | Reserved | Because |
 | --- | --- | --- | --- |
@@ -88,6 +93,9 @@ rest, `[data-telo-part="component"]:not([data-fill="true"]) { min-height: 4rem }
 | `tab-bar` | — | `position`, `bottom` | a tab bar stays at the bottom edge |
 | `glyph` | — | `background-color`, `mask-image` | a glyph is its file's shape in the colour of the text around it |
 | `page` | — | `max-width`, `margin-inline` | a contained page is no wider than the width.page token, centred |
+| `press` | — | `position`, `inset`, `z-index` | a press spans the element it covers, beneath the interactive content after it |
+| any part holding `press` | — | `position` | the element a press covers is its containing block |
+| `a`, `button`, `input`, `select`, `textarea`, `label`, `summary`, `[tabindex]`, `[contenteditable]` after `press` | — | `position` | interactive content after a press paints above it and stays a target of its own |
 | `header` | — | `display`, `grid-column`, `padding-inline` | the header spans the application, above the aside and the page, and its content holds the inset |
 | `header-content` | — | `padding-inline` | a contained header's content starts and ends where a contained page does |
 | `footer` | — | `display`, `grid-column`, `padding-inline` | the footer spans the application, below the aside and the page, and its content holds the inset |
@@ -263,6 +271,22 @@ navigation text alone, so no part holds it.
 | `bar-end` | the bar's `end` nodes, at its end edge |
 | `command` | a `command` node: a `<button>` running a command of the place it is in — `data-command` names it, `data-button` how it is drawn — disabled while it cannot run, not drawn where it is not offered; a glyph alone is named by `aria-label` and a tooltip |
 | `button` | a `button` node: a `<button>` running its action, labelled with the action's label — `data-button` says how it is drawn, `data-state="submitting"` while its press is pending; once the action has answered, its `row-answer` stands in its place, and a failure is its `row-failure` beside it |
+| `press` | what pressing a `box`, `stack` or `columns` node, or a listing's record, does: an empty `<a>` to its destination's address, named by `aria-label` exactly as its `label` is formatted, the first child of the element it covers — the node, the record's element, or in a table the row's first `table-cell` — spanning it; `aria-current="page"` while it leads to where the viewer is. Drawn only where its address resolves |
+
+**A pressed node or record** is covered by its `press`: the base layer
+positions the element it covers as the press's containing block, stretches the
+press across it and positions every link, button, form control, `label`,
+`summary`, `[tabindex]` and `[contenteditable]` after the press inside it, so
+each paints above the press and stays a target of its own — a record's
+actions, and a pressed node inside another, included. A pointer anywhere else
+on it lands on the press, so text inside a pressed element cannot be selected
+by dragging across it — which is why a table's record press covers only the
+row's first cell, leaving every other cell's text selectable. A theme styles
+only the press's focus ring:
+
+```css
+[data-telo-part="press"]:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; border-radius: inherit; }
+```
 
 A column of a `list` whose `shown` does not hold is left out, header and cells.
 
@@ -910,8 +934,8 @@ listed.
 | `data-button="…"` | `text`, `icon`: a `link` node drawn as a button, by its text or by a glyph, absent on a link drawn inline; how a `command` or a `button` is drawn | `link`, `command`, `button` |
 | `data-command="…"` | `chat.exportTranscript`, `chat.copyTranscript`, `chat.stop`, `chat.newConversation`: the command a `command` part runs, so a look can choose its glyph | `command` |
 | `data-fill="…"` | `true`, while the part [fills](#filling) the room it is in | `app`, `main`, `page`, `box`, `stack`, `columns`, `text`, `badge`, `link`, `image`, `svg`, `value`, `time`, `list`, `bar`, `command`, `button`, `data`, `listing`, `form`, `action`, `filters`, `component`, `chat`, `split`, `aside`, `split-content`, `markdown`, `navigation`, `tabs`, `tab-panel` |
-| `data-record="…"` | `true`: a link drawn from a record's own content — a layout's content, a column's or value's `href` — and never from a relation's label, an action's answer or a form; absent otherwise | `link` |
-| `data-selected="…"` | `true`, while a link the record draws leads to where the viewer is: the current location, with the same address and query; absent otherwise | `table-row`, `list-item`, `card`, `board-card`, `calendar-event`, `timeline-bar`, `tree-item` |
+| `data-record="…"` | `true`: a link drawn from a record's own content — a layout's content, a column's or value's `to` — and never from a relation's label, an action's answer or a form; absent otherwise | `link` |
+| `data-selected="…"` | `true`, while a link or press the record draws leads to where the viewer is — moving to the current location, with the same address and query, or opening the page open in a surface now — and never by a relation's label; absent otherwise | `table-row`, `list-item`, `card`, `board-card`, `calendar-event`, `timeline-bar`, `tree-item` |
 | `data-align="…"` | `start`, `center`, `end` — a popover's, along its side; a table column's alignment | `surface`, `markdown-table-header-cell`, `markdown-table-cell` |
 | `data-modal="…"` | `true`, `false` — a dialog's or a drawer's | `surface` |
 | `data-sorted="…"` | `asc`, `desc` | `table-header-cell`, `listing-sort-option` |
@@ -934,17 +958,21 @@ folded filter bar alike.
 
 **The current location** is marked on the links the renderer draws, not by a
 part of its own: every link to an address under the application's mount —
-`link`, `picker-chosen`, `nav-item`, a `menu` node's items, a value or a column
-shown as a link, a related record's label — carries `aria-current="page"` while
-it leads to where the viewer is. Select `[data-telo-part="link"][aria-current="page"]`
-for one, and `[data-selected]` on a record part for a record that draws such a
-link. An address leads to where the viewer is when its path equals the current
-path exactly (the fragment is ignored) and its query equals the current query
-with every `_telo*` parameter set aside: key order is free, each key's values
-are compared in order, and an absent key is absent. A parameter the application
-did not write, such as a page number a link does not carry, therefore unmarks
-the link. A link to an `https:`, `http:` or `mailto:` address is never
-current, and a navigation `page` entry stays current by its path alone.
+`link`, `press`, `picker-chosen`, `nav-item`, a `menu` node's items, a value or
+a column shown as a link, a related record's label — carries
+`aria-current="page"` while it leads to where the viewer is. Select
+`[data-telo-part="link"][aria-current="page"]` for one, and `[data-selected]` on
+a record part for a record that draws such a link or press; a relation's label
+never selects its record. A destination moving to an address leads to where the
+viewer is while that address is the current one, and one opening a page while
+that page's address is the address of the page open in a surface now. An
+address is the current one when its path equals the current path exactly (the
+fragment is ignored) and its query equals the current query with every `_telo*`
+parameter set aside: key order is free, each key's values are compared in
+order, and an absent key is absent. A parameter the application did not write,
+such as a page number a link does not carry, therefore unmarks the link. A link
+to an `https:`, `http:` or `mailto:` address is never current, and a navigation
+`page` entry stays current by its path alone.
 
 | Values | On |
 | --- | --- |

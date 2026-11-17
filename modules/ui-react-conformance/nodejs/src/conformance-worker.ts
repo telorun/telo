@@ -168,7 +168,7 @@ async function check(job: WindowJob, root: string, console: Console): Promise<Pr
   problems.push(...(await vectorProblems(window, react, client, loaded)));
   if (job.look) {
     const sheets = await stylesheetsOf(job.look, job.sets);
-    const coverage = new StyleCoverage(sheets.read);
+    const coverage = new StyleCoverage(sheets.read, parts.reserved);
     problems.push(...(await sceneProblems(window, staged.renderer, loaded, coverage)));
     problems.push(...sheets.problems);
     problems.push(...coverage.problems({ parts: Object.values(parts.parts).flat(), reserved: parts.reserved }, job.look.unstyled));

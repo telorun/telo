@@ -1,0 +1,20 @@
+# A destination kind of another module, extending `Ui.Destination` in merge
+# form: it declares no roots, and reads those of the abstract.
+kind: Telo.Library
+metadata:
+  name: Places
+  version: 1.0.0
+  description: Test fixture declaring a destination kind outside `ui`.
+imports: { Ui: ../../../ }
+exports: { kinds: [Go] }
+---
+kind: Telo.Definition
+metadata: { name: Go, description: Goes to the place a value names. }
+capability: Telo.Provider
+extends: Ui.Destination
+controllers: [pkg:telo/local/js?path=./go.mjs#Go]
+schema:
+  type: object
+  additionalProperties: false
+  required: [place]
+  properties: { place: { type: string, x-telo-eval: accessor } }

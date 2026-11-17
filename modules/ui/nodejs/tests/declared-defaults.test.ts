@@ -137,7 +137,7 @@ describe("a default the manifest declares", () => {
       }),
       ctx,
     );
-    const { relations } = (instance as unknown as { presentation(): Schema }).presentation();
+    const { relations } = await (instance as unknown as { presentation(): Promise<Schema> }).presentation();
     expect({ pageSize: relations.authorId.pageSize }).toEqual(defaultsOf(declared("Relations").additionalProperties));
   });
 
@@ -166,7 +166,7 @@ describe("a default the manifest declares", () => {
     expect(filled.toggle).toEqual({ type: "icon", icon: null, label: "hidden" });
     expect(filled.compact).toEqual({ ...(await provided(surfaces.DrawerController)), side });
     const { node } = await provided(SplitViewController, { aside: written, content: empty });
-    expect(node.aside).toEqual({ ...filled, actions: [], content: { ...empty, fill: false } });
+    expect(node.aside).toEqual({ ...filled, actions: [], content: { ...empty, press: null, fill: false } });
   });
 
   it("is what a listing carries for a member left out", async () => {

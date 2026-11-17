@@ -1,12 +1,13 @@
 import { useContext, useState, type ReactNode } from "react";
 import { resolveBinding, ruleStyle, styleAttribute, type Binding, type StyleRule } from "../bindings.js";
-import { resolveAddress, type AddressWire } from "../address-wire.js";
-import { useHost } from "../host.js";
-import { anyCurrent, columnAddresses } from "../record-selection.js";
+import { leadOf, resolveDestination, type DestinationWire } from "../destination.js";
+import { useViewer } from "../current-location.js";
+import { anyLeadsHere, columnLeads } from "../record-selection.js";
 import { useControl } from "../effective-controls.js";
 import type { LayoutProps, ListingDrawing } from "../listing.js";
 import type { ListedRecord } from "../listing-engine.js";
 import { Loading, Node, type SpecNode } from "../nodes.js";
+import { Press, type PressSpec } from "../press.js";
 import { useWindowedBlock } from "../record-window.js";
 import { RelatedValue } from "../related-labels.js";
 import { RecordLinkContext, RootsContext, RowContext } from "../renderer-context.js";
@@ -22,20 +23,26 @@ interface Column {
   labels?: ValueLabel[];
   style?: StyleRule;
   cell?: SpecNode;
-  href?: AddressWire;
+  to?: DestinationWire;
 }
 
-/** One record's row, with its inline surface under it when one is open there. */
-function TableRow({ record, columns, drawing, span }: { record: ListedRecord; columns: Column[]; drawing: ListingDrawing; span: number }) {
+/**
+ * One record's row, with its inline surface under it when one is open there.
+ * The listing's press covers the row's first cell alone, so every other
+ * cell's text stays selectable; the row is what it selects.
+ */
+function TableRow({ record, columns, drawing, span, press }: { record: ListedRecord; columns: Column[]; drawing: ListingDrawing; span: number; press: PressSpec | null }) {
   const roots = useContext(RootsContext);
   const { row } = record;
-  const { location } = useHost();
-  const selected = anyCurrent(columnAddresses(columns, { ...roots, row }, "table column href"), location);
+  const viewer = useViewer();
+  const pressed = press === null ? undefined : resolveDestination(press.to, { ...roots, row }, "'press' to");
+  const selected = anyLeadsHere([...(pressed === undefined ? [] : [leadOf(pressed)]), ...columnLeads(columns, { ...roots, row }, "table column to")], viewer);
   return (
     <>
       <tr data-telo-part="table-row" data-style={drawing.rowStyle(row)} data-selected={selected ? "true" : undefined}>
         {columns.map((column, index) => (
           <td key={index} data-telo-part="table-cell" data-style={styleAttribute(ruleStyle(column.style, { row }))}>
+            {index === 0 && press !== null && <Press press={press} roots={{ ...roots, row }} />}
             <RecordLinkContext.Provider value={true}>
               {column.cell ? (
                 <RowContext.Provider value={row}>
@@ -50,7 +57,7 @@ function TableRow({ record, columns, drawing, span }: { record: ListedRecord; co
                   value={resolveBinding(column.value as Binding, { row })}
                   present={column.present}
                   labels={column.labels}
-                  href={column.href && resolveAddress(column.href, { ...roots, row }, "table column href")}
+                  to={resolveDestination(column.to, { ...roots, row }, "table column to")}
                 />
               )}
             </RecordLinkContext.Provider>
@@ -75,7 +82,7 @@ function TableRow({ record, columns, drawing, span }: { record: ListedRecord; co
  * One page of records: drawn while near the viewport, otherwise stood in for
  * at its last height — unless it holds the focus or the open inline surface.
  */
-function TableBlock({ records, columns, drawing, span }: { records: ListedRecord[]; columns: Column[]; drawing: ListingDrawing; span: number }) {
+function TableBlock({ records, columns, drawing, span, press }: { records: ListedRecord[]; columns: Column[]; drawing: ListingDrawing; span: number; press: PressSpec | null }) {
   const [focused, setFocused] = useState(false);
   const keep = focused || records.some((record) => record.key === drawing.detail?.key);
   const block = useWindowedBlock(drawing.windowed, keep);
@@ -87,7 +94,7 @@ function TableBlock({ records, columns, drawing, span }: { records: ListedRecord
       onBlur={(event) => !event.currentTarget.contains(event.relatedTarget as Element | null) && setFocused(false)}
     >
       {block.drawn ? (
-        records.map((record) => <TableRow key={record.key} record={record} columns={columns} drawing={drawing} span={span} />)
+        records.map((record) => <TableRow key={record.key} record={record} columns={columns} drawing={drawing} span={span} press={press} />)
       ) : (
         <tr aria-hidden="true">
           <td colSpan={span} style={{ height: block.height, padding: 0 }} />
@@ -98,10 +105,11 @@ function TableBlock({ records, columns, drawing, span }: { records: ListedRecord
 }
 
 /** A listing's records as a data grid, a column per value; its headers sort. */
-export function TableLayout({ spec, drawing }: LayoutProps): ReactNode {
+export function TableLayout({ spec, node, drawing }: LayoutProps): ReactNode {
   const Icon = useControl("Icon");
   const text = useText();
   const columns = spec.columns as Column[];
+  const press = (node.press ?? null) as PressSpec | null;
   const span = columns.length + (drawing.hasActions ? 1 : 0);
   const read = drawing.reads[0];
   // A column sorts only where the listing lets the viewer choose its order.
@@ -134,7 +142,7 @@ export function TableLayout({ spec, drawing }: LayoutProps): ReactNode {
             </tr>
           </thead>
           {blocks.map((records, index) => (
-            <TableBlock key={index} records={records} columns={columns} drawing={drawing} span={span} />
+            <TableBlock key={index} records={records} columns={columns} drawing={drawing} span={span} press={press} />
           ))}
           {drawing.state === "empty" && (
             <tbody data-telo-part="table-body">

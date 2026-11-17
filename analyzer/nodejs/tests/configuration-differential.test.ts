@@ -440,6 +440,7 @@ async function judge(loaded: Loaded): Promise<void> {
 const PACKAGE_FIXTURES = [
   "analyzer/nodejs/tests/__fixtures__/resource-rule-co-referrers/choice.yaml",
   "analyzer/nodejs/tests/__fixtures__/resource-rule-reachable/choice.yaml",
+  "analyzer/nodejs/tests/__fixtures__/context-withheld/destination/choice.yaml",
 ];
 
 describe("each fixture projects as its configurations", () => {

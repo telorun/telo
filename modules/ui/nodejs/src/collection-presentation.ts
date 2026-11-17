@@ -1,6 +1,6 @@
 import { RuntimeError, type ResourceContext, type ResourceInstance, type RuntimeResource } from "@telorun/sdk";
 import { isCollectionSource, sameCollection, type BasePath, type CollectionFacts, type Operator } from "./collection-source.js";
-import { addressSpec, type AddressConfig } from "./address-spec.js";
+import { destinationAt } from "./destination.js";
 import type { OptionSourceSpec } from "./option-source.js";
 import type { Binding } from "./row-binding.js";
 
@@ -9,7 +9,7 @@ interface RelationConfig {
   source: unknown;
   label: Binding;
   hint?: Binding | null;
-  href?: AddressConfig | null;
+  to?: unknown;
   search?: { property: string; operator: Operator } | null;
   pageSize?: number | bigint | null;
 }
@@ -28,7 +28,7 @@ export interface Presentation {
 }
 
 export interface PresentationInstance {
-  presentation(): Presentation;
+  presentation(): Promise<Presentation>;
 }
 
 export function isPresentation(candidate: unknown): candidate is PresentationInstance {
@@ -36,22 +36,26 @@ export function isPresentation(candidate: unknown): candidate is PresentationIns
 }
 
 /** Reads the presentation a `presentation` slot names. */
-export function presentationAt(value: unknown, ctx: ResourceContext, owner: string): Presentation {
+export function presentationAt(value: unknown, ctx: ResourceContext, owner: string): Promise<Presentation> {
   return ctx
     .resolveRef(value, isPresentation, () => `'presentation' of ${owner}`, "Ui.CollectionPresentation")
     .presentation();
 }
 
 class CollectionPresentation implements ResourceInstance, PresentationInstance {
-  private read?: Presentation;
+  private read?: Promise<Presentation>;
 
   constructor(
     private readonly resource: CollectionPresentationResource,
     private readonly ctx: ResourceContext,
   ) {}
 
-  presentation(): Presentation {
-    if (this.read) return this.read;
+  /** Read once: the first call's answer, or refusal, is every call's. */
+  presentation(): Promise<Presentation> {
+    return (this.read ??= this.resolved());
+  }
+
+  private async resolved(): Promise<Presentation> {
     const owner = `Ui.CollectionPresentation '${this.resource.metadata.name}'`;
     const sourceOf = (value: unknown, slot: string) =>
       this.ctx.resolveRef(value, isCollectionSource, () => `'${slot}' of ${owner}`, "Ui.CollectionSource");
@@ -88,18 +92,18 @@ class CollectionPresentation implements ResourceInstance, PresentationInstance {
         value: { root: "row", path: [target.key] },
         label: entry.label,
         ...(entry.hint != null ? { hint: entry.hint } : {}),
-        ...(entry.href != null ? { href: addressSpec(entry.href, this.ctx, `${at}.href`) } : {}),
+        ...(entry.to != null ? { to: await destinationAt(entry.to, this.ctx, () => `${at}.to`) } : {}),
         basePath: related.basePath,
         filters: {},
         pageSize: Number(entry.pageSize ?? 25),
         ...(search ? { search } : {}),
       };
     }
-    return (this.read = { basePath: source.basePath, collection, relations });
+    return { basePath: source.basePath, collection, relations };
   }
 
-  init(): void {
-    this.presentation();
+  async init(): Promise<void> {
+    await this.presentation();
   }
 
   snapshot(): Record<string, unknown> {

@@ -29,6 +29,10 @@ compact: { kind: Ui.CardLayout }
 | [`Ui.TreeLayout`](#uitreelayout) | `parent` (required), `content`, `move` | roots, then children on expand |
 | [`Ui.ComponentLayout`](#uicomponentlayout) | `component` (required), `props`, `groups`, `span`, `parent`, `move` | as its keys say |
 
+- Every layout draws the listing's [record press](listing.md#pressing-a-record)
+  across the whole record — a list item, a card, a board card, a calendar or
+  timeline event, a tree item — except `Ui.TableLayout`, which draws it across
+  [the row's first cell](#uitablelayout).
 - A **gallery** is `Ui.CardLayout` with an `image` node in its `content`; a
   **feed** is `Ui.ListLayout`; **master/detail** is any layout with an `edit`
   opener on a [`Ui.Panel`](surfaces.md), the record opening beside the list.
@@ -129,9 +133,9 @@ A column is exactly one of:
 columns:
   - header: Task                 # optional
     value: !cel "row.text"       # an accessor: a chain into the record, or a fixed value
-    href:                        # optional: the cell links to an address over `row`
-      path: "/tasks/{id}"
-      pathParams: { id: !cel "row.id" }
+    to:                          # optional: the cell links to a destination over `row`
+      kind: Ui.Navigate
+      href: { path: "/tasks/{id}", pathParams: { id: !cel "row.id" } }
     style:                       # optional style rule for the cell
       by: !cel "row.priority"
       cases: { "1": danger }
@@ -144,9 +148,9 @@ columns:
 ```
 
 `row` is typed from the listing's `model`, so a property the model does not
-declare is `CEL_UNKNOWN_FIELD` at `telo check`; a value and an `href` may read
-the page's [`params`](page.md#params) too. A value column's `href` is an
-[address](nodes.md#addresses) drawing the value as the text of a link; a cell
+declare is `CEL_UNKNOWN_FIELD` at `telo check`; a value and a `to` may read
+the page's [`params`](page.md#params) too. A value column's `to` is a
+[destination](presses.md) drawing the value as the text of a link; a cell
 column takes none.
 
 Whether written or derived, a value column takes everything else from the
@@ -157,16 +161,22 @@ property its value names:
   and the collection's `query.sort` lists that property.
 - **Related record** — a column whose value is `row.<property>`, where the
   presentation presents that property's relation, shows the related record's
-  label, linked where the relation gives `href`.
+  label, linked where the relation gives `to`.
 - **Presentation** — from the property's `type` and `format`: a boolean as Yes
   or No, a `format: date` string as a date, and so on. A `format: uri` or
   `uri-reference` string is a link, where its value is an address
-  [a `link` node's `href` may hold](nodes.md#addresses); a value that is not is
+  [a `Ui.Navigate`'s `href` may hold](nodes.md#addresses); a value that is not is
   shown as plain text. A link to a page of the application moves within it;
   any other opens beside it.
 
 So a hand-written `value: !cel "row.dueOn"` and the derived column for `dueOn`
 are the same column.
+
+**The first column carries the record press.** Where the listing has a
+[`press`](listing.md#pressing-a-record), a table draws it across each row's
+first cell rather than the whole row, so the record is named by the column the
+author put first and every other cell's text stays selectable; the row keeps
+`data-selected`. Put the column naming the record first.
 
 ### Members behind a reference
 
@@ -329,7 +339,7 @@ without `end`, tree roots and children, the next page, a reload — are pinned b
 
 | Branch | Members beside `type` and `reads` |
 | --- | --- |
-| `table` | `columns`, each `{ header, value?, href?, labels, sort?, relation?, present?, style?, cell? }` — `relation` naming the key of the listing's `relations` its value is labelled through |
+| `table` | `columns`, each `{ header, value?, to?, labels, sort?, relation?, present?, style?, cell? }` — `relation` naming the key of the listing's `relations` its value is labelled through |
 | `list` | `content` |
 | `cards` | `content`, `size` |
 | `board` | `content`, `move?` |

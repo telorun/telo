@@ -2,6 +2,7 @@ import { RuntimeError, type ResourceContext, type ResourceInstance, type Runtime
 import { declaredPage } from "./address-spec.js";
 import type { AssetRef } from "./browser-entry-assets.js";
 import { mergeAssets, type AssetFile } from "./composite.js";
+import { destinationAt, type DestinationSpec } from "./destination.js";
 import { iconAsset, isIcon } from "./icon.js";
 import { pagePathVariables } from "./page-path.js";
 import { sourceKeys } from "./source-keys.js";
@@ -78,7 +79,7 @@ export const TabBarNavigationController = placementController("Ui.TabBarNavigati
 /** A navigation entry as written: icons live, pages named. A member holding nothing is one left out. */
 export type NavigationEntryConfig =
   | { type: "page"; page: unknown; text?: TextRecord | null; icon?: unknown; when?: unknown }
-  | { type: "link"; text: TextRecord; href: string; icon?: unknown; when?: unknown }
+  | { type: "link"; text: TextRecord; to: unknown; icon?: unknown; when?: unknown }
   | { type: "group"; text: TextRecord; items: NavigationEntryConfig[]; icon?: unknown; when?: unknown };
 
 /** The `Ui.Navigation` record as written. */
@@ -86,19 +87,19 @@ export interface NavigationConfig {
   items: NavigationEntryConfig[];
 }
 
-/** An entry as a renderer receives it: a page by its path, every text a record,
+/** An entry as a renderer receives it: a page by its path, a link by its destination, every text a record,
  *  its icon, when it has one, as the address of the glyph's file, and its key —
  *  the slug of the source text it was written with, under its group's key and
  *  `/` (see {@link sourceKeys}) — which names it in a stored or addressed state. */
 export type NavigationEntrySpec =
   | { type: "page"; key: string; path: string; text: TextRecord; icon?: AssetRef }
-  | { type: "link"; key: string; href: string; text: TextRecord; icon?: AssetRef }
+  | { type: "link"; key: string; to: DestinationSpec; text: TextRecord; icon?: AssetRef }
   | { type: "group"; key: string; text: TextRecord; items: NavigationEntrySpec[]; icon?: AssetRef };
 
 /** An entry prepared once, its `when` still to evaluate per request. */
 type PreparedEntry =
   | { type: "page"; key: string; path: string; text: TextRecord; icon?: AssetRef; when?: unknown }
-  | { type: "link"; key: string; href: string; text: TextRecord; icon?: AssetRef; when?: unknown }
+  | { type: "link"; key: string; to: DestinationSpec; text: TextRecord; icon?: AssetRef; when?: unknown }
   | { type: "group"; key: string; text: TextRecord; items: PreparedEntry[]; icon?: AssetRef; when?: unknown };
 
 /** An entry prepared but not yet keyed. */
@@ -159,7 +160,10 @@ export async function preparedNavigation(declared: NavigationConfig, ctx: Resour
     }
     const extra = { ...(icon === undefined ? {} : { icon }), ...(entry.when == null ? {} : { when: entry.when }) };
     if (entry.type === "page") return { ...pageEntry(entry.page, where, entry.text), ...extra };
-    if (entry.type === "link") return { type: "link", href: entry.href, text: entry.text, ...extra };
+    if (entry.type === "link") {
+      const to = await destinationAt(entry.to, ctx, () => `'${where}.to' of ${owner}`);
+      return { type: "link", to, text: entry.text, ...extra };
+    }
     const items: Unkeyed[] = [];
     for (const [index, item] of entry.items.entries()) items.push(await prepare(item, `${where}.items[${index}]`));
     return { type: "group", text: entry.text, items, ...extra };
@@ -177,7 +181,7 @@ export function deliveredNavigation(evaluated: unknown): NavigationEntrySpec[] {
       if (entry.when === false) return [];
       const icon = entry.icon === undefined ? {} : { icon: entry.icon };
       if (entry.type === "page") return [{ type: "page", key: entry.key, path: entry.path, text: entry.text, ...icon }];
-      if (entry.type === "link") return [{ type: "link", key: entry.key, href: entry.href, text: entry.text, ...icon }];
+      if (entry.type === "link") return [{ type: "link", key: entry.key, to: entry.to, text: entry.text, ...icon }];
       const items = delivered(entry.items);
       return items.length === 0 ? [] : [{ type: "group", key: entry.key, text: entry.text, items, ...icon }];
     });

@@ -2,7 +2,7 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, type Page, type Rendered } from "./harness.js";
-import { actionNode, dataNode, operation, reportSchema, listingNode, todos, address } from "./spec-nodes.js";
+import { actionNode, dataNode, operation, reportSchema, listingNode, todos, address, navigateTo } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
@@ -141,7 +141,7 @@ describe("a reader", () => {
       path: "/?signin=denied",
       answers: { "/api/account": server.respond },
       pages: page(
-        { type: "link", text: "Expired", href: address("/?signin=expired") },
+        { type: "link", text: "Expired", to: navigateTo(address("/?signin=expired")) },
         dataNode({
           query: { signin: { type: "string" } },
           source: address("/api/account", {}, { signin: { root: "query", path: ["signin"] } }),

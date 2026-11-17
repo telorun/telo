@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 import { render, wire, type Rendered } from "./harness.js";
-import { address } from "./spec-nodes.js";
+import { address, navigateTo } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
 
-const link = (text: string, button: unknown) => wire({ type: "link", text, href: address("/other"), button });
+const link = (text: string, button: unknown) => wire({ type: "link", text, to: navigateTo(address("/other")), button });
 
 describe("a link node", () => {
   it("is drawn as a button-shaped anchor by its display, never a button element", async () => {

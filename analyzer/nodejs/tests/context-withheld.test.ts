@@ -33,13 +33,25 @@ describe("withheld context nodes", () => {
     ]);
   }, 120_000);
 
-  it("refuses the mark off a binding or beside a type, and one holding no sentence", async () => {
+  it("withholds a node typed from its referrers wherever none types it, naming the referrer", async () => {
+    // `posts` types `row` at its press; `home` binds none at its link; nothing
+    // references `orphan`; `shared` is reached from both, refused once, naming
+    // the page. `Go` declares no region: it inherits its abstract's.
+    expect(findings(await analysis("destination/telo.yaml"))).toEqual([
+      "CEL_UNKNOWN_IDENTIFIER href: Dest.Go/orphan: !cel: 'row' is not available here: a destination reads only the roots bound where it is written.",
+      "CEL_UNKNOWN_IDENTIFIER href: Dest.Go/shared: !cel: 'row' is not available here — Dest.Page/about withholds it: a destination reads only the roots bound where it is written.",
+      "CEL_UNKNOWN_IDENTIFIER link.href: Dest.Page/home: !cel: 'row' is not available here — Dest.Page/home withholds it: a destination reads only the roots bound where it is written.",
+    ]);
+  }, 120_000);
+
+  it("refuses the mark off a binding or beside a type, and one holding no sentence — never beside a referrer typing", async () => {
     const diagnostics = (await analysis("invalid/telo.yaml")).filter(
       (d) => d.code === "CONTEXT_WITHHELD_INVALID" || d.code === "SCHEMA_VIOLATION",
     );
     expect(diagnostics.map((d) => [d.code, (d.data as { path?: string }).path]).sort()).toEqual([
       ["CONTEXT_WITHHELD_INVALID", "schema.properties.off.x-telo-context-withheld"],
       ["CONTEXT_WITHHELD_INVALID", "schema.properties.typed.x-telo-context.properties.request.x-telo-context-withheld"],
+      ["CONTEXT_WITHHELD_INVALID", "schema.properties.typed.x-telo-context.properties.rooted.x-telo-context-withheld"],
       ["SCHEMA_VIOLATION", "schema.properties.typed.x-telo-context.properties.empty.x-telo-context-withheld"],
     ]);
   }, 120_000);

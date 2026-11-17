@@ -1,9 +1,10 @@
 # Surfaces
 
-A surface is where a form appears when it is opened, and how it is dismissed.
-Whoever opens the form names it — a listing's `create` and `edit` each take
-one — and the form itself says nothing about it, so one form can open in a
-dialog from one listing and in a panel from another.
+A surface is where a form or a page appears when it is opened, and how it is
+dismissed. Whoever opens it names it — a listing's `create` and `edit` each
+take one, and so does a [`Ui.OpenPage`](presses.md#uiopenpage) — and what is
+opened says nothing about it, so one form can open in a dialog from one listing
+and in a panel from another.
 
 Each way of appearing is a kind. `kind:` is the only thing that tells them
 apart, and each kind takes only the keys that mean something for it: a key a
@@ -67,7 +68,10 @@ that names it.
 | `compact` | | [the surface used on a narrow viewport](#compact) |
 
 This is the surface a listing uses when an opener names none: leaving `surface`
-out and writing `surface: { kind: Ui.Dialog }` are the same thing.
+out and writing `surface: { kind: Ui.Dialog }` are the same thing. A
+`Ui.OpenPage` pressed outside an opened page opens in it too, but there the two
+differ: [an omitted surface](#a-page-opened-in-a-surface) keeps the one it is
+pressed in.
 
 ## Ui.Drawer
 
@@ -149,6 +153,48 @@ form can be linked to, reloaded, and left with the browser's back button.
 
 How a renderer spells the address is its own: see the renderer's
 documentation.
+
+## A page opened in a surface
+
+A [`Ui.OpenPage`](presses.md#uiopenpage) opens a page of the application over
+the current one, in a `Ui.Dialog` or a `Ui.Drawer` (a popover has no address of
+its own, and an address opened cold has nothing to anchor it to). What is drawn
+is the page's own content, the one a navigation to its address shows, titled
+by the page's `title`, else by the text naming what opened it. A page no
+application lists draws the not-found page in the surface, as a link to it
+would.
+
+```yaml
+- type: link
+  text: Ada
+  to:
+    kind: Ui.OpenPage
+    page: !ref authorPage
+    pathParams: { id: ada }
+    surface: { kind: Ui.Drawer, side: end, address: { name: author } }
+```
+
+- **One opened page at a time.** Opening a page while one is open replaces
+  it and takes its history entry, so Back never walks a chain of opened pages.
+- **An omitted `surface` keeps the one it is pressed in.** Inside an opened
+  page it is that page's surface — its kind, its address name and its
+  `compact` — and only the content changes; anywhere else it is a dialog with
+  its defaults. A written `surface` is always honoured.
+- **A written surface equal to the open one swaps the content.** Inside an
+  opened page, or on the page under a non-modal one, a destination whose
+  surface equals the open one — every member, defaults filled — keeps it open
+  and changes only its content (two records of one listing opening in one
+  drawer); any other closes it and opens its own.
+- **A non-modal surface** (`modal: false`) leaves the page under it usable, so
+  a link there opens its page in the same surface by the rule above.
+- **Going elsewhere closes it.** A `Ui.Navigate` inside an opened page moves
+  the application, which closes the page. Escape and the close button shut it
+  and return focus to what opened it.
+- With `address: { name }` the opened page is part of the host page's address,
+  so it reopens on reload and the back button closes it; without one it is held
+  in memory. What the opened page's own nodes keep in an address — an opened
+  form, a filter bar's values — is held in memory, so only the opened page's
+  address enters the host's. How a renderer spells it is its own.
 
 ## Compact
 

@@ -1,10 +1,11 @@
 import { useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { NavigationEntry } from "../contract/ui-react-controls.js";
-import { isCurrentAddress, type CurrentLocation } from "./address-wire.js";
+import { leadsHere, useViewer, type Viewer } from "./current-location.js";
+import { followAddress, leadOf, openDestination, resolveDestination, useDestinationContext, type DestinationWire } from "./destination.js";
 import { useControl } from "./effective-controls.js";
 import { useHost, useHostStore } from "./host.js";
-import { linkAddress, pageAddress } from "./link-address.js";
+import { linkAddress } from "./link-address.js";
 import { AsideContext } from "./aside.js";
 import {
   navigationStorage,
@@ -24,7 +25,7 @@ import { useSay, useText, type WireText } from "./texts.js";
  *  state names it by — and `icon` the file its glyph is drawn from. */
 export type NavigationEntrySpec =
   | { type: "page"; key: string; path: string; text: WireText; icon?: AssetRef }
-  | { type: "link"; key: string; href: string; text: WireText; icon?: AssetRef }
+  | { type: "link"; key: string; to: DestinationWire; text: WireText; icon?: AssetRef }
   | { type: "group"; key: string; text: WireText; items: NavigationEntrySpec[]; icon?: AssetRef };
 
 type AssetRef = { digest: string; name: string };
@@ -56,14 +57,24 @@ export interface NavigationColumnNodeSpec {
 /** The key of the group what does not fit moves into: no entry's key starts with `~`. */
 const MORE = "~more";
 
+/** Where following an entry leads: a page's path, or a link entry's destination with its address; and its label. */
+interface Followed {
+  address: string;
+  to?: DestinationWire;
+  label: string;
+}
+
 /** An entry as the `Navigation` control draws it, with where following it leads. */
 interface Drawn {
   entries: NavigationEntry[];
-  /** By key: the address a link leads to. */
-  addresses: Map<string, string>;
+  /** By key: where following an entry leads. */
+  addresses: Map<string, Followed>;
   /** The addresses no link may hold, each left out of the tree. */
   failing: string[];
 }
+
+/** An address as written, for a report: its template, else its path's binding. */
+const written = (to: DestinationWire): string => ("value" in to.href.path ? String(to.href.path.value) : JSON.stringify(to.href.path));
 
 /** An icon's glyph: its file as a mask over the text's colour, never its markup. */
 function glyph(address: string): ReactElement {
@@ -71,17 +82,17 @@ function glyph(address: string): ReactElement {
   return <span data-telo-part="glyph" aria-hidden="true" style={style} />;
 }
 
-/** The entries with their addresses, the shown page's entry, a link leading to where the viewer is
- *  and every group on the way to either marked current. An entry whose address does not resolve is
- *  left out, and a group left with nothing with it. */
+/** The entries with their addresses, the shown page's entry, a link whose destination leads to where
+ *  the viewer is and every group on the way to either marked current. An entry whose address does not
+ *  resolve is left out, and a group left with nothing with it. */
 function drawn(
   items: NavigationEntrySpec[],
-  location: CurrentLocation,
+  viewer: Viewer,
   address: (href: string) => string | undefined,
   label: (text: WireText) => string,
   environment: RendererEnvironment,
 ): Drawn {
-  const addresses = new Map<string, string>();
+  const addresses = new Map<string, Followed>();
   const failing: string[] = [];
   const entries = (list: NavigationEntrySpec[]): NavigationEntry[] =>
     list.flatMap((entry): NavigationEntry[] => {
@@ -93,15 +104,19 @@ function drawn(
         const current = items.some((item) => item.current !== undefined);
         return [{ key, label: label(entry.text), items, ...icon, ...(current ? { current: "true" as const } : {}) }];
       }
-      const href = entry.type === "page" ? entry.path : entry.href;
-      const resolved = address(href);
-      if (resolved === undefined) {
-        failing.push(href);
+      // A link entry's values are fixed: its address reads no root.
+      const destination = entry.type === "page" ? undefined : resolveDestination(entry.to, {}, "navigation link to");
+      const text = label(entry.text);
+      const followed: Followed | undefined =
+        entry.type === "page" ? { address: entry.path, label: text } : destination && { ...destination, label: text };
+      const resolved = followed && address(followed.address);
+      if (followed === undefined || resolved === undefined) {
+        failing.push(entry.type === "page" ? entry.path : (followed?.address ?? written(entry.to)));
         return [];
       }
-      addresses.set(key, resolved);
-      const current = entry.type === "page" ? entry.path === location.path : isCurrentAddress(entry.href, location);
-      return [{ key, label: label(entry.text), href: resolved, ...icon, ...(current ? { current: "page" as const } : {}) }];
+      addresses.set(key, followed);
+      const current = destination === undefined ? entry.type === "page" && entry.path === viewer.location.path : leadsHere(leadOf(destination), viewer);
+      return [{ key, label: text, href: resolved, ...icon, ...(current ? { current: "page" as const } : {}) }];
     });
   return { entries: entries(items), addresses, failing };
 }
@@ -127,21 +142,19 @@ interface Tree {
 }
 
 /** The tree of a navigation: drawn as `Navigation` takes it, and following one of its links. */
-function useTree(items: NavigationEntrySpec[], path: string): Tree {
-  const store = useHostStore();
-  const host = useHost();
+function useTree(items: NavigationEntrySpec[]): Tree {
+  const viewer = useViewer();
   const environment = useContext(RendererContext);
-  const { prefix, pages } = environment;
+  const context = useDestinationContext();
   const text = useText();
   const tree: Tree = {
-    drawn: drawn(items, { path, search: host.location.search }, (href) => linkAddress(store, href), text, environment),
+    drawn: drawn(items, viewer, (address) => linkAddress(context.store, address), text, environment),
     follow: (key, then) => {
-      const href = tree.drawn.addresses.get(key);
-      if (href === undefined) return;
+      const followed = tree.drawn.addresses.get(key);
+      if (followed === undefined) return;
       then?.();
-      const to = pageAddress(prefix, pages, href);
-      if (to === undefined) store.leave(href);
-      else host.navigate(to);
+      if (followed.to === undefined) followAddress({ ...context, address: followed.address });
+      else openDestination(followed.to, { ...context, address: followed.address }, { naming: followed.label });
     },
   };
   return tree;
@@ -156,10 +169,9 @@ function useTree(items: NavigationEntrySpec[], path: string): Tree {
  * navigation. A navigation with nothing delivered draws nothing, not even its button.
  */
 export function NavbarNode({ node }: { node: NavbarNodeSpec }): ReactNode {
-  const host = useHost();
   const { compact } = useContext(RendererContext);
   const text = useText();
-  const tree = useTree(node.navigation.items, host.location.path);
+  const tree = useTree(node.navigation.items);
   const placement = compact && node.placement.type === "header" ? node.placement.compact : node.placement;
   const empty = node.navigation.items.length === 0;
   // Two entries may hold one failing address: each is keyed by its place among them.
@@ -276,12 +288,11 @@ function MenuButton({ placement, tree, children }: { placement: OverlayPlacement
  * kept under the column's own `state.key`.
  */
 export function NavigationColumnNode({ node }: { node: NavigationColumnNodeSpec }): ReactNode {
-  const host = useHost();
   const { prefix } = useContext(RendererContext);
   const say = useSay();
   const Navigation = useControl("Navigation");
   const aside = useContext(AsideContext);
-  const tree = useTree(node.navigation.items, host.location.path);
+  const tree = useTree(node.navigation.items);
   const groups = useMemo(() => new Set(groupKeys(tree.drawn.entries)), [tree.drawn.entries]);
   const kept = useRef<{ storage?: Storage; key?: string }>({});
   const [open, setOpen] = useState<string[]>(() => {

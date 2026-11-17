@@ -69,6 +69,47 @@ A [tab bar](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) whose `surface`
 `address: { name }` holds there the key of the tab whose sheet is open — a
 group's, or `~more` for More.
 
+## The page key
+
+A page a destination opens in a surface is addressed by the query key
+`_telo.page.<name>`, `<name>` the name of the surface's `address`, holding the
+app-relative address of the page open in it:
+
+| Address | |
+| --- | --- |
+| `/?_telo.page.post=%2Fposts%2Fhello` | the posts page, post `hello` open in the surface named `post` |
+| `/?_telo.page.post=%2Fauthors%2Fada%3Ffrom%3Dhello` | the same surface, now holding Ada's page |
+| `/posts/hello` | post `hello` as a page of its own |
+
+It is the shell's navigation state, apart from the [open key](#the-open-key)
+of a node — a listing's opener, a filter overlay, a `tabs` node — so a page and
+a listing may share a name.
+
+- **Restoring.** An address opened cold looks for the surface in the current
+  route's page document, then in its layout's header, aside and footer, each
+  in tree order, and opens the page in the surface of the first destination
+  opening a page under that name — whatever page the value names. Back and
+  forward restore it the same way.
+- **Writing.** The key is written only where that search would restore a
+  surface equal, member for member, to the one the page opens in; otherwise —
+  a surface with no `address`, or a name declared only inside an opened page —
+  the opened page is held in memory, so a reload never opens the wrong surface
+  or nothing, and shows the page beneath alone.
+- **Dropping.** A value that is not an app-relative address opens nothing, and
+  of several `_telo.page.*` keys the first, in query order, that opens a page
+  wins; every other is dropped by replacing the entry:
+  `/?_telo.page.x=https%3A%2F%2Fevil` becomes `/`.
+- **History.** Opening a page while none is open adds a history entry when its
+  key is written. Opening one while one is open replaces it and takes its
+  entry, so back never walks a chain of opened pages. Closing drops the key —
+  by going back when the current entry is the one opening it added, otherwise
+  by replacing the current entry.
+- **In memory.** Every address an opened page's own nodes write — `_telo.open.*`,
+  `_telo.f.*`, `_telo.v.*`, a component's `navigate` to the page's own path —
+  is kept in memory with the page, so only the opened page's address enters
+  the application's. A form there holding unsaved input asks before the page
+  closes, is replaced or the application moves on.
+
 ## Entry keys
 
 A navigation entry and a tab of a `tabs` node are named — in the address and
@@ -358,10 +399,11 @@ documents conditionally. Streams end when the server stops.
 
 ## Addresses
 
-Every address the page document carries — a `link` or menu item `href`, a
-`value` node's `href`, a `list` or `Ui.TableLayout` column `href`, a relation
-or option source `href`, a reader's `source`, an action's `request.target`,
-`onSuccess.navigate` and `onSuccess.refreshes` — is `{ path, pathParams,
+Every address the page document carries — the `href` of a destination (the
+`to` of a `link` node, a menu item, a `value` node, a `list` or
+`Ui.TableLayout` column, a relation, an option source, a navigation `link`
+entry, a press and an action's `onSuccess`), a reader's `source`, an action's
+`request.target` and `onSuccess.refreshes` — is `{ path, pathParams,
 queryParams }`, expanded in the browser over the roots its site binds (`row`,
 `query`, `params`, `data`, `input`, `result`). A collection source's templated
 `basePath` is `{ path, pathParams }` and expands the same way, over `params`
@@ -381,6 +423,12 @@ the result must be an address under the mount or an `https:`, `http:` or
 - **Following one.** An address a declared page [opens](app.md#routing) moves
   within the application; any other is an ordinary load. A cell link to
   anything but a page of the application keeps `target="_blank"`.
+- **A destination.** Every `to` is drawn as a real link to its address — for a
+  `Ui.OpenPage`, the opened page's own address, so a middle click or a new tab
+  opens the full page. A modified click (Ctrl, Meta, Shift, Alt, any button
+  but the first) is the browser's; an unmodified one goes to the destination,
+  as a menu item, a navigation entry and a success do. An opened page is
+  followed to its own address.
 - **The page already shown.** A move to the page being shown (same path, new
   query or fragment) fetches no document and keeps every node mounted — what a
   form or an action holds, a listing's loaded pages — and each reader re-reads

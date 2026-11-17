@@ -20,12 +20,46 @@ export interface PartState {
 }
 
 /** Properties a theme must not declare on a part, while it carries a state, or
- *  on any part carrying the state: at least one of `part` and `state` is named. */
+ *  on any part carrying the state — at least one of `part` and `state` named —
+ *  or on what stands in a relation to a part: any part holding a `holding`
+ *  part as a child, or any part matching one of `interactive` after an `after`
+ *  part, inside the element holding it. */
 export interface Reservation {
   part?: string;
   state?: PartState;
+  holding?: string;
+  after?: string;
+  interactive?: string[];
   properties: string[];
   because: string;
+}
+
+/** What a reservation in a relation to a part reaches, as a key the coverage records it under; none for any other. */
+const relationOf = (reservation: Reservation): string | undefined =>
+  reservation.holding !== undefined
+    ? `holding ${reservation.holding}`
+    : reservation.after !== undefined
+      ? `after ${reservation.after} ${(reservation.interactive ?? []).join(", ")}`
+      : undefined;
+
+/** Whether an element is after an element carrying `part`, inside the element holding that one. */
+const isAfter = (element: Element, part: string): boolean =>
+  [...element.ownerDocument.querySelectorAll(`[data-telo-part="${part}"]`)].some(
+    (before) => before !== element && !before.contains(element) && !!before.parentElement?.contains(element) && (before.compareDocumentPosition(element) & 4) !== 0,
+  );
+
+/** The elements a reservation in a relation to a part reaches in a document. */
+function reachedBy(reservation: Reservation, document: Document): Set<Element> {
+  const carriers = [...document.querySelectorAll("[data-telo-part]")];
+  if (reservation.holding !== undefined) {
+    const held = reservation.holding;
+    return new Set(carriers.filter((carrier) => [...carrier.children].some((child) => child.getAttribute("data-telo-part") === held)));
+  }
+  const after = reservation.after as string;
+  const interactive = (reservation.interactive ?? []).join(", ");
+  return new Set(
+    carriers.filter((carrier) => carrier.getAttribute("data-telo-part") !== after && interactive !== "" && carrier.matches(interactive) && isAfter(carrier, after)),
+  );
 }
 
 /** What the style half is held to: the renderer's parts and the properties
@@ -90,6 +124,8 @@ interface RuleCoverage {
   states: Map<string, Set<string>>;
   /** Whether some part-carrying element of some snapshot is one it did not match. */
   missedAPart: boolean;
+  /** By the key of a reservation in a relation to a part, the parts it reached that this rule matched. */
+  related: Map<string, Set<string>>;
   /** Set once the window could not match the selector. */
   unmatchable?: string;
 }
@@ -102,11 +138,14 @@ interface RuleCoverage {
 export class StyleCoverage {
   private readonly rules: RuleCoverage[];
   private readonly drawn = new Set<string>();
+  private readonly relations: Reservation[];
 
-  constructor(sheets: readonly ReadStylesheet[]) {
+  /** `reserved` names the reservations in a relation to a part that each snapshot is read for; the others need none. */
+  constructor(sheets: readonly ReadStylesheet[], reserved: readonly Reservation[] = []) {
     this.rules = sheets.flatMap(({ path, reading }) =>
-      reading.rules.map((rule) => ({ sheet: path, rule, parts: new Set<string>(), states: new Map<string, Set<string>>(), missedAPart: false })),
+      reading.rules.map((rule) => ({ sheet: path, rule, parts: new Set<string>(), states: new Map<string, Set<string>>(), related: new Map<string, Set<string>>(), missedAPart: false })),
     );
+    this.relations = reserved.filter((reservation) => relationOf(reservation) !== undefined);
   }
 
   /** Match every rule against the document as it stands. */
@@ -114,6 +153,7 @@ export class StyleCoverage {
     const carriers = [...document.querySelectorAll("[data-telo-part]")];
     if (carriers.length === 0) return;
     for (const carrier of carriers) this.drawn.add(carrier.getAttribute("data-telo-part") as string);
+    const reached = this.relations.map((reservation) => ({ key: relationOf(reservation) as string, elements: reachedBy(reservation, document) }));
     for (const coverage of this.rules) {
       if (coverage.unmatchable !== undefined) continue;
       let matched: Set<Element>;
@@ -130,6 +170,12 @@ export class StyleCoverage {
         }
         const part = carrier.getAttribute("data-telo-part") as string;
         coverage.parts.add(part);
+        for (const { key, elements } of reached) {
+          if (!elements.has(carrier)) continue;
+          const parts = coverage.related.get(key) ?? new Set<string>();
+          parts.add(part);
+          coverage.related.set(key, parts);
+        }
         for (const { name, value } of carrier.attributes) {
           if (!name.startsWith("data-") || name === "data-telo-part") continue;
           const key = `${name}=${value}`;
@@ -184,25 +230,45 @@ export class StyleCoverage {
       }
     }
     const reported = new Set<string>();
-    for (const { part, state, properties, because } of contract.reserved) {
+    for (const reservation of contract.reserved) {
+      const { part, state, holding, after, properties, because } = reservation;
+      const relation = relationOf(reservation);
       const where = state === undefined ? undefined : `${state.attribute}="${state.value}"`;
       for (const property of properties) {
         for (const coverage of this.rules) {
           if (!declares(coverage.rule, property)) continue;
-          // The parts the reservation reaches that this rule styled: the named part, while it carried the state when one is named.
+          // The parts the reservation reaches that this rule styled: those in its relation to a part, else the named
+          // part — while it carried the state when one is named — else every part carrying the state.
           const carrying = state === undefined ? undefined : coverage.states.get(`${state.attribute}=${state.value}`);
-          const reached = state === undefined ? (coverage.parts.has(part as string) ? [part as string] : []) : [...(carrying ?? [])].filter((each) => part === undefined || each === part);
+          const reached =
+            relation !== undefined
+              ? [...(coverage.related.get(relation) ?? [])]
+              : state === undefined
+                ? coverage.parts.has(part as string)
+                  ? [part as string]
+                  : []
+                : [...(carrying ?? [])].filter((each) => part === undefined || each === part);
           if (reached.length === 0) continue;
-          const subject = `${part ?? `[${where}]`}${part !== undefined && where !== undefined ? `[${where}]` : ""}: ${property}`;
+          const named = reached.map((each) => `'${each}'`).join(", ");
+          const subject =
+            holding !== undefined
+              ? `holding ${holding}: ${property}`
+              : after !== undefined
+                ? `after ${after}: ${property}`
+                : `${part ?? `[${where}]`}${part !== undefined && where !== undefined ? `[${where}]` : ""}: ${property}`;
           const key = `${subject}\n${coverage.sheet}\n${coverage.rule.written}`;
           if (reported.has(key)) continue;
           reported.add(key);
           const on =
-            where === undefined
-              ? `the '${part}' part`
-              : part === undefined
-                ? `a part carrying ${where} (${reached.map((each) => `'${each}'`).join(", ")})`
-                : `the '${part}' part while it carries ${where}`;
+            holding !== undefined
+              ? `a part holding a '${holding}' (${named})`
+              : after !== undefined
+                ? `interactive content after a '${after}' (${named})`
+                : where === undefined
+                  ? `the '${part}' part`
+                  : part === undefined
+                    ? `a part carrying ${where} (${named})`
+                    : `the '${part}' part while it carries ${where}`;
           problems.push({
             check: "property-reserved",
             subject,

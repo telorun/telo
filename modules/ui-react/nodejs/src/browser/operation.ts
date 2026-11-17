@@ -1,10 +1,9 @@
 import { createContext } from "react";
-import { addressReads, resolveAddress, resolveRefresh, resolveRequest, type AddressWire } from "./address-wire.js";
+import { addressReads, resolveRefresh, resolveRequest, type AddressWire } from "./address-wire.js";
 import type { Binding, Condition } from "./bindings.js";
+import { destinationReads, openDestination, resolveDestination, type DestinationContext, type DestinationWire } from "./destination.js";
 import type { KeptState } from "./form-state.js";
-import type { Host, HostStore } from "./host.js";
-import { linkAddress } from "./link-address.js";
-import { matchPage } from "./page-route.js";
+import type { Host } from "./host.js";
 import type { Field } from "./record-fields.js";
 import { underMount } from "./renderer-context.js";
 import { requestErrorOf, unansweredError, type RequestError } from "./ui-error.js";
@@ -27,7 +26,7 @@ export interface ActionSpec {
   answer?: JsonSchema;
   result?: Node;
   failure: Node;
-  onSuccess: { navigate?: AddressWire; refreshes: AddressWire[] };
+  onSuccess: { to?: DestinationWire; refreshes: AddressWire[] };
   concurrency: "parallel" | "serial";
   clearAnswerOn: string[];
 }
@@ -71,7 +70,8 @@ const readsAnswer = (binding: unknown): boolean => (binding as { root?: unknown 
 /**
  * Whether a tree drawn over an answer reads `result`. A node a composite
  * provided reads only its own roots, so only the tree's own nodes are read:
- * containers, values, lists and the conditions on them.
+ * containers and their presses, links, menus, values, lists and the
+ * conditions on them.
  */
 export function readsResult(node: Node | undefined): boolean {
   if (!node) return false;
@@ -82,8 +82,17 @@ export function readsResult(node: Node | undefined): boolean {
     case "box":
     case "stack":
     case "columns":
-      return (node.children as Node[]).some(readsResult);
+      return (
+        (node.press != null && (destinationReads(node.press.to, "result") || textReads(node.press.label))) || (node.children as Node[]).some(readsResult)
+      );
+    case "link":
+      return destinationReads(node.to, "result");
+    case "menu":
+      return (node.items as { to: DestinationWire; text: unknown; shown?: { at: unknown } }[]).some(
+        (item) => destinationReads(item.to, "result") || textReads(item.text) || readsAnswer(item.shown?.at),
+      );
     case "value":
+      return readsAnswer(node.value) || destinationReads(node.to, "result");
     case "time":
       return readsAnswer(node.value);
     case "markdown":
@@ -94,8 +103,9 @@ export function readsResult(node: Node | undefined): boolean {
       return (
         readsAnswer(node.rows) ||
         readsAnswer(node.rowStyle?.by) ||
-        (node.columns as { value: unknown; header?: unknown; shown?: { at: unknown }; style?: { by: unknown } }[]).some(
-          (column) => readsAnswer(column.value) || readsAnswer(column.shown?.at) || readsAnswer(column.style?.by) || textReads(column.header),
+        (node.columns as { value: unknown; header?: unknown; shown?: { at: unknown }; style?: { by: unknown }; to?: DestinationWire }[]).some(
+          (column) =>
+            readsAnswer(column.value) || readsAnswer(column.shown?.at) || readsAnswer(column.style?.by) || textReads(column.header) || destinationReads(column.to, "result"),
         ) ||
         ((node.rowActions ?? []) as RowActionSpec[]).some(boundReads)
       );
@@ -116,8 +126,8 @@ function textReads(text: unknown): boolean {
 /**
  * Send a record to an operation, its path read under the mount `prefix`, and
  * read what it answered. A success's body is
- * read only when what follows reads it — the `result` tree or a navigation
- * through it — and is then held to the declared answer.
+ * read only when what follows reads it — the `result` tree, a destination or
+ * a refresh through it — and is then held to the declared answer.
  */
 export async function runOperation(
   host: Host,
@@ -144,9 +154,9 @@ export async function runOperation(
     }
     return { ok: false, error: requestErrorOf(response.status, body, say), input, body };
   }
-  const { navigate, refreshes } = action.onSuccess;
+  const { to, refreshes } = action.onSuccess;
   // A success with no body (a 204) is a success unless something reads it.
-  if (!readsResult(action.result) && !addressReads(navigate, "result") && !refreshes.some((each) => addressReads(each, "result"))) {
+  if (!readsResult(action.result) && !destinationReads(to, "result") && !refreshes.some((each) => addressReads(each, "result"))) {
     return { ok: true, result: undefined, input, target };
   }
   const invalid = (message: string): Outcome => ({ ok: false, error: { status: response.status, code: "ERR_UI_RESPONSE_INVALID", message }, input });
@@ -165,38 +175,27 @@ export async function runOperation(
 /**
  * What a success does beyond being drawn: every reader over the resolved target
  * path, each resolved `refreshes` path and `also` (a listing's own paths) reads
- * again, then the page goes where `navigate` says — an address a declared page
- * opens within the application, any other app-relative address by a load, an absolute one
- * replacing the page. A refresh that does not resolve is skipped; a navigation
- * that does not goes nowhere.
+ * again, then the page goes to the destination `to` names, its address over
+ * `result` and `input` — a page it opens named by `naming`, the text of what
+ * ran the action. A refresh that does not resolve is skipped; a destination
+ * whose address does not goes nowhere.
  */
 export function followSuccess(
   action: ActionSpec,
   outcome: Extract<Outcome, { ok: true }>,
   host: Host,
-  store: HostStore,
-  pages: string[],
+  context: Omit<DestinationContext, "address">,
+  naming: string,
   also: readonly string[] = [],
 ): void {
   const roots = { result: outcome.result, input: outcome.input };
   for (const path of [outcome.target, ...also]) host.notifyChanged(path);
   for (const each of action.onSuccess.refreshes) {
     const refresh = resolveRefresh(each, roots, "action refresh");
-    if (refresh !== undefined) store.notifyRefresh(refresh);
+    if (refresh !== undefined) context.store.notifyRefresh(refresh);
   }
-  const navigate = action.onSuccess.navigate;
-  if (navigate === undefined) return;
-  const address = resolveAddress(navigate, roots, "action navigate");
-  if (address === undefined) return;
-  const href = linkAddress(store, address);
-  if (href === undefined) return;
-  if (address.startsWith("/")) {
-    const path = new URL(address, "http://telo.invalid").pathname;
-    if (matchPage(pages, path) !== undefined) host.navigate(address);
-    else store.leave(href);
-    return;
-  }
-  store.leave(href);
+  const destination = resolveDestination(action.onSuccess.to, roots, "action onSuccess to");
+  if (destination !== undefined) openDestination(destination.to, { ...context, address: destination.address }, { naming });
 }
 
 /**

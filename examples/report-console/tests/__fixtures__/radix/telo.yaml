@@ -317,7 +317,7 @@ children:
                   outputModel: !ref ConsentLink
                   request: { target: /api/auth/connect }
                   label: Connect Google
-                  onSuccess: { navigate: { path: !cel "result.url" } }
+                  onSuccess: { to: { kind: Ui.Navigate, href: { path: !cel "result.url" } } }
           - type: stack
             shown: { at: !cel "data.authorized", matches: { const: true } }
             children:
@@ -366,7 +366,7 @@ children:
                         value: !cel "row.id"
                         label: !cel "row.name"
                         hint: !cel "row.owner"
-                        href: { path: !cel "row.url" }
+                        to: { kind: Ui.Navigate, href: { path: !cel "row.url" } }
                         source: !ref driveSource
                         filters: { kind: spreadsheet }
                         search: { property: name, operator: contains }
@@ -378,7 +378,7 @@ children:
                         model: !ref DriveFile
                         value: !cel "row.id"
                         label: !cel "row.name"
-                        href: { path: !cel "row.url" }
+                        to: { kind: Ui.Navigate, href: { path: !cel "row.url" } }
                         source: !ref driveSource
                         filters: { kind: folder }
                         search: { property: name, operator: contains }

@@ -16,13 +16,15 @@ export interface LayoutRecord {
   props: Record<string, unknown>;
   /** By property with a relation, the label of the related record it names, once known. */
   labels: Record<string, string>;
+  /** The element the renderer draws for the listing's press, `null` without one: drawn as the first child of the element it covers — the record's root, or one part of it. */
+  press: ReactNode;
   /** The record's row actions, edit and delete, drawn by the renderer; `null` when it offers none. */
   actions: ReactNode;
   /** Where its inline edit form opens: present while one is open on it, to be drawn under it. */
   detail?: ReactNode;
   /** The style names `rowStyle` gives it, for its element's `data-style`. */
   style?: string;
-  /** Whether a link the renderer draws for it leads to where the viewer is; false for a component layout. */
+  /** Whether its press leads to where the viewer is — for a built-in layout, or a link its content draws; the record's element carries `data-selected` from it. */
   selected: boolean;
   /** Whether `onMove` may be reported for it. */
   movable: boolean;
@@ -66,7 +68,7 @@ export interface LayoutEnd {
 }
 
 /**
- * What a layout component of `ui_react_layouts-1` is given: the outermost read
+ * What a layout component of `ui_react_layouts-2` is given: the outermost read
  * (the only read, a tree's roots, or under `groups` every group's records),
  * the plan's dimensions where it has them, and what it reports. It fetches
  * nothing and holds nothing the renderer holds.
@@ -86,7 +88,7 @@ export interface LayoutProps extends LayoutLevel {
   paging: "more" | "scroll";
   /** Drawn where the records would be when the reads answer none. */
   empty: ReactNode;
-  /** Which of `onOpen`, `onCreate` and `onMove` does anything. */
+  /** Which of `onOpen`, `onCreate` and `onMove` does anything: `open` while the listing has a press or an edit opener. */
   can: { open: boolean; create: boolean; move: boolean };
   /** The renderer's words a layout draws, finished. */
   words: { loadMore: string; moveTo: string; none: string; newRecord: string };
@@ -98,7 +100,7 @@ export interface LayoutProps extends LayoutLevel {
   onPeriodChange(period: LayoutPeriod): void;
   /** Read, or stop reading, a record's children. */
   onExpand(key: string, open: boolean): void;
-  /** Open a record as its edit opener says. */
+  /** Run a record's press, else open it as its edit opener says. */
   onOpen(key: string): void;
   /** Sort by a property, `-` before it for descending. */
   onSortChange(sort: string): void;

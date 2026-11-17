@@ -62,7 +62,7 @@ steps:
         layouts: !cel "[2, 5, 8, 11, 17].map(i, cel.bind(l, i == 2 || i == 5 ? steps.nodes.result[i].content : steps.nodes.result[i], [l.basePath, l.layout.type]))"
       expected:
         title: { lang: en, message: [Related records] }
-        kinds: [text, text, filters, text, text, filters, text, text, listing, text, text, listing, text, text, filters, text, text, listing]
+        kinds: [text, text, filters, text, text, filters, text, text, listing, text, text, listing, text, text, filters, text, text, listing, text, text, menu, listing]
         relation:
           type: collection
           schema:

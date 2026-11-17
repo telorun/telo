@@ -1,0 +1,10 @@
+units:
+  apps/authoring-agent: Added
+body: "The authoring primer teaches destinations and presses: `to` holding a
+  `Ui.Navigate` (`href`) or a `Ui.OpenPage` (`page`, `pathParams`, `queryParams`,
+  `surface`, kept in the address as `_telo.page.<name>`) wherever a link, value, column,
+  relation, option source, navigation `link` entry or `onSuccess` goes somewhere, in
+  place of `href` and `onSuccess.navigate`; `press: { to, label }` on the `box`, `stack`
+  and `columns` nodes, `Ui.Listing` and `CrudUi.Admin`; a destination reading only the
+  roots bound where it is written; and component layouts built for
+  `ui_react_layouts-2`."
