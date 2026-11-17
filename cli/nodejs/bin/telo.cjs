@@ -1,3 +1,3 @@
 #!/usr/bin/env node
 
-require('../dist/cli.js');
+import('../dist/cli.js').then(({ main }) => main(process.argv.slice(2)));

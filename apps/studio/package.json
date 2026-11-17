@@ -29,7 +29,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "tauri": "tauri",
-    "stage:cli": "node scripts/stage-cli-sidecar.mjs"
+    "stage:runner": "node scripts/stage-runner-sidecar.mjs"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.0.0",

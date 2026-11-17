@@ -118,7 +118,7 @@ environment variable — bind one in the manifest.
 
 ## Set by a runner
 
-A runner (`telo runner`, the Docker runner, the Kubernetes runner) is configured
+A runner (`telo-host-runner`, the Docker runner, the Kubernetes runner) is configured
 by its own `RUNNER_*` variables, and an agent it hosts by `AGENT_*` ones; they
 configure the runner process, not the applications it runs. Each runner documents
 its own: [`apps/docker-runner`](../../apps/docker-runner/README.md),

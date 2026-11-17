@@ -1,0 +1,53 @@
+{
+  "name": "@telorun/host-runner",
+  "version": "0.1.0",
+  "description": "Telo Host Runner - serves the /v1 runner API over local processes, so an editor (or any client) can run applications on this machine. Bundles the telo it runs on.",
+  "keywords": [
+    "telo",
+    "runner"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "apps/host-runner"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "bin": {
+    "telo-host-runner": "./bin/telo-host-runner.mjs"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "THIRD_PARTY_NOTICES"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build:standalone": "node scripts/build-standalone.mjs",
+    "prepack": "node ../../scripts/pack-backup.mjs . --save dist package.json && tsc && cp ../../LICENSE . && node scripts/third-party-notices.mjs --out THIRD_PARTY_NOTICES && node ../../scripts/prepack-bake-overrides.mjs . && node ../../scripts/rewrite-pack-links.mjs .",
+    "postpack": "node ../../scripts/rewrite-pack-links.mjs . --restore && rm -f LICENSE THIRD_PARTY_NOTICES && node ../../scripts/pack-backup.mjs . --restore"
+  },
+  "dependencies": {
+    "@telorun/cli": "workspace:*",
+    "@telorun/kernel": "workspace:*",
+    "@telorun/runner-core": "workspace:*",
+    "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/yargs": "^17.0.33",
+    "typescript": "^5.0.0",
+    "vitest": "^2.1.8"
+  }
+}

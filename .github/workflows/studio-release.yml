@@ -131,7 +131,7 @@ jobs:
         uses: pnpm/action-setup@v4
 
       # 24, the same version the standalone release pins. This job stages the
-      # telo sidecar, and that build generates the SEA blob with the Node that
+      # host runner sidecar, and that build generates the SEA blob with the Node that
       # RUNS it before injecting it into the pinned runtime — so a different
       # major here is a blob and a runtime that were never meant to meet, in the
       # one artifact the editor needs in order to run anything.
@@ -160,16 +160,16 @@ jobs:
       - name: Build workspace dependencies
         run: pnpm --filter "@telorun/studio^..." build
 
-      # Studio runs applications through `telo runner`, so it ships the telo it
-      # runs them with — built from THIS commit rather than downloaded from a
+      # Studio runs applications through the host runner, so it ships the runner
+      # (and the telo it bundles) it runs them with — built from THIS commit rather than downloaded from a
       # release, which is what makes the bundled runtime derivable instead of
       # asserted and unties this build from the CLI's release schedule. Tauri
       # names a sidecar by the Rust target triple; the script translates that to
       # the CLI build's own platform tokens. A failure here fails the release:
       # an editor that cannot run anything is the outcome the sidecar exists to
       # prevent.
-      - name: Stage the telo sidecar
-        run: node apps/studio/scripts/stage-cli-sidecar.mjs --triple ${{ matrix.triple }}
+      - name: Stage the host runner sidecar
+        run: node apps/studio/scripts/stage-runner-sidecar.mjs --triple ${{ matrix.triple }}
 
       - name: Build Tauri bundles
         id: tauri

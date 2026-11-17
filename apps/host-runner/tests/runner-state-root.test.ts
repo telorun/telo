@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { resolveStateRoot } from "../src/runner/state-root.js";
 
-const CLI = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../bin/telo.ts");
+const ENTRY = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/entry.ts");
 
 describe("the local runner's state root", () => {
   it("is --state-dir, then RUNNER_STATE_DIR, then the platform's per-user state directory", () => {
@@ -46,7 +46,7 @@ describe("the local runner's state root", () => {
   it.skipIf(process.platform === "win32")("holds the session store and the session directories, and is the directory the command reports", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "telo-runner-root-"));
     try {
-      const runner = spawn("bun", [CLI, "-o", "json", "runner", "--port", "0"], {
+      const runner = spawn("bun", [ENTRY, "-o", "json", "--port", "0"], {
         env: { ...process.env, RUNNER_STATE_DIR: root },
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -61,7 +61,7 @@ describe("the local runner's state root", () => {
             if (end >= 0) resolve(JSON.parse(stdout.slice(stdout.indexOf("{"), end + 2)));
           });
           runner.stderr.on("data", (chunk) => (stderr += chunk));
-          runner.on("exit", (code) => reject(new Error(`telo runner exited ${code}: ${stderr}`)));
+          runner.on("exit", (code) => reject(new Error(`telo-host-runner exited ${code}: ${stderr}`)));
         });
         expect(result.stateDir).toBe(root);
         expect(fs.existsSync(path.join(root, "sessions.sqlite"))).toBe(true);
@@ -77,11 +77,11 @@ describe("the local runner's state root", () => {
 
   it.skipIf(process.platform === "win32")("refuses to start with no HOME and nothing named, saying how to name one", async () => {
     const { HOME, XDG_STATE_HOME, RUNNER_STATE_DIR, ...rest } = process.env;
-    const runner = spawn("bun", [CLI, "runner", "--port", "0"], { env: rest, stdio: ["ignore", "pipe", "pipe"] });
+    const runner = spawn("bun", [ENTRY, "--port", "0"], { env: rest, stdio: ["ignore", "pipe", "pipe"] });
     let stderr = "";
     runner.stderr.on("data", (chunk) => (stderr += chunk));
     const code = await new Promise((resolve) => runner.once("exit", resolve));
     expect(code).toBe(2);
-    expect(stderr).toMatch(/telo runner: no state directory: .*--state-dir <dir> or RUNNER_STATE_DIR/);
+    expect(stderr).toMatch(/telo-host-runner: no state directory: .*--state-dir <dir> or RUNNER_STATE_DIR/);
   }, 60_000);
 });

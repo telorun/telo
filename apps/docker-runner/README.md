@@ -2,7 +2,7 @@
 
 HTTP service that runs Telo Applications in Docker containers on the host daemon. A backend over [`@telorun/runner-core`](../../packages/runner-core), sibling to [`k8s-runner`](../k8s-runner): it presents the identical `/v1` session contract — the routes, events, ownership and lifecycle are runner-core's and documented in its README — and runs each session as sibling containers on the daemon whose socket it holds.
 
-For running applications on your own machine with no daemon at all, `telo runner` serves the same API over local processes — no isolation and no terminal, but nothing to install. This runner is the one to reach for when a run should behave the way production does: an image, a container, published ports.
+For running applications on your own machine with no daemon at all, [`telo-host-runner`](../host-runner) serves the same API over local processes — no isolation and no terminal, but nothing to install. This runner is the one to reach for when a run should behave the way production does: an image, a container, published ports.
 
 ## How it works
 

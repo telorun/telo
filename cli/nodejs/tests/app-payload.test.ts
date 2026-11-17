@@ -2,7 +2,7 @@ import * as fs from "fs/promises";
 import { realpathSync } from "fs";
 import * as os from "os";
 import * as path from "path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   APP_FORMAT_VERSION,
   MACHO_SECTION,
@@ -315,6 +315,28 @@ describe("who may stand a DOWNLOADED carrier around an application", () => {
     expect(refusal).toThrow(/carries an application of its own, so it is the carrier for no\nplatform/);
     expect(refusal).toThrow(/installed telo release[\s\S]*build:standalone/);
     expect(refusal).not.toThrow(/its own platform \(linux-amd64-gnu\)/);
+  });
+
+  it("refuses a single-file executable whose entry starts a program of its own, and says what packages instead", () => {
+    const refusal = () =>
+      assertMayDownloadCarrier("checkout", "linux-amd64-gnu", "1.0.0", {
+        isBinary: true,
+        hostTarget: "linux-amd64-gnu",
+        startsOtherProgram: true,
+      });
+    expect(refusal).toThrow(
+      "This executable starts a program of its own rather than a packaged application, so it is the carrier for no platform.",
+    );
+    expect(refusal).toThrow(/installed telo release[\s\S]*build:standalone/);
+    expect(refusal).not.toThrow(/its own platform \(linux-amd64-gnu\)/);
+  });
+
+  it("is a carrier only once its entry declares that it starts a payload", async () => {
+    vi.resetModules();
+    const entry = await import("../src/package/carrier-entry.js");
+    expect(entry.isCarrierEntry()).toBe(false);
+    entry.declareCarrierEntry();
+    expect(entry.isCarrierEntry()).toBe(true);
   });
 
   it("does not tell a binary to build the binary it already is", () => {

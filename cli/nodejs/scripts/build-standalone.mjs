@@ -9,6 +9,21 @@
  *
  *   node scripts/build-standalone.mjs [--target <os>-<arch>[-musl]] [--out <dir>]
  *                                     [--node-version <v>] [--keep-staging]
+ *                                     [--entry <file>] [--name <output name>]
+ *                                     [--bake <name>=<value>] [--asset <name>=<file>]
+ *                                     [--metafile <file>] [--bundle-only]
+ *
+ * `--entry` is the outer entry the single-file executable starts (default: the
+ * CLI's own standalone entry, `dist/standalone/entry.js`) and `--name` the
+ * executable's file name without extension (default `telo`), so another package
+ * builds its own single-file executable with this one recipe. An entry that
+ * starts a payload as its application declares it with `declareCarrierEntry`
+ * (`dist/package/carrier-entry.js`); an executable built from any other entry is
+ * the carrier for no platform. `--bake` adds a named version the bundle reads from
+ * `__TELO_BAKED_VERSIONS__`, `--asset` embeds a file beside esbuild's executable
+ * (read with `node:sea`'s `getRawAsset`), and `--metafile` writes esbuild's
+ * metafile of the bundle — with `--bundle-only`, the build stops there, which is
+ * how a package learns what its executable would hold before it builds it.
  *
  * With no `--target` it builds for the host, reusing the running Node binary
  * instead of downloading one, which is what makes a local build fast.
@@ -81,20 +96,43 @@ const TARGETS = {
 };
 
 function parseArgs(argv) {
-  const args = { target: hostTarget(), out: path.join(CLI_DIR, "dist-standalone"), keepStaging: false };
+  const args = {
+    target: hostTarget(),
+    out: path.join(CLI_DIR, "dist-standalone"),
+    keepStaging: false,
+    entry: path.join(CLI_DIR, "dist", "standalone", "entry.js"),
+    name: "telo",
+    bake: {},
+    assets: {},
+    bundleOnly: false,
+  };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--target") args.target = argv[++i];
     else if (argv[i] === "--out") args.out = path.resolve(argv[++i]);
     else if (argv[i] === "--node-version") args.nodeVersion = argv[++i];
+    else if (argv[i] === "--entry") args.entry = path.resolve(argv[++i]);
+    else if (argv[i] === "--name") args.name = argv[++i];
     else if (argv[i] === "--keep-staging") args.keepStaging = true;
+    else if (argv[i] === "--bundle-only") args.bundleOnly = true;
+    else if (argv[i] === "--metafile") args.metafile = path.resolve(argv[++i]);
+    else if (argv[i] === "--bake") Object.assign(args.bake, keyValue("--bake", argv[++i], (v) => v));
+    else if (argv[i] === "--asset") Object.assign(args.assets, keyValue("--asset", argv[++i], (v) => path.resolve(v)));
     else throw new Error(`unknown argument: ${argv[i]}`);
   }
+  if (!/^[A-Za-z0-9._-]+$/.test(args.name)) throw new Error(`invalid --name: ${args.name}`);
   if (!TARGETS[args.target]) {
     throw new Error(
       `unsupported target "${args.target}". Supported: ${Object.keys(TARGETS).join(", ")}`,
     );
   }
   return args;
+}
+
+/** `name=value`, split at the first `=`. */
+function keyValue(flag, text, value) {
+  const at = text?.indexOf("=") ?? -1;
+  if (at <= 0) throw new Error(`${flag} takes <name>=<value>, got '${text}'`);
+  return { [text.slice(0, at)]: value(text.slice(at + 1)) };
 }
 
 /** This machine, in the same vocabulary. */
@@ -179,12 +217,15 @@ const requireCjsResolution = {
   },
 };
 
-async function bundle(stagingDir, versions) {
+async function bundle(stagingDir, versions, entry, name, metafile) {
   const esbuild = require("esbuild");
-  const outfile = path.join(stagingDir, "telo.cjs");
-  await esbuild.build({
+  const outfile = path.join(stagingDir, `${name}.cjs`);
+  const result = await esbuild.build({
+    metafile: metafile !== undefined,
+    // Metafile paths are relative to this, so a reader needs no knowledge of the caller's cwd.
+    absWorkingDir: REPO_ROOT,
     plugins: [requireCjsResolution],
-    entryPoints: [path.join(CLI_DIR, "dist", "standalone", "entry.js")],
+    entryPoints: [entry],
     outfile,
     bundle: true,
     platform: "node",
@@ -208,6 +249,10 @@ async function bundle(stagingDir, versions) {
     },
     banner: { js: 'var __teloMetaUrl = require("node:url").pathToFileURL(__filename).href;' },
   });
+  if (metafile !== undefined) {
+    fs.mkdirSync(path.dirname(metafile), { recursive: true });
+    fs.writeFileSync(metafile, JSON.stringify(result.metafile));
+  }
   return outfile;
 }
 
@@ -313,18 +358,23 @@ async function fetchPackage(name, version, dir) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const spec = TARGETS[args.target];
-  const stagingDir = path.join(os.tmpdir(), `telo-standalone-${args.target}`);
+  const stagingDir = path.join(
+    os.tmpdir(),
+    args.name === "telo" ? `telo-standalone-${args.target}` : `telo-standalone-${args.name}-${args.target}`,
+  );
   fs.mkdirSync(stagingDir, { recursive: true });
   fs.mkdirSync(args.out, { recursive: true });
 
-  const versions = bakedVersions();
-  process.stderr.write(`building telo ${versions["@telorun/cli"]} for ${args.target}\n`);
+  const versions = { ...bakedVersions(), ...args.bake };
+  if (!fs.existsSync(args.entry)) throw new Error(`entry not found: ${args.entry}`);
+  process.stderr.write(`building ${args.name} (telo ${versions["@telorun/cli"]}) for ${args.target}\n`);
 
-  const script = await bundle(stagingDir, versions);
+  const script = await bundle(stagingDir, versions, args.entry, args.name, args.metafile);
+  if (args.bundleOnly) return;
   const esbuildBin = await esbuildExecutable(args.target, stagingDir);
 
   const seaConfig = path.join(stagingDir, "sea-config.json");
-  const blob = path.join(stagingDir, "telo.blob");
+  const blob = path.join(stagingDir, `${args.name}.blob`);
   fs.writeFileSync(
     seaConfig,
     `${JSON.stringify(
@@ -332,7 +382,7 @@ async function main() {
         main: script,
         output: blob,
         disableExperimentalSEAWarning: true,
-        assets: { esbuild: esbuildBin },
+        assets: { esbuild: esbuildBin, ...args.assets },
       },
       null,
       2,
@@ -340,7 +390,7 @@ async function main() {
   );
   execFileSync(process.execPath, ["--experimental-sea-config", seaConfig], { stdio: "inherit" });
 
-  const output = path.join(args.out, `telo${spec.exe}`);
+  const output = path.join(args.out, `${args.name}${spec.exe}`);
   fs.copyFileSync(await runtimeBinary(args.target, stagingDir, args.nodeVersion), output);
   fs.chmodSync(output, 0o755);
 
@@ -379,7 +429,7 @@ async function main() {
 
   if (isMac) run("codesign", ["--sign", "-", output]);
 
-  if (!args.keepStaging) fs.rmSync(path.join(stagingDir, "telo.cjs"), { force: true });
+  if (!args.keepStaging) fs.rmSync(path.join(stagingDir, `${args.name}.cjs`), { force: true });
 
   const size = fs.statSync(output).size;
   const digest = createHash("sha256").update(fs.readFileSync(output)).digest("hex");

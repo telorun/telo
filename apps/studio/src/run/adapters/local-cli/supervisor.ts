@@ -1,6 +1,6 @@
 /**
- * Typed bridge to the Rust CLI-runner supervisor, which runs the bundled
- * `telo runner` as a child process. Only `startLocalCliRunner` has side
+ * Typed bridge to the Rust host-runner supervisor, which runs the bundled
+ * `telo-host-runner` as a child process. Only `startLocalCliRunner` has side
  * effects; probing and status reads never start anything.
  */
 

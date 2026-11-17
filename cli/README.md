@@ -29,7 +29,7 @@ A monorepo therefore keeps its cache at the workspace root, which matters when y
 
 - `0` — the command did its work.
 - `1` — the work failed: a manifest that does not load or that `telo check` refuses, an application argument the manifest does not declare, a name `telo builtins` does not know.
-- `2` — the invocation was refused before any work began, with the reason on stderr and nothing on stdout: an unknown flag, a missing argument or subcommand, a value outside an option's choices (`-o yaml`), `TELO_APP_CLI` set to anything but `1` or empty, a packaged application started with `TELO_APP_INFO`, a `telo runner` bind, port, state directory or container-runner setting (`RUNNER_SESSION_USER`) it refuses.
+- `2` — the invocation was refused before any work began, with the reason on stderr and nothing on stdout: an unknown flag, a missing argument or subcommand, a value outside an option's choices (`-o yaml`), `TELO_APP_CLI` set to anything but `1` or empty, a packaged application started with `TELO_APP_INFO`.
 
 `telo run` and a packaged application exit with the application's own status; `2` there still means the CLI refused its own options before the manifest path. A first word that names no command is a manifest path, so `telo frobnicate` is a run of `./frobnicate`, and fails with `1`.
 
@@ -504,7 +504,7 @@ telo package inspect dist/orders
 - `--out <file>` - Where to write the executable. Required; `.exe` is added for a windows platform.
 - `--platform <os/arch[/libc]>` - The platform to package for (`linux/amd64`, `linux/arm64/musl`, `darwin/arm64`, …), in the same vocabulary `telo install --platform` takes. Defaults to the host; on linux an omitted `libc` means `gnu`. **A darwin platform can only be packaged on a macOS host**, because the payload rides in a Mach-O segment and the binary is re-signed afterwards.
 
-The binary carries the telo that packaged it, enforced rather than assumed: there is no flag to choose another version, and only a *released* telo may download a carrier. A working copy and the release of the same version number are different code, so from a source checkout you build that checkout's own binary (`pnpm --filter @telorun/cli build:standalone`) and package with it; that binary is the carrier for its own platform, and packaging for another platform needs an installed release. A payload carries only controllers that are files on the target machine: a closure whose kind is delivered from npm (`pkg:npm`) or built from a crate (`pkg:cargo`) is refused, naming the kind and the candidate.
+The binary carries the telo that packaged it, enforced rather than assumed: there is no flag to choose another version, and only a *released* telo may download a carrier. A working copy and the release of the same version number are different code, so from a source checkout you build that checkout's own binary (`pnpm --filter @telorun/cli build:standalone`) and package with it; that binary is the carrier for its own platform, and packaging for another platform needs an installed release. Only that standalone binary can be a carrier: a single-file executable built from another program that bundles the telo starts that program rather than a packaged application, so it is the carrier for no platform. A payload carries only controllers that are files on the target machine: a closure whose kind is delivered from npm (`pkg:npm`) or built from a crate (`pkg:cargo`) is refused, naming the kind and the candidate.
 
 Running the result: every argument belongs to the application, `.env` files are read from the working directory, and signals and exit codes behave exactly as under `telo run`. `TELO_APP_DIR` moves the directory it unpacks into (`~/.cache/telo/apps/<name>-<digest>` by default). `TELO_CACHE_DIR` is ignored inside a packaged app — the payload is its cache.
 
@@ -513,25 +513,6 @@ A packaged binary is a manifest source: `telo describe ./orders`, `telo check ./
 **`TELO_APP_CLI=1` makes the binary the telo it carries** for one start, so it can be described, checked, inspected or run with every telo option where it is deployed: `TELO_APP_CLI=1 ./orders describe ./orders`, `TELO_APP_CLI=1 ./orders package inspect ./orders`, `TELO_APP_CLI=1 ./orders run --inspect --debug ./orders <app args>`. `./orders <args>` is exactly `TELO_APP_CLI=1 ./orders run ./orders <args>`, the `--debug` log included, written to the working directory. Unset or empty means the application; any other value is refused before anything starts, with exit status 2; every telo removes the variable from its own environment at start, so no application or child process sees it. `TELO_APP_INFO` is retired — a binary started with it refuses (exit status 2) and names `TELO_APP_CLI=1 <binary> package inspect <binary>`. The contract is `kernel/specs/packaged-application.md`.
 
 Full guide: [Packaging an application](/learn/packaging-an-app).
-
-
----
-
-### `telo runner`
-
-Serve the `/v1` runner API over local processes on this machine, so an editor (or any client) can open workspace sessions and run their applications. Loopback only unless `--allow-remote`; no browser origin unless `--allow-origin <origin>`.
-
-**Options:**
-
-- `--port <n>` - Port to listen on (default `8061`; `0` picks a free one and reports it).
-- `--host <address>` - Address to bind (default `127.0.0.1`).
-- `--allow-remote` - Permit a non-loopback bind.
-- `--allow-origin <origin>` - A browser origin allowed to drive the runner (repeatable).
-- `--state-dir <dir>` - The runner's state directory: the session store (`sessions.sqlite`) and every session's directory (`sessions/<id>/workspace`, `sessions/<id>/agent`), kept across suspends, runner restarts and reboots.
-
-The state directory is `--state-dir`, else `RUNNER_STATE_DIR`, else the per-user default for application state: `$XDG_STATE_HOME/telo/runner` (`~/.local/state/telo/runner` when `XDG_STATE_HOME` is unset) on Linux, `~/Library/Application Support/telo/runner` on macOS, `%LOCALAPPDATA%\telo\state\runner` on Windows. It is never the temp directory or the CLI cache. When none can be resolved (no `HOME`) or the directory cannot be created and written, the runner refuses to start (exit `2`), naming `--state-dir` and `RUNNER_STATE_DIR`. Under `-o json` the command's result is `{ url, host, port, stateDir }`, `stateDir` being the directory in use.
-
-Every session runs as the user who started the runner, so `RUNNER_SESSION_USER` — the container runners' session user — refuses the start (exit `2`), naming it.
 
 
 ---
@@ -644,6 +625,10 @@ telo cel eval "'a-' + string(1+2)"
 ```
 
 `eval` runs with no manifest loaded, so `variables`, `resources`, `steps` and the rest of the manifest scope are not available; it is for the pure-expression half of CEL.
+
+## Embedding
+
+`import { main } from "@telorun/cli"` runs the CLI on an argument list (`main(["--version"])`); importing the package runs nothing. `@telorun/cli/release-binary` exports the verified download of a published telo release for a platform, cached under the user cache. The CLI is MIT and serves no runner session: to run applications on this machine for an editor, use [`@telorun/host-runner`](../apps/host-runner), which bundles this CLI.
 
 ## Examples
 

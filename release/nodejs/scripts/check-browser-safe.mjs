@@ -1,6 +1,6 @@
 /**
- * Refuses a main entry that reaches a Node built-in or a package outside the MIT
- * set this package may depend on. The planner runs in an editor's browser, so a
+ * Refuses a main entry that reaches a Node built-in or a package outside the set
+ * this package may depend on. The planner runs in an editor's browser, so a
  * built-in reachable from the entry fails at load there — and no unit test sees
  * it, since every test runs on Node. The check is a real bundle under the
  * `browser` condition, so a dependency reaching a built-in through its own
@@ -12,7 +12,7 @@ import { build } from "esbuild";
 
 const entry = fileURLToPath(new URL("../src/index.ts", import.meta.url));
 const builtins = new Set([...builtinModules, ...builtinModules.map((name) => `node:${name}`)]);
-/** Sustainable Use packages an MIT package must never reach. */
+/** Packages `@telorun/release` must never reach: it depends on nothing in this repository but `@telorun/glob`. */
 const RESTRICTED = /^@telorun\/(analyzer|kernel|cli|templating|cel|ide-support|language-server|language-host|runner-core)(\/|$)/;
 
 const refuse = {
@@ -23,7 +23,7 @@ const refuse = {
         return { errors: [{ text: `${args.importer} imports the Node built-in ${JSON.stringify(args.path)}` }] };
       }
       if (RESTRICTED.test(args.path)) {
-        return { errors: [{ text: `${args.importer} imports ${JSON.stringify(args.path)}, which is not MIT` }] };
+        return { errors: [{ text: `${args.importer} imports ${JSON.stringify(args.path)}, which @telorun/release must not depend on` }] };
       }
       return undefined;
     });

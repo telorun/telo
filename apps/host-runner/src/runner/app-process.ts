@@ -29,11 +29,8 @@ export function spawnAppProcess(args: AppProcessArgs): ChildProcess {
     cwd: args.cwd,
     // The workload inherits this process's environment — a local run's whole
     // point is the machine it runs on (PATH, HOME, certificates) — less the
-    // runner's own agent configuration; the run's env wins over it, and the
-    // telo's own (`TELO_APP_CLI=1` for an executable carrying an application)
-    // wins over both, since without it the child would be that application
-    // rather than telo.
-    env: { ...inheritedEnvironment(process.env), ...args.env, ...args.telo.env },
+    // runner's own agent configuration; the run's env wins over it.
+    env: inheritedEnvironment(process.env, args.env),
     stdio: ["pipe", "pipe", "pipe"],
     detached: process.platform !== "win32",
     windowsHide: true,
@@ -42,11 +39,19 @@ export function spawnAppProcess(args: AppProcessArgs): ChildProcess {
 
 /** What a process this runner spawns inherits from it: its whole environment
  *  by design, except the runner's own agent configuration (`AGENT_*`), which
- *  configures the runner and may hold the agent's secrets. */
-export function inheritedEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+ *  configures the runner and may hold the agent's secrets, with `overlay` (the
+ *  client's env) laid over it. `TELO_APP_CLI` is removed from the result,
+ *  whichever side set it: every telo the runner starts is itself or a release
+ *  binary, and neither holds a payload. */
+export function inheritedEnvironment(
+  env: NodeJS.ProcessEnv,
+  overlay: Record<string, string> = {},
+): NodeJS.ProcessEnv {
   const inherited = { ...env };
   for (const name of AGENT_VARIABLES) delete inherited[name];
-  return inherited;
+  const merged: NodeJS.ProcessEnv = { ...inherited, ...overlay };
+  delete merged.TELO_APP_CLI;
+  return merged;
 }
 
 /** Resolves once the process started; rejects with the reason it never ran. */

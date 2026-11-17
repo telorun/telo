@@ -17,7 +17,7 @@ import { prepareStateRoot, sessionDirectory } from "../src/runner/state-root.js"
 import { createTeloSupply } from "../src/runner/telo-supply.js";
 
 /**
- * What `telo runner` promises over the wire, checked at the routes: a client
+ * What the host runner promises over the wire, checked at the routes: a client
  * reads `/v1/capabilities` and the runner enforces exactly that, and a session
  * is a directory kept by id across suspends and runner restarts. A Run spawns
  * a stand-in for telo that records its argv, cwd and env and stays up.
@@ -38,7 +38,7 @@ async function boot(agent?: RunnerAgent): Promise<void> {
   const built = await buildServer({
     backend: createProcessBackend({
       stateRoot,
-      self: async () => ({ command: process.execPath, prefix: [FAKE_TELO], env: {} }),
+      self: async () => ({ command: process.execPath, prefix: [FAKE_TELO] }),
       telo: createTeloSupply({
         identity: "0.50.0+unreleased",
         hostTarget: "linux-amd64-gnu",
@@ -53,7 +53,7 @@ async function boot(agent?: RunnerAgent): Promise<void> {
     config: {
       ...base,
       logLevel: "silent",
-      // What `telo runner` serves: no browser origin unless one was named.
+      // What the host runner serves: no browser origin unless one was named.
       corsOrigins: [],
     },
     store,
@@ -129,7 +129,7 @@ const run = (session: Session, appName: string, body: Record<string, unknown>) =
     payload: body,
   });
 
-describe("telo runner capabilities", () => {
+describe("host runner capabilities", () => {
   it("advertises streams-only io, no editable config and no co-resident agent", async () => {
     const res = await app.inject({ method: "GET", url: "/v1/capabilities" });
     expect(res.statusCode).toBe(200);

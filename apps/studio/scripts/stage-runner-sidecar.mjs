@@ -1,21 +1,21 @@
 #!/usr/bin/env node
 /**
- * Stage the `telo` sidecar this Studio build ships.
+ * Stage the `telo-host-runner` sidecar this Studio build ships.
  *
  *   node scripts/stage-cli-sidecar.mjs [--triple <rust target triple>]
  *                                      [--if-missing]
  *
- * Studio runs applications through `telo runner`, and WHICH telo that is must
- * not be a property of the machine it lands on — so the editor carries one,
- * built from this same commit rather than downloaded from a release. This is
- * what puts it where Tauri's `externalBin` expects it:
- * `src-tauri/binaries/telo-<triple>`, copied beside the application binary at
+ * Studio runs applications through the host runner, and WHICH runner (and the
+ * telo it bundles) must not be a property of the machine it lands on — so the
+ * editor carries one, built from this same commit rather than downloaded from a
+ * release. This is what puts it where Tauri's `externalBin` expects it:
+ * `src-tauri/binaries/telo-host-runner-<triple>`, copied beside the application binary at
  * bundle time and resolved from there at runtime.
  *
  * **The two platform vocabularies meet here and nowhere else.** Tauri names a
- * sidecar by the Rust target triple; the CLI's own build speaks Telo's tokens
- * (`darwin-arm64`, `linux-amd64-gnu`), which are also its release asset names.
- * Translating in one place keeps the CLI build from learning about triples.
+ * sidecar by the Rust target triple; the host runner's own build speaks Telo's tokens
+ * (`darwin-arm64`, `linux-amd64-gnu`), which are also the CLI's release asset names.
+ * Translating in one place keeps the runner build from learning about triples.
  */
 
 import { execFileSync } from "node:child_process";
@@ -26,10 +26,10 @@ import { fileURLToPath } from "node:url";
 
 const STUDIO_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const REPO_ROOT = path.resolve(STUDIO_DIR, "..", "..");
-const CLI_DIR = path.join(REPO_ROOT, "cli", "nodejs");
+const RUNNER_DIR = path.join(REPO_ROOT, "apps", "host-runner");
 const BINARIES_DIR = path.join(STUDIO_DIR, "src-tauri", "binaries");
 
-/** Rust target triple → the CLI build's own target token. Only the triples
+/** Rust target triple → the runner build's own target token. Only the triples
  *  Studio is released for, plus their arm64 counterparts; anything else is
  *  refused by name rather than guessed at. */
 const TRIPLE_TO_TELO_TARGET = {
@@ -62,7 +62,7 @@ function hostTriple() {
 /** Sidecars already staged in this checkout, by file name. */
 function staged() {
   if (!fs.existsSync(BINARIES_DIR)) return [];
-  return fs.readdirSync(BINARIES_DIR).filter((name) => name.startsWith("telo-"));
+  return fs.readdirSync(BINARIES_DIR).filter((name) => name.startsWith("telo-host-runner-"));
 }
 
 /** A staged sidecar with the version it reports, so a stale one is visible
@@ -87,12 +87,12 @@ function main() {
   const teloTarget = TRIPLE_TO_TELO_TARGET[triple];
   if (!teloTarget) {
     throw new Error(
-      `no telo build for target triple '${triple}'. Known: ${Object.keys(TRIPLE_TO_TELO_TARGET).join(", ")}`,
+      `no host runner build for target triple '${triple}'. Known: ${Object.keys(TRIPLE_TO_TELO_TARGET).join(", ")}`,
     );
   }
 
   const exe = triple.includes("windows") ? ".exe" : "";
-  const destination = path.join(BINARIES_DIR, `telo-${triple}${exe}`);
+  const destination = path.join(BINARIES_DIR, `telo-host-runner-${triple}${exe}`);
   // `--if-missing` is the hook the dev and build commands run, and it asks
   // whether ANY sidecar is staged — not whether this host's is. A release build
   // stages the target's sidecar explicitly and then cross-builds, where asking
@@ -105,13 +105,13 @@ function main() {
   const already = staged();
   if (args.ifMissing && already.length > 0) {
     process.stderr.write(
-      `telo sidecar already staged: ${already.map(describeStaged).join(", ")}\n` +
-        `Run \`pnpm stage:cli\` to rebuild it from the current source.\n`,
+      `host runner sidecar already staged: ${already.map(describeStaged).join(", ")}\n` +
+        `Run \`pnpm stage:runner\` to rebuild it from the current source.\n`,
     );
     return;
   }
 
-  // The standalone build needs the CLI's compiled entry point; building it here
+  // The standalone build needs the CLI's and the runner's compiled entry points; building it here
   // rather than assuming it keeps a fresh checkout from staging a stale binary
   // (or none at all, which Tauri reports as a missing sidecar).
   //
@@ -121,27 +121,27 @@ function main() {
   // a refused one. `shell: true` is the documented way, and these arguments are
   // literals, so there is nothing for the shell to reinterpret.
   const windows = process.platform === "win32";
-  execFileSync(windows ? "pnpm.cmd" : "pnpm", ["--filter", "@telorun/cli...", "build"], {
+  execFileSync(windows ? "pnpm.cmd" : "pnpm", ["--filter", "@telorun/host-runner...", "build"], {
     cwd: REPO_ROOT,
     stdio: "inherit",
     shell: windows,
   });
 
-  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "telo-sidecar-"));
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "telo-host-runner-sidecar-"));
   try {
     execFileSync(
       "node",
       [path.join("scripts", "build-standalone.mjs"), "--target", teloTarget, "--out", outDir],
-      { cwd: CLI_DIR, stdio: "inherit" },
+      { cwd: RUNNER_DIR, stdio: "inherit" },
     );
-    const built = path.join(outDir, `telo${exe}`);
+    const built = path.join(outDir, `telo-host-runner${exe}`);
     if (!fs.existsSync(built)) {
       throw new Error(`the standalone build produced no ${built}`);
     }
     fs.mkdirSync(BINARIES_DIR, { recursive: true });
     fs.copyFileSync(built, destination);
     if (!exe) fs.chmodSync(destination, 0o755);
-    process.stderr.write(`staged ${teloTarget} telo at ${destination}\n`);
+    process.stderr.write(`staged ${teloTarget} host runner at ${destination}\n`);
   } finally {
     fs.rmSync(outDir, { recursive: true, force: true });
   }

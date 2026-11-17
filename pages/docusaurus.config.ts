@@ -263,7 +263,7 @@ const config: Config = {
     },
     footer: {
       style: "dark",
-      copyright: `Copyright © ${new Date().getFullYear()} CodeNet Sp. z o.o. SDK, standard library and hub released under the MIT License; runtime, tooling, studio and runners under the Sustainable Use License.`,
+      copyright: `Copyright © ${new Date().getFullYear()} CodeNet Sp. z o.o. Runtime, CLI, editor tooling, SDK, standard library and hub released under the MIT License; runners, Studio and the authoring agent under the Sustainable Use License.`,
     },
   } satisfies Preset.ThemeConfig,
 };

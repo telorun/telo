@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import * as path from "node:path";
 import { distributionKind } from "../distribution-versions.js";
 import { carriersRoot } from "./app-home.js";
+import { isCarrierEntry } from "./carrier-entry.js";
 import { APP_MAGIC, MACHO_SECTION, MACHO_SEGMENT, carriesPayload, encodeTrailer } from "./app-trailer.js";
 import {
   hostReleaseTarget,
@@ -25,8 +26,7 @@ import type { PlatformLike } from "./app-payload.js";
  * There is no flag naming a carrier file and no `--telo-version`: a carrier and
  * the CLI inside it are one version by construction, and a flag would be the
  * seam where they stop being. Packaging from a source checkout therefore goes
- * through that checkout's own standalone build, the way `telo runner`
- * supervises the running executable rather than a `telo` from `PATH`.
+ * through that checkout's own standalone build rather than a `telo` from `PATH`.
  */
 
 /** A carrier is the release binary of a platform — one table, read by both. */
@@ -91,7 +91,8 @@ export async function planCarrier(platform: PlatformLike, version: string): Prom
   const target = carrierTarget(platform);
   const isBinary = runningAsBinary();
   const carriesApp = isBinary && (await carriesPayload(process.execPath));
-  if (isBinary && !carriesApp && target === hostCarrierTarget()) {
+  const startsOtherProgram = isBinary && !isCarrierEntry();
+  if (isBinary && !startsOtherProgram && !carriesApp && target === hostCarrierTarget()) {
     // This executable reads payloads by construction — it is the code doing the
     // packaging — so it needs neither the release check nor the probe.
     return { target, from: "self" };
@@ -100,6 +101,7 @@ export async function planCarrier(platform: PlatformLike, version: string): Prom
     isBinary,
     hostTarget: hostCarrierTarget(),
     carriesApp,
+    startsOtherProgram,
   });
   return { target, from: "release" };
 }
@@ -139,7 +141,12 @@ export function assertMayDownloadCarrier(
   kind: ReturnType<typeof distributionKind>,
   target: string,
   version: string,
-  where: { isBinary: boolean; hostTarget: string | null; carriesApp?: boolean } = {
+  where: {
+    isBinary: boolean;
+    hostTarget: string | null;
+    carriesApp?: boolean;
+    startsOtherProgram?: boolean;
+  } = {
     isBinary: false,
     hostTarget: null,
   },
@@ -155,6 +162,12 @@ export function assertMayDownloadCarrier(
     ? [
         `This executable carries an application of its own, so it is the carrier for no`,
         `platform. Package with an installed telo release, or with this checkout's own`,
+        `standalone build (pnpm --filter @telorun/cli build:standalone).`,
+      ].join("\n")
+    : where.startsOtherProgram
+    ? [
+        `This executable starts a program of its own rather than a packaged application, so it is the carrier for no platform.`,
+        `Package with an installed telo release, or with this checkout's own`,
         `standalone build (pnpm --filter @telorun/cli build:standalone).`,
       ].join("\n")
     : where.isBinary

@@ -1,7 +1,7 @@
 [package]
 name = "telo-desktop-host"
 version = "0.137.0"
-license-file = "../../../LICENSE"
+license = "MIT"
 edition = "2021"
 publish = false
 description = "The webview helper `telo run` drives as the desktop host: native windows and tray icons over a framed link. Builds the `telo-desktop-host` binary."

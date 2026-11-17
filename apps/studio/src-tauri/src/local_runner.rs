@@ -13,8 +13,11 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::background_command::background_command;
 
-const CONTAINER_NAME: &str = "telo-local-runner";
-const VOLUME_NAME: &str = "telo-local-runner-bundles";
+const CONTAINER_NAME: &str = "telo-docker-runner";
+const VOLUME_NAME: &str = "telo-docker-runner-bundles";
+/// The container an earlier Studio named its docker runner. It holds the
+/// runner's port, so starting stops and removes it; its volume is left alone.
+const LEGACY_CONTAINER_NAME: &str = "telo-local-runner";
 /// Port docker-runner listens on inside its container (its default).
 const RUNNER_PORT: u16 = 8061;
 /// Docker network spawned workload containers join. `bridge` always exists.
@@ -145,6 +148,8 @@ async fn ensure(image: &str) -> Result<String, String> {
         });
     }
 
+    remove_legacy_container().await?;
+
     docker(&["volume", "create", VOLUME_NAME])
         .await
         .map_err(|e| format!("Failed to run docker: {e}"))
@@ -242,6 +247,15 @@ async fn ensure(image: &str) -> Result<String, String> {
     } else {
         format!("The local runner did not become healthy. Runner output:\n{logs}")
     })
+}
+
+/// Stop (gracefully, so its workload sessions end) and remove a container an
+/// earlier Studio left under the old name; absent is the usual case.
+async fn remove_legacy_container() -> Result<(), String> {
+    docker_ok(&["stop", LEGACY_CONTAINER_NAME]).await?;
+    docker_ok(&["rm", "-f", LEGACY_CONTAINER_NAME])
+        .await
+        .map_err(|e| format!("Failed to remove the runner container an earlier Studio left: {e}"))
 }
 
 async fn teardown() -> Result<(), String> {

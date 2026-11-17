@@ -46,6 +46,7 @@ RUN node -e "const fs=require('fs');const v=JSON.parse(fs.readFileSync('/build/p
 FROM node:24-trixie AS lean
 
 COPY --from=build /deploy/ /opt/telo/
+COPY cli/LICENSE /opt/telo/LICENSE
 COPY cli/nodejs/docker-entrypoint.sh /usr/local/bin/telo-entrypoint.sh
 RUN ln -s /opt/telo/bin/telo.mjs /usr/local/bin/telo \
  && chmod +x /usr/local/bin/telo-entrypoint.sh
@@ -62,6 +63,7 @@ CMD ["telo"]
 FROM node:24-trixie-slim AS lean-slim
 
 COPY --from=build /deploy/ /opt/telo/
+COPY cli/LICENSE /opt/telo/LICENSE
 COPY cli/nodejs/docker-entrypoint.sh /usr/local/bin/telo-entrypoint.sh
 RUN ln -s /opt/telo/bin/telo.mjs /usr/local/bin/telo \
  && chmod +x /usr/local/bin/telo-entrypoint.sh

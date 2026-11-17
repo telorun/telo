@@ -175,7 +175,7 @@ function buildRpm({ target, version, dir }) {
       `Version: ${nativeVersion("rpm", version)}`,
       "Release: 1",
       "Summary: Telo — a declarative runtime for YAML manifests",
-      "License: SEE LICENSE IN LICENSE",
+      "License: MIT",
       "%description",
       "The standalone build: one executable, no Node.js required.",
       "%install",

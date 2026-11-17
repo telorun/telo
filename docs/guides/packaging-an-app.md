@@ -84,6 +84,13 @@ That binary is the carrier for its own platform. Packaging for *another*
 platform needs an installed telo release — the one case where a downloaded
 carrier is the telo doing the packaging.
 
+Only the telo's own standalone binary can be a carrier. A single-file executable
+built from another program that bundles the telo — a tool that runs it as one part
+of its own work — starts that program, not a packaged application, so it is the
+carrier for no platform: packaged through it, `telo package` uses the release
+download as an installed telo does, and from a local build it refuses with that
+reason.
+
 ## Which controllers can travel
 
 A payload carries only controllers that are **files on the target machine**. Two

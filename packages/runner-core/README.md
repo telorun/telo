@@ -1,8 +1,8 @@
 # @telorun/runner-core
 
 Backend-neutral core shared by the Telo runners: [`docker-runner`](../../apps/docker-runner),
-[`k8s-runner`](../../apps/k8s-runner) and `telo runner`, the local-process
-runner the CLI serves. It owns everything about a session *except* how its
+[`k8s-runner`](../../apps/k8s-runner) and [`host-runner`](../../apps/host-runner),
+the local-process runner. It owns everything about a session *except* how its
 workload is actually created and how a process is spawned in it:
 
 - the `/v1` HTTP+SSE **session contract** and Fastify routes (below);
@@ -157,7 +157,7 @@ an identity is one branch of it resolving to the owner `(iss, sub)`.
 Both or neither: boot refuses one without the other, a non-https audience or
 issuer, and an audience with a query, a fragment, a trailing slash or a
 non-canonical spelling. With neither, the runner takes resume secrets only —
-`telo runner`'s default, since a loopback http address cannot be an audience.
+`telo-host-runner`'s default, since a loopback http address cannot be an audience.
 
 **Advertising.** `/v1/capabilities` carries `identity`, the RFC 9728
 protected-resource metadata `{ resource, authorization_servers,

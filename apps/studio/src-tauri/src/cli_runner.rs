@@ -1,9 +1,9 @@
-//! Local CLI runner supervisor: runs `telo runner` — the Telo CLI shipped
+//! Host runner supervisor: runs `telo-host-runner` — the runner shipped
 //! inside this application — as a child process, and hands its loopback base URL
 //! to the webview. The editor talks to it through the ordinary http-runner
 //! adapter; this module only owns the process's lifecycle.
 //!
-//! **Which `telo` is not a question about the machine.** The executable is the
+//! **Which runner is not a question about the machine.** The executable is the
 //! sidecar bundled beside this binary, or one the user named explicitly in the
 //! runner's settings — never a `PATH` lookup and never a version comparison. A
 //! second install at another version silently driving a session is exactly what
@@ -86,14 +86,14 @@ pub struct CliRunnerState {
     ensure_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
-/// The `telo` this editor runs: the explicit override, else the bundled
-/// sidecar, else — in a development build only — the workspace CLI.
+/// The host runner this editor runs: the explicit override, else the bundled
+/// sidecar, else — in a development build only — the workspace's bin script.
 fn resolve_executable(override_path: Option<String>) -> Result<(PathBuf, Vec<String>), String> {
     if let Some(path) = override_path.filter(|p| !p.trim().is_empty()) {
         let path = PathBuf::from(path.trim());
         if !path.exists() {
             return Err(format!(
-                "The configured telo executable does not exist: {}",
+                "The configured host runner executable does not exist: {}",
                 path.display()
             ));
         }
@@ -104,7 +104,7 @@ fn resolve_executable(override_path: Option<String>) -> Result<(PathBuf, Vec<Str
     // the target triple stripped.
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            let sidecar = dir.join(if cfg!(windows) { "telo.exe" } else { "telo" });
+            let sidecar = dir.join(if cfg!(windows) { "telo-host-runner.exe" } else { "telo-host-runner" });
             if sidecar.exists() {
                 return Ok((sidecar, Vec::new()));
             }
@@ -112,14 +112,15 @@ fn resolve_executable(override_path: Option<String>) -> Result<(PathBuf, Vec<Str
     }
 
     // No sidecar beside this binary: a development build run without one
-    // staged (`cargo run`, or a tree where `pnpm stage:cli` has not run). The
-    // fallback is the CLI of THIS checkout, named explicitly — still not a PATH
-    // search, so a dev build cannot quietly pick up an installed telo either.
+    // staged (`cargo run`, or a tree where `pnpm stage:runner` has not run). The
+    // fallback is the runner of THIS checkout, named explicitly and spawned as
+    // `node <script>` (never through a shebang, which Windows ignores) — still
+    // not a PATH search, so a dev build cannot quietly pick up an installed one.
     // When a sidecar IS staged, the branch above wins and dev behaves exactly
     // like a release build.
     if cfg!(debug_assertions) {
         let workspace_cli = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../cli/nodejs/bin/telo.mjs");
+            .join("../../host-runner/bin/telo-host-runner.mjs");
         if workspace_cli.exists() {
             let cli = workspace_cli
                 .canonicalize()
@@ -130,7 +131,7 @@ fn resolve_executable(override_path: Option<String>) -> Result<(PathBuf, Vec<Str
         }
     }
 
-    Err("This build carries no telo executable.".into())
+    Err("This build carries no host runner executable.".into())
 }
 
 #[tauri::command]
@@ -140,7 +141,7 @@ pub async fn cli_runner_probe(executable: Option<String>) -> Result<Availability
         Err(message) => AvailabilityReport::Unavailable {
             message,
             remediation: Some(
-                "Set the runner's `executable` to a telo binary, or reinstall Telo Studio.".into(),
+                "Set the runner's `executable` to a host runner binary, or reinstall Telo Studio.".into(),
             ),
         },
     })
@@ -285,7 +286,6 @@ async fn start(executable: Option<String>, state_dir: PathBuf) -> Result<Started
     let mut command = background_command(&program);
     command
         .args(&prefix)
-        .arg("runner")
         .arg("--port")
         .arg(port.to_string())
         .arg("--host")
@@ -308,7 +308,7 @@ async fn start(executable: Option<String>, state_dir: PathBuf) -> Result<Started
 
     let mut child = command
         .spawn()
-        .map_err(|e| format!("Failed to start `{} runner`: {e}", program.display()))?;
+        .map_err(|e| format!("Failed to start `{}`: {e}", program.display()))?;
 
     let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
     while tokio::time::Instant::now() < deadline {

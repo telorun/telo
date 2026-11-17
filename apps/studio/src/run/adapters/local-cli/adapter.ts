@@ -12,9 +12,9 @@ import {
   stopLocalCliRunner,
 } from "./supervisor";
 
-const DISPLAY_NAME = "Local (telo CLI)";
+const DISPLAY_NAME = "Local (host runner)";
 const DESCRIPTION =
-  "Runs the Application with the telo CLI on this machine — one process per application, no container.";
+  "Runs the Application with the host runner on this machine — one process per application, no container.";
 
 /** The wire half: a plain http-runner adapter dialing the supervisor-managed
  *  baseUrl. Every session, SSE and byte-channel concern is the shared factory's

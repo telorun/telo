@@ -10,7 +10,7 @@
     "yaml"
   ],
   "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/telorun/telo.git",
@@ -33,8 +33,8 @@
     "build": "node ../../scripts/generate-telo-version.mjs && tsc -p tsconfig.json && node scripts/build.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "prepack": "node ../../scripts/pack-backup.mjs . --save dist && node scripts/build.mjs --published && node scripts/check-engine-identity.mjs && cp ../../LICENSE . && node ../../scripts/rewrite-pack-links.mjs .",
-    "postpack": "node ../../scripts/rewrite-pack-links.mjs . --restore && rm -f LICENSE && node ../../scripts/pack-backup.mjs . --restore"
+    "prepack": "node ../../scripts/pack-backup.mjs . --save dist && node scripts/build.mjs --published && node scripts/check-engine-identity.mjs && node ../../scripts/rewrite-pack-links.mjs .",
+    "postpack": "node ../../scripts/rewrite-pack-links.mjs . --restore && node ../../scripts/pack-backup.mjs . --restore"
   },
   "devDependencies": {
     "@telorun/analyzer": "workspace:*",

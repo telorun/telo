@@ -1,7 +1,7 @@
 import type { RunnerAgent, RunnerCapabilities, SessionConfig } from "@telorun/runner-core";
 
 /**
- * What `telo runner` says about itself on `GET /v1/capabilities`.
+ * What the host runner says about itself on `GET /v1/capabilities`.
  *
  * The document is the contract: the editor renders its config form from
  * `config.schema` and core enforces `features` on the session routes, so
@@ -20,7 +20,7 @@ import type { RunnerAgent, RunnerCapabilities, SessionConfig } from "@telorun/ru
  */
 export function localRunnerCapabilities(agent?: RunnerAgent): RunnerCapabilities {
   return {
-    displayName: "Local (telo CLI)",
+    displayName: "Local (host runner)",
     description:
       "Runs each application as a `telo run` process on this machine, as the user running the " +
       "runner: no container, no isolation, and ports are bound directly on this host.",

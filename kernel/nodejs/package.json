@@ -9,7 +9,7 @@
     "manifest"
   ],
   "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/telorun/telo.git",
@@ -61,7 +61,7 @@
   "scripts": {
     "build": "node ../../scripts/generate-telo-version.mjs && tsc",
     "dev": "tsc --watch",
-    "prepack": "node ../../scripts/pack-backup.mjs . --save src/telo-runtime-version.ts dist package.json && node ../../scripts/generate-telo-version.mjs --published && tsc && node ../../scripts/check-pack-identity.mjs kernel && cp ../../LICENSE . && cp ../README.md . && node ../../scripts/prepack-bake-overrides.mjs . && node ../../scripts/rewrite-pack-links.mjs . --readme-from ../README.md",
+    "prepack": "node ../../scripts/pack-backup.mjs . --save src/telo-runtime-version.ts dist package.json && node ../../scripts/generate-telo-version.mjs --published && tsc && node ../../scripts/check-pack-identity.mjs kernel && cp ../LICENSE . && cp ../README.md . && node ../../scripts/prepack-bake-overrides.mjs . && node ../../scripts/rewrite-pack-links.mjs . --readme-from ../README.md",
     "postpack": "node ../../scripts/rewrite-pack-links.mjs . --restore && rm -f LICENSE && rm -f README.md && node ../../scripts/pack-backup.mjs . --restore",
     "test": "vitest run",
     "test:integration": "TELO_DOCKER_TESTS=1 vitest run --config vitest.integration.config.ts",

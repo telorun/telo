@@ -1,4 +1,4 @@
-import { execFile, spawn } from "node:child_process";
+import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -157,86 +157,6 @@ describe("a packaged executable", () => {
       // A run reclaims the app's other digests, so a second directory would
       // have replaced the first.
       expect(fs.readdirSync(path.join(appDir, "apps"))).toEqual(unpacked);
-    },
-    90_000,
-  );
-
-  it.skipIf(!carrierSupported)(
-    "is a runner under TELO_APP_CLI=1, and a session it starts runs",
-    async () => {
-      const { dir, carrier } = await packagedCarrier("packaged-dispatch", "greeter");
-      const runner = spawn(
-        carrier,
-        [STANDALONE_ENTRY, "-o", "json", "runner", "--port", "0", "--state-dir", path.join(dir, "state")],
-        {
-          cwd: ROOT,
-          env: { ...process.env, TELO_APP_CLI: "1", TELO_APP_DIR: path.join(dir, "apps-root") },
-          stdio: ["ignore", "pipe", "pipe"],
-        },
-      );
-      let stderr = "";
-      runner.stderr.on("data", (chunk) => (stderr += String(chunk)));
-      try {
-        const url = await new Promise<string>((resolve, reject) => {
-          // Under `-o json` stdout carries the address document and nothing else.
-          let stdout = "";
-          runner.stdout.on("data", (chunk) => {
-            stdout += String(chunk);
-            const url = /"url":\s*"([^"]+)"/.exec(stdout)?.[1];
-            if (url) resolve(url);
-          });
-          runner.on("exit", (code) => reject(new Error(`the runner exited (${code}) before listening: ${stderr}`)));
-        });
-
-        const created = await fetch(`${url}/v1/sessions`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ workspace: "packaged", apps: [{ name: "app", entryRelativePath: "telo.yaml" }] }),
-        });
-        expect(created.status, await created.clone().text()).toBe(201);
-        const { sessionId, resumeSecret } = (await created.json()) as { sessionId: string; resumeSecret: string };
-        const auth = { authorization: `Bearer ${resumeSecret}`, "content-type": "application/json" };
-        const session = async () =>
-          (await (await fetch(`${url}/v1/sessions/${sessionId}`, { headers: auth })).json()) as {
-            status: { kind: string };
-            apps: Array<{ state: string; generation: number }>;
-          };
-        for (let i = 0; i < 600 && (await session()).status.kind !== "running"; i++) {
-          await new Promise((resolve) => setTimeout(resolve, 100));
-        }
-        const seeded = await fetch(`${url}/v1/sessions/${sessionId}/workspace`, {
-          method: "POST",
-          headers: auth,
-          body: JSON.stringify({
-            write: [{ path: "telo.yaml", content: "kind: Telo.Application\nmetadata: { name: Empty }\n" }],
-          }),
-        });
-        expect(seeded.status, await seeded.clone().text()).toBe(200);
-        const ran = await fetch(`${url}/v1/sessions/${sessionId}/apps/app/run`, {
-          method: "POST",
-          headers: auth,
-          body: JSON.stringify({ env: {}, io: "streams" }),
-        });
-        expect(ran.status, await ran.clone().text()).toBe(202);
-
-        // A generation is counted from the kernel's own debug stream, so one
-        // starting means the process the run spawned is telo running the
-        // manifest — not the application this executable carries.
-        let generation = 0;
-        for (let i = 0; i < 600 && generation === 0; i++) {
-          await new Promise((resolve) => setTimeout(resolve, 100));
-          generation = (await session()).apps[0]!.generation;
-        }
-        expect(generation, stderr).toBe(1);
-      } finally {
-        // Waited for, so the directory it runs from is no longer in use when the
-        // suite removes it — Windows refuses to delete a running executable.
-        if (runner.exitCode === null && runner.signalCode === null) {
-          const exited = new Promise((resolve) => runner.once("exit", resolve));
-          runner.kill("SIGTERM");
-          await exited;
-        }
-      }
     },
     90_000,
   );

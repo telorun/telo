@@ -1,0 +1,13 @@
+units:
+  cli: Added
+body: "telo runner is removed: the local-process runner is now the separate
+  @telorun/host-runner package (bin telo-host-runner), which bundles the telo, and a
+  telo runner now fails as a missing manifest named runner. The package exports main,
+  which runs the CLI on a given argument list and runs nothing on import, and the
+  subpath @telorun/cli/release-binary, the verified telo release download. telo package
+  now treats an executable as its own carrier only when its entry is the CLI's
+  standalone one, which starts a payload as the application; a single-file executable
+  built from another program that bundles the CLI is refused with the reason that it
+  starts a program of its own rather than a packaged application, so it is the carrier
+  for no platform. A packaged binary run as TELO_APP_CLI=1 ./app runner no longer
+  exists, and no telo sets TELO_APP_CLI on a child."

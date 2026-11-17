@@ -66,6 +66,7 @@ release:
       ecosystem: { npm: ., docker: { ".": { context: . } }, helm: chart }
       version: package.json
     - { path: apps/docker-runner, ecosystem: { npm: ., docker: { ".": { context: . } } } }
+    - { path: apps/host-runner, ecosystem: npm }
     - { path: apps/hub-web, ecosystem: { npm: ., docker: { ".": { context: . } } } }
     # The VS Code extension: a .vsix, whose files are what `stage-vsix.mjs` stages and vsce packs.
     - path: ide/vscode

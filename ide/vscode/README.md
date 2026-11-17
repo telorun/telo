@@ -102,6 +102,6 @@ The `telo.manifestCacheUrl` setting is gone: an upgrade candidate's `telo.yaml` 
 
 ## License
 
-Sustainable Use License (fair-code). See [LICENSE](../../LICENSE).
+MIT. See [LICENSE](LICENSE).
 
 Developed by CodeNet Sp. z o.o.

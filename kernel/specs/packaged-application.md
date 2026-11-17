@@ -18,6 +18,11 @@ packages, starts, nor accepts a packaged executable as a manifest source.
    application, at that telo's own version.
 2. An executable that already carries a payload is never a carrier: packaging from one uses
    the release asset of its version, and a build that is not a release refuses.
+3. A single-file executable is a carrier only when its entry is the one that starts a payload
+   as the application, which declares it. An executable built from any other entry — one
+   that bundles the CLI beside a program of its own — is the carrier for no platform: packaging
+   from it uses the release asset of its version, and a build that is not a release refuses
+   with the reason that it starts a program of its own rather than a packaged application.
 
 ## 2. Where the payload rides
 
@@ -153,9 +158,8 @@ packages, starts, nor accepts a packaged executable as a manifest source.
    unless the environment names one. An app whose host the environment supplies keeps the
    working directory it started in.
 5. As the CLI, a packaged executable is the telo it carries, with every command and option
-   that telo has. A `telo` that re-runs its own executable as the CLI — `telo runner`
-   starting an application — sets `TELO_APP_CLI=1` on the child when that executable
-   carries a payload, and not when it runs another release's binary.
+   that telo has. No `telo` re-runs its own executable as the CLI, so none sets
+   `TELO_APP_CLI=1` on a child.
 6. `TELO_APP_INFO` is retired. A packaged executable starting as its application with
    `TELO_APP_INFO` set to anything but whitespace refuses the invocation as rule 1 does —
    before any manifest is read, nothing on stdout, exit status 2 — and starts nothing,

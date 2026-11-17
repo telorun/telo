@@ -44,6 +44,15 @@ const MIT_DIRECTORIES = [
   "benchmarks",
   "apps/hub",
   "apps/hub-web",
+  "kernel",
+  "analyzer",
+  "cli",
+  "ide/vscode",
+  "packages/ide-support",
+  "packages/language-server",
+  "packages/language-host",
+  "packages/debug-wire",
+  "packages/debug-ui",
 ];
 
 /** The MIT directories whose `telo.yaml` files are module roots. */

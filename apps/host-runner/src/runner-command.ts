@@ -1,21 +1,39 @@
 import * as os from "node:os";
 
-import type { RunnerAgent, RunnerCoreConfig } from "@telorun/runner-core";
-import type { Argv } from "yargs";
+import { carriersRoot, hostReleaseTarget } from "@telorun/cli/release-binary";
+import { TELO_RUNTIME_VERSION } from "@telorun/kernel";
+import {
+  buildServer,
+  loadCoreConfig,
+  openSessionStore,
+  parseCorsOrigins,
+  type RunnerAgent,
+  type RunnerCoreConfig,
+} from "@telorun/runner-core";
+import yargs from "yargs";
 
-import { cliVersion } from "../distribution-versions.js";
-import { EXIT_REFUSED } from "../exit-status.js";
-import { outEmit, outErrLine, outLine } from "../output.js";
-import { containerRunnerSettingRefusal } from "../runner/container-runner-settings.js";
+import { localRunnerCapabilities, validateLocalRunnerConfig } from "./runner/capabilities.js";
+import { containerRunnerSettingRefusal } from "./runner/container-runner-settings.js";
+import { loadLocalAgent } from "./runner/local-agent.js";
+import { createProcessBackend } from "./runner/process-backend.js";
+import { prepareStateRoot, resolveStateRoot, STATE_DIR_ENV } from "./runner/state-root.js";
+import { createTeloSupply } from "./runner/telo-supply.js";
+import { configureOutput, OUTPUT_FORMATS, outEmit, outErrLine, outLine, type OutputFormat } from "./runner-output.js";
+import { hostRunnerVersion } from "./runner-version.js";
+
+/** A refused invocation: a command line the parser rejects, or an option the
+ *  runner refuses before it starts. */
+const EXIT_REFUSED = 2;
 
 interface RunnerArgv {
   port: number;
-  /** The global `--verbose`, which here turns the per-request log on. */
+  /** Turns the per-request log on. */
   verbose: boolean;
   host: string;
   allowRemote: boolean;
   allowOrigin: string[];
   stateDir?: string;
+  output: OutputFormat;
 }
 
 const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost"]);
@@ -28,54 +46,94 @@ const DEFAULT_PORT = 8061;
  *  a stream open. */
 const DRAIN_TIMEOUT_MS = 3_000;
 
-export function runnerCommand(cli: Argv): Argv {
-  return cli.command(
-    "runner",
-    "Serve the /v1 runner API over local processes, so an editor (or any client) can run applications on this machine",
-    (yargs) =>
-      yargs
-        .option("port", {
-          type: "number",
-          default: DEFAULT_PORT,
-          describe: "Port to listen on. `0` picks a free one and reports it.",
-        })
-        .option("host", {
-          type: "string",
-          default: "127.0.0.1",
-          describe:
-            "Address to bind. Anything but loopback needs --allow-remote: this API runs applications with the invoking user's privileges and has no authentication.",
-        })
-        .option("allow-remote", {
-          type: "boolean",
-          default: false,
-          describe:
-            "Permit a non-loopback bind. Everyone who can reach the port can run code as this user.",
-        })
-        .option("allow-origin", {
-          type: "array",
-          string: true,
-          default: [] as string[],
-          describe:
-            "A browser origin allowed to drive this runner (repeatable). None by default: a page on any site can reach 127.0.0.1, and this API runs code. Native clients, which send no Origin, are unaffected.",
-        })
-        .option("state-dir", {
-          type: "string",
-          describe:
-            "The runner's state directory: the session store and every session's directory, kept across suspends, restarts and reboots. Overrides RUNNER_STATE_DIR; default the per-user state directory (Linux $XDG_STATE_HOME/telo/runner or ~/.local/state/telo/runner, macOS ~/Library/Application Support/telo/runner, Windows %LOCALAPPDATA%\\telo\\state\\runner).",
-        }),
-    async (argv) => {
-      await runRunner(argv as unknown as RunnerArgv);
-    },
-  );
+/** Parse the runner's command line and serve. A usage error prints the usage and
+ *  the reason on stderr and exits {@link EXIT_REFUSED}; `--help` prints it on stdout. */
+export async function runHostRunner(args: readonly string[]): Promise<void> {
+  const parsed = await parseCommandLine(args);
+  if (parsed === undefined) return;
+  await serve(parsed);
 }
 
-async function runRunner(argv: RunnerArgv): Promise<void> {
+function parseCommandLine(args: readonly string[]): Promise<RunnerArgv | undefined> {
+  const parser = yargs([...args])
+    .scriptName("telo-host-runner")
+    .usage(
+      "$0 [options]\n\nServe the /v1 runner API over local processes, so an editor (or any client) can run applications on this machine. " +
+        "`telo-host-runner telo <arguments>` runs the telo it bundles.",
+    )
+    .option("port", {
+      type: "number",
+      default: DEFAULT_PORT,
+      describe: "Port to listen on. `0` picks a free one and reports it.",
+    })
+    .option("host", {
+      type: "string",
+      default: "127.0.0.1",
+      describe:
+        "Address to bind. Anything but loopback needs --allow-remote: this API runs applications with the invoking user's privileges and has no authentication.",
+    })
+    .option("allow-remote", {
+      type: "boolean",
+      default: false,
+      describe: "Permit a non-loopback bind. Everyone who can reach the port can run code as this user.",
+    })
+    .option("allow-origin", {
+      type: "array",
+      string: true,
+      default: [] as string[],
+      describe:
+        "A browser origin allowed to drive this runner (repeatable). None by default: a page on any site can reach 127.0.0.1, and this API runs code. Native clients, which send no Origin, are unaffected.",
+    })
+    .option("state-dir", {
+      type: "string",
+      describe:
+        "The runner's state directory: the session store and every session's directory, kept across suspends, restarts and reboots. Overrides RUNNER_STATE_DIR; default the per-user state directory (Linux $XDG_STATE_HOME/telo/runner or ~/.local/state/telo/runner, macOS ~/Library/Application Support/telo/runner, Windows %LOCALAPPDATA%\\telo\\state\\runner).",
+    })
+    .option("verbose", {
+      type: "boolean",
+      default: false,
+      describe: "Turn the per-request log on.",
+    })
+    .option("output", {
+      alias: "o",
+      type: "string",
+      choices: OUTPUT_FORMATS,
+      default: "text" as const,
+      describe: "Output format. `json` prints the address the runner serves as one document on stdout.",
+    })
+    .strict()
+    .help()
+    .version(false)
+    .exitProcess(false);
+
+  return new Promise((resolve) => {
+    parser.parse(args as string[], {}, (err: Error | undefined, argv: unknown, output: string) => {
+      if (err) {
+        outErrLine(output || err.message);
+        process.exitCode = EXIT_REFUSED;
+        resolve(undefined);
+        return;
+      }
+      if (output) {
+        // `--help`: the usage is the answer.
+        process.stdout.write(`${output}\n`);
+        resolve(undefined);
+        return;
+      }
+      resolve(argv as unknown as RunnerArgv);
+    });
+  });
+}
+
+async function serve(argv: RunnerArgv): Promise<void> {
+  configureOutput(argv.output);
+
   // A non-loopback bind is refused rather than warned about: this API starts
   // processes as the invoking user and authenticates nobody, so exposing it is
   // a decision, not a default.
   if (!LOOPBACK.has(argv.host) && !argv.allowRemote) {
     outErrLine(
-      `telo runner: refusing to bind ${argv.host}. This API runs applications as ${os.userInfo().username} ` +
+      `telo-host-runner: refusing to bind ${argv.host}. This API runs applications as ${os.userInfo().username} ` +
         `with no authentication, so a non-loopback bind must be asked for explicitly: pass --allow-remote.`,
     );
     process.exitCode = EXIT_REFUSED;
@@ -83,48 +141,31 @@ async function runRunner(argv: RunnerArgv): Promise<void> {
   }
 
   if (!Number.isInteger(argv.port) || argv.port < 0 || argv.port > 65535) {
-    outErrLine(`telo runner: --port must be 0 (pick a free one) or 1..65535, got '${argv.port}'.`);
+    outErrLine(`telo-host-runner: --port must be 0 (pick a free one) or 1..65535, got '${argv.port}'.`);
     process.exitCode = EXIT_REFUSED;
     return;
   }
 
   const refusal = containerRunnerSettingRefusal(process.env, os.userInfo().username);
   if (refusal) {
-    outErrLine(`telo runner: ${refusal}`);
+    outErrLine(`telo-host-runner: ${refusal}`);
     process.exitCode = EXIT_REFUSED;
     return;
   }
-
-  // Loaded here rather than at module scope: this is the only command that
-  // needs a web server, and a static import puts fastify, pino and ws on the
-  // startup path of every `telo check` and `telo run` (~70ms of a ~270ms
-  // start). The command surface is unchanged — yargs registration above stays
-  // static, so `--help` still lists it.
-  const { buildServer, loadCoreConfig, openSessionStore, parseCorsOrigins } = await import(
-    "@telorun/runner-core"
-  );
-  const { createProcessBackend } = await import("../runner/process-backend.js");
-  const { prepareStateRoot, resolveStateRoot, STATE_DIR_ENV } = await import(
-    "../runner/state-root.js"
-  );
-  const { localRunnerCapabilities, validateLocalRunnerConfig } = await import(
-    "../runner/capabilities.js"
-  );
-  const { loadLocalAgent } = await import("../runner/local-agent.js");
 
   // The co-resident agent, from the operator's `AGENT_*` variables.
   let agent: RunnerAgent | undefined;
   try {
     agent = loadLocalAgent(process.env);
   } catch (err) {
-    outErrLine(`telo runner: ${message(err)}`);
+    outErrLine(`telo-host-runner: ${message(err)}`);
     process.exitCode = EXIT_REFUSED;
     return;
   }
 
   const resolution = resolveStateRoot(argv.stateDir, process.env, process.platform, process.cwd());
   if ("refusal" in resolution) {
-    outErrLine(`telo runner: ${resolution.refusal}`);
+    outErrLine(`telo-host-runner: ${resolution.refusal}`);
     process.exitCode = EXIT_REFUSED;
     return;
   }
@@ -136,17 +177,13 @@ async function runRunner(argv: RunnerArgv): Promise<void> {
   } catch (err) {
     const source = resolution.from === "default" ? "the per-user default" : resolution.from;
     outErrLine(
-      `telo runner: cannot keep state in '${stateRoot}' (${source}): ${message(err)}. ` +
+      `telo-host-runner: cannot keep state in '${stateRoot}' (${source}): ${message(err)}. ` +
         `Name a writable directory with --state-dir <dir> or ${STATE_DIR_ENV}.`,
     );
     process.exitCode = EXIT_REFUSED;
     return;
   }
 
-  const { createTeloSupply } = await import("../runner/telo-supply.js");
-  const { hostReleaseTarget } = await import("../release-binary.js");
-  const { carriersRoot } = await import("../package/app-home.js");
-  const { TELO_RUNTIME_VERSION } = await import("@telorun/kernel");
   const backend = createProcessBackend({
     stateRoot,
     telo: createTeloSupply({
@@ -156,7 +193,7 @@ async function runRunner(argv: RunnerArgv): Promise<void> {
     }),
     onSwept: (names) =>
       outErrLine(
-        `telo runner: removed ${names.length} session director${names.length === 1 ? "y" : "ies"} no stored session owns.`,
+        `telo-host-runner: removed ${names.length} session director${names.length === 1 ? "y" : "ies"} no stored session owns.`,
       ),
   });
 
@@ -174,7 +211,7 @@ async function runRunner(argv: RunnerArgv): Promise<void> {
       stateDir: stateRoot,
     });
   } catch (err) {
-    outErrLine(`telo runner: ${message(err)}`);
+    outErrLine(`telo-host-runner: ${message(err)}`);
     process.exitCode = EXIT_REFUSED;
     return;
   }
@@ -197,10 +234,10 @@ async function runRunner(argv: RunnerArgv): Promise<void> {
   const store = await openSessionStore(config.sessionStore, {
     log: {
       error: (detail, msg) =>
-        outErrLine(`telo runner: ${msg}: ${message((detail as { err?: unknown }).err ?? detail)}`),
+        outErrLine(`telo-host-runner: ${msg}: ${message((detail as { err?: unknown }).err ?? detail)}`),
     },
   }).catch((err: unknown) => {
-    outErrLine(`telo runner: could not open the session store: ${message(err)}`);
+    outErrLine(`telo-host-runner: could not open the session store: ${message(err)}`);
     return undefined;
   });
   if (!store) {
@@ -216,7 +253,7 @@ async function runRunner(argv: RunnerArgv): Promise<void> {
       backend,
       config,
       store,
-      version: cliVersion() ?? "unversioned build",
+      version: hostRunnerVersion() ?? "unversioned build",
       capabilities: localRunnerCapabilities(agent),
       agent,
       validateConfig: validateLocalRunnerConfig,
@@ -227,7 +264,7 @@ async function runRunner(argv: RunnerArgv): Promise<void> {
     });
   } catch (err) {
     await store.close();
-    outErrLine(`telo runner: ${message(err)}`);
+    outErrLine(`telo-host-runner: ${message(err)}`);
     process.exitCode = 1;
     return;
   }
@@ -236,7 +273,7 @@ async function runRunner(argv: RunnerArgv): Promise<void> {
   try {
     await app.listen({ port: argv.port, host: argv.host });
   } catch (err) {
-    outErrLine(`telo runner: could not listen on ${argv.host}:${argv.port}: ${message(err)}`);
+    outErrLine(`telo-host-runner: could not listen on ${argv.host}:${argv.port}: ${message(err)}`);
     await app.close();
     await store.close();
     process.exitCode = 1;
@@ -247,7 +284,7 @@ async function runRunner(argv: RunnerArgv): Promise<void> {
   const port = typeof address === "object" && address ? address.port : argv.port;
   const url = `http://${argv.host === "::1" ? "[::1]" : argv.host}:${port}`;
 
-  outLine(`telo runner listening on ${url}`);
+  outLine(`telo-host-runner listening on ${url}`);
   outLine(`Applications run as ${os.userInfo().username}, from ${stateRoot}.`);
   // The result of this command is the address it is serving, which is what a
   // supervising client needs before it can dial. Written once, as soon as it is
@@ -270,7 +307,7 @@ async function runRunner(argv: RunnerArgv): Promise<void> {
     await lifecycle.close();
     await Promise.race([app.close(), delay(DRAIN_TIMEOUT_MS)]);
     await store.close();
-    outErrLine(`telo runner: stopped (${signal}).`);
+    outErrLine(`telo-host-runner: stopped (${signal}).`);
     process.exit(0);
   };
 

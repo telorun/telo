@@ -43,14 +43,12 @@ export async function spawnAgentProcess(args: AgentProcessArgs): Promise<AgentPr
     const child = spawn(args.telo.command, [...args.telo.prefix, "run", "--no-input", args.ref], {
       cwd: args.directory,
       // What the runner supplies wins over the operator's env, as on the
-      // container runners; the telo's own wins over everything.
+      // container runners.
       env: {
-        ...inheritedEnvironment(process.env),
-        ...args.env,
+        ...inheritedEnvironment(process.env, args.env),
         WORKSPACE_DIR: args.workspace,
         TELO_HOST_STATE_DIR: args.directory,
         TELO_CACHE_DIR: cache,
-        ...args.telo.env,
       },
       stdio: ["ignore", output.fd, output.fd],
       detached: process.platform !== "win32",

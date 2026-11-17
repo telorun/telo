@@ -6,15 +6,19 @@ import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 import { readZipEntry, zipEntryNames } from "./package/zip.js";
 
+/** Where downloaded release binaries are kept between uses. */
+export { carriersRoot } from "./package/app-home.js";
+
 /**
  * The released `telo` binary of one version for one platform: downloaded from
  * that release, verified against the release's own `checksums.txt`, and kept in
  * the user cache.
  *
- * Two commands need exactly this and nothing more of each other — `telo package`
- * (the carrier an application is packaged into) and `telo runner` (the telo an
- * application asked to run on, when it is not this one) — so the fetch lives
- * here and each says, in its own words, what a failure means for it.
+ * Two consumers need exactly this and nothing more of each other — `telo package`
+ * (the carrier an application is packaged into) and the host runner (the telo an
+ * application asked to run on, when it is not its own) — so the fetch lives
+ * here, exported as `@telorun/cli/release-binary`, and each says, in its own
+ * words, what a failure means for it.
  *
  * **Verified or refused.** A release that publishes no checksum for its binary
  * is a condition to stop at: continuing would run, or ship, a network-fetched

@@ -9,7 +9,7 @@
     "editor"
   ],
   "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/telorun/telo.git",
@@ -39,8 +39,8 @@
     "build": "tsc -p tsconfig.lib.json",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "prepack": "cp ../../LICENSE . && node ../../scripts/rewrite-pack-links.mjs .",
-    "postpack": "node ../../scripts/rewrite-pack-links.mjs . --restore && rm -f LICENSE"
+    "prepack": "node ../../scripts/rewrite-pack-links.mjs .",
+    "postpack": "node ../../scripts/rewrite-pack-links.mjs . --restore"
   },
   "dependencies": {
     "@telorun/editor-protocol": "workspace:*",

@@ -9,13 +9,13 @@ import type { TeloSupply } from "./telo-supply.js";
 
 /**
  * The local-process `RunnerBackend`: a session is a directory under the state
- * root, and every Run is a `telo run` of this same executable, on this machine,
+ * root, and every Run is a `telo run` through this same executable, on this machine,
  * as this user.
  *
  * It is the third backend behind one `/v1` contract, and the substrate it owns
- * is the `telo` binary itself — which is why it lives in the CLI rather than in
- * the backend-neutral package, exactly as the docker backend lives in the image
- * that fronts a docker socket.
+ * is the host runner's own executable, which is a `telo` too — which is why it
+ * lives in the host runner rather than in the backend-neutral package, exactly
+ * as the docker backend lives in the image that fronts a docker socket.
  *
  * What is genuinely different here is advertised rather than hidden:
  *
@@ -54,7 +54,7 @@ export function createProcessBackend(deps: ProcessBackendDeps): RunnerBackend {
   };
   return {
     async probe(): Promise<AvailabilityReport> {
-      // Two things have to hold before a session can run: this CLI must know
+      // Two things have to hold before a session can run: this runner must know
       // how to re-invoke itself, and the state root must be writable.
       try {
         await workloadDeps.self();
@@ -62,7 +62,7 @@ export function createProcessBackend(deps: ProcessBackendDeps): RunnerBackend {
         return {
           status: "unavailable",
           message: messageOf(err),
-          remediation: "Run the runner from an installed `telo`, or from the CLI's own entry point.",
+          remediation: "Run the runner from an installed `telo-host-runner`, or from its own entry point.",
         };
       }
       try {

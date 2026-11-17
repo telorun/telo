@@ -45,7 +45,7 @@ function startAction(): AvailabilityAction {
   return {
     label: "Start local runner",
     description:
-      `Starts a telo runner in a Docker container on this machine (first start downloads ` +
+      `Starts the docker runner in a Docker container on this machine (first start downloads ` +
       `${LOCAL_RUNNER_IMAGE}). The runner has access to your Docker daemon — it runs each ` +
       `Application as its own container — and listens on 127.0.0.1; each session is reached only with its own resume secret. ` +
       `It is stopped and removed when the editor quits.`,

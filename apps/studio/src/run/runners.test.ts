@@ -20,6 +20,22 @@ describe("normalizeRunnerSettings", () => {
     expect(next.activeRunnerId).toBe(TELO_CLOUD_RUNNER_ID);
   });
 
+  it("renames a persisted local runner an earlier Studio seeded, keeping its config", () => {
+    const seeded = normalizeRunnerSettings({ ...DEFAULT_SETTINGS }, true);
+    const persisted = {
+      ...seeded,
+      runners: seeded.runners.map((r) =>
+        r.id === LOCAL_CLI_RUNNER_ID
+          ? { ...r, name: "Local (telo CLI)", config: { executable: "/opt/runner" } }
+          : r,
+      ),
+    };
+    const next = normalizeRunnerSettings(persisted, true);
+    const local = next.runners.find((r) => r.id === LOCAL_CLI_RUNNER_ID);
+    expect(local?.name).toBe("Local (host runner)");
+    expect(local?.config).toEqual({ executable: "/opt/runner" });
+  });
+
   it("adds both local runners under Tauri and drops them in the browser", () => {
     const underTauri = normalizeRunnerSettings({ ...DEFAULT_SETTINGS }, true);
     expect(underTauri.runners.some((r) => r.id === LOCAL_CLI_RUNNER_ID)).toBe(true);
