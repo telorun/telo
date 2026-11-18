@@ -4169,6 +4169,22 @@ to `telo.run/next/`: a module's bytes must not depend on which release publishes
   beside a `site` need). Build an absolute link from the need
   (`resources.site.url`, `resources.tenants.pattern.replace('*', id)`).
 
+  SHARING A LOCAL RUN: `telo run --share[=<name>] ./app` (optionally
+  `--share-runner <url>`, else `TELO_RUNNER_URL`, else
+  `https://runner.telo.run`; needs `telo login`, which a terminal offers inline
+  when there is no sign-in) gives every
+  `tcp` port a public `<port>-<id>` HTTPS address through a runner and answers
+  every `Telo.PublicUrl` need from the share, so an app that builds links or
+  OAuth callbacks from `resources.site.url` needs nothing else in its manifest.
+  Offer it when a user wants to show a local app, test a webhook or try a
+  callback against a real origin. A `Telo.PublicUrl` whose `TELO_NEED_…__URL`
+  is set keeps it; `udp` ports are not shared; an app with no `tcp` port or a
+  `Telo.DesktopHost` is `ERR_SHARE_APP_UNSUPPORTED`; setting
+  `TELO_HOST_PUBLIC_URL_TEMPLATE` beside `--share` is
+  `ERR_SHARE_HOST_VALUE_CONFLICT`. A second run of the same share takes it
+  over and the first ends `ERR_SHARE_LOST`. `telo shares list` and
+  `telo shares delete <id>` manage them.
+
   COOKIES are declared once, never written into `headers:` (`Set-Cookie` and
   `Content-Type` there are refused): import `HttpDispatch` (`http-dispatch`)
   beside `Http` and declare `HttpDispatch.HostCookie` (sent `__Host-<name>`,

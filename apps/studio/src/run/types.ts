@@ -1,5 +1,47 @@
 import type { DebugFrame } from "@telorun/debug-wire";
+import type { RunEvent as ProtocolRunEvent } from "@telorun/runner-protocol";
 import type { JSONSchema7 } from "json-schema";
+export {
+  isTerminal,
+  type AppRunEnding,
+  type AppState,
+  type ByteStreamTag,
+  type ConfigIssue,
+  type CreateSessionRequest,
+  type IoMode,
+  type PortMapping as SessionPort,
+  type ReachabilityState as RunReachabilityState,
+  type RouteState as RunRouteState,
+  type RunAppRequest,
+  type RunOutcomeEvent,
+  type RunPhase,
+  type RunStatus,
+  type RunTrigger,
+  type RunnerCapabilities,
+  type RunnerEndpoint,
+  type RunnerTerms,
+  type SessionAppSpec,
+  type SessionAppState,
+  type SessionDocument,
+  type SessionSummary as ListedSession,
+  type WorkspaceChangeSet,
+  type WorkspaceFileEntry,
+} from "@telorun/runner-protocol";
+import type {
+  ConfigIssue,
+  IoMode,
+  SessionSummary as ListedSession,
+  RunStatus,
+  RunnerCapabilities,
+  RunnerTerms,
+  SessionAppSpec,
+  SessionDocument,
+  CreateSessionRequest,
+  RunAppRequest,
+  WorkspaceChangeSet,
+  WorkspaceFileEntry,
+  ByteStreamTag,
+} from "@telorun/runner-protocol";
 import type { RunnerCredentials } from "./runner-credentials";
 
 export interface RunAdapter<Config = unknown> {
@@ -46,47 +88,7 @@ export interface RunAdapter<Config = unknown> {
   teardown?(config: Config): Promise<void>;
 }
 
-/** A runner's self-description, fetched from `GET /v1/capabilities`. Mirrors
- *  `RunnerCapabilities` in `@telorun/runner-core`. */
-export interface RunnerCapabilities {
-  displayName: string;
-  description: string;
-  config: {
-    schema: JSONSchema7;
-    /** The config properties a request leaves out once it names a telo version,
-     *  because the runner refuses them beside one. */
-    supersededByTelo?: string[];
-  };
-  /** What this runner offers. `io` lists the byte-channel attach modes a Run
-   *  may ask for; `agents` names the catalog entries admissible as a session's
-   *  co-resident agent. */
-  features: {
-    io: IoMode[];
-    ports: boolean;
-    agents?: string[];
-    /** The runner runs each application on the telo version the request names,
-     *  or refuses; absent, it is sent none and chooses for itself. */
-    teloVersions?: boolean;
-  };
-  /** Operator-defined usage agreement enforced before a session starts; absent
-   *  when the runner has none. */
-  terms?: RunnerTerms;
-  /** The identity the runner accepts, as RFC 9728 metadata; absent when it
-   *  takes resume secrets only. Read as untrusted until checked
-   *  (`runner-identity.ts`). */
-  identity?: unknown;
-}
-
-/** A runner's usage agreement. Mirrors `RunnerTerms` in `@telorun/runner-core`.
- *  `version` is opaque/operator-controlled — a change re-prompts acceptance. */
-export interface RunnerTerms {
-  version: string;
-  title: string;
-  body: string;
-}
-
-/** How a Run attaches the byte channel (mirrors runner-core's `IoMode`). */
-export type IoMode = "tty" | "streams";
+;
 
 /** A runner's refusal of one request, in its own words: `code` is the wire
  *  `error`, `message` what the runner said. */
@@ -154,76 +156,11 @@ export interface AvailabilityAction {
   run(): Promise<void>;
 }
 
-export interface ConfigIssue {
-  path: string;
-  message: string;
-}
-
-/** One port an application declares (mirrors runner-core's `PortMapping`). */
-export interface SessionPort {
-  port: number;
-  protocol: "tcp" | "udp";
-}
-
-/** One Application of a session's app set (mirrors runner-core's
- *  `SessionAppSpec`). `name` is a DNS label unique in the session. */
-export interface SessionAppSpec {
-  name: string;
-  entryRelativePath: string;
-  ports?: SessionPort[];
-  telo?: string;
-}
-
-/** `POST /v1/sessions`: no files and no env — a new session is seeded through
- *  the workspace surface, and env arrives with each Run. */
-export interface CreateSessionRequest {
-  workspace: string;
-  agent?: string;
-  apps: SessionAppSpec[];
-}
-
 export type CreatedSession =
   /** `resumeSecret` is answered once, to a create carrying no identity. */
   | { kind: "created"; sessionId: string; resumeSecret?: string }
   /** The owner already has a session for this workspace. */
   | { kind: "exists"; sessionId: string };
-
-/** `POST …/apps/:app/run`. */
-export interface RunAppRequest {
-  env: Record<string, string>;
-  io: IoMode;
-  cols?: number;
-  rows?: number;
-}
-
-/** One app of the session document: its slot's state now. */
-export interface SessionAppState {
-  name: string;
-  entryRelativePath: string;
-  ports: SessionPort[];
-  telo?: string;
-  state: "pending" | "ready" | "running";
-  runId?: string;
-  io?: IoMode;
-  generation: number;
-}
-
-/** `GET /v1/sessions/:id`. */
-export interface SessionDocument {
-  sessionId: string;
-  workspace: string;
-  status: RunStatus;
-  agent: string | null;
-  apps: SessionAppState[];
-}
-
-/** One of the identity's sessions, as `GET /v1/sessions` lists it. */
-export interface ListedSession {
-  sessionId: string;
-  workspace: string;
-  status: RunStatus["kind"];
-  lastActiveAt: string;
-}
 
 /** What adopting a resume-secret session for the identity came to. */
 export type AdoptedSession =
@@ -278,28 +215,6 @@ export interface RunnerSession {
   io(app: string, fromSeq: number): SequencedRunIo;
 }
 
-/** An explicit write/delete list, not a whole-tree replace: a deletion has to be
- *  expressible, and a whole-tree replace can only express it by treating absence
- *  as intent. Mirrors runner-core's `WorkspaceChangeSet`. */
-export interface WorkspaceChangeSet {
-  write?: Array<{ path: string; content: string; encoding?: "utf8" | "base64" }>;
-  delete?: string[];
-}
-
-/** One file in a workspace snapshot: its path and the sha256 of its bytes.
- *  Hashing content is what makes two snapshots diff into an exact change set.
- *  Mirrors runner-core's `WorkspaceFileEntry`. */
-export interface WorkspaceFileEntry {
-  path: string;
-  hash: string;
-}
-
-/** Which source produced a byte-channel chunk. `tty` under a terminal attach,
- *  where there genuinely is one merged stream; `stdout` / `stderr` only where
- *  the transport really did separate them. The tag never asserts a split that
- *  does not exist. */
-export type ByteStreamTag = "tty" | "stdout" | "stderr";
-
 export interface RunIoHandlers {
   onData(bytes: Uint8Array, stream: ByteStreamTag): void;
   onClose(reason: { code: number; clean: boolean }): void;
@@ -325,151 +240,5 @@ export interface SequencedRunIo extends RunIo {
   lastSeq(): number;
 }
 
-export interface RunnerEndpoint {
-  host: string;
-  port: number;
-  protocol: "tcp" | "udp";
-  /** Fully-qualified URL when the runner already knows it (proxy / ingress);
-   *  preferred over deriving `http://host:port`. */
-  url?: string;
-  /** The per-session token the runner minted for this endpoint's workload, when
-   *  its catalog entry declares one; the client presents it as a bearer token. */
-  token?: string;
-}
-
-/** The SESSION's status, as distinct from how any one run inside it ended: a
- *  one-shot app finishing emits `run.completed` and leaves the session
- *  `running`, and each app reports its own `app` state. Mirrors runner-core's
- *  `RunStatus`. */
-export type RunStatus =
-  | { kind: "starting" }
-  /** `inspectUrl` is the kernel inspection UI fronted by a proxy, set only when
-   *  the run used `inspect` and the runner exposes it; absent otherwise.
-   *  `agent` is where this session's co-resident agent answers — present only on
-   *  a session that asked for one and that the runner could route. */
-  | {
-      kind: "running";
-      endpoints?: RunnerEndpoint[];
-      inspectUrl?: string;
-      agent?: RunnerEndpoint;
-    }
-  /** The workload is gone and the session's storage kept: idle, past its
-   *  running limit, or suspended by the editor. `resume` rebuilds it under the
-   *  same id. Not terminal. */
-  | { kind: "suspended" }
-  | { kind: "failed"; message: string }
-  | { kind: "stopped" };
-
-/** Coarse coming-up phase carried on `progress` events (mirrors runner-core's
- *  `RunPhase`). Additive to status: drives the spinner + step feed while the
- *  session is still `starting`. */
-export type RunPhase = "build" | "provision" | "boot";
-
-/** Per-port reachability of the running app's declared ports, watched by the
- *  runner and rendered on the endpoint badge (spinner → ok / error). Mirrors
- *  runner-core's `ReachabilityState`. */
-export type RunReachabilityState = "checking" | "reachable" | "unreachable";
-
-/** Whether the runner's cluster actually programmed a published host. A separate
- *  axis from reachability, which only proves the workload is listening: a route
- *  nothing reconciles leaves every port reachable and every URL dead. */
-export type RunRouteState = "pending" | "programmed" | "unprogrammed";
-
-/** What started one generation of an application: a Run, a file change under
- *  the app's watcher, or a reload. */
-export type RunTrigger = "run" | "watch" | "manual";
-
-/** How one app's run ended, as the process running it reported. */
-export interface AppRunEnding {
-  runId: string;
-  code?: number;
-  signal?: string;
-  reason?: string;
-}
-
-/** One app's slot, reported as the `app` event. */
-export type AppState =
-  | { state: "ready"; ended?: AppRunEnding }
-  | { state: "running"; runId: string };
-
-/** A RUN outcome — one per app per reload generation, distinct from the session
- *  status. `generation` is monotonic per app and starts at 1. */
-export type RunOutcomeEvent =
-  | {
-      type: "run";
-      app: string;
-      generation: number;
-      phase: "started";
-      trigger: RunTrigger;
-      /** The version the runtime reported for this generation; absent from a
-       *  runtime that reports none. */
-      telo?: string;
-    }
-  | {
-      type: "run";
-      app: string;
-      generation: number;
-      phase: "completed";
-      code: number;
-      durationMs?: number;
-    }
-  | { type: "run"; app: string; generation: number; phase: "failed"; reason: string };
-
-/** Workload output does NOT travel this channel — it goes over the byte channel
- *  (`RunIo`), which exists because per-chunk events are wasteful for high-volume
- *  output. The `stdout` / `stderr` variants this union used to declare were
- *  emitted by nothing: a contract in shape only. */
-export type RunEvent =
-  | { type: "status"; status: RunStatus }
-  /** `app` is absent for session-scoped provisioning (scheduling, image pull)
-   *  and present once the message belongs to one application. */
-  | { type: "progress"; app?: string; phase: RunPhase; message: string; done?: boolean }
-  /** A frame from one app's kernel debug stream (event or log line). The
-   *  adapter sources it differently per backend (relayed by a remote runner, or
-   *  a direct loopback SSE for the local runner), but the run dock consumes it the
-   *  same way regardless. */
-  | { type: "debug"; app: string; frame: DebugFrame }
-  /** One app's slot changed: up and idle, running a Run, or a run ended. */
-  | ({ type: "app"; app: string } & AppState)
-  /** Per-port reachability transition, rendered on the badge. */
-  | { type: "reachability"; app: string; port: number; state: RunReachabilityState }
-  /** A routing-layer verdict for one published host. `reason` is the routing
-   *  controller's own words, and is operator-facing: every cause is fixed in the
-   *  cluster, not in the manifest. */
-  | {
-      type: "route";
-      app?: string;
-      host: string;
-      port: number;
-      state: RunRouteState;
-      reason?: string;
-    }
-  | RunOutcomeEvent
-  /** The app asked for a page to be opened (`Telo.OpenUrl`). `url` is the
-   *  runner's serialization of what the app asked for; `reach` says how a client
-   *  may act on it, and `port` (a SESSION port) is present for `port` and
-   *  `unrouted`. The runner never builds an address to open. */
-  | {
-      type: "openUrl";
-      app: string;
-      generation: number;
-      url: string;
-      reach: "port" | "unrouted" | "external";
-      port?: number;
-    }
-  /** An app's declared port set changed on reload and the runner re-patched its
-   *  routing. Without this the app binds the new port and is unreachable with no
-   *  ingress, no error and no event. */
-  | {
-      type: "endpoints";
-      app: string;
-      added?: RunnerEndpoint[];
-      removed?: RunnerEndpoint[];
-      rejected?: Array<{ port: number; reason: string }>;
-    };
-
-/** Terminal = the event stream closes on it. `failed` is resumable all the
- *  same: the session's storage is kept. */
-export function isTerminal(status: RunStatus): boolean {
-  return status.kind === "failed" || status.kind === "stopped";
-}
+/** The runner's event stream, carrying the kernel's own debug frame type. */
+export type RunEvent = ProtocolRunEvent<DebugFrame>;

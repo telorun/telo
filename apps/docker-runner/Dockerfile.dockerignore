@@ -31,6 +31,8 @@
 !apps/docker-runner
 !packages/runner-core
 !packages/debug-wire
+!packages/runner-protocol
+!packages/share-tunnel
 # The session supervisor's cargo build reads every workspace member's manifest
 # and target root, though it compiles only its own crate.
 !Cargo.toml

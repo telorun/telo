@@ -18,8 +18,6 @@ export interface IdentityVerifierDeps {
 /** The parts of a request an identity is judged from. */
 export interface IdentityRequest {
   method: string;
-  /** The request target as the runner received it, query included. */
-  url: string;
   headers: Record<string, string | string[] | undefined>;
 }
 
@@ -47,8 +45,24 @@ export class IdentityVerifier {
     );
   }
 
-  /** Throws `IdentityRefusal` or `IdentityProviderUnavailable`. */
-  async verify(request: IdentityRequest, accessToken: string): Promise<{ iss: string; sub: string }> {
+  /** The `htu` a proof for a `/v1` request must carry: the audience followed by
+   *  the request target's path. */
+  v1Htu(url: string): string {
+    return this.deps.config.audience + url.split("?", 1)[0]!;
+  }
+
+  /**
+   * The owner and the token's expiry. Throws `IdentityRefusal` or
+   * `IdentityProviderUnavailable`. `htu` is the URL
+   * the request was sent to, as the route supplies it — `v1Htu` for `/v1`, the
+   * tunnel URL for a tunnel upgrade; the token's `aud` must still hold the
+   * audience whichever it is.
+   */
+  async verify(
+    request: IdentityRequest,
+    accessToken: string,
+    htu: string,
+  ): Promise<{ iss: string; sub: string; expiresAt: Date }> {
     const proof = singleProof(request.headers.dpop);
     const token = await verifyAccessToken(accessToken, {
       audience: this.deps.config.audience,
@@ -56,10 +70,9 @@ export class IdentityVerifier {
       keys: this.keys,
       now: this.now,
     });
-    const path = request.url.split("?", 1)[0]!;
     const verified = await verifyDpopProof(proof, {
       method: request.method,
-      htu: this.deps.config.audience + path,
+      htu,
       accessToken,
       jkt: token.jkt,
       now: this.now,
@@ -71,7 +84,7 @@ export class IdentityVerifier {
       new Date(this.now()),
     );
     if (!fresh) throw new IdentityRefusal("invalid_dpop_proof", "the DPoP proof's 'jti' was already used");
-    return { iss: token.iss, sub: token.sub };
+    return { iss: token.iss, sub: token.sub, expiresAt: token.expiresAt };
   }
 }
 

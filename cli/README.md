@@ -1,6 +1,6 @@
 # Telo CLI
 
-The Telo CLI is the command-line interface for the Telo kernel. It loads and runs YAML manifests on your local machine, watches them for changes during development, statically validates them with `telo check`, pre-installs controllers with `telo install`, refreshes `imports:` pins with `telo upgrade`, rewrites legacy spellings with `telo migrate`, formats manifests with `telo format`, lists what an application reads from the environment with `telo needs report`, writes its `.env` / `.env.local` with `telo env template`, ships an application as a single executable with `telo package`, and lists the built-in vocabulary with `telo builtins`, selects the files a change reaches with `telo changed`, plans version bumps for modules, packages, crates, images and charts with `telo release`, and publishes module artifacts to an OCI registry with `telo publish`.
+The Telo CLI is the command-line interface for the Telo kernel. It loads and runs YAML manifests on your local machine, watches them for changes during development, statically validates them with `telo check`, pre-installs controllers with `telo install`, refreshes `imports:` pins with `telo upgrade`, rewrites legacy spellings with `telo migrate`, formats manifests with `telo format`, lists what an application reads from the environment with `telo needs report`, writes its `.env` / `.env.local` with `telo env template`, ships an application as a single executable with `telo package`, and lists the built-in vocabulary with `telo builtins`, signs in to Telo Cloud and a runner with `telo auth login`, selects the files a change reaches with `telo changed`, plans version bumps for modules, packages, crates, images and charts with `telo release`, and publishes module artifacts to an OCI registry with `telo publish`.
 
 For installation and a first run, see the [getting started guide](/learn/getting-started).
 
@@ -50,6 +50,8 @@ Load and run a Telo manifest. `run` is the default command, so `telo ./manifest.
 - `--inspect[=[host:]port]` - Start the live inspection endpoint (default `127.0.0.1:9230`), serve the inspection UI and open it in a browser. Holds the app open even when it would otherwise exit. The endpoint streams event payloads — inputs and outputs of every call — so binding a non-loopback host is warned about; mark credentials with [`x-telo-sensitive`](/extend/sensitive-contract-fields) so they ride the wire as `[redacted]`.
 - `--no-open` - With `--inspect`, do not open the browser.
 - `--no-input` - Never ask for an input nothing supplies. Without it, a run whose stdin and stderr are both a terminal asks for each missing `variables:` / `secrets:` / `ports:` value and required need field (a secret without echo), then offers to save the answers to `.env` / `.env.local`; with it, or with no terminal, the load is refused naming them. Every runner passes it. See [Being asked for what is missing](/learn/configuration#being-asked-for-what-is-missing).
+- `--share[=<name>]` - Share every `tcp` port of the root Application publicly through a runner, and answer its `Telo.PublicUrl` needs from the share. `<name>` names the share; without it each real manifest path gets a UUID name of its own, kept in `share-names.json` in telo's per-user state directory. Needs a sign-in (`telo login`); at a terminal without `--no-input`, a run with no sign-in covering the runner asks `Sign in to Telo now? [Y/n]` first. Refused before boot with `ERR_RUNNER_SIGN_IN_REQUIRED`, `ERR_RUNNER_IDENTITY_MISMATCH`, `ERR_SIGN_IN_FAILED`, `ERR_SHARE_RUNNER_UNSUPPORTED`, `ERR_SHARE_APP_UNSUPPORTED` or `ERR_SHARE_HOST_VALUE_CONFLICT`; ends with `ERR_SHARE_LOST` (exit 1) when the share is deleted or taken over. See [Sharing a local run](/learn/sharing-a-local-run).
+- `--share-runner <url>` - The runner a share goes to: else `TELO_RUNNER_URL`, else `https://runner.telo.run`. Legal only beside `--share`.
 - `--no-cache-write` - Validate in-memory and read the existing `.telo` cache, but never persist new derived entries (compiled validators, analysis stamp). For ephemeral, read-only runs (e.g. a prebuilt container whose deps are baked at `TELO_CACHE_DIR`); the cache is still used, only writes are suppressed.
 - `--` - Ends `telo`'s own options. Every token after the manifest path is the application's own whether or not `--` appears: it is read against the `arg:` bindings of the root Application's `variables:` / `ports:` entries, and a token it does not declare is refused before boot. `telo run <path> --help` prints the application's usage. No controller reads the command line (spec: `kernel/specs/application-arguments.md`).
 
@@ -578,6 +580,31 @@ telo needs report -o json ./shop
 ```
 
 Under `-o json` it writes a versioned document (`reportVersion: 1`, a `dimensions` list of `{ key, values, env, member? }` — every dimension the application's configurations are decided over, with the environment variables its value is read from — and a `needs` list of `path`, `declaredBy`, `type: { module, name }`, `version` (the range the need states, or `null`), `features` (the features it asks for, `[]` when none), `parameters`, `optional`, `required`, `requiredWhen` (the configurations needing it, keyed by dimension, absent when every configuration or none does) and `fields`, each field `{ env, envSource, required, sensitive }`). An application the kernel would refuse has no report: the refusals are printed on stderr, nothing on stdout, and the command exits 1. See [Providing needs](/learn/providing-needs).
+
+
+---
+
+### `telo auth <subcommand>`
+
+Signs this machine in to Telo Cloud and the runner with one approval, at the accounts service `TELO_ACCOUNTS_URL` names (default `https://accounts.telo.run`); the sign-in is kept in `credentials.json` in telo's per-user state directory. `telo login` and `telo logout` are the same commands as `telo auth login` and `telo auth logout`.
+
+- `telo auth login [--runner <url>] [--device-code]` - Opens the browser on the sign-in page, or prints a code to enter at an address over SSH, on Linux with no display or `BROWSER`, when no browser opens, or with `--device-code`. `--runner` names the runner the sign-in covers (else `TELO_RUNNER_URL`, else `https://runner.telo.run`). A new sign-in replaces and revokes the earlier one; when accounts cannot revoke it the login still succeeds with an `ERR_SIGN_IN_REVOKE_FAILED` warning. A failed login is `ERR_SIGN_IN_FAILED` or `ERR_RUNNER_IDENTITY_MISMATCH` (exit 1).
+- `telo auth logout` - Revokes the sign-in at accounts and forgets it on this machine; exits 1 with `ERR_SIGN_IN_REVOKE_FAILED` when accounts could not revoke it. `-o json` writes `{ ok, signedIn: false, issuer, problem? }`.
+- `telo auth status` - Prints `Signed in to <issuer> as <username>` and the covered resources after confirming with accounts; exits 1 when signed out or unconfirmed. `-o json` writes `{ ok, signedIn, issuer, account: { sub, username }, resources: { cloud, runner }, verified, problem? }`, the document `telo auth login -o json` writes too.
+
+See [Sharing a local run](/learn/sharing-a-local-run#signing-in).
+
+
+---
+
+### `telo shares <subcommand>`
+
+Manage the shares `telo run --share` took on a runner. Both verbs take `--runner <url>` (else `TELO_RUNNER_URL`, else `https://runner.telo.run`), refuse a runner that offers no shares (`ERR_SHARE_RUNNER_UNSUPPORTED`) or whose advertised identity disagrees (`ERR_RUNNER_IDENTITY_MISMATCH`) before asking for a credential, and need a sign-in (`ERR_RUNNER_SIGN_IN_REQUIRED`); at a terminal they offer one first, and `--no-input` refuses instead.
+
+- `telo shares list` - Your shares, newest activity first, as a table of `ID`, `NAME`, `APPLICATION`, `CONNECTED` and `LAST ACTIVE`. `-o json` writes `{ ok, shares }`.
+- `telo shares delete <id>` - Delete a share; a run holding it ends with `ERR_SHARE_LOST`. Prints `Deleted share <id>`; an unknown, deleted or foreign id is the runner's `share_not_found`.
+
+A refusal is printed on stderr and exits 1; under `-o json` stdout carries `{ ok: false, code, message }`. See [Sharing a local run](/learn/sharing-a-local-run).
 
 
 ---

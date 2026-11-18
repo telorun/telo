@@ -136,3 +136,76 @@ describe("identity config", () => {
     expect(load).toThrow(message);
   });
 });
+
+describe("share settings", () => {
+  const POSTGRES = {
+    RUNNER_SESSION_STORE: "postgres",
+    RUNNER_SESSION_STORE_URL: "postgres://u:p@db:5432/runner",
+    RUNNER_IDENTITY_AUDIENCE: "https://runner.example.com",
+    RUNNER_IDENTITY_ISSUERS: "https://id.example",
+  };
+
+  it("reads every setting with its default, and offers no shares unless asked", () => {
+    expect(loadCoreConfig({}).shares).toEqual({
+      enabled: false,
+      role: "control",
+      maxConnected: 200,
+      maxConnectedPerOwner: 3,
+      maxPerOwner: 10,
+      maxConcurrentRequests: 100,
+      maxBytesPerSecond: 1_048_576,
+      retentionSeconds: 604_800,
+    });
+    expect(
+      loadCoreConfig({
+        ...POSTGRES,
+        RUNNER_SHARES: "true",
+        RUNNER_MAX_CONNECTED_SHARES: "7",
+        RUNNER_MAX_CONNECTED_SHARES_PER_OWNER: "2",
+        RUNNER_MAX_SHARES_PER_OWNER: "4",
+        RUNNER_MAX_SHARE_CONCURRENT_REQUESTS: "9",
+        RUNNER_MAX_SHARE_BYTES_PER_SECOND: "2048",
+        RUNNER_SHARE_RETENTION_SECONDS: "60",
+      }).shares,
+    ).toEqual({
+      enabled: true,
+      role: "control",
+      maxConnected: 7,
+      maxConnectedPerOwner: 2,
+      maxPerOwner: 4,
+      maxConcurrentRequests: 9,
+      maxBytesPerSecond: 2048,
+      retentionSeconds: 60,
+    });
+  });
+
+  it("takes RUNNER_ROLE=relay as serving shares", () => {
+    expect(loadCoreConfig({ ...POSTGRES, RUNNER_ROLE: "relay" }).shares).toMatchObject({ enabled: true, role: "relay" });
+  });
+
+  it.each([
+    [{ RUNNER_ROLE: "edge" }, /RUNNER_ROLE must be one of control \| relay, got 'edge'/],
+    [{ RUNNER_MAX_SHARES_PER_OWNER: "0" }, /RUNNER_MAX_SHARES_PER_OWNER must be a positive integer/],
+    [{ RUNNER_SHARE_RETENTION_SECONDS: "week" }, /RUNNER_SHARE_RETENTION_SECONDS must be a positive integer/],
+    [{ RUNNER_SHARES: "maybe" }, /RUNNER_SHARES must be a boolean/],
+  ])("refuses %o", (env, message) => {
+    expect(() => loadCoreConfig({ ...POSTGRES, ...env })).toThrow(message);
+  });
+
+  it("refuses to boot with shares on a SQLite store, naming the setting to fix", () => {
+    const env = { RUNNER_SHARES: "1", RUNNER_IDENTITY_AUDIENCE: POSTGRES.RUNNER_IDENTITY_AUDIENCE, RUNNER_IDENTITY_ISSUERS: POSTGRES.RUNNER_IDENTITY_ISSUERS };
+    expect(() => loadCoreConfig(env)).toThrow(
+      "RUNNER_SHARES needs RUNNER_SESSION_STORE=postgres: the relay is a separate process and cannot read a SQLite file",
+    );
+    expect(() => loadCoreConfig({ ...env, RUNNER_SHARES: "", RUNNER_ROLE: "relay" })).toThrow(
+      /^RUNNER_ROLE=relay needs RUNNER_SESSION_STORE=postgres/,
+    );
+  });
+
+  it("refuses to boot with shares and no identity", () => {
+    const { RUNNER_IDENTITY_AUDIENCE: _a, RUNNER_IDENTITY_ISSUERS: _i, ...noIdentity } = POSTGRES;
+    expect(() => loadCoreConfig({ ...noIdentity, RUNNER_SHARES: "1" })).toThrow(
+      /^RUNNER_SHARES needs RUNNER_IDENTITY_AUDIENCE and RUNNER_IDENTITY_ISSUERS/,
+    );
+  });
+});

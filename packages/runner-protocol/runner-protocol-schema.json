@@ -1,0 +1,661 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://telo.run/schemas/runner-protocol.json",
+  "title": "Telo runner protocol /v1",
+  "description": "Every request, response, event and error shape of a runner's client-facing /v1 contract. Responses and events are closed (additionalProperties: false); the route table in x-telo-routes names each route's request and answers.",
+  "$defs": {
+    "RunnerError": {
+      "type": "object",
+      "required": ["error", "message"],
+      "properties": { "error": { "type": "string" }, "message": { "type": "string" } }
+    },
+    "TermsRequiredBody": {
+      "type": "object",
+      "required": ["error", "terms"],
+      "additionalProperties": false,
+      "properties": { "error": { "const": "terms_required" }, "terms": { "$ref": "#/$defs/RunnerTerms" } }
+    },
+    "RunnerTerms": {
+      "type": "object",
+      "required": ["version", "title", "body"],
+      "additionalProperties": false,
+      "properties": { "version": { "type": "string" }, "title": { "type": "string" }, "body": { "type": "string" } }
+    },
+    "IoMode": { "enum": ["tty", "streams"] },
+    "PortProtocol": { "enum": ["tcp", "udp"] },
+    "JsonSchema": { "type": "object" },
+    "SharesFeature": {
+      "type": "object",
+      "required": ["maxPerOwner", "maxConnectedPerOwner", "retentionSeconds"],
+      "additionalProperties": false,
+      "properties": {
+        "maxPerOwner": { "type": "integer", "minimum": 0 },
+        "maxConnectedPerOwner": { "type": "integer", "minimum": 0 },
+        "retentionSeconds": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "RunnerFeatures": {
+      "type": "object",
+      "required": ["io", "ports"],
+      "additionalProperties": false,
+      "properties": {
+        "io": { "type": "array", "items": { "$ref": "#/$defs/IoMode" } },
+        "ports": { "type": "boolean" },
+        "agents": { "type": "array", "items": { "type": "string" } },
+        "teloVersions": { "type": "boolean" },
+        "shares": { "$ref": "#/$defs/SharesFeature" }
+      }
+    },
+    "ProtectedResourceMetadata": {
+      "type": "object",
+      "required": [
+        "resource",
+        "authorization_servers",
+        "dpop_bound_access_tokens_required",
+        "dpop_signing_alg_values_supported"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "resource": { "type": "string" },
+        "authorization_servers": { "type": "array", "items": { "type": "string" } },
+        "dpop_bound_access_tokens_required": { "const": true },
+        "dpop_signing_alg_values_supported": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "RunnerCapabilities": {
+      "type": "object",
+      "required": ["displayName", "description", "config", "features"],
+      "additionalProperties": false,
+      "properties": {
+        "displayName": { "type": "string" },
+        "description": { "type": "string" },
+        "config": {
+          "type": "object",
+          "required": ["schema"],
+          "additionalProperties": false,
+          "properties": {
+            "schema": { "$ref": "#/$defs/JsonSchema" },
+            "supersededByTelo": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "features": { "$ref": "#/$defs/RunnerFeatures" },
+        "terms": { "$ref": "#/$defs/RunnerTerms" },
+        "identity": { "$ref": "#/$defs/ProtectedResourceMetadata" }
+      }
+    },
+    "HealthResponse": {
+      "type": "object",
+      "required": ["ok", "version"],
+      "additionalProperties": false,
+      "properties": { "ok": { "const": true }, "version": { "type": "string" } }
+    },
+    "SessionConfig": { "type": "object" },
+    "ProbeRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "config": { "$ref": "#/$defs/SessionConfig" } }
+    },
+    "ConfigIssue": {
+      "type": "object",
+      "required": ["path", "message"],
+      "additionalProperties": false,
+      "properties": { "path": { "type": "string" }, "message": { "type": "string" } }
+    },
+    "AvailabilityReport": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["status"],
+          "additionalProperties": false,
+          "properties": { "status": { "const": "ready" } }
+        },
+        {
+          "type": "object",
+          "required": ["status", "issues"],
+          "additionalProperties": false,
+          "properties": {
+            "status": { "const": "needs-setup" },
+            "issues": { "type": "array", "items": { "$ref": "#/$defs/ConfigIssue" } }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["status", "message"],
+          "additionalProperties": false,
+          "properties": {
+            "status": { "const": "unavailable" },
+            "message": { "type": "string" },
+            "remediation": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "PortMapping": {
+      "type": "object",
+      "required": ["port", "protocol"],
+      "additionalProperties": false,
+      "properties": {
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "protocol": { "$ref": "#/$defs/PortProtocol" },
+        "publicHosts": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "SessionAppSpec": {
+      "type": "object",
+      "required": ["name", "entryRelativePath"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 63 },
+        "entryRelativePath": { "type": "string", "minLength": 1 },
+        "ports": { "type": "array", "items": { "$ref": "#/$defs/PortMapping" } },
+        "telo": { "type": "string", "minLength": 1 }
+      }
+    },
+    "CreateSessionRequest": {
+      "type": "object",
+      "required": ["workspace", "apps"],
+      "additionalProperties": false,
+      "properties": {
+        "workspace": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "agent": { "type": "string", "minLength": 1 },
+        "apps": { "type": "array", "items": { "$ref": "#/$defs/SessionAppSpec" } },
+        "config": { "$ref": "#/$defs/SessionConfig" }
+      }
+    },
+    "CreateSessionResponse": {
+      "type": "object",
+      "required": ["sessionId", "streamUrl", "createdAt"],
+      "additionalProperties": false,
+      "properties": {
+        "sessionId": { "type": "string" },
+        "streamUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "resumeSecret": { "type": "string" }
+      }
+    },
+    "SessionStatusKind": { "enum": ["starting", "running", "suspended", "failed", "stopped"] },
+    "SessionSummary": {
+      "type": "object",
+      "required": ["sessionId", "workspace", "status", "lastActiveAt"],
+      "additionalProperties": false,
+      "properties": {
+        "sessionId": { "type": "string" },
+        "workspace": { "type": "string" },
+        "status": { "$ref": "#/$defs/SessionStatusKind" },
+        "lastActiveAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "SessionList": {
+      "type": "object",
+      "required": ["sessions"],
+      "additionalProperties": false,
+      "properties": { "sessions": { "type": "array", "items": { "$ref": "#/$defs/SessionSummary" } } }
+    },
+    "AdoptSessionRequest": {
+      "type": "object",
+      "required": ["resumeSecret"],
+      "additionalProperties": false,
+      "properties": { "resumeSecret": { "type": "string", "minLength": 1 } }
+    },
+    "SessionIdResponse": {
+      "type": "object",
+      "required": ["sessionId"],
+      "additionalProperties": false,
+      "properties": { "sessionId": { "type": "string" } }
+    },
+    "SessionAppState": {
+      "type": "object",
+      "required": ["name", "entryRelativePath", "ports", "state", "generation"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "entryRelativePath": { "type": "string" },
+        "ports": { "type": "array", "items": { "$ref": "#/$defs/PortMapping" } },
+        "telo": { "type": "string" },
+        "state": { "enum": ["pending", "ready", "running"] },
+        "runId": { "type": "string" },
+        "io": { "$ref": "#/$defs/IoMode" },
+        "generation": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "SessionDocument": {
+      "type": "object",
+      "required": [
+        "sessionId",
+        "workspace",
+        "status",
+        "agent",
+        "config",
+        "apps",
+        "createdAt",
+        "lastActiveAt",
+        "suspendedAt"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sessionId": { "type": "string" },
+        "workspace": { "type": "string" },
+        "status": { "$ref": "#/$defs/RunStatus" },
+        "agent": { "type": ["string", "null"] },
+        "config": { "$ref": "#/$defs/SessionConfig" },
+        "apps": { "type": "array", "items": { "$ref": "#/$defs/SessionAppState" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastActiveAt": { "type": "string", "format": "date-time" },
+        "suspendedAt": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "SetAppsRequest": {
+      "type": "object",
+      "required": ["apps"],
+      "additionalProperties": false,
+      "properties": { "apps": { "type": "array", "items": { "$ref": "#/$defs/SessionAppSpec" } } }
+    },
+    "SetAppsResponse": {
+      "type": "object",
+      "required": ["apps"],
+      "additionalProperties": false,
+      "properties": { "apps": { "type": "array", "items": { "type": "string" } } }
+    },
+    "SetAgentRequest": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": { "name": { "type": ["string", "null"], "minLength": 1 } }
+    },
+    "SetAgentResponse": {
+      "type": "object",
+      "required": ["agent"],
+      "additionalProperties": false,
+      "properties": { "agent": { "type": ["string", "null"] } }
+    },
+    "RunAppRequest": {
+      "type": "object",
+      "required": ["env", "io"],
+      "additionalProperties": false,
+      "properties": {
+        "env": { "type": "object", "additionalProperties": { "type": "string" } },
+        "io": { "$ref": "#/$defs/IoMode" },
+        "cols": { "type": "integer", "minimum": 1, "maximum": 10000 },
+        "rows": { "type": "integer", "minimum": 1, "maximum": 10000 }
+      }
+    },
+    "RunAppResponse": {
+      "type": "object",
+      "required": ["runId"],
+      "additionalProperties": false,
+      "properties": { "runId": { "type": "string" } }
+    },
+    "StopAppResponse": {
+      "type": "object",
+      "required": ["runId"],
+      "additionalProperties": false,
+      "properties": { "runId": { "type": ["string", "null"] } }
+    },
+    "ReloadResponse": {
+      "type": "object",
+      "required": ["reloaded"],
+      "additionalProperties": false,
+      "properties": { "reloaded": { "type": "array", "items": { "type": "string" } } }
+    },
+    "IoTicketRequest": {
+      "type": "object",
+      "required": ["app"],
+      "additionalProperties": false,
+      "properties": { "app": { "type": "string", "minLength": 1 } }
+    },
+    "IoTicket": {
+      "type": "object",
+      "required": ["ticket", "expiresAt"],
+      "additionalProperties": false,
+      "properties": { "ticket": { "type": "string" }, "expiresAt": { "type": "string", "format": "date-time" } }
+    },
+    "WorkspaceFileEntry": {
+      "type": "object",
+      "required": ["path", "hash"],
+      "additionalProperties": false,
+      "properties": { "path": { "type": "string" }, "hash": { "type": "string" } }
+    },
+    "WorkspaceTree": {
+      "type": "object",
+      "required": ["files"],
+      "additionalProperties": false,
+      "properties": { "files": { "type": "array", "items": { "$ref": "#/$defs/WorkspaceFileEntry" } } }
+    },
+    "WorkspaceChangeSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "write": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "content"],
+            "additionalProperties": false,
+            "properties": {
+              "path": { "type": "string", "minLength": 1 },
+              "content": { "type": "string" },
+              "encoding": { "enum": ["utf8", "base64"] }
+            }
+          }
+        },
+        "delete": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "WorkspaceApplyResult": {
+      "type": "object",
+      "required": ["written", "deleted"],
+      "additionalProperties": false,
+      "properties": { "written": { "type": "integer" }, "deleted": { "type": "integer" } }
+    },
+    "WorkspaceFileContent": {
+      "type": "object",
+      "required": ["content", "size"],
+      "additionalProperties": false,
+      "properties": { "content": { "type": "string" }, "size": { "type": "integer" } }
+    },
+    "RunnerEndpoint": {
+      "type": "object",
+      "required": ["host", "port", "protocol"],
+      "additionalProperties": false,
+      "properties": {
+        "host": { "type": "string" },
+        "port": { "type": "integer" },
+        "protocol": { "$ref": "#/$defs/PortProtocol" },
+        "url": { "type": "string" },
+        "token": { "type": "string" }
+      }
+    },
+    "RunStatus": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind"],
+          "additionalProperties": false,
+          "properties": { "kind": { "const": "starting" } }
+        },
+        {
+          "type": "object",
+          "required": ["kind"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "running" },
+            "endpoints": { "type": "array", "items": { "$ref": "#/$defs/RunnerEndpoint" } },
+            "inspectUrl": { "type": "string" },
+            "agent": { "$ref": "#/$defs/RunnerEndpoint" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind"],
+          "additionalProperties": false,
+          "properties": { "kind": { "const": "suspended" } }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "message"],
+          "additionalProperties": false,
+          "properties": { "kind": { "const": "failed" }, "message": { "type": "string" } }
+        },
+        {
+          "type": "object",
+          "required": ["kind"],
+          "additionalProperties": false,
+          "properties": { "kind": { "const": "stopped" } }
+        }
+      ]
+    },
+    "AppRunEnding": {
+      "type": "object",
+      "required": ["runId"],
+      "additionalProperties": false,
+      "properties": {
+        "runId": { "type": "string" },
+        "code": { "type": "integer" },
+        "signal": { "type": "string" },
+        "reason": { "type": "string" }
+      }
+    },
+    "DebugFrame": {
+      "description": "A frame of the kernel debug stream, owned by the debug wire format (@telorun/debug-wire) and relayed unjudged.",
+      "type": "object",
+      "required": ["timestamp"],
+      "properties": { "kind": { "type": "string" }, "timestamp": { "type": "string" } }
+    },
+    "RunEvent": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "status"],
+          "additionalProperties": false,
+          "properties": { "type": { "const": "status" }, "status": { "$ref": "#/$defs/RunStatus" } }
+        },
+        {
+          "type": "object",
+          "required": ["type", "phase", "message"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "progress" },
+            "app": { "type": "string" },
+            "phase": { "enum": ["build", "provision", "boot"] },
+            "message": { "type": "string" },
+            "done": { "type": "boolean" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "app", "frame"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "debug" },
+            "app": { "type": "string" },
+            "frame": { "$ref": "#/$defs/DebugFrame" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "app", "generation", "url", "reach"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "openUrl" },
+            "app": { "type": "string" },
+            "generation": { "type": "integer" },
+            "url": { "type": "string" },
+            "reach": { "enum": ["port", "unrouted", "external"] },
+            "port": { "type": "integer" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "app", "state"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "app" },
+            "app": { "type": "string" },
+            "state": { "enum": ["ready", "running"] },
+            "ended": { "$ref": "#/$defs/AppRunEnding" },
+            "runId": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "app", "port", "state"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "reachability" },
+            "app": { "type": "string" },
+            "port": { "type": "integer" },
+            "state": { "enum": ["checking", "reachable", "unreachable"] }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "host", "port", "state"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "route" },
+            "app": { "type": "string" },
+            "host": { "type": "string" },
+            "port": { "type": "integer" },
+            "state": { "enum": ["pending", "programmed", "unprogrammed"] },
+            "reason": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "app", "generation", "phase", "trigger"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "run" },
+            "app": { "type": "string" },
+            "generation": { "type": "integer" },
+            "phase": { "const": "started" },
+            "trigger": { "enum": ["run", "watch", "manual"] },
+            "telo": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "app", "generation", "phase", "code"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "run" },
+            "app": { "type": "string" },
+            "generation": { "type": "integer" },
+            "phase": { "const": "completed" },
+            "code": { "type": "integer" },
+            "durationMs": { "type": "number" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "app", "generation", "phase", "reason"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "run" },
+            "app": { "type": "string" },
+            "generation": { "type": "integer" },
+            "phase": { "const": "failed" },
+            "reason": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "app"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "endpoints" },
+            "app": { "type": "string" },
+            "added": { "type": "array", "items": { "$ref": "#/$defs/RunnerEndpoint" } },
+            "removed": { "type": "array", "items": { "$ref": "#/$defs/RunnerEndpoint" } },
+            "rejected": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["port", "reason"],
+                "additionalProperties": false,
+                "properties": { "port": { "type": "integer" }, "reason": { "type": "string" } }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "CreateShareRequest": {
+      "type": "object",
+      "required": ["name", "application"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "application": { "type": "string", "minLength": 1, "maxLength": 512 }
+      }
+    },
+    "Share": {
+      "type": "object",
+      "required": ["id", "name", "application", "publicUrlTemplate", "publicUrlSecondaryTemplate", "tunnelUrl"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "application": { "type": "string" },
+        "publicUrlTemplate": { "type": "string" },
+        "publicUrlSecondaryTemplate": { "type": "string" },
+        "tunnelUrl": { "type": "string" }
+      }
+    },
+    "ShareSummary": {
+      "type": "object",
+      "required": ["id", "name", "application", "connected", "lastActiveAt"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "application": { "type": "string" },
+        "connected": { "type": "boolean" },
+        "lastActiveAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "ShareList": {
+      "type": "object",
+      "required": ["shares"],
+      "additionalProperties": false,
+      "properties": { "shares": { "type": "array", "items": { "$ref": "#/$defs/ShareSummary" } } }
+    }
+  },
+  "x-telo-routes": {
+    "GET /v1/health": { "responses": { "200": "HealthResponse" } },
+    "GET /v1/capabilities": { "responses": { "200": "RunnerCapabilities" } },
+    "GET /.well-known/oauth-protected-resource": { "responses": { "200": "ProtectedResourceMetadata" } },
+    "POST /v1/probe": { "request": "ProbeRequest", "responses": { "200": "AvailabilityReport" } },
+    "POST /v1/sessions": {
+      "request": "CreateSessionRequest",
+      "responses": { "201": "CreateSessionResponse", "428": "TermsRequiredBody", "4xx": "RunnerError" }
+    },
+    "GET /v1/sessions": { "responses": { "200": "SessionList", "4xx": "RunnerError" } },
+    "POST /v1/sessions/{id}/owner": {
+      "request": "AdoptSessionRequest",
+      "responses": { "200": "SessionIdResponse", "4xx": "RunnerError" }
+    },
+    "GET /v1/sessions/{id}": { "responses": { "200": "SessionDocument", "4xx": "RunnerError" } },
+    "DELETE /v1/sessions/{id}": { "responses": { "204": null, "4xx": "RunnerError" } },
+    "GET /v1/sessions/{id}/events": {
+      "description": "text/event-stream; each message's data is one RunEvent and its id the replay cursor.",
+      "responses": { "200": "RunEvent", "4xx": "RunnerError" }
+    },
+    "PUT /v1/sessions/{id}/apps": {
+      "request": "SetAppsRequest",
+      "responses": { "202": "SetAppsResponse", "4xx": "RunnerError" }
+    },
+    "PUT /v1/sessions/{id}/agent": {
+      "request": "SetAgentRequest",
+      "responses": { "202": "SetAgentResponse", "4xx": "RunnerError" }
+    },
+    "POST /v1/sessions/{id}/apps/{app}/run": {
+      "request": "RunAppRequest",
+      "responses": { "202": "RunAppResponse", "4xx": "RunnerError" }
+    },
+    "POST /v1/sessions/{id}/apps/{app}/stop": { "responses": { "202": "StopAppResponse", "4xx": "RunnerError" } },
+    "POST /v1/sessions/{id}/suspend": { "responses": { "202": "SessionIdResponse", "4xx": "RunnerError" } },
+    "POST /v1/sessions/{id}/resume": { "responses": { "202": "SessionIdResponse", "4xx": "RunnerError" } },
+    "POST /v1/sessions/{id}/io-tickets": {
+      "request": "IoTicketRequest",
+      "responses": { "201": "IoTicket", "4xx": "RunnerError" }
+    },
+    "GET /v1/sessions/{id}/workspace": { "responses": { "200": "WorkspaceTree", "4xx": "RunnerError" } },
+    "POST /v1/sessions/{id}/workspace": {
+      "request": "WorkspaceChangeSet",
+      "responses": { "200": "WorkspaceApplyResult", "4xx": "RunnerError" }
+    },
+    "GET /v1/sessions/{id}/workspace/file": { "responses": { "200": "WorkspaceFileContent", "4xx": "RunnerError" } },
+    "POST /v1/sessions/{id}/reload": { "responses": { "202": "ReloadResponse", "4xx": "RunnerError" } },
+    "POST /v1/shares": {
+      "request": "CreateShareRequest",
+      "responses": { "200": "Share", "201": "Share", "403": "RunnerError", "429": "RunnerError" }
+    },
+    "GET /v1/shares": { "responses": { "200": "ShareList", "4xx": "RunnerError" } },
+    "DELETE /v1/shares/{id}": { "responses": { "204": null, "404": "RunnerError" } }
+  },
+  "x-telo-byte-channel": {
+    "route": "GET /v1/sessions/{id}/io",
+    "closeCodes": { "ticketRequired": 4401, "forbidden": 4403, "notFound": 4404, "ended": 4410 }
+  }
+}

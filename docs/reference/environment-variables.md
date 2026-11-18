@@ -95,6 +95,9 @@ and the table of examples are in
 | `TELO_CONTROLLER_BUNDLE` | controller loading | `0`, `false`, `no` or `off` stops the kernel bundling an installed controller package and loads its files loose. On by default. |
 | `TELO_EGRESS` | run, install, check | `public-only` refuses module fetches from private, loopback or link-local hosts. Read from the real environment only: a manifest binding cannot change it. See [Security & supply chain](/deploy/security#egress-control). |
 | `TELO_OCI_REGISTRY` | `telo release`, `telo upgrade` | The `oci://host/org` base modules are published to when neither the workspace nor `--registry` names one. It is a publish destination, not a mirror for pulls — see [Air-gapped and private registries](/deploy/docker#air-gapped-and-private-registries). |
+| `TELO_RUNNER_URL` | `telo run --share`, `telo shares` | The runner a share goes to when `--share-runner` / `--runner` names none; default `https://runner.telo.run`. See [Sharing a local run](/learn/sharing-a-local-run). |
+| `TELO_ACCOUNTS_URL` | `telo auth`, `telo run --share`, `telo shares` | The accounts service telo signs in with, and the only one a runner's identity may name; default `https://accounts.telo.run`. See [Sharing a local run](/learn/sharing-a-local-run#signing-in). |
+| `TELO_CLOUD_API_URL` | `telo auth login` | The Telo Cloud API a sign-in covers beside the runner; default `https://console.telo.cloud/api`. |
 | `TELO_HUB_URL` | `telo search` | Hub to search; overridden by `--hub-url`. |
 | `DOCKER_CONFIG` | OCI pulls | Directory holding the `config.json` registry credentials are read from; default `~/.docker`. |
 | `TELO_DEBUG_UI_PATH`, `TELO_DEBUG_UI_URL`, `TELO_DEBUG_UI_VERSION` | `--inspect` | A local build of the inspection UI, the CDN base it is fetched from, or the version to fetch. Only an inspected run reads them. |

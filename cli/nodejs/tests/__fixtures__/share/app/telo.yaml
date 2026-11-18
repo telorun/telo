@@ -1,0 +1,8 @@
+kind: Telo.Application
+metadata: { name: WebhookDemo }
+ports:
+  http: { env: PORT, default: 8080 }
+  admin: { env: ADMIN_PORT, default: 9090 }
+  stats: { env: STATS_PORT, protocol: udp, default: 8125 }
+needs:
+  site: { kind: Telo.PublicUrl, parameters: { port: http } }

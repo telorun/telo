@@ -36,6 +36,8 @@ const MIT_DIRECTORIES = [
   "release",
   "packages/glob",
   "packages/editor-protocol",
+  "packages/runner-protocol",
+  "packages/share-tunnel",
   "modules",
   "blueprints",
   "starters",

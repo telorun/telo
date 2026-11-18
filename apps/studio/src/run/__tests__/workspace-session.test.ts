@@ -224,7 +224,7 @@ describe("a workspace's session", () => {
     runner.connection.baseUrl = "https://runner.test";
     runner.capabilities = {
       ...runner.capabilities,
-      identity: { resource: "https://runner.test", authorization_servers: ["https://issuer.test"] },
+      identity: { resource: "https://runner.test", authorization_servers: ["https://issuer.test"], dpop_bound_access_tokens_required: true, dpop_signing_alg_values_supported: ["ES256"] },
     };
     const accepted = open(runner, "manual", undefined, identity);
     accepted.session.setDesired([app("api")], true, false);
@@ -236,7 +236,7 @@ describe("a workspace's session", () => {
 
     runner.capabilities = {
       ...runner.capabilities,
-      identity: { resource: "https://other-runner.test", authorization_servers: ["https://issuer.test"] },
+      identity: { resource: "https://other-runner.test", authorization_servers: ["https://issuer.test"], dpop_bound_access_tokens_required: true, dpop_signing_alg_values_supported: ["ES256"] },
     };
     const mismatched = open(runner, "manual", { mode: "manual", workspace: "device:2" }, identity);
     mismatched.session.setDesired([app("api")], true, false);

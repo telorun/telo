@@ -108,7 +108,7 @@ Two licenses, split by directory. Each MIT directory carries its own `LICENSE`; 
 | `kernel/`, `analyzer/`, `cli/` — what loads, checks and runs a manifest | `packages/runner-core/`, `apps/docker-runner/`, `apps/k8s-runner/`, `apps/host-runner/` — the runners |
 | `packages/ide-support/`, `packages/language-server/`, `packages/language-host/`, `ide/vscode/` — the editor tooling | `apps/studio/`, `apps/authoring-agent/`, `pages/` and everything not listed |
 | `packages/debug-wire/`, `packages/debug-ui/` — the debug wire format and the debug UI | |
-| `cel/`, `message-format/`, `sdk/`, `templating/`, `release/`, `packages/glob/`, `packages/editor-protocol/` — the expression engine, the message core, the SDK, the release planner and what a controller links against | |
+| `cel/`, `message-format/`, `sdk/`, `templating/`, `release/`, `packages/glob/`, `packages/editor-protocol/`, `packages/runner-protocol/`, `packages/share-tunnel/` — the expression engine, the message core, the SDK, the release planner, what a controller links against, the runner `/v1` contract and the share tunnel | |
 | `modules/`, `blueprints/` — the standard library | |
 | `starters/`, `examples/`, `docs/`, `benchmarks/`, `apps/hub/`, `apps/hub-web/` | |
 

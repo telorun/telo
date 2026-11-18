@@ -54,6 +54,10 @@ import { personIsAtTerminal } from "../person-at-terminal.js";
 import { outErrLine, output } from "../output.js";
 import { StartupProfiler, writeStartupProfile } from "../startup-profile.js";
 import { teeStdio } from "../stdio-tee.js";
+import { defaultCliServices, type CliServices } from "../share/cli-services.js";
+import type { ShareSession } from "../share/share-session.js";
+import { terminalSignInOffer } from "../sign-in/sign-in-offer.js";
+import { printShareRefusal, takeShare } from "../share/take-share.js";
 import { resolveUiBundle } from "../ui-fetch.js";
 
 /** What a run took from its env files, kept from process start so every load
@@ -350,6 +354,11 @@ export type RunArgv = {
   applicationArgs?: readonly string[];
   /** `--no-input`: never ask at the terminal for an input nothing supplies. */
   input?: boolean;
+  /** `--share[=<name>]`: share every `tcp` port through a runner. `undefined` when
+   *  the flag is absent; empty when it was given bare. */
+  share?: string;
+  /** `--share-runner <url>`: the runner a share goes to. */
+  shareRunner?: string;
 };
 
 const DEFAULT_INSPECT_HOST = "127.0.0.1";
@@ -745,7 +754,7 @@ async function resolveRunInput(
   };
 }
 
-export async function run(given: RunArgv): Promise<void> {
+export async function run(given: RunArgv, services: CliServices = defaultCliServices()): Promise<void> {
   if (given.watch && given.startupProfile !== undefined) {
     throw new Error("--startup-profile cannot be used with --watch; a watch session has multiple startup generations.");
   }
@@ -754,7 +763,7 @@ export async function run(given: RunArgv): Promise<void> {
   const profiler = startupProfile === undefined ? undefined : new StartupProfiler();
   const log = createLogger(given.verbose);
   if (given.watch) {
-    await runWatch(given, log);
+    await runWatch(given, log, services);
     return;
   }
 
@@ -796,6 +805,7 @@ export async function run(given: RunArgv): Promise<void> {
   let bootedKernel: Kernel | undefined;
   let loadedGraph: LoadedGraph | undefined;
   let loaded = false;
+  let share: ShareSession | undefined;
   let phase = "kernelCreate";
   try {
     // Env files first: whether `telo run` is the desktop host depends on what
@@ -804,6 +814,14 @@ export async function run(given: RunArgv): Promise<void> {
     profiler?.start("envFiles");
     const env = await applyEnvFiles(argv.envAnchor ?? argv.path, argv.debug);
     profiler?.end("envFiles");
+
+    const taken = await shareFor(given, services, log);
+    if (taken === "refused") {
+      settled = true;
+      debug?.stop();
+      process.exit(process.exitCode || 1);
+    }
+    share = taken;
 
     const hosting = await hostDesktop(given.path, argv, env, executable, packaged, log);
     if (hosting === "refused" || hosting === "running") {
@@ -830,6 +848,10 @@ export async function run(given: RunArgv): Promise<void> {
     };
     process.once("SIGINT", shutdown);
     process.once("SIGTERM", shutdown);
+    share?.onFailure((refusal) => {
+      printShareRefusal(refusal, log);
+      shutdown();
+    });
     const host = desktop;
     if (host) {
       // A stop the host asks for during startup is acted on once startup ends
@@ -860,6 +882,7 @@ export async function run(given: RunArgv): Promise<void> {
     if (answerApplicationHelp(kernel)) {
       await kernel.teardown();
       await desktop?.close();
+      await share?.close();
       debug?.stop(kernel);
       settled = true;
       return;
@@ -871,6 +894,7 @@ export async function run(given: RunArgv): Promise<void> {
     await writeManifestCacheOnce();
     profiler?.end("manifestCachePersist");
     debug?.markReady(kernel);
+    share?.loaded(kernel);
 
     // `--inspect` launches an inspector to look at the running app, so hold it
     // open even after a one-shot app goes idle — otherwise it exits before it can
@@ -904,7 +928,8 @@ export async function run(given: RunArgv): Promise<void> {
     // handler's forceIdle). Stop the debug server so its SSE sockets + heartbeats
     // don't keep the process alive past here.
     debug?.stop(kernel);
-    const exitCode = kernel.exitCode || (desktop?.exitCode ?? 0);
+    await share?.close();
+    const exitCode = share?.lost ? 1 : kernel.exitCode || (desktop?.exitCode ?? 0);
     if (exitCode !== 0) {
       process.exit(exitCode);
     }
@@ -931,6 +956,7 @@ export async function run(given: RunArgv): Promise<void> {
     debug?.stop();
     reportError(argv, error, log, bootedKernel, loadedGraph);
     hintUnresolvedInputs(error, inputs, argv);
+    await share?.close();
     if (desktop) {
       // `--no-input` never waits for a person: missing inputs are refused as ever.
       const waits = !(argv.input === false && (unresolvedInputsOf(error)?.length ?? 0) > 0);
@@ -942,6 +968,28 @@ export async function run(given: RunArgv): Promise<void> {
     }
     process.exit(1);
   }
+}
+
+/**
+ * The share `--share` takes before the kernel is built, or `undefined` for a run
+ * that does not share. `--share-runner` without `--share` never gets here: the
+ * argument parser refuses it.
+ */
+async function shareFor(
+  given: RunArgv,
+  services: CliServices,
+  log: Logger,
+): Promise<ShareSession | undefined | "refused"> {
+  if (given.share === undefined) return undefined;
+  return takeShare({
+    manifest: given.path,
+    name: given.share,
+    runner: given.shareRunner,
+    env: process.env,
+    services,
+    log,
+    offer: terminalSignInOffer({ input: given.input, stdin: process.stdin, stderr: process.stderr }),
+  });
 }
 
 /**
@@ -1119,7 +1167,7 @@ function emitRunFailed(
  * that changes is the executable — its unpacked tree never does — so it is the
  * one file watched, and a rebuilt binary reloads from its own new tree.
  */
-async function runWatch(given: RunArgv, log: Logger): Promise<void> {
+async function runWatch(given: RunArgv, log: Logger, services: CliServices): Promise<void> {
   // The first resolution fixes what the session shares: where env files are
   // read, the debug log, and the inspect endpoint.
   let first: Awaited<ReturnType<typeof resolveRunInput>>;
@@ -1143,6 +1191,10 @@ async function runWatch(given: RunArgv, log: Logger): Promise<void> {
     );
     process.exit(1);
   }
+  // The share is taken once and its tunnel outlives every reload.
+  const taken = await shareFor(given, services, log);
+  if (taken === "refused") process.exit(process.exitCode || 1);
+  const share = taken;
   // One session for every reload: a reload asks only for what it has not
   // been told, or for what it refuses.
   const inputs = inputSessionFor(given);
@@ -1183,6 +1235,10 @@ async function runWatch(given: RunArgv, log: Logger): Promise<void> {
   };
   process.once("SIGINT", requestStop);
   process.once("SIGTERM", requestStop);
+  share?.onFailure((refusal) => {
+    printShareRefusal(refusal, log);
+    requestStop();
+  });
 
   // Watch the entry up-front so an edit during the first (possibly slow) load
   // still queues a reload; the graph's full file set is added after each load.
@@ -1234,11 +1290,13 @@ async function runWatch(given: RunArgv, log: Logger): Promise<void> {
       if (answerApplicationHelp(kernel)) {
         requestStop();
         await kernel.teardown();
+        await share?.close();
         return;
       }
       if (inputs) await offerToSave(cycle, inputs, env, log);
       await writeManifestCacheOnce();
       debug?.markReady(kernel);
+      share?.loaded(kernel);
       const count = watchers.sync(
         executable !== undefined ? new Set([executable]) : await collectWatchFiles(kernel),
       );
@@ -1285,6 +1343,8 @@ async function runWatch(given: RunArgv, log: Logger): Promise<void> {
 
     if (!stopping) log.info(log.ok("[watch] reloading..."));
   }
+  await share?.close();
+  if (share?.lost) process.exitCode = 1;
 }
 
 /** `telo run`'s own options. Declared once: yargs registers this table and
@@ -1316,17 +1376,30 @@ export const RUN_OPTIONS = {
     describe:
       "At a terminal, ask for each application input nothing supplies. Use --no-input to refuse them instead.",
   },
+  share: {
+    type: "string",
+    describe:
+      "Share every tcp port publicly through a runner, and answer the application's Telo.PublicUrl needs from the share. Optional share name, written --share=<name>; without one each copy of the manifest gets its own share.",
+  },
+  "share-runner": {
+    type: "string",
+    requiresArg: true,
+    describe:
+      "The runner a share goes to, with --share: else TELO_RUNNER_URL, else https://runner.telo.run.",
+  },
 } satisfies Record<string, Options>;
 
 /** Before the path, `--inspect`'s optional value is read only when it has the
  *  shape of a port, so the manifest is never taken as a host. */
 export const RUN_OPTIONAL_VALUE_SHAPES: Record<string, RegExp> = {
   inspect: /^(\[[^\]]+\]:\d+|[^\s/\\]*:\d+|\d+)$/,
+  // Never a separate token, which could be the manifest: a name is written `--share=<name>`.
+  share: /(?!)/,
 };
 
 /** `applicationArgs` is every token after the manifest path — the application's
  *  own command line, split off before yargs parses (`run-invocation.ts`). */
-export function runCommand(yargs: Argv, applicationArgs: readonly string[]): Argv {
+export function runCommand(yargs: Argv, applicationArgs: readonly string[], services: CliServices): Argv {
   return yargs.command(
     ["run <path>", "$0 <path>"],
     "Run a Telo application: telo run [options] <path> [application arguments]. Every argument after the path is the application's, read against the `arg:` bindings it declares — `telo run <path> --help` lists them.",
@@ -1338,9 +1411,15 @@ export function runCommand(yargs: Argv, applicationArgs: readonly string[]): Arg
           type: "string",
           demandOption: true,
         })
-        .options(RUN_OPTIONS),
+        .options(RUN_OPTIONS)
+        .check((argv) => {
+          if (argv["share-runner"] !== undefined && argv.share === undefined) {
+            throw new Error("--share-runner needs --share");
+          }
+          return true;
+        }),
     async (argv) => {
-      await run({ ...(argv as any), applicationArgs });
+      await run({ ...(argv as any), applicationArgs }, services);
     },
   );
 }

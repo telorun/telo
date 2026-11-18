@@ -1,0 +1,39 @@
+{
+  "generation": 1,
+  "offered": ["telo-share-1"],
+  "upgrades": [
+    {
+      "name": "an upgrade selecting none of the offered subprotocols",
+      "answer": { "subprotocol": null },
+      "outcome": "runner-unsupported",
+      "cause": "no-subprotocol"
+    },
+    {
+      "name": "an upgrade selecting a later generation",
+      "answer": { "subprotocol": "telo-share-2" },
+      "outcome": "runner-unsupported",
+      "cause": "no-subprotocol"
+    },
+    {
+      "name": "an HTTP answer instead of an upgrade",
+      "answer": { "status": 502 },
+      "outcome": "retry",
+      "warning": "unreachable"
+    }
+  ],
+  "closes": [
+    { "name": "a protocol error", "code": 4400, "after": "handshake", "outcome": "runner-unsupported", "cause": "protocol-error" },
+    { "name": "a refused credential", "code": 4401, "after": "upgrade", "outcome": "retry", "warning": "credential-refused" },
+    { "name": "a share deleted, unknown or another owner's", "code": 4404, "after": "upgrade", "outcome": "lost", "lost": "deleted" },
+    { "name": "a share deleted while connected", "code": 4404, "after": "handshake", "outcome": "lost", "lost": "deleted" },
+    { "name": "a timeout", "code": 4408, "after": "upgrade", "outcome": "retry", "warning": "timed-out" },
+    { "name": "another run took the share over", "code": 4409, "after": "handshake", "outcome": "lost", "lost": "superseded" },
+    { "name": "a stale epoch presented on reconnect", "code": 4409, "after": "upgrade", "outcome": "lost", "lost": "superseded" },
+    { "name": "the owner at its connected-share limit", "code": 4429, "after": "upgrade", "outcome": "retry", "warning": "owner-limit" },
+    { "name": "the runner at its connected-share capacity", "code": 4503, "after": "upgrade", "outcome": "retry", "warning": "runner-capacity" },
+    { "name": "a normal close", "code": 1000, "after": "handshake", "outcome": "retry", "warning": "disconnected" },
+    { "name": "the relay going away", "code": 1001, "after": "handshake", "outcome": "retry", "warning": "disconnected" },
+    { "name": "a relay error", "code": 1011, "after": "handshake", "outcome": "retry", "warning": "disconnected" },
+    { "name": "a code this generation does not define", "code": 4000, "after": "upgrade", "outcome": "retry", "warning": "disconnected" }
+  ]
+}

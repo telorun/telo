@@ -84,7 +84,7 @@ async function identityCaller(
   token: string,
 ): Promise<CallerResult> {
   try {
-    const { iss, sub } = await identity.verify(req, token);
+    const { iss, sub } = await identity.verify(req, token, identity.v1Htu(req.url));
     return { caller: { kind: "owner", owner: { kind: "identity", iss, sub } } };
   } catch (err) {
     if (err instanceof IdentityRefusal) {

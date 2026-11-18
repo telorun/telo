@@ -272,6 +272,7 @@ declaring a port the pod reserves.
 | `SESSION_CONFIG_FILE` | _(unset → every default)_ | The [session file](#configuration-files): the session containers' resources and user, session containers and the base-image picker. The chart mounts it from the `telo-k8s-runner-session` ConfigMap |
 | `AGENT_CONFIG_FILE` | _(unset → no agent)_ | The [agent file](#configuration-files): the operator's co-resident agent, advertised as `features.agents`, and its container's resources. The chart mounts it from the `telo-k8s-runner-agent` ConfigMap when `agent.image` or `agent.moduleRef` is set |
 | `AGENT_SECRET_<NAME>` | — | The value of each name the agent file lists under `secretEnv`; required for each (chart: `agent.secretEnv`, each from a Secret key) |
+| `RUNNER_SHARES`, `RUNNER_ROLE` | off, `control` | Offer shares / run the relay (`RUNNER_ROLE=relay`); see [Shares](#shares). Both need `SESSION_ROUTING_MODE` `ingress` or `gateway` and a base domain |
 | `RUNNER_SUPERVISOR_IMAGE` | _(required; the chart sets it to the runner's own image)_ | The runner's own image, which every session pod's `supervisor` init container copies the session supervisor out of (from `/opt/telo-runner/supervisor`) |
 | `RUNNER_SESSION_NAMESPACE` | `telo-sessions` | Namespace for session objects |
 | `RUNNER_IMAGE` | _(baked at build: the CLI version for a released runner, `telorun/node:latest-slim` for a dev build)_ | Default base image; always offered in the picker and the fallback when the catalog is unreachable. Leave the chart's `session.image` empty to keep the session kernel in lockstep with the runner |
@@ -550,6 +551,37 @@ silently, so an un-migrated file would otherwise boot a runner that logs
 **`sessionRouting.dataPlaneNamespace` is not optional when routing is on.** The
 session NetworkPolicy admits traffic from that namespace only; without it the
 route programs correctly and the workload is still unreachable.
+
+### Shares
+
+`shares.enabled` offers shares (`telo run --share`): a developer's local run exposed at a public address through a relay. It adds three things beside the control plane:
+
+- a `telo-k8s-runner-relay` Deployment and Service — the same image with `RUNNER_ROLE=relay`, one replica and the `Recreate` strategy, as the control plane has. It serves the tunnel endpoint at `tunnel.<baseDomain>` and answers every other `[<label>--]<port>-<id>.<baseDomain>` host from the tunnels it holds, so visitor traffic never passes the control plane. A relay rollout drops every tunnel and each CLI reconnects. It calls no Kubernetes API (its pod mounts no service-account token), and answers `404` to a host that is not a share host and has no health route, so its probes are `tcpSocket`;
+- one wildcard route, `*.<sessionRouting.baseDomain>`, to the relay Service, **in the runner's namespace**, for the layer `sessionRouting.mode` names. Exact per-session hosts outrank it, so sessions keep their own, and a `*.<baseDomain>` host no session routes (a suspended session's included) reaches the relay, which answers it `503`, no tunnel. Under `ingress` the Ingress needs a TLS Secret covering `*.<baseDomain>` in the runner's namespace: `sessionRouting.ingress.tls.cert` + `.key` also create it there, and `sessionRouting.ingress.tls.secretName` must then exist in the runner's namespace too. Under `gateway` the HTTPRoute attaches to `sessionRouting.gateway.*`, whose listener must admit routes from the runner's namespace (`allowedRoutes.namespaces`) and cover `*.<baseDomain>`;
+- the `shares` settings (`maxConnected`, `maxConnectedPerOwner`, `maxPerOwner`, `maxConcurrentRequests`, `maxBytesPerSecond`, `retentionSeconds`), which reach both Deployments as `RUNNER_MAX_CONNECTED_SHARES` … `RUNNER_SHARE_RETENTION_SECONDS`; the control plane also gets `RUNNER_SHARES`.
+
+Both the chart and the runner refuse to start shares with a SQLite store (the relay is another process), without `identity.*`, under `sessionRouting.mode` `auto` or `none`, and without `sessionRouting.baseDomain`:
+
+```console
+$ helm install runner ./chart --set shares.enabled=true --set sessionRouting.mode=auto
+Error: ... shares.enabled needs sessionRouting.mode ingress or gateway, not auto
+```
+
+**What the edge must allow.** The route to the relay passes WebSocket upgrades on `tunnel.<baseDomain>`, keeps an upgraded connection idle for at least 30 s, and caps no connection's total duration below 3600 s. ingress-nginx's and AWS ALB's defaults suffice. On GKE the backend-service timeout, which also caps a WebSocket's lifetime, must be raised with a `BackendConfig` bound to the relay Service:
+
+```yaml
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: telo-k8s-runner-relay
+  namespace: telo-runner
+spec:
+  timeoutSec: 3600
+---
+# and on the relay Service: cloud.google.com/backend-config: '{"default":"telo-k8s-runner-relay"}'
+```
+
+Any cap ends the tunnel; the CLI reconnects, dropping in-flight visitor streams.
 
 ### Route verification
 

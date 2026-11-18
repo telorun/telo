@@ -1,0 +1,17 @@
+units:
+  packages/runner-core: Added
+body: "Shares: with RUNNER_SHARES on over a Postgres store, an identity and a backend
+  that routes shares, the runner serves POST/GET/DELETE /v1/shares (get-or-create by
+  name, newest activity first, 429 too_many_shares at RUNNER_MAX_SHARES_PER_OWNER),
+  advertises features.shares in /v1/capabilities, and deletes an unconnected share
+  RUNNER_SHARE_RETENTION_SECONDS after its last activity. Adds the settings
+  RUNNER_SHARES, RUNNER_ROLE, RUNNER_MAX_CONNECTED_SHARES,
+  RUNNER_MAX_CONNECTED_SHARES_PER_OWNER, RUNNER_MAX_SHARES_PER_OWNER,
+  RUNNER_MAX_SHARE_CONCURRENT_REQUESTS, RUNNER_MAX_SHARE_BYTES_PER_SECOND and
+  RUNNER_SHARE_RETENTION_SECONDS, each refusing to boot over SQLite, without identity or
+  over a backend with no shareRouting. The session store moves to schema version 3:
+  session and share ids are drawn from one never-reused runner_host_ids namespace
+  (existing session ids are carried in), and Postgres gains runner_shares with the
+  fence, lease and connected-limit operations a relay calls. A DPoP proof's htu is now
+  the URL the route supplies to IdentityVerifier.verify, not always the audience plus
+  the path."

@@ -27,6 +27,8 @@ export interface VerifiedAccessToken {
   sub: string;
   /** `cnf.jkt`: the thumbprint of the key the token is bound to. */
   jkt: string;
+  /** `exp`. */
+  expiresAt: Date;
 }
 
 export interface AccessTokenExpectations {
@@ -87,7 +89,7 @@ export async function verifyAccessToken(
   if (typeof jkt !== "string" || jkt === "") {
     throw refused("the access token is not DPoP-bound: it carries no 'cnf.jkt'");
   }
-  return { iss, sub: payload.sub, jkt };
+  return { iss, sub: payload.sub, jkt, expiresAt: new Date(payload.exp! * 1000) };
 }
 
 /** `typ` compares case-insensitively, with or without `application/` (RFC 7515 §4.1.9). */

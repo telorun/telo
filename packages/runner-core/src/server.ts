@@ -2,8 +2,14 @@ import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 
-import type { RunnerBackend } from "./backend.js";
-import { RunnerConfigError, type RunnerAgent, type RunnerCoreConfig } from "./config.js";
+import type { RunnerBackend, ShareRouting } from "./backend.js";
+import {
+  RunnerConfigError,
+  sharesEnabledBy,
+  type IdentityConfig,
+  type RunnerAgent,
+  type RunnerCoreConfig,
+} from "./config.js";
 import type { RunnerCapabilities } from "./contract.js";
 import { capabilitiesRoute } from "./routes/capabilities.js";
 import { healthRoute } from "./routes/health.js";
@@ -18,8 +24,11 @@ import {
   protectedResourceMetadataUrl,
 } from "./identity/protected-resource-metadata.js";
 import { sessionsRoute, type ConfigGate } from "./routes/sessions.js";
+import { sharesRoute } from "./routes/shares.js";
+import { ShareRetention } from "./session-store/share-retention.js";
 import { SessionContainers } from "./session-containers/session-containers.js";
 import type { SessionStore } from "./session-store/session-store.js";
+import type { ShareStore } from "./session-store/share-store.js";
 import { IoTickets } from "./session/io-tickets.js";
 import { SessionRegistry } from "./session/registry.js";
 import { callerResolver, type CallerResolver } from "./session/session-credentials.js";
@@ -63,9 +72,50 @@ export interface ServerHandle {
   app: FastifyInstance;
   registry: SessionRegistry;
   lifecycle: SessionLifecycle;
+  /** The share retention sweep, on a control plane with shares on. */
+  shareRetention?: ShareRetention;
 }
 
+/**
+ * Shares are served only where the backend routes them, the store holds them and
+ * an identity owns them: the setting and the seams are one statement, like
+ * `teloVersions`. Both roles ask it.
+ */
+export function requireShareSeams(
+  config: RunnerCoreConfig,
+  shareRouting: ShareRouting | undefined,
+  store: SessionStore,
+): { routing: ShareRouting; shares: ShareStore; identity: IdentityConfig } {
+  const by = sharesEnabledBy(config.shares);
+  if (!shareRouting) {
+    throw new RunnerConfigError(
+      `${by} is on, but this runner's backend routes no shares — turn it off. ` +
+        "(Docker and telo-host-runner never route shares; the k8s runner does only with " +
+        "SESSION_ROUTING_MODE ingress or gateway and a base domain.)",
+    );
+  }
+  if (!store.shares) {
+    throw new RunnerConfigError(
+      `${by} needs RUNNER_SESSION_STORE=postgres: the relay is a separate process and cannot read a SQLite file`,
+    );
+  }
+  if (!config.identity) {
+    throw new RunnerConfigError(
+      `${by} needs RUNNER_IDENTITY_AUDIENCE and RUNNER_IDENTITY_ISSUERS: a share belongs to a signed-in identity`,
+    );
+  }
+  return { routing: shareRouting, shares: store.shares, identity: config.identity };
+}
+
+/** The control plane: `/v1`. A relay (`RUNNER_ROLE=relay`) is `buildRelayServer`'s. */
 export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
+  // First, so a backend that routes no shares is told so rather than pointed at a relay main it lacks.
+  if (deps.config.shares.enabled) requireShareSeams(deps.config, deps.backend.shareRouting, deps.store);
+  if (deps.config.shares.role === "relay") {
+    throw new RunnerConfigError(
+      "RUNNER_ROLE=relay serves share tunnels and visitors, not /v1 — this runner must start it with buildRelayServer.",
+    );
+  }
   const app = Fastify({
     logger: {
       level: deps.config.logLevel,
@@ -126,10 +176,23 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
   const backendCapabilities = deps.capabilities;
   const describe =
     typeof backendCapabilities === "function" ? backendCapabilities : () => backendCapabilities;
+  const sharesConfig = deps.config.shares;
+  // Like identity, `features.shares` is core's: advertised from the settings
+  // the routes enforce.
+  const sharesFeature = sharesConfig.enabled
+    ? {
+        maxPerOwner: sharesConfig.maxPerOwner,
+        maxConnectedPerOwner: sharesConfig.maxConnectedPerOwner,
+        retentionSeconds: sharesConfig.retentionSeconds,
+      }
+    : undefined;
   const capabilitiesGetter = (): RunnerCapabilities => {
     const document = { ...describe() };
     delete document.identity;
-    return identityMetadata ? { ...document, identity: identityMetadata } : document;
+    const features = { ...document.features };
+    delete features.shares;
+    if (sharesFeature) features.shares = sharesFeature;
+    return { ...document, features, ...(identityMetadata ? { identity: identityMetadata } : {}) };
   };
   const capabilitiesValue = capabilitiesGetter();
   const resolveCaller =
@@ -149,6 +212,8 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
         "it would accept a telo version it has no way to honour.",
     );
   }
+
+  if (sharesConfig.enabled) requireShareSeams(deps.config, deps.backend.shareRouting, deps.store);
 
   // A container engine per session, served only where the operator turned it on
   // and the backend can run one: the setting and the seam are one statement,
@@ -214,6 +279,26 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
       teloVersions: capabilitiesValue.features.teloVersions === true,
     }),
   );
+  let shareRetention: ShareRetention | undefined;
+  if (sharesConfig.enabled) {
+    const store = deps.store.shares!;
+    await app.register(
+      sharesRoute({
+        store,
+        routing: deps.backend.shareRouting!,
+        resolveCaller,
+        authChallenge: identityConfig
+          ? dpopChallenge(protectedResourceMetadataUrl(identityConfig.audience))
+          : undefined,
+        maxPerOwner: sharesConfig.maxPerOwner,
+      }),
+    );
+    shareRetention = new ShareRetention({
+      store,
+      retentionMs: sharesConfig.retentionSeconds * 1000,
+      log: app.log,
+    });
+  }
   await app.register(
     ioRoute({ registry, lifecycle, tickets, corsOrigins: deps.config.corsOrigins }),
   );
@@ -223,7 +308,11 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
   // Closing detaches workloads and stops nothing that outlives the runner.
   await lifecycle.boot();
   lifecycle.start();
-  app.addHook("onClose", async () => lifecycle.close());
+  shareRetention?.start();
+  app.addHook("onClose", async () => {
+    shareRetention?.stop();
+    await lifecycle.close();
+  });
 
-  return { app, registry, lifecycle };
+  return { app, registry, lifecycle, ...(shareRetention ? { shareRetention } : {}) };
 }

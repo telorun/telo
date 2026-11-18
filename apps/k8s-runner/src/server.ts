@@ -1,5 +1,6 @@
 import {
   BaseImageCatalog,
+  buildRelayServer,
   buildServer as coreBuildServer,
   loadTermsFromEnv,
   openSessionStore,
@@ -19,6 +20,7 @@ import packageJson from "../package.json" with { type: "json" };
 import { kubernetesRunnerCapabilities } from "./capabilities.js";
 import { loadK8sRunnerConfig, RunnerConfigError, type K8sRunnerConfig } from "./config.js";
 import { createKubernetesBackend } from "./k8s/backend.js";
+import { kubernetesShareRouting } from "./k8s/share-routing.js";
 import { createKubeClient } from "./k8s/client.js";
 import { createSessionRouter } from "./k8s/routing/index.js";
 
@@ -80,6 +82,39 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
   return handle;
 }
 
+async function runRelay(config: K8sRunnerConfig): Promise<void> {
+  const bootLog = pino({ level: config.logLevel });
+  let store: SessionStore;
+  try {
+    store = await openSessionStore(config.sessionStore, { log: bootLog });
+  } catch (err) {
+    bootLog.error({ err }, "could not open the session store");
+    process.exit(1);
+  }
+  let app: Awaited<ReturnType<typeof buildRelayServer>>["app"];
+  try {
+    ({ app } = await buildRelayServer({
+      // The relay reads the store and the identity and calls no Kubernetes API.
+      shareRouting: kubernetesShareRouting(config),
+      config,
+      store,
+    }));
+    await app.listen({ port: config.port, host: "0.0.0.0" });
+  } catch (err) {
+    bootLog.error({ err }, "the relay could not start");
+    await store.close();
+    process.exit(1);
+  }
+  const shutdown = async (signal: string): Promise<void> => {
+    app.log.info({ signal }, "shutting down");
+    await app.close();
+    await store.close();
+    process.exit(0);
+  };
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+}
+
 async function main(): Promise<void> {
   let config: K8sRunnerConfig;
   try {
@@ -91,6 +126,8 @@ async function main(): Promise<void> {
     }
     throw err;
   }
+
+  if (config.shares.role === "relay") return runRelay(config);
 
   const kube = createKubeClient();
   // What runs before the server exists — the session store, adoption and the

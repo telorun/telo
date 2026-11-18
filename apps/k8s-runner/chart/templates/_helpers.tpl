@@ -56,3 +56,34 @@ http://{{ include "k8s-runner.name" . }}.{{ .Values.runnerNamespace }}.svc:{{ .V
 {{- printf "%.6f" (mulf $number (index $scale $suffix)) -}}
 {{- end -}}
 {{- end -}}
+
+{{- define "k8s-runner.relayName" -}}
+{{ include "k8s-runner.name" . }}-relay
+{{- end -}}
+
+{{/* The routing and share settings the control plane and the relay read alike. */}}
+{{- define "k8s-runner.shareEnv" -}}
+- name: RUNNER_MAX_CONNECTED_SHARES
+  value: "{{ .Values.shares.maxConnected | int64 }}"
+- name: RUNNER_MAX_CONNECTED_SHARES_PER_OWNER
+  value: "{{ .Values.shares.maxConnectedPerOwner | int64 }}"
+- name: RUNNER_MAX_SHARES_PER_OWNER
+  value: "{{ .Values.shares.maxPerOwner | int64 }}"
+- name: RUNNER_MAX_SHARE_CONCURRENT_REQUESTS
+  value: "{{ .Values.shares.maxConcurrentRequests | int64 }}"
+- name: RUNNER_MAX_SHARE_BYTES_PER_SECOND
+  value: "{{ .Values.shares.maxBytesPerSecond | int64 }}"
+- name: RUNNER_SHARE_RETENTION_SECONDS
+  value: "{{ .Values.shares.retentionSeconds | int64 }}"
+{{- end -}}
+
+{{/* The wildcard relay Ingress's TLS Secret, in the runner's namespace: chart-created
+     from sessionRouting.ingress.tls.cert + .key, else sessionRouting.ingress.tls.secretName
+     (which must then exist there). Empty without an origin certificate. */}}
+{{- define "k8s-runner.relayIngressTlsSecretName" -}}
+{{- if and .Values.sessionRouting.ingress.tls.cert .Values.sessionRouting.ingress.tls.key -}}
+{{ include "k8s-runner.relayName" . }}-tls
+{{- else if .Values.sessionRouting.ingress.tls.secretName -}}
+{{ .Values.sessionRouting.ingress.tls.secretName }}
+{{- end -}}
+{{- end -}}

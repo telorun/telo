@@ -19,6 +19,7 @@ import type { SessionRouter } from "./routing/index.js";
 import { createKubernetesSessionContainerEngine } from "./session-container-engine.js";
 import { deleteSessionVolume } from "./session-volume.js";
 import { KubernetesSessionWorkload, type SessionWorkloadDeps } from "./session-workload.js";
+import { kubernetesShareRouting } from "./share-routing.js";
 import { sweepWorkspaceConfigMaps } from "./workspace-configmap.js";
 
 export { podFailureMessage } from "./pod-status.js";
@@ -204,6 +205,7 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
     maxApps: APP_SLOTS,
     reapOrphans,
     containers: createKubernetesSessionContainerEngine({ kube, config }),
+    shareRouting: kubernetesShareRouting(config),
   };
 }
 

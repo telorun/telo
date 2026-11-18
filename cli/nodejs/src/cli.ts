@@ -13,6 +13,7 @@ import { EXIT_REFUSED } from "./exit-status.js";
 
 import { TELO_RUNTIME_VERSION } from "@telorun/kernel";
 import yargs, { type Argv } from "yargs";
+import { authCommand, loginCommand, logoutCommand } from "./commands/auth.js";
 import { builtinsCommand } from "./commands/builtins.js";
 import { celCommand } from "./commands/cel.js";
 import { changedCommand } from "./commands/changed.js";
@@ -29,18 +30,21 @@ import { publishCommand } from "./commands/publish.js";
 import { releaseCommand } from "./commands/release.js";
 import { RUN_OPTIONAL_VALUE_SHAPES, RUN_OPTIONS, runCommand } from "./commands/run.js";
 import { searchCommand } from "./commands/search.js";
+import { sharesCommand } from "./commands/shares.js";
 import { upgradeCommand } from "./commands/upgrade.js";
 import { GLOBAL_OPTIONS } from "./global-options.js";
 import { configureOutput, exitOnClosedPipe, outErrLine, parseOutputFormat } from "./output.js";
 import { splitRunInvocation } from "./run-invocation.js";
+import { defaultCliServices, type CliServices } from "./share/cli-services.js";
 import { installStandaloneRuntime } from "./standalone/standalone-runtime.js";
 import { parseCommandLine } from "./usage-refusal.js";
 
 /** Every top-level command, by name — which is also how a run is told from
  *  another command: a first positional that names none of them is a manifest.
  *  `applicationArgs` are the arguments after a run's manifest path. */
-function commandTable(applicationArgs: readonly string[]): Record<string, (yargs: Argv) => Argv> {
+function commandTable(applicationArgs: readonly string[], services: CliServices): Record<string, (yargs: Argv) => Argv> {
   return {
+    auth: authCommand(services),
     builtins: builtinsCommand,
     cel: celCommand,
     changed: changedCommand,
@@ -49,14 +53,17 @@ function commandTable(applicationArgs: readonly string[]): Record<string, (yargs
     env: envCommand,
     format: formatCommand,
     install: installCommand,
+    login: loginCommand(services),
+    logout: logoutCommand(services),
     migrate: migrateCommand,
     module: moduleCommand,
     needs: needsCommand,
     package: packageCommand,
     publish: publishCommand,
     release: releaseCommand,
-    run: (yargs) => runCommand(yargs, applicationArgs),
+    run: (yargs) => runCommand(yargs, applicationArgs, services),
     search: searchCommand,
+    shares: sharesCommand(services),
     upgrade: upgradeCommand,
   };
 }
@@ -65,8 +72,9 @@ function commandTable(applicationArgs: readonly string[]): Record<string, (yargs
  * Run the CLI on `args` — the arguments after the program name, as `process.argv.slice(2)`
  * holds them. Reports through `process.exitCode` and the `Output` seam, as the `telo`
  * bin does; the work of an asynchronous command continues after `main` returns.
+ * `services` is the composition root: what the commands are handed rather than choose.
  */
-export function main(args: readonly string[]): void {
+export function main(args: readonly string[], services: CliServices = defaultCliServices()): void {
   // A no-op outside a single-file executable; an executable embedding the CLI
   // under another entry gets the same runtime the CLI's own supplies.
   installStandaloneRuntime();
@@ -79,11 +87,11 @@ export function main(args: readonly string[]): void {
 
   // Everything after a run's manifest path belongs to the application, so yargs
   // never sees it — see run-invocation.ts.
-  const invocation = splitRunInvocation(args, new Set(Object.keys(commandTable([]))), {
+  const invocation = splitRunInvocation(args, new Set(Object.keys(commandTable([], services))), {
     options: { ...GLOBAL_OPTIONS, ...RUN_OPTIONS },
     optionalValueShapes: RUN_OPTIONAL_VALUE_SHAPES,
   });
-  const commands = commandTable(invocation.applicationArgs ?? []);
+  const commands = commandTable(invocation.applicationArgs ?? [], services);
 
   // Not for a run: its streams carry the application's output, and exiting there
   // would skip the kernel's teardown.

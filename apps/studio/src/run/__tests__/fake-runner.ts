@@ -57,6 +57,10 @@ export class FakeSession implements RunnerSession {
       workspace: "ws",
       status: this.status,
       agent: this.agent,
+      config: {},
+      createdAt: "2026-01-01T00:00:00Z",
+      lastActiveAt: "2026-01-01T00:00:00Z",
+      suspendedAt: null,
       apps: this.apps.map((a) => ({
         name: a.name,
         entryRelativePath: a.entryRelativePath,

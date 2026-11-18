@@ -16,7 +16,7 @@ function identityRunner(answer: AdoptedSession) {
   runner.connection.baseUrl = "https://runner.test";
   runner.capabilities = {
     ...runner.capabilities,
-    identity: { resource: "https://runner.test", authorization_servers: ["https://issuer.test"] },
+    identity: { resource: "https://runner.test", authorization_servers: ["https://issuer.test"], dpop_bound_access_tokens_required: true, dpop_signing_alg_values_supported: ["ES256"] },
   };
   const adopted: Array<{ sessionId: string; resumeSecret: string }> = [];
   runner.connection.adoptSession = async (sessionId, resumeSecret) => {

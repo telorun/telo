@@ -6,7 +6,7 @@ import { RunnerRefusal, type RunnerConnection, type RunnerSession, type SessionD
 import { FakeRunner, app } from "./fake-runner";
 
 function document(id: string, status: SessionDocument["status"]): SessionDocument {
-  return { sessionId: id, workspace: "w", status, agent: null, apps: [] };
+  return { sessionId: id, workspace: "w", status, agent: null, config: {}, apps: [], createdAt: "2026-01-01T00:00:00Z", lastActiveAt: "2026-01-01T00:00:00Z", suspendedAt: null };
 }
 
 const identity: RunnerCredentials = { headers: async () => ({ authorization: "DPoP at", dpop: "proof" }) };

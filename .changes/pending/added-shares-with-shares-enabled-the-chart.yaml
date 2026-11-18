@@ -1,0 +1,7 @@
+units:
+  apps/k8s-runner: Added
+body: "Shares: with `shares.enabled` the chart renders a relay Deployment (one replica,
+  `Recreate`) and Service and one wildcard route `*.<sessionRouting.baseDomain>` to it
+  for the ingress or gateway layer, and the backend routes shares (`RUNNER_ROLE=relay`
+  starts the relay). Shares are refused with a SQLite store, without identity, under
+  routing mode `auto` or `none`, and without a base domain."

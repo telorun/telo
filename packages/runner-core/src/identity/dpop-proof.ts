@@ -22,7 +22,8 @@ const MAX_JTI_LENGTH = 256;
 export interface DpopRequest {
   /** The request method, compared to `htm` exactly. */
   method: string;
-  /** The audience followed by the request path, without its query. */
+  /** The URL the request was sent to, as its route supplies it; the proof's
+   *  query and fragment are ignored. */
   htu: string;
   accessToken: string;
   /** The access token's `cnf.jkt`. */

@@ -1,5 +1,8 @@
 import type { Pool, PoolClient } from "pg";
 
+import { DEFAULT_MINT_ID, HostIdCollisionError, MAX_ID_DRAWS, type MintId } from "./host-id.js";
+import { PostgresShareStore } from "./postgres-share-store.js";
+import { inTransaction } from "./postgres-transaction.js";
 import {
   assertReadableVersion,
   ownerColumns,
@@ -9,6 +12,7 @@ import {
   storedStatus,
   type ChangeOwnerResult,
   type CreateSessionResult,
+  type NewSessionRecord,
   type SessionOwner,
   type SessionRecord,
   type SessionRecordUpdate,
@@ -63,6 +67,33 @@ const MIGRATIONS: ReadonlyArray<{ version: number; up: string }> = [
     version: 2,
     up: "ALTER TABLE runner_sessions ADD COLUMN container_engine jsonb;",
   },
+  {
+    version: 3,
+    up: `
+      CREATE TABLE runner_host_ids (
+        id text PRIMARY KEY,
+        holder text NOT NULL CHECK (holder IN ('session', 'share')),
+        created_at bigint NOT NULL,
+        released_at bigint
+      );
+      INSERT INTO runner_host_ids (id, holder, created_at, released_at)
+        SELECT id, 'session', created_at, NULL FROM runner_sessions;
+      CREATE TABLE runner_shares (
+        id text PRIMARY KEY REFERENCES runner_host_ids (id),
+        owner_key text NOT NULL,
+        owner_iss text NOT NULL,
+        owner_sub text NOT NULL,
+        name text NOT NULL,
+        application text NOT NULL,
+        created_at bigint NOT NULL,
+        epoch bigint NOT NULL,
+        connected_at bigint,
+        lease_expires_at bigint,
+        CONSTRAINT runner_shares_owner_name UNIQUE (owner_key, name)
+      );
+      CREATE INDEX runner_shares_lease ON runner_shares (lease_expires_at);
+    `,
+  },
 ];
 
 const COLUMNS =
@@ -74,6 +105,8 @@ const COLUMNS =
 const CREATE_ATTEMPTS = 3;
 
 export interface PostgresSessionStoreOptions {
+  /** Draws session and share ids; tests force collisions through it. */
+  mintId?: MintId;
   /** Receives an error raised on an idle pooled connection (the server
    *  restarting, a dropped link); the pool replaces the connection. */
   onIdleClientError(err: Error): void;
@@ -81,7 +114,14 @@ export interface PostgresSessionStoreOptions {
 
 /** The session store in a Postgres database, in tables prefixed `runner_`. */
 export class PostgresSessionStore implements SessionStore {
-  private constructor(private readonly pool: Pool) {}
+  readonly shares: PostgresShareStore;
+
+  private constructor(
+    private readonly pool: Pool,
+    private readonly mintId: MintId,
+  ) {
+    this.shares = new PostgresShareStore(pool, mintId);
+  }
 
   /** Connects to `url` and migrates the database to the current schema. */
   static async open(url: string, options: PostgresSessionStoreOptions): Promise<PostgresSessionStore> {
@@ -94,42 +134,47 @@ export class PostgresSessionStore implements SessionStore {
       await pool.end();
       throw err;
     }
-    return new PostgresSessionStore(pool);
+    return new PostgresSessionStore(pool, options.mintId ?? DEFAULT_MINT_ID);
   }
 
-  async create(record: SessionRecord): Promise<CreateSessionResult> {
+  async create(record: NewSessionRecord): Promise<CreateSessionResult> {
     const owner = ownerColumns(record.owner);
     for (let attempt = 0; attempt < CREATE_ATTEMPTS; attempt++) {
-      const inserted = await this.pool.query(
-        `INSERT INTO runner_sessions (owner_key, ${COLUMNS})
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-         ON CONFLICT (owner_key, workspace) DO NOTHING`,
-        [
-          owner.ownerKey,
-          record.id,
-          owner.ownerIss,
-          owner.ownerSub,
-          owner.ownerSecretHash,
-          record.workspace,
-          record.agent,
-          JSON.stringify(record.apps),
-          JSON.stringify(record.config),
-          record.status,
-          record.createdAt.getTime(),
-          record.lastActiveAt.getTime(),
-          record.suspendedAt?.getTime() ?? null,
-          encodeContainerEngine(record.containerEngine),
-        ],
-      );
-      if (inserted.rowCount === 1) return { kind: "created", record: structuredClone(record) };
-      const existing = await this.pool.query(
-        "SELECT id FROM runner_sessions WHERE owner_key = $1 AND workspace = $2",
-        [owner.ownerKey, record.workspace],
-      );
-      if (existing.rowCount === 1) return { kind: "exists", id: existing.rows[0].id };
+      const outcome = await inTransaction(this.pool, async (client): Promise<CreateSessionResult | undefined> => {
+        const id = await this.drawHostId(client, record.createdAt);
+        const inserted = await client.query(
+          `INSERT INTO runner_sessions (owner_key, ${COLUMNS})
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+           ON CONFLICT (owner_key, workspace) DO NOTHING`,
+          [
+            owner.ownerKey,
+            id,
+            owner.ownerIss,
+            owner.ownerSub,
+            owner.ownerSecretHash,
+            record.workspace,
+            record.agent,
+            JSON.stringify(record.apps),
+            JSON.stringify(record.config),
+            record.status,
+            record.createdAt.getTime(),
+            record.lastActiveAt.getTime(),
+            record.suspendedAt?.getTime() ?? null,
+            encodeContainerEngine(record.containerEngine),
+          ],
+        );
+        if (inserted.rowCount === 1) return { kind: "created", record: { id, ...structuredClone(record) } };
+        await client.query("DELETE FROM runner_host_ids WHERE id = $1", [id]);
+        const existing = await client.query(
+          "SELECT id FROM runner_sessions WHERE owner_key = $1 AND workspace = $2",
+          [owner.ownerKey, record.workspace],
+        );
+        return existing.rowCount === 1 ? { kind: "exists", id: existing.rows[0].id } : undefined;
+      });
+      if (outcome) return outcome;
     }
     throw new Error(
-      `session '${record.id}' collided with a session for workspace '${record.workspace}' ` +
+      `a session for workspace '${record.workspace}' collided ` +
         `${CREATE_ATTEMPTS} times, and that session was deleted each time before it could be read`,
     );
   }
@@ -208,8 +253,12 @@ export class PostgresSessionStore implements SessionStore {
   }
 
   async delete(id: string): Promise<boolean> {
-    const result = await this.pool.query("DELETE FROM runner_sessions WHERE id = $1", [id]);
-    return result.rowCount === 1;
+    return inTransaction(this.pool, async (client) => {
+      const result = await client.query("DELETE FROM runner_sessions WHERE id = $1", [id]);
+      if (result.rowCount !== 1) return false;
+      await client.query("UPDATE runner_host_ids SET released_at = $2 WHERE id = $1", [id, Date.now()]);
+      return true;
+    });
   }
 
   async recordJti(jti: string, expiresAt: Date, now: Date): Promise<boolean> {
@@ -232,39 +281,44 @@ export class PostgresSessionStore implements SessionStore {
   async close(): Promise<void> {
     await this.pool.end();
   }
+
+  /** Claims a fresh id in the host-id namespace, re-drawing on a collision with
+   *  an id held or released, at most `MAX_ID_DRAWS` times. */
+  private async drawHostId(client: PoolClient, createdAt: Date): Promise<string> {
+    for (let draw = 0; draw < MAX_ID_DRAWS; draw++) {
+      const id = this.mintId();
+      const inserted = await client.query(
+        `INSERT INTO runner_host_ids (id, holder, created_at, released_at) VALUES ($1, 'session', $2, NULL)
+         ON CONFLICT (id) DO NOTHING`,
+        [id, createdAt.getTime()],
+      );
+      if (inserted.rowCount === 1) return id;
+    }
+    throw new HostIdCollisionError(MAX_ID_DRAWS);
+  }
 }
 
 async function migrate(pool: Pool): Promise<void> {
   if (MIGRATIONS[MIGRATIONS.length - 1]!.version !== SESSION_STORE_SCHEMA_VERSION) {
     throw new Error("the Postgres session store's migrations do not reach the current schema version");
   }
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    try {
-      await client.query("SELECT pg_advisory_xact_lock($1)", [MIGRATION_LOCK]);
-      await client.query("CREATE TABLE IF NOT EXISTS runner_schema_version (version integer NOT NULL)");
-      const found = await schemaVersion(client);
-      assertReadableVersion(found, WHERE);
-      for (const migration of MIGRATIONS) {
-        if (migration.version <= found) continue;
-        await client.query(migration.up);
-      }
-      if (found === 0) {
-        await client.query("INSERT INTO runner_schema_version (version) VALUES ($1)", [
-          SESSION_STORE_SCHEMA_VERSION,
-        ]);
-      } else if (found < SESSION_STORE_SCHEMA_VERSION) {
-        await client.query("UPDATE runner_schema_version SET version = $1", [SESSION_STORE_SCHEMA_VERSION]);
-      }
-      await client.query("COMMIT");
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
+  await inTransaction(pool, async (client) => {
+    await client.query("SELECT pg_advisory_xact_lock($1)", [MIGRATION_LOCK]);
+    await client.query("CREATE TABLE IF NOT EXISTS runner_schema_version (version integer NOT NULL)");
+    const found = await schemaVersion(client);
+    assertReadableVersion(found, WHERE);
+    for (const migration of MIGRATIONS) {
+      if (migration.version <= found) continue;
+      await client.query(migration.up);
     }
-  } finally {
-    client.release();
-  }
+    if (found === 0) {
+      await client.query("INSERT INTO runner_schema_version (version) VALUES ($1)", [
+        SESSION_STORE_SCHEMA_VERSION,
+      ]);
+    } else if (found < SESSION_STORE_SCHEMA_VERSION) {
+      await client.query("UPDATE runner_schema_version SET version = $1", [SESSION_STORE_SCHEMA_VERSION]);
+    }
+  });
 }
 
 async function schemaVersion(client: PoolClient): Promise<number> {
