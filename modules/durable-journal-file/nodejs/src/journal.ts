@@ -105,6 +105,31 @@ function stagingFor(file: string): string {
   return `${file}.compacting`;
 }
 
+/** How long a compaction keeps retrying a rename Windows refuses while the file is open. */
+const RENAME_RETRY_MS = 10_000;
+const WINDOWS_SHARING_CODES = new Set(["EPERM", "EACCES", "EBUSY"]);
+
+/**
+ * Rename the staged file over the run's file. Windows refuses to replace a file
+ * another handle has open — a status read, an append's flush — so there the
+ * refusal is retried with backoff until the bound, then raised as it was.
+ */
+async function renameOverReaders(from: string, to: string): Promise<void> {
+  const deadline = Date.now() + RENAME_RETRY_MS;
+  for (let delay = 5; ; delay = Math.min(delay * 2, 200)) {
+    try {
+      await rename(from, to);
+      return;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code ?? "";
+      if (process.platform !== "win32" || !WINDOWS_SHARING_CODES.has(code) || Date.now() >= deadline) {
+        throw err;
+      }
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
 function runOf(fileName: string): string {
   return decodeURIComponent(fileName.replace(/\.ndjson$/, ""));
 }
@@ -311,7 +336,7 @@ class FileJournalController {
     } finally {
       await handle.close();
     }
-    await rename(staging, file);
+    await renameOverReaders(staging, file);
     // The rename is durable only once the directory is: a machine losing power
     // before that could lose entries appended to the new file after it.
     await this.syncDirectory();
