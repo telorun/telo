@@ -30,8 +30,8 @@ metadata:
     nothing.
 
     `projected` is the projection's `matched`, for the same reason. `guarded` is dispatched
-    on the first pass under a guard that is true only for its first 300ms; the resumes come
-    long after, so a re-derived guard would skip the step and leave it out of the run's
+    on the first pass under a guard that is true only for its first second; the resumes come
+    later, so a re-derived guard would skip the step and leave it out of the run's
     result — which is what the last assertion reads.
 
     The run parks THREE times, once inside each composer, because a composer that completes
@@ -111,7 +111,7 @@ journal: !ref journal
 runId: !cel "'composer:' + inputs.ticket"
 inputs:
   ticket: !cel "inputs.ticket"
-  guardUntil: !cel "nowMillis() + 300"
+  guardUntil: !cel "nowMillis() + 1000"
 steps:
   - name: guarded
     when: !cel "nowMillis() < inputs.guardUntil"
@@ -169,7 +169,7 @@ steps:
           invoke: !ref done
     inputs:
       ticket: !cel "inputs.ticket"
-      cutoff: !cel "nowMillis() + 300"
+      cutoff: !cel "nowMillis() + 1000"
 ---
 kind: Local.Status
 metadata: { name: status }
@@ -217,7 +217,7 @@ steps:
 
   # A real gap, which is what gives the assertions teeth: a re-derived clock
   # reading would differ from the recorded one by more than a scheduling jitter,
-  # and the guard's 300ms window has closed.
+  # and the guard's one-second window has closed.
   - name: firstGap
     invoke: { kind: Timer.Delay }
     inputs: { duration: 1500ms }
