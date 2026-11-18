@@ -39,6 +39,7 @@
 !packages/editor-protocol
 !packages/debug-ui
 !packages/debug-wire
+!packages/runner-protocol
 !packages/glob/nodejs
 !analyzer/nodejs
 !templating/nodejs

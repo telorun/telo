@@ -301,6 +301,26 @@ function loadSessionRoutingConfig(
   };
 }
 
+/** Shares are routed by the wildcard route of a chosen layer, so `auto` and
+ *  `none` — which may route nothing — and a missing base domain are refused. */
+function refuseSharesWithoutRouting(
+  shares: RunnerCoreConfig["shares"],
+  routing: SessionRoutingConfig,
+): void {
+  if (!shares.enabled) return;
+  const by = shares.role === "relay" ? "RUNNER_ROLE=relay" : "RUNNER_SHARES";
+  if (routing.mode !== "ingress" && routing.mode !== "gateway") {
+    throw new RunnerConfigError(
+      `${by} needs SESSION_ROUTING_MODE ingress or gateway, not ${routing.mode}: shares are routed by a wildcard route on one of them`,
+    );
+  }
+  if (!routing.baseDomain) {
+    throw new RunnerConfigError(
+      `${by} needs SESSION_ROUTING_BASE_DOMAIN: every share host sits beneath it`,
+    );
+  }
+}
+
 /** The session file (`SESSION_CONFIG_FILE`): `resources`, `user`, `containers`
  *  and `baseImages`, every key defaulting when the file or the key is absent. */
 function loadSessionFile(env: NodeJS.ProcessEnv): {
@@ -408,6 +428,8 @@ export function loadK8sRunnerConfig(env: NodeJS.ProcessEnv): K8sRunnerConfig {
   requireStateDirectory(core.sessionStore);
   const session = loadSessionFile(env);
   const agentFile = loadAgentFile(env);
+  const sessionRouting = loadSessionRoutingConfig(env, sessionNamespace);
+  refuseSharesWithoutRouting(core.shares, sessionRouting);
 
   return {
     ...core,
@@ -425,7 +447,7 @@ export function loadK8sRunnerConfig(env: NodeJS.ProcessEnv): K8sRunnerConfig {
     imagePullSecret: env.RUNNER_IMAGE_PULL_SECRET?.trim() || undefined,
     runtimeClass: env.RUNNER_RUNTIME_CLASS?.trim() || undefined,
     keepFailedPods: parseBool(env.RUNNER_KEEP_FAILED_PODS, false, "RUNNER_KEEP_FAILED_PODS"),
-    sessionRouting: loadSessionRoutingConfig(env, sessionNamespace),
+    sessionRouting,
     managedByLabel: env.RUNNER_MANAGED_BY?.trim() || "telo-k8s-runner",
     sessionResources: session.resources,
     sessionUser: session.user,

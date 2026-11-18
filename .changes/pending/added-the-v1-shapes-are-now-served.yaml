@@ -1,0 +1,5 @@
+units:
+  packages/runner-core: Added
+body: The /v1 shapes are now served from @telorun/runner-protocol instead of
+  runner-core's own definitions, and runner-core's tests validate every route's answer
+  and every event against the protocol's schema.

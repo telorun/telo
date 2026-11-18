@@ -35,7 +35,9 @@ signals and reports:
   `destroy(sessionId)` (the workload if any, and the session's storage),
   `supplyTelo?`, `reservedPorts?(apps)` (the ports the workload binds beside
   the apps — a supervisor's, an inspect endpoint's — each `{ app, port,
-  protocol, purpose }`), `reapOrphans?({ known, live })` and `containers?`.
+  protocol, purpose }`), `reapOrphans?({ known, live })`, `containers?` and
+  `shareRouting?` (a share's addresses and tunnel URL, and the `baseDomain` its
+  visitor hosts sit beneath; § Shares).
 - `WorkloadSpec` is `{ sessionId, apps, agent?, config, tokens }` and carries no
   env: **session env reaches an app only through `runApp`**, never a workload's
   definition.
@@ -53,7 +55,7 @@ Core builds every run's argv, `telo run --watch --no-input --inspect <listen>
 `running` and ends it on the next `ready`, so a new kernel's `Kernel.Starting`
 is never skipped as already seen. Reachability is reported only while an app
 runs. `buildServer({ backend, config, version, store })` wires a backend into
-the full `/v1` app; pass `logStream` when the host's stdout is not the runner's
+the full `/v1` app (`buildRelayServer` is the relay's, § Shares); pass `logStream` when the host's stdout is not the runner's
 to write, as it is not inside a CLI.
 
 ## The session supervisor
@@ -182,15 +184,24 @@ cached per issuer for ten minutes, refetched on an unknown `kid` at most every
 (and `nbf` / `iat` when present) with 60 s of skew; with a non-empty `sub` and a
 `cnf.jkt`. The proof (RFC 9449) must have `typ: dpop+jwt`, `alg` `ES256` or
 `EdDSA`, an embedded public `jwk` whose RFC 7638 thumbprint is `cnf.jkt`, `htm`
-equal to the request method, `htu` equal to the audience followed by the request
-path (no query: a proof for `GET /v1/sessions?workspace=x` names
-`<audience>/v1/sessions`), `iat` within 120 s, `ath` the base64url SHA-256 of the
+equal to the request method, `htu` equal to the URL the request was sent to, as
+the route supplies it (see below), `iat` within 120 s, `ath` the base64url SHA-256 of the
 token, and a `jti` not seen before — kept in the session store for the window and
 purged on the lifecycle tick, so a replay is refused across a restart. Scope and
 `client_id` are not judged. Refusals are `401 invalid_token` /
 `invalid_dpop_proof`. An issuer whose keys cannot be fetched, with no cached set,
 answers identity requests `503 identity_provider_unavailable`; a stale cached set
 keeps answering while a refresh fails, and resume-secret requests are unaffected.
+
+**The `htu` is the route's, not always the audience.** Every `/v1` route expects
+the audience followed by the request path, with no query: a proof for
+`GET /v1/sessions?workspace=x` names `<audience>/v1/sessions`. The relay's tunnel
+upgrade expects `https://tunnel.<baseDomain>/v1/shares/<id>/tunnel` (the
+`https://` form of the share's `tunnelUrl`), with `htm` `GET`. The token's `aud`
+must contain the audience on both, since the relay is the same resource server at
+another host. A proof for one is refused at the other, and proof `jti`s share one
+store, so a replay is refused on either side and across restarts. The verifier
+takes the expected `htu` from its caller.
 
 **Identity routes.** A create by an identity is owned by `(iss, sub)` and
 answers no secret. `GET /v1/sessions` lists the caller's sessions; with a resume
@@ -279,6 +290,15 @@ One owner holds at most one session per `workspace`; a second create answers
 DPoP proof `jti`s it has seen until each expires, so a replay is refused across a
 restart.
 
+**One id namespace.** Session ids and share ids are drawn from `runner_host_ids`
+(`id`, `holder` `session` | `share`, `created_at`, `released_at`), in the same
+transaction that stores their holder. A primary-key conflict re-draws, at most 3
+times, then fails with the store's error. Deleting a session or share sets
+`released_at` and keeps the row, so an id is never drawn again: a visitor's
+browser keeps cookies, storage and service workers per origin, so an id reused
+for another holder would hand them to a stranger. Shares are kept in `runner_shares`
+(Postgres only; see Shares).
+
 | Setting | Meaning |
 | --- | --- |
 | `RUNNER_SESSION_STORE` | `sqlite` (default) or `postgres`; anything else refuses to boot. |
@@ -289,6 +309,8 @@ SQLite is Node's built-in `node:sqlite`; Postgres keeps its tables under the
 `runner_` prefix. The schema is versioned (SQLite's `user_version`, Postgres's
 `runner_schema_version`), each migration carries every existing record forward,
 and a database a newer runner build migrated is refused rather than read.
+Schema version 3 added the host-id namespace on both stores, carrying every
+existing session id into it, and `runner_shares` on Postgres.
 
 ## Session lifecycle settings
 
@@ -401,7 +423,142 @@ host-routing doc.
 
 Which mode each runner is: the k8s runner is a template-mode host on a routed
 session; the docker runner and the local-process runner set no template, so
-every address need comes from the session's env.
+every address need comes from the session's env. **A share is a template-mode
+host too**: `telo run --share` hands the kernel on the developer's machine the
+share's two templates, `https://{port}-<id>.<baseDomain>` and
+`https://{label}--{port}-<id>.<baseDomain>` — the session templates with the share
+id in place of the session id — and the runner's relay routes every host of that
+form whose port the run announced.
+
+## Shares
+
+A share is a stable public address for an application running on the caller's own
+machine. A runner offers shares when `RUNNER_SHARES` is on, and `/v1/capabilities`
+then carries `features.shares` — `{ maxPerOwner, maxConnectedPerOwner,
+retentionSeconds }`. The control plane owns the routes and the retention sweep;
+the relay (role `relay`) owns the tunnels. A share is not a session: no workspace,
+no workload, no events. The contract is in `@telorun/runner-protocol`.
+
+| Route | |
+| --- | --- |
+| `POST /v1/shares` | `{ name, application }`: get or create by `name` per owner. `201` when new, `200` with the same object when it exists: `{ id, name, application, publicUrlTemplate, publicUrlSecondaryTemplate, tunnelUrl }`. The templates and the tunnel URL come from the backend's routing (`RunnerBackend.shareRouting`). At `RUNNER_MAX_SHARES_PER_OWNER`, `429 too_many_shares`. |
+| `GET /v1/shares` | The caller's shares, `{ id, name, application, connected, lastActiveAt }`, newest activity first. |
+| `DELETE /v1/shares/:id` | `204`, or `404 share_not_found` — the same answer for an unknown, a deleted and another owner's id. |
+
+All three take an identity: a resume secret is `403 identity_required`, no
+credential `401`.
+
+**The retention clock.** `connected` is `lease_expires_at > now`. `lastActiveAt`
+is the latest of the share's creation, its last connect, and its
+`lease_expires_at` once that is past. A share is its owner's until it is deleted,
+or, while not connected, until `lastActiveAt + RUNNER_SHARE_RETENTION_SECONDS`,
+when the control plane's sweep (once a minute) deletes it. A connected share never
+expires. A delete releases the id in the same transaction.
+
+**The relay writes connection state, the control plane reads it.** The store holds
+each share's `epoch` (the fence of a run), `connected_at` and `lease_expires_at`,
+and offers the relay one write for each step: connect with the fence (a first
+connect moves the epoch; a reconnect must present it), checking the runner-wide
+and per-owner connected limits in the same write — a takeover of an owner's own
+share does not count twice — a batched lease renewal for every tunnel the relay
+holds, and a release on a clean close conditioned on the epoch, so a fenced
+tunnel's close never marks the new run's share disconnected.
+
+| Setting | Meaning | Default |
+| --- | --- | --- |
+| `RUNNER_SHARES` | Offer shares (`features.shares`). | off |
+| `RUNNER_ROLE` | `control` serves `/v1`; `relay` serves tunnels and visitors, and implies shares. | `control` |
+| `RUNNER_MAX_CONNECTED_SHARES` | Tunnels connected at once, runner-wide. Beyond it the tunnel is closed `4503`. | `200` |
+| `RUNNER_MAX_CONNECTED_SHARES_PER_OWNER` | Tunnels one owner holds connected. Beyond it, `4429`. | `3` |
+| `RUNNER_MAX_SHARES_PER_OWNER` | Shares one owner keeps. Beyond it, `429 too_many_shares`. | `10` |
+| `RUNNER_MAX_SHARE_CONCURRENT_REQUESTS` | Visitor requests in flight per tunnel. Beyond it, visitor `503` busy. | `100` |
+| `RUNNER_MAX_SHARE_BYTES_PER_SECOND` | Byte rate per tunnel, each direction; shaped, never refused. | `1048576` |
+| `RUNNER_SHARE_RETENTION_SECONDS` | How long after `lastActiveAt` an unconnected share is deleted. | `604800` |
+
+`RUNNER_SHARES` and `RUNNER_ROLE=relay` refuse to boot, each naming the setting to
+fix: on a SQLite store (`RUNNER_SESSION_STORE=postgres` — the relay is a separate
+process and cannot read a SQLite file); without `RUNNER_IDENTITY_AUDIENCE` /
+`RUNNER_IDENTITY_ISSUERS`; and over a backend that routes no shares. The docker
+runner and `telo-host-runner` never route shares; the k8s runner does only under
+routing mode `ingress` or `gateway` with a base domain.
+
+**The edge must allow** the tunnel: the route to the relay passes WebSocket
+upgrades on `tunnel.<baseDomain>`, keeps an upgraded connection idle for at least
+30 s, and caps no connection's total duration below 3600 s. ingress-nginx's and
+AWS ALB's defaults suffice; the GKE backend-service timeout, which also caps a
+WebSocket's lifetime, must be raised (a `BackendConfig` `timeoutSec` of at least
+3600). Any cap ends the tunnel, and the CLI reconnects, dropping in-flight
+visitor streams.
+
+**Takedown is the identity provider's.** The runner keeps no blocklist of its own.
+Suspending or revoking an account at the identity provider stops it being issued
+access tokens, so it can create no share once its newest token expires, and its
+connected tunnels end within one access-token lifetime, because a tunnel
+re-authenticates with a fresh access token and is closed `4401` when the newest
+one it holds expires.
+
+### The relay
+
+`RUNNER_ROLE=relay` runs the same runner as the relay: a runner's entry point
+starts it with `buildRelayServer({ shareRouting, config, store })` instead of
+`buildServer`, which refuses that role, and listens on it the same way
+(`app.listen`). It serves no `/v1` route. It speaks the share tunnel protocol,
+generation 1, whose normative spec and vectors are `@telorun/share-tunnel`'s, and
+runs the vectors of its role.
+
+The backend's `shareRouting` gives it two things: the tunnel URL of each share
+(`addresses(id).tunnelUrl`, the URL `POST /v1/shares` answers) and `baseDomain`.
+
+- **The tunnel endpoint** is `GET /v1/shares/<id>/tunnel` at the tunnel URL's host
+  (`tunnel.<baseDomain>`), a WebSocket with subprotocol `telo-share-1`. The upgrade
+  is verified through the same identity verifier as `/v1`, the proof's `htu` being
+  the `https://` form of that tunnel URL. A refused credential is closed `4401`
+  after the upgrade, so the client can read why.
+- **Every other host beneath the base domain** is read as `[<label>--]<port>-<id>`,
+  from the right, and answered from that share's tunnel.
+
+The fence, as the relay writes it, over the store the control plane reads:
+
+- `hello { epoch: null }` moves the share's epoch and takes its 15 s lease in one
+  store write; `hello { epoch: n }` must present the stored epoch, else `4409`.
+  The same write holds `RUNNER_MAX_CONNECTED_SHARES` (`4503`) and
+  `RUNNER_MAX_CONNECTED_SHARES_PER_OWNER` (`4429`). A share that is unknown,
+  deleted or another owner's is `4404`; no `hello` within 10 s is `4408`.
+- Every 5 s the relay renews every lease it holds in one batched write. A share
+  gone since is closed `4404`; one whose epoch moved — another run took it over,
+  through this relay or another — is sent an HTTP/2 GOAWAY and closed `4409` once
+  its last visitor stream ends, or 10 s after the GOAWAY. A takeover through the
+  same relay supersedes the older tunnel at once.
+- A clean close (the client's `1000` or `1001`) ends the lease at once,
+  conditioned on the epoch, so a superseded run's close never marks the share
+  disconnected. Any other ending leaves the lease to lapse within 15 s; a relay
+  shutting down closes its tunnels `1001` and lets their leases lapse.
+- The relay pings every 20 s, and closes `4408` after 45 s with nothing received
+  (time the relay itself holds the socket paused does not count). Each `auth`
+  is verified like the upgrade; one of another owner, or the expiry of the newest
+  token held, closes `4401`. An `auth` whose issuer cannot be asked keeps the
+  current token, so the tunnel ends at its expiry unless a later one lands.
+
+**What a visitor gets.** The relay answers from the tunnels it holds alone and
+reads the store for no visitor request:
+
+| Visitor request | Answer |
+| --- | --- |
+| A host beneath the base domain that does not parse | `404` |
+| A well-formed host whose share has no live tunnel here — unknown, deleted, or not connected | `503`, `Retry-After: 5`, `text/plain` body `This share is not connected.` |
+| A port the tunnel's last `ports` message did not announce | `404` |
+| The tunnel at `RUNNER_MAX_SHARE_CONCURRENT_REQUESTS` (an open visitor WebSocket counts) | `503`, `Retry-After: 1`, body `This share is busy.` |
+| Nothing listening on the local port | the run's own `502` |
+| No answer begun within 60 s | `504` |
+
+A request goes to the run as one HTTP/2 stream carrying the visitor's `Host` as
+`:authority`, its headers — `X-Forwarded-*` included — unchanged, and the target
+port in `telo-share-port`, which the relay sets over any the visitor sent. A
+visitor WebSocket goes as an RFC 8441 extended CONNECT stream, answered `101` once
+the run's local server has switched protocols. A visitor upload is never timed
+out: each tunnel carries `RUNNER_MAX_SHARE_BYTES_PER_SECOND` in each direction,
+held by delaying its HTTP/2 writes and reads rather than refused, and HTTP/2 flow
+control keeps the relay's memory bounded at any body size.
 
 ## Two nouns, one stream
 

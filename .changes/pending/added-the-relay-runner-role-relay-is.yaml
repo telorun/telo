@@ -1,0 +1,15 @@
+units:
+  packages/runner-core: Added
+body: "The relay: RUNNER_ROLE=relay is started with buildRelayServer (buildServer now
+  refuses that role) and serves no /v1 route. It holds share tunnels at
+  /v1/shares/{id}/tunnel on the tunnel URL's host (WebSocket subprotocol telo-share-1,
+  the upgrade and every auth verified through the identity verifier against the tunnel
+  URL), writes the fence (epoch, lease, both connected-share limits) to the share store,
+  renews every held lease every 5 s and closes a deleted share 4404 and a taken-over one
+  4409 after an HTTP/2 GOAWAY. Visitors to [<label>--]<port>-<id>.<baseDomain> are
+  answered from the tunnels it holds alone, never from the store: 503 Retry-After 5
+  'This share is not connected.', 503 Retry-After 1 'This share is busy.' at
+  RUNNER_MAX_SHARE_CONCURRENT_REQUESTS, 404 for a host that does not parse or a port not
+  announced, 504 when no answer begins within 60 s; each tunnel is shaped to
+  RUNNER_MAX_SHARE_BYTES_PER_SECOND each way. RunnerBackend.shareRouting gains
+  baseDomain, and IdentityVerifier.verify also answers the token's expiresAt."

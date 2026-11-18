@@ -1,3 +1,4 @@
+import { ACCEPTED_TERMS_HEADER } from "@telorun/runner-protocol";
 import type { JSONSchema7 } from "json-schema";
 
 import { challengeParam } from "../../identity-credentials";
@@ -30,11 +31,6 @@ const HEALTH_TIMEOUT_MS = 2_000;
 /** Workspace writes and reloads travel to the container and back, so they get a
  *  budget of their own rather than the health probe's. */
 const WORKSPACE_TIMEOUT_MS = 30_000;
-
-/** Wire header carrying the accepted terms version (mirrors runner-core's
- *  `ACCEPTED_TERMS_HEADER`). Kept as a local constant so editor code doesn't
- *  depend on the Node-only `@telorun/runner-core` package. */
-const ACCEPTED_TERMS_HEADER = "x-telo-accepted-terms";
 
 interface ErrorResponse {
   error: string;

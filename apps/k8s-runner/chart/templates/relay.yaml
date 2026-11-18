@@ -1,0 +1,196 @@
+{{- if .Values.shares.enabled }}
+{{- $relay := include "k8s-runner.relayName" . }}
+{{- $domain := .Values.sessionRouting.baseDomain }}
+# The relay: the runner image in role `relay`. It serves share tunnels at
+# tunnel.<baseDomain> and every other host beneath the base domain from them, so
+# visitor traffic never passes the control plane. One replica, Recreate, as the
+# control plane has: a rollout drops every tunnel and each CLI reconnects.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $relay }}
+  namespace: {{ .Values.runnerNamespace }}
+  labels:
+    {{- include "k8s-runner.labels" . | nindent 4 }}
+    app.kubernetes.io/component: relay
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $relay }}
+  template:
+    metadata:
+      labels:
+        {{- include "k8s-runner.labels" . | nindent 8 }}
+        app.kubernetes.io/name: {{ $relay }}
+        app.kubernetes.io/component: relay
+    spec:
+      # The relay calls no Kubernetes API.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: relay
+          image: {{ include "k8s-runner.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          ports:
+            - containerPort: {{ .Values.runner.port }}
+          env:
+            - name: RUNNER_ROLE
+              value: relay
+            - name: PORT
+              value: "{{ .Values.runner.port }}"
+            - name: LOG_LEVEL
+              value: "{{ .Values.runner.logLevel }}"
+            - name: RUNNER_SUPERVISOR_IMAGE
+              value: {{ include "k8s-runner.image" . | quote }}
+            - name: RUNNER_SESSION_STORE
+              value: postgres
+            {{- if .Values.sessionStore.existingSecret }}
+            - name: RUNNER_SESSION_STORE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.sessionStore.existingSecret | quote }}
+                  key: {{ .Values.sessionStore.existingSecretKey | quote }}
+            {{- else }}
+            - name: RUNNER_SESSION_STORE_URL
+              value: {{ .Values.sessionStore.url | quote }}
+            {{- end }}
+            - name: RUNNER_IDENTITY_AUDIENCE
+              value: {{ .Values.identity.audience | quote }}
+            - name: RUNNER_IDENTITY_ISSUERS
+              value: {{ join "," .Values.identity.issuers | quote }}
+            - name: SESSION_ROUTING_MODE
+              value: {{ .Values.sessionRouting.mode | quote }}
+            - name: SESSION_ROUTING_BASE_DOMAIN
+              value: {{ $domain | quote }}
+            {{- if eq .Values.sessionRouting.mode "gateway" }}
+            - name: SESSION_GATEWAY_NAME
+              value: {{ .Values.sessionRouting.gateway.name | quote }}
+            {{- end }}
+            {{- include "k8s-runner.shareEnv" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.runner.resources | nindent 12 }}
+          # The relay answers 404 to any host that is not a share host (a pod-IP
+          # probe included) and has no health route, so probe the socket.
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.runner.port }}
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.runner.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 20
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $relay }}
+  namespace: {{ .Values.runnerNamespace }}
+  labels:
+    {{- include "k8s-runner.labels" . | nindent 4 }}
+    app.kubernetes.io/component: relay
+spec:
+  selector:
+    app.kubernetes.io/name: {{ $relay }}
+  ports:
+    - name: http
+      port: {{ .Values.runner.port }}
+      targetPort: {{ .Values.runner.port }}
+---
+# One wildcard route to the relay, in the runner's namespace. Exact per-session
+# hosts outrank it, so sessions keep their own; it also covers tunnel.<baseDomain>.
+{{- if eq .Values.sessionRouting.mode "gateway" }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $relay }}
+  namespace: {{ .Values.runnerNamespace }}
+  labels:
+    {{- include "k8s-runner.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    - name: {{ .Values.sessionRouting.gateway.name | quote }}
+      namespace: {{ default .Values.sessionNamespace .Values.sessionRouting.gateway.namespace | quote }}
+      {{- if .Values.sessionRouting.gateway.sectionName }}
+      sectionName: {{ .Values.sessionRouting.gateway.sectionName | quote }}
+      {{- end }}
+  hostnames:
+    - {{ printf "*.%s" $domain | quote }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ $relay }}
+          port: {{ .Values.runner.port }}
+{{- else }}
+{{- $tls := include "k8s-runner.relayIngressTlsSecretName" . }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $relay }}
+  namespace: {{ .Values.runnerNamespace }}
+  labels:
+    {{- include "k8s-runner.labels" . | nindent 4 }}
+spec:
+  {{- if .Values.sessionRouting.ingress.className }}
+  ingressClassName: {{ .Values.sessionRouting.ingress.className | quote }}
+  {{- end }}
+  {{- if $tls }}
+  tls:
+    - hosts:
+        - {{ printf "*.%s" $domain | quote }}
+      secretName: {{ $tls | quote }}
+  {{- end }}
+  rules:
+    - host: {{ printf "*.%s" $domain | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $relay }}
+                port:
+                  number: {{ .Values.runner.port }}
+{{- if and $tls .Values.sessionRouting.ingress.tls.cert .Values.sessionRouting.ingress.tls.key }}
+---
+# The wildcard Ingress lives in the runner's namespace, and a TLS Secret is
+# namespace-scoped, so the origin certificate is also created here. With
+# sessionRouting.ingress.tls.secretName instead, that Secret must exist here too.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $tls }}
+  namespace: {{ .Values.runnerNamespace }}
+  labels:
+    {{- include "k8s-runner.labels" . | nindent 4 }}
+type: kubernetes.io/tls
+stringData:
+  tls.crt: {{ .Values.sessionRouting.ingress.tls.cert | quote }}
+  tls.key: {{ .Values.sessionRouting.ingress.tls.key | quote }}
+{{- end }}
+{{- end }}
+{{- end }}

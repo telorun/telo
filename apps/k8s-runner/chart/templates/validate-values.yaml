@@ -73,3 +73,20 @@ upgrade path. A rename is only a breaking change if something refuses it.
 {{- fail (printf "resourceQuota.hard[\"limits.cpu\"] refuses every pod without a CPU limit, and %s sets no limits.cpu: drop the quota key or set limits.cpu there." (join ", " $missing)) }}
 {{- end }}
 {{- end }}
+{{- if .Values.shares.enabled }}
+{{- if ne .Values.sessionStore.kind "postgres" }}
+{{- fail "shares.enabled needs sessionStore.kind=postgres: the relay is a separate process and cannot read a SQLite file." }}
+{{- end }}
+{{- if not .Values.identity.audience }}
+{{- fail "shares.enabled needs identity.audience and identity.issuers: a share belongs to a signed-in identity." }}
+{{- end }}
+{{- if not (has .Values.sessionRouting.mode (list "ingress" "gateway")) }}
+{{- fail (printf "shares.enabled needs sessionRouting.mode ingress or gateway, not %s" .Values.sessionRouting.mode) }}
+{{- end }}
+{{- if not .Values.sessionRouting.baseDomain }}
+{{- fail "shares.enabled needs sessionRouting.baseDomain: every share host sits beneath it." }}
+{{- end }}
+{{- if and (eq .Values.sessionRouting.mode "gateway") (not .Values.sessionRouting.gateway.name) }}
+{{- fail "shares.enabled with sessionRouting.mode=gateway needs sessionRouting.gateway.name: the Gateway the wildcard route attaches to." }}
+{{- end }}
+{{- end }}

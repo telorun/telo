@@ -64,6 +64,14 @@ describe("splitRunInvocation — the application's arguments start after the pat
     });
   });
 
+  it("never takes the manifest for --share's value, which is written --share=<name>", () => {
+    expect(splitRunInvocation(["run", "--share", "app.yaml", "x"], COMMANDS)).toEqual({
+      cliTokens: ["run", "--share=", "app.yaml"],
+      applicationArgs: ["x"],
+    });
+    expect(splitRunInvocation(["run", "--share=demo", "app.yaml"], COMMANDS).cliTokens).toEqual(["run", "--share=demo", "app.yaml"]);
+  });
+
   it("leaves every other command untouched", () => {
     const tokens = ["check", "a.yaml", "--verbose"];
     expect(splitRunInvocation(tokens, COMMANDS)).toEqual({ cliTokens: tokens, applicationArgs: undefined });
@@ -80,8 +88,9 @@ describe("splitRunInvocation — the application's arguments start after the pat
 describe("valuedOptionSpellings — which CLI options consume the next token", () => {
   it("classifies every valued option the CLI registers, aliases included", () => {
     const rules = valuedOptionSpellings(CLI);
-    expect([...rules.keys()].sort()).toEqual(["--inspect", "--output", "--startup-profile", "-o"]);
+    expect([...rules.keys()].sort()).toEqual(["--inspect", "--output", "--share", "--share-runner", "--startup-profile", "-o"]);
     expect(rules.get("--output")).toBe("always");
+    expect(rules.get("--share-runner")).toBe("always");
     expect(rules.get("--startup-profile")).toBe("always");
     expect(rules.get("--inspect")).toMatchObject({ name: "inspect" });
   });

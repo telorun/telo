@@ -10,6 +10,7 @@ import {
   type BackendAppSpec,
   type BackendWorkload,
   type RunnerBackend,
+  type ShareRouting,
   type WorkloadCallbacks,
   type WorkloadSpec,
   type WorkloadTokens,
@@ -50,9 +51,11 @@ export class FakeWorkloadBackend implements RunnerBackend {
     return { workload, tokens: found.tokens } satisfies AdoptedWorkload;
   };
   readonly containers?: SessionContainerEngine;
+  readonly shareRouting?: ShareRouting;
 
-  constructor(options: { containers?: SessionContainerEngine } = {}) {
+  constructor(options: { containers?: SessionContainerEngine; shareRouting?: ShareRouting } = {}) {
     if (options.containers) this.containers = options.containers;
+    if (options.shareRouting) this.shareRouting = options.shareRouting;
   }
 
   async probe() {
@@ -206,6 +209,16 @@ export class FakeWorkload implements BackendWorkload {
   }
 }
 
+/** Routes shares to `<id>.share.test`, as a backend with a base domain would. */
+export const TEST_SHARE_ROUTING: ShareRouting = {
+  addresses: (id) => ({
+    publicUrlTemplate: `https://{port}-${id}.share.test`,
+    publicUrlSecondaryTemplate: `https://{label}--{port}-${id}.share.test`,
+    tunnelUrl: `wss://tunnel.share.test/v1/shares/${id}/tunnel`,
+  }),
+  baseDomain: "share.test",
+};
+
 export const TEST_CAPABILITIES: RunnerCapabilities = {
   displayName: "test",
   description: "test",
@@ -228,6 +241,16 @@ export function testConfig(overrides: Partial<RunnerCoreConfig> = {}): RunnerCor
     },
     sessionStore: { kind: "sqlite", directory: undefined },
     sessionContainers: { enabled: false, max: 4 },
+    shares: {
+      enabled: false,
+      role: "control",
+      maxConnected: 200,
+      maxConnectedPerOwner: 3,
+      maxPerOwner: 10,
+      maxConcurrentRequests: 100,
+      maxBytesPerSecond: 1_048_576,
+      retentionSeconds: 604_800,
+    },
     ...overrides,
   };
 }
@@ -274,7 +297,7 @@ export async function bootTestServer(
     capabilities: TEST_CAPABILITIES,
     ...deps,
     backend,
-    store: store.store,
+    store: deps.store ?? store.store,
   });
   return { server, backend, store };
 }

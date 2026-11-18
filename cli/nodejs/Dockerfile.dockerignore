@@ -21,6 +21,8 @@
 !scripts
 !packages/ide-support
 !packages/debug-wire
+!packages/runner-protocol
+!packages/share-tunnel
 !packages/debug-ui
 !packages/glob/nodejs
 !release/nodejs

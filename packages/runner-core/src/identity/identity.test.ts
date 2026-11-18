@@ -515,3 +515,62 @@ describe("adopting a session", () => {
     expect((await b.store.store.get(anonymous.sessionId))?.owner.kind).toBe("secret");
   });
 });
+
+describe("the proof's htu, as each route supplies it", () => {
+  const TUNNEL_URL = "https://tunnel.example.com/v1/shares/abcdefghijkl/tunnel";
+
+  async function verifier() {
+    const store = await temporaryStore();
+    stores.push(store);
+    return new IdentityVerifier({
+      config: IDENTITY,
+      store: store.store,
+      fetch: stubFetch,
+      now: () => clock,
+      log: { warn: () => undefined },
+    });
+  }
+
+  it("takes /v1 as the audience followed by the path, and any other URL a route names", async () => {
+    const identity = await verifier();
+    expect(identity.v1Htu("/v1/shares?x=1")).toBe(`${AUDIENCE}/v1/shares`);
+    const tunnel = await credentials(alice, "GET", "", { proof: { htu: TUNNEL_URL } });
+    const token = tunnel.authorization!.slice("DPoP ".length);
+    await expect(identity.verify({ method: "GET", headers: tunnel }, token, TUNNEL_URL)).resolves.toEqual({
+      iss: ISSUER_A,
+      sub: "alice",
+      // The token's `exp`, which a tunnel is closed at.
+      expiresAt: new Date((nowS() + 300) * 1000),
+    });
+  });
+
+  it("refuses a /v1 proof at the tunnel, a tunnel proof on /v1, and a replay of either", async () => {
+    const identity = await verifier();
+    const onV1 = await credentials(alice, "GET", "/v1/shares");
+    await expect(
+      identity.verify({ method: "GET", headers: onV1 }, onV1.authorization!.slice(5), TUNNEL_URL),
+    ).rejects.toThrow(/'htu' is '.*\/v1\/shares', but the request is for https:\/\/tunnel\.example\.com/);
+
+    const b = await boot();
+    const tunnel = await credentials(alice, "GET", "", { proof: { htu: TUNNEL_URL } });
+    const res = await b.server.app.inject({ method: "GET", url: "/v1/sessions", headers: tunnel });
+    expect([res.statusCode, res.json().error]).toEqual([401, "invalid_dpop_proof"]);
+    expect(res.json().message).toMatch(/'htu' is 'https:\/\/tunnel\.example\.com/);
+
+    const fresh = await credentials(alice, "GET", "", { proof: { htu: TUNNEL_URL } });
+    const token = fresh.authorization!.slice(5);
+    await identity.verify({ method: "GET", headers: fresh }, token, TUNNEL_URL);
+    await expect(identity.verify({ method: "GET", headers: fresh }, token, TUNNEL_URL)).rejects.toThrow(/already used/);
+  });
+
+  it("still requires the audience in the token, whatever URL the route names", async () => {
+    const identity = await verifier();
+    const foreign = await credentials(alice, "GET", "", {
+      token: { aud: "https://other-runner.example.com" },
+      proof: { htu: TUNNEL_URL },
+    });
+    await expect(
+      identity.verify({ method: "GET", headers: foreign }, foreign.authorization!.slice(5), TUNNEL_URL),
+    ).rejects.toThrow(/unexpected "aud" claim value/);
+  });
+});

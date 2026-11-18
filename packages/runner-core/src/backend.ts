@@ -78,6 +78,30 @@ export interface RunnerBackend {
    *  serves it (`RUNNER_SESSION_CONTAINERS`). A runner turning that on over a
    *  backend without one is refused at boot. */
   readonly containers?: SessionContainerEngine;
+
+  /** Routes shares: answers a share's public-address templates and tunnel URL.
+   *  Absent on a backend that routes none, which a runner turning shares on is
+   *  refused at boot. */
+  readonly shareRouting?: ShareRouting;
+}
+
+/** How a backend routes shares: the share's id in the place of a session's. */
+export interface ShareRouting {
+  addresses(shareId: string): ShareAddresses;
+  /** The domain every share's visitor hosts sit beneath, `[<label>--]<port>-<id>.<baseDomain>`:
+   *  the relay answers each host of that form from the share's tunnel, and serves
+   *  the tunnel endpoint at the host of `addresses(id).tunnelUrl`. */
+  readonly baseDomain: string;
+}
+
+/** What a client needs to host a share (`POST /v1/shares`). */
+export interface ShareAddresses {
+  /** `TELO_HOST_PUBLIC_URL_TEMPLATE`, with `{port}`. */
+  publicUrlTemplate: string;
+  /** `TELO_HOST_PUBLIC_URL_SECONDARY_TEMPLATE`, with `{label}` and `{port}`. */
+  publicUrlSecondaryTemplate: string;
+  /** The tunnel's `wss://` endpoint. */
+  tunnelUrl: string;
 }
 
 /** One application slot the backend must stand up. */

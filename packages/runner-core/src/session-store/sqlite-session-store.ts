@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 import * as path from "node:path";
 import type { DatabaseSync, SQLOutputValue } from "node:sqlite";
 
+import { DEFAULT_MINT_ID, HostIdCollisionError, MAX_ID_DRAWS, type MintId } from "./host-id.js";
 import {
   assertReadableVersion,
   ownerColumns,
@@ -11,6 +12,7 @@ import {
   storedStatus,
   type ChangeOwnerResult,
   type CreateSessionResult,
+  type NewSessionRecord,
   type SessionOwner,
   type SessionRecord,
   type SessionRecordUpdate,
@@ -60,6 +62,19 @@ const MIGRATIONS: ReadonlyArray<{ version: number; up: string }> = [
     version: 2,
     up: "ALTER TABLE runner_sessions ADD COLUMN container_engine TEXT;",
   },
+  {
+    version: 3,
+    up: `
+      CREATE TABLE runner_host_ids (
+        id TEXT PRIMARY KEY,
+        holder TEXT NOT NULL CHECK (holder IN ('session', 'share')),
+        created_at INTEGER NOT NULL,
+        released_at INTEGER
+      );
+      INSERT INTO runner_host_ids (id, holder, created_at, released_at)
+        SELECT id, 'session', created_at, NULL FROM runner_sessions;
+    `,
+  },
 ];
 
 const COLUMNS =
@@ -69,11 +84,17 @@ const COLUMNS =
 /** The session store on Node's built-in SQLite, in one file under the runner's
  *  state directory. */
 export class SqliteSessionStore implements SessionStore {
-  private constructor(private readonly db: DatabaseSync) {}
+  /** Shares refuse SQLite: the relay is another process. */
+  readonly shares = undefined;
+
+  private constructor(
+    private readonly db: DatabaseSync,
+    private readonly mintId: MintId,
+  ) {}
 
   /** Opens (creating when absent) the store in `directory` and migrates it to
    *  the current schema. */
-  static async open(directory: string): Promise<SqliteSessionStore> {
+  static async open(directory: string, options: { mintId?: MintId } = {}): Promise<SqliteSessionStore> {
     await mkdir(directory, { recursive: true });
     const file = path.join(directory, SQLITE_SESSION_STORE_FILENAME);
     const db = new (nodeSqlite().DatabaseSync)(file);
@@ -84,12 +105,13 @@ export class SqliteSessionStore implements SessionStore {
       db.close();
       throw err;
     }
-    return new SqliteSessionStore(db);
+    return new SqliteSessionStore(db, options.mintId ?? DEFAULT_MINT_ID);
   }
 
-  async create(record: SessionRecord): Promise<CreateSessionResult> {
+  async create(record: NewSessionRecord): Promise<CreateSessionResult> {
     const owner = ownerColumns(record.owner);
     return this.transaction(() => {
+      const id = this.drawHostId(record.createdAt);
       const inserted = this.db
         .prepare(
           `INSERT INTO runner_sessions (owner_key, ${COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -97,7 +119,7 @@ export class SqliteSessionStore implements SessionStore {
         )
         .run(
           owner.ownerKey,
-          record.id,
+          id,
           owner.ownerIss,
           owner.ownerSub,
           owner.ownerSecretHash,
@@ -111,7 +133,10 @@ export class SqliteSessionStore implements SessionStore {
           record.suspendedAt?.getTime() ?? null,
           encodeContainerEngine(record.containerEngine),
         );
-      if (Number(inserted.changes) === 1) return { kind: "created", record: structuredClone(record) };
+      if (Number(inserted.changes) === 1) {
+        return { kind: "created", record: { id, ...structuredClone(record) } };
+      }
+      this.db.prepare("DELETE FROM runner_host_ids WHERE id = ?").run(id);
       return { kind: "exists", id: this.idFor(owner.ownerKey, record.workspace) };
     });
   }
@@ -203,7 +228,13 @@ export class SqliteSessionStore implements SessionStore {
   }
 
   async delete(id: string): Promise<boolean> {
-    return Number(this.db.prepare("DELETE FROM runner_sessions WHERE id = ?").run(id).changes) === 1;
+    return this.transaction(() => {
+      const deleted = Number(this.db.prepare("DELETE FROM runner_sessions WHERE id = ?").run(id).changes) === 1;
+      if (deleted) {
+        this.db.prepare("UPDATE runner_host_ids SET released_at = ? WHERE id = ?").run(Date.now(), id);
+      }
+      return deleted;
+    });
   }
 
   async recordJti(jti: string, expiresAt: Date, now: Date): Promise<boolean> {
@@ -225,6 +256,19 @@ export class SqliteSessionStore implements SessionStore {
 
   async close(): Promise<void> {
     this.db.close();
+  }
+
+  /** Claims a fresh id in the host-id namespace, re-drawing on a collision with
+   *  an id held or released, at most `MAX_ID_DRAWS` times. */
+  private drawHostId(createdAt: Date): string {
+    const insert = this.db.prepare(
+      "INSERT INTO runner_host_ids (id, holder, created_at, released_at) VALUES (?, 'session', ?, NULL) ON CONFLICT (id) DO NOTHING",
+    );
+    for (let draw = 0; draw < MAX_ID_DRAWS; draw++) {
+      const id = this.mintId();
+      if (Number(insert.run(id, createdAt.getTime()).changes) === 1) return id;
+    }
+    throw new HostIdCollisionError(MAX_ID_DRAWS);
   }
 
   private idFor(ownerKey: string, workspace: string): string {

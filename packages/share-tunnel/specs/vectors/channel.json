@@ -1,0 +1,295 @@
+{
+  "generation": 1,
+  "subprotocol": "telo-share-1",
+  "exchanges": [
+    {
+      "name": "a first connect is answered with the share's next epoch, then HTTP/2",
+      "judge": "relay",
+      "share": { "epoch": 4 },
+      "steps": [
+        { "send": { "type": "hello", "epoch": null } },
+        { "expect": { "type": "hello", "epoch": 5 } },
+        { "expectBinary": true },
+        { "send": { "type": "ports", "ports": [{ "name": "http", "port": 8080 }] } },
+        { "expectOpen": true }
+      ]
+    },
+    {
+      "name": "a reconnect presenting the stored epoch is answered with it",
+      "judge": "relay",
+      "share": { "epoch": 5 },
+      "steps": [
+        { "send": { "type": "hello", "epoch": 5 } },
+        { "expect": { "type": "hello", "epoch": 5 } },
+        { "expectBinary": true },
+        { "expectOpen": true }
+      ]
+    },
+    {
+      "name": "a reconnect presenting an earlier epoch is superseded",
+      "judge": "relay",
+      "share": { "epoch": 6 },
+      "steps": [{ "send": { "type": "hello", "epoch": 5 } }, { "expectClose": 4409 }]
+    },
+    {
+      "name": "a share the caller does not hold closes 4404",
+      "judge": "relay",
+      "share": null,
+      "steps": [{ "send": { "type": "hello", "epoch": null } }, { "expectClose": 4404 }]
+    },
+    {
+      "name": "ports before hello closes 4400",
+      "judge": "relay",
+      "share": { "epoch": 0 },
+      "steps": [{ "send": { "type": "ports", "ports": [] } }, { "expectClose": 4400 }]
+    },
+    {
+      "name": "auth before hello closes 4400",
+      "judge": "relay",
+      "share": { "epoch": 0 },
+      "steps": [{ "send": { "type": "auth", "accessToken": "t", "proof": "p" } }, { "expectClose": 4400 }]
+    },
+    {
+      "name": "a binary message before hello closes 4400",
+      "judge": "relay",
+      "share": { "epoch": 0 },
+      "steps": [{ "sendBinary": 24 }, { "expectClose": 4400 }]
+    },
+    {
+      "name": "a first message that is not JSON closes 4400",
+      "judge": "relay",
+      "share": { "epoch": 0 },
+      "steps": [{ "sendText": "{" }, { "expectClose": 4400 }]
+    },
+    {
+      "name": "a hello with an unknown field closes 4400",
+      "judge": "relay",
+      "share": { "epoch": 0 },
+      "steps": [{ "send": { "type": "hello", "epoch": null, "generation": 1 } }, { "expectClose": 4400 }]
+    },
+    {
+      "name": "a hello with a malformed epoch closes 4400",
+      "judge": "relay",
+      "share": { "epoch": 0 },
+      "steps": [{ "send": { "type": "hello", "epoch": -1 } }, { "expectClose": 4400 }]
+    },
+    {
+      "name": "an unknown type after the handshake closes 4400",
+      "judge": "relay",
+      "share": { "epoch": 0 },
+      "steps": [
+        { "send": { "type": "hello", "epoch": null } },
+        { "expect": { "type": "hello", "epoch": 1 } },
+        { "expectBinary": true },
+        { "send": { "type": "bye" } },
+        { "expectClose": 4400 }
+      ]
+    },
+    {
+      "name": "a ports message with an unknown field closes 4400",
+      "judge": "relay",
+      "share": { "epoch": 0 },
+      "steps": [
+        { "send": { "type": "hello", "epoch": null } },
+        { "expect": { "type": "hello", "epoch": 1 } },
+        { "expectBinary": true },
+        { "send": { "type": "ports", "ports": [{ "name": "http", "port": 8080, "protocol": "tcp" }] } },
+        { "expectClose": 4400 }
+      ]
+    },
+    {
+      "name": "a second hello closes 4400",
+      "judge": "relay",
+      "share": { "epoch": 0 },
+      "steps": [
+        { "send": { "type": "hello", "epoch": null } },
+        { "expect": { "type": "hello", "epoch": 1 } },
+        { "expectBinary": true },
+        { "send": { "type": "hello", "epoch": 1 } },
+        { "expectClose": 4400 }
+      ]
+    },
+    {
+      "name": "each ports message replaces the last",
+      "judge": "relay",
+      "share": { "epoch": 0 },
+      "steps": [
+        { "send": { "type": "hello", "epoch": null } },
+        { "expect": { "type": "hello", "epoch": 1 } },
+        { "expectBinary": true },
+        { "send": { "type": "ports", "ports": [{ "name": "http", "port": 8080 }] } },
+        { "send": { "type": "ports", "ports": [{ "name": "http", "port": 8080 }, { "name": "admin", "port": 9090 }] } },
+        { "send": { "type": "ports", "ports": [] } },
+        { "expectOpen": true }
+      ]
+    },
+    {
+      "name": "a text message of exactly 64 KiB is accepted",
+      "judge": "relay",
+      "share": { "epoch": 0 },
+      "steps": [
+        { "send": { "type": "hello", "epoch": null } },
+        { "expect": { "type": "hello", "epoch": 1 } },
+        { "expectBinary": true },
+        { "sendText": "{\"type\":\"ports\",\"ports\":[]}", "padTo": 65536 },
+        { "expectOpen": true }
+      ]
+    },
+    {
+      "name": "a text message over 64 KiB closes 4400, judged before its content",
+      "judge": "relay",
+      "share": { "epoch": 0 },
+      "steps": [
+        { "send": { "type": "hello", "epoch": null } },
+        { "expect": { "type": "hello", "epoch": 1 } },
+        { "expectBinary": true },
+        { "sendText": "{\"type\":\"ports\",\"ports\":[]}", "padTo": 65537 },
+        { "expectClose": 4400 }
+      ]
+    },
+    {
+      "name": "a binary message over 1 MiB closes 4400",
+      "judge": "relay",
+      "share": { "epoch": 0 },
+      "steps": [
+        { "send": { "type": "hello", "epoch": null } },
+        { "expect": { "type": "hello", "epoch": 1 } },
+        { "expectBinary": true },
+        { "sendBinary": 1048577 },
+        { "expectClose": 4400 }
+      ]
+    },
+    {
+      "name": "the client's first connect presents no epoch and announces its ports",
+      "judge": "client",
+      "ports": [{ "name": "http", "port": 8080 }],
+      "steps": [
+        { "expect": { "type": "hello", "epoch": null } },
+        { "send": { "type": "hello", "epoch": 1 } },
+        { "expect": { "type": "ports", "ports": [{ "name": "http", "port": 8080 }] } },
+        { "expectBinary": true },
+        { "expectOpen": true }
+      ]
+    },
+    {
+      "name": "a client holding no ports yet announces none",
+      "judge": "client",
+      "steps": [
+        { "expect": { "type": "hello", "epoch": null } },
+        { "send": { "type": "hello", "epoch": 1 } },
+        { "expectBinary": true },
+        { "expectOpen": true }
+      ]
+    },
+    {
+      "name": "a reconnect presents the epoch the relay last answered",
+      "judge": "client",
+      "ports": [{ "name": "http", "port": 8080 }],
+      "steps": [
+        { "expect": { "type": "hello", "epoch": null } },
+        { "send": { "type": "hello", "epoch": 7 } },
+        { "expect": { "type": "ports", "ports": [{ "name": "http", "port": 8080 }] } },
+        { "expectBinary": true },
+        { "close": 1001 },
+        { "reconnect": true },
+        { "expect": { "type": "hello", "epoch": 7 } },
+        { "send": { "type": "hello", "epoch": 7 } },
+        { "expect": { "type": "ports", "ports": [{ "name": "http", "port": 8080 }] } },
+        { "expectBinary": true },
+        { "expectOpen": true }
+      ]
+    },
+    {
+      "name": "a binary message before the relay's hello closes 4400",
+      "judge": "client",
+      "steps": [{ "expect": { "type": "hello", "epoch": null } }, { "sendBinary": 24 }, { "expectClose": 4400 }]
+    },
+    {
+      "name": "a message the relay does not send closes 4400",
+      "judge": "client",
+      "steps": [
+        { "expect": { "type": "hello", "epoch": null } },
+        { "send": { "type": "ports", "ports": [] } },
+        { "expectClose": 4400 }
+      ]
+    },
+    {
+      "name": "a relay hello with an unknown field closes 4400",
+      "judge": "client",
+      "steps": [
+        { "expect": { "type": "hello", "epoch": null } },
+        { "send": { "type": "hello", "epoch": 1, "generation": 1 } },
+        { "expectClose": 4400 }
+      ]
+    },
+    {
+      "name": "a relay hello with a null epoch closes 4400",
+      "judge": "client",
+      "steps": [
+        { "expect": { "type": "hello", "epoch": null } },
+        { "send": { "type": "hello", "epoch": null } },
+        { "expectClose": 4400 }
+      ]
+    },
+    {
+      "name": "a relay message that is not JSON closes 4400",
+      "judge": "client",
+      "steps": [{ "expect": { "type": "hello", "epoch": null } }, { "sendText": "hello" }, { "expectClose": 4400 }]
+    },
+    {
+      "name": "a second relay hello closes 4400",
+      "judge": "client",
+      "steps": [
+        { "expect": { "type": "hello", "epoch": null } },
+        { "send": { "type": "hello", "epoch": 1 } },
+        { "expectBinary": true },
+        { "send": { "type": "hello", "epoch": 1 } },
+        { "expectClose": 4400 }
+      ]
+    },
+    {
+      "name": "a relay hello answering another epoch than the one presented closes 4400",
+      "judge": "client",
+      "steps": [
+        { "expect": { "type": "hello", "epoch": null } },
+        { "send": { "type": "hello", "epoch": 3 } },
+        { "expectBinary": true },
+        { "close": 1001 },
+        { "reconnect": true },
+        { "expect": { "type": "hello", "epoch": 3 } },
+        { "send": { "type": "hello", "epoch": 4 } },
+        { "expectClose": 4400 }
+      ]
+    },
+    {
+      "name": "a relay text message of exactly 64 KiB is accepted",
+      "judge": "client",
+      "steps": [
+        { "expect": { "type": "hello", "epoch": null } },
+        { "sendText": "{\"type\":\"hello\",\"epoch\":1}", "padTo": 65536 },
+        { "expectBinary": true },
+        { "expectOpen": true }
+      ]
+    },
+    {
+      "name": "a relay text message over 64 KiB closes 4400, judged before its content",
+      "judge": "client",
+      "steps": [
+        { "expect": { "type": "hello", "epoch": null } },
+        { "sendText": "{\"type\":\"hello\",\"epoch\":1}", "padTo": 65537 },
+        { "expectClose": 4400 }
+      ]
+    },
+    {
+      "name": "a relay binary message over 1 MiB closes 4400",
+      "judge": "client",
+      "steps": [
+        { "expect": { "type": "hello", "epoch": null } },
+        { "send": { "type": "hello", "epoch": 1 } },
+        { "expectBinary": true },
+        { "sendBinary": 1048577 },
+        { "expectClose": 4400 }
+      ]
+    }
+  ]
+}

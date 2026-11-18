@@ -1,8 +1,8 @@
 ---
-status: draft
+status: done
 priority: medium
-depends-on: [2026-11-13-runner-sign-in.md, 2026-11-14-mit-runtime-relicense.md]
-packages: [cli/nodejs, packages/runner-core, packages/runner-protocol, packages/share-tunnel, apps/k8s-runner]
+depends-on: [2026-11-14-mit-runtime-relicense.md]
+packages: [cli/nodejs, packages/runner-core, packages/runner-protocol, packages/share-tunnel, apps/k8s-runner, apps/studio]
 refinement: ready
 ---
 
@@ -32,23 +32,26 @@ None.
   - `ERR_SHARE_APP_UNSUPPORTED`: no `tcp` port, or `Telo.DesktopHost` declared.
   - `ERR_SHARE_HOST_VALUE_CONFLICT`: a public-URL host template is set beside `--share`.
   - `ERR_SHARE_LOST`: the share was deleted or taken over while running.
-- `/v1` contract, defined in `@telorun/runner-protocol`:
-  - `features.shares` in `/v1/capabilities`, holding `{ maxPerOwner, retentionSeconds }`.
+- `packages/runner-protocol` (`@telorun/runner-protocol`): a new release unit, off the telo line, under MIT with its own `LICENSE` and no dependencies. It holds the whole client-facing `/v1` contract: its README is the normative spec, `runner-protocol-schema.json` holds every request, response, event and error shape, and TypeScript types mirror them. runner-core, Studio and the CLI depend on it; the Docker Engine subset at `…/engine` is referenced, not restated.
+- `/v1` share contract, in `@telorun/runner-protocol`:
+  - `features.shares` in `/v1/capabilities`, holding `{ maxPerOwner, maxConnectedPerOwner, retentionSeconds }`.
   - `POST /v1/shares`: get or create by `name`. It answers `{ id, name, application, publicUrlTemplate, publicUrlSecondaryTemplate, tunnelUrl }`, `201` when new and `200` when it exists.
   - `GET /v1/shares`: the caller's shares, each `{ id, name, application, connected, lastActiveAt }`, newest activity first.
   - `DELETE /v1/shares/{id}`: `204`, or `404 share_not_found` for an unknown, deleted or foreign id.
   - `429 too_many_shares`.
 - Visitor answers from the relay:
-  - `503` with `Retry-After` for any well-formed host whose id has no live tunnel;
+  - `503` with `Retry-After: 5`, body `This share is not connected.`, for any well-formed host whose id has no live tunnel;
+  - `503` with `Retry-After: 1`, body `This share is busy.`, when the tunnel is at `RUNNER_MAX_SHARE_CONCURRENT_REQUESTS`;
   - `404` for a host that does not parse, or a port the tunnel did not announce;
   - `502` / `504` when the local port refuses or is slow.
 - `/v1/shares/{id}/tunnel` on `tunnel.<baseDomain>`: the tunnel endpoint, served by the relay. It is a WebSocket with subprotocol `telo-share-1`.
-  - Close codes: `4400` protocol error, `4401` credential refused, `4404` share deleted, `4408` keepalive timeout, `4409` superseded by another run, `4503` runner at its connected-share capacity.
-  - Inside it: the relay-set request header `telo-share-port`, and the CLI's control message `ports`.
+  - Close codes: `4400` protocol error, `4401` credential refused or expired, `4404` share deleted, unknown or another owner's, `4408` timed out (no `hello` within 10 s, or 45 s of silence), `4409` superseded by another run, `4429` owner at its connected-share limit, `4503` runner at its connected-share capacity.
+  - Control messages (WebSocket text): CLI → relay `hello { epoch }`, `ports { ports }`, `auth { accessToken, proof }`; relay → CLI `hello { epoch }`. Binary messages carry the HTTP/2 connection.
+  - Inside the HTTP/2 connection: the relay-set request header `telo-share-port`.
 - `packages/share-tunnel` (`@telorun/share-tunnel`): a new release unit, off the telo line, under MIT with its own `LICENSE`. It holds the tunnel protocol spec `specs/tunnel-protocol.md` (generation 1, with vectors) and the client engine. The relay engine is runner-core's and stays under the Sustainable Use license.
-- Runner settings: `RUNNER_SHARES`, `RUNNER_ROLE` (`control` by default, or `relay`), `RUNNER_MAX_CONNECTED_SHARES`, `RUNNER_MAX_SHARES_PER_OWNER`, `RUNNER_SHARE_RETENTION_SECONDS`.
+- Runner settings: `RUNNER_SHARES`, `RUNNER_ROLE` (`control` by default, or `relay`), `RUNNER_MAX_CONNECTED_SHARES`, `RUNNER_MAX_CONNECTED_SHARES_PER_OWNER`, `RUNNER_MAX_SHARES_PER_OWNER`, `RUNNER_MAX_SHARE_CONCURRENT_REQUESTS`, `RUNNER_MAX_SHARE_BYTES_PER_SECOND`, `RUNNER_SHARE_RETENTION_SECONDS`.
 - k8s-runner chart:
-  - A `shares` values block with `enabled`, `maxConnected`, `maxPerOwner` and `retentionSeconds`.
+  - A `shares` values block with `enabled`, `maxConnected`, `maxConnectedPerOwner`, `maxPerOwner`, `maxConcurrentRequests`, `maxBytesPerSecond` and `retentionSeconds`.
   - A `<release>-relay` Deployment (one replica, `Recreate`) and Service.
   - One wildcard route `*.<sessionRouting.baseDomain>` to the relay, rendered for the chosen layer.
 - Runner boot refusals, by both the runner and the chart, of `RUNNER_SHARES` or `RUNNER_ROLE=relay`:
@@ -56,10 +59,14 @@ None.
   - without identity;
   - under routing mode `auto` or `none`;
   - over a backend that routes no shares.
-- Store: a `runner_shares` table (Postgres) holding each share's `epoch`, `connectedAt` and `disconnectedAt`. The store's schema version moves.
+- Store, with the schema version moving on both SQLite and Postgres:
+  - a `runner_host_ids` table (`id`, `holder` `session` | `share`, `created_at`, `released_at`): the one namespace session and share ids are drawn from, never reused;
+  - a `runner_shares` table (Postgres, since shares refuse SQLite) holding each share's `epoch`, `connected_at` and `lease_expires_at`, its `id` referencing `runner_host_ids`.
 
 **Changed**
 - Session routing: under a share-enabled k8s runner, a `*.<baseDomain>` host that no session routes (a suspended session's included) reaches the relay, which answers it as a share with no tunnel, `503`, instead of the edge's default answer.
+- Session ids: drawn from `runner_host_ids` with share ids, so a deleted session's id is never handed out again.
+- `/v1` shapes: served from `@telorun/runner-protocol` instead of runner-core's own definitions; Studio drops its mirrored copy.
 - Identity contract (runner-core § Identity): a DPoP proof's `htu` must equal the URL the request was sent to, as the route supplies it, not always the audience plus the path. The token's `aud` must still contain `RUNNER_IDENTITY_AUDIENCE`.
 
 **Removed**
@@ -69,7 +76,7 @@ None.
 
 **Before:** `telo run ./webhook-demo` serves `http://localhost:8080`. The app's `Telo.PublicUrl` is whatever the env supplies.
 
-**After:** `telo run --share ./webhook-demo` takes a share `k3xqz2m7ahc4` for the signed-in user. Share ids are drawn as session ids are, twelve characters of `[a-z2-7]`. Every `tcp` port is then reachable at `https://<port>-k3xqz2m7ahc4.telorun.dev`, and the local kernel derives every `Telo.PublicUrl` from the share. WebSockets and streamed bodies work. Running the same command tomorrow gets the same addresses.
+**After:** `telo run --share ./webhook-demo` takes a share `k3xqz2m7ahc4` for the signed-in user. Share ids are drawn as session ids are, twelve characters of `[a-z2-7]`, from one namespace with them and never reused. Every `tcp` port is then reachable at `https://<port>-k3xqz2m7ahc4.telorun.dev`, and the local kernel derives every `Telo.PublicUrl` from the share. WebSockets and streamed bodies work. Running the same command tomorrow gets the same addresses.
 
 ### The application
 
@@ -121,15 +128,15 @@ routes:
 
 ### Using it
 
-Sign-in is a prerequisite: `telo auth login` is the runner sign-in plan's. Everything the CLI prints here goes to stderr.
+Sign-in is a prerequisite: `telo auth login` (or `telo login`) signs in, and at a terminal `telo run --share` offers it. Everything the CLI prints here goes to stderr.
 
 ```console
 $ telo run --share ./webhook-demo
 error ERR_RUNNER_SIGN_IN_REQUIRED: sharing needs a sign-in to https://runner.telo.run
-  run: telo auth login --runner https://runner.telo.run
+  run: telo auth login
 
-$ telo auth login --runner https://runner.telo.run
-Signed in to https://runner.telo.run as octo@example.org
+$ telo auth login
+Signed in to https://accounts.telo.run as octo
 
 $ telo run --share ./webhook-demo
 Shared through https://runner.telo.run (share k3xqz2m7ahc4):
@@ -190,11 +197,13 @@ Reloaded: now also sharing
   metrics  9100    https://9100-k3xqz2m7ahc4.telorun.dev
 ```
 
-A grant that expires mid-run, or a runner at capacity, warns once and the run keeps going:
+A grant that expires mid-run, an owner at its connected-share limit, or a runner at capacity, warns once and the run keeps going:
 
 ```console
 warning: https://runner.telo.run refused the share's credential; visitors get 503 until you run:
-  telo auth login --runner https://runner.telo.run
+  telo auth login
+Share k3xqz2m7ahc4 reconnected.
+warning: you already have 3 shares connected on https://runner.telo.run; retrying (visitors get 503 meanwhile)
 Share k3xqz2m7ahc4 reconnected.
 warning: https://runner.telo.run is at its connected-share capacity; retrying (visitors get 503 meanwhile)
 Share k3xqz2m7ahc4 reconnected.
@@ -220,11 +229,11 @@ error ERR_SHARE_APP_UNSUPPORTED: CliTool declares no tcp port
 
 The CLI does this before the kernel is built.
 
-1. It reads the runner's `/v1/capabilities`. It needs two members: `features.shares` must be present, and the sign-in's `identity.resource` check (the sign-in plan's) must pass.
+1. It reads the runner's `/v1/capabilities`. It needs two members: `features.shares` must be present, and the runner's identity must agree: `identity.resource` is the runner URL, `authorization_servers` lists the configured accounts issuer, and `ES256` is accepted (`ERR_RUNNER_IDENTITY_MISMATCH` otherwise).
 
    ```json
    {
-     "features": { "shares": { "maxPerOwner": 10, "retentionSeconds": 604800 } },
+     "features": { "shares": { "maxPerOwner": 10, "maxConnectedPerOwner": 3, "retentionSeconds": 604800 } },
      "identity": {
        "resource": "https://runner.telo.run",
        "authorization_servers": ["https://accounts.telo.run"],
@@ -314,7 +323,7 @@ Content-Type: application/json
 { "error": "share_not_found", "message": "no share k3xqz2m7ahc4" }
 ```
 
-`lastActiveAt` is the latest of the share's creation, last connect and last disconnect. A share is its owner's until it is deleted, or, while not connected, until `lastActiveAt + retentionSeconds`. A connected share never expires. A share is not a session: it has no workspace, no workload and no events.
+`connected` is `lease_expires_at > now` (see the fence below). `lastActiveAt` is the latest of the share's creation, its last connect, and its `lease_expires_at` once that is past. A share is its owner's until it is deleted, or, while not connected, until `lastActiveAt + retentionSeconds`. A connected share never expires. Deleting a share sets its `runner_host_ids` row's `released_at` in the same transaction; the row stays, so the id is never drawn again. A share is not a session: it has no workspace, no workload and no events.
 
 ### Being the host
 
@@ -341,6 +350,21 @@ Shared through https://runner.telo.run (share k3xqz2m7ahc4):
 
 The CLI opens one WebSocket to `tunnelUrl` once the share is taken; boot does not wait for it to connect. The upgrade carries `Authorization: DPoP` and a proof with `htm` `GET` and `htu` the `https://` form of `tunnelUrl`. The relay verifies both through runner-core's identity verifier. It passes the URL it was reached at, which it derives from the base domain it already holds. The token's `aud` must still contain the runner's audience: the relay is the same resource server at another host.
 
+**The channel.** A WebSocket text message is one JSON control object with a string `type`; a binary message is HTTP/2 connection bytes, an ordered byte stream whose message boundaries mean nothing. The order is fixed:
+1. the CLI sends `hello`;
+2. the relay answers `hello`;
+3. the relay sends the HTTP/2 client preface;
+4. from then on binary messages flow both ways, and the CLI may send `ports` and `auth` at any time.
+
+| Direction | Message | Meaning |
+|---|---|---|
+| CLI → relay | `hello { epoch }` | The fence (below): `null` on a run's first connect, else the epoch the relay last answered. |
+| CLI → relay | `ports { ports: [{ name, port }] }` | The `tcp` ports to route; each one replaces the last whole. |
+| CLI → relay | `auth { accessToken, proof }` | A renewed credential (below). |
+| relay → CLI | `hello { epoch }` | The epoch this tunnel holds. |
+
+The tunnel is closed `4400` for a binary message, or any message other than `hello`, before the handshake completes; a second `hello`; an unknown `type` or field; a text message over 64 KiB or a binary message over 1 MiB. Control stays outside HTTP/2 because the fence must be settled before HTTP/2 starts, and because the CLI, as the HTTP/2 server, could not open a control stream of its own. A change to any message, field, close code or number here is a new subprotocol generation, as in the supervisor protocol.
+
 Inside the WebSocket runs one HTTP/2 connection, with the relay acting as client:
 - **Requests.** Each visitor request is a stream. It carries the original `Host` as `:authority`, and the target port in a `telo-share-port` header. The relay overwrites any `telo-share-port` a visitor sent. The CLI refuses a stream for a port missing from its last `ports` message, and strips the header before forwarding locally.
 - **Local target.** The CLI forwards each stream to `127.0.0.1` on the target port.
@@ -352,7 +376,7 @@ Why this design:
 - HTTP/2 is a published multiplexer with flow control and extended CONNECT, implemented in both Node and Rust. With framing of our own, every client would have to re-specify flow control.
 - RFC 8441 straight to the edge does not pass common Ingress controllers, and QUIC is blocked on the networks developers share from.
 
-On every load, the CLI sends one JSON control message listing the `tcp` ports `Kernel.PortsResolved` announced. The relay routes every host that parses as `[<label>--]<port>-<id>` for this share, when its port is in the list. Every need host the templates derive has that form, and the app's own `hostnames` routing decides what each host gets:
+On every load, the CLI sends one `ports` message listing the `tcp` ports `Kernel.PortsResolved` announced. The relay routes every host that parses as `[<label>--]<port>-<id>` for this share, when its port is in the list. Every need host the templates derive has that form, and the app's own `hostnames` routing decides what each host gets:
 
 ```json
 {
@@ -365,8 +389,16 @@ On every load, the CLI sends one JSON control message listing the `tcp` ports `K
 ```
 
 The tunnel belongs to the `telo run` invocation, so it survives every `--watch` reload.
-- **Reconnects.** It reconnects with capped backoff through every close except those that end the run (below), re-reading the sign-in's credentials on each attempt. It warns once per distinct close reason, carrying the relay's close text. On `4401` the warning names the `telo auth login --runner <url>` to run; on `4503` it says the runner is at capacity.
-- **Fence.** Each run's first connect increments the share's `epoch`; a reconnect presents the epoch it holds. A second run of the same share therefore takes over: the first run drains under GOAWAY and is closed `4409`, and its later reconnects are closed `4409` too.
+- **Reconnects.** It reconnects with capped backoff through every close except those that end the run (below), re-reading the sign-in's credentials on each attempt. It warns once per distinct close reason, carrying the relay's close text. On `4401` the warning names the `telo auth login` to run (with `--runner <url>` only for a runner other than the default one); on `4429` it says the owner already has `maxConnectedPerOwner` shares connected; on `4503` it says the runner is at capacity.
+- **Fence.** The share's row holds `epoch`, `connected_at` and `lease_expires_at`, and the store checks the epoch on every write, so the fence holds across relay restarts and replicas:
+  - `hello { epoch: null }`: in one store write the relay sets `epoch = epoch + 1`, `connected_at = now` and `lease_expires_at = now + 15 s`, and answers `hello` with the new epoch. The CLI keeps it in memory for the run.
+  - `hello { epoch: n }`: when `n` equals the stored epoch, the relay sets `connected_at` and the lease and answers `hello` with `n`; any other `n` closes `4409`.
+  - A share that is unknown, deleted or another owner's closes `4404`, revealing nothing. No `hello` within 10 s closes `4408`.
+  - Every 5 s the relay renews `lease_expires_at = now + 15 s` for every tunnel it holds, in one batched write conditioned on `(id, epoch)`. A tunnel whose renewal misses is closed `4404` when the share is gone, or `4409` when its epoch moved.
+  - A second run of the same share therefore takes over: the old tunnel gets an HTTP/2 GOAWAY and is closed `4409` when its last stream ends, or 10 s after the GOAWAY, and its later reconnects present the old epoch and are closed `4409` too.
+  - A clean close sets `lease_expires_at = now`, conditioned on the epoch, so a fenced tunnel's close never marks the new run's share disconnected.
+- **Keepalive.** The relay sends a WebSocket ping every 20 s, and the CLI's WebSocket answers with a pong. A side that has received nothing (data, ping or pong) for 45 s closes `4408`, or drops the socket when the peer is unreachable; the CLI then reconnects. HTTP/2 PING is answered as RFC 9113 requires, and neither side sends one for keepalive. 20 s clears the strictest common idle timeouts (ingress-nginx and AWS ALB at 60 s, GKE at 30 s).
+- **Re-authentication.** The CLI sends `auth { accessToken, proof }` at least 60 s before the token it last presented expires. The proof has `htm` `GET` and `htu` the `https://` form of `tunnelUrl`, and its `jti` is recorded as on `/v1`. The relay verifies it through the same verifier; a token for another owner closes `4401`, and so does the expiry of the newest token the relay holds. Suspending or revoking an account at the identity provider therefore ends its connected tunnels within one access-token lifetime.
 - **Lost.** `4404` and `4409` end the run non-zero with `ERR_SHARE_LOST`, naming the reason. The app's public addresses no longer reach this process and cannot again.
 - **Mismatch.** Two cases end the run non-zero with `ERR_SHARE_RUNNER_UNSUPPORTED`, naming the generations this telo offered: an upgrade where the relay selects none of the offered subprotocols, and a close `4400`. Retrying cannot change either answer. The spec states that both are terminal.
 
@@ -380,27 +412,30 @@ The shares live in three places:
 
 | Part | Where | What it does |
 |---|---|---|
-| Contract | `@telorun/runner-protocol` (MIT) | Defines `features.shares` and the `/v1/shares` shapes and errors. The CLI reads them and runner-core serves them. |
+| Contract | `@telorun/runner-protocol` (MIT) | The whole client-facing `/v1` contract, `features.shares` and `/v1/shares` included: spec, JSON Schema and types. The CLI and Studio read it, runner-core serves it, and runner-core's tests validate every route's responses against the schema. |
 | Control plane | runner-core | Serves `/v1/shares` over its store and caller resolver. |
 | Tunnel package | `@telorun/share-tunnel` (MIT) | Holds the protocol spec, its vectors and the client engine the CLI runs. Depends on no Sustainable Use package. |
-| Relay | runner-core, as role `relay` | Holds the relay engine over two seams of its own, a share directory (look up, connect with fence, record a disconnect) and a tunnel authenticator, implemented with its store and identity verifier. It runs the tunnel package's vectors. |
+| Relay | runner-core, as role `relay` | Holds the relay engine over two seams of its own, a share directory (look up, connect with fence, renew leases, release on close) and a tunnel authenticator, implemented with its store and identity verifier. It runs the tunnel package's vectors. |
 
-The cut follows the license line: the protocol and the client a developer runs are MIT, and the relay a hosted runner operates is not. A relay anyone could host would undo that.
+The cut follows the license line: the contract, the protocol and the client a developer runs are MIT, and the relay a hosted runner operates is not. A relay anyone could host would undo that. The whole `/v1` contract moves, not only shares, because three parties now speak it and two of them are MIT: one contract keeps one home, and its schema is what a Rust client reads.
 
 `RUNNER_ROLE=relay` starts the same runner image as the relay. The k8s runner runs it as a separate `relay` Deployment, with one replica hard-coded and the `Recreate` strategy, as the control plane has. Visitor traffic therefore never passes through the control plane, which is pinned to one replica and manages every session. A relay rollout drops every tunnel, and each CLI's reconnect restores it.
 
 **Who owns which state.** The relay owns connection state:
-- It writes each share's `connectedAt` and `disconnectedAt` to the store; `GET /v1/shares` derives `connected` from them.
-- At boot it marks every connected share disconnected, since it holds no tunnel at that moment.
-- Every 5 s it reads which of the shares it holds tunnels for were deleted, and closes each one's tunnel `4404`. A delete therefore reaches visitors and the run within 5 s.
-- It answers visitors from the tunnels it holds alone, never reading the store per request.
+- It writes each share's `epoch`, `connected_at` and `lease_expires_at` as the fence states; `GET /v1/shares` derives `connected` from the lease.
+- The 5 s lease renewal is also how it learns of a delete or a takeover, so a delete reaches visitors and the run within 5 s. A relay that dies leaves its leases to lapse within 15 s; there is no boot sweep.
+- It checks `RUNNER_MAX_CONNECTED_SHARES` and `RUNNER_MAX_CONNECTED_SHARES_PER_OWNER` in the same store write that connects a tunnel, so both hold across replicas. A takeover of an owner's own share does not count twice.
+- It answers visitors from the tunnels it holds alone, never reading the store per request, and bounds each tunnel locally: at most `RUNNER_MAX_SHARE_CONCURRENT_REQUESTS` visitor requests in flight (an open visitor WebSocket counts), and `RUNNER_MAX_SHARE_BYTES_PER_SECOND` in each direction, shaped through its HTTP/2 window grants and reads rather than refused.
 
-The control plane owns `/v1/shares` and the retention sweep.
+The control plane owns `/v1/shares` and the retention sweep. Ids for sessions and shares are minted into `runner_host_ids` in the same transaction as their holder; a primary-key conflict re-draws, at most 3 times, then fails with the store's error. The id must be unique as a host label, not as a row of one table, and a released id is never drawn again because a visitor's browser keeps cookies, storage and service workers per origin.
+
+The runner keeps no blocklist of its own: the identity provider is the authority on who may act, and re-authentication carries its answer to every connected tunnel.
 
 **Routing.** The chart renders one route, `*.<sessionRouting.baseDomain>`, to the relay Service, in the runner's namespace, for the layer `sessionRouting.mode` names (`ingress` or `gateway`):
 - Exact per-session hosts outrank the wildcard, so sessions keep their own hosts.
 - The relay serves the tunnel endpoint at `tunnel.<baseDomain>`. Every other host it parses as `[<label>--]<port>-<id>`, right-anchored.
 - The relay forwards the edge's `X-Forwarded-*` headers unchanged. An app therefore sees the same request whether a session or a share hosts it.
+- **What the edge must allow:** the route to the relay passes WebSocket upgrades on `tunnel.<baseDomain>`, keeps an upgraded connection idle for at least 30 s, and caps no connection's total duration below 3600 s. ingress-nginx's and AWS ALB's defaults suffice; the GKE backend-service timeout, which also caps a WebSocket's lifetime, must be raised (a `BackendConfig` `timeoutSec` of at least 3600). Any cap ends the tunnel, and the CLI reconnects, dropping in-flight visitor streams.
 
 **Configuration**
 
@@ -409,13 +444,16 @@ The control plane owns `/v1/shares` and the retention sweep.
 | `RUNNER_SHARES` | Offer shares (`features.shares`). | off |
 | `RUNNER_ROLE` | `control` serves `/v1`; `relay` serves tunnels and visitors. | `control` |
 | `RUNNER_MAX_CONNECTED_SHARES` | Tunnels connected at once, runner-wide. Beyond it, close `4503`, and the CLI keeps retrying. | `200` |
+| `RUNNER_MAX_CONNECTED_SHARES_PER_OWNER` | Tunnels one owner holds connected at once. Beyond it, close `4429`, and the CLI keeps retrying. | `3` |
 | `RUNNER_MAX_SHARES_PER_OWNER` | Shares one owner keeps. Beyond it, `429 too_many_shares`. | `10` |
-| `RUNNER_SHARE_RETENTION_SECONDS` | How long after the later of its creation and its last disconnect a share is deleted. A connected share is never deleted. | `604800` |
+| `RUNNER_MAX_SHARE_CONCURRENT_REQUESTS` | Visitor requests in flight per tunnel. Beyond it, visitor `503` busy. | `100` |
+| `RUNNER_MAX_SHARE_BYTES_PER_SECOND` | Byte rate per tunnel, each direction. Shaped, never refused. | `1048576` |
+| `RUNNER_SHARE_RETENTION_SECONDS` | How long after `lastActiveAt` a share that is not connected is deleted. A connected share is never deleted. | `604800` |
 
 `RUNNER_SHARES` and `RUNNER_ROLE=relay` refuse to boot in any of these cases, each naming the setting to fix:
 - with `RUNNER_SESSION_STORE=sqlite`, because the relay is another process and a SQLite file belongs to one pod;
 - without `RUNNER_IDENTITY_AUDIENCE` / `RUNNER_IDENTITY_ISSUERS`;
-- over a backend that does not route shares. Docker and `telo-local-runner` never do. k8s does only with `SESSION_ROUTING_MODE` set to `ingress` or `gateway` and a base domain.
+- over a backend that does not route shares. Docker and `telo-host-runner` never do. k8s does only with `SESSION_ROUTING_MODE` set to `ingress` or `gateway` and a base domain.
 
 The chart's value validation refuses the same combinations. For example:
 
@@ -443,12 +481,16 @@ sessionRouting:
 shares:
   enabled: true
   maxConnected: 200
+  maxConnectedPerOwner: 3
   maxPerOwner: 10
+  maxConcurrentRequests: 100
+  maxBytesPerSecond: 1048576
   retentionSeconds: 604800
 ```
 
 **What a visitor gets** when the share cannot answer:
-- `503` with `Retry-After` for any well-formed host whose id has no live tunnel, whether the share exists, was deleted or never existed;
+- `503` with `Retry-After: 5` for any well-formed host whose id has no live tunnel, whether the share exists, was deleted or never existed;
+- `503` with `Retry-After: 1` and body `This share is busy.` while the tunnel is at `RUNNER_MAX_SHARE_CONCURRENT_REQUESTS`;
 - `404` for a host that does not parse, or a port the connected tunnel did not announce;
 - `502` or `504` when the local port refuses the connection or is slow.
 
@@ -469,13 +511,15 @@ The Rust CLI does not offer `--share`. The tunnel protocol is specified so that 
 - **Guides:**
   - a guide to sharing a local run;
   - a section in the providing-needs guide on `telo run --share` as a host;
-  - in runner-core's README, § Identity states the `htu` rule per route, § Public addresses names the CLI share as a template-mode host, and a new § Shares covers the routes, the settings and the retention clock;
-  - the k8s runner README covers the relay Deployment, the wildcard route, the TLS secret in the runner's namespace, and a Gateway listener admitting that namespace;
-  - the CLI guide covers `telo shares`.
+  - in runner-core's README, § Identity states the `htu` rule per route, § Public addresses names the CLI share as a template-mode host, and a new § Shares covers the routes, the settings, the retention clock, the edge requirement, and that suspension at the identity provider is the takedown, reaching a connected tunnel within one access-token lifetime;
+  - the k8s runner README covers the relay Deployment, the wildcard route, the TLS secret in the runner's namespace, a Gateway listener admitting that namespace, and the edge requirement with the GKE `BackendConfig` it needs;
+  - the CLI guide covers `telo shares`;
+  - `@telorun/runner-protocol`'s README is the `/v1` spec; `packages/runner-core/CLAUDE.md` § Where to look and the root `CLAUDE.md` Runners line name it as the `/v1` contract.
+- **Studio:** it depends on `@telorun/runner-protocol` and deletes its mirrored `/v1` types.
 - **Agent and ledger:** a paragraph in the authoring-agent primer, and a benefits-ledger entry under Telo itself ("Share a local run").
 - **Release:**
-  - add `packages/share-tunnel` to `release.units`, and to the MIT directories of `check:licenses` and the README's `## License` table;
-  - add `telo release add` fragments for `cli`, `packages/runner-core`, `packages/runner-protocol`, `packages/share-tunnel` and `apps/k8s-runner`.
+  - add `packages/share-tunnel` and `packages/runner-protocol` to `release.units`, and to the MIT directories of `check:licenses` and the README's `## License` table;
+  - add `telo release add` fragments for `cli`, `packages/runner-core`, `packages/runner-protocol`, `packages/share-tunnel`, `apps/k8s-runner` and `apps/studio`.
 
 ## Verify
 
@@ -491,41 +535,56 @@ The Rust CLI does not offer `--share`. The tunnel protocol is specified so that 
 3. **Watch.** Under `--watch`:
    - adding a port makes its host reachable without reconnecting;
    - a visitor WebSocket survives a reload of another port.
-4. **Takeover.** Start run 1, then run 2 on the same share. Run 1 exits with `ERR_SHARE_LOST`, and run 2 keeps serving. Repeat with run 1's network dropped across the takeover: its reconnect gets `4409` and it exits.
+4. **Takeover.** Start run 1, then run 2 on the same share. Run 1 exits with `ERR_SHARE_LOST`, and run 2 keeps serving.
+   - Repeat with run 1's network dropped across the takeover: its reconnect gets `4409` and it exits.
+   - Repeat with the relay restarted between the two runs, and with two relay replicas: the same outcome.
+   - Run 1's clean close after the takeover leaves the share `connected: true`.
 5. **Ending a share.**
    - Stopping the CLI makes visitors get `503` with `Retry-After`.
    - `telo shares delete <id>` ends a connected run with `ERR_SHARE_LOST` within 5 s. Visitors then get the same `503` as for a random id.
    - A share created and never connected is deleted `retentionSeconds` after its creation.
-6. **Expired grant.** An expired grant leaves the app running with the warning. `telo auth login --runner <url>` in another terminal resumes the same addresses.
+   - A deleted share's `runner_host_ids` row stays with `released_at` set.
+6. **Expired grant.** An expired grant leaves the app running with the warning. `telo auth login` in another terminal resumes the same addresses. With the grant revoked, a connected tunnel is closed `4401` at its token's expiry.
 7. **Relay rollout.**
    - Restarting the control-plane Deployment drops no connected tunnel.
    - Restarting the relay gives visitors `503` until the CLI reconnects.
-   - After the relay is killed with `SIGKILL` and restarts, `telo shares list` shows every share not connected before any CLI reconnects.
+   - With every CLI stopped, `telo shares list` shows every share not connected within 15 s of the relay's `SIGKILL`.
 8. **Routing precedence.** Under both Ingress and Gateway mode, with the wildcard live, a session host still reaches its session.
 9. **Header handling.**
    - A visitor-sent `telo-share-port` naming an undeclared port reaches nothing on the developer's machine.
    - An app echoing its request headers shows the original `Host` and the edge's `X-Forwarded-*`, the same as under a session.
 10. **Bounded memory and load.**
     - A 1 GiB upload through a slow local app keeps relay memory bounded.
+    - A 1 GiB download through a share takes at least 1024 s at the default byte rate, and relay memory stays bounded.
     - A flood of requests for random well-formed ids makes no store read.
-11. **Tunnel authentication and generations.**
+11. **Tunnel authentication, channel and generations.**
     - A tunnel proof whose `htu` names `runner.telo.run` is refused at the relay with `4401`. A proof for the tunnel URL is refused on `/v1`.
     - A replayed tunnel proof is refused across a relay restart.
+    - Vectors for `ports` before `hello`, a binary message before the relay's `hello`, and an unknown field each close `4400`; both the client engine and the relay engine run them.
     - A relay speaking only a later generation, or closing `4400`, ends the run with `ERR_SHARE_RUNNER_UNSUPPORTED` after one connect attempt, with no reconnect.
-12. **Limits.**
+12. **Keepalive.**
+    - Behind ingress-nginx at its defaults, an idle share stays connected for an hour.
+    - With the CLI's network dropped silently, the relay closes the tunnel within 45 s, and `connected` turns false within 15 s more.
+13. **Limits.**
     - An owner's 11th share gets `429 too_many_shares`.
     - Of two copies of one app, the one run last lists first in `telo shares list`.
     - With `RUNNER_MAX_CONNECTED_SHARES=1`, a second tunnel is closed `4503`, warns once, and connects once the first leaves.
-13. **CLI refusals before boot.** `--share` refuses with the code named above in each case:
+    - An owner's 4th connected tunnel is closed `4429` and connects once one of the first three ends.
+    - The 101st concurrent visitor request gets the `503` busy answer while the first 100 complete.
+14. **Ids.** A share mint forced to draw an existing session's id, or a released id, gets a different id.
+15. **CLI refusals before boot.** `--share` refuses with the code named above in each case:
     - pointed at a docker runner;
     - on a root declaring `Telo.DesktopHost`;
     - on a root with no `tcp` port;
     - with either `TELO_HOST_PUBLIC_URL_TEMPLATE` or `TELO_HOST_PUBLIC_URL_SECONDARY_TEMPLATE` set;
     - when not signed in;
     - `--share-runner` without `--share`.
-14. **Runner refusals at boot.** The runner and the chart each refuse `RUNNER_SHARES`:
+16. **Runner refusals at boot.** The runner and the chart each refuse `RUNNER_SHARES`:
     - on SQLite;
     - without identity;
     - under routing mode `auto` or `none`;
-    - on the docker runner and `telo-local-runner`.
-15. **License line.** `pnpm run check:licenses` passes with `packages/share-tunnel` listed as MIT, and the package names no Sustainable Use dependency.
+    - on the docker runner and `telo-host-runner`.
+17. **License line and contract.**
+    - `pnpm run check:licenses` passes with `packages/share-tunnel` and `packages/runner-protocol` listed as MIT; neither names a Sustainable Use dependency, and `@telorun/runner-protocol` has no dependencies at all.
+    - `@telorun/cli` names no `@telorun/runner-core`, and Studio holds no `/v1` type of its own.
+    - A schema test fails when runner-core answers a field the schema lacks.

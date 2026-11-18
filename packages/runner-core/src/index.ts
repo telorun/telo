@@ -60,12 +60,43 @@ export {
   protectedResourceMetadata,
   protectedResourceMetadataUrl,
 } from "./identity/protected-resource-metadata.js";
+export { sharesRoute, type SharesRouteDeps } from "./routes/shares.js";
+export { buildRelayServer, type RelayHandle, type RelayServerDeps } from "./relay/relay-server.js";
+export { ShareRelay, type ShareRelayDeps } from "./relay/share-relay.js";
+export { DEFAULT_SHARE_RELAY_TIMINGS, type RelayLog, type ShareRelayTimings } from "./relay/relay-tunnel.js";
+export {
+  SHARE_LEASE_MS,
+  storeShareDirectory,
+  type ShareDirectory,
+  type StoreShareDirectoryOptions,
+} from "./relay/share-directory.js";
+export {
+  identityTunnelAuthenticator,
+  type TunnelAuthenticator,
+  type TunnelCredential,
+  type TunnelIdentity,
+} from "./relay/tunnel-authenticator.js";
+export { ShareRetention, type ShareRetentionDeps } from "./session-store/share-retention.js";
+export {
+  shareConnected,
+  shareLastActiveAt,
+  type ConnectShareRequest,
+  type ConnectShareResult,
+  type CreateShareResult,
+  type LeaseHold,
+  type LeaseRenewal,
+  type ShareOwner,
+  type ShareRecord,
+  type ShareStore,
+} from "./session-store/share-store.js";
+export { HostIdCollisionError, MAX_ID_DRAWS, type MintId } from "./session-store/host-id.js";
 export {
   SESSION_STORE_SCHEMA_VERSION,
   STORED_SESSION_STATUSES,
   SessionStoreSchemaError,
   type ChangeOwnerResult,
   type CreateSessionResult,
+  type NewSessionRecord,
   type SessionOwner,
   type SessionRecord,
   type SessionRecordUpdate,

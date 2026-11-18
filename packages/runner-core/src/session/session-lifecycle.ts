@@ -37,7 +37,7 @@ import type {
 import { agentPortClash } from "./app-set.js";
 import type { IoTickets } from "./io-tickets.js";
 import type { AppChannel, SessionEntry, SessionRegistry } from "./registry.js";
-import { generateSessionId, randomBase32 } from "./session-id.js";
+import { randomBase32 } from "./session-id.js";
 import { SessionRefusal } from "./session-refusal.js";
 import { generateWorkloadToken, statusWithTokens } from "./workload-token.js";
 
@@ -181,7 +181,6 @@ export class SessionLifecycle {
     try {
       const now = new Date(this.now());
       const created = await this.deps.store.create({
-        id: generateSessionId(),
         owner: args.owner,
         workspace: args.workspace,
         agent: args.agent?.name ?? null,

@@ -355,6 +355,33 @@ sessionRouting:
     # Optional listener name, when only one listener should carry session traffic.
     sectionName: ""
 
+# Shares: a developer's local run exposed at a public address through a relay
+# (`telo run --share`). Enabling it adds a `<name>-relay` Deployment and Service
+# (the same image with RUNNER_ROLE=relay) and one wildcard route
+# `*.<sessionRouting.baseDomain>` to it, for the layer sessionRouting.mode names.
+# It needs sessionStore.kind=postgres (the relay is another process), identity.*,
+# sessionRouting.mode ingress or gateway, and sessionRouting.baseDomain; any
+# other combination is refused at install.
+#
+# EDGE REQUIREMENT: the route to the relay must pass WebSocket upgrades on
+# `tunnel.<baseDomain>`, keep an upgraded connection idle for at least 30 s and
+# cap no connection's total duration below 3600 s. ingress-nginx's and AWS ALB's
+# defaults suffice; on GKE raise the backend service timeout with a BackendConfig
+# (`timeoutSec: 3600` or more). See the README § Shares.
+shares:
+  enabled: false
+  # Tunnels connected at once, runner-wide / per owner.
+  maxConnected: 200
+  maxConnectedPerOwner: 3
+  # Shares one owner keeps.
+  maxPerOwner: 10
+  # Visitor requests in flight per tunnel.
+  maxConcurrentRequests: 100
+  # Byte rate per tunnel, each direction.
+  maxBytesPerSecond: 1048576
+  # How long after its last activity an unconnected share is deleted.
+  retentionSeconds: 604800
+
 # DoS backstop on the session namespace.
 #
 # THE ARITHMETIC IS THE POINT, and it is what silently rots. A session pod holds

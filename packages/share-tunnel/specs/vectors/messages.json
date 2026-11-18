@@ -1,0 +1,63 @@
+{
+  "generation": 1,
+  "client": {
+    "valid": [
+      { "name": "hello on a run's first connect", "message": { "type": "hello", "epoch": null } },
+      { "name": "hello presenting the epoch the relay last answered", "message": { "type": "hello", "epoch": 7 } },
+      { "name": "hello presenting epoch 0", "message": { "type": "hello", "epoch": 0 } },
+      { "name": "ports with no port", "message": { "type": "ports", "ports": [] } },
+      {
+        "name": "ports with two ports",
+        "message": { "type": "ports", "ports": [{ "name": "http", "port": 8080 }, { "name": "admin", "port": 9090 }] }
+      },
+      { "name": "ports at both ends of the range", "message": { "type": "ports", "ports": [{ "name": "low", "port": 1 }, { "name": "high", "port": 65535 }] } },
+      { "name": "two names on one port", "message": { "type": "ports", "ports": [{ "name": "web", "port": 8080 }, { "name": "api", "port": 8080 }] } },
+      { "name": "auth", "message": { "type": "auth", "accessToken": "eyJ.token.sig", "proof": "eyJ.proof.sig" } }
+    ],
+    "invalid": [
+      { "name": "not JSON", "text": "{" },
+      { "name": "not an object", "text": "[]" },
+      { "name": "null", "text": "null" },
+      { "name": "no type", "text": "{\"epoch\":null}" },
+      { "name": "a type that is not a string", "text": "{\"type\":1}" },
+      { "name": "an unknown type", "text": "{\"type\":\"bye\"}" },
+      { "name": "a message only the relay sends is unknown here too", "text": "{\"type\":\"goaway\"}" },
+      { "name": "hello with an unknown field", "text": "{\"type\":\"hello\",\"epoch\":null,\"generation\":1}" },
+      { "name": "hello without epoch", "text": "{\"type\":\"hello\"}" },
+      { "name": "hello with a negative epoch", "text": "{\"type\":\"hello\",\"epoch\":-1}" },
+      { "name": "hello with a fractional epoch", "text": "{\"type\":\"hello\",\"epoch\":1.5}" },
+      { "name": "hello with a string epoch", "text": "{\"type\":\"hello\",\"epoch\":\"3\"}" },
+      { "name": "hello with an epoch past the safe integers", "text": "{\"type\":\"hello\",\"epoch\":9007199254740992}" },
+      { "name": "ports with an unknown field", "text": "{\"type\":\"ports\",\"ports\":[],\"replace\":true}" },
+      { "name": "ports that is not a list", "text": "{\"type\":\"ports\",\"ports\":{}}" },
+      { "name": "a port entry with an unknown field", "text": "{\"type\":\"ports\",\"ports\":[{\"name\":\"http\",\"port\":8080,\"protocol\":\"tcp\"}]}" },
+      { "name": "a port entry without a name", "text": "{\"type\":\"ports\",\"ports\":[{\"port\":8080}]}" },
+      { "name": "a port entry with an empty name", "text": "{\"type\":\"ports\",\"ports\":[{\"name\":\"\",\"port\":8080}]}" },
+      { "name": "a port entry without a port", "text": "{\"type\":\"ports\",\"ports\":[{\"name\":\"http\"}]}" },
+      { "name": "port 0", "text": "{\"type\":\"ports\",\"ports\":[{\"name\":\"http\",\"port\":0}]}" },
+      { "name": "port 65536", "text": "{\"type\":\"ports\",\"ports\":[{\"name\":\"http\",\"port\":65536}]}" },
+      { "name": "a string port", "text": "{\"type\":\"ports\",\"ports\":[{\"name\":\"http\",\"port\":\"8080\"}]}" },
+      { "name": "one name listed twice", "text": "{\"type\":\"ports\",\"ports\":[{\"name\":\"http\",\"port\":8080},{\"name\":\"http\",\"port\":9090}]}" },
+      { "name": "auth with an unknown field", "text": "{\"type\":\"auth\",\"accessToken\":\"t\",\"proof\":\"p\",\"expiresAt\":0}" },
+      { "name": "auth without a proof", "text": "{\"type\":\"auth\",\"accessToken\":\"t\"}" },
+      { "name": "auth with an empty token", "text": "{\"type\":\"auth\",\"accessToken\":\"\",\"proof\":\"p\"}" }
+    ]
+  },
+  "relay": {
+    "valid": [
+      { "name": "hello holding epoch 1", "message": { "type": "hello", "epoch": 1 } },
+      { "name": "hello holding the largest safe epoch", "message": { "type": "hello", "epoch": 9007199254740991 } }
+    ],
+    "invalid": [
+      { "name": "not JSON", "text": "hello" },
+      { "name": "not an object", "text": "\"hello\"" },
+      { "name": "no type", "text": "{\"epoch\":1}" },
+      { "name": "a message only the client sends", "text": "{\"type\":\"ports\",\"ports\":[]}" },
+      { "name": "an unknown type", "text": "{\"type\":\"welcome\",\"epoch\":1}" },
+      { "name": "hello with an unknown field", "text": "{\"type\":\"hello\",\"epoch\":1,\"share\":\"k3xqz2m7ahc4\"}" },
+      { "name": "hello with a null epoch", "text": "{\"type\":\"hello\",\"epoch\":null}" },
+      { "name": "hello without epoch", "text": "{\"type\":\"hello\"}" },
+      { "name": "hello with a negative epoch", "text": "{\"type\":\"hello\",\"epoch\":-1}" }
+    ]
+  }
+}

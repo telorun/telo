@@ -22,6 +22,32 @@ export interface RunnerCoreConfig {
   sessionContainers: SessionContainersConfig;
   /** Absent: the runner takes resume secrets only. */
   identity?: IdentityConfig;
+  shares: SharesConfig;
+}
+
+/**
+ * Shares (`RUNNER_SHARES`, `RUNNER_ROLE`): public addresses for runs on a
+ * caller's own machine. The limits are parsed whether or not shares are on;
+ * the relay's are read by the relay role.
+ */
+export interface SharesConfig {
+  /** `RUNNER_SHARES`, or implied by `RUNNER_ROLE=relay`. */
+  enabled: boolean;
+  /** `control` serves `/v1`; `relay` serves tunnels and visitors. */
+  role: "control" | "relay";
+  /** Tunnels connected at once, runner-wide (`RUNNER_MAX_CONNECTED_SHARES`). */
+  maxConnected: number;
+  /** Tunnels one owner holds connected (`RUNNER_MAX_CONNECTED_SHARES_PER_OWNER`). */
+  maxConnectedPerOwner: number;
+  /** Shares one owner keeps (`RUNNER_MAX_SHARES_PER_OWNER`). */
+  maxPerOwner: number;
+  /** Visitor requests in flight per tunnel (`RUNNER_MAX_SHARE_CONCURRENT_REQUESTS`). */
+  maxConcurrentRequests: number;
+  /** Byte rate per tunnel, each direction (`RUNNER_MAX_SHARE_BYTES_PER_SECOND`). */
+  maxBytesPerSecond: number;
+  /** How long after `lastActiveAt` a share that is not connected is deleted
+   *  (`RUNNER_SHARE_RETENTION_SECONDS`). */
+  retentionSeconds: number;
 }
 
 /**
@@ -476,6 +502,10 @@ export function loadCoreConfig(
   defaults: { port?: number; stateDir?: string } = {},
 ): RunnerCoreConfig {
   refuseRetiredVariables(env);
+  const sessionStore = loadSessionStoreConfig(env, defaults.stateDir);
+  const identity = loadIdentityConfig(env);
+  const shares = loadSharesConfig(env);
+  refuseSharesWithoutPrerequisites(shares, sessionStore, identity);
   return {
     port: parsePort(env.PORT, defaults.port ?? 8061),
     logLevel: env.LOG_LEVEL?.trim() || "info",
@@ -487,9 +517,10 @@ export function loadCoreConfig(
     ),
     corsOrigins: parseCorsOrigins(env.RUNNER_CORS_ORIGINS),
     sessions: loadSessionLifecycleConfig(env),
-    sessionStore: loadSessionStoreConfig(env, defaults.stateDir),
+    sessionStore,
     sessionContainers: loadSessionContainersConfig(env),
-    ...optionalIdentity(loadIdentityConfig(env)),
+    ...optionalIdentity(identity),
+    shares,
   };
 }
 
@@ -534,6 +565,68 @@ export function refuseRetiredVariables(env: NodeJS.ProcessEnv): void {
     `this runner no longer reads ${found.length === 1 ? "a variable" : "variables"} its environment sets:\n` +
       lines.join("\n"),
   );
+}
+
+const SHARE_ROLES = ["control", "relay"] as const;
+
+/** The share settings; `RUNNER_ROLE=relay` serves shares, so it implies them. */
+export function loadSharesConfig(env: NodeJS.ProcessEnv): SharesConfig {
+  const role = env.RUNNER_ROLE?.trim() || "control";
+  if (!(SHARE_ROLES as readonly string[]).includes(role)) {
+    throw new RunnerConfigError(`RUNNER_ROLE must be one of ${SHARE_ROLES.join(" | ")}, got '${role}'.`);
+  }
+  return {
+    enabled: parseBool(env.RUNNER_SHARES, false, "RUNNER_SHARES") || role === "relay",
+    role: role as SharesConfig["role"],
+    maxConnected: parsePositiveInt(env.RUNNER_MAX_CONNECTED_SHARES, 200, "RUNNER_MAX_CONNECTED_SHARES"),
+    maxConnectedPerOwner: parsePositiveInt(
+      env.RUNNER_MAX_CONNECTED_SHARES_PER_OWNER,
+      3,
+      "RUNNER_MAX_CONNECTED_SHARES_PER_OWNER",
+    ),
+    maxPerOwner: parsePositiveInt(env.RUNNER_MAX_SHARES_PER_OWNER, 10, "RUNNER_MAX_SHARES_PER_OWNER"),
+    maxConcurrentRequests: parsePositiveInt(
+      env.RUNNER_MAX_SHARE_CONCURRENT_REQUESTS,
+      100,
+      "RUNNER_MAX_SHARE_CONCURRENT_REQUESTS",
+    ),
+    maxBytesPerSecond: parsePositiveInt(
+      env.RUNNER_MAX_SHARE_BYTES_PER_SECOND,
+      1_048_576,
+      "RUNNER_MAX_SHARE_BYTES_PER_SECOND",
+    ),
+    retentionSeconds: parsePositiveInt(
+      env.RUNNER_SHARE_RETENTION_SECONDS,
+      604_800,
+      "RUNNER_SHARE_RETENTION_SECONDS",
+    ),
+  };
+}
+
+/** The setting that turned shares on, as a refusal names it. */
+export function sharesEnabledBy(shares: SharesConfig): string {
+  return shares.role === "relay" ? "RUNNER_ROLE=relay" : "RUNNER_SHARES";
+}
+
+/** Shares need a store the relay process can read and an identity to own them;
+ *  the backend's half (it routes shares) is checked where the backend is known. */
+export function refuseSharesWithoutPrerequisites(
+  shares: SharesConfig,
+  store: SessionStoreConfig,
+  identity: IdentityConfig | undefined,
+): void {
+  if (!shares.enabled) return;
+  const by = sharesEnabledBy(shares);
+  if (store.kind !== "postgres") {
+    throw new RunnerConfigError(
+      `${by} needs RUNNER_SESSION_STORE=postgres: the relay is a separate process and cannot read a SQLite file`,
+    );
+  }
+  if (!identity) {
+    throw new RunnerConfigError(
+      `${by} needs RUNNER_IDENTITY_AUDIENCE and RUNNER_IDENTITY_ISSUERS: a share belongs to a signed-in identity`,
+    );
+  }
 }
 
 export function loadSessionLifecycleConfig(env: NodeJS.ProcessEnv): SessionLifecycleConfig {

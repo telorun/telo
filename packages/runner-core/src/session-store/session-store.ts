@@ -1,4 +1,5 @@
 import type { PortProtocol, SessionConfig } from "../contract.js";
+import type { ShareStore } from "./share-store.js";
 
 /**
  * The durable session record and the seam it is kept behind. A record holds no
@@ -74,6 +75,9 @@ export interface StoredSessionContainer {
   bound: number[];
 }
 
+/** A record about to be stored: the store mints its id. */
+export type NewSessionRecord = Omit<SessionRecord, "id">;
+
 export type CreateSessionResult =
   | { kind: "created"; record: SessionRecord }
   /** The owner already has a session for this workspace. */
@@ -97,7 +101,9 @@ export interface SessionRecordUpdate {
 }
 
 export interface SessionStore {
-  create(record: SessionRecord): Promise<CreateSessionResult>;
+  /** Stores a session under an id drawn from the host-id namespace in the same
+   *  transaction (`runner_host_ids`, shared with shares and never reused). */
+  create(record: NewSessionRecord): Promise<CreateSessionResult>;
   get(id: string): Promise<SessionRecord | undefined>;
   listByOwner(owner: SessionOwner): Promise<SessionRecord[]>;
   /** Every record, for loading the registry at boot. */
@@ -107,18 +113,21 @@ export interface SessionStore {
   /** The updated record, or undefined when no record has that id. */
   update(id: string, changes: SessionRecordUpdate): Promise<SessionRecord | undefined>;
   changeOwner(id: string, owner: SessionOwner): Promise<ChangeOwnerResult>;
-  /** Whether a record was deleted. */
+  /** Whether a record was deleted. The id's host-id row stays, released. */
   delete(id: string): Promise<boolean>;
   /** Records a DPoP proof's `jti` until `expiresAt`. True when it was not
    *  already held unexpired at `now` — false is a replay. */
   recordJti(jti: string, expiresAt: Date, now: Date): Promise<boolean>;
   /** Removes every `jti` expired at `now`; returns how many. */
   purgeExpiredJtis(now: Date): Promise<number>;
+  /** Share operations, present on a store the relay process can share
+   *  (Postgres); undefined on SQLite, which refuses shares. */
+  readonly shares: ShareStore | undefined;
   close(): Promise<void>;
 }
 
 /** The newest schema version this build reads and writes. */
-export const SESSION_STORE_SCHEMA_VERSION = 2;
+export const SESSION_STORE_SCHEMA_VERSION = 3;
 
 export class SessionStoreSchemaError extends Error {}
 

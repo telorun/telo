@@ -288,6 +288,19 @@ Set each address need's variable: `TELO_NEED_SITE__URL=http://localhost:8080`,
 `TELO_NEED_TENANTS__PATTERN=http://*.tenants.localhost:8080` — browsers resolve
 `*.localhost` to loopback.
 
+### Sharing a local run
+
+`telo run --share` is a template-mode host for one local run. It takes a share
+from a runner, hands the share's two templates to the kernel verbatim as
+`TELO_HOST_PUBLIC_URL_TEMPLATE` and `TELO_HOST_PUBLIC_URL_SECONDARY_TEMPLATE`
+(composing no hostname itself, so the runner stays the authority on its naming),
+and tells the runner on every load which `tcp` ports `Kernel.PortsResolved`
+announced. Each port is reachable at its own `<port>-<id>` address, plus every
+`Telo.PublicUrl` address the templates derive; a `Telo.PublicUrl` whose variable
+you set keeps it, and a pattern or `customDomains` need still comes from the
+environment. Setting either template beside `--share` is refused, since the
+share is the host. See [Sharing a local run](/learn/sharing-a-local-run).
+
 ## Durable directories
 
 An application asks for persistent storage on disk as a need of the

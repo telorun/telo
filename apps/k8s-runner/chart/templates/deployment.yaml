@@ -192,6 +192,11 @@ spec:
               value: {{ .Values.sessionRouting.gateway.sectionName | quote }}
             {{- end }}
             {{- end }}
+            {{- if .Values.shares.enabled }}
+            - name: RUNNER_SHARES
+              value: "true"
+            {{- include "k8s-runner.shareEnv" . | nindent 12 }}
+            {{- end }}
             {{- if .Values.runner.terms.enabled }}
             - name: RUNNER_TERMS_FILE
               value: /etc/telo/terms/terms.md

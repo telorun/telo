@@ -1,0 +1,11 @@
+units:
+  cli: Added
+body: telo auth login, telo auth logout and telo auth status sign this machine in to
+  Telo Cloud and the runner with one approval (a browser, or a device code over SSH,
+  without a display or with --device-code), with telo login and telo logout as aliases;
+  the sign-in is kept in credentials.json in telo's per-user state directory, a new
+  login revokes the one it replaces, and -o json answers the status document.
+  TELO_ACCOUNTS_URL and TELO_CLOUD_API_URL choose the accounts service and the Telo
+  Cloud API. telo run --share and telo shares offer to sign in at a terminal when no
+  sign-in covers the runner, and refuse a runner whose advertised identity disagrees
+  with the configuration.

@@ -51,6 +51,7 @@
     "@telorun/glob": "workspace:*",
     "@telorun/ide-support": "workspace:*",
     "@telorun/language-host": "workspace:*",
+    "@telorun/runner-protocol": "workspace:*",
     "@telorun/sdk": "workspace:*",
     "@telorun/templating": "workspace:*",
     "@xterm/addon-canvas": "^0.7.0",

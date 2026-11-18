@@ -57,6 +57,8 @@ release:
     - { path: packages/glob, ecosystem: { npm: nodejs, cargo: rust }, version: nodejs/package.json }
     - { path: packages/language-host, ecosystem: npm }
     - { path: packages/runner-core, ecosystem: npm }
+    - { path: packages/runner-protocol, ecosystem: npm }
+    - { path: packages/share-tunnel, ecosystem: npm }
     # Images built from the repository root: each Dockerfile's
     # `Dockerfile.dockerignore` admits only what that image builds from.
     - path: apps/studio
