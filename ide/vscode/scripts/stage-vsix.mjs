@@ -1,6 +1,6 @@
 // Stages exactly what `vsce package` ships into `dist/vsix/`: the extension
 // bundle, the engine as a published release builds it (it reports exactly the
-// line's version, never `+unreleased`), the staged LICENSE and the markdown with
+// line's version, never `+unreleased`), the extension's own LICENSE and the markdown with
 // its links resolved to the unit's release tag. The release planner digests this
 // directory (the unit's `payload:` command is this script) and `pack-vsix.mjs`
 // packs it, so the digest recorded for a release is the digest of its `.vsix`.
@@ -50,7 +50,6 @@ const { bundleEngine, checkProtocolGeneration } = await import(
 
 run(process.execPath, ["esbuild.mjs", "--no-engine"]);
 rmSync(join(extension, STAGE), { recursive: true, force: true });
-copyFileSync(join(root, "LICENSE"), join(extension, "LICENSE"));
 
 const engine = join(extension, "dist", "engine", "language-server.mjs");
 mkdirSync(dirname(engine), { recursive: true });

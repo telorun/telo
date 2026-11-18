@@ -1,5 +1,7 @@
 *
 !cli/nodejs
+# The MIT text the image carries at /opt/telo/LICENSE.
+!cli/LICENSE
 !kernel/nodejs
 !analyzer/nodejs
 !analyzer/migrations
@@ -19,9 +21,6 @@
 !scripts
 !packages/ide-support
 !packages/debug-wire
-# `telo runner` serves the /v1 session contract from this package, so the CLI
-# does not build without it.
-!packages/runner-core
 !packages/debug-ui
 !packages/glob/nodejs
 !release/nodejs

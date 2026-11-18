@@ -1,7 +1,7 @@
 import { loadAgentFromEnv, RunnerConfigError, type RunnerAgent } from "@telorun/runner-core";
 
 /**
- * The co-resident agent `telo runner` offers, from the `AGENT_*` variables. It
+ * The co-resident agent the host runner offers, from the `AGENT_*` variables. It
  * runs as a `telo run` process, so only `AGENT_MODULE_REF` names one; an
  * `AGENT_IMAGE` is refused at boot rather than advertised and failed per session.
  */

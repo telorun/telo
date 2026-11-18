@@ -395,7 +395,7 @@ export class LocalSessionWorkload implements BackendWorkload {
   }
 }
 
-/** The module an agent runs from. `telo runner` refuses an image agent at
+/** The module an agent runs from. The host runner refuses an image agent at
  *  boot, so one arriving anyway is refused, not ignored. */
 function moduleRefOf(agent: RunnerAgent | undefined): string | undefined {
   if (!agent) return undefined;

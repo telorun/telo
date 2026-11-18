@@ -15,9 +15,9 @@
 //   suites              whether the example / starter / blueprint suites and the
 //                       cross-platform manifest checks run
 //   rust                whether the cargo job runs
-//   core                { mode, buildArgs, testArgs } for the analyzer, kernel and
-//                       CLI alone — the macOS and Windows core job. mode is "full"
-//                       (all three run) or "none"; every runtime change, shared
+//   core                { mode, buildArgs, testArgs } for the analyzer, kernel, CLI
+//                       and host runner alone — the macOS and Windows core job. mode
+//                       is "full" (all four run) or "none"; every runtime change, shared
 //                       file or unowned file reaches them
 //
 // CONSERVATIVE BY CONSTRUCTION. A package's tests are selected only when every
@@ -46,8 +46,9 @@ const INERT = /\.md$|^(docs|\.changes|\.claude|\.github|\.vscode)\//;
 const SUITES = /^(examples|starters|blueprints)\//;
 const RUST = /(^|\/)rust\/|\.rs$|(^|\/)Cargo\.(toml|lock)$|^rust-toolchain/;
 
-/** The packages the macOS and Windows core job tests. */
-const CORE = ["@telorun/analyzer", "@telorun/kernel", "@telorun/cli"];
+/** The packages the macOS and Windows core job tests: the host runner's process
+ *  groups and `taskkill` path differ per platform. */
+const CORE = ["@telorun/analyzer", "@telorun/kernel", "@telorun/cli", "@telorun/host-runner"];
 
 /** A selected package's tests may start the CLI without declaring it. */
 const ALWAYS_BUILT = "@telorun/cli";

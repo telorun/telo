@@ -1,0 +1,10 @@
+units:
+  apps/studio: Added
+body: The desktop build ships one sidecar, telo-host-runner-<triple>, instead of
+  telo-<triple>, and supervises it as its local runner. The local adapter is named Local
+  (host runner) and its field Host runner executable, where empty means the host runner
+  bundled with Studio; a path saved there by an earlier Studio named a telo executable
+  and must now name a host runner, or be cleared to use the bundled one. The docker
+  runner's container is now telo-docker-runner and its volume
+  telo-docker-runner-bundles; starting it stops and removes a telo-local-runner
+  container left by an earlier Studio, and the old volume is left alone.

@@ -99,16 +99,18 @@ The architecture is inspired by Kubernetes-style manifests: declarative resource
 
 ## License
 
-In plain terms: Telo is free to use, including commercially. You can build, host and sell your own products on it. You cannot offer Telo itself to others as a managed service without a commercial licence from CodeNet Sp. z o.o. (contact@codenet.pl). The modules, SDK, examples and docs you build with are MIT. Details: [Licensing](https://telo.run/learn/licensing).
+In plain terms: Telo is free to use, including commercially. The runtime, the command-line tool, the editor tooling, the modules, the SDK, the examples and the docs are MIT. The runners, Studio and the authoring agent, which make up Telo's hosted platform, are source-available: you can build, host and sell your own products with them, but you cannot offer them to others as a managed service without a commercial licence from CodeNet Sp. z o.o. (contact@codenet.pl). Details: [Licensing](https://telo.run/learn/licensing).
 
 Two licenses, split by directory. Each MIT directory carries its own `LICENSE`; everything else falls under the root [LICENSE](LICENSE), the Sustainable Use License.
 
 | MIT | Sustainable Use |
 | --- | --- |
-| `cel/`, `message-format/`, `sdk/`, `templating/`, `release/`, `packages/glob/`, `packages/editor-protocol/` — the expression engine, the message core, the SDK, the release planner and what a controller links against | `analyzer/`, `kernel/`, `cli/` — what loads, checks and runs a manifest |
-| `modules/`, `blueprints/` — the standard library | `packages/ide-support/`, `packages/language-server/`, `packages/language-host/`, `ide/` — the editor tooling |
-| `starters/`, `examples/`, `docs/`, `benchmarks/` | `packages/runner-core/`, `packages/debug-wire/`, `packages/debug-ui/`, `apps/docker-runner/`, `apps/k8s-runner/` — the runners |
-| `apps/hub/`, `apps/hub-web/` | `apps/studio/`, `apps/authoring-agent/`, `pages/` and everything not listed |
+| `kernel/`, `analyzer/`, `cli/` — what loads, checks and runs a manifest | `packages/runner-core/`, `apps/docker-runner/`, `apps/k8s-runner/`, `apps/host-runner/` — the runners |
+| `packages/ide-support/`, `packages/language-server/`, `packages/language-host/`, `ide/vscode/` — the editor tooling | `apps/studio/`, `apps/authoring-agent/`, `pages/` and everything not listed |
+| `packages/debug-wire/`, `packages/debug-ui/` — the debug wire format and the debug UI | |
+| `cel/`, `message-format/`, `sdk/`, `templating/`, `release/`, `packages/glob/`, `packages/editor-protocol/` — the expression engine, the message core, the SDK, the release planner and what a controller links against | |
+| `modules/`, `blueprints/` — the standard library | |
+| `starters/`, `examples/`, `docs/`, `benchmarks/`, `apps/hub/`, `apps/hub-web/` | |
 
 No MIT package depends on a Sustainable Use one, which `pnpm run check:licenses` enforces.
 

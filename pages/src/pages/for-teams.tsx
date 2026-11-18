@@ -51,8 +51,9 @@ const FAQ: { question: string; answer: ReactNode }[] = [
     question: "Can we sell something built on Telo?",
     answer: (
       <>
-        Yes. What needs a commercial licence is offering Telo itself to others as a managed
-        service. See <Link to="/learn/licensing">Licensing</Link>.
+        Yes. What needs a commercial licence is offering Telo's hosted platform — the runners,
+        Studio and the authoring agent — to others as a managed service. See{" "}
+        <Link to="/learn/licensing">Licensing</Link>.
       </>
     ),
   },
@@ -111,10 +112,10 @@ export default function BusinessFirst() {
           title: "You own the application",
           body: (
             <>
-              Your application files are plain YAML in your own repository. The modules you build
-              with and the code you write are MIT-licensed. The Telo runtime is{" "}
-              <em>fair-code</em>: its source is public and free to use commercially, with one
-              restriction, that you may not resell Telo itself as a hosted service. See{" "}
+              Your application files are plain YAML in your own repository. The Telo runtime, the
+              modules you build with and the code you write are MIT-licensed. Telo's runners and
+              Studio are <em>fair-code</em>: their source is public and free to use commercially,
+              with one restriction, that you may not resell them as a hosted service. See{" "}
               <Link to="/learn/licensing">Licensing</Link>.
             </>
           ),

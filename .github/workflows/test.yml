@@ -1450,8 +1450,8 @@ jobs:
     needs: select
     if: needs.select.outputs.core_mode != 'none'
 
-    # The analyzer, kernel and CLI only, on every pull request and push; the
-    # full macOS jobs run on release branches.
+    # The analyzer, kernel, CLI and host runner only, on every pull request and
+    # push; the full macOS jobs run on release branches.
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -1526,8 +1526,8 @@ jobs:
     needs: select
     if: needs.select.outputs.core_mode != 'none'
 
-    # The analyzer, kernel and CLI only, on every pull request and push; the
-    # full Windows jobs run on release branches.
+    # The analyzer, kernel, CLI and host runner only, on every pull request and
+    # push; the full Windows jobs run on release branches.
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

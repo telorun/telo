@@ -66,13 +66,13 @@ Run the full Tauri desktop shell against the dev server:
 pnpm tauri dev
 ```
 
-A desktop build carries a `telo` sidecar, staged by `pnpm stage:cli` (pass
+A desktop build carries a `telo-host-runner` sidecar, staged by `pnpm stage:runner` (pass
 `--triple` to stage for another target). The dev and build hooks run it when
 nothing is staged yet, so the **first** `tauri dev` in a fresh checkout builds
 the ~100 MB single-file binary before the dev server starts; later runs reuse
-it, and `pnpm stage:cli` rebuilds it after CLI changes — the hook reports what
+it, and `pnpm stage:runner` rebuilds it after runner or CLI changes — the hook reports what
 is staged rather than deciding it is current. A shell started with no sidecar
-beside it (`cargo run`) falls back to this checkout's CLI.
+beside it (`cargo run`) falls back to this checkout's host runner, run under `node`.
 
 ### Signing in to Telo Cloud in the web dev build
 
@@ -91,7 +91,7 @@ in the Cloud repository's accounts runbook.
 
 ```bash
 pnpm build          # Vite build → dist/
-pnpm stage:cli      # Build the telo sidecar for this machine
+pnpm stage:runner   # Build the host runner sidecar for this machine
 pnpm tauri build    # Native desktop bundle
 ```
 

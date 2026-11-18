@@ -4,6 +4,7 @@ import { EXIT_REFUSED } from "../exit-status.js";
 import { hideBin } from "yargs/helpers";
 import { APP_INFO_ENV } from "../package/app-home.js";
 import { carriesPayload } from "../package/app-trailer.js";
+import { declareCarrierEntry } from "../package/carrier-entry.js";
 import { outErrLine } from "../output.js";
 import { startFailureText } from "../start-failure-text.js";
 import { installStandaloneRuntime } from "./standalone-runtime.js";
@@ -31,6 +32,9 @@ import { installStandaloneRuntime } from "./standalone-runtime.js";
  * executable is built in.
  */
 installStandaloneRuntime();
+// This entry starts a payload as the application, which is what makes the
+// executable a carrier for `telo package`.
+declareCarrierEntry();
 
 void (async () => {
   if (appCliSwitch.kind === "refused") {
@@ -65,7 +69,8 @@ void (async () => {
     });
     return;
   }
-  await import("../cli.js");
+  const { main } = await import("../cli.js");
+  await main(hideBin(process.argv));
 })().catch((err: unknown) => {
   // The last-resort handler: a rejected bootstrap must not exit 0 with a silent
   // stack swallowed by the runtime's unhandled-rejection default. It goes

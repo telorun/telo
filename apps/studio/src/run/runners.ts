@@ -31,14 +31,14 @@ function cloudRunner(): RunnerInstance {
   };
 }
 
-/** The seeded local CLI runner — `telo runner` over the executable the editor
+/** The seeded local host runner — `telo-host-runner` over the executable the editor
  *  ships. Present only under Tauri, where there is a process to supervise, and
  *  the desktop default: a local run needs nothing installed, while the docker
  *  runner is the choice for "run it the way production does". */
 function localCliRunner(): RunnerInstance {
   return {
     id: LOCAL_CLI_RUNNER_ID,
-    name: "Local (telo CLI)",
+    name: "Local (host runner)",
     adapterId: LOCAL_CLI_ADAPTER_ID,
     config: { ...localCliDefaultConfig },
     builtIn: true,
@@ -144,6 +144,11 @@ export function normalizeRunnerSettings(
 
   // Local built-ins: present under Tauri, absent otherwise. The CLI runner goes
   // first, because it is the one the desktop build defaults to.
+  // A built-in cannot be renamed by the user, so its stored name is the one an
+  // earlier Studio seeded ("Local (telo CLI)") and follows the current one.
+  runners = runners.map((r) =>
+    r.id === LOCAL_CLI_RUNNER_ID && r.builtIn ? { ...r, name: localCliRunner().name } : r,
+  );
   const hasLocalCli = runners.some((r) => r.id === LOCAL_CLI_RUNNER_ID);
   if (isTauriEnv && !hasLocalCli) {
     runners.push(localCliRunner());

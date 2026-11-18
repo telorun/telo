@@ -1,12 +1,12 @@
 import { isUnreleasedTelo } from "@telorun/runner-core";
 
-import { releaseBinary, ReleaseBinaryError, type ReleaseBinaryOptions } from "../release-binary.js";
+import { releaseBinary, ReleaseBinaryError, type ReleaseBinaryOptions } from "@telorun/cli/release-binary";
 import { selfInvocation, type SelfInvocation } from "./self-invocation.js";
 
 /**
  * Which telo an application runs on, when it names one.
  *
- * The runner's own version is the running executable, as it always was — one
+ * The runner's own telo is the running executable, which is a telo — one
  * version by construction. Any OTHER version is that release's own binary for
  * this platform, fetched and verified by the shared release fetch and
  * supervised in place of this one. Supervising another version is what the
@@ -76,8 +76,8 @@ export function createTeloSupply(options: TeloSupplyOptions): TeloSupply {
           report,
           fetch: options.fetch,
         });
-        // A release asset carries no application, so it is telo as it stands.
-        return { command: file, prefix: [], env: {} };
+        // A release asset is telo as it stands.
+        return { command: file, prefix: [] };
       } catch (err) {
         if (err instanceof ReleaseBinaryError) throw new TeloVersionUnavailable(err.message);
         throw err;

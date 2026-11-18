@@ -1,7 +1,7 @@
 [package]
 name = "napi-controller-errors"
 version = "0.0.0"
-license-file = "../../../../LICENSE"
+license = "MIT"
 edition = "2021"
 publish = false
 description = "Kernel test fixture: an SDK-built controller whose own errors the Node kernel must raise by code. Not a real controller."

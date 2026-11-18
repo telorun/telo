@@ -4,7 +4,7 @@ export * from "./config.js";
 export * from "./server.js";
 // `./container-config.js` is deliberately NOT re-exported here: it is the
 // vocabulary of a backend that runs container IMAGES, and the neutral entry
-// point is what `telo runner` links. Container backends import it from
+// point is what the host runner links. Container backends import it from
 // `@telorun/runner-core/container`.
 export {
   BaseImageCatalog,

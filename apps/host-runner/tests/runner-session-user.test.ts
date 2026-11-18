@@ -4,13 +4,13 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
-const NPM_ENTRY = path.join(ROOT, "cli/nodejs/bin/telo.ts");
+const PACKAGE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const ENTRY = path.join(PACKAGE_DIR, "src/entry.ts");
 
-describe("telo runner", () => {
+describe("telo-host-runner", () => {
   it("refuses RUNNER_SESSION_USER before any work with exit 2, naming it", async () => {
-    const outcome = await promisify(execFile)("bun", [NPM_ENTRY, "runner", "--port", "0"], {
-      cwd: ROOT,
+    const outcome = await promisify(execFile)("bun", [ENTRY, "--port", "0"], {
+      cwd: PACKAGE_DIR,
       encoding: "utf8",
       shell: process.platform === "win32",
       env: { ...process.env, RUNNER_SESSION_USER: "2000:2000" },
@@ -20,7 +20,7 @@ describe("telo runner", () => {
     );
     expect(outcome.code).toBe(2);
     expect(outcome.stderr).toContain(
-      "telo runner: RUNNER_SESSION_USER is set ('2000:2000'), but this runner runs no containers",
+      "telo-host-runner: RUNNER_SESSION_USER is set ('2000:2000'), but this runner runs no containers",
     );
   });
 });

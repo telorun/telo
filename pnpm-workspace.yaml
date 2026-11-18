@@ -2,6 +2,7 @@ packages:
   - apps/studio
   - apps/hub-web
   - apps/docker-runner
+  - apps/host-runner
   - apps/k8s-runner
   - benchmarks/*
   - cel/*

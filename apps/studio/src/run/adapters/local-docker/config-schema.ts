@@ -25,7 +25,7 @@ const imageProperty: JSONSchema7 & { deprecated: true } = {
   minLength: 1,
   default: localDockerDefaultConfig.image,
   title: "Image",
-  description: "Docker image implementing the telo CLI entrypoint.",
+  description: "Docker image of the docker runner.",
   // What runs is the telo version the module is edited against; `image` is
   // only what a runner from before that still reads. Marked here as the
   // runner marks it, so the field does not show until the runner answers.

@@ -1,5 +1,5 @@
 /**
- * Why `telo runner` refuses to start under a setting only the container runners
+ * Why the host runner refuses to start under a setting only the container runners
  * read, or `undefined`. A session here runs as the user who started the runner,
  * so a session user it cannot honour is refused rather than ignored.
  */

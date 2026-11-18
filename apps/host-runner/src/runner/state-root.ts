@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 /**
- * Where a `telo runner` keeps what outlives its process — its state root: the
+ * Where the host runner keeps what outlives its process — its state root: the
  * session store (`sessions.sqlite`, beside this layout) and one directory per session under
  * `sessions/<sessionId>/`, holding `workspace/` (the application's files and its
  * `.telo` module cache) and `agent/` (a co-resident agent's state).
