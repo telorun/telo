@@ -1,0 +1,22 @@
+# An instance of a native function kind whose own signature names a shape with
+# `!ref`: `Money` is declared only where flag1 holds, so the return type naming
+# it is refused where it is absent, and only there.
+kind: Telo.Application
+metadata: { name: CallableInstanceSignatureRef }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+!if
+metadata: { name: Money }
+if: !cel "variables.flag1"
+then: { kind: Telo.JsonSchema, schema: { type: string } }
+---
+kind: Telo.Definition
+metadata: { name: Format }
+capability: Telo.Callable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Format]
+deterministic: true
+schema: { type: object, properties: { returns: { type: object } } }
+---
+kind: CallableInstanceSignatureRef.Format
+metadata: { name: format }
+returns: { schema: !ref Money }

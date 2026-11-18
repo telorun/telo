@@ -1,0 +1,47 @@
+# A replayed region holding a detached dispatch where `flag1` holds and a
+# step invoking a live output where `flag2` holds, and an idempotent region
+# evaluating `now()` where `flag1` holds.
+kind: Telo.Application
+metadata: { name: DurableRegionChoice }
+imports: { Z: ./kinds }
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+  flag2: { env: FLAG_2, type: boolean, default: false }
+targets:
+  - invoke: !ref journaled
+  - invoke: !ref safe
+---
+kind: Telo.Sequence
+metadata: { name: work }
+steps:
+  - { name: done, value: 1 }
+---
+kind: Z.Fanout
+metadata: { name: spread }
+handler: !ref work
+---
+kind: Z.Live
+metadata: { name: feed }
+---
+kind: Z.Replay
+metadata: { name: journaled }
+steps:
+  - name: dispatch
+    invoke: !if
+      if: !cel "variables.flag1"
+      then: !ref spread
+      else: !ref work
+  - name: read
+    invoke: !if
+      if: !cel "variables.flag2"
+      then: !ref feed
+      else: !ref work
+---
+kind: Z.Pure
+metadata: { name: safe }
+steps:
+  - name: stamp
+    value: !if
+      if: !cel "variables.flag1"
+      then: !cel "string(now())"
+      else: fixed

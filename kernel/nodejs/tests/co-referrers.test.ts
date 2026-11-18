@@ -54,6 +54,18 @@ async function announceIn(kernel: Kernel, alias: string): Promise<string[]> {
 }
 
 describe("ctx.resolveCoReferrers", () => {
+  it("compares the registry's canonical copy, the controller registry keeping the definition as written", async () => {
+    const kernel = await boot(path.join(FIXTURES, "order/telo.yaml"));
+    const registered = kernel.getAnalysisRegistry().resolveDefinition("CoKinds.Announce")!;
+    expect((registered.schema as Record<string, any>).properties.topic["x-telo-ref"]).toEqual({
+      kind: "CoKinds.Topic",
+      use: "schema",
+      callsCoReferrers: { kind: "CoKinds.Listener", slot: "/topic" },
+    });
+    const controllers = (kernel as unknown as { controllers: { getDefinition(kind: string): { schema?: any } } }).controllers;
+    expect(controllers.getDefinition("CoKinds.Announce")!.schema.properties.topic["x-telo-ref"].kind).toBe("Self.Topic");
+  }, 60_000);
+
   it("lists the root, then its imports depth-first in imports: order, each in document order", async () => {
     const kernel = await boot(path.join(FIXTURES, "order/telo.yaml"));
     const expected = ["rootFirst", "rootSecond", "rootPartial", "events", "a", "a1", "b"];

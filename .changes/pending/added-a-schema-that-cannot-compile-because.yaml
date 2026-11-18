@@ -1,0 +1,14 @@
+units:
+  analyzer: Added
+  cli: Added
+body: A schema that cannot compile because of a named shape it references is reported
+  once per failing reference — the document writing the reference and the shape it names
+  — including a shape reached only under an `!if` / `!switch`, labelled by where it
+  fails; a kind reaching two broken shapes now reports two findings, and a named shape
+  whose own schema is invalid now fails the compile of every kind referencing it. A
+  reference to a named shape (`telo://` `$ref`, `!ref`, a contract naming a type) is
+  judged per choice too, so a kind naming a shape declared only under a choice reports
+  `SCHEMA_TYPE_REF_UNRESOLVED` / `CONTRACT_TYPE_NOT_FOUND` where it is absent, whichever
+  configuration is read first, and `SCHEMA_TYPE_REF_UNRESOLVED` quotes the `$ref` as
+  written (`telo://Self/<Type>`); a shape that is declared but whose schema is invalid
+  is no longer reported as unresolved.

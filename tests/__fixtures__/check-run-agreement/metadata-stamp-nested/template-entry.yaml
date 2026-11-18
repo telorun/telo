@@ -1,0 +1,18 @@
+# A template body entry writing `metadata.module` by hand, missing the `value`
+# its kind requires.
+kind: Telo.Application
+metadata: { name: NestedStampTemplateEntry }
+targets: [!ref job]
+---
+kind: Telo.Definition
+metadata: { name: Answer }
+capability: Telo.Invocable
+schema: { type: object }
+resources:
+  - { kind: Telo.Value, metadata: { name: body, module: Elsewhere } }
+invoke: !ref body
+---
+kind: Telo.Sequence
+metadata: { name: job }
+steps:
+  - { name: read, invoke: { kind: Self.Answer } }

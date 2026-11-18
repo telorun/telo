@@ -1,0 +1,8 @@
+# A definition writing the loader's `metadata.module` stamp by hand.
+kind: Telo.Application
+metadata: { name: MetadataStampApp }
+---
+kind: Telo.Definition
+metadata: { name: Greeter, module: Elsewhere }
+capability: Telo.Invocable
+schema: { type: object }

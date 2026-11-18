@@ -91,6 +91,42 @@ export function evalModeBranchConflictMessage(
   );
 }
 
+/** One side of a branch pair whose eval sites differ beneath named shapes: the
+ *  reference it holds at the place compared, as written, or none. */
+export interface DeferredBranchSide {
+  readonly branch: number;
+  readonly ref: string | undefined;
+}
+
+/**
+ * The refusal where a named shape lies between the union and the place its
+ * branches differ, worded from the writer's own content: the place spelled
+ * down to the references each side holds there, both quoted as written.
+ */
+export function evalModeBranchDeferredMessage(
+  subject: string,
+  union: string,
+  keyword: "oneOf" | "anyOf",
+  segment: string,
+  place: string,
+  sides: readonly [DeferredBranchSide, DeferredBranchSide],
+): string {
+  const name = segment.startsWith(".") ? segment.slice(1) : segment;
+  const what = name === "" ? "the union's own value" : `'${name}'`;
+  const rest = place.startsWith(".") ? place.slice(1) : place;
+  const at = rest === "" ? `'${union}'` : `'${union}' at '${rest}'`;
+  const side = ({ branch, ref }: DeferredBranchSide) =>
+    ref !== undefined ? `'${ref}'` : `what ${keyword}[${branch}] declares there`;
+  return (
+    `${subject} declares a union at '${union}' whose branches ${keyword}[${sides[0].branch}] and ` +
+    `${keyword}[${sides[1].branch}] disagree on ${what}: ${at} compares ${side(sides[0])} with ` +
+    `${side(sides[1])}, whose eval sites differ. ` +
+    `Every branch is read at one path before a value picks one, so a property means the same in ` +
+    `each: give it the same \`x-telo-eval\` in every branch declaring it, or another name where it ` +
+    `means something else.`
+  );
+}
+
 /** The named shape a conflict is in — its canonical id without a fragment,
  *  its module and its name. */
 export function conflictShape(

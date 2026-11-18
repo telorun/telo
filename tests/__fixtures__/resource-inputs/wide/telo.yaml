@@ -1,0 +1,21 @@
+# A library asking its importer for eight stores.
+kind: Telo.Library
+metadata:
+  name: WideStores
+  version: 0.0.0
+  description: Test fixture holding eight stores its importer supplies.
+imports: { Kinds: ../optional/kinds }
+resources:
+  s1: { kind: Kinds.Store }
+  s2: { kind: Kinds.Store }
+  s3: { kind: Kinds.Store }
+  s4: { kind: Kinds.Store }
+  s5: { kind: Kinds.Store }
+  s6: { kind: Kinds.Store }
+  s7: { kind: Kinds.Store }
+  s8: { kind: Kinds.Store }
+exports: { resources: [holder] }
+---
+kind: Kinds.Collector
+metadata: { name: holder }
+members: [!ref s1, !ref s2, !ref s3, !ref s4, !ref s5, !ref s6, !ref s7, !ref s8]

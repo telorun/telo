@@ -1,0 +1,132 @@
+kind: Telo.Application
+metadata:
+  name: UnionTagsTest
+  version: 1.0.0
+  description: |
+    A failed union reports at the variant its tag selects: a tag is a member every
+    candidate branch constrains by constant, a branch refusing the value's JSON
+    type is no candidate, and a constant deeper than the node (under `items`) is
+    no tag.
+imports: { Assert: ../modules/assert }
+targets:
+  - !ref verify
+---
+# A string, or a list of parts: a part marked `kind` must be a text part.
+kind: Telo.Value
+metadata: { name: content }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      content:
+        anyOf:
+          - { type: string }
+          - type: array
+            items:
+              type: object
+              properties: { type: { enum: [text, image] }, kind: { type: string } }
+              dependencies: { kind: { properties: { type: { const: text } } } }
+value: ok
+---
+# A string, or one of two objects told apart by `type`.
+kind: Telo.Value
+metadata: { name: tagged }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      node:
+        oneOf:
+          - { type: string }
+          - { type: object, required: [type, text], properties: { type: { const: text }, text: { type: string } } }
+          - { type: object, required: [type, count], properties: { type: { const: stack }, count: { type: integer } } }
+value: ok
+---
+# A tagged node nested in the tagged node's own field.
+kind: Telo.Value
+metadata: { name: nested }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      node:
+        oneOf:
+          - type: object
+            required: [type, child]
+            properties:
+              type: { const: wrapper }
+              child:
+                oneOf:
+                  - { type: object, required: [type, text], properties: { type: { const: text }, text: { type: string } } }
+                  - { type: object, required: [type, count], properties: { type: { const: stack }, count: { type: integer } } }
+          - { type: object, required: [type], properties: { type: { const: leaf } } }
+value: ok
+---
+# Two branches accept the tag `a`: the decision is between them alone.
+kind: Telo.Value
+metadata: { name: shared }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      node:
+        anyOf:
+          - { type: object, properties: { type: { const: a }, n: { type: string } } }
+          - { type: object, properties: { type: { const: b } } }
+          - { type: object, properties: { type: { const: a }, n: { type: integer } } }
+value: ok
+---
+# No branch admits an object.
+kind: Telo.Value
+metadata: { name: nothing }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      node:
+        anyOf: [{ type: string }, { type: integer }]
+value: ok
+---
+kind: Telo.Sequence
+metadata: { name: verify }
+steps:
+  - name: contentPart
+    try:
+      - { name: contentPartCall, invoke: !ref content, inputs: { content: !cel "[dyn({'type': 'image', 'kind': 'x'})]" } }
+    catch:
+      - { name: contentPartMessage, value: !cel "error.message.substring(error.message.indexOf('Error: ') + 7)" }
+  - name: wrongTag
+    try:
+      - { name: wrongTagCall, invoke: !ref tagged, inputs: { node: !cel "dyn({'type': 'txt'})" } }
+    catch:
+      - { name: wrongTagMessage, value: !cel "error.message.substring(error.message.indexOf('Error: ') + 7)" }
+  - name: nestedTag
+    try:
+      - { name: nestedTagCall, invoke: !ref nested, inputs: { node: !cel "dyn({'type': 'wrapper', 'child': {'type': 'stak'}})" } }
+    catch:
+      - { name: nestedTagMessage, value: !cel "error.message.substring(error.message.indexOf('Error: ') + 7)" }
+  - name: sharedTag
+    try:
+      - { name: sharedTagCall, invoke: !ref shared, inputs: { node: !cel "dyn({'type': 'a', 'n': true})" } }
+    catch:
+      - { name: sharedTagMessage, value: !cel "error.message.substring(error.message.indexOf('Error: ') + 7)" }
+  - name: noCandidate
+    try:
+      - { name: noCandidateCall, invoke: !ref nothing, inputs: { node: !cel "dyn({'a': 1})" } }
+    catch:
+      - { name: noCandidateMessage, value: !cel "error.message.substring(error.message.indexOf('Error: ') + 7)" }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        - !cel "steps.contentPartMessage.result"
+        - !cel "steps.wrongTagMessage.result"
+        - !cel "steps.nestedTagMessage.result"
+        - !cel "steps.sharedTagMessage.result"
+        - !cel "steps.noCandidateMessage.result"
+      expected: [/content/0/type must be equal to constant, /node/type must be equal to one of the allowed values (text | stack), /node/child/type must be equal to one of the allowed values (text | stack), /node/n must be string; /node/n must be integer, "/node matches no alternative — expected a string, or a integer"]

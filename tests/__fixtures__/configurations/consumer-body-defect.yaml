@@ -1,0 +1,10 @@
+# The consumer's own defect is its own: the `min` it forwards into the library's
+# body entry needs a `max` there, reported at its root as a finding of the body
+# entry. The library's own defect beside it is not.
+kind: Telo.Application
+metadata: { name: ConsumerBodyDefect }
+imports: { Lib: ./body-defect-lib }
+---
+kind: Lib.Pair
+metadata: { name: pair }
+v: 5

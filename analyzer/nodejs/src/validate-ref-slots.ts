@@ -36,11 +36,9 @@ import type { AliasResolver } from "./alias-resolver.js";
 import { buildCallGraph, type CallGraph } from "./call-graph.js";
 import { CALLABLE_CAPABILITY, isCallableKind, resolveSignature } from "./callable-signature.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
-import type { NamedShapeLookup } from "./schema-reference.js";
 import type { DefResolver } from "./extends-resolution.js";
 import { isRefUse, readOutputTo, readRefSlot, REF_USES, type RefUse } from "./ref-slot.js";
 import { argumentMapDefaultProblems } from "./argument-map-default.js";
-import { completedWhenProblems } from "./completed-when-slot.js";
 
 export interface RefSlotIssue {
   code:
@@ -315,15 +313,6 @@ function walkSchema(
     if (key === "x-telo-ref" || key === "examples" || key === "default") continue;
     walkSchema(value, path ? `${path}.${key}` : key, visited, claimedBranches, onSlot);
   }
-}
-
-/** Every misdirected `completedWhen` a definition's or named shape's schema
- *  writes, a sibling reached by a `$ref` into a named shape read through
- *  `lookup` — asked once the shapes are announced. */
-export function completedWhenIssues(definition: ResourceManifest, lookup: NamedShapeLookup): RefSlotIssue[] {
-  const schema = (definition as Record<string, unknown>).schema;
-  const name = `${definition.kind} '${definition.metadata?.name as string}'`;
-  return completedWhenProblems(schema, name, "schema", lookup).map((problem) => ({ ...problem, manifest: definition }));
 }
 
 /** Schema-level checks over one definition/abstract manifest. */

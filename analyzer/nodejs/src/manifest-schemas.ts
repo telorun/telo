@@ -163,11 +163,11 @@ export function liftFragmentDefs<T extends Record<string, unknown>>(composed: T)
 }
 
 /** Recursively freeze, so the fragment set cannot be edited through any of the
- *  references handed out. `fragmentFor` clones precisely because downstream
- *  passes rewrite schemas in place — `resolveSchemaRefKinds` rewrites the very
- *  `x-telo-ref` node `InvokeStep` carries — and a consumer that embedded a
- *  fragment WITHOUT cloning would corrupt every later expansion process-wide, in
- *  a host that outlives one load (the editor, the LSP). Freezing turns that from
+ *  references handed out. `fragmentFor` clones precisely because a
+ *  downstream pass may rewrite a schema in place — a manifest migration — and a
+ *  consumer that embedded a fragment WITHOUT cloning would corrupt every later
+ *  expansion process-wide, in a host that outlives one load (the editor, the
+ *  LSP). Freezing turns that from
  *  a rule someone has to remember into a throw at the write. */
 function deepFreeze<T>(value: T): T {
   if (value && typeof value === "object" && !Object.isFrozen(value)) {
@@ -283,8 +283,7 @@ interface ExpandedTemplate {
  * Expansion is a full walk of the body and the result is identical every time —
  * `Step` alone is a couple of hundred nodes and a step-bearing module hoists it four
  * times, on the kernel's boot path. The copy handed out is still fresh, because
- * downstream passes (`resolveSchemaRefKinds`, migrations) rewrite schemas in
- * place.
+ * a downstream pass (a migration) may rewrite a schema in place.
  */
 const expandedFragments = new Map<string, ExpandedTemplate>();
 
@@ -624,9 +623,9 @@ export function withSchemaFragments<T extends Record<string, unknown>>(schema: T
  * never authored — the same standing as `metadata.exportedKinds` — and stripped
  * before AJV like every other `x-telo-*` key, so it cannot affect validation.
  *
- * Deep-copied because downstream passes (`resolveSchemaRefKinds`, migrations)
- * rewrite schemas in place, and a shared object would let one manifest's rewrite
- * reach every other manifest that pointed at the same shape.
+ * Deep-copied because a downstream pass (a migration) may rewrite a schema in
+ * place, and a shared object would let one manifest's rewrite reach every other
+ * manifest that pointed at the same shape.
  */
 function fragmentFor(value: unknown, ctx: ExpandContext): Record<string, unknown> | undefined;
 function fragmentFor(

@@ -1,0 +1,22 @@
+# A library whose needs are named like its resources — one plain, one a
+# declaration a choice makes: its own check reports each collision once, at
+# the need's `needs:` key.
+kind: Telo.Library
+metadata: { name: NeedCollision }
+variables: { primary: { type: boolean, default: true } }
+needs:
+  mainDatabase: { kind: Self.DatabaseAccess, optional: true }
+  replica: { kind: Self.DatabaseAccess, optional: true }
+---
+kind: Telo.NeedType
+metadata: { name: DatabaseAccess }
+fields: { url: { type: string } }
+---
+kind: Telo.Value
+metadata: { name: mainDatabase }
+value: 1
+--- !if
+metadata: { name: replica }
+if: !cel "variables.primary"
+then: { kind: Telo.Value, value: 1 }
+else: { kind: Telo.Value, value: 2 }

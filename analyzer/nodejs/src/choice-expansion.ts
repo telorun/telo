@@ -32,7 +32,7 @@ import {
   makeTaggedSentinel,
   type ExpansionSentinel,
 } from "@telorun/templating";
-import { branchKeys, branchValue, pathOf, STAND_IN, type Decisions } from "./choice-reading.js";
+import { branchKeys, branchValue, declaresNoResource, pathOf, STAND_IN, type Decisions } from "./choice-reading.js";
 import { isModuleKind } from "./module-kinds.js";
 import { isKindDocumentOrImport } from "./system-kinds.js";
 import type { AnalysisDiagnostic } from "./types.js";
@@ -112,9 +112,9 @@ export function expandChoices(
       return expandTag(chosen.value as ExpansionSentinel, at, to, mappings, named);
     }
     if (named) {
-      // A branch that is no declaration is refused where it is written, and
-      // declares nothing here.
-      if (!chosen.value || typeof chosen.value !== "object" || Array.isArray(chosen.value)) {
+      // A branch that is no resource declaration is refused where it is
+      // written, and declares nothing here.
+      if (!chosen.value || typeof chosen.value !== "object" || Array.isArray(chosen.value) || declaresNoResource(chosen.value)) {
         return { present: false };
       }
       // A declaration: the branch's kind and fields under the tag's metadata.

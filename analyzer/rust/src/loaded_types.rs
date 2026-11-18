@@ -145,6 +145,10 @@ pub struct LoadedGraph {
     /// The deprecations the migration phase reports: the entry module's own file only,
     /// since a published dependency is not the consumer's to fix.
     pub migration_diagnostics: Vec<AnalysisDiagnostic>,
+    /// Every loader stamp an author wrote on a document of a module the entry runs
+    /// (`METADATA_RESERVED_FIELD`): the entry's own where written, a dependency's at the
+    /// entry's import first reaching it.
+    pub metadata_diagnostics: Vec<AnalysisDiagnostic>,
     pub errors: Vec<GraphLoadError>,
 }
 

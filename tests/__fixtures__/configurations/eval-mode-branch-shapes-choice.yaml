@@ -1,0 +1,44 @@
+# A kind's union whose two branches are named shapes: `B` gives `x` a runtime
+# eval only where flag1 holds, `C` always a compile one, so the union is
+# refused at the kind where flag1 holds, and only there. `Tile` adds a third
+# branch every reading of `B` disagrees with: worded by its first failing pair
+# where no earlier pair fails.
+kind: Telo.Application
+metadata: { name: EvalModeBranchShapes }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.JsonSchema
+metadata: { name: B }
+schema: !if
+  if: !cel "variables.flag1"
+  then: { type: object, properties: { x: { x-telo-eval: runtime } } }
+  else: { type: object, properties: { x: { x-telo-eval: compile } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: C }
+schema: { type: object, properties: { x: { x-telo-eval: compile } } }
+---
+kind: Telo.Definition
+metadata: { name: Card }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Card]
+schema:
+  type: object
+  properties:
+    content:
+      anyOf:
+        - { $ref: "telo://Self/B" }
+        - { $ref: "telo://Self/C" }
+---
+kind: Telo.Definition
+metadata: { name: Tile }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Tile]
+schema:
+  type: object
+  properties:
+    content:
+      anyOf:
+        - { $ref: "telo://Self/B" }
+        - { $ref: "telo://Self/C" }
+        - { type: object, properties: { x: { x-telo-eval: accessor } } }

@@ -10,7 +10,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::loaded_types::LoadedGraph;
-use crate::types::{kind_of, name_of, AnalysisDiagnostic};
+use crate::types::{kind_of, name_of, AnalysisDiagnostic, DiagnosticResource};
 
 use super::types::MigrationRewrite;
 
@@ -105,21 +105,37 @@ pub fn remap_migrated_paths(graph: &LoadedGraph, diagnostics: Vec<AnalysisDiagno
         .into_iter()
         .map(|mut d| {
             let Some(data) = d.data.as_mut() else { return d };
-            let Some(path) = data.path.as_deref() else { return d };
-            let identity = data
-                .resource
-                .as_ref()
-                .map(|resource| (resource.kind.as_str(), resource.name.as_str()));
-            let Some(records) = candidates_for(&index, data.file_path.as_deref(), identity) else { return d };
-            if records.is_empty() {
-                return d;
-            }
-            if let Some(remapped) = remap_path(path, &records) {
+            if let Some(remapped) = remapped_place(&index, data.resource.as_ref(), data.file_path.as_deref(), data.path.as_deref()) {
                 data.path = Some(remapped);
+            }
+            // An import-anchored finding names where its defect is written, which the module's
+            // own finding there is reported at in the author's spelling.
+            if let Some(written) = data.written_at.as_mut() {
+                if let Some(remapped) =
+                    remapped_place(&index, written.resource.as_ref(), written.file_path.as_deref(), written.path.as_deref())
+                {
+                    written.path = Some(remapped);
+                }
             }
             d
         })
         .collect()
+}
+
+/// A place's path in the author's spelling, when a rewrite moved it.
+fn remapped_place(
+    index: &RewriteIndex<'_>,
+    resource: Option<&DiagnosticResource>,
+    file_path: Option<&str>,
+    path: Option<&str>,
+) -> Option<String> {
+    let path = path?;
+    let identity = resource.map(|resource| (resource.kind.as_str(), resource.name.as_str()));
+    let records = candidates_for(index, file_path, identity)?;
+    if records.is_empty() {
+        return None;
+    }
+    remap_path(path, &records)
 }
 
 #[cfg(test)]

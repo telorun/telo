@@ -73,25 +73,34 @@ export type SignatureMismatch =
  *  and / or `returns`. */
 export type SignatureDocument = Record<string, unknown> | undefined;
 
-export function signatureMismatches(
+/** A pair of signature schemas whose compatibility decides one mismatch:
+ *  the result, or the parameter at `index`. `source` must stand in for `target`. */
+export type SignatureComparison =
+  | { readonly kind: "returns"; readonly source: Record<string, any>; readonly target: Record<string, any> }
+  | {
+      readonly kind: "parameter";
+      readonly index: number;
+      readonly name: string;
+      readonly source: Record<string, any>;
+      readonly target: Record<string, any>;
+    };
+
+/**
+ * What decides whether `own` stands in for `required`, in the order a
+ * mismatch is reported: each arity or naming mismatch, already decided, and
+ * each pair of schemas whose compatibility is still to be judged.
+ */
+export function signatureComparisons(
   own: SignatureDocument,
   required: SignatureDocument,
   halves: { readonly params: boolean; readonly returns: boolean },
-  resolveRef: (ref: string) => Record<string, any> | undefined,
-): SignatureMismatch[] {
-  const out: SignatureMismatch[] = [];
+): (SignatureMismatch | SignatureComparison)[] {
+  const out: (SignatureMismatch | SignatureComparison)[] = [];
 
   if (halves.returns) {
     const ownSchema = signatureSchemaOf(readReturns(own));
     const requiredSchema = signatureSchemaOf(readReturns(required));
-    if (ownSchema && requiredSchema) {
-      const { compatible, issues } = checkSchemaCompatibility(
-        ownSchema,
-        requiredSchema,
-        slotRootResolver([ownSchema, requiredSchema], resolveRef),
-      );
-      if (!compatible) out.push({ kind: "returns", issues });
-    }
+    if (ownSchema && requiredSchema) out.push({ kind: "returns", source: ownSchema, target: requiredSchema });
   }
 
   if (halves.params) {
@@ -119,16 +128,38 @@ export function signatureMismatches(
         if (!ownSchema || !requiredSchema) return;
         // Contravariant: the REQUIRED signature's argument must be acceptable
         // where this parameter is declared, so the arguments are swapped.
-        const { compatible, issues } = checkSchemaCompatibility(
-          requiredSchema,
-          ownSchema,
-          slotRootResolver([requiredSchema, ownSchema], resolveRef),
-        );
-        if (compatible) return;
-        out.push({ kind: "parameter", index, name, issues });
+        out.push({ kind: "parameter", index, name, source: requiredSchema, target: ownSchema });
       });
     }
   }
 
+  return out;
+}
+
+/** Whether `item` is a comparison still to be judged. */
+export function isSignatureComparison(item: SignatureMismatch | SignatureComparison): item is SignatureComparison {
+  return (item.kind === "returns" || item.kind === "parameter") && "source" in item;
+}
+
+export function signatureMismatches(
+  own: SignatureDocument,
+  required: SignatureDocument,
+  halves: { readonly params: boolean; readonly returns: boolean },
+  resolveRef: (ref: string) => Record<string, any> | undefined,
+): SignatureMismatch[] {
+  const out: SignatureMismatch[] = [];
+  for (const item of signatureComparisons(own, required, halves)) {
+    if (!isSignatureComparison(item)) {
+      out.push(item);
+      continue;
+    }
+    const { compatible, issues } = checkSchemaCompatibility(
+      item.source,
+      item.target,
+      slotRootResolver([item.source, item.target], resolveRef),
+    );
+    if (compatible) continue;
+    out.push(item.kind === "returns" ? { kind: "returns", issues } : { kind: "parameter", index: item.index, name: item.name, issues });
+  }
   return out;
 }

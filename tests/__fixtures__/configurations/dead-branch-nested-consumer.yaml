@@ -1,0 +1,33 @@
+# A consumer of a templated kind inside a constant '!if' inside a branch no
+# configuration takes, checked with both options forced: its forwarded value
+# is judged at its view, in no configuration.
+kind: Telo.Application
+metadata: { name: DeadBranchNestedConsumer, version: 1.0.0 }
+targets:
+  - !ref main
+---
+kind: Telo.Definition
+metadata: { name: Wrapped }
+capability: Telo.Runnable
+schema: { type: object, properties: { steps: { type: array } } }
+resources:
+  - kind: Telo.Sequence
+    metadata: { name: sequence }
+    steps: !cel "self.steps"
+run: !ref sequence
+---
+kind: Telo.Sequence
+metadata: { name: main }
+steps:
+  - !if
+    if: !cel "module.version == '1.0.0'"
+    then: { name: go, value: 1 }
+    else: !if
+      if: !cel "module.version == '2.0.0'"
+      then:
+        name: go
+        invoke:
+          kind: DeadBranchNestedConsumer.Wrapped
+          steps:
+            - { name: bad, value: !cel "1 + 'x'" }
+      else: { name: go, value: 2 }

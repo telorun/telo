@@ -8,7 +8,7 @@ import {
   isResolvedReference,
   resolvedReference,
 } from "../src/resolved-reference.js";
-import { validateReferenceForms, withoutRefusedFormConsequences } from "../src/validate-reference-forms.js";
+import { formPlaces, validateReferenceForms } from "../src/validate-reference-forms.js";
 import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 
 /**
@@ -177,10 +177,12 @@ describe("what a refused marker drops", () => {
       message: "unresolved",
       data: { resource: { kind: "Fx.Holder", name: "holder" }, filePath, path: "target" },
     });
-    const kept = withoutRefusedFormConsequences(
-      [...refusals, at("file:///app/telo.yaml"), at("file:///lib/telo.yaml")] as never,
-      [ours, theirs],
-    );
+    const placeOf = formPlaces([ours, theirs]);
+    const refused = refusals.map((d) => placeOf(d).refuses).filter((point) => point !== undefined);
+    const kept = [...refusals, at("file:///app/telo.yaml"), at("file:///lib/telo.yaml")].filter((d) => {
+      const place = placeOf(d as never);
+      return place.refusal || !refused.some((point) => place.points().includes(point));
+    });
     expect(kept.map((d) => [d.code, (d.data as { filePath?: string }).filePath])).toEqual([
       ["INVALID_REFERENCE_FORM", "file:///app/telo.yaml"],
       ["UNRESOLVED_REFERENCE", "file:///lib/telo.yaml"],

@@ -8,8 +8,8 @@ import { renderValuePath, type ValuePath } from "./text-slot.js";
  *
  * Written on a kind's schema ROOT, each entry names a kind a
  * `Telo.KeyedTranslations` document declares, alias-qualified and canonicalized
- * in the declaring module's scope beside `x-telo-ref` (`resolveSchemaRefKinds`),
- * so what a resource shows is found by reference, never by a kind's name. A
+ * in the declaring module's scope beside `x-telo-ref` on the copy the registry
+ * holds (the written document keeps its aliases), so what a resource shows is found by reference, never by a kind's name. A
  * kind naming none shows the sets of the nearest along `extends` naming any
  * (`textKeysDeclarer`, `extends-resolution.ts`), read in that definition's
  * module; the annotation is never merged into a child's schema. Misplaced,
@@ -26,22 +26,23 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
 
 /** The keyed kinds a kind's schema root names, as written in its declaring
- *  module (canonical in an analysis once `resolveSchemaRefKinds` rewrote them);
- *  empty when it names none. */
+ *  module — canonical on a registered copy; empty when it names none. */
 export function textKeysOf(schema: unknown): string[] {
   const declared = isPlainObject(schema) ? schema[TEXT_KEYS_ANNOTATION] : undefined;
   return Array.isArray(declared) ? declared.filter((kind): kind is string => typeof kind === "string") : [];
 }
 
-/** Rewrite each kind `node`'s annotation names, in place: `rewrite` returns the
- *  canonical kind, or undefined to leave the authored one. */
-export function rewriteTextKeysKinds(
-  node: Record<string, unknown>,
-  rewrite: (kind: string) => string | undefined,
-): void {
+/** `node` with each kind its annotation names mapped through `map` — a copy, or
+ *  the node itself when nothing maps; `map` returns the canonical kind, or
+ *  undefined to keep the authored one. */
+export function withTextKeysKinds<T extends Record<string, unknown>>(
+  node: T,
+  map: (kind: string) => string | undefined,
+): T {
   const declared = node[TEXT_KEYS_ANNOTATION];
-  if (!Array.isArray(declared)) return;
-  node[TEXT_KEYS_ANNOTATION] = declared.map((kind) => (typeof kind === "string" ? (rewrite(kind) ?? kind) : kind));
+  if (!Array.isArray(declared)) return node;
+  const kinds = declared.map((kind) => (typeof kind === "string" ? (map(kind) ?? kind) : kind));
+  return kinds.some((kind, i) => kind !== declared[i]) ? { ...node, [TEXT_KEYS_ANNOTATION]: kinds } : node;
 }
 
 /** True when `node` writes the annotation. */

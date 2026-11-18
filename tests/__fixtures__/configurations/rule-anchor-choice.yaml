@@ -1,0 +1,23 @@
+# A rule-judged declaration whose rule-read field is written only where flag1 holds:
+# the rule is judged at the declaration's `kind` whichever configuration holds.
+kind: Telo.Application
+metadata: { name: RuleAnchorChoice, version: 1.0.0 }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.Definition
+metadata: { name: Gate }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties: { open: { type: boolean }, count: { type: integer } }
+  x-telo-resource-rules:
+    - condition: !cel "!has(self.open)"
+      code: GATE_OPENED
+      message: The gate is opened.
+---
+kind: Self.Gate
+metadata: { name: gate }
+open: !if
+  if: !cel "variables.flag1"
+  then: true

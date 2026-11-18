@@ -2,7 +2,7 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
 import type { AliasResolver } from "../src/alias-resolver.js";
 import type { DefinitionRegistry } from "../src/definition-registry.js";
-import { validateModuleMetadata } from "../src/validate-module-metadata.js";
+import { validateKindDocumentMetadata, validateModuleDocumentMetadata } from "../src/validate-module-metadata.js";
 
 /** `Sql` is an import in scope and exports `Migrations`; `Self` names the
  *  declaring library. Anything else is unknown, so the resolution failures are
@@ -33,8 +33,13 @@ const library = (metadata: Record<string, unknown>): ResourceManifest =>
 const definition = (metadata: Record<string, unknown>): ResourceManifest =>
   ({ kind: "Telo.Definition", metadata: { name: "Migration", source: "file:///sql/telo.yaml", ...metadata } }) as unknown as ResourceManifest;
 
-const codes = (m: ResourceManifest[]) =>
-  validateModuleMetadata(m, registry, aliases).map((d) => d.code);
+const codes = (m: ResourceManifest[]) => {
+  const rootModules = new Set(m.filter((d) => d.kind === "Telo.Library" || d.kind === "Telo.Application").map((d) => d.metadata.name as string));
+  return [
+    ...validateModuleDocumentMetadata(m, registry, aliases),
+    ...validateKindDocumentMetadata(m, registry, aliases, rootModules),
+  ].map((d) => d.code);
+};
 
 describe("module metadata field types", () => {
   it("accepts the conventional block the standard library declares", () => {
@@ -188,10 +193,6 @@ describe("deprecation", () => {
   // own root analysis is where that belongs.
   it("skips a doc forwarded from an imported library", () => {
     const imported = [
-      {
-        kind: "Telo.Import",
-        metadata: { name: "Other", resolvedModuleName: "other" },
-      } as unknown as ResourceManifest,
       ({
         kind: "Telo.Definition",
         metadata: {

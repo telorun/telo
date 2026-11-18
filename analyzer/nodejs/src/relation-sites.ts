@@ -44,8 +44,7 @@ type Keys = readonly (string | number)[];
 /** The groups of a declaration's own checks, each judged outside a
  *  configuration run and placed where its pass stands in one. */
 export type OwnGroup =
-  | "schema"
-  | "identifiers"
+  | SchemaGroup
   | "nested"
   | "templateTargets"
   | "contracts"
@@ -63,11 +62,33 @@ export type OwnGroup =
   | "slotFitOwn"
   | "slotFitTemplate"
   | "slotFitCalls"
-  | "resourceRules";
+  | "resourceRules"
+  | "referrerRules"
+  | "scopeEntries"
+  | "references"
+  | "stepInvokes"
+  | "scopedNameReach"
+  | "namedShapeReferences"
+  | "schemaFromKinds"
+  | "schemaFrom";
 
 /** The groups of the schema family: each judged at the sites a declaration's
  *  schema checks are cut into. */
-export type SchemaGroup = "schema" | "identifiers";
+export type SchemaGroup =
+  | "schema"
+  | "identifiers"
+  | "kindSite"
+  | "referenceForms"
+  | "includePlacement"
+  | "untaggedInterpolation"
+  | "applicationInputs"
+  | "importInputs"
+  | "importAndSinkLogging"
+  | "callableInstances"
+  | "valueTypeSlots"
+  | "shapeRefSlots"
+  | "contractInputsForm"
+  | "textKeysPlacement";
 
 /** The groups relating a declaration's parts. */
 export type RelationalGroup = Exclude<OwnGroup, SchemaGroup>;
@@ -165,6 +186,9 @@ export interface RelationReads {
   /** The module functions its expressions call, as written (`Self.fits`):
    *  each read as a module call reads its callee, by name. */
   readonly calls?: readonly string[];
+  /** The named shapes it names, by the name written: each read as which
+   *  declaration answers the name, never by its content. */
+  readonly shapes?: readonly string[];
   /** What it reads depending on what its declared places hold. */
   readonly dependent?: DependentRead;
 }
@@ -210,6 +234,11 @@ export interface RelationDoor {
   /** The names a CEL call's receiver may be in the module `identity` is
    *  declared in. */
   moduleNames(identity: DeclarationIdentity): ReadonlySet<string>;
+  /** Those names, by declaring module. */
+  readonly moduleCallNames: ReadonlyMap<string, ReadonlySet<string>>;
+  /** Whether the analysis loaded `module`'s import subtree — the same in every
+   *  configuration, an import being no choice's. */
+  moduleLoaded(module: string): boolean;
   /** The declaration a resolved reference written at a place of the anchor
    *  names, read in the scope holding there — refused unless the instance reads
    *  scopes; undefined for an import or a name nothing declares. */
@@ -258,6 +287,10 @@ export interface RelationFinding {
 }
 
 export interface RelationReader {
+  /** `false` where an instance reads the instances of its own group beneath
+   *  the places it reads as written — what each of them holds is its input,
+   *  so nothing is carved out of them. */
+  readonly carves?: false;
   instances(region: RelationRegion, scope: RelationReaderScope): readonly RelationInstance[];
   /** Read off the instance's region, its anchor's value as normalized. */
   reads(instance: RelationInstance, region: RelationRegion, scope: RelationReaderScope): RelationReads;

@@ -120,8 +120,8 @@ label: !cel "tenant"
 `),
       // The pair a field-level region's dropped binding reports too.
     ).toEqual([
-      ["CEL_UNKNOWN_IDENTIFIER", "title"],
       ["CEL_UNKNOWN_FIELD", "title"],
+      ["CEL_UNKNOWN_IDENTIFIER", "title"],
     ]);
   });
 

@@ -1,0 +1,7 @@
+units:
+  analyzer: Fixed
+body: A need named like another declaration of its module — a resource, a declaration a
+  choice makes, an import alias, a kind, a resource input or the module's own name — is
+  reported once, as `DUPLICATE_RESOURCE_NAME` at the need's `needs:` key, by `telo
+  check` of the library and of every consumer, instead of at the colliding resource's
+  `metadata.name` or twice.

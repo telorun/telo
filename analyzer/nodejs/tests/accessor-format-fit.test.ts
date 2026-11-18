@@ -146,10 +146,11 @@ with:
       at: !cel "data.title"
 steps: []
 `);
+    // Reported in source order; with no position table, by path text.
     expect(typeErrors(diagnostics)).toEqual([
+      "at: Self.Box/boxed: 'at' is forwarded into the Self.Show entry 'shown' as 'content.at', which checks it as its own field — CEL at 'at': 'data.title' is a string with no format; the field takes a string of format date-time.",
       "resources[0].content.when: Telo.Definition/Box: CEL at 'resources[0].content.when': 'data.title' is a string with no format; the field takes a string of format date or date-time.",
       "with[0].content.at: Self.Show/member: CEL at 'content.at': 'data.title' is a string with no format; the field takes a string of format date-time.",
-      "at: Self.Box/boxed: 'at' is forwarded into the Self.Show entry 'shown' as 'content.at', which checks it as its own field — CEL at 'at': 'data.title' is a string with no format; the field takes a string of format date-time.",
     ]);
   });
 });

@@ -1,0 +1,15 @@
+# An inline declaration writing `metadata.module` by hand, missing the `value`
+# its kind requires: the stamp is its holder's, so it is refused where written,
+# and the declaration is still checked.
+kind: Telo.Application
+metadata: { name: NestedStampInline }
+imports: { Run: ../../../../modules/run }
+targets: [!ref job]
+---
+kind: Telo.Sequence
+metadata: { name: job }
+steps:
+  - name: later
+    invoke:
+      kind: Run.Detach
+      invoke: { kind: Telo.Value, metadata: { module: Elsewhere } }

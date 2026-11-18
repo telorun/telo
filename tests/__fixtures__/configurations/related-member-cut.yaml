@@ -1,0 +1,27 @@
+# A member a choice decides, under a node whose `if` / `then` relates its
+# members: the node is judged whole, so the missing `max` the condition on
+# `min` requires is reported where the choice gives `min` the value 5.
+kind: Telo.Application
+metadata: { name: RelatedMemberCut }
+variables: { flag: { env: FLAG, type: boolean, default: false } }
+---
+kind: Telo.Definition
+metadata: { name: Target }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties:
+    limits:
+      type: object
+      properties: { min: { type: integer }, max: { type: integer } }
+      if: { properties: { min: { const: 5 } }, required: [min] }
+      then: { required: [max] }
+---
+kind: Self.Target
+metadata: { name: target }
+limits:
+  min: !if
+    if: !cel "variables.flag"
+    then: 5
+    else: 1

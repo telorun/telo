@@ -1,0 +1,12 @@
+# A `with:` member writing `metadata.module` by hand, missing the `value` its
+# kind requires.
+kind: Telo.Application
+metadata: { name: NestedStampScopeMember }
+targets: [!ref job]
+---
+kind: Telo.Sequence
+metadata: { name: job }
+with:
+  - { kind: Telo.Value, metadata: { name: answer, module: Elsewhere } }
+steps:
+  - { name: read, invoke: !ref answer }

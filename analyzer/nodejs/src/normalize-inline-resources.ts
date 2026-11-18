@@ -8,6 +8,13 @@ import {
   type DefResolver,
 } from "./extends-resolution.js";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
+import {
+  stampLabel,
+  withoutStamps,
+  writtenMetadataStamps,
+  writtenNestedStamps,
+  type WrittenStampPlace,
+} from "./metadata-stamps.js";
 import { definitionInScope } from "./module-alias-scope.js";
 import {
   asResolvedReference,
@@ -87,9 +94,28 @@ interface Provenance {
   importPath: unknown;
 }
 
+/** Where a declaration is written: the top-level document (or template
+ *  definition) holding it, and its place there (`""` for the document itself). */
+interface WrittenPlace {
+  root: ResourceManifest;
+  path: string;
+}
+
+/** The nearest declaration enclosing a nested one whose name the author wrote —
+ *  what a refusal about the nested one is labelled by — and its place. */
+interface Labelling {
+  label: string;
+  at: string;
+}
+
+const joinPath = (prefix: string, rest: string): string =>
+  !prefix ? rest : rest.startsWith("[") ? `${prefix}${rest}` : `${prefix}.${rest}`;
+
 /** A declaration waiting to have its inline slots extracted. */
 interface Declaration extends Provenance {
   manifest: NamedManifest;
+  written: WrittenPlace;
+  labelling: Labelling;
   /** The set it is declared in — the module's top level (undefined), or the
    *  `x-telo-scope` array holding it. What it declares inline joins the same set
    *  unless the slot lies in a region of a scope it declares itself. */
@@ -177,6 +203,13 @@ interface Origin {
  * code: it is stamped `forwardedInternal` (see `isForwardedDeclaration`) and
  * carries the declaring module's `moduleGlobals`, as its parent does.
  *
+ * Every stamp of an extraction or a scope member is its holder's; one its
+ * author wrote is dropped. With `onWrittenStamp`, each stamp an author wrote on
+ * an inline declaration or a scope member is reported at its written place,
+ * labelled by the nearest enclosing declaration its author named; a scoped
+ * `Telo.Import` is the loader's to judge, and a template body entry
+ * `bodyEntryStamps`'.
+ *
  * Returns a new array of deep-cloned manifests (the rewrites land on the clones)
  * plus every top-level extraction. The caller's manifests — array and elements —
  * are never mutated; this is the analyzer's immutability boundary.
@@ -190,6 +223,7 @@ export function normalizeInlineResources(
    *  by the definition, the body entry's index and the declaration's place in the
    *  entry; undefined leaves the name the position gives (`emittedIdentity`). */
   emittedName?: (definition: ResourceManifest, entry: number, keys: readonly (string | number)[]) => string | undefined,
+  onWrittenStamp?: (stamp: WrittenStampPlace) => void,
 ): ResourceManifest[] {
   // Deep-clone the input so this pass — and `resolveRefSentinels`, which runs on
   // this output — never mutate caller-owned manifests. The extractions rewrite
@@ -207,10 +241,27 @@ export function normalizeInlineResources(
     .filter((r): r is NamedManifest => typeof r.metadata?.name === "string" && !!r.kind)
     .map((manifest) => ({
       manifest,
+      written: { root: manifest, path: "" },
+      labelling: { label: stampLabel(manifest), at: "" },
       home: undefined,
       outside: outsideScopesOf(manifest),
       ...provenanceOf(manifest, undefined),
     }));
+
+  /** Reports each stamp `declaration` was written with, at `written`, labelled
+   *  by `labelling`; the stamps it holds that its holder's replace. */
+  const judge = (declaration: unknown, written: WrittenPlace, labelling: Labelling): string[] => {
+    for (const field of onWrittenStamp ? writtenMetadataStamps(declaration) : []) {
+      onWrittenStamp!({
+        root: written.root,
+        path: joinPath(written.path, `metadata.${field}`),
+        field,
+        label: labelling.label,
+        labelAt: labelling.at,
+      });
+    }
+    return writtenNestedStamps(declaration);
+  };
 
   // A template body's entries are declarations too, created in the template's
   // own child context — so what one declares inline joins the same `resources:`
@@ -226,6 +277,8 @@ export function normalizeInlineResources(
       if (typeof (entry as { kind?: unknown }).kind !== "string") return;
       queue.push({
         manifest: entry as NamedManifest,
+        written: { root: definition, path: `resources[${index}]` },
+        labelling: { label: stampLabel(entry as ResourceManifest), at: `resources[${index}]` },
         home: body,
         outside: [],
         inBody: true,
@@ -237,6 +290,8 @@ export function normalizeInlineResources(
 
   const place = (
     manifest: ResourceManifest,
+    written: WrittenPlace,
+    labelling: Labelling,
     into: unknown[] | undefined,
     module?: string,
     inBody?: true,
@@ -245,6 +300,8 @@ export function normalizeInlineResources(
     else result.push(manifest);
     queue.push({
       manifest: manifest as NamedManifest,
+      written,
+      labelling,
       home: into,
       outside: outsideScopesOf(manifest),
       ...(inBody ? { inBody } : {}),
@@ -255,10 +312,10 @@ export function normalizeInlineResources(
   for (let i = 0; i < queue.length; i++) {
     const current = queue[i];
     const { manifest: resource, home, outside } = current;
-    // The registry reads a kind's alias table off `metadata.module`; a scope
-    // member is looked up through a view carrying its owner's.
+    // The registry reads a kind's alias table off `metadata.module`; a nested
+    // declaration is looked up through a view carrying its holder's.
     const view =
-      current.module !== undefined && moduleOf(resource) === undefined
+      current.module !== undefined && moduleOf(resource) !== current.module
         ? ({ ...resource, metadata: { ...resource.metadata, module: current.module } } as NamedManifest)
         : resource;
     // The concrete sites, schema-from slots expanded — so an inline encoder
@@ -281,7 +338,16 @@ export function normalizeInlineResources(
     // this resource's scope, which is itself created where this resource is.
     for (const scope of scopes) {
       for (const member of scopeMembers(scope)) {
-        queue.push({ manifest: member, home: scope.declarations, outside, ...inherit });
+        const written = {
+          root: current.written.root,
+          path: joinPath(current.written.path, `${scope.path}[${scope.declarations.indexOf(member)}]`),
+        };
+        const labelling = { label: stampLabel(member), at: written.path };
+        if (member.kind !== "Telo.Import") {
+          const fields = judge(member, written, labelling);
+          if (fields.length > 0) member.metadata = withoutStamps(member.metadata, fields) as NamedManifest["metadata"];
+        }
+        queue.push({ manifest: member, written, labelling, home: scope.declarations, outside, ...inherit });
       }
     }
     const outsideAt = (slotKeys: readonly (string | number)[], createdIn?: DeclaredScope): OutsideScope[] => [
@@ -332,6 +398,8 @@ export function normalizeInlineResources(
         continue;
       }
       const scope = scopes.find((s) => scopeEncloses(s, site.keys));
+      const written = { root: current.written.root, path: joinPath(current.written.path, site.path) };
+      if (isInlineDeclaration(site.data)) judge(site.data, written, current.labelling);
       const manifest = extractInlineAt(
         resource,
         site,
@@ -344,13 +412,19 @@ export function normalizeInlineResources(
       );
       if (!manifest) continue;
       extractedAt.push(site.keys);
-      place(manifest, scope?.declarations ?? home, parentModule, current.inBody);
+      place(manifest, written, current.labelling, scope?.declarations ?? home, parentModule, current.inBody);
     }
 
     if (SYSTEM_KINDS.has(resource.kind)) continue;
-    extractStepTargets(resource, view, registry, aliases, aliasesByModule, inherit, outsideAt, legacyReference, (m) =>
-      place(m, home, parentModule, current.inBody),
-    );
+    extractStepTargets(resource, view, registry, aliases, aliasesByModule, inherit, outsideAt, legacyReference, (m, at, inline) => {
+      const written = { root: current.written.root, path: joinPath(current.written.path, at) };
+      // A step target named by its author is its own label; any other is its holder's.
+      const labelling = (m.metadata as { xTeloOrigin?: Origin }).xTeloOrigin?.named
+        ? { label: stampLabel(m), at: written.path }
+        : current.labelling;
+      judge(inline, written, labelling);
+      place(m, written, labelling, home, parentModule, current.inBody);
+    });
   }
 
   return result;
@@ -395,7 +469,8 @@ function extractStepTargets(
   inherit: Provenance,
   outsideAt: (slotKeys: readonly (string | number)[]) => OutsideScope[],
   legacyReference: (value: unknown) => value is Record<string, unknown> & { kind: string; name: string },
-  emit: (manifest: ResourceManifest) => void,
+  /** The extraction, its place in `resource`, and the inline declaration as written. */
+  emit: (manifest: ResourceManifest, at: string, inline: Record<string, unknown>) => void,
 ): void {
   const definition = definitionInScope<ResourceDefinition>(
     registry,
@@ -452,6 +527,8 @@ function extractStepTargets(
           },
           inherit,
         ),
+        `${stepPath}.${body.invokeField}`,
+        inline,
       );
     });
   }
@@ -551,20 +628,19 @@ function buildManifest(
   inherit: Provenance,
   invocationContext?: Record<string, any>,
 ): ResourceManifest {
-  const existingMeta =
+  const written =
     inline.metadata && typeof inline.metadata === "object"
       ? (inline.metadata as Record<string, unknown>)
       : {};
   return {
     ...inline,
     metadata: {
-      ...existingMeta,
+      ...withoutStamps(written, writtenNestedStamps(inline)),
       name,
-      // Inherit parent module only if the inline doesn't already declare one
-      ...(inherit.module && !existingMeta.module ? { module: inherit.module } : {}),
+      ...(inherit.module ? { module: inherit.module } : {}),
       ...(inherit.forwarded ? { forwardedInternal: true } : {}),
       ...(inherit.moduleGlobals !== undefined ? { moduleGlobals: inherit.moduleGlobals } : {}),
-      ...(inherit.importPath !== undefined && !existingMeta.importPath ? { importPath: inherit.importPath } : {}),
+      ...(inherit.importPath !== undefined ? { importPath: inherit.importPath } : {}),
       ...(invocationContext ? { xTeloInvocationContext: invocationContext } : {}),
       xTeloOrigin: origin,
     },

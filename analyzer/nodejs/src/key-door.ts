@@ -33,7 +33,7 @@ import {
   takenAt,
   type ConditionedDeclaration,
   type ConditionedExpansion,
-  type Witness,
+  type World,
 } from "./conditioned-expansion.js";
 import type { ChoiceReading, StandInConstruct } from "./choice-reading.js";
 import type { ConditionedNameIndex } from "./conditioned-name-index.js";
@@ -113,7 +113,7 @@ export interface DoorScope {
   readonly site: string;
   readonly union: ConditionedExpansion;
   readonly names: ConditionedNameIndex;
-  readonly witness: Witness;
+  readonly witness: World;
   readonly coverage: KeyCoverage;
   /** What the door holds fixed at the witness. */
   readonly care: DoorCare;
@@ -142,8 +142,13 @@ function coversName(scope: DoorScope, name: unknown): boolean {
   if (typeof name !== "string") return false;
   const { coverage } = scope;
   if (coverage.names.has(name) || coverage.named.has(name)) return true;
-  // A declaration a reference resolves to, held as the regions read in it.
-  return coverage.outcomes.has(name) && [...coverage.parts.keys()].some((d) => d.manifest.metadata?.name === name);
+  if (!coverage.outcomes.has(name)) return false;
+  // A declaration a reference resolves to, held as the regions read in it —
+  // or, where the reference resolves to nothing, none of the name is there.
+  if ([...coverage.parts.keys()].some((d) => d.manifest.metadata?.name === name)) return true;
+  const { space } = scope.union;
+  const { assignment, forcing } = scope.witness;
+  return scope.names.declarationsNamed(name).every((d) => !takenAt(space, d.condition, d.path, assignment, forcing));
 }
 
 /** Whether the door answers a by-name request for `name`. */
@@ -177,6 +182,9 @@ export interface DoorLayers {
   /** Name resolution over both layers. */
   readonly names: ScopedNameResolver<ResourceManifest>;
   readonly shared: SharedLayer;
+  /** The shared layer's manifests the key's own stand in for: a template
+   *  definition's, its body as the key's witness decides it. */
+  readonly hidden: ReadonlySet<ResourceManifest>;
 }
 
 const sharedKinds = new WeakMap<SharedLayer, { list: readonly ResourceManifest[]; held: ReadonlySet<ResourceManifest> }>();
@@ -195,7 +203,7 @@ function sharedKindDocuments(shared: SharedLayer): { list: readonly ResourceMani
  *  the whole application. */
 function everything(layers: DoorLayers): readonly ResourceManifest[] {
   const own = new Set(layers.own);
-  return [...layers.own, ...layers.shared.manifests.filter((m) => !own.has(m))].sort(analysisOrder);
+  return [...layers.own, ...layers.shared.manifests.filter((m) => !own.has(m) && !layers.hidden.has(m))].sort(analysisOrder);
 }
 
 /** The by-name requests over both layers, each refused for a name the door
@@ -252,7 +260,8 @@ export function doorRequests(
       if (kinds) return kinds;
       const shared = sharedKindDocuments(layers.shared);
       const extra = layers.own.filter((m) => isKindDocument(m) && !shared.held.has(m));
-      kinds = extra.length === 0 ? shared.list : [...shared.list, ...extra].sort(analysisOrder);
+      const list = layers.hidden.size === 0 ? shared.list : shared.list.filter((m) => !layers.hidden.has(m));
+      kinds = extra.length === 0 ? list : [...list, ...extra].sort(analysisOrder);
       return kinds;
     },
     moduleDocuments: () => {
@@ -299,7 +308,7 @@ export function doorResolution(layers: DoorLayers, scope: DoorScope): NameResolu
 
 /** What a witness decides of each module's inputs, for typing: its baseline's.
  *  Forcing takes a branch and decides no input. */
-export function narrowingAt(choices: ChoiceReading, witness: Witness): InputNarrowing {
+export function narrowingAt(choices: ChoiceReading, witness: World): InputNarrowing {
   return choices.narrowing(witness.assignment);
 }
 
@@ -332,17 +341,11 @@ export function narrowingOfReads(narrowing: InputNarrowing, reads: InputReads): 
   };
 }
 
-/** The choices a witness expands to a stand-in: its baseline's, a forced
- *  choice by the branch it is forced to. */
-export function standInsAt(choices: ChoiceReading, witness: Witness): readonly StandInConstruct[] {
-  return choices.standIns(witness.assignment, witness.forcing);
-}
-
 /** The value of `source`, written in `holder`, at a witness: over its
  *  baseline's inputs, which forcing leaves as they are. */
 export function valueInAt(
   choices: ChoiceReading,
-  witness: Witness,
+  witness: World,
 ): (holder: ResourceManifest, source: string) => { value: unknown } | undefined {
   return (holder, source) => choices.valueIn(holder, source, witness.assignment);
 }

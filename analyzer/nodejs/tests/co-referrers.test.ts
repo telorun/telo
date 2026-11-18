@@ -15,7 +15,7 @@ const FIXTURES = join(ROOT, "analyzer/nodejs/tests/__fixtures__/co-referrers");
 async function findings(file: string, ...codes: string[]): Promise<string[]> {
   const loaded = await loadFile(join(FIXTURES, file));
   return new StaticAnalyzer()
-    .analyze(loaded.manifests, { moduleDocuments: loaded.moduleDocuments })
+    .analyze(loaded.manifests, { moduleDocuments: loaded.moduleDocuments, positions: loaded.positions })
     .filter((d) => codes.some((code) => d.code.startsWith(code)))
     .map((d) => {
       const data = d.data as { resource?: { name?: string }; path?: string } | undefined;
@@ -49,8 +49,9 @@ describe("callsCoReferrers", () => {
   }, 120_000);
 
   it("refuses an imported library's at the import reaching it", async () => {
+    // All at the one import: ordered by what each says, the definition it names.
     expect(await findings("malformed/consumer.yaml", "X_TELO_REF_")).toEqual(
-      REFUSALS.map(
+      [2, 1, 3, 0].map((i) => REFUSALS[i]!).map(
         (message) =>
           `X_TELO_REF_INVALID_CALLS_CO_REFERRERS - imports.Bad: Imported library 'BadCalls', reached through import 'Bad': ${message}`,
       ),
@@ -93,7 +94,7 @@ describe("callsCoReferrers", () => {
   it("draws each co-referrer call in the module graph, from a named and an inline declaration", async () => {
     const loaded = await loadFile(join(FIXTURES, "topology/telo.yaml"));
     const registry = new AnalysisRegistry();
-    new StaticAnalyzer().analyze(loaded.manifests, { moduleDocuments: loaded.moduleDocuments }, registry);
+    new StaticAnalyzer().analyze(loaded.manifests, { moduleDocuments: loaded.moduleDocuments, positions: loaded.positions }, registry);
     const root = loaded.manifests.find((m) => m.kind === "Telo.Application")!;
     const options = { root, entryModule: "CoReferrerTopology" };
     const graph = registry.analysisOf(loaded.manifests).moduleGraph(registry.moduleGraphDeps(loaded.manifests, options), options);

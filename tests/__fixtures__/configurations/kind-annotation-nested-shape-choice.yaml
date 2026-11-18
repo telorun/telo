@@ -1,0 +1,70 @@
+# A kind whose accessor field names a shape that no choice varies, which in turn
+# names a shape typing the value as text only where a choice writes it: the
+# kind is refused only where the choice holds, and the inner shape is read
+# once per class whichever kind reaches it. A shape reaching it only under a
+# second choice refuses its kind where both hold.
+kind: Telo.Application
+metadata: { name: KindAnnotationNestedShapeChoice }
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+  flag2: { env: FLAG_2, type: boolean, default: false }
+---
+kind: Telo.JsonSchema
+metadata: { name: Caption }
+schema:
+  type: object
+  properties:
+    text: !if
+      if: !cel "variables.flag1"
+      then: { $ref: "telo://manifest#/$defs/Text" }
+      else: { type: string }
+---
+kind: Telo.JsonSchema
+metadata: { name: Card }
+schema: { type: object, properties: { caption: { $ref: "telo://Self/Caption" } } }
+---
+kind: Telo.Definition
+metadata: { name: Tile }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Tile]
+schema:
+  type: object
+  properties:
+    card:
+      $ref: "telo://Self/Card"
+      x-telo-eval: accessor
+      x-telo-context: { type: object, properties: { row: {} } }
+---
+kind: Telo.Definition
+metadata: { name: Banner }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Banner]
+schema:
+  type: object
+  properties:
+    card:
+      $ref: "telo://Self/Card"
+      x-telo-eval: accessor
+      x-telo-context: { type: object, properties: { row: {} } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Panel }
+schema:
+  type: object
+  properties:
+    body: !if
+      if: !cel "variables.flag2"
+      then: { $ref: "telo://Self/Caption" }
+      else: { type: string }
+---
+kind: Telo.Definition
+metadata: { name: Board }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Board]
+schema:
+  type: object
+  properties:
+    panel:
+      $ref: "telo://Self/Panel"
+      x-telo-eval: accessor
+      x-telo-context: { type: object, properties: { row: {} } }

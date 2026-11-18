@@ -12,7 +12,7 @@ function analyze(manifests: unknown[]) {
  * calls statically detectable — §14.1 (redaction paths) and §10.3 (`on_full:
  * block`) — so they fail before boot rather than at runtime.
  */
-describe("validateLogging", () => {
+describe("logging: static validation", () => {
   it("flags an invalid redaction path on the root logging block", () => {
     const diagnostics = analyze([
       {

@@ -1,0 +1,17 @@
+kind: Telo.Library
+metadata: { name: StampInBranch }
+---
+kind: Telo.Definition
+metadata: { name: Job }
+capability: Telo.Runnable
+schema: { type: object, properties: { fast: { type: boolean } } }
+resources:
+  - kind: Telo.Sequence
+    metadata: { name: body }
+    steps:
+      - name: answer
+        invoke: !if
+          if: !cel "self.fast"
+          then: { kind: Telo.Value, value: 1 }
+          else: { kind: Telo.Value, metadata: { module: Elsewhere }, value: 2 }
+run: !ref body

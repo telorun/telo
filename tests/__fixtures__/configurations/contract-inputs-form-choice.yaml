@@ -1,0 +1,15 @@
+# A leftover `inputs:` property map on a kind whose input contract is
+# `inputType:`, written where a choice decides: refused only in the
+# configurations taking the branch.
+kind: Telo.Application
+metadata: { name: ContractInputsFormChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets: [!ref job]
+---
+kind: Telo.Sequence
+metadata: { name: job }
+inputs: !if
+  if: !cel "variables.flag1"
+  then: { count: { type: integer } }
+steps:
+  - { name: add, value: 1 }

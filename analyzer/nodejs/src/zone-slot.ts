@@ -63,8 +63,8 @@ export interface ProvidesZoneSlot {
 /** A field declaring that its resource must be reached through a zone. */
 export interface RequiresZoneSlot {
   /** The providing kind, alias-qualified as authored (`Self.Transaction`,
-   *  `<Alias>.<Kind>`) — canonical `<module>.<Kind>` once
-   *  `resolveSchemaRefKinds` has rewritten it in the declaring scope. */
+   *  `<Alias>.<Kind>`) on a written document — canonical `<module>.<Kind>` on
+   *  the registered copy, derived in the declaring scope. */
   zone: string;
   /** Ordered self-relative JSON pointers tried in order, first hit winning; a
    *  pointer may traverse a `!ref` into the referenced resource's own field.
@@ -209,28 +209,26 @@ export function hasRequiresZone(node: Record<string, any> | undefined): boolean 
 }
 
 /**
- * Rewrites the requires-zone kind name in place, in whichever shape it is
- * written — the write-side twin of {@link readRequiresZone}, mirroring
- * `rewriteRefSlotKinds` so `resolveSchemaRefKinds` canonicalizes both
- * annotations in one walk. `map` returns the replacement or `undefined` to
- * leave the authored name untouched (idempotence + quotable diagnostics).
+ * `annotationHolder` with its requires-zone kind name mapped through `map`, in
+ * whichever shape it is written — a copy, or the holder itself when nothing
+ * maps: the derivation-side twin of {@link readRequiresZone}, mirroring
+ * `withRefSlotKinds`. `map` returns `undefined` to keep the authored name, so a
+ * diagnostic quotes it.
  */
-export function rewriteRequiresZoneKind(
-  annotationHolder: Record<string, any>,
+export function withRequiresZoneKind<T extends Record<string, any>>(
+  annotationHolder: T,
   map: (kind: string) => string | undefined,
-): void {
+): T {
   const raw = annotationHolder[REQUIRES];
   if (typeof raw === "string") {
     const next = map(raw);
-    if (next !== undefined) annotationHolder[REQUIRES] = next;
-    return;
+    return next === undefined || next === raw ? annotationHolder : { ...annotationHolder, [REQUIRES]: next };
   }
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return annotationHolder;
   const obj = raw as Record<string, unknown>;
-  if (typeof obj.zone === "string") {
-    const next = map(obj.zone);
-    if (next !== undefined) obj.zone = next;
-  }
+  if (typeof obj.zone !== "string") return annotationHolder;
+  const zone = map(obj.zone);
+  return zone === undefined || zone === obj.zone ? annotationHolder : { ...annotationHolder, [REQUIRES]: { ...obj, zone } };
 }
 
 /** What `x-telo-provides-zone` reads: the correlation key it names on the

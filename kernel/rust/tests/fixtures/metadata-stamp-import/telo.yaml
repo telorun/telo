@@ -1,0 +1,4 @@
+# Imports a library writing a loader stamp by hand.
+kind: Telo.Application
+metadata: { name: MetadataStampImporter }
+imports: { Lib: ../metadata-stamp-library }

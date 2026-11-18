@@ -43,6 +43,8 @@ import { gatherPropertySchemas, resolveLocalRef } from "./schema-walk.js";
 import { readStepSlot, STEP_FRAGMENT } from "./step-slot.js";
 import { isKindDocumentOrImport } from "./system-kinds.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type Range } from "./types.js";
+import { coverKey, type RefusalCover } from "./finishing-pipeline.js";
+import { FALSE, TRUE, type Condition } from "./presence-condition.js";
 
 /** What a construct's place makes of it. */
 export type ExpansionPosition =
@@ -92,7 +94,7 @@ export interface ExpansionReading {
   /** Every refusal, each reported once at its construct. */
   readonly diagnostics: readonly AnalysisDiagnostic[];
   /** Every refused construct and refused `!ref`, by the document holding it and
-   *  its path there — what {@link withoutRefusedExpansionConsequences} drops beneath. */
+   *  its path there — what {@link expansionCovers} covers beneath. */
   readonly refused: readonly { readonly holder: ResourceManifest; readonly path: string }[];
 }
 
@@ -765,45 +767,38 @@ function isStepList(cursor: Cursor): boolean {
 }
 
 /**
- * Drops what other passes report about a refused construct: every diagnostic
- * about the same document at the construct's path or beneath it. The refusal is
- * the one report — a misplaced `!if` read as a mapping by the schema pass would
- * otherwise say the same defect again, in words pointing away from the repair.
- * A refused `schema:` of a definition also takes the template body with it.
+ * The covers of `refused`: what is found at or beneath a refused construct —
+ * a module doc's own entries naming no resource, and a refused definition
+ * schema's body read against it — holds only where the refusal does not. The
+ * refusal is the one report: a misplaced `!if` read as a mapping by the schema
+ * pass would otherwise say the same defect again, in words pointing away from
+ * the repair. `exempt` is the refusal's own report.
  */
-export function withoutRefusedExpansionConsequences(
-  diagnostics: AnalysisDiagnostic[],
-  reading: ExpansionReading,
-): AnalysisDiagnostic[] {
-  if (reading.refused.length === 0) return diagnostics;
-  const own = new Set(reading.diagnostics);
-  const keyOf = (kind: unknown, name: unknown, file: unknown) => `${kind}\0${name}\0${file}`;
-  const paths = new Map<string, string[]>();
-  const add = (key: string, path: string) => {
-    const list = paths.get(key) ?? [];
-    list.push(path);
-    paths.set(key, list);
-  };
-  for (const { holder, path } of reading.refused) {
+export function expansionCovers(
+  refused: readonly { readonly holder: ResourceManifest; readonly path: string; readonly condition?: Condition }[],
+  holds: { readonly condition: Condition; readonly world?: object | "every" },
+  exempt: (diagnostic: AnalysisDiagnostic) => boolean,
+): RefusalCover[] {
+  const out: RefusalCover[] = [];
+  for (const { holder, path, condition } of refused) {
     const meta = holder.metadata as { name?: unknown; source?: unknown } | undefined;
-    add(keyOf(holder.kind ?? expansionTagLabel(holder), meta?.name, meta?.source), path);
-    // What is reported about a module doc's own entries may name no resource.
-    if (isModuleKind(holder.kind)) add(keyOf(undefined, undefined, meta?.source), path);
-    // A definition whose schema is refused has none the body can be read against,
-    // so what the body reports about `self` is the refusal's consequence.
-    if (holder.kind === "Telo.Definition" && isAtOrUnder(path, "schema")) {
-      for (const field of ["resources", ...TEMPLATE_BODY_FIELDS]) add(keyOf(holder.kind, meta?.name, meta?.source), field);
-    }
+    // In a dead branch's world alone it covers wholly.
+    const where = typeof holds.world === "object" ? TRUE : (condition ?? holds.condition);
+    const at = (prefixes: readonly string[], declarations: readonly string[]) =>
+      out.push({
+        declarations,
+        ...(holds.world === undefined ? {} : { world: holds.world }),
+        covers: (d) => {
+          if (exempt(d)) return FALSE;
+          const found = (d.data as { path?: unknown } | undefined)?.path;
+          return typeof found === "string" && prefixes.some((prefix) => isAtOrUnder(found, prefix)) ? where : FALSE;
+        },
+      });
+    const own = coverKey(holder.kind ?? expansionTagLabel(holder), meta?.name, meta?.source);
+    at([path], isModuleKind(holder.kind) ? [own, coverKey(undefined, undefined, meta?.source)] : [own]);
+    if (holder.kind === "Telo.Definition" && isAtOrUnder(path, "schema")) at(["resources", ...TEMPLATE_BODY_FIELDS], [own]);
   }
-  return diagnostics.filter((d) => {
-    if (own.has(d)) return true;
-    const data = d.data as
-      | { resource?: { kind?: unknown; name?: unknown }; filePath?: unknown; path?: unknown }
-      | undefined;
-    if (typeof data?.path !== "string") return true;
-    const list = paths.get(keyOf(data.resource?.kind, data.resource?.name, data.filePath));
-    return !list?.some((path) => isAtOrUnder(data.path as string, path));
-  });
+  return out;
 }
 
 function isAtOrUnder(path: string, prefix: string): boolean {

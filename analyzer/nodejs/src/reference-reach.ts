@@ -50,7 +50,7 @@
  * Browser-safe: no Node built-ins.
  */
 import { isRefSentinel } from "@telorun/templating";
-import { followSchemaReferences, resolveSchemaReference, type NamedShapeLookup } from "./schema-reference.js";
+import { followSchemaReferences, resolveSchemaReference, schemaReferenceParts, type NamedShapeLookup } from "./schema-reference.js";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
 import { isSchemaOnlySlot, readRefSlot, type RefSlot } from "./ref-slot.js";
 import { readStepSlot, type StepSlot } from "./step-slot.js";
@@ -714,7 +714,19 @@ function expansionsAt(
   schemaFrom: SchemaFromResolver | undefined,
   shapes: ShapeResolver | undefined,
 ): { reach: SchemaReach; anchor: boolean; ref?: string }[] {
-  const out: { reach: SchemaReach; anchor: boolean; ref?: string }[] = [];
+  return classedExpansionsAt(stop, reach, schemaFrom, shapes, undefined).map((expansion) => expansion as { reach: SchemaReach; anchor: boolean; ref?: string });
+}
+
+/** {@link expansionsAt}, a shape `varying` answers held as its classes: each
+ *  class's reach, and where it holds. */
+function classedExpansionsAt(
+  stop: ReachStop,
+  reach: SchemaReach,
+  schemaFrom: SchemaFromResolver | undefined,
+  shapes: ShapeResolver | undefined,
+  varying: VaryingShapes | undefined,
+): ({ reach: SchemaReach; anchor: boolean; ref?: string; classes?: undefined } | { reach?: undefined; anchor: false; ref: string; classes: { reach: SchemaReach; condition: unknown }[] })[] {
+  const out: ReturnType<typeof classedExpansionsAt> = [];
   if (schemaFrom) {
     for (const { schemaFrom: expression } of stop.schemaFrom) {
       const anchor = schemaFrom(expression, reach.document);
@@ -723,6 +735,16 @@ function expansionsAt(
   }
   if (shapes) {
     for (const ref of stop.shapes) {
+      const { shape } = schemaReferenceParts(ref);
+      const classes = shape === undefined ? undefined : varying?.classesOf(shape, reach.document);
+      if (classes) {
+        const reaches = classes.flatMap((each) => {
+          const target = resolveSchemaReference(ref, reach.document, () => each.schema);
+          return target ? [{ reach: reachOfNode(target.document, target.node), condition: each.condition }] : [];
+        });
+        out.push({ anchor: false, ref, classes: reaches });
+        continue;
+      }
       const target = resolveSchemaReference(ref, reach.document, shapeLookupIn(shapes, reach.document));
       if (target) out.push({ reach: reachOfNode(target.document, target.node), anchor: false, ref });
     }
@@ -1191,18 +1213,111 @@ interface SiteOptions {
   withSchemaFrom?: boolean;
   schemaFrom?: SchemaFromResolver;
   shapes?: ShapeResolver;
+  varying?: VaryingShapes;
+}
+
+/**
+ * The named shapes whose content differs between configurations, read as
+ * their CLASSES: a `$ref` naming one is walked once per class, under the
+ * class's condition, and everything a walk reaches holds where it is reached.
+ * A walk is entered again only where its condition grows, so a chain of
+ * shapes is walked once per edge, never once per combination of classes.
+ */
+export interface VaryingShapes<C = unknown> {
+  /** The classes of the shape `ref` (written in `document`) names, each with
+   *  its schema and where it holds; undefined for a shape that does not vary. */
+  classesOf(
+    ref: string,
+    document: Record<string, any>,
+  ): readonly { readonly schema: Record<string, any>; readonly condition: C }[] | undefined;
+  readonly always: C;
+  and(a: C, b: C): C;
+  or(a: C, b: C): C;
+  isNever(condition: C): boolean;
+}
+
+/** Where a depth-first walk of one configuration first reaches an item: the
+ *  position of each step on its way, compared lexicographically. */
+export type ReachOrder = readonly number[];
+
+/** Where each item of a conditioned site holds, parallel to its lists, and
+ *  where a walk of one configuration first reaches it. */
+export interface SiteHolding<C = unknown> {
+  readonly refs: C[];
+  readonly steps: C[];
+  readonly scopes: C[];
+  readonly schemaFrom: C[];
+  readonly order: { refs: ReachOrder[]; steps: ReachOrder[]; scopes: ReachOrder[]; schemaFrom: ReachOrder[] };
+}
+
+/** A site of a reach over varying shapes, each item with where it holds. */
+export interface ConditionedReachSite<C = unknown> extends ReachSite {
+  readonly holding: SiteHolding<C>;
+}
+
+/** {@link reachSites} with the named shapes `varying` answers read as their
+ *  classes: every site any class puts there, each item with where it holds. */
+export function conditionedReachSites<C>(
+  schema: Record<string, any>,
+  data: unknown,
+  varying: VaryingShapes<C>,
+  schemaFrom?: SchemaFromResolver,
+  withSchemaFrom = false,
+  shapes?: ShapeResolver,
+): ConditionedReachSite<C>[] {
+  return enumerateSites(schema, data, { stops: true, schemaFrom, withSchemaFrom, shapes, varying: varying as VaryingShapes }) as ConditionedReachSite<C>[];
+}
+
+const compareOrder = (a: ReachOrder, b: ReachOrder): number => {
+  for (let i = 0; i < Math.min(a.length, b.length); i++) if (a[i] !== b[i]) return a[i]! - b[i]!;
+  return a.length - b.length;
+};
+
+/**
+ * The sites of one configuration, decided from a conditioned reach: each
+ * site's items `held` keeps, in the order a walk of that configuration reaches
+ * them, and each site holding none dropped — exactly the sites the reach over
+ * that configuration's shapes enumerates.
+ */
+export function decidedReachSites<C>(
+  sites: readonly ConditionedReachSite<C>[],
+  held: (site: ConditionedReachSite<C>, condition: C) => boolean,
+): ReachSite[] {
+  const out: { site: ReachSite; first: ReachOrder }[] = [];
+  for (const site of sites) {
+    const { holding } = site;
+    const keep = <T>(items: readonly T[], conditions: readonly C[], orders: readonly ReachOrder[]) =>
+      items
+        .map((item, i) => ({ item, order: orders[i]!, held: held(site, conditions[i]!) }))
+        .filter((each) => each.held)
+        .sort((a, b) => compareOrder(a.order, b.order));
+    const refs = keep(site.refs, holding.refs, holding.order.refs);
+    const steps = keep(site.steps, holding.steps, holding.order.steps);
+    const scopes = keep(site.scopes, holding.scopes, holding.order.scopes);
+    const schemaFrom = keep(site.schemaFrom, holding.schemaFrom, holding.order.schemaFrom);
+    const firsts = [refs, steps, scopes, schemaFrom].flatMap((list) => (list.length > 0 ? [list[0]!.order] : []));
+    if (firsts.length === 0) continue;
+    const plain: ReachSite & { holding?: unknown } = { ...site };
+    delete plain.holding;
+    out.push({
+      site: { ...plain, refs: refs.map((r) => r.item), steps: steps.map((s) => s.item), scopes: scopes.map((s) => s.item), schemaFrom: schemaFrom.map((s) => s.item) },
+      first: firsts.sort(compareOrder)[0]!,
+    });
+  }
+  return out.sort((a, b) => compareOrder(a.first, b.first)).map((each) => each.site);
 }
 
 function enumerateSites(
   schema: Record<string, any>,
   data: unknown,
-  { stops: keepStops, withSchemaFrom, schemaFrom, shapes }: SiteOptions,
+  { stops: keepStops, withSchemaFrom, schemaFrom, shapes, varying }: SiteOptions,
 ): ReachSite[] {
   if (data === undefined || data === null) return [];
   const root = reachOfSchema(schema);
   const followsStops = keepStops || schemaFrom !== undefined || shapes !== undefined;
   if (!root.drives && !(followsStops && root.stops.size > 0)) return [];
-  const sites = new Map<string, ReachSite & { from: Set<object> }>();
+  type Held = SiteHolding & { index: Map<object, number> };
+  const sites = new Map<string, ReachSite & { from: Set<object>; holding?: Held }>();
   const onData = new Set<unknown>([data]);
   const expanded = new Map<unknown, Set<SchemaReach>>();
 
@@ -1220,6 +1335,16 @@ function enumerateSites(
         schemaFrom: [],
         from: new Set(),
       };
+      if (varying) {
+        site.holding = {
+          refs: [],
+          steps: [],
+          scopes: [],
+          schemaFrom: [],
+          order: { refs: [], steps: [], scopes: [], schemaFrom: [] },
+          index: new Map(),
+        };
+      }
       if (found.holder) {
         site.holder = found.holder;
         site.key = found.key;
@@ -1227,6 +1352,73 @@ function enumerateSites(
       sites.set(id, site);
     }
     return site;
+  };
+
+  /** Whether `item` is new at `site`; one already there holds where it did
+   *  or where it is reached now. */
+  const reached = (
+    site: ReachSite & { from: Set<object>; holding?: Held },
+    list: "refs" | "steps" | "scopes" | "schemaFrom",
+    item: object,
+    condition: unknown,
+    order: ReachOrder,
+  ): boolean => {
+    const holding = site.holding;
+    if (site.from.has(item)) {
+      if (holding && varying) {
+        const i = holding.index.get(item)!;
+        holding[list][i] = varying.or(holding[list][i], condition);
+        if (compareOrder(order, holding.order[list][i]!) < 0) holding.order[list][i] = order;
+      }
+      return false;
+    }
+    site.from.add(item);
+    if (holding) {
+      holding.index.set(item, holding[list].length);
+      holding[list].push(condition);
+      holding.order[list].push(order);
+    }
+    return true;
+  };
+
+  /** A class of a varying shape entered at a concrete site, walked from the
+   *  queue once per growth of where it holds. */
+  interface Entry {
+    reach: SchemaReach;
+    found: Site;
+    path: string;
+    keys: (string | number)[];
+    patternBase: Pattern;
+    anchored: boolean;
+    outer: Enclosing | undefined;
+    order: ReachOrder;
+    condition: unknown;
+    /** The data values and the reaches entered on the way, for the guards. */
+    ancestors: unknown[];
+    entered: [unknown, SchemaReach][];
+  }
+  const entries = new Map<string, Map<SchemaReach, Entry>>();
+  const queue: Entry[] = [];
+  const enter = (entry: Omit<Entry, "ancestors" | "entered">): void => {
+    if (varying!.isNever(entry.condition)) return;
+    let byReach = entries.get(JSON.stringify(entry.keys));
+    if (!byReach) entries.set(JSON.stringify(entry.keys), (byReach = new Map()));
+    const known = byReach.get(entry.reach);
+    if (known) {
+      const grown = varying!.or(known.condition, entry.condition);
+      if (compareOrder(entry.order, known.order) < 0) known.order = entry.order;
+      if (grown === known.condition) return;
+      known.condition = grown;
+      if (!queue.includes(known)) queue.push(known);
+      return;
+    }
+    const created: Entry = {
+      ...entry,
+      ancestors: [...onData],
+      entered: [...expanded].flatMap(([value, set]) => [...set].map((r): [unknown, SchemaReach] => [value, r])),
+    };
+    byReach.set(entry.reach, created);
+    queue.push(created);
   };
 
   const walk = (
@@ -1238,7 +1430,11 @@ function enumerateSites(
     patternBase: Pattern,
     anchored: boolean,
     outer: Enclosing | undefined,
+    condition: unknown,
+    order: ReachOrder,
   ): void => {
+    let step = 0;
+    const next = (): ReachOrder => [...order, step++];
     for (const at of reach.paths.values()) {
       const declaredPath = at.pattern;
       const rel = relativeFieldPath(declaredPath, prefix);
@@ -1249,13 +1445,11 @@ function enumerateSites(
         if (at.steps.length > 0 || at.refs.length > 0) {
           const site = siteAt(path, keys, found);
           for (const step of at.steps) {
-            if (site.from.has(step)) continue;
-            site.from.add(step);
+            if (!reached(site, "steps", step, condition, next())) continue;
             site.steps.push(step);
           }
           for (const entry of at.refs) {
-            if (site.from.has(entry)) continue;
-            site.from.add(entry);
+            if (!reached(site, "refs", entry, condition, next())) continue;
             const fieldKeys = [...patternBase, ...declaredPath];
             const enclosing: Enclosing =
               atReachRoot(declaredPath) && outer
@@ -1285,7 +1479,7 @@ function enumerateSites(
         if (at.recurse.length === 0) continue;
         if (!found.value || typeof found.value !== "object" || onData.has(found.value)) continue;
         onData.add(found.value);
-        for (const to of at.recurse) walk(reach, to, found, path, keys, patternBase, anchored, outer);
+        for (const to of at.recurse) walk(reach, to, found, path, keys, patternBase, anchored, outer, condition, next());
         onData.delete(found.value);
       }
     }
@@ -1300,13 +1494,11 @@ function enumerateSites(
         if (keepStops && (stop.scopes.length > 0 || (withSchemaFrom && stop.schemaFrom.length > 0))) {
           const site = siteAt(path, keys, found);
           for (const scope of stop.scopes) {
-            if (site.from.has(scope)) continue;
-            site.from.add(scope);
+            if (!reached(site, "scopes", scope, condition, next())) continue;
             site.scopes.push(scope);
           }
           for (const entry of withSchemaFrom ? stop.schemaFrom : []) {
-            if (site.from.has(entry)) continue;
-            site.from.add(entry);
+            if (!reached(site, "schemaFrom", entry, condition, next())) continue;
             const fieldKeys = [...patternBase, ...declaredPath];
             site.schemaFrom.push({
               entry,
@@ -1317,29 +1509,74 @@ function enumerateSites(
             });
           }
         }
-        for (const next of expansionsAt(stop, reach, schemaFrom, shapes)) {
+        for (const expansion of classedExpansionsAt(stop, reach, schemaFrom, shapes, varying)) {
+          const position = [...order, step++];
+          if (expansion.classes) {
+            // Entered once per class, from the queue, under the class's
+            // condition: what it reaches holds there.
+            expansion.classes.forEach((each, i) =>
+              enter({
+                reach: each.reach,
+                found,
+                path,
+                keys,
+                patternBase: [...patternBase, ...declaredPath],
+                anchored,
+                outer: stopEnclosing(reach, stop, expansion.ref, outer, shapes),
+                order: [...position, i],
+                condition: varying!.and(condition, each.condition),
+              }),
+            );
+            continue;
+          }
           let entered = expanded.get(found.value);
           if (!entered) expanded.set(found.value, (entered = new Set()));
-          if (entered.has(next.reach)) continue;
-          entered.add(next.reach);
+          if (entered.has(expansion.reach!)) continue;
+          entered.add(expansion.reach!);
           walk(
-            next.reach,
+            expansion.reach!,
             [],
             found,
             path,
             keys,
             [...patternBase, ...declaredPath],
-            anchored || next.anchor,
-            next.ref === undefined ? undefined : stopEnclosing(reach, stop, next.ref, outer, shapes),
+            anchored || expansion.anchor,
+            expansion.ref === undefined ? undefined : stopEnclosing(reach, stop, expansion.ref, outer, shapes),
+            condition,
+            position,
           );
-          entered.delete(next.reach);
+          entered.delete(expansion.reach!);
         }
       }
     }
   };
-  walk(root, [], { value: data, path: "", keys: [] }, "", [], [], false, undefined);
+  walk(root, [], { value: data, path: "", keys: [] }, "", [], [], false, undefined, varying?.always, []);
+  // Each class entered, walked again wherever it holds more widely than when
+  // it was last walked.
+  while (queue.length > 0) {
+    const entry = queue.shift()!;
+    for (const value of entry.ancestors) onData.add(value);
+    for (const [value, reachEntered] of entry.entered) {
+      let entered = expanded.get(value);
+      if (!entered) expanded.set(value, (entered = new Set()));
+      entered.add(reachEntered);
+    }
+    let entered = expanded.get(entry.found.value);
+    if (!entered) expanded.set(entry.found.value, (entered = new Set()));
+    if (!entered.has(entry.reach)) {
+      entered.add(entry.reach);
+      walk(entry.reach, [], entry.found, entry.path, entry.keys, entry.patternBase, entry.anchored, entry.outer, entry.condition, entry.order);
+    }
+    onData.clear();
+    onData.add(data);
+    expanded.clear();
+  }
 
-  return [...sites.values()].map(({ from, ...site }) => site);
+  return [...sites.values()].map(({ from, holding, ...site }) => {
+    if (!holding) return site;
+    const { index, ...kept } = holding;
+    return { ...site, holding: kept };
+  });
 }
 
 /** An entry's value alternatives at one concrete site `found` below `start`,

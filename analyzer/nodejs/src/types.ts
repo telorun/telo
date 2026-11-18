@@ -247,6 +247,11 @@ export interface AnalysisOptions {
    *  reported, and one holding in no configuration at all still is. A key
    *  naming no dimension, or a value outside its domain, throws. */
   within?: Readonly<Record<string, unknown>>;
+  /** Each loaded document's position table, in the loader's walk
+   *  (`collectFilePositions`): where the analysis finds the place every finding
+   *  is written, to report them in source order. In-memory manifests carry
+   *  none, and their findings fall to the keys after the offset. */
+  positions?: readonly import("./position-metadata.js").FilePositions[];
 }
 
 /** Pre-seeded state for incremental analysis. Passed to StaticAnalyzer.analyze() so it does

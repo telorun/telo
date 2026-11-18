@@ -17,6 +17,7 @@
  *
  * Browser-safe: no Node built-ins.
  */
+import { stampedIn } from "./analysis-families.js";
 import type { ResourceManifest } from "@telorun/sdk";
 import { isCompiledValue } from "@telorun/sdk";
 import { auditCalls, buildCelEnvironment, isTaggedSentinel, celExpressionsOf } from "@telorun/templating";
@@ -53,7 +54,7 @@ const SOURCE = "telo";
  * "impure" any more than it is "pure" — a name the registry cannot account for
  * is `CEL_UNKNOWN_FUNCTION`'s to report, not this rule's to guess at.
  */
-function impureCalls(
+export function impureCalls(
   source: string,
   moduleNames: ReadonlySet<string>,
   moduleCallFlags: (qualified: string) => CallableFlags | undefined,
@@ -169,24 +170,15 @@ function checkNondeterminism(
         moduleCallNamesOf(moduleCallNames, manifest),
         (qualified) => moduleCallFlags(manifest, qualified),
       )) {
-        diagnostics.push({
-          severity: DiagnosticSeverity.Error,
-          code: "DURABLE_NONDETERMINISM",
-          source: SOURCE,
-          message:
-            `'${fn}' is evaluated inside a region declared idempotent by ` +
-            `${region.provider.kind} '${region.provider.name}' — "${region.reason}". A ` +
-            `region with that claim re-runs on a resume with its earlier effects intact, ` +
-            `so an expression that produces a different value each time makes the ` +
-            `re-run something other than a no-op and the claim false. Pin the value ` +
-            `once for the region instead of computing it per pass. A native function ` +
-            `counts as deterministic only where its kind declares \`deterministic: true\`.`,
-          data: {
-            resource: { kind: manifest.kind, name: manifest.metadata?.name as string },
-            filePath: (manifest.metadata as { source?: string } | undefined)?.source,
+        diagnostics.push(
+          nondeterminismDiagnostic({
+            fn,
+            provider: region.provider,
+            reason: region.reason,
+            anchor: { kind: manifest.kind as string, name: manifest.metadata?.name as string, manifest },
             path,
-          },
-        });
+          }),
+        );
         // One diagnostic per expression: naming every impure call in a single
         // expression would repeat one fix several times.
         break;
@@ -219,25 +211,9 @@ function checkDetach(
   for (const boundary of region.boundaries) {
     if (!boundary.escaping.includes("detached")) continue;
     if (!owned(boundary.from.manifest, reportModules)) continue;
-    diagnostics.push({
-      severity: DiagnosticSeverity.Error,
-      code: "DURABLE_DETACH_FORBIDDEN",
-      source: SOURCE,
-      message:
-        `${boundary.from.kind} '${boundary.from.name}' dispatches '${boundary.edge.slot}' ` +
-        `detached inside a durable region (${region.provider.kind} ` +
-        `'${region.provider.name}'). Progress is recorded when a step COMPLETES, so a ` +
-        `detached dispatch would be recorded as done while its work was still running — ` +
-        `a resume would skip it and a crash would lose it, which is the opposite of what ` +
-        `durability provides. Start a nested durable run instead and let the step record ` +
-        `its run id: the work keeps its own identity and its own recovery, and nothing is ` +
-        `awaited.`,
-      data: {
-        resource: { kind: boundary.from.kind, name: boundary.from.name },
-        filePath: (boundary.from.manifest.metadata as { source?: string } | undefined)?.source,
-        path: boundary.edge.path,
-      },
-    });
+    diagnostics.push(
+      detachDiagnostic({ from: boundary.from, slot: boundary.edge.slot, path: boundary.edge.path, provider: region.provider }),
+    );
   }
 }
 
@@ -280,24 +256,15 @@ function checkUnjournalableResults(
       const owner = graph.nodes.get((node as StepGraphNode).owner);
       const manifest = owner?.type === "resource" ? owner.manifest : target.manifest;
       if (!owned(manifest, reportModules)) continue;
-      diagnostics.push({
-        severity: DiagnosticSeverity.Warning,
-        code: "DURABLE_UNJOURNALABLE_RESULT",
-        source: SOURCE,
-        message:
-          `Step '${(node as StepGraphNode).name ?? (node as StepGraphNode).path}' invokes ` +
-          `${target.kind} '${target.name}', whose declared output holds a live value, inside a ` +
-          `durable region (${region.provider.kind} '${region.provider.name}'). A live handle ` +
-          `is produced by consuming it, so it cannot be recorded and replayed — the run will ` +
-          `fail at this step with ERR_DURABLE_UNJOURNALABLE_VALUE. Collect what you need ` +
-          `from it into a plain value inside the step, or move the streaming work outside ` +
-          `the durable body.`,
-        data: {
-          resource: { kind: manifest.kind, name: manifest.metadata?.name as string },
-          filePath: (manifest.metadata as { source?: string } | undefined)?.source,
+      diagnostics.push(
+        unjournalableDiagnostic({
+          step: (node as StepGraphNode).name ?? (node as StepGraphNode).path,
           path: (node as StepGraphNode).path,
-        },
-      });
+          target,
+          provider: region.provider,
+          anchor: { kind: manifest.kind as string, name: manifest.metadata?.name as string, manifest },
+        }),
+      );
     }
   }
 }
@@ -352,39 +319,57 @@ function checkMissingContracts(
       const owner = graph.nodes.get((node as StepGraphNode).owner);
       const manifest = owner?.type === "resource" ? owner.manifest : target.manifest;
       if (!owned(manifest, reportModules)) continue;
-      const takesOutputType = Boolean(
-        (authorSchema.properties as Record<string, unknown> | undefined)?.outputType,
-      );
-      const remedy = takesOutputType
-        ? `Declare an outputType on the target or its kind; a value that cannot be recorded ` +
-          `still fails at runtime with ERR_DURABLE_UNJOURNALABLE_VALUE.`
-        : `${target.kind} does not take an outputType, so the value is checked at runtime: ` +
-          `a value that cannot be recorded fails with ERR_DURABLE_UNJOURNALABLE_VALUE at ` +
-          `the step that produced it.`;
-      diagnostics.push({
-        severity: DiagnosticSeverity.Warning,
-        code: "DURABLE_CONTRACT_REQUIRED",
-        source: SOURCE,
-        message:
-          `Step '${(node as StepGraphNode).name ?? (node as StepGraphNode).path}' invokes ` +
-          `${target.kind} '${target.name}', which declares no outputType, inside a durable ` +
-          `region (${region.provider.kind} '${region.provider.name}'). The step's result is ` +
-          `recorded and replayed, and without a declared output nothing can check statically ` +
-          `that it is a value that can be written down. ${remedy}`,
-        data: {
-          resource: { kind: manifest.kind, name: manifest.metadata?.name as string },
-          filePath: (manifest.metadata as { source?: string } | undefined)?.source,
+      diagnostics.push(
+        contractRequiredDiagnostic({
+          step: (node as StepGraphNode).name ?? (node as StepGraphNode).path,
           path: (node as StepGraphNode).path,
-        },
-      });
+          target,
+          provider: region.provider,
+          anchor: { kind: manifest.kind as string, name: manifest.metadata?.name as string, manifest },
+          takesOutputType: Boolean((authorSchema.properties as Record<string, unknown> | undefined)?.outputType),
+        }),
+      );
     }
   }
+}
+
+/** A journaled step whose target declares no output contract. */
+export function contractRequiredDiagnostic(args: {
+  step: string;
+  path: string;
+  target: { kind: string; name: string };
+  provider: { kind: string; name: string };
+  anchor: Named;
+  takesOutputType: boolean;
+}): AnalysisDiagnostic {
+  const { step, path, target, provider, anchor, takesOutputType } = args;
+  const remedy = takesOutputType
+    ? `Declare an outputType on the target or its kind; a value that cannot be recorded ` +
+      `still fails at runtime with ERR_DURABLE_UNJOURNALABLE_VALUE.`
+    : `${target.kind} does not take an outputType, so the value is checked at runtime: ` +
+      `a value that cannot be recorded fails with ERR_DURABLE_UNJOURNALABLE_VALUE at ` +
+      `the step that produced it.`;
+  return stampedIn("durableContracts", {
+    severity: DiagnosticSeverity.Warning,
+    code: "DURABLE_CONTRACT_REQUIRED",
+    source: SOURCE,
+    message:
+      `Step '${step}' invokes ${target.kind} '${target.name}', which declares no outputType, inside a durable ` +
+      `region (${provider.kind} '${provider.name}'). The step's result is ` +
+      `recorded and replayed, and without a declared output nothing can check statically ` +
+      `that it is a value that can be written down. ${remedy}`,
+    data: {
+      resource: { kind: anchor.kind, name: anchor.name },
+      filePath: (anchor.manifest.metadata as { source?: string } | undefined)?.source,
+      path,
+    },
+  });
 }
 
 /** Does this declared type hold a live value — at its root or at any depth —
  *  read through the one walk `x-telo-serializable` uses. A type field's inline
  *  `{ kind, schema }` form is read as its schema. */
-function isLiveSchema(schema: unknown): boolean {
+export function isLiveSchema(schema: unknown): boolean {
   if (!schema || typeof schema !== "object") return false;
   const inner = (schema as Record<string, unknown>).schema;
   const declared = inner && typeof inner === "object" && !("x-telo-type" in schema) ? inner : schema;
@@ -421,6 +406,78 @@ function celScopeOf(
 function owned(manifest: ResourceManifest, reportModules: ReadonlySet<string>): boolean {
   const module = (manifest.metadata as { module?: string } | undefined)?.module;
   return !module || reportModules.size === 0 || reportModules.has(module);
+}
+
+type Named = { kind: string; name: string; manifest: ResourceManifest };
+
+/** Impure CEL inside an `idempotent` region. */
+export function nondeterminismDiagnostic(args: { fn: string; provider: Named; reason: string; anchor: Named; path: string }): AnalysisDiagnostic {
+  const { fn, provider, reason, anchor, path } = args;
+  return {
+    severity: DiagnosticSeverity.Error,
+    code: "DURABLE_NONDETERMINISM",
+    source: SOURCE,
+    message:
+      `'${fn}' is evaluated inside a region declared idempotent by ` +
+      `${provider.kind} '${provider.name}' — "${reason}". A ` +
+      `region with that claim re-runs on a resume with its earlier effects intact, ` +
+      `so an expression that produces a different value each time makes the ` +
+      `re-run something other than a no-op and the claim false. Pin the value ` +
+      `once for the region instead of computing it per pass. A native function ` +
+      `counts as deterministic only where its kind declares \`deterministic: true\`.`,
+    data: {
+      resource: { kind: anchor.kind, name: anchor.name },
+      filePath: (anchor.manifest.metadata as { source?: string } | undefined)?.source,
+      path,
+    },
+  };
+}
+
+/** A detached dispatch inside a `replayed` region. */
+export function detachDiagnostic(args: { from: Named; slot: string; path: string; provider: Named }): AnalysisDiagnostic {
+  const { from, slot, path, provider } = args;
+  return {
+    severity: DiagnosticSeverity.Error,
+    code: "DURABLE_DETACH_FORBIDDEN",
+    source: SOURCE,
+    message:
+      `${from.kind} '${from.name}' dispatches '${slot}' ` +
+      `detached inside a durable region (${provider.kind} ` +
+      `'${provider.name}'). Progress is recorded when a step COMPLETES, so a ` +
+      `detached dispatch would be recorded as done while its work was still running — ` +
+      `a resume would skip it and a crash would lose it, which is the opposite of what ` +
+      `durability provides. Start a nested durable run instead and let the step record ` +
+      `its run id: the work keeps its own identity and its own recovery, and nothing is ` +
+      `awaited.`,
+    data: {
+      resource: { kind: from.kind, name: from.name },
+      filePath: (from.manifest.metadata as { source?: string } | undefined)?.source,
+      path,
+    },
+  };
+}
+
+/** A step in a `replayed` region invoking a resource whose output is live. */
+export function unjournalableDiagnostic(args: { step: string; path: string; target: Named; provider: Named; anchor: Named }): AnalysisDiagnostic {
+  const { step, path, target, provider, anchor } = args;
+  return {
+    severity: DiagnosticSeverity.Warning,
+    code: "DURABLE_UNJOURNALABLE_RESULT",
+    source: SOURCE,
+    message:
+      `Step '${step}' invokes ` +
+      `${target.kind} '${target.name}', whose declared output holds a live value, inside a ` +
+      `durable region (${provider.kind} '${provider.name}'). A live handle ` +
+      `is produced by consuming it, so it cannot be recorded and replayed — the run will ` +
+      `fail at this step with ERR_DURABLE_UNJOURNALABLE_VALUE. Collect what you need ` +
+      `from it into a plain value inside the step, or move the streaming work outside ` +
+      `the durable body.`,
+    data: {
+      resource: { kind: anchor.kind, name: anchor.name },
+      filePath: (anchor.manifest.metadata as { source?: string } | undefined)?.source,
+      path,
+    },
+  };
 }
 
 export interface DurableRegionArgs {

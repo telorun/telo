@@ -1,4 +1,5 @@
 import { localRefName } from "./ref-sentinel-target.js";
+import { isEntryOwned } from "./entry-ownership.js";
 import { nearestName } from "./nearest-name.js";
 import { isKindDocument } from "./kind-declaration.js";
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
@@ -27,6 +28,23 @@ import {
 } from "./types.js";
 
 const SOURCE = "telo-analyzer";
+
+/** What a template body's bare `!ref` reaches beyond its siblings. */
+export interface TemplateBodyReach {
+  /** Where `!ref <target>` in a body of `module` names no sibling present
+   *  (`siblings`) and no resource of the module, each with the name it
+   *  suggests from `candidates` — the entries the author wrote — and the
+   *  module's resources; none where `suggest` is false. */
+  unknown(
+    module: string | undefined,
+    target: string,
+    siblings: readonly string[],
+    candidates: readonly string[],
+    suggest: boolean,
+  ): readonly { readonly suggestion: string | undefined; readonly held: unknown }[];
+  /** Told each finding it gives rise to, with where it holds. */
+  placed?(diagnostic: AnalysisDiagnostic, held: unknown): void;
+}
 
 /** The four slots a `Telo.Definition` names its dispatch target in.
  *
@@ -68,8 +86,10 @@ const DISPATCH_SLOTS = ["invoke", "run", "provide", "mount"] as const;
  *    through the nested kind's own reference reach, resolved in the DEFINING module's
  *    alias scope, since that is where the body's kinds are written.
  *
- * Entry-module-scoped, like every other declaration check: a published
- * dependency's template body is not the consumer's to fix. Browser-safe.
+ * Entry-module-scoped by default, like every other declaration check: a
+ * published dependency's template body is not the consumer's to fix. An
+ * analysis also judges each dependency definition it reaches (`reads`), whose
+ * findings it never reports. Browser-safe.
  */
 export function validateTemplateBody(
   manifests: ResourceManifest[],
@@ -81,24 +101,26 @@ export function validateTemplateBody(
    *  bare `<binding>.value.<path>` there forwards what the consumer wrote, as a
    *  bare `self.<path>` does. */
   bindingsAt?: (definition: ResourceManifest, path: string) => readonly string[],
+  /** What a body's bare `!ref` reaches beyond its siblings; by default the
+   *  resources `manifests` declares. */
+  reach?: TemplateBodyReach,
+  /** The entries a definition's body declares as written — every way of
+   *  deciding it — which its messages list; by default those it holds. */
+  writtenOf?: (definition: ResourceManifest) => readonly string[] | undefined,
+  /** The definitions judged; by default the entry's own. */
+  reads?: (definition: ResourceManifest) => boolean,
 ): AnalysisDiagnostic[] {
   const out: AnalysisDiagnostic[] = [];
   const scopes: ModuleScopes = { aliasesByModule, rootModules };
 
-  // A definition forwarded from an imported library is that library's to fix;
-  // the imports name them (the `validate-extends` rule).
-  const importedModules = new Set<string>();
+  // A definition forwarded from an imported library is that library's to fix.
   // Every named instance, by declaring module — what a body's bare `!ref` may
   // reach beside its siblings. A manifest with no stamp belongs to the entry.
   const instancesByModule = new Map<string | undefined, Set<string>>();
   for (const m of manifests) {
     const name = m.metadata?.name;
     if (typeof name !== "string") continue;
-    if (m.kind === "Telo.Import") {
-      const resolved = (m.metadata as { resolvedModuleName?: string }).resolvedModuleName;
-      if (resolved) importedModules.add(resolved);
-      continue;
-    }
+    if (m.kind === "Telo.Import") continue;
     if (isKindDocument(m)) continue;
     if (m.kind === "Telo.Library" || m.kind === "Telo.Application") continue;
     const mod = (m.metadata as { module?: string } | undefined)?.module;
@@ -106,13 +128,20 @@ export function validateTemplateBody(
     if (!set) instancesByModule.set(mod, (set = new Set()));
     set.add(name);
   }
+  const bodyReach: TemplateBodyReach = reach ?? {
+    unknown: (module, target, siblings, candidates, suggest) => {
+      const instances = instancesByModule.get(module) ?? new Set<string>();
+      if (siblings.includes(target) || instances.has(target)) return [];
+      return [{ suggestion: suggest ? nearestName(target, [...new Set([...candidates, ...instances])]) : undefined, held: true }];
+    },
+  };
 
   for (const m of manifests) {
     if (m.kind !== "Telo.Definition") continue;
     const meta = m.metadata as { name?: string; module?: string; source?: string } | undefined;
     const name = meta?.name;
     if (!name) continue;
-    if (meta?.module && importedModules.has(meta.module)) continue;
+    if (reads ? !reads(m) : !isEntryOwned(m, rootModules)) continue;
 
     const bodies = (m as Record<string, unknown>).resources;
     const resourceRef = { kind: m.kind, name };
@@ -193,12 +222,29 @@ export function validateTemplateBody(
     // `client: !ref moduleClient` in a body reaches the module-level client and
     // works. (A step's `invoke:` is a different path that does NOT: see the
     // `resources` note in `validate-template-body`'s own tests.)
-    const reachable = new Set([
-      ...siblings,
-      ...(instancesByModule.get(meta?.module) ?? []),
-    ]);
-    // What a message lists and suggests: the names the author wrote.
-    const written = siblings.filter((name) => !extracted.has(name));
+    // What a message lists and suggests: the names the author wrote, in
+    // every way of deciding the body — never the ones this reading holds.
+    const written = (writtenOf?.(m) ?? siblings).filter((name) => !extracted.has(name));
+    /** `TEMPLATE_REF_UNKNOWN` for `!ref <target>` written at `quoted` on the
+     *  entry named `self`. A target the body declares elsewhere is named as
+     *  one, absent where the reference is. */
+    const unknownRef = (target: string, path: string, quoted: string, self: unknown): void => {
+      const declared = written.includes(target);
+      const listed = written.filter((s) => s !== self && s !== target).join(", ") || "(none)";
+      const message = declared
+        ? `${quoted} names the 'resources:' entry '${target}', which this body declares but not in these ` +
+          `configurations, and no resource of this module. Siblings: ${listed}.`
+        : `${quoted} names no sibling 'resources:' entry and no resource of this module. Siblings: ${listed}.`;
+      for (const { suggestion, held } of bodyReach.unknown(meta?.module, target, siblings, written, !declared)) {
+        report(
+          "TEMPLATE_REF_UNKNOWN",
+          path,
+          message + (suggestion ? ` Did you mean '${suggestion}'?` : ""),
+          suggestion ? { replacement: suggestion } : undefined,
+        );
+        bodyReach.placed?.(out[out.length - 1]!, held);
+      }
+    };
 
     // --- dispatch slots ---
     for (const slot of DISPATCH_SLOTS) {
@@ -219,12 +265,13 @@ export function validateTemplateBody(
       // A dynamic sibling has already been reported, and might be the one
       // meant — a second diagnostic about the same line would be noise.
       if (anyDynamic) continue;
-      const suggestion = nearestName(target, written);
+      const listed = written.filter((name) => name !== target);
+      const suggestion = nearestName(target, listed);
       report(
         "TEMPLATE_DISPATCH_UNKNOWN",
         slot,
         `'${slot}: !ref ${value.source}' names no entry in 'resources:'. ` +
-          `Available: ${written.join(", ") || "(none)"}.` +
+          `Available: ${listed.join(", ") || "(none)"}.` +
           (suggestion ? ` Did you mean '${suggestion}'?` : ""),
         suggestion ? { replacement: suggestion } : undefined,
       );
@@ -239,7 +286,7 @@ export function validateTemplateBody(
       const target = registry.resolve(definingScope?.resolveKind(kind) ?? kind) ?? registry.resolve(kind);
       return target ? inheritedCapability(target, resolveDef) : undefined;
     };
-    for (const problem of templateTargetProblems(m as Record<string, unknown>, capability, nearestName, capabilityOf)) {
+    for (const problem of templateTargetProblems(m as Record<string, unknown>, capability, nearestName, capabilityOf, written)) {
       report(
         problem.code,
         problem.path,
@@ -269,19 +316,12 @@ export function validateTemplateBody(
             if (!isRefSentinel(value)) return;
             const target = refSentinelTarget(value);
             if (!target || (target.alias && target.alias !== "Self")) return;
-            if (reachable.has(target.name) || anyDynamic) return;
-            const suggestion = nearestName(
+            if (anyDynamic) return;
+            unknownRef(
               target.name,
-              [...reachable].filter((name) => !extracted.has(name)),
-            );
-            report(
-              "TEMPLATE_REF_UNKNOWN",
               `${body.prefix}.${stepPath}.${steps.invokeField}`,
-              `'${stepPath}.${steps.invokeField}: !ref ${value.source}' on ${label} names ` +
-                `no sibling 'resources:' entry and no resource of this module. ` +
-                `Siblings: ${written.filter((s) => s !== body.manifest.metadata?.name).join(", ") || "(none)"}.` +
-                (suggestion ? ` Did you mean '${suggestion}'?` : ""),
-              suggestion ? { replacement: suggestion } : undefined,
+              `'${stepPath}.${steps.invokeField}: !ref ${value.source}' on ${label}`,
+              body.manifest.metadata?.name,
             );
           });
         }
@@ -368,20 +408,7 @@ export function validateTemplateBody(
           if (!target) continue;
           const { alias, name: refName } = target;
           if (alias && alias !== "Self") continue;
-          if (reachable.has(refName)) continue;
-          const suggestion = nearestName(
-            refName,
-            [...reachable].filter((name) => !extracted.has(name)),
-          );
-          report(
-            "TEMPLATE_REF_UNKNOWN",
-            path,
-            `'${site.path}: !ref ${value.source}' on ${label} names no sibling ` +
-              `'resources:' entry and no resource of this module. ` +
-              `Siblings: ${written.filter((s) => s !== body.manifest.metadata?.name).join(", ") || "(none)"}.` +
-              (suggestion ? ` Did you mean '${suggestion}'?` : ""),
-            suggestion ? { replacement: suggestion } : undefined,
-          );
+          unknownRef(refName, path, `'${site.path}: !ref ${value.source}' on ${label}`, body.manifest.metadata?.name);
           continue;
         }
         if (isValueAtSlot(value, site.refs, registry)) continue;

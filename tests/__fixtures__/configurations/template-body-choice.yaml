@@ -1,0 +1,26 @@
+# A template body referencing a resource of its module that is declared, and
+# a near namesake of it, only where a variable says so.
+kind: Telo.Application
+metadata: { name: TemplateBodyChoice, version: 1.0.0 }
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+  flag2: { env: FLAG_2, type: boolean, default: false }
+imports: { Kinds: ../resource-inputs/optional/kinds }
+---
+kind: Telo.Definition
+metadata: { name: Wrapper }
+capability: Telo.Provider
+schema: { type: object, properties: {} }
+resources:
+  - kind: Kinds.Holder
+    metadata: { name: inner }
+    store: !ref helper
+provide: !ref inner
+--- !if
+metadata: { name: helper }
+if: !cel "variables.flag1"
+then: { kind: Kinds.Store, label: helper }
+--- !if
+metadata: { name: helpers }
+if: !cel "variables.flag2"
+then: { kind: Kinds.Store, label: helpers }

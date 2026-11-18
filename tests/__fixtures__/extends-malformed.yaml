@@ -1,18 +1,11 @@
 kind: Telo.Application
-metadata:
-  name: ExtendsMalformed
-  version: 1.0.0
-imports:
-  AbstractLib: ./abstract-lib.yaml
+metadata: { name: ExtendsMalformed, version: 1.0.0 }
+imports: { AbstractLib: ./abstract-lib.yaml }
 ---
 # Identity form is rejected — extends only accepts alias form "<Alias>.<Name>"
 # resolved via the file's Telo.Import declarations.
 kind: Telo.Definition
-metadata:
-  name: BrokenImpl
-  module: BrokenLocal
+metadata: { name: BrokenImpl }
 capability: Telo.Invocable
 extends: "std/abstract-lib#Greeter"
-schema:
-  type: object
-  properties: {}
+schema: { type: object, properties: {} }

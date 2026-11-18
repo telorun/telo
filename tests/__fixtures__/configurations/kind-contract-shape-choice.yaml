@@ -1,0 +1,34 @@
+# An abstract stating a floor for its implementors. One implementation is
+# refused whatever the configuration (a throw code outside the abstract's
+# list); another names a shape for its output that drops `status` only where a choice
+# writes it.
+kind: Telo.Application
+metadata: { name: KindContractShapeChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.Abstract
+metadata: { name: Step }
+capability: Telo.Invocable
+outputType: { type: object, properties: { status: { type: string } }, required: [status] }
+throws: { codes: { STEP_FAILED: { description: The step failed } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Result }
+schema: !if
+  if: !cel "variables.flag1"
+  then: { type: object, properties: { note: { type: string } } }
+  else: { type: object, properties: { status: { type: string } } }
+---
+kind: Telo.Definition
+metadata: { name: Loud }
+extends: Self.Step
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Loud]
+throws: { codes: { OTHER_FAILURE: { description: Another failure } } }
+---
+kind: Telo.Definition
+metadata: { name: Shaped }
+extends: Self.Step
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Shaped]
+outputType: !ref Result

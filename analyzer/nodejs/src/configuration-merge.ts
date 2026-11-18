@@ -14,7 +14,7 @@
  */
 import type { ConfigurationDiagnostic } from "./choice-reading.js";
 import {
-  assignmentKey,
+  configurationUniverse,
   describeBlocks,
   entriesOfBlocks,
   type Assignment,
@@ -73,25 +73,23 @@ export function mergeConditionedDiagnostics(
 }
 
 /** {@link mergeConditionedDiagnostics} over runs and findings credited to
- *  sets of configurations (by {@link assignmentKey}; none given, every one). */
+ *  product blocks of configurations (none given, every one). */
 export function mergeConfigurationDiagnostics(
   runs: readonly ConfigurationRun[],
   extra: readonly ConfigurationDiagnostic[],
   dimensions: readonly Dimension[],
-  configurations: readonly Assignment[],
 ): AnalysisDiagnostic[] {
   const space = new ConditionSpace(dimensions);
-  const byKey = new Map(configurations.map((a) => [assignmentKey(a), space.assignment(a)]));
-  const universe = space.some(byKey.values());
+  const universe = configurationUniverse(space, dimensions);
   const findings: ConditionedFinding[] = [];
   for (const run of runs) {
     const condition = space.assignment(run.assignment);
     for (const diagnostic of run.diagnostics) findings.push({ diagnostic, condition });
   }
-  for (const { diagnostic, configurations: keys } of extra) {
+  for (const { diagnostic, configurations: blocks } of extra) {
     findings.push({
       diagnostic,
-      condition: keys ? space.some([...keys].map((key) => byKey.get(key) ?? FALSE)) : universe,
+      condition: blocks ? space.and(space.some(blocks.map((block) => space.cube(block))), universe) : universe,
     });
   }
   return mergeConditionedDiagnostics(findings, space, universe, dimensions);

@@ -19,7 +19,9 @@ import { canonicalJson } from "./canonical-json.js";
 import { memberForbidden, memberSlotSchema, memberSlotSchemas, membersSlotOf } from "./members-value-slot.js";
 import { liftFragmentDefs, ManifestRootSchema } from "./manifest-schemas.js";
 import { deepEquals } from "./migrations/match.js";
-import { schemaIssues, type SchemaIssue } from "./schema-error-report.js";
+import { schemaIssues, type AjvErrorLike, type SchemaIssue } from "./schema-error-report.js";
+import { judgeSchemaFindings } from "./schema-findings-judge.js";
+import { registeredDocument, SchemaNodeValidator } from "./schema-node-validator.js";
 import { readStandIn, type StandIns } from "./stand-in-findings.js";
 import { teloFormatOf } from "./telo-format.js";
 import { registerTeloKeywords } from "./value-type-keyword.js";
@@ -54,6 +56,38 @@ export function createAjv(options: { verbose?: boolean; useDefaults?: boolean } 
   // every instance.
   instance.addSchema(ManifestRootSchema, undefined, undefined, false);
   return instance;
+}
+
+/** The verbose twin of each {@link createAjv} instance a failure is judged on,
+ *  created by the first failure that has a union to decide. */
+const judgeTwins = new WeakMap<object, SchemaNodeValidator>();
+
+/** Issues for `errors`, raised by `host` validating `data` against `schema`,
+ *  each union decided by the judge. `host` is an instance {@link createAjv}
+ *  built. */
+export function judgedSchemaIssues(
+  host: InstanceType<typeof Ajv>,
+  errors: AjvErrorLike[] | null | undefined,
+  data: unknown,
+  schema: object,
+): SchemaIssue[] {
+  const twinOf = () => {
+    let twin = judgeTwins.get(host);
+    if (!twin) {
+      twin = new SchemaNodeValidator(createAjv({ verbose: true }), {
+        resolveReference: (id) => registeredDocument(host, id),
+      });
+      judgeTwins.set(host, twin);
+    }
+    return twin;
+  };
+  const judged = judgeSchemaFindings(errors, {
+    value: data,
+    schema,
+    validate: (node, value) => twinOf().findingsFor(schema)(node, value),
+    reference: (node, ref) => twinOf().reference(node, ref),
+  });
+  return schemaIssues(judged, data);
 }
 
 const ajv = createAjv();
@@ -129,13 +163,133 @@ export function checkSchemaCompatibility(
   roles: CompatibilityRoles = DEFAULT_ROLES,
   options: CompatibilityOptions = {},
 ): CompatibilityResult {
-  const conflicts: CompatibilityConflict[] = [];
-  compare(source, target, "", conflicts, resolveRef, new Set(), roles, false, options.targetFillsDefaults === true);
+  // Content-answering: every reference is read through, so nothing is deferred
+  // and the judgement is its conflicts alone.
+  const { conflicts } = judgeSchemaCompatibility(contentSide(source), contentSide(target), contentLookup(resolveRef), roles, options);
   return {
     compatible: conflicts.length === 0,
     issues: conflicts.map((conflict) => conflict.message),
-    conflicts,
+    conflicts: [...conflicts],
   };
+}
+
+/** Where a side of a comparison is: the node, the document its own `#/…`
+ *  references resolve against, and the node's JSON Pointer there. */
+export interface CompatSide {
+  readonly node: Record<string, any>;
+  readonly root: Record<string, any>;
+  /** `#`, or `#/…`. */
+  readonly at: string;
+  /** Names the document, for a message saying where a side is. */
+  readonly doc: CompatDocument;
+}
+
+export interface CompatDocument {
+  readonly label: string;
+}
+
+const NO_DOCUMENT: CompatDocument = { label: "" };
+
+const contentSide = (node: Record<string, any>): CompatSide => ({ node, root: node, at: "#", doc: NO_DOCUMENT });
+
+/** What the comparison reads of the references it meets. */
+export interface CompatLookup {
+  /** The named shape a reference node names, where the comparison defers the
+   *  pair rather than reading it; undefined to read on. */
+  defers?(node: Record<string, any>): { readonly target: string; readonly pointer: string } | undefined;
+  /** The side a reference node names, read in place; the side itself when it
+   *  names nothing the lookup answers. */
+  follow(side: CompatSide, other: CompatSide): CompatSide;
+  /** What makes two reference pairs met on one descent the same question. */
+  guardKey(source: CompatSide, target: CompatSide): string;
+}
+
+/** The lookup reading every reference through `resolveRef`, one hop. */
+function contentLookup(resolveRef: RefResolver): CompatLookup {
+  return {
+    follow: (side) => {
+      if (!resolveRef || typeof side.node.$ref !== "string") return side;
+      const resolved = resolveRef(side.node.$ref);
+      return resolved ? { ...side, node: resolved } : side;
+    },
+    guardKey: (source, target) => `${source.node.$ref}|${target.node.$ref}`,
+  };
+}
+
+/** One side of a deferred pair: a reference to a named shape, or a node of
+ *  the document the judgement reads. */
+export type PairSide =
+  | { readonly named: false; readonly side: CompatSide }
+  | {
+      readonly named: true;
+      /** The reference node as the comparison met it. */
+      readonly holder: CompatSide;
+      readonly target: string;
+      readonly pointer: string;
+    };
+
+/** A comparison the judgement depends on and does not read: one of its sides
+ *  is a named shape. */
+export interface DeferredPair {
+  readonly source: PairSide;
+  readonly target: PairSide;
+  /** Where in the comparison it is met. */
+  readonly path: string;
+  readonly beneathTypeArgument: boolean;
+  readonly fillsDefaults: boolean;
+  /** The unions it is compared as an alternative of, outermost first. */
+  readonly under: readonly UnionTerm[];
+}
+
+/** A union whose verdict depends on deferred pairs: it fails where every
+ *  alternative does. */
+export interface UnionTerm {
+  readonly path: string;
+  readonly beneathTypeArgument: boolean;
+  /** Each alternative in written order: failing on its own, or depending on
+   *  deferred pairs and nested unions, all of which it needs. */
+  readonly alternatives: UnionAlternative[];
+}
+
+export type UnionAlternative =
+  | { readonly fails: true; readonly reasons: readonly string[] }
+  | { readonly fails: false; readonly pairs: readonly DeferredPair[]; readonly unions: readonly UnionTerm[] };
+
+/**
+ * A comparison judged as far as its own content goes: the conflicts it finds
+ * on its own, and what else it holds only where — every deferred pair outside
+ * a union compatible (`pairs`), every union keeping an alternative (`unions`).
+ * `deferred` is every deferred pair it depends on, wherever.
+ */
+export interface CompatJudgement {
+  readonly conflicts: readonly CompatibilityConflict[];
+  readonly pairs: readonly DeferredPair[];
+  readonly unions: readonly UnionTerm[];
+  readonly deferred: readonly DeferredPair[];
+}
+
+interface JudgeScope {
+  readonly conflicts: CompatibilityConflict[];
+  readonly pairs: DeferredPair[];
+  readonly unions: UnionTerm[];
+  readonly deferred: DeferredPair[];
+  readonly under: readonly UnionTerm[];
+}
+
+/** The comparison of {@link checkSchemaCompatibility}, read through `lookup`. */
+export function judgeSchemaCompatibility(
+  source: CompatSide,
+  target: CompatSide,
+  lookup: CompatLookup,
+  roles: CompatibilityRoles = DEFAULT_ROLES,
+  options: CompatibilityOptions & {
+    /** The pair sits beneath a type argument of a value type both sides name. */
+    readonly beneathTypeArgument?: boolean;
+  } = {},
+): CompatJudgement {
+  const scope: JudgeScope = { conflicts: [], pairs: [], unions: [], deferred: [], under: [] };
+  compare(source, target, "", scope, lookup, new Set(), roles, options.beneathTypeArgument === true, options.targetFillsDefaults === true);
+  return scope;
 }
 
 type RefResolver = ((ref: string) => Record<string, any> | undefined) | undefined;
@@ -146,28 +300,47 @@ function jsonTypeSatisfies(source: string, target: string): boolean {
   return source === target || (source === "integer" && target === "number");
 }
 
-function deref(schema: Record<string, any>, resolveRef: RefResolver): Record<string, any> {
-  if (!resolveRef || typeof schema.$ref !== "string") return schema;
-  return resolveRef(schema.$ref) ?? schema;
+/** A JSON Pointer segment, escaped. */
+const segment = (key: string | number): string => String(key).replace(/~/g, "~0").replace(/\//g, "~1");
+
+const beneath = (side: CompatSide, node: Record<string, any>, ...keys: (string | number)[]): CompatSide => ({
+  node,
+  root: side.root,
+  at: `${side.at}/${keys.map(segment).join("/")}`,
+  doc: side.doc,
+});
+
+/** A union node's alternatives as sides, each at its written index. */
+function branchSides(side: CompatSide): CompatSide[] | undefined {
+  if (!unionBranches(side.node)) return undefined;
+  const key = side.node.anyOf != null ? "anyOf" : "oneOf";
+  const out: CompatSide[] = [];
+  (side.node[key] as unknown[]).forEach((branch, index) => {
+    if (branch && typeof branch === "object") out.push(beneath(side, branch as Record<string, any>, key, index));
+  });
+  return out;
 }
 
 function compare(
-  rawSource: Record<string, any>,
-  rawTarget: Record<string, any>,
+  rawSource: CompatSide,
+  rawTarget: CompatSide,
   path: string,
-  conflicts: CompatibilityConflict[],
-  resolveRef: RefResolver,
+  scope: JudgeScope,
+  lookup: CompatLookup,
   seen: Set<string>,
   roles: CompatibilityRoles,
   beneathTypeArgument: boolean,
   fillsDefaults: boolean,
 ): void {
   const issues = {
-    push: (message: string) => conflicts.push({ message, beneathTypeArgument }),
+    push: (message: string) => scope.conflicts.push({ message, beneathTypeArgument }),
   };
-  if (!rawSource || !rawTarget || typeof rawSource !== "object" || typeof rawTarget !== "object") {
+  if (!rawSource.node || !rawTarget.node || typeof rawSource.node !== "object" || typeof rawTarget.node !== "object") {
     return;
   }
+  // A named shape on either side is a pair of its own, judged where its classes
+  // are known: this comparison depends on it and never reads into it.
+  if (deferred(rawSource, rawTarget, path, scope, lookup, beneathTypeArgument, fillsDefaults)) return;
   // A recursive shape reached through the same pair of references twice is the
   // same question again; answering it once terminates and loses nothing.
   //
@@ -177,13 +350,16 @@ function compare(
   // every other diagnostic in the file with it. It also has to be this way to be
   // correct rather than merely terminating: comparing two schemas gives the same
   // answer wherever they are reached from, so the second visit has nothing to add.
-  if (typeof rawSource.$ref === "string" && typeof rawTarget.$ref === "string") {
-    const key = `${rawSource.$ref}|${rawTarget.$ref}`;
+  if (typeof rawSource.node.$ref === "string" && typeof rawTarget.node.$ref === "string") {
+    const key = lookup.guardKey(rawSource, rawTarget);
     if (seen.has(key)) return;
     seen.add(key);
   }
-  const source = deref(rawSource, resolveRef);
-  const target = deref(rawTarget, resolveRef);
+  const sourceSide = lookup.follow(rawSource, rawTarget);
+  const targetSide = lookup.follow(rawTarget, rawSource);
+  if (deferred(sourceSide, targetSide, path, scope, lookup, beneathTypeArgument, fillsDefaults)) return;
+  const source = sourceSide.node;
+  const target = targetSide.node;
 
   // A union is ALTERNATIVES, so it is compared by distributing over branches on
   // both sides: a definite conflict is one where no source-branch/target-branch
@@ -195,25 +371,38 @@ function compare(
   // `allOf` is a conjunction rather than a choice, so it keeps the old posture:
   // it says too little to judge and stays compatible.
   if (source.allOf || target.allOf) return;
-  const sourceBranches = unionBranches(source);
-  const targetBranches = unionBranches(target);
+  const sourceBranches = branchSides(sourceSide);
+  const targetBranches = branchSides(targetSide);
   if (sourceBranches || targetBranches) {
-    const lefts = sourceBranches ?? [source];
-    const rights = targetBranches ?? [target];
+    const lefts = sourceBranches ?? [sourceSide];
+    const rights = targetBranches ?? [targetSide];
+    const union: UnionTerm = { path: path || "/", beneathTypeArgument, alternatives: [] };
     const reasons: string[] = [];
+    const kept: DeferredPair[] = [];
     for (const left of lefts) {
       for (const right of rights) {
-        const probe: CompatibilityConflict[] = [];
+        const probe: JudgeScope = { conflicts: [], pairs: [], unions: [], deferred: [], under: [...scope.under, union] };
         // A fresh `seen` per probe: a pair rejected on one branch must not mark
         // a reference pair visited for the next, which would silently pass it.
-        compare(left, right, path, probe, resolveRef, new Set(seen), roles, beneathTypeArgument, fillsDefaults);
-        if (probe.length === 0) return;
-        reasons.push(...probe.map((conflict) => conflict.message));
+        compare(left, right, path, probe, lookup, new Set(seen), roles, beneathTypeArgument, fillsDefaults);
+        if (probe.conflicts.length > 0) {
+          // An alternative failing on its own depends on nothing.
+          const own = probe.conflicts.map((conflict) => conflict.message);
+          reasons.push(...own);
+          union.alternatives.push({ fails: true, reasons: own });
+          continue;
+        }
+        if (probe.pairs.length === 0 && probe.unions.length === 0) return;
+        union.alternatives.push({ fails: false, pairs: probe.pairs, unions: probe.unions });
+        kept.push(...probe.deferred);
       }
     }
-    issues.push(
-      `${path || "/"}: no alternative matches — ${[...new Set(reasons)].join("; ")}`,
-    );
+    if (union.alternatives.every((alternative) => alternative.fails)) {
+      issues.push(`${path || "/"}: no alternative matches — ${[...new Set(reasons)].join("; ")}`);
+      return;
+    }
+    scope.unions.push(union);
+    scope.deferred.push(...kept);
     return;
   }
 
@@ -241,7 +430,7 @@ function compare(
       // A host-entry or media-type argument is a token, compared by equality.
       if (targetType.entry?.parameters.some((p) => (p.hostEntry || p.hostMediaType) && p.name === argument)) {
         if (sourceArg !== targetArg) {
-          conflicts.push({
+          scope.conflicts.push({
             message:
               `${path}<${argument}>: ${roles.source} names a ${JSON.stringify(sourceArg)}, ` +
               `${roles.target} expects a ${JSON.stringify(targetArg)}`,
@@ -251,11 +440,11 @@ function compare(
         continue;
       }
       compare(
-        sourceArg as Record<string, any>,
-        targetArg as Record<string, any>,
+        beneath(sourceSide, sourceArg as Record<string, any>, X_TELO_TYPE_KEY, argument),
+        beneath(targetSide, targetArg as Record<string, any>, X_TELO_TYPE_KEY, argument),
         `${path}<${argument}>`,
-        conflicts,
-        resolveRef,
+        scope,
+        lookup,
         seen,
         roles,
         true,
@@ -338,11 +527,11 @@ function compare(
   // nested shape passed regardless of what it contained.
   if (target.items && source.items) {
     compare(
-      source.items as Record<string, any>,
-      target.items as Record<string, any>,
+      beneath(sourceSide, source.items as Record<string, any>, "items"),
+      beneath(targetSide, target.items as Record<string, any>, "items"),
       `${path}[]`,
-      conflicts,
-      resolveRef,
+      scope,
+      lookup,
       seen,
       roles,
       beneathTypeArgument,
@@ -374,11 +563,11 @@ function compare(
     const tgtProp = targetProps[field];
     if (tgtProp && srcProp) {
       compare(
-        srcProp,
-        tgtProp,
+        beneath(sourceSide, srcProp, "properties", field),
+        beneath(targetSide, tgtProp, "properties", field),
         `${path}/${field}`,
-        conflicts,
-        resolveRef,
+        scope,
+        lookup,
         seen,
         roles,
         beneathTypeArgument,
@@ -387,6 +576,33 @@ function compare(
     }
   }
 }
+
+/** Whether `source` / `target` is a pair `lookup` defers — a named shape on
+ *  either side — recording it in `scope` when it is. */
+function deferred(
+  source: CompatSide,
+  target: CompatSide,
+  path: string,
+  scope: JudgeScope,
+  lookup: CompatLookup,
+  beneathTypeArgument: boolean,
+  fillsDefaults: boolean,
+): boolean {
+  if (!lookup.defers) return false;
+  const pairSide = (side: CompatSide): PairSide => {
+    const named = lookup.defers!(side.node);
+    return named ? { named: true, holder: side, target: named.target, pointer: named.pointer } : { named: false, side };
+  };
+  const left = pairSide(source);
+  const right = pairSide(target);
+  if (!left.named && !right.named) return false;
+  const pair: DeferredPair = { source: left, target: right, path, beneathTypeArgument, fillsDefaults, under: scope.under };
+  scope.pairs.push(pair);
+  scope.deferred.push(pair);
+  return true;
+}
+
+const X_TELO_TYPE_KEY = "x-telo-type";
 
 /** Whether a member's own schema declares a `default` — read where a validator
  *  filling defaults reads it: beside a `$ref`, never on the node it names. */
@@ -437,7 +653,7 @@ export function validateAgainstSchema(data: unknown, schema: Record<string, any>
     compiledSchemaValidators.set(schema, validate);
   }
   if (validate(data)) return [];
-  return schemaIssues(validate.errors, data);
+  return judgedSchemaIssues(ajv, validate.errors, data, schema);
 }
 
 const defaultFillingAjv = createAjv({ useDefaults: true });

@@ -6,6 +6,7 @@ import {
   AnalysisRegistry,
   assembleGraphDiagnostics,
   collectApplicationSources,
+  collectFilePositions,
   collectModuleDocuments,
   DiagnosticSeverity,
   flattenForAnalyzer,
@@ -137,6 +138,7 @@ export async function analyzedManifests(
     manifests,
     {
       moduleDocuments: collectModuleDocuments(graph),
+      positions: collectFilePositions(graph),
       applicationSources: collectApplicationSources(graph),
       hostVersions: nodeHostVersions(),
     },

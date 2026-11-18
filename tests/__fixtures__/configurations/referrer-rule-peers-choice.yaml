@@ -1,0 +1,48 @@
+# A referrer rule compares its resource with the other entries of the
+# referrer's collection: the duplicate one entry's reference brings in is
+# written only where a choice decides it.
+kind: Telo.Application
+metadata: { name: ReferrerRulePeersChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets:
+  - !ref schema
+---
+kind: Telo.Definition
+metadata: { name: Enum }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties: { typeName: { type: string } }
+  x-telo-referrer-rules:
+    - referrer: Self.Schema
+      peers: /enums
+      condition: !cel "!peers.exists(p, p.typeName == self.typeName)"
+      code: ENUM_DUPLICATE
+      message: lists another enum declaring the same type name
+---
+kind: Telo.Definition
+metadata: { name: Schema }
+capability: Telo.Runnable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties:
+    enums: { type: array, items: { x-telo-ref: { kind: Self.Enum, use: dependency } } }
+---
+kind: Self.Enum
+metadata: { name: status }
+typeName: status
+---
+kind: Self.Enum
+metadata: { name: state }
+typeName: !if
+  if: !cel "variables.flag1"
+  then: status
+  else: state
+---
+kind: Self.Schema
+metadata: { name: schema }
+enums:
+  - !ref status
+  - !ref state

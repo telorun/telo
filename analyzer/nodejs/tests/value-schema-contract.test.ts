@@ -1,3 +1,4 @@
+import { collectFilePositions } from "../src/diagnostic-location.js";
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { makeTaggedSentinel } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
@@ -230,11 +231,11 @@ describe("x-telo-value-schema-from inside a contract", () => {
       listed("BadElement", ["/readers/*/contextType", "/readers//contextType"]),
     ]).filter((d) => d.code === "VALUE_SCHEMA_FROM_INVALID");
     expect(found.map((d) => [d.data?.resource?.name, d.data?.path])).toEqual([
-      ["EmptyList", "inputType.schema.properties.context.x-telo-value-schema-from"],
       ["BadElement", "inputType.schema.properties.context.x-telo-value-schema-from"],
+      ["EmptyList", "inputType.schema.properties.context.x-telo-value-schema-from"],
     ]);
-    expect(found[0]!.message).toContain("names at least one location");
-    expect(found[1]!.message).toContain("element 1 of the list (`/readers//contextType`)");
+    expect(found[1]!.message).toContain("names at least one location");
+    expect(found[0]!.message).toContain("element 1 of the list (`/readers//contextType`)");
   });
 
   describe("a type field naming a shape", () => {
@@ -629,7 +630,7 @@ schema:
       desugarImports: true,
     });
     return new StaticAnalyzer()
-      .analyze(flattenForAnalyzer(graph), { moduleDocuments: collectModuleDocuments(graph) })
+      .analyze(flattenForAnalyzer(graph), { moduleDocuments: collectModuleDocuments(graph), positions: collectFilePositions(graph) })
       .filter((d) => d.severity === 1)
       .map((d) => [d.code, d.data?.path, d.message]);
   }
@@ -722,7 +723,7 @@ ${naming("Holds", "readers")}${naming("Lacks", "reader")}`;
     };
     const graph = await new Loader([source]).loadGraph("/kinds/telo.yaml", { desugarImports: true });
     const diagnostics = new StaticAnalyzer()
-      .analyze(flattenForAnalyzer(graph), { moduleDocuments: collectModuleDocuments(graph) })
+      .analyze(flattenForAnalyzer(graph), { moduleDocuments: collectModuleDocuments(graph), positions: collectFilePositions(graph) })
       .filter((d) => d.severity === 1);
     expect(diagnostics.map((d) => [d.code, d.data?.resource?.name, d.data?.path])).toEqual([
       ["VALUE_SCHEMA_FROM_INVALID", "Lacks", "inputType"],
@@ -799,7 +800,7 @@ outputs:
     };
     const graph = await new Loader([source]).loadGraph("/entry/telo.yaml", { desugarImports: true });
     return new StaticAnalyzer()
-      .analyze(flattenForAnalyzer(graph), { moduleDocuments: collectModuleDocuments(graph) })
+      .analyze(flattenForAnalyzer(graph), { moduleDocuments: collectModuleDocuments(graph), positions: collectFilePositions(graph) })
       .filter((d) => d.severity === 1)
       .map((d) => [d.code, d.data?.path]);
   }

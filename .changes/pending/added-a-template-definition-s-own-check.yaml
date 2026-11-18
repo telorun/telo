@@ -1,0 +1,9 @@
+units:
+  analyzer: Added
+  cli: Added
+body: A template definition's own check judges the resource and referrer rules among its
+  body's entries and reports what the body alone decides once, at the definition; an
+  application no longer repeats it at each resource of the kind, and reads a
+  dependency's template definition only when a kind it writes reaches it. A `!ref` to a
+  body entry declared under a choice that leaves it out where the reference is says so,
+  and `Siblings:` / `Available:` list the entries the body declares as written.

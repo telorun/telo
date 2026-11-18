@@ -108,6 +108,16 @@ configurations to something a library may change in a patch release. A
 condition may also call a module function written in CEL, whose arguments are
 read as the condition's own.
 
+**Inside a template body.** A choice a `Telo.Definition`'s body makes over a
+module input (`if: !cel "variables.verbose"`) is a configuration of the
+application, exactly as one written outside a body: `variables.verbose` is one
+dimension whoever reads it, a body finding under it is labelled by it, `within`
+accepts it, an input read only in the branch it chooses is required only where
+that branch is taken, and the studio's picker lists it. A library's body reads
+its input through the import's binding: a literal fixes it, a bare
+`variables.<name>` makes it the importer's dimension, and with any other
+expression the body is checked for every value the choice can take.
+
 ## Absence
 
 A choice with nothing to choose contributes **nothing to its container**: an
@@ -154,11 +164,14 @@ is held to the slot as that configuration's literal. A slot accepting
 
 The set of configurations is the product of the dimensions' domains: a
 `dialect` of `[sqlite, postgres]` and an `openaiApiKey` present or absent are
-four. `telo check` expands the application once per configuration and runs every
-check over the whole of it — references, init order, the call graph, zones,
-throws coverage, rules, exports — and there is no cap, because a cap would leave
-a path unchecked. A declaration's own checks run once per distinct combination of
-what it reads, so one no choice reaches is checked once however many
+four. `telo check` expands the application once per configuration and runs the
+checks over the whole of it — init order, the call graph, zones, throws
+coverage, exports — and there is no cap, because a cap would leave a path
+unchecked. A declaration's own checks, its references and the rules judging it
+run once per distinct combination of what each part of it reads — a reference
+once per what it resolves to, a value with alternatives (a step, which may be an
+`invoke:`, a `try:`, an `if:` …) once per verdict of the choices beneath it, not
+per combination of them — so one no choice reaches is checked once however many
 configurations exist.
 
 A finding that holds in every configuration prints as is. One that holds in only
@@ -181,8 +194,8 @@ configuration takes says so. The studio's module graph draws one configuration a
 a time, starting from each dimension's `default:`, and lets you pick another.
 
 A case no configuration selects is `BRANCH_CASE_UNREACHABLE` (a warning; it is
-still checked), and a `!switch` that misses a value in some configuration is
-`BRANCH_NOT_EXHAUSTIVE`.
+still checked, every option of a choice inside it included), and a `!switch`
+that misses a value in some configuration is `BRANCH_NOT_EXHAUSTIVE`.
 
 ## Asked only for what the setup uses
 

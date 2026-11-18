@@ -1,25 +1,12 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
-import { listRequests } from "./declaration-requests.js";
+import { isEntryOwned } from "./entry-ownership.js";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
-import { claimsDeterministic, isCallableKind, signatureDeclarer } from "./callable-signature.js";
-import {
-  ancestorChain,
-  type ContractDirection,
-  type DefResolver,
-  effectiveContractField,
-  hasOwnControllerOrTemplate,
-  mappingFieldFor,
-  needsContractMapping,
-  resolveParent,
-} from "./extends-resolution.js";
-import { resolveTypeFieldToSchema } from "./validate-cel-context.js";
+import { type ContractDirection, type DefResolver, effectiveContractField } from "./extends-resolution.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
-import { refSentinelsIn } from "./contract-shapes.js";
 import { reachSites, siteRefEntry } from "./reference-reach.js";
-import { checkSchemaCompatibility, validateAgainstSchemaWithDefaults } from "./schema-compat.js";
-import { signatureMismatches, type SignatureMismatch } from "./signature-substitution.js";
-import { codesOutsideCeiling, throwsNotSubstitutableMessage } from "./throws-ceiling.js";
+import { validateAgainstSchemaWithDefaults } from "./schema-compat.js";
+import { type SignatureMismatch } from "./signature-substitution.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { isResolvedReference } from "./resolved-reference.js";
 import type { ScopeSite } from "./scope-address.js";
@@ -36,21 +23,14 @@ const SOURCE = "telo-analyzer";
  * supply).
  *
  * Diagnostics:
- *  - CONTRACT_MISSING_MAPPING: a definition that inherits its controller declares
- *    its own `inputType` / `outputType` without the `inputs:` / `result:` mapping
- *    that bridges it back to the inherited controller.
- *  - CONTRACT_INPUTS_SCHEMA_FORM: a leftover `inputs:` property map on a kind
- *    whose input contract is now `inputType:`.
- *  - CONTRACT_TYPE_NOT_FOUND: a contract names a type that is not declared in
- *    scope, so every call through it would fail at dispatch.
- *  - CONTRACT_NOT_SUBSTITUTABLE: a definition replaces an ancestor's contract
- *    with a shape that cannot stand in for it. The one check nothing else makes:
- *    contracts resolve to the nearest declaration in BOTH halves, so a child that
- *    declares its own is compared against its abstract by neither the analyzer
- *    nor dispatch.
- *  - THROWS_NOT_SUBSTITUTABLE: a definition declares a throw code its nearest
- *    `throws:`-declaring ancestor does not — the same replacement, for the third
- *    part of the contract (`throws-ceiling.ts`).
+ *  - CONTRACT_INPUTS_AT_RUN_SITE: a resource wired where it is started with
+ *    `run()`, whose contract refuses `{}`.
+ *  - CONTRACT_SLOT_INPUTS_UNSATISFIABLE: a resource wired where the consumer
+ *    builds the arguments from the slot's kind alone, requiring inputs that kind
+ *    does not declare.
+ *
+ * What a kind document's contract refuses of the kinds it extends is
+ * `kind-contract-findings.ts`.
  *
  * Deliberately NOT diagnosed: an input that is neither `required:` nor
  * defaulted. It is indistinguishable from a genuinely optional one — a text-generation kind
@@ -63,50 +43,17 @@ export function validateInvocationContract(
   manifests: ResourceManifest[],
   registry: DefinitionRegistry,
   aliases: AliasResolver,
-  aliasesByModule: Map<string, AliasResolver> = new Map(),
+  aliasesByModule: Map<string, AliasResolver>,
+  rootModules: ReadonlySet<string>,
 ): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
   const resolveDef: DefResolver = (kind, from) => {
     const scope = moduleAliasScope(from?.metadata, aliases, aliasesByModule);
     return registry.resolve(kind) ?? registry.resolve(scope.resolveKind(kind) ?? kind);
   };
-  /** A named shape (`telo:<module>/<Type>`) → its schema. Without it a signature
-   *  written as `!ref Money` presents as an opaque `$ref` node carrying no
-   *  information, so two signatures naming different shapes would compare
-   *  equal — the check would pass by knowing nothing. */
-  const resolveRef = (ref: string): Record<string, any> | undefined => registry.schemaForId(ref);
 
   // A published dependency's declarations are not the consumer's to fix.
-  const importedModules = new Set<string>();
-  for (const m of manifests) {
-    if (m.kind !== "Telo.Import") continue;
-    const resolved = (m.metadata as { resolvedModuleName?: string } | undefined)?.resolvedModuleName;
-    if (resolved) importedModules.add(resolved);
-  }
-  const isOwn = (m: ResourceManifest): boolean => {
-    const ownModule = (m.metadata as { module?: string } | undefined)?.module;
-    return !ownModule || !importedModules.has(ownModule);
-  };
-
-  // A dependency's too, unlike the checks below: the kernel refuses such a
-  // definition at registration, so staying silent only moves the failure to boot.
-  for (const m of manifests) {
-    if (m.kind !== "Telo.Definition" && m.kind !== "Telo.Abstract") continue;
-    const def = m as unknown as ResourceDefinition;
-    const violation = codesOutsideCeiling(def, resolveDef);
-    if (!violation) continue;
-    diagnostics.push({
-      severity: DiagnosticSeverity.Error,
-      code: "THROWS_NOT_SUBSTITUTABLE",
-      source: SOURCE,
-      message: throwsNotSubstitutableMessage(def, violation),
-      data: {
-        resource: { kind: m.kind, name: m.metadata?.name as string },
-        filePath: (m.metadata as { source?: string } | undefined)?.source,
-        path: `throws.codes.${violation.outside[0]}`,
-      },
-    });
-  }
+  const isOwn = (m: ResourceManifest): boolean => isEntryOwned(m, rootModules);
 
   for (const m of manifests) {
     if (!isOwn(m)) continue;
@@ -114,32 +61,13 @@ export function validateInvocationContract(
     if (!name) continue;
     const filePath = (m.metadata as { source?: string } | undefined)?.source;
     const resource = { kind: m.kind, name };
-    const md = m as unknown as Record<string, unknown>;
-
-    if (m.kind === "Telo.Definition" || m.kind === "Telo.Abstract") {
-      checkMappingRequired(m, resource, filePath, resolveDef, diagnostics);
-      checkContractResolves(m, md, manifests, resource, filePath, diagnostics);
-      checkAncestorSubstitutability(m, md, manifests, resource, filePath, resolveDef, (ref) => registry.schemaForId(ref), diagnostics);
-      checkSignatureSubstitutability(
-        m,
-        md,
-        manifests,
-        resource,
-        filePath,
-        resolveDef,
-        resolveRef,
-        diagnostics,
-      );
-      continue;
-    }
+    if (m.kind === "Telo.Definition" || m.kind === "Telo.Abstract") continue;
 
     // A RESOURCE (an instance of some kind) — a leftover `inputs:` map is only
     // meaningful against a kind whose schema no longer declares one.
     const definition = resolveDef(m.kind, m as unknown as ResourceDefinition);
     if (!definition) continue;
-    checkContractResolves(m, md, manifests, resource, filePath, diagnostics);
     const kindSchema = registry.effectiveSchemaOf(definition) as Record<string, any> | undefined;
-    checkLeftoverInputsSchema(m, kindSchema, md, resource, filePath, diagnostics);
     checkRefSlotWiring(m, kindSchema, manifests, resolveDef, resource, filePath, diagnostics);
   }
 
@@ -332,285 +260,6 @@ function referencedNames(value: unknown): string[] {
   return out;
 }
 
-/**
- * A named contract must name a type that exists.
- *
- * The runtime raises `ERR_CONTRACT_UNRESOLVABLE` on the first dispatch through
- * an unresolvable contract, which is exactly the failure a checker should have
- * caught: nothing about it depends on runtime values. Instance-level slots were
- * already covered, because a module kind declares its `inputType` property with
- * `x-telo-ref: Telo.Type`; the KIND-level fields are on `Telo.Definition`, which
- * is deliberately excluded from reference validation, so they had no check at
- * all and the same typo behaved differently depending on where it was written.
- */
-function checkContractResolves(
-  m: ResourceManifest,
-  md: Record<string, unknown>,
-  manifests: ResourceManifest[],
-  resource: { kind: string; name: string },
-  filePath: string | undefined,
-  diagnostics: AnalysisDiagnostic[],
-): void {
-  const declaringModule = (m.metadata as { module?: string } | undefined)?.module;
-  for (const direction of ["inputType", "outputType"] as ContractDirection[]) {
-    // A kind document's contract is outside reference validation, so a `!ref` in
-    // it that resolved to nothing — at the root or at any depth — is reported
-    // here. An instance's contract is a declared reference slot, reported with
-    // every other slot.
-    if (m.kind === "Telo.Definition" || m.kind === "Telo.Abstract") {
-      for (const { sentinel, path } of refSentinelsIn(md[direction], direction)) {
-        diagnostics.push({
-          severity: DiagnosticSeverity.Error,
-          code: "CONTRACT_TYPE_NOT_FOUND",
-          source: SOURCE,
-          message:
-            `${m.kind}/${resource.name}: '${path}' names the type '${sentinel.source}' with \`!ref\`, ` +
-            `and nothing by that name is declared in scope. The contract cannot be enforced, so ` +
-            `every call through it would fail at dispatch. Declare a \`Telo.JsonSchema\` with that ` +
-            `name, or correct the reference.`,
-          data: { resource, filePath, path },
-        });
-      }
-    }
-    const named = namedTypeReference(md[direction]);
-    if (!named) continue;
-    if (findInModule(manifests, named, declaringModule, scopeReadAt(m))) continue;
-    diagnostics.push({
-      severity: DiagnosticSeverity.Error,
-      code: "CONTRACT_TYPE_NOT_FOUND",
-      source: SOURCE,
-      message:
-        `${m.kind}/${resource.name}: \`${direction}\` names the type '${named}', which is not declared ` +
-        `in scope. The contract cannot be enforced, so every call through it would fail at dispatch. ` +
-        `Declare a \`Telo.JsonSchema\` with that name, or inline the shape.`,
-      data: { resource, filePath, path: direction },
-    });
-  }
-}
-
-/** The name a contract field references, when it is a reference at all. An
- *  inline shape or a raw schema names nothing and resolves on its own. */
-function namedTypeReference(value: unknown): string | undefined {
-  if (typeof value === "string") return value;
-  return isResolvedReference(value) ? value.name : undefined;
-}
-
-/**
- * A REPLACING CONTRACT MUST STILL STAND IN FOR THE ONE IT REPLACES.
- *
- * Contracts resolve to the NEAREST declaration and never merge, which is right —
- * a call signature is not additive, and a backend narrowing `status` to the
- * states it actually has could not express that through a merge. But the
- * consequence is that an abstract's contract binds only the children that
- * declare none of their own: a child that declares one is checked against
- * nothing, statically or at dispatch, since `resolveBoundContract` stops at the
- * same nearest declaration. So an abstract could state a floor every
- * implementation must answer with (a durable run's `runId` / `status`, the
- * identity every later question about a run is asked by) and have that floor hold
- * for exactly the implementations that declared nothing — while the real ones,
- * which all declare their own, escaped it. A slot typed by the abstract would
- * then be typed by a promise nothing kept.
- *
- * The rule is substitutability, and its direction differs per contract because
- * one is produced and the other consumed:
- *
- *  - `outputType` is COVARIANT — a consumer written against the ancestor reads
- *    the ancestor's shape, so the child's output must be acceptable where the
- *    ancestor's is declared. Dropping a required property is what breaks it.
- *  - `inputType` is CONTRAVARIANT — a caller written against the ancestor sends
- *    the ancestor's shape, so the ancestor's input must be acceptable where the
- *    child's is declared. Requiring an input the ancestor never mentions is what
- *    breaks it: no such caller could satisfy it.
- *
- * **Only an ABSTRACT ancestor's contract is a contract**, and that narrowing is a
- * decision rather than an oversight. Extending a CONCRETE kind is how a friendlier
- * schema is put over an existing controller — `base:` reshapes its config and
- * `inputs:` / `result:` translate its call signature — so a child there is
- * SUPPOSED to present different inputs, and demanding substitutability would
- * reject the pattern the standard library and every custom-kind example are built
- * on. An abstract has no implementation to reshape: extending one is a claim to
- * BE the thing, its contract is written for implementors, and a slot typed by it
- * is polymorphic by construction — which is exactly where an unkept promise has
- * nowhere to be caught.
- *
- * A direction the child BRIDGES (`inputs:` for inputs, `result:` for outputs) is
- * skipped for the same reason one hop down: the mapping is the author saying the
- * shapes differ deliberately and are translated.
- *
- * The comparison is {@link checkSchemaCompatibility}, which reports only DEFINITE
- * mismatches — a union, an absent `type`, an undeclared argument all read as
- * compatible — so narrowing a value's type, adding an optional property or
- * restricting an enum stays legal, which is the whole point of letting a child
- * replace the contract at all.
- */
-function checkAncestorSubstitutability(
-  m: ResourceManifest,
-  md: Record<string, unknown>,
-  manifests: ResourceManifest[],
-  resource: { kind: string; name: string },
-  filePath: string | undefined,
-  resolveDef: DefResolver,
-  /** What a canonical shape id names, so a nested shape is compared through. */
-  resolveRef: (ref: string) => Record<string, any> | undefined,
-  diagnostics: AnalysisDiagnostic[],
-): void {
-  const def = m as unknown as ResourceDefinition;
-
-  for (const direction of ["inputType", "outputType"] as ContractDirection[]) {
-    const own = md[direction];
-    if (own === undefined || own === null) continue;
-    // A declared bridge says the shapes differ on purpose and are translated.
-    if (md[mappingFieldFor(direction)] != null) continue;
-
-    // The nearest ANCESTOR that declares it — the contract this one replaces.
-    // Walking past self is the whole question: `contractDeclarer` would answer
-    // "this one", which is what nothing checks.
-    const ancestor = ancestorChain(def, resolveDef).find((a) => {
-      const inherited = (a as unknown as Record<string, unknown>)[direction];
-      return inherited !== undefined && inherited !== null;
-    });
-    if (!ancestor || ancestor.kind !== "Telo.Abstract") continue;
-    const inherited = (ancestor as unknown as Record<string, unknown>)[direction];
-
-    // The WHOLE manifest set, which is what `analyzerContractScope`'s
-    // `declarationsFor` hands `resolveContract` — so this resolves a named type
-    // exactly as the resolver the kernel binds with does. Filtering to the
-    // declaring module looked more careful and was strictly worse: a contract
-    // naming a shape from a shared module resolved to nothing, and an
-    // unresolvable side is skipped, so the check silently switched itself off for
-    // precisely the libraries that factor their shapes out. Nothing else caught
-    // it either — `CONTRACT_TYPE_NOT_FOUND` finds the type through its own global
-    // fallback, so such a kind passed `telo check` with no diagnostic at all.
-    const ownSchema = resolveTypeFieldToSchema(own, listRequests(manifests));
-    const ancestorSchema = resolveTypeFieldToSchema(inherited, listRequests(manifests));
-    // An unresolvable side says nothing about compatibility; CONTRACT_TYPE_NOT_FOUND
-    // is what reports a contract that names a type nothing declares.
-    if (!ownSchema || !ancestorSchema) continue;
-
-    const { compatible, issues } =
-      direction === "outputType"
-        ? checkSchemaCompatibility(ownSchema, ancestorSchema, resolveRef)
-        : checkSchemaCompatibility(ancestorSchema, ownSchema, resolveRef);
-    if (compatible) continue;
-
-    const ancestorName = `${(ancestor.metadata as { module?: string } | undefined)?.module ?? ""}.${
-      ancestor.metadata?.name ?? "?"
-    }`.replace(/^\./, "");
-    const why =
-      direction === "outputType"
-        ? `every caller that holds this through '${ancestorName}' reads the shape that kind declares`
-        : `a caller that holds this through '${ancestorName}' sends the shape that kind declares`;
-    diagnostics.push({
-      severity: DiagnosticSeverity.Error,
-      code: "CONTRACT_NOT_SUBSTITUTABLE",
-      source: SOURCE,
-      message:
-        `${m.kind}/${resource.name}: \`${direction}\` replaces the one declared by '${ancestorName}' ` +
-        `with a shape that cannot stand in for it — ${issues.join("; ")}. Contracts replace rather ` +
-        `than merge, so nothing re-checks this at dispatch: ${why}. Restate the fields ` +
-        `'${ancestorName}' declares, or drop \`${direction}\` to inherit the contract unchanged.`,
-      data: { resource, filePath, path: direction },
-    });
-  }
-}
-
-/**
- * A REPLACING SIGNATURE MUST STILL STAND IN FOR THE ONE IT REPLACES.
- *
- * The same rule as {@link checkAncestorSubstitutability}, applied to the other
- * declaration that resolves to the nearest along `extends` and replaces rather
- * than merges — which is why it is checked here rather than in a second pass of
- * its own. Only an ABSTRACT ancestor's signature is a contract, for the reason
- * one function up: extending a concrete callable reuses its controller, and the
- * child is then the same function under a narrower configuration.
- *
- * Three dimensions:
- *
- *  - `returns` is COVARIANT — a caller holding this through the abstract reads
- *    the shape the abstract declares.
- *  - `params` is CONTRAVARIANT, positional and NAMED — a CEL call site passes
- *    arguments by position, but a controller holding the implementation through
- *    a slot typed by the abstract calls it by the abstract's parameter names, so
- *    a rename is as much a break as a retyping. Arity is judged the same way,
- *    and only definitely: a child that requires more parameters than the
- *    ancestor declares at all, or accepts fewer than the ancestor requires, can
- *    never answer an ancestor-shaped call.
- *  - DETERMINISM is the third, because without it a deterministic abstract would
- *    accept a non-deterministic implementation with nothing reported. It never
- *    flows down — a native kind extending such an abstract writes
- *    `deterministic: true` itself, since the claim is about ITS code.
- */
-function checkSignatureSubstitutability(
-  m: ResourceManifest,
-  md: Record<string, unknown>,
-  manifests: readonly ResourceManifest[],
-  resource: { kind: string; name: string },
-  filePath: string | undefined,
-  resolveDef: DefResolver,
-  resolveRef: (ref: string) => Record<string, any> | undefined,
-  diagnostics: AnalysisDiagnostic[],
-): void {
-  const def = m as unknown as ResourceDefinition;
-  if (!isCallableKind(def, resolveDef)) return;
-
-  const report = (path: string, message: string): void => {
-    diagnostics.push({
-      severity: DiagnosticSeverity.Error,
-      code: "CONTRACT_NOT_SUBSTITUTABLE",
-      source: SOURCE,
-      message: `${m.kind}/${resource.name}: ${message}`,
-      data: { resource, filePath, path },
-    });
-  };
-  const replaced = (ancestorName: string): string =>
-    ` Signatures replace rather than merge, so nothing re-checks this at a call site: every ` +
-    `caller that reaches this function through '${ancestorName}' is checked against the ` +
-    `signature THAT kind declares.`;
-
-  for (const half of ["params", "returns"] as const) {
-    const own = md[half];
-    if (own === undefined || own === null) continue;
-    // The signature this one replaces: the nearest declaration ABOVE this kind,
-    // by the same resolver every consumer of a signature reads.
-    const ancestor = signatureDeclarer(resolveParent(def, resolveDef), resolveDef, half);
-    if (!ancestor || ancestor.kind !== "Telo.Abstract") continue;
-    const ancestorName = kindLabel(ancestor);
-    // The ancestor as the REGISTRY holds it was registered before the analyzer's
-    // clone boundary and before `!ref` resolution, so its signature still
-    // carries the reference tags — a shape it names would compare as an opaque
-    // node and every mismatch through it would pass. Its twin in the analyzed
-    // set is the same declaration with the references resolved.
-    const inheritedDoc = analyzedTwin(manifests, ancestor) as unknown as Record<string, unknown>;
-
-    for (const mismatch of signatureMismatches(
-      md,
-      inheritedDoc,
-      { params: half === "params", returns: half === "returns" },
-      resolveRef,
-    )) {
-      const { path, text } = describeSignatureMismatch(mismatch, ancestorName);
-      report(path, text + replaced(ancestorName));
-    }
-  }
-
-  // Determinism. Only a kind that supplies its own implementation can answer a
-  // requirement; a controller-inheriting child inherits the claim with the
-  // controller and is forbidden from restating it.
-  if (m.kind === "Telo.Abstract" || !hasOwnControllerOrTemplate(def)) return;
-  if (claimsDeterministic(md)) return;
-  const requiring = ancestorChain(def, resolveDef).find(
-    (a) => a.kind === "Telo.Abstract" && claimsDeterministic(a),
-  );
-  if (!requiring) return;
-  report(
-    "deterministic",
-    `'${kindLabel(requiring)}' requires \`deterministic: true\` of every implementation, and this ` +
-      `kind declares none — so it reads as non-deterministic. Determinism is a promise about ` +
-      `native code and never flows down: an implementation makes the claim itself, or the ` +
-      `abstract must stop requiring it.`,
-  );
-}
-
 /** A signature mismatch as the sentence a diagnostic carries, and the path it
  *  anchors at, against the kind whose signature it fails to stand in for. */
 export function describeSignatureMismatch(
@@ -657,80 +306,35 @@ export function describeSignatureMismatch(
   }
 }
 
-/** The analyzed manifest declaring the same kind as `def` — matched on kind,
- *  module and name, since a kind name is unique only within its module. Falls
- *  back to `def` itself for a definition with no twin in the set (a built-in). */
-function analyzedTwin(
-  manifests: readonly ResourceManifest[],
-  def: ResourceDefinition,
-): ResourceManifest | ResourceDefinition {
-  const module = (def.metadata as { module?: string } | undefined)?.module;
-  return (
-    manifests.find(
-      (m) =>
-        m.kind === def.kind &&
-        m.metadata?.name === def.metadata?.name &&
-        (m.metadata as { module?: string } | undefined)?.module === module,
-    ) ?? def
-  );
-}
-
-/** A definition's canonical `<module>.<Kind>` label. */
-function kindLabel(def: ResourceDefinition): string {
-  return `${(def.metadata as { module?: string } | undefined)?.module ?? ""}.${
-    def.metadata?.name ?? "?"
-  }`.replace(/^\./, "");
-}
-
-/** A child that inherits its controller and REPLACES a contract must bridge it:
- *  contracts resolve to the nearest declaration and never merge, so the
- *  inherited controller only understands its own shape. Without the mapping the
- *  declaration is inert — precisely the silent no-op this rule exists to end. */
-function checkMappingRequired(
+/**
+ * CONTRACT_INPUTS_SCHEMA_FORM: `inputs:` on a resource once meant "a JSON Schema
+ * property map" on the run kinds. It is values everywhere else, and now means
+ * values everywhere — so a leftover map against a kind that declares no `inputs`
+ * property is a migration the author has not finished, not an unknown field. The
+ * verdict reads the declaration's own `inputs` and its kind's schema alone.
+ */
+export function leftoverInputsSchemaFindings(
   m: ResourceManifest,
-  resource: { kind: string; name: string },
-  filePath: string | undefined,
-  resolveDef: DefResolver,
-  diagnostics: AnalysisDiagnostic[],
-): void {
-  const def = m as unknown as ResourceDefinition;
-  const body = m as unknown as Record<string, unknown>;
-  for (const direction of ["inputType", "outputType"] as ContractDirection[]) {
-    if (!needsContractMapping(def, resolveDef, direction)) continue;
-    const mappingField = mappingFieldFor(direction);
-    if (body[mappingField] != null) continue;
-    diagnostics.push({
-      severity: DiagnosticSeverity.Error,
-      code: "CONTRACT_MISSING_MAPPING",
-      source: SOURCE,
-      message:
-        `${m.kind}/${resource.name}: declares its own \`${direction}\` but inherits its controller, ` +
-        `and no \`${mappingField}:\` mapping bridges the two. The inherited controller only understands ` +
-        `the kind it came from, so without a mapping the declaration would never be applied. Add a ` +
-        `\`${mappingField}:\` mapping, or drop \`${direction}\` to inherit the contract unchanged.`,
-      data: { resource, filePath, path: direction },
-    });
-  }
-}
-
-/** `inputs:` on a resource once meant "a JSON Schema property map" on the run
- *  kinds. It is values everywhere else, and now means values everywhere — so a
- *  leftover map against a kind that declares no `inputs` property is a migration
- *  the author has not finished, not an unknown field. */
-function checkLeftoverInputsSchema(
-  m: ResourceManifest,
-  kindSchema: Record<string, any> | undefined,
-  md: Record<string, unknown>,
-  resource: { kind: string; name: string },
-  filePath: string | undefined,
-  diagnostics: AnalysisDiagnostic[],
-): void {
-  const value = md.inputs;
-  if (!value || typeof value !== "object" || Array.isArray(value)) return;
+  registry: DefinitionRegistry,
+  aliases: AliasResolver,
+  aliasesByModule: Map<string, AliasResolver>,
+  rootModules: ReadonlySet<string>,
+): AnalysisDiagnostic[] {
+  if (!isEntryOwned(m, rootModules)) return [];
+  const name = m.metadata?.name as string | undefined;
+  if (!name || m.kind === "Telo.Definition" || m.kind === "Telo.Abstract") return [];
+  const scope = moduleAliasScope(m.metadata, aliases, aliasesByModule);
+  const definition = registry.resolve(m.kind) ?? registry.resolve(scope.resolveKind(m.kind) ?? m.kind);
+  if (!definition) return [];
+  const value = (m as unknown as Record<string, unknown>).inputs;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+  const kindSchema = registry.effectiveSchemaOf(definition) as Record<string, any> | undefined;
   const properties = (kindSchema?.properties ?? {}) as Record<string, unknown>;
-  if ("inputs" in properties) return;
-  if (!("inputType" in properties)) return;
-  diagnostics.push({
+  if ("inputs" in properties) return [];
+  if (!("inputType" in properties)) return [];
+  const resource = { kind: m.kind, name };
+  const filePath = (m.metadata as { source?: string } | undefined)?.source;
+  return [{
     severity: DiagnosticSeverity.Error,
     code: "CONTRACT_INPUTS_SCHEMA_FORM",
     source: SOURCE,
@@ -739,7 +343,7 @@ function checkLeftoverInputsSchema(
       `values now. Move the property map to \`inputType:\` (a \`Telo.JsonSchema\` shape, a named type ` +
       `reference, or an inline schema).`,
     data: { resource, filePath, path: "inputs" },
-  });
+  }];
 }
 
 /** The schema behind an INLINE type declaration, which is all this pass can read

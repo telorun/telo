@@ -1,0 +1,44 @@
+# A referrer rule fails to evaluate at two referrers of one route, the earlier
+# written referencing it only where flag1 holds: the rule's first failure as
+# written is reported, the earlier referrer's where it references the route,
+# the later's elsewhere.
+kind: Telo.Application
+metadata: { name: ReferrerRuleSettlingChoice }
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+---
+kind: Telo.Definition
+metadata: { name: Route }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties: {}
+  x-telo-referrer-rules:
+    - referrer: Self.Server
+      condition: !cel "referrer.tls.enabled == true"
+      code: ROUTE_NEEDS_TLS
+      message: mounts the route without tls enabled
+---
+kind: Telo.Definition
+metadata: { name: Server }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties:
+    tls: { type: object }
+    route: { x-telo-ref: { kind: Self.Route, use: dependency } }
+---
+kind: Self.Route
+metadata: { name: route }
+---
+kind: Self.Server
+metadata: { name: first }
+route: !if
+  if: !cel "variables.flag1"
+  then: !ref route
+---
+kind: Self.Server
+metadata: { name: second }
+route: !ref route

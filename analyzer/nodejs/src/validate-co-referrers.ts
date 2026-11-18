@@ -3,6 +3,7 @@ import type { CallGraph, ResourceGraphNode } from "./call-graph.js";
 import { coReferrerScopedMessage, registeredCoReferrerCalls, scopedCoReferrerCalls } from "./co-referrers.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
+import { writtenPlaceOf } from "./diagnostic-identity.js";
 import { importAnchoredDiagnostic, type ImportReach } from "./reaching-import.js";
 import { isResolvedReference } from "./resolved-reference.js";
 import { pointerToPath } from "./resource-rule.js";
@@ -45,24 +46,23 @@ export function coReferrerScopedDiagnostics(
   if (calls.length === 0) return [];
 
   const out: AnalysisDiagnostic[] = [];
-  const report = (node: ResourceGraphNode, message: string, slot: string): void => {
+  /** `contextual` for a refusal the consumer's scoped import makes, which the
+   *  library's own check never reports. */
+  const report = (node: ResourceGraphNode, message: string, slot: string, contextual: boolean): void => {
     const module = (node.manifest.metadata as { module?: string } | undefined)?.module;
     const via = module && !rootModules.has(module) ? reach.of(module) : undefined;
-    out.push(
-      via
-        ? importAnchoredDiagnostic(CO_REFERRER_SCOPED, module!, via, message)
-        : {
-            severity: DiagnosticSeverity.Error,
-            code: CO_REFERRER_SCOPED,
-            source: "telo-analyzer",
-            message,
-            data: {
-              resource: { kind: node.kind, name: node.name },
-              filePath: (node.manifest.metadata as { source?: string } | undefined)?.source,
-              path: slot,
-            },
-          },
-    );
+    const written: AnalysisDiagnostic = {
+      severity: DiagnosticSeverity.Error,
+      code: CO_REFERRER_SCOPED,
+      source: "telo-analyzer",
+      message,
+      data: {
+        resource: { kind: node.kind, name: node.name },
+        filePath: (node.manifest.metadata as { source?: string } | undefined)?.source,
+        path: slot,
+      },
+    };
+    out.push(via ? importAnchoredDiagnostic(CO_REFERRER_SCOPED, module!, via, message, contextual ? null : writtenPlaceOf(written)) : written);
   };
   // A co-referrer in a scoped import's library naming a target that outlives
   // that instance: the dispatch its target's domain answers never reaches it.
@@ -91,6 +91,7 @@ export function coReferrerScopedDiagnostics(
           through: domain.alias,
         }),
         slot,
+        true,
       );
     }
   }
@@ -113,7 +114,7 @@ export function coReferrerScopedDiagnostics(
         scope: (node.scopeSite ?? "").replace(/^\//, ""),
         owner: owner?.type === "resource" ? owner.name : "",
       });
-      report(node, message, slot);
+      report(node, message, slot, false);
     }
   }
   return out;

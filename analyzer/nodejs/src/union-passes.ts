@@ -1,12 +1,16 @@
 /**
  * Passes over the whole application that carry presence conditions: each runs
- * once over the union of every configuration's expansion and answers its
- * findings with the condition each holds under, never once per configuration.
+ * once over the union of every configuration's expansion, plus once in each
+ * branch no configuration takes, and never once per configuration.
  *
- * A configuration run reads its findings back from the table the pass built
- * ({@link PassFindings.holdingAt}) — the table lists what the pass would find
- * in a configuration, in the raw form a run's own findings take, so they are
- * relocated and labelled the way every other finding of the run is.
+ * A pass's table lists its findings, each with the condition it holds under
+ * and what it says there in the raw form a configuration's own finding takes
+ * — rendered with a reader of where it holds, so a text naming what a choice
+ * decides is split by that choice alone ({@link splitByReads}) — and what it
+ * finds in each branch no configuration takes. The union world places each
+ * where it is written (`union-placement.ts`). A finding inside a lifted
+ * template body holds over the definition's own dimensions as well; the
+ * analysis labels it from its condition and emits it once.
  *
  * Browser-safe.
  */
@@ -20,40 +24,117 @@ import type { DefinitionRegistry } from "./definition-registry.js";
 import { isKindDocumentOrImport } from "./system-kinds.js";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { isModuleKind } from "./module-kinds.js";
+import { injectedNeedOf } from "./need-type.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
-import type { Assignment } from "./configuration-dimensions.js";
 import { FALSE, TRUE, type Condition, type ConditionSpace } from "./presence-condition.js";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
-import type { AnalysisDiagnostic } from "./types.js";
+import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
+import type { FindingOrder } from "./finding-order.js";
 import { duplicateNameDiagnostic } from "./validate-references.js";
 import { sinkUnattachedDiagnostic } from "./validate-sink-attachment.js";
 import { observedStateRequiredDiagnostics } from "./validate-observed-state.js";
 import { validateUnusedDeclarations } from "./validate-unused-declarations.js";
+import type { DeadBranchRun, WorldReader } from "./world-reader.js";
+import { reportPassBranch } from "./cel-site-judgements.js";
+import type { UnionPassName } from "./analysis-families.js";
+export type { UnionPassName };
 
-/** The whole-application passes that carry conditions. */
-export type UnionPassName = "duplicateNames" | "unusedDeclarations" | "sinkAttachment" | "observedStateDeclarations";
+/** One finding of a pass over the configurations: where it holds, and what it
+ *  says where `read` reads, in a run's raw form. */
+export interface ReadFinding {
+  readonly held: Condition;
+  render(read: WorldReader<Condition>): readonly AnalysisDiagnostic[];
+}
 
-/** One finding of a pass and the configurations it holds in. */
+/** What a pass finds in one branch no configuration takes. */
+export interface DeadFinding {
+  readonly branch: DeadBranchRun;
+  render(read: WorldReader<boolean>): readonly AnalysisDiagnostic[];
+}
+
+/** What a pass found: over the configurations, in each branch no
+ *  configuration takes, and inside lifted template bodies. */
+export interface PassTable {
+  readonly found: readonly ReadFinding[];
+  readonly dead: readonly DeadFinding[];
+  /** Its findings inside lifted template bodies, which no configuration
+   *  lists: each is labelled from its condition and emitted once. */
+  readonly body?: readonly PassBodyFinding[];
+}
+
+/**
+ * A pass's finding inside a lifted template body, as written: held where
+ * `live` does — over the definition's own dimensions and the configurations —
+ * or, found only in a branch no value the definition can be given takes
+ * (`dead`), in the configurations `configuration` holds.
+ */
+export interface PassBodyFinding {
+  readonly diagnostic: AnalysisDiagnostic;
+  readonly definition: ResourceManifest;
+  readonly live?: Condition;
+  readonly dead?: { readonly sentinel: object; readonly branch: string };
+  /** The configurations it holds in: `live` with the definition's dimensions
+   *  projected out. */
+  readonly configuration: Condition;
+}
+
+/** One finding of a pass that reads nothing of where it holds. */
 export interface PassFinding {
   readonly diagnostic: AnalysisDiagnostic;
   readonly condition: Condition;
 }
 
-/** What a pass finds over every configuration at once. */
-export class PassFindings {
-  constructor(
-    private readonly space: ConditionSpace,
-    readonly findings: readonly PassFinding[],
-  ) {}
-
-  /** The findings that hold in `assignment`, in the pass's order. */
-  holdingAt(assignment: Assignment): AnalysisDiagnostic[] {
-    return this.findings.filter((f) => this.space.holds(f.condition, assignment)).map((f) => f.diagnostic);
-  }
+/** `found` as findings that read nothing of where they hold. */
+export function fixedFindings(found: readonly PassFinding[]): ReadFinding[] {
+  return found.map(({ diagnostic, condition }) => ({ held: condition, render: () => [diagnostic] }));
 }
 
-/** The findings a configuration run reads back, by pass. */
-export type PassFindingsAt = (pass: UnionPassName) => readonly AnalysisDiagnostic[];
+/** One entry of a pass's table: a finding held where its condition is, or
+ *  one inside a lifted template body. */
+export type PassEntry = PassFinding | { readonly body: PassBodyFinding };
+
+/** A table of `entries`, which no branch no configuration takes varies. */
+export function passTableOf(entries: readonly PassEntry[]): PassTable {
+  const body: PassBodyFinding[] = [];
+  const found: PassFinding[] = [];
+  for (const entry of entries) {
+    if ("body" in entry) body.push(entry.body);
+    else found.push(entry);
+  }
+  return { found: fixedFindings(found), dead: [], body };
+}
+
+/** What `pass` finds in each branch no configuration takes, each read once. */
+export function readDeadBranches(
+  pass: UnionPassName,
+  deadBranches: readonly DeadBranchRun[],
+  find: (branch: DeadBranchRun) => readonly DeadFinding[],
+): DeadFinding[] {
+  return deadBranches.flatMap((branch) => {
+    reportPassBranch(pass, branch);
+    return find(branch);
+  });
+}
+
+/** What `find` finds of `pass` in each branch no configuration takes, read
+ *  once each, as it stands there. */
+export function deadFindings(
+  pass: UnionPassName,
+  deadBranches: readonly DeadBranchRun[],
+  find: (run: DeadBranchRun) => readonly AnalysisDiagnostic[],
+): DeadFinding[] {
+  return readDeadBranches(pass, deadBranches, (branch) => {
+    const found = find(branch);
+    return found.length === 0 ? [] : [{ branch, render: () => found }];
+  });
+}
+
+/** What a pass finds over every configuration at once, the same in every
+ *  template variant; a branch no configuration takes finds nothing of it
+ *  inside the branch. */
+export function fixedPassTable(found: readonly PassFinding[]): PassTable {
+  return { found: fixedFindings(found), dead: [] };
+}
 
 /** One option of a choice a declaration holds, taken. */
 type ChoiceTaken = { readonly alternatives: Alternatives; readonly option: number };
@@ -144,13 +225,13 @@ const present = (declaration: ConditionedDeclaration): boolean => declaration.co
  * `DUPLICATE_RESOURCE_NAME` between declarations at module level: two present
  * declarations of one name in one module, reported at the later against the
  * earliest present — in the configurations holding both and no earlier one.
- * Scope members are the run's: a member's place is a position of its holder's
- * projection.
+ * Collisions inside a scope are judged with the scope's members
+ * (`scope-member-findings.ts`).
  */
 export function duplicateNameFindings(
   union: ConditionedExpansion,
-  resources: readonly ResourceManifest[],
-): PassFindings {
+  order: FindingOrder,
+): PassTable {
   const { space } = union;
   const moduleOf = (r: ResourceManifest): string | undefined => (r.metadata as { module?: string } | undefined)?.module;
   const declarations = union.declarations.filter(present);
@@ -166,6 +247,8 @@ export function duplicateNameFindings(
   for (const { manifest: r, condition } of declarations) {
     if (!r.metadata?.name || isForwardedDeclaration(r)) continue;
     if ((r.metadata as { xTeloChoice?: unknown }).xTeloChoice) continue;
+    // A need's collision is the need table's, at its `needs:` key.
+    if (injectedNeedOf(r)) continue;
     const name = r.metadata.name as string;
     const module = isModuleKind(r.kind) ? (stampedModules.has(name) ? name : "") : (moduleOf(r) ?? "");
     if (module !== "" && moduleDocNames.size > 0 && !moduleDocNames.has(module)) continue;
@@ -187,19 +270,20 @@ export function duplicateNameFindings(
     for (const [name, list] of names) {
       if (list.length <= 1) continue;
       let before = FALSE as Condition;
-      list.forEach((first, i) => {
+      // The earliest as written is the one the others collide with.
+      order.sortBy(list, (a, b) => order.compareDeclarations(a.manifest, b.manifest)).forEach((first, i) => {
         const firstHolds = space.and(first.condition, space.not(before));
         before = space.or(before, first.condition);
         for (const dup of list.slice(i + 1)) {
           const condition = space.and(firstHolds, dup.condition);
           if (condition === FALSE) continue;
-          const diagnostic = duplicateNameDiagnostic(dup.manifest, first.manifest, name, resources);
+          const diagnostic = duplicateNameDiagnostic(dup.manifest, first.manifest, name);
           if (diagnostic) findings.push({ diagnostic, condition });
         }
       });
     }
   }
-  return new PassFindings(space, findings);
+  return fixedPassTable(findings);
 }
 
 /**
@@ -207,14 +291,8 @@ export function duplicateNameFindings(
  * every expression as written whichever branch it takes, so a read holds in
  * every configuration and so does the finding.
  */
-export function unusedDeclarationFindings(
-  space: ConditionSpace,
-  written: readonly ResourceManifest[],
-): PassFindings {
-  return new PassFindings(
-    space,
-    validateUnusedDeclarations([...written]).map((diagnostic) => ({ diagnostic, condition: TRUE })),
-  );
+export function unusedDeclarationFindings(written: readonly ResourceManifest[]): PassTable {
+  return fixedPassTable(validateUnusedDeclarations([...written]).map((diagnostic) => ({ diagnostic, condition: TRUE })));
 }
 
 /**
@@ -223,7 +301,8 @@ export function unusedDeclarationFindings(
  * each declaration is read by the graph builder as it stands under every
  * combination of choices a reference sits beneath, and an edge it finds holds
  * where that combination does and the sink is what its name resolves to in the
- * conditioned name index. A sink declared in a scope is the run's.
+ * conditioned name index. A sink declared in a scope is judged with the
+ * scope's members (`scope-member-findings.ts`).
  */
 export function sinkAttachmentFindings(
   union: ConditionedExpansion,
@@ -232,7 +311,7 @@ export function sinkAttachmentFindings(
   aliases: AliasResolver,
   aliasesByModule: Map<string, AliasResolver> | undefined,
   rootModules: ReadonlySet<string>,
-): PassFindings {
+): PassTable {
   const { space } = union;
   const exported = new Map<string, Set<string>>();
   for (const { manifest: m } of union.declarations) {
@@ -253,7 +332,7 @@ export function sinkAttachmentFindings(
     if (!name || (module !== undefined && exported.get(module)?.has(name))) continue;
     sinks.push(declaration);
   }
-  if (sinks.length === 0) return new PassFindings(space, []);
+  if (sinks.length === 0) return fixedPassTable([]);
   // Where each sink is referenced: the call graph's edges into it, read off
   // each declaration as it stands in each combination of choices it holds.
   const attached = new Map<ResourceManifest, Condition>();
@@ -280,7 +359,7 @@ export function sinkAttachmentFindings(
     if (condition === FALSE) continue;
     findings.push({ diagnostic: sinkUnattachedDiagnostic(sink.manifest, false), condition });
   }
-  return new PassFindings(space, findings);
+  return fixedPassTable(findings);
 }
 
 /**
@@ -289,12 +368,6 @@ export function sinkAttachmentFindings(
  * configuration (a choice there is `BRANCH_POSITION_INVALID`), so the finding
  * holds in every one.
  */
-export function observedStateDeclarationFindings(
-  space: ConditionSpace,
-  written: readonly ResourceManifest[],
-): PassFindings {
-  return new PassFindings(
-    space,
-    observedStateRequiredDiagnostics(written).map((diagnostic) => ({ diagnostic, condition: TRUE })),
-  );
+export function observedStateDeclarationFindings(written: readonly ResourceManifest[]): PassTable {
+  return fixedPassTable(observedStateRequiredDiagnostics(written).map((diagnostic) => ({ diagnostic, condition: TRUE })));
 }

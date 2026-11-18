@@ -1,3 +1,4 @@
+import { collectFilePositions } from "../src/diagnostic-location.js";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
 import { collectModuleDocuments } from "../src/index.js";
@@ -135,7 +136,7 @@ async function findings(body: string, definitions = kinds(), root = "kind: Telo.
 ${definitions}${body}`;
   const graph = await new Loader([inMemorySource({ [url]: text })]).loadGraph(url, { desugarImports: true });
   return new StaticAnalyzer()
-    .analyze(flattenForAnalyzer(graph), { moduleDocuments: collectModuleDocuments(graph) })
+    .analyze(flattenForAnalyzer(graph), { moduleDocuments: collectModuleDocuments(graph), positions: collectFilePositions(graph) })
     .filter((d) => d.severity === 1)
     .map((d) => [d.code, (d.data as { path?: string }).path] as const);
 }
@@ -202,8 +203,8 @@ ${serverList}`,
     expect(
       await findings(router(entry("error.code == 'ERR_ENDPOINT_REFUSED'")) + server("")),
     ).toEqual([
-      ["UNDECLARED_THROW_CODE", "routes[0].catches[0].when"],
       ["UNCOVERED_THROW_CODE", "routes[0].catches"],
+      ["UNDECLARED_THROW_CODE", "routes[0].catches[0].when"],
     ]);
   });
 });

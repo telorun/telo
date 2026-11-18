@@ -11,10 +11,34 @@
  * read by `telo check` at a kind's schema and a named shape's, and by the kernel
  * at registration (`ERR_X_TELO_REF_INVALID_COMPLETED_WHEN`).
  *
+ * One walk over the writer's own content, the sibling path read through what
+ * the caller gives it ({@link CompletedWhenReads}): the kernel's content
+ * lookup, or the analysis's reader of every configuration's named shapes, so
+ * each refusal holds where the shapes on its path hold.
+ *
  * Browser-safe: no Node built-ins.
  */
 import { propertySchemas } from "./manifest-navigation.js";
 import { followSchemaReferences, type NamedShapeLookup } from "./schema-reference.js";
+
+/**
+ * What judging a `completedWhen` reads of the schemas references name, each
+ * answer with where it holds — the reading of every configuration at once, or
+ * of one.
+ */
+export interface CompletedWhenReads<C> {
+  /** The nodes following `segments` from `node`, written in `document`, ends
+   *  at within `at`, references followed: undefined where the path names
+   *  nothing. */
+  follow(
+    node: Schema,
+    document: Schema,
+    segments: readonly string[],
+    at: C,
+  ): readonly { readonly node: Schema | undefined; readonly held: C }[];
+  /** Where every judgement starts. */
+  readonly everywhere: C;
+}
 
 type Schema = Record<string, any>;
 
@@ -25,6 +49,12 @@ export interface CompletedWhenProblem {
   /** Schema path of the annotation, from `at`. */
   readonly path: string;
   readonly message: string;
+}
+
+/** A problem, the slot its message quotes, and where it holds. */
+export interface HeldCompletedWhenProblem<C> extends CompletedWhenProblem {
+  readonly slotPath: string;
+  readonly held: C;
 }
 
 const isSchema = (node: unknown): node is Schema => !!node && typeof node === "object" && !Array.isArray(node);
@@ -38,22 +68,31 @@ function pointerSegments(pointer: string): string[] {
     .map((token) => token.replace(/~1/g, "/").replace(/~0/g, "~"));
 }
 
-/** The schema `pointer` names from the object schema `enclosing`, written in
- *  `document`, every reference on the way followed — or undefined. */
+/** The schema `segments` name from the object schema `enclosing`, written in
+ *  `document`, every reference on the way followed through `lookup` — or
+ *  undefined. */
 function siblingAt(
   enclosing: Schema,
-  pointer: string,
+  segments: readonly string[],
   document: Schema,
   lookup: NamedShapeLookup | undefined,
 ): Schema | undefined {
   let at: { node: Schema; document: Schema | undefined } | undefined = { node: enclosing, document };
-  for (const segment of pointerSegments(pointer)) {
+  for (const segment of segments) {
     if (!at) return undefined;
     const object = followSchemaReferences(at.node, at.document, lookup);
     const next: unknown = propertySchemas(object.node).find(([key]) => key === segment)?.[1];
     at = isSchema(next) ? { node: next, document: object.document } : undefined;
   }
   return at ? followSchemaReferences(at.node, at.document, lookup).node : undefined;
+}
+
+/** The reads of one configuration: every shape through `lookup`. */
+function contentReads(lookup: NamedShapeLookup | undefined): CompletedWhenReads<true> {
+  return {
+    everywhere: true,
+    follow: (node, document, segments) => [{ node: siblingAt(node, segments, document, lookup), held: true }],
+  };
 }
 
 /** The node and its `anyOf` / `oneOf` branches carrying an `x-telo-ref`, each
@@ -85,19 +124,32 @@ export function completedWhenProblems(
   at = "schema",
   lookup?: NamedShapeLookup,
 ): CompletedWhenProblem[] {
+  return heldCompletedWhenProblems(schema, name, at, contentReads(lookup)).map(({ code, path, message }) => ({ code, path, message }));
+}
+
+/** {@link completedWhenProblems}, each refusal with where it holds, the
+ *  sibling path read through `reads`. */
+export function heldCompletedWhenProblems<C>(
+  schema: unknown,
+  name: string,
+  at: string,
+  reads: CompletedWhenReads<C>,
+): HeldCompletedWhenProblem<C>[] {
   if (!isSchema(schema)) return [];
   const document = schema;
-  const problems: CompletedWhenProblem[] = [];
+  const problems: HeldCompletedWhenProblem<C>[] = [];
   const asProperty = new Set<object>();
   const declaring: { node: Schema; path: string }[] = [];
   const seen = new Set<object>();
   const claimed = new Set<object>();
 
-  const refuse = (slotPath: string, annotationPath: string, value: unknown, reason: string): void => {
+  const refuse = (slotPath: string, annotationPath: string, value: unknown, reason: string, held: C = reads.everywhere): void => {
     problems.push({
       code: COMPLETED_WHEN_CODE,
       path: `${annotationPath}.x-telo-ref.completedWhen`,
       message: `${name}: x-telo-ref at '${slotPath}' declares 'completedWhen: ${typeof value === "string" ? value : JSON.stringify(value)}', but ${reason}.`,
+      slotPath,
+      held,
     });
   };
 
@@ -114,9 +166,10 @@ export function completedWhenProblems(
         refuse(slotPath, path, pointer, "the slot declares no 'inputs:' argument map for its target to complete");
         continue;
       }
-      const sibling = siblingAt(enclosing, pointer, document, lookup);
-      if (!sibling) refuse(slotPath, path, pointer, `the object enclosing the slot declares nothing at '${pointer}'`);
-      else if (sibling.type !== "boolean") refuse(slotPath, path, pointer, `'${pointer}' is not declared 'type: boolean'`);
+      for (const { node: sibling, held } of reads.follow(enclosing, document, pointerSegments(pointer), reads.everywhere)) {
+        if (!sibling) refuse(slotPath, path, pointer, `the object enclosing the slot declares nothing at '${pointer}'`, held);
+        else if (sibling.type !== "boolean") refuse(slotPath, path, pointer, `'${pointer}' is not declared 'type: boolean'`, held);
+      }
     }
   };
 

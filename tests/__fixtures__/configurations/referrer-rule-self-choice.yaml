@@ -1,0 +1,75 @@
+# A referrer rule reads a member of the referenced resource and one of the
+# referrer itself, each decided by a choice, and the referenced resource's own
+# reference through `resolveSelf:`; a presence test reads only the member it
+# asks about.
+kind: Telo.Application
+metadata: { name: ReferrerRuleSelfChoice }
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+  flag2: { env: FLAG_2, type: boolean, default: false }
+targets:
+  - !ref server
+---
+kind: Telo.Definition
+metadata: { name: Codec }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema: { type: object, properties: { format: { type: string } } }
+---
+kind: Telo.Definition
+metadata: { name: Route }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties:
+    secured: { type: boolean }
+    note: { type: string }
+    codec: { x-telo-ref: { kind: Self.Codec, use: dependency } }
+  x-telo-referrer-rules:
+    - referrer: Self.Server
+      condition: !cel "!has(self.secured) || has(referrer.tls)"
+      code: ROUTE_NEEDS_TLS
+      message: mounts a secured route without a tls block
+    - referrer: Self.Server
+      resolveSelf: ["/codec"]
+      condition: !cel "self.codec.?format.orValue('') == referrer.format"
+      code: ROUTE_FORMAT
+      message: serves a format the route's codec does not write
+---
+kind: Telo.Definition
+metadata: { name: Server }
+capability: Telo.Runnable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties:
+    format: { type: string }
+    tls: { type: object }
+    route: { x-telo-ref: { kind: Self.Route, use: dependency } }
+---
+kind: Self.Codec
+metadata: { name: codec }
+format: !if
+  if: !cel "variables.flag2"
+  then: json
+  else: yaml
+---
+kind: Self.Route
+metadata: { name: route }
+secured: !if
+  if: !cel "variables.flag1"
+  then: true
+note: !if
+  if: !cel "variables.flag2"
+  then: one
+  else: two
+codec: !ref codec
+---
+kind: Self.Server
+metadata: { name: server }
+format: json
+tls: !if
+  if: !cel "variables.flag2"
+  then: {}
+route: !ref route

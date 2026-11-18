@@ -1,0 +1,19 @@
+kind: Telo.Library
+metadata: { name: FieldChoice }
+---
+kind: Telo.Definition
+metadata: { name: Picked }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    f: { type: boolean }
+resources:
+  - kind: Telo.Sequence
+    metadata: { name: main }
+    steps: [{ name: a, value: 1 }]
+invoke: !ref main
+inputs: !if
+  if: !cel "self.f"
+  then: { a: 1 }
+  else: 5

@@ -87,8 +87,13 @@ export function validateApplicationInputs(
   rootModules: ReadonlySet<string>,
   records: ApplicationSourceRecords,
   scope: ApplicationInputsScope,
+  /** `fed`: what the resource's own fields say against the child's declarations;
+   *  `needRefs`: a whole `!ref` held to the need it names, read in the
+   *  declarations the reference reaches. */
+  half: "all" | "fed" | "needRefs" = "all",
 ): AnalysisDiagnostic[] {
   if (Object.keys(records).length === 0) return [];
+  const wants = (which: "fed" | "needRefs") => half === "all" || half === which;
   const out: AnalysisDiagnostic[] = [];
 
   const moduleDocs = new Map<string, ResourceManifest>();
@@ -130,17 +135,17 @@ export function validateApplicationInputs(
     const extracted = (node.metadata as { xTeloOrigin?: unknown } | undefined)?.xTeloOrigin !== undefined;
     const label = extracted ? `the inline ${node.kind}` : `${node.kind}/${String(node.metadata?.name)}`;
     const at = (path: string) => (prefix ? `${prefix}.${path}` : path);
-    const report = (code: string, message: string, path: string, fix?: unknown) =>
+    const report = (code: string, message: string, path: string, fix?: unknown, quotedPlace?: unknown) =>
       out.push({
         severity: DiagnosticSeverity.Error,
         code,
         source: SOURCE,
         message,
-        data: { ...anchor, path: at(path), ...(fix ? { fix } : {}) },
+        data: { ...anchor, path: at(path), ...(fix ? { fix } : {}), ...(quotedPlace ? { quotedPlace } : {}) } as AnalysisDiagnostic["data"],
       });
 
     if ("failure" in record) {
-      reportFailure(record, label, slot.field, source, report);
+      if (wants("fed")) reportFailure(record, label, slot.field, source, report);
       return;
     }
     const child = record.application;
@@ -160,7 +165,7 @@ export function validateApplicationInputs(
           continue;
         }
         const names = [...declared.keys()];
-        report(
+        if (wants("fed")) report(
           "APPLICATION_INPUT_UNDECLARED",
           `${label}: '${mapPath}.${key}' names no ${SINGULAR[block]} ${declarer} declares — ` +
             (names.length > 0 ? `it declares ${names.map((n) => `'${n}'`).join(", ")}.` : `it declares none.`),
@@ -173,7 +178,7 @@ export function validateApplicationInputs(
         }
         continue;
       }
-      if (Object.keys(accepted).length === 0) continue;
+      if (!wants("fed") || Object.keys(accepted).length === 0) continue;
       const properties: Record<string, unknown> = {};
       for (const name of Object.keys(accepted)) {
         properties[name] =
@@ -185,13 +190,14 @@ export function validateApplicationInputs(
         subject: label,
         declarer,
       })) {
-        report(finding.code, finding.message, finding.path, finding.fix);
+        report(finding.code, finding.message, finding.path, finding.fix, finding.quotedPlace);
       }
     }
 
     function judgeNeed(need: ChildApplicationNeed, key: string, value: unknown, path: string): void {
       const shape = need.shape ?? (need.type?.startsWith("Telo.") ? scope.needType(need.type) : undefined);
       if (isResolvedReference(value)) {
+        if (!wants("needRefs")) return;
         const written = value.alias ? `${value.alias}.${value.name}` : value.name;
         const supplied = suppliedBy(value, module, declaringScopeOf(node));
         if (!supplied || !need.type) return;
@@ -223,7 +229,7 @@ export function validateApplicationInputs(
         }
         return;
       }
-      if (!isPlainObject(value) || !shape || !need.type) return;
+      if (!wants("fed") || !isPlainObject(value) || !shape || !need.type) return;
       for (const finding of fieldSupplyFindings(value, shape, `${label}: need '${key}'`, need.type, path)) {
         report(finding.code, finding.message, finding.path);
       }

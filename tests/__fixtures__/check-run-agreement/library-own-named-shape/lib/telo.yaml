@@ -1,0 +1,15 @@
+kind: Telo.Library
+metadata: { name: ShapeLib, version: 0.1.0 }
+exports: { kinds: [Holder] }
+---
+kind: Telo.JsonSchema
+metadata: { name: Money }
+schema: { type: object, properties: { amount: { type: integer } } }
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Invocable
+schema: { type: object, properties: { price: { $ref: "telo://Self/Money" } } }
+resources:
+  - { kind: Telo.Value, metadata: { name: v }, value: 1 }
+invoke: !ref v

@@ -1,0 +1,4 @@
+# The same defect in an editable library and in a published one.
+kind: Telo.Application
+metadata: { name: StampsMixed }
+imports: { Lib: ./stamps, Pub: oci://registry.test/stamp-only@1.0.0 }

@@ -1,0 +1,10 @@
+# The application's flag bound to the library's: its need is required where
+# `variables.flag` is true.
+kind: Telo.Application
+metadata: { name: FlaggedApp }
+variables: { flag: { env: FLAG, type: boolean, default: false } }
+imports:
+  Flagged:
+    source: ./flagged
+    variables:
+      flag: !cel "variables.flag"

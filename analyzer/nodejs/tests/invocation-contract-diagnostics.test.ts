@@ -2,6 +2,7 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
 import { DiagnosticSeverity } from "../src/types.js";
+import { withModuleDocs } from "./module-doc-fixtures.js";
 import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 
 /**
@@ -12,7 +13,7 @@ import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 const m = (x: unknown) => x as unknown as ResourceManifest;
 
 const analyze = (manifests: unknown[]) =>
-  new StaticAnalyzer().analyze(withSyntheticPositions(manifests.map(m) as ResourceManifest[]));
+  new StaticAnalyzer().analyze(withSyntheticPositions(withModuleDocs(manifests.map(m) as ResourceManifest[])));
 const codes = (diags: Array<{ code?: string }>) => diags.map((d) => d.code);
 
 /** A concrete invocable kind with a controller — a valid `extends` parent. */

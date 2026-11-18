@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { expansionTagLabel } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
+import { CHOICE_FAMILIES, familyOf, observeFamilies, PRESENCE_READ_FAMILIES, type AnalysisFamily } from "../src/analysis-families.js";
 import { observeAnalysisReadings, StaticAnalyzer } from "../src/analyzer.js";
 import { observeKeyCosts } from "../src/cel-site-judgements.js";
 import { agreesWith, assignmentKey, describeConfigurations, type Assignment, type Dimension } from "../src/configuration-dimensions.js";
@@ -15,7 +16,7 @@ import {
   type Forcing,
   type PlaceMap,
   type Projected,
-  type Witness,
+  World,
 } from "../src/conditioned-expansion.js";
 import type { Condition } from "../src/presence-condition.js";
 import { relocatedRendering } from "../src/quoted-place.js";
@@ -79,7 +80,10 @@ import { fileCorpus, loadFile, ROOT } from "./configuration-corpus.js";
  *    (`data.configurations: []`) belongs to none;
  *  - the findings of the whole-application passes (duplicate names, unused
  *    declarations, unattached sinks, a required `status:`) holding at c are
- *    what the plain analysis of c's choice-free expansion finds;
+ *    what the plain analysis of c's choice-free expansion finds, and every
+ *    family that analysis stamps in any configuration is the whole analysis's;
+ *  - each refusal of a chosen declaration's name in c's expansion is a finding
+ *    of the choice reading holding at c;
  *  - for each branch no configuration takes, what the whole analysis finds in
  *    no configuration inside it is what an analysis of the expansion taking it
  *    — at a configuration reaching its choice — finds there.
@@ -87,19 +91,30 @@ import { fileCorpus, loadFile, ROOT } from "./configuration-corpus.js";
 
 type Loaded = Awaited<ReturnType<typeof loadFile>>;
 
-/** A choice at a declaration position holds its name in every configuration,
- *  whichever branch is taken, so a collision with one has no counterpart in a
- *  choice-free expansion. */
-const inPassOracle = (d: AnalysisDiagnostic): boolean =>
-  UNION_PASS_CODES.has(d.code as string) && !(d.code === "DUPLICATE_RESOURCE_NAME" && d.message.includes(" chooses declared earlier"));
+observeFamilies();
 
-/** What the passes over the whole application report. */
-const UNION_PASS_CODES: ReadonlySet<string> = new Set([
-  "DUPLICATE_RESOURCE_NAME",
-  "UNUSED_DECLARATION",
-  "SINK_UNATTACHED",
-  "OBSERVED_STATE_REQUIRED_FORBIDDEN",
-]);
+/** A choice's own name is held to what each configuration's expansion refuses
+ *  of it: a chosen declaration's name is the choice's, so the plain analysis of
+ *  an expansion leaves it to the choice reading. */
+const inChoiceOracle = (d: AnalysisDiagnostic): boolean => (CHOICE_FAMILIES as readonly AnalysisFamily[]).includes(familyOf(d)!);
+
+/** The findings of the passes over the whole application and of the reference
+ *  checks, judged per site: each the family that emitted it stamped on it, and
+ *  each also what the plain analysis of a configuration's choice-free expansion
+ *  finds — but for the family of what is judged as written, which no choice-free
+ *  expansion holds. */
+const inPassOracle = (d: AnalysisDiagnostic): boolean =>
+  familyOf(d) !== undefined && !inChoiceOracle(d) && familyOf(d) !== "expansion";
+
+/** A reference to an optional input or need is refused where nothing proves
+ *  it present, which a configuration's choice-free expansion cannot say. */
+const inPresenceRead = (d: AnalysisDiagnostic): boolean => PRESENCE_READ_FAMILIES.includes(familyOf(d)!);
+
+/** Whether the plain analysis of `c`'s expansion judges `d` as the passes do:
+ *  not when `c` proves an optional input or need present. */
+const inPlainOracleAt = (d: AnalysisDiagnostic, c: Assignment): boolean =>
+  inPassOracle(d) &&
+  !(inPresenceRead(d) && Object.entries(c).some(([key, value]) => key.startsWith("resources.") && value === "present"));
 
 const NESTED_FORMS: readonly NestedForm[] = ["inline", "with"];
 
@@ -112,6 +127,35 @@ function holdsAt(d: AnalysisDiagnostic, c: Assignment, dimensions: readonly Dime
   const keys = new Set(dimensions.map((x) => x.key));
   if (!entries.every((e) => Object.keys(e).every((k) => keys.has(k)))) return true;
   return entries.some((e) => agreesWith(e, c));
+}
+
+/** A finding's code and the name, file and path it stands at. Not the kind:
+ *  two declarations of one name in one file are told apart by an expansion's
+ *  relocation by nothing else, so a collision between them may stand at either. */
+function placeKey(d: AnalysisDiagnostic): string {
+  const data = d.data as { resource?: { name?: unknown }; filePath?: unknown; path?: unknown } | undefined;
+  return JSON.stringify([d.code, data?.resource?.name, data?.filePath, data?.path]);
+}
+
+/** `value` with every chosen declaration's mark (`metadata.xTeloChoice`) taken away. */
+function unmarked<T>(value: T): T {
+  if (Array.isArray(value)) {
+    const items = value.map(unmarked);
+    return (items.some((item, i) => item !== value[i]) ? items : value) as T;
+  }
+  if (!value || typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) return value;
+  const record = value as Record<string, unknown>;
+  let out: Record<string, unknown> | undefined;
+  for (const [key, field] of Object.entries(record)) {
+    const next = key === "metadata" ? field : unmarked(field);
+    if (next !== field) (out ??= { ...record })[key] = next;
+  }
+  const metadata = record.metadata as Record<string, unknown> | undefined;
+  if (metadata && typeof metadata === "object" && "xTeloChoice" in metadata) {
+    const { xTeloChoice, ...rest } = metadata;
+    (out ??= { ...record }).metadata = rest;
+  }
+  return (out ?? value) as T;
 }
 
 function identityOf(d: AnalysisDiagnostic, message: string): string {
@@ -235,15 +279,16 @@ async function projects(loaded: Loaded): Promise<void> {
     expect(lifted, `views at ${assignmentKey(c)}`).toEqual(concrete);
   }
   // A branch no configuration takes, forced at a configuration reaching its
-  // choice, projects as that configuration's expansion with the branch taken.
+  // choice, projects as that configuration's expansion with the branch taken —
+  // and so does an option inside one, every option on the way forced.
   for (const entry of unreachable) {
-    const forcing = new Map([[entry.site.sentinel, entry.branch]]);
+    const forcing = entry.forcing;
     expect(union.at(entry.baseline, forcing), `${entry.branch} at ${assignmentKey(entry.baseline)}`).toEqual(
       expansionOf(entry.baseline, forcing).manifests,
     );
     // And so do its views.
     const expansion = expansionOf(entry.baseline, forcing);
-    const witness: Witness = { assignment: entry.baseline, forcing: forcing as unknown as Forcing };
+    const witness: World = World.key(entry.baseline, forcing as unknown as Forcing);
     const lifted = union.views
       .filter((view) => takenAt(union.space, view.condition, view.path, entry.baseline, forcing as unknown as Forcing))
       .map((view) =>
@@ -348,8 +393,13 @@ function expectPlain(keys: KeysJudged, label: string): void {
   expect(keys.varyingNormalized, `varying declarations normalized, ${label}`).toBe(0);
 }
 
+/** The families the plain analyses of the configurations judged stamp, and
+ *  those the whole analyses emit. */
+const plainFamilies = new Set<AnalysisFamily>();
+const wholeFamilies = new Set<AnalysisFamily>();
+
 async function judge(loaded: Loaded): Promise<void> {
-  const options = { moduleDocuments: loaded.moduleDocuments };
+  const options = { moduleDocuments: loaded.moduleDocuments, positions: loaded.positions };
   const { dimensions, configurations, unreachable, expansionOf } = new StaticAnalyzer().configurationsOf(
     loaded.manifests,
     options,
@@ -361,11 +411,25 @@ async function judge(loaded: Loaded): Promise<void> {
   console.log(`whole analysis: ${live} live keys, ${analysed.keys.wholeCare.length} whole-care keys`);
   const nowhere = (diagnostics: readonly AnalysisDiagnostic[]) =>
     diagnostics.filter((d) => holdsAt(d, {}, dimensions) === "nowhere").map((d) => identityOf(d, d.message)).sort();
+  // A template body's clause names the definition's own dimensions beside the
+  // configurations, one cover among the configurations kept: narrowed to c it
+  // is re-rendered there, so a body finding is compared by what it says and by
+  // the clause conjuncts naming the configuration dimensions — the whole side
+  // holds them at c (judged by `holdsAt`), the narrowed one names none.
+  const said = (d: AnalysisDiagnostic, message: string, whole: boolean) => {
+    if ((d.data as { resource?: { kind?: unknown } } | undefined)?.resource?.kind !== "Telo.Definition") return message;
+    const clause = message.lastIndexOf(" (when ");
+    if (clause < 0 || !message.endsWith(")")) return message;
+    const held = message
+      .slice(clause + " (when ".length, -1)
+      .split(" and ")
+      .filter((part) => !whole && dimensions.some((dimension) => part.startsWith(`${dimension.key} `)));
+    return held.length > 0 ? `${message.slice(0, clause)} (when ${held.join(" and ")})` : message.slice(0, clause);
+  };
   for (const c of configurations) {
     const expected = whole
       .filter((d) => holdsAt(d, c, dimensions) === true)
-      .map((d) => identityOf(d, unlabelled(d, configurations, dimensions)))
-      .sort();
+      .map((d) => identityOf(d, said(d, unlabelled(d, configurations, dimensions), true)));
     const { result: narrowed, keys } = keysJudged(() =>
       new StaticAnalyzer().analyze(loaded.manifests, { ...options, within: c }),
     );
@@ -373,23 +437,49 @@ async function judge(loaded: Loaded): Promise<void> {
     expectForcedReads(keys, `within ${assignmentKey(c)}`);
     const actual = narrowed
       .filter((d) => holdsAt(d, c, dimensions) !== "nowhere")
-      .map((d) => identityOf(d, d.message))
-      .sort();
+      .map((d) => identityOf(d, said(d, d.message, false)));
+    // In order: the findings holding at c are the narrowed analysis's, as written.
     expect(actual, assignmentKey(c)).toEqual(expected);
     // A whole-application pass applies its own rule to the union, which the
     // narrowing above runs again: its findings at c are also what the plain
     // analysis of c's choice-free expansion finds. An input is read as written,
     // a choice's own condition included, which the expansion no longer holds:
     // an unused input there may be read by a choice, never the reverse.
+    // A template body's choice over a module input is a configuration the
+    // expansion leaves to the body: the plain analysis keeps c's value of it.
     const expansion = expansionOf(c);
-    const plain = relocatedRendering(new StaticAnalyzer().analyze(expansion.manifests, options), (found) =>
+    const bodyChosen = new StaticAnalyzer().configurationsOf(expansion.manifests, options).dimensions;
+    const within = Object.fromEntries(bodyChosen.filter((d) => Object.hasOwn(c, d.key)).map((d) => [d.key, c[d.key]]));
+    const plainFound = relocatedRendering(new StaticAnalyzer().analyze(expansion.manifests, { ...options, within }), (found) =>
       expansion.relocate(found),
-    )
-      .filter(inPassOracle)
-      .map((d) => [d.code, identityOf(d, d.message)] as const);
+    );
+    for (const d of plainFound) if (familyOf(d)) plainFamilies.add(familyOf(d)!);
+    const plain = plainFound
+      .filter((d) => inPlainOracleAt(d, c))
+      .map((d) => [d.code, identityOf(d, said(d, d.message, false))] as const);
+    // A chosen declaration's name is the choice's, left by the plain analysis
+    // to the choice reading: what that analysis's passes refuse of it with the
+    // marks taken away is a refusal the choice reading reports in c. A name's
+    // own spelling is no pass's: a mixed-level choice judges it at its branch.
+    const marked = plainFound.map((d) => identityOf(d, d.message));
+    const choiceFound = whole.filter((d) => inChoiceOracle(d) && holdsAt(d, c, dimensions) === true).map(placeKey);
+    const bare = unmarked(expansion.manifests);
+    const unmarkedFound =
+      bare === expansion.manifests
+        ? []
+        : relocatedRendering(new StaticAnalyzer().analyze(bare, { ...options, within }), (found) => expansion.relocate(found));
+    for (const d of unmarkedFound) {
+      const at = marked.indexOf(identityOf(d, d.message));
+      if (at >= 0) {
+        marked.splice(at, 1);
+        continue;
+      }
+      if (!familyOf(d)) continue;
+      expect(choiceFound, `the expansion's refusal of a chosen name at ${assignmentKey(c)}`).toContain(placeKey(d));
+    }
     const passes = whole
-      .filter((d) => inPassOracle(d) && holdsAt(d, c, dimensions) === true)
-      .map((d) => [d.code, identityOf(d, unlabelled(d, configurations, dimensions))] as const);
+      .filter((d) => inPlainOracleAt(d, c) && holdsAt(d, c, dimensions) === true)
+      .map((d) => [d.code, identityOf(d, said(d, unlabelled(d, configurations, dimensions), true))] as const);
     const keep = (found: typeof plain, unused: boolean) =>
       found.filter(([code]) => (code === "UNUSED_DECLARATION") === unused).map(([, identity]) => identity).sort();
     expect(keep(passes, false), `whole-application passes at ${assignmentKey(c)}`).toEqual(keep(plain, false));
@@ -399,15 +489,17 @@ async function judge(loaded: Loaded): Promise<void> {
     // What holds in no configuration at all is reported whatever `within` keeps.
     expect(nowhere(narrowed), `in no configuration, within ${assignmentKey(c)}`).toEqual(nowhere(whole));
   }
+  for (const d of whole) if (familyOf(d)) wholeFamilies.add(familyOf(d)!);
   // What the whole analysis finds inside a branch no configuration takes is
   // what an analysis of the expansion taking it finds there, at a configuration
-  // reaching its choice.
-  for (const entry of unreachable) {
+  // reaching its choice — less what an option inside it its baseline does not
+  // take holds, which is that option's own entry, forced beside it.
+  const writtenAt = (entry: (typeof unreachable)[number]) => {
     const holder = entry.site.holder;
     const meta = holder.metadata as { name?: unknown; source?: unknown } | undefined;
     const kind = holder.kind ?? expansionTagLabel(holder);
     const at = pathOf(entry.keys);
-    const inside = (d: AnalysisDiagnostic) => {
+    return (d: AnalysisDiagnostic) => {
       const data = d.data as { resource?: { kind?: unknown; name?: unknown }; filePath?: unknown; path?: unknown } | undefined;
       return (
         data?.resource?.kind === kind &&
@@ -417,7 +509,14 @@ async function judge(loaded: Loaded): Promise<void> {
         (data.path === at || data.path.startsWith(`${at}.`) || data.path.startsWith(`${at}[`))
       );
     };
-    const expansion = expansionOf(entry.baseline, new Map([[entry.site.sentinel, entry.branch]]));
+  };
+  for (const entry of unreachable) {
+    const deeper = unreachable
+      .filter((other) => other !== entry && [...entry.forcing].every(([sentinel, branch]) => other.forcing.get(sentinel) === branch))
+      .map(writtenAt);
+    const within = writtenAt(entry);
+    const inside = (d: AnalysisDiagnostic) => within(d) && !deeper.some((held) => held(d));
+    const expansion = expansionOf(entry.baseline, entry.forcing);
     // Placed as production places a configuration's findings: a message
     // quoting its place rendered from where the finding now stands.
     const expected = relocatedRendering(new StaticAnalyzer().analyze(expansion.manifests, options), (found) =>
@@ -441,6 +540,7 @@ const PACKAGE_FIXTURES = [
   "analyzer/nodejs/tests/__fixtures__/resource-rule-co-referrers/choice.yaml",
   "analyzer/nodejs/tests/__fixtures__/resource-rule-reachable/choice.yaml",
   "analyzer/nodejs/tests/__fixtures__/context-withheld/destination/choice.yaml",
+  "analyzer/nodejs/tests/__fixtures__/text-choice/literal.yaml",
 ];
 
 describe("each fixture projects as its configurations", () => {
@@ -564,6 +664,11 @@ describe("each configuration's findings equal its own analysis", () => {
     const name = `nested-inline-places${lead ? "-lead" : ""}${named ? "-named" : ""}.yaml`;
     it(`generated ${name}`, async () => judge(await loadGenerated(name, nestedInlinePlaces(lead, named))), 120_000);
   }
+  // Last: it reads what every fixture above found.
+  it("and every family their plain analyses stamp is one the whole analyses emit", () => {
+    expect(plainFamilies.size).toBeGreaterThan(0);
+    expect([...plainFamilies].filter((family) => !wholeFamilies.has(family))).toEqual([]);
+  });
 });
 
 describe("a forwarded finding", () => {
@@ -623,18 +728,19 @@ describe("an analysis narrowed by 'within'", () => {
     const loaded = await loadGenerated("flag-sequence-3.yaml", flagSequence(3));
     const found = new StaticAnalyzer().analyze(loaded.manifests, {
       moduleDocuments: loaded.moduleDocuments,
+      positions: loaded.positions,
       within: { "variables.flag1": false },
     });
     expect(found.map((d) => [d.code, (d.data as { path?: string }).path, d.message])).toEqual([
       [
         "CEL_TYPE_ERROR",
-        "steps[2].value.then",
-        `Telo.Sequence/sequence: !cel: no "+" is declared over string, int (when variables.flag2 is false and variables.flag3 is true)`,
+        "steps[1].value.then",
+        `Telo.Sequence/sequence: !cel: no "+" is declared over string, int (when variables.flag2 is true)`,
       ],
       [
         "CEL_TYPE_ERROR",
-        "steps[1].value.then",
-        `Telo.Sequence/sequence: !cel: no "+" is declared over string, int (when variables.flag2 is true)`,
+        "steps[2].value.then",
+        `Telo.Sequence/sequence: !cel: no "+" is declared over string, int (when variables.flag2 is false and variables.flag3 is true)`,
       ],
     ]);
     const narrowed = new StaticAnalyzer().analyze(loaded.manifests, {
@@ -648,13 +754,13 @@ describe("an analysis narrowed by 'within'", () => {
     const loaded = await loadGenerated("nested-dead-branch.yaml", nestedDeadBranch());
     const nowhere = (within?: Record<string, unknown>) =>
       new StaticAnalyzer()
-        .analyze(loaded.manifests, { moduleDocuments: loaded.moduleDocuments, ...(within ? { within } : {}) })
+        .analyze(loaded.manifests, { moduleDocuments: loaded.moduleDocuments, positions: loaded.positions, ...(within ? { within } : {}) })
         .filter((d) => (d.data as { configurations?: unknown[] }).configurations?.length === 0)
         .map((d) => [d.code, (d.data as { path?: string }).path]);
     const expected = [
       ["SCHEMA_VIOLATION", "steps[1].else.else.when"],
-      ["CEL_TYPE_ERROR", "steps[1].else.else.inputs.b"],
       ["CEL_TYPE_ERROR", "steps[1].else.else.inputs.a"],
+      ["CEL_TYPE_ERROR", "steps[1].else.else.inputs.b"],
     ];
     expect(nowhere()).toEqual(expected);
     expect(nowhere({ "variables.flag2": true })).toEqual(expected);

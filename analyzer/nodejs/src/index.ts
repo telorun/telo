@@ -35,7 +35,6 @@ export {
   DependencyVerdictMemo,
   libraryGraph,
   NO_DEPENDENCY_VERDICT_STORE,
-  withoutCoveredDependencyFindings,
   type DependencyAnalysis,
   type DependencyAnalysisOptions,
   type DependencyVerdict,
@@ -44,7 +43,8 @@ export {
 } from "./dependency-verdicts.js";
 export { moduleOrigins, type ModuleOrigin } from "./module-origin.js";
 export { diagnosticIdentity, unionDiagnostics } from "./diagnostic-identity.js";
-export { findPositions, locateDiagnostic, resolveRange } from "./diagnostic-location.js";
+export { collectFilePositions, findPositions, locateDiagnostic, resolveRange } from "./diagnostic-location.js";
+export { FindingOrder, withoutConfigurationClause } from "./finding-order.js";
 export type { DiagnosticPositions } from "./diagnostic-location.js";
 export { writtenFailureSite, writtenRootOf, type WrittenFailureSite } from "./failure-site.js";
 export type {
@@ -389,7 +389,8 @@ export {
   callableInstanceIssues,
   callableKindIssues,
   declaredSignatureIssues,
-  validateCallableDeclarations,
+  validateCallableInstances,
+  validateCallableKindDocuments,
 } from "./validate-callable-kinds.js";
 export type { CallableKindIssue } from "./validate-callable-kinds.js";
 export {
@@ -524,7 +525,6 @@ export {
 export type { ResolvedReference } from "./resolved-reference.js";
 export {
   readExpansionSites,
-  withoutRefusedExpansionConsequences,
   type ExpansionPosition,
   type ExpansionReading,
   type ExpansionSite,
@@ -563,6 +563,14 @@ export {
 } from "./template-expansion.js";
 export { holdsTemplateConstructs } from "./template-definition-check.js";
 export { normalizeInlineResources } from "./normalize-inline-resources.js";
+export {
+  bodyEntryStamps,
+  METADATA_RESERVED_FIELD,
+  metadataStampMessage,
+  withoutStamps,
+  writtenNestedStamps,
+  type WrittenStampPlace,
+} from "./metadata-stamps.js";
 export { readTemplateConsumers } from "./template-consumers.js";
 export {
   createConsumerExpander,
@@ -598,6 +606,8 @@ export {
   type Condition,
   type ConditionBlock,
   type ConditionDimension,
+  type DefinitionDimension,
+  type DefinitionRole,
 } from "./presence-condition.js";
 export {
   Alternatives,
@@ -617,7 +627,7 @@ export {
   type Projected,
   type UnreachableOption,
   type ViewCrossing,
-  type Witness,
+  type World,
 } from "./conditioned-expansion.js";
 export {
   ConditionedNameIndex,
@@ -689,9 +699,8 @@ export {
   readRefSlot,
   REF_USES,
   refSlotAnnotation,
-  rewriteCoReferrerKinds,
-  rewriteRefSlotKinds,
   transfersControl,
+  withRefSlotKinds,
 } from "./ref-slot.js";
 export type { CoReferrerCall, NeedConstraint, RefSlot, RefUse, RefUseCases } from "./ref-slot.js";
 export { isStepSlot, readStepSlot, STEP_FRAGMENT } from "./step-slot.js";
@@ -897,7 +906,6 @@ export {
   readProvidesZone,
   readRequiresZone,
   readViolatesZone,
-  rewriteRequiresZoneKind,
 } from "./zone-slot.js";
 export type { ProvidesZoneSlot, RequiresZoneSlot } from "./zone-slot.js";
 export {
@@ -940,7 +948,6 @@ export {
   readReferrerRules,
   readRawReferrerRules,
   hasReferrerRules,
-  rewriteReferrerRuleKinds,
   type ReferrerRule,
 } from "./referrer-rule.js";
 export {
@@ -1029,18 +1036,21 @@ export type {
   StandInOptions,
 } from "./schema-compat.js";
 export { schemaWithTagsAsText } from "./schema-tag-text.js";
-export { readStandIn, withoutStandInFindings } from "./stand-in-findings.js";
+export { readStandIn } from "./stand-in-findings.js";
 export type {
   LocatedFinding,
   SchemaNodeFindings,
   StandIn,
   StandInClass,
   StandInIdentity,
-  StandInJudgment,
   StandInReading,
   StandIns,
 } from "./stand-in-findings.js";
-export { SchemaNodeValidator } from "./schema-node-validator.js";
+export { judgeSchemaFindings, watchUnionBackstop, type UnionBackstop } from "./schema-findings-judge.js";
+export type { SchemaJudgment } from "./schema-findings-judge.js";
+export { unionOutcome } from "./union-outcome.js";
+export type { BranchState, UnionOutcome } from "./union-outcome.js";
+export { registeredDocument, SchemaNodeValidator } from "./schema-node-validator.js";
 export type { NodeValidatingAjv, SchemaNodeValidatorOptions } from "./schema-node-validator.js";
 export {
   ajvErrorToPath,
@@ -1048,7 +1058,6 @@ export {
   explainValueTypeErrors,
   formatAjvErrors,
   formatSingleError,
-  reduceSchemaErrors,
   schemaIssues,
   valueTypeRefusalCode,
 } from "./schema-error-report.js";
@@ -1213,7 +1222,7 @@ export {
     documentLineOffsets,
     offsetToPosition,
 } from "./position-metadata.js";
-export type { DocumentPosition } from "./position-metadata.js";
+export type { DocumentPosition, FilePositions } from "./position-metadata.js";
 export { HttpSource, httpManifestUrl } from "./sources/http-source.js";
 export { defaultSources } from "./sources/default-sources.js";
 export {
@@ -1327,7 +1336,7 @@ export {
   singletonLayer,
 } from "./artifact-layer-index.js";
 export type { ArtifactLayer } from "./artifact-layer-index.js";
-export { validateModuleArtifact } from "./validate-module-artifact.js";
+export { validateControllerSelectorDocuments, validateModuleDocumentArtifact } from "./validate-module-artifact.js";
 export { normalizeNativePath, readNativeEntries } from "./native-entries.js";
 export type { NativeEntries, NativeEntry, NativeEntryProblem } from "./native-entries.js";
 export {

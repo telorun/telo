@@ -303,11 +303,11 @@ export class ZoneContext {
     return def;
   }
 
-  /** Resolve the annotation's zone kind to canonical `<module>.<Kind>`.
-   *  `resolveSchemaRefKinds` already rewrote it in the DECLARING module's scope
-   *  during analysis; the scoped lookup is the fallback for an un-analyzed load. */
+  /** The annotation's zone kind as the registered definition it names. The
+   *  schema is the registry's copy, which holds the kind canonical in the
+   *  module that WROTE the annotation — an ancestor's, for an inherited slot. */
   private resolveZoneKind(zone: string): string {
-    const def = this.#host.resolveDefinitionIn(zone, this.ownDefinition().metadata.module);
+    const def = this.#host.resolveDefinition(zone);
     if (!def) {
       throw new RuntimeError(
         "ERR_ZONE_UNRESOLVED",

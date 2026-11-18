@@ -14,6 +14,17 @@ export interface DocumentPosition {
   positionIndex: PositionIndex;
 }
 
+/** One loaded file's documents and their position tables, in the loader's
+ *  walk: what an analysis orders its findings by. */
+export interface FilePositions {
+  readonly source: string;
+  readonly documents: readonly {
+    readonly kind?: string;
+    readonly name?: string;
+    readonly position: DocumentPosition;
+  }[];
+}
+
 /** Builds DocumentPosition entries aligned to `parsedDocs[i]`. */
 export function buildDocumentPositions(
   text: string,

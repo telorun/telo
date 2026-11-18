@@ -1,4 +1,10 @@
-import { formatAjvErrors, registerTeloKeywords } from "@telorun/analyzer";
+import {
+  formatAjvErrors,
+  judgeSchemaFindings,
+  registeredDocument,
+  registerTeloKeywords,
+  SchemaNodeValidator,
+} from "@telorun/analyzer";
 import AjvModule from "ajv";
 import { detachSnapshotValue, OBSERVED_STATE_KEY, RuntimeError } from "@telorun/sdk";
 
@@ -69,6 +75,18 @@ registerTeloKeywords(ajv);
 // registration changes it, so this hits.
 const validators = new WeakMap<object, ReturnType<typeof ajv.compile>>();
 
+/** The verbose twin a refused report's unions are decided on, created by the
+ *  first refusal that has one. */
+let judgeTwin: SchemaNodeValidator | undefined;
+function judgeNodes(): SchemaNodeValidator {
+  if (!judgeTwin) {
+    const twin = new Ajv({ allErrors: true, strict: false, verbose: true });
+    registerTeloKeywords(twin);
+    judgeTwin = new SchemaNodeValidator(twin, { resolveReference: (id) => registeredDocument(ajv, id) });
+  }
+  return judgeTwin;
+}
+
 function validatorFor(schema: Record<string, any>): ReturnType<typeof ajv.compile> {
   let compiled = validators.get(schema);
   if (!compiled) {
@@ -101,7 +119,13 @@ export function acceptReportedStatus(
   }
   const validate = validatorFor(opts.statusSchema);
   if (!validate(status)) {
-    const detail = formatAjvErrors(validate.errors, status);
+    const findings = judgeSchemaFindings(validate.errors, {
+      value: status,
+      schema: opts.statusSchema,
+      validate: (node, value) => judgeNodes().findingsFor(opts.statusSchema!)(node, value),
+      reference: (node, ref) => judgeNodes().reference(node, ref),
+    });
+    const detail = formatAjvErrors(findings, status);
     throw new RuntimeError(
       "ERR_OBSERVED_STATE_INVALID",
       `${opts.kind} '${opts.name}' reported observed state that does not match its declared 'status:': ${detail}`,

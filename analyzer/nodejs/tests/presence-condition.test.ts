@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ConditionSpace, FALSE, TRUE, type ConditionDimension } from "../src/presence-condition.js";
+import { configurationsCondition } from "../src/configuration-dimensions.js";
+import { ConditionSpace, definitionDimensionKey, FALSE, TRUE, type Condition, type ConditionDimension } from "../src/presence-condition.js";
 
 type Assignment = Record<string, unknown>;
 
@@ -99,5 +100,97 @@ describe("presence conditions", () => {
         expect(subset.some((a) => holds(block, a) && !others.some((o) => holds(o, a)))).toBe(true);
       });
     }
+  });
+
+  it("restrict a condition to fixed values of the dimensions an assignment names", () => {
+    const space = new ConditionSpace([
+      { key: "a", values: [1, 2] },
+      { key: "b", values: [true, false] },
+    ]);
+    const c = space.or(space.assignment({ a: 1, b: true }), space.assignment({ a: 2, b: false }));
+    expect(space.restrict(c, { a: 1 })).toBe(space.literal("b", [true]));
+    expect(space.restrict(c, { a: 2, b: true })).toBe(FALSE);
+  });
+
+  it("project dimensions out where some value of each makes a condition hold", () => {
+    const space = new ConditionSpace([
+      { key: "a", values: [1, 2, 3] },
+      { key: "b", values: [true, false] },
+    ]);
+    const c = space.or(space.assignment({ a: 1, b: true }), space.assignment({ a: 2, b: true }));
+    expect(space.exists(c, ["a"])).toBe(space.literal("b", [true]));
+    expect(space.exists(c, ["a", "b"])).toBe(TRUE);
+  });
+
+  it("translate a condition into another space, each dimension renamed, fixed or projected out", () => {
+    const from = new ConditionSpace([
+      { key: "lib.flag", values: [true, false] },
+      { key: "lib.mode", values: ["x", "y"] },
+      { key: "lib.open", values: ["p", "q"] },
+    ]);
+    const to = new ConditionSpace([{ key: "app.flag", values: [true, false] }]);
+    const c = from.and(from.literal("lib.flag", [true]), from.or(from.literal("lib.mode", ["x"]), from.literal("lib.open", ["p"])));
+    const meanings: Record<string, { key: string } | { fact: unknown } | undefined> = {
+      "lib.flag": { key: "app.flag" },
+      "lib.mode": { fact: "y" },
+      "lib.open": undefined,
+    };
+    expect(from.translate(c, to, (key) => meanings[key])).toBe(to.literal("app.flag", [true]));
+    expect(from.translate(c, to, (key) => (key === "lib.open" ? { fact: "q" } : meanings[key]))).toBe(FALSE);
+    expect(from.translate(c, to, (key) => (key === "lib.flag" ? { fact: "unknown" } : meanings[key]))).toBe(FALSE);
+  });
+
+  it("compose a dimension with a condition per value, of which renaming, fixing and projecting are cases", () => {
+    const space = new ConditionSpace([
+      { key: "variables.f", values: [true, false] },
+      { key: "variables.g", values: ["a", "b"] },
+      { key: "def:self.mode", values: ["x", "y", "z"], definition: { identity: "def", role: "closed", key: "self.mode" } },
+    ]);
+    const f = space.literal("variables.f", [true]);
+    const g = space.literal("variables.g", ["a"]);
+    const mode = (values: string[]) => space.literal("def:self.mode", values);
+    const c = space.or(space.and(mode(["x"]), g), mode(["z"]));
+    // `mode` is x where f holds, y or z elsewhere.
+    const vector = [f, space.not(f), space.not(f)];
+    const composed = space.translate(c, space, (key) => (key === "def:self.mode" ? { values: vector } : { key }));
+    expect(composed).toBe(space.or(space.and(f, g), space.not(f)));
+    expect(space.readsDefinition(c)).toBe(true);
+    expect(space.readsDefinition(composed)).toBe(false);
+    const through = (meaning: { values: Condition[] } | { fact: unknown } | undefined) =>
+      space.translate(c, space, (key) => (key === "def:self.mode" ? meaning : { key }));
+    expect(through({ fact: "x" })).toBe(through({ values: [TRUE, FALSE, FALSE] }));
+    expect(through(undefined)).toBe(through({ values: [TRUE, TRUE, TRUE] }));
+    expect(() => through({ values: [TRUE] })).toThrow(/gives the dimension 'def:self.mode' 1 values of 3/);
+  });
+
+  it("cost what a condition's support costs, however many definition dimensions the space holds", () => {
+    const roles = ["closed", "atom", "selector"] as const;
+    const definitionDimensions: ConditionDimension[] = Array.from({ length: 64 }, (_, i) => {
+      const role = roles[i % 3]!;
+      const key = `self.d${i}`;
+      return { key: definitionDimensionKey("Lib.Kind", key), values: ["x", "y", "z"], definition: { identity: "Lib.Kind", role, key } };
+    });
+    const space = new ConditionSpace([{ key: "variables.flag", values: [false, true] }, ...definitionDimensions]);
+    const chosen = definitionDimensionKey("Lib.Kind", "self.d37");
+    const c = space.and(space.literal("variables.flag", [true]), space.literal(chosen, ["y"]));
+    const support = 2;
+    const counted = <T>(operation: () => T): T => {
+      const before = space.work;
+      const out = operation();
+      expect(space.work - before, operation.toString()).toBeLessThanOrEqual(16 * support);
+      return out;
+    };
+    const universe = counted(() => configurationsCondition(space, [{ "variables.flag": false }, { "variables.flag": true }]));
+    const held = counted(() => space.and(c, universe));
+    const witness = counted(() => space.firstAssignment(held)!);
+    expect(witness).toEqual({ "variables.flag": true, [chosen]: "y" });
+    counted(() => space.assignment(witness));
+    expect(counted(() => space.holds(c, witness))).toBe(true);
+    // A definition dimension the witness leaves out is at its first value.
+    expect(space.holds(space.literal(definitionDimensionKey("Lib.Kind", "self.d5"), ["x"]), witness)).toBe(true);
+    expect(counted(() => space.restrict(c, witness))).toBe(TRUE);
+    expect(counted(() => space.existsDefinitions(c))).toBe(space.literal("variables.flag", [true]));
+    expect(counted(() => space.existsConfiguration(c))).toBe(space.literal(chosen, ["y"]));
+    expect(counted(() => space.cover(c, universe))).toEqual([new Map([["variables.flag", [true]], [chosen, ["y"]]])]);
   });
 });

@@ -1,0 +1,30 @@
+# A scope a choice declares, holding two members of one name and a sink, and a
+# holder a choice declares, holding the same: each collision and each sink is
+# reported only where its choice declares the scope.
+kind: Telo.Application
+metadata: { name: ScopeMemberPassChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets:
+  - !ref main
+---
+kind: Telo.Sequence
+metadata: { name: main }
+with: !if
+  if: !cel "variables.flag1"
+  then:
+    - { kind: Telo.LogTraceSink, metadata: { name: traces } }
+    - { kind: Telo.JsonSchema, metadata: { name: Shape }, schema: { type: string } }
+    - { kind: Telo.JsonSchema, metadata: { name: Shape }, schema: { type: integer } }
+steps:
+  - { name: done, value: 1 }
+--- !if
+metadata: { name: other }
+if: !cel "!variables.flag1"
+then:
+  kind: Telo.Sequence
+  with:
+    - { kind: Telo.LogTraceSink, metadata: { name: traces } }
+    - { kind: Telo.JsonSchema, metadata: { name: Shape }, schema: { type: string } }
+    - { kind: Telo.JsonSchema, metadata: { name: Shape }, schema: { type: integer } }
+  steps:
+    - { name: done, value: 1 }

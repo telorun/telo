@@ -38,6 +38,11 @@ export interface TemplateBodyResourcesInputs {
   familiesOf(definition: ResourceManifest): ReadonlyMap<string, FamilyExpansion> | undefined;
   /** What a resource of `kind`, written in `module`, reads as. */
   analyzed(kind: string, module: string | undefined): AnalyzedResource;
+  /** Every entry `definition`'s body may hold — what some way of deciding it
+   *  declares — in written order, each with the kind the record lists it as
+   *  where its expansion here leaves it out, or none where it is listed only
+   *  as the expansion holds it. */
+  mayHold?(definition: ResourceManifest): ReadonlyMap<string, string | undefined> | undefined;
 }
 
 interface BodyReading {
@@ -109,6 +114,25 @@ export function templateBodyResourcesOf(inputs: TemplateBodyResourcesInputs): Te
         entries.set(name, analyzed);
         properties[name] = readingNode(analyzed);
       }
+      const may = inputs.mayHold?.(definition);
+      if (may && [...may].some(([name, kind]) => kind !== undefined && !Object.hasOwn(properties, name))) {
+        // Families first, then the entries in written order, what the expansion
+        // holds kept as it holds it.
+        const listed: Record<string, any> = {};
+        for (const family of families.values()) if (Object.hasOwn(properties, family.name)) listed[family.name] = properties[family.name];
+        for (const [name, kind] of may) {
+          if (memberNames.has(name)) continue;
+          if (Object.hasOwn(properties, name)) listed[name] = properties[name];
+          else if (kind !== undefined) {
+            const analyzed = inputs.analyzed(kind, module);
+            entries.set(name, analyzed);
+            listed[name] = readingNode(analyzed);
+          }
+        }
+        for (const [name, node] of Object.entries(properties)) if (!Object.hasOwn(listed, name)) listed[name] = node;
+        for (const name of Object.keys(properties)) delete properties[name];
+        Object.assign(properties, listed);
+      }
       if (Object.keys(properties).length > 0) reading = { properties, entries };
     }
     readings.set(definition, reading);
@@ -127,17 +151,20 @@ export function templateBodyResourcesOf(inputs: TemplateBodyResourcesInputs): Te
  * The one way every builder of CEL globals gets a template body's entries:
  * kinds read through the declaring module's aliases, families as the
  * definition's expansion declared them (`familiesOf`) or open when it is read
- * as written.
+ * as written, and — for a key of a body site — the entries the body may hold
+ * that its expansion there leaves out (`mayHold`).
  */
 export function bodyResourcesFor(
   defs: DefinitionRegistry,
   aliases: { resolveKind(kind: string): string | undefined },
   scopes: ModuleScopes,
   familiesOf: TemplateBodyResourcesInputs["familiesOf"] = () => undefined,
+  mayHold?: TemplateBodyResourcesInputs["mayHold"],
 ): TemplateBodyResources {
   const resolve = moduleScopedDefResolver<ResourceDefinition>(defs, aliases, scopes);
   return templateBodyResourcesOf({
     familiesOf,
     analyzed: (kind, module) => analyzedKind(resolve, defs, kind, module),
+    ...(mayHold ? { mayHold } : {}),
   });
 }

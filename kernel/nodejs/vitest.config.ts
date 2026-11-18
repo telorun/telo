@@ -14,5 +14,6 @@ export default defineConfig({
   resolve: { conditions: ["source"] },
   test: {
     exclude: ["**/node_modules/**", "**/dist/**", "tests/integration/**"],
+    setupFiles: ["tests/no-union-backstop.setup.ts"],
   },
 });

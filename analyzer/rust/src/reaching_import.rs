@@ -6,7 +6,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::loaded_types::LoadedGraph;
-use crate::types::{name_of, AnalysisDiagnostic, DiagnosticData};
+use crate::types::{name_of, AnalysisDiagnostic, DiagnosticData, WrittenAt};
 
 /// An `imports:` entry of the entry module, as a diagnostic anchor.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,11 +68,24 @@ pub fn import_reach(graph: &LoadedGraph) -> ImportReach {
     ImportReach { first }
 }
 
-/// A dependency's refusal, reported at the entry's import reaching it.
-pub fn import_anchored_diagnostic(code: &str, module: &str, via: &ReachingImport, message: &str) -> AnalysisDiagnostic {
+/// A dependency's refusal, reported at the entry's import reaching it. `written` is where the
+/// defect is written in the dependency — the place its own check reports it at — or `None` for
+/// a refusal the import's context makes.
+pub fn import_anchored_diagnostic(
+    code: &str,
+    module: &str,
+    via: &ReachingImport,
+    message: &str,
+    written: Option<WrittenAt>,
+) -> AnalysisDiagnostic {
     AnalysisDiagnostic::error(
         code,
         format!("Imported library '{module}', reached through import '{}': {message}", via.alias),
-        DiagnosticData { file_path: Some(via.file_path.clone()), path: Some(via.path.clone()), ..Default::default() },
+        DiagnosticData {
+            file_path: Some(via.file_path.clone()),
+            path: Some(via.path.clone()),
+            written_at: written,
+            ..Default::default()
+        },
     )
 }

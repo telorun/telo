@@ -73,27 +73,27 @@ fn every_refusal_the_analysis_makes_in_node_s_order() {
     let expected: Value = serde_json::from_str(r#"[
  {
   "severity": 1,
-  "code": "CAPABILITY_UNKNOWN",
+  "code": "KIND_PREFIX_RESERVED",
   "source": "telo-analyzer",
-  "message": "Telo.Definition 'Own': 'Telo.Invokable' is not a capability. Did you mean 'Telo.Invocable'? A capability names a lifecycle role — one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type.",
+  "message": "Telo.Application/Telo: A module may not be named 'Telo': `Telo.<Kind>` names a built-in kind and `Self.<Kind>` the declaring module's own, so its kinds would replace them. Rename the module.",
   "data": {
    "resource": {
-    "kind": "Telo.Definition",
-    "name": "Own"
+    "kind": "Telo.Application",
+    "name": "Telo"
    },
    "filePath": "telo.yaml",
-   "path": "capability"
+   "path": "metadata.name"
   },
   "located": {
    "file": "telo.yaml",
    "range": {
     "start": {
-     "line": 10,
-     "character": 12
+     "line": 1,
+     "character": 18
     },
     "end": {
-     "line": 10,
-     "character": 26
+     "line": 1,
+     "character": 22
     }
    }
   }
@@ -105,7 +105,15 @@ fn every_refusal_the_analysis_makes_in_node_s_order() {
   "message": "Imported library 'CapLib', reached through import 'Lib': Telo.Definition 'M': 'Telo.Template' cannot be declared as a capability: The lifecycle of a document that declares rather than runs: an application, a library, an import, a kind or a need type. Read by the kernel while it loads a module, never instantiated, and reserved for the built-in vocabulary — a kind declared in a module never takes this role. Declare one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type.",
   "data": {
    "filePath": "telo.yaml",
-   "path": "imports.Lib"
+   "path": "imports.Lib",
+   "writtenAt": {
+    "resource": {
+     "kind": "Telo.Definition",
+     "name": "M"
+    },
+    "filePath": "/ws/lib/telo.yaml",
+    "path": "capability"
+   }
   },
   "located": {
    "file": "telo.yaml",
@@ -128,7 +136,15 @@ fn every_refusal_the_analysis_makes_in_node_s_order() {
   "message": "Imported library 'CapTwo', reached through import 'Two': Telo.Abstract 'A': 'Nope' is not a capability: a lifecycle role is written 'Telo.<Role>'. One of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type.",
   "data": {
    "filePath": "telo.yaml",
-   "path": "imports.Two"
+   "path": "imports.Two",
+   "writtenAt": {
+    "resource": {
+     "kind": "Telo.Abstract",
+     "name": "A"
+    },
+    "filePath": "/ws/two/telo.yaml",
+    "path": "capability"
+   }
   },
   "located": {
    "file": "telo.yaml",
@@ -183,6 +199,33 @@ fn every_refusal_the_analysis_makes_in_node_s_order() {
  },
  {
   "severity": 1,
+  "code": "CAPABILITY_UNKNOWN",
+  "source": "telo-analyzer",
+  "message": "Telo.Definition 'Own': 'Telo.Invokable' is not a capability. Did you mean 'Telo.Invocable'? A capability names a lifecycle role — one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type.",
+  "data": {
+   "resource": {
+    "kind": "Telo.Definition",
+    "name": "Own"
+   },
+   "filePath": "telo.yaml",
+   "path": "capability"
+  },
+  "located": {
+   "file": "telo.yaml",
+   "range": {
+    "start": {
+     "line": 10,
+     "character": 12
+    },
+    "end": {
+     "line": 10,
+     "character": 26
+    }
+   }
+  }
+ },
+ {
+  "severity": 1,
   "code": "INVALID_REFERENCE_FORM",
   "source": "telo-analyzer",
   "message": "Self.Router/router: object reference '{ kind, name }' at 'handler' is not supported; write it as '!ref greeter'",
@@ -214,33 +257,6 @@ fn every_refusal_the_analysis_makes_in_node_s_order() {
     "end": {
      "line": 29,
      "character": 46
-    }
-   }
-  }
- },
- {
-  "severity": 1,
-  "code": "KIND_PREFIX_RESERVED",
-  "source": "telo-analyzer",
-  "message": "Telo.Application/Telo: A module may not be named 'Telo': `Telo.<Kind>` names a built-in kind and `Self.<Kind>` the declaring module's own, so its kinds would replace them. Rename the module.",
-  "data": {
-   "resource": {
-    "kind": "Telo.Application",
-    "name": "Telo"
-   },
-   "filePath": "telo.yaml",
-   "path": "metadata.name"
-  },
-  "located": {
-   "file": "telo.yaml",
-   "range": {
-    "start": {
-     "line": 1,
-     "character": 18
-    },
-    "end": {
-     "line": 1,
-     "character": 22
     }
    }
   }

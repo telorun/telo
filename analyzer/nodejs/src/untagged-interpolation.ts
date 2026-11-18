@@ -33,6 +33,17 @@ export function validateUntaggedInterpolation(
   rootModules: ReadonlySet<string>,
   moduleDocuments: readonly ModuleDocuments[] = [],
 ): AnalysisDiagnostic[] {
+  return [
+    ...untaggedInterpolationInManifests(manifests, rootModules),
+    ...untaggedInterpolationInLibraries(manifests, rootModules, moduleDocuments),
+  ];
+}
+
+/** What the entry's own declarations hold: each judged alone. */
+export function untaggedInterpolationInManifests(
+  manifests: readonly ResourceManifest[],
+  rootModules: ReadonlySet<string>,
+): AnalysisDiagnostic[] {
   const out: AnalysisDiagnostic[] = [];
   for (const manifest of manifests) {
     const metadata = (manifest.metadata ?? {}) as Record<string, unknown>;
@@ -53,7 +64,16 @@ export function validateUntaggedInterpolation(
       }),
     );
   }
+  return out;
+}
 
+/** What each imported library holds, reported at the entry's imports of it. */
+export function untaggedInterpolationInLibraries(
+  manifests: readonly ResourceManifest[],
+  rootModules: ReadonlySet<string>,
+  moduleDocuments: readonly ModuleDocuments[],
+): AnalysisDiagnostic[] {
+  const out: AnalysisDiagnostic[] = [];
   for (const library of moduleDocuments) {
     if (rootModules.has(library.module)) continue;
     const sites: string[] = [];

@@ -1,0 +1,34 @@
+# A field typed from its sibling reference's kind, written by a choice: the
+# value fits the referenced kind's schema only where the choice writes `fast`.
+kind: Telo.Application
+metadata: { name: SchemaFromChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets:
+  - !ref job
+---
+kind: Telo.Definition
+metadata: { name: Engine }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema: { type: object, $defs: { Mode: { type: string, enum: [fast, slow] } } }
+---
+kind: Telo.Definition
+metadata: { name: Job }
+capability: Telo.Runnable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties:
+    engine: { x-telo-ref: { kind: Self.Engine, use: dependency } }
+    mode: { type: string, x-telo-schema-from: "engine/$defs/Mode" }
+---
+kind: Self.Engine
+metadata: { name: engine }
+---
+kind: Self.Job
+metadata: { name: job }
+engine: !ref engine
+mode: !if
+  if: !cel "variables.flag1"
+  then: turbo
+  else: fast

@@ -1,0 +1,26 @@
+# A reference slot only one class of a named shape declares: where flag1
+# holds `handler` is a slot and the inline declaration written there is read
+# as one, elsewhere it is a plain object. Either way the expression inside it
+# is read against a key covering every class of the shape.
+kind: Telo.Application
+metadata: { name: ShapeInlineSlotChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Handler }
+schema: !if
+  if: !cel "variables.flag1"
+  then: { x-telo-ref: { kind: Telo.Invocable, use: call } }
+  else: { type: object }
+---
+kind: Telo.Definition
+metadata: { name: Route }
+capability: Telo.Service
+controllers: [pkg:telo/local/js?path=./probe.mjs#Route]
+schema: { type: object, properties: { handler: { $ref: "telo://Self/Handler" } } }
+---
+kind: ShapeInlineSlotChoice.Route
+metadata: { name: route }
+handler:
+  kind: Telo.Value
+  value: !cel "variables.missing"

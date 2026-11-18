@@ -9,7 +9,10 @@
  *  - a CLOSED read is a dimension keyed by its read path, ranging over the domain
  *    the schema closes there — an `enum` / `const` / boolean at a `self.` path,
  *    at a binding's element (`each.value.mode`), past a reference into the
- *    referenced kind's own schema, or a library input's declared domain;
+ *    referenced kind's own schema;
+ *  - a module input read is the application's own configuration dimension of
+ *    it (`ChoiceReading.inputRead`), never the definition's: every way of
+ *    deciding the body reads it at the configuration's value;
  *  - every other read a consumer can decide (an open `self.` path, a binding's
  *    `key` / `index`, a module call) makes its leaf of the condition an ATOM,
  *    keyed by the leaf's canonical text (`condition-atoms.ts`), so two tags whose
@@ -19,17 +22,13 @@
  *  - a read no consumer can decide (`request`, `inputs`, `steps`, `ports`, a
  *    resource's published state) is `BRANCH_UNDECIDABLE` at the template.
  *
- * A choice is STRUCTURAL when its branches can differ in which body declarations
- * exist, in their kind, or in the references and `resources.` / `steps.` reads
- * they hold. The body is expanded once per assignment of the structural
- * dimensions, and within each, once per assignment of the dimensions the
- * non-structural choices of any one entry read — every entry walking its own
- * product, so an entry's checks run once per assignment of what it reads and the
- * whole-body checks once per structural assignment, never over the product of
- * choices that cannot interact. Each repeat emits one representative element.
- * Exhaustiveness, reachability and case keys are decided per choice, over its
- * own dimensions; a branch no assignment takes is still checked, in a variant of
- * its own.
+ * The body is read ONCE, lifted over those dimensions (`lift`): each choice an
+ * option per branch under the condition it is taken in, each repeat one
+ * representative element, each splice under the representative key, and a
+ * branch no assignment takes an unreachable option forcing its choice, so it is
+ * still checked. Every way of deciding the body is a projection of that
+ * reading, and no check enumerates them. Exhaustiveness, reachability and case
+ * keys are decided per choice, over its own dimensions.
  *
  * Browser-safe.
  */
@@ -58,8 +57,10 @@ import {
   declarationBranchProblem,
   describeBranch,
   evaluate,
+  readChoices,
   staticTypeProblem,
   valueTypeProblem,
+  type ChoiceReading,
 } from "./choice-reading.js";
 import {
   canonicalSource,
@@ -68,7 +69,7 @@ import {
   leavesOf,
   type BooleanShape,
 } from "./condition-atoms.js";
-import { admitsAbsence, entriesOfBlocks, memberDomain, wholeDomain } from "./configuration-dimensions.js";
+import { describeDimensionValues, entriesOfBlocks, type Dimension } from "./configuration-dimensions.js";
 import { readDecisionExpression } from "./decision-reads.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import type { ExpansionReading, ExpansionSite } from "./expansion-sites.js";
@@ -87,17 +88,31 @@ import {
   parseKeys,
   pathText,
   TEMPLATE_BODY_FIELDS,
+  walkTemplateBody,
+  type BranchOutcome,
   type LoopBinding,
   type LoopElement,
   type LoopInstance,
+  type RawTemplateBody,
   type TemplateBodyExpansion,
+  type TemplateExpander,
 } from "./template-expansion.js";
+import { projectTemplateBody } from "./template-body-projection.js";
+import { World, type ChoiceStep, type Forcing } from "./conditioned-expansion.js";
+import { reportBodyReading } from "./cel-site-judgements.js";
 import { extractContextsFromSchema } from "./validate-cel-context.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
 import type { StandIns } from "./stand-in-findings.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { iteratesFamilySource, type LoopView } from "./family-source.js";
-import { ConditionSpace } from "./presence-condition.js";
+import {
+  ConditionSpace,
+  definitionDimensionKey,
+  FALSE,
+  TRUE,
+  type Condition,
+  type ConditionDimension,
+} from "./presence-condition.js";
 
 const SOURCE = "telo-analyzer";
 
@@ -127,43 +142,98 @@ const UNDECIDABLE_ROOTS = new Set(["request", "inputs", "steps", "ports", "error
 export interface TemplateDimension {
   readonly key: string;
   readonly values: readonly unknown[];
-  /** `closed`: a read path over its schema's domain; `input`: a module input,
-   *  in the input key space; `atom`: a leaf's truth; `selector`: an open
-   *  selector's value. */
-  readonly kind: "closed" | "input" | "atom" | "selector";
+  /** `closed`: a read path over its schema's domain; `configuration`: a
+   *  module input's configuration dimension, keyed as the configuration keys
+   *  it; `atom`: a leaf's truth; `selector`: an open selector's value. */
+  readonly kind: "closed" | "configuration" | "atom" | "selector";
 }
 
 /** A definition's assignment of its dimensions. */
 export type TemplateAssignment = Readonly<Record<string, unknown>>;
 
-/** One expansion of one definition, and what it assigns where. */
-export interface DefinitionVariant {
+/** One definition's body as an assignment of its own dimensions decides it:
+ *  a projection of its reading. */
+export interface DefinitionProjection {
   readonly expansion: TemplateBodyExpansion;
-  /** The dimensions a finding at `writtenPath` varies over, and what this
-   *  variant assigns them. */
-  assignmentAt(writtenPath: string): { readonly assignment: TemplateAssignment; readonly dimensions: readonly TemplateDimension[] };
-  /** The branch this variant forces, where it exists to check one no
-   *  assignment takes: only what is found beneath it is kept. */
-  readonly forced?: string;
   /** The loop bindings in scope at an expanded path, as CEL context
    *  properties. */
   bindingsAt(path: string): Record<string, Record<string, any>> | undefined;
 }
 
+/** How one way of deciding a definition's body decides each choice: the
+ *  assignment of the definition's own dimensions (local keys) a choice is
+ *  decided by, and the choices forced to take the branch each names. */
+export interface DefinitionWitness {
+  assignmentOf(sentinel: ExpansionSentinel): TemplateAssignment;
+  readonly forcing?: Forcing;
+}
+
+/** A branch no value the definition can be given takes: a witness reaching its
+ *  choice, and the choices forced to take it there. */
+export interface UnreachableBodyBranch {
+  readonly sentinel: ExpansionSentinel;
+  readonly branch: string;
+  /** Whether its choice reads one of the definition's own dimensions: else
+   *  only configuration dimensions, and the branch is one no configuration
+   *  takes. */
+  readonly readsDefinition: boolean;
+  readonly baseline: TemplateAssignment;
+  readonly forcing: Forcing;
+}
+
+/**
+ * A definition's body read ONCE, over the definition's own dimensions of the
+ * analysis's condition space: every choice an option per branch under the
+ * condition it is taken in (a branch no value takes an unreachable option with
+ * its forcing), every repeat its representative element, every splice under the
+ * representative key. Every way of deciding the body is its projection.
+ */
+export interface TemplateBodyReading {
+  /** The kind document, as written. */
+  readonly definition: ResourceManifest;
+  /** The identity its dimensions are keyed by. */
+  readonly identity: string;
+  readonly space: ConditionSpace;
+  /** The one lifted walk of the body. */
+  readonly body: RawTemplateBody;
+  /** Every branch no value takes, in the order the definition checks them. */
+  readonly unreachable: readonly UnreachableBodyBranch[];
+  /** The body as `witness` decides it. */
+  project(witness: DefinitionWitness): TemplateBodyExpansion;
+}
+
 export interface TemplateDefinitions {
   readonly diagnostics: readonly AnalysisDiagnostic[];
+  /** Where every construct of the documents read stands — a body's included —
+   *  and what its reader refuses. */
+  readonly expansion: ExpansionReading;
   /** Constructs refused here: what is found at or beneath one is dropped. */
   readonly refused: readonly { readonly holder: ResourceManifest; readonly path: string }[];
   /** Every definition whose body holds a construct, as written. */
   readonly definitions: readonly ResourceManifest[];
-  /** The most variants any one definition has. */
-  readonly variantCount: number;
-  /** `definition`'s variant `index`, clamped to its own count. */
-  variant(definition: ResourceManifest, index: number): DefinitionVariant;
-  /** Every variant of `definition`. */
-  variantsOf(definition: ResourceManifest): number;
-  /** Diagnostic statistics, for measuring the model. */
-  stats(definition: ResourceManifest): { structural: number; entries: ReadonlyMap<string, number> };
+  /** `definition`'s body as `assignment` of its own dimensions (local keys)
+   *  decides every choice, `forcing`'s choices taking the branch each names: a
+   *  projection of its reading. The same object for the same arguments. */
+  projectionAt(definition: ResourceManifest, assignment: TemplateAssignment, forcing?: Forcing): DefinitionProjection;
+  /** Every definition's own dimensions — its closed reads, atoms and
+   *  selectors — as dimensions of the one condition space, in definition
+   *  order. */
+  readonly dimensions: readonly ConditionDimension[];
+  /** `definition`'s own dimensions, of {@link dimensions}. */
+  dimensionsOf(definition: ResourceManifest): readonly ConditionDimension[];
+  /** The configuration dimensions `definition`'s body choices read — module
+   *  inputs, which every way of deciding the body reads at the
+   *  configuration's own value. */
+  configurationDimensionsOf(definition: ResourceManifest): readonly ConditionDimension[];
+  /** Read every definition's body once, over `space` — the analysis's, which
+   *  holds {@link dimensions}. Every way of deciding a body is a projection of
+   *  its reading. */
+  lift(space: ConditionSpace): void;
+  /** `definition`'s reading, once {@link lift}ed. */
+  readingOf(definition: ResourceManifest): TemplateBodyReading;
+  /** `definition`'s body with every choice decided at `witness`: the decided
+   *  mode of the one expansion, which the reading's projection equals. */
+  decidedExpansion(definition: ResourceManifest, witness: DefinitionWitness): TemplateBodyExpansion;
 }
 
 export interface TemplateDefinitionInputs {
@@ -172,6 +242,9 @@ export interface TemplateDefinitionInputs {
   readonly registry: DefinitionRegistry;
   readonly aliases: AliasResolver;
   readonly aliasesByModule: Map<string, AliasResolver>;
+  /** The configuration reading a body choice's module input is read through;
+   *  without one, `manifests`' own. */
+  readonly choices?: ChoiceReading;
 }
 
 /** A loop's binding as a CEL context property: a closed record. */
@@ -203,13 +276,19 @@ export function holdsTemplateConstructs(definition: ResourceManifest): boolean {
   );
 }
 
+/** What reading one definition yields. */
+interface DefinitionRead {
+  projectionAt(reading: TemplateBodyReading, assignment: TemplateAssignment, forcing: Forcing | undefined): DefinitionProjection;
+  lift(space: ConditionSpace, identity: string): TemplateBodyReading;
+  decided(witness: DefinitionWitness): TemplateBodyExpansion;
+  readonly dimensions: readonly TemplateDimension[];
+}
+
 interface Choice {
   readonly site: ExpansionSite;
   readonly sentinel: ExpansionSentinel;
   readonly tag: "if" | "switch";
   readonly keys: readonly (string | number)[];
-  readonly entry: string;
-  readonly structural: boolean;
   /** The dimension keys it reads. */
   readonly dimensions: string[];
   /** Refused here: never decided, its place dropped. */
@@ -222,6 +301,8 @@ interface Choice {
 /** Read every template definition `inputs.manifests` holds. */
 export function readTemplateDefinitions(inputs: TemplateDefinitionInputs): TemplateDefinitions {
   const { manifests, reading, registry, aliases, aliasesByModule } = inputs;
+  const inputReading =
+    inputs.choices ?? readChoices(manifests.filter((m) => !isExpansionSentinel(m)), manifests.filter(isExpansionSentinel));
   const diagnostics: AnalysisDiagnostic[] = [];
   const refused: { holder: ResourceManifest; path: string }[] = [];
   const rootModules = new Set<string>();
@@ -247,37 +328,64 @@ export function readTemplateDefinitions(inputs: TemplateDefinitionInputs): Templ
     else sitesBy.set(site.holder, [site]);
   }
 
-  const variantsBy = new Map<ResourceManifest, (index: number) => DefinitionVariant>();
-  const countBy = new Map<ResourceManifest, number>();
-  const statsBy = new Map<ResourceManifest, { structural: number; entries: Map<string, number> }>();
+  const readsBy = new Map<ResourceManifest, DefinitionRead>();
+  const identityBy = new Map<ResourceManifest, string>();
+  const readings = new Map<ResourceManifest, TemplateBodyReading>();
+  let lifted: ConditionSpace | undefined;
+  const dimensionsBy = new Map<ResourceManifest, ConditionDimension[]>();
+  const configurationBy = new Map<ResourceManifest, ConditionDimension[]>();
+  const identities = new Set<string>();
   for (const [definition, sites] of sitesBy) {
     const read = readDefinition(definition, sites);
-    variantsBy.set(definition, read.variant);
-    countBy.set(definition, read.count);
-    statsBy.set(definition, read.stats);
+    readsBy.set(definition, read);
+    const identity = definitionIdentity(definition, identities);
+    identityBy.set(definition, identity);
+    dimensionsBy.set(
+      definition,
+      read.dimensions.flatMap((d) =>
+        d.kind === "configuration"
+          ? []
+          : [{ key: definitionDimensionKey(identity, d.key), values: d.values, definition: { identity, role: d.kind, key: d.key } }],
+      ),
+    );
+    configurationBy.set(
+      definition,
+      read.dimensions.filter((d) => d.kind === "configuration").map((d) => ({ key: d.key, values: d.values })),
+    );
   }
+  const readingOf = (definition: ResourceManifest): TemplateBodyReading => {
+    const reading = readings.get(definition);
+    if (!reading) {
+      throw new Error(
+        `internal: the template definition '${String(definition.metadata?.name)}' is read before its body is lifted.`,
+      );
+    }
+    return reading;
+  };
 
   return {
     diagnostics,
+    expansion: reading,
     refused,
     definitions: [...sitesBy.keys()],
-    variantCount: Math.max(1, ...countBy.values()),
-    variant: (definition, index) => {
-      const count = countBy.get(definition) ?? 1;
-      return variantsBy.get(definition)!(Math.min(index, count - 1));
+    projectionAt: (definition, assignment, forcing) => readsBy.get(definition)!.projectionAt(readingOf(definition), assignment, forcing),
+    dimensions: [...dimensionsBy.values()].flat(),
+    dimensionsOf: (definition) => dimensionsBy.get(definition) ?? [],
+    configurationDimensionsOf: (definition) => configurationBy.get(definition) ?? [],
+    lift: (space) => {
+      if (lifted === space) return;
+      if (lifted) throw new Error("internal: template definitions are lifted over a second condition space.");
+      lifted = space;
+      for (const [definition, read] of readsBy) {
+        readings.set(definition, read.lift(space, identityBy.get(definition)!));
+        reportBodyReading(definition);
+      }
     },
-    variantsOf: (definition) => countBy.get(definition) ?? 1,
-    stats: (definition) => statsBy.get(definition) ?? { structural: 1, entries: new Map() },
+    readingOf,
+    decidedExpansion: (definition, witness) => readsBy.get(definition)!.decided(witness),
   };
 
-  function readDefinition(
-    definition: ResourceManifest,
-    sites: readonly ExpansionSite[],
-  ): {
-    variant: (index: number) => DefinitionVariant;
-    count: number;
-    stats: { structural: number; entries: Map<string, number> };
-  } {
+  function readDefinition(definition: ResourceManifest, sites: readonly ExpansionSite[]): DefinitionRead {
     const scope = moduleAliasScope(definition.metadata, aliases, aliasesByModule);
     const selfSchema = buildSelfSchema(definition as Record<string, any>, registry);
     const schemaRefused = holdsExpansionSentinel(definition.schema);
@@ -434,38 +542,6 @@ export function readTemplateDefinitions(inputs: TemplateDefinitionInputs): Templ
       }
     }
 
-    // Variants: the structural product, and per entry the product of the rest.
-    const structural = new Set<string>();
-    for (const choice of choices) if (choice.structural) for (const key of choice.dimensions) structural.add(key);
-    const structuralDims = [...structural].map((key) => dimensions.get(key)!).filter(Boolean);
-    const entryDims = new Map<string, Set<string>>();
-    for (const choice of choices) {
-      if (choice.structural) continue;
-      const set = entryDims.get(choice.entry) ?? new Set<string>();
-      entryDims.set(choice.entry, set);
-      for (const key of choice.dimensions) if (!structural.has(key)) set.add(key);
-    }
-    const entryProducts = new Map<string, { dims: TemplateDimension[]; assignments: TemplateAssignment[] }>();
-    for (const [entry, keys] of entryDims) {
-      const dims = [...keys].map((key) => dimensions.get(key)!).filter(Boolean);
-      entryProducts.set(entry, { dims, assignments: product(dims) });
-    }
-    const width = Math.max(1, ...[...entryProducts.values()].map((p) => p.assignments.length));
-    const structuralAssignments = product(structuralDims);
-    type Plan = { s: TemplateAssignment; k: number; forced?: { choice: Choice; branch: string } };
-    const plans: Plan[] = [];
-    for (const s of structuralAssignments) for (let k = 0; k < width; k++) plans.push({ s, k });
-    for (const forced of unreachable) plans.push({ s: structuralAssignments[0]!, k: 0, forced });
-
-    const entryAssignment = (entry: string, k: number): TemplateAssignment => {
-      const p = entryProducts.get(entry);
-      return p ? p.assignments[k % p.assignments.length]! : {};
-    };
-    const entryOfPath = (path: string): string | undefined => {
-      const keys = parseKeys(path);
-      if (keys.length === 0) return undefined;
-      return keys[0] === "resources" && typeof keys[1] === "number" ? `resources[${keys[1]}]` : String(keys[0]);
-    };
     const choiceBySentinel = new Map(choices.map((c) => [c.sentinel as unknown, c]));
     const representative = (binding: LoopBinding): LoopElement => ({
       index: 0,
@@ -473,61 +549,131 @@ export function readTemplateDefinitions(inputs: TemplateDefinitionInputs): Templ
       representative: true,
       ...(binding.keyed ? { key: REPRESENTATIVE_KEY } : {}),
     });
-
-    const built = new Map<number, DefinitionVariant>();
-    const variant = (index: number): DefinitionVariant => {
-      const known = built.get(index);
-      if (known) return known;
-      const plan = plans[index]!;
-      const assignmentFor = (entry: string | undefined): TemplateAssignment => ({
-        ...plan.s,
-        ...(entry ? entryAssignment(entry, plan.k) : {}),
-      });
-      const expansion = expandTemplateBody(definition, {
-        positionOf: (sentinel) => positions.get(sentinel)?.position,
+    const elements: TemplateExpander["elements"] = (sentinel) => {
+      const site = positions.get(sentinel);
+      const binding = site ? bindings.get(site) : undefined;
+      return binding ? { binding, elements: [representative(binding)] } : undefined;
+    };
+    const positionOf: TemplateExpander["positionOf"] = (sentinel) => positions.get(sentinel)?.position;
+    const decided = (at: DefinitionWitness): TemplateBodyExpansion =>
+      expandTemplateBody(definition, {
+        positionOf,
         decide: (sentinel) => {
           const choice = choiceBySentinel.get(sentinel);
           if (!choice) return undefined;
-          if (plan.forced?.choice === choice) return plan.forced.branch;
-          return choice.decide(assignmentFor(choice.entry));
+          if (at.forcing?.has(sentinel)) return at.forcing.get(sentinel);
+          return choice.decide(at.assignmentOf(sentinel));
         },
-        elements: (sentinel) => {
-          const site = positions.get(sentinel);
-          const binding = site ? bindings.get(site) : undefined;
-          return binding ? { binding, elements: [representative(binding)] } : undefined;
-        },
+        elements,
         key: () => REPRESENTATIVE_KEY,
       });
-      const result: DefinitionVariant = {
-        expansion,
-        ...(plan.forced
-          ? { forced: pathText([...plan.forced.choice.keys, ...branchKeysOf(plan.forced.branch)]) }
-          : {}),
-        assignmentAt: (writtenPath) => {
-          const entry = entryOfPath(writtenPath);
-          const own = entry ? entryProducts.get(entry)?.dims ?? [] : [];
-          return { assignment: assignmentFor(entry), dimensions: [...structuralDims, ...own] };
-        },
-        bindingsAt: (path) => {
-          const instance = expansion.instanceAt(path);
-          if (instance.length === 0) return undefined;
-          return Object.fromEntries(instance.map((frame) => [frame.binding.name, bindingRecordSchema(frame.binding)]));
-        },
+
+    const lift = (space: ConditionSpace, identity: string): TemplateBodyReading => {
+      const unionKeys = new WeakMap<TemplateAssignment, Record<string, unknown>>();
+      const inSpace = (assignment: TemplateAssignment): Record<string, unknown> => {
+        let keyed = unionKeys.get(assignment);
+        if (!keyed) {
+          keyed = Object.fromEntries(
+            Object.entries(assignment).map(([key, value]) => [
+              dimensions.get(key)?.kind === "configuration" ? key : definitionDimensionKey(identity, key),
+              value,
+            ]),
+          );
+          unionKeys.set(assignment, keyed);
+        }
+        return keyed;
       };
-      built.set(index, result);
+      // A configuration's own value is the witness's, never the baseline's.
+      const baseline: TemplateAssignment = Object.fromEntries(
+        [...dimensions.values()].filter((d) => d.kind !== "configuration").map((d) => [d.key, d.values[0]]),
+      );
+      const dead: UnreachableBodyBranch[] = unreachable.map(({ choice, branch }) => ({
+        sentinel: choice.sentinel,
+        branch,
+        readsDefinition: choice.dimensions.length === 0 || choice.dimensions.some((key) => dimensions.get(key)?.kind !== "configuration"),
+        baseline,
+        forcing: new Map([[choice.sentinel, branch]]),
+      }));
+      const outcomes = new Map<Choice, BranchOutcome[]>();
+      const outcomesOf = (choice: Choice): BranchOutcome[] => {
+        const known = outcomes.get(choice);
+        if (known) return known;
+        const own = choice.dimensions.map((key) => dimensions.get(key)!).filter(Boolean);
+        const taken = new Map<string | null | undefined, Condition>();
+        for (const assignment of product(own)) {
+          const branch = choice.decide(assignment);
+          taken.set(branch, space.or(taken.get(branch) ?? FALSE, space.assignment(inSpace(assignment))));
+        }
+        const out: BranchOutcome[] = [...taken].map(([branch, local]) => ({
+          branch,
+          holding: { condition: local, path: [{ sentinel: choice.sentinel, branch, taken: local } satisfies ChoiceStep] },
+        }));
+        for (const entry of dead) {
+          if (entry.sentinel !== choice.sentinel) continue;
+          out.push({
+            branch: entry.branch,
+            holding: { condition: FALSE, path: [{ sentinel: choice.sentinel, branch: entry.branch, taken: FALSE }] },
+            unreachable: true,
+            baseline: inSpace(entry.baseline),
+            forcing: entry.forcing,
+            world: World.deadBranch(inSpace(entry.baseline), entry.forcing),
+          });
+        }
+        outcomes.set(choice, out);
+        return out;
+      };
+      const body = walkTemplateBody(definition, {
+        positionOf,
+        space,
+        branches: (sentinel) => {
+          const choice = choiceBySentinel.get(sentinel);
+          return choice && !choice.refused ? outcomesOf(choice) : undefined;
+        },
+        decide: () => undefined,
+        elements,
+        key: () => REPRESENTATIVE_KEY,
+      });
+      return {
+        definition,
+        identity,
+        space,
+        body,
+        unreachable: dead,
+        project: (at) =>
+          projectTemplateBody(body, (step) =>
+            at.forcing?.has(step.sentinel)
+              ? at.forcing.get(step.sentinel) === step.branch
+              : space.holds(step.taken, inSpace(at.assignmentOf(step.sentinel))),
+          ),
+      };
+    };
+
+    const bindingsOf = (expansion: TemplateBodyExpansion) => (path: string) => {
+      const instance = expansion.instanceAt(path);
+      if (instance.length === 0) return undefined;
+      return Object.fromEntries(instance.map((frame) => [frame.binding.name, bindingRecordSchema(frame.binding)]));
+    };
+    const atAssignment = new WeakMap<TemplateBodyReading, Map<string, DefinitionProjection>>();
+    const forcingIds = new WeakMap<object, number>();
+    let nextForcingId = 0;
+    const projectionAt = (reading: TemplateBodyReading, assignment: TemplateAssignment, forcing: Forcing | undefined): DefinitionProjection => {
+      let built = atAssignment.get(reading);
+      if (!built) atAssignment.set(reading, (built = new Map()));
+      const forced = [...(forcing ?? [])].map(([sentinel, branch]) => {
+        let id = forcingIds.get(sentinel as object);
+        if (id === undefined) forcingIds.set(sentinel as object, (id = nextForcingId++));
+        return `${id}=${branch}`;
+      });
+      const key = `${templateAssignmentKey(assignment)}|${forced.join(",")}`;
+      const known = built.get(key);
+      if (known) return known;
+      const expansion = reading.project({ assignmentOf: () => assignment, ...(forcing && forcing.size > 0 ? { forcing } : {}) });
+      const result: DefinitionProjection = { expansion, bindingsAt: bindingsOf(expansion) };
+      built.set(key, result);
       return result;
     };
 
-    return {
-      variant,
-      count: plans.length,
-      stats: {
-        structural: structuralAssignments.length,
-        entries: new Map(
-          [...entryProducts].map(([entry, p]) => [entry, p.assignments.length * structuralAssignments.length]),
-        ),
-      },
-    };
+    return { projectionAt, lift, decided, dimensions: [...dimensions.values()] };
 
     // --- helpers over this definition ---
 
@@ -910,7 +1056,6 @@ export function readTemplateDefinitions(inputs: TemplateDefinitionInputs): Templ
     function readChoice(site: ExpansionSite, tag: "if" | "switch"): Choice | undefined {
       const sentinel = site.value as ExpansionSentinel;
       const keys = keysOf(site);
-      const entry = keys[0] === "resources" && typeof keys[1] === "number" ? `resources[${keys[1]}]` : String(keys[0]);
       const label = `'!${tag}'`;
       const what = tag === "if" ? "condition" : "selector";
       const at = [...keys, tag];
@@ -946,15 +1091,10 @@ export function readTemplateDefinitions(inputs: TemplateDefinitionInputs): Templ
               `branches are; the tag's own 'metadata' names it once for every branch.`);
         }
       }
-      const structural =
-        site.position === "template-resource" ||
-        site.position === "scope-member" ||
-        keys[0] === "targets" ||
-        branchesOf({ sentinel, tag }).some(([, branchKeys]) => holdsReferences(valueAt(sentinel, branchKeys)));
       const written = (sentinel as Record<string, unknown>)[tag];
       const standIn = (): Choice => {
         refuse(keys);
-        return { site, sentinel, tag, keys, entry, structural, dimensions: [], refused: true, decide: () => undefined };
+        return { site, sentinel, tag, keys, dimensions: [], refused: true, decide: () => undefined };
       };
       if (!isTaggedSentinel(written) && !isCompiledValue(written)) {
         const problem = valueTypeProblem(tag, written);
@@ -963,7 +1103,7 @@ export function readTemplateDefinitions(inputs: TemplateDefinitionInputs): Templ
           return standIn();
         }
         return {
-          site, sentinel, tag, keys, entry, structural, dimensions: [],
+          site, sentinel, tag, keys, dimensions: [],
           decide: () => branchForValue(sentinel, tag, written),
         };
       }
@@ -1002,7 +1142,7 @@ export function readTemplateDefinitions(inputs: TemplateDefinitionInputs): Templ
           for (const c of cases) set.add(c);
           switchAtoms.set(key, set);
           return {
-            site, sentinel, tag, keys, entry, structural, dimensions: [key],
+            site, sentinel, tag, keys, dimensions: [key],
             decide: (assignment) => {
               const value = assignment[key];
               if (value === undefined) return undefined;
@@ -1028,7 +1168,7 @@ export function readTemplateDefinitions(inputs: TemplateDefinitionInputs): Templ
               (selectorType === "int" ? ` — an integer case is its decimal literal ('1', never '01').` : selectorType === "bool" ? ` — a boolean case is 'true' or 'false'.` : `.`));
         }
         return {
-          site, sentinel, tag, keys, entry, structural, dimensions: keysRead,
+          site, sentinel, tag, keys, dimensions: keysRead,
           decide: (assignment) => {
             const value = evaluateClosed(source, assignment, inScope);
             return value === undefined ? undefined : branchForValue(sentinel, tag, value.value);
@@ -1065,7 +1205,7 @@ export function readTemplateDefinitions(inputs: TemplateDefinitionInputs): Templ
       }
       const shape: BooleanShape = shaped.shape;
       return {
-        site, sentinel, tag, keys, entry, structural, dimensions: [...keysRead],
+        site, sentinel, tag, keys, dimensions: [...keysRead],
         decide: (assignment) => {
           let failed = false;
           const value = evaluateShape(shape, (leaf) => {
@@ -1114,36 +1254,12 @@ export function readTemplateDefinitions(inputs: TemplateDefinitionInputs): Templ
           continue;
         }
         if (read.class === "input") {
-          const r = read.read;
-          if (r.input === "resources") {
-            out.open = true;
-            continue;
-          }
-          const entry = (moduleDoc?.[r.input] as Record<string, any> | undefined)?.[r.name] as
-            | Record<string, unknown>
-            | undefined;
-          const absent = entry ? admitsAbsence(entry) : false;
-          const domain =
-            !entry
-              ? undefined
-              : r.projection === "whole"
-                ? wholeDomain(r.input, entry)
-                : r.projection === "member"
-                  ? memberDomain(entry, r.member!)
-                  : ["present"];
-          if (!domain || (r.projection === "presence" && !absent)) {
-            if (r.projection === "presence" && entry && !absent) {
-              out.dimensions.push({ key: r.chain, values: ["present"], kind: "input" });
-              continue;
-            }
-            out.open = true;
-            continue;
-          }
-          out.dimensions.push({
-            key: r.projection === "member" ? `${r.input}.${r.name}.${r.member}` : `${r.input}.${r.name}`,
-            values: absent ? [...domain, null] : domain,
-            kind: "input",
-          });
+          // The configuration's own dimension: a module input is the
+          // application's, never the definition's.
+          const reading = inputReading.inputRead(definition, read.read);
+          if (reading.kind === "dimension") {
+            out.dimensions.push({ key: reading.dimension.key, values: reading.dimension.values, kind: "configuration" });
+          } else if (reading.kind === "open") out.open = true;
           continue;
         }
         const chain = read.chain;
@@ -1186,12 +1302,17 @@ export function readTemplateDefinitions(inputs: TemplateDefinitionInputs): Templ
       assignment: TemplateAssignment,
       inScope: readonly LoopBinding[],
     ): { value: unknown } | undefined {
-      const activation: Record<string, unknown> = { self: {}, module: moduleMetadata, variables: {}, secrets: {} };
+      const configuration: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(assignment)) {
+        if (dimensions.get(key)?.kind === "configuration") configuration[key] = value;
+      }
+      const activation: Record<string, unknown> = { self: {}, module: moduleMetadata, ...inputReading.inputValuesIn(definition, configuration) };
       for (const binding of inScope) activation[binding.name] = { value: {} };
       for (const [key, value] of Object.entries(assignment)) {
-        if (dimensions.get(key)?.kind === "atom" || dimensions.get(key)?.kind === "selector") continue;
+        const kind = dimensions.get(key)?.kind;
+        if (kind === "atom" || kind === "selector" || kind === "configuration") continue;
         if (key.startsWith("module.")) continue;
-        setPath(activation, key.split("."), value === "present" ? "present" : asCel(value));
+        setPath(activation, key.split("."), asCel(value));
       }
       try {
         return { value: evaluate(source, activation, moduleNames) };
@@ -1324,6 +1445,19 @@ function elementOf(
   return { element: resolveLocalRef(element, root) ?? element, keyed: true };
 }
 
+/** The identity `definition`'s dimensions are keyed by: the kind it declares
+ *  (a `:` in an invalid name read as `_`), `#<n>` after it for the n-th
+ *  definition declaring one already taken. */
+function definitionIdentity(definition: ResourceManifest, taken: Set<string>): string {
+  const metadata = definition.metadata as { name?: unknown; module?: unknown } | undefined;
+  const written = typeof metadata?.module === "string" ? `${metadata.module}.${String(metadata?.name)}` : String(metadata?.name);
+  const kind = written.replaceAll(":", "_");
+  let identity = kind;
+  for (let n = 2; taken.has(identity); n++) identity = `${kind}#${n}`;
+  taken.add(identity);
+  return identity;
+}
+
 /** Every assignment of `dimensions`. */
 function product(dimensions: readonly TemplateDimension[]): TemplateAssignment[] {
   let out: Record<string, unknown>[] = [{}];
@@ -1351,15 +1485,6 @@ export function describeDimensionValue(dimension: TemplateDimension, value: unkn
   }
   if (value === null) return `${dimension.key} is absent`;
   return `${dimension.key} is ${typeof value === "string" ? value : JSON.stringify(value)}`;
-}
-
-function holdsReferences(value: unknown): boolean {
-  if (value === null || typeof value !== "object") return false;
-  if (isRefSentinel(value)) return true;
-  if (isTaggedSentinel(value)) return /\b(resources|steps)\s*\./.test(value.source);
-  if (isCompiledValue(value)) return typeof value.source === "string" && /\b(resources|steps)\s*\./.test(value.source);
-  if (Array.isArray(value)) return value.some(holdsReferences);
-  return Object.values(value).some(holdsReferences);
 }
 
 function celSourceOf(value: unknown): string | undefined {
@@ -1410,152 +1535,64 @@ function asCel(value: unknown): unknown {
 
 export type { LoopInstance };
 
-/** One finding of a definition's variant runs: what it is, and where it arose. */
-export interface DefinitionFinding {
-  readonly diagnostic: AnalysisDiagnostic;
-  /** The module configuration it arose in, by key. */
-  readonly configuration: string;
-  readonly assignment: TemplateAssignment;
-  readonly dimensions: readonly TemplateDimension[];
-  /** Found under a branch no assignment takes. */
-  readonly forced: boolean;
-}
-
 /**
- * The findings of every variant of the definitions, one per defect: labelled by
- * the definition assignments it arose in — `(when self.mode is a)`,
- * `(when 'self.adminPort == self.port' is false)` — in the message only, and
- * carrying `data.configurations` for the input dimensions alone (a library's
- * own `variables.*` / `secrets.*`), the key space every other diagnostic of the
- * module uses. Each comes back with the module configurations it arose in.
+ * A finding of a template body's keys, labelled by where it holds: its message
+ * ends with the cover of `live` among `universe` — the configurations kept,
+ * every definition's own dimensions free — as one clause, each definition
+ * dimension named by its local key (`(when self.mode is a and variables.x is
+ * true)`), and `data.configurations` is that cover with the definition
+ * dimensions projected out, as every other finding's. With `live` absent the
+ * finding is found only in a branch no assignment takes: by what that branch's
+ * choice reads, one no value the definition can be given takes or one no
+ * configuration takes, holding in none. Undefined where it holds in no
+ * configuration kept.
  */
-export function labelDefinitionFindings(
-  findings: readonly DefinitionFinding[],
-): { diagnostic: AnalysisDiagnostic; configurations: ReadonlySet<string> }[] {
-  const groups = new Map<
-    string,
-    { diagnostic: AnalysisDiagnostic; configurations: Set<string>; assignments: Map<string, TemplateAssignment>; dimensions: readonly TemplateDimension[]; forced: boolean }
-  >();
-  for (const finding of findings) {
-    const data = finding.diagnostic.data as { resource?: { kind?: unknown; name?: unknown }; filePath?: unknown; path?: unknown } | undefined;
-    const identity = JSON.stringify([
-      finding.diagnostic.code,
-      data?.resource?.kind,
-      data?.resource?.name,
-      data?.filePath,
-      data?.path,
-      finding.diagnostic.message,
-    ]);
-    const group = groups.get(identity) ?? {
-      diagnostic: finding.diagnostic,
-      configurations: new Set<string>(),
-      assignments: new Map<string, TemplateAssignment>(),
-      dimensions: finding.dimensions,
-      forced: true,
-    };
-    groups.set(identity, group);
-    group.configurations.add(finding.configuration);
-    if (!finding.forced) {
-      group.forced = false;
-      const projected = Object.fromEntries(group.dimensions.map((d) => [d.key, finding.assignment[d.key]]));
-      group.assignments.set(templateAssignmentKey(projected), projected);
-    }
+export function labelBodyFinding(
+  diagnostic: AnalysisDiagnostic,
+  space: ConditionSpace,
+  universe: Condition,
+  configurationDimensions: readonly Dimension[],
+  live: Condition | undefined,
+  deadReadsDefinition: boolean,
+): AnalysisDiagnostic | undefined {
+  const withData = (message: string, configurations: unknown) => ({
+    ...diagnostic,
+    message,
+    data: { ...((diagnostic.data as Record<string, unknown> | undefined) ?? {}), configurations },
+  });
+  if (live === undefined) {
+    const label = deadReadsDefinition ? "(in a branch no value the definition can be given takes)" : "(in a branch no configuration takes)";
+    return withData(`${diagnostic.message} ${label}`, []);
   }
-  const out: { diagnostic: AnalysisDiagnostic; configurations: ReadonlySet<string> }[] = [];
-  for (const group of groups.values()) {
-    if (group.forced) {
-      out.push({
-        diagnostic: { ...group.diagnostic, message: `${group.diagnostic.message} (in a branch no value the definition can be given takes)` },
-        configurations: group.configurations,
-      });
-      continue;
+  const held = space.and(live, universe);
+  if (held === FALSE) return undefined;
+  const byKey = new Map(configurationDimensions.map((d) => [d.key, d]));
+  const clauses: string[] = [];
+  for (const block of held === universe ? [] : space.cover(held, universe)) {
+    const parts: string[] = [];
+    for (const dimension of space.dimensions) {
+      const values = block.get(dimension.key);
+      if (!values) continue;
+      const own = dimension.definition;
+      if (own) {
+        const local: TemplateDimension = { key: own.key, values: dimension.values, kind: own.role };
+        parts.push(values.map((v) => describeDimensionValue(local, v)).join(" or "));
+        continue;
+      }
+      const configuration = byKey.get(dimension.key);
+      if (configuration) parts.push(describeDimensionValues(configuration, values));
     }
-    const all = product(group.dimensions);
-    const subset = [...group.assignments.values()];
-    if (subset.length >= all.length) {
-      out.push({ diagnostic: group.diagnostic, configurations: group.configurations });
-      continue;
-    }
-    const label = describeTemplateAssignments(subset, all, group.dimensions);
-    const inputs = group.dimensions.filter((d) => d.kind === "input");
-    const projected = new Map<string, Record<string, unknown>>();
-    for (const assignment of subset) {
-      const p = Object.fromEntries(inputs.map((d) => [d.key, assignment[d.key] === undefined ? null : assignment[d.key]]));
-      projected.set(templateAssignmentKey(p), p);
-    }
-    const inputsVary = inputs.length > 0 && projected.size < product(inputs).length;
-    out.push({
-      diagnostic: {
-        ...group.diagnostic,
-        message: label ? `${group.diagnostic.message} ${label}` : group.diagnostic.message,
-        ...(inputsVary
-          ? {
-              data: {
-                ...((group.diagnostic.data as Record<string, unknown> | undefined) ?? {}),
-                configurations: inputEntries(inputs, product(inputs), [...projected.values()]),
-              },
-            }
-          : {}),
-      },
-      configurations: group.configurations,
-    });
+    if (parts.length > 0) clauses.push(parts.join(" and "));
   }
-  return out;
-}
-
-/** The input assignments `held` as partial entries: the cover of `held` among
- *  `all` (and `held` itself), over the inputs' own domains plus the absence
- *  `null` a projection may hold. */
-function inputEntries(
-  inputs: readonly TemplateDimension[],
-  all: readonly TemplateAssignment[],
-  held: readonly TemplateAssignment[],
-): TemplateAssignment[] {
-  const space = new ConditionSpace(
-    inputs.map((d) => ({
-      key: d.key,
-      values: held.some((a) => a[d.key] === null) && !d.values.includes(null) ? [...d.values, null] : d.values,
-    })),
-  );
-  return entriesOfBlocks(
-    space.cover(
-      space.some(held.map((a) => space.assignment(a))),
-      space.some([...all, ...held].map((a) => space.assignment(a))),
-    ),
-  );
+  const message = clauses.length === 0 ? diagnostic.message : `${diagnostic.message} (when ${clauses.join("; or when ")})`;
+  const configurations = space.existsDefinitions(held);
+  const all = space.existsDefinitions(universe);
+  if (configurations === all) return message === diagnostic.message ? diagnostic : { ...diagnostic, message };
+  return withData(message, entriesOfBlocks(space.cover(configurations, all)));
 }
 
 function templateAssignmentKey(assignment: TemplateAssignment): string {
   return JSON.stringify(Object.keys(assignment).sort().map((key) => [key, assignment[key]]));
-}
-
-/** The smallest description of `subset` among `all`, over definition
- *  dimensions: a dimension every value of which the subset holds is left out. */
-export function describeTemplateAssignments(
-  subset: readonly TemplateAssignment[],
-  all: readonly TemplateAssignment[],
-  dimensions: readonly TemplateDimension[],
-): string {
-  const space = new ConditionSpace(dimensions);
-  const blocks = space.cover(
-    space.some(subset.map((a) => space.assignment(a))),
-    space.some(all.map((a) => space.assignment(a))),
-  );
-  const clauses: string[] = [];
-  for (const block of blocks) {
-    const parts: string[] = [];
-    for (const dimension of dimensions) {
-      const values = block.get(dimension.key);
-      if (!values) continue;
-      parts.push(
-        values.length === 1
-          ? describeDimensionValue(dimension, values[0])
-          : values.map((v) => describeDimensionValue(dimension, v)).join(" or "),
-      );
-    }
-    if (parts.length > 0) clauses.push(parts.join(" and "));
-  }
-  return clauses.length === 0 ? "" : `(when ${clauses.join("; or when ")})`;
 }
 
 /**

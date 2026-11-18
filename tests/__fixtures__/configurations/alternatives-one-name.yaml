@@ -1,0 +1,62 @@
+# Two documents sharing a name, one under each branch of a whole-document
+# choice: the rule's finding belongs to the configurations taking the branch
+# whose model breaks it.
+kind: Telo.Application
+metadata: { name: AlternativesOneName }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets:
+  - !ref holder
+---
+kind: Telo.Definition
+metadata: { name: Model }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema: { type: object, properties: { label: { type: string } } }
+---
+kind: Telo.Definition
+metadata: { name: Panel }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties: { expects: { type: string } }
+  x-telo-referrer-rules:
+    - referrer: Self.Holder
+      resolve: ["/model"]
+      condition: !cel "referrer.model.?label.orValue('') == self.expects"
+      code: PANEL_MODEL
+      message: holds a model whose label is not the one the panel expects
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Runnable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties:
+    model: { x-telo-ref: { kind: Self.Model, use: dependency } }
+    panel: { x-telo-ref: { kind: Self.Panel, use: dependency } }
+---
+kind: Self.Model
+metadata: { name: good }
+label: orders
+---
+kind: Self.Model
+metadata: { name: bad }
+label: other
+---
+kind: Self.Panel
+metadata: { name: panel }
+expects: orders
+---
+!if
+metadata: { name: holder }
+if: !cel "variables.flag1"
+then:
+  kind: Self.Holder
+  model: !ref good
+  panel: !ref panel
+else:
+  kind: Self.Holder
+  model: !ref bad
+  panel: !ref panel

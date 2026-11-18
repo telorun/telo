@@ -94,6 +94,8 @@ export interface ObservedStateRead {
   name: string;
   /** The field read under `.status`, when the chain names one. */
   field?: string;
+  /** Where the expression is written, for a read {@link startupObservedStateReads} found. */
+  path?: string;
 }
 
 /**
@@ -145,7 +147,7 @@ export function startupObservedStateReads(
     for (const expression of celExpressionsOf(engine, source)) {
       for (const chain of accessChains(expression)) {
         const read = observedStateRead(chain);
-        if (read) reads.push(read);
+        if (read) reads.push({ ...read, path });
       }
     }
   });

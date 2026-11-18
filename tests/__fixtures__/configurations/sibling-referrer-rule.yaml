@@ -1,0 +1,57 @@
+# A templated kind's body entry `holder` references its sibling `target` at a
+# place the body wrote, and the target's kind requires of each referrer what
+# the consumer forwards into the target. The verdict is each consumer's own:
+# reported at the consumer that violates it, as a finding of the body entry,
+# and nowhere else. The choice beside them reads every configuration.
+kind: Telo.Application
+metadata: { name: SiblingReferrerRule }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.Definition
+metadata: { name: Target }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties: { open: { type: boolean } }
+  x-telo-referrer-rules:
+    - referrer: Self.Holder
+      condition: !cel "self.open == true"
+      code: TARGET_CLOSED
+      message: references a closed target
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties: { target: { x-telo-ref: { kind: Self.Target, use: dependency } } }
+---
+kind: Telo.Definition
+metadata: { name: Pair }
+capability: Telo.Provider
+schema: { type: object, properties: { open: { type: boolean } } }
+resources:
+  - kind: Self.Target
+    metadata: { name: target }
+    open: !cel "self.open"
+  - kind: Self.Holder
+    metadata: { name: holder }
+    target: !ref target
+provide: !ref holder
+---
+kind: Self.Pair
+metadata: { name: closedPair }
+open: false
+---
+kind: Self.Pair
+metadata: { name: openPair }
+open: true
+---
+kind: Self.Target
+metadata: { name: chosen }
+open: !if
+  if: !cel "variables.flag1"
+  then: true
+  else: true

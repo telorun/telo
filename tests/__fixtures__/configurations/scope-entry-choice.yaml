@@ -1,0 +1,24 @@
+# A scope entry a choice writes as a reference: refused only where the choice
+# writes it.
+kind: Telo.Application
+metadata: { name: ScopeEntryChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets:
+  - !ref main
+---
+kind: Telo.Sequence
+metadata: { name: main }
+with: !if
+  if: !cel "variables.flag1"
+  then:
+    - { kind: Telo.JsonSchema, metadata: { name: Shape }, schema: { type: string } }
+    - !ref other
+  else:
+    - { kind: Telo.JsonSchema, metadata: { name: Shape }, schema: { type: string } }
+steps:
+  - { name: done, value: 1 }
+---
+kind: Telo.Sequence
+metadata: { name: other }
+steps:
+  - { name: done, value: 1 }

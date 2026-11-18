@@ -1,0 +1,10 @@
+units:
+  analyzer: Added
+  kernel: Added
+  cli: Added
+body: "A template body's `!if` / `!switch` over a module input (`variables.<name>`,
+  `secrets.<name>`) is a configuration of the application: `within` names it, an input
+  read only in a branch it takes is required only there (`requiredWhen`, `telo needs
+  report`, `telo describe`, `--help` and the refusal at start), and a consumer no longer
+  reports it as `BRANCH_UNDECIDABLE`. `within` refuses a key naming a template
+  definition's own choice."

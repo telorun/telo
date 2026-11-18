@@ -2,10 +2,10 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
 import { AliasResolver } from "../src/alias-resolver.js";
 import { StaticAnalyzer } from "../src/analyzer.js";
-import { resolveSchemaRefKinds } from "../src/resolve-schema-ref-kinds.js";
+import { refConstraintIssues, withCanonicalAnnotationKinds } from "../src/resolve-schema-ref-kinds.js";
 import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 
-describe("resolveSchemaRefKinds", () => {
+describe("refConstraintIssues / withCanonicalAnnotationKinds", () => {
   function scope(): AliasResolver {
     const r = new AliasResolver();
     r.registerImport("KvStore", "kv-store");
@@ -14,7 +14,7 @@ describe("resolveSchemaRefKinds", () => {
     return r;
   }
 
-  it("canonicalizes alias-form constraints anywhere in the doc", () => {
+  it("canonicalizes alias-form constraints anywhere in the doc, on a copy", () => {
     const def = {
       kind: "Telo.Definition",
       metadata: { name: "Once", module: "idempotency" },
@@ -25,11 +25,13 @@ describe("resolveSchemaRefKinds", () => {
       inputType: { properties: { sink: { "x-telo-ref": "Self.Journal" } } },
     } as unknown as ResourceManifest;
 
-    expect(resolveSchemaRefKinds(def, scope())).toEqual([]);
-    const d = def as unknown as Record<string, any>;
+    const written = structuredClone(def);
+    expect(refConstraintIssues(def, scope())).toEqual([]);
+    const d = withCanonicalAnnotationKinds(def, scope()) as unknown as Record<string, any>;
     expect(d.schema.properties.store["x-telo-ref"]).toBe("kv-store.Store");
     expect(d.schema.$defs.Nested["x-telo-ref"]).toBe("record-stream.Journal");
     expect(d.inputType.properties.sink["x-telo-ref"]).toBe("record-stream.Journal");
+    expect(def).toEqual(written);
   });
 
   it("reports an unresolvable prefix with the slot path", () => {
@@ -39,13 +41,13 @@ describe("resolveSchemaRefKinds", () => {
       schema: { properties: { store: { "x-telo-ref": "KvStroe.Store" } } },
     } as unknown as ResourceManifest;
 
-    const issues = resolveSchemaRefKinds(def, scope());
+    const issues = refConstraintIssues(def, scope());
     expect(issues).toHaveLength(1);
     expect(issues[0].reason).toBe("unknown");
     expect(issues[0].path).toBe("schema.properties.store");
     expect(issues[0].knownAliases).toContain("KvStore");
-    // Left as authored, so the diagnostic quotes what the author wrote.
-    expect((def as unknown as Record<string, any>).schema.properties.store["x-telo-ref"]).toBe(
+    // Left as authored on the copy too, so the diagnostic quotes what the author wrote.
+    expect((withCanonicalAnnotationKinds(def, scope()) as unknown as Record<string, any>).schema.properties.store["x-telo-ref"]).toBe(
       "KvStroe.Store",
     );
   });
@@ -57,7 +59,7 @@ describe("resolveSchemaRefKinds", () => {
       schema: { properties: { store: { "x-telo-ref": "Gated.Store" } } },
     } as unknown as ResourceManifest;
 
-    const issues = resolveSchemaRefKinds(def, scope());
+    const issues = refConstraintIssues(def, scope());
     expect(issues).toHaveLength(1);
     expect(issues[0].reason).toBe("gated");
     expect(issues[0].gate).toEqual({ module: "gated-lib", exported: ["Other"] });
@@ -70,11 +72,11 @@ describe("resolveSchemaRefKinds", () => {
       schema: { properties: { store: { "x-telo-ref": "std/kv-store#Store" } } },
     } as unknown as ResourceManifest;
 
-    const issues = resolveSchemaRefKinds(def, scope());
+    const issues = refConstraintIssues(def, scope());
     expect(issues).toHaveLength(1);
     expect(issues[0].reason).toBe("legacy");
     expect(issues[0].path).toBe("schema.properties.store");
-    expect((def as unknown as Record<string, any>).schema.properties.store["x-telo-ref"]).toBe(
+    expect((withCanonicalAnnotationKinds(def, scope()) as unknown as Record<string, any>).schema.properties.store["x-telo-ref"]).toBe(
       "std/kv-store#Store",
     );
   });
@@ -126,8 +128,8 @@ describe("x-telo-ref forms through analyze()", () => {
   it("is idempotent — re-analyzing rewritten manifests reports nothing new", () => {
     const manifests = withSyntheticPositions(libraryManifests("Store.Store"));
     new StaticAnalyzer().analyze(manifests);
-    // Second pass sees the canonical `kv-store.Store`, whose prefix is a module
-    // name rather than an alias. The registry check is what keeps that quiet.
+    // The written documents are never rewritten, so the second pass reads the
+    // alias form the first did.
     const diagnostics = new StaticAnalyzer().analyze(manifests);
     expect(diagnostics.filter((d) => d.code.startsWith("X_TELO_REF"))).toEqual([]);
   });

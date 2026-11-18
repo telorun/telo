@@ -1,0 +1,4 @@
+# A library importing one that writes a loader stamp by hand.
+kind: Telo.Library
+metadata: { name: MetadataStampMiddle }
+imports: { Inner: ../metadata-stamp-library }

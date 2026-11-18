@@ -1,0 +1,30 @@
+# `step-union-choice.yaml` with `timeout:` chosen too: written only where
+# flag3 holds. The invoke branch (flag1) refuses `timeout: 0`, the value
+# branch (neither flag) reads nothing of it, and where only flag2 holds the
+# step fits no branch — so the timeout finding is the invoke branch's alone.
+kind: Telo.Application
+metadata: { name: StepUnionMemberChoice }
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+  flag2: { env: FLAG_2, type: boolean, default: false }
+  flag3: { env: FLAG_3, type: boolean, default: false }
+targets:
+  - !ref main
+---
+kind: Telo.Value
+metadata: { name: target }
+value: 1
+---
+kind: Telo.Sequence
+metadata: { name: main }
+steps:
+  - name: chosen
+    invoke: !if
+      if: !cel "variables.flag1"
+      then: !ref target
+    value: !if
+      if: !cel "!variables.flag1 && !variables.flag2"
+      then: 1
+    timeout: !if
+      if: !cel "variables.flag3"
+      then: 0

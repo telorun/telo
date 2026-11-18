@@ -1,0 +1,23 @@
+# A kind reaching, only through a shape a choice writes, a second shape that
+# cannot compile: the kind's schema fails to compile only where that choice
+# reaches it.
+kind: Telo.Application
+metadata: { name: ShapeCompileNestedChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Outer }
+schema: !if
+  if: !cel "variables.flag1"
+  then: { type: object, properties: { inner: { $ref: "telo://Self/Inner" } } }
+  else: { type: object }
+---
+kind: Telo.JsonSchema
+metadata: { name: Inner }
+schema: { type: object, properties: { a: { $ref: "#/$defs/missing" } } }
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Holder]
+schema: { type: object, properties: { outer: { $ref: "telo://Self/Outer" } } }

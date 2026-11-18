@@ -1,0 +1,42 @@
+# Two recursive lists: an abstract's, whose `next` is another of its lists or
+# nothing, and an implementation's, whose `value` is an integer only where a
+# choice writes it. The recursion is compatible wherever the values agree.
+kind: Telo.Application
+metadata: { name: KindContractRecursiveShapes }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Chain }
+schema:
+  type: object
+  required: [value, next]
+  properties:
+    value: { type: string }
+    next:
+      anyOf:
+        - !ref Chain
+        - { type: "null" }
+---
+kind: Telo.JsonSchema
+metadata: { name: Links }
+schema:
+  type: object
+  required: [value, next]
+  properties:
+    value: !if
+      if: !cel "variables.flag1"
+      then: { type: integer }
+      else: { type: string }
+    next: !ref Links
+---
+kind: Telo.Abstract
+metadata: { name: Walk }
+capability: Telo.Invocable
+outputType: !ref Chain
+---
+kind: Telo.Definition
+metadata: { name: Walker }
+extends: Self.Walk
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Walker]
+outputType: !ref Links

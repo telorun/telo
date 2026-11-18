@@ -1,0 +1,33 @@
+# Two whole-document choices sharing a name write a construct at the same
+# place: where flag1 takes the first, its construct is refused; the second's
+# switch names no case for one value of `mode`. What is found beneath a refused
+# construct is the refusal's, so the second's finding is dropped only where the
+# refusal holds too.
+kind: Telo.Application
+metadata: { name: ChoiceRefusalOverlap }
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+  mode: { env: MODE, type: string, enum: [quiet, loud], default: quiet }
+---
+kind: Telo.Definition
+metadata: { name: Counter }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema: { type: object, properties: { count: { type: integer } } }
+---
+!if
+metadata: { name: counter }
+if: !cel "variables.flag1"
+then:
+  kind: Self.Counter
+  count: !if
+    if: !cel "variables.mode == 'loud'"
+---
+!if
+metadata: { name: counter }
+if: !cel "variables.mode != 'off'"
+then:
+  kind: Self.Counter
+  count: !switch
+    switch: !cel "variables.mode"
+    cases: { quiet: 1 }

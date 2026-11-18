@@ -678,6 +678,8 @@ export function validateCallableData(input: CallableDataInput): AnalysisDiagnost
             target,
             anchor,
             callableReferenceNotDataMessage(label(manifest), site.path, found),
+            // What the consumer supplies decides it.
+            null,
           ),
         );
       }

@@ -81,7 +81,12 @@ declares.
 `license`. Nothing resolves or fetches by them (a module's location is its
 ref), but `telo check` type-checks the known ones and flags a near-miss of a
 known name (`licence:`), because a field nothing reads has no runtime failure
-mode that would surface a typo. Unknown keys are otherwise allowed. There is
+mode that would surface a typo. Unknown keys are otherwise allowed, except the
+keys the loader stamps itself (`module`, `source`, `sourceLine`, `importPath`,
+`resolvedModuleName`, `xTeloOrigin`, …): an author-written one is refused
+(`METADATA_RESERVED_FIELD`) — on an inline declaration, a `with:` member or a
+template body entry too, in every branch of every `!if` / `!switch` whether or
+not any configuration takes it — so never write `metadata.module`. There is
 NO `authors`/`maintainers` field — the hub derives a publisher from the ref's
 host, since a self-declared author on an open registry verifies nothing.
 

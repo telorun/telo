@@ -21,11 +21,9 @@ import { scopedMemberPath } from "./scoped-imports.js";
 import {
   scopedImportAnchorOf,
   scopedImportMembers,
-  scopedImportPlace,
   scopeHoldersOf,
   type ScopedImportAnchor,
   type ScopedImportMember,
-  type ScopedImportPlace,
 } from "./scoped-import-identity.js";
 
 /** One parsed `exports.resources` / `exports.kinds` entry. `name` is the exported
@@ -1246,23 +1244,6 @@ function stampFile(
     }
 
     out.push({ ...m, metadata: metadata as ResourceManifest["metadata"] });
-  }
-  return out;
-}
-
-/** Every scoped `Telo.Import` beneath `manifests`, by the module declaring its
- *  holder, then by its name. */
-export function scopedImportsByModule(
-  manifests: readonly ResourceManifest[],
-): Map<string, Map<string, ScopedImportPlace>> {
-  const out = new Map<string, Map<string, ScopedImportPlace>>();
-  for (const { member, top } of scopedImportMembers(manifests)) {
-    const place = scopedImportPlace(member);
-    if (!place) continue;
-    const module = (top.metadata as { module?: string } | undefined)?.module ?? "";
-    let byName = out.get(module);
-    if (!byName) out.set(module, (byName = new Map()));
-    if (!byName.has(place.alias)) byName.set(place.alias, place);
   }
   return out;
 }

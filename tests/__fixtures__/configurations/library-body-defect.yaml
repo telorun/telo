@@ -1,0 +1,14 @@
+# The library's own defect is its own check's: the consumer forwards nothing
+# that violates the schema, so nothing is reported at its root. The choice
+# makes the analysis read every configuration.
+kind: Telo.Application
+metadata: { name: LibraryBodyDefect }
+imports: { Lib: ./body-defect-lib }
+variables: { flag: { env: FLAG, type: boolean, default: false } }
+---
+kind: Lib.Pair
+metadata: { name: pair }
+v: !if
+  if: !cel "variables.flag"
+  then: 4
+  else: 6

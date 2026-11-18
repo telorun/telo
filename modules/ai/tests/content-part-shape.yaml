@@ -20,7 +20,7 @@ expect:
   errors:
     # Neither bytes nor a reference: no key is at fault, so the part is.
     - code: CONTRACT_INPUTS_MISMATCH
-      message: "steps[0].inputs.messages[0].content[0]' do not satisfy echo's declared inputType: /messages/0/content/0 must match a schema in anyOf"
+      message: "steps[0].inputs.messages[0].content[0]' do not satisfy echo's declared inputType: /messages/0/content/0 matches no alternative — expected one with 'data', or one with 'uri'"
     - code: CONTRACT_INPUTS_MISMATCH
       message: "steps[1].inputs.messages[0].content[0].uri' do not satisfy echo's declared inputType: /messages/0/content/0/uri is not allowed here"
     - code: CONTRACT_INPUTS_MISMATCH
@@ -33,8 +33,10 @@ expect:
     # A text call's result mark names its call, and marks a text part only.
     - code: CONTRACT_INPUTS_MISMATCH
       message: "steps[6].inputs.messages[0].content[0]' do not satisfy echo's declared inputType: /messages/0/content/0 is missing required property 'toolCallId'"
+    # A mark on a media part: the array branch is the only candidate for a list,
+    # so the finding is the part's `type`, not the content's.
     - code: CONTRACT_INPUTS_MISMATCH
-      message: "steps[7].inputs.messages[0].content' do not satisfy echo's declared inputType: /messages/0/content matches no alternative"
+      message: "steps[7].inputs.messages[0].content[0].type' do not satisfy echo's declared inputType: /messages/0/content/0/type must be equal to constant"
 ---
 kind: AiEcho.EchoModel
 metadata: { name: echo }

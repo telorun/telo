@@ -32,6 +32,8 @@ kind: Telo.Application
 metadata: { name: CheckRunAgreementTest, version: 1.0.0 }
 imports: { Assert: ../modules/assert }
 targets:
+  - !ref unionTagShape
+  - !ref unionTagShapeAtRuntime
   - !ref dispatchObjectForm
   - !ref dispatchObjectFormAtRuntime
   - !ref dispatchRef
@@ -518,6 +520,16 @@ targets:
   - !ref reservedLibraryName
   - !ref reservedLibraryNameAtImport
   - !ref reservedImportAlias
+  - !ref metadataStampWritten
+  - !ref metadataStampWrittenInLibrary
+  - !ref metadataStampWrittenAtImport
+  - !ref metadataStampNestedInline
+  - !ref metadataStampNestedScopeMember
+  - !ref metadataStampNestedTemplateEntry
+  - !ref metadataStampNestedInLibrary
+  - !ref metadataStampNestedAtImport
+  - !ref metadataStampNestedUnderChoice
+  - !ref metadataStampNestedInLibraryUnderChoice
   - !ref textFieldSyntax
   - !ref textFieldSyntaxAtRuntime
   - !ref textArgumentSyntax
@@ -625,6 +637,7 @@ targets:
   - !ref configurationChoicesCaseKeyAtRuntime
   - !ref configurationChoicesNotExhaustiveAtRuntime
   - !ref configurationChoicesCaseInvalidAtRuntime
+  - !ref configurationKindDocumentBranch
   - !ref configurationBindingOpen
   - !ref configurationBindingTernary
   - !ref configurationBindingInLibrary
@@ -686,6 +699,7 @@ targets:
   - !ref libraryMigrationFailed
   - !ref libraryMigrationFailedInLibrary
   - !ref libraryMigrationSuppliedFallback
+  - !ref libraryOwnNamedShape
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -761,6 +775,25 @@ expect:
   errors:
     - code: TEMPLATE_TARGETS_CAPABILITY
       message: "only valid on a 'Telo.Service' or 'Telo.Runnable' definition"
+---
+# A failed union is reported at the variant its tag selects, inside a named shape
+# the kernel's failure path must hold to decide it as the checker does — never
+# with the validator's `oneOf` line beside it…
+kind: Assert.Manifest
+metadata: { name: unionTagShape }
+source: ./__fixtures__/check-run-agreement/union-tag-shape/lib/telo.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "Telo.Value/value: `value` does not satisfy the type declared at `outputType`: /store/type must be equal to one of the allowed values (list | map)" }
+---
+# …from a consumer whose check reports the library's finding at its file while the kernel refuses the run with the same one.
+kind: Assert.Manifest
+metadata: { name: unionTagShapeAtRuntime }
+source: ./__fixtures__/check-run-agreement/union-tag-shape/telo.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "Telo.Value/value: `value` does not satisfy the type declared at `outputType`: /store/type must be equal to one of the allowed values (list | map)" }
+  runFails: "Error: /store/type must be equal to one of the allowed values (list | map)\n"
 ---
 kind: Assert.Manifest
 metadata: { name: templateEntrySchema }
@@ -4866,14 +4899,14 @@ source: ./__fixtures__/needs/agreement/duplicate-name/lib/telo.yaml
 expect:
   errors:
     - code: DUPLICATE_RESOURCE_NAME
-      message: "need 'mainDatabase' collides with resource Fx.DatabaseAccess/mainDatabase"
+      message: "Need 'mainDatabase' collides with resource 'mainDatabase' declared in module 'DuplicateName'"
 ---
 kind: Assert.Manifest
 metadata: { name: needDuplicateNameAtRuntime }
 source: ./__fixtures__/needs/agreement/duplicate-name/telo.yaml
 expect:
   errors:
-    - { code: DUPLICATE_RESOURCE_NAME, message: "Fx.DatabaseAccess/mainDatabase: need 'mainDatabase' collides with resource Fx.DatabaseAccess/mainDatabase declared earlier — the kernel registers both under 'mainDatabase' in one namespace, so boot fails with ERR_DUPLICATE_RESOURCE. Rename one of them." }
+    - { code: DUPLICATE_RESOURCE_NAME, message: "Need 'mainDatabase' collides with resource 'mainDatabase' declared in module 'DuplicateName' — a need is a declaration in the module's one namespace. Rename one of them." }
   runFails: "ERR_DUPLICATE_RESOURCE"
 ---
 # A need type declaring `unique: true` is asked for at most once per module.
@@ -5539,6 +5572,99 @@ expect:
       message: "Cannot use import 'Telo' → '../plain-library': An import may not be aliased 'Telo': `Telo.<Kind>` names a built-in kind and `Self.<Kind>` the declaring module's own, so this import would replace them. Choose another alias."
   runFails: "[KIND_PREFIX_RESERVED] Cannot use import 'Telo' → '../plain-library': An import may not be aliased 'Telo': `Telo.<Kind>` names a built-in kind and `Self.<Kind>` the declaring module's own, so this import would replace them. Choose another alias."
 ---
+# A loader stamp written by hand: `metadata.module` would file the definition
+# under another module, so `telo check` reported nothing for it while the kernel
+# registered it there. The loader refuses it on the authored text where it is
+# written — a consumer's check reports a library's at the library's file — and
+# the run is refused at load, at the `imports:` entry reaching the library.
+kind: Assert.Manifest
+metadata: { name: metadataStampWritten }
+source: ./__fixtures__/check-run-agreement/metadata-stamp/telo.yaml
+expect:
+  errors:
+    - { code: METADATA_RESERVED_FIELD, message: "Telo.Definition/Greeter: 'metadata.module' is written by the loader — the module the document belongs to — and cannot be written in a manifest. Remove it." }
+  runFails: "[ERR_METADATA_RESERVED_FIELD] Telo.Definition/Greeter: 'metadata.module' is written by the loader — the module the document belongs to — and cannot be written in a manifest. Remove it."
+---
+kind: Assert.Manifest
+metadata: { name: metadataStampWrittenInLibrary }
+source: ./__fixtures__/check-run-agreement/metadata-stamp/lib/telo.yaml
+expect:
+  errors:
+    - { code: METADATA_RESERVED_FIELD, message: "Telo.Definition/Greeter: 'metadata.module' is written by the loader — the module the document belongs to — and cannot be written in a manifest. Remove it." }
+---
+kind: Assert.Manifest
+metadata: { name: metadataStampWrittenAtImport }
+source: ./__fixtures__/check-run-agreement/metadata-stamp/consumer.yaml
+expect:
+  errors:
+    - { code: METADATA_RESERVED_FIELD, message: "Telo.Definition/Greeter: 'metadata.module' is written by the loader — the module the document belongs to — and cannot be written in a manifest. Remove it." }
+  runFails: "[ERR_METADATA_RESERVED_FIELD] Imported library 'MetadataStampLib', reached through import 'Lib': Telo.Definition/Greeter: 'metadata.module' is written by the loader — the module the document belongs to — and cannot be written in a manifest. Remove it."
+---
+# The same stamp on a NESTED declaration — inline at a reference slot, a
+# `with:` member, a template body entry — is refused where it is written, and the
+# declaration is still checked as its holder's.
+kind: Assert.Manifest
+metadata: { name: metadataStampNestedInline }
+source: ./__fixtures__/check-run-agreement/metadata-stamp-nested/inline.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "/steps/0/invoke/invoke is missing required property 'value'" }
+    - { code: METADATA_RESERVED_FIELD, message: "Telo.Sequence/job: 'steps[0].invoke.invoke.metadata.module' is written by the loader — the module the document belongs to — and cannot be written in a manifest. Remove it." }
+  runFails: "[ERR_METADATA_RESERVED_FIELD] Telo.Sequence/job: 'steps[0].invoke.invoke.metadata.module' is written by the loader — the module the document belongs to — and cannot be written in a manifest. Remove it."
+---
+kind: Assert.Manifest
+metadata: { name: metadataStampNestedScopeMember }
+source: ./__fixtures__/check-run-agreement/metadata-stamp-nested/scope-member.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "Telo.Value/answer: / is missing required property 'value'" }
+    - { code: METADATA_RESERVED_FIELD, message: "Telo.Value/answer: 'metadata.module' is written by the loader — the module the document belongs to — and cannot be written in a manifest. Remove it." }
+  runFails: "[ERR_METADATA_RESERVED_FIELD] Telo.Value/answer: 'metadata.module' is written by the loader — the module the document belongs to — and cannot be written in a manifest. Remove it."
+---
+kind: Assert.Manifest
+metadata: { name: metadataStampNestedTemplateEntry }
+source: ./__fixtures__/check-run-agreement/metadata-stamp-nested/template-entry.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "the Telo.Value entry 'body': / is missing required property 'value'" }
+    - { code: METADATA_RESERVED_FIELD, message: "Telo.Value/body: 'metadata.module' is written by the loader — the module the document belongs to — and cannot be written in a manifest. Remove it." }
+  runFails: "[ERR_METADATA_RESERVED_FIELD] Telo.Value/body: 'metadata.module' is written by the loader — the module the document belongs to — and cannot be written in a manifest. Remove it."
+---
+kind: Assert.Manifest
+metadata: { name: metadataStampNestedInLibrary }
+source: ./__fixtures__/check-run-agreement/metadata-stamp-nested/lib/telo.yaml
+expect:
+  errors:
+    - { code: METADATA_RESERVED_FIELD, message: "Run.Detach/later: 'invoke.metadata.module' is written by the loader — the module the document belongs to — and cannot be written in a manifest. Remove it." }
+---
+kind: Assert.Manifest
+metadata: { name: metadataStampNestedAtImport }
+source: ./__fixtures__/check-run-agreement/metadata-stamp-nested/consumer.yaml
+expect:
+  errors:
+    - { code: METADATA_RESERVED_FIELD, message: "Run.Detach/later: 'invoke.metadata.module' is written by the loader — the module the document belongs to — and cannot be written in a manifest. Remove it." }
+  runFails: "[ERR_METADATA_RESERVED_FIELD] Imported library 'NestedStampLib', reached through import 'Lib': Run.Detach/later: 'invoke.metadata.module' is written by the loader — the module the document belongs to — and cannot be written in a manifest. Remove it."
+---
+# A stamp on a nested declaration in a branch no configuration of the default
+# takes is refused as written, in every configuration — an entry's where the
+# branch writes it, a library's whatever the import gives the choice: reported
+# by the library's own check, and refused at the import by a run.
+kind: Assert.Manifest
+metadata: { name: metadataStampNestedUnderChoice }
+source: ./__fixtures__/check-run-agreement/metadata-stamp-nested/under-choice.yaml
+expect:
+  errors:
+    - { code: METADATA_RESERVED_FIELD, message: "Telo.Sequence/job: 'steps[0].invoke.then.metadata.module' is written by the loader — the module the document belongs to — and cannot be written in a manifest. Remove it." }
+  runFails: "[ERR_METADATA_RESERVED_FIELD] Telo.Sequence/job: 'steps[0].invoke.then.metadata.module' is written by the loader — the module the document belongs to — and cannot be written in a manifest. Remove it."
+---
+kind: Assert.Manifest
+metadata: { name: metadataStampNestedInLibraryUnderChoice }
+source: ./__fixtures__/check-run-agreement/metadata-stamp-nested/consumer-choice.yaml
+expect:
+  errors:
+    - { code: METADATA_RESERVED_FIELD, message: "Telo.Sequence/job: 'steps[0].invoke.then.metadata.module' is written by the loader — the module the document belongs to — and cannot be written in a manifest. Remove it." }
+  runFails: "[ERR_METADATA_RESERVED_FIELD] Imported library 'NestedStampChoiceLib', reached through import 'Lib': Telo.Sequence/job: 'steps[0].invoke.then.metadata.module' is written by the loader — the module the document belongs to — and cannot be written in a manifest. Remove it."
+---
 # THE BUILT-IN TEXT VOCABULARY. Each defect is written by a library — a text in
 # a field, a text argument at a call, a catalog entry, a text annotation — and
 # reported by that library's own check, where it was written; a consumer's
@@ -5840,8 +5966,8 @@ source: ./__fixtures__/check-run-agreement/text-vocabulary/bound/missing-values/
 expect:
   errors:
     - code: SCHEMA_VIOLATION
-      message: "Kinds.Caption/caption: /label must match a schema in anyOf"
-  runFails: "[SCHEMA_VIOLATION] Kinds.Caption/caption: /label must match a schema in anyOf"
+      message: "Kinds.Caption/caption: /label matches no alternative — expected a string, or one with 'plural', or one with 'cases', or one with 'context', or one with 'values'"
+  runFails: "[SCHEMA_VIOLATION] Kinds.Caption/caption: /label matches no alternative — expected a string, or one with 'plural', or one with 'cases', or one with 'context', or one with 'values'"
 ---
 kind: Assert.Manifest
 metadata: { name: boundTextPluralNoLang }
@@ -6594,6 +6720,17 @@ expect:
     - { code: BRANCH_CASE_INVALID, message: "!if/listed: The 'else:' branch of '!if' at a declaration position is a list. Each branch is one unnamed resource declaration — '{ kind, …fields }' — or a nested '!if' / '!switch' whose branches are; the tag's own 'metadata' names it once for every branch." }
     - { code: BRANCH_CASE_KEY_INVALID, message: "Telo.Sequence/sequence: Case 'yes' of '!switch' is not a value of the selector's type 'bool' — a boolean case is 'true' or 'false'." }
   runFails: "[BRANCH_CASE_INVALID] !if/listed: The 'else:' branch of '!if' at a declaration position is a list."
+---
+# A kind document as a whole document's branch: refused at the branch by check
+# and by run, never an internal error.
+kind: Assert.Manifest
+metadata: { name: configurationKindDocumentBranch }
+source: ./__fixtures__/configurations/kind-document-branch.yaml
+expect:
+  errors:
+    - code: BRANCH_CASE_INVALID
+      message: "The 'then:' branch of '!if' at a declaration position is a Telo.Definition, which declares no resource and is never chosen."
+  runFails: "[BRANCH_CASE_INVALID] !if/Widget: The 'then:' branch of '!if' at a declaration position is a Telo.Definition"
 ---
 # A library's choice its importer binds to a value nothing decides before boot:
 # refused at the entry's own binding, by check and by run…
@@ -7429,3 +7566,10 @@ expect:
     - { code: SHOP_CRATE_REPLACED, message: "A crate is a box." }
     - { code: SHOP_CRATE_REPLACED, message: "A crate is a box." }
   runs: true
+---
+# A library kind's `schema:` `$ref`s the library's own named shape, which it does
+# not export: the application imports the library, checks clean and boots.
+kind: Assert.Manifest
+metadata: { name: libraryOwnNamedShape }
+source: ./__fixtures__/check-run-agreement/library-own-named-shape/telo.yaml
+expect: { runs: true }

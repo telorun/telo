@@ -1,8 +1,10 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { collectFilePositions } from "../src/diagnostic-location.js";
 import { collectModuleDocuments, flattenForAnalyzer } from "../src/flatten-for-analyzer.js";
 import { Loader } from "../src/manifest-loader.js";
+import { frozenDocuments } from "./frozen-documents.js";
 import type { ManifestSource } from "../src/types.js";
 
 /** The in-repo configuration corpus: every fixture under a configurations
@@ -24,7 +26,10 @@ const fileSource: ManifestSource = {
 
 export async function loadFile(file: string) {
   const graph = await new Loader([fileSource]).loadGraph(file, { desugarImports: true });
-  return { manifests: flattenForAnalyzer(graph), moduleDocuments: collectModuleDocuments(graph) };
+  const manifests = flattenForAnalyzer(graph);
+  const moduleDocuments = collectModuleDocuments(graph);
+  frozenDocuments([manifests, moduleDocuments]);
+  return { manifests, moduleDocuments, positions: collectFilePositions(graph) };
 }
 
 const TAG = /(?:^|:|-|---)\s*!(?:if|switch)\b/m;

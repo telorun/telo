@@ -1,0 +1,26 @@
+# A scoped import named like one of its module's imports, declared only where a
+# choice takes it: a collision there, reported where it is written.
+kind: Telo.Application
+metadata: { name: ScopedImportCollisionChoice }
+imports: { Inner: ./scoped-import-kind-lib }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets:
+  - !ref seq
+---
+kind: Inner.Thing
+metadata: { name: Shape }
+schema: { type: string }
+---
+!if
+metadata: { name: seq }
+if: !cel "variables.flag1"
+then:
+  kind: Telo.Sequence
+  with:
+    - { kind: Telo.Import, metadata: { name: Inner }, source: ./scoped-import-kind-lib }
+  steps:
+    - { name: noop, value: 1 }
+else:
+  kind: Telo.Sequence
+  steps:
+    - { name: noop, value: 1 }

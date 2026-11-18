@@ -22,8 +22,21 @@ const SOURCE = "telo-analyzer";
  * 2. **`on_full: block`** is unimplementable on a single-threaded runtime and
  *    §10.3 calls it "statically detectable by `telo check`". Catching it here —
  *    rather than only at boot — is what lets an operator fix it before shipping.
+ *
+ * The module documents' own redaction paths are one stage and each import's and
+ * sink's another.
  */
-export function validateLogging(
+export function validateModuleDocumentLogging(manifests: readonly ResourceManifest[]): AnalysisDiagnostic[] {
+  const diagnostics: AnalysisDiagnostic[] = [];
+  for (const manifest of manifests) {
+    if (manifest.kind === "Telo.Application" || manifest.kind === "Telo.Library") validateRedactPaths(manifest, diagnostics);
+  }
+  return diagnostics;
+}
+
+/** Each import's own redaction paths and each sink's `on_full`: what is read
+ *  off declarations beside the module document. */
+export function validateImportAndSinkLogging(
   manifests: ResourceManifest[],
   registry: DefinitionRegistry,
   aliases: AliasResolver,
@@ -32,13 +45,7 @@ export function validateLogging(
   const diagnostics: AnalysisDiagnostic[] = [];
 
   for (const manifest of manifests) {
-    const kind = manifest.kind;
-
-    // Redaction paths live on the `logging:` block of the root Application and on
-    // any `Telo.Import` / `Telo.Library` doc carrying a per-import override.
-    if (kind === "Telo.Application" || kind === "Telo.Import" || kind === "Telo.Library") {
-      validateRedactPaths(manifest, diagnostics);
-    }
+    if (manifest.kind === "Telo.Import") validateRedactPaths(manifest, diagnostics);
 
     // `on_full` lives on any sink instance — an inline `logging.sinks[]` entry
     // (extracted by Phase 2 into a first-class manifest by now) or a standalone

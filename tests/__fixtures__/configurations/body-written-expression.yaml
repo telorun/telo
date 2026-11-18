@@ -1,0 +1,48 @@
+# A templated kind's body writes expressions no forward reaches: one at an
+# entry's reference slot, which the definition's own check refuses, and one in
+# an entry's field that reads `self`, which only the definition can judge. The
+# refusal is reported once, there; neither consumer reports either as a finding
+# of the body entry. No choice is made, so each consumer is read as written.
+kind: Telo.Application
+metadata: { name: BodyWrittenExpression }
+---
+kind: Telo.Definition
+metadata: { name: Target }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema: { type: object, properties: { label: { type: string } } }
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties:
+    label: { type: string }
+    note: { type: string }
+    target: { x-telo-ref: { kind: Self.Target, use: dependency } }
+---
+kind: Telo.Definition
+metadata: { name: Pair }
+capability: Telo.Provider
+schema: { type: object, properties: { label: { type: string } } }
+resources:
+  - { kind: Self.Target, metadata: { name: target } }
+  - kind: Self.Holder
+    metadata: { name: holder }
+    label: !cel "self.label"
+    target: !cel "'target'"
+  - kind: Self.Holder
+    metadata: { name: noted }
+    note: !cel "self.label + 'x'"
+    target: !ref target
+provide: !ref holder
+---
+kind: Self.Pair
+metadata: { name: firstPair }
+label: first
+---
+kind: Self.Pair
+metadata: { name: secondPair }
+label: second

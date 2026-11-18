@@ -1,0 +1,23 @@
+# A reference slot every class of a named shape declares, each with its own
+# kind: the inline declaration written there is drawn out in every
+# configuration, and refused only where the class in force does not accept it.
+kind: Telo.Application
+metadata: { name: ShapeInlineSlotKindChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Handler }
+schema: !if
+  if: !cel "variables.flag1"
+  then: { x-telo-ref: { kind: Telo.Invocable, use: call } }
+  else: { x-telo-ref: { kind: Telo.Service, use: dependency } }
+---
+kind: Telo.Definition
+metadata: { name: Route }
+capability: Telo.Service
+controllers: [pkg:telo/local/js?path=./probe.mjs#Route]
+schema: { type: object, properties: { handler: { $ref: "telo://Self/Handler" } } }
+---
+kind: ShapeInlineSlotKindChoice.Route
+metadata: { name: route }
+handler: { kind: Telo.Value, value: 1 }

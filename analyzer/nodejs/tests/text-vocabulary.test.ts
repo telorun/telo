@@ -1,3 +1,4 @@
+import { collectFilePositions } from "../src/diagnostic-location.js";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
 import { collectModuleDocuments, flattenForAnalyzer } from "../src/flatten-for-analyzer.js";
@@ -39,7 +40,7 @@ async function check(
 ): Promise<Array<[string, string]>> {
   const graph = await new Loader([inMemorySource(files)]).loadGraph(entry, { desugarImports: true });
   return new StaticAnalyzer()
-    .analyze(flattenForAnalyzer(graph), { moduleDocuments: collectModuleDocuments(graph) })
+    .analyze(flattenForAnalyzer(graph), { moduleDocuments: collectModuleDocuments(graph), positions: collectFilePositions(graph) })
     .filter((d) => codes.test(String(d.code)))
     .map((d) => (process.env.DBG ? (console.log(d.code, d.message), d) : d))
     .map((d) => [String(d.code), String((d.data as { path?: string }).path)]);
@@ -187,8 +188,8 @@ values: { count: "three" }`,
         ),
       ),
     ).toEqual([
-      ["MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED", "values.count"],
       ["MESSAGE_PLACEHOLDER_UNBOUND", "values"],
+      ["MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED", "values.count"],
     ]);
   });
 

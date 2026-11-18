@@ -1,7 +1,9 @@
+import { collectFilePositions } from "../src/diagnostic-location.js";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { collectModuleDocuments, flattenForAnalyzer } from "../src/flatten-for-analyzer.js";
+import { frozenDocuments } from "./frozen-documents.js";
 import { Loader } from "../src/manifest-loader.js";
 import type { ManifestSource } from "../src/types.js";
 
@@ -47,10 +49,11 @@ export function costApplication(shape: CostShape, configurations: 0 | 1 | 2 | 4)
   return `${lines.join("\n")}\n`;
 }
 
-/** A template definition whose body holds `n` entries, each one open
- *  field-value `!if` reading no reference, beside one declaration-position
- *  `!if` over an enum. */
-export function costLibrary(n: number): string {
+/** A template definition whose body holds `entries` entries (`n` unless
+ *  given), the first `n` each one open field-value `!if` reading no reference
+ *  and the rest a plain value, beside one declaration-position `!if` over an
+ *  enum. */
+export function costLibrary(n: number, entries = n): string {
   const lines = [
     "kind: Telo.Library",
     "metadata: { name: Cost }",
@@ -84,7 +87,35 @@ export function costLibrary(n: number): string {
       "      else: 2",
     );
   }
+  for (let i = n; i < entries; i++) lines.push("  - kind: Run.Value", `    metadata: { name: value${i} }`, "    value: 1");
   lines.push("invoke: !ref chosen");
+  return `${lines.join("\n")}\n`;
+}
+
+/** `p` template definitions, each with two structural choices. */
+export function paddingRow(p: number): string {
+  const lines = ["kind: Telo.Library", "metadata: { name: Rows }", "imports:", `  Run: ${RUN}`];
+  for (let i = 0; i < p; i++) {
+    lines.push("---", "kind: Telo.Definition", `metadata: { name: Pad${i} }`, "capability: Telo.Invocable",
+      "schema: { type: object, properties: { a: { type: boolean }, b: { type: boolean } } }", "resources:",
+      `  - !if { metadata: { name: x }, if: !cel "self.a", then: { kind: Run.Value, value: 1 } }`,
+      `  - !if { metadata: { name: y }, if: !cel "self.b", then: { kind: Run.Value, value: 2 } }`,
+      "  - { kind: Run.Value, metadata: { name: main }, value: 0 }", "invoke: !ref main");
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+/** `n` template definitions, the body of definition K choosing on
+ *  `variables.flagK`, which nothing outside a body reads. */
+export function bodyInputRow(n: number): string {
+  const lines = ["kind: Telo.Application", "metadata: { name: BodyInputs }", "imports:", `  Run: ${RUN}`, "variables:"];
+  for (let i = 1; i <= n; i++) lines.push(`  flag${i}: { env: FLAG_${i}, type: boolean, default: false }`);
+  for (let i = 1; i <= n; i++) {
+    lines.push("---", "kind: Telo.Definition", `metadata: { name: Body${i} }`, "capability: Telo.Invocable",
+      "schema: { type: object, properties: {} }", "resources:",
+      `  - !if { metadata: { name: main }, if: !cel "variables.flag${i}", then: { kind: Run.Value, value: 1 }, else: { kind: Run.Value, value: 2 } }`,
+      "invoke: !ref main");
+  }
   return `${lines.join("\n")}\n`;
 }
 
@@ -155,6 +186,46 @@ export function flagSequenceInTry(n: number): string {
       `          if: !cel "variables.flag${k}"`,
       `          then: ${k === 1 ? "1" : `!cel "steps.step${k - 1}.result + 1"`}`,
       `          else: "off"`,
+    );
+  }
+  lines.push("    catch:", "      - name: recovered", "        value: 0");
+  return `${lines.join("\n")}\n`;
+}
+
+/**
+ * Fixture Wf: fixture W with each nested step an invoke step whose `timeout:`
+ * is chosen by its own flag — `0`, which the invoke branch refuses, where it
+ * holds — so each nested step's verdict varies on its own.
+ */
+export function flagSequenceInTryRefused(n: number): string {
+  const lines = [
+    "kind: Telo.Application",
+    "metadata: { name: FlagSequenceInTryRefused }",
+    "imports:",
+    `  Run: ${RUN}`,
+    "variables:",
+    ...flags(n),
+    "targets:",
+    "  - !ref sequence",
+    "---",
+    "kind: Run.Value",
+    "metadata: { name: target }",
+    "value: 1",
+    "---",
+    "kind: Telo.Sequence",
+    "metadata: { name: sequence }",
+    "steps:",
+    "  - name: guarded",
+    "    try:",
+  ];
+  for (let k = 1; k <= n; k++) {
+    lines.push(
+      `      - name: step${k}`,
+      "        invoke: !ref target",
+      "        timeout: !if",
+      `          if: !cel "variables.flag${k}"`,
+      "          then: 0",
+      "          else: 1000",
     );
   }
   lines.push("    catch:", "      - name: recovered", "        value: 0");
@@ -1392,6 +1463,106 @@ export function rulePadding(p: number): string {
 }
 
 /**
+ * A referrer rule reading past a reference slot of the referrer and a member
+ * of the resource it judges: `panel`'s rule reads the label of the model the
+ * holder's options name, `/options/model` resolved hop by hop, and holds where
+ * it is the one the panel expects. The holder, the panel, the options and the
+ * model each hold `p` entries, and the options and the model a member a flag
+ * varies, none of which the rule reads.
+ */
+export function referrerRulePadding(p: number): string {
+  return [
+    "kind: Telo.Application",
+    "metadata: { name: ReferrerRulePadding }",
+    "variables:",
+    ...flags(2),
+    "---",
+    "kind: Telo.Definition",
+    "metadata: { name: Model }",
+    "capability: Telo.Provider",
+    "controllers:",
+    "  - pkg:npm/none@0.0.0",
+    "schema:",
+    "  type: object",
+    "  properties:",
+    "    label: { type: string }",
+    "    note: { type: string }",
+    "    parked: { type: array }",
+    "---",
+    "kind: Telo.Definition",
+    "metadata: { name: Options }",
+    "capability: Telo.Provider",
+    "controllers:",
+    "  - pkg:npm/none@0.0.0",
+    "schema:",
+    "  type: object",
+    "  properties:",
+    "    model: { x-telo-ref: { kind: Self.Model, use: dependency } }",
+    "    note: { type: string }",
+    "    parked: { type: array }",
+    "---",
+    "kind: Telo.Definition",
+    "metadata: { name: Panel }",
+    "capability: Telo.Provider",
+    "controllers:",
+    "  - pkg:npm/none@0.0.0",
+    "schema:",
+    "  type: object",
+    "  properties:",
+    "    expects: { type: string }",
+    "    parked: { type: array }",
+    "  x-telo-referrer-rules:",
+    "    - referrer: Self.Holder",
+    '      resolve: ["/options/model"]',
+    `      condition: !cel "referrer.options.model.label == self.expects"`,
+    "      code: PANEL_MODEL",
+    "      message: holds a model whose label is not the one the panel expects",
+    "---",
+    "kind: Telo.Definition",
+    "metadata: { name: Holder }",
+    "capability: Telo.Provider",
+    "controllers:",
+    "  - pkg:npm/none@0.0.0",
+    "schema:",
+    "  type: object",
+    "  properties:",
+    "    options: { x-telo-ref: { kind: Self.Options, use: dependency } }",
+    "    panel: { x-telo-ref: { kind: Self.Panel, use: dependency } }",
+    "    parked: { type: array }",
+    "---",
+    "kind: Self.Model",
+    "metadata: { name: model }",
+    "label: first",
+    "note: !if",
+    `  if: !cel "variables.flag2"`,
+    "  then: one",
+    "  else: two",
+    ...parkedEntries(p),
+    "---",
+    "kind: Self.Options",
+    "metadata: { name: options }",
+    "model: !ref model",
+    "note: !if",
+    `  if: !cel "variables.flag1"`,
+    "  then: one",
+    "  else: two",
+    ...parkedEntries(p),
+    "---",
+    "kind: Self.Panel",
+    "metadata: { name: panel }",
+    "expects: first",
+    ...parkedEntries(p),
+    "---",
+    "kind: Self.Holder",
+    "metadata: { name: holder }",
+    "options: !ref options",
+    "panel: !ref panel",
+    ...parkedEntries(p),
+    "",
+  ].join("\n");
+}
+
+/**
  * A zone requirement whose correlation key crosses a reference: `work` must
  * run inside a `Tx` on the connection its settings name, and `tx` provides one
  * on another. The settings hold a member a flag varies and `p` entries, none
@@ -2519,5 +2690,8 @@ export async function loadGenerated(name: string, text: string) {
     resolveRelative: fileSource.resolveRelative,
   };
   const graph = await new Loader([source]).loadGraph(entry, { desugarImports: true });
-  return { graph, manifests: flattenForAnalyzer(graph), moduleDocuments: collectModuleDocuments(graph) };
+  const manifests = flattenForAnalyzer(graph);
+  const moduleDocuments = collectModuleDocuments(graph);
+  frozenDocuments([manifests, moduleDocuments]);
+  return { graph, manifests, moduleDocuments, positions: collectFilePositions(graph) };
 }

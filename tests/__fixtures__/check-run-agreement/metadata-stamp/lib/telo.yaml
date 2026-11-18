@@ -1,0 +1,9 @@
+# The same hand-written stamp in a library: a consumer's check reports it at the
+# import reaching the library, and its run is refused at load.
+kind: Telo.Library
+metadata: { name: MetadataStampLib }
+---
+kind: Telo.Definition
+metadata: { name: Greeter, module: Elsewhere }
+capability: Telo.Invocable
+schema: { type: object }

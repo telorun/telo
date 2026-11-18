@@ -1,0 +1,48 @@
+# A templated kind's body decides `limits` from `self.flag`: written whole it
+# lacks the `max` its `min` of 5 requires, which the definition reports under
+# the body's own condition; forwarded, `min` is the consumer's `v`. Each
+# consumer reports the body entry's missing `max` exactly where its own values
+# take the forwarded branch, and nowhere the definition already reports it.
+kind: Telo.Application
+metadata: { name: DefinitionCoverLimits }
+variables: { f: { env: F, type: boolean, default: false } }
+---
+kind: Telo.Definition
+metadata: { name: Target }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties:
+    limits:
+      type: object
+      properties: { min: { type: integer }, max: { type: integer } }
+      if: { properties: { min: { const: 5 } }, required: [min] }
+      then: { required: [max] }
+---
+kind: Telo.Definition
+metadata: { name: Pair }
+capability: Telo.Provider
+schema: { type: object, properties: { flag: { type: boolean }, v: { type: integer } } }
+resources:
+  - kind: Self.Target
+    metadata: { name: target }
+    limits: !if
+      if: !cel "self.flag"
+      then: { min: 5 }
+      else: { min: !cel "self.v" }
+provide: !ref target
+---
+kind: Self.Pair
+metadata: { name: forwarded }
+flag: false
+v: 5
+---
+kind: Self.Pair
+metadata: { name: chosen }
+flag: !cel "variables.f"
+v: 5
+---
+kind: Self.Pair
+metadata: { name: written }
+flag: true

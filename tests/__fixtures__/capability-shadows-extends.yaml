@@ -1,18 +1,11 @@
 kind: Telo.Application
-metadata:
-  name: CapabilityShadowsExtends
-  version: 1.0.0
-imports:
-  AbstractLib: ./abstract-lib.yaml
+metadata: { name: CapabilityShadowsExtends, version: 1.0.0 }
+imports: { AbstractLib: ./abstract-lib.yaml }
 ---
 # Legacy spelling: `capability` naming a module's abstract. The
 # `capability-as-extends` migration rewrites it to `extends:` at load and reports
 # CAPABILITY_SHADOWS_EXTENDS; `telo migrate` writes the rewrite to the file.
 kind: Telo.Definition
-metadata:
-  name: Legacy
-  module: LegacyLocal
+metadata: { name: Legacy }
 capability: AbstractLib.Greeter
-schema:
-  type: object
-  properties: {}
+schema: { type: object, properties: {} }

@@ -234,6 +234,18 @@ describe("cel.bind", () => {
   });
 });
 
+describe("extractReadChains", () => {
+  it("follows a cel.bind name to the value it binds", () => {
+    const ast = env.parse("cel.bind(t, self.table, t.size > 0 && t == self.other)").root;
+    expect(extractReadChains(ast)).toEqual([["self", "table", "size"], ["self", "table"], ["self", "other"]]);
+  });
+
+  it("reads a bound value nothing reads through whole, since it is still evaluated", () => {
+    const ast = env.parse("cel.bind(t, self.table.name, self.size > 0)").root;
+    expect(extractReadChains(ast)).toEqual([["self", "size"], ["self", "table", "name"]]);
+  });
+});
+
 describe("validateChainAgainstSchema — conjuncts and local references", () => {
   it("reads a member through an allOf of a reference into the document's $defs", () => {
     const contract = {

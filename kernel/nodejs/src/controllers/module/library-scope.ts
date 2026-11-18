@@ -1,8 +1,11 @@
 import {
   AnalysisRegistry,
+  collectFilePositions,
   DiagnosticSeverity,
+  FindingOrder,
   flattenLoadedModule,
   importPathOf,
+  METADATA_RESERVED_FIELD,
   stampScopedImportsIn,
   withLibraryMigrationsApplied,
   type AnalysisDiagnostic,
@@ -54,6 +57,10 @@ export interface LibraryScope {
   /** Other modules' exported instances, for the library's `!ref Alias.name`,
    *  as the library instance at `instancePath` (its need path) reaches them. */
   targetsAt(instancePath: readonly string[]): ResourceManifest[];
+  /** For a library the load did not reach, each stamp its author wrote — on a
+   *  top-level document, a scoped `Telo.Import`, or a nested declaration in any
+   *  option — which every import of it refuses. */
+  readonly writtenStamps: readonly string[];
 }
 
 interface LibraryEntry {
@@ -148,6 +155,7 @@ async function computeLibraryScope(
       targetsAt: applicationTargets(
         host.loadTimeManifests.filter((m) => (m.metadata as { module?: unknown } | undefined)?.module !== module),
       ),
+      writtenStamps: [],
     };
   }
 
@@ -158,12 +166,39 @@ async function computeLibraryScope(
     moduleDocuments,
     applicationSources,
   } = await host.loadLibrary(resolvedUrl, registry);
-  refuseLibraryAnalysis(
+  const positions = collectFilePositions(graph);
+  const writtenStamps = analysedLibrary(
     graph,
-    host.analyzer.analyzeRegistered(graphManifests, { moduleDocuments, applicationSources }, registration),
+    new FindingOrder(graphManifests, positions),
+    graph.metadataDiagnostics,
+    host.analyzer.analyzeRegistered(graphManifests, { moduleDocuments, applicationSources, positions }, registration),
   );
   const rawManifests = manifestsUnder(libraryMigrationRecordOf(graph, target.owner.source));
-  return { rawManifests, registry, targetsAt: () => graphManifests };
+  return { rawManifests, registry, targetsAt: () => graphManifests, writtenStamps };
+}
+
+/**
+ * The stamps an author wrote in a library the load did not reach — the loader's
+ * refusal of its top-level documents and scoped imports, and its analysis's of
+ * its nested declarations, judged as written, in every option — each import of
+ * it refusing them together with the library's other errors; or, with none,
+ * its analysis refused.
+ */
+function analysedLibrary(
+  graph: LoadedGraph,
+  order: FindingOrder,
+  loaderStamps: readonly AnalysisDiagnostic[],
+  diagnostics: readonly AnalysisDiagnostic[],
+): string[] {
+  const stamps = order.sort([...loaderStamps, ...diagnostics.filter((d) => d.code === METADATA_RESERVED_FIELD)]);
+  if (stamps.length > 0) {
+    const others = withLibraryMigrationsApplied(graph, diagnostics).filter(
+      (d) => d.severity === DiagnosticSeverity.Error && d.code !== METADATA_RESERVED_FIELD,
+    );
+    return [...stamps, ...others].map((d) => d.message);
+  }
+  refuseLibraryAnalysis(graph, diagnostics);
+  return [];
 }
 
 /**
@@ -211,16 +246,20 @@ async function ownRegistryScope(
     moduleDocuments,
     applicationSources,
   } = await host.loadLibrary(resolvedUrl, registry);
-  refuseLibraryAnalysis(
+  const walked = ctx.isImportValidatedAtLoad(resolvedUrl);
+  const positions = collectFilePositions(graph);
+  const writtenStamps = analysedLibrary(
     graph,
+    new FindingOrder(graphManifests, positions),
+    walked ? [] : graph.metadataDiagnostics,
     host.analyzer.analyzeRegistered(
       graphManifests,
-      { skipValidation: ctx.isImportValidatedAtLoad(resolvedUrl), moduleDocuments, applicationSources },
+      { skipValidation: walked, moduleDocuments, applicationSources, positions },
       registration,
     ),
   );
   const rawManifests = manifestsUnder(libraryMigrationRecordOf(graph, target.owner.source));
-  return { rawManifests, registry, targetsAt: () => graphManifests };
+  return { rawManifests, registry, targetsAt: () => graphManifests, writtenStamps };
 }
 
 /** A library's own analysis refused, each error carried as a structured

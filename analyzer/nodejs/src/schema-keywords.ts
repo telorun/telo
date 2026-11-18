@@ -11,7 +11,8 @@
  * offered by completion but deliberately never appear as literal property names
  * in the schema that gets hoisted into a manifest. Several passes walk a
  * definition's schema testing every object for an annotation KEY
- * (`resolveSchemaRefKinds`, `validate-ref-slots`, `validate-zone-slots`), and a
+ * (the registered copy's kind canonicalization, `validate-ref-slots`,
+ * `validate-zone-slots`), and a
  * `properties` map holding a key spelled `x-telo-ref` reads to them as an
  * annotated node — inventing diagnostics about a slot the author never wrote.
  * So the fragment body stays open (`additionalProperties: true`, which admits

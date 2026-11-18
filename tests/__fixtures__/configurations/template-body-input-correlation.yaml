@@ -1,0 +1,24 @@
+# One module input choosing both a module-level finding and a template body's:
+# each configuration holds exactly one of them.
+kind: Telo.Application
+metadata: { name: TemplateBodyInputCorrelation, version: 1.0.0 }
+variables: { x: { env: X, type: boolean, default: false } }
+imports: { Kinds: ../resource-inputs/optional/kinds }
+---
+kind: Telo.Definition
+metadata: { name: Wrapper }
+capability: Telo.Provider
+schema: { type: object, properties: {} }
+resources:
+  - { kind: Kinds.Store, metadata: { name: store }, label: store }
+  - !if
+    metadata: { name: inner }
+    if: !cel "variables.x"
+    then: { kind: Kinds.Holder, store: !ref missing }
+    else: { kind: Kinds.Holder, store: !ref store }
+provide: !ref inner
+--- !if
+metadata: { name: holder }
+if: !cel "variables.x"
+then: { kind: Kinds.Store, label: holder }
+else: { kind: Kinds.Holder, store: !ref absentStore }

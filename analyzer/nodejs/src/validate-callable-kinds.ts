@@ -32,6 +32,7 @@ import { moduleAliasScope } from "./module-alias-scope.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type DiagnosticFix } from "./types.js";
 import { isRefSourceSpelling } from "./ref-sentinel-target.js";
 import { refSentinelsIn } from "./contract-shapes.js";
+import { signatureShapeNotFoundMessage } from "./named-shape-references.js";
 import {
   CALLABLE_CAPABILITY,
   FUNCTION_KIND,
@@ -109,14 +110,37 @@ const SOURCE = "telo-analyzer";
  * Two shapes are walked. A KIND document answers for what it declares; an
  * INSTANCE of a callable kind answers for the signature it declares over its
  * kind's — which is `Telo.Function`, whose schema lists `params` / `returns` as
- * properties, and any other callable kind that chooses to.
+ * properties, and any other callable kind that chooses to. The two are separate
+ * stages.
  */
-export function validateCallableDeclarations(
+export function validateCallableKindDocuments(
   manifests: readonly ResourceManifest[],
   registry: DefinitionRegistry,
   aliases: AliasResolver,
   aliasesByModule: ReadonlyMap<string, AliasResolver>,
   rootModules: ReadonlySet<string>,
+): AnalysisDiagnostic[] {
+  return callableIssuesOf(manifests, registry, aliases, aliasesByModule, rootModules, true);
+}
+
+/** The signature an instance of a callable kind declares. */
+export function validateCallableInstances(
+  manifests: readonly ResourceManifest[],
+  registry: DefinitionRegistry,
+  aliases: AliasResolver,
+  aliasesByModule: ReadonlyMap<string, AliasResolver>,
+  rootModules: ReadonlySet<string>,
+): AnalysisDiagnostic[] {
+  return callableIssuesOf(manifests, registry, aliases, aliasesByModule, rootModules, false);
+}
+
+function callableIssuesOf(
+  manifests: readonly ResourceManifest[],
+  registry: DefinitionRegistry,
+  aliases: AliasResolver,
+  aliasesByModule: ReadonlyMap<string, AliasResolver>,
+  rootModules: ReadonlySet<string>,
+  kindDocuments: boolean,
 ): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
   const resolveDef: DefResolver = (kind, from) => {
@@ -129,15 +153,17 @@ export function validateCallableDeclarations(
   };
 
   for (const m of manifests) {
+    const isKindDocument = m.kind === "Telo.Definition" || m.kind === "Telo.Abstract";
+    if (isKindDocument !== kindDocuments) continue;
     const ownModule = (m.metadata?.module as string | undefined) ?? undefined;
     if (ownModule && !rootModules.has(ownModule)) continue;
     const name = m.metadata?.name as string | undefined;
     if (!name) continue;
 
-    const issues =
-      m.kind === "Telo.Definition" || m.kind === "Telo.Abstract"
-        ? callableKindIssues(m, resolveDef)
-        : callableInstanceIssues(m, resolveDef);
+    // A kind document's slot kinds are compared canonical, as the registry's copy holds them.
+    const issues = isKindDocument
+      ? callableKindIssues(registry.withCanonicalKinds(m), resolveDef, false)
+      : callableInstanceIssues(m, resolveDef, false);
     for (const issue of issues) {
       diagnostics.push({
         severity: DiagnosticSeverity.Error,
@@ -164,6 +190,9 @@ export function validateCallableDeclarations(
 export function callableInstanceIssues(
   manifest: ResourceManifest,
   resolve: DefResolver,
+  /** Whether an unresolved `!ref` in the signature is judged here: the
+   *  analysis judges it with every other named-shape reference instead. */
+  judgesShapeRefs = true,
 ): CallableKindIssue[] {
   const doc = manifest as unknown as Record<string, unknown>;
   // A function named after a CEL macro — `map`, `filter`, `all` — used to be refused here
@@ -211,7 +240,7 @@ export function callableInstanceIssues(
       declared[half] = doc[half];
     }
   }
-  return [...issues, ...declaredSignatureIssues(declared)];
+  return [...issues, ...declaredSignatureIssues(declared, judgesShapeRefs)];
 }
 
 /**
@@ -223,6 +252,9 @@ export function callableInstanceIssues(
 export function callableKindIssues(
   definition: ResourceManifest,
   resolve: DefResolver,
+  /** Whether an unresolved `!ref` in the signature is judged here: the
+   *  analysis judges it with every other named-shape reference instead. */
+  judgesShapeRefs = true,
 ): CallableKindIssue[] {
   const issues: CallableKindIssue[] = [];
   const def = definition as unknown as ResourceDefinition;
@@ -241,11 +273,11 @@ export function callableKindIssues(
   // callable would stack a second, wrong diagnostic on the typo. A capability the
   // document states itself needs nothing from the chain.
   if (typeof doc.extends === "string" && !parent && doc.capability === undefined) {
-    return [...issues, ...declaredSignatureIssues(doc)];
+    return [...issues, ...declaredSignatureIssues(doc, judgesShapeRefs)];
   }
 
   const callable = isCallableKind(def, resolve);
-  const signatureIssues = declaredSignatureIssues(doc);
+  const signatureIssues = declaredSignatureIssues(doc, judgesShapeRefs);
   // A signature on a kind that is not callable is read by nothing, so it is
   // reported where it is written rather than left to do nothing. A signature on
   // a callable is checked for its own well-formedness.
@@ -490,14 +522,14 @@ function determinismIssues(
  * implementation — checked for the two things a signature can say that no
  * consumer could act on.
  */
-export function declaredSignatureIssues(doc: Record<string, unknown>): CallableKindIssue[] {
+export function declaredSignatureIssues(doc: Record<string, unknown>, judgesShapeRefs = true): CallableKindIssue[] {
   const issues: CallableKindIssue[] = [];
 
   const params = readParams(doc);
   if (params) {
     let optionalSeen: string | undefined;
     params.forEach((param, index) => {
-      issues.push(...typeSlotIssues(param, `params[${index}].schema`));
+      issues.push(...typeSlotIssues(param, `params[${index}].schema`, judgesShapeRefs));
       const name = typeof param.name === "string" ? param.name : `#${index}`;
       if (param.optional === true) {
         optionalSeen ??= name;
@@ -517,7 +549,7 @@ export function declaredSignatureIssues(doc: Record<string, unknown>): CallableK
   }
 
   const returns = readReturns(doc);
-  if (returns) issues.push(...typeSlotIssues(returns, "returns.schema"));
+  if (returns) issues.push(...typeSlotIssues(returns, "returns.schema", judgesShapeRefs));
 
   return issues;
 }
@@ -528,9 +560,10 @@ export function declaredSignatureIssues(doc: Record<string, unknown>): CallableK
 function typeSlotIssues(
   slot: SignatureParam | SignatureResult,
   path: string,
+  judgesShapeRefs: boolean,
 ): CallableKindIssue[] {
   if (typeof slot.schema !== "string" || slot.schema.length === 0) {
-    return unresolvedShapeRefIssues(slot.schema, path);
+    return judgesShapeRefs ? unresolvedShapeRefIssues(slot.schema, path) : [];
   }
   return [
     {
@@ -559,11 +592,7 @@ function unresolvedShapeRefIssues(schema: unknown, path: string): CallableKindIs
   return refSentinelsIn(schema, path).map(({ sentinel, path: at }) => ({
     code: "CONTRACT_TYPE_NOT_FOUND" as const,
     path: at,
-    message:
-      `'${at}' names the shape '${sentinel.source}' with \`!ref\`, and nothing by that name is ` +
-      `declared in scope — a \`Telo.JsonSchema\` of this module, or one an import lists in its ` +
-      `\`exports.resources\`. A shape that resolves to nothing constrains nothing, so every ` +
-      `argument would pass. Declare the shape, or correct the name.`,
+    message: signatureShapeNotFoundMessage(at, sentinel.source),
   }));
 }
 

@@ -1,0 +1,13 @@
+# A library asking its importer for two stores.
+kind: Telo.Library
+metadata:
+  name: TwoStores
+  version: 0.0.0
+  description: Test fixture holding two stores its importer supplies.
+imports: { Kinds: ../../resource-inputs/optional/kinds }
+resources: { store: { kind: Kinds.Store }, other: { kind: Kinds.Store } }
+exports: { resources: [holder] }
+---
+kind: Kinds.Collector
+metadata: { name: holder }
+members: [!ref store, !ref other]

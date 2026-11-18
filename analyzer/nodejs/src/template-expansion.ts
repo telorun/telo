@@ -51,8 +51,11 @@ import {
   meet,
   EVERYWHERE,
   type AlternativeOption,
+  type DeadBranchWorld,
+  type Forcing,
   type Holding,
 } from "./conditioned-expansion.js";
+import type { Assignment } from "./configuration-dimensions.js";
 import type { ConditionSpace } from "./presence-condition.js";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
 import { isResolvedReference, resolvedReference, type ResolvedReference } from "./resolved-reference.js";
@@ -160,13 +163,34 @@ export interface TemplateExpander {
   readonly space?: ConditionSpace;
   /** LIFTED: every branch a choice takes, each with where — read in place of
    *  {@link decide}; undefined leaves the choice to `decide`. */
-  branches?(
-    sentinel: ExpansionSentinel,
-    instance: LoopInstance,
-  ): readonly { readonly branch: string | null; readonly holding: Holding }[] | undefined;
+  branches?(sentinel: ExpansionSentinel, instance: LoopInstance): readonly BranchOutcome[] | undefined;
   /** LIFTED: every key a splice's element emits, each with where — read in
    *  place of {@link key}. */
   keys?(sentinel: ExpansionSentinel, instance: LoopInstance): readonly { readonly key: string; readonly holding: Holding }[];
+}
+
+/** One branch a lifted choice takes, and where: `undefined` leaves the choice
+ *  as written there. A branch taken nowhere is UNREACHABLE, with a witness
+ *  reaching its choice and the choices forced to take it there. */
+export interface BranchOutcome {
+  readonly branch: string | null | undefined;
+  readonly holding: Holding;
+  readonly unreachable?: true;
+  readonly baseline?: Assignment;
+  readonly forcing?: Forcing;
+  readonly world?: DeadBranchWorld;
+}
+
+/** What marks an option no assignment takes. */
+type DeadMarks = Pick<AlternativeOption, "unreachable" | "baseline" | "forcing" | "world">;
+
+function deadMarks(outcome: BranchOutcome): DeadMarks {
+  return {
+    ...(outcome.unreachable ? { unreachable: true as const } : {}),
+    ...(outcome.baseline ? { baseline: outcome.baseline } : {}),
+    ...(outcome.forcing ? { forcing: outcome.forcing } : {}),
+    ...(outcome.world ? { world: outcome.world } : {}),
+  };
 }
 
 /** Where an expanded position was written. */
@@ -231,25 +255,86 @@ export interface TemplateBodyExpansion {
   instanceAt(path: string): LoopInstance;
 }
 
+/** A record of one walk of a body, with where it holds: what the walk stood
+ *  under when it made it — everywhere, unless the walk is lifted. */
+export interface HeldRecord<T> {
+  readonly item: T;
+  readonly holding: Holding;
+}
+
+/** A mapping a walk made; a CONDITIONAL one is dropped where it moves nothing,
+ *  as only a list item's or a construct left in place can. */
+export interface RawMapping extends HeldRecord<TemplateMapping> {
+  readonly conditional: boolean;
+}
+
+/** One member a family declared, with the family it is filed under. */
+export interface FamilyMemberRecord {
+  readonly family: string;
+  readonly metadataAt: Keys;
+  readonly member: FamilyMember;
+}
+
+/** An indexed `!ref` an emitted item holds, resolved to a member by name; its
+ *  kind is the member's, known once every member is. */
+export interface MemberReference {
+  readonly ref: ResolvedReference;
+  readonly name: string;
+}
+
+/**
+ * What one walk of a body records, before its member references take their
+ * members' kinds and its inline targets are hoisted ({@link assembleTemplateBody}).
+ * Decided, each record holds everywhere; LIFTED, the body holds an
+ * {@link Alternatives} node at every place a choice decides and each record
+ * holds where the walk stood when it made it — the positions of both are the
+ * lifted body's, every item of a list kept, so a projection moves them.
+ */
+export interface RawTemplateBody {
+  /** The definition as written. */
+  readonly definition: ResourceManifest;
+  /** Its fields, each body field expanded — absent where nothing is left. */
+  readonly fields: Readonly<Record<string, unknown>>;
+  /** Whether a body field differs from the one written. */
+  readonly changed: boolean;
+  readonly mappings: readonly RawMapping[];
+  readonly emitted: readonly HeldRecord<EmittedItem>[];
+  readonly splicedKeys: readonly HeldRecord<SplicedKey>[];
+  /** Every literal key of a mapping holding a splice, by the mapping. */
+  readonly literalKeys: readonly HeldRecord<{ readonly container: Keys; readonly keys: readonly string[] }>[];
+  readonly members: readonly HeldRecord<FamilyMemberRecord>[];
+  readonly memberRefs: readonly MemberReference[];
+  /** Every container the walk built, with the written one it stands for — an
+   *  absent entry for one with none, a declaration a branch makes. */
+  readonly built: WeakMap<object, unknown>;
+}
+
 /** Expand `definition`'s body by `expander`. A definition holding no
  *  construct is returned as is. */
 export function expandTemplateBody(
   definition: ResourceManifest,
   expander: TemplateExpander,
 ): TemplateBodyExpansion {
-  const mappings: TemplateMapping[] = [];
-  const emitted: EmittedItem[] = [];
-  const splicedKeys: SplicedKey[] = [];
-  const literalKeys = new Map<string, string[]>();
-  const families = new Map<string, { name: string; metadataAt: Keys; members: FamilyMember[] }>();
-  // Member references whose kind is the member's, filled once every member is known.
-  const memberRefs: { ref: ResolvedReference; name: string }[] = [];
+  return assembleTemplateBody(walkTemplateBody(definition, expander));
+}
+
+/** Walk `definition`'s body by `expander`, recording what it finds. */
+export function walkTemplateBody(definition: ResourceManifest, expander: TemplateExpander): RawTemplateBody {
+  const mappings: RawMapping[] = [];
+  const emitted: HeldRecord<EmittedItem>[] = [];
+  const splicedKeys: HeldRecord<SplicedKey>[] = [];
+  const literalKeys: HeldRecord<{ container: Keys; keys: string[] }>[] = [];
+  const members: HeldRecord<FamilyMemberRecord>[] = [];
+  const memberRefs: MemberReference[] = [];
+  const built = new WeakMap<object, unknown>();
 
   type Result = { present: boolean; value?: unknown };
 
   // A lifted expansion's holding where it stands now: every option taken on
   // the way met.
   let within: Holding = EVERYWHERE;
+  const map = (mapping: TemplateMapping, conditional = false, holding: Holding = within) =>
+    mappings.push({ item: mapping, holding, conditional });
   const under = <T>(holding: Holding, body: () => T): T => {
     const saved = within;
     within = holding;
@@ -266,18 +351,20 @@ export function expandTemplateBody(
     instance: LoopInstance,
   ):
     | { readonly branch: string | null | undefined; readonly outcomes?: undefined }
-    | { readonly outcomes: readonly { readonly branch: string | null; readonly holding: Holding }[] } => {
+    | { readonly outcomes: readonly BranchOutcome[] } => {
     const outcomes = expander.branches?.(sentinel, instance);
     if (!outcomes) return { branch: expander.decide(sentinel, instance) };
     if (outcomes.length === 1 && isEverywhere(outcomes[0]!.holding)) return { branch: outcomes[0]!.branch };
     return { outcomes };
   };
   /** Each item pushed onto `out` from `start` on, held where `holding` holds. */
-  const holdItems = (out: unknown[], start: number, holding: Holding): void => {
+  const holdItems = (out: unknown[], start: number, holding: Holding, marks: DeadMarks = {}): void => {
     if (holding === within) return;
-    for (let k = start; k < out.length; k++) out[k] = heldNode(out[k], holding, [], false);
+    for (let k = start; k < out.length; k++) {
+      out[k] = new Alternatives([{ ...heldNode(out[k], holding, [], false).options[0]!, ...marks }]);
+    }
   };
-  const optionOf = (holding: Holding, r: Result, at: Keys): AlternativeOption => ({
+  const optionOf = (holding: Holding, r: Result, at: Keys, marks: DeadMarks): AlternativeOption => ({
     condition: holding.condition,
     taken: holding.condition,
     path: holding.path,
@@ -285,6 +372,7 @@ export function expandTemplateBody(
     ...(r.present ? { value: r.value } : {}),
     at,
     moved: false,
+    ...marks,
   });
   /** `holding` met with where the expansion stands. */
   const met = (holding: Holding | undefined): Holding =>
@@ -300,10 +388,11 @@ export function expandTemplateBody(
   ): Result => {
     const decided = decision(sentinel, instance);
     if (decided.outcomes) {
-      const options = decided.outcomes.map(({ branch, holding }) => {
-        const h = met(holding);
+      const options = decided.outcomes.map((outcome) => {
+        const { branch } = outcome;
+        const h = met(outcome.holding);
         const r = under(h, () => expandBranch(sentinel, branch, from, to, instance, position, metadata));
-        return optionOf(h, r, branch === null ? from : [...from, ...branchKeys(branch)]);
+        return optionOf(h, r, branch === null || branch === undefined ? from : [...from, ...branchKeys(branch)], deadMarks(outcome));
       });
       return { present: true, value: new Alternatives(options) };
     }
@@ -332,9 +421,10 @@ export function expandTemplateBody(
     }
     if (named && isDeclarationPosition(position)) {
       if (!inner || typeof inner !== "object" || Array.isArray(inner)) return { present: false };
-      mappings.push({ from: to, to: at, metadataAt: named.at });
+      map({ from: to, to: at, metadataAt: named.at });
       const { kind, ...fields } = inner as Record<string, unknown>;
       const declared: Record<string, unknown> = { kind, metadata: named.value };
+      built.set(declared, undefined);
       for (const [key, field] of Object.entries(fields)) {
         if (key === "metadata") continue;
         const r = expandValue(field, [...at, key], [...to, key], instance);
@@ -342,7 +432,7 @@ export function expandTemplateBody(
       }
       return { present: true, value: declared };
     }
-    mappings.push({ from: to, to: at });
+    map({ from: to, to: at });
     return expandValue(inner, at, to, instance);
   };
 
@@ -362,11 +452,11 @@ export function expandTemplateBody(
       if (position !== undefined && (tag === "if" || tag === "switch")) {
         const decided = decision(item, instance);
         if (decided.outcomes) {
-          for (const { branch, holding } of decided.outcomes) {
-            const h = met(holding);
+          for (const outcome of decided.outcomes) {
+            const h = met(outcome.holding);
             const start = out.length;
-            under(h, () => listBranch(item, branch, from, list, out, instance, position, metadata));
-            holdItems(out, start, h);
+            under(h, () => listBranch(item, outcome.branch, from, list, out, instance, position, metadata));
+            holdItems(out, start, h, deadMarks(outcome));
           }
           return;
         }
@@ -407,7 +497,7 @@ export function expandTemplateBody(
               const start = out.length;
               expandListItem(emitItem, written, list, out, inner);
               for (let k = start; k < out.length; k++) {
-                emitted.push({ at: [...list, k], written, instance: inner });
+                emitted.push({ item: { at: [...list, k], written, instance: inner }, holding: within });
               }
             }
           });
@@ -419,9 +509,7 @@ export function expandTemplateBody(
       return;
     }
     const to = [...list, out.length];
-    if (to[to.length - 1] !== from[from.length - 1] || !sameKeys(to.slice(0, -1), from.slice(0, -1))) {
-      mappings.push({ from: to, to: from });
-    }
+    map({ from: to, to: from }, true);
     const r = expandValue(item, from, to, instance);
     if (r.present) out.push(r.value);
   };
@@ -457,7 +545,7 @@ export function expandTemplateBody(
       return;
     }
     const to = [...list, out.length];
-    mappings.push({ from: to, to: at });
+    map({ from: to, to: at });
     const r = expandValue(chosen.value, at, to, instance);
     if (r.present) out.push(r.value);
   };
@@ -523,11 +611,11 @@ export function expandTemplateBody(
           emitBranch(decided.branch);
           return;
         }
-        for (const { branch, holding } of decided.outcomes) {
-          const h = met(holding);
+        for (const outcome of decided.outcomes) {
+          const h = met(outcome.holding);
           const start = out.length;
-          under(h, () => emitBranch(branch));
-          holdItems(out, start, h);
+          under(h, () => emitBranch(outcome.branch));
+          holdItems(out, start, h, deadMarks(outcome));
         }
       }
       return;
@@ -544,10 +632,11 @@ export function expandTemplateBody(
     });
     if (!r.present) return;
     out.push(r.value);
-    emitted.push({ at: to, written: at, instance });
-    const record = families.get(pathText(named.at)) ?? { name: family, metadataAt: named.at, members: [] };
-    families.set(pathText(named.at), record);
-    record.members.push({ name, keys, kind: (value as { kind?: unknown }).kind, at: to });
+    emitted.push({ item: { at: to, written: at, instance }, holding: within });
+    members.push({
+      item: { family, metadataAt: named.at, member: { name, keys, kind: (value as { kind?: unknown }).kind, at: to } },
+      holding: within,
+    });
   };
 
   /** The steps a repeat in a list of steps emits, each carrying its identity in
@@ -590,11 +679,13 @@ export function expandTemplateBody(
             return new Alternatives(step.options.map((o) => (o.present ? { ...o, value: identified(o.value) } : o)));
           }
           if (!step || typeof step !== "object" || Array.isArray(step) || EMITTED_STEP_MEMBER in step) return step;
-          return { ...(step as Record<string, unknown>), [EMITTED_STEP_MEMBER]: identity };
+          const copy = { ...(step as Record<string, unknown>), [EMITTED_STEP_MEMBER]: identity };
+          built.set(copy, undefined);
+          return copy;
         };
         for (let k = start; k < out.length; k++) {
           out[k] = identified(out[k]);
-          emitted.push({ at: [...list, k], written, instance: inner });
+          emitted.push({ item: { at: [...list, k], written, instance: inner }, holding: within });
         }
       }
       within = saved;
@@ -603,8 +694,7 @@ export function expandTemplateBody(
   };
 
   const pushAs = (item: unknown, from: Keys, list: Keys, out: unknown[]) => {
-    const to = [...list, out.length];
-    if (!sameKeys(to, from)) mappings.push({ from: to, to: from });
+    map({ from: [...list, out.length], to: from }, true);
     out.push(item);
   };
 
@@ -616,9 +706,10 @@ export function expandTemplateBody(
     named: { value: unknown; at: Keys },
   ): Result => {
     if (!branch || typeof branch !== "object" || Array.isArray(branch)) return { present: false };
-    mappings.push({ from: to, to: at, metadataAt: named.at });
+    map({ from: to, to: at, metadataAt: named.at });
     const { kind, ...fields } = branch as Record<string, unknown>;
     const declared: Record<string, unknown> = { kind, metadata: named.value };
+    built.set(declared, undefined);
     for (const [key, field] of Object.entries(fields)) {
       if (key === "metadata") continue;
       const r = expandValue(field, [...at, key], [...to, key], instance);
@@ -650,7 +741,9 @@ export function expandTemplateBody(
     if (Array.isArray(value)) {
       const out: unknown[] = [];
       value.forEach((item, i) => expandListItem(item, [...from, i], to, out, instance));
-      return { present: true, value: out.length === value.length && out.every((v, i) => v === value[i]) ? value : out };
+      if (out.length === value.length && out.every((v, i) => v === value[i])) return { present: true, value };
+      built.set(out, value);
+      return { present: true, value: out };
     }
     const record: Record<string, unknown> = {};
     let changed = false;
@@ -679,16 +772,16 @@ export function expandTemplateBody(
               : [{ key: expander.key(sentinel, inner), holding: EVERYWHERE }];
             for (const { key: emittedKey, holding } of keyed) {
               if (emittedKey === undefined) continue;
-              splicedKeys.push({ container: to, key: emittedKey, sentinel, instance: inner });
-              const at = [...to, emittedKey];
-              const emitAt = [...written, "emit"];
-              mappings.push({ from: at, to: emitAt });
               const outer = within;
               const h = meet(expander.space, met(element.holding), holding);
+              splicedKeys.push({ item: { container: to, key: emittedKey, sentinel, instance: inner }, holding: h });
+              const at = [...to, emittedKey];
+              const emitAt = [...written, "emit"];
+              map({ from: at, to: emitAt }, false, h);
               const result = under(h, () => expandValue((sentinel as Record<string, unknown>).emit, emitAt, at, inner));
               if (!result.present) continue;
               record[emittedKey] = h === outer ? result.value : heldAlongside(record[emittedKey], result.value, h);
-              emitted.push({ at, written: emitAt, instance: inner });
+              emitted.push({ item: { at, written: emitAt, instance: inner }, holding: h });
             }
           }
         });
@@ -703,12 +796,14 @@ export function expandTemplateBody(
       record[key] = r.value;
     }
     if (spliced) {
-      literalKeys.set(
-        pathText(to),
-        Object.keys(value as Record<string, unknown>).filter((k) => k !== SPLICE_KEY),
-      );
+      literalKeys.push({
+        item: { container: to, keys: Object.keys(value as Record<string, unknown>).filter((k) => k !== SPLICE_KEY) },
+        holding: within,
+      });
     }
-    return { present: true, value: changed ? record : value };
+    if (!changed) return { present: true, value };
+    built.set(record, value);
+    return { present: true, value: record };
   };
 
   /** `value` held where `holding` holds, beside what an earlier element
@@ -758,6 +853,29 @@ export function expandTemplateBody(
     if (r.value !== field) changed = true;
     fields[key] = r.value;
   }
+  return { definition, fields, changed, mappings, emitted, splicedKeys, literalKeys, members, memberRefs, built };
+}
+
+/** The expansion a walk's records make: each member reference given its
+ *  member's kind, every inline target hoisted, the records in expanded
+ *  positions. */
+export function assembleTemplateBody(raw: RawTemplateBody): TemplateBodyExpansion {
+  const { definition } = raw;
+  const mappings = raw.mappings.flatMap(({ item, conditional }) =>
+    conditional && sameKeys(item.from, item.to) ? [] : [item],
+  );
+  const emitted = raw.emitted.map((e) => e.item);
+  const splicedKeys = raw.splicedKeys.map((s) => s.item);
+  const literalKeys = new Map<string, readonly string[]>();
+  for (const { item } of raw.literalKeys) literalKeys.set(pathText(item.container), item.keys);
+  const families = new Map<string, { name: string; metadataAt: Keys; members: FamilyMember[] }>();
+  for (const { item } of raw.members) {
+    const key = pathText(item.metadataAt);
+    const record = families.get(key) ?? { name: item.family, metadataAt: item.metadataAt, members: [] };
+    families.set(key, record);
+    record.members.push(item.member);
+  }
+  const fields: Record<string, unknown> = { ...raw.fields };
   const instanceAt = (path: string): LoopInstance => {
     const keys = parseKeys(path);
     let best: EmittedItem | undefined;
@@ -768,13 +886,13 @@ export function expandTemplateBody(
   };
   const memberKinds = new Map<string, unknown>();
   for (const family of families.values()) for (const member of family.members) memberKinds.set(member.name, member.kind);
-  for (const { ref, name } of memberRefs) {
+  for (const { ref, name } of raw.memberRefs) {
     const kind = memberKinds.get(name);
     if (typeof kind === "string") ref.kind = kind;
   }
   const hoisted = hoistInlineTargets(fields, mappings, emitted, instanceAt);
   if (hoisted) Object.assign(fields, hoisted);
-  const expanded = changed || hoisted ? (fields as ResourceManifest) : definition;
+  const expanded = raw.changed || hoisted ? (fields as ResourceManifest) : definition;
 
   const relocate = (path: string): string => relocateTemplatePath(path, mappings);
   return {

@@ -1,0 +1,51 @@
+# A templated kind's body entry `holder` references its sibling `closed`, whose
+# `open` the body decides from `self.flag`. Where the body closes it the
+# referrer rule fails whatever any consumer supplies: reported once, at the
+# definition, under the body's own condition — and at no consumer.
+kind: Telo.Application
+metadata: { name: BodyReferrerRule }
+---
+kind: Telo.Definition
+metadata: { name: Target }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties: { open: { type: boolean } }
+  x-telo-referrer-rules:
+    - referrer: Self.Holder
+      condition: !cel "self.open == true"
+      code: TARGET_CLOSED
+      message: references a closed target
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties: { target: { x-telo-ref: { kind: Self.Target, use: dependency } } }
+---
+kind: Telo.Definition
+metadata: { name: Pair }
+capability: Telo.Provider
+schema: { type: object, properties: { flag: { type: boolean } } }
+resources:
+  - kind: Self.Target
+    metadata: { name: closed }
+    open: !if
+      if: !cel "self.flag"
+      then: false
+      else: true
+  - kind: Self.Holder
+    metadata: { name: holder }
+    target: !ref closed
+provide: !ref holder
+---
+kind: Self.Pair
+metadata: { name: closedPair }
+flag: true
+---
+kind: Self.Pair
+metadata: { name: openPair }
+flag: false

@@ -131,7 +131,9 @@ expect:
     - code: SCHEMA_VIOLATION
       message: "UiReact.App/offsitePath: /pages/0/path must match pattern"
     - code: SCHEMA_VIOLATION
-      message: "UiReact.App/offsiteLink: /pages/0/children/0/to/href must match pattern"
+      message: "UiReact.App/offsiteLink: /pages/0/children/0/to/href must match pattern \"^/("
+    - code: SCHEMA_VIOLATION
+      message: "UiReact.App/offsiteLink: /pages/0/children/0/to/href must match pattern \"^(https://|http://|mailto:)\""
 ---
 kind: Telo.Sequence
 metadata: { name: ruleRuns }

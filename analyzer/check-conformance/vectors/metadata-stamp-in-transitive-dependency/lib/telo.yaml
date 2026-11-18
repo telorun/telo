@@ -1,0 +1,7 @@
+kind: Telo.Library
+metadata: { name: StampLib }
+---
+kind: Telo.Definition
+metadata: { name: Greeter, module: Elsewhere }
+capability: Telo.Invocable
+schema: { type: object }

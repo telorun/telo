@@ -16,7 +16,7 @@ describe("a rule condition's presence test", () => {
   const self = { port: makeTaggedSentinel("cel", "ports.http"), listen: { port: 8080 } };
 
   it("reads the member's existence, not its value", () => {
-    expect(chainsOf("!has(self.port)")).toEqual([["self", "?"]]);
+    expect(chainsOf("!has(self.port)")).toEqual([["self", "port", "?"]]);
     expect(findDynamicRead(chainsOf("!has(self.port)"), { self })).toBeUndefined();
   });
 

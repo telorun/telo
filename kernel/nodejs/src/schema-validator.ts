@@ -7,6 +7,7 @@ import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
 import {
+  judgeSchemaFindings,
   ManifestRootSchema,
   registerTeloKeywords,
   schemaIssues,
@@ -234,11 +235,11 @@ const VALIDATING_ANNOTATIONS = new Set([X_TELO_TYPE]);
  *  validation code. {@link VALIDATING_ANNOTATIONS} is the exception and is kept —
  *  see the note there. Leaving the rest in the hashed form makes the
  *  cache key sensitive to differences that cannot change what the validator
- *  does — and one such difference is real and systematic. The analyzer rewrites
- *  `x-telo-ref.kind` to its canonical `<module>.<Kind>` in the declaring scope
- *  (`resolveSchemaRefKinds`), and `telo install`'s warm pass bakes THAT view;
- *  the kernel's controller registry never runs the rewrite, so at runtime the
- *  same kind's schema still reads `Self.Connection`. Two keys, one validator:
+ *  does — and one such difference is real and systematic. The analysis
+ *  registry holds a copy of each definition with `x-telo-ref.kind` canonical
+ *  (`<module>.<Kind>`, in the declaring scope), and `telo install`'s warm pass
+ *  bakes THAT view; the kernel's controller registry holds the definition as
+ *  written, so at runtime the same kind's schema still reads `Self.Connection`. Two keys, one validator:
  *  every kind whose schema declares an alias-qualified ref missed the baked
  *  cache on every boot and tried to rewrite it — the EACCES noise on a
  *  read-only image.
@@ -341,6 +342,10 @@ export class SchemaValidator {
    * warms it and a run that validates cleanly never compiles it.
    */
   findingsFor(schema: object): SchemaNodeFindings {
+    return this.failureNodes().findingsFor(schema);
+  }
+
+  private failureNodes(): SchemaNodeValidator {
     if (!this.failurePath) {
       const filling = createValidatorAjv("filling");
       const locating = createValidatorAjv("locating");
@@ -370,7 +375,13 @@ export class SchemaValidator {
       });
       this.failurePath = { filling, locating, nodes };
     }
-    return this.failurePath.nodes.findingsFor(schema);
+    return this.failurePath.nodes;
+  }
+
+  /** What a `$ref` written in `node` names, read on the failure path's validator
+   *  — the one that decides a refusal's unions. */
+  reference(node: object, ref: string): object | undefined {
+    return this.failureNodes().reference(node, ref);
   }
 
   getSchema(name: string): object | undefined {
@@ -491,12 +502,19 @@ export class SchemaValidator {
     const validator = {
       validate: (data: any) => {
         if (!check(data)) {
+          // The first failure is reported, its unions decided by the judge.
+          const findings = judgeSchemaFindings(validate.errors, {
+            value: data,
+            schema,
+            validate: (node, value) => this.findingsFor(schema)(node, value),
+            reference: (node, ref) => this.reference(node, ref),
+          });
           // Reports `data`, not the normalized view: the view renders a wide
           // integer through a double, so the digits it prints for the offending
           // value would not be the ones the author wrote.
           throw new SchemaValidationError(
-            `Invalid value passed: ${describeValue(data)}. Error: ${formatAjvErrors(validate.errors, data)}`,
-            schemaIssues(validate.errors, data),
+            `Invalid value passed: ${describeValue(data)}. Error: ${formatAjvErrors(findings, data)}`,
+            schemaIssues(findings, data),
           );
         }
       },

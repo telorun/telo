@@ -1,5 +1,5 @@
 import type { ResourceManifest } from "@telorun/sdk";
-import { listRequests } from "./declaration-requests.js";
+import { listRequests, type DeclarationRequests } from "./declaration-requests.js";
 import { SCHEMA_REGION_KEYS } from "./schema-region.js";
 import { resolveTypeFieldToSchema } from "./validate-cel-context.js";
 
@@ -31,9 +31,11 @@ const CONTRACT_KEYS = new Set(["inputType", "outputType"]);
 
 /** A declared contract is an `inputType` / `outputType` not nested in another
  *  schema — on a resource, a definition, or a declaration inside one (a
- *  template body's entry, a `with:` member). */
-export function contractSites(manifests: readonly ResourceManifest[]): ContractSite[] {
-  const all = listRequests(manifests);
+ *  template body's entry, a `with:` member) — each resolved against `all`. */
+export function contractSites(
+  manifests: readonly ResourceManifest[],
+  all: DeclarationRequests = listRequests(manifests),
+): ContractSite[] {
   const sites: ContractSite[] = [];
   for (const manifest of manifests) {
     const walk = (node: unknown, path: (string | number)[], seen: Set<object>): void => {
@@ -61,9 +63,9 @@ export function contractSites(manifests: readonly ResourceManifest[]): ContractS
 /** Resolves a named shape's `$ref` to the shape as written, so a node reached
  *  through it maps back to the shape's own manifest. */
 export function namedShapeResolver(
-  manifests: readonly ResourceManifest[],
+  manifests: readonly ResourceManifest[] | DeclarationRequests,
 ): (ref: string) => Record<string, any> | undefined {
-  const all = listRequests(manifests);
+  const all = Array.isArray(manifests) ? listRequests(manifests) : (manifests as DeclarationRequests);
   return (ref) => resolveTypeFieldToSchema({ $ref: ref }, all);
 }
 

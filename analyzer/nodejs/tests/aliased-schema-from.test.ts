@@ -235,8 +235,8 @@ describe("x-telo-schema-from with import-aliased absolute paths", () => {
         .filter((d) => d.code === "SCHEMA_FROM_MISSING_PATH")
         .map((d) => [(d.data as any).resource.name, (d.data as any).path]),
     ).toEqual([
-      ["Written", "returns"],
       ["Unwritten", "returns"],
+      ["Written", "returns"],
     ]);
   });
 

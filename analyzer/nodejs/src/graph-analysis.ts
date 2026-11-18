@@ -9,9 +9,9 @@ import {
   type DependencyAnalysisOptions,
 } from "./dependency-verdicts.js";
 import { unionDiagnostics } from "./diagnostic-identity.js";
+import { collectFilePositions } from "./diagnostic-location.js";
 import { registerLoadedGraph } from "./graph-registration.js";
-import { assembleGraphDiagnostics } from "./graph-diagnostics.js";
-import { libraryMigrationDiagnostics, withLibraryMigrationsApplied } from "./library-migrations/report.js";
+import { assembleEntryDiagnostics } from "./entry-diagnostics.js";
 import type { LoadedGraph } from "./loaded-types.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
@@ -29,7 +29,8 @@ export interface GraphAnalysis {
   /** The entry analysis's own output, before assembly. */
   readonly analysis: AnalysisDiagnostic[];
   readonly dependencies: DependencyAnalysis;
-  /** What to report: the graph's load findings, the entry's live analysis and
+  /** What to report: the graph's load findings and the entry's live analysis,
+   *  minus each finding a library's verdict reports as the same defect, then
    *  every library's verdict, each identity once. */
   readonly diagnostics: AnalysisDiagnostic[];
   /** The entry's analysis cascade held back on compromised files. */
@@ -49,16 +50,18 @@ export async function analyzeLoadedGraph(
   const { registration, manifests, moduleDocuments, applicationSources } = registerLoadedGraph(graph, registry);
   const analysis = analyzer.analyzeRegistered(
     manifests,
-    { moduleDocuments, applicationSources, ...(options.hostVersions ? { hostVersions: options.hostVersions } : {}) },
+    {
+      moduleDocuments,
+      positions: collectFilePositions(graph),
+      applicationSources,
+      ...(options.hostVersions ? { hostVersions: options.hostVersions } : {}),
+    },
     registration,
   );
   const dependencies = await analyzeDependencies(graph, { ...options, analyzer, entryManifests: manifests });
-  const entryFindings = [...libraryMigrationDiagnostics(graph), ...withLibraryMigrationsApplied(graph, analysis)];
-  const assembled = assembleGraphDiagnostics(graph, withoutCoveredDependencyFindings(entryFindings, dependencies));
-  const diagnostics = unionDiagnostics(
-    assembled.diagnostics,
-    withoutCoveredArtifactWarnings(dependencies, assembled.diagnostics),
-  );
+  const assembled = assembleEntryDiagnostics(graph, analysis);
+  const entry = withoutCoveredDependencyFindings(assembled.diagnostics, dependencies);
+  const diagnostics = unionDiagnostics(entry, withoutCoveredArtifactWarnings(dependencies, entry));
   return {
     manifests,
     registry,

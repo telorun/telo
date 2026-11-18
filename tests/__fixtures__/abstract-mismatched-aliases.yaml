@@ -1,7 +1,5 @@
 kind: Telo.Application
-metadata:
-  name: AbstractMismatchedAliases
-  version: 1.0.0
+metadata: { name: AbstractMismatchedAliases, version: 1.0.0 }
 imports:
   # Consumer chooses alias names that DIFFER from the ones abstract-impl.yaml uses
   # internally for the same libraries. The loader must pre-resolve `extends` against
@@ -18,24 +16,18 @@ imports:
 # analyzer must accept AImpl.Shouter through the extendedBy edge populated from
 # Shouter's pre-resolved canonical extends.
 kind: Telo.Definition
-metadata:
-  name: GreeterUser
-  module: AbstractMismatchedAliases
+metadata: { name: GreeterUser }
 capability: Telo.Runnable
 schema:
   type: object
-  properties:
-    greeter:
-      x-telo-ref: AL.Greeter
+  properties: { greeter: { x-telo-ref: AL.Greeter } }
   required: [ greeter ]
   additionalProperties: false
 ---
 kind: AImpl.Shouter
-metadata:
-  name: myShouter
+metadata: { name: myShouter }
 prefix: "HEY "
 ---
 kind: AbstractMismatchedAliases.GreeterUser
-metadata:
-  name: usesShouter
+metadata: { name: usesShouter }
 greeter: !ref myShouter

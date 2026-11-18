@@ -1,0 +1,33 @@
+# An inline sequence written inside a step: its retried step's operation is
+# chosen by `variables.flag1`, the code its policy stops on thrown in one
+# configuration only, and `flag1` keeps a `rethrow:` outside every catch:
+# branch. Each finding is reported at the holder, labelled by it.
+kind: Telo.Application
+metadata: { name: ThrowsInlineOwnerChoice }
+imports: { T: ./throws/kinds }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets:
+  - !ref main
+---
+kind: T.FailA
+metadata: { name: failA }
+---
+kind: T.FailB
+metadata: { name: failB }
+---
+kind: Telo.Sequence
+metadata: { name: main }
+steps:
+  - name: inner
+    invoke:
+      kind: Telo.Sequence
+      steps:
+        - name: call
+          invoke: !if
+            if: !cel "variables.flag1"
+            then: !ref failA
+            else: !ref failB
+          retry: { attempts: 2, nonRetryable: [ERR_A] }
+        - !if
+          if: !cel "variables.flag1"
+          then: { name: again, rethrow: {} }

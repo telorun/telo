@@ -53,7 +53,13 @@ export function validateLibraryBrowserExports(input: LibraryBrowserExportsInput)
         const key = `${problem.code}\0${library.module}\0${message}`;
         if (reported.has(key)) continue;
         reported.add(key);
-        out.push(importAnchoredDiagnostic(problem.code, library.module, via, message));
+        out.push(
+          importAnchoredDiagnostic(problem.code, library.module, via, message, {
+            resource: { kind: resource.kind, name: resource.metadata?.name },
+            filePath: (resource.metadata as { source?: string } | undefined)?.source,
+            path: problem.path,
+          }),
+        );
       }
     }
   }

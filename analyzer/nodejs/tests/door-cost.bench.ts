@@ -7,6 +7,7 @@ import {
   crossedReferentPadding,
   flagSequence,
   flagSequenceInTry,
+  flagSequenceInTryRefused,
   flagTargets,
   forwardChain,
   forwardedSequence,
@@ -16,6 +17,7 @@ import {
   loadGenerated,
   nameReadPadding,
   rulePadding,
+  referrerRulePadding,
   zonePadding,
   referentPadding,
   relationPadding,
@@ -43,15 +45,20 @@ import {
  *    total nodes a key's environment holds of its declaration, and the nodes
  *    region normalizations built) and the rest.
  *
- *  - `W` (V's steps inside one `try:` step), `S`, `T` (V's steps forwarded
+ *  - `W` (V's steps inside one `try:` step), `Wf` (W's nested steps each an
+ *    invoke step whose `timeout:` its own flag sets to a value the invoke
+ *    branch refuses), `S`, `T` (V's steps forwarded
  *    through a templated kind), `Tn-inline` (T's consumer written inline as
  *    the target of a sequence `holder`'s one step, the holder declaring no
  *    `with:`), `Tn-with` (T's consumer as `holder`'s `with:` member), `Ti`
  *    (V's sequence written inline as the target of `holder`'s one step) and
  *    `Ti-choice` (that target a choice on `flag0` between the inline sequence
  *    and a reference) at the same N:
- *    the schema own-check keys (each site's most, and the most at a site of
- *    the Application, whose region names the sequence), the most nodes a CEL
+ *    the schema own-check keys (each site's most, the most at a site of the
+ *    Application, and at the Application's root site, whose region names the
+ *    sequence; at the root site of `sequence` and at its `steps[0]`, W's
+ *    outer `try` step), the contribution keys of the sites beneath a union
+ *    (each site's most), the most nodes a CEL
  *    key's and a schema key's environment normalized — overall, at the sites
  *    of the declaration named `sequence` (T's are written in `wrapped`, whose
  *    steps the sequence's view holds, and Tn's in `holder`), and summed over
@@ -163,6 +170,11 @@ interface Counted {
   schemaSites: number;
   schemaKeysPerSite: number;
   applicationSchemaKeys: number;
+  applicationRootKeys: number;
+  sequenceRootKeys: number;
+  outerStepKeys: number;
+  contributionKeys: number;
+  contributionKeysPerSite: number;
   celNodesPerKey: number;
   schemaNodesPerKey: number;
   celNodes: number;
@@ -241,6 +253,11 @@ function counted(run: () => void, sequenceName = "sequence"): Counted {
     schemaSites: 0,
     schemaKeysPerSite: 0,
     applicationSchemaKeys: 0,
+    applicationRootKeys: 0,
+    sequenceRootKeys: 0,
+    outerStepKeys: 0,
+    contributionKeys: 0,
+    contributionKeysPerSite: 0,
     celNodesPerKey: 0,
     schemaNodesPerKey: 0,
     celNodes: 0,
@@ -279,6 +296,7 @@ function counted(run: () => void, sequenceName = "sequence"): Counted {
   const byNameExtents = new Map<string, number>();
   const keysBySite = new Map<string, number>();
   const schemaKeysBySite = new Map<string, number>();
+  const contributionKeysBySite = new Map<string, number>();
   const pairs = new Map<object, Set<string>>();
   const extents = new Map<string, number>();
   const celExtents = new Map<string, number>();
@@ -299,6 +317,10 @@ function counted(run: () => void, sequenceName = "sequence"): Counted {
       if (firstStep) out.firstStepNodes = Math.max(out.firstStepNodes, cost.nodes);
     } else if (cost.kind === "schema-extent") extents.set(cost.site, cost.nodes);
     else if (cost.kind === "carve-read") out.carveReads++;
+    else if (cost.kind === "schema-contribution") {
+      out.contributionKeys++;
+      contributionKeysBySite.set(cost.site, (contributionKeysBySite.get(cost.site) ?? 0) + 1);
+    }
     else if (cost.kind === "cel-extent") celExtents.set(cost.site, cost.nodes);
     else if (cost.kind === "door-nodes") {
       const door = out.door[cost.family];
@@ -385,8 +407,14 @@ function counted(run: () => void, sequenceName = "sequence"): Counted {
     if (firstStep) out.firstStepKeys = Math.max(out.firstStepKeys, keys);
   }
   for (const [site, keys] of schemaKeysBySite) {
-    if ((JSON.parse(site) as unknown[])[0] === "Telo.Application") out.applicationSchemaKeys = Math.max(out.applicationSchemaKeys, keys);
+    const [kind, name, , written] = JSON.parse(site) as [unknown, unknown, unknown, unknown[]];
+    const at = JSON.stringify(written);
+    if (kind === "Telo.Application") out.applicationSchemaKeys = Math.max(out.applicationSchemaKeys, keys);
+    if (kind === "Telo.Application" && at === "[]") out.applicationRootKeys = keys;
+    if (name === sequenceName && at === "[]") out.sequenceRootKeys = keys;
+    if (name === sequenceName && at === JSON.stringify(["steps", 0])) out.outerStepKeys = keys;
   }
+  out.contributionKeysPerSite = Math.max(0, ...contributionKeysBySite.values());
   return out;
 }
 
@@ -397,7 +425,9 @@ function row(label: string, c: Counted): string {
     `relation(keys)=${c.relationKeys} over ${c.relationSites} sites (≤${c.keysPerSite} per site; ≤${c.nodesPerKey} nodes per key, ` +
     `${c.relationNodes} in all; regions normalized ${c.regionNodes} nodes) other own(keys)=${c.owns - c.relationKeys} ` +
     `door=${c.doorMs.toFixed(0)}ms (${(c.doorMs / Math.max(c.doors, 1)).toFixed(3)} ms/key) ` +
-    `schema(keys)=${c.schemaKeys} over ${c.schemaSites} sites (≤${c.schemaKeysPerSite} per site; Application site ${c.applicationSchemaKeys}) ` +
+    `schema(keys)=${c.schemaKeys} over ${c.schemaSites} sites (≤${c.schemaKeysPerSite} per site; Application site ${c.applicationSchemaKeys}, ` +
+    `Application root ${c.applicationRootKeys}, declared root ${c.sequenceRootKeys}, its steps[0] ${c.outerStepKeys}) ` +
+    `contribution(keys)=${c.contributionKeys} (≤${c.contributionKeysPerSite} per site) ` +
     `nodes per key: cel ≤${c.celNodesPerKey}, schema ≤${c.schemaNodesPerKey} ` +
     `(at sites of 'sequence': cel ≤${c.sequenceCelNodesPerKey}, schema ≤${c.sequenceSchemaNodesPerKey}; ` +
     `in all: cel ${c.celNodes}, schema ${c.schemaNodes}) ` +
@@ -460,6 +490,9 @@ const sequences = await Promise.all(
 const tried = await Promise.all(
   V.map(async (n) => [n, await loadGenerated(`door-cost-W-${n}.yaml`, flagSequenceInTry(n))] as const),
 );
+const triedRefused = await Promise.all(
+  V.map(async (n) => [n, await loadGenerated(`door-cost-Wf-${n}.yaml`, flagSequenceInTryRefused(n))] as const),
+);
 const targets = await Promise.all(
   V.map(async (n) => [n, await loadGenerated(`door-cost-S-${n}.yaml`, flagTargets(n))] as const),
 );
@@ -490,6 +523,7 @@ describe("counters", () => {
   for (const [label, sets] of [
     ["V", sequences],
     ["W", tried],
+    ["Wf", triedRefused],
     ["S", targets],
     ["T", forwarded],
     ["Tn-inline", forwardedInline],
@@ -670,6 +704,7 @@ const referenceReads = await Promise.all(
   (
     [
       ["rule", "form", rulePadding],
+      ["referrer rule", "holder", referrerRulePadding],
       ["zone", "work", zonePadding],
     ] as const
   ).flatMap(([label, reader, fixture]) =>

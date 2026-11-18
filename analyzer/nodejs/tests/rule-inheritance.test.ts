@@ -88,8 +88,8 @@ describe("an extends child's rules", () => {
       resource({ b: 1 }),
     ];
     expect(report(docs, ["RESOURCE_RULE_INVALID", "RESOURCE_RULE_VIOLATED"])).toEqual([
-      { code: "RESOURCE_RULE_INVALID", rule: undefined, resource: "Child", path: "schema.x-telo-resource-rules[0].code", filePath: "child.yaml" },
       { code: "RESOURCE_RULE_VIOLATED", rule: "NEEDS_A", resource: "c", path: undefined, filePath: "own.yaml" },
+      { code: "RESOURCE_RULE_INVALID", rule: undefined, resource: "Child", path: "schema.x-telo-resource-rules[0].code", filePath: "child.yaml" },
     ]);
   });
 

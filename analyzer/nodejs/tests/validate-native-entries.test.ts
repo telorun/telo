@@ -95,8 +95,8 @@ describe("native: block", () => {
     ]);
     expect(diagnostics.map((d) => [d.code, d.data?.path])).toEqual([
       ["NATIVE_ENTRY_INVALID", "native[0].path"],
-      ["NATIVE_ENTRY_INVALID", "native[1].name"],
       ["NATIVE_ENTRY_INVALID", "native[1].format"],
+      ["NATIVE_ENTRY_INVALID", "native[1].name"],
     ]);
   });
 

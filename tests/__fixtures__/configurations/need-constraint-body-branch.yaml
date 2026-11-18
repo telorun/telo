@@ -1,0 +1,24 @@
+# A library need whose stated version only a template body's entry verifies,
+# written under a branch the first way of deciding the body leaves out: the
+# version is verified wherever some value of the definition takes that branch.
+kind: Telo.Library
+metadata: { name: NeedConstraintBodyBranch }
+imports: { Kinds: ../needs/consume/kinds }
+needs:
+  databaseAccess: { kind: Kinds.DatabaseAccess, version: ">=15.0.0" }
+---
+kind: Telo.Definition
+metadata: { name: Store }
+capability: Telo.Provider
+schema:
+  type: object
+  properties: { verify: { type: boolean } }
+provide: !ref label
+resources:
+  - !if
+    metadata: { name: db }
+    if: !cel "self.verify"
+    then: { kind: Kinds.Database, access: !ref databaseAccess, serverVersion: "15.0.0" }
+  - kind: Kinds.Plain
+    metadata: { name: label }
+    fields: { value: store }

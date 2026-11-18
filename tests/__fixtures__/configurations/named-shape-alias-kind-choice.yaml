@@ -1,0 +1,38 @@
+# A named shape whose slot names a kind by the module's alias, a choice
+# deciding which: a resource of the kind holding the shape is refused against
+# the kind the configuration's slot names, read canonical in every configuration.
+kind: Telo.Application
+metadata: { name: NamedShapeAliasKindChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.Abstract
+metadata: { name: Store }
+capability: Telo.Invocable
+---
+kind: Telo.Abstract
+metadata: { name: Journal }
+capability: Telo.Invocable
+---
+kind: Telo.JsonSchema
+metadata: { name: Target }
+schema:
+  type: object
+  properties:
+    to: !if
+      if: !cel "variables.flag1"
+      then: { x-telo-ref: { kind: Self.Store, use: dependency } }
+      else: { x-telo-ref: { kind: Self.Journal, use: dependency } }
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Handler]
+schema: { type: object, properties: { target: { $ref: "telo://Self/Target" } } }
+---
+kind: Telo.Value
+metadata: { name: answer }
+value: 1
+---
+kind: Self.Holder
+metadata: { name: holder }
+target: { to: !ref answer }

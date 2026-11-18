@@ -1,0 +1,28 @@
+# A consumer forwards a step list into a body entry that evaluates it, its own
+# kind leaving the steps unevaluated: each expression it forwards is judged
+# once, where it is evaluated — in the entry — and reported at the consumer's
+# own path, in the configurations holding it.
+kind: Telo.Application
+metadata: { name: ForwardedExpressionChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets:
+  - !ref wrapped
+---
+kind: Telo.Definition
+metadata: { name: Wrapped }
+capability: Telo.Runnable
+schema: { type: object, properties: { steps: { type: array } } }
+resources:
+  - kind: Telo.Sequence
+    metadata: { name: sequence }
+    steps: !cel "self.steps"
+run: !ref sequence
+---
+kind: ForwardedExpressionChoice.Wrapped
+metadata: { name: wrapped }
+steps:
+  - name: first
+    value: !if
+      if: !cel "variables.flag1"
+      then: !cel "1 + 'x'"
+      else: 2

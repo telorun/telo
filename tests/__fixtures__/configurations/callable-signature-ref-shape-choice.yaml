@@ -1,0 +1,28 @@
+# A callable kind whose signature names shapes with `!ref`: `Money` is declared
+# in every configuration, so its references resolve everywhere; `Rate` only
+# where flag1 holds, so the parameter naming it is refused where it is absent.
+kind: Telo.Application
+metadata: { name: CallableSignatureRefShape }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Money }
+schema: !if
+  if: !cel "variables.flag1"
+  then: { type: string }
+  else: { type: string, minLength: 1 }
+---
+!if
+metadata: { name: Rate }
+if: !cel "variables.flag1"
+then: { kind: Telo.JsonSchema, schema: { type: number } }
+---
+kind: Telo.Definition
+metadata: { name: Format }
+capability: Telo.Callable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Format]
+deterministic: true
+params:
+  - { name: amount, schema: !ref Money }
+  - { name: rate, schema: { type: array, items: !ref Rate } }
+returns: { schema: !ref Money }

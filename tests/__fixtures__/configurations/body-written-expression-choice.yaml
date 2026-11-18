@@ -1,0 +1,61 @@
+# The twin of body-written-expression.yaml in a module that makes a choice. A
+# templated kind's body writes expressions no forward reaches: one at an
+# entry's reference slot, one reading `self` that only the definition can
+# judge, and one that is wrong whatever `self` holds. Each refusal is reported
+# once, at the definition; neither consumer reports any of them as a finding of
+# the body entry.
+kind: Telo.Application
+metadata: { name: BodyWrittenExpressionChoice }
+variables: { flag: { env: FLAG, type: boolean, default: false } }
+---
+kind: Telo.Definition
+metadata: { name: Target }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema: { type: object, properties: { label: { type: string } } }
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties:
+    label: { type: string }
+    note: { type: string }
+    target: { x-telo-ref: { kind: Self.Target, use: dependency } }
+---
+kind: Telo.Definition
+metadata: { name: Pair }
+capability: Telo.Provider
+schema: { type: object, properties: { label: { type: string } } }
+resources:
+  - { kind: Self.Target, metadata: { name: target } }
+  - kind: Self.Holder
+    metadata: { name: holder }
+    label: !cel "self.label"
+    target: !cel "'target'"
+  - kind: Self.Holder
+    metadata: { name: noted }
+    note: !cel "self.label + 'x'"
+    target: !ref target
+  - kind: Self.Holder
+    metadata: { name: wrong }
+    note: !cel "1 + 'a'"
+    target: !ref target
+provide: !ref holder
+---
+kind: Self.Pair
+metadata: { name: firstPair }
+label: first
+---
+kind: Self.Pair
+metadata: { name: secondPair }
+label: second
+---
+kind: Self.Target
+metadata: { name: chosen }
+label: !if
+  if: !cel "variables.flag"
+  then: first
+  else: second

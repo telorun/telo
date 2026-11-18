@@ -229,8 +229,8 @@ describe("a binding marked x-telo-context-eval", () => {
       kinds,
     );
     expect(codes(diagnostics, "CEL_UNKNOWN_IDENTIFIER")).toEqual([
-      expect.stringMatching(/^content\.shown\.other: .*stamp/),
       expect.stringMatching(/^content\.shown\.note: .*stamp/),
+      expect.stringMatching(/^content\.shown\.other: .*stamp/),
     ]);
   });
 

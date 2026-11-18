@@ -26,15 +26,25 @@
  *
  * Browser-safe: no Node built-ins.
  */
-import { celSourceOf, pointerSegments, ruleReferentReads, type ResourceRuleSeverity } from "./resource-rule.js";
+import { EACH_SEGMENT, INDEX_SEGMENT, PRESENCE_SEGMENT } from "@telorun/templating";
+import {
+  celSourceOf,
+  chainPlace,
+  concretePrefix,
+  coReferrerReads,
+  pointerSegments,
+  ruleReferentReads,
+  type ResourceRuleSeverity,
+} from "./resource-rule.js";
 import {
   crossingPlace,
   placeAt,
-  type ReadPlace,
-  type ReadReporter,
+  READS_WHOLE,
+  type ReadKeys,
   type ReferentPlace,
-  type ReferrerReads,
+  type ReferentReads,
 } from "./read-place.js";
+import { compileRuleCondition } from "./rule-condition.js";
 import type { ResourceDefinition } from "@telorun/sdk";
 import { authorSchemaChain, type DefResolver } from "./extends-resolution.js";
 import { REFERRER_RULES_ANNOTATION, ruleIdentity } from "./rule-inheritance.js";
@@ -178,58 +188,146 @@ export function hasReferrerRules(node: Record<string, unknown>): boolean {
 }
 
 /**
- * Rewrite each rule's `referrer:` kind through `rewrite`, in place.
+ * `node` with each rule's `referrer:` kind mapped through `map` — a copy, or the
+ * node itself when nothing maps.
  *
- * The mirror of `rewriteRequiresZoneKind`: the alias→canonical rule lives in
+ * The mirror of `withRequiresZoneKind`: the alias→canonical rule lives in
  * `resolve-schema-ref-kinds.ts` and the shape lives here, so a filter is
- * canonical everywhere downstream and a name that resolves to nothing is
- * reported once, at the kind that wrote it. A rewrite returning `undefined`
- * leaves the value as written — the caller reports it.
+ * canonical on every registered copy and a name that resolves to nothing is
+ * reported once, at the kind that wrote it. `map` returning `undefined` keeps
+ * the value as written — the caller reports it.
  */
-export function rewriteReferrerRuleKinds(
-  node: Record<string, unknown>,
-  rewrite: (kind: string) => string | undefined,
-): void {
+export function withReferrerRuleKinds<T extends Record<string, unknown>>(
+  node: T,
+  map: (kind: string) => string | undefined,
+): T {
   const raw = node[REFERRER_RULES_ANNOTATION];
-  if (!Array.isArray(raw)) return;
-  for (const entry of raw) {
-    if (!isObject(entry) || typeof entry.referrer !== "string") continue;
-    const rewritten = rewrite(entry.referrer);
-    if (rewritten !== undefined) entry.referrer = rewritten;
-  }
+  if (!Array.isArray(raw)) return node;
+  let rules: unknown[] | undefined;
+  raw.forEach((entry, index) => {
+    if (!isObject(entry) || typeof entry.referrer !== "string") return;
+    const referrer = map(entry.referrer);
+    if (referrer !== undefined && referrer !== entry.referrer) (rules ??= [...raw])[index] = { ...entry, referrer };
+  });
+  return rules ? { ...node, [REFERRER_RULES_ANNOTATION]: rules } : node;
 }
 
-const referrerReadsOf = new WeakMap<object, ReferrerReads>();
-
-/** What the rules on `node` read in each referrer: the members their conditions
- *  read off `referrer`, and the slots their `resolve:` pointers and the
- *  collection their `peers:` pointer name. */
-function referrerReads(node: Record<string, any>, rules: readonly ReferrerRule[]): ReferrerReads {
-  const known = referrerReadsOf.get(node);
-  if (known) return known;
-  const pointers = rules.flatMap((rule) => rule.resolve ?? []);
-  const chains = ruleReferentReads(rules, pointers, "referrer", undefined, true);
-  const own: ReferentPlace[] = [
-    ...pointers.map((pointer): ReferentPlace => ({ kind: "value", keys: crossingPlace(pointer) })),
-    ...rules.flatMap((rule): ReferentPlace[] =>
-      rule.peers !== undefined ? [{ kind: "value", keys: placeAt([], rule.peers) }] : [],
-    ),
-  ];
-  const reads: ReferrerReads = (referrer) => [...chains(referrer), ...own];
-  referrerReadsOf.set(node, reads);
-  return reads;
+/** A rule as its declaring kind writes it: the call names its condition
+ *  resolves in. */
+export interface ReferrerRuleReading {
+  readonly rule: ReferrerRule;
+  readonly moduleNames?: ReadonlySet<string>;
 }
 
-/** What `x-telo-referrer-rules` reads: in every referrer what the rules read
- *  there, the resource itself, and in each declaration its `resolveSelf:`
- *  pointers reach through its reference slots, what the rules read there. */
-export const referrerRulesReads: ReadReporter = ({ node }) => {
-  const rules = readReferrerRules(node);
-  const out: ReadPlace[] = [{ kind: "referrers", reads: referrerReads(node, rules) }, { kind: "value", keys: [] }];
-  for (const rule of rules) {
-    if (!rule.resolveSelf?.length) continue;
-    const reads = ruleReferentReads([rule], rule.resolveSelf, "self");
-    for (const pointer of rule.resolveSelf) out.push({ kind: "reference", keys: crossingPlace(pointer), transitive: true, reads });
+/**
+ * What referrer rules read in the referrer, at a slot reaching the resource
+ * they judge: the place each chain of a condition reaches off `referrer`, each
+ * `resolve:` pointer's reference place — with, by name, what the rules read in
+ * the declarations it crosses into — and each `peers:` collection, with, by
+ * name, what the rules read through `peers` and `entry` in the declarations
+ * its entries name; and the module functions the conditions call.
+ */
+export function referrerSideReads(readings: readonly ReferrerRuleReading[]): {
+  places: ReadKeys[];
+  calls: string[];
+  targets: { at: ReadKeys; reads: ReferentReads; transitive: boolean }[];
+} {
+  const places = new Map<string, ReadKeys>();
+  const read = (keys: ReadKeys) => places.set(JSON.stringify(keys), keys);
+  const calls = new Set<string>();
+  const targets: { at: ReadKeys; reads: ReferentReads; transitive: boolean }[] = [];
+  for (const { rule, moduleNames } of readings) {
+    const compiled = compileRuleCondition(rule.condition, moduleNames);
+    // An unparseable condition is refused at the kind: it reads nothing.
+    if ("reason" in compiled) continue;
+    for (const call of compiled.calls) calls.add(call);
+    for (const chain of compiled.chains) if (chain[0] === "referrer") read(concretePrefix(chainPlace(chain)));
+    for (const pointer of rule.resolve ?? []) {
+      const at = crossingPlace(pointer);
+      read(at);
+      targets.push({ at, reads: ruleReferentReads([rule], [pointer], "referrer", moduleNames), transitive: true });
+    }
+    if (rule.peers !== undefined) {
+      const at = placeAt([], rule.peers);
+      read(at);
+      targets.push({ at, reads: peerEntryReads(compiled.chains), transitive: false });
+    }
   }
-  return out;
-};
+  const all = [...places.values()];
+  return {
+    places: all.filter((keys) => !all.some((other) => other !== keys && other.length < keys.length && other.every((key, i) => String(key) === String(keys[i])))),
+    calls: [...calls],
+    targets,
+  };
+}
+
+/**
+ * What a condition reads through `peers` and `entry` in each declaration a
+ * reference of an entry names. An entry binds as written with every reference
+ * in it resolved one level, so a chain may cross into a declaration at any of
+ * its members: at each, the member it reaches past there — the declaration
+ * whole where it reads the declaration itself, nothing where a presence test
+ * asks the keys of what holds it.
+ */
+function peerEntryReads(chains: readonly (readonly string[])[]): ReferentReads {
+  const places = new Map<string, ReadKeys>();
+  let whole = false;
+  for (const chain of chains) {
+    let path: string[];
+    if (chain[0] === "entry") path = chain.slice(1);
+    else if (chain[0] === "peers") {
+      const element = chain[1];
+      // A range only iterated reads none of its elements.
+      if (element === EACH_SEGMENT && chain.length === 2) continue;
+      // `peers` read whole: a bare use, its size.
+      if (element !== EACH_SEGMENT && element !== INDEX_SEGMENT && !/^\d+$/.test(element ?? "")) {
+        whole = true;
+        continue;
+      }
+      path = chain.slice(2);
+    } else continue;
+    const presence = path[path.length - 1] === PRESENCE_SEGMENT;
+    const member = (presence ? path.slice(0, -1) : path).map((segment) =>
+      segment === INDEX_SEGMENT || segment === EACH_SEGMENT ? "*" : segment,
+    );
+    for (let depth = 0; depth <= member.length; depth++) {
+      const rest = member.slice(depth);
+      if (rest.length === 0) {
+        if (!presence) whole = true;
+        continue;
+      }
+      if (rest[0] === "*") continue;
+      const keys = concretePrefix(presence && rest.length > 1 ? rest.slice(0, -1) : rest);
+      places.set(JSON.stringify(keys), keys);
+    }
+  }
+  if (whole) return READS_WHOLE;
+  const out: ReferentPlace[] = [{ kind: "tagged", keys: [] }];
+  for (const keys of places.values()) out.push({ kind: "value", keys });
+  return () => out;
+}
+
+/**
+ * What referrer rules read in the resource they judge, reached through the
+ * referrer's slot: the place each chain of a condition reaches off `self`,
+ * each `resolveSelf:` pointer's reference place — read on in what it names —
+ * and, for a `coReferrers:` rule, every other declaration referencing it.
+ */
+export function referrerRuleSubjectReads(readings: readonly ReferrerRuleReading[]): ReferentPlace[] {
+  const places = new Map<string, ReadKeys>();
+  const out: ReferentPlace[] = [];
+  for (const { rule, moduleNames } of readings) {
+    const compiled = compileRuleCondition(rule.condition, moduleNames);
+    if ("reason" in compiled) continue;
+    for (const chain of compiled.chains) {
+      if (chain[0] !== "self") continue;
+      const keys = concretePrefix(chainPlace(chain));
+      places.set(JSON.stringify(keys), keys);
+    }
+    for (const pointer of rule.resolveSelf ?? []) {
+      out.push({ kind: "reference", keys: crossingPlace(pointer), transitive: true, reads: ruleReferentReads([rule], rule.resolveSelf!, "self", moduleNames) });
+    }
+    if (rule.coReferrers !== undefined) out.push({ kind: "referrers", reads: coReferrerReads(rule, moduleNames) });
+  }
+  return [...[...places.values()].map((keys): ReferentPlace => ({ kind: "value", keys })), ...out];
+}

@@ -37,7 +37,7 @@ export function compromisedFiles(graph: LoadedGraph): Set<string> {
  * (`suppressed`) — the one presentation policy every host applies.
  *
  * `diagnostics` folds parse, migration, version-reconciliation, module-file,
- * import-resolution, and the *live* analysis diagnostics (those on
+ * metadata-stamp, import-resolution, and the *live* analysis diagnostics (those on
  * non-compromised files) into one list, in that order. `suppressed` carries the
  * analysis cascade dropped from compromised files, still available to a host
  * that wants to render it dimmed / as related information rather than hide it.
@@ -61,6 +61,7 @@ export function assembleGraphDiagnostics(
       ...graph.migrationDiagnostics,
       ...graph.versionDiagnostics,
       ...graph.moduleFileDiagnostics,
+      ...graph.metadataDiagnostics,
       ...importResolutionDiagnostics(graph),
       ...live,
     ],

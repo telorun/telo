@@ -158,10 +158,10 @@ describe("SchemaValidator disk cache", () => {
   });
 
   it("keys on validation behaviour, not on x-telo-* annotations", async () => {
-    // The warm pass bakes the ANALYZER's view of a definition schema, where
-    // `resolveSchemaRefKinds` has canonicalized every ref constraint to
-    // `<module>.<Kind>`; the kernel's controller registry never runs that
-    // rewrite, so at `_createInstance` the same kind still reads `Self.X`. AJV
+    // The warm pass bakes the analysis registry's copy of a definition schema,
+    // where every ref constraint is canonical `<module>.<Kind>`; the kernel's
+    // controller registry holds the definition as written, so at
+    // `_createInstance` the same kind still reads `Self.X`. AJV
     // registers `x-telo-ref` as a no-op keyword, so both compile to the same
     // validator — and both must land on the same cache entry, or every kind
     // whose schema declares an alias-qualified ref misses the baked cache on

@@ -1,14 +1,14 @@
 /**
  * Every `!if` / `!switch` outside a template body, read once per manifest set:
  * what each condition and selector reads (the one decidability rule), the
- * dimensions those reads reach, the configurations their product is, which
- * branch each choice takes in a configuration, and every refusal a choice is
+ * dimensions those reads reach, which branch each choice takes in a
+ * configuration and under which configurations, and every refusal a choice is
  * owed — `BRANCH_UNDECIDABLE`, `BRANCH_CONDITION_INVALID`,
  * `BRANCH_CASE_KEY_INVALID`, `BRANCH_NOT_EXHAUSTIVE`, `BRANCH_CASE_UNREACHABLE`,
  * `BRANCH_CASE_INVALID`.
  *
- * One reading serves both halves: the analysis enumerates its configurations
- * and expands each, and the kernel asks it for the branches of the one
+ * One reading serves both halves: the analysis reads each choice's branches as
+ * conditions over the dimensions, and the kernel asks it for the branches of the one
  * configuration the process started with. Positions and shapes are the
  * expansion reader's (`expansion-sites.ts`); a tag it refuses is never
  * expanded, and whatever is reported beneath it is dropped with its
@@ -23,6 +23,11 @@
  * an expression whose every read is decidable in the importer is evaluated
  * there per configuration, and anything else is `BRANCH_UNDECIDABLE` at that
  * import's binding. A library's inputs never add a dimension of their own.
+ *
+ * A template body's choice over a module input is one of the application's
+ * choices too: the input's dimension is read off it as off any other, a
+ * library's carried through its import's binding when that is a literal or a
+ * bare chain (`inputRead`), so one input is one dimension whoever reads it.
  *
  * Browser-safe.
  */
@@ -43,7 +48,7 @@ import {
   ABSENT,
   asDeclared,
   assignmentKey,
-  enumerateConfigurations,
+  configurationUniverse,
   memberDomain,
   memberOfValue,
   PRESENT,
@@ -67,16 +72,18 @@ import {
   type InputNarrowing,
 } from "./kernel-globals.js";
 import { membersSlotOf } from "./members-value-slot.js";
-import { FALSE, TRUE, type Condition, type ConditionSpace } from "./presence-condition.js";
-import type { BranchConditions } from "./conditioned-expansion.js";
+import { ConditionSpace, FALSE, TRUE, type Condition, type ConditionBlock } from "./presence-condition.js";
+import { World, type BranchConditions, type DeadBranchWorld } from "./conditioned-expansion.js";
 import { authoredModuleMetadata } from "./module-metadata-scope.js";
 import { checkName, type NameLevel } from "./identifier-name.js";
 import { importPathOf } from "./scoped-name-resolver.js";
+import { TEMPLATE_BODY_FIELDS } from "./template-expansion.js";
 import { isModuleKind } from "./module-kinds.js";
-import { readNeeds } from "./need-type.js";
+import { injectedNeedOf, readNeeds } from "./need-type.js";
 import { readResourceInputs, readSuppliedResources } from "./resource-input.js";
 import { compileRuleCondition, forbiddenCatalogCall, ruleEnv } from "./rule-condition.js";
 import { isKindDocumentOrImport } from "./system-kinds.js";
+import { stampedIn } from "./analysis-families.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
 const SOURCE = "telo-analyzer";
@@ -101,10 +108,12 @@ export interface ChoiceSite {
   readonly own: boolean;
 }
 
-/** A diagnostic with the configurations it holds in; none means every one. */
+/** A diagnostic with the configurations it holds in, as product blocks over
+ *  the reading's dimensions (each naming the values it holds of the dimensions
+ *  it constrains, every other free); none means every one. */
 export interface ConfigurationDiagnostic {
   readonly diagnostic: AnalysisDiagnostic;
-  readonly configurations?: ReadonlySet<string>;
+  readonly configurations?: readonly ConditionBlock[];
 }
 
 /** Which branch every choice takes in one configuration: a branch id
@@ -122,26 +131,30 @@ export const STAND_IN = "\0stand-in";
 export interface StandInConstruct {
   readonly holder: ResourceManifest;
   readonly path: string;
+  readonly sentinel: ExpansionSentinel;
+  /** Where the choice expands to its stand-in. */
+  readonly condition: Condition;
 }
 
 export interface ChoiceReading {
   readonly sites: readonly ChoiceSite[];
   readonly dimensions: readonly Dimension[];
-  /** Every configuration, in enumeration order; one empty assignment when no
-   *  choice reads a dimension. */
-  readonly configurations: readonly Assignment[];
+  /** The first configuration in enumeration order — every dimension at its
+   *  first value the configurations admit; empty when no choice reads one. */
+  readonly firstConfiguration: Assignment;
   readonly diagnostics: readonly ConfigurationDiagnostic[];
   /** The branch each choice takes under `assignment`. */
   decide(assignment: Assignment): Decisions;
   /** What `assignment` decides of each module's inputs, for typing. */
   narrowing(assignment: Assignment): InputNarrowing;
-  /** Every choice `assignment` expands to a stand-in — a choice `forcing`
-   *  forces taking its forced branch: what the analysis finds at or beneath
-   *  one is dropped, its own refusal being the one report. */
-  standIns(assignment: Assignment, forcing?: Decisions): readonly StandInConstruct[];
+  /** Every choice some configuration of `space` expands to a stand-in, with
+   *  where it does: what the analysis finds at or beneath one holds only where
+   *  it does not, its own refusal being the one report. */
+  standIns(space: ConditionSpace): readonly StandInConstruct[];
   /** Every branch of the root's own choices no configuration takes — each
    *  still checked, by an expansion taking it in a configuration reaching its
-   *  choice. */
+   *  choice — and, after each, every option of a choice inside it that its
+   *  baseline does not take, checked with that option forced too. */
   readonly unreachable: readonly UnreachableBranch[];
   /** Every branch refused as `BRANCH_CASE_INVALID`: what the analysis finds
    *  beneath one is its consequence, reported once by the refusal. */
@@ -175,15 +188,37 @@ export interface ChoiceReading {
     input: "variables" | "secrets" | "resources",
     name?: string,
   ): readonly Dimension[];
+  /** What a module-input read written in `holder` — a template body's choice
+   *  among them — amounts to: a dimension of this reading (a library's input
+   *  carried through its import's bare-chain binding is the importer's), a
+   *  value every configuration decides alike (a literal binding), or open,
+   *  deciding nothing. */
+  inputRead(holder: ResourceManifest, read: InputRead): InputReadReading;
+  /** The `variables` / `secrets` `holder`'s module reads in `assignment`, as
+   *  CEL reads them: what an {@link inputRead} decides. */
+  inputValuesIn(holder: ResourceManifest, assignment: Assignment): { variables: Record<string, unknown>; secrets: Record<string, unknown> };
 }
+
+/** {@link ChoiceReading.inputRead}'s answer. */
+export type InputReadReading =
+  | { readonly kind: "dimension"; readonly dimension: Dimension }
+  | { readonly kind: "constant" }
+  | { readonly kind: "open" };
 
 export interface UnreachableBranch {
   readonly site: ChoiceSite;
   readonly branch: string;
   /** Where the branch is written in its holder. */
   readonly keys: readonly (string | number)[];
-  /** A configuration in which its choice is reached. */
+  /** A configuration in which its choice is reached — for an option inside a
+   *  branch no configuration takes, that branch's. */
   readonly baseline: Assignment;
+  /** The choices forced to take it at its baseline, its own included: one for
+   *  a branch no configuration takes, and for an option inside one every
+   *  option on the way that the baseline does not take. */
+  readonly forcing: Decisions;
+  /** The world the branch is read in. */
+  readonly world: DeadBranchWorld;
 }
 
 /** Where the module a document belongs to binds its inputs. */
@@ -271,11 +306,12 @@ export function readChoices(
   };
 
   const sites = collectSites(manifests, documents, moduleOf, isOwn);
-  if (sites.length === 0 && consumerReads.length === 0) {
+  const bodyReads = bodyChoiceSources(manifests);
+  if (sites.length === 0 && consumerReads.length === 0 && bodyReads.length === 0) {
     return {
       sites,
       dimensions: [],
-      configurations: [{}],
+      firstConfiguration: {},
       diagnostics: [],
       decide: () => new Map(),
       narrowing: () => () => undefined,
@@ -284,6 +320,8 @@ export function readChoices(
       refusedBranches: [],
       branchConditions: () => new Map(),
       inputDimensions: () => [],
+      inputRead: () => ({ kind: "open" }),
+      inputValuesIn: () => ({ variables: {}, secrets: {} }),
       valueIn: (holder, source) => moduleOnlyValue(source),
       valueOutcomes: (holder, source) => {
         const decided = moduleOnlyValue(source);
@@ -610,6 +648,18 @@ export function readChoices(
       if (read.class === "input") collectRoots(resolveRead(moduleOf(holder) ?? firstRoot ?? "", read.read, importPathOf(holder)));
     }
   }
+  // A body choice's module input is a configuration dimension, reached through
+  // a library's binding as a literal or a bare chain; anything else decides
+  // nothing and is left to the body.
+  for (const { holder, source } of bodyReads) {
+    const expression = readDecisionExpression(source);
+    if (expression.parseError !== undefined) continue;
+    for (const read of expression.reads) {
+      if (read.class !== "input" || read.read.input === "resources") continue;
+      const resolution = resolveRead(moduleOf(holder) ?? firstRoot ?? "", read.read, importPathOf(holder));
+      if (resolution.kind === "root") collectRoots(resolution);
+    }
+  }
   const rootReadingOf = (module: string, read: InputRead) =>
     readRootInput(
       read,
@@ -633,7 +683,11 @@ export function readChoices(
     dimensions.push(reading.dimension);
     needDimensions.add(reading.dimension.key);
   }
-  const configurations = enumerateConfigurations(dimensions);
+  // The configurations, as a condition: no choice is decided once per
+  // configuration, only once per assignment of what its own condition reads.
+  const space = new ConditionSpace(dimensions);
+  const universe = configurationUniverse(space, dimensions);
+  const firstConfiguration = space.firstAssignment(universe) as Assignment;
 
   /** What `resources.<name>` holds in `assignment` for a module instance's
    *  decisions: `null` where the need is absent, else its decided members. */
@@ -791,7 +845,7 @@ export function readChoices(
     code: string,
     message: string,
     severity: DiagnosticSeverity = DiagnosticSeverity.Error,
-    configurations?: ReadonlySet<string>,
+    configurations?: readonly ConditionBlock[],
   ): ConfigurationDiagnostic => {
     const found: ConfigurationDiagnostic = {
       diagnostic: diagnosticAt(site.holder, keys, code, message, severity),
@@ -943,63 +997,114 @@ export function readChoices(
   for (const diagnostic of names.diagnostics) diagnostics.push({ diagnostic });
   refusedBranches.push(...names.refusedBranches);
 
-  // Per-configuration outcomes: exhaustiveness, reachability, evaluation.
-  const keyOf = (a: Assignment) => assignmentKey(a);
-  const reached = new Map<ChoiceSite, Map<string, Outcome>>();
-  for (const assignment of configurations) {
-    const memo = new Map<string, Record<string, unknown>>();
-    const key = keyOf(assignment);
-    for (const site of sites) {
-      const outcomes = reached.get(site) ?? new Map<string, Outcome>();
-      reached.set(site, outcomes);
-      if (site.parent) {
-        const parentOutcome = reached.get(site.parent.site)?.get(key);
-        if (!parentOutcome || parentOutcome.branch !== site.parent.branch) continue;
-      }
-      outcomes.set(key, outcomeIn(site, assignment, memo));
+  // The dimensions a site's condition reads: through a binding, the
+  // importer's it is evaluated over.
+  const footprintOf = (site: ChoiceSite): Set<string> => {
+    const out = new Set<string>();
+    const visit = (resolution: Resolution | Neutral) => {
+      const reading =
+        resolution.kind === "root"
+          ? rootReadingOf(resolution.module, resolution.read)
+          : resolution.kind === "need"
+            ? needReadingOf(resolution)
+            : undefined;
+      if (reading?.kind === "dimension") out.add(reading.dimension.key);
+      if (resolution.kind === "derived") for (const part of resolution.parts) visit(part);
+    };
+    const decision = decisions.get(site)!;
+    if (decision.kind === "expression") for (const r of decision.resolutions) visit(r);
+    return out;
+  };
+  // The domains of each space a footprint is assigned over, by key.
+  const domainsOf = new WeakMap<ConditionSpace, ReadonlyMap<string, readonly unknown[]>>();
+  /** Every assignment of the dimensions `footprint` names over `over`'s
+   *  domains, in dimension order: one per combination of what is read, never
+   *  per configuration. */
+  const partialsOf = (footprint: ReadonlySet<string>, over: ConditionSpace): Record<string, unknown>[] => {
+    let domains = domainsOf.get(over);
+    if (!domains) domainsOf.set(over, (domains = new Map(over.dimensions.map((d) => [d.key, d.values]))));
+    let partials: Record<string, unknown>[] = [{}];
+    for (const dimension of dimensions) {
+      const values = footprint.has(dimension.key) ? domains.get(dimension.key) : undefined;
+      if (!values) continue;
+      partials = partials.flatMap((partial) => values.map((value) => ({ ...partial, [dimension.key]: value })));
     }
+    return partials;
+  };
+  // Each choice's outcomes, decided once per assignment of the dimensions its
+  // own condition reads, each under the configurations reaching the choice
+  // that give it — in the order of the first configuration each holds in.
+  /** A configuration's place in enumeration order. */
+  const rankOf = (a: Assignment): number[] => dimensions.map((d) => d.values.indexOf(a[d.key]));
+  const earlier = (x: readonly number[], y: readonly number[]): number => {
+    for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i]! - y[i]!;
+    return 0;
+  };
+  type Reached = { readonly outcome: Outcome; readonly condition: Condition; readonly first: readonly number[] };
+  const reached = new Map<ChoiceSite, readonly Reached[]>();
+  const reachOf = new Map<ChoiceSite, Condition>();
+  for (const site of sites) {
+    let within = universe;
+    if (site.parent) {
+      within = FALSE;
+      for (const entry of reached.get(site.parent.site) ?? []) {
+        if (entry.outcome.branch === site.parent.branch) within = space.or(within, entry.condition);
+      }
+    }
+    reachOf.set(site, within);
+    const entries: Reached[] = [];
+    if (within !== FALSE) {
+      for (const partial of partialsOf(footprintOf(site), space)) {
+        const condition = space.and(within, space.assignment(partial));
+        if (condition === FALSE) continue;
+        entries.push({
+          outcome: outcomeIn(site, partial, new Map()),
+          condition,
+          first: rankOf(space.firstAssignment(condition) as Assignment),
+        });
+      }
+      entries.sort((a, b) => earlier(a.first, b.first));
+    }
+    reached.set(site, entries);
   }
-  const everyKey = configurations.map(keyOf);
   const unreachable: UnreachableBranch[] = [];
   for (const site of sites) {
     if (!site.own || !decidable(site)) continue;
     const outcomes = reached.get(site)!;
-    if (outcomes.size === 0) continue;
+    if (outcomes.length === 0) continue;
     const label = `'!${site.tag}'`;
     const what = site.tag === "if" ? "condition" : "selector";
-    const errors = new Map<string, Set<string>>();
-    const invalid = new Map<string, Set<string>>();
-    const unmatched = new Map<string, Set<string>>();
+    const errors = new Map<string, Condition>();
+    const invalid = new Map<string, Condition>();
+    const unmatched = new Map<string, Condition>();
     const taken = new Set<string>();
-    for (const [key, outcome] of outcomes) {
+    const held = (into: Map<string, Condition>, at: string, condition: Condition) =>
+      into.set(at, space.or(into.get(at) ?? FALSE, condition));
+    for (const { outcome, condition } of outcomes) {
       if (outcome.error !== undefined) {
-        errors.set(outcome.error, (errors.get(outcome.error) ?? new Set()).add(key));
+        held(errors, outcome.error, condition);
         continue;
       }
       const problem = valueTypeProblem(site.tag, outcome.value);
       if (problem) {
-        invalid.set(problem, (invalid.get(problem) ?? new Set()).add(key));
+        held(invalid, problem, condition);
         continue;
       }
-      if (outcome.unmatched) {
-        const shown = describeSelectorValue(outcome.value);
-        unmatched.set(shown, (unmatched.get(shown) ?? new Set()).add(key));
-      } else if (outcome.branch !== null) {
-        taken.add(outcome.branch);
-      }
+      if (outcome.unmatched) held(unmatched, describeSelectorValue(outcome.value), condition);
+      else if (outcome.branch !== null) taken.add(outcome.branch);
     }
-    const scoped = (keys: Set<string>) => (keys.size === everyKey.length ? undefined : keys);
-    for (const [message, keys] of errors) {
-      reportAt(site, [...site.keys, site.tag], "BRANCH_CONDITION_INVALID", `The ${what} of ${label} throws: ${message}`, DiagnosticSeverity.Error, scoped(keys));
+    const scoped = (condition: Condition) => (condition === universe ? undefined : space.cover(condition, universe));
+    for (const [message, condition] of errors) {
+      reportAt(site, [...site.keys, site.tag], "BRANCH_CONDITION_INVALID", `The ${what} of ${label} throws: ${message}`, DiagnosticSeverity.Error, scoped(condition));
     }
-    for (const [message, keys] of invalid) {
-      reportAt(site, [...site.keys, site.tag], "BRANCH_CONDITION_INVALID", `The ${what} of ${label} ${message}`, DiagnosticSeverity.Error, scoped(keys));
+    for (const [message, condition] of invalid) {
+      reportAt(site, [...site.keys, site.tag], "BRANCH_CONDITION_INVALID", `The ${what} of ${label} ${message}`, DiagnosticSeverity.Error, scoped(condition));
     }
-    for (const [shown, keys] of unmatched) {
+    for (const [shown, condition] of unmatched) {
       reportAt(site, site.keys, "BRANCH_NOT_EXHAUSTIVE",
         `${label} selects no case for ${shown} and has no 'default:'. Add a case for it, or a ` +
           `'default:'; absence decided by a selector is written as an enclosing '!if'.`,
-        DiagnosticSeverity.Error, scoped(keys));
+        DiagnosticSeverity.Error, scoped(condition));
     }
     if (errors.size > 0 || invalid.size > 0) continue;
     // Case keys read as the selector's type.
@@ -1007,7 +1112,7 @@ export function readChoices(
     if (site.tag === "switch") {
       const type = staticTypes.get(site);
       const valueType =
-        type && type !== "dyn" ? type : [...outcomes.values()].map((o) => celTypeOfValue(o.value)).find(Boolean);
+        type && type !== "dyn" ? type : outcomes.map(({ outcome }) => celTypeOfValue(outcome.value)).find(Boolean);
       const cases = (site.sentinel as Record<string, unknown>).cases;
       if (cases && typeof cases === "object" && !Array.isArray(cases)) {
         for (const caseKey of Object.keys(cases)) {
@@ -1023,10 +1128,11 @@ export function readChoices(
         }
       }
     }
-    const baseline = configurations.find((a) => outcomes.has(keyOf(a)))!;
+    const baseline = space.firstAssignment(reachOf.get(site)!) as Assignment;
     for (const [branch, keys] of branchesOf(site)) {
       if (taken.has(branch) || invalidCases.has(branch)) continue;
-      unreachable.push({ site, branch, keys: [...site.keys, ...keys], baseline });
+      const forcing: Decisions = new Map([[site.sentinel, branch]]);
+      unreachable.push({ site, branch, keys: [...site.keys, ...keys], baseline, forcing, world: World.deadBranch(baseline, forcing) });
       reportAt(site, [...site.keys, ...keys], "BRANCH_CASE_UNREACHABLE",
         `The ${describeBranch(branch)} of ${label} is taken in no configuration` +
           (site.tag === "if"
@@ -1060,12 +1166,45 @@ export function readChoices(
     return out;
   };
 
-  const standIns = (assignment: Assignment, forcing?: Decisions): StandInConstruct[] => {
-    const decided = decide(assignment);
+  // Inside a branch no configuration takes, a choice's options its baseline
+  // does not take are checked too: each at that baseline with it forced beside
+  // the options on the way, the options beneath it in turn.
+  const childrenOf = new Map<ChoiceSite, ChoiceSite[]>();
+  for (const site of sites) {
+    if (site.parent) childrenOf.set(site.parent.site, [...(childrenOf.get(site.parent.site) ?? []), site]);
+  }
+  const checkedDead: UnreachableBranch[] = [];
+  for (const entry of unreachable) {
+    checkedDead.push(entry);
+    const decided = decide(entry.baseline);
+    const visit = (site: ChoiceSite, branch: string, forcing: Decisions): void => {
+      for (const child of childrenOf.get(site) ?? []) {
+        if (child.parent!.branch !== branch) continue;
+        const taken = decided.get(child.sentinel);
+        // A choice standing in there claims nothing beneath it.
+        if (taken === STAND_IN) continue;
+        for (const [option, keys] of branchesOf(child)) {
+          if (option === taken) {
+            visit(child, option, forcing);
+            continue;
+          }
+          const forced = new Map(forcing).set(child.sentinel, option);
+          checkedDead.push({ site: child, branch: option, keys: [...child.keys, ...keys], baseline: entry.baseline, forcing: forced, world: World.deadBranch(entry.baseline, forced) });
+          visit(child, option, forced);
+        }
+      }
+    };
+    visit(entry.site, entry.branch, entry.forcing);
+  }
+
+  const standIns = (space: ConditionSpace): StandInConstruct[] => {
+    const conditions = branchConditions(space);
     return sites
       .filter((site) => !refused.has(site.sentinel))
-      .filter((site) => (forcing?.has(site.sentinel) ? forcing.get(site.sentinel) : decided.get(site.sentinel)) === STAND_IN)
-      .map((site) => ({ holder: site.holder, path: pathOf(site.keys) }));
+      .flatMap((site) => {
+        const condition = conditions.get(site.sentinel)?.get(STAND_IN) ?? FALSE;
+        return condition === FALSE ? [] : [{ holder: site.holder, path: pathOf(site.keys), sentinel: site.sentinel, condition }];
+      });
   };
 
   const decidedInputsOf = (
@@ -1212,13 +1351,8 @@ export function readChoices(
       if (!decidedBy(resolution)) return undefined;
       visit(resolution);
     }
-    let partials: Record<string, unknown>[] = [{}];
-    for (const dimension of space.dimensions) {
-      if (!footprint.has(dimension.key)) continue;
-      partials = partials.flatMap((partial) => dimension.values.map((value) => ({ ...partial, [dimension.key]: value })));
-    }
     const out: { value: unknown; condition: Condition; text: string }[] = [];
-    for (const partial of partials) {
+    for (const partial of partialsOf(footprint, space)) {
       const decided = valueIn(holder, source, partial);
       if (!decided) return undefined;
       const text = stableText(decided.value);
@@ -1229,24 +1363,25 @@ export function readChoices(
     return out.map(({ value, condition }) => ({ value, condition }));
   };
 
-  // The dimensions a site's condition reads: through a binding, the
-  // importer's it is evaluated over.
-  const footprintOf = (site: ChoiceSite): Set<string> => {
-    const out = new Set<string>();
-    const visit = (resolution: Resolution | Neutral) => {
-      const reading =
-        resolution.kind === "root"
-          ? rootReadingOf(resolution.module, resolution.read)
-          : resolution.kind === "need"
-            ? needReadingOf(resolution)
-            : undefined;
-      if (reading?.kind === "dimension") out.add(reading.dimension.key);
-      if (resolution.kind === "derived") for (const part of resolution.parts) visit(part);
-    };
-    const decision = decisions.get(site)!;
-    if (decision.kind === "expression") for (const r of decision.resolutions) visit(r);
-    return out;
+  const inputRead = (holder: ResourceManifest, read: InputRead): InputReadReading => {
+    if (read.input === "resources") return { kind: "open" };
+    const resolution = resolveRead(moduleOf(holder) ?? firstRoot ?? "", read, importPathOf(holder));
+    if (resolution.kind === "constant") return { kind: "constant" };
+    if (resolution.kind !== "root") return { kind: "open" };
+    const reading = rootReadingOf(resolution.module, resolution.read);
+    if (reading.kind === "constant") return { kind: "constant" };
+    return reading.kind === "dimension" && dimensionKeys.has(reading.dimension.key)
+      ? { kind: "dimension", dimension: reading.dimension }
+      : { kind: "open" };
   };
+  const inputValuesIn = (holder: ResourceManifest, assignment: Assignment) => {
+    const activation = activationOf(moduleOf(holder) ?? firstRoot ?? "", importPathOf(holder), assignment, new Map());
+    return {
+      variables: (activation.variables ?? {}) as Record<string, unknown>,
+      secrets: (activation.secrets ?? {}) as Record<string, unknown>,
+    };
+  };
+
   const branchConditions = (space: ConditionSpace): BranchConditions => {
     const out = new Map<ExpansionSentinel, Map<string | null, Condition>>();
     for (const site of sites) {
@@ -1257,12 +1392,7 @@ export function readChoices(
         continue;
       }
       const footprint = footprintOf(site);
-      let partials: Record<string, unknown>[] = [{}];
-      for (const dimension of space.dimensions) {
-        if (!footprint.has(dimension.key)) continue;
-        partials = partials.flatMap((partial) => dimension.values.map((value) => ({ ...partial, [dimension.key]: value })));
-      }
-      for (const partial of partials) {
+      for (const partial of partialsOf(footprint, space)) {
         const branch = outcomeIn(site, partial, new Map()).branch;
         branches.set(branch, space.or(branches.get(branch) ?? FALSE, space.assignment(partial)));
       }
@@ -1297,18 +1427,40 @@ export function readChoices(
   return {
     sites,
     dimensions,
-    configurations,
+    firstConfiguration,
     branchConditions,
     inputDimensions,
     diagnostics: reported,
     decide,
     narrowing,
     standIns,
-    unreachable,
+    unreachable: checkedDead,
     refusedBranches,
     valueIn,
     valueOutcomes,
+    inputRead,
+    inputValuesIn,
   };
+}
+
+/** The condition or selector of every `!if` / `!switch` a template
+ *  definition's body holds, as written in it. */
+function bodyChoiceSources(manifests: readonly ResourceManifest[]): { holder: ResourceManifest; source: string }[] {
+  const out: { holder: ResourceManifest; source: string }[] = [];
+  for (const definition of manifests) {
+    if (definition.kind !== "Telo.Definition") continue;
+    const visit = (value: unknown): void => {
+      if (value === null || typeof value !== "object" || isTaggedSentinel(value) || isCompiledValue(value)) return;
+      const tag = isExpansionSentinel(value) ? expansionTagOf(value) : undefined;
+      if (tag === "if" || tag === "switch") {
+        const source = expressionSource((value as Record<string, unknown>)[tag]);
+        if (source !== undefined) out.push({ holder: definition, source });
+      }
+      for (const field of Array.isArray(value) ? value : Object.values(value)) visit(field);
+    };
+    for (const field of TEMPLATE_BODY_FIELDS) visit((definition as Record<string, unknown>)[field]);
+  }
+  return out;
 }
 
 /** The value of `source` when it reads nothing but the module's own names. */
@@ -1504,6 +1656,15 @@ export function describeBranch(branch: string): string {
   return `'${branch}:' branch`;
 }
 
+/** Whether a branch at a declaration position is a document that declares no
+ *  resource — a module document, a kind document or an import: refused where
+ *  it is written, and expanded to nothing, so no configuration varies it. */
+export function declaresNoResource(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.kind === "string" && (isModuleKind(record.kind) || isKindDocumentOrImport(record));
+}
+
 /** Why a value cannot be a branch at a declaration position, or undefined. */
 export function declarationBranchProblem(value: unknown): string | undefined {
   const tag = expansionTagOf(value);
@@ -1645,8 +1806,9 @@ function nameTableDiagnostics(
     const violation = checkName(name, level, "resource name");
     if (violation) out.push(diagnosticAt(choice, ["metadata", "name"], violation.code, violation.message, violation.severity));
   }
+  // A need's collision is the need table's, at its `needs:` key.
   const peers = [
-    ...manifests.filter((m) => isOwn(m) && nameOf(m) !== undefined && !isExpansionSentinel(m)),
+    ...manifests.filter((m) => isOwn(m) && nameOf(m) !== undefined && !isExpansionSentinel(m) && !injectedNeedOf(m)),
     ...choiceDocuments,
   ].sort((a, b) => lineOf(a) - lineOf(b));
   const byName = new Map<string, ResourceManifest[]>();
@@ -1662,7 +1824,7 @@ function nameTableDiagnostics(
       const name = nameOf(later)!;
       const kind = later.kind ?? expansionTagLabel(later);
       const line = lineOf(later);
-      out.push({
+      out.push(stampedIn("choiceNames", {
         severity: DiagnosticSeverity.Error,
         code: "DUPLICATE_RESOURCE_NAME",
         source: SOURCE,
@@ -1675,7 +1837,7 @@ function nameTableDiagnostics(
           filePath: (later.metadata as { source?: string } | undefined)?.source,
           path: "metadata.name",
         },
-      });
+      }));
     }
   }
 
@@ -1705,12 +1867,15 @@ function nameTableDiagnostics(
       }
       if (!isExpansionSentinel(member) && !isExpansionSentinel(earlier)) return;
       out.push(
-        diagnosticAt(
-          site.holder,
-          [field!, i, "metadata", "name"],
-          "DUPLICATE_RESOURCE_NAME",
-          collision(memberName, member, earlier, String(field)),
-          DiagnosticSeverity.Error,
+        stampedIn(
+          "choiceNames",
+          diagnosticAt(
+            site.holder,
+            [field!, i, "metadata", "name"],
+            "DUPLICATE_RESOURCE_NAME",
+            collision(memberName, member, earlier, String(field)),
+            DiagnosticSeverity.Error,
+          ),
         ),
       );
     });

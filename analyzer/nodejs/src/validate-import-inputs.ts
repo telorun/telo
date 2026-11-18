@@ -9,6 +9,7 @@ import type { ModuleDocuments } from "./module-documents.js";
 import { navigatePath } from "./peer-binding.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
 import { navigateSchemaToExprPath } from "./schema-compat.js";
+import { quotingIssue, type QuotedPlace } from "./quoted-place.js";
 import { valueTypeRefusalCode } from "./schema-error-report.js";
 import type { StandIns } from "./stand-in-findings.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
@@ -62,7 +63,13 @@ export function validateImportInputs(
         code: finding.code,
         source: SOURCE,
         message: finding.message,
-        data: { resource, filePath, path: finding.path, ...(finding.fix ? { fix: finding.fix } : {}) },
+        data: {
+          resource,
+          filePath,
+          path: finding.path,
+          ...(finding.fix ? { fix: finding.fix } : {}),
+          ...(finding.quotedPlace ? { quotedPlace: finding.quotedPlace } : {}),
+        },
       });
     }
   }
@@ -76,6 +83,8 @@ export interface DeclaredInputFinding {
   /** Dotted path within `written`. */
   path: string;
   fix?: { replacement: string; tag: "module-path" };
+  /** The places its message quotes, so a placement renders it where it moves. */
+  quotedPlace?: QuotedPlace[];
 }
 
 /**
@@ -101,26 +110,34 @@ export function declaredInputFindings(
   for (const issue of defs.validateResourceConfig(substituted, schema, standIns)) {
     const textRefusal = valueTypeRefusalCode(issue);
     if (textRefusal !== undefined) {
-      out.push({ code: textRefusal, message: `${subject}: ${issue.message}`, path: issue.path });
+      const quoted = quotingIssue(`${subject}: `, issue, issue.path);
+      out.push({ code: textRefusal, message: quoted.message, path: issue.path, ...(quoted.quotedPlace ? { quotedPlace: quoted.quotedPlace } : {}) });
       continue;
     }
     if (issue.valueType && VALUE_TYPES.get(issue.valueType)?.fromHost !== undefined) {
       const value = navigatePath(written, issue.path);
       if (isTaggedSentinel(value)) continue;
+      const quoted = quotingIssue(
+        `${subject}: `,
+        issue,
+        issue.path,
+        `. ${capitalized(declarer)} resolves nothing it is given.${alsoAccepts(navigateSchemaToExprPath(schema, issue.path))}`,
+      );
       out.push({
         code: "HOST_PATH_RELATIVE",
-        message:
-          `${subject}: ${issue.message}. ${capitalized(declarer)} resolves nothing it is ` +
-          `given.${alsoAccepts(navigateSchemaToExprPath(schema, issue.path))}`,
+        message: quoted.message,
+        ...(quoted.quotedPlace ? { quotedPlace: quoted.quotedPlace } : {}),
         path: issue.path,
         ...(typeof value === "string" ? { fix: { replacement: value, tag: "module-path" as const } } : {}),
       });
       continue;
     }
+    const quoted = quotingIssue(`${subject}: `, issue, issue.path, ` — ${declarer} declares it so.`);
     out.push({
       code: "SCHEMA_VIOLATION",
-      message: `${subject}: ${issue.message} — ${declarer} declares it so.`,
+      message: quoted.message,
       path: issue.path,
+      ...(quoted.quotedPlace ? { quotedPlace: quoted.quotedPlace } : {}),
     });
   }
   return out;

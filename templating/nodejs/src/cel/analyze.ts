@@ -195,8 +195,11 @@ export const ELEMENT_SEGMENT = "[]!";
  *   its elements: the chain ends in {@link EACH_SEGMENT}.
  * - A bare use of the variable reads the element whole, so the range is read
  *   whole, as it is by any other use of the collection.
+ * - A `cel.bind` name is followed to the value it binds: `cel.bind(t,
+ *   self.table, t.size)` reads `self.table.size`, and a bare use reads the
+ *   bound value whole.
  * - A presence test reads only whether the member exists: `has(a.b)` reads
- *   `a.?` ({@link PRESENCE_SEGMENT}), never the value of `a.b`.
+ *   `a.b.?` ({@link PRESENCE_SEGMENT}), never the value of `a.b`.
  *
  * A variable whose range is not a plain chain (a call's result, another macro's
  * output) names nothing a root holds, and a read through it contributes nothing.
@@ -222,14 +225,24 @@ export function extractValueReadChains(node: CelNode): string[][] {
   return chains;
 }
 
-/** A bound name's range as a chain, or null where it has none. */
-type BoundRanges = ReadonlyMap<string, readonly string[] | null>;
+/** What a bound name stands for as a chain — each element of a range, or the
+ *  value a `cel.bind` binds — or null where it has none. */
+type BoundRanges = ReadonlyMap<string, BoundRange | null>;
+
+interface BoundRange {
+  readonly chain: readonly string[];
+  readonly each: boolean;
+  /** Whether anything read through the name. */
+  used: boolean;
+}
 
 function readChainOf(node: CelNode, bound: BoundRanges): string[] | null {
   if (node.kind === "ident") {
     if (!node.absolute && bound.has(node.name)) {
       const range = bound.get(node.name);
-      return range ? [...range, EACH_SEGMENT] : null;
+      if (!range) return null;
+      range.used = true;
+      return range.each ? [...range.chain, EACH_SEGMENT] : [...range.chain];
     }
     return [node.name];
   }
@@ -270,9 +283,9 @@ function visitReads(node: CelNode, chains: string[][], bound: BoundRanges, value
 
   const presence = presenceOperand(node);
   if (presence) {
-    const owner = readChainOf(presence, bound);
+    const owner = readChainOf(presence.operand, bound);
     if (owner !== null) {
-      chains.push([...owner, PRESENCE_SEGMENT]);
+      chains.push([...owner, presence.field, PRESENCE_SEGMENT]);
       return;
     }
   }
@@ -285,8 +298,13 @@ function visitReads(node: CelNode, chains: string[][], bound: BoundRanges, value
 
   const bind = bindCall(node);
   if (bind) {
-    visitReads(bind.init, chains, bound, valueReads);
-    visitReads(bind.body, chains, new Map(bound).set(bind.name, null), valueReads);
+    // A plain chain is read through the name it binds, and whole where nothing
+    // reads through it: the value is still evaluated.
+    const value = readChainOf(bind.init, bound);
+    if (value === null) visitReads(bind.init, chains, bound, valueReads);
+    const range: BoundRange | null = value && { chain: value, each: false, used: false };
+    visitReads(bind.body, chains, new Map(bound).set(bind.name, range), valueReads);
+    if (range && !range.used) chains.push(value!);
     return;
   }
 
@@ -295,7 +313,7 @@ function visitReads(node: CelNode, chains: string[][], bound: BoundRanges, value
     const range = readChainOf(macro.receiver, bound);
     if (range !== null) chains.push([...range, EACH_SEGMENT]);
     else visitReads(macro.receiver, chains, bound, valueReads);
-    const inner = new Map(bound).set(macro.bound, range);
+    const inner = new Map(bound).set(macro.bound, range && { chain: range, each: true, used: false });
     for (const arg of macro.scoped) visitReads(arg, chains, inner, valueReads);
     return;
   }
@@ -303,11 +321,11 @@ function visitReads(node: CelNode, chains: string[][], bound: BoundRanges, value
   for (const child of childNodes(node)) visitReads(child, chains, bound, valueReads);
 }
 
-/** What a presence test `has(<operand>.<member>)` asks the keys of. */
-function presenceOperand(node: CelNode): CelNode | undefined {
+/** A presence test `has(<operand>.<field>)`: what it asks the keys of, and the member. */
+function presenceOperand(node: CelNode): { operand: CelNode; field: string } | undefined {
   if (node.kind !== "call" || node.name !== "has" || node.args.length !== 1) return undefined;
   const arg = node.args[0]!;
-  return arg.kind === "select" && !arg.optional ? arg.operand : undefined;
+  return arg.kind === "select" && !arg.optional ? { operand: arg.operand, field: arg.field } : undefined;
 }
 
 /** A member access on a module call's result: the call, and the members read

@@ -28,9 +28,9 @@ expect:
     - code: SCHEMA_VIOLATION
       message: "Anthropic.MessagesModel/audio: /accepts/0/type must be equal to one of the allowed values (image | file)"
     - code: SCHEMA_VIOLATION
-      message: "Anthropic.MessagesModelStream/bmp: /accepts/0/mediaTypes/0 must be equal to one of the allowed values (image/jpeg | image/png | image/gif | image/webp | application/pdf | text/plain)"
+      message: "Anthropic.MessagesModelStream/bmp: /accepts/0/mediaTypes/0 must be equal to one of the allowed values (image/jpeg | image/png | image/gif | image/webp)"
     - code: SCHEMA_VIOLATION
-      message: "Anthropic.MessagesModel/html: /accepts/0/mediaTypes/0 must be equal to one of the allowed values (image/jpeg | image/png | image/gif | image/webp | application/pdf | text/plain)"
+      message: "Anthropic.MessagesModel/html: /accepts/0/mediaTypes/0 must be equal to one of the allowed values (application/pdf | text/plain)"
   runFails: "Manifest validation failed"
 ---
 kind: Http.Client

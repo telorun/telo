@@ -28,9 +28,6 @@ export function validateSinkAttachment(
   aliases: AliasResolver,
   aliasesByModule: Map<string, AliasResolver> | undefined,
   rootModules: ReadonlySet<string>,
-  /** Only the sinks declared in a scope: the module level's were judged once
-   *  over every configuration. */
-  scopedOnly = false,
   /** A declaration that exists for the analysis alone (a template forward
    *  view): a reference it holds is a template body's, which attaches nothing. */
   analysisOnly: (m: ResourceManifest) => boolean = () => false,
@@ -68,7 +65,6 @@ export function validateSinkAttachment(
     // A scope member is out of every list's reach: the lists name what the
     // module declares at its top level.
     const scoped = isScopeMemberDeclaration(m);
-    if (scopedOnly && !scoped) continue;
     if (!scoped && referenced(m)) continue;
     if (!scoped && module !== undefined && exported.get(module)?.has(name)) continue;
     diagnostics.push(sinkUnattachedDiagnostic(m, scoped));

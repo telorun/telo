@@ -1,18 +1,22 @@
 /**
  * What a key's environment is built from: each declaration of the union
- * normalized on its own, as a configuration's analysis normalizes it — its
- * template body in a variant, its inline declarations extracted, its
- * references stamped with what they resolve to at the witness, its scope
+ * normalized on its own, as a configuration's analysis normalizes it — a
+ * template definition's body as the witness decides it (its reading projected
+ * at the witness's assignment of the definition's own dimensions), its inline
+ * declarations extracted,
+ * its references stamped with what they resolve to at the witness, its scope
  * members collected — and interned, so a declaration is normalized once per
- * distinct (projection, template variant, outcome of each reference it
+ * distinct (projection, body projection, outcome of each reference it
  * stamps), and two keys whose projections are equal hold the same objects.
  *
  * A declaration whose every reference resolves one way at every witness is
  * FIXED: its part is the same wherever it projects alike. The fixed parts of
  * the declarations no configuration a key is judged for varies (`doorCare`)
- * are, per template variant and care, the SHARED layer, built once per
- * analysis and read beneath every key's own parts, so a key's environment is
- * built from what it reads and never from the whole application.
+ * are, per care, the SHARED layer, built once per analysis and read beneath
+ * every key's own parts, so a key's environment is built from what it reads
+ * and never from the whole application. A template definition reading no
+ * configuration is held there with its body at its first values; a key whose
+ * witness decides that body otherwise holds its own part in its place.
  *
  * Browser-safe.
  */
@@ -28,22 +32,23 @@ import {
   type PlaceMap,
   type PlaceMapping,
   type Projected,
-  type Witness,
+  type World,
 } from "./conditioned-expansion.js";
-import type { DefinitionRegistry } from "./definition-registry.js";
+import type { DefinitionRegistry, VaryingShapeClasses } from "./definition-registry.js";
 import type { DoorCare } from "./key-door.js";
 import { normalizeInlineResources } from "./normalize-inline-resources.js";
-import { TRUE } from "./presence-condition.js";
+import { TRUE, type Condition } from "./presence-condition.js";
 import { UNRESOLVED, type NameResolution, type RefResolution, type ResolutionOutcome } from "./reference-resolution.js";
 import { resolveRefSentinels } from "./resolve-ref-sentinels.js";
 import { resolveSchemaTypeRefs } from "./resolve-schema-type-refs.js";
+import { isKindDocument } from "./kind-declaration.js";
 import { isCarvedResult } from "./step-result-inference.js";
 import type { ScopeSite } from "./scope-address.js";
 import { collectScopeMembers, type ScopeMember } from "./scope-members.js";
 import { MANIFEST_READING, ScopedNameResolver } from "./scoped-name-resolver.js";
-import type { DefinitionVariant, TemplateDefinitions } from "./template-definition-check.js";
-import { emittedInlineName } from "./template-expansion.js";
-import { isTaggedSentinel } from "@telorun/templating";
+import type { DefinitionProjection, TemplateDefinitions } from "./template-definition-check.js";
+import { emittedInlineName, TEMPLATE_BODY_FIELDS } from "./template-expansion.js";
+import { isExpansionSentinel, isTaggedSentinel } from "@telorun/templating";
 import {
   CARVED_PLACE,
   memberIdentity,
@@ -56,9 +61,10 @@ import {
 } from "./region-part.js";
 import { isAtOrAbove } from "./relation-sites.js";
 
-/** A template definition as one variant expands its body, and as written. */
+/** A template definition as one way of deciding it expands its body, and as
+ *  written. */
 export interface TemplateVariantOf {
-  readonly variant: DefinitionVariant;
+  readonly variant: DefinitionProjection;
   readonly written: ResourceManifest;
 }
 
@@ -75,6 +81,14 @@ interface Lookup {
   readonly fixed: boolean;
 }
 
+/** Whether a reference slot some configuration's named shapes declare held
+ *  where a part was normalized: the condition the slot holds under, and what
+ *  it decided there. */
+interface SlotLookup {
+  readonly condition: Condition;
+  readonly held: boolean;
+}
+
 /** One declaration of the union, normalized. */
 export interface DeclarationPart {
   readonly declaration: ConditionedDeclaration;
@@ -82,14 +96,19 @@ export interface DeclarationPart {
   /** The declaration as normalized, then every declaration extraction drew out
    *  of it at the top level, then its scope members at any depth. */
   readonly manifests: readonly ResourceManifest[];
+  /** The declaration as written, before extraction and reference resolution
+   *  rewrote it — the one place an author-written reference form is told from
+   *  what resolution wrote. */
+  readonly raw: ResourceManifest;
   /** Its scope members: the analysed ones, and the kind documents. */
   readonly members: readonly ScopeMember[];
   readonly kindMembers: readonly ScopeMember[];
-  /** Set for a template definition: its body in the part's variant. */
+  /** Set for a template definition: its body as the part's witness decides it. */
   readonly template?: TemplateVariantOf;
   /** The same part at every witness projecting it alike. */
   readonly fixed: boolean;
   readonly lookups: readonly Lookup[];
+  readonly slots: readonly SlotLookup[];
 }
 
 /** Some regions of a declaration of the union, normalized on their own. */
@@ -105,6 +124,9 @@ export interface RegionPart {
    *  `metadata`, the way to the root and the region — then what extraction
    *  drew out of it, then its scope members. */
   readonly manifests: readonly ResourceManifest[];
+  /** The region's manifest as written, before extraction and reference
+   *  resolution rewrote it. */
+  readonly raw: ResourceManifest;
   /** Its manifest and where each of its positions is written. */
   readonly projection: Projected;
   /** The nodes it holds of its declaration, counted before normalization
@@ -114,6 +136,7 @@ export interface RegionPart {
   readonly members: readonly ScopeMember[];
   readonly kindMembers: readonly ScopeMember[];
   readonly lookups: readonly Lookup[];
+  readonly slots: readonly SlotLookup[];
 }
 
 /** How many values `value` holds, itself included; a carved producer's
@@ -140,7 +163,7 @@ export function regionExtent(
   declaration: ConditionedDeclaration,
   roots: readonly (readonly (string | number)[])[],
   carved: readonly (readonly (string | number)[])[],
-  witness: Witness,
+  witness: World,
   scopeFields: (holder: { readonly kind: unknown; readonly metadata: unknown }) => readonly string[],
 ): number {
   const text = (keys: readonly (string | number)[]) => JSON.stringify(keys);
@@ -218,7 +241,7 @@ export function regionExtent(
   return n;
 }
 
-/** What every key reads beneath its own parts, for one template variant. */
+/** What every key reads beneath its own parts. */
 export interface SharedLayer {
   readonly parts: readonly DeclarationPart[];
   /** Declarations no configuration of the care varies whose part is not
@@ -228,19 +251,27 @@ export interface SharedLayer {
   readonly manifests: readonly ResourceManifest[];
   readonly names: ScopedNameResolver<ResourceManifest>;
   readonly templateVariants: ReadonlyMap<string, TemplateVariantOf>;
+  /** The template definitions held here, each at its first values: a key whose
+   *  witness names one of its dimensions or forces one of its choices holds
+   *  its own part in its place. */
+  readonly templated: ReadonlyMap<ConditionedDeclaration, DeclarationPart>;
 }
 
 export interface KeyPartsInputs {
   readonly union: ConditionedExpansion;
   readonly names: ConditionedNameIndex;
   /** What a key judged at a witness holds fixed. */
-  readonly careAt: (witness: Witness) => DoorCare;
+  readonly careAt: (witness: World) => DoorCare;
   readonly defs: DefinitionRegistry;
   readonly aliases: AliasResolver;
   readonly aliasesByModule: Map<string, AliasResolver>;
   readonly templates: TemplateDefinitions | undefined;
   /** The fields a declaration of `holder`'s kind declares a scope at. */
   readonly scopeFieldsOf: (holder: { readonly kind: unknown; readonly metadata: unknown }) => readonly string[];
+  /** The named shapes some configuration varies, as their classes: what a
+   *  reference slot one declares is read through — a cut point of the
+   *  declaration, decided at each witness. */
+  readonly varying: VaryingShapeClasses<Condition> | undefined;
 }
 
 /** Where a manifest stands in an analysis's list: section (a declaration and
@@ -300,11 +331,14 @@ export class KeyParts {
   private readonly position = new Map<ConditionedDeclaration, number>();
   private readonly cache = new Map<ConditionedDeclaration, Map<string, DeclarationPart[]>>();
   private readonly definitions: ReadonlySet<ResourceManifest>;
-  private readonly variantIds = new WeakMap<object, number>();
-  private nextVariantId = 1;
-  private readonly shared = new Map<DoorCare, Map<number, SharedLayer>>();
+  private readonly projectionIds = new WeakMap<object, number>();
+  private nextProjectionId = 1;
+  private readonly shared = new Map<DoorCare, SharedLayer>();
   private readonly regions = new Map<ConditionedDeclaration, Map<string, RegionPart[]>>();
   private readonly roots = new Map<ConditionedDeclaration, PlaceMap>();
+  private definitionsByIdentity: Map<string, ConditionedDeclaration> | undefined;
+  private definitionsBySentinel: Map<object, ConditionedDeclaration> | undefined;
+  private readonly touched = new WeakMap<World, ReadonlySet<ConditionedDeclaration>>();
 
   constructor(private readonly input: KeyPartsInputs) {
     // A union position for every declaration, and for every forward view after
@@ -315,25 +349,35 @@ export class KeyParts {
   }
 
   /** Whether `declaration` is present at `witness`. */
-  presentAt(declaration: ConditionedDeclaration, witness: Witness): boolean {
+  presentAt(declaration: ConditionedDeclaration, witness: World): boolean {
     return takenAt(this.input.union.space, declaration.condition, declaration.path, witness.assignment, witness.forcing);
   }
 
-  /** The fixed parts of `variant` in the care of `witness`, built at the first
-   *  key reading them. A declaration a whole-document choice declares is held
-   *  fixed only where no branch is forced. */
-  sharedLayer(variant: number, witness: Witness): SharedLayer {
-    const id = this.templateVariantId(variant);
+  /** The fixed parts in the care of `witness`, built at the first key
+   *  reading them. A declaration a whole-document choice declares is held
+   *  fixed only where no branch is forced; a template definition never, its
+   *  body read as each key's own witness decides it. */
+  sharedLayer(witness: World): SharedLayer {
     const care = this.input.careAt(witness);
-    let layers = this.shared.get(care);
-    if (!layers) this.shared.set(care, (layers = new Map()));
-    const known = layers.get(id);
+    const known = this.shared.get(care);
     if (known) return known;
     const parts: DeclarationPart[] = [];
     const dependent: ConditionedDeclaration[] = [];
+    const templated = new Map<ConditionedDeclaration, DeclarationPart>();
     for (const declaration of this.input.union.declarations) {
       if (!care.invariant.has(declaration)) continue;
-      const part = this.partAt(declaration, witness, variant);
+      if (this.definitions.has(declaration.manifest)) {
+        const part =
+          this.input.templates!.configurationDimensionsOf(declaration.manifest).length === 0
+            ? this.partAt(declaration, this.atFirstValues(declaration, witness))
+            : undefined;
+        if (part?.fixed && (declaration.path.length === 0 || !witness.forcing)) {
+          parts.push(part);
+          templated.set(declaration, part);
+        } else dependent.push(declaration);
+        continue;
+      }
+      const part = this.partAt(declaration, witness);
       if (part.fixed && (declaration.path.length === 0 || !witness.forcing)) parts.push(part);
       else dependent.push(declaration);
     }
@@ -344,29 +388,88 @@ export class KeyParts {
       manifests,
       names: new ScopedNameResolver(manifests, MANIFEST_READING),
       templateVariants: templateVariantsOf(parts),
+      templated,
     };
-    layers.set(id, layer);
+    this.shared.set(care, layer);
     return layer;
   }
 
-  /** `declaration` normalized at `witness` in `variant`: the part already
+  /** The template definitions whose body `witness` decides otherwise than at
+   *  their first values: one it names a dimension of, or forces a choice of. */
+  touchedDefinitions(witness: World): ReadonlySet<ConditionedDeclaration> {
+    const known = this.touched.get(witness);
+    if (known) return known;
+    const out = new Set<ConditionedDeclaration>();
+    if (this.definitions.size > 0) {
+      const { byIdentity, bySentinel } = this.definitionIndex();
+      const { space } = this.input.union;
+      for (const key of Object.keys(witness.assignment)) {
+        const identity = space.definitionOf(key)?.identity;
+        const declaration = identity === undefined ? undefined : byIdentity.get(identity);
+        if (declaration) out.add(declaration);
+      }
+      for (const sentinel of witness.bodyForcing?.keys() ?? []) {
+        const declaration = bySentinel.get(sentinel as object);
+        if (declaration) out.add(declaration);
+      }
+    }
+    this.touched.set(witness, out);
+    return out;
+  }
+
+  /** `witness` with `declaration`'s body at its first values. */
+  private atFirstValues(declaration: ConditionedDeclaration, witness: World): World {
+    const own = new Set(this.input.templates!.dimensionsOf(declaration.manifest).map((d) => d.key));
+    const assignment: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(witness.assignment)) if (!own.has(key)) assignment[key] = value;
+    return witness.withAssignment(assignment);
+  }
+
+  /** Every lifted definition of the union by its identity and by each choice
+   *  its body holds. */
+  private definitionIndex(): {
+    byIdentity: ReadonlyMap<string, ConditionedDeclaration>;
+    bySentinel: ReadonlyMap<object, ConditionedDeclaration>;
+  } {
+    if (!this.definitionsByIdentity || !this.definitionsBySentinel) {
+      const byIdentity = new Map<string, ConditionedDeclaration>();
+      const bySentinel = new Map<object, ConditionedDeclaration>();
+      const templates = this.input.templates!;
+      for (const declaration of this.input.union.declarations) {
+        if (!this.definitions.has(declaration.manifest)) continue;
+        byIdentity.set(templates.readingOf(declaration.manifest).identity, declaration);
+        const visit = (value: unknown): void => {
+          if (value === null || typeof value !== "object" || isTaggedSentinel(value)) return;
+          if (isExpansionSentinel(value)) bySentinel.set(value, declaration);
+          for (const field of Array.isArray(value) ? value : Object.values(value)) visit(field);
+        };
+        for (const field of TEMPLATE_BODY_FIELDS) visit((declaration.manifest as Record<string, unknown>)[field]);
+      }
+      this.definitionsByIdentity = byIdentity;
+      this.definitionsBySentinel = bySentinel;
+    }
+    return { byIdentity: this.definitionsByIdentity, bySentinel: this.definitionsBySentinel };
+  }
+
+  /** `declaration` normalized at `witness` — a template definition's body as
+   *  the witness decides it: the part already
    *  built for an equal projection whose references resolve as they do here,
    *  or a new one. */
-  partAt(declaration: ConditionedDeclaration, witness: Witness, variant: number): DeclarationPart {
+  partAt(declaration: ConditionedDeclaration, witness: World): DeclarationPart {
     const { union } = this.input;
     const projection = union.project(declaration.manifest, witness.assignment, witness.forcing);
     const value = projection.value as ResourceManifest;
-    const template = this.definitions.has(value) ? this.input.templates!.variant(value, variant) : undefined;
+    const template = this.definitions.has(value) ? this.bodyOf(value, witness) : undefined;
     const content =
       value === declaration.manifest && projection.places.mappings.length === 0 && !projection.places.resource
         ? ""
         : stableJson([value, projection.places]);
-    const key = `${template ? this.variantIdOf(template) : ""}\0${content}`;
+    const key = `${template ? this.projectionIdOf(template) : ""}\0${content}`;
     let byContent = this.cache.get(declaration);
     if (!byContent) this.cache.set(declaration, (byContent = new Map()));
     const built = byContent.get(key) ?? [];
     for (const part of built) {
-      if (part.fixed || part.lookups.every((lookup) => sameOutcome(lookup.outcome, this.outcomeAt(lookup, witness)))) {
+      if (part.fixed || (part.lookups.every((lookup) => sameOutcome(lookup.outcome, this.outcomeAt(lookup, witness))) && this.sameSlots(part.slots, witness))) {
         return part;
       }
     }
@@ -385,17 +488,16 @@ export class KeyParts {
 
   /**
    * The region of `declaration` rooted at `unionKeys`, normalized at `witness`
-   * in `variant` on its own — {@link regionsAt} of one root.
+   * on its own — {@link regionsAt} of one root.
    */
-  regionAt(declaration: ConditionedDeclaration, unionKeys: readonly (string | number)[], witness: Witness, variant: number): RegionPart {
-    return this.regionsAt(declaration, [unionKeys], witness, variant);
+  regionAt(declaration: ConditionedDeclaration, unionKeys: readonly (string | number)[], witness: World): RegionPart {
+    return this.regionsAt(declaration, [unionKeys], witness);
   }
 
   /**
    * The regions of `declaration` rooted at each of `roots`, normalized at
-   * `witness` in `variant` together and on their own: each region's
-   * projection — a template definition's from the body's expansion in that
-   * variant — held in one manifest with nothing else of the declaration but
+   * `witness` together and on their own: each region's projection — a
+   * template definition's from its body as the witness decides it — held in one manifest with nothing else of the declaration but
    * its `kind`, `metadata`, the way to each root, what each object on the way
    * holds beside it (shallow: what a union branch on the way is selected by)
    * and each member of the scopes declared on the way as its identity (its
@@ -411,14 +513,13 @@ export class KeyParts {
   regionsAt(
     declaration: ConditionedDeclaration,
     roots: readonly (readonly (string | number)[])[],
-    witness: Witness,
-    variant: number,
+    witness: World,
     carved: readonly (readonly (string | number)[])[] = [],
     standIn: (carve: readonly (string | number)[]) => unknown = () => CARVED_PLACE,
   ): RegionPart {
     const { union, defs, aliases, aliasesByModule } = this.input;
     const definition = this.definitions.has(declaration.manifest) ? declaration.manifest : undefined;
-    const template = definition ? this.input.templates!.variant(definition, variant) : undefined;
+    const template = definition ? this.bodyOf(definition, witness) : undefined;
     // Each root, and the scopes declared on the way to it.
     const places = roots.map((unionKeys) => {
       const place = placeByUnionKeys(union, declaration, unionKeys, witness);
@@ -458,7 +559,7 @@ export class KeyParts {
     const identity = { kind: declaration.manifest.kind, metadata: declaration.manifest.metadata };
     const mappings = regionMappings(this.rootMappingsOf(declaration, witness), regions);
     const skeleton = regionSkeleton(identity, regions);
-    const key = `${template ? this.variantIdOf(template) : ""}\0${stableJson([
+    const key = `${template ? this.projectionIdOf(template) : ""}\0${stableJson([
       regions.map((r) => [r.place.at, r.place.written, r.content, [...r.place.enclosing]]),
       mappings,
     ])}`;
@@ -466,23 +567,27 @@ export class KeyParts {
     if (!byContent) this.regions.set(declaration, (byContent = new Map()));
     const built = byContent.get(key) ?? [];
     for (const part of built) {
-      if (part.lookups.every((lookup) => sameOutcome(lookup.outcome, this.outcomeAt(lookup, witness)))) return part;
+      if (part.lookups.every((lookup) => sameOutcome(lookup.outcome, this.outcomeAt(lookup, witness))) && this.sameSlots(part.slots, witness)) return part;
     }
     const root = this.position.get(declaration)!;
     const nodes = countNodes(skeleton);
-    const list = normalizeInlineResources([skeleton], defs, aliases, aliasesByModule, (owner, entry, keys) =>
-      template && definition && templateKeyOf(owner) === templateKeyOf(definition)
-        ? emittedInlineName(template.expansion, ["resources", entry, ...keys])
-        : undefined,
-    );
     const lookups: Lookup[] = [];
-    resolveRefSentinels(list, aliases, aliasesByModule, this.recordingResolution(witness, lookups), defs);
-    const collected = collectScopeMembers(list, (d) => defs.referenceSites(d, aliases, aliasesByModule));
+    const slots: SlotLookup[] = [];
+    const { list, collected } = this.atWitness(witness, slots, () => {
+      const list = normalizeInlineResources([skeleton], defs, aliases, aliasesByModule, (owner, entry, keys) =>
+        template && definition && templateKeyOf(owner) === templateKeyOf(definition)
+          ? emittedInlineName(template.expansion, ["resources", entry, ...keys])
+          : undefined,
+      );
+      resolveRefSentinels(list, aliases, aliasesByModule, this.recordingResolution(witness, lookups), defs);
+      return { list, collected: collectScopeMembers(list, (d) => defs.referenceSites(d, aliases, aliasesByModule)) };
+    });
     list.forEach((m, i) => ranks.set(m, [0, i === 0 ? 0 : 1, root, i]));
     const members = collected.analysed.map((member) => member.declaration);
     members.forEach((m, i) => ranks.set(m, [1, 0, root, i]));
     const manifests = [...list, ...members];
-    resolveSchemaTypeRefs(manifests, aliases, aliasesByModule, defs);
+    // A kind document is read as written: its canonical form is the registry's.
+    resolveSchemaTypeRefs(manifests.filter((m) => !isKindDocument(m)), aliases, aliasesByModule, defs);
     const resource = this.rootResourceOf(declaration, witness);
     const part: RegionPart = {
       declaration,
@@ -490,6 +595,7 @@ export class KeyParts {
       written: regions[0]?.place.written ?? declaration.at,
       roots: regions.map((r) => ({ at: r.place.at, written: r.place.written })),
       manifests,
+      raw: skeleton as ResourceManifest,
       projection: {
         present: true,
         value: list[0],
@@ -500,6 +606,7 @@ export class KeyParts {
       members: collected.analysed,
       kindMembers: collected.kindDocuments,
       lookups,
+      slots,
     };
     built.push(part);
     byContent.set(key, built);
@@ -507,24 +614,49 @@ export class KeyParts {
     return part;
   }
 
+  /** Whether `definition` is a template definition whose body is lifted. */
+  lifted(definition: ResourceManifest): boolean {
+    return this.definitions.has(definition);
+  }
+
+  /** `definition`'s body as `witness` decides it — its reading projected at the
+   *  witness's assignment of the definition's own dimensions and of the
+   *  configuration dimensions its body reads, one it leaves out at its first
+   *  value, with the body choices it forces forced. */
+  bodyOf(definition: ResourceManifest, witness: World): DefinitionProjection {
+    const templates = this.input.templates!;
+    const local: Record<string, unknown> = {};
+    for (const dimension of templates.dimensionsOf(definition)) {
+      local[dimension.definition!.key] = Object.hasOwn(witness.assignment, dimension.key)
+        ? witness.assignment[dimension.key]
+        : dimension.values[0];
+    }
+    for (const dimension of templates.configurationDimensionsOf(definition)) {
+      local[dimension.key] = Object.hasOwn(witness.assignment, dimension.key)
+        ? witness.assignment[dimension.key]
+        : dimension.values[0];
+    }
+    return templates.projectionAt(definition, local, witness.bodyForcing);
+  }
+
   /** The extent of the regions of `declaration` rooted at `roots` (union keys)
    *  at `witness`, counted from the union as written ({@link regionExtent}). */
-  extentAt(declaration: ConditionedDeclaration, roots: readonly (readonly (string | number)[])[], witness: Witness): number {
+  extentAt(declaration: ConditionedDeclaration, roots: readonly (readonly (string | number)[])[], witness: World): number {
     return regionExtent(this.input.union, declaration, roots, [], witness, this.input.scopeFieldsOf);
   }
 
   /** How `declaration`'s root is written: a whole document's tag moves it. */
-  private rootMappingsOf(declaration: ConditionedDeclaration, witness: Witness): PlaceMapping[] {
+  private rootMappingsOf(declaration: ConditionedDeclaration, witness: World): PlaceMapping[] {
     return this.rootPlaces(declaration, witness).mappings.filter((m) => m.from.length === 0);
   }
 
-  private rootResourceOf(declaration: ConditionedDeclaration, witness: Witness): { kind: string; name: string } | undefined {
+  private rootResourceOf(declaration: ConditionedDeclaration, witness: World): { kind: string; name: string } | undefined {
     return this.rootPlaces(declaration, witness).resource;
   }
 
   /** The place map of `declaration`'s root, the same at every witness holding
    *  it; read once. */
-  private rootPlaces(declaration: ConditionedDeclaration, witness: Witness): PlaceMap {
+  private rootPlaces(declaration: ConditionedDeclaration, witness: World): PlaceMap {
     let known = this.roots.get(declaration);
     if (!known) {
       const places = this.input.union.project(declaration.manifest, witness.assignment, witness.forcing).places;
@@ -534,17 +666,13 @@ export class KeyParts {
     return known;
   }
 
-  private templateVariantId(variant: number): number {
-    return this.input.templates ? Math.min(variant, Math.max(this.input.templates.variantCount - 1, 0)) : 0;
-  }
-
-  private variantIdOf(variant: DefinitionVariant): number {
-    let id = this.variantIds.get(variant);
-    if (id === undefined) this.variantIds.set(variant, (id = this.nextVariantId++));
+  private projectionIdOf(projection: DefinitionProjection): number {
+    let id = this.projectionIds.get(projection);
+    if (id === undefined) this.projectionIds.set(projection, (id = this.nextProjectionId++));
     return id;
   }
 
-  private outcomeAt(lookup: Lookup, witness: Witness): ResolutionOutcome {
+  private outcomeAt(lookup: Lookup, witness: World): ResolutionOutcome {
     const { names } = this.input;
     if (lookup.locate) {
       return names.locateAt(lookup.population, lookup.name, lookup.locate.fromModule, lookup.locate.within, witness).outcome;
@@ -556,17 +684,20 @@ export class KeyParts {
     declaration: ConditionedDeclaration,
     projection: Projected,
     template: TemplateVariantOf | undefined,
-    witness: Witness,
+    witness: World,
   ): DeclarationPart {
     const { defs, aliases, aliasesByModule } = this.input;
     const root = this.position.get(declaration)!;
     const written = template ? template.variant.expansion.definition : (projection.value as ResourceManifest);
-    const list = normalizeInlineResources([written], defs, aliases, aliasesByModule, (definition, entry, keys) =>
-      template && templateKeyOf(definition) === templateKeyOf(written) ? emittedInlineName(template.variant.expansion, ["resources", entry, ...keys]) : undefined,
-    );
     const lookups: Lookup[] = [];
-    resolveRefSentinels(list, aliases, aliasesByModule, this.recordingResolution(witness, lookups), defs);
-    const collected = collectScopeMembers(list, (d) => defs.referenceSites(d, aliases, aliasesByModule));
+    const slots: SlotLookup[] = [];
+    const { list, collected } = this.atWitness(witness, slots, () => {
+      const list = normalizeInlineResources([written], defs, aliases, aliasesByModule, (definition, entry, keys) =>
+        template && templateKeyOf(definition) === templateKeyOf(written) ? emittedInlineName(template.variant.expansion, ["resources", entry, ...keys]) : undefined,
+      );
+      resolveRefSentinels(list, aliases, aliasesByModule, this.recordingResolution(witness, lookups), defs);
+      return { list, collected: collectScopeMembers(list, (d) => defs.referenceSites(d, aliases, aliasesByModule)) };
+    });
     // Extraction places what it draws out breadth first, so a declaration's
     // depth below the one written orders it as the whole list's pass would.
     const depthOf = new Map<string, number>();
@@ -580,22 +711,53 @@ export class KeyParts {
     const members = collected.analysed.map((member) => member.declaration);
     members.forEach((m, i) => ranks.set(m, [1, 0, root, i]));
     const manifests = [...list, ...members];
-    resolveSchemaTypeRefs(manifests, aliases, aliasesByModule, defs);
+    // A kind document is read as written: its canonical form is the registry's.
+    resolveSchemaTypeRefs(manifests.filter((m) => !isKindDocument(m)), aliases, aliasesByModule, defs);
     return {
       declaration,
       projection,
       manifests,
+      raw: written,
       members: collected.analysed,
       kindMembers: collected.kindDocuments,
       ...(template ? { template } : {}),
-      fixed: lookups.every((lookup) => lookup.fixed),
+      fixed: lookups.every((lookup) => lookup.fixed) && slots.length === 0,
       lookups,
+      slots,
     };
+  }
+
+  /**
+   * `body` with the reference reach decided at `witness`: a slot a varying
+   * named shape declares — a cut point of the declaration — held where its
+   * condition holds there, each decision recorded in `slots`, so a part is
+   * reused only where every slot it read is decided alike.
+   */
+  private atWitness<T>(witness: World, slots: SlotLookup[], body: () => T): T {
+    const { varying, defs, union } = this.input;
+    if (!varying) return body();
+    const seen = new Map<Condition, boolean>();
+    const holds = (condition: Condition): boolean => {
+      if (condition === TRUE) return true;
+      const known = seen.get(condition);
+      if (known !== undefined) return known;
+      const held = union.space.holds(condition, witness.assignment);
+      seen.set(condition, held);
+      slots.push({ condition, held });
+      return held;
+    };
+    return defs.withDecidedReach(varying, holds, body, holds);
+  }
+
+  /** Whether every slot `slots` recorded is decided at `witness` as it was. */
+  private sameSlots(slots: readonly SlotLookup[], witness: World): boolean {
+    const { space } = this.input.union;
+    return slots.every((slot) => space.holds(slot.condition, witness.assignment) === slot.held);
   }
 
   /** The resolution `!ref` stamps are taken from at `witness`, recording each
    *  lookup and whether its outcome is the same at every witness. */
-  private recordingResolution(witness: Witness, lookups: Lookup[]): RefResolution {
+  private recordingResolution(witness: World, lookups: Lookup[]): RefResolution {
     const { names } = this.input;
     const population = (p: NamePopulation): NameResolution => ({
       locate: (name, fromModule, within, accept) => {

@@ -1,0 +1,14 @@
+# A library whose inline declaration writes `metadata.module` by hand in a
+# branch its importer's value does not take: refused at the import all the same.
+kind: Telo.Library
+metadata: { name: NestedStampChoiceLib }
+variables: { flag: { type: boolean } }
+---
+kind: Telo.Sequence
+metadata: { name: job }
+steps:
+  - name: answer
+    invoke: !if
+      if: !cel "variables.flag"
+      then: { kind: Telo.Value, metadata: { module: Elsewhere }, value: 1 }
+      else: { kind: Telo.Value, value: 2 }

@@ -1,0 +1,16 @@
+units:
+  analyzer: Added
+body: "For module authors: `AnalysisOptions` gains `positions`
+  (`collectFilePositions(graph)`), `ReferrerVerdict` carries `at` and
+  `LoadedGraph.metadataDiagnostics` the stamp refusals; `ChoiceReading.configurations`
+  is replaced by `firstConfiguration`, a `ConfigurationDiagnostic`'s `configurations` is
+  a list of product blocks and `mergeConfigurationDiagnostics` no longer takes the
+  configurations; `InputRequirements` no longer carries `configurations`;
+  `withoutRefusedExpansionConsequences` is no longer exported, and
+  `validateModuleArtifact` / `validateCallableDeclarations` are replaced by their halves
+  (`validateControllerSelectorDocuments` / `validateModuleDocumentArtifact`,
+  `validateCallableKindDocuments` / `validateCallableInstances`).
+  `withoutCoveredDependencyFindings` is no longer exported (`analyzeLoadedGraph`'s
+  `diagnostics` is the covered list), `Witness` is replaced by `World`,
+  `StandInJudgment` by `SchemaJudgment`, and `judgeSchemaFindings` replaces
+  `reduceSchemaErrors` and `withoutStandInFindings`."

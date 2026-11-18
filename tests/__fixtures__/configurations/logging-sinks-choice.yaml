@@ -1,0 +1,13 @@
+# A sink the application attaches, declared by a choice: `on_full: block` is
+# unsupported, refused only in the configurations taking the branch that writes it.
+kind: Telo.Application
+metadata: { name: LoggingSinksChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+logging:
+  sinks:
+    - !ref console
+--- !if
+metadata: { name: console }
+if: !cel "variables.flag1"
+then: { kind: Telo.ConsoleSink, on_full: block }
+else: { kind: Telo.ConsoleSink, on_full: drop_new }

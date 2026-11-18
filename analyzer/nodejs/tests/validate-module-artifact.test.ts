@@ -1,7 +1,8 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
-import { validateModuleArtifact } from "../src/validate-module-artifact.js";
+import { observeDocumentStages } from "../src/cel-site-judgements.js";
+import { validateControllerSelectorDocuments, validateModuleDocumentArtifact } from "../src/validate-module-artifact.js";
 import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 
 const definition = (name: string, controllers: string[]): ResourceManifest =>
@@ -18,11 +19,54 @@ const owner = (layers: unknown): ResourceManifest =>
     layers,
   }) as unknown as ResourceManifest;
 
-const codes = (manifests: ResourceManifest[]) =>
-  validateModuleArtifact(manifests).map((d) => d.code);
+const validateModuleArtifact = (manifests: ResourceManifest[]) => [
+  ...validateModuleDocumentArtifact(manifests),
+  ...validateControllerSelectorDocuments(manifests),
+];
+
+const codes = (manifests: ResourceManifest[]) => validateModuleArtifact(manifests).map((d) => d.code);
 
 const VALID_BLOB = `sha256:${"a".repeat(64)}`;
 const VALID_INTEGRITY = `sha256-${"A".repeat(43)}`;
+
+describe("controller selectors are read off kind documents only", () => {
+  const malformed = "pkg:telo/local/napi?path=./rust/c.node&architecture=arm64";
+  const library = { kind: "Telo.Library", metadata: { name: "demo", source: "file:///demo/telo.yaml" } };
+
+  it("does not judge a `controllers` value a resource of a kind holds", () => {
+    const diagnostics = new StaticAnalyzer().analyze(
+      withSyntheticPositions([
+        library,
+        {
+          kind: "Telo.Definition",
+          metadata: { name: "Holder", module: "demo", source: "file:///demo/telo.yaml" },
+          capability: "Telo.Invocable",
+          controllers: ["pkg:npm/demo@1.0.0?local_path=./nodejs#demo"],
+          schema: { type: "object", properties: { controllers: { type: "array", items: { type: "string" } } } },
+        },
+        { kind: "Holder", metadata: { name: "h", module: "demo", source: "file:///demo/telo.yaml" }, controllers: [malformed] },
+      ] as unknown as ResourceManifest[]),
+    );
+    expect(diagnostics.filter((d) => d.code?.startsWith("CONTROLLER_"))).toEqual([]);
+  });
+
+  it("judges a kind document's unknown qualifier once, evaluated once and in no run", () => {
+    const evaluations: boolean[] = [];
+    const stop = observeDocumentStages((stage, configurationRun) => {
+      if (stage === "controllerSelectors") evaluations.push(configurationRun);
+    });
+    let diagnostics;
+    try {
+      diagnostics = new StaticAnalyzer().analyze(
+        withSyntheticPositions([library, definition("K", [malformed])] as unknown as ResourceManifest[]),
+      );
+    } finally {
+      stop();
+    }
+    expect(diagnostics.filter((d) => d.code === "CONTROLLER_UNKNOWN_QUALIFIER")).toHaveLength(1);
+    expect(evaluations).toEqual([false]);
+  });
+});
 
 describe("controller selector qualifiers", () => {
   it("accepts the known qualifiers", () => {

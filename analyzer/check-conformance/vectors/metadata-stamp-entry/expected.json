@@ -1,0 +1,29 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "METADATA_RESERVED_FIELD",
+      "source": "telo-analyzer",
+      "message": "Telo.Definition/Greeter: 'metadata.module' is written by the loader — the module the document belongs to — and cannot be written in a manifest. Remove it.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Definition",
+          "name": "Greeter"
+        },
+        "filePath": "telo.yaml",
+        "path": "metadata.module"
+      },
+      "range": {
+        "start": {
+          "line": 4,
+          "character": 35
+        },
+        "end": {
+          "line": 4,
+          "character": 44
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_METADATA_RESERVED_FIELD] telo.yaml: Telo.Definition/Greeter: 'metadata.module' is written by the loader — the module the document belongs to — and cannot be written in a manifest. Remove it.\n  [ERR_METADATA_RESERVED_FIELD] Telo.Definition/Greeter: 'metadata.module' is written by the loader — the module the document belongs to — and cannot be written in a manifest. Remove it."
+}

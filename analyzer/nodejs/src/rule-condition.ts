@@ -244,9 +244,6 @@ export type CompiledRule =
       identityReads: readonly (readonly string[])[];
       /** The module functions it calls, as written (`Self.fits`). */
       calls: readonly string[];
-      /** The members of `self` a presence test asks about (`has(self.port)`),
-       *  which the read chains record only as a test on `self`'s keys. */
-      rootPresence: readonly string[];
     }
   | { reason: string };
 
@@ -277,19 +274,6 @@ function calledFunctions(root: CelNode): string[] {
   const walk = (node: CelNode): void => {
     const call = moduleCallOf(node);
     if (call) out.add(call.qualified);
-    for (const child of childNodes(node)) walk(child);
-  };
-  walk(root);
-  return [...out];
-}
-
-function rootPresenceMembers(root: CelNode): string[] {
-  const out = new Set<string>();
-  const walk = (node: CelNode): void => {
-    if (node.kind === "call" && node.name === "has" && node.args.length === 1) {
-      const arg = node.args[0]!;
-      if (arg.kind === "select" && !arg.optional && arg.operand.kind === "ident" && arg.operand.name === "self") out.add(arg.field);
-    }
     for (const child of childNodes(node)) walk(child);
   };
   walk(root);
@@ -343,7 +327,6 @@ export function compileRuleCondition(
       reads,
       identityReads: reads.filter((chain) => !beyond.has(JSON.stringify(chain))),
       calls: calledFunctions(parsed.root),
-      rootPresence: rootPresenceMembers(parsed.root),
     };
   }
   if (compiledRules.size >= RULE_CACHE_LIMIT) {

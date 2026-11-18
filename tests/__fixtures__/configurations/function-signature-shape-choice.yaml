@@ -1,0 +1,39 @@
+# A function whose signature names a shape that varies: `Money` is a string
+# where flag1 holds and an object with an `amount` elsewhere, so reading
+# `amount` off the result is refused where flag1 holds, and only there; the
+# argument `pay` passes to `charge` fits `Money` only where flag1 does not.
+kind: Telo.Application
+metadata: { name: FunctionSignatureShape }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Money }
+schema: !if
+  if: !cel "variables.flag1"
+  then: { type: string }
+  else: { type: object, properties: { amount: { type: integer } }, required: [amount] }
+---
+kind: Telo.Function
+metadata: { name: price }
+params:
+  - { name: n, schema: { type: integer } }
+returns: { schema: !ref Money }
+body: !if
+  if: !cel "variables.flag1"
+  then: !cel "string(n)"
+  else: !cel "{'amount': n}"
+---
+kind: Telo.Function
+metadata: { name: charge }
+params:
+  - { name: money, schema: !ref Money }
+returns: { schema: { type: boolean } }
+body: !cel "true"
+---
+kind: Telo.Value
+metadata: { name: total }
+value: !cel "Self.price(1).amount"
+---
+kind: Telo.Value
+metadata: { name: pay }
+value: !cel "Self.charge({'amount': 2})"

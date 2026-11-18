@@ -1,0 +1,33 @@
+# A choice inside a branch no configuration takes: the option the branch's
+# baseline does not take is checked too, with both forced, and what is found
+# there holds in no configuration.
+kind: Telo.Application
+metadata: { name: DeadBranchNestedOption, version: 1.0.0 }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets:
+  - !ref main
+---
+kind: Telo.Value
+metadata: { name: taker }
+inputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, properties: { b: { type: string } } }
+value: 1
+--- !if
+metadata: { name: main }
+if: !cel "module.version == '1.0.0'"
+then:
+  kind: Telo.Sequence
+  steps:
+    - { name: idle, value: 1 }
+else:
+  kind: Telo.Sequence
+  steps:
+    - !if
+      if: !cel "variables.flag1"
+      then:
+        name: call
+        invoke: !ref taker
+        when: 5
+        inputs: { b: !cel "1 + 'x'" }
+      else: { name: call, value: 2 }

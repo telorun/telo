@@ -1,0 +1,5 @@
+units:
+  sdk: Added
+body: "The built-in module and kind metadata no longer list `metadata.module` and
+  `metadata.source` as fields an author may write: the loader writes them, and one
+  written by hand is refused."

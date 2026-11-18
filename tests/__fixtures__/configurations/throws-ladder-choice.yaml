@@ -1,0 +1,47 @@
+# A server renders what reaches it through the routers it mounts, one of them
+# mounted only where `variables.flag1` holds; a sequence's try block invokes a
+# second operation only where `variables.flag2` holds, and its catch rethrows.
+kind: Telo.Application
+metadata: { name: ThrowsLadderChoice }
+imports: { T: ./throws/kinds }
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+  flag2: { env: FLAG_2, type: boolean, default: false }
+---
+kind: T.FailA
+metadata: { name: failA }
+---
+kind: T.FailB
+metadata: { name: failB }
+---
+kind: Telo.Sequence
+metadata: { name: seq }
+steps:
+  - name: guarded
+    try:
+      - { name: first, invoke: !ref failA }
+      - !if
+        if: !cel "variables.flag2"
+        then: { name: second, invoke: !ref failB }
+    catch:
+      - { name: again, rethrow: {} }
+---
+kind: T.Router
+metadata: { name: always }
+routes:
+  - handler: !ref failA
+---
+kind: T.Router
+metadata: { name: sometimes }
+routes:
+  - handler: !ref seq
+---
+kind: T.Server
+metadata: { name: server }
+mounts:
+  - !ref always
+  - !if
+    if: !cel "variables.flag1"
+    then: !ref sometimes
+catches:
+  - { status: 500 }

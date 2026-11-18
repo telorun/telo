@@ -7,6 +7,7 @@ import type { ModuleDocuments } from "./module-documents.js";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { isKindDocument } from "./kind-declaration.js";
 import type { SchemaIssue } from "./schema-error-report.js";
+import type { WrittenAt } from "./diagnostic-identity.js";
 import { importAnchoredDiagnostic, type ImportReach } from "./reaching-import.js";
 import { declaredScopes, isScopeMember } from "./scope-declarations.js";
 import type { ScopeMember } from "./scope-members.js";
@@ -15,7 +16,7 @@ import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 const SOURCE = "telo-analyzer";
 
 /** The two kind documents whose own grammar the roster and the entry schema judge. */
-type KindDocumentKind = "Telo.Definition" | "Telo.Abstract";
+export type KindDocumentKind = "Telo.Definition" | "Telo.Abstract";
 
 const isDeclarationDocument = (m: { kind?: unknown }): boolean =>
   m.kind === "Telo.Application" ||
@@ -44,40 +45,19 @@ const isDeclarationDocument = (m: { kind?: unknown }): boolean =>
  * the consumer can change.
  *
  * Browser-safe.
+ *
+ * Two stages: the entry's own scope members, each reported at itself, and each
+ * imported library's.
  */
-export function validateScopedKindDocuments(
+export function validateScopedKindMembers(
   /** The kind documents the analysis recorded as scope members. */
   members: readonly ScopeMember[],
-  /** Every imported library's full documents (`AnalysisOptions.moduleDocuments`). */
-  libraries: readonly ModuleDocuments[],
-  registry: DefinitionRegistry,
-  aliases: AliasResolver,
-  aliasesByModule: Map<string, AliasResolver>,
   rootModules: ReadonlySet<string>,
-  reach: ImportReach,
   /** The document's findings against its built-in entry's schema. */
   validate: (member: ResourceManifest, kind: KindDocumentKind) => SchemaIssue[],
 ): AnalysisDiagnostic[] {
   const out: AnalysisDiagnostic[] = [];
-
-  /** One refusal: its code, its message, and the member path it was found at. */
-  type Report = (code: string, message: string, path: string, quotedPlace?: QuotedPlace[]) => void;
-
-  const judge = (member: ResourceManifest, kind: KindDocumentKind, report: Report): void => {
-    const label = `${kind} '${member.metadata.name}'`;
-    const capability = capabilityProblem(
-      (member as Record<string, unknown>).capability,
-      (member as Record<string, unknown>).extends !== undefined,
-    );
-    if (capability) report(capability.code, `${label}: ${capability.message}`, "capability");
-    for (const issue of validate(member, kind)) {
-      if (capability && issue.path === "capability") continue;
-      const quoted = quotingIssue(`${kind}/${member.metadata.name}: `, issue, issue.path);
-      report("SCHEMA_VIOLATION", quoted.message, issue.path, quoted.quotedPlace);
-    }
-  };
-  const kindOf = (m: ResourceManifest): KindDocumentKind | undefined =>
-    m.kind === "Telo.Definition" || m.kind === "Telo.Abstract" ? m.kind : undefined;
+  const judge = scopedKindJudge(validate);
 
   for (const { declaration } of members) {
     const kind = kindOf(declaration);
@@ -96,11 +76,57 @@ export function validateScopedKindDocuments(
       }),
     );
   }
+  return out;
+}
+
+/** One refusal: its code, its message, and the member path it was found at. */
+type Report = (code: string, message: string, path: string, quotedPlace?: QuotedPlace[]) => void;
+
+const kindOf = (m: ResourceManifest): KindDocumentKind | undefined =>
+  m.kind === "Telo.Definition" || m.kind === "Telo.Abstract" ? m.kind : undefined;
+
+function scopedKindJudge(
+  validate: (member: ResourceManifest, kind: KindDocumentKind) => SchemaIssue[],
+): (member: ResourceManifest, kind: KindDocumentKind, report: Report) => void {
+  return (member, kind, report) => {
+    const label = `${kind} '${member.metadata.name}'`;
+    const capability = capabilityProblem(
+      (member as Record<string, unknown>).capability,
+      (member as Record<string, unknown>).extends !== undefined,
+    );
+    if (capability) report(capability.code, `${label}: ${capability.message}`, "capability");
+    for (const issue of validate(member, kind)) {
+      if (capability && issue.path === "capability") continue;
+      const quoted = quotingIssue(`${kind}/${member.metadata.name}: `, issue, issue.path);
+      report("SCHEMA_VIOLATION", quoted.message, issue.path, quoted.quotedPlace);
+    }
+  };
+}
+
+/** Every imported library's full documents (`AnalysisOptions.moduleDocuments`),
+ *  each refusal reported at the `imports:` entry reaching the library. */
+export function validateLibraryScopedKindDocuments(
+  libraries: readonly ModuleDocuments[],
+  registry: DefinitionRegistry,
+  aliases: AliasResolver,
+  aliasesByModule: Map<string, AliasResolver>,
+  rootModules: ReadonlySet<string>,
+  reach: ImportReach,
+  validate: (member: ResourceManifest, kind: KindDocumentKind) => SchemaIssue[],
+): AnalysisDiagnostic[] {
+  const out: AnalysisDiagnostic[] = [];
+  const judge = scopedKindJudge(validate);
 
   /** Every scope member beneath a library's `root`, at any depth, read in the
-   *  aliases of the library. */
-  const judgeLibraryScopes = (root: ResourceManifest, module: string, report: Report): void => {
-    const visit = (declaration: ResourceManifest): void => {
+   *  aliases of the library, each refusal with the place in `root` the
+   *  library's own check reports it at (`with[0].capability`). */
+  const judgeLibraryScopes = (
+    root: ResourceManifest,
+    module: string,
+    report: (code: string, message: string, written: WrittenAt) => void,
+  ): void => {
+    const meta = root.metadata as { name?: unknown; source?: string };
+    const visit = (declaration: ResourceManifest, at: string): void => {
       const view =
         typeof declaration.metadata?.module !== "string"
           ? ({ ...declaration, metadata: { ...declaration.metadata, module } } as ResourceManifest)
@@ -108,15 +134,23 @@ export function validateScopedKindDocuments(
       for (const scope of declaredScopes(
         registry.referenceSites(view, aliases, aliasesByModule, declaration),
       )) {
-        for (const member of scope.declarations) {
-          if (!isScopeMember(member)) continue;
+        scope.declarations.forEach((member, index) => {
+          if (!isScopeMember(member)) return;
+          const place = joinPath(at, `${scope.path}[${index}]`);
           const kind = kindOf(member);
-          if (kind) judge(member, kind, report);
-          else visit(member);
-        }
+          if (kind) {
+            judge(member, kind, (code, message, path) =>
+              report(code, message, {
+                resource: { kind: root.kind, name: meta.name },
+                filePath: meta.source,
+                path: joinPath(place, path),
+              }),
+            );
+          } else visit(member, place);
+        });
       }
     };
-    visit(root);
+    visit(root, "");
   };
 
   /** A document that may declare scopes: a named resource, never a module,
@@ -130,11 +164,18 @@ export function validateScopedKindDocuments(
     if (!via) continue;
     for (const root of library.manifests) {
       if (!scopeHolder(root)) continue;
-      judgeLibraryScopes(root, library.module, (code, message) =>
-        out.push(importAnchoredDiagnostic(code, library.module, via, message)),
+      judgeLibraryScopes(root, library.module, (code, message, written) =>
+        out.push(importAnchoredDiagnostic(code, library.module, via, message, written)),
       );
     }
   }
 
   return out;
+}
+
+/** `path` beneath `at`, as a scope member's place in its holder is written. */
+function joinPath(at: string, path: string): string {
+  if (!at) return path;
+  if (!path) return at;
+  return path.startsWith("[") ? `${at}${path}` : `${at}.${path}`;
 }

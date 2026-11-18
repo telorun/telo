@@ -1,0 +1,6 @@
+# A library asking its importer for two host paths.
+kind: Telo.Library
+metadata: { name: HostPathImportLib }
+variables:
+  root: { type: string, x-telo-type: Telo.HostPath }
+  extra: { type: string, x-telo-type: Telo.HostPath }

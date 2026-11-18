@@ -1,0 +1,44 @@
+# A resource rule over a list a choice empties, and a referrer rule whose only
+# referrer a choice declares: each rule is unexercised only where its choice
+# leaves it nothing to meet.
+kind: Telo.Application
+metadata: { name: RuleUnexercisedChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.Definition
+metadata: { name: Table }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties:
+    columns: { type: array, items: { type: object, properties: { name: { type: string } } } }
+  x-telo-resource-rules:
+    - in: /columns
+      condition: !cel "this.name != ''"
+      code: COLUMN_NAMED
+      message: names no column.
+  x-telo-referrer-rules:
+    - referrer: Self.Reader
+      condition: !cel "has(referrer.table)"
+      code: READER_TABLE
+      message: reads no table.
+---
+kind: Telo.Definition
+metadata: { name: Reader }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties: { table: { x-telo-ref: { kind: Self.Table, use: dependency } } }
+---
+kind: Self.Table
+metadata: { name: table }
+columns: !if
+  if: !cel "variables.flag1"
+  then: [{ name: id }]
+  else: []
+--- !if
+metadata: { name: reader }
+if: !cel "variables.flag1"
+then: { kind: Self.Reader, table: !ref table }

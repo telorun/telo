@@ -252,7 +252,7 @@ function governingThrows(definition: ResourceDefinition, ctx: ResolveCtx): Throw
 
 /** The codes a definition contributes to a union: none for a kind no caller
  *  dispatches and catches, whose `throws.codes` only name what it answers with. */
-function codesFromDefinition(definition: ResourceDefinition, ctx: ResolveCtx): Map<string, ThrowsCodeMeta> {
+export function codesFromDefinition(definition: ResourceDefinition, ctx: ResolveCtx): Map<string, ThrowsCodeMeta> {
   const out = new Map<string, ThrowsCodeMeta>();
   if (!dispatchesThrows(definition, defResolverFor(ctx))) return out;
   const raw = governingThrows(definition, ctx)?.codes ?? {};
@@ -857,31 +857,34 @@ function resolveCodeExpression(
   codeInput: unknown,
   enclosingTryCodes: Set<string> | undefined,
 ): ThrowsUnion {
+  const reading = readCodeExpression(codeInput);
+  if (reading.form === "code") return { codes: new Map([[reading.code, {}]]), unbounded: false };
+  if (reading.form === "caught") return caughtCodesUnion(enclosingTryCodes);
+  return { codes: new Map(), unbounded: true };
+}
+
+/** What a `code:` value names: one literal code, the caught failure's code
+ *  (`error.code`), or anything the analyzer cannot enumerate. */
+export function readCodeExpression(
+  codeInput: unknown,
+): { form: "code"; code: string } | { form: "caught" } | { form: "unknown" } {
   // A `!cel`-tagged sentinel and a `${{ … }}` string must resolve identically —
   // normalize both to the inner CEL expression (or a bare literal code).
   let expr: string;
   if (isTaggedSentinel(codeInput)) {
-    if (codeInput.engine !== "cel") return { codes: new Map(), unbounded: true };
+    if (codeInput.engine !== "cel") return { form: "unknown" };
     expr = codeInput.source.trim();
   } else if (typeof codeInput === "string" && codeInput.length > 0) {
     const match = codeInput.match(/^\s*\$\{\{\s*([\s\S]+?)\s*\}\}\s*$/);
-    if (!match) {
-      return { codes: new Map([[codeInput, {}]]), unbounded: false };
-    }
+    if (!match) return { form: "code", code: codeInput };
     expr = match[1].trim();
   } else {
-    return { codes: new Map(), unbounded: true };
+    return { form: "unknown" };
   }
-
   const litMatch = expr.match(/^'([^']+)'$|^"([^"]+)"$/);
-  if (litMatch) {
-    const code = litMatch[1] ?? litMatch[2]!;
-    return { codes: new Map([[code, {}]]), unbounded: false };
-  }
-
-  if (expr === "error.code") return caughtCodesUnion(enclosingTryCodes);
-
-  return { codes: new Map(), unbounded: true };
+  if (litMatch) return { form: "code", code: litMatch[1] ?? litMatch[2]! };
+  if (expr === "error.code") return { form: "caught" };
+  return { form: "unknown" };
 }
 
 /** The codes a caught failure may carry: the enclosing try's, or unbounded

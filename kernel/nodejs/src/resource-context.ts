@@ -74,6 +74,9 @@ import {
   isInlineDeclaration,
   isResolvedReference,
   resolvedReference,
+  judgeSchemaFindings,
+  registeredDocument,
+  SchemaNodeValidator,
   type ResolvedReference,
   type SchemaIssue,
   type AnalysisRegistry,
@@ -94,7 +97,6 @@ import {
 } from "./need-resolution.js";
 import { handleOfInstance, mintResourceHandle } from "./resource-handle.js";
 import { declarationNamedBy } from "./co-referrer-index.js";
-import { CanonicalSlotKinds } from "./canonical-slot-kinds.js";
 import * as path from "path";
 import { pathToFileURL } from "url";
 import { bigIntView } from "./bigint-schema-view.js";
@@ -131,6 +133,7 @@ import { acceptsBy, buildMembersValues, membersEntryText, membersIssues } from "
 import type { LateTexts } from "./text-records.js";
 import type { RunRedaction } from "./scope-run-redaction.js";
 import { INBOUND_ABANDONED, INBOUND_COMPLETED, rootOwner } from "./held-streams.js";
+import { refuseWrittenStamps } from "./metadata-stamp-refusals.js";
 
 const Ajv = AjvModule.default ?? AjvModule;
 
@@ -542,9 +545,32 @@ export class ResourceContextImpl implements ResourceContext {
     const { view, context } = bigIntView(stripCompiledValues(value, effective));
     const isValid = validate(view, context);
     if (!isValid) {
+      // The verbose twin the refusal's unions are decided on.
+      let nodes: SchemaNodeValidator | undefined;
+      const nodesOf = (): SchemaNodeValidator => {
+        if (!nodes) {
+          const twin = new Ajv({ allErrors: true, strict: false, verbose: true });
+          addFormats.default(twin);
+          registerTeloKeywords(twin);
+          nodes = new SchemaNodeValidator(twin, {
+            resolveReference: (id) => registeredDocument(ajv, id),
+            run: (check, value) => {
+              const normalized = bigIntView(value);
+              return check(normalized.view, normalized.context);
+            },
+          });
+        }
+        return nodes;
+      };
+      const findings = judgeSchemaFindings(validate.errors, {
+        value: view,
+        schema: effective,
+        validate: (node, at) => nodesOf().findingsFor(effective)(node, at),
+        reference: (node, ref) => nodesOf().reference(node, ref),
+      });
       throw new RuntimeError(
         "ERR_INVALID_VALUE",
-        `[${this.metadata.name}] Invalid value. Error: ${formatAjvErrors(validate.errors, view)}`,
+        `[${this.metadata.name}] Invalid value. Error: ${formatAjvErrors(findings, view)}`,
       );
     }
   }
@@ -1022,19 +1048,10 @@ export class ResourceContextImpl implements ResourceContext {
         `${label}: '${slot}' names no declaration this resource can reach, so it has no co-referrers.`,
       );
     }
-    // Canonical, read in the module that wrote the slot, as the index compares it.
-    const registry = this.kernel.getAnalysisRegistry();
-    const own = registry.resolveDefinition(this.#resolvedKind ?? "");
-    const coKind = own
-      ? new CanonicalSlotKinds(
-          (kind, module) => registry.resolveDefinitionIn(kind, module),
-          (definition) => registry.effectiveKindOf(definition)?.schema,
-        ).kindAt(
-          own,
-          String(site.keys[0]),
-          written.kind,
-        )
-      : undefined;
+    // The sites are read off the registry's copies, which hold the kind
+    // canonical in the module that wrote the slot, as the index compares it.
+    const named = this.kernel.getAnalysisRegistry().resolveDefinition(written.kind);
+    const coKind = named ? `${named.metadata.module}.${named.metadata.name}` : undefined;
     if (!coKind) {
       throw new RuntimeError(
         "ERR_REF_UNRESOLVED",
@@ -1220,12 +1237,14 @@ export class ResourceContextImpl implements ResourceContext {
       hasInlineProperties || (!hasExplicitName && resourceName !== undefined);
 
     if (shouldRegister) {
+      // The declaration is this resource's module's: every stamp is written here.
+      refuseWrittenStamps(resource, `[${this.metadata.name}] the inline ${kind} '${name}'`);
       this.registerManifest({
         ...resource,
         metadata: {
+          ...resource.metadata,
           name,
           module: this.metadata.module,
-          ...resource.metadata,
         },
       });
     }
@@ -1353,6 +1372,12 @@ export class ResourceContextImpl implements ResourceContext {
 
   registerDefinition(def: any, canonicalExtends?: string) {
     this.kernel.registerResourceDefinition(def, canonicalExtends);
+  }
+
+  /** The copy the analysis registry would register for `def` — what a guard
+   *  judging the definition before it is admitted reads. */
+  registeredFormOf(def: ResourceDefinition, canonicalExtends?: string): ResourceDefinition {
+    return this.kernel.getAnalysisRegistry().registeredFormOf(def, canonicalExtends);
   }
 
   getControllerPolicy(): ControllerPolicy | undefined {

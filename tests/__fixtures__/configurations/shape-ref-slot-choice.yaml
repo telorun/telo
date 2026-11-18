@@ -1,0 +1,14 @@
+# A named shape whose schema writes a reference slot a choice decides: the
+# slot declares no `use` only in the configurations taking the branch.
+kind: Telo.Application
+metadata: { name: ShapeRefSlotChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Shape }
+schema:
+  type: object
+  properties:
+    x: !if
+      if: !cel "variables.flag1"
+      then: { x-telo-ref: { kind: Telo.Invocable } }

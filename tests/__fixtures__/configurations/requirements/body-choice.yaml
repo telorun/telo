@@ -1,0 +1,28 @@
+# A variable read only inside a template body's branch chosen by another
+# variable: required exactly where that branch is taken.
+kind: Telo.Application
+metadata: { name: BodyChoiceRequirement }
+variables: { x: { env: X, type: boolean, default: false }, y: { env: Y, type: string } }
+targets:
+  - !ref job
+---
+kind: Telo.Definition
+metadata: { name: Job }
+capability: Telo.Runnable
+schema: { type: object, properties: {} }
+resources:
+  - !if
+    metadata: { name: steps }
+    if: !cel "variables.x"
+    then:
+      kind: Telo.Sequence
+      steps:
+        - name: read
+          value: !cel "variables.y"
+    else:
+      kind: Telo.Sequence
+      steps: [{ name: idle, value: 0 }]
+run: !ref steps
+---
+kind: BodyChoiceRequirement.Job
+metadata: { name: job }

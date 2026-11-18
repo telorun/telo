@@ -1,0 +1,20 @@
+# A template body choosing on a module input that nothing outside a body reads:
+# the input is a configuration of the application, which 'within' keeps or
+# drops the branch's finding by.
+kind: Telo.Application
+metadata: { name: TemplateBodyInputChoice, version: 1.0.0 }
+variables: { x: { env: X, type: boolean, default: false } }
+imports: { Kinds: ../resource-inputs/optional/kinds }
+---
+kind: Telo.Definition
+metadata: { name: Wrapper }
+capability: Telo.Provider
+schema: { type: object, properties: {} }
+resources:
+  - { kind: Kinds.Store, metadata: { name: store }, label: store }
+  - !if
+    metadata: { name: inner }
+    if: !cel "variables.x"
+    then: { kind: Kinds.Holder, store: !ref missing }
+    else: { kind: Kinds.Holder, store: !ref store }
+provide: !ref inner

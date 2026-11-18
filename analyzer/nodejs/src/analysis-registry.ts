@@ -32,7 +32,8 @@ import type { NamedContractShape } from "./validate-value-schema-location.js";
 import { createResolveCtx, resolveThrowsUnion } from "./resolve-throws-union.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { refSlotOfEntry, type ReachPosition, type ReachSite } from "./reference-reach.js";
-import { resolveSchemaTypeRefs as resolveSchemaTypeRefsIn } from "./resolve-schema-type-refs.js";
+import { registeredDefinitionForms, resolveSchemaTypeRefs as resolveSchemaTypeRefsIn } from "./resolve-schema-type-refs.js";
+import { cloneForMutation } from "./normalize-inline-resources.js";
 import type { AnalysisContext } from "./types.js";
 import type { LibraryDeclarations } from "./library-declarations.js";
 import type { ModuleDocuments } from "./module-documents.js";
@@ -196,8 +197,25 @@ export class AnalysisRegistry {
     );
   }
 
-  registerDefinition(def: ResourceDefinition): void {
-    this.defs.register(def);
+  /**
+   * The registration door: every definition, the analysis's and the kernel's,
+   * is registered here, and what is registered is the copy
+   * {@link registeredFormOf} derives — the kinds its annotations name and the
+   * named shapes it references canonical in its declaring module's scope,
+   * `extends` as `canonicalExtends`. `def` is never written to; the copy is
+   * returned, and is what the registry's answers read.
+   */
+  registerDefinition(def: ResourceDefinition, canonicalExtends?: string): ResourceDefinition {
+    const { kinds, registered } = registeredDefinitionForms(def, this.aliases, this.aliasesByModule, canonicalExtends);
+    this.defs.register(registered, def, kinds);
+    return registered;
+  }
+
+  /** The copy {@link registerDefinition} would register for `def`, derived
+   *  without registering it — for a guard judging a definition before it is
+   *  admitted. */
+  registeredFormOf(def: ResourceDefinition, canonicalExtends?: string): ResourceDefinition {
+    return registeredDefinitionForms(def, this.aliases, this.aliasesByModule, canonicalExtends).registered;
   }
 
   /** Changes with every definition registered through this registry or any of
@@ -226,19 +244,19 @@ export class AnalysisRegistry {
     return this.aliases.resolveKind(kind);
   }
 
-  /** Rewrite `telo://Self/<type>` / `telo://<Alias>/<type>` schema references in
-   *  `manifests` to the canonical id their type registered under, in the scope
-   *  each doc was declared in. Idempotent — an already-canonical ref resolves to
-   *  no module and is left alone.
+  /** Copies of `manifests` with `telo://Self/<type>` / `telo://<Alias>/<type>`
+   *  schema references rewritten to the canonical id their type registered under,
+   *  in the scope each doc was declared in; `manifests` are not written to.
    *
-   *  `analyze()` runs this over its own view; a caller holding a separately
+   *  `analyze()` does this to its own clone; a caller holding a separately
    *  flattened projection (the kernel's build-time validator warm, which must
-   *  resolve a `$ref` contract exactly as the runtime will) needs it applied to
-   *  that projection too. Exposed as a method because the alias tables are this
-   *  registry's, and handing them out would make every consumer's scoping its
-   *  own problem. */
-  resolveSchemaTypeRefs(manifests: ResourceManifest[]): void {
-    resolveSchemaTypeRefsIn(manifests, this.aliases, this.aliasesByModule, this.defs);
+   *  resolve a `$ref` contract exactly as the runtime will) takes copies here.
+   *  A method because the alias tables are this registry's, and handing them
+   *  out would make every consumer's scoping its own problem. */
+  withCanonicalSchemaTypeRefs(manifests: readonly ResourceManifest[]): ResourceManifest[] {
+    const copies = manifests.map(cloneForMutation) as ResourceManifest[];
+    resolveSchemaTypeRefsIn(copies, this.aliases, this.aliasesByModule, this.defs);
+    return copies;
   }
 
   /**

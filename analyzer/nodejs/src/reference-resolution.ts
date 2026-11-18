@@ -3,8 +3,8 @@
  * name learns what the name resolves to — one outcome per request, never a list
  * of declarations to search.
  *
- * Four builders take it: `!ref` resolution (`resolveRefSentinels`,
- * `resolveShapeRefs`), the consumer expander's `declarationAt`
+ * Three builders take it: `!ref` resolution (`resolveRefSentinels`), the
+ * consumer expander's `declarationAt`
  * (`readTemplateConsumers`), and a forward view's `fromSelf` crossing
  * (`buildTemplateForwardViews`). The kernel and the analysis of one
  * configuration fill it with the full-list resolver ({@link listResolution});

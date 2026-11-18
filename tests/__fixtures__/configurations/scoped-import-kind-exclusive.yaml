@@ -1,0 +1,30 @@
+# Two scoped imports of one alias, each present where the other is not: the
+# refusal names the one present.
+kind: Telo.Application
+metadata: { name: ScopedImportKindExclusive }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets: [!ref first, !ref second]
+---
+kind: Telo.Sequence
+metadata: { name: first }
+with: !if
+  if: !cel "variables.flag1"
+  then:
+    - { kind: Telo.Import, metadata: { name: Inner }, source: ./scoped-import-kind-lib }
+  else: []
+steps:
+  - { name: noop, value: 1 }
+---
+kind: Telo.Sequence
+metadata: { name: second }
+with: !if
+  if: !cel "variables.flag1"
+  then: []
+  else:
+    - { kind: Telo.Import, metadata: { name: Inner }, source: ./scoped-import-kind-lib }
+steps:
+  - { name: noop, value: 1 }
+---
+kind: Inner.Thing
+metadata: { name: shape }
+schema: { type: string }

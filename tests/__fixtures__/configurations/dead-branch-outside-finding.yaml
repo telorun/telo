@@ -1,0 +1,32 @@
+# A branch no configuration takes writes a field a rule of its declaration then
+# refuses at the declaration itself: the branch is checked with it forced, and
+# only what is found inside it is reported, never what forcing it makes of the
+# rest of the declaration.
+kind: Telo.Application
+metadata:
+  name: DeadBranchOutsideFinding
+  version: 1.0.0
+---
+kind: Telo.Definition
+metadata: { name: Gate }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties:
+    open: { type: boolean }
+    count: { type: integer }
+  x-telo-resource-rules:
+    - condition: !cel "!has(self.open)"
+      code: GATE_OPENED
+      message: The gate is opened.
+---
+kind: Self.Gate
+metadata: { name: gate }
+open: !if
+  if: !cel "module.version == '2.0.0'"
+  then: true
+count: !if
+  if: !cel "module.version == '2.0.0'"
+  then: text
+  else: 1

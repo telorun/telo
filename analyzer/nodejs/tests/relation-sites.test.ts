@@ -7,6 +7,7 @@ import { observeKeyCosts, observeRelationParity, type RelationParityReport } fro
 import {
   careIdentityNested,
   flagSequenceInTry,
+  flagSequenceInTryRefused,
   forwardedSequence,
   forwardedSequenceNested,
   generatedCorpus,
@@ -395,6 +396,37 @@ describe("a forward view's relation sites", () => {
     const inline = await keysPerSite("forwarded-sequence-inline-8.yaml", forwardedSequenceNested(8, "inline"));
     expect(inline.keys).toBeLessThanOrEqual(top.keys);
   }, 600_000);
+});
+
+describe("a union's schema site", () => {
+  /** The schema keys each site of the declaration `sequence` holds, by the
+   *  place its region is written at. */
+  const schemaKeys = async (name: string, text: string): Promise<Map<string, number>> => {
+    const loaded = await loadGenerated(name, text);
+    const keys = new Map<string, number>();
+    const stop = observeKeyCosts((cost) => {
+      if (cost.kind !== "schema") return;
+      const [, declaration, , written] = JSON.parse(cost.site) as unknown[];
+      if (declaration === "sequence") keys.set(JSON.stringify(written), (keys.get(JSON.stringify(written)) ?? 0) + 1);
+    });
+    try {
+      new StaticAnalyzer().analyze(loaded.manifests, { moduleDocuments: loaded.moduleDocuments });
+    } finally {
+      stop();
+    }
+    return keys;
+  };
+  // A union reads each site carved beneath it by its verdict per branch,
+  // folded over them all: the choices beneath split its key by verdict, never
+  // by their combination.
+  it("holds one key per verdict of the choices beneath it", async () => {
+    const tried = await schemaKeys("union-site-W-4.yaml", flagSequenceInTry(4));
+    expect(Math.max(...tried.values())).toBeLessThanOrEqual(2);
+    const outer = JSON.stringify(["steps", 0]);
+    const refused2 = await schemaKeys("union-site-Wf-2.yaml", flagSequenceInTryRefused(2));
+    const refused4 = await schemaKeys("union-site-Wf-4.yaml", flagSequenceInTryRefused(4));
+    expect(refused4.get(outer)).toBe(refused2.get(outer));
+  }, 120_000);
 });
 
 describe("a kind document's own key", () => {

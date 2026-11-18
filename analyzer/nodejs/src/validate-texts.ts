@@ -58,7 +58,10 @@ import { isResolvedReference } from "./resolved-reference.js";
 import { textKeysOf } from "./text-keys.js";
 import {
   missingTranslations,
+  missingTranslationsOver,
   servedLanguages,
+  type CoverageLogic,
+  type HeldMissing,
   type ShownKeyedSet,
   type ShownTexts,
   type TranslationLayer,
@@ -110,6 +113,8 @@ import { judgeDataValues, judgeDeclaredValues } from "./text-values.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
 const SOURCE = "telo-analyzer";
+
+export type TextDefResolver = DefResolver;
 
 type DefResolver = {
   (kind: string, from?: { metadata?: { module?: string } }): ResourceDefinition | undefined;
@@ -266,6 +271,8 @@ interface TextWriting {
   /** The module that wrote the walked value. */
   readonly module: string;
   readonly walk: TextWalk;
+  /** Its place among the manifest's writings. */
+  readonly order: number;
   /** True for a template body entry or a `base:` mapping, where a bare
    *  `self.<path>` forwards the consumer's value. */
   readonly forwards?: boolean;
@@ -274,9 +281,78 @@ interface TextWriting {
   readonly keyedCatalog?: unknown;
 }
 
-export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
-  const { manifests, rootModules, resolveDef, moduleDocuments } = options;
-  const scope = new TextLanguageScope(listRequests(manifests), rootModules, moduleDocuments);
+/** What a reading of one manifest needs beside the manifest. */
+export interface TextReaderOptions {
+  readonly resolveDef: DefResolver;
+  /** What each kind means along `extends`. */
+  readonly kinds: Pick<DefinitionRegistry, "effectiveSchemaOf">;
+  readonly scope: TextLanguageScope;
+  /** The CEL names of each module (`moduleCallNamesByModule`). */
+  readonly moduleCallNames: ReadonlyMap<string, ReadonlySet<string>>;
+  readonly schemaForId: TextPassOptions["schemaForId"];
+  readonly accepts: TextPassOptions["accepts"];
+  readonly valueKindAt?: TextPassOptions["valueKindAt"];
+  readonly producedSchemaAt?: TextPassOptions["producedSchemaAt"];
+  readonly writerAt?: TextPassOptions["writerAt"];
+  readonly bodyWroteWhole?: TextPassOptions["bodyWroteWhole"];
+  /** The parameters of what a qualified call written in `module` names. */
+  readonly paramsOf: (qualified: string, module: string) => readonly { name?: unknown; schema?: unknown }[];
+}
+
+/** One finding of a reading, with its place among the manifest's findings: the
+ *  writing it is found in, then that writing's section. */
+export interface TextFinding {
+  readonly diagnostic: AnalysisDiagnostic;
+  readonly order: readonly [number, number];
+}
+
+/** A text a module shows; `written` for a literal `Text` a translation counts. */
+export interface ShownText {
+  readonly module: string;
+  readonly key: string;
+  readonly written: boolean;
+  /** Its place among the manifest's, as {@link TextFinding.order}. */
+  readonly order: readonly [number, number];
+}
+
+/** A catalog a manifest holds, and the identity of each of its entries. */
+export interface CatalogRead {
+  readonly manifest: ResourceManifest;
+  readonly module: string;
+  readonly base: ValuePath;
+  readonly entries: readonly { readonly index: number; readonly key: string }[];
+  readonly order: readonly [number, number];
+}
+
+/** What reading one manifest's texts finds. */
+export interface ManifestTexts {
+  readonly findings: TextFinding[];
+  /** The texts it shows, in order. */
+  readonly shown: ShownText[];
+  /** The texts its calls pass at `Text` parameters, which a run takes after
+   *  every manifest's own. */
+  readonly called: ShownText[];
+  readonly catalogs: CatalogRead[];
+  /** Every place of the manifest a judgement read. */
+  readonly extents: ValuePath[];
+}
+
+/** Where the findings of a manifest's data schemas stand: after every writing. */
+const SCHEMA_WRITING = Number.MAX_SAFE_INTEGER;
+
+/** The place of a writing among a manifest's: its own value, what its `base:`
+ *  chain forwards, each template body entry, its `base:` mapping. */
+const WRITING_OF = { own: 0, forwarded: 1, entry: (index: number) => 2 + index, base: SCHEMA_WRITING - 1 };
+
+/** The template body entry a writing's place (`order[0]` of a finding, a
+ *  shown text or a catalog) is, by index; none for every other writing. */
+export function bodyEntryOfWriting(writing: number): number | undefined {
+  return writing >= WRITING_OF.entry(0) && writing < WRITING_OF.base ? writing - WRITING_OF.entry(0) : undefined;
+}
+
+/** A reader of one manifest's texts at a time. */
+export function textReader(options: TextReaderOptions): (manifest: ResourceManifest, module: string, judged: boolean) => ManifestTexts {
+  const { resolveDef, scope } = options;
   const resolveNamed = (ref: string) => {
     const schema = options.schemaForId(ref);
     return schema ? { schema, root: schema } : undefined;
@@ -362,7 +438,9 @@ export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
       const path = consumerPath(site.path);
       return path ? [{ ...site, path }] : [];
     });
-    return texts.length > 0 ? { manifest, base: [], module, walk: { texts, values: [], expressions: [] } } : undefined;
+    return texts.length > 0
+      ? { manifest, base: [], module, order: WRITING_OF.forwarded, walk: { texts, values: [], expressions: [] } }
+      : undefined;
   };
 
   /** Every place a module writes text: its resources, its template bodies, its
@@ -374,6 +452,7 @@ export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
         manifest,
         base: [],
         module,
+        order: WRITING_OF.own,
         walk: walkOf(schemaOfKind(manifest.kind, module), manifest),
         ...keyedCatalogOf(manifest as unknown as Record<string, unknown>, module),
       },
@@ -393,6 +472,7 @@ export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
           manifest,
           base: ["resources", index],
           module,
+          order: WRITING_OF.entry(index),
           walk: walkOf(schemaOfKind(entry.kind, module), entry),
           forwards: true,
           ...keyedCatalogOf(entry, module),
@@ -404,6 +484,7 @@ export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
         manifest,
         base: ["base"],
         module,
+        order: WRITING_OF.base,
         walk: walkOf(schemaOfKind(definition.extends, module), definition.base),
         forwards: true,
       });
@@ -411,376 +492,282 @@ export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
     return out;
   };
 
-  // The texts each module shows, keyed by module name.
-  const shown = new Map<string, Set<string>>();
-  const show = (module: string, key: string) => {
-    let set = shown.get(module);
-    if (!set) shown.set(module, (set = new Set()));
-    set.add(key);
-  };
-  // The literal `Text` values each module writes — a data schema's labels and
-  // an empty text, which nothing translates, aside.
-  const written = new Map<string, Set<string>>();
-  const showText = (module: string, text: Text, counted = true) => {
-    const key = keyOfText(text);
-    show(module, key);
-    if (!counted || messageIdentity(text.message) === "") return;
-    let set = written.get(module);
-    if (!set) written.set(module, (set = new Set()));
-    set.add(key);
-  };
-
-  const diagnostics: AnalysisDiagnostic[] = [];
-  const catalogs: { writing: TextWriting; base: ValuePath; entries: { index: number; key: string }[] }[] = [];
-
-  const visit = (manifest: ResourceManifest, module: string, judged: boolean): void => {
-    const lang = scope.langOfModule(module);
-    // One value reached twice — typed by the kind and forwarded by its `base:` —
-    // is judged once.
-    const judgedPaths = new Set<string>();
-    const bodyWrote = (place: ValuePath) => options.bodyWroteWhole?.(manifest, renderValuePath(place)) === true;
-    if (judged && isKeyedTranslationsDoc(manifest)) {
-      for (const problem of judgeKeyedDeclaration(manifest, lang, isExpression)) {
-        diagnostics.push(problemDiagnostic(problem, manifest, [], "the keyed text"));
-      }
-    }
-    for (const writing of writingsOf(manifest, module)) {
-      if (judged && writing.keyedCatalog !== undefined) {
-        for (const problem of judgeKeyedCatalog(writing.keyedCatalog, isExpression)) {
-          if (bodyWrote([...writing.base, ...problem.path])) continue;
-          diagnostics.push(problemDiagnostic(problem, manifest, writing.base, "the translation"));
+  return (manifest, module, judged) => {
+    const findings: TextFinding[] = [];
+    const shown: ShownText[] = [];
+    const called: ShownText[] = [];
+    const catalogs: CatalogRead[] = [];
+    const extents: ValuePath[] = [];
+    const showText = (into: ShownText[], at: string, text: Text, order: readonly [number, number], counted = true) =>
+      into.push({ module: at, key: keyOfText(text), written: counted && messageIdentity(text.message) !== "", order });
+    const visit = (): void => {
+      const lang = scope.langOfModule(module);
+      // One value reached twice — typed by the kind and forwarded by its `base:` —
+      // is judged once.
+      const judgedPaths = new Set<string>();
+      const bodyWrote = (place: ValuePath) => options.bodyWroteWhole?.(manifest, renderValuePath(place)) === true;
+      if (judged && isKeyedTranslationsDoc(manifest)) {
+        extents.push([]);
+        for (const problem of judgeKeyedDeclaration(manifest, lang, isExpression)) {
+          findings.push({ diagnostic: problemDiagnostic(problem, manifest, [], "the keyed text"), order: [-1, 0] });
         }
       }
-      for (const site of writing.walk.texts) {
-        const path = [...writing.base, ...site.path];
-        const at = renderValuePath(path);
-        if (judgedPaths.has(at)) continue;
-        judgedPaths.add(at);
-        const bodyWritten = (place: string) => options.bodyWroteWhole?.(manifest, place) === true;
-        if (site.fragment === "TextCatalog") {
-          if (!judged || bodyWritten(at)) continue;
-          const catalog = siteValueOf(site);
-          // A bare `self.<path>` a template body or a `base:` mapping writes hands
-          // on what the consumer wrote, judged where the consumer wrote it.
-          if (writing.forwards && selfForwardPath(catalog)) continue;
-          if (expressionsWithin(catalog, isExpression).length === 0 && !options.accepts(site.fragment, catalog)) {
+      for (const writing of writingsOf(manifest, module)) {
+        const found = (section: number, diagnostic: AnalysisDiagnostic) =>
+          findings.push({ diagnostic, order: [writing.order, section] });
+        if (judged && writing.keyedCatalog !== undefined) {
+          extents.push(writing.base);
+          for (const problem of judgeKeyedCatalog(writing.keyedCatalog, isExpression)) {
+            if (bodyWrote([...writing.base, ...problem.path])) continue;
+            found(0, problemDiagnostic(problem, manifest, writing.base, "the translation"));
+          }
+        }
+        for (const site of writing.walk.texts) {
+          const path = [...writing.base, ...site.path];
+          const at = renderValuePath(path);
+          if (judgedPaths.has(at)) continue;
+          judgedPaths.add(at);
+          extents.push(path);
+          if (site.valuesFrom) extents.push([...writing.base, ...site.valuesFrom.path]);
+          const bodyWritten = (place: string) => options.bodyWroteWhole?.(manifest, place) === true;
+          if (site.fragment === "TextCatalog") {
+            if (!judged || bodyWritten(at)) continue;
+            const catalog = siteValueOf(site);
+            // A bare `self.<path>` a template body or a `base:` mapping writes hands
+            // on what the consumer wrote, judged where the consumer wrote it.
+            if (writing.forwards && selfForwardPath(catalog)) continue;
+            if (expressionsWithin(catalog, isExpression).length === 0 && !options.accepts(site.fragment, catalog)) {
+              continue;
+            }
+            const result = judgeCatalog(catalog, isExpression);
+            for (const problem of result.problems) {
+              found(1, problemDiagnostic(problem, manifest, path, "the text catalog entry"));
+            }
+            catalogs.push({ manifest: writing.manifest, module: writing.module, base: path, entries: result.entries, order: [writing.order, 1] });
             continue;
           }
-          const result = judgeCatalog(catalog, isExpression);
-          for (const problem of result.problems) {
-            diagnostics.push(problemDiagnostic(problem, manifest, path, "the text catalog entry"));
+          if (expressionsWithin(site.value, isExpression).length > 0) continue;
+          if (!options.accepts(site.fragment, site.value)) continue;
+          // What a body wrote whole is judged at its definition; the data a text's
+          // values come from may still be the consumer's.
+          const own = bodyWritten(at);
+          const ownValues =
+            own && !!site.valuesFrom && bodyWritten(renderValuePath([...writing.base, ...site.valuesFrom.path]));
+          if (site.fragment === "Message") {
+            if (!judged) continue;
+            const read = judgeMessage(site.value);
+            if (!own) {
+              for (const problem of read.problems) found(1, problemDiagnostic(problem, manifest, path, "the message"));
+            }
+            if (!own && read.message && site.declaredValues) {
+              for (const problem of judgeDeclaredValues(read.message, site.declaredValues)) {
+                found(1, problemDiagnostic(problem, manifest, path, "the message"));
+              }
+            }
+            if (read.message && site.valuesFrom && !ownValues) {
+              for (const problem of judgeDataValues(read.message, site.valuesFrom.schema, [...writing.base, ...site.valuesFrom.path])) {
+                found(1, problemDiagnostic(problem, manifest, path, "the message"));
+              }
+            }
+            continue;
           }
-          catalogs.push({ writing, base: path, entries: result.entries });
-          continue;
-        }
-        if (expressionsWithin(site.value, isExpression).length > 0) continue;
-        if (!options.accepts(site.fragment, site.value)) continue;
-        // What a body wrote whole is judged at its definition; the data a text's
-        // values come from may still be the consumer's.
-        const own = bodyWritten(at);
-        const ownValues =
-          own && !!site.valuesFrom && bodyWritten(renderValuePath([...writing.base, ...site.valuesFrom.path]));
-        if (site.fragment === "Message") {
+          const writer = options.writerAt?.(manifest, at);
+          const writtenIn = writer ? scope.moduleOf(writer) : module;
+          const text = judgeText(site.value, writer ? scope.langOfModule(writtenIn) : lang);
+          // A kind's declared display messages count only for a kind some
+          // declaration instantiates (see `instantiatedThrowsTexts`).
+          const kindThrows = isKindDocument(manifest) && writing.base.length === 0 && site.path[0] === "throws";
+          if (text.text) showText(shown, writtenIn, text.text, [writing.order, 1], !kindThrows);
           if (!judged) continue;
-          const read = judgeMessage(site.value);
           if (!own) {
-            for (const problem of read.problems) {
-              diagnostics.push(problemDiagnostic(problem, manifest, path, "the message"));
+            for (const problem of text.problems) found(1, problemDiagnostic(problem, manifest, path, "the text"));
+          }
+          if (!own && text.text && site.declaredValues) {
+            for (const problem of judgeDeclaredValues(text.text.message, site.declaredValues)) {
+              found(1, problemDiagnostic(problem, manifest, path, "the text"));
             }
           }
-          if (!own && read.message && site.declaredValues) {
-            for (const problem of judgeDeclaredValues(read.message, site.declaredValues)) {
-              diagnostics.push(problemDiagnostic(problem, manifest, path, "the message"));
+          if (text.text && site.valuesFrom && !ownValues) {
+            for (const problem of judgeDataValues(text.text.message, site.valuesFrom.schema, [...writing.base, ...site.valuesFrom.path])) {
+              found(1, problemDiagnostic(problem, manifest, path, "the text"));
             }
           }
-          if (read.message && site.valuesFrom && !ownValues) {
-            for (const problem of judgeDataValues(read.message, site.valuesFrom.schema, [...writing.base, ...site.valuesFrom.path])) {
-              diagnostics.push(problemDiagnostic(problem, manifest, path, "the message"));
-            }
-          }
-          continue;
         }
-        const writer = options.writerAt?.(manifest, at);
-        const writtenIn = writer ? scope.moduleOf(writer) : module;
-        const text = judgeText(site.value, writer ? scope.langOfModule(writtenIn) : lang);
-        // A kind's declared display messages count only for a kind some
-        // declaration instantiates (see `instantiatedThrowsTexts`).
-        const kindThrows = isKindDocument(manifest) && writing.base.length === 0 && site.path[0] === "throws";
-        if (text.text) showText(writtenIn, text.text, !kindThrows);
+        if (judged) {
+          // An expression at a slot taking a literal text or a record is admitted
+          // by the record branch alone.
+          for (const expression of writing.walk.expressions) {
+            if (!isTextOrRecordUnion(expression.schema, expression.root, walkOptions.resolveRef)) continue;
+            const at = [...writing.base, ...expression.path];
+            extents.push(at);
+            if (writing.forwards && selfForwardPath(valueAt(manifest, at))) continue;
+            const produced = options.producedSchemaAt?.(manifest, renderValuePath(at));
+            if (produced && producesTextRecord(produced, produced, walkOptions.resolveRef)) continue;
+            found(
+              2,
+              diagnostic(
+                "TEXT_ARGUMENT_COMPUTED",
+                `the value at '${renderValuePath(at)}' is computed, and this slot takes a literal text or the record of a text already shown (\`!cel "error.displayMessage"\`): a text an expression produces can be neither checked nor translated. Write the text itself, with its values beside it`,
+                { manifest, path: at },
+              ),
+            );
+          }
+        }
         if (!judged) continue;
-        if (!own) {
-          for (const problem of text.problems) diagnostics.push(problemDiagnostic(problem, manifest, path, "the text"));
-        }
-        if (!own && text.text && site.declaredValues) {
-          for (const problem of judgeDeclaredValues(text.text.message, site.declaredValues)) {
-            diagnostics.push(problemDiagnostic(problem, manifest, path, "the text"));
-          }
-        }
-        if (text.text && site.valuesFrom && !ownValues) {
-          for (const problem of judgeDataValues(text.text.message, site.valuesFrom.schema, [...writing.base, ...site.valuesFrom.path])) {
-            diagnostics.push(problemDiagnostic(problem, manifest, path, "the text"));
-          }
-        }
-      }
-      if (judged) {
-        // An expression at a slot taking a literal text or a record is admitted
-        // by the record branch alone.
-        for (const expression of writing.walk.expressions) {
-          if (!isTextOrRecordUnion(expression.schema, expression.root, walkOptions.resolveRef)) continue;
-          const at = [...writing.base, ...expression.path];
+        // A bare `self.<path>` a template body or a `base:` mapping writes hands on
+        // what the consumer wrote, judged where the consumer wrote it.
+        for (const path of catalogsComputedAbove(writing.walk, walkOptions)) {
+          const at = [...writing.base, ...path];
+          extents.push(at);
           if (writing.forwards && selfForwardPath(valueAt(manifest, at))) continue;
-          const produced = options.producedSchemaAt?.(manifest, renderValuePath(at));
-          if (produced && producesTextRecord(produced, produced, walkOptions.resolveRef)) continue;
-          diagnostics.push(
-            diagnostic(
-              "TEXT_ARGUMENT_COMPUTED",
-              `the value at '${renderValuePath(at)}' is computed, and this slot takes a literal text or the record of a text already shown (\`!cel "error.displayMessage"\`): a text an expression produces can be neither checked nor translated. Write the text itself, with its values beside it`,
-              { manifest, path: at },
-            ),
+          found(3, problemDiagnostic(catalogComputedProblem(), manifest, at, "the value"));
+        }
+        for (const pairing of writing.walk.values) {
+          const path = [...writing.base, ...pairing.path];
+          extents.push(path, [...writing.base, ...pairing.textPath]);
+          if (
+            !isPlainObject(pairing.values) ||
+            isExpression(pairing.values) ||
+            expressionsWithin(pairing.text, isExpression).length > 0
+          ) {
+            continue;
+          }
+          const read = readText(pairing.text);
+          if (!read.ok) continue;
+          // A value written as an expression is what the checker typed it — an
+          // accessor's chain as much as an evaluated one.
+          const known: KnownValues = new Map(
+            Object.entries(pairing.values).map(([key, value]) => [
+              key,
+              isExpression(value)
+                ? (options.valueKindAt?.(manifest, renderValuePath([...path, key])) ?? celTypeValueKind(undefined))
+                : runtimeValueKind(value),
+            ]),
           );
+          for (const problem of judgeValues(read.text.message, known)) {
+            found(
+              4,
+              problemDiagnostic(problem, manifest, path, `the values for the text at '${renderValuePath([...writing.base, ...pairing.textPath])}'`),
+            );
+          }
         }
       }
-      if (!judged) continue;
-      // A bare `self.<path>` a template body or a `base:` mapping writes hands on
-      // what the consumer wrote, judged where the consumer wrote it.
-      for (const path of catalogsComputedAbove(writing.walk, walkOptions)) {
-        const at = [...writing.base, ...path];
-        if (writing.forwards && selfForwardPath(valueAt(manifest, at))) continue;
-        diagnostics.push(problemDiagnostic(catalogComputedProblem(), manifest, at, "the value"));
+    };
+
+    /** The data schemas a manifest holds — their texts are the module's, and their
+     *  annotations are judged where they are written. */
+    const visitSchemas = (): void => {
+      if (isModuleKind(manifest.kind as string)) {
+        if (judged) misplaced(new Set());
+        return;
       }
-      for (const pairing of writing.walk.values) {
-        if (
-          !isPlainObject(pairing.values) ||
-          isExpression(pairing.values) ||
-          expressionsWithin(pairing.text, isExpression).length > 0
-        ) {
-          continue;
+      const sites = schemaValueSites(schemaOfKind(manifest.kind, module), manifest, isExpression);
+      const dataNodes = new Set<object>();
+      for (const site of sites) {
+        extents.push(site.path);
+        if (site.role === "data") {
+          for (const text of schemaTexts(site.value)) shown.push({ module, key: text.key, written: false, order: [SCHEMA_WRITING, 0] });
+          for (const { node } of schemaNodes(site.value)) dataNodes.add(node);
         }
-        const read = readText(pairing.text);
-        if (!read.ok) continue;
-        const path = [...writing.base, ...pairing.path];
-        // A value written as an expression is what the checker typed it — an
-        // accessor's chain as much as an evaluated one.
-        const known: KnownValues = new Map(
-          Object.entries(pairing.values).map(([key, value]) => [
-            key,
-            isExpression(value)
-              ? (options.valueKindAt?.(manifest, renderValuePath([...path, key])) ?? celTypeValueKind(undefined))
-              : runtimeValueKind(value),
-          ]),
-        );
-        for (const problem of judgeValues(read.text.message, known)) {
-          diagnostics.push(
-            problemDiagnostic(problem, manifest, path, `the values for the text at '${renderValuePath([...writing.base, ...pairing.textPath])}'`),
-          );
+        if (!judged) continue;
+        for (const problem of textAnnotationProblems(site)) {
+          const path = [...site.path, ...problem.path];
+          findings.push({ diagnostic: diagnostic(problem.code, `${problem.message}.`, { manifest, path }), order: [SCHEMA_WRITING, 0] });
         }
       }
-    }
-  };
+      if (judged) misplaced(dataNodes);
+    };
 
-  /** The data schemas a manifest holds — their texts are the module's, and their
-   *  annotations are judged where they are written. */
-  const visitSchemas = (manifest: ResourceManifest, module: string, judged: boolean): void => {
-    if (isModuleKind(manifest.kind as string)) {
-      if (judged) misplaced(manifest, new Set());
-      return;
-    }
-    const sites = schemaValueSites(schemaOfKind(manifest.kind, module), manifest, isExpression);
-    const dataNodes = new Set<object>();
-    for (const site of sites) {
-      if (site.role === "data") {
-        for (const text of schemaTexts(site.value)) show(module, text.key);
-        for (const { node } of schemaNodes(site.value)) dataNodes.add(node);
+    const misplaced = (dataNodes: ReadonlySet<object>): void => {
+      for (const { node, path } of textContextNodes(manifest)) {
+        extents.push(path);
+        if (dataNodes.has(node)) continue;
+        findings.push({
+          diagnostic: diagnostic(
+            "TEXT_CONTEXT_MISPLACED",
+            `${TEXT_CONTEXT_ANNOTATION} is read only on a data schema — a named shape, a status block, a contract, a callable's parameters and result, or a schema written at a 'use: schema' slot — where it gives the context of the node's title, description and enum labels. Here nothing reads it.`,
+            { manifest, path: [...path, TEXT_CONTEXT_ANNOTATION] },
+            DiagnosticSeverity.Warning,
+          ),
+          order: [SCHEMA_WRITING, 1],
+        });
       }
-      if (!judged) continue;
-      for (const problem of textAnnotationProblems(site)) {
-        const path = [...site.path, ...problem.path];
-        diagnostics.push(diagnostic(problem.code, `${problem.message}.`, { manifest, path }));
-      }
-    }
-    if (judged) misplaced(manifest, dataNodes);
-  };
+    };
 
-  const misplaced = (manifest: ResourceManifest, dataNodes: ReadonlySet<object>): void => {
-    for (const { node, path } of textContextNodes(manifest)) {
-      if (dataNodes.has(node)) continue;
-      diagnostics.push(
-        diagnostic(
-          "TEXT_CONTEXT_MISPLACED",
-          `${TEXT_CONTEXT_ANNOTATION} is read only on a data schema — a named shape, a status block, a contract, a callable's parameters and result, or a schema written at a 'use: schema' slot — where it gives the context of the node's title, description and enum labels. Here nothing reads it.`,
-          { manifest, path: [...path, TEXT_CONTEXT_ANNOTATION] },
-          DiagnosticSeverity.Warning,
-        ),
-      );
-    }
-  };
-
-  // The entry's own manifests and the forward views (declared in the consumer's
-  // module), judged and enumerated; a library's, enumerated from its full
-  // documents where the analysis holds them, else from what the flattened set
-  // forwards of it.
-  const documented = new Set(moduleDocuments.map((doc) => doc.module));
-  const ownCallers: { manifest: ResourceManifest; module: string }[] = [];
-  for (const manifest of manifests) {
-    const owned = scope.isOwned(manifest);
-    const module = scope.moduleOf(manifest);
-    if (!owned && documented.has(module)) continue;
-    visit(manifest, module, owned);
-    visitSchemas(manifest, module, owned);
-    ownCallers.push({ manifest, module });
-  }
-  for (const library of moduleDocuments) {
-    for (const manifest of library.manifests) {
-      visit(manifest, library.module, false);
-      visitSchemas(manifest, library.module, false);
-      ownCallers.push({ manifest, module: library.module });
-    }
-  }
-
-  // Literal text arguments at `Text` parameters, read off each module's own CEL.
-  const resolver = new CalleeResolver(manifests, moduleDocuments, scope, resolveDef);
-  for (const { manifest, module } of ownCallers) {
+    visit();
+    visitSchemas();
+    // Literal text arguments at `Text` parameters, read off the module's own CEL.
     const names = options.moduleCallNames.get(module) ?? options.moduleCallNames.get(ROOT_MODULE_KEY);
-    if (!names) continue;
-    for (const source of celSourcesOf(manifest)) {
-      const parsed = parseCelSource(source, names);
-      if (!parsed) continue;
-      for (const call of writtenCalls(parsed.root)) {
-        const params = resolver.paramsOf(call.qualified, module);
-        for (const parameter of textParameters(params)) {
-          const argument = call.arguments[parameter.index];
-          if (!argument?.literal) continue;
-          const read = readText(argument.value);
-          if (read.ok) showText(module, read.text);
+    if (names) {
+      for (const source of celSourcesOf(manifest)) {
+        const parsed = parseCelSource(source, names);
+        if (!parsed) continue;
+        for (const call of writtenCalls(parsed.root)) {
+          const params = options.paramsOf(call.qualified, module);
+          for (const parameter of textParameters(params)) {
+            const argument = call.arguments[parameter.index];
+            if (!argument?.literal) continue;
+            const read = readText(argument.value);
+            if (read.ok) showText(called, module, read.text, [0, 0]);
+          }
         }
       }
     }
-  }
+    return { findings, shown, called, catalogs, extents };
+  };
+}
 
-  // MESSAGE_TEXT_UNUSED: a catalog key no module of its closure shows.
-  const closure = new ClosureTexts(manifests, scope, shown);
-  for (const { writing, base, entries } of catalogs) {
-    const texts = closure.of(writing.module);
-    for (const entry of entries) {
-      if (texts.has(entry.key)) continue;
-      const path = [...base, "texts", entry.index, "text"];
-      diagnostics.push(
-        diagnostic(
-          "MESSAGE_TEXT_UNUSED",
-          `the text at '${renderValuePath(path)}' is shown by no module this catalog's module imports, directly or through others, so its translation is never used. Correct the text and context to match the source exactly, or import the module whose texts this catalog translates.`,
-          { manifest: writing.manifest, path },
-          DiagnosticSeverity.Warning,
-        ),
-      );
+/** MESSAGE_TEXT_UNUSED for one entry of a catalog. */
+export function unusedTextDiagnostic(catalog: CatalogRead, index: number): AnalysisDiagnostic {
+  const path = [...catalog.base, "texts", index, "text"];
+  return diagnostic(
+    "MESSAGE_TEXT_UNUSED",
+    `the text at '${renderValuePath(path)}' is shown by no module this catalog's module imports, directly or through others, so its translation is never used. Correct the text and context to match the source exactly, or import the module whose texts this catalog translates.`,
+    { manifest: catalog.manifest, path },
+    DiagnosticSeverity.Warning,
+  );
+}
+
+/** What an application's coverage is read from, in one configuration. */
+export interface CoverageInputs {
+  readonly application: ResourceManifest;
+  /** The application's module and every module it imports, in reach order. */
+  readonly modules: ReadonlySet<string>;
+  /** The literal texts each module writes, in order. */
+  readonly written: ReadonlyMap<string, ReadonlySet<string>>;
+  /** Every kind a declaration of `modules` instantiates, in walk order. */
+  readonly kinds: readonly InstantiatedKind[];
+  /** The listed catalogs, in list order, each as the layer it adds. */
+  readonly listed: readonly TranslationLayer[];
+}
+
+/** What the coverage of an application reads, rule by rule — the same over one
+ *  configuration's declarations and over every configuration's. */
+export function textCoverage(resolveDef: DefResolver, scope: TextLanguageScope) {
+  const resolveFrom = (kind: string, from: ResourceDefinition) => resolveDef.in(kind, from.metadata?.module);
+  const definitionOf = (kind: unknown, module: string): ResourceDefinition | undefined =>
+    typeof kind === "string" ? resolveDef.in(kind, module === ROOT_MODULE_KEY ? undefined : module) : undefined;
+
+  /** The layer a listed catalog adds: none for one whose `lang` is not literal
+   *  — its reference and its schema are judged where they are written. */
+  const layerOf = (declared: { manifest: ResourceManifest; module: string }): TranslationLayer | undefined => {
+    const { kind, metadata, ...configuration } = declared.manifest as unknown as Record<string, unknown>;
+    const lang = configuration.lang;
+    if (typeof lang !== "string" || lang === "") return undefined;
+    const set = keyedSetOf(definitionOf(kind, declared.module), resolveFrom);
+    if (set) {
+      const messages = configuration.messages;
+      const keys = new Set(isPlainObject(messages) ? Object.keys(messages) : []);
+      return { lang, texts: new Set(), keyed: new Map([[keyedSetKind(set), keys]]) };
     }
-  }
-
-  const application = manifests.find((m) => m.kind === "Telo.Application" && scope.isOwned(m));
-  if (application) diagnostics.push(...missingTranslationDiagnostics(application));
-  return diagnostics;
-
-  /**
-   * MESSAGE_TRANSLATION_MISSING over the whole application: every keyed set a
-   * resource of its closure shows and every `Text` its closure writes, held to
-   * the layered result of its listed catalogs in each served language.
-   */
-  function missingTranslationDiagnostics(application: ResourceManifest): AnalysisDiagnostic[] {
-    const appModule = scope.moduleOf(application);
-    const modules = closure.reach(appModule);
-    const kinds = instantiatedKinds(modules);
-    const listed = listedCatalogLayers(application, appModule);
-    // The built-in catalogs lie beneath every listed one and serve no language.
-    const served = servedLanguages(
-      recordLangOf(moduleLangOf(application)),
-      listed.map((layer) => layer.lang),
-    );
-    const layers = [...builtinTranslationLayers(), ...listed];
-    const texts: ShownTexts[] = [
-      { lang: BUILTIN_ERROR_TEXT_LANG, keys: builtinShownTexts() },
-      ...[...modules].flatMap((module) => {
-        const keys = written.get(module);
-        return keys ? [{ lang: recordLangOf(scope.langOfModule(module)), keys }] : [];
-      }),
-      ...instantiatedThrowsTexts(kinds),
-    ];
-    const findings = missingTranslations({ served, layers, texts, keyedSets: shownKeyedSets(kinds) });
-    const path = Object.hasOwn(application, "translations") ? ["translations"] : ["lang"];
-    return findings.map(({ lang, set, missing }) =>
-      diagnostic(
-        "MESSAGE_TRANSLATION_MISSING",
-        set === undefined
-          ? `'${lang}' is served, but nothing translates ${missing.length === 1 ? "this text" : `these ${missing.length} texts`} into it, so each shows in the language it is written in: ${missing.map(describeTextKey).join(", ")}. Translate them in a Telo.TextTranslations catalog of lang '${lang}' listed under translations.catalogs.`
-          : `'${lang}' is served, but nothing translates ${missing.length === 1 ? "this key" : `these ${missing.length} keys`} of '${set}' into it, so each shows its source wording: ${missing.join(", ")}. List a catalog of '${set}' in lang '${lang}' under translations.catalogs that translates them.`,
-        { manifest: application, path },
-        DiagnosticSeverity.Warning,
-      ),
-    );
-  }
-
-  /** The listed catalogs, in list order, each as the layer it adds. A catalog
-   *  that names nothing, or whose `lang` is not literal, adds none — its
-   *  reference and its schema are judged where they are written. A catalog whose
-   *  `lang` is computed adds no layer, so coverage can only be under-reported. */
-  function listedCatalogLayers(application: ResourceManifest, appModule: string): TranslationLayer[] {
-    const catalogs = (application as { translations?: { catalogs?: unknown } }).translations?.catalogs;
-    if (!Array.isArray(catalogs)) return [];
-    const importTargets = new Map<string, string>();
-    for (const m of manifests) {
-      const target = (m.metadata as { resolvedModuleName?: unknown } | undefined)?.resolvedModuleName;
-      if (m.kind === "Telo.Import" && typeof target === "string" && scope.moduleOf(m) === appModule) {
-        importTargets.set(String(m.metadata?.name), target);
-      }
-    }
-    return catalogs.flatMap((reference): TranslationLayer[] => {
-      const declared = listedCatalog(reference, appModule, importTargets);
-      if (!declared) return [];
-      const { kind, metadata, ...configuration } = declared.manifest as unknown as Record<string, unknown>;
-      const lang = configuration.lang;
-      if (typeof lang !== "string" || lang === "") return [];
-      const set = keyedSetOf(definitionOf(kind, declared.module), resolveFrom);
-      if (set) {
-        const messages = configuration.messages;
-        const keys = new Set(isPlainObject(messages) ? Object.keys(messages) : []);
-        return [{ lang, texts: new Set(), keyed: new Map([[keyedSetKind(set), keys]]) }];
-      }
-      const entries = judgeCatalog(configuration, isExpression).entries;
-      return [{ lang, texts: new Set(entries.map((entry) => entry.key)), keyed: new Map() }];
-    });
-  }
-
-  /** The declaration a `translations.catalogs` reference names: the
-   *  application's own resource, or an instance an import exports. */
-  function listedCatalog(
-    reference: unknown,
-    appModule: string,
-    importTargets: ReadonlyMap<string, string>,
-  ): { manifest: ResourceManifest; module: string } | undefined {
-    if (!isResolvedReference(reference)) return undefined;
-    if (reference.alias === undefined) {
-      const manifest = manifests.find(
-        (m) =>
-          m.metadata?.name === reference.name &&
-          scope.isOwned(m) &&
-          scope.moduleOf(m) === appModule &&
-          m.kind !== "Telo.Import" &&
-          !isModuleKind(m.kind as string) &&
-          !isKindDocument(m),
-      );
-      return manifest && { manifest, module: appModule };
-    }
-    const target = importTargets.get(reference.alias);
-    if (target === undefined) return undefined;
-    const manifest = manifests.find((m) => {
-      const meta = m.metadata as { module?: unknown; forwardedExport?: unknown; name?: unknown } | undefined;
-      return meta?.module === target && meta.forwardedExport === true && meta.name === reference.name;
-    });
-    return manifest && { manifest, module: target };
-  }
+    const entries = judgeCatalog(configuration, isExpression).entries;
+    return { lang, texts: new Set(entries.map((entry) => entry.key)), keyed: new Map() };
+  };
 
   /** The display messages of the kinds `kinds` instantiate: each kind's own
    *  `throws.codes` and its ancestors', the nearest declaration winning per
    *  code, grouped by the language of the module that wrote them. */
-  function instantiatedThrowsTexts(kinds: readonly InstantiatedKind[]): ShownTexts[] {
+  const instantiatedThrowsTexts = (kinds: readonly InstantiatedKind[]): ShownTexts[] => {
     const byLang = new Map<string, Set<string>>();
     const seenKinds = new Set<string>();
     for (const { kind, module } of kinds) {
@@ -808,16 +795,15 @@ export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
           }
         }
         const parent = (definition as { extends?: unknown }).extends;
-        definition =
-          typeof parent === "string" ? resolveDef.in(parent, definition.metadata?.module) : undefined;
+        definition = typeof parent === "string" ? resolveDef.in(parent, definition.metadata?.module) : undefined;
       }
     }
     return [...byLang].map(([lang, keys]) => ({ lang, keys }));
-  }
+  };
 
   /** Every keyed set a declaration of `kinds` shows through its kind's
    *  `x-telo-text-keys`. */
-  function shownKeyedSets(kinds: readonly InstantiatedKind[]): ShownKeyedSet[] {
+  const shownKeyedSets = (kinds: readonly InstantiatedKind[]): ShownKeyedSet[] => {
     const sets = new Map<string, ShownKeyedSet>();
     for (const { kind, module } of kinds) {
       const declarer = textKeysDeclarer(definitionOf(kind, module), resolveDef);
@@ -837,50 +823,268 @@ export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
       }
     }
     return [...sets.values()];
+  };
+
+  /**
+   * MESSAGE_TRANSLATION_MISSING over the whole application: every keyed set a
+   * resource of its closure shows and every `Text` its closure writes, held to
+   * the layered result of its listed catalogs in each served language.
+   */
+  const missingTranslationDiagnostics = (input: CoverageInputs): { lang: string; set?: string; diagnostic: AnalysisDiagnostic }[] => {
+    const { application } = input;
+    // The built-in catalogs lie beneath every listed one and serve no language.
+    const served = servedLanguages(
+      recordLangOf(moduleLangOf(application)),
+      input.listed.map((layer) => layer.lang),
+    );
+    const layers = [...builtinTranslationLayers(), ...input.listed];
+    const texts: ShownTexts[] = [
+      { lang: BUILTIN_ERROR_TEXT_LANG, keys: builtinShownTexts() },
+      ...[...input.modules].flatMap((module) => {
+        const keys = input.written.get(module);
+        return keys ? [{ lang: recordLangOf(scope.langOfModule(module)), keys }] : [];
+      }),
+      ...instantiatedThrowsTexts(input.kinds),
+    ];
+    const findings = missingTranslations({ served, layers, texts, keyedSets: shownKeyedSets(input.kinds) });
+    const path = Object.hasOwn(application, "translations") ? ["translations"] : ["lang"];
+    return findings.map(({ lang, set, missing }) => ({
+      lang,
+      ...(set !== undefined ? { set } : {}),
+      diagnostic: diagnostic(
+        "MESSAGE_TRANSLATION_MISSING",
+        set === undefined
+          ? `'${lang}' is served, but nothing translates ${missing.length === 1 ? "this text" : `these ${missing.length} texts`} into it, so each shows in the language it is written in: ${missing.map(describeTextKey).join(", ")}. Translate them in a Telo.TextTranslations catalog of lang '${lang}' listed under translations.catalogs.`
+          : `'${lang}' is served, but nothing translates ${missing.length === 1 ? "this key" : `these ${missing.length} keys`} of '${set}' into it, so each shows its source wording: ${missing.join(", ")}. List a catalog of '${set}' in lang '${lang}' under translations.catalogs that translates them.`,
+        { manifest: application, path },
+        DiagnosticSeverity.Warning,
+      ),
+    }));
+  };
+
+  /** What the coverage reads over every configuration at once, each part with
+   *  where it holds: the served languages, the layers, the texts and keyed sets
+   *  shown — what tells the entries a configuration can report and the items
+   *  each may list. */
+  const heldCoverage = <T>(
+    logic: CoverageLogic<T>,
+    input: {
+      readonly application: ResourceManifest;
+      readonly modules: ReadonlySet<string>;
+      readonly written: ReadonlyMap<string, ReadonlyMap<string, T>>;
+      readonly kinds: readonly (InstantiatedKind & { readonly held: T })[];
+      readonly listed: readonly (TranslationLayer & { readonly held: T })[];
+    },
+  ): HeldMissing<T>[] => {
+    const served = [
+      { lang: recordLangOf(moduleLangOf(input.application)), held: logic.TRUE },
+      ...input.listed.map((layer) => ({ lang: layer.lang, held: layer.held })),
+    ];
+    const layers = [...builtinTranslationLayers().map((layer) => ({ ...layer, held: logic.TRUE })), ...input.listed];
+    const throwsTexts = new Map<string, Map<string, T>>();
+    const keyedSets = new Map<string, ShownKeyedSet & { held: T }>();
+    for (const kind of input.kinds) {
+      for (const group of instantiatedThrowsTexts([kind])) {
+        let keys = throwsTexts.get(group.lang);
+        if (!keys) throwsTexts.set(group.lang, (keys = new Map()));
+        for (const key of group.keys) keys.set(key, logic.or(keys.get(key) ?? logic.FALSE, kind.held));
+      }
+      for (const set of shownKeyedSets([kind])) {
+        const known = keyedSets.get(set.set);
+        keyedSets.set(set.set, known ? { ...known, held: logic.or(known.held, kind.held) } : { ...set, held: kind.held });
+      }
+    }
+    return missingTranslationsOver(logic, {
+      served,
+      layers,
+      texts: [
+        { lang: BUILTIN_ERROR_TEXT_LANG, keys: new Map([...builtinShownTexts()].map((key) => [key, logic.TRUE])) },
+        ...[...input.modules].flatMap((module) => {
+          const keys = input.written.get(module);
+          return keys ? [{ lang: recordLangOf(scope.langOfModule(module)), keys }] : [];
+        }),
+        ...[...throwsTexts].map(([lang, keys]) => ({ lang, keys })),
+      ],
+      keyedSets: [...keyedSets.values()],
+    });
+  };
+
+  return { layerOf, missingTranslationDiagnostics, heldCoverage };
+}
+
+export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
+  const { manifests, rootModules, resolveDef, moduleDocuments } = options;
+  const scope = new TextLanguageScope(listRequests(manifests), rootModules, moduleDocuments);
+  const callees = new CalleeResolver(manifests, moduleDocuments, scope, resolveDef);
+  const read = textReader({ ...options, scope, paramsOf: (qualified, module) => callees.paramsOf(qualified, module) });
+  const coverage = textCoverage(resolveDef, scope);
+
+  // The texts each module shows, and the literal `Text` values each writes — a
+  // data schema's labels and an empty text, which nothing translates, aside.
+  const shown = new Map<string, Set<string>>();
+  const written = new Map<string, Set<string>>();
+  const record = (texts: readonly ShownText[]) => {
+    for (const text of texts) {
+      addTo(shown, text.module, text.key);
+      if (text.written) addTo(written, text.module, text.key);
+    }
+  };
+  const diagnostics: AnalysisDiagnostic[] = [];
+  const catalogs: CatalogRead[] = [];
+  const called: ShownText[] = [];
+  const take = (found: ManifestTexts) => {
+    diagnostics.push(...found.findings.map((f) => f.diagnostic));
+    record(found.shown);
+    catalogs.push(...found.catalogs);
+    called.push(...found.called);
+  };
+
+  // The entry's own manifests and the forward views (declared in the consumer's
+  // module), judged and enumerated; a library's, enumerated from its full
+  // documents where the analysis holds them, else from what the flattened set
+  // forwards of it.
+  const documented = new Set(moduleDocuments.map((doc) => doc.module));
+  for (const manifest of manifests) {
+    const owned = scope.isOwned(manifest);
+    const module = scope.moduleOf(manifest);
+    if (!owned && documented.has(module)) continue;
+    take(read(manifest, module, owned));
+  }
+  for (const library of moduleDocuments) {
+    for (const manifest of library.manifests) take(read(manifest, library.module, false));
+  }
+  record(called);
+
+  // MESSAGE_TEXT_UNUSED: a catalog key no module of its closure shows.
+  const closure = new ClosureTexts(manifests, scope, shown);
+  for (const catalog of catalogs) {
+    const texts = closure.of(catalog.module);
+    for (const entry of catalog.entries) {
+      if (!texts.has(entry.key)) diagnostics.push(unusedTextDiagnostic(catalog, entry.index));
+    }
   }
 
-  /** Every kind a declaration of `modules` instantiates — top-level, inline at
-   *  any depth, or a template body's entry; a kind's own schema declares no
-   *  instance. */
-  function instantiatedKinds(modules: ReadonlySet<string>): InstantiatedKind[] {
-    const found = new Map<string, InstantiatedKind>();
-    const showsKind = (kind: string, module: string): void => {
-      found.set(`${module}\0${kind}`, { kind, module });
-    };
-    const seen = new Set<object>();
-    const walk = (value: unknown, module: string): void => {
-      if (!value || typeof value !== "object" || seen.has(value) || isExpression(value)) return;
-      seen.add(value);
-      if (Array.isArray(value)) {
-        for (const item of value) walk(item, module);
-        return;
-      }
-      if (!isPlainObject(value)) return;
-      if (typeof value.kind === "string" && !isResolvedReference(value)) {
-        if (isKindDocument(value as unknown as ResourceManifest)) {
-          walk(value.resources, module);
-          return;
-        }
-        showsKind(value.kind, module);
-      }
-      for (const [key, child] of Object.entries(value)) {
-        // An annotation names kinds; it declares nothing.
-        if (!key.startsWith("x-telo-")) walk(child, module);
-      }
-    };
+  const application = manifests.find((m) => m.kind === "Telo.Application" && scope.isOwned(m));
+  if (application) {
+    const appModule = scope.moduleOf(application);
+    const modules = closure.reach(appModule);
+    const kinds = new KindWalk();
     for (const manifest of manifests) {
       const module = scope.moduleOf(manifest);
-      if (modules.has(module)) walk(manifest, module);
+      if (modules.has(module)) kinds.walk(manifest, module);
     }
     for (const library of moduleDocuments) {
       if (!modules.has(library.module)) continue;
-      for (const manifest of library.manifests) walk(manifest, library.module);
+      for (const manifest of library.manifests) kinds.walk(manifest, library.module);
     }
-    return [...found.values()];
+    diagnostics.push(
+      ...coverage
+        .missingTranslationDiagnostics({
+          application,
+          modules,
+          written,
+          kinds: kinds.found(),
+          listed: listedCatalogLayers(application, appModule),
+        })
+        .map((found) => found.diagnostic),
+    );
+  }
+  return diagnostics;
+
+  /** The listed catalogs, in list order, each as the layer it adds. A catalog
+   *  that names nothing, or whose `lang` is not literal, adds none — its
+   *  reference and its schema are judged where they are written. A catalog whose
+   *  `lang` is computed adds no layer, so coverage can only be under-reported. */
+  function listedCatalogLayers(application: ResourceManifest, appModule: string): TranslationLayer[] {
+    const listed = (application as { translations?: { catalogs?: unknown } }).translations?.catalogs;
+    if (!Array.isArray(listed)) return [];
+    const importTargets = new Map<string, string>();
+    for (const m of manifests) {
+      const target = (m.metadata as { resolvedModuleName?: unknown } | undefined)?.resolvedModuleName;
+      if (m.kind === "Telo.Import" && typeof target === "string" && scope.moduleOf(m) === appModule) {
+        importTargets.set(String(m.metadata?.name), target);
+      }
+    }
+    return listed.flatMap((reference): TranslationLayer[] => {
+      const declared = listedCatalog(manifests, scope, reference, appModule, importTargets);
+      const layer = declared && coverage.layerOf(declared);
+      return layer ? [layer] : [];
+    });
   }
 }
 
-interface InstantiatedKind {
+/** The declaration a `translations.catalogs` reference names among
+ *  `manifests`: the application's own resource, or an instance an import
+ *  exports. */
+export function listedCatalog(
+  manifests: readonly ResourceManifest[],
+  scope: TextLanguageScope,
+  reference: unknown,
+  appModule: string,
+  importTargets: ReadonlyMap<string, string>,
+): { manifest: ResourceManifest; module: string } | undefined {
+  if (!isResolvedReference(reference)) return undefined;
+  if (reference.alias === undefined) {
+    const manifest = manifests.find(
+      (m) =>
+        m.metadata?.name === reference.name &&
+        scope.isOwned(m) &&
+        scope.moduleOf(m) === appModule &&
+        m.kind !== "Telo.Import" &&
+        !isModuleKind(m.kind as string) &&
+        !isKindDocument(m),
+    );
+    return manifest && { manifest, module: appModule };
+  }
+  const target = importTargets.get(reference.alias);
+  if (target === undefined) return undefined;
+  const manifest = manifests.find((m) => {
+    const meta = m.metadata as { module?: unknown; forwardedExport?: unknown; name?: unknown } | undefined;
+    return meta?.module === target && meta.forwardedExport === true && meta.name === reference.name;
+  });
+  return manifest && { manifest, module: target };
+}
+
+function addTo(into: Map<string, Set<string>>, module: string, key: string): void {
+  let set = into.get(module);
+  if (!set) into.set(module, (set = new Set()));
+  set.add(key);
+}
+
+/** Every kind a declaration instantiates — top-level, inline at any depth, or a
+ *  template body's entry; a kind's own schema declares no instance — in the
+ *  order a walk of the declarations meets them, each once. */
+export class KindWalk {
+  private readonly kinds = new Map<string, InstantiatedKind>();
+  private readonly seen = new Set<object>();
+
+  walk(value: unknown, module: string): void {
+    if (!value || typeof value !== "object" || this.seen.has(value) || isExpression(value)) return;
+    this.seen.add(value);
+    if (Array.isArray(value)) {
+      for (const item of value) this.walk(item, module);
+      return;
+    }
+    if (!isPlainObject(value)) return;
+    if (typeof value.kind === "string" && !isResolvedReference(value)) {
+      if (isKindDocument(value as unknown as ResourceManifest)) {
+        this.walk(value.resources, module);
+        return;
+      }
+      this.kinds.set(`${module}\0${value.kind}`, { kind: value.kind, module });
+    }
+    for (const [key, child] of Object.entries(value)) {
+      // An annotation names kinds; it declares nothing.
+      if (!key.startsWith("x-telo-")) this.walk(child, module);
+    }
+  }
+
+  found(): InstantiatedKind[] {
+    return [...this.kinds.values()];
+  }
+}
+
+export interface InstantiatedKind {
   kind: string;
   module: string;
 }
@@ -900,7 +1104,7 @@ function celSourcesOf(value: unknown): string[] {
 
 /** What a qualified call names, by the calling module's own names and imports —
  *  read for the parameters it declares, never judged. */
-class CalleeResolver {
+export class CalleeResolver {
   private readonly imports = new Map<string, string>();
   private readonly declarations = new Map<string, ResourceManifest>();
 
@@ -951,7 +1155,7 @@ let builtinShown: ReadonlySet<string> | undefined;
 
 /** The built-in texts — the ambient error codes' — which every module shows,
  *  since the runtime attaches them to failures any module's dispatch raises. */
-function builtinShownTexts(): ReadonlySet<string> {
+export function builtinShownTexts(): ReadonlySet<string> {
   builtinShown ??= new Set(
     builtinErrorCodes().flatMap((entry) => {
       const read = readText(entry.displayMessage);
@@ -974,7 +1178,7 @@ function builtinTranslationLayers(): readonly TranslationLayer[] {
 }
 
 /** The texts a module's whole import closure shows, memoized per module. */
-class ClosureTexts {
+export class ClosureTexts {
   private readonly edges = new Map<string, Set<string>>();
   private readonly memo = new Map<string, Set<string>>();
 

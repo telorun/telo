@@ -1,0 +1,38 @@
+# A union beneath an eval site is never judged: the kind's own `evaluated`
+# field, and `S` where the kind reaches it beneath one. `S` conflicts where a
+# kind reaches it beneath none — through `E`, where flag1 holds.
+kind: Telo.Application
+metadata: { name: EvalModeBranchUnderEval }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.JsonSchema
+metadata: { name: S }
+schema:
+  type: object
+  properties:
+    v:
+      oneOf:
+        - { type: object, properties: { x: { x-telo-eval: runtime } } }
+        - { type: object, properties: { x: { x-telo-eval: compile } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: E }
+schema: !if
+  if: !cel "variables.flag1"
+  then: { $ref: "telo://Self/S" }
+  else: { type: string }
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Holder]
+schema:
+  type: object
+  properties:
+    evaluated:
+      x-telo-eval: runtime
+      oneOf:
+        - { type: object, properties: { x: { x-telo-eval: runtime } } }
+        - { type: object, properties: { x: { x-telo-eval: compile } } }
+    held: { x-telo-eval: runtime, $ref: "telo://Self/S" }
+    other: { $ref: "telo://Self/E" }

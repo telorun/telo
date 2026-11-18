@@ -241,8 +241,8 @@ describe("validateIdentifierNames", () => {
       "variables.API-URL",
     ]);
     expect(codes(diagnostics, "NAME_CASE_CONVENTION").map((d) => d.data?.path)).toEqual([
-      "secrets.Token",
       "ports.Http",
+      "secrets.Token",
     ]);
   });
 

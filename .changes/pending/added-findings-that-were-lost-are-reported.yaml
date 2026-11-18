@@ -1,0 +1,10 @@
+units:
+  analyzer: Added
+  cli: Added
+body: "Findings that were lost are reported: a `then:` requiring a field a choice
+  decides, `DURABLE_CONTRACT_REQUIRED` in a manifest with choices or a template body, a
+  referrer rule over a value a consumer forwards into a body entry, a wrong expression
+  in a choice-free template body of a module that makes a choice elsewhere, the later of
+  two whole-document choices declaring one name, and a scoped `Telo.Import` named like
+  an import of its module where a choice writes it. A library need whose version only a
+  body branch verifies is no longer reported as `NEED_CONSTRAINT_UNVERIFIED`."
