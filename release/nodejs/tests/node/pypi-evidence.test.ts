@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EMPTY_LEDGER, SHIPPED_ADAPTERS } from "../../src/index.js";
@@ -169,7 +170,7 @@ describe("pypi evidence", () => {
   });
 
   it("carries the frontend's bytes, which the Rust twin embeds from the .py file", () => {
-    const file = path.join(path.dirname(new URL(import.meta.url).pathname), "../../src/node/adapters/pypi-build-sdist.py");
+    const file = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../src/node/adapters/pypi-build-sdist.py");
     expect(PYPI_BUILD_SDIST_SCRIPT).toBe(fs.readFileSync(file, "utf8"));
   });
 });
