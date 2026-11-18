@@ -52,7 +52,7 @@ A bad record anywhere *else* stays a hard failure, for the same reason: replayin
 
 ## Compacting a long run
 
-`replaceWithBaseline` writes a run's baseline in place of the records it replaces by rewriting the file whole: the current run line, every record it keeps, then the baseline, staged in `<run>.ndjson.compacting`, flushed, renamed over the run's file, and the directory flushed. A crash before the rename leaves the old file as it was; the staging file is never read — no listing picks up a name that does not end in `.ndjson` — and the next compaction overwrites it, and a purge removes it with the run. That rename is the only rewrite this store makes.
+`replaceWithBaseline` writes a run's baseline in place of the records it replaces by rewriting the file whole: the current run line, every record it keeps, then the baseline, staged in `<run>.ndjson.compacting`, flushed, renamed over the run's file, and the directory flushed. A crash before the rename leaves the old file as it was; the staging file is never read — no listing picks up a name that does not end in `.ndjson` — and the next compaction overwrites it, and a purge removes it with the run. That rename is the only rewrite this store makes. Windows refuses to rename over a file another handle has open, such as a status read or an append's flush. There the rename is retried with backoff for up to 10 seconds, and a refusal that outlasts that bound fails the compaction with the error Windows reported.
 
 ## What it does not do
 
