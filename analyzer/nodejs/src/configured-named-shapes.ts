@@ -6,6 +6,7 @@ import { declaringModuleScope, definitionInScope } from "./module-alias-scope.js
 import { foldedNamedShapes, type NamedShapeDeclaration } from "./named-shape-extends.js";
 import type { ModuleDocuments } from "./module-documents.js";
 import { canonicalShapeSchema, withCanonicalRefSentinels } from "./resolve-schema-type-refs.js";
+import { withCanonicalAnnotationKinds } from "./resolve-schema-ref-kinds.js";
 
 /** What reading the named shapes of one configuration needs of its scope. */
 export interface ConfiguredShapeScope {
@@ -13,6 +14,28 @@ export interface ConfiguredShapeScope {
   readonly aliases: AliasResolver;
   readonly aliasesByModule: Map<string, AliasResolver>;
   readonly rootModules: Set<string>;
+}
+
+/** Each written shape schema's copy per declaring scope, so a shape is derived
+ *  once however many configurations fold it. */
+const canonicalKindCopies = new WeakMap<object, WeakMap<object, Record<string, any>>>();
+
+/**
+ * A named shape's schema with every kind its annotations name canonical in
+ * `scope`, the declaring module's — the form a registered definition's slots
+ * have (`registeredDefinitionCopy`), so a slot a shape declares compares like
+ * one a kind declares. A copy, or `schema` itself when no name changes; never
+ * written to.
+ */
+export function shapeSchemaWithCanonicalKinds(
+  schema: Record<string, any>,
+  scope: Pick<AliasResolver, "resolveKindResult">,
+): Record<string, any> {
+  let byScope = canonicalKindCopies.get(schema);
+  if (!byScope) canonicalKindCopies.set(schema, (byScope = new WeakMap()));
+  let copy = byScope.get(scope);
+  if (!copy) byScope.set(scope, (copy = withCanonicalAnnotationKinds(schema, scope)));
+  return copy;
 }
 
 /** Whether `m` declares a named shape: a resource whose kind's capability is
@@ -52,7 +75,11 @@ export function configuredNamedShapes(
       name,
       extends: (m as { extends?: unknown }).extends,
       schema: canonicalShapeSchema(
-        withCanonicalRefSentinels(m.schema, module, moduleForAlias) as Record<string, any>,
+        withCanonicalRefSentinels(
+          shapeSchemaWithCanonicalKinds(m.schema as Record<string, any>, moduleScope),
+          module,
+          moduleForAlias,
+        ) as Record<string, any>,
         module,
         moduleForAlias,
       ),
@@ -88,8 +115,10 @@ export function libraryNamedShapes(
         name,
         extends: (doc as { extends?: unknown }).extends,
         get schema() {
-          canonical ??= withCanonicalRefSentinels(doc.schema, library.module, (alias) =>
-            scope.moduleForAlias(alias),
+          canonical ??= withCanonicalRefSentinels(
+            shapeSchemaWithCanonicalKinds(doc.schema as Record<string, any>, scope),
+            library.module,
+            (alias) => scope.moduleForAlias(alias),
           ) as Record<string, any>;
           return canonical;
         },

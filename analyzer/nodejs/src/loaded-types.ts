@@ -155,6 +155,10 @@ export interface LoadedGraph {
    *  for a module whose source cannot answer (`ManifestSource.entryAt`). A value
    *  whose one claim names something is stamped with what it names (`FOUND_ENTRY`). */
   moduleFileDiagnostics: AnalysisDiagnostic[];
+  /** One `METADATA_RESERVED_FIELD` per loader stamp an author wrote in a
+   *  document's `metadata`, in the entry (where written) and every module it
+   *  reaches (at the entry's import first reaching it). Fatal at load. */
+  metadataDiagnostics: AnalysisDiagnostic[];
   /** YAML parse failures aggregated from every file's `parseErrors`. A file
    *  that fails to parse yields a mangled `toJSON()` projection, so these are
    *  fatal Error diagnostics — surfaced alongside `analyze()` output by every

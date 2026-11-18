@@ -14,7 +14,7 @@ describe("x-telo-context-ref-from across references", () => {
   it("types each entry's binding from the shape its references reach", async () => {
     const loaded = await loadFile(join(ROOT, "analyzer/nodejs/tests/__fixtures__/context-ref-crossing/telo.yaml"));
     const findings = new StaticAnalyzer()
-      .analyze(loaded.manifests, { moduleDocuments: loaded.moduleDocuments })
+      .analyze(loaded.manifests, { moduleDocuments: loaded.moduleDocuments, positions: loaded.positions })
       .filter((d) => d.code.startsWith("CEL_"))
       .map((d) => `${d.code} ${(d.data as { resource?: { name?: string } } | undefined)?.resource?.name} ${(d.data as { path?: string } | undefined)?.path}: ${d.message}`);
     expect(findings).toEqual([

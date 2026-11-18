@@ -1,7 +1,7 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { makeTaggedSentinel } from "@telorun/templating";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { readReferrerRules, rewriteReferrerRuleKinds } from "../src/referrer-rule.js";
+import { readReferrerRules, withReferrerRuleKinds } from "../src/referrer-rule.js";
 import { PeerBinder, type PeerBinderEnv } from "../src/peer-binding.js";
 import { declaredReach, reachSites } from "../src/reference-reach.js";
 import {
@@ -46,7 +46,7 @@ const cel = (source: string) => makeTaggedSentinel("cel", source);
 
 /** A docs-renderer kind: it needs the resource that mounts it to have collected
  *  an OpenAPI document. Filters are canonical here, as they are after
- *  `resolveSchemaRefKinds` has rewritten them in the declaring scope. */
+ *  the registered copy holds them canonical in the declaring scope. */
 const REFERENCE_SCHEMA = {
   type: "object",
   properties: { title: { type: "string" } },
@@ -379,7 +379,7 @@ describe("referrer rules — declaration validation", () => {
 });
 
 describe("referrer rules — filter canonicalization", () => {
-  it("rewrites each filter in place and leaves an unresolved one as written", () => {
+  it("maps each filter on a copy and leaves an unresolved one as written", () => {
     const node = {
       "x-telo-referrer-rules": [
         { referrer: "Self.Server", condition: cel("true"), code: "A", message: "m" },
@@ -388,16 +388,17 @@ describe("referrer rules — filter canonicalization", () => {
       ],
     } as Record<string, unknown>;
     const seen: string[] = [];
-    rewriteReferrerRuleKinds(node, (kind) => {
+    const copy = withReferrerRuleKinds(node, (kind) => {
       seen.push(kind);
       return kind === "Self.Server" ? "HttpServer.Server" : undefined;
     });
     expect(seen).toEqual(["Self.Server", "Nope.Server"]);
-    expect(readReferrerRules(node).map((r) => r.referrer)).toEqual([
+    expect(readReferrerRules(copy).map((r) => r.referrer)).toEqual([
       "HttpServer.Server",
       "Nope.Server",
       undefined,
     ]);
+    expect(readReferrerRules(node).map((r) => r.referrer)).toEqual(["Self.Server", "Nope.Server", undefined]);
   });
 });
 

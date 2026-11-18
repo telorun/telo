@@ -42,7 +42,9 @@ export interface SensitiveSlotIssue {
   message: string;
 }
 
-const ANNOTATION = "x-telo-sensitive";
+/** The annotation this pass judges. */
+export const SENSITIVE_ANNOTATION = "x-telo-sensitive";
+const ANNOTATION = SENSITIVE_ANNOTATION;
 
 export function validateSensitiveSlots(
   manifests: readonly ResourceManifest[],
@@ -51,19 +53,30 @@ export function validateSensitiveSlots(
 ): SensitiveSlotIssue[] {
   const marks = markedNodes(manifests, ANNOTATION);
   if (marks.size === 0) return [];
-  const issues: SensitiveSlotIssue[] = [];
-  const own = (written: WrittenAt): boolean => {
-    const owner = (written.manifest.metadata as { module?: string } | undefined)?.module;
-    return owner === undefined || rootModules.has(owner);
-  };
-
   const reached = new Set<object>();
   const resolveRef = namedShapeResolver(manifests);
   for (const site of contractSites(manifests)) sensitivePaths(site.schema, resolveRef, reached);
-  // A need type's fields are the other place the mark is read: the kernel adds
-  // a sensitive field's value to the redaction set of every module context the
-  // fulfilment reaches. What the mark may be there — `true`, on a text field —
-  // is the need table's refusal, which the kernel twins at load for every module.
+  const needFields = sensitiveNeedFields(manifests);
+  const issues: SensitiveSlotIssue[] = [];
+  for (const [node, written] of marks) {
+    const issue = sensitiveMarkIssue(node, written, reached.has(node), {
+      rootModules,
+      capabilityOf,
+      needFields,
+      exported: (manifest) => isExportedShape(manifest, manifests),
+    });
+    if (issue) issues.push(issue);
+  }
+  return issues;
+}
+
+/**
+ * A need type's fields are the other place the mark is read: the kernel adds a
+ * sensitive field's value to the redaction set of every module context the
+ * fulfilment reaches. What the mark may be there — `true`, on a text field — is
+ * the need table's refusal, which the kernel twins at load for every module.
+ */
+export function sensitiveNeedFields(manifests: readonly ResourceManifest[]): Set<object> {
   const needFields = new Set<object>();
   for (const manifest of manifests) {
     if (!isNeedTypeDoc(manifest)) continue;
@@ -71,36 +84,51 @@ export function validateSensitiveSlots(
       if (Object.hasOwn(schema, ANNOTATION)) needFields.add(schema);
     }
   }
+  return needFields;
+}
 
-  for (const [node, written] of marks) {
-    if (!own(written) || needFields.has(node)) continue;
-    const value = (node as Record<string, unknown>)[ANNOTATION];
-    const path = written.path.join(".");
-    if (value !== true) {
-      issues.push({
-        code: "SENSITIVE_ANNOTATION_INVALID",
-        manifest: written.manifest,
-        path,
-        message:
-          `'${ANNOTATION}' must be \`true\`; got ${JSON.stringify(value)}. ` +
-          `It is a marker, not a level — a value other than \`true\` reads as "not sensitive".`,
-      });
-      continue;
-    }
-    if (reached.has(node)) continue;
-    const shape = inNamedShape(written, capabilityOf);
-    if (shape && isExportedShape(written.manifest, manifests)) continue;
-    issues.push({
-      code: "SENSITIVE_ANNOTATION_MISPLACED",
+/** What one mark's verdict reads beside whether a contract reaches it. */
+export interface SensitiveMarkContext {
+  readonly rootModules: ReadonlySet<string>;
+  readonly capabilityOf: KindCapability;
+  readonly needFields: ReadonlySet<object>;
+  /** Whether a named shape is exported by its library. */
+  readonly exported: (manifest: ResourceManifest) => boolean;
+}
+
+/** The issue of the mark `node`, written at `written`, that a contract reaches
+ *  or not (`reached`) — undefined where there is none. */
+export function sensitiveMarkIssue(
+  node: object,
+  written: WrittenAt,
+  reached: boolean,
+  ctx: SensitiveMarkContext,
+): SensitiveSlotIssue | undefined {
+  const owner = (written.manifest.metadata as { module?: string } | undefined)?.module;
+  if ((owner !== undefined && !ctx.rootModules.has(owner)) || ctx.needFields.has(node)) return undefined;
+  const value = (node as Record<string, unknown>)[ANNOTATION];
+  const path = written.path.join(".");
+  if (value !== true) {
+    return {
+      code: "SENSITIVE_ANNOTATION_INVALID",
       manifest: written.manifest,
       path,
       message:
-        `'${ANNOTATION}' is only read where a resource's declared contract ` +
-        `(\`inputType\` / \`outputType\`) reaches it, following \`$ref\`, and this node is ` +
-        `${unreachedMarkPlace(written, capabilityOf)}. The kernel will not redact it, so the value would still reach trace ` +
-        `payloads and the debug wire. Move the mark onto the contract property ` +
-        `that carries the value.`,
-    });
+        `'${ANNOTATION}' must be \`true\`; got ${JSON.stringify(value)}. ` +
+        `It is a marker, not a level — a value other than \`true\` reads as "not sensitive".`,
+    };
   }
-  return issues;
+  if (reached) return undefined;
+  if (inNamedShape(written, ctx.capabilityOf) && ctx.exported(written.manifest)) return undefined;
+  return {
+    code: "SENSITIVE_ANNOTATION_MISPLACED",
+    manifest: written.manifest,
+    path,
+    message:
+      `'${ANNOTATION}' is only read where a resource's declared contract ` +
+      `(\`inputType\` / \`outputType\`) reaches it, following \`$ref\`, and this node is ` +
+      `${unreachedMarkPlace(written, ctx.capabilityOf)}. The kernel will not redact it, so the value would still reach trace ` +
+      `payloads and the debug wire. Move the mark onto the contract property ` +
+      `that carries the value.`,
+  };
 }

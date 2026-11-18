@@ -1,0 +1,9 @@
+units:
+  analyzer: Added
+  cli: Added
+body: A kind whose `inputType` / `outputType` names a shape holding an `!if` / `!switch`
+  has the shape's `x-telo-value-schema-from` locations judged per branch
+  (`VALUE_SCHEMA_FROM_INVALID`), each finding labelled by where it holds, where the
+  shape was read as written; an `outputTo` whose sibling slot or member is reached
+  through such a shape is judged the same way (`X_TELO_REF_INVALID_OUTPUT_TO`), and one
+  through a shape no configuration declares is left to `CONTRACT_TYPE_NOT_FOUND`.

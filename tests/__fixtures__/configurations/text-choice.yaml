@@ -1,0 +1,36 @@
+# The texts a served language lacks, listed per configuration: flag1 and
+# flag2 each choose between a text of their own and the one the catalog
+# translates.
+kind: Telo.Application
+metadata: { name: TextChoice }
+lang: en
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+  flag2: { env: FLAG_2, type: boolean, default: false }
+targets:
+  - !ref main
+translations:
+  catalogs:
+    - kind: Telo.TextTranslations
+      lang: fr
+      texts:
+        - { text: Fine, translation: Bien }
+---
+kind: Telo.Sequence
+metadata: { name: main }
+steps:
+  - name: first
+    throw:
+      code: ERR_FIRST
+      displayMessage: !if
+        if: !cel "variables.flag1"
+        then: Hello there
+        else: Fine
+  - name: second
+    throw:
+      code: ERR_SECOND
+      displayMessage: !if
+        if: !cel "variables.flag2"
+        then: Later
+        else: Fine
+  - { name: third, throw: { code: ERR_THIRD, displayMessage: Fine } }

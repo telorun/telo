@@ -1,14 +1,10 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
-import { rewriteCoReferrerKinds, rewriteRefSlotKinds } from "./ref-slot.js";
-import {
-  REFERRER_RULES_ANNOTATION,
-  hasReferrerRules,
-  rewriteReferrerRuleKinds,
-} from "./referrer-rule.js";
-import { hasTextKeys, rewriteTextKeysKinds } from "./text-keys.js";
-import { RESOURCE_RULES_ANNOTATION, hasResourceRules, rewriteReachableRuleKinds } from "./resource-rule.js";
-import { hasRequiresZone, rewriteRequiresZoneKind } from "./zone-slot.js";
+import { withCoReferrerKinds, withRefSlotKinds } from "./ref-slot.js";
+import { REFERRER_RULES_ANNOTATION, hasReferrerRules, withReferrerRuleKinds } from "./referrer-rule.js";
+import { hasTextKeys, withTextKeysKinds } from "./text-keys.js";
+import { RESOURCE_RULES_ANNOTATION, hasResourceRules, withReachableRuleKinds } from "./resource-rule.js";
+import { hasRequiresZone, withRequiresZoneKind } from "./zone-slot.js";
 
 const REF_ANNOTATION = "x-telo-ref";
 
@@ -50,52 +46,118 @@ export function isLegacyRefIdentity(ref: string): boolean {
   return ref.includes("#");
 }
 
+/** The annotations naming a kind: an `x-telo-ref` constraint, the kind its
+ *  `callsCoReferrers` names, an `x-telo-requires-zone` provider, an
+ *  `x-telo-referrer-rules` `referrer:` filter, an `x-telo-resource-rules`
+ *  `reachable.kind` and an `x-telo-text-keys` entry. */
+type KindAnnotation = "ref" | "coReferrer" | "zone" | "referrer" | "reachable" | "textKeys";
+
+/** What one kind name maps to — `undefined` keeps it as written. `path` is the
+ *  dotted path to the name's place in the document. */
+type KindMap = (kind: string, annotation: KindAnnotation, path: string) => string | undefined;
+
 /**
- * Rewrites the `x-telo-ref` constraints (and the kinds a `callsCoReferrers`,
- * `x-telo-requires-zone`, `x-telo-referrer-rules`, an `x-telo-resource-rules`
- * `reachable:` and `x-telo-text-keys` name) on one definition doc from the alias
- * form (`Acme.Store`, `Self.Store`, `Telo.Invocable`) to the canonical
- * `<module>.<Kind>` key the definition registry is keyed by.
+ * `value` with every kind its annotations name mapped through `map`, at any
+ * depth — a copy holding the mapped names, sharing every node no name changes
+ * beneath, or `value` itself when none does. Never writes to `value`. Each
+ * annotation's shape is its own reader's (`with*Kinds`); this walk only finds
+ * the nodes carrying one.
  *
- * `resolver` must be the scope of the module that DECLARES the definition, not
- * the consumer's: an imported library names its dependencies by its own aliases.
- * This mirrors how `extends:` and `capability:` are pre-resolved before
- * registration, so the registry never needs module context to answer a ref query.
+ * The walk covers the whole document rather than a fixed field list: a name can
+ * sit in `schema`, `inputType`, `outputType`, or a `$defs` entry nested in any of
+ * them, and one in a template body's inline schema is mapped too.
+ */
+function withAnnotationKinds(value: unknown, path: string, map: KindMap): unknown {
+  if (value === null || typeof value !== "object") return value;
+  if (Array.isArray(value)) {
+    let items: unknown[] | undefined;
+    value.forEach((item, i) => {
+      const read = withAnnotationKinds(item, `${path}[${i}]`, map);
+      if (read !== item) (items ??= [...value])[i] = read;
+    });
+    return items ?? value;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return value;
+  let node = value as Record<string, unknown>;
+  if (node[REF_ANNOTATION] !== undefined) {
+    node = withRefSlotKinds(node, (kind) => map(kind, "ref", path));
+    node = withCoReferrerKinds(node, (kind) => map(kind, "coReferrer", path));
+  }
+  if (hasRequiresZone(node)) {
+    node = withRequiresZoneKind(node, (kind) => map(kind, "zone", `${path}.x-telo-requires-zone`));
+  }
+  if (hasReferrerRules(node)) {
+    node = withReferrerRuleKinds(node, (kind) => map(kind, "referrer", `${path}.${REFERRER_RULES_ANNOTATION}`));
+  }
+  if (hasResourceRules(node)) {
+    node = withReachableRuleKinds(node, (kind, index) =>
+      map(kind, "reachable", `${path}.${RESOURCE_RULES_ANNOTATION}[${index}].reachable.kind`),
+    );
+  }
+  if (hasTextKeys(node)) node = withTextKeysKinds(node, (kind) => map(kind, "textKeys", path));
+  let copy = node === value ? undefined : node;
+  for (const key of Object.keys(node)) {
+    const child = node[key];
+    const read = withAnnotationKinds(child, path ? `${path}.${key}` : key, map);
+    if (read !== child) (copy ??= { ...node })[key] = read;
+  }
+  return copy ?? value;
+}
+
+/**
+ * `definition` with every kind its annotations name canonical — the
+ * `<module>.<Kind>` key the definition registry is keyed by — resolved in
+ * `resolver`, the scope of the module that DECLARES it (an imported library
+ * names its dependencies by its own aliases). A copy sharing every node no name
+ * changes beneath, or `definition` itself when none does; the document is never
+ * written to. A name that does not resolve keeps the text its author wrote, for
+ * {@link refConstraintIssues} to report. Part of the copy the registry holds
+ * (`registeredDefinitionCopy`), which is also how a named shape's slots are
+ * read; nothing else canonicalizes.
+ */
+export function withCanonicalAnnotationKinds<T extends object>(
+  definition: T,
+  resolver: Pick<AliasResolver, "resolveKindResult">,
+): T {
+  return withAnnotationKinds(definition, "", (kind, annotation) => {
+    if (annotation === "ref" && isLegacyRefIdentity(kind)) return undefined;
+    const result = resolver.resolveKindResult(kind);
+    return result.status === "ok" ? result.kind : undefined;
+  }) as T;
+}
+
+/**
+ * Every kind name on one definition doc that does not canonicalize in
+ * `resolver` — the scope of the module that DECLARES the definition — tagged
+ * with why, quoting the name as written. The document is read, never written.
  *
- * Every constraint that does not canonicalize is returned, tagged with why. That
- * matters more than it looks: an unresolved constraint leaves a string naming no
- * registered kind, and the reference check treats an unknown target as partial
- * context and skips it — so an unreported one would silently let the slot accept
- * anything. The authored value is left in place either way, so a diagnostic
- * quotes what the author actually wrote.
+ * That matters more than it looks: an unresolved constraint leaves a string
+ * naming no registered kind, and the reference check treats an unknown target
+ * as partial context and skips it — so an unreported one would silently let the
+ * slot accept anything.
  *
  * An `unknown` result also covers an already-canonical value (`acme.Store`
- * names a module, not an alias), which is what keeps the rewrite idempotent —
- * the caller drops those by checking the definition registry once every kind is
- * registered.
- *
- * The walk covers the whole doc rather than a fixed field list: a constraint can
- * sit in `schema`, `inputType`, `outputType`, or a `$defs` entry nested in any of
- * them, and rewriting one that appears in a template body's inline schema is
- * correct too.
+ * names a module, not an alias); the caller drops those by checking the
+ * definition registry once every kind is registered. A co-referrer kind and a
+ * text-keys entry are reported by their own readers
+ * (`X_TELO_REF_INVALID_CALLS_CO_REFERRERS`, `TEXT_KEYS_INVALID`); the legacy
+ * identity form is accepted on an `x-telo-ref` constraint alone — every other
+ * annotation postdates its removal.
  */
-export function resolveSchemaRefKinds(
+export function refConstraintIssues(
   definition: ResourceManifest,
   resolver: Pick<AliasResolver, "resolveKindResult" | "knownAliases">,
 ): RefConstraintIssue[] {
   const issues: RefConstraintIssue[] = [];
-
-  const record = (
-    ref: string,
-    path: string,
-    annotation: "ref" | "zone" | "referrer" | "reachable" = "ref",
-  ): void => {
-    if (isLegacyRefIdentity(ref)) {
+  withAnnotationKinds(definition, "", (ref, annotation, path) => {
+    if (annotation === "coReferrer" || annotation === "textKeys") return undefined;
+    if (annotation === "ref" && isLegacyRefIdentity(ref)) {
       issues.push({ ref, path, manifest: definition, reason: "legacy", annotation });
-      return;
+      return undefined;
     }
     const result = resolver.resolveKindResult(ref);
-    if (result.status === "ok") return;
+    if (result.status === "ok") return undefined;
     issues.push(
       result.status === "gated"
         ? {
@@ -115,85 +177,7 @@ export function resolveSchemaRefKinds(
             knownAliases: resolver.knownAliases(),
           },
     );
-  };
-
-  const walk = (value: unknown, path: string): void => {
-    if (value === null || typeof value !== "object") return;
-    if (Array.isArray(value)) {
-      value.forEach((item, i) => walk(item, `${path}[${i}]`));
-      return;
-    }
-    const obj = value as Record<string, unknown>;
-    if (obj[REF_ANNOTATION] !== undefined) {
-      // Shape knowledge stays in `ref-slot.ts`: this pass states only the
-      // alias→canonical rule and what to report when it does not apply.
-      rewriteRefSlotKinds(obj, (ref) => {
-        const result = isLegacyRefIdentity(ref) ? null : resolver.resolveKindResult(ref);
-        if (result?.status === "ok") return result.kind;
-        record(ref, path);
-        return undefined;
-      });
-      // A co-referrer kind that does not canonicalize is
-      // X_TELO_REF_INVALID_CALLS_CO_REFERRERS (`co-referrer-slot.ts`).
-      rewriteCoReferrerKinds(obj, (kind) => {
-        const result = resolver.resolveKindResult(kind);
-        return result.status === "ok" ? result.kind : undefined;
-      });
-    }
-    if (hasRequiresZone(obj)) {
-      // A zone requirement names its provider kind through the identical
-      // alias-qualified grammar, resolved in the same declaring scope — one
-      // walk canonicalizes both, so the kernel's `requireZone` and the zone
-      // projection never see an alias. An unresolved name is reported like an
-      // unresolved ref constraint (the caller maps it to
-      // ZONE_PROVIDER_UNRESOLVED); the legacy identity form is not accepted
-      // here — the annotation postdates its removal.
-      rewriteRequiresZoneKind(obj, (zone) => {
-        const result = resolver.resolveKindResult(zone);
-        if (result.status === "ok") return result.kind;
-        record(zone, `${path}.x-telo-requires-zone`, "zone");
-        return undefined;
-      });
-    }
-    if (hasReferrerRules(obj)) {
-      // A referrer rule's `referrer:` filter names a kind through the identical
-      // alias-qualified grammar, resolved in the same declaring scope — so the
-      // evaluation pass compares canonical kinds and never has to know which
-      // alias the CONSUMER happened to import the kind under. That is the whole
-      // reason such a rule can be sound where the same test written on the
-      // referring kind cannot.
-      rewriteReferrerRuleKinds(obj, (kind) => {
-        const result = resolver.resolveKindResult(kind);
-        if (result.status === "ok") return result.kind;
-        record(kind, `${path}.${REFERRER_RULES_ANNOTATION}`, "referrer");
-        return undefined;
-      });
-    }
-    if (hasResourceRules(obj)) {
-      // A resource rule's `reachable.kind` names the kind of reference its walk
-      // finds, through the same grammar and scope; one that names nothing is
-      // RESOURCE_RULE_INVALID at the kind that wrote it.
-      rewriteReachableRuleKinds(obj, (kind, index) => {
-        const result = resolver.resolveKindResult(kind);
-        if (result.status === "ok") return result.kind;
-        record(kind, `${path}.${RESOURCE_RULES_ANNOTATION}[${index}].reachable.kind`, "reachable");
-        return undefined;
-      });
-    }
-    if (hasTextKeys(obj)) {
-      // The keyed sets a kind shows are named through the same grammar; one
-      // that does not canonicalize is `TEXT_KEYS_INVALID`, reported with the
-      // annotation's other refusals (`text-keys.ts`).
-      rewriteTextKeysKinds(obj, (kind) => {
-        const result = resolver.resolveKindResult(kind);
-        return result.status === "ok" ? result.kind : undefined;
-      });
-    }
-    for (const key of Object.keys(obj)) {
-      walk(obj[key], path ? `${path}.${key}` : key);
-    }
-  };
-
-  walk(definition, "");
+    return undefined;
+  });
   return issues;
 }

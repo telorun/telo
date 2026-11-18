@@ -13,8 +13,7 @@ import { isModuleKind } from "./module-kinds.js";
 import { needTypeOf } from "./need-type.js";
 import { readReferrerRules, type ReferrerRule } from "./referrer-rule.js";
 import { pointerToPath } from "./resource-rule.js";
-import { resolveSchemaRefKinds, type RefConstraintIssue } from "./resolve-schema-ref-kinds.js";
-import { withCanonicalSchemaTypeRefs } from "./resolve-schema-type-refs.js";
+import { refConstraintIssues as refConstraintIssuesOf, type RefConstraintIssue } from "./resolve-schema-ref-kinds.js";
 import { retryForProblems } from "./retry-for-slot.js";
 import { serializableAnnotationProblems } from "./serializable-slot.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
@@ -60,9 +59,6 @@ export interface DefinitionRegistration {
   /** Every definition registered, need types and keyed declarations aside, in
    *  the order written. */
   readonly definitions: readonly RegisteredDefinition[];
-  /** The definitions registered as a copy of their document (their `extends`
-   *  canonicalized or a schema shape reference made canonical). */
-  readonly registeredCopies: readonly ResourceManifest[];
 }
 
 let registrationObserver: (() => void) | undefined;
@@ -236,20 +232,19 @@ export function registerDefinitions(
   // alias-form `capability` / `extends` / `x-telo-ref` canonicalized in the
   // DECLARING module's scope, so `extendedBy` is keyed by canonical kind.
   const definitions: RegisteredDefinition[] = [];
-  const registeredCopies: ResourceManifest[] = [];
   for (const m of plane) {
     const declared = kindDeclarationOf(m);
     if (!declared) continue;
     // A need type registers the Provider kind its fulfilments are, and a keyed
     // declaration the translations kind of its keys.
     if (needTypeOf(declared) || keyedTranslationsOf(declared)) {
-      defs.register(declared);
+      registry.registerDefinition(declared);
       continue;
     }
     const def = m as unknown as ResourceDefinition;
     const ownModule = (def.metadata as { module?: string } | undefined)?.module;
     const scopeResolver = declaringModuleScope(ownModule, aliases, { aliasesByModule, rootModules });
-    const refConstraintIssues = resolveSchemaRefKinds(m, scopeResolver);
+    const refConstraintIssues = refConstraintIssuesOf(m, scopeResolver);
     const at = (code: string, message: string, path: string): AnalysisDiagnostic => ({
       severity: DiagnosticSeverity.Error,
       code,
@@ -277,6 +272,10 @@ export function registerDefinitions(
     for (const problem of scopeOpenedByProblems(def, capability)) {
       slotDiagnostics.push(at("SCOPE_OPENED_BY_INVALID", `${m.kind} ${problem.message}`, problem.path));
     }
+    const resolvedExtends = def.extends ? (scopeResolver.resolveKind(def.extends) ?? def.extends) : def.extends;
+    // The registry holds the copy canonical in THIS module's scope, before a
+    // kind of another module can inherit it; the written document stays as is.
+    const registered = registry.registerDefinition(def, resolvedExtends);
     definitions.push({
       manifest: m,
       module: ownModule,
@@ -287,19 +286,10 @@ export function registerDefinitions(
       refSlotIssues: validateRefSlotDeclarations(m),
       slotDiagnostics,
       zoneSlotIssues: validateZoneSlotDeclarations(m),
-      referrerRules: readReferrerRules((m as Record<string, unknown>).schema),
+      // Compared by kind, so read off the copy.
+      referrerRules: readReferrerRules((registered as unknown as Record<string, unknown>).schema),
     });
-    const resolvedExtends = def.extends ? (scopeResolver.resolveKind(def.extends) ?? def.extends) : def.extends;
-    // A named shape the schema names is canonical in THIS module's scope
-    // before a kind of another module can inherit it.
-    const normalized = withCanonicalSchemaTypeRefs(
-      resolvedExtends !== def.extends ? { ...def, extends: resolvedExtends } : def,
-      aliases,
-      aliasesByModule,
-    );
-    if (normalized !== def) registeredCopies.push(normalized as unknown as ResourceManifest);
-    defs.register(normalized);
   }
 
-  return { registry, rootModules, libraries, duplicateAliases, definitions, registeredCopies };
+  return { registry, rootModules, libraries, duplicateAliases, definitions };
 }

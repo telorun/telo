@@ -1,0 +1,28 @@
+# Two whole-document choices sharing a name write an expression at the same
+# place, overlapping where both hold: each expression is typed against the slot
+# on its own, so only the text one is refused, in every configuration holding it.
+kind: Telo.Application
+metadata: { name: AlternativesFacts }
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+  flag2: { env: FLAG_2, type: boolean, default: false }
+---
+kind: Telo.Definition
+metadata: { name: Counter }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema: { type: object, properties: { count: { type: integer, x-telo-eval: compile } } }
+---
+!if
+metadata: { name: counter }
+if: !cel "variables.flag1"
+then:
+  kind: Self.Counter
+  count: !cel "1"
+---
+!if
+metadata: { name: counter }
+if: !cel "variables.flag2"
+then:
+  kind: Self.Counter
+  count: !cel "'text'"

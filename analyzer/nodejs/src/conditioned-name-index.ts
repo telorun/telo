@@ -30,7 +30,7 @@ import {
   type ChoiceStep,
   type ConditionedDeclaration,
   type ConditionedExpansion,
-  type Witness,
+  type World,
 } from "./conditioned-expansion.js";
 import { isForwardedDeclaration, isForwardedExport } from "./forwarded-declaration.js";
 import { FALSE, TRUE, type Condition } from "./presence-condition.js";
@@ -41,7 +41,15 @@ import { isKindDocumentOrImport } from "./system-kinds.js";
 import { parseKeys } from "./template-expansion.js";
 
 /** The populations `!ref` resolution reads (`RefResolution`). */
-export type NamePopulation = "local" | "exported" | "declared";
+export type NamePopulation = "local" | "exported" | "declared" | GraphPopulation;
+
+/** `local` / `declared` as a call graph reads them: among the declarations it
+ *  holds a node for, a stand-in for a choice nothing decides — which has no
+ *  kind — left out. */
+export type GraphPopulation = "localNodes" | "declaredNodes";
+
+const basePopulation = (population: NamePopulation): "local" | "exported" | "declared" =>
+  population === "localNodes" ? "local" : population === "declaredNodes" ? "declared" : population;
 
 /** One outcome of a lookup and where it holds. */
 export interface ConditionedOutcome {
@@ -116,6 +124,12 @@ export class ConditionedNameIndex {
         { declaration: declaration.manifest, condition: declaration.condition, path: declaration.path, module },
       ]);
     }
+    // A forward view is named only by the references a sibling entry's view
+    // aims at it, and is no module-level declaration of its consumer's module.
+    for (const view of union.views) {
+      const name = view.manifest.metadata?.name;
+      if (typeof name === "string") push(this.declared, name, view);
+    }
   }
 
   /** Every declaration of `name` some configuration holds at module level, in
@@ -151,7 +165,7 @@ export class ConditionedNameIndex {
     name: string,
     fromModule: string | undefined,
     within: ScopeSite | undefined,
-    witness: Witness,
+    witness: World,
   ): ConditionedOutcome {
     const logic = this.heldAt(witness);
     return holding(this.located(logic.logic, logic.present, population, name, fromModule, within), name);
@@ -177,7 +191,7 @@ export class ConditionedNameIndex {
     name: string,
     module: string | undefined,
     importPath: readonly string[] | undefined,
-    witness: Witness,
+    witness: World,
   ): ConditionedOutcome {
     const logic = this.heldAt(witness);
     return holding(this.inModuleBy(logic.logic, logic.present, population, name, module, importPath), name);
@@ -186,7 +200,7 @@ export class ConditionedNameIndex {
   /** Whether {@link locate} answers one outcome at every witness, forced ones
    *  included: every candidate it reads is declared under no choice. */
   locateFixed(population: NamePopulation, name: string, within: ScopeSite | undefined): boolean {
-    if (population === "local") {
+    if (basePopulation(population) === "local") {
       for (let site = within; site; site = site.holder.scope) {
         if (!(this.membersOf(site).get(name) ?? []).every(isFixed)) return false;
       }
@@ -202,7 +216,7 @@ export class ConditionedNameIndex {
   }
 
   /** Conditions paired with whether each holds at `witness`. */
-  private heldAt(witness: Witness): { logic: Logic<Held>; present: (c: Candidate) => Held } {
+  private heldAt(witness: World): { logic: Logic<Held>; present: (c: Candidate) => Held } {
     const { space } = this.union;
     const logic: Logic<Held> = {
       TRUE: { condition: TRUE, at: true },
@@ -231,7 +245,7 @@ export class ConditionedNameIndex {
     const out: { outcome: ResolutionOutcome; held: T }[] = [];
     // Where no scope of the chain has declared the name yet.
     let rest = logic.TRUE;
-    if (population === "local") {
+    if (basePopulation(population) === "local") {
       for (let site = within; site; site = site.holder.scope) {
         const members = this.membersOf(site).get(name) ?? [];
         let earlier = logic.FALSE;
@@ -310,13 +324,41 @@ export class ConditionedNameIndex {
     return out;
   }
 
+  /** Where several of `module`'s declarations of `name` among `population`
+   *  are present at once. */
+  severalIn(population: NamePopulation, name: string, module: string | undefined): Condition {
+    const { space } = this.union;
+    let one = FALSE;
+    let any = FALSE;
+    for (const candidate of this.candidates(population, name)) {
+      if (candidate.module !== module) continue;
+      one = space.or(space.and(one, space.not(candidate.condition)), space.and(space.not(any), candidate.condition));
+      any = space.or(any, candidate.condition);
+    }
+    return space.and(any, space.not(one));
+  }
+
+  /** Whether several of `module`'s declarations of `name` among `population`
+   *  are present at `witness`. */
+  severalInAt(population: NamePopulation, name: string, module: string | undefined, witness: World): boolean {
+    const { space } = this.union;
+    let count = 0;
+    for (const candidate of this.candidates(population, name)) {
+      if (candidate.module !== module) continue;
+      if (takenAt(space, candidate.condition, candidate.path, witness.assignment, witness.forcing)) count++;
+    }
+    return count > 1;
+  }
+
   private candidates(population: NamePopulation, name: string): Candidate[] {
     const out: Candidate[] = [];
     for (const declaration of this.declared.get(name) ?? []) {
       const m = declaration.manifest;
       if (isKindDocumentOrImport(m)) continue;
-      if (population === "local" && isForwardedDeclaration(m)) continue;
-      if (population === "exported" && !isForwardedExport(m)) continue;
+      const base = basePopulation(population);
+      if (base === "local" && isForwardedDeclaration(m)) continue;
+      if (base === "exported" && !isForwardedExport(m)) continue;
+      if (base !== population && isStandInDeclaration(m)) continue;
       out.push({ declaration: m, condition: declaration.condition, path: declaration.path, module: moduleOf(m) });
     }
     return out;

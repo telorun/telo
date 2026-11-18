@@ -1,0 +1,20 @@
+# A template body finding held where the definition's own value and a module
+# input agree: one clause names both, and every configuration holds it for some
+# value the definition can be given.
+kind: Telo.Application
+metadata: { name: TemplateBodyInputDefinition, version: 1.0.0 }
+variables: { x: { env: X, type: boolean, default: false } }
+imports: { Kinds: ../resource-inputs/optional/kinds }
+---
+kind: Telo.Definition
+metadata: { name: Wrapper }
+capability: Telo.Provider
+schema: { type: object, properties: { mode: { type: string, enum: [a, b] } } }
+resources:
+  - { kind: Kinds.Store, metadata: { name: store }, label: store }
+  - !if
+    metadata: { name: inner }
+    if: !cel "(self.mode == 'a' && variables.x) || (self.mode == 'b' && !variables.x)"
+    then: { kind: Kinds.Holder, store: !ref missing }
+    else: { kind: Kinds.Holder, store: !ref store }
+provide: !ref inner

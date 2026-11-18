@@ -1,0 +1,51 @@
+# A route's handler is chosen by `variables.flag1`: what it can throw is
+# uncovered in one configuration, and a catch-all written before another one
+# only where the same flag holds. The same choice is written inline, inside a
+# scope member, and in a branch no configuration takes.
+kind: Telo.Application
+metadata: { name: ThrowsCoverageChoice }
+imports: { T: ./throws/kinds }
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+---
+kind: T.FailA
+metadata: { name: failA }
+---
+kind: Telo.Sequence
+metadata: { name: quiet }
+steps:
+  - { name: done, value: 1 }
+---
+kind: T.Router
+metadata: { name: router }
+routes:
+  - handler: !if
+      if: !cel "variables.flag1"
+      then: !ref failA
+      else: !ref quiet
+  - handler: !ref failA
+    catches:
+      - !if
+        if: !cel "variables.flag1"
+        then: { status: 503 }
+      - { status: 500 }
+  - handler: !if
+      if: !cel "variables.flag1"
+      then: { kind: T.FailB }
+      else: !ref quiet
+  - !if
+    if: !cel "1 == 2"
+    then: { handler: !ref failA }
+---
+kind: Telo.Sequence
+metadata: { name: holder }
+with:
+  - kind: T.Router
+    metadata: { name: inner }
+    routes:
+      - handler: !if
+          if: !cel "variables.flag1"
+          then: !ref quiet
+          else: !ref failA
+steps:
+  - { name: done, value: 1 }

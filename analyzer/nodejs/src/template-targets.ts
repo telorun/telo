@@ -81,6 +81,9 @@ export function templateTargetProblems(
   /** The capability of an inline target's kind, read in the defining module's
    *  scope; absent, an inline target's kind is not judged. */
   capabilityOf?: (kind: string) => string | undefined,
+  /** The entries the body declares as written, which a message lists and a
+   *  suggestion names; by default the entries it holds. */
+  written?: readonly string[],
 ): TemplateTargetProblem[] {
   const raw = definition.targets;
   if (raw === undefined || raw === null) return [];
@@ -162,13 +165,14 @@ export function templateTargetProblems(
     }
     const name = localRefName(item);
     if (names.includes(name) || anyDynamic) return;
-    const suggestion = nearest?.(name, names);
+    const listed = (written ?? names).filter((each) => each !== name);
+    const suggestion = nearest?.(name, listed);
     problems.push({
       code: "TEMPLATE_TARGET_UNKNOWN",
       path,
       message:
         `'${path}: !ref ${item.source}' names no entry in 'resources:'. ` +
-        `Available: ${names.join(", ") || "(none)"}.` +
+        `Available: ${listed.join(", ") || "(none)"}.` +
         (suggestion ? ` Did you mean '${suggestion}'?` : ""),
       ...(suggestion ? { suggestion } : {}),
     });

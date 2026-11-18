@@ -1,4 +1,5 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import type { AnalysisFamily } from "./analysis-families.js";
 import { instancesOf, moduleInstanceTree } from "./module-instance-tree.js";
 import type { AnalysisRegistry } from "./analysis-registry.js";
 import { readApplicationSourceSlot } from "./application-source-slot.js";
@@ -104,6 +105,11 @@ export interface NeedGraphDeclaration {
   kind: string;
   type?: string;
   manifest: ResourceManifest;
+  /** Where it is declared, in the graph's logic; everywhere when absent. */
+  held?: unknown;
+  /** Where each key of its `fields:` is written, in the graph's logic; read
+   *  from the manifest when absent. */
+  fieldKeys?: ReadonlyMap<string, unknown>;
 }
 
 /** One concrete reference site of a declaration — a `!ref` a kind's reference
@@ -117,6 +123,8 @@ export interface NeedGraphReference {
   /** Set when the site supplies a need of a child application the holding
    *  resource runs: that resource's name and the child's need. */
   childNeed?: { holder: string; need: string };
+  /** Where the site is written, in the graph's logic; everywhere when absent. */
+  held?: unknown;
 }
 
 export interface NeedGraphImport {
@@ -175,7 +183,37 @@ export interface NeedGraph {
   /** The optional needs of a module (by name) one configuration proves present —
    *  where a reference to one is legal. */
   presentNeeds?(module: string): ReadonlySet<string> | undefined;
+  /** The connectives the declarations' and references' `held` are in; one
+   *  configuration's, where every one is `true`, when absent. */
+  logic?: NeedLogic<unknown>;
+  /** Where a module's optional need is proven present, in {@link logic};
+   *  read from {@link presentNeeds} when absent. */
+  presentNeed?(module: string, need: string): unknown;
 }
+
+/** The connectives a need table's findings are held in. */
+export interface NeedLogic<T> {
+  readonly TRUE: T;
+  readonly FALSE: T;
+  and(a: T, b: T): T;
+  or(a: T, b: T): T;
+  not(a: T): T;
+  isFalse(a: T): boolean;
+  /** The classes `held` split everywhere into: each non-empty intersection of
+   *  every one or its complement. */
+  atoms(held: readonly T[]): T[];
+}
+
+/** One configuration's logic: everything is `true` or `false`. */
+const ONE_CONFIGURATION: NeedLogic<boolean> = {
+  TRUE: true,
+  FALSE: false,
+  and: (a, b) => a && b,
+  or: (a, b) => a || b,
+  not: (a) => !a,
+  isFalse: (a) => !a,
+  atoms: () => [true],
+};
 
 export interface NeedProblem {
   /** The static code `telo check` reports. */
@@ -188,9 +226,18 @@ export interface NeedProblem {
   filePath?: string;
   resource?: { kind: string; name: string };
   path: string;
-  /** True when `telo check` reports the same defect through another pass
-   *  (a need's name collision, through its injected declaration). */
-  reportedElsewhere?: boolean;
+  /** Where it holds, in the graph's logic. */
+  held?: unknown;
+  /** The family the finding is judged in where it is not the need table's own. */
+  family?: AnalysisFamily;
+  /** The declaration — and the reference site of it — it is about, when its
+   *  wording and place name them, with how it reads for another rendering of
+   *  them (`kind`, `name`, and the site's path). */
+  about?: {
+    readonly declaration: NeedGraphDeclaration;
+    readonly reference?: NeedGraphReference;
+    rerender(kind: string, name: string, path: string): { message: string; path: string };
+  };
 }
 
 /** How a need is fulfilled: supplied whole or field by field at the import that
@@ -292,14 +339,11 @@ function list(names: Iterable<string>): string {
 
 /** Resolve the need table of `graph`. */
 export function resolveNeedTable(graph: NeedGraph): NeedTable {
+  const logic = graph.logic ?? ONE_CONFIGURATION;
   const problems: NeedProblem[] = [];
-  const problem = (
-    module: NeedGraphModule,
-    code: string,
-    message: string,
-    at: { manifest?: ResourceManifest; resource?: { kind: string; name: string }; path: string },
-    reportedElsewhere?: boolean,
-  ): void => {
+  const problem: Report = (module, code, message, at) => {
+    const held = at.held ?? logic.TRUE;
+    if (logic.isFalse(held)) return;
     const manifest = at.manifest ?? module.doc;
     problems.push({
       code,
@@ -312,14 +356,16 @@ export function resolveNeedTable(graph: NeedGraph): NeedTable {
         name: (manifest?.metadata?.name as string | undefined) ?? module.name,
       },
       path: at.path,
-      ...(reportedElsewhere ? { reportedElsewhere } : {}),
+      ...(graph.logic ? { held } : {}),
+      ...(at.family ? { family: at.family } : {}),
+      ...(at.about ? { about: at.about } : {}),
     });
   };
 
   for (const module of graph.modules.values()) {
-    if (module.checked) checkModule(graph, module, problem);
+    if (module.checked) checkModule(graph, module, problem, logic);
   }
-  checkConstraintsVerified(graph, problem);
+  checkConstraintsVerified(graph, problem, logic);
 
   const { entries, environment, applications } = walkTree(graph);
   const root = graph.modules.get(graph.root);
@@ -486,11 +532,28 @@ type Report = (
   module: NeedGraphModule,
   code: string,
   message: string,
-  at: { manifest?: ResourceManifest; resource?: { kind: string; name: string }; path: string },
-  reportedElsewhere?: boolean,
+  at: {
+    manifest?: ResourceManifest;
+    resource?: { kind: string; name: string };
+    path: string;
+    held?: unknown;
+    family?: AnalysisFamily;
+    about?: NeedProblem["about"];
+  },
 ) => void;
 
-function checkModule(graph: NeedGraph, module: NeedGraphModule, report: Report): void {
+/** `NEED_OPTIONAL_REFERENCED`'s wording, for a site at `path` of `kind/name`. */
+function optionalNeedReferenceMessage(kind: string, name: string, path: string, need: string): string {
+  return (
+    `${kind}/${name}: '${path}' references need ` +
+    `'${need}', which is optional and may be absent. A reference slot holds ` +
+    `a fulfilment for the resource's whole life — reference it only where an '!if' proves it ` +
+    `present ('resources.${need} != null'), read its fields through a guarded CEL ` +
+    `expression, forward it to a need that is itself optional, or make it required.`
+  );
+}
+
+function checkModule(graph: NeedGraph, module: NeedGraphModule, report: Report, logic: NeedLogic<unknown>): void {
   // A need type's own declaration: `required:` naming a field it never declares.
   for (const doc of module.needTypes) {
     const shape = readNeedTypeShape(doc);
@@ -570,19 +633,19 @@ function checkModule(graph: NeedGraph, module: NeedGraphModule, report: Report):
     }
     checkEnvBindings(module, need, shape, report);
 
-    const collision =
-      module.otherNames.get(need.name) ??
-      (module.declarations?.some((d) => d.name === need.name)
-        ? `resource '${need.name}'`
-        : undefined);
+    const named = (module.declarations ?? []).filter((d) => d.name === need.name);
+    const other = module.otherNames.get(need.name);
+    const collision = other ?? (named.length > 0 ? `resource '${need.name}'` : undefined);
     if (collision) {
       report(
         module,
         "DUPLICATE_RESOURCE_NAME",
         `Need '${need.name}' collides with ${collision} declared in module '${module.name}' — ` +
           `a need is a declaration in the module's one namespace. Rename one of them.`,
-        { path: `needs.${need.name}` },
-        true,
+        {
+          path: `needs.${need.name}`,
+          ...(other ? {} : { held: named.reduce((held, d) => logic.or(held, d.held ?? logic.TRUE), logic.FALSE) }),
+        },
       );
     }
   }
@@ -590,25 +653,33 @@ function checkModule(graph: NeedGraph, module: NeedGraphModule, report: Report):
   // An optional need may be absent, so a kind's reference slot — which holds a
   // fulfilment for the resource's whole life — cannot take one.
   const present = graph.presentNeeds?.(module.name);
-  const optionalNeeds = new Set(
-    module.needs.filter((n) => n.optional && !present?.has(n.name)).map((n) => n.name),
+  const presentHeld = (need: string): unknown =>
+    graph.presentNeed ? graph.presentNeed(module.name, need) : present?.has(need) ? logic.TRUE : logic.FALSE;
+  // Where each optional need may be absent.
+  const optionalNeeds = new Map(
+    module.needs.filter((n) => n.optional).map((n) => [n.name, logic.not(presentHeld(n.name))] as const),
   );
   for (const reference of module.references ?? []) {
     const local = reference.target.alias === undefined || reference.target.alias === "Self";
-    if (!local || !optionalNeeds.has(reference.target.name)) continue;
+    const absent = local ? optionalNeeds.get(reference.target.name) : undefined;
+    if (absent === undefined) continue;
     const declaration = reference.declaration;
+    const need = reference.target.name;
     report(
       module,
       "NEED_OPTIONAL_REFERENCED",
-      `${declaration.kind}/${declaration.name}: '${reference.path}' references need ` +
-        `'${reference.target.name}', which is optional and may be absent. A reference slot holds ` +
-        `a fulfilment for the resource's whole life — reference it only where an '!if' proves it ` +
-        `present ('resources.${reference.target.name} != null'), read its fields through a guarded CEL ` +
-        `expression, forward it to a need that is itself optional, or make it required.`,
+      optionalNeedReferenceMessage(declaration.kind, declaration.name, reference.path, need),
       {
         manifest: declaration.manifest,
         resource: { kind: declaration.kind, name: declaration.name },
         path: reference.path,
+        family: "presenceReads",
+        held: logic.and(reference.held ?? logic.TRUE, absent),
+        about: {
+          declaration,
+          reference,
+          rerender: (kind, name, path) => ({ message: optionalNeedReferenceMessage(kind, name, path, need), path }),
+        },
       },
     );
   }
@@ -629,42 +700,56 @@ function checkModule(graph: NeedGraph, module: NeedGraphModule, report: Report):
   for (const declaration of module.declarations ?? []) {
     const shape = declaration.type ? graph.needType(declaration.type) : undefined;
     if (!shape) continue;
+    const held = declaration.held ?? logic.TRUE;
+    const resource = { kind: declaration.kind, name: declaration.name };
     if (shape.supply === "root") {
-      report(
-        module,
-        "NEED_ROOT_SUPPLY_REQUIRED",
-        `${declaration.kind}/${declaration.name}: need type '${declaration.type}' is supplied only ` +
-          `through a root need forwarded whole, so a fulfilment of it cannot be written in a ` +
-          `manifest. Declare a need of the type under the application's 'needs:' and let whoever ` +
-          `runs the application supply it.`,
-        { manifest: declaration.manifest, resource: { kind: declaration.kind, name: declaration.name }, path: "" },
-      );
+      const message = (kind: string, name: string) =>
+        `${kind}/${name}: need type '${declaration.type}' is supplied only ` +
+        `through a root need forwarded whole, so a fulfilment of it cannot be written in a ` +
+        `manifest. Declare a need of the type under the application's 'needs:' and let whoever ` +
+        `runs the application supply it.`;
+      report(module, "NEED_ROOT_SUPPLY_REQUIRED", message(declaration.kind, declaration.name), {
+        manifest: declaration.manifest,
+        resource,
+        path: "",
+        held,
+        about: { declaration, rerender: (kind, name) => ({ message: message(kind, name), path: "" }) },
+      });
       continue;
     }
     const fields = (declaration.manifest as Record<string, unknown>).fields;
-    const written =
-      fields && typeof fields === "object" && !Array.isArray(fields)
-        ? (fields as Record<string, unknown>)
-        : {};
-    const resource = { kind: declaration.kind, name: declaration.name };
-    checkFields(
-      module,
-      written,
-      shape,
-      `${declaration.kind}/${declaration.name}`,
-      declaration.type!,
-      "fields",
-      { manifest: declaration.manifest, resource },
-      report,
-    );
+    const keys =
+      declaration.fieldKeys ??
+      new Map(
+        Object.keys(fields && typeof fields === "object" && !Array.isArray(fields) ? fields : {}).map(
+          (key) => [key, logic.TRUE] as const,
+        ),
+      );
+    const findings = (kind: string, name: string) =>
+      fieldsFindingsHeld(keys, shape, `${kind}/${name}`, declaration.type!, "fields", logic);
+    findings(declaration.kind, declaration.name).forEach((finding, i) => {
+      report(module, finding.code, finding.message, {
+        manifest: declaration.manifest,
+        resource,
+        path: finding.path,
+        held: logic.and(held, finding.held),
+        about: {
+          declaration,
+          rerender: (kind, name) => {
+            const again = findings(kind, name)[i]!;
+            return { message: again.message, path: again.path };
+          },
+        },
+      });
+    });
   }
 
   for (const imp of module.imports) {
     const target = imp.target ? graph.modules.get(imp.target) : undefined;
     if (!target) continue;
-    checkSupply(graph, module, imp, target, report);
+    checkSupply(graph, module, imp, target, report, logic);
   }
-  checkDirectoriesForwardedOnce(graph, module, report);
+  checkDirectoriesForwardedOnce(graph, module, report, logic);
 }
 
 function checkParameters(
@@ -973,8 +1058,29 @@ function fieldsFindings(
   type: string,
   at: string,
 ): SupplyFinding[] {
-  const out: SupplyFinding[] = [];
-  for (const key of Object.keys(written)) {
+  return fieldsFindingsHeld(
+    new Map(Object.keys(written).map((key) => [key, true] as const)),
+    shape,
+    subject,
+    type,
+    at,
+    ONE_CONFIGURATION,
+  ).map(({ code, message, path }) => ({ code, message, path }));
+}
+
+/** What is wrong with the keys of a map of fields, each written where `keys`
+ *  holds it: every key a field of the type, every required field present — the
+ *  missing ones named together, so once per class of where they are written. */
+function fieldsFindingsHeld<T>(
+  keys: ReadonlyMap<string, T>,
+  shape: NeedTypeShape,
+  subject: string,
+  type: string,
+  at: string,
+  logic: NeedLogic<T>,
+): (SupplyFinding & { held: T })[] {
+  const out: (SupplyFinding & { held: T })[] = [];
+  for (const [key, held] of keys) {
     if (key in shape.fields) continue;
     out.push({
       code: "NEED_FIELD_UNDECLARED",
@@ -982,10 +1088,13 @@ function fieldsFindings(
         `${subject}: field '${key}' is not declared by need type '${type}'. Fields: ` +
         `${list(Object.keys(shape.fields))}.`,
       path: `${at}.${key}`,
+      held,
     });
   }
-  const missing = shape.required.filter((field) => !(field in written));
-  if (missing.length > 0) {
+  const written = (field: string) => keys.get(field) ?? logic.FALSE;
+  for (const atom of logic.atoms(shape.required.map(written))) {
+    const missing = shape.required.filter((field) => logic.isFalse(logic.and(atom, written(field))));
+    if (missing.length === 0) continue;
     out.push({
       code: "NEED_SLOT_MISMATCH",
       message:
@@ -993,24 +1102,10 @@ function fieldsFindings(
         `${missing.map((f) => `'${f}'`).join(", ")} of need type '${type}' — a fulfilment is every ` +
         `required field of its type.`,
       path: at,
+      held: atom,
     });
   }
   return out;
-}
-
-function checkFields(
-  module: NeedGraphModule,
-  written: Record<string, unknown>,
-  shape: NeedTypeShape,
-  subject: string,
-  type: string,
-  at: string,
-  anchor: { manifest?: ResourceManifest; resource?: { kind: string; name: string } },
-  report: Report,
-): void {
-  for (const finding of fieldsFindings(written, shape, subject, type, at)) {
-    report(module, finding.code, finding.message, { ...anchor, path: finding.path });
-  }
 }
 
 /**
@@ -1136,6 +1231,7 @@ function checkSupply(
   imp: NeedGraphImport,
   target: NeedGraphModule,
   report: Report,
+  logic: NeedLogic<unknown>,
 ): void {
   const resource = { kind: "Telo.Import", name: imp.alias };
   const anchor = { manifest: imp.manifest, resource };
@@ -1193,37 +1289,42 @@ function checkSupply(
     const source = supply.target.source;
     const local = supply.target.alias === undefined || supply.target.alias === "Self";
     const ownNeed = local ? module.needs.find((n) => n.name === supply.target.name) : undefined;
-    const ownDeclaration = local
-      ? module.declarations?.find((d) => d.name === supply.target.name)
-      : undefined;
-    if (!ownNeed && !ownDeclaration) {
-      // A dependency whose declarations this graph cannot see is not judged.
-      if (local && module.declarations === undefined) continue;
-      report(
-        module,
-        "UNRESOLVED_REFERENCE",
-        `Import '${imp.alias}': need '${key}' → '${source}' names no need or fulfilment module ` +
-          `'${module.name}' declares. A need is supplied whole by a '!ref' to one of this ` +
-          `module's own needs, or to a fulfilment it declares.`,
-        { ...anchor, path },
-      );
-      continue;
-    }
-    const suppliedType = ownNeed ? ownNeed.type : ownDeclaration!.type;
-    const suppliedKind = ownNeed ? ownNeed.kind : ownDeclaration!.kind;
-    if (!need.type || !suppliedType) continue;
-    if (suppliedType !== need.type) {
+    const mismatch = (suppliedKind: string, suppliedType: string | undefined, held: unknown) => {
+      if (!need.type || !suppliedType || suppliedType === need.type) return;
       report(
         module,
         "REFERENCE_KIND_MISMATCH",
         `Import '${imp.alias}': need '${key}' is need type '${need.type}', and '${source}' is ` +
           `'${suppliedKind}' (resolved: '${suppliedType}'). A need is supplied by a need or ` +
           `fulfilment of its own type.`,
-        { ...anchor, path },
+        { ...anchor, path, held },
+      );
+    };
+    if (!ownNeed) {
+      // A dependency whose declarations this graph cannot see is not judged.
+      if (local && module.declarations === undefined) continue;
+      // The first declaration of the name present supplies it.
+      let before = logic.FALSE;
+      for (const declaration of local ? module.declarations!.filter((d) => d.name === supply.target.name) : []) {
+        const first = logic.and(declaration.held ?? logic.TRUE, logic.not(before));
+        before = logic.or(before, declaration.held ?? logic.TRUE);
+        if (!logic.isFalse(first)) mismatch(declaration.kind, declaration.type, first);
+      }
+      report(
+        module,
+        "UNRESOLVED_REFERENCE",
+        `Import '${imp.alias}': need '${key}' → '${source}' names no need or fulfilment module ` +
+          `'${module.name}' declares. A need is supplied whole by a '!ref' to one of this ` +
+          `module's own needs, or to a fulfilment it declares.`,
+        { ...anchor, path, held: logic.not(before) },
       );
       continue;
     }
-    if (!ownNeed) continue;
+    if (!need.type || !ownNeed.type) continue;
+    if (ownNeed.type !== need.type) {
+      mismatch(ownNeed.kind, ownNeed.type, logic.TRUE);
+      continue;
+    }
     for (const message of wholeForwardRefusals(
       `Import '${imp.alias}'`,
       key,
@@ -1245,15 +1346,39 @@ function checkSupply(
  * need at an import (a `shared` library's is one need however many imports reach
  * it) and a child application's need, supplied by the resource that runs it.
  */
-function checkDirectoriesForwardedOnce(graph: NeedGraph, module: NeedGraphModule, report: Report): void {
+function checkDirectoriesForwardedOnce(
+  graph: NeedGraph,
+  module: NeedGraphModule,
+  report: Report,
+  logic: NeedLogic<unknown>,
+): void {
+  // Which sites a class of configurations holds decides every finding's
+  // wording, so each is judged once per class of where they are written.
+  const varying = [
+    ...(module.references ?? []).filter((r) => r.childNeed && r.held !== undefined).map((r) => r.held),
+    ...(module.declarations ?? []).filter((d) => d.held !== undefined).map((d) => d.held),
+  ];
+  for (const atom of varying.length === 0 ? [logic.TRUE] : logic.atoms(varying)) {
+    const holds = (held: unknown) => held === undefined || !logic.isFalse(logic.and(atom, held));
+    directoriesForwardedOnceIn(graph, module, report, atom, holds);
+  }
+}
+
+function directoriesForwardedOnceIn(
+  graph: NeedGraph,
+  module: NeedGraphModule,
+  report: Report,
+  held: unknown,
+  holds: (held: unknown) => boolean,
+): void {
   type Site = {
     target: string;
-    anchor: { manifest: ResourceManifest; resource: { kind: string; name: string }; path: string };
+    anchor: { manifest: ResourceManifest; resource: { kind: string; name: string }; path: string; held: unknown };
   };
   const forwards = new Map<string, Site[]>();
   const isDirectory = (name: string) =>
     (module.needs.find((n) => n.name === name)?.type ??
-      module.declarations?.find((d) => d.name === name)?.type) === DURABLE_DIRECTORY_TYPE;
+      module.declarations?.find((d) => d.name === name && holds(d.held))?.type) === DURABLE_DIRECTORY_TYPE;
   const add = (name: string, site: Site) => {
     if (!isDirectory(name)) return;
     const sites = forwards.get(name) ?? [];
@@ -1269,12 +1394,12 @@ function checkDirectoriesForwardedOnce(graph: NeedGraph, module: NeedGraphModule
       if (supply.target.alias !== undefined && supply.target.alias !== "Self") continue;
       add(supply.target.name, {
         target: target.shared ? `${target.name}.${key}` : `${imp.alias}.${key}`,
-        anchor: { manifest: imp.manifest, resource: { kind: "Telo.Import", name: imp.alias }, path: `needs.${key}` },
+        anchor: { manifest: imp.manifest, resource: { kind: "Telo.Import", name: imp.alias }, path: `needs.${key}`, held },
       });
     }
   }
   for (const reference of module.references ?? []) {
-    if (!reference.childNeed) continue;
+    if (!reference.childNeed || !holds(reference.held)) continue;
     if (reference.target.alias !== undefined && reference.target.alias !== "Self") continue;
     const { declaration } = reference;
     add(reference.target.name, {
@@ -1283,6 +1408,7 @@ function checkDirectoriesForwardedOnce(graph: NeedGraph, module: NeedGraphModule
         manifest: declaration.manifest,
         resource: { kind: declaration.kind, name: declaration.name },
         path: reference.path,
+        held,
       },
     });
   }
@@ -1316,13 +1442,30 @@ type Observed = ReadonlyMap<string, ReadonlySet<NeedConstraint> | undefined>;
  * memoized per declaring module.
  */
 export function constraintObservations(graph: NeedGraph): (moduleKey: string) => Observed {
-  const memo = new Map<string, Observed>();
+  const held = heldObservations(graph, ONE_CONFIGURATION);
+  return (moduleKey) => {
+    const out = new Map<string, Set<NeedConstraint> | undefined>();
+    for (const [need, reached] of held(moduleKey)) {
+      out.set(need, reached && new Set([...reached].filter(([, at]) => at).map(([constraint]) => constraint)));
+    }
+    return out;
+  };
+}
+
+/** {@link constraintObservations} in `logic`: per need, where each constraint
+ *  some observing slot reaches is reached. */
+function heldObservations<T>(
+  graph: NeedGraph,
+  logic: NeedLogic<T>,
+): (moduleKey: string) => ReadonlyMap<string, ReadonlyMap<NeedConstraint, T> | undefined> {
+  type HeldObserved = ReadonlyMap<string, ReadonlyMap<NeedConstraint, T> | undefined>;
+  const memo = new Map<string, HeldObserved>();
   const inProgress = new Set<string>();
-  const observedOf = (moduleKey: string): Observed => {
+  const observedOf = (moduleKey: string): HeldObserved => {
     const known = memo.get(moduleKey);
     if (known) return known;
     const module = graph.modules.get(moduleKey);
-    const out = new Map<string, Set<NeedConstraint> | undefined>();
+    const out = new Map<string, Map<NeedConstraint, T> | undefined>();
     if (!module || inProgress.has(moduleKey)) return out;
     inProgress.add(moduleKey);
     for (const need of module.needs) {
@@ -1330,9 +1473,9 @@ export function constraintObservations(graph: NeedGraph): (moduleKey: string) =>
         out.set(need.name, undefined);
         continue;
       }
-      out.set(need.name, new Set());
+      out.set(need.name, new Map());
     }
-    const merge = (name: string, from: ReadonlySet<NeedConstraint> | undefined) => {
+    const merge = (name: string, from: ReadonlyMap<NeedConstraint, T> | undefined) => {
       if (!out.has(name)) return;
       const into = out.get(name);
       if (!into) return;
@@ -1340,11 +1483,12 @@ export function constraintObservations(graph: NeedGraph): (moduleKey: string) =>
         out.set(name, undefined);
         return;
       }
-      for (const c of from) into.add(c);
+      for (const [c, at] of from) into.set(c, logic.or(into.get(c) ?? logic.FALSE, at));
     };
     for (const reference of module.references ?? []) {
       const local = reference.target.alias === undefined || reference.target.alias === "Self";
-      if (local) merge(reference.target.name, new Set(reference.observes));
+      const at = (reference.held ?? logic.TRUE) as T;
+      if (local) merge(reference.target.name, new Map(reference.observes.map((c) => [c, at] as const)));
     }
     for (const imp of module.imports) {
       const target = imp.target ? graph.modules.get(imp.target) : undefined;
@@ -1363,8 +1507,8 @@ export function constraintObservations(graph: NeedGraph): (moduleKey: string) =>
   return observedOf;
 }
 
-function checkConstraintsVerified(graph: NeedGraph, report: Report): void {
-  const observedOf = constraintObservations(graph);
+function checkConstraintsVerified(graph: NeedGraph, report: Report, logic: NeedLogic<unknown>): void {
+  const observedOf = heldObservations(graph, logic);
   for (const module of graph.modules.values()) {
     if (!module.checked) continue;
     const observed = observedOf(module.key);
@@ -1380,7 +1524,8 @@ function checkConstraintsVerified(graph: NeedGraph, report: Report): void {
       const reached = observed.get(need.name);
       if (!reached) continue;
       for (const constraint of stated) {
-        if (reached.has(constraint)) continue;
+        const unreached = logic.not(reached.get(constraint) ?? logic.FALSE);
+        if (logic.isFalse(unreached)) continue;
         report(
           module,
           "NEED_CONSTRAINT_UNVERIFIED",
@@ -1388,7 +1533,7 @@ function checkConstraintsVerified(graph: NeedGraph, report: Report): void {
             `observing '${constraint}' holds this need, in module '${module.name}' or in any need it ` +
             `is forwarded to whole. Reference the need whole at a slot that observes it, or drop ` +
             `'${constraint}:' — a pure provisioning request belongs in the type's 'parameters'.`,
-          { path: `needs.${need.name}.${constraint}` },
+          { path: `needs.${need.name}.${constraint}`, held: unreached },
         );
       }
     }
@@ -1776,6 +1921,36 @@ function referencesOf(
     visit(body.holder, body.manifest, body.type, body.prefix, body.siblings);
   }
   return out;
+}
+
+/** The reference sites of one declaration of module `module`, as its unit
+ *  lists them. */
+export function declarationReferences(
+  module: string,
+  declaration: NeedGraphDeclaration,
+  scope: NeedGraphScope,
+): NeedGraphReference[] {
+  if (!scope.referenceSites) return [];
+  return referencesOf([declaration], [], (kind) => scope.resolveKind(module, kind), scope.referenceSites, (kind) =>
+    scope.applicationNeedsFeed?.(kind),
+  );
+}
+
+/** The reference sites of a template definition's body entries — the body as
+ *  `definition` holds it — reported against `holder`, as module `module`'s
+ *  unit lists them. */
+export function templateBodyReferences(
+  module: string,
+  definition: ResourceManifest,
+  holder: NeedGraphDeclaration,
+  scope: NeedGraphScope,
+): NeedGraphReference[] {
+  if (!scope.referenceSites) return [];
+  const resolve = (kind: string) => scope.resolveKind(module, kind);
+  const entries = templateBodyEntries(definition);
+  const siblings = new Set(entries.map((e) => e.manifest.metadata?.name).filter((n): n is string => typeof n === "string"));
+  const bodies = entries.map((entry) => ({ holder, manifest: entry.manifest, type: resolve(entry.kind), prefix: entry.prefix, siblings }));
+  return referencesOf([], bodies, resolve, scope.referenceSites, (kind) => scope.applicationNeedsFeed?.(kind));
 }
 
 /** The need graph of a whole loaded application — every module it runs: the

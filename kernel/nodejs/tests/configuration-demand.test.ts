@@ -60,6 +60,13 @@ describe("the inputs a configuration demands", () => {
     expect(refused.message).not.toContain("openaiApiKey");
   });
 
+  it("demands a variable a template body's branch reads only where a configuration takes that branch", async () => {
+    await boot("requirements/body-choice.yaml", { X: "false" });
+    const refused = await refusal("requirements/body-choice.yaml", { X: "true" });
+    expect(refused.code).toBe("ERR_MANIFEST_VALIDATION_FAILED");
+    expect(refused.message).toContain("Y is not set");
+  });
+
   it("demands a required need only where its consumer is chosen, refusing an unmet one before anything exists", async () => {
     // Loaded only: its targets run the standard library (`tests/configurations.yaml` boots it).
     await kernelFor({ NEED_A_URL: "mem://a" }).load(path.join(FIXTURES, "needs/presence.yaml"), { cacheDir: null });

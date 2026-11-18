@@ -15,7 +15,7 @@
  * Browser-safe.
  */
 import { membersSlotOf, readMembersValue } from "./members-value-slot.js";
-import { ConditionSpace, type ConditionBlock } from "./presence-condition.js";
+import { ConditionSpace, FALSE, TRUE, type Condition, type ConditionBlock } from "./presence-condition.js";
 import type { InputBlock, InputRead, ReadBlock } from "./decision-reads.js";
 
 /** One dimension, keyed by the path it is read at. */
@@ -256,6 +256,39 @@ export function projectionName(read: InputRead): string {
   return read.field !== undefined ? `member:${read.field}.${read.member}` : `member:${read.member}`;
 }
 
+/** The configurations of `dimensions` as a condition over `space` (whose
+ *  dimensions they are): every assignment whose member dimensions of one input
+ *  agree on its absence — the set {@link enumerateConfigurations} lists. */
+export function configurationUniverse(space: ConditionSpace, dimensions: readonly Dimension[]): Condition {
+  let out = TRUE;
+  for (const group of memberGroups(dimensions)) {
+    const absent = group.every((d) => d.values.includes(null))
+      ? space.every(group.map((d) => space.literal(d.key, [null])))
+      : FALSE;
+    const present = space.every(group.map((d) => space.literal(d.key, d.values.filter((v) => v !== null))));
+    out = space.and(out, space.or(absent, present));
+  }
+  return out;
+}
+
+/** The configurations `configurations` lists, as a condition over `space`:
+ *  each names the configuration dimensions alone, so every definition
+ *  dimension of the space is free in it. */
+export function configurationsCondition(space: ConditionSpace, configurations: readonly Assignment[]): Condition {
+  return space.some(configurations.map((a) => space.assignment(a)));
+}
+
+/** The member dimensions of each input read through several members. */
+function memberGroups(dimensions: readonly Dimension[]): Dimension[][] {
+  const byInput = new Map<string, Dimension[]>();
+  for (const dimension of dimensions) {
+    if (dimension.projection !== "member") continue;
+    const key = `${dimension.input}.${dimension.name}`;
+    byInput.set(key, [...(byInput.get(key) ?? []), dimension]);
+  }
+  return [...byInput.values()].filter((group) => group.length > 1);
+}
+
 /** Every configuration of `dimensions`: their product, with the member
  *  dimensions of one input agreeing on its absence. */
 export function enumerateConfigurations(dimensions: readonly Dimension[]): Assignment[] {
@@ -267,13 +300,7 @@ export function enumerateConfigurations(dimensions: readonly Dimension[]): Assig
     }
     out = next;
   }
-  const byInput = new Map<string, Dimension[]>();
-  for (const dimension of dimensions) {
-    if (dimension.projection !== "member") continue;
-    const key = `${dimension.input}.${dimension.name}`;
-    byInput.set(key, [...(byInput.get(key) ?? []), dimension]);
-  }
-  const groups = [...byInput.values()].filter((group) => group.length > 1);
+  const groups = memberGroups(dimensions);
   if (groups.length === 0) return out;
   return out.filter((assignment) =>
     groups.every((group) => {
@@ -292,6 +319,14 @@ function describeValue(dimension: Dimension, value: unknown): string {
   if (value === null) return `${dimension.input}.${dimension.name} is absent`;
   if (typeof value === "string") return `${dimension.key} is ${value}`;
   return `${dimension.key} is ${JSON.stringify(value)}`;
+}
+
+/** What a block holds of one dimension, as a label clause names it. */
+export function describeDimensionValues(dimension: Dimension, values: readonly unknown[]): string {
+  if (values.length === 1) return describeValue(dimension, values[0]);
+  const named = values.filter((v) => v !== null).map((v) => (typeof v === "string" ? v : JSON.stringify(v)));
+  const absent = values.includes(null);
+  return `${dimension.key} is ${named.join(" or ")}${absent ? ` (or ${dimension.input}.${dimension.name} is absent)` : ""}`;
 }
 
 /**
@@ -317,16 +352,7 @@ export function describeBlocks(blocks: readonly ConditionBlock[], dimensions: re
     const parts: string[] = [];
     for (const dimension of dimensions) {
       const values = block.get(dimension.key);
-      if (!values) continue;
-      if (values.length === 1) {
-        parts.push(describeValue(dimension, values[0]));
-      } else {
-        const named = values.filter((v) => v !== null).map((v) => (typeof v === "string" ? v : JSON.stringify(v)));
-        const absent = values.includes(null);
-        parts.push(
-          `${dimension.key} is ${named.join(" or ")}${absent ? ` (or ${dimension.input}.${dimension.name} is absent)` : ""}`,
-        );
-      }
+      if (values) parts.push(describeDimensionValues(dimension, values));
     }
     if (parts.length > 0) clauses.push(parts.join(" and "));
   }
@@ -490,15 +516,24 @@ export function asDeclared(value: unknown, declaration: Record<string, unknown>)
  * The dimensions and configurations a partial assignment (`AnalysisOptions.within`,
  * in the `data.configurations` entry encoding) keeps: each dimension it names
  * narrowed to that one value, and every configuration agreeing with it. A key
- * naming no dimension, or a value outside its dimension's domain, throws.
+ * naming a definition dimension of `space`, a key naming no dimension, or a
+ * value outside its dimension's domain, throws.
  */
 export function restrictConfigurations(
   dimensions: readonly Dimension[],
   configurations: readonly Assignment[],
   within: Assignment,
+  space?: ConditionSpace,
 ): { dimensions: Dimension[]; configurations: Assignment[]; keys: Set<string> } {
   const chosen = new Map<string, unknown>();
   for (const [key, value] of Object.entries(within)) {
+    const definition = space?.definitionOf(key);
+    if (definition) {
+      throw new Error(
+        `'within' names '${key}', the ${definition.role} dimension '${definition.key}' of the template definition ` +
+          `'${definition.identity}': each consumer decides a definition's dimensions, so no configuration names one.`,
+      );
+    }
     const dimension = dimensions.find((d) => d.key === key);
     if (!dimension) {
       throw new Error(

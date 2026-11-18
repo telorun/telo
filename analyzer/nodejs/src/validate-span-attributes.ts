@@ -1,5 +1,6 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import {
+  type ContractSite,
   contractSites,
   inNamedShape,
   isExportedShape,
@@ -61,44 +62,79 @@ export function validateSpanAttributes(
   let index: Map<object, WrittenAt> | undefined;
   const locate = (node: object): WrittenAt | undefined =>
     marks.get(node) ?? (index ??= writtenNodeIndex(manifests)).get(node);
-
-  const report = (code: SpanAttributeIssue["code"], at: WrittenAt, message: string): void => {
-    const owner = (at.manifest.metadata as { module?: string } | undefined)?.module;
-    if (owner !== undefined && !rootModules.has(owner)) return;
-    const path = at.path.join(".");
-    const key = [code, at.manifest.kind, at.manifest.metadata?.name, path, message].join("\0");
-    if (!issues.has(key)) issues.set(key, { code, manifest: at.manifest, path, message: `${message}.` });
-  };
-
+  const report = spanIssueReporter(rootModules, (issue) => {
+    const key = spanIssueKey(issue);
+    if (!issues.has(key)) issues.set(key, issue);
+  });
   const reached = new Set<object>();
   for (const site of contractSites(manifests)) {
-    const reading = spanAttributePaths(site.schema, resolveRef);
-    for (const node of reading.reached) reached.add(node);
-    for (const problem of reading.problems) {
-      const at =
-        problem.at === "reach" && problem.path.length === 0
-          ? site
-          : (locate(problem.node) ?? site);
-      report(problem.code, at, problem.message);
-    }
+    for (const node of spanContractIssues(site, resolveRef, locate, report)) reached.add(node);
   }
-
   for (const [node, written] of marks) {
     if (reached.has(node)) continue;
-    const mark = node as Record<string, any>;
-    const nameProblem = spanAttributeNameProblem(mark[X_TELO_SPAN_ATTRIBUTE]);
-    if (nameProblem) report("SPAN_ATTRIBUTE_INVALID", written, nameProblem);
-    const shape = inNamedShape(written, capabilityOf);
-    if (shape && isExportedShape(written.manifest, manifests)) {
-      const root = (written.manifest as { schema?: Record<string, any> }).schema ?? mark;
-      const resolved = resolveRefIn(mark, root, resolveRef).schema;
-      const nodeProblem = spanAttributeNodeProblem(resolved === mark ? mark : { ...resolved, ...mark });
-      if (nodeProblem) report("SPAN_ATTRIBUTE_MISPLACED", written, nodeProblem);
-      continue;
-    }
-    report("SPAN_ATTRIBUTE_MISPLACED", written, unreachedProblem(written, capabilityOf));
+    spanMarkIssues(node, written, capabilityOf, (manifest) => isExportedShape(manifest, manifests), resolveRef, report);
   }
   return [...issues.values()];
+}
+
+/** How a span-attribute issue is reported at a place: `found` receives it,
+ *  for the entry's own modules only. */
+export type SpanIssueReport = (code: SpanAttributeIssue["code"], at: WrittenAt, message: string) => void;
+
+export function spanIssueReporter(
+  rootModules: ReadonlySet<string>,
+  found: (issue: SpanAttributeIssue) => void,
+): SpanIssueReport {
+  return (code, at, message) => {
+    const owner = (at.manifest.metadata as { module?: string } | undefined)?.module;
+    if (owner !== undefined && !rootModules.has(owner)) return;
+    found({ code, manifest: at.manifest, path: at.path.join("."), message: `${message}.` });
+  };
+}
+
+/** What tells one issue from another: one place reports each once. */
+export function spanIssueKey(issue: Pick<SpanAttributeIssue, "code" | "manifest" | "path" | "message">): string {
+  return [issue.code, issue.manifest.kind, issue.manifest.metadata?.name, issue.path, issue.message].join("\0");
+}
+
+/** The kernel's walk over one declared contract: the issues it finds, each at
+ *  the node `locate` places, and every marked node it reaches. */
+export function spanContractIssues(
+  site: ContractSite,
+  resolveRef: (ref: string) => Record<string, any> | undefined,
+  locate: (node: object) => WrittenAt | undefined,
+  report: SpanIssueReport,
+): Iterable<object> {
+  const reading = spanAttributePaths(site.schema, resolveRef);
+  for (const problem of reading.problems) {
+    const at = problem.at === "reach" && problem.path.length === 0 ? site : (locate(problem.node) ?? site);
+    report(problem.code, at, problem.message);
+  }
+  return reading.reached;
+}
+
+/** The issues of a mark no contract reaches: its name, and — in a named shape
+ *  its library exports, which an importer's contract may reach — its node,
+ *  else that nothing reads it. */
+export function spanMarkIssues(
+  node: object,
+  written: WrittenAt,
+  capabilityOf: KindCapability,
+  exported: (manifest: ResourceManifest) => boolean,
+  resolveRef: (ref: string) => Record<string, any> | undefined,
+  report: SpanIssueReport,
+): void {
+  const mark = node as Record<string, any>;
+  const nameProblem = spanAttributeNameProblem(mark[X_TELO_SPAN_ATTRIBUTE]);
+  if (nameProblem) report("SPAN_ATTRIBUTE_INVALID", written, nameProblem);
+  if (inNamedShape(written, capabilityOf) && exported(written.manifest)) {
+    const root = (written.manifest as { schema?: Record<string, any> }).schema ?? mark;
+    const resolved = resolveRefIn(mark, root, resolveRef).schema;
+    const nodeProblem = spanAttributeNodeProblem(resolved === mark ? mark : { ...resolved, ...mark });
+    if (nodeProblem) report("SPAN_ATTRIBUTE_MISPLACED", written, nodeProblem);
+    return;
+  }
+  report("SPAN_ATTRIBUTE_MISPLACED", written, unreachedProblem(written, capabilityOf));
 }
 
 function unreachedProblem(written: WrittenAt, capabilityOf: KindCapability): string {

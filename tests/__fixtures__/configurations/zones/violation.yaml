@@ -1,0 +1,34 @@
+# A region declaring `noSuspend` whose steps reach a resource that cannot
+# honour it where `flag1` holds, and a step whose retry backs off long enough
+# to park where `flag2` holds.
+kind: Telo.Application
+metadata: { name: ZoneViolationChoice }
+imports: { Z: ./kinds }
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+  flag2: { env: FLAG_2, type: boolean, default: false }
+targets:
+  - invoke: !ref held
+---
+kind: Z.Park
+metadata: { name: wait }
+---
+kind: Telo.Sequence
+metadata: { name: quick }
+steps:
+  - { name: done, value: 1 }
+---
+kind: Z.Hold
+metadata: { name: held }
+steps:
+  - name: first
+    invoke: !if
+      if: !cel "variables.flag1"
+      then: !ref wait
+      else: !ref quick
+  - name: second
+    invoke: !ref quick
+    retry: !if
+      if: !cel "variables.flag2"
+      then: { attempts: 3, delay: 60s }
+      else: { attempts: 2 }

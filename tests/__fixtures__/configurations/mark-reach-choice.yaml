@@ -1,0 +1,24 @@
+# A sensitive and a span-attribute mark in a named shape whose only reaching
+# contract is declared under a choice: each mark is inert, and reported, only
+# where the choice leaves the contract out.
+kind: Telo.Application
+metadata: { name: MarkReachChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets:
+  - !ref login
+---
+kind: Telo.JsonSchema
+metadata: { name: Credentials }
+schema:
+  type: object
+  properties:
+    token: { type: string, x-telo-sensitive: true }
+    user: { type: string, x-telo-span-attribute: app.user }
+---
+kind: Telo.Sequence
+metadata: { name: login }
+inputType: !if
+  if: !cel "variables.flag1"
+  then: !ref Credentials
+steps:
+  - { name: done, value: 1 }

@@ -1,3 +1,4 @@
+import { collectFilePositions } from "../src/diagnostic-location.js";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
 import { flattenForAnalyzer } from "../src/flatten-for-analyzer.js";
@@ -32,7 +33,7 @@ async function check(
   const graph = await new Loader([source({ ...files, [url]: text })]).loadGraph(url, {
     desugarImports: true,
   });
-  return analyzer.analyze(flattenForAnalyzer(graph)).map((d) => [String(d.code), d.message]);
+  return analyzer.analyze(flattenForAnalyzer(graph), { positions: collectFilePositions(graph) }).map((d) => [String(d.code), d.message]);
 }
 
 const NATIVE = "pkg:telo/local/js?path=./nodejs/pricing.mjs&local_path=./nodejs/src/index.ts";

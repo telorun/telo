@@ -1,0 +1,69 @@
+# Init-order loops a choice decides: `first` holds `second` or `third` by
+# `flag1`, each holding `first` back, `third` declared only under `flag2`; a
+# scope member closes a loop with its sibling only where `flag2` declares it,
+# and two functions call each other through a choice of `flag1`. Each loop is
+# reported in the configurations taking it.
+kind: Telo.Application
+metadata: { name: CycleChoice }
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+  flag2: { env: FLAG_2, type: boolean, default: false }
+targets:
+  - !ref holder
+---
+kind: Telo.Definition
+metadata: { name: Link }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties: { next: { x-telo-ref: { kind: Self.Link, use: dependency } } }
+resources:
+  - { kind: Telo.Value, metadata: { name: body }, value: ok }
+invoke: !ref body
+---
+kind: Self.Link
+metadata: { name: first }
+next: !if
+  if: !cel "variables.flag1"
+  then: !ref second
+  else: !ref third
+---
+kind: Self.Link
+metadata: { name: second }
+next: !ref first
+--- !if
+metadata: { name: third }
+if: !cel "variables.flag2"
+then:
+  kind: Self.Link
+  next: !ref first
+---
+kind: Telo.Sequence
+metadata: { name: holder }
+with:
+  - kind: Self.Link
+    metadata: { name: inner }
+    next: !ref outer
+  - !if
+    metadata: { name: outer }
+    if: !cel "variables.flag2"
+    then: { kind: Self.Link, next: !ref inner }
+steps:
+  - { name: done, value: 1 }
+---
+kind: Telo.Function
+metadata: { name: ping }
+params:
+  - { name: n, schema: { type: integer } }
+returns: { schema: { type: integer } }
+body: !if
+  if: !cel "variables.flag1"
+  then: !cel "Self.pong(n)"
+  else: !cel "n"
+---
+kind: Telo.Function
+metadata: { name: pong }
+params:
+  - { name: n, schema: { type: integer } }
+returns: { schema: { type: integer } }
+body: !cel "Self.ping(n)"

@@ -23,10 +23,29 @@ const SCHEMA_NODES = ["items", "additionalProperties", "not", "if", "then", "els
  * manifest rather than from the host.
  *
  * Entry-module-scoped: a dependency's kinds are its author's to fix.
+ *
+ * Two stages: a kind document's schema defaults, and a library's `variables:` /
+ * `secrets:` entries.
  */
-export function validateHostPathDefaults(
+export function validateKindHostPathDefaults(
   manifests: readonly ResourceManifest[],
   rootModules: ReadonlySet<string>,
+): AnalysisDiagnostic[] {
+  return hostPathDefaults(manifests, rootModules, "kind");
+}
+
+/** A library's relative host-path default of a `variables:` / `secrets:` entry. */
+export function validateLibraryHostPathDefaults(
+  manifests: readonly ResourceManifest[],
+  rootModules: ReadonlySet<string>,
+): AnalysisDiagnostic[] {
+  return hostPathDefaults(manifests, rootModules, "library");
+}
+
+function hostPathDefaults(
+  manifests: readonly ResourceManifest[],
+  rootModules: ReadonlySet<string>,
+  scope: "kind" | "library",
 ): AnalysisDiagnostic[] {
   const out: AnalysisDiagnostic[] = [];
   for (const manifest of manifests) {
@@ -55,7 +74,7 @@ export function validateHostPathDefaults(
         },
       });
 
-    if (manifest.kind === "Telo.Definition" || manifest.kind === "Telo.Abstract") {
+    if (scope === "kind" && (manifest.kind === "Telo.Definition" || manifest.kind === "Telo.Abstract")) {
       walk((manifest as { schema?: unknown }).schema, "schema", (path, value, schema) =>
         report(
           path,
@@ -66,7 +85,7 @@ export function validateHostPathDefaults(
         ),
       );
     }
-    if (manifest.kind === "Telo.Library") {
+    if (scope === "library" && manifest.kind === "Telo.Library") {
       for (const block of ["variables", "secrets"] as const) {
         const entries = (manifest as Record<string, unknown>)[block];
         if (!entries || typeof entries !== "object" || Array.isArray(entries)) continue;

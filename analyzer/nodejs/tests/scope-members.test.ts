@@ -1,3 +1,4 @@
+import { collectFilePositions } from "../src/diagnostic-location.js";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
 import { collectModuleDocuments, flattenForAnalyzer } from "../src/flatten-for-analyzer.js";
@@ -35,7 +36,7 @@ async function check(body: string): Promise<Found[]> {
     desugarImports: true,
   });
   return new StaticAnalyzer()
-    .analyze(flattenForAnalyzer(graph), { moduleDocuments: collectModuleDocuments(graph) })
+    .analyze(flattenForAnalyzer(graph), { moduleDocuments: collectModuleDocuments(graph), positions: collectFilePositions(graph) })
     .filter((d) => d.severity === DiagnosticSeverity.Error)
     .map((d) => {
       const data = d.data as { resource?: { kind: string; name: string }; path?: string; filePath?: string };
@@ -136,8 +137,8 @@ steps:
 `),
     ).toEqual([
       ["SCHEMA_VIOLATION", "Self.Host/host", "members[0]"],
-      ["CEL_UNKNOWN_FIELD", "Self.Host/host", "members[2].answer"],
       ["UNRESOLVED_REFERENCE", "Self.Host/host", "members[1].target"],
+      ["CEL_UNKNOWN_FIELD", "Self.Host/host", "members[2].answer"],
     ]);
   });
 
@@ -331,7 +332,7 @@ members:
       desugarImports: true,
     });
     const found = new StaticAnalyzer()
-      .analyze(flattenForAnalyzer(graph), { moduleDocuments: collectModuleDocuments(graph) })
+      .analyze(flattenForAnalyzer(graph), { moduleDocuments: collectModuleDocuments(graph), positions: collectFilePositions(graph) })
       .filter((d) => d.code === "SINK_UNATTACHED")
       .map((d) => [(d.data as { resource: { name: string } }).resource.name, (d.data as { path: string }).path]);
     expect(found).toEqual([["host", "members[0]"]]);

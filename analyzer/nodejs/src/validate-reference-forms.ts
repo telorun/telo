@@ -16,6 +16,7 @@ import {
   RESOLVED_REFERENCE_MARKER,
 } from "./resolved-reference.js";
 import { isKindDocument } from "./kind-declaration.js";
+import { CARVED_PLACE, carveOfStandIn } from "./region-part.js";
 import { forEachStep, stepBodiesOf } from "./step-bodies.js";
 import { templateBodyEntries } from "./template-body.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
@@ -67,23 +68,25 @@ export function validateReferenceForms(
   aliases?: AliasResolver,
   aliasesByModule?: Map<string, AliasResolver>,
 ): AnalysisDiagnostic[] {
+  return [
+    ...validateInstanceReferenceForms(resources, registry, aliases, aliasesByModule),
+    ...validateTemplateBodyReferenceForms(resources, registry, aliases, aliasesByModule),
+  ];
+}
+
+/** The reference forms of the instances `resources` hold — each judged by its
+ *  own fields alone, so a declaration is judged on whatever of it a key holds. */
+export function validateInstanceReferenceForms(
+  resources: ResourceManifest[],
+  registry: DefinitionRegistry,
+  aliases?: AliasResolver,
+  aliasesByModule?: Map<string, AliasResolver>,
+): AnalysisDiagnostic[] {
   if (!aliases) return [];
   const diagnostics: AnalysisDiagnostic[] = [];
 
   const localResources = resources.filter((r) => !isForwardedDeclaration(r));
-  const resolveDef: DefResolver = (kind, from) =>
-    definitionInScope<ResourceDefinition>(registry, kind, from?.metadata, aliases, aliasesByModule);
-  const objectForm = (value: unknown, holder: ResourceManifest["metadata"]) =>
-    authoredObjectForm(value, (kind) => {
-      const definition = definitionInScope<ResourceDefinition>(
-        registry,
-        kind,
-        holder,
-        aliases,
-        aliasesByModule,
-      );
-      return definition ? declaresNameField(definition, resolveDef) : undefined;
-    });
+  const objectForm = objectFormReader(registry, aliases, aliasesByModule);
 
   // The step targets of the resource being visited: nested discovery reaches
   // them beside plain data, and only these — with the reach's own sites — are
@@ -108,6 +111,8 @@ export function validateReferenceForms(
         const value = e.value;
         // `!ref` and `!cel` sentinels are the supported shapes.
         if (isTaggedSentinel(value)) return;
+        // A place another key judges stands here as a value no author writes.
+        if (value === CARVED_PLACE || carveOfStandIn(value) !== undefined) return;
 
         // A SCALAR at a slot whose own node unions a value branch is a value, and
         // the value branch is what judges it. Reporting a mistyped storage class
@@ -176,6 +181,21 @@ export function validateReferenceForms(
     },
   );
 
+  return diagnostics;
+}
+
+/** The reference forms of the template bodies the definitions of `resources`
+ *  hold: kind documents, which no configuration varies. */
+export function validateTemplateBodyReferenceForms(
+  resources: ResourceManifest[],
+  registry: DefinitionRegistry,
+  aliases?: AliasResolver,
+  aliasesByModule?: Map<string, AliasResolver>,
+): AnalysisDiagnostic[] {
+  if (!aliases) return [];
+  const diagnostics: AnalysisDiagnostic[] = [];
+  const objectForm = objectFormReader(registry, aliases, aliasesByModule);
+  const localResources = resources.filter((r) => !isForwardedDeclaration(r));
   for (const definition of localResources) {
     const entries = templateBodyEntries(definition);
     if (entries.length === 0) continue;
@@ -269,6 +289,20 @@ const refusedSites = new WeakMap<
   { module: string | undefined; holder: string; path: string; form: AuthoredObjectForm["form"] }
 >();
 
+/** Where a refusal of a reference form was written, as `refusedSites` holds it. */
+export type FormSite = { module: string | undefined; holder: string; path: string; form: AuthoredObjectForm["form"] };
+
+/** The site `d` refuses, if it is a refusal of a reference form. */
+export function formSiteOf(d: AnalysisDiagnostic): FormSite | undefined {
+  return refusedSites.get(d);
+}
+
+/** `d` marked as the refusal of `site`. */
+export function refusalOf(d: AnalysisDiagnostic, site: FormSite): AnalysisDiagnostic {
+  refusedSites.set(d, site);
+  return d;
+}
+
 const moduleOf = (metadata: unknown): string | undefined => {
   const module = (metadata as { module?: unknown } | undefined)?.module;
   return typeof module === "string" ? module : undefined;
@@ -287,8 +321,20 @@ export function markerFormRefusals(diagnostics: readonly AnalysisDiagnostic[]): 
   return diagnostics.filter((d) => refusedSites.get(d)?.form === "marker");
 }
 
+/** Where one finding stands for the form refusals: the written points its
+ *  declaration's extraction chain passes, and the refusal it is, if any. */
+export interface FormPlace {
+  /** Whether it is a refusal of a reference form itself. */
+  readonly refusal: boolean;
+  /** For a refused author-written `__ref` key, the point it refuses. */
+  readonly refuses?: string;
+  /** `<declaration>\0<path>` at the finding, then each extraction's place in
+   *  the declaration it was drawn out of, innermost first. */
+  points(): readonly string[];
+}
+
 /**
- * Drops what normalization reports about a refused object beside its refusal.
+ * How findings over `manifests` stand for the form refusals among them.
  *
  * Normalization reads a refused `{ kind, name }` as the reference it means, so
  * whatever is reported about it is reported about that reference, as before the
@@ -296,40 +342,31 @@ export function markerFormRefusals(diagnostics: readonly AnalysisDiagnostic[]): 
  * one holding a marker other than `true` is extracted as a declaration of its
  * kind. Either is the same defect said a second time, in words that point away
  * from the repair; the `INVALID_REFERENCE_FORM` naming `!ref <name>` is the one
- * report. Dropped are, for a `__ref` key, the diagnostics at the slot itself and
- * those about a declaration extracted out of it — found through
- * `metadata.xTeloOrigin` before diagnostics are unfolded to the position the
- * author wrote; any other finding about the holder stands. Holders and
- * extractions are told apart by declaring module as well as name.
+ * report. Its consequences are, for a `__ref` key, the findings at the slot
+ * itself and those about a declaration extracted out of it — found through
+ * `metadata.xTeloOrigin` before findings are unfolded to the position the
+ * author wrote: a finding whose points hold the refused one. Holders and
+ * extractions are told apart by declaring module as well as name, and a name
+ * several declarations answer to is no point.
  */
-export function withoutRefusedFormConsequences(
-  diagnostics: AnalysisDiagnostic[],
-  manifests: readonly ResourceManifest[],
-): AnalysisDiagnostic[] {
-  const marked = new Set<string>();
-  for (const d of diagnostics) {
-    const site = refusedSites.get(d);
-    if (site?.form !== "marker") continue;
-    marked.add(`${declarationKey(site.module, site.holder)}\0${site.path}`);
-  }
-  if (marked.size === 0) return diagnostics;
-  const byKey = new Map<string, ResourceManifest>();
-  for (const m of manifests) {
-    const name = m.metadata?.name;
-    if (typeof name !== "string") continue;
-    byKey.set(declarationKey(moduleOf(m.metadata), name), m);
-  }
-  const names = manifestNames(manifests);
-  // The declaration a diagnostic is about: a name reported by kind and file,
-  // since several modules may each declare it. Ambiguous is none — a finding is
-  // dropped only when it is certainly about a refused object.
-  const declarationOf = (data: {
-    resource?: { kind?: unknown; name?: unknown };
-    filePath?: unknown;
-  }): ResourceManifest | undefined => {
+export function formPlaces(manifests: readonly ResourceManifest[]): (d: AnalysisDiagnostic) => FormPlace {
+  let read:
+    | { byKey: Map<string, ResourceManifest>; names: ReturnType<typeof manifestNames> }
+    | undefined;
+  const reading = () => {
+    if (read) return read;
+    const byKey = new Map<string, ResourceManifest>();
+    for (const m of manifests) {
+      const name = m.metadata?.name;
+      if (typeof name !== "string") continue;
+      byKey.set(declarationKey(moduleOf(m.metadata), name), m);
+    }
+    return (read = { byKey, names: manifestNames(manifests) });
+  };
+  const declarationOf = (data: { resource?: { kind?: unknown; name?: unknown }; filePath?: unknown }): ResourceManifest | undefined => {
     const name = data.resource?.name;
     if (typeof name !== "string") return undefined;
-    let candidates = names.declarationsOf(name).filter(
+    let candidates = reading().names.declarationsOf(name).filter(
       (m) => typeof data.resource?.kind !== "string" || m.kind === data.resource.kind,
     );
     if (candidates.length > 1 && typeof data.filePath === "string") {
@@ -337,32 +374,36 @@ export function withoutRefusedFormConsequences(
     }
     return candidates.length === 1 ? candidates[0] : undefined;
   };
-  const extractedFromRefused = (start: ResourceManifest | undefined): boolean => {
-    const seen = new Set<string>();
-    for (let current = start; current; ) {
-      const origin = (current.metadata as { xTeloOrigin?: { parentName?: unknown; pathFromParent?: unknown } })
-        .xTeloOrigin;
-      if (typeof origin?.parentName !== "string" || typeof origin.pathFromParent !== "string") return false;
-      // An extraction carries the module of the declaration it came out of.
-      const parent = declarationKey(moduleOf(current.metadata), origin.parentName);
-      if (marked.has(`${parent}\0${origin.pathFromParent}`)) return true;
-      if (seen.has(parent)) return false;
-      seen.add(parent);
-      current = byKey.get(parent);
-    }
-    return false;
+  return (d) => {
+    const site = refusedSites.get(d);
+    const data = d.data as { resource?: { kind?: unknown; name?: unknown }; path?: unknown; filePath?: unknown } | undefined;
+    let points: string[] | undefined;
+    return {
+      refusal: site !== undefined,
+      ...(site?.form === "marker" ? { refuses: `${declarationKey(site.module, site.holder)}\0${site.path}` } : {}),
+      points: () => {
+        if (points) return points;
+        points = [];
+        const holder = data ? declarationOf(data) : undefined;
+        if (!holder) return points;
+        const key = declarationKey(moduleOf(holder.metadata), holder.metadata!.name as string);
+        if (typeof data?.path === "string") points.push(`${key}\0${data.path}`);
+        const seen = new Set<string>();
+        for (let current: ResourceManifest | undefined = holder; current; ) {
+          const origin = (current.metadata as { xTeloOrigin?: { parentName?: unknown; pathFromParent?: unknown } })
+            .xTeloOrigin;
+          if (typeof origin?.parentName !== "string" || typeof origin.pathFromParent !== "string") break;
+          // An extraction carries the module of the declaration it came out of.
+          const parent = declarationKey(moduleOf(current.metadata), origin.parentName);
+          points.push(`${parent}\0${origin.pathFromParent}`);
+          if (seen.has(parent)) break;
+          seen.add(parent);
+          current = reading().byKey.get(parent);
+        }
+        return points;
+      },
+    };
   };
-  return diagnostics.filter((d) => {
-    if (refusedSites.has(d)) return true;
-    const data = d.data as
-      | { resource?: { kind?: unknown; name?: unknown }; path?: unknown; filePath?: unknown }
-      | undefined;
-    const holder = data ? declarationOf(data) : undefined;
-    if (!holder) return true;
-    const key = declarationKey(moduleOf(holder.metadata), holder.metadata!.name as string);
-    if (typeof data?.path === "string" && marked.has(`${key}\0${data.path}`)) return false;
-    return !extractedFromRefused(holder);
-  });
 }
 
 /** Best-effort name for the `!ref` suggestion in a string-ref diagnostic: a
@@ -372,4 +413,20 @@ function refHint(value: string): string {
   const dotCount = (value.match(/\./g) ?? []).length;
   if (dotCount >= 2) return value.slice(value.lastIndexOf(".") + 1);
   return value;
+}
+
+/** Reads the reference spelling an author wrote at a slot of a declaration of
+ *  the kind `holder`'s module resolves. */
+function objectFormReader(
+  registry: DefinitionRegistry,
+  aliases: AliasResolver,
+  aliasesByModule?: Map<string, AliasResolver>,
+): (value: unknown, holder: ResourceManifest["metadata"]) => AuthoredObjectForm | undefined {
+  const resolveDef: DefResolver = (kind, from) =>
+    definitionInScope<ResourceDefinition>(registry, kind, from?.metadata, aliases, aliasesByModule);
+  return (value, holder) =>
+    authoredObjectForm(value, (kind) => {
+      const definition = definitionInScope<ResourceDefinition>(registry, kind, holder, aliases, aliasesByModule);
+      return definition ? declaresNameField(definition, resolveDef) : undefined;
+    });
 }

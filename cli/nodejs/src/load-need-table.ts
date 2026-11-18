@@ -69,11 +69,7 @@ export async function loadNeedTable(
   const refusals: AnalysisDiagnostic[] = [
     ...errors,
     ...table.problems
-      .filter(
-        (p) =>
-          !p.reportedElsewhere &&
-          !errors.some((e) => e.code === p.code && e.message === p.message),
-      )
+      .filter((p) => !errors.some((e) => e.code === p.code && e.message === p.message))
       .map((p) => ({
         severity: DiagnosticSeverity.Error,
         code: p.code,

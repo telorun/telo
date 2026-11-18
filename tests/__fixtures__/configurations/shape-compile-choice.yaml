@@ -1,0 +1,19 @@
+# A kind whose schema names a shape whose content points at a local definition
+# only one branch of a choice is missing: the kind's schema fails to compile
+# only where that branch is taken.
+kind: Telo.Application
+metadata: { name: ShapeCompileChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Payload }
+schema: !if
+  if: !cel "variables.flag1"
+  then: { type: object, properties: { a: { $ref: "#/$defs/missing" } } }
+  else: { type: object, properties: { a: { type: string } } }
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Holder]
+schema: { type: object, properties: { payload: { $ref: "telo://Self/Payload" } } }

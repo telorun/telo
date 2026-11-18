@@ -139,9 +139,9 @@ export interface ReferrerRuleDeclarationContext {
  * the `Telo.Definition` / `Telo.Abstract` doc, so a defect lands on the line the
  * kind's author wrote rather than on a consumer's resource.
  *
- * The `referrer:` filter is NOT resolved here: it is canonicalized in the
- * declaring module's scope by `resolveSchemaRefKinds`, the only pass holding
- * that scope, and a name resolving to nothing is reported from there.
+ * The `referrer:` filter is NOT resolved here: the registered copy holds it
+ * canonical in the declaring module's scope, and a name resolving to nothing is
+ * reported by `refConstraintIssues`, which judges the document as written.
  */
 export function validateReferrerRuleDeclarations(
   manifest: ResourceManifest,
@@ -463,28 +463,15 @@ export function evaluateReferrerRules(
     : readReferrerRules(definitionSchema);
   if (rules.length === 0) return [];
 
-  const view = <T extends ResourceManifest>(declaration: T): T =>
-    context.peerBinder?.view(declaration) ?? declaration;
-  const self = view(manifest) as unknown as Record<string, unknown>;
   const findings: ReferrerRuleFinding[] = [];
-
   for (const rule of rules) {
-    const perEntry = rule.peers !== undefined;
-    // A `coReferrers:` rule judges only the referrers reaching `self` through
-    // its slot, and binds each one's fellows there.
-    const coSlot = rule.coReferrers === undefined ? undefined : pointerToPath(rule.coReferrers);
-    const throughSlot = coSlot === undefined ? [] : referrersThrough(rule, coSlot, referrers, kindMatches);
     const compiled = compileRuleCondition(rule.condition, context.moduleNames);
     if ("reason" in compiled) {
       findings.push({ kind: "failed", rule, reason: compiled.reason });
       continue;
     }
-    const { parsed, reads: chains } = compiled;
-    // `self` with the declarations its own `resolveSelf:` slots name.
-    const selfView = rule.resolveSelf
-      ? resolvedRuleView(manifest, rule.resolveSelf, context.peerBinder, manifest.kind)
-      : ({ ok: true, self } as const);
-
+    const coSlot = rule.coReferrers === undefined ? undefined : pointerToPath(rule.coReferrers);
+    const throughSlot = coSlot === undefined ? [] : referrersThrough(rule, coSlot, referrers, kindMatches);
     // Identity is the MANIFEST, never `(kind, name)`: resource names are
     // module-scoped, so two libraries each declaring a `server` of the same kind
     // would share one bucket and the second violation would be dropped in
@@ -501,86 +488,91 @@ export function evaluateReferrerRules(
         break;
       }
       if (coSlot !== undefined && referrer.path !== coSlot) continue;
-      if (!perEntry) {
+      if (rule.peers === undefined) {
         if (seen.has(referrer.manifest)) continue;
         seen.add(referrer.manifest);
       }
-
-      // The declarations the referrer's `resolve:` slots name, in place of the
-      // references — through the binder every rule family shares.
-      const referrerView = rule.resolve
-        ? resolvedRuleView(referrer.manifest, rule.resolve, context.peerBinder, referrer.kind)
-        : { ok: true as const, self: view(referrer.manifest) as unknown as Record<string, unknown> };
-      if (!referrerView.ok) {
-        findings.push({ kind: "unbound", rule, referrer, failure: referrerView.failure });
-        continue;
-      }
-      if (!selfView.ok) {
-        findings.push({ kind: "unbound", rule, referrer, failure: selfView.failure });
-        continue;
-      }
-      const scope: Record<string, unknown> = {
-        // Each is the declaration it binds: equal only to itself.
-        self: markDeclarationIdentity(selfView.self, manifestDeclarationKey(manifest)),
-        referrer: markDeclarationIdentity(referrerView.self, manifestDeclarationKey(referrer.manifest)),
-        ...(context.functions ? { [MODULE_CALL_DISPATCH_KEY]: context.functions } : {}),
-      };
-      if (perEntry) {
-        const bound = context.peerBinder
-          ? context.peerBinder.bind(referrer.manifest, referrer.kind, rule.peers!, referrer.path)
-          : ({
-              ok: false,
-              failure: { reason: "unknown-shape", at: pointerToPath(rule.peers!) },
-            } as const);
-        if (!bound.ok) {
-          findings.push({ kind: "unbound", rule, referrer, failure: bound.failure });
-          continue;
-        }
-        scope.peers = bound.binding.peers;
-        scope.entry = bound.binding.entry;
-      }
-      if (coSlot !== undefined) {
-        const bound = bindCoReferrers(referrer, throughSlot, context.peerBinder, coSlot);
-        if (!bound.ok) {
-          findings.push({ kind: "unbound", rule, referrer, failure: bound.failure });
-          continue;
-        }
-        scope.coReferrers = bound.values;
-      }
-
-      // Only the nodes this condition READS decide whether it can run — the
-      // resource-rule reasoning, and it bites harder here: the referrer is a
-      // whole manifest, so scanning all of it would disable the rule for any
-      // server carrying one unrelated expression.
-      const dynamic = findDynamicRead(chains, scope, compiled.identityReads);
-      if (dynamic?.failure) {
-        findings.push({ kind: "unbound", rule, referrer, failure: dynamic.failure });
-        continue;
-      }
-      if (dynamic !== undefined) {
-        findings.push({ kind: "skipped", rule, referrer, dynamic });
-        continue;
-      }
-
-      let held: unknown;
-      try {
-        held = parsed(scope);
-      } catch (err) {
-        findings.push({
-          kind: "failed",
-          rule,
-          referrer,
-          reason: err instanceof Error ? err.message : String(err),
-        });
-        break;
-      }
-      if (held !== true) {
-        findings.push({ kind: "violation", rule, referrer, message: rule.message });
-      }
+      const found = evaluateReferrerRuleAt(manifest, rule, referrer, throughSlot, kindMatches, context);
+      if (found) findings.push(found);
+      if (found?.kind === "failed") break;
     }
   }
-
   return findings;
+}
+
+/**
+ * One rule's verdict on ONE referrer, at the slot it reaches `manifest`
+ * through — `undefined` when the rule holds, or does not apply there (the
+ * referrer's kind is not the one it names, or a `coReferrers:` rule's slot is
+ * not this one). `coReferrers` are the referrers reaching `manifest` through
+ * that slot, this one among them or not. A `peers:` rule is judged per entry,
+ * so per slot; every other rule is the referrer's whole, so a caller judging
+ * one referrer at several slots keeps the first verdict. A condition that does
+ * not compile is `failed` here, and reported once per rule by
+ * {@link evaluateReferrerRules}.
+ */
+export function evaluateReferrerRuleAt(
+  manifest: ResourceManifest,
+  rule: ReferrerRule,
+  referrer: Referrer,
+  coReferrers: readonly Referrer[],
+  kindMatches: (filter: string, kind: string) => boolean,
+  context: ReferrerRuleContext = {},
+): ReferrerRuleFinding | undefined {
+  if (rule.referrer !== undefined && !kindMatches(rule.referrer, referrer.kind)) return undefined;
+  // A `coReferrers:` rule judges only the referrers reaching `self` through
+  // its slot, and binds each one's fellows there.
+  const coSlot = rule.coReferrers === undefined ? undefined : pointerToPath(rule.coReferrers);
+  if (coSlot !== undefined && referrer.path !== coSlot) return undefined;
+  const compiled = compileRuleCondition(rule.condition, context.moduleNames);
+  if ("reason" in compiled) return { kind: "failed", rule, reason: compiled.reason };
+  const { parsed, reads: chains } = compiled;
+  const view = <T extends ResourceManifest>(declaration: T): T =>
+    context.peerBinder?.view(declaration) ?? declaration;
+  // `self` with the declarations its own `resolveSelf:` slots name.
+  const selfView = rule.resolveSelf
+    ? resolvedRuleView(manifest, rule.resolveSelf, context.peerBinder, manifest.kind)
+    : ({ ok: true, self: view(manifest) as unknown as Record<string, unknown> } as const);
+  // The declarations the referrer's `resolve:` slots name, in place of the
+  // references — through the binder every rule family shares.
+  const referrerView = rule.resolve
+    ? resolvedRuleView(referrer.manifest, rule.resolve, context.peerBinder, referrer.kind)
+    : { ok: true as const, self: view(referrer.manifest) as unknown as Record<string, unknown> };
+  if (!referrerView.ok) return { kind: "unbound", rule, referrer, failure: referrerView.failure };
+  if (!selfView.ok) return { kind: "unbound", rule, referrer, failure: selfView.failure };
+  const scope: Record<string, unknown> = {
+    // Each is the declaration it binds: equal only to itself.
+    self: markDeclarationIdentity(selfView.self, manifestDeclarationKey(manifest)),
+    referrer: markDeclarationIdentity(referrerView.self, manifestDeclarationKey(referrer.manifest)),
+    ...(context.functions ? { [MODULE_CALL_DISPATCH_KEY]: context.functions } : {}),
+  };
+  if (rule.peers !== undefined) {
+    const bound = context.peerBinder
+      ? context.peerBinder.bind(referrer.manifest, referrer.kind, rule.peers, referrer.path)
+      : ({ ok: false, failure: { reason: "unknown-shape", at: pointerToPath(rule.peers) } } as const);
+    if (!bound.ok) return { kind: "unbound", rule, referrer, failure: bound.failure };
+    scope.peers = bound.binding.peers;
+    scope.entry = bound.binding.entry;
+  }
+  if (coSlot !== undefined) {
+    const bound = bindCoReferrers(referrer, coReferrers, context.peerBinder, coSlot);
+    if (!bound.ok) return { kind: "unbound", rule, referrer, failure: bound.failure };
+    scope.coReferrers = bound.values;
+  }
+  // Only the nodes this condition READS decide whether it can run — the
+  // resource-rule reasoning, and it bites harder here: the referrer is a
+  // whole manifest, so scanning all of it would disable the rule for any
+  // server carrying one unrelated expression.
+  const dynamic = findDynamicRead(chains, scope, compiled.identityReads);
+  if (dynamic?.failure) return { kind: "unbound", rule, referrer, failure: dynamic.failure };
+  if (dynamic !== undefined) return { kind: "skipped", rule, referrer, dynamic };
+  let held: unknown;
+  try {
+    held = parsed(scope);
+  } catch (err) {
+    return { kind: "failed", rule, referrer, reason: err instanceof Error ? err.message : String(err) };
+  }
+  return held === true ? undefined : { kind: "violation", rule, referrer, message: rule.message };
 }
 
 /** The referrers the filter matches that reach `self` through `slot`, one per

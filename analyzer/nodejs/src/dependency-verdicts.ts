@@ -4,12 +4,14 @@ import { StaticAnalyzer } from "./analyzer.js";
 import { flattenForAnalyzer } from "./flatten-for-analyzer.js";
 import { registerLoadedGraph } from "./graph-registration.js";
 import { importsOfLibrary, libraryDocumentOf, reachableByImports } from "./dependency-configurations.js";
-import { partitionAnalysisDiagnostics } from "./graph-diagnostics.js";
-import type { ImportEdge, LoadedGraph, LoadedModule, ScopedImportEdge } from "./loaded-types.js";
-import { libraryMigrationDiagnostics, withLibraryMigrationsApplied } from "./library-migrations/report.js";
+import { assembleEntryDiagnostics } from "./entry-diagnostics.js";
+import { defectIdentity, writtenPlaceOf } from "./diagnostic-identity.js";
+import { collectFilePositions } from "./diagnostic-location.js";
+import type { ImportEdge, LoadedGraph, ScopedImportEdge } from "./loaded-types.js";
 import { isModuleKind } from "./module-kinds.js";
 import { moduleOrigins, reachedModuleSources, type ModuleOrigin } from "./module-origin.js";
-import { importAnchoredDiagnostic, importAnchoredMessage, importReach, type ReachingImport } from "./reaching-import.js";
+import { metadataStampDiagnostics } from "./metadata-stamp-refusals.js";
+import { importAnchoredDiagnostic, importReach, type ReachingImport } from "./reaching-import.js";
 import type { HostVersions } from "./requires-block.js";
 import { isTaggedSentinel } from "@telorun/templating";
 import { FOUND_HEAD, foundEntryOf } from "./module-file-existence.js";
@@ -36,6 +38,9 @@ import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 /** One library's own verdict: what its entry analysis reports, before origin
  *  and configurations are applied. Plain data. */
 export interface DependencyVerdict {
+  /** The verdict format it was judged in; a kept verdict of another is judged
+   *  again. */
+  readonly format: number;
   readonly module: string;
   readonly diagnostics: readonly AnalysisDiagnostic[];
 }
@@ -156,7 +161,7 @@ export async function analyzeDependencies(
     const key = await dependencyVerdictKey(graph, source, options.hostVersions);
     const verdict = await memo.obtain(key, async () => {
       const kept = await store.get(key);
-      if (kept) return kept;
+      if (kept?.format === VERDICT_FORMAT) return kept;
       const fresh = judgeLibrary(libraryGraph(graph, source), (analyzer ??= new StaticAnalyzer()), options.hostVersions);
       await store.set(key, fresh);
       return fresh;
@@ -182,7 +187,7 @@ export async function analyzeDependencies(
       }
       // The consumer cannot edit a published library: its defects warn.
       diagnostics.push({
-        ...importAnchoredDiagnostic(String(d.code), verdict.module, reachedThrough, d.message),
+        ...importAnchoredDiagnostic(String(d.code), verdict.module, reachedThrough, d.message, writtenPlaceOf(d)),
         severity: DiagnosticSeverity.Warning,
       });
     }
@@ -197,88 +202,78 @@ export async function analyzeDependencies(
     });
   }
   // A library's finding about a library it imports, which that library's own
-  // verdict reports under the same code, is that library's to report.
+  // verdict reports as the same defect, is that library's to report.
   const settled = verdicts.map((record) => ({
     ...record,
-    diagnostics: withoutImportedDefects(graph, record, verdicts),
+    diagnostics: withoutCovered(
+      record.diagnostics,
+      verdicts.flatMap((other) => (other === record ? [] : other.diagnostics)),
+    ),
   }));
   return { diagnostics: settled.flatMap((v) => v.diagnostics), verdicts: settled };
 }
 
-/** `record`'s findings minus those anchored at an import of the library, about
- *  a library that import reaches, whose own verdict reports the same code. */
-function withoutImportedDefects(
-  graph: LoadedGraph,
-  record: DependencyVerdictRecord,
-  all: readonly DependencyVerdictRecord[],
+/**
+ * `findings` minus each re-report — a finding carrying `data.writtenAt`, made
+ * at an import reaching the module writing its defect — that `coverers` report
+ * as the same defect (its code where it is written): by the defect's own
+ * finding at least as severely, or by another re-report more severely. A
+ * module's own finding is never covered, and two re-reports of one severity
+ * both stand.
+ */
+function withoutCovered(
+  findings: readonly AnalysisDiagnostic[],
+  coverers: readonly AnalysisDiagnostic[],
 ): AnalysisDiagnostic[] {
-  const mod = graph.modules.get(record.source)!;
-  const covered: { prefix: string; codes: Set<unknown> }[] = [];
-  for (const other of all) {
-    if (other === record || other.diagnostics.length === 0) continue;
-    const alias = aliasReaching(graph, mod, other.source);
-    if (alias === undefined) continue;
-    covered.push({
-      prefix: importAnchoredMessage(other.module, alias, ""),
-      codes: new Set(other.diagnostics.map((d) => d.code)),
-    });
+  const own = new Map<string, number>();
+  const reported = new Map<string, number>();
+  for (const d of coverers) {
+    const identity = defectIdentity(d);
+    const into = isReReport(d) ? reported : own;
+    const known = into.get(identity);
+    if (known === undefined || severityRank(d) < known) into.set(identity, severityRank(d));
   }
-  if (covered.length === 0) return [...record.diagnostics];
-  return record.diagnostics.filter(
-    (d) => !covered.some(({ prefix, codes }) => codes.has(d.code) && d.message.startsWith(prefix)),
-  );
+  return findings.filter((d) => {
+    if (!isReReport(d)) return true;
+    const identity = defectIdentity(d);
+    const byOwn = own.get(identity);
+    const byReport = reported.get(identity);
+    return !((byOwn !== undefined && byOwn <= severityRank(d)) || (byReport !== undefined && byReport < severityRank(d)));
+  });
 }
 
-/** The alias of `mod`'s own imports through which `target` is first reached. */
-function aliasReaching(graph: LoadedGraph, mod: LoadedModule, target: string): string | undefined {
-  for (const file of [mod.owner, ...mod.partials]) {
-    for (const [alias, edge] of graph.importEdges.get(file.source) ?? []) {
-      if (edge.targetSource === target || reachedModuleSources(graph, edge.targetSource).has(target)) return alias;
-    }
-  }
-  return undefined;
-}
+const isReReport = (d: AnalysisDiagnostic): boolean => (d.data as { writtenAt?: unknown } | undefined)?.writtenAt !== undefined;
+
+/** Lower is more severe, as LSP numbers it. */
+const severityRank = (d: AnalysisDiagnostic): number => d.severity ?? DiagnosticSeverity.Error;
 
 /**
- * The entry's own findings minus those it reports about a library at the import
- * reaching it which that library's verdict, as folded, already reports as an
- * error under the same code — the library's own analysis judging the same
- * defect, at its lines — so each defect is reported once. An artifact's warning
- * never covers an entry finding: that one is a refusal of the entry's own.
+ * The entry's assembled findings — its load findings and its analysis — minus
+ * each one a library's verdict, as folded, reports as the same defect at least
+ * as severely: an import-anchored refusal whose `data.writtenAt` is where that
+ * library's own check reports it, so each defect is reported once, at the
+ * library's lines. An artifact's warning never covers an entry error: that one
+ * is a refusal of the entry's own.
  */
 export function withoutCoveredDependencyFindings(
   entryDiagnostics: readonly AnalysisDiagnostic[],
   dependencies: DependencyAnalysis,
 ): AnalysisDiagnostic[] {
-  const covered = dependencies.verdicts
-    .filter((v) => v.reachedThrough)
-    .map((v) => ({
-      prefix: importAnchoredMessage(v.module, v.reachedThrough!.alias, ""),
-      codes: new Set(v.diagnostics.filter((d) => d.severity === DiagnosticSeverity.Error).map((d) => d.code)),
-    }))
-    .filter(({ codes }) => codes.size > 0);
-  if (covered.length === 0) return [...entryDiagnostics];
-  return entryDiagnostics.filter(
-    (d) => !covered.some(({ prefix, codes }) => codes.has(d.code) && d.message.startsWith(prefix)),
-  );
+  return withoutCovered(entryDiagnostics, dependencies.diagnostics);
 }
 
 /**
- * Every library's findings as reported, minus an artifact's import-anchored
- * warnings the entry's own analysis already reports under the same code at that
- * import, which stays an error.
+ * Every library's findings as reported, minus each of an artifact's warnings
+ * at an import that the entry reports as the same defect — its own refusal at
+ * that import, or a load finding where the defect is written.
  */
 export function withoutCoveredArtifactWarnings(
   dependencies: DependencyAnalysis,
   entryDiagnostics: readonly AnalysisDiagnostic[],
 ): AnalysisDiagnostic[] {
-  return dependencies.verdicts.flatMap((v) => {
-    if (v.origin !== "artifact" || !v.reachedThrough) return [...v.diagnostics];
-    const prefix = importAnchoredMessage(v.module, v.reachedThrough.alias, "");
-    return v.diagnostics.filter(
-      (w) => !entryDiagnostics.some((e) => e.code === w.code && e.message.startsWith(prefix)),
-    );
-  });
+  return dependencies.verdicts.flatMap((v) =>
+    v.origin === "artifact" && v.reachedThrough ? withoutCovered(v.diagnostics, entryDiagnostics) : [...v.diagnostics],
+  );
 }
 
 /** The verdict key of the library at `librarySource`: a digest of every file
@@ -350,8 +345,9 @@ function collectFoundStamps(
   }
 }
 
-/** Bumped whenever what a verdict holds changes shape. */
-const VERDICT_FORMAT = 2;
+/** Bumped whenever what a verdict holds changes: 3 holds the library's load
+ *  findings and every import-anchored finding's `writtenAt`. */
+const VERDICT_FORMAT = 3;
 
 /**
  * `graph` re-rooted at the library at `librarySource`, holding only the
@@ -388,6 +384,7 @@ export function libraryGraph(graph: LoadedGraph, librarySource: string): LoadedG
     migrationDiagnostics: [entry.owner, ...entry.partials].flatMap((file) => file.migrations.diagnostics),
     versionDiagnostics: graph.versionDiagnostics.filter(inClosure),
     moduleFileDiagnostics: graph.moduleFileDiagnostics.filter(inClosure),
+    metadataDiagnostics: metadataStampDiagnostics({ entry, modules, importEdges, scopedImportEdges }),
     parseDiagnostics: graph.parseDiagnostics.filter(inClosure),
     errors: graph.errors.filter((e) => e.fromSource !== null && files.has(e.fromSource)),
     applicationSources: new Map([...(graph.moduleApplicationSources ?? [])].filter(([file]) => files.has(file))),
@@ -401,8 +398,8 @@ export function libraryGraph(graph: LoadedGraph, librarySource: string): LoadedG
  *  which the consumer's own analysis judges; the library alone holds none. */
 const RULE_EXERCISE_CODES: ReadonlySet<string> = new Set(["RESOURCE_RULE_UNEXERCISED", "REFERRER_RULE_UNEXERCISED"]);
 
-/** The library's own verdict over its re-rooted graph: its migration findings
- *  and its live analysis, as `telo check <library>` reports them. */
+/** The library's own verdict over its re-rooted graph: its load findings and
+ *  its live analysis, as `telo check <library>` reports them. */
 function judgeLibrary(graph: LoadedGraph, analyzer: StaticAnalyzer, hostVersions?: HostVersions): DependencyVerdict {
   const { registration, manifests, moduleDocuments, applicationSources } = registerLoadedGraph(
     graph,
@@ -410,16 +407,13 @@ function judgeLibrary(graph: LoadedGraph, analyzer: StaticAnalyzer, hostVersions
   );
   const analysis = analyzer.analyzeRegistered(
     manifests,
-    { moduleDocuments, applicationSources, ...(hostVersions ? { hostVersions } : {}) },
+    { moduleDocuments, positions: collectFilePositions(graph), applicationSources, ...(hostVersions ? { hostVersions } : {}) },
     registration,
   );
   const module = libraryDocumentOf(graph, graph.rootSource)!.metadata!.name as string;
   return {
+    format: VERDICT_FORMAT,
     module,
-    diagnostics: [
-      ...graph.migrationDiagnostics,
-      ...libraryMigrationDiagnostics(graph),
-      ...partitionAnalysisDiagnostics(graph, withLibraryMigrationsApplied(graph, analysis)).live,
-    ],
+    diagnostics: assembleEntryDiagnostics(graph, analysis).diagnostics,
   };
 }

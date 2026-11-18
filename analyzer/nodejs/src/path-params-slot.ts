@@ -452,15 +452,66 @@ export function pathParamsAnnotationProblems(
   at: ValuePath = ["schema"],
 ): PathParamsAnnotationProblem[] {
   if (!isSchema(schema)) return [];
-  const problems: PathParamsAnnotationProblem[] = [];
+  return walkPathParamsAnnotations({ node: schema, root: schema, path: at, inner: [] }, resolveRef).map((entry) =>
+    pathParamsAnnotationProblemOf(kind, entry),
+  );
+}
+
+/** One misplaced annotation a walk found: where it is reported (`path`, the
+ *  kind's field naming the shape when it is inside one), the named shape and
+ *  the place in it, and why. */
+export interface PathParamsAnnotationEntry {
+  readonly path: ValuePath;
+  readonly shape?: string;
+  readonly inner: ValuePath;
+  readonly reason: string;
+}
+
+/** An entry's finding, reported at `path` of the kind `kind`. */
+export function pathParamsAnnotationProblemOf(
+  kind: string,
+  entry: PathParamsAnnotationEntry,
+  path: ValuePath = entry.path,
+): PathParamsAnnotationProblem {
+  const where = renderValuePath(entry.shape ? path : [...path, PATH_PARAMS_FOR_ANNOTATION]);
+  const place = entry.shape
+    ? `'${where}', which reaches '${renderValuePath([...entry.inner, PATH_PARAMS_FOR_ANNOTATION])}' in the named shape '${entry.shape}' it names,`
+    : `'${where}'`;
+  return { path: where, message: `'${kind}' declares ${place} ${entry.reason}` };
+}
+
+/** Where a walk starts: a node of `root`, reported at `path`, inside the
+ *  named shape `shape` at `inner` when it is in one. */
+export interface PathParamsAnnotationStart {
+  readonly node: unknown;
+  readonly root: Schema;
+  readonly path: ValuePath;
+  readonly shape?: string;
+  readonly inner: ValuePath;
+  /** The start node's own annotation is judged by the walk that met the
+   *  reference to it, which knows the object holding it. */
+  readonly skipStart?: boolean;
+}
+
+/** A walk that stops at a reference `stops` answers, naming it to `met`. */
+export interface PathParamsAnnotationStop {
+  stops(ref: string): boolean;
+  met(ref: string, path: ValuePath): void;
+}
+
+/** The walk {@link pathParamsAnnotationProblems} makes, from `start`; a
+ *  reference `stop` answers is not followed, but the annotation on the node it
+ *  names is judged here, against the object holding the reference. */
+export function walkPathParamsAnnotations(
+  start: PathParamsAnnotationStart,
+  resolveRef?: ExternalSchemaResolver,
+  stop?: PathParamsAnnotationStop,
+): PathParamsAnnotationEntry[] {
+  const problems: PathParamsAnnotationEntry[] = [];
   const visited = new Set<object>();
   const shapeName = (ref: string) => parseCanonicalTypeSchemaId(ref)?.typeName ?? ref;
   const report = (path: ValuePath, shape: string | undefined, inner: ValuePath, reason: string) => {
-    const where = renderValuePath(shape ? path : [...path, PATH_PARAMS_FOR_ANNOTATION]);
-    const place = shape
-      ? `'${where}', which reaches '${renderValuePath([...inner, PATH_PARAMS_FOR_ANNOTATION])}' in the named shape '${shape}' it names,`
-      : `'${where}'`;
-    problems.push({ path: where, message: `'${kind}' declares ${place} ${reason}` });
+    problems.push({ path, ...(shape ? { shape } : {}), inner, reason });
   };
   const shape = `The annotation is { template: <JSON Pointer to the field holding the template>, through?: <field of the declaration a reference there names> }.`;
   const judge = (
@@ -526,7 +577,7 @@ export function pathParamsAnnotationProblems(
     if (!isSchema(node) || visited.has(node)) return;
     visited.add(node);
     const step = (key: ValuePath): [ValuePath, ValuePath] => (shapeOf ? [path, [...inner, ...key]] : [[...path, ...key], inner]);
-    if (PATH_PARAMS_FOR_ANNOTATION in node) judge(node, root, holder, path, shapeOf, inner);
+    if (PATH_PARAMS_FOR_ANNOTATION in node && !(start.skipStart && node === start.node)) judge(node, root, holder, path, shapeOf, inner);
     if (isSchema(node.properties)) {
       for (const [key, child] of Object.entries(node.properties)) {
         const [p, i] = step(["properties", key]);
@@ -562,13 +613,18 @@ export function pathParamsAnnotationProblems(
         }
       } else {
         const named = resolveSchemaReference(node.$ref, root, resolveRef);
-        if (named) {
+        if (stop?.stops(node.$ref)) {
+          stop.met(node.$ref, path);
+          if (named && PATH_PARAMS_FOR_ANNOTATION in named.node) {
+            judge(named.node, named.document, holder, path, shapeOf ?? shapeName(named.shape!), shapeOf ? inner : []);
+          }
+        } else if (named) {
           visit(named.node, named.document, holder, path, shapeOf ?? shapeName(named.shape!), shapeOf ? inner : []);
         }
       }
     }
   };
-  visit(schema, schema, undefined, at, undefined, []);
+  visit(start.node, start.root, undefined, start.path, start.shape, start.inner);
   return problems;
 }
 

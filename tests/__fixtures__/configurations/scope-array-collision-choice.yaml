@@ -1,0 +1,19 @@
+# A name two scope arrays of one holder share only where a choice declares the
+# second: a collision there.
+kind: Telo.Application
+metadata: { name: ScopeArrayCollisionChoice }
+imports: { Holder: ./scope-array-holder }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets:
+  - !ref pair
+---
+kind: Holder.Pair
+metadata: { name: pair }
+left:
+  - { kind: Telo.Value, metadata: { name: shared }, value: 1 }
+right: !if
+  if: !cel "variables.flag1"
+  then:
+    - { kind: Telo.Value, metadata: { name: shared }, value: 2 }
+  else: []
+steps: []

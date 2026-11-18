@@ -70,7 +70,7 @@ function fragmentAt(node: Schema, root: Schema, resolveRef: ((ref: string) => Sc
 /** The objects a value sits in, from a named shape's root to where a `$ref`'s
  * pointer into it lands — undefined where the pointer passes through a node
  * whose position in a value is not known (a `$defs` entry). */
-function holdersAlong(ref: string): number | undefined {
+export function holdersAlong(ref: string): number | undefined {
   const segments = schemaReferenceParts(ref).pointer.slice(1).split("/").filter((segment) => segment !== "");
   let holders = 0;
   for (let i = 0; i < segments.length; i++) {
@@ -84,6 +84,44 @@ function holdersAlong(ref: string): number | undefined {
     }
   }
   return holders;
+}
+
+/** One misplaced annotation a walk found: where it is reported (`path`, the
+ *  kind's field naming the shape when it is inside one), the named shape and
+ *  the place in it, and why. */
+export interface TextValuesEntry {
+  readonly path: ValuePath;
+  readonly shape?: string;
+  readonly inner: ValuePath;
+  readonly reason: string;
+  readonly annotation: string;
+}
+
+/** An entry's finding, reported at `path` of the kind `kind`. */
+export function textValuesProblemOf(kind: string, entry: TextValuesEntry, path: ValuePath = entry.path): TextValuesProblem {
+  const where = renderValuePath(entry.shape ? path : [...path, entry.annotation]);
+  const place = entry.shape
+    ? `'${where}', which reaches '${renderValuePath([...entry.inner, entry.annotation])}' in the named shape '${entry.shape}' it names,`
+    : `'${where}'`;
+  return { path: where, message: `'${kind}' declares ${place} ${entry.reason}` };
+}
+
+/** Where a walk starts: a node of `root`, reported at `path`, inside the
+ *  named shape `shape` at `inner` when it is in one. */
+export interface TextValuesStart {
+  readonly node: unknown;
+  readonly root: Schema;
+  readonly path: ValuePath;
+  readonly shape?: string;
+  readonly inner: ValuePath;
+  /** The objects a value at `node` sits in, out to the walk's root. */
+  readonly holders: number | undefined;
+}
+
+/** A walk that stops at a reference `stops` answers, naming it to `met`. */
+export interface TextValuesStop {
+  stops(ref: string): boolean;
+  met(ref: string, path: ValuePath): void;
 }
 
 /**
@@ -101,7 +139,19 @@ export function textValuesProblems(
   at: ValuePath = ["schema"],
 ): TextValuesProblem[] {
   if (!isSchema(schema)) return [];
-  const problems: TextValuesProblem[] = [];
+  return walkTextValues({ node: schema, root: schema, path: at, inner: [], holders: 0 }, resolveRef).map((entry) =>
+    textValuesProblemOf(kind, entry),
+  );
+}
+
+/** The walk {@link textValuesProblems} makes, from `start`; a reference
+ *  `stop` answers is not followed. */
+export function walkTextValues(
+  start: TextValuesStart,
+  resolveRef?: (ref: string) => Schema | undefined,
+  stop?: TextValuesStop,
+): TextValuesEntry[] {
+  const problems: TextValuesEntry[] = [];
   const visited = new Set<object>();
   const report = (
     path: ValuePath,
@@ -110,11 +160,7 @@ export function textValuesProblems(
     reason: string,
     annotation: string = TEXT_VALUES_ANNOTATION,
   ) => {
-    const where = renderValuePath(shape ? path : [...path, annotation]);
-    const place = shape
-      ? `'${where}', which reaches '${renderValuePath([...inner, annotation])}' in the named shape '${shape}' it names,`
-      : `'${where}'`;
-    problems.push({ path: where, message: `'${kind}' declares ${place} ${reason}` });
+    problems.push({ path, ...(shape ? { shape } : {}), inner, reason, annotation });
   };
   // `holders`: the objects a value here sits in, out to the walk's root — the
   // kind's or the named shape's — or undefined where the position is not known
@@ -210,13 +256,17 @@ export function textValuesProblems(
       }
     }
     if (typeof node.$ref === "string" && !node.$ref.startsWith("#")) {
+      if (stop?.stops(node.$ref)) {
+        stop.met(node.$ref, path);
+        return;
+      }
       const named = resolveSchemaReference(node.$ref, root, resolveRef);
       const id = named?.shape ?? node.$ref;
       const name = parseCanonicalTypeSchemaId(id)?.typeName ?? id;
       if (named) visit(named.node, named.document, path, shape ?? name, shape ? inner : [], holdersAlong(node.$ref));
     }
   };
-  visit(schema, schema, at, undefined, [], 0);
+  visit(start.node, start.root, start.path, start.shape, start.inner, start.holders);
   return problems;
 }
 

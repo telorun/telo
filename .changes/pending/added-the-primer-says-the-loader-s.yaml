@@ -1,0 +1,4 @@
+units:
+  apps/authoring-agent: Added
+body: The primer says the loader's own metadata stamps (metadata.module, metadata.source
+  and the rest) are refused when an author writes one, so the agent never writes them.

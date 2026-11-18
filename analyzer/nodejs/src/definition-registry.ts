@@ -8,22 +8,26 @@ import { isCapabilityRole } from "./capability-roster.js";
 import { moduleAliasScope, type KindResolver } from "./module-alias-scope.js";
 import {
   declaredReach,
+  conditionedReachSites,
+  decidedReachSites,
   reachPositions,
   reachSites,
+  type ConditionedReachSite,
   type DeclaredReach,
   type ReachPosition,
   type ReachSite,
   type ResolvedSchemaNode,
   type SchemaFromResolver,
   type ShapeResolver,
+  type VaryingShapes,
 } from "./reference-reach.js";
 import { createAjv, navigateJsonPointer } from "./schema-compat.js";
 import { SchemaNodeValidator } from "./schema-node-validator.js";
-import { withoutStandInFindings, type StandIns } from "./stand-in-findings.js";
+import { judgeSchemaFindings, type UnionPlan } from "./schema-findings-judge.js";
+import type { StandIns } from "./stand-in-findings.js";
 import {
   explainFormatErrors,
   formatSingleError,
-  reduceSchemaErrors,
   schemaIssues,
   withEnumValues,
   type AjvErrorLike,
@@ -81,7 +85,53 @@ interface KindReach {
   schema: Record<string, any>;
   schemaFrom: SchemaFromResolver;
   shapes: ShapeResolver;
+  /** The id of the shape a `$ref` written in `document` names; `enter` makes
+   *  a class of a varying one a document whose own references resolve in its
+   *  module. */
+  shapeIdIn(ref: string, document: Record<string, any>): string | undefined;
+  enter(shape: Record<string, any>, id: string): void;
   declared?: DeclaredReach;
+}
+
+/**
+ * The named shapes some configuration varies, as the named-shape reader holds
+ * them: each id's classes, and the condition algebra their conditions live
+ * in. What a conditioned reference reach reads instead of any copy of a
+ * varying shape the registry holds.
+ */
+export interface VaryingShapeClasses<C = unknown> {
+  classesOf(id: string): readonly { readonly schema: Record<string, any>; readonly condition: C }[] | undefined;
+  readonly always: C;
+  and(a: C, b: C): C;
+  or(a: C, b: C): C;
+  isNever(condition: C): boolean;
+}
+
+/** How a reach decided over varying shapes keeps each item of a conditioned
+ *  site: where the item holds, the site, and the resource enumerated. */
+export type ReachDecision<C = unknown> = (condition: C, site: ConditionedReachSite<C>, resource: ResourceManifest) => boolean;
+
+/** The reach in force while one is decided ({@link DefinitionRegistry.withDecidedReach}). */
+interface DecidedReach {
+  readonly varying: VaryingShapeClasses;
+  readonly decide: ReachDecision;
+  /** What a read of a kind's patterns or positions — no site to decide —
+   *  answers a varying shape with: the class `holds` takes, or every class
+   *  as alternatives where none is given. */
+  readonly lookup: NamedShapeLookup;
+}
+
+let varyingCopyRead: ((id: string) => void) | undefined;
+
+/** Observe, until the returned function is called, every read of a registry
+ *  copy of a named shape some configuration varies — announced, registered in
+ *  a layer, or with every option kept — by a reach while one is decided over
+ *  the varying shapes' classes (`withDecidedReach`). */
+export function observeVaryingShapeCopyReads(listener: (id: string) => void): () => void {
+  varyingCopyRead = listener;
+  return () => {
+    if (varyingCopyRead === listener) varyingCopyRead = undefined;
+  };
 }
 
 /** A resource's concrete sites as last enumerated, with what they were read over. */
@@ -163,6 +213,9 @@ export class DefinitionRegistry {
   private readonly trustedKinds = new Set<string>();
   /** The run's named-shape layer, while one is open. */
   private layer: ShapeLayer | undefined;
+  /** How the unions of a value judged in parts are decided, while a judgement
+   *  of one is open. */
+  private unionPlan: UnionPlan | undefined;
   /** The named shapes some configuration varies: never shared, so read outside
    *  a run they are refused rather than answered from some configuration. */
   private readonly withheld = new Set<string>();
@@ -199,6 +252,11 @@ export class DefinitionRegistry {
   /** Per resource, per reach: a configuration view and the registry read one
    *  resource through different reaches, and neither evicts the other's. */
   private readonly resourceSites = new WeakMap<object, Map<KindReach, CachedSites>>();
+  private readonly conditionedSites = new WeakMap<
+    object,
+    Map<VaryingShapeClasses<any>, { reach: KindReach; data: unknown; sites: ConditionedReachSite<any>[] }>
+  >();
+  private decided: DecidedReach | undefined;
   /** DEPRECATED module identity table: identity string → canonical module name
    *  ("std/pipeline" → "pipeline"). Serves only the legacy
    *  `<namespace>/<module>#<Kind>` form of `x-telo-ref`, kept resolvable for
@@ -213,9 +271,37 @@ export class DefinitionRegistry {
     this.configuredReaches = new WeakMap();
   }
 
-  register(definition: ResourceDefinition): void {
+  /** `written` is the document `definition` was derived from, and `kinds` the
+   *  step of that derivation holding only its annotation kinds canonical
+   *  (`AnalysisRegistry.registerDefinition`). */
+  register(definition: ResourceDefinition, written?: object, kinds?: ResourceDefinition): void {
     this.add(definition, false);
+    const key = registryKeyOf(definition);
+    if (written && kinds && kinds !== written) {
+      this.canonicalKindCopies.set(written, kinds);
+      this.canonicalKindsByKey.set(key, kinds);
+    } else {
+      this.canonicalKindsByKey.delete(key);
+    }
   }
+
+  /** The kind document `written` with the kinds its annotations name canonical
+   *  in its declaring module and every other node as written — what a reader
+   *  judging the document's annotations compares — or `written` itself when it
+   *  names none to change. */
+  withCanonicalKinds<T extends { metadata?: unknown }>(written: T): T {
+    const known = this.canonicalKindCopies.get(written) as T | undefined;
+    if (known) return known;
+    // A projection of the document (an expansion's, a pass's clone) reads the
+    // form its written document registered.
+    const metadata = written.metadata as { name?: unknown; module?: unknown } | undefined;
+    if (typeof metadata?.name !== "string") return written;
+    const key = typeof metadata.module === "string" && metadata.module ? `${metadata.module}.${metadata.name}` : metadata.name;
+    return (this.canonicalKindsByKey.get(key) as T | undefined) ?? written;
+  }
+  private readonly canonicalKindCopies = new WeakMap<object, ResourceDefinition>();
+  private readonly canonicalKindsByKey = new Map<string, ResourceDefinition>();
+
 
   /** Bumped by every registration, a re-registration of a kind included: what
    *  a reader memoizing over the registered definitions keys on. */
@@ -228,7 +314,7 @@ export class DefinitionRegistry {
    *  whose validity a test asserts once. */
   private add(definition: ResourceDefinition, trustedSchema: boolean): void {
     const { name, module: mod } = definition.metadata;
-    const key = mod ? `${mod}.${name}` : name;
+    const key = registryKeyOf(definition);
     this.defs.set(key, definition);
     this.registrations++;
     // What a kind means along `extends` depends on its parent — possibly
@@ -372,6 +458,11 @@ export class DefinitionRegistry {
     return schema ? { schema, module: parseCanonicalTypeSchemaId(id)!.moduleName } : undefined;
   }
 
+  /** Whether a kind's schema claims `id`, so a named type of that id is a collision. */
+  claimsSchemaId(id: string): boolean {
+    return this.definitionSchemaIds.has(id);
+  }
+
   /**
    * Announces a named `Telo.Type`'s schema to the reference reach, ahead of its
    * registration: a kind whose schema `$ref`s the shape reaches the slots it
@@ -496,10 +587,10 @@ export class DefinitionRegistry {
   }
 
   /**
-   * Validates one node of a schema inside its own document, for the stand-in
-   * judge. On an instance of its own: locating a finding's node needs verbose
-   * errors, and verbose errors would change what every other failure reads as.
-   * Created by the first failure that has a union to decide.
+   * Validates one node of a schema inside its own document, for the judge. On an
+   * instance of its own: locating a finding's node needs verbose errors, and
+   * verbose errors would change what every other failure reads as. Created by
+   * the first failure that has a union to decide.
    */
   private nodeValidator(): SchemaNodeValidator {
     const store = this.store;
@@ -523,20 +614,41 @@ export class DefinitionRegistry {
     return store.nodes.validator;
   }
 
-  /** `errors` without what the stand-ins in `data` excuse. */
+  /** Runs `body` with `plan` deciding the unions of every value it validates
+   *  (`schema-findings-judge.ts`). */
+  withUnionPlan<T>(plan: UnionPlan, body: () => T): T {
+    const outer = this.unionPlan;
+    this.unionPlan = plan;
+    try {
+      return body();
+    } finally {
+      this.unionPlan = outer;
+    }
+  }
+
+  /** `errors` judged: each union decided, and what the stand-ins in `data`
+   *  excuse dropped. */
   private judged(
     errors: AjvErrorLike[] | null | undefined,
     data: unknown,
     schema: Record<string, any>,
     standIns: StandIns | undefined,
-  ): AjvErrorLike[] | null | undefined {
-    if (!standIns) return errors;
-    return withoutStandInFindings(errors, {
+  ): AjvErrorLike[] {
+    const plan = this.unionPlan;
+    return judgeSchemaFindings(errors, {
       value: data,
       schema,
-      standIns,
+      ...(standIns ? { standIns } : {}),
       validate: (node, value) => this.nodeValidator().findingsFor(schema)(node, value),
+      reference: (node, ref) => this.nodeValidator().reference(node, ref),
+      ...(plan ? { plan, unionsAt: (place: string) => this.nodeValidator().unionsAt(schema, data, place) } : {}),
     });
+  }
+
+  /** Whether `data` is to be judged whatever the validator says of it: a union
+   *  of it is decided by the open plan. */
+  private judgedWhole(data: unknown): boolean {
+    return this.unionPlan?.placesIn(data) !== undefined;
   }
 
   /** True when a schema is registered under `id` (a canonical `telo://` type id
@@ -586,9 +698,11 @@ export class DefinitionRegistry {
    */
   validateWithRefs(data: unknown, schema: Record<string, any>, standIns?: StandIns): string[] {
     const validate = this.compiledFor(schema);
-    if (!validate || validate(data)) return [];
-    const errors = this.judged(validate.errors, data, schema, standIns);
-    return (withEnumValues(reduceSchemaErrors(explainFormatErrors(errors, data)), data) ?? []).map(formatSingleError);
+    if (!validate) return [];
+    const valid = validate(data);
+    if (valid && !this.judgedWhole(data)) return [];
+    const errors = this.judged(valid ? [] : validate.errors, data, schema, standIns);
+    return (withEnumValues(explainFormatErrors(errors, data), data) ?? []).map(formatSingleError);
   }
 
   /** {@link validateWithRefs}, with the path each issue is anchored at. */
@@ -598,8 +712,10 @@ export class DefinitionRegistry {
     standIns?: StandIns,
   ): SchemaIssue[] {
     const validate = this.compiledFor(schema);
-    if (!validate || validate(data)) return [];
-    return schemaIssues(this.judged(validate.errors, data, schema, standIns), data);
+    if (!validate) return [];
+    const valid = validate(data);
+    if (valid && !this.judgedWhole(data)) return [];
+    return schemaIssues(this.judged(valid ? [] : validate.errors, data, schema, standIns), data);
   }
 
   /** Memoized per schema OBJECT — the analyzer validates every resource of a
@@ -637,6 +753,57 @@ export class DefinitionRegistry {
       this.refuseWithheld(missingSchemaOf(err));
       return err instanceof Error ? err.message : String(err);
     }
+  }
+
+  /**
+   * A compiler over this registry's registrations with each id of `standIns`
+   * held by its stand-in document instead — what a schema compiles to with
+   * every named shape it references read as a document that always compiles.
+   * It answers the compile error of a schema, `undefined` when it compiles;
+   * given `as`, the schema is compiled under that id in place of its stand-in,
+   * so its own errors name it as a registered shape's do.
+   */
+  standInCompiler(
+    standIns: ReadonlyMap<string, Record<string, any>>,
+  ): (schema: Record<string, any>, as?: string) => string | undefined {
+    const ajv = createAjv();
+    const held = new Set<string>();
+    const hold = (schema: object, id: string): void => {
+      if (held.has(id)) return;
+      held.add(id);
+      ajv.addSchema(schema, id, undefined, false);
+    };
+    for (const [id, document] of standIns) hold(document, id);
+    for (const { schema, id } of this.registeredSchemas) if (!standIns.has(id)) hold(schema, id);
+    const standInLookup: NamedShapeLookup = (id) => standIns.get(id);
+    return (schema, as) => {
+      const root = schemaWithTagsAsText(withReachedFragmentDefs(schema, standInLookup)) as Record<string, any>;
+      const compiled = as === undefined ? root : { ...root, $id: as };
+      if (as !== undefined && held.has(as)) ajv.removeSchema(as);
+      try {
+        for (;;) {
+          try {
+            ajv.compile(compiled);
+            return undefined;
+          } catch (err) {
+            const missing = missingSchemaOf(err);
+            // A kind's id is registered on its first lookup: then held here too.
+            if (missing === undefined || held.has(missing) || !this.materializeKindSchema(missing)) throw err;
+            const entry = this.registeredSchemas.find((each) => each.id === missing);
+            if (!entry) throw err;
+            hold(entry.schema, missing);
+          }
+        }
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      } finally {
+        if (as !== undefined) {
+          ajv.removeSchema(as);
+          const standIn = standIns.get(as);
+          if (standIn) ajv.addSchema(standIn, as, undefined, false);
+        }
+      }
+    };
   }
 
   /**
@@ -720,9 +887,9 @@ export class DefinitionRegistry {
 
   /** Resolves an `x-telo-ref` constraint to a canonical registry kind key.
    *
-   *  The constraint is already canonical `<module>.<Kind>`: alias-form values
-   *  (`Acme.Store`, `Self.Store`, `Telo.Invocable`) are rewritten in the
-   *  declaring module's scope by `resolveSchemaRefKinds` before registration, so
+   *  The constraint is already canonical `<module>.<Kind>`: a registered copy
+   *  holds alias-form values (`Acme.Store`, `Self.Store`, `Telo.Invocable`)
+   *  resolved in the declaring module's scope (`registeredDefinitionCopy`), so
    *  no module context is needed here.
    *
    *  The legacy `<namespace>/<module>#<Kind>` form still resolves through the
@@ -848,6 +1015,9 @@ export class DefinitionRegistry {
     const shapes: ShapeResolver = (ref, document) => {
       const id = shapeId(ref, modules.get(document), scopes.get(document));
       const shape = id === undefined ? undefined : (configured?.(id) ?? this.namedShapeFor(id));
+      // A reach decided over varying shapes reads each through its classes:
+      // a copy of one asked for here is a read the counter names.
+      if (id !== undefined && !configured && this.decided?.varying.classesOf(id)) varyingCopyRead?.(id);
       if (shape && !modules.has(shape)) {
         const module = parseCanonicalTypeSchemaId(id)!.moduleName;
         modules.set(shape, module);
@@ -876,7 +1046,18 @@ export class DefinitionRegistry {
       }
       return { document: anchor.document, node: anchor.node };
     };
-    const reach: KindReach = { schema, schemaFrom, shapes };
+    const reach: KindReach = {
+      schema,
+      schemaFrom,
+      shapes,
+      shapeIdIn: (ref, document) => shapeId(ref, modules.get(document), scopes.get(document)),
+      enter: (shape, id) => {
+        if (modules.has(shape)) return;
+        const module = parseCanonicalTypeSchemaId(id)!.moduleName;
+        modules.set(shape, module);
+        scopes.set(shape, aliases ? moduleAliasScope({ module }, aliases, aliasesByModule) : undefined);
+      },
+    };
     byScope.set(ownerScope ?? CANONICAL_SCOPE, reach);
     return reach;
   }
@@ -899,6 +1080,13 @@ export class DefinitionRegistry {
     data: unknown = resource,
     configured?: NamedShapeLookup,
   ): ReachSite[] {
+    const decided = this.decided;
+    if (decided && !configured) {
+      return decidedReachSites(
+        this.conditionedReferenceSites(resource, decided.varying, aliases, aliasesByModule, data),
+        (site, condition) => decided.decide(condition, site, resource),
+      );
+    }
     const reach = this.reachOf(resource, aliases, aliasesByModule, configured);
     if (!reach) return [];
     let byReach = this.resourceSites.get(resource);
@@ -920,6 +1108,77 @@ export class DefinitionRegistry {
     return sites;
   }
 
+  /**
+   * The CONDITIONED reference reach of `data` (the resource itself by
+   * default): every site any configuration's named shapes put there, each
+   * item with the condition it holds under — a shape `varying` answers read
+   * as its classes, each class's condition joined with where it is reached,
+   * OR over the classes declaring the item. Memoized per resource, data and
+   * `varying` while every site still holds the value it was read over.
+   */
+  conditionedReferenceSites<C>(
+    resource: ResourceManifest,
+    varying: VaryingShapeClasses<C>,
+    aliases?: KindResolver,
+    aliasesByModule?: ReadonlyMap<string, KindResolver>,
+    data: unknown = resource,
+  ): ConditionedReachSite<C>[] {
+    const reach = this.reachOf(resource, aliases, aliasesByModule);
+    if (!reach) return [];
+    let byVarying = this.conditionedSites.get(resource);
+    if (!byVarying) this.conditionedSites.set(resource, (byVarying = new Map()));
+    const cached = byVarying.get(varying);
+    if (
+      cached &&
+      cached.reach === reach &&
+      cached.data === data &&
+      cached.sites.every(
+        (site) => site.holder === undefined || (site.holder as Record<string | number, unknown>)[site.key!] === site.data,
+      )
+    ) {
+      return cached.sites as ConditionedReachSite<C>[];
+    }
+    const classed: VaryingShapes<C> = {
+      classesOf: (ref, document) => {
+        const id = reach.shapeIdIn(ref, document);
+        const classes = id === undefined ? undefined : varying.classesOf(id);
+        if (!classes) return undefined;
+        for (const each of classes) reach.enter(each.schema, id!);
+        return classes;
+      },
+      always: varying.always,
+      and: varying.and,
+      or: varying.or,
+      isNever: varying.isNever,
+    };
+    const sites = conditionedReachSites(reach.schema, data, classed, reach.schemaFrom, true, reach.shapes);
+    byVarying.set(varying, { reach, data, sites });
+    return sites;
+  }
+
+  /**
+   * `body` with every reference reach read through {@link referenceSites}
+   * DECIDED from the conditioned reach over `varying`: each item kept where
+   * `decide` holds it. While it runs, no copy of a varying shape the registry
+   * holds — announced, registered in a layer, or every option kept — is an
+   * input to a reach.
+   */
+  withDecidedReach<T, C>(varying: VaryingShapeClasses<C>, decide: ReachDecision<C>, body: () => T, holds?: (condition: C) => boolean): T {
+    const before = this.decided;
+    const lookup: NamedShapeLookup = (id) => {
+      const classes = varying.classesOf(id);
+      if (!classes) return this.namedShapeFor(id);
+      if (holds) return classes.find((each) => holds(each.condition))?.schema;
+      return { anyOf: classes.map((each) => each.schema) };
+    };
+    this.decided = { varying: varying as VaryingShapeClasses, decide: decide as ReachDecision, lookup };
+    try {
+      return body();
+    } finally {
+      this.decided = before;
+    }
+  }
+
   /** Every concrete position of `data` at or above one of its reference slots
    *  (`reachPositions`), schema-from slots expanded. Empty when the kind
    *  resolves to no definition. */
@@ -930,7 +1189,7 @@ export class DefinitionRegistry {
     data: unknown = resource,
     configured?: NamedShapeLookup,
   ): ReachPosition[] {
-    const reach = this.reachOf(resource, aliases, aliasesByModule, configured);
+    const reach = this.reachOf(resource, aliases, aliasesByModule, configured ?? this.decided?.lookup);
     return reach ? reachPositions(reach.schema, data, reach.schemaFrom, reach.shapes) : [];
   }
 
@@ -942,7 +1201,7 @@ export class DefinitionRegistry {
     aliasesByModule?: ReadonlyMap<string, KindResolver>,
     configured?: NamedShapeLookup,
   ): DeclaredReach | undefined {
-    const reach = this.reachOf(resource, aliases, aliasesByModule, configured);
+    const reach = this.reachOf(resource, aliases, aliasesByModule, configured ?? this.decided?.lookup);
     if (!reach) return undefined;
     return (reach.declared ??= declaredReach(reach.schema, reach.schemaFrom, reach.shapes));
   }
@@ -1058,4 +1317,10 @@ export class DefinitionRegistry {
   kinds(): string[] {
     return Array.from(this.defs.keys());
   }
+}
+
+/** The key a definition is registered under: `<module>.<name>`, or its name. */
+function registryKeyOf(definition: ResourceDefinition): string {
+  const { name, module: mod } = definition.metadata;
+  return mod ? `${mod}.${name}` : (name as string);
 }

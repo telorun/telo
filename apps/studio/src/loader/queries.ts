@@ -1,4 +1,4 @@
-import { isRefSlot, readRefSlot, rewriteRefSlotKinds } from "@telorun/analyzer";
+import { isRefSlot, withRefSlotKinds } from "@telorun/analyzer";
 import type {
   AvailableKind,
   ImportedModuleConfig,
@@ -60,15 +60,11 @@ function rewriteRefs(node: unknown, map: (kind: string) => string | undefined): 
 
   const record = node as Record<string, unknown>;
   let next: Record<string, unknown> | null = null;
-  if (isRefSlot(record) && readRefSlot(record)?.kinds.some((k) => map(k) !== undefined)) {
-    // Asked first, cloned only when an answer came back: a clone plus two
-    // serializations per ref slot is real cost on a walk that runs for every
-    // kind of every module, and the overwhelming majority of constraints are
-    // already canonical. Copied rather than rewritten in place because the
-    // parsed manifest is shared with every other consumer, and through the
+  if (isRefSlot(record)) {
+    // A copy, never the parsed manifest every other consumer shares; through the
     // accessor because the annotation's shapes are its to know, not this walk's.
-    next = { ...record, "x-telo-ref": structuredClone(record["x-telo-ref"]) };
-    rewriteRefSlotKinds(next, map);
+    const mapped = withRefSlotKinds(record, map);
+    if (mapped !== record) next = mapped;
   }
   for (const [key, value] of Object.entries(record)) {
     if (key === "x-telo-ref") continue;

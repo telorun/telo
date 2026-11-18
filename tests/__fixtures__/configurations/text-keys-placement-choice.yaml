@@ -1,0 +1,34 @@
+# `x-telo-text-keys` written where nothing reads it: in one branch of a choice,
+# and inside a template body a consumer's choice decides.
+kind: Telo.Application
+metadata: { name: TextKeysPlacementChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets: [!ref shown, !ref made]
+---
+kind: Telo.Sequence
+metadata: { name: shown }
+steps:
+  - name: show
+    value: !if
+      if: !cel "variables.flag1"
+      then: { x-telo-text-keys: [Self.Missing] }
+      else: { label: plain }
+---
+kind: Telo.Definition
+metadata: { name: Maker }
+capability: Telo.Runnable
+schema: { type: object, properties: { fast: { type: boolean, x-telo-eval: compile } } }
+resources:
+  - kind: Telo.Sequence
+    metadata: { name: body }
+    steps:
+      - name: show
+        value: !if
+          if: !cel "self.fast"
+          then: { x-telo-text-keys: [Self.Missing] }
+          else: { label: plain }
+run: !ref body
+---
+kind: Self.Maker
+metadata: { name: made }
+fast: !cel "variables.flag1"

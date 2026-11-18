@@ -1,0 +1,27 @@
+# Two scoped imports of one alias, both present where a choice declares the
+# first: the refusal names the first written, and the second where it alone is.
+kind: Telo.Application
+metadata: { name: ScopedImportKindOverlap }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets: [!ref first, !ref second]
+---
+kind: Telo.Sequence
+metadata: { name: first }
+with: !if
+  if: !cel "variables.flag1"
+  then:
+    - { kind: Telo.Import, metadata: { name: Inner }, source: ./scoped-import-kind-lib }
+  else: []
+steps:
+  - { name: noop, value: 1 }
+---
+kind: Telo.Sequence
+metadata: { name: second }
+with:
+  - { kind: Telo.Import, metadata: { name: Inner }, source: ./scoped-import-kind-lib }
+steps:
+  - { name: noop, value: 1 }
+---
+kind: Inner.Thing
+metadata: { name: shape }
+schema: { type: string }

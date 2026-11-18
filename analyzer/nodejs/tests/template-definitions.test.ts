@@ -39,6 +39,13 @@ describe("a template definition checked with no consumer", () => {
     expect(summary(diagnostics)).toEqual([]);
   });
 
+  it("reports a body field's schema finding once, under the choice its value is chosen by", async () => {
+    const found = (await check("field-choice.yaml")).filter((d) => d.code === "SCHEMA_VIOLATION");
+    expect(found.map((d) => [(d.data as { path?: string }).path, d.message])).toEqual([
+      ["inputs.else", "Telo.Definition/Picked: /inputs/else must be object (when self.f is false)"],
+    ]);
+  });
+
   it("reports a typo inside an emit, a branch nobody selects and a case outside the domain", async () => {
     const diagnostics = await check("refusals.yaml");
     const choices = diagnostics.filter((d) => d.message.startsWith("Telo.Definition/Choices"));
@@ -54,8 +61,12 @@ describe("a template definition checked with no consumer", () => {
       "SCHEMA_VIOLATION resources[1].cases.x.mounts",
       "SCHEMA_VIOLATION resources[2].mounts[0].cases.b",
       "TEMPLATE_TARGET_UNKNOWN targets[0]",
-      "TEMPLATE_TARGET_UNKNOWN targets[0]",
     ]);
+    // What the message lists is the body as written, whichever way it is decided.
+    const target = choices.find((d) => d.code === "TEMPLATE_TARGET_UNKNOWN")!;
+    expect(target.message).toBe(
+      "Telo.Definition/Choices: 'targets[0]: !ref server' names no entry in 'resources:'. Available: other, third. (when self.mode is b)",
+    );
     const typo = choices.find((d) => (d.data as { path?: string }).path === "resources[2].mounts[0].cases.b")!;
     expect(typo.message).toMatch(/\(when self\.mode is b\)$/);
     const unselected = choices.find((d) => (d.data as { path?: string }).path === "resources[0].cases.c.mounts")!;
@@ -166,7 +177,7 @@ describe("the definition-check model", () => {
   };
 
   for (const n of [1, 8, 16]) {
-    it(`expands the whole body twice and each entry at most four times — ${n} open choices`, async () => {
+    it(`reads the body over one dimension per choice, with no variant product — ${n} open choices`, async () => {
       const text = generated(n);
       const source: ManifestSource = {
         supports: (url) => url === "/virtual/cost.yaml" || fileSource.supports(url),
@@ -186,13 +197,78 @@ describe("the definition-check model", () => {
         aliasesByModule: ctx.aliasesByModule ?? new Map(),
       });
       const definition = templates.definitions.find((d) => d.metadata?.name === "Wide")!;
-      const stats = templates.stats(definition);
-      expect(stats.structural).toBe(2);
-      expect(stats.entries.size).toBe(n);
-      for (const count of stats.entries.values()) expect(count).toBeLessThanOrEqual(4);
-      expect(templates.variantsOf(definition)).toBe(4);
+      expect(templates.dimensionsOf(definition)).toHaveLength(n + 1);
     });
   }
+});
+
+describe("a template definition's own dimensions", () => {
+  const text = [
+    `kind: Telo.Library`,
+    `metadata: { name: Dims }`,
+    `imports:`,
+    `  Run: ${resolve(FIXTURES, "../../../../../modules/run")}`,
+    `---`,
+    `kind: Telo.Definition`,
+    `metadata: { name: Roles }`,
+    `capability: Telo.Invocable`,
+    `schema:`,
+    `  type: object`,
+    `  properties:`,
+    `    dialect: { type: string, enum: [a, b] }`,
+    `    a: { type: integer }`,
+    `    b: { type: integer }`,
+    `    name: { type: string }`,
+    `resources:`,
+    `  - kind: Run.Value`,
+    `    metadata: { name: closed }`,
+    `    value: !if { if: !cel "self.dialect == 'a'", then: 1, else: 2 }`,
+    `  - kind: Run.Value`,
+    `    metadata: { name: atom }`,
+    `    value: !if { if: !cel "self.a == self.b", then: 1, else: 2 }`,
+    `  - kind: Run.Value`,
+    `    metadata: { name: selector }`,
+    `    value: !switch { switch: !cel "self.name", cases: { x: 1 }, default: 2 }`,
+    `invoke: !ref closed`,
+  ].join("\n");
+  const load = async () => {
+    const source: ManifestSource = {
+      supports: (url) => url === "/virtual/dims.yaml" || fileSource.supports(url),
+      read: async (url) => (url === "/virtual/dims.yaml" ? { text, source: url } : fileSource.read(url)),
+      resolveRelative: fileSource.resolveRelative,
+    };
+    return flattenForAnalyzer(await new Loader([source]).loadGraph("/virtual/dims.yaml", { desugarImports: true }));
+  };
+
+  it.each([
+    ["closed", "self.dialect", ["a", "b"]],
+    ["atom", "self.a == self.b", [true, false]],
+    ["selector", "self.name", ["x", "\0other"]],
+  ])("registers a %s read as a dimension keyed by the definition's identity", async (role, key, values) => {
+    const flat = await load();
+    const registry = new AnalysisRegistry();
+    new StaticAnalyzer().analyze(flat, { skipValidation: true }, registry);
+    const ctx = registry._context();
+    const templates = readTemplateDefinitions({
+      manifests: flat,
+      reading: readExpansionSites(flat, [], ctx.definitions!, ctx.aliases, ctx.aliasesByModule, true),
+      registry: ctx.definitions!,
+      aliases: ctx.aliases!,
+      aliasesByModule: ctx.aliasesByModule ?? new Map(),
+    });
+    const definition = templates.definitions.find((d) => d.metadata?.name === "Roles")!;
+    expect(templates.dimensionsOf(definition).filter((d) => d.definition?.role === role)).toEqual([
+      { key: `Dims.Roles:${key}`, values, definition: { identity: "Dims.Roles", role, key } },
+    ]);
+  });
+
+  it("is refused as a key of 'within'", async () => {
+    const flat = await load();
+    expect(() => new StaticAnalyzer().analyze(flat, { within: { "Dims.Roles:self.dialect": "a" } })).toThrow(
+      `'within' names 'Dims.Roles:self.dialect', the closed dimension 'self.dialect' of the template definition ` +
+        `'Dims.Roles': each consumer decides a definition's dimensions, so no configuration names one.`,
+    );
+  });
 });
 
 describe("a family and its member references at the definition", () => {

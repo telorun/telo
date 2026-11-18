@@ -344,6 +344,59 @@ export function evalModeBranchConflicts(
   return collectedOf(schema, shapes).conflicts.map((found) => ({ ...found, path: evalPathOf(found.path) }));
 }
 
+/**
+ * What the eval-site walk finds from one node when it stops at every named
+ * shape `stops` names instead of entering it — the walk {@link
+ * evalModeBranchConflicts} makes with a deferring lookup in place of a content
+ * one: the eval sites beneath the node by place (the walk's spelling, `""` the
+ * node itself), the named-shape references it stopped at, the nodes it read at
+ * each place, and the unions it met beneath no eval site, judged by none.
+ *
+ * `kindRoot` reads `node` as a kind's schema root, as the content walk does:
+ * its properties beneath no eval site, everything else of it beneath one.
+ */
+export interface DeferredEvalWalk {
+  readonly sites: ReadonlyMap<string, CelEvalMode>;
+  readonly refs: readonly DeferredShapeRef[];
+  readonly nodes: readonly WalkedNode[];
+  readonly unions: readonly WalkedUnion[];
+}
+
+export function deferredEvalWalk(
+  node: Record<string, any>,
+  document: Record<string, any>,
+  stops: (shape: string) => boolean,
+  lookup: NamedShapeLookup,
+  options: { readonly kindRoot: boolean; readonly underEval: boolean },
+): DeferredEvalWalk {
+  const state: WalkState = { shapes: lookup, resolved: new Map(), defers: stops };
+  const found = emptyCollected();
+  if (options.kindRoot) {
+    if (node.properties && typeof node.properties === "object") {
+      for (const [key, propSchema] of Object.entries(node.properties as Record<string, any>)) {
+        walk(propSchema, `.${key}`, node, [], found, state, NO_NAMES, false);
+      }
+    }
+    descendBeyondProperties(node, "", node, [], found, state, NO_NAMES, true);
+  } else {
+    walk(node, "", document, [], found, state, NO_NAMES, options.underEval);
+  }
+  const sites = new Map<string, CelEvalMode>();
+  for (const site of found.eval) sites.set(site.path, site.mode);
+  return { sites, refs: found.refs, nodes: found.nodes, unions: found.unions };
+}
+
+/** The first segments a union branch gives a value, as the content walk reads
+ *  them, stopping at every named shape `stops` names. */
+export function declaredBranchSegments(
+  node: unknown,
+  document: Record<string, any>,
+  lookup: NamedShapeLookup,
+  stops: (shape: string) => boolean,
+): ReadonlySet<string> {
+  return declaredSegments(node, document, lookup, new Set(), stops);
+}
+
 /** An eval path from the walk's spelling, which keeps a leading `.` on every
  *  property so a site found inside a shape composes at any depth. */
 function evalPathOf(path: string): string {
@@ -394,16 +447,57 @@ export interface EvalModeBranchConflict {
   readonly shape?: string;
 }
 
-/** Everything one walk of a schema finds, paths in the walk's spelling. */
+/** A named-shape reference the deferring walk stopped at, rather than
+ *  entering the shape: the walk's place of it, the shape, the pointer into it,
+ *  and whether it sits beneath an eval site. */
+export interface DeferredShapeRef {
+  readonly path: string;
+  readonly ref: string;
+  readonly target: string;
+  readonly pointer: string;
+  readonly underEval: boolean;
+  /** The node writing the reference. */
+  readonly node: Record<string, any>;
+}
+
+/** A schema node the deferring walk read at its place, beneath no eval site. */
+export interface WalkedNode {
+  readonly path: string;
+  readonly node: Record<string, any>;
+  readonly document: Record<string, any>;
+}
+
+/** A union the deferring walk met beneath no eval site. */
+export interface WalkedUnion {
+  readonly path: string;
+  readonly union: Record<string, any>;
+  readonly document: Record<string, any>;
+  readonly keyword: "oneOf" | "anyOf";
+}
+
+/** Everything one walk of a schema finds, paths in the walk's spelling. The
+ *  last three are the deferring walk's alone. */
 interface Collected {
   eval: EvalSite[];
   regions: string[];
   contexts: Array<{ path: string; schema: Record<string, any> }>;
   matchFor: Array<{ path: string; pointer: string }>;
   conflicts: EvalModeBranchConflict[];
+  refs: DeferredShapeRef[];
+  nodes: WalkedNode[];
+  unions: WalkedUnion[];
 }
 
-const emptyCollected = (): Collected => ({ eval: [], regions: [], contexts: [], matchFor: [], conflicts: [] });
+const emptyCollected = (): Collected => ({
+  eval: [],
+  regions: [],
+  contexts: [],
+  matchFor: [],
+  conflicts: [],
+  refs: [],
+  nodes: [],
+  unions: [],
+});
 
 interface Frame {
   readonly node: object;
@@ -427,6 +521,9 @@ const shapeMemos = new WeakMap<object, ShapeMemo>();
 
 interface WalkState {
   readonly shapes: NamedShapeLookup;
+  /** The deferring walk's: a named shape whose reference the walk stops at,
+   *  recording it rather than entering the shape. */
+  readonly defers?: (shape: string) => boolean;
   /** Every named shape the walk asked for and what the lookup answered — none
    *  included — to tell a remembered shape is still what the lookup answers. */
   readonly resolved: Map<string, object | undefined>;
@@ -511,6 +608,8 @@ function walk(
 ): void {
   if (!node || typeof node !== "object" || Array.isArray(node)) return;
   const schema = node as Record<string, any>;
+  const deferred = deferredShapeOf(schema, state);
+  if (state.defers && !underEval && deferred === undefined) out.nodes.push({ path, node: schema, document });
   const bindings = withContextNames(inherited, schema);
   if (declaresCelRegion(schema)) out.regions.push(path);
   if (isContextNode(schema)) out.contexts.push({ path, schema: contextOf(schema, document, state) });
@@ -523,6 +622,10 @@ function walk(
   if (declared && !underEval) {
     out.eval.push({ mode: declared, path, bindings });
     underEval = true;
+  }
+  if (deferred !== undefined) {
+    out.refs.push({ path, ref: schema.$ref, target: deferred, pointer: schemaReferenceParts(schema.$ref).pointer, underEval, node: schema });
+    return;
   }
   if (typeof schema.$ref === "string") {
     const { shape } = schemaReferenceParts(schema.$ref);
@@ -538,6 +641,13 @@ function walk(
     }
   }
   descendBeyondProperties(schema, path, document, frames, out, state, bindings, underEval);
+}
+
+/** The named shape a node's `$ref` names when the deferring walk stops there. */
+function deferredShapeOf(schema: Record<string, any>, state: WalkState): string | undefined {
+  if (!state.defers || typeof schema.$ref !== "string") return undefined;
+  const { shape } = schemaReferenceParts(schema.$ref);
+  return shape !== undefined && state.defers(shape) ? shape : undefined;
 }
 
 function descendBeyondProperties(
@@ -576,13 +686,19 @@ function descendBeyondProperties(
       walk(branch, path, document, frames, found, state, bindings, underEval);
       return found;
     });
-    out.conflicts.push(...branchConflicts(schema, key, path, document, branches, state.shapes));
+    // The deferring walk judges no union itself: it names each, and the
+    // shapes its branches stop at, for a judgement over every reading.
+    if (state.defers) out.unions.push({ path, union: schema, document, keyword: key });
+    else out.conflicts.push(...branchConflicts(schema, key, path, document, branches, state.shapes));
     for (const found of branches) {
       out.eval.push(...found.eval);
       out.regions.push(...found.regions);
       out.contexts.push(...found.contexts);
       out.matchFor.push(...found.matchFor);
       out.conflicts.push(...found.conflicts);
+      out.refs.push(...found.refs);
+      out.nodes.push(...found.nodes);
+      out.unions.push(...found.unions);
     }
   }
 }
@@ -656,7 +772,7 @@ function branchConflicts(
 
 /** The first segment of a place beneath a union — past a leading repeated
  *  group, which is read at its zero depth. */
-function firstSegment(place: string): string {
+export function firstSegment(place: string): string {
   let rest = place;
   while (rest.startsWith("(")) {
     let depth = 0;
@@ -678,14 +794,17 @@ function declaredSegments(
   document: Record<string, any>,
   shapes: NamedShapeLookup,
   seen: Set<object>,
+  stops?: (shape: string) => boolean,
 ): Set<string> {
   const out = new Set<string>();
   if (!node || typeof node !== "object" || Array.isArray(node) || seen.has(node)) return out;
   seen.add(node);
   const schema = node as Record<string, any>;
   if (typeof schema.$ref === "string") {
+    const { shape } = schemaReferenceParts(schema.$ref);
+    if (shape !== undefined && stops?.(shape)) return out;
     const target = resolveSchemaReference(schema.$ref, document, shapes);
-    return target ? declaredSegments(target.node, target.document, shapes, seen) : out;
+    return target ? declaredSegments(target.node, target.document, shapes, seen, stops) : out;
   }
   if (schema.properties && typeof schema.properties === "object") {
     for (const key of Object.keys(schema.properties)) out.add(`.${key}`);
@@ -699,7 +818,7 @@ function declaredSegments(
   for (const key of ["oneOf", "anyOf", "allOf"] as const) {
     if (!Array.isArray(schema[key])) continue;
     for (const branch of schema[key]) {
-      for (const segment of declaredSegments(branch, document, shapes, seen)) out.add(segment);
+      for (const segment of declaredSegments(branch, document, shapes, seen, stops)) out.add(segment);
     }
   }
   return out;
@@ -731,7 +850,8 @@ function enter(
   // Everything found inside is relative to the entry and owes its bindings to
   // what the target itself declares; the bindings above it join on the way out.
   // Remembered only while every shape it reached still resolves as it did.
-  const isShape = shape !== undefined;
+  // The deferring walk enters no named shape, so it remembers none either.
+  const isShape = shape !== undefined && !state.defers;
   const known = isShape && !underEval ? shapeMemos.get(target) : undefined;
   const memo = known?.shapes.every(([id, node]) => state.shapes(id) === node) ? known : undefined;
   let loop: string;
@@ -757,6 +877,9 @@ function enter(
         path: relative(found.path),
         shape: found.shape ?? shape,
       })),
+      refs: absolute.refs.map((found) => ({ ...found, path: relative(found.path) })),
+      nodes: absolute.nodes.map((found) => ({ ...found, path: relative(found.path) })),
+      unions: absolute.unions.map((found) => ({ ...found, path: relative(found.path) })),
     };
     if (isShape && !underEval && !frame.dirty) {
       shapeMemos.set(target, {
@@ -774,6 +897,9 @@ function enter(
   for (const context of inside.contexts) out.contexts.push({ ...context, path: at(context.path) });
   for (const site of inside.matchFor) out.matchFor.push({ ...site, path: at(site.path) });
   for (const found of inside.conflicts) out.conflicts.push({ ...found, path: at(found.path) });
+  for (const found of inside.refs) out.refs.push({ ...found, path: at(found.path) });
+  for (const found of inside.nodes) out.nodes.push({ ...found, path: at(found.path) });
+  for (const found of inside.unions) out.unions.push({ ...found, path: at(found.path) });
 }
 
 /**

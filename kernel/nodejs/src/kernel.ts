@@ -12,7 +12,9 @@ import {
   evaluatedField,
   extractCelRegionScopes,
   DiagnosticSeverity,
+  collectFilePositions,
   collectModuleDocuments,
+  FindingOrder,
   inputRequirements,
   requirementDimensions,
   requirementDimensionsOf,
@@ -58,7 +60,7 @@ import {
   type NeedTableEntry,
   type NeedTypeShape,
   StaticAnalyzer,
-  withoutStandInFindings,
+  judgeSchemaFindings,
   type AnalysisDiagnostic,
   type DefResolver,
   type DiffEntry,
@@ -74,6 +76,7 @@ import {
   namedShapeReading,
   describeModuleSource,
   libraryMigrationDiagnostics,
+  METADATA_RESERVED_FIELD,
 } from "@telorun/analyzer";
 import {
   createArchiveReader,
@@ -116,7 +119,6 @@ import { spanRecordOf } from "./span-export.js";
 import { CoReferrerIndex } from "./co-referrer-index.js";
 import { refuseOutlivingCoReferrers, refuseScopedCoReferrers } from "./scoped-co-referrers.js";
 import { sharedLibraries } from "./controllers/module/shared-libraries.js";
-import { CanonicalSlotKinds } from "./canonical-slot-kinds.js";
 import {
   ControllerContext,
   ControllerPolicy,
@@ -341,6 +343,7 @@ import {
   refuseFailedMigrations,
   withLibraryMigrations,
 } from "./library-migration-replay.js";
+import { metadataStampLoadRefusal } from "./metadata-stamp-refusals.js";
 import { importLoadFailure } from "./import-load-failure.js";
 import { needRefusalError, type NeedRefusal } from "./need-refusals.js";
 import { refuseReservedKindPrefix } from "./reserved-kind-prefix.js";
@@ -784,11 +787,7 @@ export class Kernel implements IKernel {
       throw new RuntimeError("ERR_PATH_PARAMS_FOR_INVALID", `${definition.kind} ${pathParams.message}`);
     }
     this.controllers.registerDefinition(definition);
-    this.registry.registerDefinition(
-      canonicalExtends !== undefined && canonicalExtends !== definition.extends
-        ? { ...definition, extends: canonicalExtends }
-        : definition,
-    );
+    this.registry.registerDefinition(definition, canonicalExtends);
   }
 
   async loadModule(url: string, options?: LoadOptions): Promise<ResourceManifest[]> {
@@ -845,7 +844,7 @@ export class Kernel implements IKernel {
     this.coReferrers = new CoReferrerIndex(
       this.rootContext,
       this.staticManifests,
-      this.canonicalSlotKinds().resolver(),
+      this.coReferrerDefinitions(),
       shared,
     );
   }
@@ -876,7 +875,7 @@ export class Kernel implements IKernel {
     library: ModuleContext,
     scope: { alias: string; holder: string; field: string },
   ): () => void {
-    const resolve = this.canonicalSlotKinds().resolver();
+    const resolve = this.coReferrerDefinitions();
     // A `shared` library beneath it is the root's, in the application's tree.
     const shared = new Set([...sharedLibraries(this.rootContext).values()].map((entry) => entry.context));
     const index = new CoReferrerIndex(library, [], resolve, [], shared);
@@ -910,13 +909,22 @@ export class Kernel implements IKernel {
     return scoped;
   }
 
-  /** Definitions with their slot kinds canonical, as the co-referrer readers
-   *  compare them. */
-  private canonicalSlotKinds(): CanonicalSlotKinds {
-    return new CanonicalSlotKinds(
-      (kind, module) => this.registry.resolveDefinitionIn(kind, module),
-      (definition) => this.registry.effectiveKindOf(definition)?.schema,
-    );
+  /** Registered definitions as the co-referrer readers compare them: the
+   *  registry's copy, whose slot kinds are canonical in the module that wrote
+   *  each, with its effective schema, so an inherited slot is the kind's own. */
+  private coReferrerDefinitions(): DefResolver {
+    const views = new WeakMap<ResourceDefinition, ResourceDefinition>();
+    return (kind, from) => {
+      const definition = this.registry.resolveDefinitionIn(kind, from?.metadata?.module);
+      if (!definition) return undefined;
+      let view = views.get(definition);
+      if (!view) {
+        const schema = this.registry.effectiveKindOf(definition)?.schema;
+        view = schema === undefined ? definition : ({ ...definition, schema } as ResourceDefinition);
+        views.set(definition, view);
+      }
+      return view;
+    };
   }
 
   /** Every `callsCoReferrers` the registered kinds declare — what makes a scope
@@ -924,15 +932,15 @@ export class Kernel implements IKernel {
   private registeredCoReferrerCalls(): CoReferrerCall[] {
     const generation = this.registry.definitionGeneration;
     if (this.coReferrerCallsMemo?.generation !== generation) {
-      const canonical = this.canonicalSlotKinds();
+      const resolve = this.coReferrerDefinitions();
       this.coReferrerCallsMemo = {
         generation,
         calls: registeredCoReferrerCalls(
           this.registry.allKinds().flatMap((kind) => {
-            const definition = this.registry.resolveDefinition(kind);
-            return definition ? [canonical.definition(definition)] : [];
+            const definition = resolve(kind);
+            return definition ? [definition] : [];
           }),
-          canonical.resolver(),
+          resolve,
         ),
       };
     }
@@ -1493,6 +1501,10 @@ export class Kernel implements IKernel {
         missingFiles.map(staticDiagnosticToRuntime),
       );
     }
+    // An authored loader stamp would forge what the stamp records — a document's
+    // module above all — so the load is refused for it, beside every stamp the
+    // analysis finds on a nested declaration, before any resource is created.
+    const loaderStamps = analysisGraph.metadataDiagnostics;
     for (const d of analysisGraph.versionDiagnostics) {
       if (d.code === "MODULE_VERSION_HOISTED") {
         this.logging.kernelLogger().warn(d.message, { "telo.diagnostic.code": d.code });
@@ -1576,6 +1588,7 @@ export class Kernel implements IKernel {
       ? await readAnalysisStamp(stampKey, analysisDir, this.logging.kernelLogger())
       : undefined;
     const skipValidation = stamp?.signature === analysisSignature;
+    const positions = collectFilePositions(analysisGraph);
     const analysis = this.analyzer.analyzeRegistered(
       staticManifests,
       // Imported libraries' full documents, for the zone stage's per-library
@@ -1585,6 +1598,7 @@ export class Kernel implements IKernel {
         skipValidation,
         moduleDocuments: analysisDocuments,
         applicationSources: analysisApplicationSources,
+        positions,
         hostVersions: nodeHostVersions(),
       },
       registration,
@@ -1602,6 +1616,16 @@ export class Kernel implements IKernel {
     // reports the twins, beside every other error the analysis found, rather
     // than the analysis's aggregate. A required need nothing supplies is refused
     // only for a run.
+    // A stamp written on a nested declaration, which the analysis found, is
+    // refused as a top-level one is, beside every other error it found.
+    const nestedStamps = errors.filter((d) => d.code === METADATA_RESERVED_FIELD);
+    if (loaderStamps.length > 0 || nestedStamps.length > 0) {
+      throw metadataStampLoadRefusal(
+        analysisGraph,
+        new FindingOrder(staticManifests, positions).sort([...loaderStamps, ...nestedStamps]),
+        errors.filter((d) => d.code !== METADATA_RESERVED_FIELD),
+      );
+    }
     const needTableRefused = errors.some(isNeedTableDiagnostic);
     if (errors.length === 0 || needTableRefused) {
       this._needTable = this.refuseNeedTable(
@@ -1673,14 +1697,14 @@ export class Kernel implements IKernel {
       const graphDocs = [...analysisGraph.modules.values()].flatMap((mod) =>
         flattenLoadedModule(mod),
       );
-      // Canonicalize `telo://Self/<type>` to the id the type registers under.
-      // `analyze()` did this to its own view; these projections are separate
-      // objects, and an un-canonicalized `$ref` resolves to nothing here while
+      // Canonicalize `telo://Self/<type>` to the id the type registers under,
+      // on copies: these projections share their fields with the documents as
+      // written, and an un-canonicalized `$ref` resolves to nothing here while
       // the runtime resolves it fine — a guaranteed miss on exactly the
       // contracts that reference a named shape.
-      this.registry.resolveSchemaTypeRefs([...graphDocs, ...staticManifests]);
-      await precompileTypeSchemas(graphDocs, this.sharedSchemaValidator);
-      precompileDefinitionSchemas(staticManifests, this.sharedSchemaValidator, (def) =>
+      const canonical = this.registry.withCanonicalSchemaTypeRefs([...graphDocs, ...staticManifests]);
+      await precompileTypeSchemas(canonical.slice(0, graphDocs.length), this.sharedSchemaValidator);
+      precompileDefinitionSchemas(canonical.slice(graphDocs.length), this.sharedSchemaValidator, (def) =>
         this.registry.resolverForDefinition(def),
       );
       // Framework/builtin controller schemas (`Telo.Import`, `Telo.Definition`,
@@ -3443,11 +3467,12 @@ export class Kernel implements IKernel {
       const all = findings?.(configSchema, stripped);
       const remaining =
         findings && all
-          ? withoutStandInFindings(all, {
+          ? judgeSchemaFindings(all, {
               value: stripped,
               schema: configSchema as Record<string, any>,
               standIns,
               validate: findings,
+              reference: (node, ref) => this.sharedSchemaValidator.reference(node, ref),
             })
           : undefined;
       if (remaining?.length !== 0) {
@@ -4329,7 +4354,7 @@ export class Kernel implements IKernel {
           kindOf: (kind) => owner.kindResolver?.(kind) ?? kind,
           sitesOf: (member) => this.referenceSitesIn(owner, member),
           calls: this.registeredCoReferrerCalls(),
-          resolve: this.canonicalSlotKinds().resolver(),
+          resolve: this.coReferrerDefinitions(),
         });
         (site.holder as Record<string | number, unknown>)[site.key!] = (owner as unknown as EvaluationContext).createScopeHandle(
           site.data as ResourceManifest[],

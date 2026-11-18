@@ -1,6 +1,7 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { scopedImportMembers } from "./flatten-for-analyzer.js";
 import type { ModuleDocuments } from "./module-documents.js";
+import { writtenAt, type WrittenAt } from "./diagnostic-identity.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
 const SOURCE = "telo-analyzer";
@@ -152,23 +153,30 @@ export function importReach(
   };
 }
 
-/** A dependency's refusal, at the entry's import reaching it. */
+/**
+ * A dependency's refusal, at the entry's import reaching it. `written` is where
+ * the defect is written in the dependency — the place the dependency's own
+ * check reports it at, carried as `data.writtenAt` so that finding covers this
+ * one — or `null` for a refusal the import's context makes, which no
+ * dependency's own check reports and nothing covers.
+ */
 export function importAnchoredDiagnostic(
   code: string,
   module: string,
   via: ReachingImport,
   message: string,
+  written: WrittenAt | null,
 ): AnalysisDiagnostic {
   return {
     severity: DiagnosticSeverity.Error,
     code,
     source: SOURCE,
-    message: importAnchoredMessage(module, via.alias, message),
-    data: { filePath: via.filePath, path: via.path, ...(via.resource ? { resource: via.resource } : {}) },
+    message: `Imported library '${module}', reached through import '${via.alias}': ${message}`,
+    data: {
+      filePath: via.filePath,
+      path: via.path,
+      ...(via.resource ? { resource: via.resource } : {}),
+      ...(written ? { writtenAt: writtenAt(written) } : {}),
+    },
   };
-}
-
-/** The wording of every refusal of `module` reported at the import `alias`. */
-export function importAnchoredMessage(module: string, alias: string, message: string): string {
-  return `Imported library '${module}', reached through import '${alias}': ${message}`;
 }

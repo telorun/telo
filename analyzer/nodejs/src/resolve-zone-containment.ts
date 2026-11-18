@@ -143,12 +143,12 @@ function schemaNodeAt(
  * conservative direction HERE, since over-reporting containment would invent
  * failures inside regions that are correct.
  */
-function extendsZone(edge: CallGraphEdge): boolean {
+export function extendsZone(edge: CallGraphEdge): boolean {
   return edge.use.length > 0 && !edge.unresolved && edge.use.every((u) => u === "call");
 }
 
 /** Uses on an edge that leave the region, for the boundary record. */
-function escapingUses(edge: CallGraphEdge): string[] {
+export function escapingUses(edge: CallGraphEdge): string[] {
   return edge.use.filter((u) => u !== "call" && u !== "dependency" && u !== "schema");
 }
 
@@ -335,7 +335,7 @@ export function findZoneRegions(
  *  annotation, with the schema node at each. Walks properties, array items and
  *  `additionalProperties`, resolving local `$ref`s — the patterns the call
  *  graph's own edges carry, so a slot found here matches an edge's `slotKeys`. */
-function providingSlots(
+export function providingSlots(
   rootSchema: Record<string, any>,
 ): Array<[slot: Pattern, schema: Record<string, any>]> {
   const found: Array<[Pattern, Record<string, any>]> = [];

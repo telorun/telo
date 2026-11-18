@@ -8,6 +8,7 @@ import {
   type HostPathInput,
 } from "./host-path-slot.js";
 import type { KernelGlobalsIndex } from "./kernel-globals.js";
+import { withQuotedPath } from "./quoted-place.js";
 import { navigateSchemaToExprPath } from "./schema-compat.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
@@ -36,83 +37,108 @@ export function validateImportHostPaths(
 ): AnalysisDiagnostic[] {
   const out: AnalysisDiagnostic[] = [];
   for (const manifest of manifests) {
-    if (manifest.kind !== "Telo.Import") continue;
-    const metadata = (manifest.metadata ?? {}) as Record<string, unknown>;
-    if (typeof metadata.module === "string" && !rootModules.has(metadata.module)) continue;
-    const inputs = metadata.hostPathInputs;
-    if (!inputs || typeof inputs !== "object" || Array.isArray(inputs)) continue;
-
-    const where = {
-      resource: { kind: manifest.kind, name: String(metadata.name ?? "") },
-      filePath: typeof metadata.source === "string" ? metadata.source : undefined,
-    };
-    for (const [input, declared] of Object.entries(inputs as Record<string, HostPathInput>)) {
+    for (const [input, declared] of hostPathInputsOf(manifest, rootModules)) {
       const [block, name] = input.split(".") as ["variables" | "secrets", string];
-      const supplied = (manifest as Record<string, any>)[block]?.[name];
-      // A literal is held to the library's declaration by the import-inputs
-      // pass (`validate-import-inputs.ts`), which reports a relative one.
-      if (isTaggedSentinel(supplied) && producedTypeOf(supplied.engine)?.type === "string") {
-        out.push({
-          severity: DiagnosticSeverity.Error,
-          code: "HOST_PATH_UNTYPED_SOURCE",
-          source: SOURCE,
-          message:
-            `Telo.Import/${String(metadata.name ?? "")}: '${input}' is a Telo.HostPath in the ` +
-            `imported library, but !${supplied.engine} produces a plain string, which reaches the ` +
-            `library unresolved. Pass a variable declared 'x-telo-type: Telo.HostPath' or a ` +
-            `!module-path.`,
-          data: { ...where, path: input },
-        });
-        continue;
-      }
-      const chain = plainChainOf(supplied);
-      if (!chain) continue;
-      const source = navigateSchemaToExprPath(kernelGlobals.forResource(manifest), chain);
-      if (!source) continue;
-      if (holdsHostPath(source)) {
-        const named = hostEntryAt(source);
-        if (declared.entry !== undefined && named !== undefined && named !== declared.entry) {
-          out.push({
-            severity: DiagnosticSeverity.Error,
-            code: "HOST_PATH_ENTRY_MISMATCH",
-            source: SOURCE,
-            message:
-              `Telo.Import/${String(metadata.name ?? "")}: '${input}' is the path of ` +
-              `${describeHostEntry(declared.entry)} in the imported library, but '${chain}' is ` +
-              `declared to name ${describeHostEntry(named)} (entry: ${named}).`,
-            data: { ...where, path: input },
-          });
-          continue;
-        }
-        const media = hostMediaTypeAt(source);
-        if (declared.mediaType !== undefined && media !== undefined && media !== declared.mediaType) {
-          out.push({
-            severity: DiagnosticSeverity.Error,
-            code: "HOST_PATH_CONTENT_MISMATCH",
-            source: SOURCE,
-            message:
-              `Telo.Import/${String(metadata.name ?? "")}: '${input}' is the path of a file of ` +
-              `${declared.mediaType} in the imported library, but '${chain}' is declared to hold ` +
-              `${media} (mediaType: ${media}).`,
-            data: { ...where, path: input },
-          });
-        }
-        continue;
-      }
-      if (source.type === undefined && source["x-telo-type"] === undefined) continue;
-      out.push({
-        severity: DiagnosticSeverity.Error,
-        code: "HOST_PATH_UNTYPED_SOURCE",
-        source: SOURCE,
-        message:
-          `Telo.Import/${String(metadata.name ?? "")}: '${input}' is a Telo.HostPath in the ` +
-          `imported library, but '${chain}' is declared '${source["x-telo-type"] ?? source.type}', ` +
-          `so a relative path reaches the library unresolved and is refused there. Declare ` +
-          `'${chain}' with 'x-telo-type: Telo.HostPath' — a variable resolves a relative value ` +
-          `against the working directory.`,
-        data: { ...where, path: input },
-      });
+      out.push(
+        ...hostPathInputFindings(manifest, input, declared, (manifest as Record<string, any>)[block]?.[name], (chain) =>
+          navigateSchemaToExprPath(kernelGlobals.forResource(manifest), chain),
+        ),
+      );
     }
   }
+  return out;
+}
+
+/** The host-path inputs of the library an entry-module import supplies. */
+export function hostPathInputsOf(manifest: ResourceManifest, rootModules: ReadonlySet<string>): [string, HostPathInput][] {
+  if (manifest.kind !== "Telo.Import") return [];
+  const metadata = (manifest.metadata ?? {}) as Record<string, unknown>;
+  if (typeof metadata.module === "string" && !rootModules.has(metadata.module)) return [];
+  const inputs = metadata.hostPathInputs;
+  if (!inputs || typeof inputs !== "object" || Array.isArray(inputs)) return [];
+  return Object.entries(inputs as Record<string, HostPathInput>);
+}
+
+/**
+ * What one supplied host-path input says of itself: `source` types the chain a
+ * plain `!cel` value reads — where a configuration decides it, in that
+ * configuration.
+ */
+export function hostPathInputFindings(
+  manifest: ResourceManifest,
+  input: string,
+  declared: HostPathInput,
+  supplied: unknown,
+  source: (chain: string) => Record<string, any> | undefined,
+): AnalysisDiagnostic[] {
+  const out: AnalysisDiagnostic[] = [];
+  const metadata = (manifest.metadata ?? {}) as Record<string, unknown>;
+  const where = {
+    resource: { kind: manifest.kind, name: String(metadata.name ?? "") },
+    filePath: typeof metadata.source === "string" ? metadata.source : undefined,
+  };
+  // A literal is held to the library's declaration by the import-inputs
+  // pass (`validate-import-inputs.ts`), which reports a relative one.
+  if (isTaggedSentinel(supplied) && producedTypeOf(supplied.engine)?.type === "string") {
+    out.push(withQuotedPath({
+      severity: DiagnosticSeverity.Error,
+      code: "HOST_PATH_UNTYPED_SOURCE",
+      source: SOURCE,
+      message:
+        `Telo.Import/${String(metadata.name ?? "")}: '${input}' is a Telo.HostPath in the ` +
+        `imported library, but !${supplied.engine} produces a plain string, which reaches the ` +
+        `library unresolved. Pass a variable declared 'x-telo-type: Telo.HostPath' or a ` +
+        `!module-path.`,
+      data: { ...where, path: input },
+    }, input));
+    return out;
+  }
+  const chain = plainChainOf(supplied);
+  if (!chain) return out;
+  const typed = source(chain);
+  if (!typed) return out;
+  if (holdsHostPath(typed)) {
+    const named = hostEntryAt(typed);
+    if (declared.entry !== undefined && named !== undefined && named !== declared.entry) {
+      out.push(withQuotedPath({
+        severity: DiagnosticSeverity.Error,
+        code: "HOST_PATH_ENTRY_MISMATCH",
+        source: SOURCE,
+        message:
+          `Telo.Import/${String(metadata.name ?? "")}: '${input}' is the path of ` +
+          `${describeHostEntry(declared.entry)} in the imported library, but '${chain}' is ` +
+          `declared to name ${describeHostEntry(named)} (entry: ${named}).`,
+        data: { ...where, path: input },
+      }, input));
+      return out;
+    }
+    const media = hostMediaTypeAt(typed);
+    if (declared.mediaType !== undefined && media !== undefined && media !== declared.mediaType) {
+      out.push(withQuotedPath({
+        severity: DiagnosticSeverity.Error,
+        code: "HOST_PATH_CONTENT_MISMATCH",
+        source: SOURCE,
+        message:
+          `Telo.Import/${String(metadata.name ?? "")}: '${input}' is the path of a file of ` +
+          `${declared.mediaType} in the imported library, but '${chain}' is declared to hold ` +
+          `${media} (mediaType: ${media}).`,
+        data: { ...where, path: input },
+      }, input));
+    }
+    return out;
+  }
+  if (typed.type === undefined && typed["x-telo-type"] === undefined) return out;
+  out.push(withQuotedPath({
+    severity: DiagnosticSeverity.Error,
+    code: "HOST_PATH_UNTYPED_SOURCE",
+    source: SOURCE,
+    message:
+      `Telo.Import/${String(metadata.name ?? "")}: '${input}' is a Telo.HostPath in the ` +
+      `imported library, but '${chain}' is declared '${typed["x-telo-type"] ?? typed.type}', ` +
+      `so a relative path reaches the library unresolved and is refused there. Declare ` +
+      `'${chain}' with 'x-telo-type: Telo.HostPath' — a variable resolves a relative value ` +
+      `against the working directory.`,
+    data: { ...where, path: input },
+  }, input));
   return out;
 }

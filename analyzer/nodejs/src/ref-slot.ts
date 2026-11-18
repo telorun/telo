@@ -96,9 +96,10 @@ export interface RefUseCases {
 /** A reference slot's declaration, normalized from every accepted shape. */
 export interface RefSlot {
   /** Accepted kinds, unioned across a `kind:` list and across `anyOf` branches.
-   *  Canonical `<module>.<Kind>` keys once `resolveSchemaRefKinds` has run;
-   *  alias-qualified as authored before that, or the legacy `<ns>/<mod>#<Kind>`
-   *  identity form for an already-published module. */
+   *  Canonical `<module>.<Kind>` keys on a registered copy (the registry's
+   *  registration door derives it); alias-qualified as authored on a written
+   *  document, or the legacy `<ns>/<mod>#<Kind>` identity form for an
+   *  already-published module. */
   kinds: string[];
   /** The relations the declaring resource has with the target. A set, because a
    *  slot may dispatch its target more than one way within a single invocation
@@ -182,8 +183,8 @@ export interface RefSlot {
  * same module instance (`co-referrers.ts`).
  */
 export interface CoReferrerCall {
-  /** Alias-qualified as authored; canonical `<module>.<Kind>` once
-   *  `resolveSchemaRefKinds` has run. */
+  /** Alias-qualified as authored; canonical `<module>.<Kind>` on a registered
+   *  copy. */
   kind: string;
   /** JSON Pointer to the reference slot of `kind`, from its resource root. */
   slot: string;
@@ -424,52 +425,52 @@ export function refSlotAnnotation(slot: RefSlot): Record<string, unknown> {
 }
 
 /**
- * Rewrites every kind name an annotation declares, in place, in whichever shape
- * it is written. `map` returns the replacement, or `undefined` to leave the name
- * untouched (which is what keeps `resolveSchemaRefKinds` idempotent and lets it
- * report an unresolvable constraint while quoting what the author wrote).
+ * `annotationHolder` with every kind name its `x-telo-ref` declares mapped
+ * through `map`, in whichever shape it is written — a copy holding the mapped
+ * names, or the holder itself when `map` changes none. `map` returns the
+ * replacement, or `undefined` to keep the name as written (an unresolvable
+ * constraint, quoted as its author wrote it). The holder is never written to.
  *
  * Lives here rather than in the caller so that adding an annotation shape is a
- * one-file change on the write side as well as the read side.
+ * one-file change on the derivation side as well as the read side.
  */
-export function rewriteRefSlotKinds(
-  annotationHolder: Record<string, any>,
+export function withRefSlotKinds<T extends Record<string, any>>(
+  annotationHolder: T,
   map: (kind: string) => string | undefined,
-): void {
+): T {
   const annotation = annotationHolder["x-telo-ref"];
   if (typeof annotation === "string") {
     const next = map(annotation);
-    if (next !== undefined) annotationHolder["x-telo-ref"] = next;
-    return;
+    return next === undefined || next === annotation ? annotationHolder : { ...annotationHolder, "x-telo-ref": next };
   }
-  if (!annotation || typeof annotation !== "object" || Array.isArray(annotation)) return;
-  const obj = annotation as Record<string, unknown>;
-  if (typeof obj.kind === "string") {
-    const next = map(obj.kind);
-    if (next !== undefined) obj.kind = next;
-    return;
+  if (!isSchemaObject(annotation)) return annotationHolder;
+  let kind: unknown = annotation.kind;
+  if (typeof kind === "string") {
+    kind = map(kind) ?? kind;
+  } else if (Array.isArray(kind)) {
+    const kinds = kind.map((k) => (typeof k === "string" ? (map(k) ?? k) : k));
+    if (kinds.some((k, i) => k !== (annotation.kind as unknown[])[i])) kind = kinds;
   }
-  if (Array.isArray(obj.kind)) {
-    obj.kind = obj.kind.map((k) => (typeof k === "string" ? (map(k) ?? k) : k));
-  }
+  return kind === annotation.kind ? annotationHolder : { ...annotationHolder, "x-telo-ref": { ...annotation, kind } };
 }
 
 /**
- * Rewrites the kind a `callsCoReferrers` names, in place, on every annotation
- * of the slot node (its own and its `anyOf` / `oneOf` branches'). `map` returns
- * the replacement or `undefined` to leave it as authored, which
+ * `node` with the kind its own `x-telo-ref`'s `callsCoReferrers` names mapped
+ * through `map` — a copy, or the node itself when nothing maps. A union's
+ * branches carry annotations of their own, each mapped where a walk meets it.
+ * `map` returns `undefined` to keep the name as written, which
  * `co-referrer-slot.ts` then reports.
  */
-export function rewriteCoReferrerKinds(
-  node: Record<string, any>,
+export function withCoReferrerKinds<T extends Record<string, any>>(
+  node: T,
   map: (kind: string) => string | undefined,
-): void {
-  for (const carrier of annotationNodes(node)) {
-    const call = (carrier["x-telo-ref"] as { callsCoReferrers?: unknown } | undefined)?.callsCoReferrers;
-    if (!isSchemaObject(call) || typeof call.kind !== "string") continue;
-    const next = map(call.kind);
-    if (next !== undefined) call.kind = next;
-  }
+): T {
+  const annotation = node["x-telo-ref"];
+  const call = isSchemaObject(annotation) ? annotation.callsCoReferrers : undefined;
+  if (!isSchemaObject(call) || typeof call.kind !== "string") return node;
+  const kind = map(call.kind);
+  if (kind === undefined || kind === call.kind) return node;
+  return { ...node, "x-telo-ref": { ...annotation, callsCoReferrers: { ...call, kind } } };
 }
 
 /** What `x-telo-ref` reads: the reference at the slot, its target held as its

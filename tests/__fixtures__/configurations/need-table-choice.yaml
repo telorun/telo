@@ -1,0 +1,21 @@
+# An optional need referenced, and a fulfilment writing a field its type does
+# not declare, each only where a variable says so.
+kind: Telo.Application
+metadata: { name: NeedTableChoice, version: 1.0.0 }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+imports: { Kinds: ./needs/kinds }
+needs:
+  a: { kind: Kinds.Access, optional: true, env: { url: NEED_TABLE_CHOICE_A_URL } }
+---
+kind: Kinds.Consumer
+metadata: { name: user }
+access: !if
+  if: !cel "variables.flag1"
+  then: !ref a
+  else: !ref fixed
+label: user
+--- !if
+metadata: { name: fixed }
+if: !cel "variables.flag1"
+then: { kind: Kinds.Access, fields: { url: "mem://x", extra: one } }
+else: { kind: Kinds.Access, fields: { url: "mem://y" } }

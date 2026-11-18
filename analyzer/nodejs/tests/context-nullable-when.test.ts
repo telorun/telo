@@ -1,3 +1,4 @@
+import { collectFilePositions } from "../src/diagnostic-location.js";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
 import { collectModuleDocuments, flattenForAnalyzer } from "../src/flatten-for-analyzer.js";
@@ -116,7 +117,7 @@ async function diagnostics(body: string, application = "kind: Telo.Application\n
   const files = { "/app/telo.yaml": `${application}---\n${kinds}${body}` };
   const graph = await new Loader([source(files)]).loadGraph("/app/telo.yaml", { desugarImports: true });
   return new StaticAnalyzer()
-    .analyze(flattenForAnalyzer(graph), { moduleDocuments: collectModuleDocuments(graph) })
+    .analyze(flattenForAnalyzer(graph), { moduleDocuments: collectModuleDocuments(graph), positions: collectFilePositions(graph) })
     .map((d) => ({ code: d.code, severity: d.severity, name: d.data?.resource?.name, path: d.data?.path, message: d.message }));
 }
 

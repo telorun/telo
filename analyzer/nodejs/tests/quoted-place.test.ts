@@ -33,27 +33,37 @@ const extractedNames = vi.hoisted(() => new Set<string>());
 const authoredNames = vi.hoisted(() => new Set<string>());
 // Findings the reroute moved to a holder: the message, and the extracted declaration it was made on.
 const rerouted = vi.hoisted(() => [] as { message: string; carried: string[]; extracted: unknown }[]);
+// Every declaration an origin index was built over, by name.
+const indexed = vi.hoisted(() => new Map<string, unknown>());
 vi.mock("../src/rewrite-synthetic-origins.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/rewrite-synthetic-origins.js")>();
   return {
     ...actual,
-    rewriteSyntheticOrigins: (...args: Parameters<typeof actual.rewriteSyntheticOrigins>) => {
-      for (const m of args[1]) {
+    syntheticOrigins: (...args: Parameters<typeof actual.syntheticOrigins>) => {
+      for (const m of args[0]) {
         const meta = m.metadata as { name?: unknown; xTeloOrigin?: unknown } | undefined;
         if (typeof meta?.name !== "string") continue;
+        indexed.set(meta.name, m);
         const origin = meta.xTeloOrigin as { named?: true } | undefined;
         if (origin === undefined || origin.named === true) authoredNames.add(meta.name);
         else extractedNames.add(meta.name);
       }
-      const out = actual.rewriteSyntheticOrigins(...args);
-      out.forEach((moved, i) => {
-        const was = (args[0][i]!.data as { resource?: { name?: string } } | undefined)?.resource?.name;
-        const now = (moved.data as { resource?: { name?: string } } | undefined)?.resource?.name;
-        if (was === now) return;
-        const extracted = args[1].find((m) => m.metadata?.name === was);
-        rerouted.push({ message: moved.message, carried: (quotedTexts(moved) ?? []).map((t) => t.carried), extracted });
-      });
-      return out;
+      return actual.syntheticOrigins(...args);
+    },
+  };
+});
+vi.mock("../src/quoted-place.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/quoted-place.js")>();
+  return {
+    ...actual,
+    reportedAtHolder: (...args: Parameters<typeof actual.reportedAtHolder>) => {
+      const moved = actual.reportedAtHolder(...args);
+      const [, , from, to] = args;
+      if (from.name !== to.name) {
+        const extracted = from.name === undefined ? undefined : indexed.get(from.name);
+        rerouted.push({ message: moved.message, carried: (actual.quotedTexts(moved) ?? []).map((t) => t.carried), extracted });
+      }
+      return moved;
     },
   };
 });
@@ -158,6 +168,7 @@ function mismatches(loaded: Loaded): string[] {
   extractedNames.clear();
   rerouted.length = 0;
   authoredNames.clear();
+  indexed.clear();
   collectAuthoredNames(loaded.manifests);
   const diagnostics: AnalysisDiagnostic[] = new StaticAnalyzer().analyze(loaded.manifests, {
     moduleDocuments: loaded.moduleDocuments,
@@ -372,6 +383,7 @@ describe("a message quoting its place quotes its data.path", () => {
       extractedNames.clear();
       rerouted.length = 0;
       authoredNames.clear();
+      indexed.clear();
       collectAuthoredNames(loaded.manifests);
       const diagnostics = new StaticAnalyzer().analyze(loaded.manifests, { moduleDocuments: loaded.moduleDocuments });
       found.push(...unquotedUnderHolder().map((problem) => `${relative(ROOT, file).split(sep).join("/")}: ${problem}`));

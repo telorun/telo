@@ -1,0 +1,24 @@
+# A reference slot only one class of a named shape declares: where flag1
+# holds `handler` is a slot, so the inline declaration written there is drawn
+# out and judged as one — refused for a field its kind does not declare —
+# and elsewhere it is a plain object.
+kind: Telo.Application
+metadata: { name: ShapeInlineSlotSchemaChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Handler }
+schema: !if
+  if: !cel "variables.flag1"
+  then: { x-telo-ref: { kind: Telo.Invocable, use: call } }
+  else: { type: object }
+---
+kind: Telo.Definition
+metadata: { name: Route }
+capability: Telo.Service
+controllers: [pkg:telo/local/js?path=./probe.mjs#Route]
+schema: { type: object, properties: { handler: { $ref: "telo://Self/Handler" } } }
+---
+kind: ShapeInlineSlotSchemaChoice.Route
+metadata: { name: route }
+handler: { kind: Telo.Value, value: 1, valeu: 2 }

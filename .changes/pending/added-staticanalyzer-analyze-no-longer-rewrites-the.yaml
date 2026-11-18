@@ -1,0 +1,12 @@
+units:
+  analyzer: Added
+body: "StaticAnalyzer.analyze() no longer rewrites the definition documents it is given:
+  the kinds a definition's annotations name (x-telo-ref and its callsCoReferrers,
+  x-telo-requires-zone, a referrer rule's referrer:, a resource rule's reachable.kind,
+  x-telo-text-keys) are canonical on the copy AnalysisRegistry.registerDefinition
+  registers. registerDefinition now takes the canonical extends and returns that copy,
+  and registeredFormOf derives the same copy without registering it; a caller that read
+  canonical kinds off a manifest it analysed reads them from the registry instead.
+  rewriteCoReferrerKinds, rewriteRequiresZoneKind and rewriteReferrerRuleKinds are no
+  longer exported. `rewriteRefSlotKinds` is replaced by `withRefSlotKinds`, which
+  returns a copy instead of writing the node."

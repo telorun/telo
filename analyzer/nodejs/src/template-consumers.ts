@@ -36,6 +36,7 @@ import {
 } from "./template-consumer-expansion.js";
 import { holdsTemplateConstructs } from "./template-definition-check.js";
 import type { AnalysisDiagnostic } from "./types.js";
+import type { ViewBinding } from "./view-binding.js";
 
 export type { ConsumerExpansion } from "./template-consumer-expansion.js";
 
@@ -51,6 +52,9 @@ export interface TemplateConsumers {
   readonly refused: readonly { readonly holder: ResourceManifest; readonly path: string }[];
   /** The refusals whose value is chained to an input no configuration decides. */
   readonly open: ReadonlySet<AnalysisDiagnostic>;
+  /** What `holder` — a consumer, or a view a body entry of one makes — gives
+   *  each expression `runner`'s body reads, read as the expansion reads it. */
+  bindingOf(holder: ResourceManifest, runner: ResourceDefinition): ViewBinding;
 }
 
 export interface TemplateConsumerInputs {
@@ -152,6 +156,7 @@ export function readTemplateConsumers(inputs: TemplateConsumerInputs): TemplateC
     reads: expander.records.reads,
     refused: expander.records.refused,
     open: expander.records.open,
+    bindingOf: (holder, runner) => expander.binding(holder, runner),
   };
 }
 

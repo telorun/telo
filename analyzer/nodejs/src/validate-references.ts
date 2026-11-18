@@ -1,10 +1,12 @@
+import type { FindingOrder } from "./finding-order.js";
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { listRequests } from "./declaration-requests.js";
 import { isRefSentinel } from "@telorun/templating";
-import { visitManifest } from "./manifest-visitor.js";
+import { visitManifest, type RefSiteEvent, type SchemaFromSiteEvent } from "./manifest-visitor.js";
 import { celEvalModeAt, kindCelEvalSites, NO_CEL_EVAL_SITES } from "./eval-paths.js";
 import { computedRefSlots, evaluatedField } from "./ref-slot-computed.js";
-import { isSchemaFromSite, schemaFromIsKindDecidable, schemaFromSites } from "./schema-from-sites.js";
+import { isSchemaFromSite, schemaFromIsKindDecidable, schemaFromSites, type SchemaFromFailure } from "./schema-from-sites.js";
+import type { DerivedSlotContext } from "./derived-slots.js";
 import { valueTypeRefusalCode } from "./schema-error-report.js";
 import {
   satisfiesSiteValue,
@@ -23,8 +25,7 @@ import { acceptsInline } from "./normalize-inline-resources.js";
 import { importPathThrough, MANIFEST_READING, scopeReadAt, ScopedNameResolver } from "./scoped-name-resolver.js";
 import { isInjectedDeclaration } from "./resource-input.js";
 import { injectedNeedOf } from "./need-type.js";
-import { NEED_TABLE_MARK } from "./validate-needs.js";
-import { scopeSiteKey } from "./scope-address.js";
+import { scopeSiteKey, type ScopeSite } from "./scope-address.js";
 import { scopeMembers } from "./scope-declarations.js";
 import { outOfReachNames, scopeMemberOf } from "./scope-members.js";
 import { isStandInDeclaration } from "./choice-expansion.js";
@@ -43,7 +44,6 @@ const SOURCE = "telo-analyzer";
  *  so calling all three "resource name" describes two of them wrongly. */
 function describeNamed(m: ResourceManifest, name: string): string {
   if (m.kind === "Telo.Import") return `import alias '${name}'`;
-  if (injectedNeedOf(m)) return `need '${name}'`;
   if (isModuleKind(m.kind)) return `this module's own name (${m.kind} '${name}')`;
   return `resource ${m.kind}/${name}`;
 }
@@ -77,9 +77,7 @@ function duplicateNameDiagnostics(
   resources: ResourceManifest[],
   isForeign: (r: ResourceManifest) => boolean,
   moduleOf: (r: ResourceManifest) => string | undefined,
-  /** Only the collisions inside a scope: the module level's were judged once
-   *  over every configuration. */
-  scopedOnly = false,
+  order: FindingOrder | undefined,
 ): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
 
@@ -109,11 +107,12 @@ function duplicateNameDiagnostics(
     // A declaration a choice makes holds the tag's name, which the choice
     // reading judges once against its namespace.
     if ((r.metadata as { xTeloChoice?: unknown }).xTeloChoice) continue;
+    // A need's collision is the need table's, at its `needs:` key.
+    if (injectedNeedOf(r)) continue;
     const name = r.metadata.name as string;
     // A scope member shares a namespace with its scope's other members alone:
     // it may shadow a module-level name.
     const member = scopeMemberOf(r);
-    if (scopedOnly && !member) continue;
     const module = isModuleKind(r.kind)
       ? (stampedModules.has(name) ? name : "")
       : (moduleOf(r) ?? "");
@@ -141,9 +140,10 @@ function duplicateNameDiagnostics(
   for (const names of byScope.values()) {
     for (const [name, list] of names) {
       if (list.length <= 1) continue;
-      const [first, ...rest] = list;
+      // The earliest as written is the one the others collide with.
+      const [first, ...rest] = order ? order.sortBy(list, (a, b) => order.compareDeclarations(a, b)) : list;
       for (const dup of rest) {
-        const found = duplicateNameDiagnostic(dup, first, name, resources);
+        const found = duplicateNameDiagnostic(dup, first, name);
         if (found) diagnostics.push(found);
       }
     }
@@ -157,7 +157,6 @@ export function duplicateNameDiagnostic(
   dup: ResourceManifest,
   first: ResourceManifest,
   name: string,
-  resources: readonly ResourceManifest[],
 ): AnalysisDiagnostic | undefined {
   // Two imports sharing an alias is ONE defect with its own diagnostic
   // (`DUPLICATE_IMPORT_ALIAS`), which says what to do about it; reporting
@@ -175,17 +174,6 @@ export function duplicateNameDiagnostic(
           end: { line: dupMeta.sourceLine, character: Number.MAX_SAFE_INTEGER },
         }
       : undefined;
-  // A need is written as a `needs:` key on the module doc, which is where
-  // the squiggle belongs.
-  const needOwner = injectedNeedOf(dup)
-    ? (dup.metadata as { module?: string } | undefined)?.module
-    : undefined;
-  const ownerDoc = needOwner
-    ? resources.find((r) => isModuleKind(r.kind) && r.metadata?.name === needOwner)
-    : undefined;
-  // A need's collision is the need table's refusal too, which the kernel
-  // raises as its twin: marked, so a load reports it once.
-  const needTable = injectedNeedOf(dup) || injectedNeedOf(first) ? { [NEED_TABLE_MARK]: true } : {};
   return {
     severity: DiagnosticSeverity.Error,
     code: "DUPLICATE_RESOURCE_NAME",
@@ -200,20 +188,8 @@ export function duplicateNameDiagnostic(
         : `the kernel registers both under '${name}' in one namespace, so boot fails with ` +
           `ERR_DUPLICATE_RESOURCE. `) +
       `Rename one of them.`,
-    ...(range && !ownerDoc ? { range } : {}),
-    data: ownerDoc
-      ? {
-          resource: { kind: ownerDoc.kind, name: needOwner as string },
-          filePath: dupMeta?.source,
-          path: `needs.${name}`,
-          ...needTable,
-        }
-      : {
-          resource: { kind: dup.kind, name },
-          filePath: dupMeta?.source,
-          path: "metadata.name",
-          ...needTable,
-        },
+    ...(range ? { range } : {}),
+    data: { resource: { kind: dup.kind, name }, filePath: dupMeta?.source, path: "metadata.name" },
   };
 }
 
@@ -414,8 +390,9 @@ export function validateReferences(
   /** The analysis's own function index and flags, when the caller built them —
    *  one per analysis rather than one per pass. */
   shared?: { readonly functions: ModuleFunctionIndex; readonly flags: CallableFlagsIndex },
-  /** The collisions at module level are judged elsewhere, once. */
-  moduleDuplicatesJudged = false,
+  /** The name collisions are judged elsewhere, once over every configuration. */
+  duplicatesJudged = false,
+  order?: FindingOrder,
 ): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
   const aliases = context.aliases;
@@ -444,26 +421,8 @@ export function validateReferences(
   const isForeign = isForwardedDeclaration;
   // Forwarded exported instances, read by their module — the lookup that resolves
   // whether a cross-module `!ref Alias.name` names a real exported instance.
-  const forwardedExports: ResourceManifest[] = [];
-  /** Modules whose import subtree was actually loaded in this analysis. A resolved
-   *  `Telo.Import` carries `resolvedModuleName` (stamped only once the edge — and thus the
-   *  imported module — resolved); forwarded exports carry `metadata.module`. Either marks
-   *  the module loaded independent of how many instances it exports, so a loaded library
-   *  that exports nothing still reports invalid cross-module refs, while partial single-file
-   *  analysis (neither present) is skipped to avoid false `UNRESOLVED_REFERENCE`. */
-  const loadedModules = new Set<string>();
-  for (const r of resources) {
-    if (r.kind === "Telo.Import") {
-      const m = (r.metadata as { resolvedModuleName?: unknown } | undefined)?.resolvedModuleName;
-      if (typeof m === "string") loadedModules.add(m);
-      continue;
-    }
-    if (!r.metadata?.name || isKindDocument(r) || !isForwardedExport(r)) continue;
-    const m = moduleOf(r);
-    if (!m) continue;
-    forwardedExports.push(r);
-    loadedModules.add(m);
-  }
+  const forwardedExports = resources.filter(isExportTarget);
+  const loadedModules = loadedModulesOf(resources);
   const moduleLoaded = (module: string): boolean => loadedModules.has(module);
   const exportedBy = new ScopedNameResolver(forwardedExports, MANIFEST_READING);
   const localResources = resources.filter((r) => !isForeign(r));
@@ -481,7 +440,7 @@ export function validateReferences(
     seen.add(fingerprint);
     targets.push(r);
   }
-  diagnostics.push(...duplicateNameDiagnostics(resources, isForeign, moduleOf, moduleDuplicatesJudged));
+  if (!duplicatesJudged) diagnostics.push(...duplicateNameDiagnostics(resources, isForeign, moduleOf, order));
   // The dot rule that used to live here is now the strictest special case of
   // the identifier grammar in `validate-identifier-names.ts` — a dot is one of
   // several characters that make a name unreferenceable, and checking one of
@@ -533,27 +492,17 @@ export function validateReferences(
    *  walk below visits every site of it. */
   let computedRefSlotPaths: ReadonlySet<string> = new Set();
   const readComputedRefSlots = (r: ResourceManifest, definition?: ResourceDefinition): void => {
-    const sites = definition ? kindCelEvalSites(definition, registry, registry.shapeLookup) : NO_CEL_EVAL_SITES;
-    computedRefSlotPaths = new Set(
-      computedRefSlots(
-        registry.referencePositions(r, aliases, aliasesByModule),
-        (path) => evaluatedField(sites, path),
-      ).map((slot) => slot.path),
-    );
+    computedRefSlotPaths = computedReferencePaths(r, definition, registry, aliases, aliasesByModule);
   };
 
-  /** The nominal verdict at a slot, overruled where a function stands in for a
-   *  callable abstract by structure — and explained by it where it does not. */
-  const kindVerdict = (
-    kindErrors: string[],
-    referent: ResourceManifest | undefined,
-    label: string,
-    entry: RefFieldEntry,
-  ): string[] => {
-    if (kindErrors.length === 0 || !referent) return kindErrors;
-    const verdict = callableSlotVerdict(referent, label, entry.refs, callableSlotContext());
-    if (!verdict) return kindErrors;
-    return verdict.satisfied ? [] : [...verdict.reasons];
+  const siteScope: ReferenceSiteScope = {
+    registry,
+    aliases,
+    aliasesByModule,
+    moduleLoaded,
+    exportedIn: (name, module, importPath) => exportedBy.inModule(name, module, importPath),
+    resolveLocal: (name, module, within) => names.resolve(name, module, within),
+    callableSlots: callableSlotContext,
   };
 
   // Phase 3 — per-ref validation. The walker supplies each ref site already
@@ -566,206 +515,7 @@ export function validateReferences(
     {
       onResourceEnter: (e) => readComputedRefSlots(e.source as ResourceManifest, e.definition),
       onRef: (e) => {
-        const r = e.source;
-        const resourceLabel = `${r.kind}/${r.metadata!.name as string}`;
-        const resourceData = { kind: r.kind, name: r.metadata!.name as string };
-        const filePath = (r.metadata as { source?: string } | undefined)?.source;
-        const { value: val, concretePath, entry, within } = e;
-
-        // `!ref <name>` sentinel — bare resource name marked at parse time as a
-        // reference. Look it up against the slot's x-telo-ref constraint exactly
-        // like the legacy bare-string path; the only difference is the value's
-        // shape (a TaggedSentinel rather than a raw string), which removed the
-        // string/inline ambiguity at the source.
-        if (isRefSentinel(val)) {
-          const refName = val.source;
-          const dot = refName.indexOf(".");
-          const aliasPrefix = dot > 0 ? refName.slice(0, dot) : undefined;
-
-          // Cross-module sentinel left unresolved by Phase 2.5 — it qualifies an import
-          // alias. If that module's exports are loaded in this analysis, the miss is real
-          // (name not in exports.resources, or a typo); if not (partial single-file
-          // analysis), skip rather than emit a false UNRESOLVED_REFERENCE.
-          if (aliasPrefix && aliasPrefix !== "Self" && aliases.hasAlias(aliasPrefix)) {
-            const module = aliases.moduleForAlias(aliasPrefix);
-            if (module && !moduleLoaded(module)) return;
-            // A choice nothing decides stands in for the export: it resolves
-            // and is judged by kind only once its choice is decided.
-            if (
-              module &&
-              isStandInDeclaration(
-                exportedBy.inModule(refName.slice(dot + 1), module, importPathThrough(r, aliasPrefix)),
-              )
-            ) {
-              return;
-            }
-            diagnostics.push(
-withQuotedPath({
-              severity: DiagnosticSeverity.Error,
-              code: "UNRESOLVED_REFERENCE",
-              source: SOURCE,
-              message: `${resourceLabel}: reference at '${concretePath}' → '${refName}' is not exported by module '${module ?? aliasPrefix}' (add it to exports.resources)`,
-              data: { resource: resourceData, filePath, path: concretePath },
-            }, concretePath),
-);
-            return;
-          }
-
-          // Local reference (bare name or explicit `Self.`-qualified), read scope
-          // first: a shadowed name is validated against the resource the kernel
-          // binds, never the one it shadows.
-          const localName = aliasPrefix === "Self" ? refName.slice(dot + 1) : refName;
-          const target = names.resolve(localName, moduleOf(r), within);
-          if (!target) {
-            // A scoped name out of this declaration's reach has its own
-            // diagnostic, which says why; this one would say only "not found".
-            if (outOfReachNames(r).has(localName)) return;
-            diagnostics.push(
-withQuotedPath({
-              severity: DiagnosticSeverity.Error,
-              code: "UNRESOLVED_REFERENCE",
-              source: SOURCE,
-              message: `${resourceLabel}: reference at '${concretePath}' → resource '${localName}' not found`,
-              data: { resource: resourceData, filePath, path: concretePath },
-            }, concretePath),
-);
-            return;
-          }
-          if (isStandInDeclaration(target)) return;
-          const kindErrors = kindVerdict(
-            checkKind(target.kind as string, entry, registry, aliases, isInjectedDeclaration(target)),
-            target,
-            refName,
-            entry,
-          );
-          if (kindErrors.length > 0) {
-            diagnostics.push(
-withQuotedPath({
-              severity: DiagnosticSeverity.Error,
-              code: "REFERENCE_KIND_MISMATCH",
-              source: SOURCE,
-              message: `${resourceLabel}: reference at '${concretePath}' → ${kindErrors.join("; ")}`,
-              data: { resource: resourceData, filePath, path: concretePath },
-            }, concretePath),
-);
-          }
-          return;
-        }
-
-        // Bare strings are no longer a reference shape — `validateReferenceForms`
-        // rejects an author-written string at a ref slot before this pass runs.
-        // Anything still a string here is not a reference to resolve.
-        if (typeof val !== "object") return;
-        const refVal = val as Record<string, unknown>;
-
-        // A value the slot's own union describes is a value, not a reference —
-        // the same narrowing `validateReferenceForms` applies, through the same
-        // function, because it has to be applied here too: an OBJECT-shaped value
-        // branch would otherwise reach the structural check below and be refused
-        // as a value the slot does not take.
-        if (satisfiesSiteValue(val, e.refs, registry)) return;
-
-        // Skip inline resources — Phase 2 normalization hasn't run yet.
-        if (isInlineDeclaration(refVal)) return;
-
-        // Polymorphic ref slots accept object forms whose references live in
-        // nested slots rather than being a `{kind, name}` ref themselves —
-        // Application `targets`' inline `{ invoke }` and gated `{ ref }`, and
-        // any object a slot's own value branch declares by its required keys
-        // (the sink lists' `{ sink, when }`). Those nested refs are validated
-        // via their own field-map entries, and the object's own shape by the
-        // schema, so skip the item-level structural check here — only where
-        // the slot declares such a form.
-        if (
-          typeof refVal.kind !== "string" &&
-          ("invoke" in refVal || "ref" in refVal || carriesDeclaredBranchKeys(refVal, entry.valueBranches))
-        ) {
-          return;
-        }
-
-        // An EXPRESSION at the slot has its own verdict, from the one reader
-        // that owns the rule (`REF_SLOT_COMPUTED`): it says why a reference
-        // cannot come out of CEL and what to write instead, where a list of
-        // what the slot takes is no repair for an expression. Only the positions that verdict
-        // claims are skipped, so an expression at a slot the kind never
-        // evaluates still lands here.
-        if (computedRefSlotPaths.has(concretePath)) return;
-
-        // 1. Neither a reference, an inline declaration nor a value: say what the
-        //    slot takes, from its own schema.
-        if (!isResolvedReference(refVal)) {
-          diagnostics.push(
-withQuotedPath({
-            severity: DiagnosticSeverity.Error,
-            code: "INVALID_REFERENCE",
-            source: SOURCE,
-            message:
-              `${resourceLabel}: the value at '${concretePath}' is not one this slot accepts. It takes ` +
-              acceptedAtSlot(
-                entry,
-                acceptsInline(r.kind, entry),
-                registry,
-                moduleAliasScope(r.metadata, aliases, aliasesByModule),
-              ) +
-              ".",
-            data: { resource: resourceData, filePath, path: concretePath },
-          }, concretePath),
-);
-          return;
-        }
-
-        // 2. Kind check
-        const objectTarget = names.resolve(refVal.name, moduleOf(r), within);
-        const crossModule = typeof refVal.alias === "string" && refVal.alias !== "Self";
-        const referentModule = crossModule
-          ? aliases.moduleForAlias(refVal.alias as string)
-          : undefined;
-        const kindErrors = kindVerdict(
-          checkKind(refVal.kind, entry, registry, aliases, isInjectedDeclaration(objectTarget)),
-          crossModule
-            ? referentModule
-              ? exportedBy.inModule(refVal.name, referentModule, importPathThrough(r, refVal.alias as string))
-              : undefined
-            : objectTarget,
-          crossModule ? `${refVal.alias}.${refVal.name}` : refVal.name,
-          entry,
-        );
-        if (kindErrors.length > 0) {
-          diagnostics.push(
-withQuotedPath({
-            severity: DiagnosticSeverity.Error,
-            code: "REFERENCE_KIND_MISMATCH",
-            source: SOURCE,
-            message: `${resourceLabel}: reference at '${concretePath}' → ${kindErrors.join("; ")}`,
-            data: { resource: resourceData, filePath, path: concretePath },
-          }, concretePath),
-);
-        }
-
-        // 3. Resolution check — resource with this name must exist.
-        let exists: boolean;
-        if (typeof refVal.alias === "string" && refVal.alias !== "Self") {
-          // Cross-module ref resolved by Phase 2.5. Validate against the forwarded
-          // exports when loaded; in partial context (module not loaded) assume resolvable.
-          const module = aliases.moduleForAlias(refVal.alias);
-          exists =
-            !module ||
-            !moduleLoaded(module) ||
-            exportedBy.inModule(refVal.name, module, importPathThrough(r, refVal.alias)) !== undefined;
-        } else {
-          exists = objectTarget !== undefined;
-        }
-        if (!exists) {
-          diagnostics.push(
-withQuotedPath({
-            severity: DiagnosticSeverity.Error,
-            code: "UNRESOLVED_REFERENCE",
-            source: SOURCE,
-            message: `${resourceLabel}: reference at '${concretePath}' → resource '${refVal.name}' not found`,
-            data: { resource: resourceData, filePath, path: concretePath },
-          }, concretePath),
-);
-        }
+        diagnostics.push(...referenceSiteDiagnostics(e.source, e, computedRefSlotPaths.has(e.concretePath), siteScope));
       },
       onScope: (e) => {
         const r = e.source;
@@ -777,21 +527,7 @@ withQuotedPath({
             names.declareScope({ holder: e.holder, field: scope.path }, scopeMembers(scope));
           }
         }
-        const resourceLabel = `${r.kind}/${r.metadata!.name as string}`;
-        const resourceData = { kind: r.kind, name: r.metadata!.name as string };
-        const filePath = (r.metadata as { source?: string } | undefined)?.source;
-        for (const { path: concretePath, refName } of e.scopeRefEntries) {
-          const scopeField = concretePath.split(/[.[]/)[0];
-          diagnostics.push(
-withQuotedPath({
-            severity: DiagnosticSeverity.Error,
-            code: "SCOPE_ENTRY_NOT_INLINE",
-            source: SOURCE,
-            message: `${resourceLabel}: scope entry at '${concretePath}' is a reference (\`!ref ${refName}\`), but a scope declares inline resource definitions (a \`kind:\` with its config). Declare the resource inline under '${scopeField}:', or reference an outer resource from a sibling field such as 'targets:'.`,
-            data: { resource: resourceData, filePath, path: concretePath },
-          }, concretePath),
-);
-        }
+        diagnostics.push(...scopeEntryDiagnostics(r, e.scopeRefEntries));
       },
     },
     { aliases, aliasesByModule, skip: isKindDocument, expand: true },
@@ -834,109 +570,25 @@ withQuotedPath({
         | undefined;
     },
   });
-  const reportFailure = (r: ResourceManifest, failure: { code: string; message: string; path: string }) => {
-    const resourceLabel = `${r.kind}/${r.metadata!.name as string}`;
-    const key = `${resourceLabel}\0${failure.code}\0${failure.message}`;
+  const reportFailure = (r: ResourceManifest, failure: SchemaFromFailure) => {
+    const key = `${r.kind}/${r.metadata!.name as string}\0${failure.code}\0${failure.message}`;
     if (reportedSlotFailures.has(key)) return;
     reportedSlotFailures.add(key);
-    diagnostics.push(
-      withQuotedPath(
-        {
-          severity: DiagnosticSeverity.Error,
-          code: failure.code,
-          source: SOURCE,
-          message: failure.message,
-          data: {
-            resource: { kind: r.kind, name: r.metadata!.name as string },
-            filePath: (r.metadata as { source?: string } | undefined)?.source,
-            path: failure.path,
-          },
-        },
-        failure.path,
-      ),
-    );
+    diagnostics.push(schemaFromFailureDiagnostic(r, failure));
   };
   visitManifest(
     localResources,
     registry,
     {
       onResourceEnter: ({ source: r }) => {
-        const declared = registry.declaredReachOf(r, aliases, aliasesByModule);
-        for (const stop of declared?.stops ?? []) {
-          if (stop.viaAnchor) continue;
-          for (const { schemaFrom } of stop.schemaFrom) {
-            if (!schemaFromIsKindDecidable(schemaFrom)) continue;
-            const slot = { fieldPath: stop.path, path: stop.path, value: undefined };
-            for (const site of schemaFromSites(r as Record<string, any>, slot, schemaFrom, schemaFromContext(r))) {
-              if (!isSchemaFromSite(site)) reportFailure(r, site);
-            }
-          }
+        for (const failure of schemaFromDeclaredFailures(r, registry, aliases, aliasesByModule, schemaFromContext(r))) {
+          reportFailure(r, failure);
         }
       },
       onSchemaFrom: (e) => {
-        const r = e.source;
-        const resourceLabel = `${r.kind}/${r.metadata!.name as string}`;
-        const resourceData = { kind: r.kind, name: r.metadata!.name as string };
-        const filePath = (r.metadata as { source?: string } | undefined)?.source;
-        const kindDecidable = schemaFromIsKindDecidable(e.entry.schemaFrom);
-        const sites = schemaFromSites(
-          r as Record<string, any>,
-          { fieldPath: e.fieldPath, path: e.concretePath, value: e.value, holder: e.holder },
-          e.entry.schemaFrom,
-          schemaFromContext(r),
-        );
-        for (const site of sites) {
-          if (!isSchemaFromSite(site)) {
-            // A kind-decided failure is the declared half's, reported above.
-            if (!kindDecidable) reportFailure(r, site);
-            continue;
-          }
-          // An enumerated derived slot: the kernel decodes it at creation.
-          const standIns: StandIns = new Map();
-          const substituted = substituteDecodedCelFields(site.value, site.schema, undefined, {
-            standIns,
-            external: (ref) => registry.schemaForId(ref),
-          });
-          if (site.form !== "anchored") {
-            const against = site.form === "instance" ? site.source : `schema from '${site.source}'`;
-            for (const issue of registry.validateResourceConfig(substituted, site.schema, standIns)) {
-              diagnostics.push(
-                withQuotedPath(
-                  {
-                    severity: DiagnosticSeverity.Error,
-                    code: valueTypeRefusalCode(issue) ?? "DEPENDENT_SCHEMA_MISMATCH",
-                    source: SOURCE,
-                    message: `${resourceLabel}: '${site.path}' does not match ${against}: ${issue.message}`,
-                    data: { resource: resourceData, filePath, path: site.path },
-                  },
-                  site.path,
-                ),
-              );
-            }
-            continue;
-          }
-          // Anchored at the offending node INSIDE the value, not at the slot: a
-          // `returns:` list is an array of entries, and reporting every issue on
-          // the `returns:` line puts them all on one line and none on the entry.
-          for (const issue of registry.validateResourceConfig(substituted, site.schema, standIns)) {
-            diagnostics.push(withQuotedPath({
-              severity: DiagnosticSeverity.Error,
-              code: valueTypeRefusalCode(issue) ?? "DEPENDENT_SCHEMA_MISMATCH",
-              source: SOURCE,
-              message: `${resourceLabel}: '${site.path}' does not match schema from '${site.source}': ${issue.message}`,
-              data: {
-                resource: resourceData,
-                filePath,
-                // An index-first sub-path (`[0].content`) joins with no dot.
-                path: !issue.path
-                  ? site.path
-                  : issue.path.startsWith("[")
-                    ? `${site.path}${issue.path}`
-                    : `${site.path}.${issue.path}`,
-              },
-            }, site.path));
-          }
-        }
+        const found = schemaFromSiteDiagnostics(e.source, e, registry, schemaFromContext(e.source));
+        for (const failure of found.failures) reportFailure(e.source, failure);
+        diagnostics.push(...found.diagnostics);
       },
     },
     { aliases, aliasesByModule, skip: isKindDocument },
@@ -959,5 +611,390 @@ function carriesDeclaredBranchKeys(
       Array.isArray(branch.required) &&
       branch.required.length > 0 &&
       branch.required.every((key: unknown) => typeof key === "string" && key in value),
+  );
+}
+
+/** A forwarded export of an imported library: a cross-module `!ref` target. */
+export function isExportTarget(r: ResourceManifest): boolean {
+  return !!r.metadata?.name && !isKindDocument(r) && isForwardedExport(r) && moduleOfManifest(r) !== undefined;
+}
+
+const moduleOfManifest = (r: ResourceManifest): string | undefined => (r.metadata as { module?: string } | undefined)?.module;
+
+/**
+ * Modules whose import subtree was actually loaded in this analysis. A resolved
+ * `Telo.Import` carries `resolvedModuleName` (stamped only once the edge — and
+ * thus the imported module — resolved); forwarded exports carry
+ * `metadata.module`. Either marks the module loaded independent of how many
+ * instances it exports, so a loaded library that exports nothing still reports
+ * invalid cross-module refs, while partial single-file analysis (neither
+ * present) is skipped to avoid false `UNRESOLVED_REFERENCE`.
+ */
+export function loadedModulesOf(resources: Iterable<ResourceManifest>): Set<string> {
+  const loaded = new Set<string>();
+  for (const r of resources) {
+    if (r.kind === "Telo.Import") {
+      const m = (r.metadata as { resolvedModuleName?: unknown } | undefined)?.resolvedModuleName;
+      if (typeof m === "string") loaded.add(m);
+      continue;
+    }
+    if (isExportTarget(r)) loaded.add(moduleOfManifest(r)!);
+  }
+  return loaded;
+}
+
+/** What judging one reference site reads beside the site. */
+export interface ReferenceSiteScope {
+  readonly registry: DefinitionRegistry;
+  readonly aliases: AliasResolver;
+  readonly aliasesByModule: Map<string, AliasResolver> | undefined;
+  moduleLoaded(module: string): boolean;
+  /** The forwarded export `name` of `module`'s instance at `importPath`. */
+  exportedIn(name: string, module: string, importPath: readonly string[] | undefined): ResourceManifest | undefined;
+  /** What a bare name resolves to among the resolution targets, scope first. */
+  resolveLocal(name: string, module: string | undefined, within: ScopeSite | undefined): ResourceManifest | undefined;
+  callableSlots(): CallableSlotContext;
+}
+
+/** One reference site of `r`, as the walk reaches it. */
+export type ReferenceSite = Pick<RefSiteEvent, "concretePath" | "value" | "entry" | "refs" | "within">;
+
+/**
+ * Phase 3 at one reference site of `r`:
+ *   1. Structural — the value is a `{kind, name}` reference; anything else that
+ *      is neither an inline declaration nor a value the slot's own union
+ *      accepts is refused, naming what the slot takes.
+ *   2. Kind — the alias-resolved kind satisfies the x-telo-ref constraint
+ *      (abstract: must extend the target; concrete: must equal it exactly).
+ *   3. Resolution — a resource with that name exists in the visible set.
+ * `computed`: an expression the kernel evaluates sits at the slot, which
+ * `REF_SLOT_COMPUTED` reports.
+ */
+export function referenceSiteDiagnostics(
+  r: ResourceManifest,
+  site: ReferenceSite,
+  computed: boolean,
+  scope: ReferenceSiteScope,
+): AnalysisDiagnostic[] {
+  const { registry, aliases, aliasesByModule } = scope;
+  const resourceLabel = `${r.kind}/${r.metadata!.name as string}`;
+  const resourceData = { kind: r.kind, name: r.metadata!.name as string };
+  const filePath = (r.metadata as { source?: string } | undefined)?.source;
+  const { value: val, concretePath, entry, within } = site;
+  const found = (code: string, message: string): AnalysisDiagnostic =>
+    withQuotedPath(
+      { severity: DiagnosticSeverity.Error, code, source: SOURCE, message, data: { resource: resourceData, filePath, path: concretePath } },
+      concretePath,
+    );
+
+  /** The nominal verdict at a slot, overruled where a function stands in for a
+   *  callable abstract by structure — and explained by it where it does not. */
+  const kindVerdict = (kindErrors: string[], referent: ResourceManifest | undefined, label: string): string[] => {
+    if (kindErrors.length === 0 || !referent) return kindErrors;
+    const verdict = callableSlotVerdict(referent, label, entry.refs, scope.callableSlots());
+    if (!verdict) return kindErrors;
+    return verdict.satisfied ? [] : [...verdict.reasons];
+  };
+
+  // `!ref <name>` left unresolved by Phase 2.5.
+  if (isRefSentinel(val)) {
+    const refName = val.source;
+    const dot = refName.indexOf(".");
+    const aliasPrefix = dot > 0 ? refName.slice(0, dot) : undefined;
+
+    // Cross-module: if that module's exports are loaded in this analysis, the
+    // miss is real (name not in exports.resources, or a typo); if not (partial
+    // single-file analysis), skip rather than emit a false UNRESOLVED_REFERENCE.
+    if (aliasPrefix && aliasPrefix !== "Self" && aliases.hasAlias(aliasPrefix)) {
+      const module = aliases.moduleForAlias(aliasPrefix);
+      if (module && !scope.moduleLoaded(module)) return [];
+      // A choice nothing decides stands in for the export: it resolves and is
+      // judged by kind only once its choice is decided.
+      if (module && isStandInDeclaration(scope.exportedIn(refName.slice(dot + 1), module, importPathThrough(r, aliasPrefix)))) {
+        return [];
+      }
+      return [
+        found(
+          "UNRESOLVED_REFERENCE",
+          `${resourceLabel}: reference at '${concretePath}' → '${refName}' is not exported by module '${module ?? aliasPrefix}' (add it to exports.resources)`,
+        ),
+      ];
+    }
+
+    // Local reference (bare name or explicit `Self.`-qualified), read scope
+    // first: a shadowed name is validated against the resource the kernel
+    // binds, never the one it shadows.
+    const localName = aliasPrefix === "Self" ? refName.slice(dot + 1) : refName;
+    const target = scope.resolveLocal(localName, moduleOfManifest(r), within);
+    if (!target) {
+      // A scoped name out of this declaration's reach has its own diagnostic,
+      // which says why; this one would say only "not found".
+      if (outOfReachNames(r).has(localName)) return [];
+      return [found("UNRESOLVED_REFERENCE", `${resourceLabel}: reference at '${concretePath}' → resource '${localName}' not found`)];
+    }
+    if (isStandInDeclaration(target)) return [];
+    const kindErrors = kindVerdict(
+      checkKind(target.kind as string, entry, registry, aliases, isInjectedDeclaration(target)),
+      target,
+      refName,
+    );
+    return kindErrors.length > 0
+      ? [found("REFERENCE_KIND_MISMATCH", `${resourceLabel}: reference at '${concretePath}' → ${kindErrors.join("; ")}`)]
+      : [];
+  }
+
+  // Bare strings are no longer a reference shape — `validateReferenceForms`
+  // rejects an author-written string at a ref slot before this pass runs.
+  if (typeof val !== "object") return [];
+  const refVal = val as Record<string, unknown>;
+
+  // A value the slot's own union describes is a value, not a reference — the
+  // same narrowing `validateReferenceForms` applies, through the same function:
+  // an OBJECT-shaped value branch would otherwise reach the structural check
+  // below and be refused as a value the slot does not take.
+  if (satisfiesSiteValue(val, site.refs, registry)) return [];
+
+  // Inline resources are extracted by Phase 2 normalization.
+  if (isInlineDeclaration(refVal)) return [];
+
+  // Polymorphic ref slots accept object forms whose references live in nested
+  // slots — Application `targets`' inline `{ invoke }` and gated `{ ref }`, and
+  // any object a slot's own value branch declares by its required keys (the
+  // sink lists' `{ sink, when }`). Those nested refs are validated via their own
+  // sites, and the object's own shape by the schema.
+  if (
+    typeof refVal.kind !== "string" &&
+    ("invoke" in refVal || "ref" in refVal || carriesDeclaredBranchKeys(refVal, entry.valueBranches))
+  ) {
+    return [];
+  }
+
+  // An EXPRESSION at the slot has its own verdict (`REF_SLOT_COMPUTED`), which
+  // says why a reference cannot come out of CEL; a list of what the slot takes
+  // is no repair for an expression.
+  if (computed) return [];
+
+  // 1. Neither a reference, an inline declaration nor a value: say what the
+  //    slot takes, from its own schema.
+  if (!isResolvedReference(refVal)) {
+    return [
+      found(
+        "INVALID_REFERENCE",
+        `${resourceLabel}: the value at '${concretePath}' is not one this slot accepts. It takes ` +
+          acceptedAtSlot(entry, acceptsInline(r.kind, entry), registry, moduleAliasScope(r.metadata, aliases, aliasesByModule)) +
+          ".",
+      ),
+    ];
+  }
+
+  const out: AnalysisDiagnostic[] = [];
+  // 2. Kind check
+  const objectTarget = scope.resolveLocal(refVal.name, moduleOfManifest(r), within);
+  const crossModule = typeof refVal.alias === "string" && refVal.alias !== "Self";
+  const referentModule = crossModule ? aliases.moduleForAlias(refVal.alias as string) : undefined;
+  const kindErrors = kindVerdict(
+    checkKind(refVal.kind, entry, registry, aliases, isInjectedDeclaration(objectTarget)),
+    crossModule
+      ? referentModule
+        ? scope.exportedIn(refVal.name, referentModule, importPathThrough(r, refVal.alias as string))
+        : undefined
+      : objectTarget,
+    crossModule ? `${refVal.alias}.${refVal.name}` : refVal.name,
+  );
+  if (kindErrors.length > 0) {
+    out.push(found("REFERENCE_KIND_MISMATCH", `${resourceLabel}: reference at '${concretePath}' → ${kindErrors.join("; ")}`));
+  }
+
+  // 3. Resolution check — resource with this name must exist.
+  let exists: boolean;
+  if (crossModule) {
+    // Cross-module ref resolved by Phase 2.5: validated against the forwarded
+    // exports when loaded; in partial context (module not loaded) resolvable.
+    const module = aliases.moduleForAlias(refVal.alias as string);
+    exists =
+      !module ||
+      !scope.moduleLoaded(module) ||
+      scope.exportedIn(refVal.name, module, importPathThrough(r, refVal.alias as string)) !== undefined;
+  } else {
+    exists = objectTarget !== undefined;
+  }
+  if (!exists) {
+    out.push(found("UNRESOLVED_REFERENCE", `${resourceLabel}: reference at '${concretePath}' → resource '${refVal.name}' not found`));
+  }
+  return out;
+}
+
+/** `SCOPE_ENTRY_NOT_INLINE` at each scope entry of `r` written as a reference. */
+export function scopeEntryDiagnostics(
+  r: ResourceManifest,
+  entries: readonly { readonly path: string; readonly refName: string }[],
+): AnalysisDiagnostic[] {
+  const resourceLabel = `${r.kind}/${r.metadata!.name as string}`;
+  const resourceData = { kind: r.kind, name: r.metadata!.name as string };
+  const filePath = (r.metadata as { source?: string } | undefined)?.source;
+  return entries.map(({ path: concretePath, refName }) => {
+    const scopeField = concretePath.split(/[.[]/)[0];
+    return withQuotedPath(
+      {
+        severity: DiagnosticSeverity.Error,
+        code: "SCOPE_ENTRY_NOT_INLINE",
+        source: SOURCE,
+        message: `${resourceLabel}: scope entry at '${concretePath}' is a reference (\`!ref ${refName}\`), but a scope declares inline resource definitions (a \`kind:\` with its config). Declare the resource inline under '${scopeField}:', or reference an outer resource from a sibling field such as 'targets:'.`,
+        data: { resource: resourceData, filePath, path: concretePath },
+      },
+      concretePath,
+    );
+  });
+}
+
+/** A failure an `x-telo-schema-from` slot of `r` raises, as reported. */
+export function schemaFromFailureDiagnostic(r: ResourceManifest, failure: SchemaFromFailure): AnalysisDiagnostic {
+  return withQuotedPath(
+    {
+      severity: DiagnosticSeverity.Error,
+      code: failure.code,
+      source: SOURCE,
+      message: failure.message,
+      data: {
+        resource: { kind: r.kind, name: r.metadata!.name as string },
+        filePath: (r.metadata as { source?: string } | undefined)?.source,
+        path: failure.path,
+      },
+    },
+    failure.path,
+  );
+}
+
+/**
+ * The failures `r`'s kind alone decides at its `x-telo-schema-from` slots — a
+ * malformed expression, an alias-qualified anchor naming nothing — each once,
+ * at the declared pattern, whatever `r` wrote.
+ */
+export function schemaFromDeclaredFailures(
+  r: ResourceManifest,
+  registry: DefinitionRegistry,
+  aliases: AliasResolver,
+  aliasesByModule: Map<string, AliasResolver> | undefined,
+  ctx: DerivedSlotContext,
+): SchemaFromFailure[] {
+  const out: SchemaFromFailure[] = [];
+  const seen = new Set<string>();
+  const declared = registry.declaredReachOf(r, aliases, aliasesByModule);
+  for (const stop of declared?.stops ?? []) {
+    if (stop.viaAnchor) continue;
+    for (const { schemaFrom } of stop.schemaFrom) {
+      if (!schemaFromIsKindDecidable(schemaFrom)) continue;
+      const slot = { fieldPath: stop.path, path: stop.path, value: undefined };
+      for (const site of schemaFromSites(r as Record<string, any>, slot, schemaFrom, ctx)) {
+        if (isSchemaFromSite(site)) continue;
+        const key = `${site.code}\0${site.message}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(site);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * One concrete `x-telo-schema-from` site of `r`: the anchor ref resolved to the
+ * concrete kind, the JSON Pointer navigated into that kind's (or instance's)
+ * schema, and the value validated against it — a failure that turns on the
+ * sibling anchor's value, and each mismatch.
+ */
+export function schemaFromSiteDiagnostics(
+  r: ResourceManifest,
+  e: Pick<SchemaFromSiteEvent, "fieldPath" | "concretePath" | "value" | "holder" | "entry">,
+  registry: DefinitionRegistry,
+  ctx: DerivedSlotContext,
+): { failures: SchemaFromFailure[]; diagnostics: AnalysisDiagnostic[] } {
+  const resourceLabel = `${r.kind}/${r.metadata!.name as string}`;
+  const resourceData = { kind: r.kind, name: r.metadata!.name as string };
+  const filePath = (r.metadata as { source?: string } | undefined)?.source;
+  const kindDecidable = schemaFromIsKindDecidable(e.entry.schemaFrom);
+  const failures: SchemaFromFailure[] = [];
+  const diagnostics: AnalysisDiagnostic[] = [];
+  const sites = schemaFromSites(
+    r as Record<string, any>,
+    { fieldPath: e.fieldPath, path: e.concretePath, value: e.value, holder: e.holder },
+    e.entry.schemaFrom,
+    ctx,
+  );
+  for (const site of sites) {
+    if (!isSchemaFromSite(site)) {
+      // A kind-decided failure is the declared half's.
+      if (!kindDecidable) failures.push(site);
+      continue;
+    }
+    // An enumerated derived slot: the kernel decodes it at creation.
+    const standIns: StandIns = new Map();
+    const substituted = substituteDecodedCelFields(site.value, site.schema, undefined, {
+      standIns,
+      external: (ref) => registry.schemaForId(ref),
+    });
+    if (site.form !== "anchored") {
+      const against = site.form === "instance" ? site.source : `schema from '${site.source}'`;
+      for (const issue of registry.validateResourceConfig(substituted, site.schema, standIns)) {
+        diagnostics.push(
+          withQuotedPath(
+            {
+              severity: DiagnosticSeverity.Error,
+              code: valueTypeRefusalCode(issue) ?? "DEPENDENT_SCHEMA_MISMATCH",
+              source: SOURCE,
+              message: `${resourceLabel}: '${site.path}' does not match ${against}: ${issue.message}`,
+              data: { resource: resourceData, filePath, path: site.path },
+            },
+            site.path,
+          ),
+        );
+      }
+      continue;
+    }
+    // Anchored at the offending node INSIDE the value, not at the slot: a
+    // `returns:` list is an array of entries, and reporting every issue on the
+    // `returns:` line puts them all on one line and none on the entry.
+    for (const issue of registry.validateResourceConfig(substituted, site.schema, standIns)) {
+      diagnostics.push(
+        withQuotedPath(
+          {
+            severity: DiagnosticSeverity.Error,
+            code: valueTypeRefusalCode(issue) ?? "DEPENDENT_SCHEMA_MISMATCH",
+            source: SOURCE,
+            message: `${resourceLabel}: '${site.path}' does not match schema from '${site.source}': ${issue.message}`,
+            data: {
+              resource: resourceData,
+              filePath,
+              // An index-first sub-path (`[0].content`) joins with no dot.
+              path: !issue.path
+                ? site.path
+                : issue.path.startsWith("[")
+                  ? `${site.path}${issue.path}`
+                  : `${site.path}.${issue.path}`,
+            },
+          },
+          site.path,
+        ),
+      );
+    }
+  }
+  return { failures, diagnostics };
+}
+
+/** The positions `REF_SLOT_COMPUTED` claims in `r` — an expression at or above
+ *  a reference slot in a field the kind evaluates — read from the one reader
+ *  that owns the rule, so the reference checks report no second verdict there. */
+export function computedReferencePaths(
+  r: ResourceManifest,
+  definition: ResourceDefinition | undefined,
+  registry: DefinitionRegistry,
+  aliases: AliasResolver,
+  aliasesByModule: Map<string, AliasResolver> | undefined,
+): ReadonlySet<string> {
+  const sites = definition ? kindCelEvalSites(definition, registry, registry.shapeLookup) : NO_CEL_EVAL_SITES;
+  return new Set(
+    computedRefSlots(registry.referencePositions(r, aliases, aliasesByModule), (path) => evaluatedField(sites, path)).map(
+      (slot) => slot.path,
+    ),
   );
 }

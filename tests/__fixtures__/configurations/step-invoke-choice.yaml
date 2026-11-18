@@ -1,0 +1,18 @@
+# A step invokes a declaration written only where a choice takes it: the
+# reference is unresolved where the choice leaves it out.
+kind: Telo.Application
+metadata: { name: StepInvokeChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets:
+  - !ref main
+---
+!if
+metadata: { name: target }
+if: !cel "variables.flag1"
+then: { kind: Telo.Value, value: 1 }
+---
+kind: Telo.Sequence
+metadata: { name: main }
+steps:
+  - name: call
+    invoke: !ref target

@@ -1,0 +1,17 @@
+# An alias written twice in one module, in a module that also writes a choice:
+# imports never vary, so the repeat is refused in every configuration.
+kind: Telo.Application
+metadata: { name: DuplicateImportAliasChoice }
+imports: { Run: ../../../modules/run }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.Import
+metadata: { name: Run }
+source: ../../../modules/run
+---
+kind: Telo.Value
+metadata: { name: shown }
+value: !if
+  if: !cel "variables.flag1"
+  then: 1
+  else: 2

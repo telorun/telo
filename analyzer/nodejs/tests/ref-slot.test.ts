@@ -5,8 +5,8 @@ import {
   possibleUses,
   readRefSlot,
   refSlotAnnotation,
-  rewriteRefSlotKinds,
   transfersControl,
+  withRefSlotKinds,
 } from "../src/ref-slot.js";
 import { declaredReach } from "../src/reference-reach.js";
 
@@ -106,25 +106,33 @@ describe("transfersControl", () => {
   });
 });
 
-describe("rewriteRefSlotKinds", () => {
-  it("rewrites the string form", () => {
+describe("withRefSlotKinds", () => {
+  it("maps the string form", () => {
     const node: Record<string, any> = { "x-telo-ref": "Self.Connection" };
-    rewriteRefSlotKinds(node, () => "sql.Connection");
-    expect(node["x-telo-ref"]).toBe("sql.Connection");
+    expect(withRefSlotKinds(node, () => "sql.Connection")["x-telo-ref"]).toBe("sql.Connection");
+    expect(node["x-telo-ref"]).toBe("Self.Connection");
   });
 
-  it("rewrites a structured single kind", () => {
+  it("maps a structured single kind", () => {
     const node: Record<string, any> = { "x-telo-ref": { kind: "Self.Store", use: "dependency" } };
-    rewriteRefSlotKinds(node, () => "cache.Store");
-    expect(node["x-telo-ref"]).toEqual({ kind: "cache.Store", use: "dependency" });
+    expect(withRefSlotKinds(node, () => "cache.Store")["x-telo-ref"]).toEqual({ kind: "cache.Store", use: "dependency" });
+    expect(node["x-telo-ref"]).toEqual({ kind: "Self.Store", use: "dependency" });
   });
 
-  it("rewrites each entry of a kind list, leaving unmapped names untouched", () => {
+  it("maps each entry of a kind list, leaving unmapped names as written", () => {
     const node: Record<string, any> = {
       "x-telo-ref": { kind: ["Self.A", "Other.B"], use: "call" },
     };
-    rewriteRefSlotKinds(node, (k) => (k === "Self.A" ? "mod.A" : undefined));
-    expect(node["x-telo-ref"].kind).toEqual(["mod.A", "Other.B"]);
+    expect(withRefSlotKinds(node, (k) => (k === "Self.A" ? "mod.A" : undefined))["x-telo-ref"].kind).toEqual([
+      "mod.A",
+      "Other.B",
+    ]);
+    expect(node["x-telo-ref"].kind).toEqual(["Self.A", "Other.B"]);
+  });
+
+  it("returns the holder itself when nothing maps", () => {
+    const node: Record<string, any> = { "x-telo-ref": { kind: ["Self.A"], use: "call" } };
+    expect(withRefSlotKinds(node, () => undefined)).toBe(node);
   });
 });
 

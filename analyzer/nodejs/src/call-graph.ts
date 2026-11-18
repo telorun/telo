@@ -219,6 +219,12 @@ export interface CallGraphEdge {
   unresolvedReason?: "dynamic" | "absent" | "unmatched";
   /** JSON Pointer to the field carrying this call's arguments, when declared. */
   inputs?: string;
+  /** The scope a bare name written at this site reads in, scope first, when
+   *  the site lies in a region of one. */
+  within?: ScopeSite;
+  /** The selector a case map chooses this edge's {@link use} by — a JSON
+   *  Pointer from the object enclosing the slot. */
+  useBy?: string;
   /** This site is a Phase-5 injection site — the reference reach reaches it, so
    *  the kernel puts the live instance into the field before `init()`. THE
    *  init-order criterion: injection is what forces construct-before-use,
@@ -438,14 +444,15 @@ function resolveUseAtSite(
   root: unknown,
   concretePath: string,
   schemaDefault: SchemaDefault,
-): Pick<CallGraphEdge, "use" | "unresolved" | "unresolvedReason"> {
+): Pick<CallGraphEdge, "use" | "unresolved" | "unresolvedReason" | "useBy"> {
   if (!entry.useCases) return { use: entry.uses };
+  const useBy = entry.useCases.by;
   const enclosing = enclosingOf(root, concretePath);
   let selector = navigatePointer(enclosing, entry.useCases.by);
   if (selector === undefined) selector = schemaDefault(entry.useCases.by);
   if (selector !== undefined && typeof selector !== "object") {
     const resolved = entry.useCases.cases[String(selector)];
-    if (resolved) return { use: resolved };
+    if (resolved) return { use: resolved, useBy };
   }
   const slot = {
     kinds: entry.refs,
@@ -459,7 +466,7 @@ function resolveUseAtSite(
     : selector === undefined
       ? "absent"
       : "unmatched";
-  return { use: possibleUses(slot), unresolved: entry.useCases, unresolvedReason };
+  return { use: possibleUses(slot), unresolved: entry.useCases, unresolvedReason, useBy };
 }
 
 /**
@@ -505,6 +512,8 @@ interface StepWalkContext {
   /** The node a step's target reaches: `written` is the value as the step holds
    *  it, so a reference through an import alias is read through that alias. */
   resolveName: (name: string, written: unknown) => ResourceGraphNode | undefined;
+  /** The scope the names this list's steps write read in. */
+  within?: ScopeSite;
   edges: CallGraphEdge[];
   /** `${ownerId}\0${concretePath}` → the edge a step slot emitted, so the
    *  field-map walk can stamp `injected` on sites it also reaches
@@ -618,7 +627,7 @@ function emitStepEdges(node: StepGraphNode, ctx: StepWalkContext): void {
     };
     // The step itself is the enclosing object, so a `use` case map and an
     // `inputs` pointer both resolve against the step's own siblings.
-    const { use, unresolved, unresolvedReason } = resolveUseAtSite(
+    const { use, unresolved, unresolvedReason, useBy } = resolveUseAtSite(
       entry,
       node.step,
       key,
@@ -633,6 +642,8 @@ function emitStepEdges(node: StepGraphNode, ctx: StepWalkContext): void {
     };
     const target = ctx.resolveName(targetName, written);
     if (target) edge.to = target.id;
+    if (ctx.within) edge.within = ctx.within;
+    if (useBy !== undefined) edge.useBy = useBy;
     if (unresolved) edge.unresolved = unresolved;
     if (unresolvedReason) edge.unresolvedReason = unresolvedReason;
     if (slot.inputs !== undefined) edge.inputs = slot.inputs;
@@ -757,6 +768,9 @@ export interface BuildCallGraphOptions {
   /** Whether a `callsCoReferrers` slot's fan-out edges are added. Off for a
    *  library's zone summary: the importer's graph wires the fan-out, once. */
   coReferrers?: boolean;
+  /** Whether a module call is an edge. Off where only the references a
+   *  declaration writes are asked for. */
+  moduleCalls?: boolean;
   /** Every imported library's full documents — the order a library instance's
    *  declarations are read in. */
   libraries?: readonly ModuleDocuments[];
@@ -860,6 +874,7 @@ export function buildCallGraph(
   const collectStepsFor = (
     node: ResourceGraphNode,
     resolveName: (name: string, written: unknown) => ResourceGraphNode | undefined,
+    within?: ScopeSite,
   ): void => {
     const schema = registry.effectiveSchemaOf(definitionFor(node.manifest)) as Record<string, any> | undefined;
     if (!schema) return;
@@ -876,6 +891,7 @@ export function buildCallGraph(
         nodes,
         order: collected,
         resolveName,
+        ...(within ? { within } : {}),
         edges,
         stepEdgesByPath,
       });
@@ -900,7 +916,9 @@ export function buildCallGraph(
   ): void => {
     for (const [key, edge] of stepEdgesByPath) {
       if (!key.startsWith(`${ownerId}\0`)) continue;
-      const found = names.locate(edge.toName, module, scopeSiteAtPath(holder, scopes, edge.path));
+      const within = scopeSiteAtPath(holder, scopes, edge.path);
+      if (within) edge.within = within;
+      const found = names.locate(edge.toName, module, within);
       if (!found?.address.scope) continue;
       edge.to = found.declaration.id;
       edge.scoped = true;
@@ -964,7 +982,7 @@ export function buildCallGraph(
         if (targetName === undefined) continue;
         const { fieldPath, fieldKeys } = site.refs[0]!;
         const entry = siteRefEntry(site);
-        const { use, unresolved, unresolvedReason } = resolveUseAtSite(
+        const { use, unresolved, unresolvedReason, useBy } = resolveUseAtSite(
           entry,
           node.manifest,
           site.path,
@@ -978,9 +996,12 @@ export function buildCallGraph(
           path: site.path,
           use,
         };
-        const target = names.locate(targetName, module, scopeSiteAt(address, ownScopes, site.keys));
+        const within = scopeSiteAt(address, ownScopes, site.keys);
+        if (within) edge.within = within;
+        const target = names.locate(targetName, module, within);
         if (target) edge.to = target.declaration.id;
         if (target?.address.scope) edge.scoped = true;
+        if (useBy !== undefined) edge.useBy = useBy;
         if (unresolved) edge.unresolved = unresolved;
         if (unresolvedReason) edge.unresolvedReason = unresolvedReason;
         if (entry.inputs !== undefined) edge.inputs = entry.inputs;
@@ -991,6 +1012,7 @@ export function buildCallGraph(
       collectStepsFor(
         node,
         (name, written) => instanceThrough(written, view) ?? names.resolve(name, module, site),
+        site,
       );
       if (declareScopedMembers(node.id, address, ownScopes, module)) {
         rescopeStepEdges(node.id, address, ownScopes, module);
@@ -1012,7 +1034,8 @@ export function buildCallGraph(
         const ownerId = nodeIdFor(event.source);
         const ownerModule = declaringModule(event.source);
         const holder = event.holder;
-        if (!declareScopedMembers(ownerId, holder, event.scopes, ownerModule)) return;
+        // Even a scope declaring nothing yet is where its regions' names read.
+        declareScopedMembers(ownerId, holder, event.scopes, ownerModule);
 
         // The owner's own step edges were emitted before this scope was seen
         // (step collection precedes the visit), so their names resolved
@@ -1048,9 +1071,9 @@ export function buildCallGraph(
         // A shape a contract or signature names (`params[0].schema: !ref Money`)
         // sits in no declared slot, but what it states is known: it names a
         // shape, so it is a `schema` reference rather than an unknown one.
-        const { use, unresolved, unresolvedReason }: Pick<
+        const { use, unresolved, unresolvedReason, useBy }: Pick<
           CallGraphEdge,
-          "use" | "unresolved" | "unresolvedReason"
+          "use" | "unresolved" | "unresolvedReason" | "useBy"
         > =
           event.nested && isShapeField(event.source, event.concretePath)
             ? { use: ["schema"] }
@@ -1071,6 +1094,7 @@ export function buildCallGraph(
           instanceThrough(event.value, event.source) ?? ownInstance(event.source, found?.declaration);
         if (instance) edge.to = instance.id;
         else if (found) edge.to = found.declaration.id;
+        if (useBy !== undefined) edge.useBy = useBy;
         if (unresolved) edge.unresolved = unresolved;
         if (unresolvedReason) edge.unresolvedReason = unresolvedReason;
         if (event.entry.inputs !== undefined) edge.inputs = event.entry.inputs;
@@ -1080,6 +1104,7 @@ export function buildCallGraph(
         if (event.nested) edge.nested = true;
         else edge.injected = true;
         if (found?.address.scope) edge.scoped = true;
+        if (event.within) edge.within = event.within;
         edges.push(edge);
       },
     },
@@ -1111,7 +1136,7 @@ export function buildCallGraph(
     nameOf: (node) => node.name,
     moduleOf: (node) => moduleKeyOf(node.manifest),
   });
-  for (const node of [...nodes.values()]) {
+  for (const node of options.moduleCalls === false ? [] : [...nodes.values()]) {
     if (node.type !== "resource" || node.scoped) continue;
     const module = moduleKeyOf(node.manifest);
     const ownNames = module === ROOT_MODULE_KEY ? rootModules : new Set([module]);
@@ -1244,7 +1269,7 @@ function coReferrerEdges(
   return out;
 }
 
-const APP_DOMAIN = "";
+export const APP_DOMAIN = "";
 
 /**
  * The lifetime domains of a set's module-scope resource nodes, over the
@@ -1255,7 +1280,7 @@ const APP_DOMAIN = "";
  * library's those stamped with its `metadata.importPath`, or unstamped when the
  * library has one instance — in the order its documents are read.
  */
-function lifetimeDomains(
+export function lifetimeDomains(
   resources: readonly ResourceManifest[],
   nodes: ReadonlyMap<string, CallGraphNode>,
   libraries: readonly ModuleDocuments[] | undefined,
@@ -1382,6 +1407,23 @@ function refTargetName(value: unknown): string | undefined {
   return value.alias !== undefined && value.alias !== "Self" ? `${value.alias}.${value.name}` : value.name;
 }
 
+/** One edge as a parity check compares it: the resource declaring it, its
+ *  site, its target and what is done with it. */
+export function edgeParityLine(
+  owner: string,
+  edge: Pick<CallGraphEdge, "path" | "use" | "injected" | "moduleCall" | "nested" | "unresolvedReason" | "coReferrer">,
+  target: string | undefined,
+): string {
+  const flags = [
+    edge.injected ? "injected" : "",
+    edge.moduleCall ? "call" : "",
+    edge.nested ? "nested" : "",
+    edge.coReferrer ? "coReferrer" : "",
+    edge.unresolvedReason ?? "",
+  ].filter(Boolean);
+  return `${owner} ${edge.path} -> ${target ?? "-"} [${edge.use.join("|")}]${flags.length > 0 ? ` ${flags.join(" ")}` : ""}`;
+}
+
 export interface ProjectToPairsOptions {
   /** Keep only edges whose use satisfies this. Omit to keep every edge. */
   keepUse?: (use: RefUse[]) => boolean;
@@ -1440,6 +1482,37 @@ export function projectToPairs(
  * Every reference slot naming `manifest`: the resource declaring the slot and
  * its concrete path. A module call and a step's dispatch are not such slots.
  */
+/**
+ * Where `manifest` references another declaration, as the edges leaving its
+ * node and its steps' nodes leave it, in edge order — its steps' slots, then
+ * every reference its value holds outside them; a scope member it declares
+ * reaches from its own node, a module call is no reference — each with the
+ * kinds the slot there accepts, none where no slot is declared. The edges of a
+ * scope member are read off it as off a top-level declaration.
+ */
+export function referencePlacesOf(
+  manifest: ResourceManifest,
+  registry: DefinitionRegistry,
+  options: Pick<BuildCallGraphOptions, "aliases" | "aliasesByModule"> = {},
+): { readonly path: string; readonly kinds: readonly string[] }[] {
+  const own = isScopeMemberDeclaration(manifest) ? ({ ...manifest } as ResourceManifest) : manifest;
+  const graph = buildCallGraph([own], registry, { ...options, coReferrers: false, moduleCalls: false });
+  const id = nodeIdFor(own);
+  if (!graph.nodes.has(id)) return [];
+  const steps = graph.steps(id);
+  const kinds = new Map<string, readonly string[]>();
+  for (const step of steps) for (const slot of step.refSlots ?? []) kinds.set(slot.path, slot.kinds);
+  for (const site of registry.referenceSites(own, options.aliases, options.aliasesByModule)) {
+    if (site.refs.length > 0 && !kinds.has(site.path)) kinds.set(site.path, siteRefEntry(site).refs);
+  }
+  const from = new Set([id, ...steps.map((step) => step.id)]);
+  const out = new Map<string, readonly string[]>();
+  for (const edge of graph.edges) {
+    if (from.has(edge.from) && !out.has(edge.path)) out.set(edge.path, edge.nested ? [] : (kinds.get(edge.path) ?? []));
+  }
+  return [...out].map(([path, accepted]) => ({ path, kinds: accepted }));
+}
+
 export function referrerSlotsOf(
   graph: CallGraph,
   manifest: ResourceManifest,

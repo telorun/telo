@@ -79,33 +79,7 @@ export function buildDependencyGraph(
   callGraph?: CallGraph,
 ): DependencyGraph {
   const graph = callGraph ?? buildCallGraph(resources, registry, { aliases, aliasesByModule });
-
-  const nodes = new Map<string, ResourceNode>();
-  for (const node of graph.nodes.values()) {
-    if (node.type !== "resource") continue;
-    const resource = node as ResourceGraphNode;
-    // A scope-declared resource is created when its scope opens, never at boot.
-    if (resource.scoped) continue;
-    nodes.set(resource.id, {
-      kind: resource.kind,
-      name: resource.name,
-      manifest: resource.manifest,
-    });
-  }
-
-  const deps = projectToPairs(graph, {
-    keepUse: (use) => use.length === 0 || use.some((u) => u !== "schema"),
-  });
-  for (const edge of graph.edges) {
-    if (!edge.scoped || !edge.to) continue;
-    deps.get(edge.from)?.delete(edge.to);
-  }
-  for (const key of nodes.keys()) if (!deps.has(key)) deps.set(key, new Set());
-
-  const importNodes = addImportNodes(resources, nodes, deps, aliases, aliasesByModule);
-  addResourceInputEdges(importNodes, nodes, deps);
-  addImportReferenceEdges(graph, nodes, deps, importNodes, aliases, aliasesByModule);
-  addStartupStatusReadEdges(nodes, deps, registry, aliases, aliasesByModule, importNodes);
+  const { nodes, deps } = dependencyStructure(resources, registry, aliases, aliasesByModule, graph);
 
   // --- Kahn's topological sort ---
   // in-degree[X] = number of X's dependencies (size of deps[X])
@@ -144,14 +118,196 @@ export function buildDependencyGraph(
     };
   }
 
-  const cycleKeys = findCycle(nodes.keys(), deps);
-  const toNodes = (keys: string[]) => keys.map((k) => nodes.get(k)!);
-  const cycles = stronglyConnectedLoops(nodes, deps).map((component) =>
-    component.has(cycleKeys[0]!)
-      ? cycleKeys
-      : findCycle(component, deps, component),
-  );
-  return { cycle: toNodes(cycleKeys), cycles: cycles.map(toNodes) };
+  const toNodes = (keys: readonly string[]) => keys.map((k) => nodes.get(k)!);
+  const held = heldDependencies(nodes, deps);
+  return {
+    cycle: toNodes(firstLoops(BOOLEAN_LOGIC, held)[0]!.keys),
+    cycles: dependencyLoops(BOOLEAN_LOGIC, held, ONE_READING).map((loop) => toNodes(loop.keys)),
+  };
+}
+
+/** The connectives a loop search is computed in: booleans over one graph, or
+ *  presence conditions over every configuration's graph at once. */
+export interface LoopLogic<T> {
+  readonly TRUE: T;
+  readonly FALSE: T;
+  and(a: T, b: T): T;
+  or(a: T, b: T): T;
+  not(a: T): T;
+  isFalse(a: T): boolean;
+}
+
+export const BOOLEAN_LOGIC: LoopLogic<boolean> = {
+  TRUE: true,
+  FALSE: false,
+  and: (a, b) => a && b,
+  or: (a, b) => a || b,
+  not: (a) => !a,
+  isFalse: (a) => !a,
+};
+
+/** A dependency graph each node and arc of which holds where its `held` does. */
+export interface HeldDependencies<T> {
+  /** Every node, in node order. */
+  readonly nodes: readonly string[];
+  present(id: string): T;
+  /** The arcs leaving `id`, in the order they were added. */
+  arcs(id: string): readonly { readonly to: string; readonly held: T }[];
+}
+
+/** The classes of one strongly connected component's elements: each decides
+ *  every element alike, and together they hold wherever any element does. */
+export type ComponentReadings<T> = (
+  elements: readonly T[],
+) => Iterable<{ readonly held: T; holds(element: T): boolean }>;
+
+/** One graph's single class. */
+export const ONE_READING: ComponentReadings<boolean> = () => [{ held: true, holds: (element) => element }];
+
+/** A loop and where it is the one reported for its component. */
+export interface HeldLoop<T> {
+  readonly keys: readonly string[];
+  readonly held: T;
+}
+
+/** `nodes` and `deps` as a graph every element of which holds. */
+export function heldDependencies(
+  nodes: ReadonlyMap<string, unknown>,
+  deps: ReadonlyMap<string, ReadonlySet<string>>,
+): HeldDependencies<boolean> {
+  const order = [...nodes.keys()];
+  const arcs = new Map(order.map((key) => [key, [...(deps.get(key) ?? [])].map((to) => ({ to, held: true }))]));
+  return { nodes: order, present: () => true, arcs: (id) => arcs.get(id) ?? [] };
+}
+
+/**
+ * One loop per strongly connected component that loops, each with where it is
+ * the loop reported: the component holding the first loop a search from the
+ * first node finds reports that one, every other its own first loop from its
+ * first member. Read per component of the graph every configuration's graph is
+ * part of, in each class of `readings` over its own elements — a loop never
+ * leaves the component — so what a configuration's graph does elsewhere is
+ * never a class of its.
+ */
+export function dependencyLoops<T>(
+  logic: LoopLogic<T>,
+  graph: HeldDependencies<T>,
+  readings: ComponentReadings<T>,
+  /** Off for a scope's members: each component reports its own first loop. */
+  options: { readonly firstLoop?: boolean } = {},
+): HeldLoop<T>[] {
+  const order = graph.nodes.filter((id) => !logic.isFalse(graph.present(id)));
+  const known = new Set(order);
+  const unionDeps = new Map<string, Set<string>>();
+  for (const id of order) {
+    unionDeps.set(id, new Set(graph.arcs(id).filter((arc) => known.has(arc.to) && !logic.isFalse(arc.held)).map((arc) => arc.to)));
+  }
+  const components = stronglyConnectedLoops(order, unionDeps);
+  if (components.length === 0) return [];
+  const first = options.firstLoop === false ? [] : firstLoops(logic, graph);
+  const out: HeldLoop<T>[] = [];
+  for (const component of components) {
+    const members = [...component];
+    const inside = (id: string) => graph.arcs(id).filter((arc) => component.has(arc.to));
+    const elements = [...members.map((id) => graph.present(id)), ...members.flatMap((id) => inside(id).map((arc) => arc.held))];
+    for (const reading of readings(elements)) {
+      const nodesAt = members.filter((id) => reading.holds(graph.present(id)));
+      const depsAt = new Map(
+        nodesAt.map((id) => [id, new Set(inside(id).filter((arc) => reading.holds(arc.held)).map((arc) => arc.to))] as const),
+      );
+      for (const loop of stronglyConnectedLoops(nodesAt, depsAt)) {
+        let rest = reading.held;
+        for (const found of first) {
+          if (!loop.has(found.keys[0]!)) continue;
+          const held = logic.and(reading.held, found.held);
+          if (!logic.isFalse(held)) out.push({ keys: found.keys, held });
+          rest = logic.and(rest, logic.not(found.held));
+        }
+        if (!logic.isFalse(rest)) out.push({ keys: findCycle(loop, depsAt, loop), held: rest });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * The first loop a depth-first search from each node in turn finds — the start
+ * node appended — with where it is that loop: the search of every
+ * configuration at once, each configuration following the arcs it holds, a
+ * node it has visited left alone, and its search ending at its first loop.
+ */
+export function firstLoops<T>(logic: LoopLogic<T>, graph: HeldDependencies<T>): HeldLoop<T>[] {
+  const known = new Set(graph.nodes);
+  const visited = new Map<string, T>();
+  const stack: string[] = [];
+  const out: HeldLoop<T>[] = [];
+  let found = logic.FALSE;
+  const search = (key: string, held: T): void => {
+    visited.set(key, logic.or(visited.get(key) ?? logic.FALSE, held));
+    stack.push(key);
+    const considered = new Map<string, T>();
+    for (const arc of graph.arcs(key)) {
+      if (!known.has(arc.to)) continue;
+      let at = logic.and(logic.and(held, arc.held), logic.not(found));
+      const before = considered.get(arc.to);
+      if (before !== undefined) at = logic.and(at, logic.not(before));
+      if (logic.isFalse(at)) continue;
+      considered.set(arc.to, before === undefined ? at : logic.or(before, at));
+      const start = stack.indexOf(arc.to);
+      if (start >= 0) {
+        out.push({ keys: [...stack.slice(start), arc.to], held: at });
+        found = logic.or(found, at);
+        continue;
+      }
+      const fresh = logic.and(at, logic.not(visited.get(arc.to) ?? logic.FALSE));
+      if (!logic.isFalse(fresh)) search(arc.to, fresh);
+    }
+    stack.pop();
+  };
+  for (const key of graph.nodes) {
+    const held = logic.and(logic.and(graph.present(key), logic.not(visited.get(key) ?? logic.FALSE)), logic.not(found));
+    if (!logic.isFalse(held)) search(key, held);
+  }
+  return out;
+}
+
+/** The boot order's nodes, in order, and what each depends on, in the order
+ *  each dependency was found: the graph {@link buildDependencyGraph} sorts. */
+export function dependencyStructure(
+  resources: ResourceManifest[],
+  registry: DefinitionRegistry,
+  aliases: AliasResolver | undefined,
+  aliasesByModule: Map<string, AliasResolver> | undefined,
+  graph: CallGraph,
+): { nodes: Map<string, ResourceNode>; deps: Map<string, Set<string>> } {
+  const nodes = new Map<string, ResourceNode>();
+  for (const node of graph.nodes.values()) {
+    if (node.type !== "resource") continue;
+    const resource = node as ResourceGraphNode;
+    // A scope-declared resource is created when its scope opens, never at boot.
+    if (resource.scoped) continue;
+    nodes.set(resource.id, {
+      kind: resource.kind,
+      name: resource.name,
+      manifest: resource.manifest,
+    });
+  }
+
+  const deps = projectToPairs(graph, {
+    keepUse: (use) => use.length === 0 || use.some((u) => u !== "schema"),
+  });
+  for (const edge of graph.edges) {
+    if (!edge.scoped || !edge.to) continue;
+    deps.get(edge.from)?.delete(edge.to);
+  }
+  for (const key of nodes.keys()) if (!deps.has(key)) deps.set(key, new Set());
+
+  const importNodes = addImportNodes(resources, nodes, deps, aliases, aliasesByModule);
+  addResourceInputEdges(importNodes, nodes, deps);
+  addImportReferenceEdges(graph, nodes, deps, importNodes, aliases, aliasesByModule);
+  addStartupStatusReadEdges(nodes, deps, registry, aliases, aliasesByModule, importNodes);
+
+  return { nodes, deps };
 }
 
 /**
@@ -163,6 +319,21 @@ export function buildDependencyGraph(
  * one scope, since anything else exists before the scope opens.
  */
 export function scopedCycles(graph: CallGraph): ReadonlyArray<ReadonlyArray<ResourceNode>> {
+  const { groups, deps } = scopedStructure(graph);
+  const out: ResourceNode[][] = [];
+  for (const nodes of groups.values()) {
+    const loops = dependencyLoops(BOOLEAN_LOGIC, heldDependencies(nodes, deps), ONE_READING, { firstLoop: false });
+    for (const loop of loops) out.push(loop.keys.map((key) => nodes.get(key)!));
+  }
+  return out;
+}
+
+/** Each scope's members, by scope, and what each holds of its siblings: the
+ *  graphs {@link scopedCycles} searches. */
+export function scopedStructure(graph: CallGraph): {
+  groups: Map<string, Map<string, ResourceNode>>;
+  deps: Map<string, Set<string>>;
+} {
   const groups = new Map<string, Map<string, ResourceNode>>();
   const groupOf = new Map<string, string>();
   for (const node of graph.nodes.values()) {
@@ -173,7 +344,6 @@ export function scopedCycles(graph: CallGraph): ReadonlyArray<ReadonlyArray<Reso
     group.set(node.id, { kind: node.kind, name: node.name, manifest: node.manifest });
     groupOf.set(node.id, key);
   }
-  if (groups.size === 0) return [];
   const deps = new Map<string, Set<string>>();
   for (const edge of graph.edges) {
     if (!edge.to || edge.nested || edge.moduleCall) continue;
@@ -184,13 +354,22 @@ export function scopedCycles(graph: CallGraph): ReadonlyArray<ReadonlyArray<Reso
     if (!set) deps.set(edge.from, (set = new Set()));
     set.add(edge.to);
   }
-  const out: ResourceNode[][] = [];
-  for (const nodes of groups.values()) {
-    for (const component of stronglyConnectedLoops(nodes, deps)) {
-      out.push(findCycle(component, deps, component).map((key) => nodes.get(key)!));
-    }
-  }
-  return out;
+  return { groups, deps };
+}
+
+/** A boot order's structure as lines a parity check compares: each node in
+ *  order with what it depends on in order, then each scope's members. */
+export function dependencyParityLines(
+  boot: { readonly nodes: readonly string[]; targets(id: string): readonly string[] },
+  scopes: readonly { readonly nodes: readonly string[]; targets(id: string): readonly string[] }[],
+  identity: (id: string) => string,
+): string[] {
+  const line = (graph: typeof boot, id: string) => `${identity(id)} -> ${graph.targets(id).map(identity).join(", ")}`;
+  const scoped = scopes
+    .filter((scope) => scope.nodes.length > 0)
+    .map((scope) => `scope: ${scope.nodes.map((id) => line(scope, id)).join(" | ")}`)
+    .sort();
+  return [...boot.nodes.map((id) => line(boot, id)), ...scoped];
 }
 
 /**
@@ -393,9 +572,9 @@ const declaringModuleOf = (manifest: ResourceManifest): string | undefined =>
 
 /** DFS cycle detection — returns the cycle path with the repeated start node
  *  appended, following only edges into `within` when given. */
-function findCycle(
+export function findCycle(
   keys: Iterable<string>,
-  deps: Map<string, Set<string>>,
+  deps: ReadonlyMap<string, ReadonlySet<string>>,
   within?: ReadonlySet<string>,
 ): string[] {
   type State = "unvisited" | "visiting" | "visited";
@@ -442,9 +621,10 @@ function findCycle(
  * exhaust the call stack.
  */
 function stronglyConnectedLoops(
-  nodes: Map<string, ResourceNode>,
-  deps: Map<string, Set<string>>,
+  keys: readonly string[],
+  deps: ReadonlyMap<string, ReadonlySet<string>>,
 ): Array<Set<string>> {
+  const nodes = new Set(keys);
   const index = new Map<string, number>();
   const low = new Map<string, number>();
   const onStack = new Set<string>();
@@ -452,10 +632,10 @@ function stronglyConnectedLoops(
   const found: Array<{ first: number; members: Set<string> }> = [];
   const position = new Map<string, number>();
   let i = 0;
-  for (const key of nodes.keys()) position.set(key, i++);
+  for (const key of keys) position.set(key, i++);
   let counter = 0;
 
-  for (const root of nodes.keys()) {
+  for (const root of keys) {
     if (index.has(root)) continue;
     const work: Array<{ key: string; next: Iterator<string> }> = [];
     const open = (key: string) => {

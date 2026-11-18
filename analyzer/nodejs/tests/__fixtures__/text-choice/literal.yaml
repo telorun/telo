@@ -1,0 +1,35 @@
+# A text malformed only where flag2 holds, a catalog entry nothing shows where
+# flag1 holds, and the texts a served language lacks, listed per configuration.
+# Outside the corpus: the text pass's messages record no quoted place.
+kind: Telo.Application
+metadata: { name: TextLiteralChoice }
+lang: en
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+  flag2: { env: FLAG_2, type: boolean, default: false }
+targets:
+  - !ref main
+translations:
+  catalogs:
+    - kind: Telo.TextTranslations
+      lang: fr
+      texts:
+        - { text: Goodbye, translation: Au revoir }
+---
+kind: Telo.Sequence
+metadata: { name: main }
+steps:
+  - name: first
+    throw:
+      code: ERR_FIRST
+      displayMessage: !if
+        if: !cel "variables.flag1"
+        then: Hello there
+        else: Goodbye
+  - name: second
+    throw:
+      code: ERR_SECOND
+      displayMessage: !if
+        if: !cel "variables.flag2"
+        then: "Broken {$"
+        else: Fine

@@ -1,0 +1,14 @@
+# A declaration a choice decides: its kind names nothing in the configurations
+# taking the branch that spells it so.
+kind: Telo.Application
+metadata: { name: UndefinedKindChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+--- !if
+metadata: { name: holder }
+if: !cel "variables.flag1"
+then:
+  kind: Telo.Sequence
+  steps:
+    - { name: done, value: 1 }
+else:
+  kind: Nope.Missing

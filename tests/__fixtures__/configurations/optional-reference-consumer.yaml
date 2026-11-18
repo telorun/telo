@@ -1,0 +1,7 @@
+# Two imports of the library above that omit its optional input: the one
+# taking the branch that reads it is refused, the other is not.
+kind: Telo.Application
+metadata: { name: OptionalReferenceConsumer, version: 1.0.0 }
+imports:
+  Reading: { source: ./optional-reference, variables: { useStore: true } }
+  Skipping: { source: ./optional-reference, variables: { useStore: false } }

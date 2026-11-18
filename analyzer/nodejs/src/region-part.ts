@@ -14,12 +14,13 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { relocatePath } from "./choice-expansion.js";
 import {
   isAlternatives,
-  takenAt,
+  witnessDecider,
   type AlternativeOption,
+  type ChoiceDecider,
   type ConditionedDeclaration,
   type ConditionedExpansion,
   type PlaceMapping,
-  type Witness,
+  type World,
 } from "./conditioned-expansion.js";
 import { FALSE, TRUE, type Condition } from "./presence-condition.js";
 import { isAtOrAbove } from "./relation-sites.js";
@@ -63,6 +64,19 @@ export interface UnionPlace {
  */
 export const CARVED_PLACE = "$site";
 
+/** A carved place's stand-in where a union above it is decided in parts: the
+ *  carve it is, by its union path — a value no author writes. */
+const CARVE_STAND_IN = "\u0000carved-site:";
+
+export function carveStandIn(unionKeys: readonly (string | number)[]): string {
+  return `${CARVE_STAND_IN}${JSON.stringify(unionKeys)}`;
+}
+
+/** The union path text of the carve `value` stands in for, or `undefined`. */
+export function carveOfStandIn(value: unknown): string | undefined {
+  return typeof value === "string" && value.startsWith(CARVE_STAND_IN) ? value.slice(CARVE_STAND_IN.length) : undefined;
+}
+
 /** A member as an enclosing object shows it: a scalar itself, an object or an
  *  expression an empty object, a list an empty list — its kind and, for a
  *  scalar, its value, which is all a union branch is selected by. */
@@ -73,11 +87,14 @@ export function shallowMember(value: unknown): unknown {
 }
 
 /** The option of a choice the witness takes there. */
-export function optionAt(union: ConditionedExpansion, value: unknown, witness: Witness): AlternativeOption | undefined {
+export function optionAt(union: ConditionedExpansion, value: unknown, witness: World): AlternativeOption | undefined {
+  return optionBy(value, witnessDecider(union.space, witness));
+}
+
+/** The option of a choice `decide` takes. */
+function optionBy(value: unknown, decide: ChoiceDecider): AlternativeOption | undefined {
   if (!isAlternatives(value)) return undefined;
-  return value.options.find((option) =>
-    takenAt(union.space, option.condition, option.path, witness.assignment, witness.forcing),
-  );
+  return value.options.find((option) => decide.taken(option));
 }
 
 /** The projected `kind` and `metadata` of an object of the union holding a
@@ -85,26 +102,29 @@ export function optionAt(union: ConditionedExpansion, value: unknown, witness: W
 function identityOf(
   union: ConditionedExpansion,
   value: unknown,
-  witness: Witness,
+  decide: ChoiceDecider,
 ): { kind: unknown; metadata: unknown } | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const record = value as Record<string, unknown>;
   if (record.kind === undefined) return undefined;
-  const project = (field: unknown) => union.project(field, witness.assignment, witness.forcing).value;
+  const project = (field: unknown) => union.projectBy(field, decide).value;
   return { kind: project(record.kind), metadata: record.metadata === undefined ? undefined : project(record.metadata) };
 }
 
 /**
- * Walk to a region root, by union keys (`byUnion`) or by projected keys. The
- * last key's node is left as the union holds it beneath the choices settled
- * on the way.
+ * Walk to a region root, by union keys (`byUnion`) or by projected keys, each
+ * choice on the way decided by `decide`. The last key's node is left as the
+ * union holds it beneath the choices settled on the way. Without `full`, what
+ * the way passes beside — the identities and the enclosing members — is not
+ * read.
  */
 function walkTo(
   union: ConditionedExpansion,
   declaration: ConditionedDeclaration,
   keys: Keys,
-  witness: Witness,
+  decide: ChoiceDecider,
   byUnion: boolean,
+  full = true,
 ): UnionPlace {
   const { space } = union;
   let node: unknown = declaration.manifest;
@@ -130,8 +150,8 @@ function walkTo(
     identities,
     enclosing,
   });
-  /** The members of the object at `node` beside `key`, each settled at the
-   *  witness and shallow. */
+  /** The members of the object at `node` beside `key`, each settled as the
+   *  way is decided and shallow. */
   const besideTheWay = (key: string | number): Record<string, unknown> => {
     const members: Record<string, unknown> = {};
     for (const [member, field] of Object.entries(node as Record<string, unknown>)) {
@@ -139,7 +159,7 @@ function walkTo(
       let value = field;
       let present = true;
       while (isAlternatives(value)) {
-        const option = optionAt(union, value, witness);
+        const option = optionBy(value, decide);
         if (!option?.present) {
           present = false;
           break;
@@ -153,7 +173,7 @@ function walkTo(
   /** Settle the choices at `node`; false where the place is not there. */
   const settle = (): boolean => {
     while (isAlternatives(node)) {
-      const option = optionAt(union, node, witness);
+      const option = optionBy(node, decide);
       if (!option) return false;
       options.push(option);
       path = space.and(path, option.condition);
@@ -166,9 +186,11 @@ function walkTo(
   };
   for (const key of keys) {
     if (!settle()) return absent();
-    const identity = identityOf(union, node, witness);
-    if (identity) identities.set(at.length, identity);
-    if (node !== null && typeof node === "object" && !Array.isArray(node)) enclosing.set(at.length, besideTheWay(key));
+    if (full) {
+      const identity = identityOf(union, node, decide);
+      if (identity) identities.set(at.length, identity);
+      if (node !== null && typeof node === "object" && !Array.isArray(node)) enclosing.set(at.length, besideTheWay(key));
+    }
     if (Array.isArray(node) && typeof key === "number") {
       let index: number | undefined;
       let projected = 0;
@@ -178,7 +200,7 @@ function walkTo(
           let item: unknown = node[i];
           let present = true;
           while (isAlternatives(item)) {
-            const option = optionAt(union, item, witness);
+            const option = optionBy(item, decide);
             position = space.and(position, option?.condition ?? FALSE);
             present = !!option?.present;
             if (!present) break;
@@ -192,7 +214,7 @@ function walkTo(
           let present = true;
           let held = TRUE;
           while (isAlternatives(item)) {
-            const option = optionAt(union, item, witness);
+            const option = optionBy(item, decide);
             held = space.and(held, option?.condition ?? FALSE);
             present = !!option?.present;
             if (!present) break;
@@ -223,8 +245,10 @@ function walkTo(
     node = next;
   }
   if (!settle()) return absent();
-  const identity = identityOf(union, node, witness);
-  if (identity) identities.set(at.length, identity);
+  if (full) {
+    const identity = identityOf(union, node, decide);
+    if (identity) identities.set(at.length, identity);
+  }
   return { present: true, node, unionKeys, at, written, options, path, position, identities, enclosing };
 }
 
@@ -259,7 +283,7 @@ export function scopeMemberPlaces(
   union: ConditionedExpansion,
   declaration: ConditionedDeclaration,
   roots: readonly Pick<UnionPlace, "at" | "identities">[],
-  witness: Witness,
+  witness: World,
   scopeFields: (holder: { readonly kind: unknown; readonly metadata: unknown }) => readonly string[],
 ): UnionPlace[] {
   const out: UnionPlace[] = [];
@@ -289,7 +313,7 @@ export function scopeMemberPlaces(
 export function memberIdentity(
   union: ConditionedExpansion,
   member: UnionPlace,
-  witness: Witness,
+  witness: World,
 ): { readonly value: Record<string, unknown>; readonly mappings: PlaceMapping[] } {
   const value: Record<string, unknown> = {};
   const mappings: PlaceMapping[] = [];
@@ -310,9 +334,21 @@ export function placeByUnionKeys(
   union: ConditionedExpansion,
   declaration: ConditionedDeclaration,
   unionKeys: Keys,
-  witness: Witness,
+  witness: World,
 ): UnionPlace {
-  return walkTo(union, declaration, unionKeys, witness, true);
+  return walkTo(union, declaration, unionKeys, witnessDecider(union.space, witness), true);
+}
+
+/** Where the place at `unionKeys` of `declaration` is projected and written,
+ *  each choice on the way and each list item before it decided by `decide` —
+ *  nothing beside the way read. */
+export function placeByUnionKeysBy(
+  union: ConditionedExpansion,
+  declaration: ConditionedDeclaration,
+  unionKeys: Keys,
+  decide: ChoiceDecider,
+): UnionPlace {
+  return walkTo(union, declaration, unionKeys, decide, true, false);
 }
 
 /** The region whose root is projected at `keys` of `declaration`, at `witness`. */
@@ -320,9 +356,9 @@ export function placeByProjectedKeys(
   union: ConditionedExpansion,
   declaration: ConditionedDeclaration,
   keys: Keys,
-  witness: Witness,
+  witness: World,
 ): UnionPlace {
-  return walkTo(union, declaration, keys, witness, false);
+  return walkTo(union, declaration, keys, witnessDecider(union.space, witness), false);
 }
 
 /** The regions no other region holds: one beneath another, or written twice,
@@ -403,15 +439,25 @@ export function regionMappings(
   if (whole) return [...declarationRoot, ...whole.inner];
   const out: PlaceMapping[] = [...declarationRoot];
   for (const { place, inner } of heldRegions(regions)) {
-    // A region inside a value written in another declaration is written at
-    // that value itself, whatever it holds.
-    if (place.options?.some((option) => option.exact)) {
-      out.push({ from: place.at, to: place.written, exact: true });
+    const root = regionRootMapping(place);
+    if (root.exact) {
+      out.push(root);
       continue;
     }
-    out.push({ from: place.at, to: place.written }, ...inner.map((m) => ({ ...m, from: [...place.at, ...m.from] })));
+    out.push(root, ...inner.map((m) => ({ ...m, from: [...place.at, ...m.from] })));
   }
   return out;
+}
+
+/** How a place of a projection is written: where its union walk wrote it. A
+ *  place inside a value written in another declaration is written at that
+ *  value itself, whatever it holds. The one rule a region's root and a body
+ *  view's place share, since a view's options stand where the lifted body
+ *  wrote them (entry and branch keys included) and the projection moves none. */
+export function regionRootMapping(place: Pick<UnionPlace, "at" | "written"> & { readonly options?: readonly AlternativeOption[] }): PlaceMapping {
+  return place.options?.some((option) => option.exact)
+    ? { from: place.at, to: place.written, exact: true }
+    : { from: place.at, to: place.written };
 }
 
 /** The value at `keys` beneath `root`. */

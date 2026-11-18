@@ -20,6 +20,12 @@
  * dependency's own `telo check` answers it, and every diagnostic built on this
  * index is scoped to the entry's own modules anyway.
  *
+ * A signature's named shapes are inlined through the lookup the index is given
+ * — over every configuration at once, the one a key's environment answers by
+ * class. An index shared beneath many keys withholds the shapes that differ
+ * between configurations: a callable whose signature reaches one is resolved by
+ * the index above it, never from the registry.
+ *
  * Browser-safe: no Node built-ins.
  */
 import type { DeclarationRequests } from "./declaration-requests.js";
@@ -55,6 +61,7 @@ import {
 } from "./module-call-names.js";
 import { isModuleKind } from "./module-kinds.js";
 import { inlineNamedShapes, jsonSchemaToCelType } from "./schema-compat.js";
+import type { NamedShapeLookup } from "./eval-paths.js";
 
 /** One parameter as a caller is checked against it. */
 export interface FunctionParameter {
@@ -94,6 +101,30 @@ export type FunctionResolution =
 
 const UNKNOWN: FunctionResolution = { status: "unknown" };
 
+/** How an index reads the named shapes a signature names. */
+export interface SignatureShapes {
+  /** The schema a named shape's id stands for; the registry's by default. */
+  readonly lookup?: NamedShapeLookup;
+  /** The shapes this index leaves to the index above it. */
+  readonly withheld?: (id: string) => boolean;
+}
+
+/** A callable whose signature reaches a withheld shape, left to the index
+ *  above. */
+interface WithheldFunction {
+  readonly status: "withheld";
+  readonly manifest: ResourceManifest;
+}
+
+type Resolution = FunctionResolution | WithheldFunction;
+
+/** A function a receiver offers, resolved unless its signature is withheld. */
+interface OfferedFunction {
+  readonly name: string;
+  readonly manifest: ResourceManifest;
+  readonly function?: ResolvedFunction;
+}
+
 export class ModuleFunctionIndex {
   /** Every declaration by owning module (the entry's own under the root key) and
    *  name. */
@@ -102,10 +133,10 @@ export class ModuleFunctionIndex {
    *  per instance of a module imported several times. */
   private readonly exported = new Map<string, Map<string, ResourceManifest[]>>();
   private readonly imports = new Map<string, Map<string, ResourceManifest>>();
-  private readonly memo = new Map<string, FunctionResolution>();
+  private readonly memo = new Map<string, Resolution>();
   /** The functions each receiver offers from one module instance, over this
    *  layer alone — what a layer above reads without walking it again. */
-  private readonly through = new Map<string, Array<{ name: string; function: ResolvedFunction }>>();
+  private readonly through = new Map<string, OfferedFunction[]>();
   private readonly resolveDef: DefResolver;
 
   constructor(
@@ -120,6 +151,7 @@ export class ModuleFunctionIndex {
       readonly index: ModuleFunctionIndex;
       readonly order: (a: ResourceManifest, b: ResourceManifest) => number;
     },
+    private readonly shapes: SignatureShapes = {},
   ) {
     this.resolveDef = (kind, from) => {
       const scope = moduleAliasScope(from?.metadata, aliases, aliasesByModule);
@@ -236,6 +268,16 @@ export class ModuleFunctionIndex {
 
   /** What `qualified`, written in `caller`'s module, names. */
   resolve(caller: ResourceManifest, qualified: string): FunctionResolution {
+    const resolution = this.resolveHere(caller, qualified);
+    if (resolution.status === "withheld") {
+      throw new Error(
+        `internal: '${qualified}' names a callable whose signature reaches a named shape this index withholds; only an index answering it resolves the call.`,
+      );
+    }
+    return resolution;
+  }
+
+  private resolveHere(caller: ResourceManifest, qualified: string): Resolution {
     const module = this.moduleKeyOf(caller);
     // The instance a call is written in decides which instance of a module it
     // imports several times it reaches.
@@ -258,6 +300,20 @@ export class ModuleFunctionIndex {
     caller: ResourceManifest,
     receiver: string,
   ): Array<{ name: string; function: ResolvedFunction }> {
+    const out: Array<{ name: string; function: ResolvedFunction }> = [];
+    for (const offered of this.offeredThrough(caller, receiver)) {
+      if (offered.function) {
+        out.push({ name: offered.name, function: offered.function });
+        continue;
+      }
+      // Withheld beneath: resolved here, where the shape is answered.
+      const resolution = this.resolve(caller, `${receiver}.${offered.name}`);
+      if (resolution.status === "resolved") out.push({ name: offered.name, function: resolution });
+    }
+    return out;
+  }
+
+  private offeredThrough(caller: ResourceManifest, receiver: string): OfferedFunction[] {
     const module = this.moduleKeyOf(caller);
     const key = `${module}\0${(importPathOf(caller) ?? []).join("/")}\0${receiver}`;
     const known = this.through.get(key);
@@ -273,21 +329,19 @@ export class ModuleFunctionIndex {
       source = scope.moduleForAlias(receiver);
       names = source ? (this.exported.get(source)?.keys() ?? []) : [];
     }
-    const out: Array<{ name: string; function: ResolvedFunction }> = [];
+    const out: OfferedFunction[] = [];
     for (const name of names) {
-      const resolution = this.resolve(caller, `${receiver}.${name}`);
-      if (resolution.status === "resolved") out.push({ name, function: resolution });
+      const resolution = this.resolveHere(caller, `${receiver}.${name}`);
+      if (resolution.status === "withheld") out.push({ name, manifest: resolution.manifest });
+      else if (resolution.status === "resolved") out.push({ name, manifest: resolution.manifest, function: resolution });
     }
     // What the layer below offers, less a name this layer declares too, which
     // resolves over both above.
     const below =
       this.base && source !== undefined
-        ? this.base.index.callablesThrough(caller, receiver).filter((entry) => !this.holdsName(source!, entry.name))
+        ? this.base.index.offeredThrough(caller, receiver).filter((entry) => !this.holdsName(source!, entry.name))
         : [];
-    const all =
-      below.length === 0
-        ? out
-        : [...out, ...below].sort((a, b) => this.base!.order(a.function.manifest, b.function.manifest));
+    const all = below.length === 0 ? out : [...out, ...below].sort((a, b) => this.base!.order(a.manifest, b.manifest));
     this.through.set(key, all);
     return all;
   }
@@ -296,7 +350,7 @@ export class ModuleFunctionIndex {
     caller: ResourceManifest,
     module: string,
     qualified: string,
-  ): FunctionResolution {
+  ): Resolution {
     const dot = qualified.indexOf(".");
     const receiver = qualified.slice(0, dot);
     const name = qualified.slice(dot + 1);
@@ -347,7 +401,7 @@ export class ModuleFunctionIndex {
         };
   }
 
-  private classify(target: ResourceManifest): FunctionResolution {
+  private classify(target: ResourceManifest): Resolution {
     const definition = this.resolveDef(target.kind as string, target as unknown as ResourceDefinition);
     if (!definition) return UNKNOWN;
     if (!isCallableKind(definition, this.resolveDef)) {
@@ -359,8 +413,16 @@ export class ModuleFunctionIndex {
       };
     }
     const signature = resolveSignature(target, definition, this.resolveDef);
-    const inline = (schema: Record<string, any>) =>
-      inlineNamedShapes(schema, (id) => this.defs.schemaForId(id));
+    const { lookup = this.defs.shapeLookup, withheld } = this.shapes;
+    let withholds = false;
+    const read = (id: string) => {
+      if (withheld?.(id)) {
+        withholds = true;
+        return undefined;
+      }
+      return lookup(id);
+    };
+    const inline = (schema: Record<string, any>) => inlineNamedShapes(schema, read);
     const params = (signature.params ?? []).map(
       (param: SignatureParam, index): FunctionParameter => {
         const schema = parameterSchemaOf({ ...param, optional: false }, inline);
@@ -376,6 +438,7 @@ export class ModuleFunctionIndex {
       returnsSchema && typeof returnsSchema === "object" && !Array.isArray(returnsSchema)
         ? signatureSchemaOf({ ...signature.returns, schema: inline(returnsSchema as Record<string, any>) })
         : undefined;
+    if (withholds) return { status: "withheld", manifest: target };
     return {
       status: "resolved",
       manifest: target,

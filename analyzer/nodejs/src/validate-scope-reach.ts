@@ -4,20 +4,19 @@ import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { definitionInScope } from "./module-alias-scope.js";
+import { isRefSentinel } from "@telorun/templating";
 import {
   declaredScopes,
   keysUnder,
   outOfReachSentence,
   type DeclaredScope,
+  type OutsideScope,
 } from "./scope-declarations.js";
 import { outOfReachNames, walkOwnCelExpressions } from "./scope-members.js";
-import {
-  addressOf,
-  MANIFEST_READING,
-  scopeSiteAtPath,
-  ScopedNameResolver,
-} from "./scoped-name-resolver.js";
+import type { ScopeSite } from "./scope-address.js";
+import { addressOf, scopeSiteAtPath } from "./scoped-name-resolver.js";
 import { forEachStep, stepBodiesOf } from "./step-bodies.js";
+import { parseKeys } from "./template-expansion.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { isResolvedReference } from "./resolved-reference.js";
 
@@ -55,82 +54,97 @@ const isDeclarationDocument = (m: { kind?: unknown }): boolean =>
  *
  * Browser-safe.
  */
-export function validateScopedNameReach(
-  manifests: ResourceManifest[],
+
+/** Whether the places of `declaration` are judged: an instance of the entry's
+ *  own modules. */
+export function scopedNameReachJudged(declaration: ResourceManifest, rootModules: ReadonlySet<string>): boolean {
+  if (!declaration.kind || isDeclarationDocument(declaration) || isForwardedDeclaration(declaration)) return false;
+  const meta = declaration.metadata as { name?: unknown; module?: unknown } | undefined;
+  if (typeof meta?.name !== "string") return false;
+  const module = typeof meta.module === "string" ? meta.module : undefined;
+  return !module || rootModules.has(module);
+}
+
+/** One place of a declaration naming a resource out of its reach, as written:
+ *  its keys and the local name there. */
+export interface ScopedNameReachSite {
+  readonly keys: readonly (string | number)[];
+  readonly name: string;
+}
+
+/** Every place of `declaration` naming one of the names out of its reach
+ *  (`reach`), in each spelling a reference takes. */
+export function scopedNameReachSites(
+  declaration: ResourceManifest,
+  reach: ReadonlyMap<string, OutsideScope>,
   registry: DefinitionRegistry,
   aliases: AliasResolver,
   aliasesByModule: Map<string, AliasResolver>,
-  rootModules: ReadonlySet<string>,
-): AnalysisDiagnostic[] {
-  const out: AnalysisDiagnostic[] = [];
-  // Every declaration, scope members filed under their scopes: a scope created
-  // around a reference shadows an out-of-reach name again.
-  const names = new ScopedNameResolver(manifests, MANIFEST_READING);
-
-  for (const declaration of manifests) {
-    if (!declaration.kind || isDeclarationDocument(declaration)) continue;
-    if (isForwardedDeclaration(declaration)) continue;
-    const meta = declaration.metadata as { name?: unknown; module?: unknown; source?: unknown } | undefined;
-    if (typeof meta?.name !== "string") continue;
-    const module = typeof meta.module === "string" ? meta.module : undefined;
-    if (module && !rootModules.has(module)) continue;
-
-    const reach = outOfReachNames(declaration);
-    if (reach.size === 0) continue;
-
-    const address = addressOf(declaration);
-    if (!address) continue;
-    const resource = { kind: declaration.kind, name: meta.name };
-    const filePath = typeof meta.source === "string" ? meta.source : undefined;
-    const sites = registry.referenceSites(declaration, aliases, aliasesByModule);
-    const scopes = declaredScopes(sites);
-    const definition = definitionInScope<ResourceDefinition>(
-      registry,
-      declaration.kind,
-      declaration.metadata,
-      aliases,
-      aliasesByModule,
-    );
-    const schema = registry.effectiveSchemaOf(definition) as Record<string, any> | undefined;
-
-    const test = (name: string | undefined, path: string) => {
-      if (name === undefined) return;
-      if (names.locate(name, module, scopeSiteAtPath(address, scopes, path))?.address.scope) return;
-      const scope = reach.get(name);
-      if (!scope) return;
-      out.push({
-        severity: DiagnosticSeverity.Error,
-        code: "SCOPED_NAME_OUT_OF_REACH",
-        source: SOURCE,
-        message: `${scope.ownerKind}/${scope.ownerName}: ${outOfReachSentence(name, scope)}`,
-        data: { resource, filePath, path },
-      });
-    };
-    const siteInScopeArray = (keys: readonly (string | number)[]) =>
-      scopes.some((scope: DeclaredScope) => keysUnder(keys, scope.keys));
-
-    // Tagged `!ref`s, anywhere but the declaration's own metadata; a scope
-    // member's are its own.
-    walkOwnCelExpressions(declaration, "", (source, path, engine) => {
-      if (path === "metadata" || path.startsWith("metadata.")) return;
-      if (engine === "ref") test(localName(source), path);
-    });
-
-    // A resolved reference, where the kind declares one.
-    for (const site of sites) {
-      if (site.refs.length === 0 || siteInScopeArray(site.keys)) continue;
-      test(resolvedLocalName(site.data), site.path);
-    }
-    if (schema) {
-      for (const body of stepBodiesOf(declaration as Record<string, unknown>, schema)) {
-        forEachStep(body, schema, (step, stepPath) =>
-          test(resolvedLocalName(step[body.invokeField]), `${stepPath}.${body.invokeField}`),
-        );
-      }
+): ScopedNameReachSite[] {
+  const out: ScopedNameReachSite[] = [];
+  const add = (name: string | undefined, path: string) => {
+    if (name !== undefined && reach.has(name)) out.push({ keys: parseKeys(path), name });
+  };
+  const sites = registry.referenceSites(declaration, aliases, aliasesByModule);
+  const scopes = declaredScopes(sites);
+  const definition = definitionInScope<ResourceDefinition>(registry, declaration.kind, declaration.metadata, aliases, aliasesByModule);
+  const schema = registry.effectiveSchemaOf(definition) as Record<string, any> | undefined;
+  const siteInScopeArray = (keys: readonly (string | number)[]) => scopes.some((scope: DeclaredScope) => keysUnder(keys, scope.keys));
+  // Tagged `!ref`s, anywhere but the declaration's own metadata; a scope
+  // member's are its own.
+  walkOwnCelExpressions(declaration, "", (source, path, engine) => {
+    if (path === "metadata" || path.startsWith("metadata.")) return;
+    if (engine === "ref") add(localName(source), path);
+  });
+  // A resolved reference, where the kind declares one.
+  for (const site of sites) {
+    if (site.refs.length === 0 || siteInScopeArray(site.keys)) continue;
+    add(resolvedLocalName(site.data), site.path);
+  }
+  if (schema) {
+    for (const body of stepBodiesOf(declaration as Record<string, unknown>, schema)) {
+      forEachStep(body, schema, (step, stepPath) => add(resolvedLocalName(step[body.invokeField]), `${stepPath}.${body.invokeField}`));
     }
   }
-
   return out;
+}
+
+/** The local name the reference `value` names, in either spelling. */
+export function scopedNameReachName(value: unknown): string | undefined {
+  return isRefSentinel(value) ? localName(value.source) : resolvedLocalName(value);
+}
+
+/**
+ * The finding at `path` of `declaration`, naming `name`, which is out of its
+ * reach — none where a scope created around the place declares the name again
+ * (`shadowed`).
+ */
+export function scopedNameReachFinding(
+  declaration: ResourceManifest,
+  name: string,
+  path: string,
+  shadowed: (name: string, within: ScopeSite | undefined) => boolean,
+  registry: DefinitionRegistry,
+  aliases: AliasResolver,
+  aliasesByModule: Map<string, AliasResolver>,
+): AnalysisDiagnostic | undefined {
+  const scope = outOfReachNames(declaration).get(name);
+  const address = addressOf(declaration);
+  if (!scope || !address) return undefined;
+  const scopes = declaredScopes(registry.referenceSites(declaration, aliases, aliasesByModule));
+  if (shadowed(name, scopeSiteAtPath(address, scopes, path))) return undefined;
+  const meta = declaration.metadata as { name?: unknown; source?: unknown };
+  return {
+    severity: DiagnosticSeverity.Error,
+    code: "SCOPED_NAME_OUT_OF_REACH",
+    source: SOURCE,
+    message: `${scope.ownerKind}/${scope.ownerName}: ${outOfReachSentence(name, scope)}`,
+    data: {
+      resource: { kind: declaration.kind, name: meta.name as string },
+      filePath: typeof meta.source === "string" ? meta.source : undefined,
+      path,
+    },
+  };
 }
 
 /** The local name a `!ref` source names, or undefined for a cross-module one. */

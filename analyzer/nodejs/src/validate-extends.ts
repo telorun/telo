@@ -1,4 +1,5 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
+import { isEntryOwned } from "./entry-ownership.js";
 import type { AliasResolver } from "./alias-resolver.js";
 import { isCapabilityRole } from "./capability-roster.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
@@ -50,6 +51,7 @@ export function validateExtends(
   manifests: ResourceManifest[],
   registry: DefinitionRegistry,
   aliases: AliasResolver,
+  rootModules: ReadonlySet<string>,
 ): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
 
@@ -62,20 +64,12 @@ export function validateExtends(
   // root. Re-validating here against the consumer's alias scope (which doesn't know
   // the library's internal aliases) would produce false-positive EXTENDS_MALFORMED /
   // EXTENDS_UNKNOWN_TARGET. Skip forwarded defs entirely.
-  const importedModules = new Set<string>();
-  for (const m of manifests) {
-    if (m.kind !== "Telo.Import") continue;
-    const resolved = (m.metadata as { resolvedModuleName?: string } | undefined)?.resolvedModuleName;
-    if (resolved) importedModules.add(resolved);
-  }
-
   for (const m of manifests) {
     if (m.kind !== "Telo.Definition" && m.kind !== "Telo.Abstract") continue;
     const isDefinition = m.kind === "Telo.Definition";
     const name = m.metadata?.name as string | undefined;
     if (!name) continue;
-    const ownModule = (m.metadata as { module?: string } | undefined)?.module;
-    if (ownModule && importedModules.has(ownModule)) continue;
+    if (!isEntryOwned(m, rootModules)) continue;
     const filePath = (m.metadata as { source?: string } | undefined)?.source;
     const resource = { kind: m.kind, name };
     const label = `${m.kind}/${name}`;

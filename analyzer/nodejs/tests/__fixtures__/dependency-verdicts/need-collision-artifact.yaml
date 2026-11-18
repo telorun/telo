@@ -1,0 +1,3 @@
+kind: Telo.Application
+metadata: { name: NeedCollisionArtifact }
+imports: { Lib: oci://registry.test/need-collision@1.0.0 }

@@ -8,24 +8,8 @@
  * join, and observed state's own inline variant), so a developer who fixed what
  * the analyzer told them met a different sentence describing the same thing.
  *
- * UNION REDUCTION is the second half. A union must attempt every branch, and
- * AJV cannot know which one was intended — `discriminator: true` works only
- * against an explicit OpenAPI-style discriminator property, which would mean
- * changing what every module's authors write. So branch selection is a
- * reporting concern and lives here.
- *
- * It narrows the error SET, never just the sentence: every consumer maps the
- * surviving errors to manifest paths to anchor a diagnostic, so reducing at the
- * prose layer alone would move the soup out of the message and into the
- * problems list, one entry per branch on a different line.
- *
- * Selection is made from the ERRORS ALONE, never from the schema. A branch
- * whose discriminating key is present emits no complaint at the union's own
- * instancePath; one whose key is absent says `required`, and one that forbids a
- * key the value carries says `additionalProperties`. That is the whole signal,
- * and reading it off the errors is what lets reduction work across a `$ref`
- * into another registered schema, where navigating to the branch subschema
- * would mean re-implementing AJV's resolution.
+ * It renders findings the judge (`schema-findings-judge.ts`) already decided —
+ * each union replaced by what it reports — and decides nothing itself.
  */
 
 import { readValueTypeSlot, VALUE_TYPES, valueTypeBoundRefusal, X_TELO_TYPE } from "@telorun/sdk";
@@ -74,24 +58,6 @@ export interface SchemaIssue {
    *  written, for a message that quotes no pointer. */
   places?: readonly string[];
 }
-
-const UNION_KEYWORDS = new Set(["anyOf", "oneOf"]);
-
-/** Keywords a branch raises at the union's OWN instancePath when the value is
- *  not of that branch's shape at all — as opposed to being that shape and wrong
- *  further in. These are what make a branch implausible. */
-const SHAPE_KEYWORDS = new Set(["required", "type", "additionalProperties", "enum", "const"]);
-
-/** Keywords that exist to DISCRIMINATE, so a mismatch is positive evidence that
- *  the value is not this branch — at any depth, not only at the union node.
- *
- *  Depth is otherwise the tiebreak, and it inverts exactly here: a branch that
- *  agreed on the discriminator and failed one constraint reported at the union
- *  node loses to every branch that disagreed about the discriminator one level
- *  in. That is how a `capability: Telo.Service` document declaring a forbidden
- *  key was reported as `/capability must be equal to constant` — naming neither
- *  the key at fault nor a branch the value could ever have been. */
-const DISCRIMINATOR_KEYWORDS = new Set(["const", "enum"]);
 
 /** RFC 6901 escapes: `~1` is a literal `/` in the key, `~0` a literal `~`.
  *  Decoded wherever a segment is shown or matched, because encoded it is not the
@@ -155,7 +121,7 @@ function errorProse(err: AjvErrorLike): string {
 /** The most allowed values an enum refusal lists; past it the message says how
  *  many there are and names the nearest instead, since a closed vocabulary of
  *  thousands (an icon set) listed whole buries the one line a reader needs. */
-const LISTED_ENUM_VALUES = 20;
+export const LISTED_ENUM_VALUES = 20;
 
 /** The most nearest values one refusal names. */
 const SUGGESTED_ENUM_VALUES = 5;
@@ -182,418 +148,6 @@ function describeActual(err: AjvErrorLike): string {
   if (d === null) return " (got null)";
   if (Array.isArray(d)) return " (got array)";
   return ` (got ${typeof d})`;
-}
-
-/* -------------------------------------------------------------- reduction */
-
-/** The branch index a `schemaPath` sits under, for a union whose own schemaPath
- *  is `unionPath` (`…/anyOf`): a child is `…/anyOf/<i>/…` and nothing else can
- *  collide with it. */
-function branchIndexUnder(unionPath: string, schemaPath: string | undefined): number | undefined {
-  if (!schemaPath || !schemaPath.startsWith(unionPath + "/")) return undefined;
-  const rest = schemaPath.slice(unionPath.length + 1);
-  const slash = rest.indexOf("/");
-  const head = slash === -1 ? rest : rest.slice(0, slash);
-  const index = Number(head);
-  return Number.isInteger(index) ? index : undefined;
-}
-
-function instanceDepth(path: string | undefined): number {
-  if (!path) return 0;
-  return path.split("/").filter((s) => s !== "").length;
-}
-
-/**
- * How the alternatives at a union node are described, one phrase each.
- *
- * Read off the complaints made at the union's own node, and deliberately ONE
- * PHRASE PER MISSING KEY rather than one per error group. AJV inlines most
- * `$ref` branches and reports them all under the same bare `schemaPath`, so
- * several branches are genuinely indistinguishable in the error set — joining
- * their keys into a single phrase would read as one alternative demanding all
- * of them, which is a claim about the schema that is simply false. Listing them
- * separately under-specifies a branch that requires two keys at once, and each
- * clause is still a true necessary condition; asserting a conjunction that does
- * not exist is not.
- */
-function describeAlternatives(errors: AjvErrorLike[], unionInstancePath: string): string[] {
-  const own = errors.filter((e) => (e.instancePath || "") === unionInstancePath);
-  const phrases: string[] = [];
-  for (const e of own) {
-    if (e.keyword === "required") phrases.push(`one with '${e.params?.missingProperty}'`);
-    else if (e.keyword === "type") phrases.push(`a ${e.params?.type}`);
-    else if (e.keyword === "enum") {
-      const allowed = (e.params?.allowedValues as unknown[] | undefined) ?? [];
-      phrases.push(
-        allowed.length <= LISTED_ENUM_VALUES
-          ? `one of ${allowed.join(" | ")}`
-          : `one of ${allowed.length} allowed values`,
-      );
-    }
-  }
-  return phrases.length > 0 ? phrases : ["another shape"];
-}
-
-/** Is this branch a plausible reading of the value — does it accept the value's
- *  shape at the union node itself, and agree with every discriminator it pins? */
-function isPlausible(errors: AjvErrorLike[], unionInstancePath: string): boolean {
-  return !errors.some((e) => {
-    const keyword = e.keyword ?? "";
-    if (DISCRIMINATOR_KEYWORDS.has(keyword)) return true;
-    return (e.instancePath || "") === unionInstancePath && SHAPE_KEYWORDS.has(keyword);
-  });
-}
-
-/**
- * A union OCCURRENCE — one union node reached at one place in the value.
- *
- * `schemaPath` alone does not identify one. A self-recursive shape (`$ref` back
- * to the carrier root, which is how a container node holds children) reaches the
- * SAME union schema at every depth, so every level's errors carry the identical
- * `#/anyOf/<i>/…`. What separates them is `instancePath`, and an occurrence is
- * therefore the pair.
- */
-interface Occurrence {
-  error: AjvErrorLike;
-  schemaPath: string;
-  instancePath: string;
-  /** Errors this occurrence's own branches raised. */
-  owned: AjvErrorLike[];
-  /** Occurrences reached THROUGH one of this one's branches. */
-  children: Occurrence[];
-}
-
-function isUnder(child: string, parent: string): boolean {
-  return parent === "" ? child !== "" : child.startsWith(parent + "/");
-}
-
-/** The value path one level up, or undefined at the root. `""` is the root, so
- *  a non-empty path with no separator has the root as its parent. */
-function parentPath(path: string): string | undefined {
-  if (path === "") return undefined;
-  const cut = path.lastIndexOf("/");
-  return cut <= 0 ? "" : path.slice(0, cut);
-}
-
-/** The schema node a keyword error was raised by: its schemaPath minus the
- *  keyword segment. */
-function schemaNodeOf(error: AjvErrorLike): string | undefined {
-  const path = error.schemaPath;
-  if (typeof path !== "string") return undefined;
-  const cut = path.lastIndexOf("/");
-  return cut < 0 ? undefined : path.slice(0, cut);
-}
-
-/**
- * Where one schema node refused a value's JSON TYPE, every other keyword that
- * node raised against the same value is a consequence of it — an `enum` or a
- * `minLength` judged on a value of the wrong kind — and reported beside it says
- * one mistake twice.
- */
-function withoutTypeConsequences(errors: AjvErrorLike[]): AjvErrorLike[] {
-  const typed = new Set<string>();
-  for (const e of errors) {
-    const node = schemaNodeOf(e);
-    if (e.keyword === "type" && node !== undefined) typed.add(`${e.instancePath ?? ""}\0${node}`);
-  }
-  if (typed.size === 0) return errors;
-  return errors.filter((e) => {
-    const node = schemaNodeOf(e);
-    return (
-      e.keyword === "type" ||
-      node === undefined ||
-      !typed.has(`${e.instancePath ?? ""}\0${node}`)
-    );
-  });
-}
-
-/**
- * Replace each failing union with the errors of the branch the author plainly
- * meant, recursively, outside in.
- *
- * Attribution runs to the DEEPEST occurrence that could own an error, which is
- * what keeps a container's own complaint apart from its child's when both carry
- * the same `schemaPath`. An occurrence reached through a branch becomes a
- * candidate branch of its own — it raised nothing at the parent's node, so it is
- * plausible exactly when the value really did take that shape and fail further
- * in, and reducing it recursively is what stops an inner union's alternatives
- * from surviving inside the outer one's selection.
- */
-export function reduceSchemaErrors(errors: AjvErrorLike[] | null | undefined): AjvErrorLike[] {
-  if (!errors || errors.length === 0) return [];
-  errors = withoutTypeConsequences(errors);
-
-  const occurrences: Occurrence[] = errors
-    .filter((e) => UNION_KEYWORDS.has(e.keyword ?? "") && typeof e.schemaPath === "string")
-    .map((e) => ({
-      error: e,
-      schemaPath: e.schemaPath!,
-      instancePath: e.instancePath || "",
-      owned: [],
-      children: [],
-    }));
-  if (occurrences.length === 0) return errors;
-
-  // The VALUE NODE is the claim, not the schemaPath. A branch written as a
-  // `$ref` is reported by AJV under the TARGET's schemaPath — and AJV inlines
-  // some of them, reporting several branches under one identical path — so
-  // nothing in such an error points back at the union that dispatched to it. A
-  // large union is written exactly that way, a branch per `$defs` entry, so
-  // claiming by schemaPath alone would leave the biggest unions unreduced.
-  //
-  // Indexed by instancePath rather than scanned: an error is claimed by the
-  // DEEPEST occurrence enclosing it, which is found by walking that error's own
-  // path upwards — bounded by the path's depth instead of by the number of
-  // unions. The scan this replaced was O(errors × occurrences), and both grow
-  // with nesting depth on a recursive shape, on a path the editor runs per
-  // keystroke.
-  const byPath = new Map<string, Occurrence>();
-  const isOccurrence = new Set<AjvErrorLike>();
-  for (const o of occurrences) {
-    isOccurrence.add(o.error);
-    // Several unions can occur at ONE value node (a union inside a union
-    // branch); the first is kept, and the rest nest under it below.
-    if (!byPath.has(o.instancePath)) byPath.set(o.instancePath, o);
-  }
-
-  /** The nearest occurrence at or above `path`, excluding `path` itself when
-   *  `strict` — which is how an occurrence finds its parent rather than itself. */
-  const enclosing = (path: string, strict: boolean): Occurrence | undefined => {
-    let current = strict ? parentPath(path) : path;
-    while (current !== undefined) {
-      const hit = byPath.get(current);
-      if (hit) return hit;
-      current = parentPath(current);
-    }
-    return undefined;
-  };
-
-  const owner = new Map<AjvErrorLike, Occurrence>();
-  for (const err of errors) {
-    if (isOccurrence.has(err)) continue;
-    const best = enclosing(err.instancePath || "", false);
-    if (best) {
-      best.owned.push(err);
-      owner.set(err, best);
-    }
-  }
-
-  // Nest occurrences the same way: an occurrence deeper in the value was reached
-  // through some branch of the nearest one enclosing it.
-  const roots: Occurrence[] = [];
-  for (const o of occurrences) {
-    const parent = o === byPath.get(o.instancePath)
-      ? enclosing(o.instancePath, true)
-      : byPath.get(o.instancePath);
-    if (parent && parent !== o) parent.children.push(o);
-    else roots.push(o);
-  }
-
-  const replaced = new Map<AjvErrorLike, AjvErrorLike[]>();
-  for (const root of roots) replaced.set(root.error, resolveOccurrence(root));
-
-  const out: AjvErrorLike[] = [];
-  for (const err of errors) {
-    const replacement = replaced.get(err);
-    if (replacement) {
-      out.push(...replacement);
-      continue;
-    }
-    // Everything an occurrence owns is spoken for by whichever branch survived,
-    // and a nested occurrence is carried inside its parent's selection.
-    if (owner.has(err)) continue;
-    if (occurrences.some((o) => o.error === err)) continue;
-    out.push(err);
-  }
-  return out;
-}
-
-interface Branch {
-  /** Declaration order, or `Infinity` for a nested occurrence, which has none. */
-  index: number;
-  errors: AjvErrorLike[];
-  /** True when this candidate is a nested occurrence rather than a branch that
-   *  complained here — it is already reduced, so it is not reduced again. */
-  nested: boolean;
-}
-
-/** Groups one union's complaints into candidate readings of the value.
- *
- *  The branch INDEX is used wherever the error carries it. It does not when the
- *  branch is a `$ref` — AJV reports under the target's schemaPath — so the
- *  fallback groups by the VALUE NODE each complaint is about: everything said
- *  about the union node itself is one candidate (those are the branches that
- *  rejected the value's shape outright), and each child node complained about is
- *  its own. That is the same question asked of the data instead of the schema,
- *  and it is what the ordering below actually reads. */
-function groupCandidates(occurrence: Occurrence): Branch[] {
-  const byIndex = new Map<number, AjvErrorLike[]>();
-  const byNode = new Map<string, AjvErrorLike[]>();
-  for (const err of occurrence.owned) {
-    const index = branchIndexUnder(occurrence.schemaPath, err.schemaPath);
-    const bucket =
-      index === undefined
-        ? mapBucket(byNode, childSegment(err.instancePath || "", occurrence.instancePath))
-        : mapBucket(byIndex, index);
-    bucket.push(err);
-  }
-  return [...byIndex]
-    .map(([index, errs]) => ({ index, errors: errs, nested: false }))
-    .concat([...byNode].map(([, errs]) => ({ index: Number.MAX_SAFE_INTEGER, errors: errs, nested: false })))
-    .concat(
-      occurrence.children.map((child) => ({
-        index: Number.POSITIVE_INFINITY,
-        errors: resolveOccurrence(child),
-        nested: true,
-      })),
-    );
-}
-
-function mapBucket<K>(map: Map<K, AjvErrorLike[]>, key: K): AjvErrorLike[] {
-  const existing = map.get(key);
-  if (existing) return existing;
-  const created: AjvErrorLike[] = [];
-  map.set(key, created);
-  return created;
-}
-
-/** The first value-path segment below `parent`, or "" for the node itself. */
-function childSegment(instancePath: string, parent: string): string {
-  if (!isUnder(instancePath, parent)) return "";
-  const rest = instancePath.slice(parent.length + 1);
-  const slash = rest.indexOf("/");
-  return slash === -1 ? rest : rest.slice(0, slash);
-}
-
-function resolveOccurrence(occurrence: Occurrence): AjvErrorLike[] {
-  const candidates = groupCandidates(occurrence);
-
-  // `oneOf` matching SEVERAL branches emits the union error with no branch
-  // errors at all — nothing was rejected, so there is no branch to select.
-  if (candidates.length === 0) return [occurrence.error];
-
-  const tagged = taggedReading(candidates, occurrence);
-  if (tagged) return tagged;
-
-  const plausible = candidates.filter(
-    (c) => c.nested || isPlausible(c.errors, occurrence.instancePath),
-  );
-  if (plausible.length === 0) {
-    return [alternativesError(candidates, occurrence)];
-  }
-
-  // Deepest agreement first — a branch that matched further into the value is
-  // the one the author was writing — then the fewest complaints, then the
-  // declaration order, so the choice is stable.
-  plausible.sort((a, b) => {
-    const depth = maxDepth(b.errors) - maxDepth(a.errors);
-    if (depth !== 0) return depth;
-    if (a.errors.length !== b.errors.length) return a.errors.length - b.errors.length;
-    return a.index - b.index;
-  });
-  const winner = plausible[0];
-  return winner.nested ? winner.errors : reduceSchemaErrors(winner.errors);
-}
-
-function discriminatorErrors(errors: AjvErrorLike[]): AjvErrorLike[] {
-  return errors.filter((e) => DISCRIMINATOR_KEYWORDS.has(e.keyword ?? ""));
-}
-
-/**
- * A TAGGED union read by its tag: each branch pins a discriminator (`const`, or
- * `enum` for several tags of one shape), so the discriminators alone say which
- * branch a value is.
- *
- * - Every OTHER branch refused the value's tag and one did not: that branch IS
- *   the reading, whatever it complains of — a stray key, a missing required
- *   member — and its complaints are the report, with whatever failed further in
- *   beneath it. Judging it by shape instead called a correctly tagged node with
- *   one stray key a value that "matches no alternative".
- * - EVERY branch refused the tag, at one place, and nothing failed further in:
- *   the tag is what is wrong, so the report is one finding there listing what
- *   it may be.
- *
- * Only where every complaint carries its branch: a branch written as a `$ref`
- * is reported under its target's path, several of them indistinguishably, and
- * reading a tag off errors that cannot be told apart would be a guess.
- */
-function taggedReading(candidates: Branch[], occurrence: Occurrence): AjvErrorLike[] | undefined {
-  const branches = candidates.filter((c) => !c.nested);
-  if (branches.some((c) => c.index === Number.MAX_SAFE_INTEGER)) return undefined;
-  // A tag is a MEMBER of the value. A discriminator refusing the value itself
-  // (a scalar that is none of a branch's `enum`) says the value is not that
-  // scalar, which is a judgement of shape and no tag at all.
-  const tagErrors = (c: Branch) =>
-    discriminatorErrors(c.errors).filter((e) => isUnder(e.instancePath || "", occurrence.instancePath));
-  const refused = branches.filter((c) => tagErrors(c).length > 0);
-  if (refused.length === 0) return undefined;
-
-  const agreed = branches.filter((c) => discriminatorErrors(c.errors).length === 0);
-  if (agreed.length + refused.length !== branches.length) return undefined;
-  if (agreed.length === 1) {
-    const nested = candidates.filter((c) => c.nested).flatMap((c) => c.errors);
-    return [...reduceSchemaErrors(agreed[0]!.errors), ...nested];
-  }
-  // A failure further in was reached through a branch that raised nothing here,
-  // so some branch accepted the tag and the tag is not what is wrong.
-  if (agreed.length > 0 || refused.length < 2 || candidates.some((c) => c.nested)) return undefined;
-
-  // The one place every branch pins its tag, in the order the first states it.
-  const at = tagErrors(refused[0]!)
-    .map((e) => e.instancePath || "")
-    .find((path) =>
-      refused.every((c) => tagErrors(c).some((e) => (e.instancePath || "") === path)),
-    );
-  if (at === undefined) return undefined;
-  const allowed: unknown[] = [];
-  for (const branch of [...refused].sort((a, b) => a.index - b.index)) {
-    for (const e of tagErrors(branch)) {
-      if ((e.instancePath || "") !== at) continue;
-      const values =
-        e.keyword === "const" ? [e.params?.allowedValue] : ((e.params?.allowedValues as unknown[]) ?? []);
-      for (const value of values) if (!allowed.includes(value)) allowed.push(value);
-    }
-  }
-  // Without the union node's `data`: the refusal is of the tag, not the node.
-  const { data, ...union } = occurrence.error;
-  return [
-    {
-      ...union,
-      keyword: "enum",
-      instancePath: at,
-      params: { allowedValues: allowed },
-      message: "must be equal to one of the allowed values",
-    },
-  ];
-}
-
-function maxDepth(errors: AjvErrorLike[]): number {
-  let max = 0;
-  for (const e of errors) max = Math.max(max, instanceDepth(e.instancePath));
-  return max;
-}
-
-/** One error anchored at the union node, listing what could have gone there.
- *  The honest fallback: a confident wrong message is worse than the
- *  concatenation this replaces, so when no branch is a plausible reading the
- *  reader is told what the alternatives are rather than shown one branch's
- *  complaints as if it were the intended one. */
-function alternativesError(candidates: Branch[], occurrence: Occurrence): AjvErrorLike {
-  const seen = new Set<string>();
-  const described: string[] = [];
-  for (const text of describeAlternatives(
-    candidates.flatMap((c) => c.errors),
-    occurrence.instancePath,
-  )) {
-    if (seen.has(text)) continue;
-    seen.add(text);
-    described.push(text);
-  }
-  return {
-    ...occurrence.error,
-    instancePath: occurrence.instancePath,
-    message: `matches no alternative — expected ${described.join(", or ")}`,
-  };
 }
 
 /* --------------------------------------------------------------- rendering */
@@ -716,23 +270,22 @@ function explained(errors: AjvErrorLike[] | null | undefined, data: unknown): Aj
   return explainValueTypeErrors(explainFormatErrors(errors, data), data);
 }
 
-/** The reduced refusals, each enum refusal carrying its value. After reduction,
- *  because a union read by its tag reports a refusal of its own. */
-function reducedErrors(errors: AjvErrorLike[] | null | undefined, data: unknown): AjvErrorLike[] {
-  return withEnumValues(reduceSchemaErrors(explained(errors, data)), data) ?? [];
+/** The judged findings, explained, each enum refusal carrying its value. */
+function renderedErrors(findings: AjvErrorLike[] | null | undefined, data: unknown): AjvErrorLike[] {
+  return withEnumValues(explained(findings, data), data) ?? [];
 }
 
-/** Reduced, path-anchored issues — what a diagnostic list is built from.
- *  `data` is the value that was validated, read to explain a Telo format or a value
- *  type's refusal. */
+/** Path-anchored issues over findings the judge stands by — what a diagnostic
+ *  list is built from. `data` is the value that was validated, read to explain a
+ *  Telo format or a value type's refusal. */
 export function schemaIssues(
-  errors: AjvErrorLike[] | null | undefined,
+  findings: AjvErrorLike[] | null | undefined,
   data?: unknown,
 ): SchemaIssue[] {
   // One finding reached through several union branches sharing a named shape
   // reads identically at one place; it is one finding.
   const seen = new Set<string>();
-  return reducedErrors(errors, data).flatMap((err) => {
+  return renderedErrors(findings, data).flatMap((err) => {
     const { missingProperty: missing, additionalProperty: extra, valueType } = err.params ?? {};
     const prose = errorProse(err);
     const issue: SchemaIssue = {
@@ -753,9 +306,9 @@ export function schemaIssues(
   });
 }
 
-/** Reduced, rendered as one sentence — what a thrown runtime error carries. */
-export function formatAjvErrors(errors: AjvErrorLike[] | null | undefined, data?: unknown): string {
-  const reduced = reducedErrors(errors, data);
-  if (reduced.length === 0) return "Unknown schema error";
-  return [...new Set(reduced.map(formatSingleError))].join("; ");
+/** Judged findings rendered as one sentence — what a thrown runtime error carries. */
+export function formatAjvErrors(findings: AjvErrorLike[] | null | undefined, data?: unknown): string {
+  const rendered = renderedErrors(findings, data);
+  if (rendered.length === 0) return "Unknown schema error";
+  return [...new Set(rendered.map(formatSingleError))].join("; ");
 }

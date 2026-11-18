@@ -1,0 +1,16 @@
+# An inline declaration writing `metadata.module` by hand in a branch no
+# configuration of the default takes: refused as written, in every
+# configuration, where the branch writes it.
+kind: Telo.Application
+metadata: { name: NestedStampUnderChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets: [!ref job]
+---
+kind: Telo.Sequence
+metadata: { name: job }
+steps:
+  - name: answer
+    invoke: !if
+      if: !cel "variables.flag1"
+      then: { kind: Telo.Value, metadata: { module: Elsewhere }, value: 1 }
+      else: { kind: Telo.Value, value: 2 }

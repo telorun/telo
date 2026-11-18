@@ -56,6 +56,7 @@ import {
 import { isWithinSlot, stepValueSlots } from "./step-value-slots.js";
 import { TemplateBodyResources, type FamilyPlace } from "../../template-body-resources.js";
 import { recordTemplateBody } from "../../template-body-contexts.js";
+import { refuseWrittenStamps } from "../../metadata-stamp-refusals.js";
 
 /**
  * WHICH NODES OF A TEMPLATE BODY SURVIVE init() UNEXPANDED.
@@ -421,10 +422,20 @@ refPositions: RefPositionHost & TemplateHost): ControllerInstance {
       // against the ROOT application's imports instead — which found its reference
       // reach only when the consumer happened to import the same alias, and otherwise
       // silently injected nothing, leaving every ref slot a raw `{kind, name}`.
+      // A stamp an author wrote on an entry is refused here, for a definition no
+      // load analysed; an entry an extraction made, or one stamped here, is
+      // its holder's.
       const definingModule = definition.metadata?.module;
+      const stampedEntries = new WeakSet<object>();
       const stampDeclaringModule = (child: any): any => {
-        if (!definingModule || !child || typeof child !== "object") return child;
-        return { ...child, metadata: { ...(child.metadata ?? {}), module: definingModule } };
+        if (!child || typeof child !== "object" || stampedEntries.has(child)) return child;
+        if (child.metadata?.xTeloOrigin === undefined) {
+          refuseWrittenStamps(child, `Template '${resource.kind}/${resource.metadata.name}': the 'resources:' entry`);
+        }
+        if (!definingModule) return child;
+        const stamped = { ...child, metadata: { ...(child.metadata ?? {}), module: definingModule } };
+        stampedEntries.add(stamped);
+        return stamped;
       };
 
       /**

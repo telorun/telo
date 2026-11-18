@@ -1,0 +1,63 @@
+# A templated kind's body entry `holder` references its sibling `target`,
+# whose `open` the body decides from `self.flag`: written, it closes the
+# target, which the definition reports under the body's own condition;
+# forwarded, it is the consumer's `v`. Each consumer reports the closed target
+# exactly where its own values take the forwarded branch, and nowhere the
+# definition already reports it.
+kind: Telo.Application
+metadata: { name: DefinitionCoverReferrer }
+variables: { f: { env: F, type: boolean, default: false } }
+---
+kind: Telo.Definition
+metadata: { name: Target }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties: { open: { type: boolean } }
+  x-telo-referrer-rules:
+    - referrer: Self.Holder
+      condition: !cel "self.open == true"
+      code: TARGET_CLOSED
+      message: references a closed target
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties: { target: { x-telo-ref: { kind: Self.Target, use: dependency } } }
+---
+kind: Telo.Definition
+metadata: { name: Pair }
+capability: Telo.Provider
+schema: { type: object, properties: { flag: { type: boolean }, v: { type: boolean } } }
+resources:
+  - kind: Self.Target
+    metadata: { name: target }
+    open: !if
+      if: !cel "self.flag"
+      then: false
+      else: !cel "self.v"
+  - kind: Self.Holder
+    metadata: { name: holder }
+    target: !if
+      if: !cel "self.flag"
+      then: !ref target
+      else: !ref target
+provide: !ref holder
+---
+kind: Self.Pair
+metadata: { name: forwarded }
+flag: false
+v: false
+---
+kind: Self.Pair
+metadata: { name: chosen }
+flag: !cel "variables.f"
+v: false
+---
+kind: Self.Pair
+metadata: { name: written }
+flag: true

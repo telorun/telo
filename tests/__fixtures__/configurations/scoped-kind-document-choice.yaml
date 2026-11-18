@@ -1,0 +1,23 @@
+# A kind document declared as a `with:` member of a holder a choice decides: its
+# capability is refused only in the configurations taking the holder that
+# spells it wrongly.
+kind: Telo.Application
+metadata: { name: ScopedKindDocumentChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets:
+  - !ref holder
+--- !if
+metadata: { name: holder }
+if: !cel "variables.flag1"
+then:
+  kind: Telo.Sequence
+  with:
+    - { kind: Telo.Definition, metadata: { name: scoped }, capability: Telo.Nope }
+  steps:
+    - { name: done, value: 1 }
+else:
+  kind: Telo.Sequence
+  with:
+    - { kind: Telo.Definition, metadata: { name: scoped }, capability: Telo.Runnable }
+  steps:
+    - { name: done, value: 1 }

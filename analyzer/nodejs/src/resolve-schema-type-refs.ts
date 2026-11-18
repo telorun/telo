@@ -8,6 +8,7 @@ import { definitionInScope, moduleAliasScope } from "./module-alias-scope.js";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
 import { schemaReferenceParts } from "./schema-reference.js";
 import { isResolvedReference, RESOLVED_REFERENCE_MARKER } from "./resolved-reference.js";
+import { withCanonicalAnnotationKinds } from "./resolve-schema-ref-kinds.js";
 
 /** Schema-bearing fields on a Telo.Definition / Telo.Type resource. */
 const SCHEMA_FIELDS = ["schema", "inputType", "outputType"];
@@ -34,8 +35,8 @@ const SIGNATURE_FIELDS = ["params", "returns"];
  * — and would make a self-recursive shape inexpressible. Keeping a REFERENCE is
  * what every validator wants, and it is not an AJV concern: a Rust validator
  * wants a registered id just as much. So the tag is the authoring surface and the
- * canonical `$ref` is the internal form, exactly as `resolveRefSentinels` and
- * `resolveSchemaRefKinds` already split authoring sugar from canonical form.
+ * canonical `$ref` is the internal form, exactly as `resolveRefSentinels`
+ * already splits authoring sugar from canonical form.
  *
  * ALIAS SCOPE IS WHAT THE CANONICAL FORM CARRIES. The authority is resolved in
  * the DECLARING module's scope, so the id names the owning module and two
@@ -84,47 +85,83 @@ export function resolveSchemaTypeRefs(
 }
 
 /**
- * `definition` with every `$ref: "telo://<Self|Alias>/<Type>"` in its schema
- * fields made canonical in the scope of the module that DECLARED it, as the
- * definition is registered.
+ * The copy of `definition` the registry holds, derived in the scope of the
+ * module that DECLARED it, read off the writer's alias scope alone — never by
+ * looking a name up, so the copy is the same in every configuration:
  *
- * A kind extending it in merge form inherits these nodes, and its own module
- * is the scope its effective schema is read in, so a `telo://Self/<Type>` left
- * for later named a shape of the CHILD's module: the reference slots and rules
- * beneath it were lost wherever the parent lives in another module. Only the
- * containers on the way to a rewritten `$ref` are copied, so the document the
- * author wrote — which `validateSchemaTypeRefs` judges as written — and every
- * node beside them keep their identity; with nothing to rewrite the definition
- * itself is returned.
+ *  - every kind an annotation names (`x-telo-ref` and its `callsCoReferrers`,
+ *    `x-telo-requires-zone`, a referrer rule's `referrer:`, a resource rule's
+ *    `reachable.kind`, `x-telo-text-keys`) as the canonical `<module>.<Kind>`
+ *    (`withCanonicalAnnotationKinds`);
+ *  - every named-shape reference in its schema, contract and signature as the
+ *    canonical id — a `telo://<Self|Alias>/<Type>` `$ref` rewritten to
+ *    `telo:<module>/<Type>`, and a `!ref` in its contract or signature replaced
+ *    by `{ $ref: "telo:<module>/<Type>" }`;
+ *  - `extends` as `canonicalExtends` when one is given.
+ *
+ * A kind extending it in merge form inherits these nodes, and its own module is
+ * the scope its effective schema is read in, so a name left for later would
+ * name a kind or shape of the CHILD's module. The document the author wrote is
+ * never written to: only the containers on the way to a rewritten node are
+ * copied, and with nothing to rewrite the definition itself is returned. A name
+ * the scope cannot answer is left as written, for the check that reports it.
  */
-export function withCanonicalSchemaTypeRefs<T extends object>(
+export function registeredDefinitionCopy<T extends object>(
   definition: T,
   aliases?: AliasResolver,
   aliasesByModule?: Map<string, AliasResolver>,
+  canonicalExtends?: string,
 ): T {
+  return registeredDefinitionForms(definition, aliases, aliasesByModule, canonicalExtends).registered;
+}
+
+/**
+ * {@link registeredDefinitionCopy} with the step it is built from: `kinds` is
+ * the definition with its annotation kinds canonical and every other node as
+ * written — what a reader judging a kind document's annotations compares — and
+ * `registered` adds the named-shape ids and `extends`.
+ */
+export function registeredDefinitionForms<T extends object>(
+  definition: T,
+  aliases?: AliasResolver,
+  aliasesByModule?: Map<string, AliasResolver>,
+  canonicalExtends?: string,
+): { kinds: T; registered: T } {
   const metadata = (definition as { metadata?: { module?: string } }).metadata;
   const ownModule = metadata?.module;
   const resolver = moduleAliasScope(metadata, aliases, aliasesByModule);
   const resolveAuthority = (authority: string): string | undefined =>
     authority === "Self" ? ownModule : resolver?.moduleForAlias(authority);
-  let copy: Record<string, unknown> | undefined;
-  for (const field of SCHEMA_FIELDS) {
-    const value = (definition as Record<string, unknown>)[field];
-    const canonical = canonicalTypeRefStrings(value, resolveAuthority);
+  const kinds = resolver ? withCanonicalAnnotationKinds(definition, resolver) : definition;
+  let copy: Record<string, unknown> | undefined = kinds === definition ? undefined : { ...(kinds as Record<string, unknown>) };
+  for (const field of [...SCHEMA_FIELDS, ...SIGNATURE_FIELDS]) {
+    const value = (kinds as Record<string, unknown>)[field];
+    const canonical = canonicalTypeRefStrings(value, resolveAuthority, field !== "schema");
     if (canonical !== value) (copy ??= { ...(definition as Record<string, unknown>) })[field] = canonical;
   }
-  return (copy ?? definition) as T;
+  if (canonicalExtends !== undefined && canonicalExtends !== (definition as { extends?: unknown }).extends) {
+    (copy ??= { ...(definition as Record<string, unknown>) }).extends = canonicalExtends;
+  }
+  return { kinds, registered: (copy ?? definition) as T };
 }
 
 function canonicalTypeRefStrings(
   value: unknown,
   resolveAuthority: (authority: string) => string | undefined,
+  /** Whether a `!ref` here names a shape — in a contract or a signature. */
+  shapeRefs: boolean,
 ): unknown {
-  if (value === null || typeof value !== "object" || isTaggedSentinel(value)) return value;
+  if (value === null || typeof value !== "object") return value;
+  if (isTaggedSentinel(value)) {
+    const target = shapeRefs ? refSentinelTarget(value) : undefined;
+    if (!target || (target.indexes?.length ?? 0) > 0) return value;
+    const module = resolveAuthority(target.alias ?? "Self");
+    return module ? { $ref: canonicalTypeSchemaId(module, target.name) } : value;
+  }
   if (Array.isArray(value)) {
     let items: unknown[] | undefined;
     value.forEach((item, index) => {
-      const read = canonicalTypeRefStrings(item, resolveAuthority);
+      const read = canonicalTypeRefStrings(item, resolveAuthority, shapeRefs);
       if (read !== item) (items ??= [...value])[index] = read;
     });
     return items ?? value;
@@ -143,7 +180,7 @@ function canonicalTypeRefStrings(
   }
   for (const [key, child] of Object.entries(value)) {
     if (key === "$ref") continue;
-    const read = canonicalTypeRefStrings(child, resolveAuthority);
+    const read = canonicalTypeRefStrings(child, resolveAuthority, shapeRefs);
     if (read !== child) (copy ??= { ...value })[key] = read;
   }
   return copy ?? value;

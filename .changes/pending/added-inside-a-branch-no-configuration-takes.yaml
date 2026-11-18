@@ -1,0 +1,9 @@
+units:
+  analyzer: Added
+  kernel: Added
+  cli: Added
+body: Inside a branch no configuration takes, every option of a nested `!if` / `!switch`
+  is checked too. A `Telo.Definition`, `Telo.Abstract`, `Telo.NeedType` or `Telo.Import`
+  written as a whole document's branch is refused at the branch as `BRANCH_CASE_INVALID`
+  by `telo check` and `telo run`, and two whole-document choices sharing a name are each
+  checked, where both used to stop with an internal error.

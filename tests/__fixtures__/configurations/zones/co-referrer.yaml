@@ -1,0 +1,43 @@
+# A listener reached from an announce inside a zone through the topic it
+# names, which `flag1` chooses, and a second listener declared only where
+# `flag2` holds: what a listener reaches requires the zone.
+kind: Telo.Application
+metadata: { name: ZoneCoReferrerChoice }
+imports: { Z: ./kinds }
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+  flag2: { env: FLAG_2, type: boolean, default: false }
+targets:
+  - invoke: !ref zoned
+  - invoke: !ref plain
+---
+kind: Z.Topic
+metadata: { name: Joined }
+schema: { type: object }
+---
+kind: Z.Topic
+metadata: { name: Left }
+schema: { type: object }
+---
+kind: Z.Zone
+metadata: { name: zoned }
+steps: { kind: Z.Announce, topic: !ref Joined }
+---
+kind: Z.Announce
+metadata: { name: plain }
+topic: !ref Left
+---
+kind: Z.Listener
+metadata: { name: onEvent }
+topic: !if
+  if: !cel "variables.flag1"
+  then: !ref Joined
+  else: !ref Left
+invoke: { kind: Z.Guarded }
+--- !if
+metadata: { name: onLeft }
+if: !cel "variables.flag2"
+then:
+  kind: Z.Listener
+  topic: !ref Left
+  invoke: { kind: Z.Guarded }

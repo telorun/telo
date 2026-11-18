@@ -1,0 +1,22 @@
+# A declaration a choice decides: its kind is deprecated only in the
+# configurations taking the branch that spells it so.
+kind: Telo.Application
+metadata: { name: DeprecatedKindChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.Definition
+metadata: { name: Old, deprecated: { reason: Superseded by Self.New. } }
+capability: Telo.Invocable
+schema: { type: object }
+---
+kind: Telo.Definition
+metadata: { name: New }
+capability: Telo.Invocable
+schema: { type: object }
+--- !if
+metadata: { name: holder }
+if: !cel "variables.flag1"
+then:
+  kind: Self.Old
+else:
+  kind: Self.New

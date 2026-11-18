@@ -1,4 +1,5 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
+import { isEntryOwned } from "./entry-ownership.js";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import {
@@ -35,23 +36,15 @@ export function validateProviderCoherence(
   manifests: ResourceManifest[],
   registry: DefinitionRegistry,
   aliases: AliasResolver,
+  rootModules: ReadonlySet<string>,
 ): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
-
-  const importedModules = new Set<string>();
-  for (const m of manifests) {
-    if (m.kind !== "Telo.Import") continue;
-    const resolved = (m.metadata as { resolvedModuleName?: string } | undefined)
-      ?.resolvedModuleName;
-    if (resolved) importedModules.add(resolved);
-  }
 
   for (const m of manifests) {
     if (m.kind !== "Telo.Definition") continue;
     const name = m.metadata?.name as string | undefined;
     if (!name) continue;
-    const ownModule = (m.metadata as { module?: string } | undefined)?.module;
-    if (ownModule && importedModules.has(ownModule)) continue;
+    if (!isEntryOwned(m, rootModules)) continue;
     const filePath = (m.metadata as { source?: string } | undefined)?.source;
     const resource = { kind: m.kind, name };
     const label = `${m.kind}/${name}`;

@@ -24,6 +24,7 @@ import { desugarLoadedFile } from "./inline-imports.js";
 import type { LoadedKindScope } from "./loaded-kind-scope.js";
 import type { MigrationEntry } from "./migrations/types.js";
 import { moduleCallNamesOfFile } from "./module-call-names.js";
+import { metadataStampDiagnostics } from "./metadata-stamp-refusals.js";
 import { collectLocalModuleFileDiagnostics } from "./module-file-existence.js";
 import { isModuleKind } from "./module-kinds.js";
 import {
@@ -600,6 +601,7 @@ export class Loader {
         migrationDiagnostics: [],
         versionDiagnostics: [],
         moduleFileDiagnostics: [],
+        metadataDiagnostics: [],
         parseDiagnostics: [...collectParseDiagnostics(modules), refusal],
         errors: [],
         applicationSources: new Map(),
@@ -751,6 +753,7 @@ export class Loader {
         importEdges,
         (url) => this.sources.find((s) => s.supports(url)),
       ),
+      metadataDiagnostics: metadataStampDiagnostics({ entry, modules, importEdges, scopedImportEdges }),
       parseDiagnostics: collectParseDiagnostics(modules),
       errors,
       applicationSources: followApplications

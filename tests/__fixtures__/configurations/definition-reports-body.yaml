@@ -1,0 +1,53 @@
+# A templated kind's body entry, chosen by the consumer's `wide`, writes a value
+# its kind refuses: the definition's own check makes the finding at the entry,
+# so it is reported once, there, and at no consumer that takes the entry. The
+# choice beside them reads every configuration.
+kind: Telo.Application
+metadata: { name: DefinitionReportsBody }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.Definition
+metadata: { name: Target }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties: { open: { type: boolean }, label: { type: string } }
+---
+kind: Telo.Definition
+metadata: { name: Pair }
+capability: Telo.Provider
+schema:
+  type: object
+  properties: { label: { type: string }, wide: { type: boolean, x-telo-eval: compile } }
+resources:
+  - kind: Self.Target
+    metadata: { name: target }
+    open: true
+    label: !cel "self.label"
+  - !if
+    metadata: { name: spare }
+    if: !cel "self.wide"
+    then:
+      kind: Self.Target
+      open: maybe
+      label: !cel "self.label"
+provide: !ref target
+---
+kind: Self.Pair
+metadata: { name: firstPair }
+label: first
+wide: true
+---
+kind: Self.Pair
+metadata: { name: secondPair }
+label: second
+wide: true
+---
+kind: Self.Target
+metadata: { name: chosen }
+open: true
+label: !if
+  if: !cel "variables.flag1"
+  then: a
+  else: b

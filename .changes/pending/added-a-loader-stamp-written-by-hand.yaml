@@ -1,0 +1,12 @@
+units:
+  analyzer: Added
+  cli: Added
+body: "A loader stamp written by hand in a document's `metadata` (`metadata.module`,
+  `metadata.source`, an import's resolved identity, `xTeloOrigin` and the rest) is
+  refused as `METADATA_RESERVED_FIELD`: in the application's own files where it is
+  written — on a top-level document, or on a nested declaration (inline at a reference
+  slot or a step's `invoke:`, a `with:` member, a template body entry) in every branch
+  of every choice — and for an imported library at its own line when it is reached by
+  path, at the `imports:` entry first reaching it when it is published. A hand-written
+  `metadata.module` used to file a definition under another module with nothing
+  reported."

@@ -67,7 +67,7 @@ expect:
     - code: CONTRACT_INPUTS_MISMATCH
       message: "Ui.Listing/inputsEmpty: inputs at 'rowActions[0].inputs' do not satisfy rename's declared inputType: / is missing required property 'name'"
     - code: SCHEMA_VIOLATION
-      message: "Ui.Listing/confirmFlag: /rowActions/0/confirm must match a schema in anyOf"
+      message: "Ui.Listing/confirmFlag: /rowActions/0/confirm matches no alternative — expected a string, or a object"
     - code: SCHEMA_VIOLATION
       message: "Ui.Listing/confirmEmpty: /rowActions/0/confirm must NOT have fewer than 1 characters"
 ---

@@ -12,7 +12,7 @@
 import { filesOf, moduleNameOf } from "../loaded-kind-scope.js";
 import type { LoadedGraph } from "../loaded-types.js";
 import { reachedModuleSources } from "../module-origin.js";
-import { importAnchoredMessage } from "../reaching-import.js";
+import { importAnchoredDiagnostic } from "../reaching-import.js";
 import { DiagnosticSeverity, DiagnosticTag, type AnalysisDiagnostic } from "../types.js";
 import { renderValuePath, type ValuePath } from "../value-schema-walk.js";
 import type { MigrationTreePointer } from "./edit-record.js";
@@ -105,17 +105,18 @@ export function libraryMigrationDiagnostics(graph: LoadedGraph): AnalysisDiagnos
     const via = entryAliasReaching(graph, finding.modulePath);
     const holder = graph.modules.get(finding.modulePath);
     if (!via || !holder) continue;
-    const message = importAnchoredMessage(moduleNameOf(holder) ?? finding.modulePath, via.alias, finding.message);
-    const key = `${via.filePath}\0${via.alias}\0${message}`;
+    const resource = resourceOf(graph, finding.at);
+    const anchored = importAnchoredDiagnostic(
+      finding.code,
+      moduleNameOf(holder) ?? finding.modulePath,
+      { alias: via.alias, filePath: via.filePath, path: `imports.${via.alias}` },
+      finding.message,
+      { ...(resource ? { resource } : {}), filePath: finding.at.file, path: renderValuePath(finding.at.path) },
+    );
+    const key = `${via.filePath}\0${via.alias}\0${anchored.message}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({
-      severity: DiagnosticSeverity.Error,
-      code: finding.code,
-      source: SOURCE,
-      message,
-      data: { filePath: via.filePath, path: `imports.${via.alias}`, libraryMigration },
-    });
+    out.push({ ...anchored, data: { ...(anchored.data as object), libraryMigration } });
   }
   return out;
 }

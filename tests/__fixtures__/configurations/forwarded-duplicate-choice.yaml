@@ -1,0 +1,29 @@
+# A consumer forwards a status into a body entry that checks it as its own
+# field, and its own kind restates the same constraint: where flag1 takes the
+# text, both refuse the one value at the one place, and it is reported once.
+kind: Telo.Application
+metadata: { name: ForwardedDuplicateChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.Definition
+metadata: { name: Reply }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema: { type: object, properties: { status: { type: integer } } }
+---
+kind: Telo.Definition
+metadata: { name: Wrapper }
+capability: Telo.Provider
+schema: { type: object, properties: { status: { type: integer } } }
+resources:
+  - kind: Self.Reply
+    metadata: { name: reply }
+    status: !cel "self.status"
+provide: !ref reply
+---
+kind: Self.Wrapper
+metadata: { name: wrapper }
+status: !if
+  if: !cel "variables.flag1"
+  then: text
+  else: 200

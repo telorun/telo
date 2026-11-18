@@ -326,8 +326,8 @@ describe("`inputs` in a step body's scope", () => {
       ],
     };
     expect(celDiagnostics([app, scriptDef, script])).toEqual([
-      { code: "CEL_UNKNOWN_FIELD", path: "targets[1].inputs.typo" },
       { code: "CEL_UNKNOWN_FIELD", path: "targets[1].inputs.nope" },
+      { code: "CEL_UNKNOWN_FIELD", path: "targets[1].inputs.typo" },
     ]);
   });
 

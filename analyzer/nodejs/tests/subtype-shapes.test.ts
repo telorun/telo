@@ -11,13 +11,13 @@ describe("a kind extending Telo.JsonSchema", () => {
   it("is a named shape for contracts, value-schema-from, context-ref-from and slots", async () => {
     const loaded = await loadFile(join(ROOT, "analyzer/nodejs/tests/__fixtures__/subtype-shapes/telo.yaml"));
     const findings = new StaticAnalyzer()
-      .analyze(loaded.manifests, { moduleDocuments: loaded.moduleDocuments })
+      .analyze(loaded.manifests, { moduleDocuments: loaded.moduleDocuments, positions: loaded.positions })
       .map((d) => `${d.code} ${(d.data as { resource?: { name?: string } } | undefined)?.resource?.name}: ${d.message}`);
     expect(findings).toEqual([
-      "SCHEMA_VIOLATION wrong: Kinds.Probe/wrong: `value` does not satisfy the type declared at `/event`: / is missing required property 'email'",
-      "SCHEMA_VIOLATION wrong: Kinds.Probe/wrong: `value` does not satisfy the type declared at `/event`: /userId must be string",
       "CEL_UNKNOWN_FIELD local: Telo.Sequence/local: !cel: 'inputs.kye' is not defined (available: userId, email)",
       "CEL_UNKNOWN_FIELD imported: Telo.Sequence/imported: !cel: 'inputs.kye' is not defined (available: userId, email)",
+      "SCHEMA_VIOLATION wrong: Kinds.Probe/wrong: `value` does not satisfy the type declared at `/event`: / is missing required property 'email'",
+      "SCHEMA_VIOLATION wrong: Kinds.Probe/wrong: `value` does not satisfy the type declared at `/event`: /userId must be string",
       "CEL_UNKNOWN_FIELD wrong: Kinds.Probe/wrong: !cel: 'payload.nope' is not defined (available: userId, email)",
       "REFERENCE_KIND_MISMATCH refusesPlain: Kinds.Strict/refusesPlain: reference at 'event' → 'Telo.JsonSchema' (resolved: 'Telo.JsonSchema') does not match required 'SubtypeKinds.Event'",
     ]);

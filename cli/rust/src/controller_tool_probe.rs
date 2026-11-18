@@ -225,6 +225,7 @@ mod tests {
             import_edges: HashMap::new(),
             parse_diagnostics: Vec::new(),
             migration_diagnostics: Vec::new(),
+            metadata_diagnostics: Vec::new(),
             errors: Vec::new(),
         }
     }

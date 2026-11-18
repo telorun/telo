@@ -1,0 +1,18 @@
+# A library reading its need only where its own flag holds, the flag bound by
+# its importer: the need is required where the importer's binding sets it.
+kind: Telo.Library
+metadata:
+  name: Flagged
+  version: 0.0.0
+  description: Test fixture reading a need only where its own flag holds.
+imports: { Kinds: ../kinds }
+variables: { flag: { type: boolean, default: false } }
+needs: { data: { kind: Telo.DurableDirectory } }
+exports: { resources: [store] }
+--- !if
+metadata: { name: store }
+if: !cel "variables.flag"
+then:
+  kind: Kinds.Labelled
+  label: !cel "string(resources.data.path.joinPath('store.db'))"
+else: { kind: Kinds.Labelled, label: memory }

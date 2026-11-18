@@ -1,0 +1,9 @@
+# A definition whose `metadata.module` is written by hand: the stamp would file
+# it under another module, so the loader refuses it where it is written.
+kind: Telo.Application
+metadata: { name: MetadataStampApp }
+---
+kind: Telo.Definition
+metadata: { name: Greeter, module: Elsewhere }
+capability: Telo.Invocable
+schema: { type: object }

@@ -1,3 +1,4 @@
+import { collectFilePositions } from "../src/diagnostic-location.js";
 import { describe, expect, it } from "vitest";
 import { AnalysisRegistry } from "../src/analysis-registry.js";
 import { StaticAnalyzer } from "../src/analyzer.js";
@@ -112,7 +113,7 @@ async function analyzed() {
   const graph = await new Loader([source(files)]).loadGraph("/app/telo.yaml", { desugarImports: true });
   const manifests = flattenForAnalyzer(graph);
   const registry = new AnalysisRegistry();
-  const diagnostics = new StaticAnalyzer().analyze(manifests, { moduleDocuments: collectModuleDocuments(graph) }, registry);
+  const diagnostics = new StaticAnalyzer().analyze(manifests, { moduleDocuments: collectModuleDocuments(graph), positions: collectFilePositions(graph) }, registry);
   return { diagnostics, manifests, registry };
 }
 
@@ -123,9 +124,9 @@ describe("a library's own call in an importer's analysis", () => {
       .filter((d) => d.data?.resource?.name === "big")
       .map((d) => [d.code, (d.data as { rule?: string } | undefined)?.rule]);
     expect(rules).toEqual([
-      ["RESOURCE_RULE_VIOLATED", "BOX_TOO_BIG"],
-      ["RESOURCE_RULE_VIOLATED", "BOX_TOO_BIG_BY_NAME"],
       ["RESOURCE_RULE_VIOLATED", "BOX_NOT_SMALL"],
+      ["RESOURCE_RULE_VIOLATED", "BOX_TOO_BIG_BY_NAME"],
+      ["RESOURCE_RULE_VIOLATED", "BOX_TOO_BIG"],
     ]);
     const lib = diagnostics.filter((d) => (d.data as { rule?: string } | undefined)?.rule?.startsWith("BOX_"));
     expect(lib.filter((d) => d.code !== "RESOURCE_RULE_VIOLATED")).toEqual([]);

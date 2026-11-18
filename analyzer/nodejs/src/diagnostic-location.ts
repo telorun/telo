@@ -1,5 +1,6 @@
 import { expansionTagLabel } from "@telorun/templating";
 import type { LoadedGraph } from "./loaded-types.js";
+import type { FilePositions } from "./position-metadata.js";
 import type { AnalysisDiagnostic, PositionIndex, Range } from "./types.js";
 
 /** What a diagnostic's owning file exposes for locating it. */
@@ -85,6 +86,27 @@ function findByFile(graph: LoadedGraph, filePath: string): DiagnosticPositions |
     }
   }
   return undefined;
+}
+
+/** Every loaded file's documents and position tables, in the loader's walk. */
+export function collectFilePositions(graph: LoadedGraph): FilePositions[] {
+  const out: FilePositions[] = [];
+  const seen = new Set<string>();
+  for (const mod of graph.modules.values()) {
+    for (const file of [mod.owner, ...mod.partials]) {
+      if (seen.has(file.source)) continue;
+      seen.add(file.source);
+      out.push({
+        source: file.source,
+        documents: file.manifests.map((m, i) => ({
+          ...(m && (m.kind ?? expansionTagLabel(m)) ? { kind: (m.kind ?? expansionTagLabel(m)) as string } : {}),
+          ...(typeof m?.metadata?.name === "string" ? { name: m.metadata.name } : {}),
+          position: file.positions[i] ?? { sourceLine: 0, positionIndex: new Map() },
+        })),
+      });
+    }
+  }
+  return out;
 }
 
 const ZERO_RANGE: Range = {

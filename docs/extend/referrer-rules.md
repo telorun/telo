@@ -322,7 +322,8 @@ Identical to resource rules, and for the same reasons: `condition` is TRUE when
 the rule **holds**; a `hostBacked` or non-deterministic function is refused at
 the kind; a rule that throws is a defect in the rule, not in the manifest it ran
 against, reported once per rule for the whole analysis; and each rule gets 50 ms
-per resource. See
+per referrer it judges — an evaluation past it is reported as a defect in the
+rule, which then judges nothing more of that resource. See
 [Resource rules](./resource-rules.md#restrictions).
 
 Guard optional fields — `has(referrer.openapi)`, `referrer.?tls.orValue(false)` —

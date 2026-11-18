@@ -7,9 +7,6 @@
     "name": {
       "type": "string"
     },
-    "module": {
-      "type": "string"
-    },
     "categories": {
       "type": "array",
       "items": {

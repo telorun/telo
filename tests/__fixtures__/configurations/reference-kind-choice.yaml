@@ -1,0 +1,18 @@
+# A boot target a choice writes, naming a sink: the reference is of the wrong
+# kind only where the choice writes it.
+kind: Telo.Application
+metadata: { name: ReferenceKindChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets:
+  - !ref main
+  - !if
+    if: !cel "variables.flag1"
+    then: !ref traces
+---
+kind: Telo.Sequence
+metadata: { name: main }
+steps:
+  - { name: done, value: 1 }
+---
+kind: Telo.LogTraceSink
+metadata: { name: traces }

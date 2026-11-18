@@ -90,23 +90,7 @@ export function resolveRefSentinels(
    *  it shadows — so both call sites pass it. */
   defs?: ScopeSiteSource,
 ): void {
-  resolveReferences(resources, aliases, aliasesByModule, resolution, defs, "all");
-}
-
-/**
- * {@link resolveRefSentinels}, restricted to the shapes a contract or a signature
- * names — for a manifest set whose ordinary reference slots must keep their
- * authored form. The analyzer runs it over the documents its definition registry
- * holds, which were registered before the clone every other pass reads, so a
- * kind's contract read through the registry names the same shapes.
- */
-export function resolveShapeRefs(
-  resources: ResourceManifest[],
-  aliases: AliasResolver | undefined,
-  aliasesByModule: Map<string, AliasResolver> | undefined,
-  resolution: RefResolution,
-): void {
-  resolveReferences(resources, aliases, aliasesByModule, resolution, undefined, "shapes");
+  resolveReferences(resources, aliases, aliasesByModule, resolution, defs);
 }
 
 function resolveReferences(
@@ -115,7 +99,6 @@ function resolveReferences(
   aliasesByModule: Map<string, AliasResolver> | undefined,
   resolution: RefResolution,
   defs: ScopeSiteSource | undefined,
-  extent: "all" | "shapes",
 ): void {
   const moduleOf = (r: ResourceManifest): string | undefined =>
     (r.metadata as { module?: string } | undefined)?.module;
@@ -264,7 +247,8 @@ function resolveReferences(
     if (Array.isArray(value)) {
       for (let i = 0; i < value.length; i++) {
         keys.push(i);
-        value[i] = walk(value[i], at, resolve, keys);
+        const next = walk(value[i], at, resolve, keys);
+        if (next !== value[i]) value[i] = next;
         keys.pop();
       }
       return value;
@@ -279,12 +263,18 @@ function resolveReferences(
         writer: at.writer,
         holder: holderAt(nestedAddress(at.holder, keys, obj), obj as ResourceManifest),
       };
-      for (const key of Object.keys(obj)) obj[key] = walk(obj[key], inner, resolve, [key]);
+      for (const key of Object.keys(obj)) {
+        const next = walk(obj[key], inner, resolve, [key]);
+        if (next !== obj[key]) obj[key] = next;
+      }
       return value;
     }
+    // Written only where a reference resolved: an unchanged node may be shared
+    // with a document the walk does not own.
     for (const key of Object.keys(obj)) {
       keys.push(key);
-      obj[key] = walk(obj[key], at, resolve, keys);
+      const next = walk(obj[key], at, resolve, keys);
+      if (next !== obj[key]) obj[key] = next;
       keys.pop();
     }
     return value;
@@ -317,12 +307,6 @@ function resolveReferences(
     // name, resolved in the module that wrote them.
     if (isForeign(r)) {
       walkShapeFields(r, isForwardedShape(r) ? ["schema"] : forwardedShapeFieldsOf(r));
-      continue;
-    }
-    if (extent === "shapes") {
-      if (r.kind === "Telo.Definition" || r.kind === "Telo.Abstract") {
-        walkShapeFields(r, KIND_SHAPE_FIELDS);
-      }
       continue;
     }
     // A `Telo.Import` is import-time metadata, not a resource instance — except

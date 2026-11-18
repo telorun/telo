@@ -114,21 +114,26 @@ export function hasResourceRules(node: Record<string, unknown>): boolean {
 }
 
 /**
- * Rewrite each rule's `reachable.kind` through `rewrite`, in place — the
- * `rewriteReferrerRuleKinds` mirror: canonical everywhere downstream, and a
- * kind resolving to nothing left as written for the caller to report.
+ * `node` with each rule's `reachable.kind` mapped through `map` — a copy, or the
+ * node itself when nothing maps: the `withReferrerRuleKinds` mirror, canonical
+ * on every registered copy, and a kind resolving to nothing kept as written for
+ * the caller to report.
  */
-export function rewriteReachableRuleKinds(
-  node: Record<string, unknown>,
-  rewrite: (kind: string, index: number) => string | undefined,
-): void {
+export function withReachableRuleKinds<T extends Record<string, unknown>>(
+  node: T,
+  map: (kind: string, index: number) => string | undefined,
+): T {
   const raw = node[RESOURCE_RULES_ANNOTATION];
-  if (!Array.isArray(raw)) return;
+  if (!Array.isArray(raw)) return node;
+  let rules: unknown[] | undefined;
   raw.forEach((entry, index) => {
     if (!isObject(entry) || !isObject(entry.reachable) || typeof entry.reachable.kind !== "string") return;
-    const rewritten = rewrite(entry.reachable.kind, index);
-    if (rewritten !== undefined) entry.reachable.kind = rewritten;
+    const kind = map(entry.reachable.kind, index);
+    if (kind !== undefined && kind !== entry.reachable.kind) {
+      (rules ??= [...raw])[index] = { ...entry, reachable: { ...entry.reachable, kind } };
+    }
   });
+  return rules ? { ...node, [RESOURCE_RULES_ANNOTATION]: rules } : node;
 }
 
 /** One element a rule is evaluated against. */
@@ -713,9 +718,9 @@ export function readNodes(
       // through it.
       if (unboundFailureOf(current)) break;
       if (segment === INDEX_SEGMENT) break;
-      // A presence test depends on the keys of what was reached: on its values
-      // only when it is itself not yet known.
-      if (segment === PRESENCE_SEGMENT) {
+      // A presence test depends on the keys of the owner of its member: on the
+      // owner's value only when the owner is itself not yet known.
+      if (chain[i + 1] === PRESENCE_SEGMENT) {
         if (dynamicNode(current, path)) nodes.push({ node: current, path });
         return;
       }
@@ -801,10 +806,8 @@ export interface RuleReading {
  * members hold an expression, the rest of each pointer past a member, and the
  * member each read chain of a condition reaches past a place a pointer may
  * cross — the declaration whole where a chain reads it whole (a bare use, an
- * iteration, a presence test of its members), where a `this` is reached
- * through a repeated group, and where a condition does not parse. Read
- * wherever along a pointer the reference stands, so the same places serve
- * every hop.
+ * iteration, a presence test of its owner's keys). Read wherever along a
+ * pointer the reference stands, so the same places serve every hop.
  */
 export function ruleReferentReads(
   rules: readonly RuleReading[],
@@ -819,7 +822,7 @@ export function ruleReferentReads(
     for (let j = 1; j <= segments.length; j++) crossings.push(segments.slice(0, j));
   }
   const places = new Map<string, readonly (string | number)[]>();
-  const read = (keys: readonly (string | number)[]) => places.set(JSON.stringify(keys), keys);
+  const readPlace = (keys: readonly (string | number)[]) => places.set(JSON.stringify(keys), keys);
   const meets = (a: string, b: string) => a === "*" || b === "*" || a === b;
   const wildcard = (segment: string) => (segment === INDEX_SEGMENT || segment === EACH_SEGMENT ? "*" : segment);
   for (const rule of rules) {
@@ -834,20 +837,26 @@ export function ruleReferentReads(
     for (const chain of compiled.chains) {
       const base = chain[0] === root ? [] : chain[0] === "this" ? item : null;
       if (base === null) continue;
-      let path = [...base, ...chain.slice(1).map(wildcard)];
-      const presence = path[path.length - 1] === PRESENCE_SEGMENT;
-      if (presence) path = path.slice(0, -1);
+      const presence = chain[chain.length - 1] === PRESENCE_SEGMENT;
+      // A presence test's path ends at the member it asks about.
+      const path = [...base, ...chain.slice(1, presence ? -1 : undefined).map(wildcard)];
       for (const crossing of crossings) {
         const shared = Math.min(path.length, crossing.length);
         if (!path.slice(0, shared).every((segment, i) => meets(segment, crossing[i]!))) continue;
-        const rest = path.slice(crossing.length);
+        // A test of the keys of what holds the reference reads nothing past it.
+        if (presence && path.length <= crossing.length) continue;
         if (path.length <= crossing.length) return READS_WHOLE;
+        const rest = path.slice(crossing.length);
         if (rest[0] === "*") continue;
-        read(placeAt([], `/${rest.map((s) => s.replace(/~/g, "~0").replace(/\//g, "~1")).join("/")}`));
+        // The member asked about where its owner is the declaration crossed
+        // into; the owner, whose value may be an expression, below it.
+        const read = presence && rest.length > 1 ? rest.slice(0, -1) : rest;
+        if (read[0] === "*") continue;
+        readPlace(placeAt([], `/${read.map((s) => s.replace(/~/g, "~0").replace(/\//g, "~1")).join("/")}`));
       }
     }
   }
-  for (const keys of pointerPlaces(pointers)) read(keys);
+  for (const keys of pointerPlaces(pointers)) readPlace(keys);
   const out: ReferentPlace[] = [{ kind: "tagged", keys: [] }];
   for (const keys of places.values()) out.push({ kind: "value", keys });
   return () => out;
@@ -860,7 +869,7 @@ export function ruleReferentReads(
  * with what each reference there names, every member its condition reads
  * through a co-referrer, or the whole declaration where it reads one whole.
  */
-function coReferrerReads(rule: ResourceRule, moduleNames?: ReadonlySet<string>): ReferrerReads {
+export function coReferrerReads(rule: { readonly condition: string }, moduleNames?: ReadonlySet<string>): ReferrerReads {
   const compiled = compileRuleCondition(rule.condition, moduleNames);
   const members = new Set<string>();
   let whole = "reason" in compiled;
@@ -918,9 +927,21 @@ export interface ResourceRuleReads {
   readonly targets: readonly { readonly at: ReadKeys; readonly reads: ReferentReads }[];
 }
 
+/**
+ * The place of its declaration a read chain from `base` depends on — every
+ * index and element a wildcard: what it reaches, or, for a presence test, the
+ * member it asks about where its owner is the declaration itself and the
+ * owner, whose value may be an expression, below it.
+ */
+export function chainPlace(chain: readonly string[], base: readonly string[] = []): string[] {
+  const presence = chain[chain.length - 1] === PRESENCE_SEGMENT;
+  const path = [...base, ...chain.slice(1, presence ? -1 : undefined).map((segment) => (segment === INDEX_SEGMENT || segment === EACH_SEGMENT ? "*" : segment))];
+  return presence && path.length > 1 ? path.slice(0, -1) : path;
+}
+
 /** The concrete places along a read path: up to its first wildcard, the
  *  collection the wildcard ranges over. */
-function concretePrefix(path: readonly string[]): (string | number)[] {
+export function concretePrefix(path: readonly string[]): (string | number)[] {
   const out: (string | number)[] = [];
   for (const segment of path) {
     if (segment === "*") break;
@@ -954,15 +975,10 @@ export function resourceRuleReads(rules: readonly ResourceRule[], moduleNames?: 
     const compiled = compileRuleCondition(rule.condition, moduleNames);
     if (!("reason" in compiled)) {
       for (const call of compiled.calls) calls.add(call);
-      for (const member of compiled.rootPresence) read([member]);
       for (const chain of compiled.chains) {
         const base = chain[0] === "self" ? [] : chain[0] === "this" ? item : undefined;
         if (base === undefined) continue;
-        let path = [...base, ...chain.slice(1).map((segment) => (segment === INDEX_SEGMENT || segment === EACH_SEGMENT ? "*" : segment))];
-        if (path[path.length - 1] === PRESENCE_SEGMENT) path = path.slice(0, -1);
-        // A test on the root's keys is read member by member above.
-        if (chain[0] === "self" && chain.length === 2 && chain[1] === PRESENCE_SEGMENT) continue;
-        read(concretePrefix(path));
+        read(concretePrefix(chainPlace(chain, base)));
       }
     }
     for (const pointer of rule.resolve ?? []) {

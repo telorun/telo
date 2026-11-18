@@ -7,7 +7,8 @@
  * Two halves, one reader each:
  *  - the kind ({@link outputToProblems}): the pointer names a sibling reference
  *    slot, and every kind that slot accepts declares the member in its input
- *    contract — `X_TELO_REF_INVALID_OUTPUT_TO`;
+ *    contract — `X_TELO_REF_INVALID_OUTPUT_TO`, read through a reader of the
+ *    named shapes on the way, so each finding holds where its reading does;
  *  - the resource ({@link outputToRefusal}): the source's declared output, null
  *    removed (a source returning null presents nothing), fits that member of
  *    the target's resolved input contract — `CONTRACT_INPUTS_MISMATCH`, at the
@@ -21,7 +22,7 @@
 import type { ResourceDefinition } from "@telorun/sdk";
 import type { DefResolver } from "./extends-resolution.js";
 import { propertySchemas } from "./manifest-navigation.js";
-import { followSchemaReferences, type NamedShapeLookup } from "./schema-reference.js";
+import { followSchemaReferences } from "./schema-reference.js";
 import { readRefSlot, type RefOutputTo } from "./ref-slot.js";
 import { checkSchemaCompatibility } from "./schema-compat.js";
 
@@ -29,11 +30,36 @@ type Schema = Record<string, any>;
 
 const isSchema = (node: unknown): node is Schema => !!node && typeof node === "object" && !Array.isArray(node);
 
-export interface OutputToProblem {
+export interface OutputToProblem<C> {
   readonly code: "X_TELO_REF_INVALID_OUTPUT_TO";
   /** Schema path of the annotation. */
   readonly path: string;
+  /** Schema path of the slot carrying it, which the message quotes. */
+  readonly slotPath: string;
   readonly message: string;
+  /** Where the problem holds. */
+  readonly held: C;
+}
+
+/**
+ * What judging a kind's `outputTo` reads of the schemas references name, each
+ * answer with where it holds — the reading of every configuration at once, or
+ * of one.
+ */
+export interface OutputToReads<C> {
+  /** The nodes following `segments` from `node`, written in `document`, ends
+   *  at within `at`, references followed: undefined where the path names
+   *  nothing. */
+  follow(
+    node: Schema,
+    document: Schema | undefined,
+    segments: readonly string[],
+    at: C,
+  ): readonly { readonly node: Schema | undefined; readonly held: C }[];
+  /** A kind's input contract's root node, or undefined when it declares none. */
+  inputContract(target: ResourceDefinition): Schema | undefined;
+  /** Where every judgement starts. */
+  readonly everywhere: C;
 }
 
 function pointerSegments(pointer: string): string[] {
@@ -43,76 +69,61 @@ function pointerSegments(pointer: string): string[] {
     .map((token) => token.replace(/~1/g, "/").replace(/~0/g, "~"));
 }
 
-/** The schema `pointer` names from the object schema `enclosing`, written in
- *  `document`, every reference on the way followed — or undefined. */
-function siblingAt(
-  enclosing: Schema,
-  pointer: string,
-  document: Schema,
-  shapes: NamedShapeLookup,
-): Schema | undefined {
-  let at: { node: Schema; document: Schema | undefined } | undefined = { node: enclosing, document };
-  for (const segment of pointerSegments(pointer)) {
-    if (!at) return undefined;
-    const object = followSchemaReferences(at.node, at.document, shapes);
-    const next: unknown = propertySchemas(object.node).find(([key]) => key === segment)?.[1];
-    at = isSchema(next) ? { node: next, document: object.document } : undefined;
-  }
-  return at ? followSchemaReferences(at.node, at.document, shapes).node : undefined;
-}
-
-/** Whether `contract` declares a member named `member`. */
-export function declaresMember(contract: Schema, member: string, shapes: (id: string) => Schema | undefined): boolean {
-  const root = rootOf(contract, shapes);
-  return root !== undefined && propertySchemas(root).some(([key]) => key === member);
-}
-
-function rootOf(contract: Schema, shapes: (id: string) => Schema | undefined): Schema | undefined {
-  return followSchemaReferences(contract, undefined, shapes).node;
-}
-
 /**
- * Every misdirected `outputTo` of a kind's own schema: a pointer naming no
- * sibling reference slot, or a member some kind of that slot does not declare
- * in its input contract. `inputContractOf` resolves a kind's input contract
- * (undefined: it declares none); a kind `resolve` does not find is left to the
- * reference-constraint check.
+ * Every misdirected `outputTo` of a kind's own schema `schema`: a pointer
+ * naming no sibling reference slot, or a member some kind of that slot does not
+ * declare in its input contract — each where it holds. A kind `resolve` does
+ * not find is left to the reference-constraint check.
  */
-export function outputToProblems(
+export function outputToProblems<C>(
   definition: ResourceDefinition,
   schema: unknown,
   resolve: DefResolver,
-  inputContractOf: (target: ResourceDefinition) => Schema | undefined,
-  shapes: (id: string) => Schema | undefined,
-): OutputToProblem[] {
+  reads: OutputToReads<C>,
+): OutputToProblem<C>[] {
   if (!isSchema(schema)) return [];
   const document = schema;
   const name = `${definition.kind} '${definition.metadata?.name as string}'`;
-  const problems: OutputToProblem[] = [];
+  const problems: OutputToProblem<C>[] = [];
   const seen = new Set<object>();
 
   const judge = (enclosing: Schema, slotNode: Schema, slotPath: string, outputTo: RefOutputTo): void => {
     const where = `${slotPath}.x-telo-ref.outputTo`;
-    const refuse = (reason: string): void => {
+    const refuse = (reason: string, held: C): void => {
       problems.push({
         code: "X_TELO_REF_INVALID_OUTPUT_TO",
         path: where,
+        slotPath,
         message: `${name}: x-telo-ref at '${slotPath}' declares 'outputTo: { slot: ${outputTo.slot}, member: ${outputTo.member} }', but ${reason}.`,
+        held,
       });
     };
-    const target = siblingAt(enclosing, outputTo.slot, document, shapes);
-    if (!target) return refuse(`the object enclosing the slot declares nothing at '${outputTo.slot}'`);
-    if (target === slotNode) return refuse(`'${outputTo.slot}' names the slot itself`);
-    const targetSlot = readRefSlot(target);
-    if (!targetSlot) return refuse(`'${outputTo.slot}' is not a reference slot, so nothing takes the output`);
-    for (const kind of targetSlot.kinds) {
-      const targetDefinition = resolve(kind, definition);
-      if (!targetDefinition) continue;
-      const contract = inputContractOf(targetDefinition);
-      if (!contract) {
-        refuse(`'${kind}', which '${outputTo.slot}' accepts, declares no input contract, so it has no member '${outputTo.member}'`);
-      } else if (!declaresMember(contract, outputTo.member, shapes)) {
-        refuse(`the input contract of '${kind}', which '${outputTo.slot}' accepts, declares no member '${outputTo.member}'`);
+    for (const { node: target, held } of reads.follow(enclosing, document, pointerSegments(outputTo.slot), reads.everywhere)) {
+      if (!target) {
+        refuse(`the object enclosing the slot declares nothing at '${outputTo.slot}'`, held);
+        continue;
+      }
+      if (target === slotNode) {
+        refuse(`'${outputTo.slot}' names the slot itself`, held);
+        continue;
+      }
+      const targetSlot = readRefSlot(target);
+      if (!targetSlot) {
+        refuse(`'${outputTo.slot}' is not a reference slot, so nothing takes the output`, held);
+        continue;
+      }
+      for (const kind of targetSlot.kinds) {
+        const targetDefinition = resolve(kind, definition);
+        if (!targetDefinition) continue;
+        const contract = reads.inputContract(targetDefinition);
+        if (!contract) {
+          refuse(`'${kind}', which '${outputTo.slot}' accepts, declares no input contract, so it has no member '${outputTo.member}'`, held);
+          continue;
+        }
+        for (const root of reads.follow(contract, undefined, [], held)) {
+          if (root.node && propertySchemas(root.node).some(([key]) => key === outputTo.member)) continue;
+          refuse(`the input contract of '${kind}', which '${outputTo.slot}' accepts, declares no member '${outputTo.member}'`, root.held);
+        }
       }
     }
   };
@@ -141,6 +152,10 @@ export function outputToProblems(
   };
   visit(schema, "schema");
   return problems;
+}
+
+function rootOf(contract: Schema, shapes: (id: string) => Schema | undefined): Schema | undefined {
+  return followSchemaReferences(contract, undefined, shapes).node;
 }
 
 /** `schema` admitting no null: a `type` list without `null`, an `anyOf` /

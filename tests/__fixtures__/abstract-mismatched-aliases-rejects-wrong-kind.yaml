@@ -1,7 +1,5 @@
 kind: Telo.Application
-metadata:
-  name: AbstractMismatchedAliasesRejectsWrongKind
-  version: 1.0.0
+metadata: { name: AbstractMismatchedAliasesRejectsWrongKind, version: 1.0.0 }
 imports:
   # Same mismatched-alias setup as abstract-mismatched-aliases.yaml: consumer chooses
   # alias names different from the ones abstract-impl uses internally.
@@ -9,15 +7,11 @@ imports:
   AImpl: ./abstract-impl.yaml
 ---
 kind: Telo.Definition
-metadata:
-  name: GreeterUser
-  module: AbstractMismatchedAliasesRejectsWrongKind
+metadata: { name: GreeterUser }
 capability: Telo.Runnable
 schema:
   type: object
-  properties:
-    greeter:
-      x-telo-ref: AL.Greeter
+  properties: { greeter: { x-telo-ref: AL.Greeter } }
   required: [ greeter ]
   additionalProperties: false
 ---
@@ -33,10 +27,8 @@ schema:
 # x-telo-ref check would then find zero implementations and silently skip
 # validation as "partial context" — the wrong-kind reference would pass unchecked.
 kind: AL.Concrete
-metadata:
-  name: notAGreeter
+metadata: { name: notAGreeter }
 ---
 kind: AbstractMismatchedAliasesRejectsWrongKind.GreeterUser
-metadata:
-  name: usesWrongKind
+metadata: { name: usesWrongKind }
 greeter: !ref notAGreeter

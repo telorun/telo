@@ -1,4 +1,5 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
+import { isEntryOwned } from "./entry-ownership.js";
 import { isCompiledValue } from "@telorun/sdk";
 import { celExpressionsOf, isTaggedSentinel } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
@@ -42,17 +43,11 @@ export function validateBaseMapping(
   manifests: ResourceManifest[],
   registry: DefinitionRegistry,
   aliases: AliasResolver,
+  rootModules: ReadonlySet<string>,
 ): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
   const resolveDef: DefResolver = (k) =>
     registry.resolve(aliases.resolveKind(k) ?? k) ?? registry.resolve(k);
-
-  const importedModules = new Set<string>();
-  for (const m of manifests) {
-    if (m.kind !== "Telo.Import") continue;
-    const resolved = (m.metadata as { resolvedModuleName?: string } | undefined)?.resolvedModuleName;
-    if (resolved) importedModules.add(resolved);
-  }
 
   for (const m of manifests) {
     if (m.kind !== "Telo.Definition") continue;
@@ -60,8 +55,7 @@ export function validateBaseMapping(
     if (!base || typeof base !== "object" || Array.isArray(base)) continue;
     const name = m.metadata?.name as string | undefined;
     if (!name) continue;
-    const ownModule = (m.metadata as { module?: string } | undefined)?.module;
-    if (ownModule && importedModules.has(ownModule)) continue;
+    if (!isEntryOwned(m, rootModules)) continue;
 
     const parent = resolveParent(m as unknown as ResourceDefinition, resolveDef);
     // Missing / unresolved `extends` is already reported by validateExtends.

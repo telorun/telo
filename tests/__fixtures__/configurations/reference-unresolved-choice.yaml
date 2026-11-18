@@ -1,0 +1,20 @@
+# A boot target naming a sequence a choice declares: the reference resolves
+# only where the choice declares it.
+kind: Telo.Application
+metadata: { name: ReferenceUnresolvedChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets:
+  - !ref main
+  - !ref helper
+---
+kind: Telo.Sequence
+metadata: { name: main }
+steps:
+  - { name: done, value: 1 }
+--- !if
+metadata: { name: helper }
+if: !cel "variables.flag1"
+then:
+  kind: Telo.Sequence
+  steps:
+    - { name: done, value: 1 }

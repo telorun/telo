@@ -65,9 +65,12 @@
  * by: a key is the region's content as the witness projects it (its cut
  * regions aside), the named shapes its kinds' schemas reach, the inputs its
  * expressions read, and what every annotation in it reads; a template
- * definition's is judged per variant. A configuration run marks where each
- * declaration's findings go (`OWN_SITE_MARKER`), by the written place of the
- * declaration they were judged on.
+ * definition whose body is lifted is a root and one site per body unit, a
+ * unit's key adding what it holds as the witness decides the body, and a run
+ * reports none of a unit's findings, which its keys report. Every key's
+ * findings are emitted once, where the key holds (`emissions`), into the
+ * analysis's one finishing step; a configuration run reads a CEL key's facts
+ * alone (`runFactsAt`).
  *
  * Nothing here type-checks: the door judges a site with the checks as they are.
  *
@@ -86,7 +89,8 @@ import {
   moduleCallOf,
 } from "@telorun/templating";
 import { readReporterOf } from "./annotation-reads.js";
-import { observingKeyCosts, reportKeyCost } from "./cel-site-judgements.js";
+import { celSiteName } from "./cel-site-name.js";
+import { observingKeyCosts, observingRelationParity, reportKeyCost } from "./cel-site-judgements.js";
 import { countNodes, regionExtent } from "./key-parts.js";
 import { parseCelSource } from "./cel-environment.js";
 import { stepNamesReadBy, stepRecordBodies, stepRecordNames } from "./cel-scope.js";
@@ -103,7 +107,8 @@ import {
   type ConditionedExpansion,
   type ConditionedView,
   type Forcing,
-  type Witness,
+  World,
+  type DeadBranchWorld,
   viewChainOf,
 } from "./conditioned-expansion.js";
 import { assignmentKey, type Assignment } from "./configuration-dimensions.js";
@@ -113,6 +118,8 @@ import { isModuleKind } from "./module-kinds.js";
 import { isOptionalResourceInput } from "./resource-input.js";
 import { observedStateRead } from "./validate-observed-state.js";
 import { ownSitesOf, type OwnSite, type OwnSiteSchemas } from "./own-check-sites.js";
+import type { CarveSummary } from "./schema-findings-judge.js";
+import type { UnionOutcome } from "./union-outcome.js";
 import { valueDerivedSlot } from "./value-derived-contract.js";
 import { callableInstanceFields } from "./callable-signature.js";
 import { CARVED_PLACE, placeByProjectedKeys, placeByUnionKeys, regionSkeleton, scopePlacesOf } from "./region-part.js";
@@ -123,6 +130,8 @@ import type { ScopeSite } from "./scope-address.js";
 import { FactIdentities, producerFact, type StepFact } from "./step-result-inference.js";
 import { parseKeys, pathText, TEMPLATE_BODY_FIELDS } from "./template-expansion.js";
 import { templateBodyReference, type TemplateBodyTarget } from "./template-body-lookup.js";
+import type { BodyDeadBranch, BodyUnitDeadBranch, TemplateBodySite, TemplateBodyUnit } from "./template-body-sites.js";
+import { namedDependencies, refNamesIn, unitsDeclaring } from "./lifted-body-findings.js";
 import type { AnalysisDiagnostic } from "./types.js";
 
 type Keys = readonly (string | number)[];
@@ -153,21 +162,6 @@ export interface CelOccurrenceFacts {
     readonly composed?: unknown;
     readonly label?: string;
   }>;
-}
-
-/** One template-body site of a variant: its expressions, as the body's
- *  expansion in that variant holds them. */
-export interface CensusEntry {
-  readonly occurrences: number;
-  /** Each occurrence's expression. */
-  readonly expressions: readonly { readonly engine: string; readonly source: string }[];
-  /** The module the site's declaration is written in, its instance, and the
-   *  names a call's receiver may be there. */
-  readonly module?: string;
-  readonly importPath?: readonly string[];
-  readonly moduleNames: ReadonlySet<string>;
-  /** The definition holding it, as written. */
-  readonly holder: ResourceManifest;
 }
 
 /** Why a class holds the declarations of a name whole: a named shape, whose
@@ -209,27 +203,36 @@ export interface KeyRequest {
   readonly site: string;
   readonly key: string;
   readonly declaration: ConditionedDeclaration;
-  readonly witness: Witness;
-  readonly variant: number;
+  readonly witness: World;
   readonly coverage: KeyCoverage;
   /** The region of its declaration the key judges the site on, read at the
    *  witness judging it; absent, the declaration whole (a kind document's
    *  site, or one of a declaration holding nested forwards). */
-  readonly region?: (witness: Witness) => CelRegion;
+  readonly region?: (witness: World) => CelRegion;
   /** Judged on its declarations normalized whole, the module documents whole
    *  and the witness's narrowing whole: carve parity's reference side. */
   readonly whole?: boolean;
   /** Judged with the declarations it reaches by name held whole, all else as
    *  its key holds it: by-name parity's reference side. */
   readonly byNameWhole?: boolean;
+  /** What the census holds at the site, given while the census is checked
+   *  (`observeRelationParity`) for the door to hold its environment to. */
+  readonly census?: CensusOccurrences;
+}
+
+/** A census site's expressions, by their text. */
+export interface CensusOccurrences {
+  /** Every expression of every site of its name. */
+  readonly all: readonly { readonly engine: string; readonly source: string }[];
+  /** The requesting site's own: some of them is in its key's environment. */
+  readonly own: readonly { readonly engine: string; readonly source: string }[];
 }
 
 /** One key of a declaration's own-check site to judge. */
 export interface OwnKeyRequest {
   readonly site: OwnSite;
   readonly key: string;
-  readonly witness: Witness;
-  readonly variant: number;
+  readonly witness: World;
   readonly coverage: KeyCoverage;
   /** Every site of the declaration: what a finding is attributed among. */
   readonly sites: readonly OwnSite[];
@@ -240,15 +243,44 @@ export interface OwnKeyRequest {
   /** The places of the declaration a schema key reads beyond its site's
    *  region, by their projected keys: what its region is judged with. */
   readonly reads: readonly Keys[];
+  /** A site at or beneath a union: how its unions are decided. */
+  readonly union?: OwnUnionRequest;
 }
 
 /** What one judgement of an own-check site found: its findings at their
  *  written place, each carrying `data.ownOrigin`, the written place of the
- *  declaration it was judged on — the run's marker it is placed at. */
+ *  declaration it was judged on. */
 export interface OwnVerdict {
   readonly diagnostics: readonly AnalysisDiagnostic[];
   /** The written place of every declaration judged, found or not. */
   readonly origins: readonly string[];
+  /** A site at or beneath a union: the outcome of each union at its root, by
+   *  signature (a final key), or what it gives each branch of the unions
+   *  above it, by slot (a contribution key). */
+  readonly unions?: {
+    readonly outcomes: Readonly<Record<string, UnionOutcome>>;
+    readonly contributions: Readonly<Record<string, CarveSummary>>;
+  };
+}
+
+/**
+ * How a schema key of a site at or beneath a union is judged. A CONTRIBUTION
+ * key finds what the site gives each branch of the unions above it; a FINAL
+ * key, its findings, every union above decided as that union's site selected.
+ * A union at the site's root reads each carved site by its contribution.
+ */
+export interface OwnUnionRequest {
+  readonly mode: "contribution" | "final";
+  /** The union sites above, nearest first, with — in a final key — the
+   *  outcome each union at their root selected, by signature. */
+  readonly ancestors: readonly {
+    readonly site: string;
+    readonly unionKeys: Keys;
+    readonly outcomes?: Readonly<Record<string, UnionOutcome>>;
+  }[];
+  /** A union at the site's root: what each carved site gives each branch,
+   *  by its union path's text and slot. */
+  readonly root?: ReadonlyMap<string, Readonly<Record<string, CarveSummary>>>;
 }
 
 export interface CelSiteSolveInput {
@@ -258,8 +290,6 @@ export interface CelSiteSolveInput {
   /** The configurations analysed, as one condition. */
   readonly universe: Condition;
   readonly choices: ChoiceReading;
-  /** How many variants each template definition's body is judged in. */
-  readonly variants: number;
   /** The names a CEL call's receiver may be in `manifest`'s module. */
   readonly moduleNamesOf: (manifest: ResourceManifest) => ReadonlySet<string>;
   /** The fields a declaration of `holder`'s kind declares a scope at. */
@@ -274,7 +304,7 @@ export interface CelSiteSolveInput {
    *  nearest along `extends` (the registry's effective-kind answer). */
   readonly projectionDeclarerOf: (definition: Record<string, any> | undefined) => Record<string, any> | undefined;
   /** A named shape, by its `$ref`, as `witness` holds it. */
-  readonly shapeOf: (ref: string, witness: Witness) => Record<string, any> | undefined;
+  readonly shapeOf: (ref: string, witness: World) => Record<string, any> | undefined;
   /** The name of the declaration a named shape's `$ref` names, when one does. */
   readonly shapeNameOf: (ref: string) => string | undefined;
   /** Whether `declaration` is a named shape: its whole is the schema a read of
@@ -306,9 +336,12 @@ export interface CelSiteSolveInput {
   readonly evaluatedBeforeForward: (view: ConditionedView, unionKeys: Keys) => boolean;
   /** Whether any of `declarations`, projected at `witness` and normalized as
    *  an analysis normalizes them, reports observed state. */
-  readonly reportsObservedState: (declarations: readonly ConditionedDeclaration[], witness: Witness) => boolean;
-  /** Every template-body site of `variant`. */
-  readonly bodyCensus: (variant: number) => ReadonlyMap<string, CensusEntry>;
+  readonly reportsObservedState: (declarations: readonly ConditionedDeclaration[], witness: World) => boolean;
+  /** Every template body's CEL sites, read once off its lifted reading. */
+  readonly bodySites: readonly TemplateBodySite[];
+  /** Every lifted template body's units, by its definition as written: the
+   *  own-check sites it is cut into. */
+  readonly bodyUnits: ReadonlyMap<ResourceManifest, readonly TemplateBodyUnit[]>;
   /** Judge one key in its own environment. */
   readonly judgeKey: (request: KeyRequest) => CelSiteVerdict;
   /** The schemas a declaration's own checks are cut into sites by. */
@@ -317,6 +350,9 @@ export interface CelSiteSolveInput {
   readonly judgeOwnKey: (request: OwnKeyRequest) => OwnVerdict;
   /** The relational groups judged per instance, at relation sites. */
   readonly relationGroups: readonly string[];
+  /** The groups whose instances read the instances of their own group beneath
+   *  the places they read: nothing is carved out of what they read. */
+  readonly uncarvedGroups: ReadonlySet<string>;
   /** The anchors of `group`'s instances at or beneath the region of
    *  `declaration` rooted at `unionKeys`, normalized at the witness: each by
    *  its projected keys in the declaration. */
@@ -324,9 +360,13 @@ export interface CelSiteSolveInput {
     group: string,
     declaration: ConditionedDeclaration,
     unionKeys: Keys,
-    witness: Witness,
-    variant: number,
+    witness: World,
   ) => readonly Keys[];
+  /** The CUT POINTS of `declaration` at the witness: each reference site
+   *  varying named shapes read differently, by its projected keys, with
+   *  where each of its sides holds. An anchor at or beneath one holds on the
+   *  side the witness takes. */
+  readonly slotCutsAt: (declaration: ConditionedDeclaration, witness: World) => readonly { readonly keys: Keys; readonly sides: readonly Condition[] }[];
   /** What the instance of `group` anchored at `unionKeys` reads, read off its
    *  anchor region normalized at the witness with the places at `carved` (union
    *  keys) carved out — an internal error where the reader no longer reports
@@ -335,32 +375,38 @@ export interface CelSiteSolveInput {
     group: string,
     declaration: ConditionedDeclaration,
     unionKeys: Keys,
-    witness: Witness,
-    variant: number,
+    witness: World,
     carved: readonly Keys[],
   ) => RelationReads;
   /** Judge one key of a relation site in its own environment. */
   readonly judgeRelationKey: (request: RelationKeyRequest) => CelSiteVerdict["diagnostics"];
+  /** Where each anchor of `group` a lifted template body holds at the witness
+   *  is written in its definition. */
+  readonly bodyAnchorsAt: (group: string, declaration: ConditionedDeclaration, witness: World) => readonly Keys[];
+  /** Where the place at `keys` of a lifted template definition, its body as
+   *  the witness decides it, is written. */
+  readonly writtenBodyKeysAt: (declaration: ConditionedDeclaration, keys: Keys, witness: World) => Keys;
 }
 
 /** A relation instance as a configuration run names it once its findings are
  *  placed: the group, the declaration it is reported at and its anchor there
  *  — and, for an instance of a forward view, which view of that consumer. */
-export interface RelationMarker {
-  readonly group: string;
-  readonly kind: unknown;
-  readonly name: unknown;
-  readonly source: unknown;
-  readonly path: string;
-  readonly forwardedFrom?: string;
+/** What a run reads of a CEL site's key: the facts, never a finding. */
+export interface RunFacts {
+  readonly facts: readonly CelOccurrenceFacts[];
 }
 
-/** What a relation instance finds. A view's instances are found together, at
- *  the first one a run marks: `claim` names that set, and the findings are the
- *  set's. */
-export interface RelationFound {
-  readonly diagnostics: readonly AnalysisDiagnostic[];
-  readonly claim?: string;
+/** One finding a key judged and where it holds: under its key's condition, or
+ *  — inside a branch no configuration takes — in that branch alone. */
+export interface KeyEmission {
+  readonly diagnostic: AnalysisDiagnostic;
+  readonly condition: Condition;
+  readonly dead?: DeadBranch;
+  readonly family: "cel" | "own" | "relation";
+  /** For an own-check finding: the written place of the declaration judged. */
+  readonly origin?: string;
+  /** For a relation finding of a forward view's instance set. */
+  readonly moved?: true;
 }
 
 /** The choices a relation site's anchor lies behind: its declaration's, and
@@ -389,8 +435,7 @@ export interface RelationSite {
 export interface RelationKeyRequest {
   readonly site: RelationSite;
   readonly key: string;
-  readonly witness: Witness;
-  readonly variant: number;
+  readonly witness: World;
   readonly coverage: KeyCoverage;
   /** What the instance reads, as read at the witness. */
   readonly reads: RelationReads;
@@ -427,61 +472,100 @@ export interface CelRegion {
 export interface SolvedKey {
   readonly text: string;
   condition: Condition;
-  readonly variant: number;
   readonly verdict: CelSiteVerdict;
   /** For a key inside a branch no configuration takes: that branch. */
   readonly dead?: DeadBranch;
+  /** For a template body's key inside a branch no value its definition can be
+   *  given takes: that branch, the body read with it forced. Its condition is
+   *  over the configurations alone. */
+  readonly bodyDead?: BodyDeadBranch;
   /** For a key read only where a branch no configuration takes reads a site
    *  outside its reach: judged there for the whole space, its facts alone
    *  read, shared by text with the site's other whole-care keys alone. */
   readonly wholeCare?: true;
 }
 
-/** A branch no configuration takes, and the configuration reaching its choice. */
+/** A branch no configuration takes — or an option inside one its baseline
+ *  does not take — the configuration reaching its choice, and the choices
+ *  forced to take it there, its own included. */
 export interface DeadBranch {
   readonly sentinel: object;
   readonly branch: string;
   readonly baseline: Assignment;
+  readonly forcing: Forcing;
+  readonly world: DeadBranchWorld;
+}
+
+/** How many times each forward-view instance set's verdicts were emitted, and
+ *  by how many keys, while counted. */
+export type ViewSetEmissions = Map<string, { emissions: number; keys: Set<object> }>;
+
+let viewSetCounts: ViewSetEmissions | undefined;
+
+/** Count every emission of a forward view's relation verdict, by instance set,
+ *  until {@link stopCountingViewSetEmissions}. */
+export function countViewSetEmissions(): ViewSetEmissions {
+  return (viewSetCounts = new Map());
+}
+
+export function stopCountingViewSetEmissions(): void {
+  viewSetCounts = undefined;
+}
+
+/** Whether `path` (a finding's) is at or beneath `prefix`. */
+function underPath(path: unknown, prefix: string): boolean {
+  return typeof path === "string" && (path === prefix || path.startsWith(`${prefix}.`) || path.startsWith(`${prefix}[`));
+}
+
+/** Whether two forcings force the same choices to the same branches. */
+function sameForcing(a: Forcing, b: Forcing): boolean {
+  if (a.size !== b.size) return false;
+  for (const [sentinel, branch] of a) if (b.get(sentinel) !== branch) return false;
+  return true;
 }
 
 /** Every site's keys. */
 export interface CelSiteSolution {
-  /** The verdict of `site` in `assignment` and `variant`. */
-  verdictAt(site: string, assignment: Assignment, variant: number): CelSiteVerdict | undefined;
-  /** The verdict of `site` inside the branch `branch` of the choice `sentinel`,
-   *  which no configuration takes, at the witness its run reads — undefined
-   *  for a site outside the branch's reach. */
-  verdictInDeadBranch(site: string, sentinel: object, branch: string): CelSiteVerdict | undefined;
   /** The flag the observed-state class holds at `witness`: whether any
    *  declaration or view reports observed state there. */
-  observedAt(witness: Witness): boolean;
+  observedAt(witness: World): boolean;
+  /** What the expressions of `declaration` at `unionKeys` were typed as at
+   *  `witness`, occurrence by occurrence — a template body's site `body`, by its
+   *  id — and where every key of theirs gives the same. */
+  factsAt(
+    at: { readonly declaration: ConditionedDeclaration; readonly unionKeys: Keys } | { readonly body: string },
+    witness: World,
+  ): { readonly facts: readonly CelOccurrenceFacts[]; readonly condition: Condition } | undefined;
   /** Every key of every site. */
   readonly keys: ReadonlyMap<string, readonly SolvedKey[]>;
-  /** Whether `site` is a template body's, judged per variant. */
+  /** Whether `site` is a template body's. */
   isBodySite(site: string): boolean;
-  /** What the own checks of the declaration written at `origin` find in
-   *  `assignment` and `variant`, site by site. */
-  ownFindingsAt(origin: string, assignment: Assignment, variant: number): readonly AnalysisDiagnostic[];
-  /** The same inside the branch `branch` of the choice `sentinel`, which no
-   *  configuration takes, at the witness its run reads: the sites in the
-   *  branch's reach alone. */
-  ownFindingsInDeadBranch(origin: string, sentinel: object, branch: string): readonly AnalysisDiagnostic[];
+  /** Every template body site's keys judged, in site order: what each finds,
+   *  under its condition over the definition's own dimensions and the
+   *  configurations — a dead branch's over the configurations alone. */
+  readonly bodyKeys: readonly { readonly site: TemplateBodySite; readonly keys: readonly SolvedKey[] }[];
+  /** Every lifted template body unit's own-check keys judged, in site order:
+   *  what each finds, under its condition over the definition's own
+   *  dimensions and the configurations — a dead branch's over the
+   *  configurations alone. */
+  readonly bodyOwnKeys: readonly { readonly site: OwnSite; readonly unit: TemplateBodyUnit; readonly keys: readonly OwnSolvedKey[] }[];
   /** Every own-check site and its keys, relation sites included. */
   readonly ownKeys: ReadonlyMap<string, readonly OwnSolvedKey[]>;
   /** Every relation site the census found, by id. */
   readonly relationSites: ReadonlyMap<string, RelationSite>;
+  /** The id of the relation site `declaration` holds where the id written by `relationSiteId` is `base`. */
+  relationSiteIdAt(declaration: ConditionedDeclaration, base: string): string;
   /** Where a relation site holding at `witness` finds otherwise judged on the
    *  regions its key reads carved than on the same regions whole — one line per
    *  site — and what each site's key carves there. */
-  carveParityAt(witness: Witness, variant: number): { readonly mismatches: string[]; readonly carved: ReadonlyMap<string, readonly Keys[]> };
+  carveParityAt(witness: World): { readonly mismatches: string[]; readonly carved: ReadonlyMap<string, readonly Keys[]> };
   /** Where a CEL site or an own-check site holding at `witness` finds otherwise
    *  judged in its key's environment — its regions, its module's globals base
    *  and the entries its classes narrow — than on its declarations normalized
    *  whole with the module documents whole: one line per site, and how many
    *  sites of each family were compared. */
   keyParityAt(
-    witness: Witness,
-    variant: number,
+    witness: World,
   ): {
     readonly mismatches: string[];
     /** Where a key judged with the declarations it reaches by name held whole
@@ -489,25 +573,38 @@ export interface CelSiteSolution {
     readonly byName: string[];
     readonly compared: { readonly cel: number; readonly own: number; readonly views: number };
   };
-  /** What the relation instance a run's marker stands for finds in
-   *  `assignment` and `variant` — an internal error for an instance the census
-   *  does not hold. A view's instance is found by where its anchor stands in
-   *  the union. */
-  relationFindingsAt(marker: RelationMarker, assignment: Assignment, variant: number): RelationFound;
-  /** The same inside the branch `branch` of the choice `sentinel`, which no
-   *  configuration takes, at the witness its run reads — nothing for a site
-   *  outside the branch's reach. */
-  relationFindingsInDeadBranch(marker: RelationMarker, sentinel: object, branch: string): RelationFound;
+  /** Every lifted template body's relation sites and their keys judged, in
+   *  site order: what each finds, under its condition over the definition's
+   *  own dimensions and the configurations — a dead branch's over the
+   *  configurations alone. */
+  readonly bodyRelationKeys: readonly { readonly site: RelationSite; readonly definition: ResourceManifest; readonly keys: readonly OwnSolvedKey[] }[];
+  /** What a configuration run reads of the CEL site `site` in `assignment` to
+   *  judge the stages still computed in it: its facts alone. */
+  runFactsAt(site: string, assignment: Assignment): RunFacts | undefined;
+  /** The same in the run of the branch `branch` of the choice `sentinel`, which
+   *  no configuration takes — undefined for a site outside the branch's reach. */
+  runFactsInDeadBranch(site: string, sentinel: object, branch: string): RunFacts | undefined;
+  /** Every finding a CEL, own-check or relation key judged, each once, where it
+   *  holds — the template bodies' keys aside. */
+  emissions(): readonly KeyEmission[];
 }
 
 /** One key of an own-check site, judged once. */
 export interface OwnSolvedKey {
   readonly text: string;
   condition: Condition;
-  readonly variant: number;
   verdict: OwnVerdict;
   readonly dead?: DeadBranch;
+  /** For a template body unit's key inside a branch no value its definition
+   *  can be given takes: that branch, the body read with it forced. Its
+   *  condition is over the configurations alone, and it keeps what is found
+   *  beneath the branch. */
+  readonly bodyDead?: BodyUnitDeadBranch;
 }
+
+/** Which keys of a schema site are solved: what it contributes to the unions
+ *  above it, or its findings. */
+type OwnPhase = "contribution" | "final";
 
 /** One expression of the union, as written. */
 interface UnionSite {
@@ -553,18 +650,6 @@ function layoutOrder(a: readonly number[], b: readonly number[]): number {
   return a.length - b.length;
 }
 
-/** The identity of a site: the written place a finding about it is reported
- *  at. */
-export function celSiteId(kind: unknown, name: unknown, filePath: unknown, path: string): string {
-  return JSON.stringify([kind, name, filePath, path]);
-}
-
-/** Whether `site` is a template body's expression. */
-export function isBodySiteId(site: string): boolean {
-  const [kind, , , path] = JSON.parse(site) as [unknown, unknown, unknown, string];
-  return kind === "Telo.Definition" && TEMPLATE_BODY_FIELDS.includes(path.split(/[.[]/)[0]!);
-}
-
 const readsIds = new WeakMap<object, number>();
 let nextReadsId = 0;
 
@@ -593,11 +678,14 @@ function textOf(value: unknown): string {
 
 /** Every expression of the union outside a template body — a dead branch's
  *  included, each such site carrying the branch and the choices forced to
- *  reach it — and of its forward views: a view's expression, at a place a
- *  forward moves to where its consumer wrote it, is a site whose id is that
- *  place, unless its upstream evaluated it before forwarding it. One written
- *  place may be several sites: the expression's own declaration, where no view
- *  built from it holds it, and each view holding it, where that view holds. */
+ *  reach it — and of its forward views, each named by its union place
+ *  (`celSiteName`): a view's expression at a place a forward moves to where
+ *  its consumer wrote it is named by that place, one at a place no forward
+ *  moves by its consumer's own; neither is a site where the view's no-place
+ *  set holds the place or its upstream evaluated it before forwarding it. One
+ *  written place may be several sites: the expression's own declaration, where
+ *  no view built from it holds it, and each view holding it, where that view
+ *  holds. */
 function unionSites(
   union: ConditionedExpansion,
   dead: readonly DeadBranch[],
@@ -608,13 +696,14 @@ function unionSites(
   const deadOf = (step: ChoiceStep): DeadBranch | undefined =>
     dead.find((entry) => entry.sentinel === step.sentinel && entry.branch === step.branch);
   /** The dead branch a path takes, read where its run reads it — its baseline,
-   *  the branch forced; undefined for a path some configuration takes, or one
-   *  that run does not take. */
+   *  its choices forced: the innermost one on the path whose run takes it;
+   *  undefined for a path some configuration takes, or one no such run takes. */
   const deadPath = (path: readonly ChoiceStep[]): UnionSite["dead"] => {
-    const branch = path.map(deadOf).find((entry) => entry !== undefined);
-    if (!branch) return undefined;
-    const forcing = new Map([[branch.sentinel, branch.branch]]) as unknown as Forcing;
-    return takenAt(space, FALSE, path, branch.baseline, forcing) ? { branch } : undefined;
+    const branch = path
+      .map(deadOf)
+      .filter((entry) => entry !== undefined && takenAt(space, FALSE, path, entry.baseline, entry.forcing))
+      .at(-1);
+    return branch ? { branch } : undefined;
   };
   const views = new Set<ConditionedDeclaration>(union.views);
   const walk = (declaration: ConditionedDeclaration, view: ConditionedView | undefined): void => {
@@ -623,8 +712,8 @@ function unionSites(
     const kind = holder.kind ?? expansionTagLabel(holder);
     const definition = declaration.manifest.kind === "Telo.Definition";
     /** `written` is where the place is written in the holder — undefined for a
-     *  view's own place, which no forward moves; `exact`, that every place
-     *  beneath is reported there. */
+     *  view's own place, which no forward moves and which is named by its
+     *  consumer's; `exact`, that every place beneath is reported there. */
     const visit = (
       value: unknown,
       unionKeys: Keys,
@@ -642,7 +731,7 @@ function unionSites(
         return;
       }
       if (isTaggedSentinel(value)) {
-        if (isRefSentinel(value) || written === undefined) return;
+        if (isRefSentinel(value)) return;
         if (view && evaluatedBefore(view, unionKeys)) return;
         // Every option on the way: one a view reads across a reference carries
         // only the steps of the declaration it names.
@@ -653,7 +742,7 @@ function unionSites(
         if (
           deadAt &&
           view &&
-          !takenAt(space, view.condition, view.path, deadAt.branch.baseline, new Map([[deadAt.branch.sentinel, deadAt.branch.branch]]) as unknown as Forcing)
+          !takenAt(space, view.condition, view.path, deadAt.branch.baseline, deadAt.branch.forcing)
         ) {
           deadAt = undefined;
         }
@@ -661,7 +750,7 @@ function unionSites(
         // has nowhere to be judged.
         if (condition === FALSE && !deadAt) return;
         out.push({
-          id: celSiteId(kind, meta?.name, meta?.source, pathText(written)),
+          id: celSiteName({ kind, name: meta?.name, source: meta?.source }, written && pathText(written), pathText(declaration.at)),
           declaration,
           unionKeys,
           options,
@@ -765,6 +854,8 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     sentinel: entry.site.sentinel as object,
     branch: entry.branch,
     baseline: entry.baseline,
+    forcing: entry.forcing as Forcing,
+    world: entry.world,
   }));
   const sites = unionSites(union, deadBranches, input.evaluatedBeforeForward);
   const viewSites = new Set<ConditionedDeclaration>(union.views);
@@ -772,17 +863,17 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   const nameIndex = input.names;
 
   // --- Projection at one witness -------------------------------------------
-  const taken = (condition: Condition, path: readonly ChoiceStep[], wit: Witness): boolean =>
+  const taken = (condition: Condition, path: readonly ChoiceStep[], wit: World): boolean =>
     takenAt(space, condition, path, wit.assignment, wit.forcing);
-  const optionAt = (value: unknown, wit: Witness): AlternativeOption | undefined =>
+  const optionAt = (value: unknown, wit: World): AlternativeOption | undefined =>
     isAlternatives(value) ? value.options.find((option) => taken(option.condition, option.path, wit)) : undefined;
-  const declared = (declaration: ConditionedDeclaration, wit: Witness): boolean =>
+  const declared = (declaration: ConditionedDeclaration, wit: World): boolean =>
     taken(declaration.condition, declaration.path, wit);
-  const project = (value: unknown, wit: Witness) => union.project(value, wit.assignment, wit.forcing);
+  const project = (value: unknown, wit: World) => union.project(value, wit.assignment, wit.forcing);
 
   /** The union node at expanded `keys` from `root`, and the condition of every
    *  option deciding what is there (an earlier list item's presence included). */
-  const navigate = (root: unknown, keys: Keys, wit: Witness): { node: unknown; present: boolean; taken: Condition } => {
+  const navigate = (root: unknown, keys: Keys, wit: World): { node: unknown; present: boolean; taken: Condition } => {
     let node = root;
     let held = TRUE;
     const settle = (): boolean => {
@@ -834,7 +925,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   /** The union node at union `keys` from `root` — a list item by where it is
    *  written, whatever is present before it — and the condition of every
    *  option on the way. */
-  const navigateUnion = (root: unknown, keys: Keys, wit: Witness): { node: unknown; present: boolean; taken: Condition } => {
+  const navigateUnion = (root: unknown, keys: Keys, wit: World): { node: unknown; present: boolean; taken: Condition } => {
     let node = root;
     let held = TRUE;
     for (const key of keys) {
@@ -863,7 +954,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   const placeAt = (
     declaration: ConditionedDeclaration,
     keys: Keys,
-    wit: Witness,
+    wit: World,
   ): { present: boolean; node: unknown; keys: unknown; taken: Condition } => {
     const at = placeByProjectedKeys(union, declaration, keys, wit);
     if (at.present) return { present: true, node: at.node, keys: at.unionKeys, taken: at.path };
@@ -942,7 +1033,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   /** Every declaration named `name`: present or absent, and its content —
    *  held whole, labelled `shape` where every declaration of the name is a
    *  named shape and for `reader` otherwise. */
-  const declarationClass = (names: Iterable<string>, wit: Witness, transitive: boolean, reader: WholeNameReader): ReadClass => {
+  const declarationClass = (names: Iterable<string>, wit: World, transitive: boolean, reader: WholeNameReader): ReadClass => {
     const parts: unknown[] = [];
     let condition = TRUE;
     const seen = new Set<string>();
@@ -974,7 +1065,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   /** The named shapes `names` name, each held whole as the schema it is —
    *  and, onward, the shapes their content names; a name some declaration of
    *  which is no named shape is held as its identity alone. */
-  const shapeClasses = (names: Iterable<string>, wit: Witness): ReadClass[] => {
+  const shapeClasses = (names: Iterable<string>, wit: World): ReadClass[] => {
     const whole = new Set<string>();
     const others = new Set<string>();
     const queue = [...names];
@@ -1000,7 +1091,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
 
   /** Which declarations there are: what a read of a name none answers to is
    *  refused with — each present one held as its identity alone. */
-  const presenceClass = (wit: Witness): ReadClass => {
+  const presenceClass = (wit: World): ReadClass => {
     const parts: unknown[] = [];
     const held: { declaration: ConditionedDeclaration; roots: Keys[] }[] = [];
     let condition = TRUE;
@@ -1021,7 +1112,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
 
   /** A present declaration's identity — its `kind` and `metadata` — at the
    *  witness. */
-  const identityAt = (declaration: ConditionedDeclaration, wit: Witness): { value: unknown; taken: Condition } => {
+  const identityAt = (declaration: ConditionedDeclaration, wit: World): { value: unknown; taken: Condition } => {
     const projected = project({ kind: declaration.manifest.kind, metadata: declaration.manifest.metadata }, wit);
     return { value: projected.value, taken: projected.taken };
   };
@@ -1045,7 +1136,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   const bodyTargetOf = (
     holder: ConditionedDeclaration,
     ref: unknown,
-    wit: Witness,
+    wit: World,
   ): { readonly target: TemplateBodyTarget; readonly name: string; readonly keys?: Keys; readonly found: ReadClass } | undefined => {
     if (!isRefSentinel(ref) || !isKindDocument(holder.manifest)) return undefined;
     const parsed = (ref as { parsed?: { name?: unknown; alias?: unknown } }).parsed;
@@ -1095,8 +1186,8 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
    */
   const nameReadClasses = (
     names: Iterable<string>,
-    wit: Witness,
-    placesOf: (declaration: ConditionedDeclaration, wit: Witness) => readonly Keys[],
+    wit: World,
+    placesOf: (declaration: ConditionedDeclaration, wit: World) => readonly Keys[],
     onward: boolean,
     own?: ConditionedDeclaration,
   ): { classes: ReadClass[]; reads: Keys[] } => {
@@ -1145,7 +1236,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
 
   /** The places a module call reads in a callable it names: its signature and
    *  its body, where its kind lets an instance declare them. */
-  const callablePlaces = (declaration: ConditionedDeclaration, wit: Witness): Keys[] =>
+  const callablePlaces = (declaration: ConditionedDeclaration, wit: World): Keys[] =>
     callableInstanceFields(input.schemaOf(project(declaration.manifest, wit).value as Record<string, any>, declaration.manifest)).map(
       (field) => [field],
     );
@@ -1170,7 +1261,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
    *  declaration and view that may report, held as it is at the witness — present with
    *  the same content, or absent — where it cannot differ. */
   const observedFlags = new Map<string, boolean>();
-  const observedClass = (wit: Witness): ReadClass => {
+  const observedClass = (wit: World): ReadClass => {
     let condition = TRUE;
     const present: ConditionedDeclaration[] = [];
     const contents: unknown[] = [];
@@ -1218,7 +1309,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   const placeClasses = (
     declaration: ConditionedDeclaration,
     place: ReadPlace,
-    wit: Witness,
+    wit: World,
     ownReads?: { readonly own: ConditionedDeclaration; readonly reads: Keys[] },
   ): ReadClass[] => {
     if (place.kind === "tagged") return taggedClasses(declaration, place.keys, wit, ownReads);
@@ -1246,7 +1337,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   const taggedClasses = (
     declaration: ConditionedDeclaration,
     keys: Keys,
-    wit: Witness,
+    wit: World,
     ownReads?: { readonly own: ConditionedDeclaration; readonly reads: Keys[] },
   ): ReadClass[] => {
     const at = placeAt(declaration, keys, wit);
@@ -1333,7 +1424,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   };
 
   /** A declaration as a reporter reads it, at the witness. */
-  const referentAt = (target: ConditionedDeclaration, wit: Witness): Referent => {
+  const referentAt = (target: ConditionedDeclaration, wit: World): Referent => {
     const value = project(target.manifest, wit).value as Record<string, any>;
     return {
       value,
@@ -1378,7 +1469,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     | { readonly member: object; readonly near: ConditionedDeclaration; readonly reads: ReferentReads; readonly transitive: boolean };
   const namedReadClasses = (
     start: readonly ReadHop[],
-    wit: Witness,
+    wit: World,
     ownReads?: { readonly own: ConditionedDeclaration; readonly reads: Keys[] },
   ): ReadClass[] => {
     const classes: ReadClass[] = [];
@@ -1577,7 +1668,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
 
   // --- Steps --------------------------------------------------------------
   /** An object of the union at the witness, but one member. */
-  const projectExcept = (object: Record<string, unknown>, except: string, wit: Witness): { value: unknown; taken: Condition } => {
+  const projectExcept = (object: Record<string, unknown>, except: string, wit: World): { value: unknown; taken: Condition } => {
     const value: Record<string, unknown> = {};
     let held = TRUE;
     for (const [key, field] of Object.entries(object)) {
@@ -1641,7 +1732,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     declaration: ConditionedDeclaration,
     projected: Record<string, unknown>,
     root: Keys,
-    wit: Witness,
+    wit: World,
   ): {
     names: readonly string[] | undefined;
     namesClass: () => ReadClass;
@@ -1683,7 +1774,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
 
   /** The site at `unionKeys` of `declaration` whose options are taken at the
    *  witness. */
-  const siteAt = (declaration: ConditionedDeclaration, unionKeys: Keys, wit: Witness): UnionSite | undefined => {
+  const siteAt = (declaration: ConditionedDeclaration, unionKeys: Keys, wit: World): UnionSite | undefined => {
     const text = textOf(unionKeys);
     return sites.find(
       (site) =>
@@ -1698,7 +1789,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   const stepObjects = (
     declaration: ConditionedDeclaration,
     name: string,
-    wit: Witness,
+    wit: World,
   ): { objects: { object: Record<string, unknown>; unionKeys: Keys }[]; taken: Condition } => {
     const objects: { object: Record<string, unknown>; unionKeys: Keys }[] = [];
     let held = TRUE;
@@ -1834,8 +1925,6 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     return fact;
   };
 
-  const keyHolding = (site: string, assignment: Assignment, variant: number): SolvedKey | undefined =>
-    solved.get(site)?.find((key) => !key.dead && !key.wholeCare && key.variant === variant && space.holds(key.condition, assignment));
   /** Each union site's own keys: one written place may be several sites. */
   const siteKeys = new Map<UnionSite, SolvedKey[]>();
   const sitesOfId = new Map<string, UnionSite[]>();
@@ -1845,11 +1934,11 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   // branch forced. Its REACH is the sites of the declarations holding its
   // choice, or lying in it, whose region holds the forced branch there: each
   // judged once there, and nothing else asked for in its run.
-  const deadWitnesses = new Map<DeadBranch, Witness>();
-  const deadWitness = (branch: DeadBranch): Witness => {
+  const deadWitnesses = new Map<DeadBranch, World>();
+  const deadWitness = (branch: DeadBranch): World => {
     let witness = deadWitnesses.get(branch);
     if (!witness) {
-      witness = { assignment: branch.baseline, forcing: new Map([[branch.sentinel, branch.branch]]) as unknown as Forcing };
+      witness = branch.world;
       deadWitnesses.set(branch, witness);
     }
     return witness;
@@ -1869,8 +1958,8 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
    *  its door held fixed what the kept configurations do not vary, which the
    *  witness may vary. Whole-care keys of the site with the same text are one:
    *  each is judged once, whichever witness reaches it first. */
-  const wholeCare = new Map<UnionSite, Map<Witness, SolvedKey | null>>();
-  const wholeCareKeyOf = (site: UnionSite, wit: Witness): SolvedKey | undefined => {
+  const wholeCare = new Map<UnionSite, Map<World, SolvedKey | null>>();
+  const wholeCareKeyOf = (site: UnionSite, wit: World): SolvedKey | undefined => {
     let byWitness = wholeCare.get(site);
     if (!byWitness) wholeCare.set(site, (byWitness = new Map()));
     const known = byWitness.get(wit);
@@ -1886,18 +1975,18 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       byWitness.set(wit, shared);
       return shared;
     }
-    const key: SolvedKey = { text: found.text, condition: FALSE, variant: 0, verdict: { diagnostics: [], facts: [] }, wholeCare: true };
+    const key: SolvedKey = { text: found.text, condition: FALSE, verdict: { diagnostics: [], facts: [] }, wholeCare: true };
     byWitness.set(wit, key);
     siteKeys.set(site, [...keys, key]);
     solved.set(site.id, [...(solved.get(site.id) ?? []), key]);
     const { region } = regionOfKey(site, wit, found.region);
-    judge(site.id, site.declaration, key, wit, found.coverage, region, site.unionKeys);
+    judge(site, site.declaration, key, wit, found.coverage, region, site.unionKeys);
     return key;
   };
   /** The key of `site` a run of the branch `dead` reads at its witness: the
    *  site's own key there when it lies in the branch, else its whole-care key —
    *  the one lookup every family's read at a forced witness goes through. */
-  const forcedKeyOf = (site: UnionSite, dead: DeadBranch, wit: Witness): SolvedKey | undefined => {
+  const forcedKeyOf = (site: UnionSite, dead: DeadBranch, wit: World): SolvedKey | undefined => {
     const key = site.dead
       ? siteKeys.get(site)?.find((k) => k.dead === site.dead!.branch)
       : (siteKeys.get(site)?.find((k) => k.dead === dead) ?? wholeCareKeyOf(site, wit));
@@ -1906,10 +1995,12 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     }
     return key;
   };
+  /** The dead branch whose run reads a witness forcing choices. */
+  const forcingBranchOf = (wit: World): DeadBranch | undefined =>
+    wit.forcing ? deadBranches.find((entry) => sameForcing(entry.forcing, wit.forcing!)) : undefined;
   /** The dead branch a witness forces. */
-  const forcedBranchOf = (wit: Witness): DeadBranch => {
-    const forcing = wit.forcing as unknown as Map<object, string>;
-    const found = deadBranches.find((entry) => forcing.get(entry.sentinel) === entry.branch);
+  const forcedBranchOf = (wit: World): DeadBranch => {
+    const found = forcingBranchOf(wit);
     if (!found) throw new Error("internal: a witness forces a branch the choice reading names as none no configuration takes.");
     return found;
   };
@@ -1918,7 +2009,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     keys.find((k) => !k.dead && !k.wholeCare && space.holds(k.condition, assignment));
   /** The key of `site` read at `wit`: at a witness forcing a branch, what a run
    *  of that branch reads; otherwise the key a kept configuration holds. */
-  const keyAtWitness = (site: UnionSite, wit: Witness): SolvedKey | undefined =>
+  const keyAtWitness = (site: UnionSite, wit: World): SolvedKey | undefined =>
     wit.forcing
       ? forcedKeyOf(site, forcedBranchOf(wit), wit)
       : site.dead
@@ -1927,10 +2018,22 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   /** The keys of the written place `id` holding at `assignment` — inside the
    *  dead branch `dead`, what its run reads of each site there — one per site
    *  holding. */
-  const keysAt = (id: string, assignment: Assignment, variant: number, dead?: DeadBranch): SolvedKey[] => {
+  /** The key of the template body site `id` holding at `wit`, its body as the
+   *  witness decides it: a dead branch's where the witness forces it. */
+  const bodyKeyAtWitness = (id: string, wit: World): SolvedKey | undefined => {
+    for (const site of bodySitesById.get(id) ?? []) {
+      if (site.dead && wit.bodyForcing?.get(site.dead.sentinel as never) !== site.dead.branch) continue;
+      const key = bodyKeysOf.get(site)!.find((k) => space.holds(k.condition, wit.assignment));
+      if (key) return key;
+    }
+    return undefined;
+  };
+  const keysAt = (id: string, assignment: Assignment, dead?: DeadBranch): SolvedKey[] => {
     const own = sitesOfId.get(id);
     if (!own) {
-      const key = dead ? wholeCareBodyKeyOf(id, variant, deadWitness(dead)) : keyHolding(id, assignment, variant);
+      // A template body's site is read by a run only in a branch no
+      // configuration takes, by a site outside the body.
+      const key = dead ? wholeCareBodyKeyOf(id, deadWitness(dead)) : undefined;
       return key ? [key] : [];
     }
     const out: SolvedKey[] = [];
@@ -1955,7 +2058,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     declaration: ConditionedDeclaration,
     invoke: unknown,
     stepKeys: Keys,
-    wit: Witness,
+    wit: World,
     ownReads?: { readonly own: ConditionedDeclaration; readonly reads: Keys[] },
   ): ReadClass[] =>
     targetClasses(declaration, invoke, [...stepKeys, "invoke"], wit, (target) => dispatchPlaces(target, wit), ownReads);
@@ -1963,7 +2066,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   /** The places a dispatch to `target` is typed by: its contracts and, where
    *  neither it nor its kind declares an output contract, the value slot its
    *  kind derives one from. */
-  const dispatchPlaces = (target: ConditionedDeclaration, wit: Witness): Keys[] =>
+  const dispatchPlaces = (target: ConditionedDeclaration, wit: World): Keys[] =>
     dispatchPlacesOf(project(target.manifest, wit).value as Record<string, any>, target.manifest);
   /** {@link dispatchPlaces} of a declaration as projected, written in
    *  `within`'s module. */
@@ -1982,7 +2085,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     declaration: ConditionedDeclaration,
     invoke: unknown,
     refKeys: Keys,
-    wit: Witness,
+    wit: World,
   ):
     | {
         outcomeClass: ReadClass;
@@ -2047,7 +2150,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     declaration: ConditionedDeclaration,
     invoke: unknown,
     refKeys: Keys,
-    wit: Witness,
+    wit: World,
     places: readonly Keys[] | ((target: ConditionedDeclaration) => readonly Keys[]),
     ownReads?: { readonly own: ConditionedDeclaration; readonly reads: Keys[] },
   ): ReadClass[] => {
@@ -2089,7 +2192,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     declaration: ConditionedDeclaration,
     ref: unknown,
     refKeys: Keys,
-    wit: Witness,
+    wit: World,
     reads: ReferentReads,
     transitive: boolean,
     ownReads?: { readonly own: ConditionedDeclaration; readonly reads: Keys[] },
@@ -2131,7 +2234,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   const regionClasses = (
     target: ConditionedDeclaration,
     places: readonly Keys[],
-    wit: Witness,
+    wit: World,
     asValues = false,
   ): ReadClass[] => {
     const regions: ReadClass[] = [];
@@ -2180,7 +2283,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   /** Where the scope member `member` — as the union holds it, resolved from a
    *  reference written in `near` — is written: the declaration of the union
    *  holding it, and its projected keys there at the witness. */
-  const memberAt = (member: object, near: ConditionedDeclaration, wit: Witness): { holder: ConditionedDeclaration; at: Keys } => {
+  const memberAt = (member: object, near: ConditionedDeclaration, wit: World): { holder: ConditionedDeclaration; at: Keys } => {
     const isView = viewSites.has(near);
     const within = isView ? (near as ConditionedView).consumer : near;
     // A view holds the scope members its body entry declares.
@@ -2202,7 +2305,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   const memberClasses = (
     member: object,
     near: ConditionedDeclaration,
-    wit: Witness,
+    wit: World,
     ownReads?: { readonly own: ConditionedDeclaration; readonly reads: Keys[] },
   ): ReadClass[] => {
     const found = memberAt(member, near, wit);
@@ -2229,7 +2332,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
    * `declaration` itself: the places read on in it are places of the
    * declaration the key reads (`reads`, projected keys), held in its region.
    */
-  const crossedReads = (declaration: ConditionedDeclaration, wit: Witness): { classes: ReadClass[]; reads: Keys[] } => {
+  const crossedReads = (declaration: ConditionedDeclaration, wit: World): { classes: ReadClass[]; reads: Keys[] } => {
     const views = (viewsOf.get(declaration) ?? []).filter((view) => declared(view, wit));
     const reached = new Set<ConditionedDeclaration>([declaration, ...views.map((view) => view.consumer), ...views]);
     const read = new Set<object>();
@@ -2283,7 +2386,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   const stepClasses = (
     declaration: ConditionedDeclaration,
     name: string,
-    wit: Witness,
+    wit: World,
     site?: UnionSite,
     ownReads?: { readonly own: ConditionedDeclaration; readonly reads: Keys[] },
   ): ReadClass[] => {
@@ -2335,7 +2438,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     importPath: readonly string[] | undefined,
     block: "variables" | "secrets" | "resources",
     name: string | undefined,
-    wit: Witness,
+    wit: World,
   ): ReadClass => {
     const w = wit.assignment;
     const decided = narrowingAt(choices, wit)(module, importPath);
@@ -2359,7 +2462,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     keys: Keys,
     within: ResourceManifest,
     shapes: Set<string>,
-    wit: Witness,
+    wit: World,
   ): { node: Record<string, any>; at: Keys; root: Keys }[] => {
     const out: { node: Record<string, any>; at: Keys; root: Keys }[] = [];
     const visit = (
@@ -2368,6 +2471,10 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       root: Keys,
       document: Record<string, any>,
       seen: Set<object>,
+      // Off on the holder's schema past an inline declaration: its nodes are
+      // not the site's, while the named shapes they reach are read all the
+      // same wherever the field is no reference slot.
+      record = true,
     ): void => {
       if (!node || typeof node !== "object" || Array.isArray(node)) return;
       let schema = node as Record<string, any>;
@@ -2383,18 +2490,19 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
         const target = resolveSchemaReference(ref, document, (shape) => input.shapeOf(shape, wit));
         if (target) {
           document = target.document;
-          visit(target.node, depth, root, document, guard);
+          visit(target.node, depth, root, document, guard, record);
         }
       }
-      out.push({ node: schema, at: keys.slice(0, depth), root });
+      if (record) out.push({ node: schema, at: keys.slice(0, depth), root });
       for (const branch of ["allOf", "anyOf", "oneOf"] as const) {
-        if (Array.isArray(schema[branch])) for (const member of schema[branch]) visit(member, depth, root, document, guard);
+        if (Array.isArray(schema[branch])) for (const member of schema[branch]) visit(member, depth, root, document, guard, record);
       }
       if (depth >= keys.length) return;
       const key = keys[depth]!;
       const value = valueAt(data, keys.slice(0, depth + 1));
       // An inline declaration beneath a field is judged by its own kind.
       if (
+        record &&
         depth + 1 < keys.length &&
         value &&
         typeof value === "object" &&
@@ -2405,18 +2513,18 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
         const nested = input.schemaOf(value as Record<string, any>, within);
         if (nested) {
           visit(nested, depth + 1, keys.slice(0, depth + 1), nested, new Set());
-          return;
+          record = false;
         }
       }
       if (typeof key === "number") {
-        if (Array.isArray(schema.items)) visit(schema.items[key], depth + 1, root, document, guard);
-        else if (schema.items) visit(schema.items, depth + 1, root, document, guard);
-        if (Array.isArray(schema.prefixItems)) visit(schema.prefixItems[key], depth + 1, root, document, guard);
+        if (Array.isArray(schema.items)) visit(schema.items[key], depth + 1, root, document, guard, record);
+        else if (schema.items) visit(schema.items, depth + 1, root, document, guard, record);
+        if (Array.isArray(schema.prefixItems)) visit(schema.prefixItems[key], depth + 1, root, document, guard, record);
         return;
       }
       const properties = schema.properties as Record<string, unknown> | undefined;
       if (properties && Object.hasOwn(properties, key)) {
-        visit(properties[key], depth + 1, root, document, guard);
+        visit(properties[key], depth + 1, root, document, guard, record);
         return;
       }
       let matched = false;
@@ -2424,14 +2532,14 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
         try {
           if (new RegExp(pattern, "u").test(key)) {
             matched = true;
-            visit(child, depth + 1, root, document, guard);
+            visit(child, depth + 1, root, document, guard, record);
           }
         } catch {
           // A pattern JS cannot read is the schema check's to report.
         }
       }
       if (!matched && schema.additionalProperties && typeof schema.additionalProperties === "object") {
-        visit(schema.additionalProperties, depth + 1, root, document, guard);
+        visit(schema.additionalProperties, depth + 1, root, document, guard, record);
       }
     };
     const rootSchema = input.schemaOf(data as Record<string, any>, within);
@@ -2486,9 +2594,9 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   };
 
   /** Expanded keys of a site at the witness, from its union path. */
-  const expandedKeys = (site: UnionSite, wit: Witness): Keys => expandedKeysOf(site.declaration.manifest, site.unionKeys, wit);
+  const expandedKeys = (site: UnionSite, wit: World): Keys => expandedKeysOf(site.declaration.manifest, site.unionKeys, wit);
   /** Expanded keys of union path `unionKeys` from `root` at the witness. */
-  const expandedKeysOf = (root: unknown, unionKeys: Keys, wit: Witness): Keys => {
+  const expandedKeysOf = (root: unknown, unionKeys: Keys, wit: World): Keys => {
     const out: (string | number)[] = [];
     let node: unknown = root;
     for (const key of unionKeys) {
@@ -2518,10 +2626,10 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
 
   /** What the objects enclosing a site hold beside the way to it — what a
    *  union branch is selected by. */
-  const shallowClass = (site: UnionSite, wit: Witness): ReadClass => enclosingClass(site.declaration, site.unionKeys, wit);
+  const shallowClass = (site: UnionSite, wit: World): ReadClass => enclosingClass(site.declaration, site.unionKeys, wit);
   /** What the objects on the union path `unionKeys` of `declaration` hold
    *  beside it, and the object there. */
-  const enclosingClass = (declaration: ConditionedDeclaration, unionKeys: Keys, wit: Witness): ReadClass => {
+  const enclosingClass = (declaration: ConditionedDeclaration, unionKeys: Keys, wit: World): ReadClass => {
     const parts: unknown[] = [];
     let condition = TRUE;
     let node: unknown = declaration.manifest;
@@ -2593,7 +2701,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   /** A site's key at the witness. */
   const keyAt = (
     site: UnionSite,
-    wit: Witness,
+    wit: World,
   ): { text: string; condition: Condition; coverage: KeyCoverage; region: () => CelRegion } => {
     const module = (site.declaration.manifest.metadata as { module?: string } | undefined)?.module;
     const importPath = (site.declaration.manifest.metadata as { importPath?: string[] } | undefined)?.importPath;
@@ -2707,7 +2815,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
 
   /** The fact a carved producer's stand-in carries at the witness: the one
    *  the producer's key holding there gives. */
-  const carvedFact = (producer: UnionSite, wit: Witness): StepFact => {
+  const carvedFact = (producer: UnionSite, wit: World): StepFact => {
     const key = keyAtWitness(producer, wit);
     if (!key) throw new Error(`internal: the producer ${producer.id} holds no key in ${assignmentKey(wit.assignment)}.`);
     return keyFact(producer, key);
@@ -2719,7 +2827,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
    *  and each step object's place. */
   const celRootsOf = (
     site: UnionSite,
-    wit: Witness,
+    wit: World,
     root: Keys,
     reads: readonly Keys[],
     record: ReturnType<typeof stepRecordAt> | undefined,
@@ -2745,7 +2853,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
 
   /** The scopes declared on the way to the regions of `declaration` at
    *  `roots` (union keys) no root holds, by projected keys. */
-  const scopesOnTheWay = (declaration: ConditionedDeclaration, roots: readonly Keys[], wit: Witness): Keys[] => {
+  const scopesOnTheWay = (declaration: ConditionedDeclaration, roots: readonly Keys[], wit: World): Keys[] => {
     const places = roots.map((keys) => placeByUnionKeys(union, declaration, keys, wit)).filter((place) => place.present);
     const out = new Map<string, Keys>();
     for (const place of places) {
@@ -2760,7 +2868,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
    *  `declaration` at `roots` (union keys), which a key's region holds as
    *  their identities: which there are, where, and each one's `kind` and
    *  `metadata` — never a member's content. */
-  const scopeMembersClass = (declaration: ConditionedDeclaration, roots: readonly Keys[], wit: Witness): ReadClass[] => {
+  const scopeMembersClass = (declaration: ConditionedDeclaration, roots: readonly Keys[], wit: World): ReadClass[] => {
     const scopes = scopesOnTheWay(declaration, roots, wit);
     if (scopes.length === 0) return [];
     const parts: unknown[] = [];
@@ -2805,7 +2913,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     keys: Keys,
     name: string | undefined,
     anywhere: boolean,
-    wit: Witness,
+    wit: World,
     ownReads: { readonly own: ConditionedDeclaration; readonly reads: Keys[] },
   ): ReadClass[] => {
     const own = new Map<string, Keys>();
@@ -2851,7 +2959,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
    *  members are open in its shape and a group member is read as `dyn`. */
   const celRegionOf = (
     site: UnionSite,
-    wit: Witness,
+    wit: World,
     root: Keys,
     reads: readonly Keys[],
     record: ReturnType<typeof stepRecordAt> | undefined,
@@ -2875,7 +2983,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
 
   /** A CEL key's own extent at the witness, counted from the union as written
    *  (`regionExtent`): its regions, each carved place one node. */
-  const celExtentOf = (declaration: ConditionedDeclaration, region: CelRegion, wit: Witness): number =>
+  const celExtentOf = (declaration: ConditionedDeclaration, region: CelRegion, wit: World): number =>
     regionExtent(union, declaration, region.roots, region.carved.map((carve) => carve.keys), wit, input.scopeFieldsOf);
 
   /** A key's region, read at the witness judging it — its own, or another
@@ -2883,9 +2991,9 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
    *  but a kind document's. */
   const regionOfKey = (
     site: UnionSite,
-    witness: Witness,
+    witness: World,
     region: () => CelRegion,
-  ): { region?: (at: Witness) => CelRegion } =>
+  ): { region?: (at: World) => CelRegion } =>
     isKindDocument(site.declaration.manifest)
       ? {}
       : { region: (at) => (at === witness ? region() : keyAt(site, at).region()) };
@@ -2901,10 +3009,11 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     site: string,
     declaration: ConditionedDeclaration,
     unionKeys: Keys | undefined,
-    witness: Witness,
+    witness: World,
     reads: number,
     coverage: KeyCoverage,
-    key: { readonly variant: number; readonly dead?: DeadBranch; readonly wholeCare?: true },
+    key: { readonly dead?: DeadBranch; readonly wholeCare?: true },
+    lifted = unionKeys === undefined && body.has(site),
   ): void => {
     if (!observingKeyCosts()) return;
     const absent = unionKeys !== undefined && !placeByUnionKeys(union, declaration, unionKeys, witness).present;
@@ -2915,7 +3024,14 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       site,
       declaration,
       unionKeys,
-      variant: key.variant,
+      // A template body's key: the way of deciding the body it is read at.
+      variant:
+        lifted
+          ? textOf([
+              Object.entries(witness.assignment).filter(([dimension]) => space.definitionOf(dimension) !== undefined),
+              witness.bodyForcing ? [...witness.bodyForcing.values()] : [],
+            ])
+          : 0,
       role,
       absent,
       reads,
@@ -2926,34 +3042,48 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   // --- The witness loop ----------------------------------------------------
   /** Judge one key in its own environment, and record what it yields. */
   const judge = (
-    site: string,
+    census: UnionSite | TemplateBodySite,
     declaration: ConditionedDeclaration,
     key: SolvedKey,
-    witness: Witness,
+    witness: World,
     coverage: KeyCoverage,
-    region?: (witness: Witness) => CelRegion,
+    region?: (witness: World) => CelRegion,
     unionKeys?: Keys,
   ): void => {
+    const site = census.id;
     if (region && observingKeyCosts()) {
       reportKeyCost({ kind: "cel-extent", site, nodes: celExtentOf(declaration, region(witness), witness) });
     }
     reportPresence("cel", site, declaration, unionKeys, witness, region ? region(witness).roots.length - 1 : 0, coverage, key);
+    const occurrences = observingRelationParity() ? censusOccurrences(census) : undefined;
     const verdict = input.judgeKey({
       site,
       key: key.text,
       declaration,
       witness,
-      variant: key.variant,
       coverage,
       ...(region ? { region } : {}),
+      ...(occurrences ? { census: occurrences } : {}),
     });
     (key as { verdict: CelSiteVerdict }).verdict = verdict;
-    celRequests.set(key, { declaration, coverage, ...(region ? { region } : {}) });
+    celRequests.set(key, { declaration, coverage, ...(region ? { region } : {}), ...(occurrences ? { census: occurrences } : {}) });
   };
+  const censusOccurrences = (census: UnionSite | TemplateBodySite): CensusOccurrences => ({
+    all: [
+      ...(sitesOfId.get(census.id) ?? []).map(({ engine, source }) => ({ engine, source })),
+      ...input.bodySites.filter((each) => each.id === census.id).flatMap((each) => each.expressions),
+    ],
+    own: "expressions" in census ? census.expressions : [{ engine: census.engine, source: census.source }],
+  });
 
   const celRequests = new WeakMap<
     SolvedKey,
-    { declaration: ConditionedDeclaration; coverage: KeyCoverage; region?: (witness: Witness) => CelRegion }
+    {
+      declaration: ConditionedDeclaration;
+      coverage: KeyCoverage;
+      region?: (witness: World) => CelRegion;
+      census?: CensusOccurrences;
+    }
   >();
 
   // Sites in the order their step reads go: a producer before its readers.
@@ -2979,9 +3109,9 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     const pending: {
       site: UnionSite;
       key: SolvedKey;
-      witness: Witness;
+      witness: World;
       coverage: KeyCoverage;
-      region?: (witness: Witness) => CelRegion;
+      region?: (witness: World) => CelRegion;
     }[] = [];
     for (const site of wave) {
       const keys: SolvedKey[] = siteKeys.get(site) ?? [];
@@ -2996,7 +3126,6 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
         const key: SolvedKey = {
           text: found.text,
           condition: FALSE,
-          variant: 0,
           verdict: { diagnostics: [], facts: [] },
           dead: site.dead.branch,
         };
@@ -3008,7 +3137,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       let remaining = space.and(site.condition, universe);
       while (remaining !== FALSE) {
         const w = space.firstAssignment(remaining)!;
-        const witness: Witness = { assignment: w };
+        const witness: World = World.key(w);
         const found = keyAt(site, witness);
         // A key some configuration holds is judged for the kept ones alone.
         const condition = space.and(found.condition, universe);
@@ -3018,7 +3147,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
         const known = keys.find((key) => !key.dead && key.text === found.text);
         if (known) known.condition = space.or(known.condition, condition);
         else {
-          const key: SolvedKey = { text: found.text, condition, variant: 0, verdict: { diagnostics: [], facts: [] } };
+          const key: SolvedKey = { text: found.text, condition, verdict: { diagnostics: [], facts: [] } };
           keys.push(key);
           all.push(key);
           pending.push({ site, key, witness, coverage: found.coverage, ...regionOfKey(site, witness, found.region) });
@@ -3026,28 +3155,43 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
         remaining = space.and(remaining, space.not(condition));
       }
     }
-    for (const { site, key, witness, coverage, region } of pending) judge(site.id, site.declaration, key, witness, coverage, region, site.unionKeys);
+    for (const { site, key, witness, coverage, region } of pending) judge(site, site.declaration, key, witness, coverage, region, site.unionKeys);
   }
 
-  // A template body's expressions, per variant: read off each variant's
-  // expansion of the body, where they are.
+  // A template body's expressions, read once off its lifted reading
+  // (`template-body-sites.ts`): each keyed over its definition's own
+  // dimensions and the configurations kept, what it reads of the body read
+  // unit by unit as each key's witness decides it.
   const body = new Set<string>();
   const holderOf = new Map<ResourceManifest, ConditionedDeclaration>();
   for (const declaration of union.declarations) holderOf.set(declaration.manifest, declaration);
-  /** Each template body site's declaration and reads, per variant. */
-  const bodyEntries = new Map<string, { declaration: ConditionedDeclaration; entry: CensusEntry; reads: ReturnType<typeof treeReads>[] }>();
-  /** A template body site's key at the witness, in `variant`. */
-  const bodyKeyAt = (id: string, variant: number, witness: Witness) => {
-    const { entry, reads } = bodyEntries.get(`${id}\0${variant}`)!;
+  /** Each template body site's declaration and reads. */
+  const bodyEntries = new Map<
+    TemplateBodySite,
+    { declaration: ConditionedDeclaration; module?: string; importPath?: readonly string[]; reads: ReturnType<typeof treeReads>[] }
+  >();
+  const bodySitesById = new Map<string, TemplateBodySite[]>();
+  const bodyKeysOf = new Map<TemplateBodySite, SolvedKey[]>();
+  /** Where each template body key was judged. */
+  const bodyWitnesses = new WeakMap<SolvedKey, World>();
+  /** A template body site's key at the witness. */
+  const bodyKeyAt = (site: TemplateBodySite, witness: World) => {
+    const { module, importPath, reads } = bodyEntries.get(site)!;
     const classes: ReadClass[] = [];
+    const names = new Set<string>();
+    let all = false;
     for (const { chains, calls } of reads) {
       for (const chain of chains) {
         const [head, second] = chain;
         const name = second === undefined || second === INDEX_SEGMENT ? undefined : second;
         if (head === "variables" || head === "secrets" || head === "resources") {
-          classes.push(inputClass(entry.module, entry.importPath, head, name, witness));
+          classes.push(inputClass(module, importPath, head, name, witness));
         }
-        if (head === "resources") classes.push(...nameReadClasses(name ? [name] : nameIndex.names(), witness, dispatchPlaces, false).classes);
+        if (head === "resources") {
+          classes.push(...nameReadClasses(name ? [name] : nameIndex.names(), witness, dispatchPlaces, false).classes);
+          if (name) names.add(name);
+          else all = true;
+        }
       }
       if (calls.size > 0) {
         classes.push(...nameReadClasses([...calls].map((q) => q.slice(q.indexOf(".") + 1)), witness, callablePlaces, true).classes);
@@ -3056,58 +3200,87 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     // A body's site is a kind document's: typed through the observed-state
     // context where no region of its own applies.
     classes.push(observedClass(witness));
-    return keyOf([id, variant], universe, classes);
+    classes.push(...site.unitClasses(witness, all ? "all" : [...names]));
+    return keyOf([site.id, site.dead ? "dead" : "live"], site.dead ? universe : space.and(site.condition, universe), classes);
   };
-  for (let variant = 0; variant < input.variants; variant++) {
-    const census = input.bodyCensus(variant);
-    const pending: { id: string; declaration: ConditionedDeclaration; key: SolvedKey; witness: Witness; coverage: KeyCoverage }[] = [];
-    for (const [id, entry] of census) {
-      if (!isBodySiteId(id)) continue;
-      const declaration = holderOf.get(entry.holder);
-      if (!declaration) throw new Error(`internal: the template body site ${id} has no declaration in the union.`);
-      body.add(id);
-      const keys: SolvedKey[] = solved.get(id) ?? [];
-      solved.set(id, keys);
-      const reads = entry.expressions.map(({ engine, source }) => treeReads(engine, source, entry.moduleNames));
-      bodyEntries.set(`${id}\0${variant}`, { declaration, entry, reads });
-      let remaining = universe;
+  {
+    const pending: { site: TemplateBodySite; declaration: ConditionedDeclaration; key: SolvedKey; witness: World; coverage: KeyCoverage }[] = [];
+    for (const site of input.bodySites) {
+      const declaration = holderOf.get(site.holder);
+      if (!declaration) throw new Error(`internal: the template body site ${site.id} has no declaration in the union.`);
+      body.add(site.id);
+      bodySitesById.set(site.id, [...(bodySitesById.get(site.id) ?? []), site]);
+      const meta = site.holder.metadata as { module?: string; importPath?: string[] } | undefined;
+      bodyEntries.set(site, {
+        declaration,
+        ...(meta?.module !== undefined ? { module: meta.module } : {}),
+        ...(meta?.importPath ? { importPath: meta.importPath } : {}),
+        reads: site.expressions.map(({ engine, source }) => treeReads(engine, source, input.moduleNamesOf(site.holder))),
+      });
+      const all = solved.get(site.id) ?? [];
+      solved.set(site.id, all);
+      const keys: SolvedKey[] = [];
+      bodyKeysOf.set(site, keys);
+      // A dead branch's site is read with its body decided at the branch's
+      // baseline, the branch forced, in every configuration kept.
+      let remaining = site.dead ? universe : space.and(site.condition, universe);
       while (remaining !== FALSE) {
-        const w = space.firstAssignment(remaining)!;
-        const witness: Witness = { assignment: w };
-        const found = bodyKeyAt(id, variant, witness);
-        const known = keys.find((key) => !key.wholeCare && key.variant === variant && key.text === found.text);
+        const first = space.firstAssignment(remaining)!;
+        const witness: World = site.dead
+          ? site.dead.world.asBody(first)
+          : World.key(first);
+        const found = bodyKeyAt(site, witness);
+        if (!space.holds(found.condition, witness.assignment)) {
+          throw new Error(`internal: the key of template body site ${site.id} does not hold where it was read.`);
+        }
+        const known = keys.find((key) => key.text === found.text);
         if (known) known.condition = space.or(known.condition, found.condition);
         else {
-          const key: SolvedKey = { text: found.text, condition: found.condition, variant, verdict: { diagnostics: [], facts: [] } };
+          const key: SolvedKey = {
+            text: found.text,
+            condition: found.condition,
+            verdict: { diagnostics: [], facts: [] },
+            ...(site.dead ? { bodyDead: site.dead } : {}),
+          };
           keys.push(key);
-          pending.push({ id, declaration, key, witness, coverage: found.coverage });
+          all.push(key);
+          pending.push({ site, declaration, key, witness, coverage: found.coverage });
         }
         remaining = space.and(remaining, space.not(found.condition));
       }
     }
-    for (const { id, declaration, key, witness, coverage } of pending) judge(id, declaration, key, witness, coverage);
+    for (const { site, declaration, key, witness, coverage } of pending) {
+      judge(site, declaration, key, witness, coverage);
+      bodyWitnesses.set(key, witness);
+    }
   }
   /** A template body site read where a branch no configuration takes reads it:
    *  its whole-care key at that witness, shared by text with the site's other
-   *  whole-care keys of the variant. */
-  const wholeCareBody = new Map<string, Map<Witness, SolvedKey | null>>();
-  const wholeCareBodyKeyOf = (id: string, variant: number, wit: Witness): SolvedKey | undefined => {
-    const held = bodyEntries.get(`${id}\0${variant}`);
-    if (!held) return undefined;
-    let byWitness = wholeCareBody.get(`${id}\0${variant}`);
-    if (!byWitness) wholeCareBody.set(`${id}\0${variant}`, (byWitness = new Map()));
-    const known = byWitness.get(wit);
+   *  whole-care keys — the body decided at its definition's first values. */
+  const wholeCareBody = new Map<TemplateBodySite, Map<World, Map<string, SolvedKey | null>>>();
+  const wholeCareBodyKeyOf = (id: string, wit: World): SolvedKey | undefined => {
+    const site = (bodySitesById.get(id) ?? []).find((s) => !s.dead);
+    if (!site) return undefined;
+    const at = { assignment: site.firstAssignment };
+    if (!space.holds(site.condition, { ...wit.assignment, ...at.assignment })) return undefined;
+    let byWitness = wholeCareBody.get(site);
+    if (!byWitness) wholeCareBody.set(site, (byWitness = new Map()));
+    let byAssignment = byWitness.get(wit);
+    if (!byAssignment) byWitness.set(wit, (byAssignment = new Map()));
+    const memo = assignmentKey(at.assignment);
+    const known = byAssignment.get(memo);
     let key = known ?? undefined;
     if (known === undefined) {
-      const found = bodyKeyAt(id, variant, wit);
+      const witness: World = wit.withAssignment({ ...wit.assignment, ...at.assignment });
+      const found = bodyKeyAt(site, witness);
       const keys = solved.get(id)!;
-      key = keys.find((k) => k.wholeCare && k.variant === variant && k.text === found.text);
+      key = keys.find((k) => k.wholeCare && k.text === found.text);
       if (!key) {
-        key = { text: found.text, condition: FALSE, variant, verdict: { diagnostics: [], facts: [] }, wholeCare: true };
+        key = { text: found.text, condition: FALSE, verdict: { diagnostics: [], facts: [] }, wholeCare: true };
         keys.push(key);
-        judge(id, held.declaration, key, wit, found.coverage);
+        judge(site, bodyEntries.get(site)!.declaration, key, witness, found.coverage);
       }
-      byWitness.set(wit, key);
+      byAssignment.set(memo, key);
     }
     if (key && observingKeyCosts()) reportKeyCost({ kind: "forced-read", site: id, text: key.text, role: "whole-care" });
     return key;
@@ -3156,7 +3329,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
 
   /** The union node at `unionKeys` of `root`, every choice on the way settled
    *  at the witness; the last, the region's own root, left as it is. */
-  const unionNodeAt = (root: unknown, unionKeys: Keys, wit: Witness): unknown => {
+  const unionNodeAt = (root: unknown, unionKeys: Keys, wit: World): unknown => {
     let node = root;
     for (const key of unionKeys) {
       while (isAlternatives(node)) {
@@ -3172,7 +3345,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   /** A site's region at the witness, its cut regions standing as markers: its
    *  content, the options taken in it, its expressions and its inline
    *  declarations. */
-  const regionOf = (site: OwnSite, wit: Witness) => {
+  const regionOf = (site: OwnSite, wit: World) => {
     const expressions: { engine: string; source: string }[] = [];
     const refs: { value: unknown; unionKeys: Keys }[] = [];
     const inlines: Record<string, any>[] = [];
@@ -3223,7 +3396,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     keys: Keys,
     within: ResourceManifest,
     shapes: Set<string>,
-    wit: Witness,
+    wit: World,
     carved: readonly Keys[] = [],
   ): { node: Record<string, any>; at: Keys; root: Keys }[] => {
     const out: { node: Record<string, any>; at: Keys; root: Keys }[] = [];
@@ -3372,9 +3545,13 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
    *  relation key reads those of its own declaration's sites alone — another
    *  declaration's at the same written place (a view's beside its consumer's,
    *  two declarations of one holder) are not its occurrences. */
-  const celFactsAt = (id: string, wit: Witness, variant: number, dead: DeadBranch | undefined, only: ConditionedDeclaration) => {
+  const celFactsAt = (id: string, wit: World, dead: DeadBranch | undefined, only: ConditionedDeclaration) => {
     const all = sitesOfId.get(id);
-    if (!all) return verdictOfKeys(keysAt(id, wit.assignment, variant, dead))?.facts;
+    if (!all && !dead) {
+      const key = bodyKeyAtWitness(id, wit);
+      return key ? key.verdict.facts : undefined;
+    }
+    if (!all) return verdictOfKeys(keysAt(id, wit.assignment, dead))?.facts;
     const keys: SolvedKey[] = [];
     for (const site of all) {
       const key = dead
@@ -3390,9 +3567,19 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   /** The class of what the expressions written at `id` were typed as at `wit`:
    *  holding wherever each site there holds a key giving the same facts, and
    *  every other site there holds none. */
-  const factsClassAt = (id: string, wit: Witness, variant: number, dead: DeadBranch | undefined): ReadClass | undefined => {
+  const factsClassAt = (id: string, wit: World, dead: DeadBranch | undefined): ReadClass | undefined => {
     const own = sitesOfId.get(id);
-    const keys = keysAt(id, wit.assignment, own ? 0 : variant, dead);
+    // A template body site read as the witness decides the body: holding
+    // wherever its keys give the same facts.
+    if (!own && !dead) {
+      const key = bodyKeyAtWitness(id, wit);
+      if (!key) return undefined;
+      const site = (bodySitesById.get(id) ?? []).find((s) => bodyKeysOf.get(s)!.includes(key))!;
+      let held = FALSE;
+      for (const other of bodyKeysOf.get(site)!) if (factsTextOf(other) === factsTextOf(key)) held = space.or(held, other.condition);
+      return { text: textOf(["facts", id, [factsTextOf(key)]]), condition: held };
+    }
+    const keys = keysAt(id, wit.assignment, dead);
     if (keys.length === 0) return undefined;
     let condition = TRUE;
     const texts: string[] = [];
@@ -3400,12 +3587,13 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       if (key.dead) return key.condition;
       let held = FALSE;
       for (const other of list) {
-        if (!other.dead && other.variant === key.variant && factsTextOf(other) === factsTextOf(key)) held = space.or(held, other.condition);
+        if (!other.dead && factsTextOf(other) === factsTextOf(key)) held = space.or(held, other.condition);
       }
       return held;
     };
     if (!own) {
-      condition = sameFacts(solved.get(id) ?? [], keys[0]!);
+      // A whole-care key's facts are read alone.
+      condition = TRUE;
       texts.push(factsTextOf(keys[0]!));
     } else {
       for (const site of own) {
@@ -3423,8 +3611,9 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     return { text: textOf(["facts", id, texts]), condition };
   };
 
-  /** An own-check site's key at the witness, in `variant`. */
-  const ownKeyAt = (site: OwnSite, wit: Witness, variant: number, dead?: DeadBranch) => {
+  /** An own-check site's key at the witness — a template body unit's in the
+   *  branch `bodyDead` no value its definition can be given takes, where given. */
+  const ownKeyAt = (site: OwnSite, wit: World, dead?: DeadBranch, phase: OwnPhase = "final", bodyDead?: BodyUnitDeadBranch) => {
     const outcomeClasses = (declaration: ConditionedDeclaration, ref: { value: unknown; unionKeys: Keys }): ReadClass[] => {
       const resolution = resolutionAt(declaration, ref.value, ref.unionKeys, wit);
       return resolution ? [resolution.outcomeClass] : [];
@@ -3434,11 +3623,24 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     const importPath = (declaration.manifest.metadata as { importPath?: string[] } | undefined)?.importPath;
     const region = regionOf(site, wit);
     const classes: ReadClass[] = [{ text: textOf(region.value), condition: region.taken }];
+    const keyText = [site.id, phase, bodyDead?.path ?? null];
+    // A template body unit: what it holds as the witness decides the body, and
+    // the definition beside every unit as written.
+    if (site.unit) {
+      classes.push(site.unit.classAt(wit, bodyDead !== undefined));
+      const units = input.bodyUnits.get(declaration.manifest) ?? [];
+      const beside = regionOf(
+        { declaration, unionKeys: [], carved: new Set(units.map((unit) => JSON.stringify(unit.keys))) } as unknown as OwnSite,
+        wit,
+      );
+      classes.push({ text: textOf(["beside", beside.value]), condition: beside.taken });
+    }
     // A site whose root is absent at the witness judges nothing, and reads nothing.
     const place = placeByUnionKeys(union, declaration, site.unionKeys, wit);
     if (!place.present) {
-      return { ...keyOf([site.id, variant], site.condition, classes), dead: region.dead, reads: [] as Keys[] };
+      return { ...keyOf(keyText, site.condition, classes), dead: region.dead, reads: [] as Keys[] };
     }
+    classes.push(...unionClasses(site, wit, dead, phase));
     // The named shapes the schemas checking it reach.
     const shapes = new Set<string>();
     for (const value of [declaration.manifest as Record<string, any>, ...region.inlines]) {
@@ -3532,7 +3734,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       if (at.present) roots.push(at.unionKeys);
     }
     classes.push(...scopeMembersClass(declaration, roots, wit));
-    return { ...keyOf([site.id, variant], site.condition, classes), dead: region.dead, reads: [...reads.values()] };
+    return { ...keyOf(keyText, site.condition, classes), dead: region.dead, reads: [...reads.values()] };
   };
 
   /**
@@ -3544,7 +3746,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
    * and the region, each carved place one node; nothing where the region is
    * absent.
    */
-  const ownExtentOf = (site: OwnSite, wit: Witness): number => {
+  const ownExtentOf = (site: OwnSite, wit: World): number => {
     const content = regionOf(site, wit).value;
     if (site.unionKeys.length === 0) return countNodes(content);
     const place = placeByUnionKeys(union, site.declaration, site.unionKeys, wit);
@@ -3572,10 +3774,33 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   };
 
   const ownSolved = new Map<string, OwnSolvedKey[]>();
+  /** Where each own-check key was judged. */
+  const ownWitnesses = new WeakMap<OwnSolvedKey, World>();
+  /** Every lifted template body unit's site and keys, in site order. */
+  const bodyOwn: { site: OwnSite; unit: TemplateBodyUnit; keys: OwnSolvedKey[] }[] = [];
   const ownRequests = new WeakMap<
     OwnSolvedKey,
-    { site: OwnSite; sites: readonly OwnSite[]; coverage: KeyCoverage; reads: readonly Keys[] }
+    { site: OwnSite; sites: readonly OwnSite[]; coverage: KeyCoverage; reads: readonly Keys[]; union?: OwnUnionRequest }
   >();
+  /** A contribution key judged: what the site gives each branch of the unions
+   *  above it; its findings are its final keys'. */
+  const judgeContribution = (
+    site: OwnSite,
+    sites: readonly OwnSite[],
+    key: OwnSolvedKey,
+    witness: World,
+    found: { coverage: KeyCoverage; reads: readonly Keys[] },
+  ): void => {
+    key.verdict = input.judgeOwnKey({
+      site,
+      key: key.text,
+      witness,
+      coverage: found.coverage,
+      sites,
+      reads: found.reads,
+      union: unionRequestOf(site, witness, key.dead, "contribution")!,
+    });
+  };
   /** The sites each declaration's findings were found at, by the written
    *  place of the declaration they were judged on. */
   const ownByOrigin = new Map<string, OwnSite[]>();
@@ -3584,11 +3809,11 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     site: OwnSite,
     sites: readonly OwnSite[],
     key: OwnSolvedKey,
-    witness: Witness,
+    witness: World,
     found: { coverage: KeyCoverage; reads: readonly Keys[] },
   ): void => {
     const { coverage, reads } = found;
-    reportPresence("schema", site.id, site.declaration, site.unionKeys, witness, reads.length, coverage, key);
+    reportPresence("schema", site.id, site.declaration, site.unionKeys, witness, reads.length, coverage, key, site.unit !== undefined);
     if (observingKeyCosts()) {
       reportKeyCost({ kind: "schema-extent", site: site.id, nodes: ownExtentOf(site, witness) });
       // A read beyond the region lands in an enclosing site's region; one
@@ -3607,17 +3832,27 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
         }
       }
     }
-    const verdict = input.judgeOwnKey({
+    const unionRequest = unionRequestOf(site, witness, key.dead, "final");
+    const judged = input.judgeOwnKey({
       site,
       key: key.text,
       witness,
-      variant: key.variant,
       coverage,
       sites,
       reads,
+      ...(unionRequest ? { union: unionRequest } : {}),
     });
+    // A body unit's key in a dead branch keeps what is found beneath it.
+    const branch = key.bodyDead;
+    const verdict = branch
+      ? {
+          ...judged,
+          diagnostics: judged.diagnostics.filter((d) => underPath((d.data as { path?: unknown } | undefined)?.path, branch.path)),
+        }
+      : judged;
     key.verdict = verdict;
-    ownRequests.set(key, { site, sites, coverage, reads });
+    ownWitnesses.set(key, witness);
+    ownRequests.set(key, { site, sites, coverage, reads, ...(unionRequest ? { union: unionRequest } : {}) });
     for (const origin of verdict.origins) judgedOrigins.add(origin);
     for (const d of verdict.diagnostics) {
       const origin = (d.data as { ownOrigin?: string } | undefined)?.ownOrigin;
@@ -3626,56 +3861,292 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       if (!list.includes(site)) ownByOrigin.set(origin, [...list, site]);
     }
   };
-  const isDefinitionSite = (site: OwnSite) => site.declaration.manifest.kind === "Telo.Definition";
   const viewSiteName = (view: ConditionedView): string => viewSiteNameOf(union, view);
+
+  // --- Unions read in parts --------------------------------------------------
+  // A union at a site's root reads each site carved beneath it by what that
+  // site CONTRIBUTES to each branch — folded worst-of over the carved sites,
+  // never one class per site — and every site beneath a union reads the
+  // outcome the union's site SELECTED. A contribution key is keyed on the
+  // site's own content alone, so contributions are solved bottom-up, before
+  // any final key; final keys top-down, a union's site before those beneath.
+  const contributionSolved = new Map<string, OwnSolvedKey[]>();
+  const siteTree = new Map<OwnSite, { readonly contributors: readonly OwnSite[]; readonly ancestors: readonly OwnSite[] }>();
+  const ownKeyHolding = (keys: readonly OwnSolvedKey[], wit: World, dead: DeadBranch | undefined) =>
+    (dead ? keys.find((key) => key.dead === dead) : undefined) ??
+    keys.find((key) => !key.dead && space.holds(key.condition, wit.assignment));
+  const slotSite = (slot: string): string => (JSON.parse(slot) as unknown[])[0] as string;
+  const STATE_RANK = { valid: 0, failing: 1, "tag-refused": 2 } as const;
+  /** Where a carved site's contribution to `slot` is each value, over its
+   *  contribution keys — valid and clean wherever the site is absent. */
+  const profiles = new Map<OwnSite, Map<string, { tags: Map<string, Condition>; valid: Condition; failing: Condition; clean: Condition; unclean: Condition }>>();
+  const profileOf = (site: OwnSite, slot: string) => {
+    let bySlot = profiles.get(site);
+    if (!bySlot) profiles.set(site, (bySlot = new Map()));
+    let profile = bySlot.get(slot);
+    if (profile) return profile;
+    let covered = FALSE;
+    profile = { tags: new Map<string, Condition>(), valid: FALSE, failing: FALSE, clean: FALSE, unclean: FALSE };
+    for (const key of contributionSolved.get(site.id) ?? []) {
+      if (key.dead) continue;
+      const summary = key.verdict.unions?.contributions[slot];
+      covered = space.or(covered, key.condition);
+      const tags = textOf(summary?.tags ?? []);
+      profile.tags.set(tags, space.or(profile.tags.get(tags) ?? FALSE, key.condition));
+      if ((summary?.state ?? "valid") === "valid") profile.valid = space.or(profile.valid, key.condition);
+      if (summary?.state === "failing") profile.failing = space.or(profile.failing, key.condition);
+      if (summary?.clean ?? true) profile.clean = space.or(profile.clean, key.condition);
+      else profile.unclean = space.or(profile.unclean, key.condition);
+    }
+    const outside = space.not(covered);
+    const none = textOf([]);
+    profile.tags.set(none, space.or(profile.tags.get(none) ?? FALSE, outside));
+    profile.valid = space.or(profile.valid, outside);
+    profile.clean = space.or(profile.clean, outside);
+    bySlot.set(slot, profile);
+    return profile;
+  };
+  /** The fold of what `contributors` give the branch `slot` names at the
+   *  witness: the worst state, every tag refusal, whether all are clean —
+   *  holding wherever each value is the same. */
+  const foldClass = (contributors: readonly OwnSite[], slot: string, wit: World, dead: DeadBranch | undefined): ReadClass => {
+    let worst: CarveSummary["state"] = "valid";
+    let clean = true;
+    const refusals: unknown[] = [];
+    let tagsHeld = TRUE;
+    for (const site of contributors) {
+      const summary = ownKeyHolding(contributionSolved.get(site.id) ?? [], wit, dead)?.verdict.unions?.contributions[slot];
+      const state = summary?.state ?? "valid";
+      if (STATE_RANK[state] > STATE_RANK[worst]) worst = state;
+      clean &&= summary?.clean ?? true;
+      if (summary && summary.tags.length > 0) refusals.push([site.id, summary.tags]);
+      tagsHeld = space.and(tagsHeld, profileOf(site, slot).tags.get(textOf(summary?.tags ?? [])) ?? FALSE);
+    }
+    const profilesOf = contributors.map((site) => profileOf(site, slot));
+    const stateHeld =
+      worst === "tag-refused"
+        ? TRUE
+        : worst === "valid"
+          ? profilesOf.reduce((held, p) => space.and(held, p.valid), TRUE)
+          : space.some(profilesOf.map((p) => p.failing));
+    const cleanHeld = clean
+      ? profilesOf.reduce((held, p) => space.and(held, p.clean), TRUE)
+      : space.some(profilesOf.map((p) => p.unclean));
+    return {
+      text: textOf(["union-fold", slot, worst, refusals, clean]),
+      condition: dead ? FALSE : space.and(tagsHeld, space.and(stateHeld, cleanHeld)),
+    };
+  };
+  const selections = new Map<OwnSite, Map<string, Condition>>();
+  /** What the unions at `ancestor`'s root selected at the witness, holding
+   *  wherever its final keys select the same. */
+  const selectionClass = (ancestor: OwnSite, wit: World, dead: DeadBranch | undefined): ReadClass => {
+    const keys = ownSolved.get(ancestor.id) ?? [];
+    const key = ownKeyHolding(keys, wit, dead);
+    const text = key ? textOf(key.verdict.unions?.outcomes ?? {}) : "absent";
+    if (dead) return { text: textOf(["union-selection", ancestor.id, text]), condition: FALSE };
+    let held = selections.get(ancestor);
+    if (!held) {
+      held = new Map();
+      let covered = FALSE;
+      for (const each of keys) {
+        if (each.dead) continue;
+        covered = space.or(covered, each.condition);
+        const outcomes = textOf(each.verdict.unions?.outcomes ?? {});
+        held.set(outcomes, space.or(held.get(outcomes) ?? FALSE, each.condition));
+      }
+      held.set("absent", space.not(covered));
+      selections.set(ancestor, held);
+    }
+    return { text: textOf(["union-selection", ancestor.id, text]), condition: held.get(text) ?? FALSE };
+  };
+  const slotsMemo = new Map<string, readonly string[]>();
+  /** Every slot of a union at one of `owners`' roots `contributors` record. */
+  const unionSlotsOf = (memo: string, contributors: readonly OwnSite[], owners: ReadonlySet<string>): readonly string[] => {
+    const known = slotsMemo.get(memo);
+    if (known) return known;
+    const out = new Set<string>();
+    for (const site of contributors) {
+      for (const key of contributionSolved.get(site.id) ?? []) {
+        for (const slot of Object.keys(key.verdict.unions?.contributions ?? {})) if (owners.has(slotSite(slot))) out.add(slot);
+      }
+    }
+    const list = [...out].sort();
+    slotsMemo.set(memo, list);
+    return list;
+  };
+  /** What a key of `site` reads of the unions around it: in a contribution
+   *  key, the fold of its carved sites per branch of every union at its root
+   *  or above; in a final key, the fold per branch of a union at its root and
+   *  what each union site above selected. */
+  function unionClasses(site: OwnSite, wit: World, dead: DeadBranch | undefined, phase: OwnPhase): ReadClass[] {
+    const tree = siteTree.get(site);
+    if (!tree) return [];
+    const out: ReadClass[] = [];
+    const owners = new Set(phase === "final" ? [site.id] : [site.id, ...tree.ancestors.map((a) => a.id)]);
+    if (tree.contributors.length > 0 && (site.union || phase === "contribution")) {
+      for (const slot of unionSlotsOf(`${phase}\0${site.id}`, tree.contributors, owners)) out.push(foldClass(tree.contributors, slot, wit, dead));
+    }
+    if (phase === "final") for (const ancestor of tree.ancestors) out.push(selectionClass(ancestor, wit, dead));
+    return out;
+  }
+  /** How a key of `site` at the witness is judged where unions are around it. */
+  const unionRequestOf = (site: OwnSite, wit: World, dead: DeadBranch | undefined, phase: OwnPhase): OwnUnionRequest | undefined => {
+    const tree = siteTree.get(site);
+    if (!tree || (!site.union && tree.ancestors.length === 0)) return undefined;
+    const root = site.union
+      ? new Map(
+          tree.contributors.map((carved) => {
+            const all = ownKeyHolding(contributionSolved.get(carved.id) ?? [], wit, dead)?.verdict.unions?.contributions ?? {};
+            const read = phase === "final" ? Object.fromEntries(Object.entries(all).filter(([slot]) => slotSite(slot) === site.id)) : all;
+            return [JSON.stringify(carved.unionKeys), read] as const;
+          }),
+        )
+      : phase === "contribution" && tree.contributors.length > 0
+        ? new Map(
+            tree.contributors.map((carved) => [
+              JSON.stringify(carved.unionKeys),
+              ownKeyHolding(contributionSolved.get(carved.id) ?? [], wit, dead)?.verdict.unions?.contributions ?? {},
+            ] as const),
+          )
+        : undefined;
+    return {
+      mode: phase,
+      ancestors: tree.ancestors.map((ancestor) => ({
+        site: ancestor.id,
+        unionKeys: ancestor.unionKeys,
+        ...(phase === "final" ? { outcomes: ownKeyHolding(ownSolved.get(ancestor.id) ?? [], wit, dead)?.verdict.unions?.outcomes ?? {} } : {}),
+      })),
+      ...(root ? { root } : {}),
+    };
+  };
+
+  /** Every key of `site` in `phase`, and the branches no configuration takes
+   *  whose reach it is in: `reaches` says whether one beyond its own region
+   *  puts it there. */
+  const solveOwnSite = (
+    site: OwnSite,
+    phase: OwnPhase,
+    reaches: (branch: DeadBranch) => boolean,
+  ): { keys: OwnSolvedKey[]; pending: { key: OwnSolvedKey; witness: World; found: { coverage: KeyCoverage; reads: readonly Keys[] } }[]; reached: DeadBranch[] } => {
+    const declaration = site.declaration;
+    const keys: OwnSolvedKey[] = [];
+    const pending: { key: OwnSolvedKey; witness: World; found: { coverage: KeyCoverage; reads: readonly Keys[] } }[] = [];
+    const reached: DeadBranch[] = [];
+    const rootPath = [...declaration.path, ...(site.options[site.options.length - 1]?.path ?? [])];
+    if (space.and(site.condition, universe) !== FALSE) {
+      let remaining = space.and(site.condition, universe);
+      while (remaining !== FALSE) {
+        const w = space.firstAssignment(remaining)!;
+        const witness: World = World.key(w);
+        const found = ownKeyAt(site, witness, undefined, phase);
+        const condition = space.and(found.condition, universe);
+        if (!space.holds(condition, w)) {
+          throw new Error(`internal: the key of own-check site ${site.id} does not hold where it was read.`);
+        }
+        const known = keys.find((key) => !key.dead && !key.bodyDead && key.text === found.text);
+        if (known) known.condition = space.or(known.condition, condition);
+        else {
+          const key: OwnSolvedKey = { text: found.text, condition, verdict: { diagnostics: [], origins: [] } };
+          keys.push(key);
+          pending.push({ key, witness, found });
+        }
+        remaining = space.and(remaining, space.not(condition));
+      }
+      // A body unit's branch no value its definition can be given takes: read
+      // with the body decided at the branch's baseline, the branch forced, in
+      // every configuration kept.
+      for (const branch of site.unit?.dead ?? []) {
+        let rest = space.and(site.condition, universe);
+        while (rest !== FALSE) {
+          const witness: World = branch.world.asBody(space.firstAssignment(rest)!);
+          const found = ownKeyAt(site, witness, undefined, phase, branch);
+          const condition = space.and(found.condition, universe);
+          if (!space.holds(condition, witness.assignment)) {
+            throw new Error(`internal: the key of own-check site ${site.id} does not hold where it was read.`);
+          }
+          const known = keys.find((key) => key.bodyDead === branch && key.text === found.text);
+          if (known) known.condition = space.or(known.condition, condition);
+          else {
+            const key: OwnSolvedKey = { text: found.text, condition, verdict: { diagnostics: [], origins: [] }, bodyDead: branch };
+            keys.push(key);
+            pending.push({ key, witness, found });
+          }
+          rest = space.and(rest, space.not(condition));
+        }
+      }
+    }
+    // Each branch no configuration takes whose reach the site is in: one key,
+    // at the witness its run reads.
+    for (const branch of deadBranchesOf(declaration)) {
+      const witness = deadWitness(branch);
+      if (!taken(site.condition, rootPath, witness)) continue;
+      const found = ownKeyAt(site, witness, branch, phase);
+      if (!inReach(rootPath, found.dead, branch) && !reaches(branch)) continue;
+      const key: OwnSolvedKey = { text: found.text, condition: FALSE, verdict: { diagnostics: [], origins: [] }, dead: branch };
+      keys.push(key);
+      pending.push({ key, witness, found });
+      reached.push(branch);
+    }
+    return { keys, pending, reached };
+  };
+
   // A forward view's schema checks are its own sites', keyed on its regions;
   // the declaration it is built from holds none of them.
   for (const declaration of [...union.declarations, ...union.views]) {
     const view = viewSites.has(declaration);
     const cutStarted = observingKeyCosts() ? performance.now() : undefined;
-    const schemaSites = ownSitesOf(declaration, space, input.ownSchemas, view ? viewSiteName(declaration as ConditionedView) : undefined);
+    const schemaSites = ownSitesOf(
+      declaration,
+      space,
+      input.ownSchemas,
+      view ? viewSiteName(declaration as ConditionedView) : undefined,
+      view ? undefined : input.bodyUnits.get(declaration.manifest),
+    );
     if (cutStarted !== undefined) reportKeyCost({ kind: "own-cut", milliseconds: performance.now() - cutStarted });
+    // Each site's carved sites read under the same validation, and the union
+    // sites above it, nearest first.
+    const byKeys = new Map(schemaSites.map((site) => [JSON.stringify(site.unionKeys), site]));
+    const parentOf = new Map<OwnSite, OwnSite>();
+    for (const site of schemaSites) for (const text of site.carved) parentOf.set(byKeys.get(text)!, site);
+    const sameValidation = (a: OwnSite, b: OwnSite) => textOf(a.validatedAt) === textOf(b.validatedAt);
+    // A site no schema node constrains neither contributes to a union nor
+    // holds a finding one reports.
     for (const site of schemaSites) {
-      const sites = schemaSites;
-      const keys: OwnSolvedKey[] = [];
+      const ancestors: OwnSite[] = [];
+      if (!site.inert) {
+        for (let up = parentOf.get(site); up; up = parentOf.get(up)) if (up.union && sameValidation(up, site)) ancestors.push(up);
+      }
+      const contributors = [...site.carved].map((text) => byKeys.get(text)!).filter((carved) => !carved.inert && sameValidation(carved, site));
+      siteTree.set(site, { contributors, ancestors });
+    }
+    // Contributions, bottom-up: a site beneath a union is reached by a branch
+    // no configuration takes where its own region or a carved site's is.
+    const contributionReach = new Map<OwnSite, Set<DeadBranch>>();
+    for (const site of [...schemaSites].reverse()) {
+      const tree = siteTree.get(site)!;
+      if (tree.ancestors.length === 0) continue;
+      const beneath = new Set(tree.contributors.flatMap((carved) => [...(contributionReach.get(carved) ?? [])]));
+      const { keys, pending, reached } = solveOwnSite(site, "contribution", (branch) => beneath.has(branch));
+      contributionSolved.set(site.id, keys);
+      contributionReach.set(site, new Set(reached));
+      for (const { key, witness, found } of pending) judgeContribution(site, schemaSites, key, witness, found);
+    }
+    // Final keys, top-down: a union site is reached where a site it reads is,
+    // and a site beneath a union where the union's site is.
+    const finalReach = new Map<OwnSite, Set<DeadBranch>>();
+    for (const site of schemaSites) {
+      const tree = siteTree.get(site)!;
+      const beyond = new Set<DeadBranch>([
+        ...(site.union ? tree.contributors.flatMap((carved) => [...(contributionReach.get(carved) ?? [])]) : []),
+        ...tree.ancestors.flatMap((ancestor) => [...(finalReach.get(ancestor) ?? [])]),
+      ]);
+      const { keys, pending, reached } = solveOwnSite(site, "final", (branch) => beyond.has(branch));
       ownSolved.set(site.id, keys);
-      const pending: { key: OwnSolvedKey; witness: Witness; found: { coverage: KeyCoverage; reads: readonly Keys[] } }[] = [];
-      const rootPath = [...declaration.path, ...(site.options[site.options.length - 1]?.path ?? [])];
-      if (space.and(site.condition, universe) !== FALSE) {
-        for (let variant = 0; variant < (isDefinitionSite(site) ? input.variants : 1); variant++) {
-          let remaining = space.and(site.condition, universe);
-          while (remaining !== FALSE) {
-            const w = space.firstAssignment(remaining)!;
-            const witness: Witness = { assignment: w };
-            const found = ownKeyAt(site, witness, variant);
-            const condition = space.and(found.condition, universe);
-            if (!space.holds(condition, w)) {
-              throw new Error(`internal: the key of own-check site ${site.id} does not hold where it was read.`);
-            }
-            const known = keys.find((key) => !key.dead && key.text === found.text);
-            if (known) known.condition = space.or(known.condition, condition);
-            else {
-              const key: OwnSolvedKey = { text: found.text, condition, variant, verdict: { diagnostics: [], origins: [] } };
-              keys.push(key);
-              pending.push({ key, witness, found });
-            }
-            remaining = space.and(remaining, space.not(condition));
-          }
-        }
-      }
-      // Each branch no configuration takes whose reach the site is in: one key,
-      // at the witness its run reads.
-      for (const branch of deadBranchesOf(declaration)) {
-        const witness = deadWitness(branch);
-        if (!taken(site.condition, rootPath, witness)) continue;
-        const found = ownKeyAt(site, witness, 0, branch);
-        if (!inReach(rootPath, found.dead, branch)) continue;
-        const key: OwnSolvedKey = { text: found.text, condition: FALSE, variant: 0, verdict: { diagnostics: [], origins: [] }, dead: branch };
-        keys.push(key);
-        pending.push({ key, witness, found });
-        ownReach.set(branch, [...(ownReach.get(branch) ?? []), site.id]);
-      }
-      for (const { key, witness, found } of pending) judgeOwn(site, sites, key, witness, found);
+      if (site.unit) bodyOwn.push({ site, unit: site.unit, keys });
+      finalReach.set(site, new Set(reached));
+      for (const branch of reached) ownReach.set(branch, [...(ownReach.get(branch) ?? []), site.id]);
+      for (const { key, witness, found } of pending) judgeOwn(site, schemaSites, key, witness, found);
     }
   }
 
@@ -3688,6 +4159,86 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   // enumerated once. An instance exists exactly where its anchor's written
   // place exists; a site is keyed by its anchor's content and what it reads.
   const relationSites = new Map<string, RelationSite>();
+  /** The written declarations holding each site id, in census order: a site is
+   *  its written declaration's, so two documents declaring one name (whole-
+   *  document choices) each hold sites of their own, the later ones' ids
+   *  ending in their place here. */
+  const siteHolders = new Map<string, object[]>();
+  const siteIdAt = (base: string, place: number): string => (place === 0 ? base : JSON.stringify([...(JSON.parse(base) as unknown[]), place]));
+  const censusSiteId = (declaration: ConditionedDeclaration, base: string): string => {
+    const written = declaration.holder;
+    const holders = siteHolders.get(base) ?? [];
+    if (!holders.includes(written)) holders.push(written);
+    siteHolders.set(base, holders);
+    return siteIdAt(base, holders.indexOf(written));
+  };
+  /** A site found again by the census is the one its written declaration
+   *  already holds: no two declarations share a site. */
+  const knownSite = (id: string, declaration: ConditionedDeclaration): boolean => {
+    const known = relationSites.get(id);
+    if (!known) return false;
+    if (known.declaration.holder !== declaration.holder) {
+      throw new Error(`internal: two written declarations hold the relation site ${id}.`);
+    }
+    return true;
+  };
+  /** Each relation site of a lifted template body, and the unit holding its
+   *  anchor — none where the anchor is an entry inline normalization drew out
+   *  of no unit. */
+  const bodyRelation = new Map<string, { readonly units: readonly TemplateBodyUnit[]; readonly unit?: TemplateBodyUnit }>();
+  const inBody = (keys: Keys) => TEMPLATE_BODY_FIELDS.includes(String(keys[0]));
+  /** The census of a lifted template body's anchors: one run of the
+   *  definition, its body as the first configuration decides it, then one run
+   *  of every option of its reading that run does not take — forced at its
+   *  baseline for a branch no value the definition can be given takes. */
+  const bodyCensus = (
+    declaration: ConditionedDeclaration,
+    identity: { kind: unknown; name: unknown; source: unknown },
+    units: readonly TemplateBodyUnit[],
+  ): void => {
+    const base = witnessFor(declaration.condition);
+    if (!base) return;
+    const runs = new Map<string, World>([[textOf([base.assignment, []]), base]]);
+    const visit = (value: unknown): void => {
+      if (isAlternatives(value)) {
+        for (const option of value.options) {
+          if (!option.present) continue;
+          const witness: World | undefined =
+            option.unreachable && option.baseline && option.forcing
+              ? option.world!.asBody(base.assignment)
+              : witnessFor(space.and(declaration.condition, option.condition));
+          if (witness) runs.set(textOf([witness.assignment, [...(witness.bodyForcing?.values() ?? [])]]), witness);
+          visit(option.value);
+        }
+        return;
+      }
+      if (value === null || typeof value !== "object" || isTaggedSentinel(value)) return;
+      for (const field of Array.isArray(value) ? value : Object.values(value)) visit(field);
+    };
+    for (const unit of units) visit(unit.node);
+    for (const witness of runs.values()) {
+      for (const group of input.relationGroups) {
+        for (const written of input.bodyAnchorsAt(group, declaration, witness)) {
+          const id = censusSiteId(
+            declaration,
+            relationSiteId(group, identity.kind, identity.name, identity.source, pathText([...declaration.at, ...written])),
+          );
+          if (knownSite(id, declaration)) continue;
+          relationSites.set(id, {
+            id,
+            group,
+            declaration,
+            unionKeys: written,
+            written: [...declaration.at, ...written],
+            options: [],
+            condition: declaration.condition,
+          });
+          const unit = units.find((u) => isAtOrAbove(u.keys, written));
+          bodyRelation.set(id, { units, ...(unit ? { unit } : {}) });
+        }
+      }
+    }
+  };
   /** What names a view's relation instances in a run's findings: the group,
    *  the consumer the findings are reported at and the view's place beneath it. */
   const viewRelationSites = new Map<string, RelationSite[]>();
@@ -3710,18 +4261,30 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     return { kind: holder.kind ?? expansionTagLabel(holder), name: meta?.name, source: meta?.source };
   };
   /** Where an option is read: the first configuration taking it. */
-  const witnessFor = (condition: Condition): Witness | undefined => {
+  const witnessFor = (condition: Condition): World | undefined => {
     const live = space.and(condition, universe);
-    return live === FALSE ? undefined : { assignment: space.firstAssignment(live)! };
+    return live === FALSE ? undefined : World.key(space.firstAssignment(live)!);
   };
   if (input.relationGroups.length > 0) {
     for (const declaration of [...union.declarations, ...union.views]) {
       const identity = holderIdentity(declaration);
-      const isDefinition = declaration.manifest.kind === "Telo.Definition";
-      for (let variant = 0; variant < (isDefinition ? input.variants : 1); variant++) {
-        const runs: { unionKeys: Keys; witness: Witness; dead?: true }[] = [];
+      // A lifted template body's anchors are found off its reading, below.
+      const lifted = !viewSites.has(declaration) && input.bodyUnits.has(declaration.manifest);
+      {
+        const runs: { unionKeys: Keys; witness: World; dead?: true }[] = [];
         const base = witnessFor(declaration.condition);
         if (base) runs.push({ unionKeys: [], witness: base });
+        // Each side of a cut point the first run does not take: a run of the
+        // root region where some configuration takes it.
+        if (base) {
+          for (const cut of input.slotCutsAt(declaration, base)) {
+            for (const side of cut.sides) {
+              if (space.holds(side, base.assignment)) continue;
+              const witness = witnessFor(space.and(declaration.condition, side));
+              if (witness) runs.push({ unionKeys: [], witness });
+            }
+          }
+        }
         // Each branch no configuration takes in the declaration: one run of its
         // root region where the branch's run reads it.
         for (const branch of deadBranchesOf(declaration)) {
@@ -3730,20 +4293,41 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
         }
         while (runs.length > 0) {
           const run = runs.shift()!;
+          const cuts = input.slotCutsAt(declaration, run.witness);
+          /** Where an anchor at `keys` holds on the side of each cut point
+           *  over it the run takes. */
+          const sideAt = (keys: Keys): Condition =>
+            cuts.reduce(
+              (held, cut) =>
+                isAtOrAbove(cut.keys, keys)
+                  ? space.and(held, cut.sides.find((side) => space.holds(side, run.witness.assignment)) ?? FALSE)
+                  : held,
+              TRUE,
+            );
           for (const group of input.relationGroups) {
-            for (const anchor of input.relationAnchors(group, declaration, run.unionKeys, run.witness, variant)) {
+            for (const anchor of input.relationAnchors(group, declaration, run.unionKeys, run.witness)) {
+              if (lifted && inBody(anchor)) continue;
               const place = placeByProjectedKeys(union, declaration, anchor, run.witness);
               if (!place.present) {
                 throw new Error(`internal: the ${group} reader reports an anchor at '${pathText(anchor)}' its region does not hold.`);
               }
-              const id = relationSiteId(
-                group,
-                identity.kind,
-                identity.name,
-                identity.source,
-                viewSites.has(declaration) ? viewAnchorText(place) : pathText(place.written),
+              const id = censusSiteId(
+                declaration,
+                relationSiteId(
+                  group,
+                  identity.kind,
+                  identity.name,
+                  identity.source,
+                  viewSites.has(declaration) ? viewAnchorText(place) : pathText(place.written),
+                ),
               );
-              if (relationSites.has(id)) continue;
+              const condition = space.and(place.path, sideAt(anchor));
+              if (knownSite(id, declaration)) {
+                // Found on another side of a cut point: it holds on both.
+                const known = relationSites.get(id)! as { condition: Condition };
+                known.condition = space.or(known.condition, condition);
+                continue;
+              }
               const site: RelationSite = {
                 id,
                 group,
@@ -3751,7 +4335,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
                 unionKeys: place.unionKeys,
                 written: place.written,
                 options: place.options,
-                condition: place.path,
+                condition,
               };
               relationSites.set(id, site);
               if (viewSites.has(declaration)) {
@@ -3788,6 +4372,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
           visit(root.node, run.unionKeys, root.path);
         }
       }
+      if (lifted) bodyCensus(declaration, identity, input.bodyUnits.get(declaration.manifest)!);
     }
   }
 
@@ -3802,6 +4387,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   /** The union paths of `site`'s own group's anchors nested beneath `root`,
    *  the outermost of each nest — never one holding the site's own anchor. */
   const nestedAnchors = (site: RelationSite, root: Keys): Keys[] => {
+    if (input.uncarvedGroups.has(site.group)) return [];
     const beneath = (censusOf.get(site.declaration)?.get(site.group) ?? []).filter(
       (other) =>
         other.unionKeys.length > root.length &&
@@ -3820,7 +4406,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   const stepReadClasses = (
     declaration: ConditionedDeclaration,
     names: readonly string[],
-    wit: Witness,
+    wit: World,
     carvedUnder: (root: Keys) => readonly Keys[],
   ): { classes: ReadClass[]; roots: Keys[] } => {
     // A compound step is read without the nested items another site judges.
@@ -3901,13 +4487,13 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   /** Whether the object written at projected `keys` of `declaration` is a
    *  declaration normalization draws out of it, as the runs' enumeration
    *  settles. */
-  const extractedAt = (declaration: ConditionedDeclaration, keys: Keys, wit: Witness): boolean => {
+  const extractedAt = (declaration: ConditionedDeclaration, keys: Keys, wit: World): boolean => {
     const at = placeByProjectedKeys(union, declaration, keys, wit);
     return at.present && at.node !== null && typeof at.node === "object" && nestedOf(declaration).of(at.node) === "extracted";
   };
   /** The union paths a relation key carves out of the extracted declarations its
    *  reader follows `targets` into: every member the target does not read. */
-  const extractedRestarts = (declaration: ConditionedDeclaration, targets: readonly RelationTarget[], wit: Witness): Keys[] => {
+  const extractedRestarts = (declaration: ConditionedDeclaration, targets: readonly RelationTarget[], wit: World): Keys[] => {
     const out: Keys[] = [];
     for (const target of targets) {
       if (target.hop !== "resolved" || !extractedAt(declaration, target.at, wit)) continue;
@@ -3938,8 +4524,23 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
    *  dependent reads add, what its expressions were typed as and the step
    *  results it reads — where its reader asks for them; and the places it
    *  read, every one its reader may ask for. */
-  const relationKeyAt = (site: RelationSite, wit: Witness, variant: number, dead?: DeadBranch, carving = true) => {
+  const relationKeyAt = (site: RelationSite, wit: World, dead?: DeadBranch, carving = true, bodyDead?: BodyUnitDeadBranch) => {
     const declaration = site.declaration;
+    // A lifted template body's site is judged in its definition whole: what
+    // it reads of the body is each unit it touches, as the witness decides it.
+    const lifted = viewSites.has(declaration) ? undefined : input.bodyUnits.get(declaration.manifest);
+    const body = bodyRelation.get(site.id);
+    if (body) carving = false;
+    const touched = new Set<TemplateBodyUnit>(body ? (body.unit ? [body.unit] : body.units) : []);
+    const touch = (keys: Keys): Keys => {
+      if (!lifted || !inBody(keys)) return keys;
+      const written = input.writtenBodyKeysAt(declaration, keys, wit);
+      const units = lifted.filter((unit) => isAtOrAbove(unit.keys, written) || isAtOrAbove(written, unit.keys));
+      // A body field the definition does not write holds no unit to read.
+      if (units.length === 0 && !lifted.some((unit) => unit.keys[0] === written[0])) return written;
+      for (const unit of units.length > 0 ? units : lifted) touched.add(unit);
+      return written;
+    };
     const module = (declaration.manifest.metadata as { module?: string } | undefined)?.module;
     const importPath = (declaration.manifest.metadata as { importPath?: string[] } | undefined)?.importPath;
     // Every region the key reads carves its own group's anchors nested beneath it.
@@ -3961,15 +4562,25 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
         wit,
       );
     let region = regionAt();
-    let declared = input.relationReads(site.group, declaration, site.unionKeys, wit, variant, anchorCarved);
+    let declared = input.relationReads(site.group, declaration, site.unionKeys, wit, anchorCarved);
     if (carving) {
       restarted = extractedRestarts(declaration, declared.targets ?? [], wit);
       if (restarted.length > 0) {
         anchorCarved = carvedUnder(site.unionKeys);
         region = regionAt();
-        declared = input.relationReads(site.group, declaration, site.unionKeys, wit, variant, anchorCarved);
+        declared = input.relationReads(site.group, declaration, site.unionKeys, wit, anchorCarved);
       }
     }
+    // A place of a lifted body holding several of its units, declared beside a
+    // dependent read, is a list of entries read by name: classed as the units
+    // that may declare an entry the reader's references or the dependent read
+    // reach — never as its whole content.
+    const listedByName =
+      lifted && declared.dependent
+        ? (keys: Keys) => inBody(keys) && lifted.filter((unit) => unit.keys.length > keys.length && isAtOrAbove(keys, unit.keys)).length > 1
+        : undefined;
+    const named = new Set<string>();
+    const placeShapes = new Set<string>();
     const classes: ReadClass[] = [{ text: textOf(["anchor", region.value]), condition: region.taken }];
     const expressions = [...region.expressions];
     /** Union paths and written places of the anchor and every read place. */
@@ -3979,11 +4590,14 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     const places: Keys[] = [];
     const placeTexts = new Set<string>();
     const ownReads = { own: declaration, reads: [] as Keys[] };
-    const readPlace = (keys: Keys): void => {
-      const text = textOf(keys);
+    const readPlace = (asRead: Keys): void => {
+      const text = textOf(asRead);
       if (placeTexts.has(text)) return;
       placeTexts.add(text);
-      places.push(keys);
+      places.push(asRead);
+      if (listedByName?.(asRead)) return;
+      // A place of a lifted body is read where it is written.
+      const keys = touch(asRead);
       const at = placeAt(declaration, keys, wit);
       if (!at.present) {
         classes.push({ text: textOf([at.keys, null]), condition: at.taken });
@@ -3994,6 +4608,8 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       const within = carvedUnder(place.unionKeys).map((inner) => inner.slice(place.unionKeys.length));
       const readValue = project(within.length > 0 ? union.carve(at.node, within, CARVED_PLACE) : at.node, wit);
       classes.push({ text: textOf([at.keys, readValue.value]), condition: space.and(at.taken, readValue.taken) });
+      if (listedByName) for (const name of refNamesIn(readValue.value)) named.add(name);
+      namesIn(readValue.value, placeShapes, false);
       const collect = (value: unknown): void => {
         if (isTaggedSentinel(value)) {
           if (!isRefSentinel(value)) expressions.push({ engine: value.engine, source: value.source });
@@ -4005,7 +4621,8 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       collect(readValue.value);
     };
     // What each target it follows reaches, and the places it reads there.
-    const follow = (target: RelationTarget): void => {
+    const follow = (asRead: RelationTarget): void => {
+      const target = lifted && inBody(asRead.at) ? { ...asRead, at: touch(asRead.at) } : asRead;
       if (target.hop === "resolved" && extractedAt(declaration, target.at, wit)) {
         const found = placeByProjectedKeys(union, declaration, target.at, wit);
         classes.push(...namedReadClasses([{ member: found.node as object, near: declaration, reads: target.reads, transitive: target.transitive }], wit, ownReads));
@@ -4027,6 +4644,10 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     if (declared.calls && declared.calls.length > 0) {
       classes.push(...nameReadClasses(declared.calls.map((q) => q.slice(q.indexOf(".") + 1)), wit, callablePlaces, true).classes);
     }
+    // The named shapes it names, each as which declaration answers its name.
+    if (declared.shapes && declared.shapes.length > 0) {
+      classes.push(...nameReadClasses(declared.shapes, wit, () => [], false).classes);
+    }
     // What it reads depending on what its declared places hold, asked of
     // those places alone.
     let dependent = declared.dependent;
@@ -4043,8 +4664,22 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       for (const target of more.targets ?? []) follow(target);
       dependent = more.dependent;
     }
+    // The entries a list read by name may hold under the names its reader
+    // reaches, and those sharing a name with them.
+    if (listedByName && lifted) {
+      const dependsOn = namedDependencies(lifted);
+      for (const unit of unitsDeclaring(lifted, named)) {
+        touched.add(unit);
+        for (const other of dependsOn(unit)) touched.add(other);
+      }
+      for (const unit of [...touched]) for (const other of dependsOn(unit)) touched.add(other);
+    }
     // A place of its own declaration a target reached by name.
     for (const keys of ownReads.reads) readPlace(keys);
+    // The named shapes its read places name — a callable's declared result
+    // among them — each whole, as the witness holds it.
+    const readShapes = [...placeShapes].filter(allNamedShapes);
+    if (readShapes.length > 0) classes.push(...shapeClasses(readShapes, wit));
     const reads: RelationReads = { ...declared, places };
     for (const { engine, source } of expressions) {
       for (const [head, second] of treeReads(engine, source, input.moduleNamesOf(declaration.manifest)).chains) {
@@ -4058,13 +4693,13 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       for (const u of unionSitesOf.get(declaration) ?? []) {
         if (!read.some((r) => isAtOrAbove(r.unionKeys, u.unionKeys))) continue;
         if ([...carved.values()].some((keys) => isAtOrAbove(keys, u.unionKeys))) continue;
-        const found = factsClassAt(u.id, wit, variant, dead);
+        const found = factsClassAt(u.id, wit, dead);
         if (found) classes.push(found);
       }
       for (const id of bodySitesOf.get(JSON.stringify([holderIdentity(declaration).kind, holderIdentity(declaration).name, holderIdentity(declaration).source])) ?? []) {
         const path = parseKeys((JSON.parse(id) as unknown[])[3] as string);
         if (!read.some((r) => isAtOrAbove(r.written, path))) continue;
-        const found = factsClassAt(id, wit, variant, dead);
+        const found = factsClassAt(id, wit, dead);
         if (found) classes.push(found);
       }
     }
@@ -4109,44 +4744,93 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       );
     }
     classes.push(...shapeClasses(shapes, wit));
-    return { ...keyOf([site.id, variant], site.condition, classes), dead: region.dead, reads, roots, carved: [...carved.values()] };
+    for (const unit of touched) classes.push(unit.classAt(wit, bodyDead !== undefined));
+    return { ...keyOf([site.id, bodyDead?.path ?? null], site.condition, classes), dead: region.dead, reads, roots, carved: [...carved.values()] };
   };
 
+  /** Every lifted template body's relation sites and their keys, in site order. */
+  const bodyRelationKeys: { site: RelationSite; definition: ResourceManifest; keys: OwnSolvedKey[] }[] = [];
+  /** Where each relation key was judged. */
+  const relationWitnesses = new WeakMap<OwnSolvedKey, World>();
   for (const site of relationSites.values()) {
     const keys: OwnSolvedKey[] = [];
     ownSolved.set(site.id, keys);
-    const pending: { key: OwnSolvedKey; witness: Witness; coverage: KeyCoverage; reads: RelationReads; roots: Keys[]; carved: Keys[] }[] = [];
+    const body = bodyRelation.get(site.id);
+    if (body) bodyRelationKeys.push({ site, definition: site.declaration.manifest, keys });
+    const pending: { key: OwnSolvedKey; witness: World; coverage: KeyCoverage; reads: RelationReads; roots: Keys[]; carved: Keys[] }[] = [];
     const rootPath = relationSitePath(site);
+    /** Whether a lifted body holds the site's anchor at the witness; where it
+     *  does not, what its unit holds there says so wherever it is the same. */
+    const absentAt = (witness: World): Condition | undefined => {
+      if (!body) return undefined;
+      const text = pathText(site.unionKeys);
+      if (input.bodyAnchorsAt(site.group, site.declaration, witness).some((keys) => pathText(keys) === text)) return undefined;
+      const units = body.unit ? [body.unit] : body.units;
+      return units.reduce((held, unit) => space.and(held, unit.classAt(witness, witness.bodyForcing !== undefined).condition), TRUE);
+    };
     if (space.and(site.condition, universe) !== FALSE) {
-      const variants = site.declaration.manifest.kind === "Telo.Definition" ? input.variants : 1;
-      for (let variant = 0; variant < variants; variant++) {
-        let remaining = space.and(site.condition, universe);
-        while (remaining !== FALSE) {
-          const witness: Witness = { assignment: space.firstAssignment(remaining)! };
-          const found = relationKeyAt(site, witness, variant);
+      let remaining = space.and(site.condition, universe);
+      while (remaining !== FALSE) {
+        const witness: World = World.key(space.firstAssignment(remaining)!);
+        const absent = absentAt(witness);
+        if (absent !== undefined) {
+          if (!space.holds(absent, witness.assignment)) throw new Error(`internal: the absence of relation site ${site.id} does not hold where it was read.`);
+          remaining = space.and(remaining, space.not(absent));
+          continue;
+        }
+        const found = relationKeyAt(site, witness);
+        const condition = space.and(found.condition, universe);
+        if (!space.holds(condition, witness.assignment)) {
+          throw new Error(`internal: the key of relation site ${site.id} does not hold where it was read.`);
+        }
+        const known = keys.find((key) => !key.dead && !key.bodyDead && key.text === found.text);
+        if (known) known.condition = space.or(known.condition, condition);
+        else {
+          const key: OwnSolvedKey = { text: found.text, condition, verdict: { diagnostics: [], origins: [] } };
+          keys.push(key);
+          pending.push({ key, witness, coverage: found.coverage, reads: found.reads, roots: found.roots, carved: found.carved });
+        }
+        remaining = space.and(remaining, space.not(condition));
+      }
+      // A branch of its body no value the definition can be given takes,
+      // holding the anchor: read with the body decided at the branch's
+      // baseline, the branch forced, in every configuration kept.
+      const written = pathText(site.unionKeys);
+      const under = (path: string) => written === path || written.startsWith(`${path}.`) || written.startsWith(`${path}[`);
+      for (const branch of body?.unit?.dead ?? []) {
+        if (!under(branch.path)) continue;
+        let rest = space.and(site.condition, universe);
+        while (rest !== FALSE) {
+          const witness: World = branch.world.asBody(space.firstAssignment(rest)!);
+          const absent = absentAt(witness);
+          if (absent !== undefined) {
+            rest = FALSE;
+            continue;
+          }
+          const found = relationKeyAt(site, witness, undefined, true, branch);
           const condition = space.and(found.condition, universe);
           if (!space.holds(condition, witness.assignment)) {
             throw new Error(`internal: the key of relation site ${site.id} does not hold where it was read.`);
           }
-          const known = keys.find((key) => !key.dead && key.variant === variant && key.text === found.text);
+          const known = keys.find((key) => key.bodyDead === branch && key.text === found.text);
           if (known) known.condition = space.or(known.condition, condition);
           else {
-            const key: OwnSolvedKey = { text: found.text, condition, variant, verdict: { diagnostics: [], origins: [] } };
+            const key: OwnSolvedKey = { text: found.text, condition, verdict: { diagnostics: [], origins: [] }, bodyDead: branch };
             keys.push(key);
             pending.push({ key, witness, coverage: found.coverage, reads: found.reads, roots: found.roots, carved: found.carved });
           }
-          remaining = space.and(remaining, space.not(condition));
+          rest = space.and(rest, space.not(condition));
         }
       }
     }
     // Each branch no configuration takes whose reach the site is in: one key,
     // at the witness its run reads.
-    for (const branch of deadBranchesOf(site.declaration)) {
+    for (const branch of body ? [] : deadBranchesOf(site.declaration)) {
       const witness = deadWitness(branch);
       if (!taken(site.condition, rootPath, witness)) continue;
-      const found = relationKeyAt(site, witness, 0, branch);
+      const found = relationKeyAt(site, witness, branch);
       if (!inReach(rootPath, found.dead, branch)) continue;
-      const key: OwnSolvedKey = { text: found.text, condition: FALSE, variant: 0, verdict: { diagnostics: [], origins: [] }, dead: branch };
+      const key: OwnSolvedKey = { text: found.text, condition: FALSE, verdict: { diagnostics: [], origins: [] }, dead: branch };
       keys.push(key);
       pending.push({ key, witness, coverage: found.coverage, reads: found.reads, roots: found.roots, carved: found.carved });
       let reach = relationReach.get(branch);
@@ -4163,48 +4847,49 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
         reads.places.length + (reads.steps?.length ?? 0),
         coverage,
         key,
+        !viewSites.has(site.declaration) && input.bodyUnits.has(site.declaration.manifest),
       );
+      const judged = input.judgeRelationKey({
+        site,
+        key: key.text,
+        witness,
+        coverage,
+        reads,
+        roots,
+        carved,
+        celFactsAt: (id) => celFactsAt(id, witness, key.dead, site.declaration),
+      });
+      const branch = key.bodyDead;
       key.verdict = {
-        diagnostics: input.judgeRelationKey({
-          site,
-          key: key.text,
-          witness,
-          variant: key.variant,
-          coverage,
-          reads,
-          roots,
-          carved,
-          celFactsAt: (id) => celFactsAt(id, witness, key.variant, key.dead, site.declaration),
-        }),
+        diagnostics: branch ? judged.filter((d) => underPath((d.data as { path?: unknown } | undefined)?.path, branch.path)) : judged,
         origins: [],
       };
+      relationWitnesses.set(key, witness);
     }
   }
   /** What a relation site holding at `witness` finds judged on its carved
    *  regions, and on the same regions whole. */
-  const carveParityAt = (witness: Witness, variant: number) => {
+  const carveParityAt = (witness: World) => {
     const out: string[] = [];
     const carvedBy = new Map<string, readonly Keys[]>();
-    const dead = witness.forcing
-      ? deadBranches.find((entry) => (witness.forcing as unknown as Map<object, unknown>).get(entry.sentinel) === entry.branch)
-      : undefined;
+    const dead = forcingBranchOf(witness);
     for (const site of relationSites.values()) {
+      // A lifted body's site carves nothing.
+      if (bodyRelation.has(site.id)) continue;
       const path = relationSitePath(site);
       if (!taken(site.condition, path, witness)) continue;
-      const siteVariant = relationVariant(site.id, variant);
       const judged = (carving: boolean) => {
-        const found = relationKeyAt(site, witness, siteVariant, dead, carving);
+        const found = relationKeyAt(site, witness, dead, carving);
         if (carving) carvedBy.set(site.id, found.carved);
         return input.judgeRelationKey({
           site,
           key: found.text,
           witness,
-          variant: siteVariant,
           coverage: found.coverage,
           reads: found.reads,
           roots: found.roots,
           carved: found.carved,
-          celFactsAt: (id) => celFactsAt(id, witness, siteVariant, dead, site.declaration),
+          celFactsAt: (id) => celFactsAt(id, witness, dead, site.declaration),
         });
       };
       const carved = textOf(judged(true));
@@ -4218,19 +4903,17 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
    *  and relation site whose key reaches a declaration by name, judged with
    *  that declaration whole and with the parts its key holds. At a forced
    *  witness only the sites keyed inside the forced branch are compared. */
-  const keyParityAt = (witness: Witness, variant: number) => {
+  const keyParityAt = (witness: World) => {
     const out: string[] = [];
     const byName: string[] = [];
     /** Whether a key reaches a declaration by name as parts. */
     const holdsParts = (coverage: KeyCoverage) => coverage.parts.size > 0;
     const compared = { cel: 0, own: 0, views: 0 };
-    const dead = witness.forcing
-      ? deadBranches.find((entry) => (witness.forcing as unknown as Map<object, unknown>).get(entry.sentinel) === entry.branch)
-      : undefined;
-    const holding = <K extends { dead?: DeadBranch; variant: number; condition: Condition }>(keys: readonly K[], siteVariant: number) =>
+    const dead = forcingBranchOf(witness);
+    const holding = <K extends { dead?: DeadBranch; condition: Condition }>(keys: readonly K[]) =>
       dead
         ? keys.find((key) => key.dead === dead)
-        : keys.find((key) => !key.dead && key.variant === siteVariant && space.holds(key.condition, witness.assignment));
+        : keys.find((key) => !key.dead && space.holds(key.condition, witness.assignment));
     // Each union site's keys, a forward view's among them, then each template
     // body site's. Sites of one declaration sharing a written place are judged
     // together whole, so their keys holding here are compared together, as
@@ -4240,23 +4923,37 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       const at = textOf([site.id, union.declarations.indexOf(site.declaration), union.views.indexOf(site.declaration as ConditionedView)]);
       together.set(at, [...(together.get(at) ?? []), site]);
     }
-    const celKeys: [string, (readonly SolvedKey[])[], boolean][] = [
-      ...[...together.values()].map((group): [string, (readonly SolvedKey[])[], boolean] => [
+    // A template body site's keys are compared where each was judged — its
+    // witness assigning the definition's own dimensions — once, in the run of
+    // the configuration that witness holds.
+    const bodyAt = (key: SolvedKey): World | undefined => {
+      const at = bodyWitnesses.get(key);
+      if (!at || witness.forcing) return undefined;
+      return Object.entries(witness.assignment).every(([k, v]) => at.assignment[k] === v) ? at : undefined;
+    };
+    const celKeys: [string, (readonly { key: SolvedKey; witness: World }[]), boolean][] = [
+      ...[...together.values()].map((group): [string, { key: SolvedKey; witness: World }[], boolean] => [
         group[0]!.id,
-        group.map((site) => siteKeys.get(site)!),
+        group.flatMap((site) => {
+          const key = holding(siteKeys.get(site)!);
+          return key && celRequests.has(key) ? [{ key, witness }] : [];
+        }),
         viewSites.has(group[0]!.declaration),
       ]),
-      ...[...solved].filter(([id]) => body.has(id)).map(([id, keys]): [string, (readonly SolvedKey[])[], boolean] => [id, [keys], false]),
+      ...input.bodySites.flatMap((site) =>
+        bodyKeysOf.get(site)!.flatMap((key): [string, { key: SolvedKey; witness: World }[], boolean][] => {
+          const at = bodyAt(key);
+          return at && celRequests.has(key) ? [[site.id, [{ key, witness: at }], false]] : [];
+        }),
+      ),
     ];
-    for (const [id, groups, ofView] of celKeys) {
-      const keys = groups.flatMap((list) => {
-        const key = holding(list, body.has(id) ? variant : 0);
-        return key && celRequests.has(key) ? [key] : [];
-      });
+    for (const [id, held, ofView] of celKeys) {
+      const keys = held.map((each) => each.key);
       if (keys.length === 0) continue;
+      const witnessOf = new Map(held.map((each) => [each.key, each.witness]));
       if (ofView) compared.views++;
       const judged = (key: SolvedKey, whole: boolean) =>
-        input.judgeKey({ site: id, key: key.text, ...celRequests.get(key)!, witness, variant: key.variant, whole });
+        input.judgeKey({ site: id, key: key.text, ...celRequests.get(key)!, witness: witnessOf.get(key)!, whole });
       compared.cel++;
       // A position is its own door's: the two sides agree on the order a run
       // meets the facts, never on the doors placing them.
@@ -4271,102 +4968,238 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
         const named = comparable(
           mergedVerdict(
             keys.map((key) =>
-              input.judgeKey({ site: id, key: key.text, ...celRequests.get(key)!, witness, variant: key.variant, byNameWhole: true }),
+              input.judgeKey({ site: id, key: key.text, ...celRequests.get(key)!, witness: witnessOf.get(key)!, byNameWhole: true }),
             ),
           ),
         );
         if (keyed !== named) byName.push(`${id}: parts ${keyed}, whole ${named}`);
       }
     }
+    // A template body unit's keys are compared where each was judged, once,
+    // as a template body site's are.
+    const ownAt = (key: OwnSolvedKey): World | undefined => {
+      const at = ownWitnesses.get(key);
+      if (!at || witness.forcing) return undefined;
+      return Object.entries(witness.assignment).every(([k, v]) => at.assignment[k] === v) ? at : undefined;
+    };
     for (const [id, keys] of ownSolved) {
       const first = keys[0] && ownRequests.get(keys[0]);
-      const key = first && holding(keys, isDefinitionSite(first.site) ? variant : 0);
-      const request = key && ownRequests.get(key);
-      if (!key || !request) continue;
-      const judged = (whole: boolean, byNameWhole = false) =>
-        textOf(
-          input.judgeOwnKey({
-            ...request,
-            key: key.text,
-            witness,
-            variant: key.variant,
-            whole,
-            byNameWhole,
-          }).diagnostics,
-        );
-      compared.own++;
-      const keyed = judged(false);
-      const whole = judged(true);
-      if (keyed !== whole) out.push(`${id}: keyed ${keyed}, whole ${whole}`);
-      if (holdsParts(request.coverage)) {
-        const named = judged(false, true);
-        if (keyed !== named) byName.push(`${id}: parts ${keyed}, whole ${named}`);
+      if (!first) continue;
+      const held: { key: OwnSolvedKey; at: World }[] = first.site.unit
+        ? keys.flatMap((key) => {
+            const at = ownAt(key);
+            return at ? [{ key, at }] : [];
+          })
+        : (() => {
+            const key = holding(keys);
+            return key ? [{ key, at: witness }] : [];
+          })();
+      for (const { key, at } of held) {
+        const request = ownRequests.get(key);
+        if (!request) continue;
+        const judged = (whole: boolean, byNameWhole = false) =>
+          textOf(input.judgeOwnKey({ ...request, key: key.text, witness: at, whole, byNameWhole }).diagnostics);
+        compared.own++;
+        const keyed = judged(false);
+        const whole = judged(true);
+        if (keyed !== whole) out.push(`${id}: keyed ${keyed}, whole ${whole}`);
+        if (holdsParts(request.coverage)) {
+          const named = judged(false, true);
+          if (keyed !== named) byName.push(`${id}: parts ${keyed}, whole ${named}`);
+        }
       }
     }
     for (const site of relationSites.values()) {
-      const path = relationSitePath(site);
-      if (!taken(site.condition, path, witness)) continue;
-      const siteVariant = relationVariant(site.id, variant);
-      const found = relationKeyAt(site, witness, siteVariant, dead);
-      if (!holdsParts(found.coverage)) continue;
-      const judged = (byNameWhole: boolean) =>
-        textOf(
-          input.judgeRelationKey({
-            site,
-            key: found.text,
-            witness,
-            variant: siteVariant,
-            coverage: found.coverage,
-            reads: found.reads,
-            roots: found.roots,
-            carved: found.carved,
-            celFactsAt: (id) => celFactsAt(id, witness, siteVariant, dead, site.declaration),
-            byNameWhole,
-          }),
-        );
-      const keyed = judged(false);
-      const named = judged(true);
-      if (keyed !== named) byName.push(`${site.id}: parts ${keyed}, whole ${named}`);
+      // A lifted body's site, where each of its keys was judged.
+      const at: { witness: World; dead?: DeadBranch; bodyDead?: BodyUnitDeadBranch }[] = bodyRelation.has(site.id)
+        ? (ownSolved.get(site.id) ?? []).flatMap((key) => {
+            const judgedAt = relationWitnesses.get(key);
+            if (!judgedAt || witness.forcing) return [];
+            if (!Object.entries(witness.assignment).every(([k, v]) => judgedAt.assignment[k] === v)) return [];
+            return [{ witness: judgedAt, ...(key.bodyDead ? { bodyDead: key.bodyDead } : {}) }];
+          })
+        : taken(site.condition, relationSitePath(site), witness)
+          ? [{ witness, ...(dead ? { dead } : {}) }]
+          : [];
+      for (const each of at) {
+        const found = relationKeyAt(site, each.witness, each.dead, true, each.bodyDead);
+        if (!holdsParts(found.coverage)) continue;
+        const judged = (byNameWhole: boolean) =>
+          textOf(
+            input.judgeRelationKey({
+              site,
+              key: found.text,
+              witness: each.witness,
+              coverage: found.coverage,
+              reads: found.reads,
+              roots: found.roots,
+              carved: found.carved,
+              celFactsAt: (id) => celFactsAt(id, each.witness, each.dead, site.declaration),
+              byNameWhole,
+            }),
+          );
+        const keyed = judged(false);
+        const named = judged(true);
+        if (keyed !== named) byName.push(`${site.id}: parts ${keyed}, whole ${named}`);
+      }
     }
     return { mismatches: out, byName, compared };
   };
-  const viewRelationKeyOf = (marker: RelationMarker): string =>
-    JSON.stringify([marker.group, marker.forwardedFrom, marker.kind, marker.name, marker.source]);
-  const relationKeys = (id: string): readonly OwnSolvedKey[] => {
-    if (!relationSites.has(id)) {
-      throw new Error(`internal: the relation site ${id} of a configuration run is no anchor of the census.`);
+  // A union site by its declaration and place, for what the text checks read.
+  const sitesAtPlace = new Map<ConditionedDeclaration, Map<string, UnionSite[]>>();
+  for (const site of sites) {
+    let byPlace = sitesAtPlace.get(site.declaration);
+    if (!byPlace) sitesAtPlace.set(site.declaration, (byPlace = new Map()));
+    const place = JSON.stringify(site.unionKeys);
+    byPlace.set(place, [...(byPlace.get(place) ?? []), site]);
+  }
+  /** Where every key of `list` gives what `key` gives. */
+  const sameFactsAs = (list: readonly SolvedKey[], key: SolvedKey): Condition => {
+    if (key.dead || key.wholeCare) return TRUE;
+    let held = FALSE;
+    for (const other of list) {
+      if (!other.dead && !other.wholeCare && factsTextOf(other) === factsTextOf(key)) {
+        held = space.or(held, other.condition);
+      }
     }
-    return ownSolved.get(id) ?? [];
+    return held;
   };
-  const relationVariant = (id: string, variant: number) =>
-    relationSites.get(id)!.declaration.manifest.kind === "Telo.Definition" ? variant : 0;
-
-  /** The findings `pick` chooses, of every site the declaration written at
-   *  `origin` was found at, in site order. */
-  const ownFindings = (origin: string, pick: (site: OwnSite, keys: readonly OwnSolvedKey[]) => OwnSolvedKey | undefined) => {
-    if (!judgedOrigins.has(origin)) {
-      throw new Error(`internal: the own checks of the declaration written at ${origin} were judged in no key.`);
+  const factsAt: CelSiteSolution["factsAt"] = (at, wit) => {
+    // A template body's site as the witness decides the body: holding wherever
+    // its keys give the same facts.
+    if ("body" in at && !wit.forcing) {
+      const key = bodyKeyAtWitness(at.body, wit);
+      if (!key) return undefined;
+      const site = (bodySitesById.get(at.body) ?? []).find((s) => bodyKeysOf.get(s)!.includes(key))!;
+      let held = FALSE;
+      for (const other of bodyKeysOf.get(site)!) if (factsTextOf(other) === factsTextOf(key)) held = space.or(held, other.condition);
+      return { facts: key.verdict.facts, condition: held };
     }
-    const out: AnalysisDiagnostic[] = [];
-    for (const site of ownByOrigin.get(origin) ?? []) {
-      for (const d of pick(site, ownSolved.get(site.id) ?? [])?.verdict.diagnostics ?? []) {
-        if ((d.data as { ownOrigin?: string }).ownOrigin === origin) out.push(d);
+    if ("body" in at) {
+      // Read where a branch no configuration takes reads it: whole-care keys,
+      // whose facts are read alone.
+      const keys = keysAt(at.body, wit.assignment, forcedBranchOf(wit));
+      if (keys.length === 0) return undefined;
+      return { facts: keys.flatMap((key) => key.verdict.facts), condition: TRUE };
+    }
+    const own = sitesAtPlace.get(at.declaration)?.get(JSON.stringify(at.unionKeys));
+    if (!own) return undefined;
+    const facts: CelOccurrenceFacts[] = [];
+    let condition = TRUE;
+    for (const site of own) {
+      const key = keyAtWitness(site, wit);
+      if (!key) continue;
+      facts.push(...key.verdict.facts);
+      condition = space.and(condition, sameFactsAs(siteKeys.get(site) ?? [], key));
+    }
+    return facts.length > 0 ? { facts, condition } : undefined;
+  };
+
+  /** Every key's findings, each once, where it holds. */
+  let emitted: readonly KeyEmission[] | undefined;
+  const emitKeys = (): KeyEmission[] => {
+    const out: KeyEmission[] = [];
+    for (const site of sites) {
+      for (const key of siteKeys.get(site) ?? []) {
+        if (key.wholeCare) continue;
+        if (site.dead) {
+          if (key.dead !== site.dead.branch) continue;
+          for (const diagnostic of key.verdict.diagnostics) out.push({ diagnostic, condition: FALSE, dead: key.dead, family: "cel" });
+        } else if (!key.dead) {
+          for (const diagnostic of key.verdict.diagnostics) out.push({ diagnostic, condition: key.condition, family: "cel" });
+        }
+      }
+    }
+    const ownDead = new Map<string, DeadBranch[]>();
+    for (const [dead, ids] of ownReach) for (const id of ids) ownDead.set(id, [...(ownDead.get(id) ?? []), dead]);
+    for (const [origin, own] of ownByOrigin) {
+      for (const site of own) {
+        if (site.unit) continue;
+        const keys = ownSolved.get(site.id) ?? [];
+        for (const key of keys) {
+          if (key.dead || key.bodyDead) continue;
+          for (const diagnostic of key.verdict.diagnostics) {
+            if ((diagnostic.data as { ownOrigin?: string }).ownOrigin === origin) out.push({ diagnostic, condition: key.condition, family: "own", origin });
+          }
+        }
+      }
+    }
+    for (const [id, branches] of ownDead) {
+      for (const dead of branches) {
+        const key = ownSolved.get(id)?.find((k) => k.dead === dead);
+        if (!key) throw new Error(`internal: the own-check site ${id} in the reach of a branch no configuration takes holds no key there.`);
+        for (const diagnostic of key.verdict.diagnostics) {
+          const origin = (diagnostic.data as { ownOrigin?: string }).ownOrigin;
+          if (origin !== undefined) out.push({ diagnostic, condition: FALSE, dead, family: "own", origin });
+        }
+      }
+    }
+    const inBody = new Set(bodyRelationKeys.map((entry) => entry.site.id));
+    const inView = new Set<string>();
+    /** The instance set of forward views each view relation site is in. */
+    const setOf = new Map<string, string>();
+    for (const [set, sites] of viewRelationSites) {
+      for (const site of sites) {
+        if (inView.has(site.id)) throw new Error(`internal: the relation site ${site.id} belongs to two instance sets of forward views.`);
+        inView.add(site.id);
+        setOf.set(site.id, set);
+      }
+    }
+    /** Where each instance set's verdicts are emitted, by site. */
+    const setEmissions = new Map<string, Map<string, Condition>>();
+    const emittedInSet = (site: RelationSite, key: object, condition: Condition): void => {
+      const set = setOf.get(site.id);
+      if (set === undefined) return;
+      if (viewSetCounts) {
+        const counted = viewSetCounts.get(set) ?? { emissions: 0, keys: new Set<object>() };
+        counted.emissions++;
+        counted.keys.add(key);
+        viewSetCounts.set(set, counted);
+      }
+      if (condition === FALSE) return;
+      const anchors = setEmissions.get(set) ?? new Map<string, Condition>();
+      setEmissions.set(set, anchors);
+      const before = anchors.get(site.id) ?? FALSE;
+      if (space.and(before, condition) !== FALSE) {
+        throw new Error(`internal: two relation verdicts of the site ${site.id}, in the forward-view instance set ${set}, are emitted under overlapping conditions.`);
+      }
+      anchors.set(site.id, space.or(before, condition));
+    };
+    const relationDead = new Map<string, DeadBranch[]>();
+    for (const [dead, ids] of relationReach) for (const id of ids) relationDead.set(id, [...(relationDead.get(id) ?? []), dead]);
+    for (const site of relationSites.values()) {
+      if (inBody.has(site.id)) continue;
+      const moved = inView.has(site.id) ? ({ moved: true } as const) : {};
+      const keys = ownSolved.get(site.id) ?? [];
+      for (const key of keys) {
+        if (key.dead || key.bodyDead) continue;
+        const condition = space.and(key.condition, site.condition);
+        if (condition === FALSE) continue;
+        emittedInSet(site, key, condition);
+        for (const diagnostic of key.verdict.diagnostics) out.push({ diagnostic, condition, family: "relation", ...moved });
+      }
+      for (const dead of relationDead.get(site.id) ?? []) {
+        const key = keys.find((k) => k.dead === dead);
+        if (!key) throw new Error(`internal: the relation site ${site.id} in the reach of a branch no configuration takes holds no key there.`);
+        emittedInSet(site, key, FALSE);
+        for (const diagnostic of key.verdict.diagnostics) out.push({ diagnostic, condition: FALSE, dead, family: "relation", ...moved });
       }
     }
     return out;
   };
-  const ownHolding = (site: OwnSite, keys: readonly OwnSolvedKey[], assignment: Assignment, variant: number) =>
-    keys.find((key) => !key.dead && key.variant === (isDefinitionSite(site) ? variant : 0) && space.holds(key.condition, assignment));
 
   return {
+    factsAt,
     keys: solved,
     isBodySite: (site) => body.has(site),
-    verdictAt: (site, assignment, variant) => {
-      const keys = keysAt(site, assignment, body.has(site) ? variant : 0);
+    bodyKeys: input.bodySites.map((site) => ({ site, keys: bodyKeysOf.get(site)! })),
+    runFactsAt: (site, assignment) => {
+      const keys = keysAt(site, assignment);
       if (keys.some((key) => key.wholeCare)) throw new Error(`internal: a whole-care key of CEL site ${site} answers a configuration run.`);
-      return verdictOfKeys(keys);
+      const verdict = verdictOfKeys(keys);
+      return verdict ? { facts: verdict.facts } : undefined;
     },
-    verdictInDeadBranch: (id, sentinel, branch) => {
+    runFactsInDeadBranch: (id, sentinel, branch) => {
       const dead = deadBranchOf(sentinel, branch);
       const keys: SolvedKey[] = [];
       for (const site of sitesOfId.get(id) ?? []) {
@@ -4375,59 +5208,18 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
         if (!key) throw new Error(`internal: the CEL site ${id} in the reach of a branch no configuration takes holds no key there.`);
         keys.push(key);
       }
-      return verdictOfKeys(keys);
+      const verdict = verdictOfKeys(keys);
+      return verdict ? { facts: verdict.facts } : undefined;
     },
+    emissions: () => (emitted ??= emitKeys()),
     ownKeys: ownSolved,
     relationSites,
-    observedAt: (witness: Witness) => observedClass(witness).covers?.observed === true,
+    relationSiteIdAt: censusSiteId,
+    observedAt: (witness: World) => observedClass(witness).covers?.observed === true,
     carveParityAt,
     keyParityAt,
-    relationFindingsAt: (marker, assignment, variant) => {
-      const holding = (id: string) =>
-        relationKeys(id).find((k) => !k.dead && k.variant === relationVariant(id, variant) && space.holds(k.condition, assignment));
-      if (marker.forwardedFrom !== undefined) {
-        const held = viewRelationKeyOf(marker);
-        return {
-          claim: held,
-          diagnostics: (viewRelationSites.get(held) ?? []).flatMap((site) => {
-            const key = holding(site.id);
-            return key && taken(site.condition, relationSitePath(site), { assignment })
-              ? key.verdict.diagnostics
-              : [];
-          }),
-        };
-      }
-      const id = relationSiteId(marker.group, marker.kind, marker.name, marker.source, marker.path);
-      const key = holding(id);
-      if (!key) throw new Error(`internal: the relation site ${id} holds no key in ${assignmentKey(assignment)}.`);
-      return { diagnostics: key.verdict.diagnostics };
-    },
-    relationFindingsInDeadBranch: (marker, sentinel, branch) => {
-      const dead = deadBranchOf(sentinel, branch);
-      const found = (id: string): readonly AnalysisDiagnostic[] => {
-        if (!relationReach.get(dead)?.has(id)) return [];
-        const key = relationKeys(id).find((k) => k.dead === dead);
-        if (!key) throw new Error(`internal: the relation site ${id} in the reach of a branch no configuration takes holds no key there.`);
-        return key.verdict.diagnostics;
-      };
-      if (marker.forwardedFrom !== undefined) {
-        const held = viewRelationKeyOf(marker);
-        return { claim: held, diagnostics: (viewRelationSites.get(held) ?? []).flatMap((site) => found(site.id)) };
-      }
-      return { diagnostics: found(relationSiteId(marker.group, marker.kind, marker.name, marker.source, marker.path)) };
-    },
-    ownFindingsAt: (origin, assignment, variant) =>
-      ownFindings(origin, (site, keys) => ownHolding(site, keys, assignment, variant)),
-    ownFindingsInDeadBranch: (origin, sentinel, branch) => {
-      const dead = deadBranchOf(sentinel, branch);
-      const out: AnalysisDiagnostic[] = [];
-      for (const id of ownReach.get(dead) ?? []) {
-        const key = ownSolved.get(id)?.find((k) => k.dead === dead);
-        if (!key) throw new Error(`internal: the own-check site ${id} in the reach of a branch no configuration takes holds no key there.`);
-        for (const d of key.verdict.diagnostics) if ((d.data as { ownOrigin?: string }).ownOrigin === origin) out.push(d);
-      }
-      return out;
-    },
+    bodyRelationKeys,
+    bodyOwnKeys: bodyOwn,
   };
 }
 

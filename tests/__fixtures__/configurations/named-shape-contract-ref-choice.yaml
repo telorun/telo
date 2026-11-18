@@ -1,0 +1,17 @@
+# A shape declared only where a choice holds, named by `!ref` in a kind's
+# contract: the contract is refused where the shape is absent.
+kind: Telo.Application
+metadata: { name: NamedShapeContractRef }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+!if
+metadata: { name: Payload }
+if: !cel "variables.flag1"
+then: { kind: Telo.JsonSchema, schema: { type: object } }
+---
+kind: Telo.Definition
+metadata: { name: Handler }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Handler]
+inputType: !ref Payload
+schema: { type: object }

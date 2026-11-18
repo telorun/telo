@@ -3,12 +3,8 @@ import AjvModule from "ajv";
 import { describe, expect, it } from "vitest";
 import { createAjv } from "../src/schema-compat.js";
 import { SchemaNodeValidator } from "../src/schema-node-validator.js";
-import {
-  readStandIn,
-  withoutStandInFindings,
-  type StandIn,
-  type StandIns,
-} from "../src/stand-in-findings.js";
+import { judgeSchemaFindings } from "../src/schema-findings-judge.js";
+import { readStandIn, type StandIn, type StandIns } from "../src/stand-in-findings.js";
 
 const Ajv = (AjvModule as any).default ?? AjvModule;
 
@@ -28,11 +24,13 @@ function findings(
   }
   const validate = ajv.compile(schema);
   expect(validate(data)).toBe(false);
-  return withoutStandInFindings(validate.errors, {
+  const nodes = new SchemaNodeValidator(located, { resolveReference: () => undefined });
+  return judgeSchemaFindings(validate.errors, {
     value: data,
     schema,
     standIns,
-    validate: new SchemaNodeValidator(located, { resolveReference: () => undefined }).findingsFor(schema),
+    validate: nodes.findingsFor(schema),
+    reference: (node, ref) => nodes.reference(node, ref),
   }).map((e) => `${e.instancePath} ${e.keyword}`);
 }
 
@@ -55,7 +53,7 @@ describe("readStandIn", () => {
   });
 });
 
-describe("withoutStandInFindings", () => {
+describe("judgeSchemaFindings", () => {
   const produced: StandIns = new Map([["/wait", { class: "produced" }]]);
 
   it("satisfies a union through a referenced branch failing only on a value constraint", () => {
@@ -184,8 +182,6 @@ describe("withoutStandInFindings", () => {
     const data = { wait: "soon", child: { child: { wait: "" } } };
     expect(findings(schema, data, new Map([["/child/child/wait", { class: "produced" }]]))).toEqual([
       "/wait pattern",
-      "/wait type",
-      "/wait anyOf",
     ]);
   });
 
@@ -212,11 +208,11 @@ describe("withoutStandInFindings", () => {
       },
     };
     const data = { wait: "5s", other: "x" };
-    expect(findings(schema, data, produced)).toEqual(["/other type", "/other oneOf"]);
+    expect(findings(schema, data, produced)).toEqual(["/other oneOf"]);
   });
 });
 
-describe("withoutStandInFindings — content keywords at a value holding stand-ins", () => {
+describe("judgeSchemaFindings — content keywords at a value holding stand-ins", () => {
   const tags = { type: "object", properties: { tags: { type: "array", uniqueItems: true } } };
 
   it("never compares two stand-ins with each other", () => {
@@ -236,11 +232,12 @@ describe("withoutStandInFindings — content keywords at a value holding stand-i
     const data = { tags: ["x", "x", "", ""] };
     expect(validate(data)).toBe(false);
     expect(validate.errors?.[0]?.params).toEqual({ i: 3, j: 2 });
-    const kept = withoutStandInFindings(validate.errors, {
+    const kept = judgeSchemaFindings(validate.errors, {
       value: data,
       schema: tags,
       standIns,
       validate: () => undefined,
+      reference: () => undefined,
     });
     expect(kept.map((e) => [e.instancePath, e.params, e.message])).toEqual([
       ["/tags", { i: 1, j: 0 }, "must NOT have duplicate items (items ## 0 and 1 are identical)"],
@@ -273,7 +270,7 @@ describe("withoutStandInFindings — content keywords at a value holding stand-i
   });
 });
 
-describe("withoutStandInFindings — the same expression twice in a uniqueItems list", () => {
+describe("judgeSchemaFindings — the same expression twice in a uniqueItems list", () => {
   const tags = { type: "object", properties: { tags: { type: "array", uniqueItems: true } } };
   const written = (tag: string, text: string) => readStandIn(makeTaggedSentinel(tag, text)) as StandIn;
   /** What the judge keeps of a two-item list whose items stand for these. */
@@ -286,11 +283,12 @@ describe("withoutStandInFindings — the same expression twice in a uniqueItems 
     const data = { tags: [item(""), item("")] };
     const validate = createAjv().compile(tags);
     expect(validate(data)).toBe(false);
-    return withoutStandInFindings(validate.errors, {
+    return judgeSchemaFindings(validate.errors, {
       value: data,
       schema: tags,
       standIns,
       validate: () => undefined,
+      reference: () => undefined,
     }).map((e) => [e.instancePath, e.params, e.message]);
   };
   const DUPLICATE = [
@@ -330,18 +328,25 @@ describe("withoutStandInFindings — the same expression twice in a uniqueItems 
   });
 });
 
-describe("withoutStandInFindings — a branch judged alone, on a validator that fills defaults", () => {
+describe("judgeSchemaFindings — a branch judged alone, on a validator that fills defaults", () => {
   /** The kernel's arrangement: a defaults-filling whole-schema pass, then one
    *  defaults-free locating instance for the whole schema and each branch. */
   function judged(schema: Record<string, any>, data: unknown, standIns: StandIns) {
     const filling = new Ajv({ strict: false, allErrors: true, useDefaults: true });
-    const seam = new SchemaNodeValidator(createAjv({ verbose: true }), {
+    const nodes = new SchemaNodeValidator(createAjv({ verbose: true }), {
       resolveReference: () => undefined,
       fillDefaults: (whole, value) => void filling.compile(whole)(value),
-    }).findingsFor(schema);
+    });
+    const seam = nodes.findingsFor(schema);
     const all = seam(schema, data);
     const filled = structuredClone(data);
-    const kept = withoutStandInFindings(all, { value: data, schema, standIns, validate: seam });
+    const kept = judgeSchemaFindings(all, {
+      value: data,
+      schema,
+      standIns,
+      validate: seam,
+      reference: (node, ref) => nodes.reference(node, ref),
+    });
     expect(data).toEqual(filled);
     return kept.map((e) => `${e.instancePath} ${e.keyword}`);
   }
@@ -386,7 +391,7 @@ describe("withoutStandInFindings — a branch judged alone, on a validator that 
     expect(data).toEqual({ cfg: { kind: "b", t: "" } });
   });
 
-  it("keeps a union whose only fitting branch requires a member it merely defaults", () => {
+  it("refuses a union whose only fitting branch requires a member it merely defaults", () => {
     const schema = {
       type: "object",
       properties: {
@@ -399,11 +404,7 @@ describe("withoutStandInFindings — a branch judged alone, on a validator that 
       },
     };
     const standIns: StandIns = new Map([["/retry/base", { class: "produced" }]]);
-    expect(judged(schema, { retry: { base: "" } }, standIns)).toEqual([
-      "/retry required",
-      "/retry type",
-      "/retry anyOf",
-    ]);
+    expect(judged(schema, { retry: { base: "" } }, standIns)).toEqual(["/retry anyOf"]);
   });
 });
 
@@ -415,17 +416,41 @@ describe("SchemaNodeValidator", () => {
     };
     const validate = createAjv({ verbose: true }).compile(schema);
     expect(validate({ wait: "" })).toBe(false);
-    const seam = new SchemaNodeValidator(createAjv({ verbose: true }), {
-      resolveReference: () => undefined,
-    }).findingsFor({});
+    const nodes = new SchemaNodeValidator(createAjv({ verbose: true }), { resolveReference: () => undefined });
+    const seam = nodes.findingsFor({});
     expect(seam(schema.properties.wait.anyOf[0]!, "")).toBeUndefined();
-    const kept = withoutStandInFindings(validate.errors, {
+    const kept = judgeSchemaFindings(validate.errors, {
       value: { wait: "" },
       schema,
       standIns: new Map([["/wait", { class: "produced" }]]),
       validate: seam,
+      reference: (node, ref) => nodes.reference(node, ref),
     });
     expect(kept.map((e) => `${e.instancePath} ${e.keyword}`)).toEqual(["/wait type", "/wait anyOf"]);
+  });
+
+  it("judges a branch that is nothing but a reference to a keyed shape with local references", () => {
+    const shapes = {
+      "telo:M/Overlay": { $defs: { D: { type: "string" } }, properties: { d: { $ref: "#/$defs/D" } } },
+      "telo:M/Surface": { anyOf: [{ $ref: "telo:M/Overlay" }, { type: "integer" }] },
+    };
+    const ajv = createAjv();
+    const located = createAjv({ verbose: true });
+    for (const [id, shape] of Object.entries(shapes)) {
+      ajv.addSchema(shape, id);
+      located.addSchema(shape, id);
+    }
+    const schema = { $ref: "telo:M/Surface" };
+    const validate = ajv.compile(schema);
+    expect(validate({ d: 1 })).toBe(false);
+    const nodes = new SchemaNodeValidator(located, { resolveReference: () => undefined });
+    const kept = judgeSchemaFindings(validate.errors, {
+      value: { d: 1 },
+      schema,
+      validate: nodes.findingsFor(schema),
+    reference: (node, ref) => nodes.reference(node, ref),
+    });
+    expect(kept.map((e) => `${e.instancePath} ${e.keyword}`)).toEqual(["/d type"]);
   });
 
   it("throws, naming the node, when a held node does not compile where it stands", () => {

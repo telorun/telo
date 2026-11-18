@@ -1,3 +1,4 @@
+import { collectFilePositions } from "../src/diagnostic-location.js";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
 import { collectModuleDocuments, flattenForAnalyzer } from "../src/flatten-for-analyzer.js";
@@ -26,7 +27,7 @@ function inMemorySource(files: Record<string, string>): ManifestSource {
 async function errors(files: Record<string, string>): Promise<Array<[string, string]>> {
   const graph = await new Loader([inMemorySource(files)]).loadGraph("/app/telo.yaml", { desugarImports: true });
   return new StaticAnalyzer()
-    .analyze(flattenForAnalyzer(graph), { moduleDocuments: collectModuleDocuments(graph) })
+    .analyze(flattenForAnalyzer(graph), { moduleDocuments: collectModuleDocuments(graph), positions: collectFilePositions(graph) })
     .filter((d) => d.severity === DiagnosticSeverity.Error)
     .map((d) => [String(d.code), String((d.data as { path?: string }).path)]);
 }
@@ -154,8 +155,8 @@ keys:
 `,
       }),
     ).toEqual([
-      ["SCHEMA_VIOLATION", "keys.range.values.first"],
       ["TEXT_VALUES_INVALID", "keys.flag.values.on"],
+      ["SCHEMA_VIOLATION", "keys.range.values.first"],
     ]);
   });
 });

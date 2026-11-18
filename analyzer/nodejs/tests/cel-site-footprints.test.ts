@@ -186,6 +186,8 @@ describe("the analyses one analysis makes", () => {
     ]),
     // A branch no configuration takes, and its own run.
     ["a dead branch", () => loadFixture("dead-branch.yaml")],
+    // And an option inside it its baseline does not take, a run of its own.
+    ["an option inside a dead branch", () => loadFixture("dead-branch-nested-option.yaml")],
   ];
   for (const [label, load] of cases) {
     it(`builds one environment per key and no configuration's analysis to judge: ${label}`, async () => {
@@ -222,6 +224,53 @@ describe("the analyses one analysis makes", () => {
       expect(count("door")).toBe(keys.size);
     }, 120_000);
   }
+});
+
+/** A branch no configuration takes holding `k` steps, each an '!if' on a flag
+ *  of its own whose `then:` its baseline does not take. */
+function deadBranchOptions(k: number): string {
+  const lines = [
+    "kind: Telo.Application",
+    "metadata: { name: DeadBranchOptions, version: 1.0.0 }",
+    "variables:",
+    ...Array.from({ length: k }, (_, i) => `  flag${i + 1}: { env: FLAG_${i + 1}, type: boolean, default: false }`),
+    "targets:",
+    "  - !ref main",
+    "--- !if",
+    "metadata: { name: main }",
+    `if: !cel "module.version == '1.0.0'"`,
+    "then: { kind: Telo.Sequence, steps: [{ name: idle, value: 1 }] }",
+    "else:",
+    "  kind: Telo.Sequence",
+    "  steps:",
+  ];
+  for (let i = 1; i <= k; i++) {
+    lines.push(
+      "    - !if",
+      `      if: !cel "variables.flag${i}"`,
+      `      then: { name: step${i}, value: ${i} }`,
+      `      else: { name: step${i}, value: 0 }`,
+    );
+  }
+  return [...lines, ""].join("\n");
+}
+
+describe("the options inside a branch no configuration takes", () => {
+  it("are each checked by one run beside the branch's own, so the runs grow linearly", async () => {
+    for (const k of [1, 2, 4]) {
+      const loaded = await loadGenerated(`dead-branch-options-${k}.yaml`, deadBranchOptions(k));
+      let runs = 0;
+      const stop = observeAnalysisRuns((purpose) => {
+        if (purpose === "unreachable") runs++;
+      });
+      try {
+        new StaticAnalyzer().analyze(loaded.manifests, { moduleDocuments: loaded.moduleDocuments });
+      } finally {
+        stop();
+      }
+      expect(runs, `k=${k}`).toBe(1 + k);
+    }
+  }, 120_000);
 });
 
 /** What one analysis of `loaded` costs: every cost reported, and the keys. */
@@ -514,7 +563,7 @@ describe("a value held to its slot", () => {
 });
 
 describe("the per-site model's boundary", () => {
-  it("is the only reader of the union and its conditions: no check depends on them", () => {
+  it("lists every module reading the union and its conditions", () => {
     const readers = readdirSync(SRC)
       .filter((file) => file.endsWith(".ts"))
       .filter((file) => /from "\.\/(presence-condition|conditioned-expansion)\.js"/.test(readFileSync(join(SRC, file), "utf8")))
@@ -522,27 +571,92 @@ describe("the per-site model's boundary", () => {
     expect(readers).toEqual([
       // The driver: one analysis, its configurations and the site solution.
       "analyzer.ts",
+      // A lifted body's findings reported with their conditions, for a test.
+      "cel-site-judgements.ts",
       // The site model and the witness loop.
       "cel-site-solve.ts",
       // The reading of choices, which produces each branch's condition.
       "choice-reading.ts",
+      // The call graph over every configuration, each element under its
+      // condition.
+      "conditioned-call-graph.ts",
       "conditioned-expansion.ts",
       // Name resolution's outcomes, each under its condition.
       "conditioned-name-index.ts",
       // Labels: the one cover.
       "configuration-dimensions.ts",
       "configuration-merge.ts",
+      // Init-order loops over every configuration: a pass carrying conditions.
+      "cycle-findings.ts",
+      // The document-level stages: the module documents' judged once per class
+      // of the choices in the fields each reads, the kind documents' once.
+      "document-findings.ts",
+      // Eval-mode conflicts between a union's branches, held where reached.
+      "eval-mode-branch-findings.ts",
+      // A refused construct's consequences, as a cover holding where it does.
+      "expansion-sites.ts",
+      // The one finishing step: covers, settling and merge over conditions.
+      "finishing-pipeline.ts",
+      // What an import supplies for a host-path input, typed by the key judging its CEL site.
+      "import-host-path-findings.ts",
       "index.ts",
+      // Which application inputs each configuration requires, as conditions.
+      "input-requirements.ts",
       // The door: what one key's environment answers, read off the union.
       "key-door.ts",
       // What a key's environment is built from: each declaration normalized
       // at the key's witness, interned.
       "key-parts.ts",
+      // A kind document's annotation refusals, a named shape's per class.
+      "kind-annotation-findings.ts",
+      // The names a kind's CEL contexts declare, each under its condition.
+      "kind-context-names.ts",
+      // A kind document's contract refusals, compared per class pair.
+      "kind-contract-findings.ts",
+      // A kind schema's walk into named shapes, joined by the reach fixpoint.
+      "kind-shape-walk.ts",
+      // A union pass's reading of a lifted template body, unit by unit.
+      "lifted-body-findings.ts",
+      // Mark reach over every configuration: a pass carrying conditions.
+      "mark-reach-findings.ts",
+      // The one reader of named shapes: classes, reach and stand-ins.
+      "named-shape-reader.ts",
+      // The need table over every configuration: a pass carrying conditions.
+      "need-table-findings.ts",
+      // A dependency's references to an optional input an import omits, held
+      // in the library's own space and carried into the importer's.
+      "omitted-input-references.ts",
+      // Every option a document writes, as views a pass reads.
+      "option-views.ts",
       // Where a declaration's own checks are cut into sites.
       "own-check-sites.ts",
+      // The one placement: a view's place map moves a finding to its consumer.
+      "placement.ts",
       // Where a region of a declaration stands at a witness: what a relation
       // site's key is normalized in.
       "region-part.ts",
+      // Resource inputs, shared libraries and optional references over every
+      // configuration: passes carrying conditions.
+      "resource-input-findings.ts",
+      // Rule verdicts settled in written order over their conditions.
+      "resource-rule-relation.ts",
+      // Rethrow placement over every configuration: a pass carrying conditions.
+      "rethrow-findings.ts",
+      // Rules no instance exercised, as conditions over every configuration.
+      "rule-absence.ts",
+      // Kind schema compile failures, a shape class compiled once each.
+      "schema-compile-findings.ts",
+      // Scope-member collisions and scoped sinks: passes carrying conditions.
+      "scope-member-findings.ts",
+      // The scoped imports a module writes, each with its presence.
+      "scoped-import-index.ts",
+      // Template body and forward checks over every configuration: passes
+      // carrying conditions.
+      "template-body-findings.ts",
+      // A lifted body walk restricted to one way of deciding it.
+      "template-body-projection.ts",
+      // A template body's CEL sites, read once off its lifted reading.
+      "template-body-sites.ts",
       // A consumer's expansion of a template body, lifted over every
       // configuration for the forward views.
       "template-consumer-expansion.ts",
@@ -552,9 +666,29 @@ describe("the per-site model's boundary", () => {
       "template-expansion.ts",
       // The one forward-view builder, lifted over the union.
       "template-forward.ts",
+      // The text checks over every configuration: a pass carrying conditions.
+      "text-findings.ts",
+      // Throws unions, catch ladders and retry policies over every
+      // configuration: a pass carrying conditions.
+      "throws-findings.ts",
       // The whole-application passes that carry conditions, each run once over
       // the union.
       "union-passes.ts",
+      // The union world's placement of the passes' findings, each choice on
+      // the way decided where the finding holds.
+      "union-placement.ts",
+      // Scoped imports named like a module alias, held where present.
+      "validate-scoped-imports.ts",
+      // A view's binding: a definition's condition composed into the
+      // configurations' for the template-definitions cover.
+      "view-binding.ts",
+      // How a pass's finding reads where it holds: split by the conditions it
+      // reads, or a dead branch's witness.
+      "world-reader.ts",
+      // Zone regions and the checks over them: passes carrying conditions.
+      "zone-region-findings.ts",
+      // Zone requirements over every configuration: a pass carrying conditions.
+      "zone-requirement-findings.ts",
     ]);
   });
 

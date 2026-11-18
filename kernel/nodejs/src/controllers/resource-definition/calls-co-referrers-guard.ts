@@ -1,26 +1,34 @@
-import { coReferrerCallProblems } from "@telorun/analyzer";
+import { coReferrerCallProblems, type DefResolver } from "@telorun/analyzer";
 import { RuntimeError, type ResourceDefinition } from "@telorun/sdk";
-import { CanonicalSlotKinds, type ScopedKindResolver } from "../../canonical-slot-kinds.js";
+
+/** What the guard reads of the kernel: the copy the analysis registry would
+ *  register for a definition, and a kind as written in a module's scope. */
+export interface CoReferrerGuardHost {
+  registeredFormOf(definition: ResourceDefinition, canonicalExtends?: string): ResourceDefinition;
+  resolveDefinitionIn(kind: string, module: string | undefined): ResourceDefinition | undefined;
+}
 
 /**
  * `callsCoReferrers` on a reference slot, refused at definition registration
  * through the analyzer's reader — `telo check` reports the same problems as
- * `X_TELO_REF_INVALID_CALLS_CO_REFERRERS`. Every kind is compared canonical,
- * each read in the module that wrote it. A kind not registered yet defers the
- * definition, since whether it resolves and what its slot holds decide the
- * verdict.
+ * `X_TELO_REF_INVALID_CALLS_CO_REFERRERS`. Judged on the copy the registry
+ * would register, whose kinds are canonical in the module that wrote each, as
+ * every registered kind it is compared with is. A kind not registered yet
+ * defers the definition, since whether it resolves and what its slot holds
+ * decide the verdict.
  */
 export function refuseInvalidCallsCoReferrers(
   definition: ResourceDefinition,
-  ownSchema: Record<string, unknown> | undefined,
-  resolveIn: ScopedKindResolver,
+  canonicalExtends: string | undefined,
+  host: CoReferrerGuardHost,
 ): void {
-  const canonical = new CanonicalSlotKinds(resolveIn);
+  const registered = host.registeredFormOf(definition, canonicalExtends);
   const module = definition.metadata?.module;
+  const resolve: DefResolver = (kind, from) => host.resolveDefinitionIn(kind, from?.metadata?.module ?? module);
   const { problems, pending } = coReferrerCallProblems(
-    canonical.definition(definition),
-    canonical.schema(ownSchema, module),
-    canonical.resolver(module),
+    registered,
+    registered.schema as Record<string, unknown> | undefined,
+    resolve,
     false,
   );
   const [problem] = problems;

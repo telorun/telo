@@ -1,0 +1,35 @@
+# A field typed from what its sibling reference's target declares, which a
+# choice writes: the value fits only where the choice declares `fast`.
+kind: Telo.Application
+metadata: { name: SchemaFromReferentChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets:
+  - !ref job
+---
+kind: Telo.Definition
+metadata: { name: Engine }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema: { type: object, properties: { modes: { type: object } } }
+---
+kind: Telo.Definition
+metadata: { name: Job }
+capability: Telo.Runnable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties:
+    engine: { x-telo-ref: { kind: Self.Engine, use: dependency } }
+    mode: { type: string, x-telo-schema-from: "engine/modes" }
+---
+kind: Self.Engine
+metadata: { name: engine }
+modes: !if
+  if: !cel "variables.flag1"
+  then: { type: string, enum: [slow] }
+  else: { type: string, enum: [fast] }
+---
+kind: Self.Job
+metadata: { name: job }
+engine: !ref engine
+mode: fast

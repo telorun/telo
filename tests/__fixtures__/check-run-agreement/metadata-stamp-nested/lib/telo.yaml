@@ -1,0 +1,9 @@
+# A library whose inline declaration writes `metadata.module` by hand: a
+# consumer's check reports it at the import reaching the library.
+kind: Telo.Library
+metadata: { name: NestedStampLib }
+imports: { Run: ../../../../../modules/run }
+---
+kind: Run.Detach
+metadata: { name: later }
+invoke: { kind: Telo.Value, metadata: { module: Elsewhere }, value: 1 }

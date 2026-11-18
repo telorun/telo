@@ -1,0 +1,32 @@
+# A zone requirement correlated past a reference: the operation needs a
+# transaction on its session's connection, and which connection the session
+# holds is chosen by `flag1` — the transaction's, or another one.
+kind: Telo.Application
+metadata: { name: ZoneCorrelationChoice }
+imports: { Z: ./kinds }
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+targets:
+  - invoke: !ref main
+---
+kind: Z.Conn
+metadata: { name: primary }
+---
+kind: Z.Conn
+metadata: { name: replica }
+---
+kind: Z.Session
+metadata: { name: session }
+connection: !if
+  if: !cel "variables.flag1"
+  then: !ref primary
+  else: !ref replica
+---
+kind: Z.Tx
+metadata: { name: main }
+connection: !ref primary
+steps: !ref write
+---
+kind: Z.Op
+metadata: { name: write }
+session: !ref session

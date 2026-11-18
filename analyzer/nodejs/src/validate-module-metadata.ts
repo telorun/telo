@@ -1,10 +1,12 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { isEntryOwned } from "./entry-ownership.js";
 import { isTaggedSentinel } from "@telorun/templating";
 
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { isKindDocument } from "./kind-declaration.js";
 import { distance } from "./levenshtein.js";
+import { DERIVED_METADATA_FIELDS } from "./module-metadata-scope.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
 const SOURCE = "telo-analyzer";
@@ -54,7 +56,6 @@ type FieldType = "string" | "string[]" | "object";
  *  `name` is the sole field anything resolves against. */
 const MODULE_METADATA_TYPES: Record<string, FieldType> = {
   name: "string",
-  module: "string",
   version: "string",
   description: "string",
   repository: "string",
@@ -76,7 +77,6 @@ const MODULE_METADATA_TYPES: Record<string, FieldType> = {
  *  it ships silently — which is why kind docs are checked rather than exempt. */
 const KIND_METADATA_TYPES: Record<string, FieldType> = {
   name: "string",
-  module: "string",
   description: "string",
   categories: "string[]",
   deprecated: "object",
@@ -95,38 +95,47 @@ function typeOf(value: unknown): "string" | "string[]" | "object" | "other" {
   return "other";
 }
 
-export function validateModuleMetadata(
-  manifests: ResourceManifest[],
+/** The `metadata:` of the module documents, read off those documents alone. */
+export function validateModuleDocumentMetadata(
+  manifests: readonly ResourceManifest[],
   registry: DefinitionRegistry,
   aliases: AliasResolver,
 ): AnalysisDiagnostic[] {
-  const out: AnalysisDiagnostic[] = [];
+  return metadataFindings(manifests, registry, aliases, new Set<string>(), true);
+}
 
-  // Docs forwarded from imported libraries carry `metadata.module` set to that
-  // library's name. Their `replacedBy` aliases — `Self`, or any alias private to
-  // that library — belong to the library's OWN scope, which the consumer's
-  // resolver knows nothing about, so re-checking them here reports a false
-  // DEPRECATION_REPLACEMENT_UNRESOLVED against a manifest the consumer does not
-  // own. They are validated when that library is analyzed as a root, which is
-  // its author's concern. Same rule, and the same reason, as `validate-extends`.
-  const importedModules = new Set<string>();
-  for (const m of manifests) {
-    if (m.kind !== "Telo.Import") continue;
-    const resolved = (m.metadata as { resolvedModuleName?: string } | undefined)
-      ?.resolvedModuleName;
-    if (resolved) importedModules.add(resolved);
-  }
+/** The `metadata:` of the kind documents. Docs forwarded from imported
+ *  libraries carry `metadata.module` set to that library's name. Their
+ *  `replacedBy` aliases belong to the library's OWN scope, which the
+ *  consumer's resolver knows nothing about, so they are validated when that
+ *  library is analyzed as a root — the same rule as `validate-extends`. */
+export function validateKindDocumentMetadata(
+  manifests: readonly ResourceManifest[],
+  registry: DefinitionRegistry,
+  aliases: AliasResolver,
+  rootModules: ReadonlySet<string>,
+): AnalysisDiagnostic[] {
+  return metadataFindings(manifests, registry, aliases, rootModules, false);
+}
+
+function metadataFindings(
+  manifests: readonly ResourceManifest[],
+  registry: DefinitionRegistry,
+  aliases: AliasResolver,
+  rootModules: ReadonlySet<string>,
+  moduleDocuments: boolean,
+): AnalysisDiagnostic[] {
+  const out: AnalysisDiagnostic[] = [];
 
   for (const manifest of manifests) {
     const isModuleDoc = manifest.kind === "Telo.Application" || manifest.kind === "Telo.Library";
     const isKindDoc = isKindDocument(manifest);
-    if (!isModuleDoc && !isKindDoc) continue;
+    if (moduleDocuments ? !isModuleDoc : !isKindDoc) continue;
 
     const metadata = manifest.metadata as Record<string, unknown> | undefined;
     if (!metadata) continue;
 
-    const ownModule = (metadata as { module?: string }).module;
-    if (ownModule && importedModules.has(ownModule)) continue;
+    if (!isModuleDoc && !isEntryOwned(manifest, rootModules)) continue;
 
     const name = typeof metadata.name === "string" ? metadata.name : undefined;
     const filePath = typeof metadata.source === "string" ? metadata.source : undefined;
@@ -172,7 +181,7 @@ function validateFieldTypes(
   const known = Object.keys(allowed);
   for (const [key, value] of Object.entries(metadata)) {
     // Stamped by the loader, not authored — never a typo to report on.
-    if (key === "source") continue;
+    if (DERIVED_METADATA_FIELDS.has(key)) continue;
 
     // Listed as known so a typo still gets suggested against it, but its shape
     // belongs to `validateDeprecation`, which can say what is actually wrong.

@@ -6,6 +6,7 @@ import {
   analyzeLoadedGraph,
   assembleGraphDiagnostics,
   collectApplicationSources,
+  collectFilePositions,
   collectModuleDocuments,
   dependencyVerdictKey,
   DependencyVerdictMemo,
@@ -39,6 +40,9 @@ const REGISTRY = new Map([
   ["oci://registry.test/legacy@1.0.0", SCREENS],
   ["oci://registry.test/tidy@1.0.0", join(FIXTURES, "lowercase/telo.yaml")],
   ["oci://registry.test/capability@1.0.0", join(FIXTURES, "capability/telo.yaml")],
+  ["oci://registry.test/stamps@1.0.0", join(FIXTURES, "stamps/telo.yaml")],
+  ["oci://registry.test/stamp-only@1.0.0", join(FIXTURES, "stamp-only/telo.yaml")],
+  ["oci://registry.test/need-collision@1.0.0", join(FIXTURES, "need-collision/telo.yaml")],
   ["oci://registry.test/store@1.0.0", join(FIXTURES, "registry/store-1.0.0/telo.yaml")],
   ["oci://registry.test/store@1.1.0", join(FIXTURES, "registry/store-1.1.0/telo.yaml")],
 ]);
@@ -74,6 +78,7 @@ async function load(
 function entryAlone(graph: LoadedGraph): AnalysisDiagnostic[] {
   const analysis = new StaticAnalyzer().analyze(flattenForAnalyzer(graph), {
     moduleDocuments: collectModuleDocuments(graph),
+    positions: collectFilePositions(graph),
     applicationSources: collectApplicationSources(graph),
   });
   return assembleGraphDiagnostics(graph, analysis).diagnostics;
@@ -241,6 +246,97 @@ describe("dependency verdicts", () => {
     expect(diagnostics.map(summary)).toEqual([
       expect.objectContaining({ code: "CAPABILITY_UNKNOWN", file: join(FIXTURES, "capability/telo.yaml"), path: "capability" }),
     ]);
+  }, 120_000);
+
+  it("reports an editable library's load findings with its analysis, each once at its own line", async () => {
+    const STAMPS = join(FIXTURES, "stamps/telo.yaml");
+    const { diagnostics } = await analyzeLoadedGraph(await load("stamps-editable.yaml"), { memo: new DependencyVerdictMemo() });
+    expect(diagnostics.map(summary)).toEqual([
+      expect.objectContaining({ code: "METADATA_RESERVED_FIELD", severity: DiagnosticSeverity.Error, file: STAMPS, path: "metadata.module" }),
+      expect.objectContaining({
+        code: "METADATA_RESERVED_FIELD",
+        severity: DiagnosticSeverity.Error,
+        file: STAMPS,
+        path: "steps[0].invoke.metadata.module",
+      }),
+    ]);
+  }, 120_000);
+
+  it("reports a published library's stamps once each, as errors at the import reaching it", async () => {
+    const { diagnostics } = await analyzeLoadedGraph(await load("stamps-artifact.yaml"), { memo: new DependencyVerdictMemo() });
+    const at = { severity: DiagnosticSeverity.Error, file: join(FIXTURES, "stamps-artifact.yaml"), path: "imports.Lib" };
+    expect(diagnostics.map(summary)).toEqual([
+      expect.objectContaining({ code: "METADATA_RESERVED_FIELD", ...at, message: expect.stringContaining("Telo.Definition/Greeter: 'metadata.module'") }),
+      expect.objectContaining({ code: "METADATA_RESERVED_FIELD", ...at, message: expect.stringContaining("'steps[0].invoke.metadata.module'") }),
+    ]);
+  }, 120_000);
+
+  it("covers a refusal at an import only by the defect it re-reports, not by another of its code", async () => {
+    const { diagnostics } = await analyzeLoadedGraph(await load("stamps-mixed.yaml"), { memo: new DependencyVerdictMemo() });
+    const STAMPS = join(FIXTURES, "stamps/telo.yaml");
+    expect(diagnostics.map(summary)).toEqual([
+      expect.objectContaining({
+        code: "METADATA_RESERVED_FIELD",
+        severity: DiagnosticSeverity.Error,
+        file: join(FIXTURES, "stamps-mixed.yaml"),
+        path: "imports.Pub",
+      }),
+      expect.objectContaining({ code: "METADATA_RESERVED_FIELD", severity: DiagnosticSeverity.Error, file: STAMPS, path: "metadata.module" }),
+      expect.objectContaining({
+        code: "METADATA_RESERVED_FIELD",
+        severity: DiagnosticSeverity.Error,
+        file: STAMPS,
+        path: "steps[0].invoke.metadata.module",
+      }),
+    ]);
+  }, 120_000);
+
+  it("reports each need name collision once, at its needs: key, in the library's own check and its consumer's", async () => {
+    const LIBRARY = join(FIXTURES, "need-collision/telo.yaml");
+    const at = (need: string) =>
+      expect.objectContaining({
+        code: "DUPLICATE_RESOURCE_NAME",
+        severity: DiagnosticSeverity.Error,
+        file: LIBRARY,
+        path: `needs.${need}`,
+      });
+    const alone = await analyzeLoadedGraph(await load("need-collision/telo.yaml"), { memo: new DependencyVerdictMemo() });
+    expect(alone.diagnostics.map(summary)).toEqual([at("mainDatabase"), at("replica")]);
+    const { diagnostics } = await analyzeLoadedGraph(await load("need-collision-editable.yaml"), {
+      memo: new DependencyVerdictMemo(),
+    });
+    expect(diagnostics.map(summary)).toEqual([at("mainDatabase"), at("replica")]);
+  }, 120_000);
+
+  it("reports a published library's need name collisions once each, as errors at the import reaching it", async () => {
+    const { diagnostics } = await analyzeLoadedGraph(await load("need-collision-artifact.yaml"), {
+      memo: new DependencyVerdictMemo(),
+    });
+    const at = (need: string) =>
+      expect.objectContaining({
+        code: "DUPLICATE_RESOURCE_NAME",
+        severity: DiagnosticSeverity.Error,
+        file: join(FIXTURES, "need-collision-artifact.yaml"),
+        path: "",
+        message: expect.stringContaining(`reached through import 'Lib': Need '${need}' collides with resource`),
+      });
+    expect(diagnostics.map(summary)).toEqual([at("mainDatabase"), at("replica")]);
+    for (const d of diagnostics) {
+      expect((d.data as { resource?: unknown }).resource).toEqual({ kind: "Telo.Import", name: "Lib" });
+    }
+  }, 120_000);
+
+  it("judges again a kept verdict of another format", async () => {
+    let sets = 0;
+    const store: DependencyVerdictStore = {
+      // A verdict kept before its format was versioned.
+      get: async () => ({ module: "Screens", diagnostics: [] }) as unknown as DependencyVerdict,
+      set: async () => void sets++,
+    };
+    const analyzer = new CountingAnalyzer();
+    const { diagnostics } = await analyzeDependencies(await load("artifact.yaml"), { analyzer, memo: new DependencyVerdictMemo(), store });
+    expect([analyzer.calls, sets]).toEqual([1, 1]);
+    expect(diagnostics.map((d) => d.code)).toEqual(["SCHEMA_VIOLATION"]);
   }, 120_000);
 
   it("unions diagnostics of several analyses by identity", async () => {

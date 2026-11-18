@@ -98,24 +98,15 @@ export function validateZoneViolations(args: ZoneViolationArgs): AnalysisDiagnos
             const dedupe = `retry\0${contained.node.id}`;
             if (!reported.has(dedupe)) {
               reported.add(dedupe);
-              diagnostics.push({
-                severity: DiagnosticSeverity.Error,
-                code: "ZONE_ATTRIBUTE_VIOLATED",
-                source: SOURCE,
-                message:
-                  `Step '${contained.node.name ?? contained.node.path}' declares a retry ` +
-                  `whose last backoff reaches ${SUSPENDING_BACKOFF_MS}ms, at which point a ` +
-                  `re-attempt waits by PARKING the run rather than by sleeping — but it is ` +
-                  `inside a ${region.provider.kind} ` +
-                  `${labelled(region.provider)} region that declares 'noSuspend' ` +
-                  `(${region.reason}). Shorten the backoff, or move the retry outside the ` +
-                  `region so it re-attempts the region as a whole.`,
-                data: {
-                  resource: { kind: owner.kind, name: owner.name },
-                  filePath: (owner.manifest.metadata as { source?: string } | undefined)?.source,
+              diagnostics.push(
+                retryViolationDiagnostic({
+                  step: contained.node.name ?? contained.node.path,
                   path: contained.node.path,
-                },
-              });
+                  owner,
+                  provider: region.provider,
+                  reason: region.reason,
+                }),
+              );
             }
           }
         }
@@ -133,22 +124,16 @@ export function validateZoneViolations(args: ZoneViolationArgs): AnalysisDiagnos
         if (reported.has(dedupe)) continue;
         reported.add(dedupe);
 
-        const path = [`${region.provider.name}.${region.slot}`, ...contained.via].join(" → ");
-        diagnostics.push({
-          severity: DiagnosticSeverity.Error,
-          code: "ZONE_ATTRIBUTE_VIOLATED",
-          source: SOURCE,
-          message:
-            `${labelled(contained.node)} is inside a ` +
-            `${labelled(region.provider)} region that declares ` +
-            `'${attribute}' (${region.reason}), but ${contained.node.kind} cannot honour ` +
-            `it: ${rebuttal}. Reached by ${path}. Move it outside the region, or use a ` +
-            `region that does not make that promise.`,
-          data: {
-            resource: { kind: contained.node.kind, name: contained.node.name },
-            filePath: (manifest.metadata as { source?: string } | undefined)?.source,
-          },
-        });
+        diagnostics.push(
+          violationDiagnostic({
+            contained: contained.node,
+            provider: region.provider,
+            attribute,
+            reason: region.reason,
+            rebuttal,
+            path: [`${region.provider.name}.${region.slot}`, ...contained.via].join(" → "),
+          }),
+        );
       }
     }
   }
@@ -174,7 +159,7 @@ export function validateZoneViolations(args: ZoneViolationArgs): AnalysisDiagnos
  * integers, and only the fields the backoff is computed from must be known; a
  * `retryAfter` makes each wait the failure's own, so no wait is known.
  */
-function suspendingBackoff(raw: unknown): boolean {
+export function suspendingBackoff(raw: unknown): boolean {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
   const policy = decodePlainLiterals({ ...(raw as Record<string, unknown>) }, RetryPolicySchema) as Record<
     string,
@@ -204,9 +189,61 @@ function isStaticValue(field: (typeof BACKOFF_FIELDS)[number], value: unknown): 
   return field === "delay" ? typeof value === "string" : typeof value === "number";
 }
 
-function owned(manifest: ResourceManifest, reportModules: ReadonlySet<string>): boolean {
+export function owned(manifest: ResourceManifest, reportModules: ReadonlySet<string>): boolean {
   const module = (manifest.metadata as { module?: string } | undefined)?.module;
   return !module || reportModules.size === 0 || reportModules.has(module);
+}
+
+type Named = { kind: string; name: string; manifest: ResourceManifest };
+
+/** A step whose retry parks the run inside a `noSuspend` region. */
+export function retryViolationDiagnostic(args: { step: string; path: string; owner: Named; provider: Named; reason: string }): AnalysisDiagnostic {
+  const { step, path, owner, provider, reason } = args;
+  return {
+    severity: DiagnosticSeverity.Error,
+    code: "ZONE_ATTRIBUTE_VIOLATED",
+    source: SOURCE,
+    message:
+      `Step '${step}' declares a retry ` +
+      `whose last backoff reaches ${SUSPENDING_BACKOFF_MS}ms, at which point a ` +
+      `re-attempt waits by PARKING the run rather than by sleeping — but it is ` +
+      `inside a ${provider.kind} ` +
+      `${labelled(provider)} region that declares 'noSuspend' ` +
+      `(${reason}). Shorten the backoff, or move the retry outside the ` +
+      `region so it re-attempts the region as a whole.`,
+    data: {
+      resource: { kind: owner.kind, name: owner.name },
+      filePath: (owner.manifest.metadata as { source?: string } | undefined)?.source,
+      path,
+    },
+  };
+}
+
+/** A resource inside a region whose attribute it declares it cannot honour. */
+export function violationDiagnostic(args: {
+  contained: Named;
+  provider: Named;
+  attribute: string;
+  reason: string;
+  rebuttal: string;
+  path: string;
+}): AnalysisDiagnostic {
+  const { contained, provider, attribute, reason, rebuttal, path } = args;
+  return {
+    severity: DiagnosticSeverity.Error,
+    code: "ZONE_ATTRIBUTE_VIOLATED",
+    source: SOURCE,
+    message:
+      `${labelled(contained)} is inside a ` +
+      `${labelled(provider)} region that declares ` +
+      `'${attribute}' (${reason}), but ${contained.kind} cannot honour ` +
+      `it: ${rebuttal}. Reached by ${path}. Move it outside the region, or use a ` +
+      `region that does not make that promise.`,
+    data: {
+      resource: { kind: contained.kind, name: contained.name },
+      filePath: (contained.manifest.metadata as { source?: string } | undefined)?.source,
+    },
+  };
 }
 
 /** A resource as a message names it: the kind and its name, or "the inline <Kind>" when an extraction generated the name. */

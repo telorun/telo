@@ -1,0 +1,171 @@
+# Generic zone kinds for the configuration fixtures: a connection, a session
+# holding one, a transaction opening a zone on its connection and an operation
+# requiring it on its session's; a topic whose announce calls its listeners;
+# regions declaring `noSuspend`, `replayed` and `idempotent`, a resource that
+# cannot honour `noSuspend`, a detaching slot and a live output.
+kind: Telo.Library
+metadata: { name: ZoneChoiceKinds }
+exports: { kinds: [Conn, Session, Tx, Op, Topic, Announce, Listener, Zone, Guarded, Hold, Park, Replay, Fanout, Pure, Live] }
+---
+kind: Telo.Definition
+metadata: { name: Conn }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema: { type: object, additionalProperties: false, properties: {} }
+---
+kind: Telo.Definition
+metadata: { name: Session }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  required: [connection]
+  properties: { connection: { x-telo-ref: { kind: Self.Conn, use: dependency } } }
+---
+kind: Telo.Definition
+metadata: { name: Tx }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  required: [connection, steps]
+  properties:
+    connection: { x-telo-ref: { kind: Self.Conn, use: dependency } }
+    steps: { x-telo-ref: { kind: Telo.Executable, use: call }, x-telo-provides-zone: /connection }
+---
+kind: Telo.Definition
+metadata: { name: Op }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  required: [session]
+  x-telo-requires-zone: { zone: Self.Tx, key: [/session/connection], reason: the operation would run outside the transaction }
+  properties: { session: { x-telo-ref: { kind: Self.Session, use: dependency } } }
+---
+kind: Telo.Definition
+metadata: { name: Topic }
+capability: Telo.Type
+extends: Telo.JsonSchema
+---
+kind: Telo.Definition
+metadata: { name: Announce }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  required: [topic]
+  properties:
+    topic:
+      x-telo-ref:
+        kind: Self.Topic
+        use: schema
+        callsCoReferrers: { kind: Self.Listener, slot: /topic }
+---
+kind: Telo.Definition
+metadata: { name: Listener }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  required: [topic, invoke]
+  properties:
+    topic: { x-telo-ref: { kind: Self.Topic, use: schema } }
+    invoke: { x-telo-ref: { kind: Telo.Executable, use: call } }
+---
+kind: Telo.Definition
+metadata: { name: Zone }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  required: [steps]
+  properties:
+    steps: { x-telo-ref: { kind: Telo.Executable, use: call }, x-telo-provides-zone: true }
+---
+kind: Telo.Definition
+metadata: { name: Guarded }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  x-telo-requires-zone: { zone: Self.Zone, reason: the operation would run outside the zone }
+  properties: {}
+---
+kind: Telo.Definition
+metadata: { name: Hold }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  required: [steps]
+  properties:
+    steps:
+      type: array
+      items: { $ref: "telo://manifest#/$defs/Step" }
+      x-telo-provides-zone: { noSuspend: what is held open would be lost while the run is parked }
+---
+kind: Telo.Definition
+metadata: { name: Park }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  x-telo-violates-zone: { noSuspend: the run parks while this waits }
+  properties: {}
+---
+kind: Telo.Definition
+metadata: { name: Replay }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  required: [steps]
+  properties:
+    steps:
+      type: array
+      items: { $ref: "telo://manifest#/$defs/Step" }
+      x-telo-provides-zone: { replayed: the body is replayed from its journal on resume }
+---
+kind: Telo.Definition
+metadata: { name: Fanout }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  required: [handler]
+  properties: { handler: { x-telo-ref: { kind: Telo.Executable, use: detached } } }
+---
+kind: Telo.Definition
+metadata: { name: Pure }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  required: [steps]
+  properties:
+    steps:
+      type: array
+      items: { $ref: "telo://manifest#/$defs/Step" }
+      x-telo-provides-zone: { idempotent: re-running the body is a no-op }
+---
+kind: Telo.Definition
+metadata: { name: Live }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+outputType:
+  type: object
+  properties: { body: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } } }
+schema: { type: object, additionalProperties: false, properties: {} }

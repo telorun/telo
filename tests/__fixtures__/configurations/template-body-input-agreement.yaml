@@ -1,0 +1,38 @@
+# A module input choosing a template body's entries: what the definition finds
+# in one and what a consumer's forwarded value finds in another hold in the
+# same configurations.
+kind: Telo.Application
+metadata: { name: TemplateBodyInputAgreement }
+variables: { x: { env: X, type: boolean, default: false } }
+targets:
+  - !ref wrapped
+---
+kind: Telo.Definition
+metadata: { name: Wrapped }
+capability: Telo.Runnable
+schema: { type: object, properties: { more: { type: array } } }
+resources:
+  - kind: Telo.Sequence
+    metadata: { name: sequence }
+    steps: [{ name: base, value: 1 }]
+  - !if
+    metadata: { name: chosen }
+    if: !cel "variables.x"
+    then:
+      kind: Telo.Sequence
+      steps: !cel "self.more"
+  - !if
+    metadata: { name: checked }
+    if: !cel "variables.x"
+    then:
+      kind: Telo.Sequence
+      steps:
+        - name: wrong
+          value: !cel "1 + 'a'"
+run: !ref sequence
+---
+kind: TemplateBodyInputAgreement.Wrapped
+metadata: { name: wrapped }
+more:
+  - name: extraStep
+    value: !cel "1 + 'x'"

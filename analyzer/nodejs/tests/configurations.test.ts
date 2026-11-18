@@ -1,7 +1,9 @@
+import { collectFilePositions } from "../src/diagnostic-location.js";
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { FindingOrder } from "../src/finding-order.js";
 import { StaticAnalyzer } from "../src/analyzer.js";
 import { AnalysisRegistry } from "../src/analysis-registry.js";
 import { readChoices } from "../src/choice-reading.js";
@@ -10,7 +12,11 @@ import { registeredNeedTable } from "../src/validate-needs.js";
 import { describeConfigurations, enumerateConfigurations, type Dimension } from "../src/configuration-dimensions.js";
 import { collectModuleDocuments, flattenForAnalyzer } from "../src/flatten-for-analyzer.js";
 import { Loader } from "../src/manifest-loader.js";
+import { frozenDocuments } from "./frozen-documents.js";
 import type { AnalysisDiagnostic, ManifestSource } from "../src/types.js";
+import { checkBindingCompositions } from "../src/view-binding.js";
+import { checkPassPlaces } from "../src/union-placement.js";
+import { observeVaryingShapeCopyReads } from "../src/definition-registry.js";
 import { isExpansionSentinel } from "@telorun/templating";
 import { GENERATED, generatedCorpus, loadGenerated } from "./configuration-cost-fixtures.js";
 
@@ -31,14 +37,32 @@ const fileSource: ManifestSource = {
 
 async function load(file: string) {
   const graph = await new Loader([fileSource]).loadGraph(file, { desugarImports: true });
-  return { graph, manifests: flattenForAnalyzer(graph) };
+  const manifests = flattenForAnalyzer(graph);
+  const moduleDocuments = collectModuleDocuments(graph);
+  frozenDocuments([manifests, moduleDocuments]);
+  return { graph, manifests, moduleDocuments };
+}
+
+/** The analysis of `file` (or of a generated application `loaded`), once. */
+const analysed = new Map<string, Promise<{ diagnostics: AnalysisDiagnostic[]; order: FindingOrder }>>();
+function analyse(file: string, loaded?: Awaited<ReturnType<typeof load>>) {
+  let known = analysed.get(file);
+  if (!known) {
+    known = (async () => {
+      const { graph, manifests, moduleDocuments } = loaded ?? (await load(file));
+      const positions = collectFilePositions(graph);
+      const diagnostics = new StaticAnalyzer().analyze(manifests, { moduleDocuments, positions });
+      return { diagnostics, order: new FindingOrder(manifests, positions) };
+    })();
+    analysed.set(file, known);
+  }
+  return known;
 }
 
 /** What the analysis reports for `file` (or for a generated application
  *  `loaded`), as the committed expectations record it. */
 async function findings(file: string, loaded?: Awaited<ReturnType<typeof load>>) {
-  const { graph, manifests } = loaded ?? (await load(file));
-  const diagnostics = new StaticAnalyzer().analyze(manifests, { moduleDocuments: collectModuleDocuments(graph) });
+  const { diagnostics } = await analyse(file, loaded);
   return diagnostics.map((d: AnalysisDiagnostic) => {
     const data = d.data as { path?: string; filePath?: string; configurations?: unknown } | undefined;
     return {
@@ -83,14 +107,55 @@ function corpus(): string[] {
 describe("configurations", () => {
   it("report what every in-repo choice and configuration fixture finds, labels included, as committed", async () => {
     const actual: Record<string, unknown> = {};
-    for (const file of corpus()) actual[file] = await findings(join(ROOT, file));
-    for (const [name, text] of generatedCorpus()) {
-      actual[repoPath(join(GENERATED, name))] = await findings(name, await loadGenerated(name, text));
+    // Every cover's answer, composed through a view's binding, reads the
+    // configurations alone; every pass finding stands at one written place
+    // wherever its part holds.
+    const stop = checkBindingCompositions();
+    const stopPlaces = checkPassPlaces();
+    // A reach decided over the varying named shapes reads each through its
+    // classes, never through a copy the registry holds.
+    const copies: string[] = [];
+    let reading = "";
+    const stopCopies = observeVaryingShapeCopyReads((id) => copies.push(`${reading}: ${id}`));
+    try {
+      for (const file of corpus()) {
+        reading = file;
+        actual[file] = await findings(join(ROOT, file));
+      }
+      for (const [name, text] of generatedCorpus()) {
+        reading = name;
+        actual[repoPath(join(GENERATED, name))] = await findings(name, await loadGenerated(name, text));
+      }
+    } finally {
+      stop();
+      stopPlaces();
+      stopCopies();
     }
+    expect(copies).toEqual([]);
     if (process.env.UPDATE_CONFIGURATION_EXPECTATIONS === "1") {
       writeFileSync(EXPECTATIONS, `${JSON.stringify(actual, null, 2)}\n`);
     }
     expect(actual).toEqual(JSON.parse(readFileSync(EXPECTATIONS, "utf8")));
+  }, 120_000);
+
+  it("report every corpus file's findings sorted by where each is written, whatever order they were found in", async () => {
+    const unsorted: string[] = [];
+    const reorderable: string[] = [];
+    const check = async (name: string, loaded?: Awaited<ReturnType<typeof load>>) => {
+      const { diagnostics, order } = await analyse(name, loaded);
+      for (let i = 1; i < diagnostics.length; i++) {
+        if (order.compare(diagnostics[i - 1]!, diagnostics[i]!) > 0) {
+          unsorted.push(`${name} #${i}`);
+          break;
+        }
+      }
+      // The key is total: sorting the findings reversed gives the same list.
+      if (JSON.stringify(order.sort([...diagnostics].reverse())) !== JSON.stringify(diagnostics)) reorderable.push(name);
+    };
+    for (const file of corpus()) await check(join(ROOT, file));
+    for (const [name, text] of generatedCorpus()) await check(name, await loadGenerated(name, text));
+    expect(unsorted).toEqual([]);
+    expect(reorderable).toEqual([]);
   }, 120_000);
 
   it("enumerate the product of the dimensions a choice reads, and nothing else", async () => {
@@ -104,7 +169,12 @@ describe("configurations", () => {
       ["variables.flag", [false, true]],
       ["variables.level", [1, 2]],
     ]);
-    expect(choices.configurations).toHaveLength(8);
+    expect(enumerateConfigurations(choices.dimensions)).toHaveLength(8);
+    expect(choices.firstConfiguration).toEqual({
+      "secrets.databaseUrl.scheme": "postgres",
+      "variables.flag": false,
+      "variables.level": 1,
+    });
   });
 
   it("describe a set of configurations by its smallest product, omitting a dimension it holds whole", () => {
@@ -142,10 +212,19 @@ describe("configurations", () => {
     );
   });
 
+  it.each(["named-shape-schema-ref-choice", "named-shape-contract-ref-choice", "named-shape-alias-kind-choice"])(
+    "report %s's findings whichever configuration is read first",
+    async (name) => {
+      const at = (file: string) => join(ROOT, "tests/__fixtures__/configurations", file);
+      const reversed = (await findings(at(`${name}-reversed.yaml`))).map((f) => ({ ...f, file: f.file?.replace("-reversed", "") }));
+      expect(reversed).toEqual(await findings(at(`${name}.yaml`)));
+    },
+  );
+
   it("key a need's presence and a member of its field by the need path the environment is read for", async () => {
     const dimensionsOf = async (file: string) => {
-      const { graph, manifests } = await load(join(ROOT, "tests/__fixtures__/configurations/needs", file));
-      const options = { moduleDocuments: collectModuleDocuments(graph), skipValidation: true };
+      const { manifests, moduleDocuments } = await load(join(ROOT, "tests/__fixtures__/configurations/needs", file));
+      const options = { moduleDocuments, skipValidation: true };
       const registry = new AnalysisRegistry();
       new StaticAnalyzer().analyze(manifests, options, registry);
       const choices = readChoices(
@@ -166,5 +245,59 @@ describe("configurations", () => {
       ["resources.B.databaseAccess", ["present", "absent"]],
       ["resources.OrdersShared.databaseAccess", ["present", "absent"]],
     ]);
+  });
+});
+
+describe("a template body's choice over a module input", () => {
+  const fixture = (name: string) => join(ROOT, "tests/__fixtures__/configurations", name);
+  /** `file`'s findings within `within`: code, message and configurations. */
+  const within = async (file: string, kept: Record<string, unknown>) => {
+    const { manifests, moduleDocuments } = await load(fixture(file));
+    return new StaticAnalyzer()
+      .analyze(manifests, { moduleDocuments, within: kept })
+      .map((d) => [d.code, d.message, (d.data as { configurations?: unknown } | undefined)?.configurations]);
+  };
+  const BODY = "Telo.Definition/Wrapper: 'store: !ref missing' on the Kinds.Holder entry 'inner' names no sibling 'resources:' entry and no resource of this module. Siblings: store.";
+
+  it("is the application's one configuration dimension of that input", async () => {
+    const { manifests, moduleDocuments } = await load(fixture("template-body-input-choice.yaml"));
+    const { union } = new StaticAnalyzer().configurationsOf(manifests, { moduleDocuments });
+    expect(
+      union.space.dimensions.filter((d) => d.key.endsWith("variables.x")).map((d) => [d.key, d.definition]),
+    ).toEqual([["variables.x", undefined]]);
+  });
+
+  it("keeps the branch's finding exactly where 'within' takes the branch", async () => {
+    expect(await within("template-body-input-choice.yaml", { "variables.x": false })).toEqual([]);
+    expect(await within("template-body-input-choice.yaml", { "variables.x": true })).toEqual([
+      ["TEMPLATE_REF_UNKNOWN", BODY, undefined],
+    ]);
+  });
+
+  it("tells a module finding under the input's other value apart from the body's", async () => {
+    expect((await within("template-body-input-correlation.yaml", { "variables.x": false })).map(([code]) => code)).toEqual([
+      "UNRESOLVED_REFERENCE",
+    ]);
+    expect(await within("template-body-input-correlation.yaml", { "variables.x": true })).toEqual([
+      ["TEMPLATE_REF_UNKNOWN", BODY, undefined],
+    ]);
+  });
+
+  it("names the input and the definition's own value in one clause where they correlate", async () => {
+    expect(await within("template-body-input-definition.yaml", {})).toEqual([
+      [
+        "TEMPLATE_REF_UNKNOWN",
+        `${BODY} (when variables.x is false and self.mode is b; or when variables.x is true and self.mode is a)`,
+        undefined,
+      ],
+    ]);
+  });
+
+  it("holds a definition's finding and a consumer's forwarded one in the same configurations", async () => {
+    const found = await within("template-body-input-agreement.yaml", {});
+    const forwarded = found.find(([code, message]) => code === "CEL_TYPE_ERROR" && String(message).includes("forwarded"));
+    const own = found.find(([code, message]) => code === "CEL_TYPE_ERROR" && String(message).startsWith("Telo.Definition/Wrapped"));
+    expect(forwarded?.[2]).toEqual([{ "variables.x": true }]);
+    expect(own?.[2]).toEqual(forwarded?.[2]);
   });
 });

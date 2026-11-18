@@ -1,0 +1,35 @@
+# A consumer of a templated kind forwards a field a resource rule of the body's
+# entry reads, only where flag1 holds: the rule is judged at the view's `kind`
+# whichever configuration holds.
+kind: Telo.Application
+metadata: { name: RuleAnchorViewChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.Definition
+metadata: { name: Gate }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties: { open: { type: boolean } }
+  x-telo-resource-rules:
+    - condition: !cel "self.open == true"
+      code: GATE_CLOSED
+      message: The gate is closed.
+---
+kind: Telo.Definition
+metadata: { name: Wrapped }
+capability: Telo.Provider
+schema: { type: object, properties: { open: { type: boolean } } }
+resources:
+  - kind: Self.Gate
+    metadata: { name: gate }
+    open: !cel "self.open"
+provide: !ref gate
+---
+kind: Self.Wrapped
+metadata: { name: wrapped }
+open: !if
+  if: !cel "variables.flag1"
+  then: true
+  else: false

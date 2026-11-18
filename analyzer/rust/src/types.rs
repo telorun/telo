@@ -113,6 +113,28 @@ pub struct DiagnosticData {
     /// The rewrite a migration's deprecation reports.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub migration: Option<DiagnosticMigration>,
+    /// Where the defect an import-anchored finding re-reports is written: the place the
+    /// declaring module's own check reports it at.
+    #[serde(rename = "writtenAt", skip_serializing_if = "Option::is_none")]
+    pub written_at: Option<WrittenAt>,
+}
+
+/// Where a defect is written, Node's `WrittenAt`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct WrittenAt {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resource: Option<DiagnosticResource>,
+    #[serde(rename = "filePath", skip_serializing_if = "Option::is_none")]
+    pub file_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+}
+
+impl WrittenAt {
+    /// The place `data` reports its own diagnostic at.
+    pub fn of(data: &DiagnosticData) -> Self {
+        WrittenAt { resource: data.resource.clone(), file_path: data.file_path.clone(), path: data.path.clone() }
+    }
 }
 
 /// The rewrite a migration's deprecation reports: the entry, and the path before and after.

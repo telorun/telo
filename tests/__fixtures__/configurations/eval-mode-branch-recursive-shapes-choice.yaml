@@ -1,0 +1,32 @@
+# A union of two linked lists, each a named shape naming itself and varying
+# with flag1 alike: the branches agree at every depth in every configuration,
+# so nothing is refused.
+kind: Telo.Application
+metadata: { name: EvalModeBranchRecursiveShapes }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.JsonSchema
+metadata: { name: List }
+schema: !if
+  if: !cel "variables.flag1"
+  then: { type: object, properties: { value: { x-telo-eval: runtime }, next: { $ref: "telo://Self/List" } } }
+  else: { type: object, properties: { value: { x-telo-eval: compile }, next: { $ref: "telo://Self/List" } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Chain }
+schema: !if
+  if: !cel "variables.flag1"
+  then: { type: object, properties: { value: { x-telo-eval: runtime }, next: { $ref: "telo://Self/Chain" } } }
+  else: { type: object, properties: { value: { x-telo-eval: compile }, next: { $ref: "telo://Self/Chain" } } }
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Holder]
+schema:
+  type: object
+  properties:
+    items:
+      anyOf:
+        - { $ref: "telo://Self/List" }
+        - { $ref: "telo://Self/Chain" }

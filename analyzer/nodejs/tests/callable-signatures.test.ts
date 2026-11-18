@@ -1,3 +1,4 @@
+import { collectFilePositions } from "../src/diagnostic-location.js";
 import type { ResourceManifest } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
@@ -33,7 +34,7 @@ async function check(text: string): Promise<Array<[string, string]>> {
     desugarImports: true,
   });
   return new StaticAnalyzer()
-    .analyze(flattenForAnalyzer(graph))
+    .analyze(flattenForAnalyzer(graph), { positions: collectFilePositions(graph) })
     .map((d) => [String(d.code), d.message]);
 }
 
@@ -309,7 +310,7 @@ body: !cel "'x'"
         ),
       }),
     ]).loadGraph("/lib/telo.yaml", { desugarImports: true });
-    const diagnostics = new StaticAnalyzer().analyze(flattenForAnalyzer(graph));
+    const diagnostics = new StaticAnalyzer().analyze(flattenForAnalyzer(graph), { positions: collectFilePositions(graph) });
     expect(diagnostics.map((d) => [d.code, (d.data as any)?.path, (d.data as any)?.fix])).toEqual([
       ["FUNCTION_TYPE_NAME_FORM", "params[0].schema", { replacement: "Money", tag: "ref" }],
     ]);
@@ -626,7 +627,7 @@ ${abstract}`,
       }),
     ]).loadGraph("/app/telo.yaml", { desugarImports: true });
     const diagnostics = new StaticAnalyzer()
-      .analyze(flattenForAnalyzer(graph))
+      .analyze(flattenForAnalyzer(graph), { positions: collectFilePositions(graph) })
       .map((d) => [String(d.code), d.message] as [string, string]);
     expect(codes(diagnostics)).toEqual(["CONTRACT_NOT_SUBSTITUTABLE", "CONTRACT_NOT_SUBSTITUTABLE"]);
     expect(diagnostics[0]![1]).toContain("parameter 'value' does not accept the argument 'Billing.Pricer' declares");

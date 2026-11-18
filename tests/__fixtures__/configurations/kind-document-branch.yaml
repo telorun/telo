@@ -1,0 +1,9 @@
+# A kind document as a whole document's branch: refused at the branch, as at
+# every declaration position, and declaring nothing in any configuration.
+kind: Telo.Application
+metadata: { name: KindDocumentBranch }
+variables: { flag2: { env: FLAG_2, type: boolean, default: false } }
+--- !if
+metadata: { name: Widget }
+if: !cel "variables.flag2"
+then: { kind: Telo.Definition, capability: Telo.Type, schema: { type: object } }

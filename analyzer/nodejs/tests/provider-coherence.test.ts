@@ -1,6 +1,7 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
+import { withModuleDocs } from "./module-doc-fixtures.js";
 import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 
 const httpRequestKind: ResourceManifest = {
@@ -28,10 +29,26 @@ describe("validateProviderCoherence", () => {
       provide: ref("r"),
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([httpRequestKind, def]));
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions(withModuleDocs([httpRequestKind, def])));
     const violations = diagnostics.filter((d) => d.code === "PROVIDE_ON_NON_PROVIDER");
     expect(violations.length).toBe(1);
     expect(violations[0].message).toContain("Telo.Provider");
+  });
+
+  // A stamp whose module document the analysed set lacks is a dependency's
+  // definition: its author's to fix, not the entry's to report.
+  it("reports nothing for a definition stamped with a module the analysed set holds no document of", () => {
+    const def: ResourceManifest = {
+      kind: "Telo.Definition",
+      metadata: { name: "Wrong", module: "dependency" },
+      capability: "Telo.Invocable",
+      schema: { type: "object", additionalProperties: true },
+      resources: [{ kind: "http-client.Request", metadata: { name: "r" } }],
+      provide: ref("r"),
+    } as unknown as ResourceManifest;
+
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([httpRequestKind, def]));
+    expect(diagnostics.filter((d) => d.code === "PROVIDE_ON_NON_PROVIDER")).toEqual([]);
   });
 
   it("rejects co-occurrence of `provide:` with `invoke:`", () => {
@@ -45,7 +62,7 @@ describe("validateProviderCoherence", () => {
       invoke: ref("r"),
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([httpRequestKind, def]));
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions(withModuleDocs([httpRequestKind, def])));
     const violations = diagnostics.filter((d) => d.code === "PROVIDE_DISPATCHER_CONFLICT");
     expect(violations.length).toBe(1);
     expect(violations[0].message).toContain("invoke");
@@ -62,7 +79,7 @@ describe("validateProviderCoherence", () => {
       run: ref("r"),
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([httpRequestKind, def]));
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions(withModuleDocs([httpRequestKind, def])));
     const violations = diagnostics.filter((d) => d.code === "PROVIDE_DISPATCHER_CONFLICT");
     expect(violations.length).toBe(1);
     expect(violations[0].message).toContain("run");
@@ -76,7 +93,7 @@ describe("validateProviderCoherence", () => {
       schema: { type: "object", additionalProperties: true },
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([def]));
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions(withModuleDocs([def])));
     const violations = diagnostics.filter((d) => d.code === "PROVIDER_MISSING_IMPLEMENTATION");
     expect(violations.length).toBe(1);
   });
@@ -91,7 +108,7 @@ describe("validateProviderCoherence", () => {
       provide: ref("r"),
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([httpRequestKind, def]));
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions(withModuleDocs([httpRequestKind, def])));
     const violations = diagnostics.filter((d) =>
       d.code === "PROVIDE_ON_NON_PROVIDER" ||
       d.code === "PROVIDE_DISPATCHER_CONFLICT" ||
@@ -111,7 +128,7 @@ describe("validateProviderCoherence", () => {
       controllers: ["pkg:npm/example@1.0.0?local_path=./nodejs#example"],
     } as unknown as ResourceManifest;
 
-    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([def]));
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions(withModuleDocs([def])));
     const violations = diagnostics.filter((d) => d.code === "PROVIDER_MISSING_IMPLEMENTATION");
     expect(violations).toEqual([]);
   });

@@ -202,13 +202,13 @@ describe("a rule reads an accessor field as its binding", () => {
   it("still skips a rule reading an accessor that is not a plain chain", () => {
     // A presence test reads no value, so only the rule reading the held expression skips.
     expect(ruleReports(tableOf({ sort: cel("row.a + row.b") }))).toEqual([
-      { code: "RESOURCE_RULE_VIOLATED", rule: "SORT_IS_LITERAL", path: undefined },
       {
         code: "RESOURCE_RULE_SKIPPED",
         rule: "SORT_VALUE_IS_ID",
         path: undefined,
         dynamicAt: "self.sort.value",
       },
+      { code: "RESOURCE_RULE_VIOLATED", rule: "SORT_IS_LITERAL", path: undefined },
     ]);
   });
 

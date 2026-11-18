@@ -1,4 +1,5 @@
 import type {
+  AnalysisDiagnostic,
   LoadedGraph,
   AnalysisRegistry,
   LoadedModule,

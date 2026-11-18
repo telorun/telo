@@ -1,0 +1,53 @@
+# A referrer rule reads, through a reference its `resolve:` pointer follows in
+# the referrer, a member of the declaration it names that a choice decides: the
+# rule holds only where the member is written.
+kind: Telo.Application
+metadata: { name: ReferrerRuleResolveChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets:
+  - !ref holder
+---
+kind: Telo.Definition
+metadata: { name: Model }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema: { type: object, properties: { label: { type: string } } }
+---
+kind: Telo.Definition
+metadata: { name: Panel }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties: { expects: { type: string } }
+  x-telo-referrer-rules:
+    - referrer: Self.Holder
+      resolve: ["/model"]
+      condition: !cel "referrer.model.?label.orValue('') == self.expects"
+      code: PANEL_MODEL
+      message: holds a model whose label is not the one the panel expects
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Runnable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties:
+    model: { x-telo-ref: { kind: Self.Model, use: dependency } }
+    panel: { x-telo-ref: { kind: Self.Panel, use: dependency } }
+---
+kind: Self.Model
+metadata: { name: model }
+label: !if
+  if: !cel "variables.flag1"
+  then: orders
+---
+kind: Self.Panel
+metadata: { name: panel }
+expects: orders
+---
+kind: Self.Holder
+metadata: { name: holder }
+model: !ref model
+panel: !ref panel

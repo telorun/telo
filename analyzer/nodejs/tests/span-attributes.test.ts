@@ -1,3 +1,4 @@
+import { collectFilePositions } from "../src/diagnostic-location.js";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
 import { flattenForAnalyzer } from "../src/flatten-for-analyzer.js";
@@ -35,7 +36,7 @@ async function marks(body: string): Promise<Array<[string, string]>> {
     desugarImports: true,
   });
   return new StaticAnalyzer()
-    .analyze(flattenForAnalyzer(graph))
+    .analyze(flattenForAnalyzer(graph), { positions: collectFilePositions(graph) })
     .filter((d) => /^(SPAN_ATTRIBUTE|SENSITIVE_ANNOTATION)_/.test(String(d.code)))
     .map((d) => [String(d.code), String((d.data as { path?: string }).path)]);
 }
@@ -87,8 +88,8 @@ schema:
           token: { type: string, x-telo-sensitive: true }`),
       ),
     ).toEqual([
-      ["SENSITIVE_ANNOTATION_MISPLACED", "inputType.schema.$defs.Unused.properties.token"],
       ["SPAN_ATTRIBUTE_MISPLACED", "inputType.schema.$defs.Unused.properties.id"],
+      ["SENSITIVE_ANNOTATION_MISPLACED", "inputType.schema.$defs.Unused.properties.token"],
     ]);
   });
 
@@ -103,8 +104,8 @@ schema:
     id: { type: string, x-telo-span-attribute: app.turn.id }
     token: { type: string, x-telo-sensitive: true }`;
     expect(await marks(shape)).toEqual([
-      ["SENSITIVE_ANNOTATION_MISPLACED", "schema.properties.token"],
       ["SPAN_ATTRIBUTE_MISPLACED", "schema.properties.id"],
+      ["SENSITIVE_ANNOTATION_MISPLACED", "schema.properties.token"],
     ]);
     expect(await marks(`exports:\n  resources: [Turn]\n${shape}`)).toEqual([]);
   });

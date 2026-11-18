@@ -1,3 +1,4 @@
+import { collectFilePositions } from "../src/diagnostic-location.js";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { AnalysisRegistry } from "../src/analysis-registry.js";
@@ -33,7 +34,7 @@ const loadGraph = (file: string) => new Loader([files]).loadGraph(join(FIXTURES,
 async function findings(file: string): Promise<string[]> {
   const graph = await loadGraph(file);
   return new StaticAnalyzer()
-    .analyze(flattenForAnalyzer(graph), { moduleDocuments: collectModuleDocuments(graph) })
+    .analyze(flattenForAnalyzer(graph), { moduleDocuments: collectModuleDocuments(graph), positions: collectFilePositions(graph) })
     .filter((d) => d.severity === 1)
     .map((d) => {
       const data = d.data as { resource?: { name?: string }; path?: string } | undefined;
@@ -72,15 +73,15 @@ describe("a Telo.Import declared in a scope", () => {
 
   it("gives its scope's regions its exported instances, and nothing outside them", async () => {
     expect(await findings("instances.yaml")).toEqual([
-      "CEL_UNKNOWN_FIELD outside steps[1].value",
       "UNRESOLVED_REFERENCE outside steps[0].invoke",
+      "CEL_UNKNOWN_FIELD outside steps[1].value",
     ]);
   });
 
   it("names its needs beneath its holders, one instance per holder", async () => {
     const graph = await loadGraph("needs.yaml");
     const registry = new AnalysisRegistry();
-    new StaticAnalyzer().analyze(flattenForAnalyzer(graph), { moduleDocuments: collectModuleDocuments(graph) }, registry);
+    new StaticAnalyzer().analyze(flattenForAnalyzer(graph), { moduleDocuments: collectModuleDocuments(graph), positions: collectFilePositions(graph) }, registry);
     const table = resolveNeedTable(needGraphFromLoadedGraph(graph, needGraphScopeOf(registry, "ScopedNeeds")));
     expect(table.environment.flatMap((entry) => Object.values(entry.fields).map((field) => field.env))).toEqual([
       "TELO_NEED_FIRST__INNER__STORAGE__PATH",

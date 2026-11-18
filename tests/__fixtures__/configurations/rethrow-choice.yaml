@@ -1,0 +1,32 @@
+# `rethrow:` steps a choice places: one outside every catch: branch where
+# `flag1` keeps it, one after it, reported at the index each configuration
+# gives it, one in a finally: branch where `flag2` keeps it, and
+# one a choice writes inside a catch: branch, which is legal.
+kind: Telo.Application
+metadata: { name: RethrowChoice }
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+  flag2: { env: FLAG_2, type: boolean, default: false }
+targets:
+  - !ref main
+---
+kind: Telo.Sequence
+metadata: { name: main }
+steps:
+  - !if
+    if: !cel "variables.flag1"
+    then: { name: early, rethrow: {} }
+  - !if
+    if: !cel "variables.flag2"
+    then: { name: later, rethrow: {} }
+  - name: guarded
+    try:
+      - { name: work, throw: { code: FAILED } }
+    catch:
+      - !if
+        if: !cel "variables.flag1"
+        then: { name: again, rethrow: {} }
+    finally:
+      - !if
+        if: !cel "variables.flag2"
+        then: { name: late, rethrow: {} }

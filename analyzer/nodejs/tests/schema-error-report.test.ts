@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createAjv } from "../src/schema-compat.js";
 import { formatAjvErrors, schemaIssues } from "../src/schema-error-report.js";
+import { judgedFindings } from "./judged-validation.js";
 
 /** A pdfmake-shaped node union: branches discriminated by which key is present,
  *  each declaring that key as `required` — the obligation the carrier owes. */
@@ -39,10 +40,7 @@ const NODE = {
 };
 
 function errorsFor(value: unknown): any[] {
-  const ajv = createAjv();
-  const validate = ajv.compile(NODE);
-  expect(validate(value)).toBe(false);
-  return validate.errors ?? [];
+  return judgedFindings(NODE, value);
 }
 
 /** The shape a large vocabulary is actually written in: a branch per `$defs`
@@ -78,14 +76,11 @@ const REF_NODE = {
 
 describe("union reduction with $ref branches", () => {
   function refErrors(value: unknown): any[] {
-    const ajv = createAjv();
-    ajv.addSchema(REF_NODE);
-    const validate = ajv.compile({
-      type: "object",
-      properties: { content: { type: "array", items: { $ref: "test://ref-node" } } },
-    });
-    expect(validate({ content: [value] })).toBe(false);
-    return validate.errors ?? [];
+    return judgedFindings(
+      { type: "object", properties: { content: { type: "array", items: { $ref: "test://ref-node" } } } },
+      { content: [value] },
+      { shapes: { "test://ref-node": REF_NODE } },
+    );
   }
 
   it("selects the branch that matched, though no error carries a branch index", () => {
@@ -145,14 +140,8 @@ describe("union reduction", () => {
   });
 
   it("leaves a non-union failure exactly as it was", () => {
-    const ajv = createAjv();
-    const validate = ajv.compile({
-      type: "object",
-      required: ["a"],
-      properties: { a: { type: "string" } },
-    });
-    validate({});
-    expect(formatAjvErrors(validate.errors)).toBe("/ is missing required property 'a'");
+    const schema = { type: "object", required: ["a"], properties: { a: { type: "string" } } };
+    expect(formatAjvErrors(judgedFindings(schema, {}))).toBe("/ is missing required property 'a'");
   });
 });
 
@@ -180,11 +169,7 @@ describe("a deeply nested recursive union", () => {
   }
 
   function deepErrors(value: unknown): any[] {
-    const ajv = createAjv();
-    ajv.addSchema(DEEP);
-    const validate = ajv.compile({ $ref: "test://deep" });
-    expect(validate(value)).toBe(false);
-    return validate.errors ?? [];
+    return judgedFindings({ $ref: "test://deep" }, value, { shapes: { "test://deep": DEEP } });
   }
 
   it("reports the innermost fault once, whatever the depth", () => {

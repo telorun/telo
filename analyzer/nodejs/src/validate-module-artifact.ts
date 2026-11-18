@@ -23,8 +23,7 @@ const SOURCE = "telo-analyzer";
  * gets a platform-neutral candidate, publish emits one layer, and every host
  * happily loads a binary built for one architecture — silently, forever.
  *
- * Two checks. Note that several candidates *sharing* one selector is not among
- * them: a controller layer holds the entry points of every candidate with that
+ * Several candidates *sharing* one selector is no finding: a controller layer holds the entry points of every candidate with that
  * selector (spec §1), which is what every module with two `js` controllers relies
  * on.
  *
@@ -38,12 +37,24 @@ const SOURCE = "telo-analyzer";
  *    semantic rules — controller-requires-selector, singletons carry none, no
  *    duplicate selector, the token grammar (`os: Linux` passes the schema and
  *    throws at runtime) — live in the parser, so run it.
+ *
+ * Two stages: the controller selectors of the kind documents, and the artifact
+ * surface of the module documents.
  */
-export function validateModuleArtifact(manifests: ResourceManifest[]): AnalysisDiagnostic[] {
+export function validateControllerSelectorDocuments(manifests: readonly ResourceManifest[]): AnalysisDiagnostic[] {
+  const out: AnalysisDiagnostic[] = [];
+  for (const manifest of manifests) {
+    if (manifest.kind === "Telo.Definition" || manifest.kind === "Telo.Abstract") validateControllerSelectors(manifest, out);
+  }
+  return out;
+}
+
+/** The artifact surface a module document carries: its `layers:` index,
+ *  `exports.code` and `exports.browser`. */
+export function validateModuleDocumentArtifact(manifests: readonly ResourceManifest[]): AnalysisDiagnostic[] {
   const out: AnalysisDiagnostic[] = [];
   for (const manifest of manifests) {
     validateLayerIndex(manifest, out);
-    validateControllerSelectors(manifest, out);
     validateLibraryCandidates(manifest, out);
     validateBrowserEntries(manifest, out);
   }

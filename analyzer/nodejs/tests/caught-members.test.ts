@@ -1,3 +1,4 @@
+import { collectFilePositions } from "../src/diagnostic-location.js";
 import { describe, expect, it } from "vitest";
 import { AnalysisRegistry } from "../src/analysis-registry.js";
 import { StaticAnalyzer } from "../src/analyzer.js";
@@ -28,7 +29,7 @@ async function analyze(text: string, migrate = true) {
   const registry = new AnalysisRegistry();
   const diagnostics = new StaticAnalyzer().analyze(
     manifests,
-    { moduleDocuments: collectModuleDocuments(graph) },
+    { moduleDocuments: collectModuleDocuments(graph), positions: collectFilePositions(graph) },
     registry,
   );
   return { diagnostics, registry, manifests };
@@ -192,11 +193,11 @@ describe("where a caught member may be marked", () => {
             properties:
               code: { type: integer, x-telo-caught-member: code }`),
     ).toEqual([
+      ["CAUGHT_MEMBER_MISSING", "schema.properties.catches"],
       [
         "CAUGHT_MEMBER_MISPLACED",
         "schema.properties.catches.x-telo-context.properties.error.properties.code.x-telo-caught-member",
       ],
-      ["CAUGHT_MEMBER_MISSING", "schema.properties.catches"],
     ]);
   });
 });

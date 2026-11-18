@@ -1,0 +1,21 @@
+# A library reading its optional input in one branch of its own choice.
+kind: Telo.Library
+metadata:
+  name: OptionalReferenceLibrary
+  version: 0.0.0
+  description: Test fixture reading an optional resource input only where its own choice takes one branch.
+imports: { Kinds: ../../resource-inputs/optional/kinds }
+variables: { useStore: { type: boolean, default: false } }
+resources: { store: { kind: Kinds.Store, optional: true } }
+exports: { resources: [holder] }
+---
+kind: Kinds.Store
+metadata: { name: fallback }
+label: fallback
+---
+kind: Kinds.Holder
+metadata: { name: holder }
+store: !if
+  if: !cel "variables.useStore"
+  then: !ref store
+  else: !ref fallback

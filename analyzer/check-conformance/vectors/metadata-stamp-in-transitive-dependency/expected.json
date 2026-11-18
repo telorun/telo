@@ -1,0 +1,33 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "METADATA_RESERVED_FIELD",
+      "source": "telo-analyzer",
+      "message": "Imported library 'StampLib', reached through import 'Mid': Telo.Definition/Greeter: 'metadata.module' is written by the loader — the module the document belongs to — and cannot be written in a manifest. Remove it.",
+      "data": {
+        "filePath": "telo.yaml",
+        "path": "imports.Mid",
+        "writtenAt": {
+          "resource": {
+            "kind": "Telo.Definition",
+            "name": "Greeter"
+          },
+          "filePath": "lib/telo.yaml",
+          "path": "metadata.module"
+        }
+      },
+      "range": {
+        "start": {
+          "line": 2,
+          "character": 16
+        },
+        "end": {
+          "line": 2,
+          "character": 24
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_METADATA_RESERVED_FIELD] telo.yaml: Imported library 'StampLib', reached through import 'Mid': Telo.Definition/Greeter: 'metadata.module' is written by the loader — the module the document belongs to — and cannot be written in a manifest. Remove it.\n  [ERR_METADATA_RESERVED_FIELD] Imported library 'StampLib', reached through import 'Mid': Telo.Definition/Greeter: 'metadata.module' is written by the loader — the module the document belongs to — and cannot be written in a manifest. Remove it."
+}

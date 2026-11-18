@@ -3,6 +3,7 @@ import AjvModule from "ajv";
 import { formatAjvErrors as analyzerFormat, registerTeloKeywords } from "@telorun/analyzer";
 import { formatAjvErrors as kernelFormat } from "../src/manifest-schemas.js";
 import { acceptReportedStatus } from "../src/observed-state.js";
+import { SchemaValidator } from "../src/schema-validator.js";
 
 /** Agreement is the property being bought: a developer who fixes what `telo
  *  check` told them must not meet a different sentence describing the same
@@ -48,5 +49,22 @@ describe("one schema-error renderer", () => {
         { kind: "Test.Kind", name: "probe", statusSchema: SCHEMA },
       ),
     ).not.toThrow(/'table'/);
+  });
+
+  it("the kernel's validator reports its first failure's union by the analyzer's judge", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        cfg: {
+          anyOf: [
+            { type: "object", properties: { a: { type: "string" } } },
+            { type: "object", properties: { b: { type: "object", properties: { c: { type: "integer" } } } } },
+          ],
+        },
+      },
+    };
+    expect(() => new SchemaValidator().compile(schema).validate({ cfg: { a: 1, b: { c: "x" } } })).toThrow(
+      /Error: \/cfg\/a must be string; \/cfg\/b\/c must be integer$/,
+    );
   });
 });

@@ -1,0 +1,42 @@
+# Where flag1 holds the holder names its target through an author-written
+# `__ref` key, refused as a reference form; the reference it means is the same
+# either way, so the referrer rule's verdict reads alike in every
+# configuration. What the refusal says is its own report: the verdict at the
+# refused slot is dropped where the refusal holds, and reported elsewhere.
+kind: Telo.Application
+metadata: { name: RefusalNonUniform }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.Definition
+metadata: { name: Target }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties: {}
+  x-telo-referrer-rules:
+    - referrer: Self.Holder
+      condition: !cel "referrer.mode == 'open'"
+      code: TARGET_CLOSED
+      message: references the target outside the open mode
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties:
+    mode: { type: string }
+    target: { x-telo-ref: { kind: Self.Target, use: dependency } }
+---
+kind: Self.Target
+metadata: { name: target }
+---
+kind: Self.Holder
+metadata: { name: holder }
+mode: closed
+target: !if
+  if: !cel "variables.flag1"
+  then: { __ref: true, kind: Self.Target, name: target }
+  else: !ref target

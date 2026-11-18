@@ -17,7 +17,7 @@ import { refuseThrowsOutsideCeiling } from "./throws-ceiling-guard.js";
 import { registeredKindOf } from "./resource-definition-controller.js";
 import { refuseInvalidObserves } from "./observes-guard.js";
 import { refuseInvalidCompletedWhen } from "./completed-when-guard.js";
-import { refuseInvalidCallsCoReferrers } from "./calls-co-referrers-guard.js";
+import { refuseInvalidCallsCoReferrers, type CoReferrerGuardHost } from "./calls-co-referrers-guard.js";
 import {
   forgetRegisteredDefinition,
   recordRegisteredDefinition,
@@ -115,23 +115,19 @@ class ResourceAbstract implements ResourceInstance {
       resolveDef,
     );
     refuseInvalidCompletedWhen(this.resource, this.resource.schema, ctx);
-    refuseInvalidCallsCoReferrers(
-      this.resource as unknown as ResourceDefinition,
-      this.resource.schema as Record<string, unknown> | undefined,
-      (kind, module) =>
-        (
-          ctx as unknown as {
-            resolveDefinitionIn(kind: string, module: string | undefined): ResourceDefinition | undefined;
-          }
-        ).resolveDefinitionIn(kind, module),
-    );
-
     // Recorded with the canonical kind `extends` names in THIS scope: an alias
     // belongs to the file that wrote it, and what the abstract means along the
     // chain is the analysis registry's answer folded through that kind.
+    const canonicalExtends = this.resource.extends ? registeredKindOf(resolveDef(this.resource.extends)) : undefined;
+    refuseInvalidCallsCoReferrers(
+      this.resource as unknown as ResourceDefinition,
+      canonicalExtends,
+      ctx as unknown as CoReferrerGuardHost,
+    );
+
     (ctx as unknown as { registerDefinition(definition: unknown, canonicalExtends?: string): void }).registerDefinition(
       this.resource,
-      this.resource.extends ? registeredKindOf(resolveDef(this.resource.extends)) : undefined,
+      canonicalExtends,
     );
     recordRegisteredDefinition(ctx.moduleContext, this.resource, ctx.getControllerPolicy());
   }

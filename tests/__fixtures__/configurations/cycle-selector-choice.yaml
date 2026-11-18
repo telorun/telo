@@ -1,0 +1,33 @@
+# A loop through a slot whose `use` a case map chooses by a sibling field a
+# choice decides: where `flag1` reads the reference as a shape it orders
+# nothing, so the loop is there only where it does not.
+kind: Telo.Application
+metadata: { name: CycleSelectorChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.Definition
+metadata: { name: Hold }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    shapeOnly: { type: boolean, default: false }
+    next:
+      x-telo-ref:
+        kind: Self.Hold
+        use: { by: /shapeOnly, cases: { "false": dependency, "true": schema } }
+resources:
+  - { kind: Telo.Value, metadata: { name: body }, value: ok }
+invoke: !ref body
+---
+kind: Self.Hold
+metadata: { name: left }
+shapeOnly: !if
+  if: !cel "variables.flag1"
+  then: true
+  else: false
+next: !ref right
+---
+kind: Self.Hold
+metadata: { name: right }
+next: !ref left

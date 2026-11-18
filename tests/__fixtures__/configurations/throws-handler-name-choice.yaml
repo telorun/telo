@@ -1,0 +1,21 @@
+# A route's handler is chosen by `variables.flag1` between two resources of one
+# kind, each throwing the same code: the code is uncovered wherever the route
+# is, and each configuration's finding names the handler it takes.
+kind: Telo.Application
+metadata: { name: ThrowsHandlerNameChoice }
+imports: { T: ./throws/kinds }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: T.FailA
+metadata: { name: first }
+---
+kind: T.FailA
+metadata: { name: second }
+---
+kind: T.Router
+metadata: { name: router }
+routes:
+  - handler: !if
+      if: !cel "variables.flag1"
+      then: !ref first
+      else: !ref second

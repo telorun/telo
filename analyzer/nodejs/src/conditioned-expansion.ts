@@ -32,12 +32,14 @@ import {
   makeTaggedSentinel,
   type ExpansionSentinel,
 } from "@telorun/templating";
-import { branchKeys, branchValue, STAND_IN, type Decisions } from "./choice-reading.js";
+import { branchKeys, branchValue, declaresNoResource, STAND_IN, type Decisions } from "./choice-reading.js";
 import { declaredMetadata, isChoice, relocatePath, STAND_IN_MARK, STAND_IN_SOURCE } from "./choice-expansion.js";
 import type { Assignment } from "./configuration-dimensions.js";
 import { isModuleKind } from "./module-kinds.js";
 import { FALSE, TRUE, type Condition, type ConditionSpace } from "./presence-condition.js";
+import type { ViewBinding } from "./view-binding.js";
 import { isKindDocumentOrImport } from "./system-kinds.js";
+import type { TemplateBodyReading } from "./template-definition-check.js";
 import type { AnalysisDiagnostic } from "./types.js";
 
 type Keys = readonly (string | number)[];
@@ -52,6 +54,9 @@ export interface UnreachableOption {
   readonly site: { readonly sentinel: ExpansionSentinel };
   readonly branch: string;
   readonly baseline: Assignment;
+  /** The choices forced to take it there, its own included. */
+  readonly forcing: Forcing;
+  readonly world: DeadBranchWorld;
 }
 
 /** One choice decided on the way to an option or a declaration: the branch it
@@ -132,8 +137,10 @@ export interface AlternativeOption {
   /** Taken in no configuration. */
   readonly unreachable?: true;
   /** For a branch the choice reading names unreachable: a configuration
-   *  reaching its choice. */
+   *  reaching its choice, and the choices forced to take it there. */
   readonly baseline?: Assignment;
+  readonly world?: DeadBranchWorld;
+  readonly forcing?: Forcing;
 }
 
 /** A value or list item a choice decides: its options, in branch order. */
@@ -234,24 +241,45 @@ export interface ConditionedView extends ConditionedDeclaration {
   readonly body?: ViewBody;
 }
 
-/** What a view holds of its body entry as written: a finding there is the
- *  definition's when its own check makes the same one, else its consumer's. */
+/** What a view holds of its body entry as written. */
 export interface ViewBody {
   /** The kind of the declaration whose body holds the entry, as written. */
   readonly holderKind: string;
-  /** Each `<code>\0<path>` the definition's own check reports in the entry. */
-  readonly ownFindings: ReadonlySet<string>;
+  /** The definition whose body holds the entry, as it is written. */
+  readonly writtenBy: { readonly name: unknown; readonly source: unknown };
   /** True when the consumer's expansion refused a choice or a repeat of the
    *  body: the refusal is the one report, and nothing at a body place is. */
   readonly incomplete: boolean;
-  /** The view's places holding a body expression, by union keys — the
-   *  definition's check types each. */
-  readonly expressions: readonly string[];
-  /** The view's places holding a body reference to anything but a sibling,
-   *  as written — the definition's check resolves each in its own module. */
-  readonly references: readonly string[];
+  /** The view's places no written place of its consumer's answers. */
+  readonly noPlace: NoWrittenPlace;
   /** The view's places holding a reference aimed at a sibling's view. */
   readonly siblings: readonly string[];
+  /** What its consumer gives the definition's own dimensions, shared by every
+   *  view of one holder; absent where no body the analysis reads holds a
+   *  construct. */
+  readonly binding?: ViewBinding;
+}
+
+/**
+ * The places of a view that have no written place in its consumer's world,
+ * built once by the view builder: the view's generated `metadata`, a body
+ * reference the defining module resolves, and an expression the body wrote
+ * that no forward reaches — each the defining module's to judge. Read by
+ * placement and by the CEL-site census's deferral alone.
+ */
+export class NoWrittenPlace {
+  constructor(
+    /** Each place holding a body expression, by union keys. */
+    private readonly expressions: readonly string[],
+    /** Each place holding a body reference to anything but a sibling. */
+    private readonly references: readonly string[],
+  ) {}
+
+  has(path: string): boolean {
+    if (path === "metadata" || path.startsWith("metadata.")) return true;
+    if (this.references.includes(path)) return true;
+    return this.expressions.some((at) => path === at || path.startsWith(`${at}.`) || path.startsWith(`${at}[`));
+  }
 }
 
 /** One reference a view's forwards read across. */
@@ -264,11 +292,53 @@ export interface ViewCrossing {
 /** Which branch each forced choice takes. */
 export type Forcing = Decisions;
 
-/** Where a key is read: a configuration, and — for a branch no configuration
- *  takes — the choices forced to reach it. */
-export interface Witness {
-  readonly assignment: Assignment;
-  readonly forcing?: Forcing;
+/** A branch no configuration takes, as it is read. */
+export type DeadBranchWorld = World & { readonly dead: true };
+
+/**
+ * Where a key is read: a configuration, and — for a branch no configuration
+ * takes — the choices forced to reach it. Every reader of a union-world
+ * structure takes one and none builds it: the key enumeration makes one per
+ * key class ({@link World.key}), the dead-branch enumeration one per branch
+ * ({@link World.deadBranch}).
+ */
+export class World {
+  private readonly brand = "world";
+
+  private constructor(
+    readonly assignment: Assignment,
+    readonly forcing: Forcing | undefined,
+    /** The choices of a template body forced to take a branch no value the
+     *  definition can be given takes: its body is read with them forced. */
+    readonly bodyForcing: Forcing | undefined,
+    readonly dead: boolean,
+  ) {}
+
+  /** The world of a key class: a configuration it holds in. */
+  static key(assignment: Assignment, forcing?: Forcing, bodyForcing?: Forcing): World {
+    return new World(assignment, forcing, bodyForcing, false);
+  }
+
+  /** The world of a branch no configuration takes: a configuration reaching
+   *  its choice, the choices forced there. */
+  static deadBranch(baseline: Assignment, forcing: Forcing): DeadBranchWorld {
+    return new World(baseline, forcing, undefined, true) as DeadBranchWorld;
+  }
+
+  /** This world's configuration over `base`'s values. */
+  over(base: Assignment): World {
+    return new World({ ...base, ...this.assignment }, this.forcing, this.bodyForcing, this.dead);
+  }
+
+  /** This world with `assignment` in place of its own, its forcing kept. */
+  withAssignment(assignment: Assignment): World {
+    return new World(assignment, this.forcing, undefined, this.dead);
+  }
+
+  /** This world as the body of a template reads it: its forcing forced in the body. */
+  asBody(base: Assignment): World {
+    return new World({ ...base, ...this.assignment }, undefined, this.forcing, this.dead);
+  }
 }
 
 /** Whether an option or a declaration of the union is taken in `assignment`:
@@ -285,6 +355,23 @@ export function takenAt(
   return path.every((step) =>
     forcing.has(step.sentinel) ? forcing.get(step.sentinel) === step.branch : space.holds(step.taken, assignment),
   );
+}
+
+/** Something a choice decides: an option, or a declaration of the union. */
+export interface Decided {
+  readonly condition: Condition;
+  readonly path: readonly ChoiceStep[];
+}
+
+/** How a reading decides each choice it meets — at a witness, or by asking
+ *  where a finding holds whether each option's condition does. */
+export interface ChoiceDecider {
+  taken(element: Decided): boolean;
+}
+
+/** The decider of `witness`: {@link takenAt} there. */
+export function witnessDecider(space: ConditionSpace, witness: World): ChoiceDecider {
+  return { taken: (element) => takenAt(space, element.condition, element.path, witness.assignment, witness.forcing) };
 }
 
 /** How diagnostics about projected declarations move to where each is written:
@@ -327,6 +414,10 @@ export interface ConditionedExpansion {
    *  index holds one. Filled once by the forward-view builder. */
   readonly views: readonly ConditionedView[];
   addView(view: ConditionedView): void;
+  /** Each template definition's body, read once over the definition's own
+   *  dimensions, beside its kind document — which stays as written. */
+  readonly bodies: ReadonlyMap<ResourceManifest, TemplateBodyReading>;
+  addBody(reading: TemplateBodyReading): void;
   /** Registers a container the union did not build so a projection rebuilds
    *  it: `written`, where it is written in its holder, or undefined for one
    *  written nowhere (a forward view's own skeleton), whose positions move
@@ -344,6 +435,17 @@ export interface ConditionedExpansion {
    *  configuration. Under `forcing`, `taken` is the conjunction of the local
    *  conditions of the choices it did not force. */
   project(value: unknown, assignment: Assignment, forcing?: Forcing): Projected;
+  /** `value` with each choice decided by `decide` — what {@link project} gives
+   *  where `decide` answers as its configuration does; `taken` is the
+   *  conjunction of the conditions of the options taken. */
+  projectBy(value: unknown, decide: ChoiceDecider): Projected;
+  /** Of `value`'s place map as `decide` decides it, the mappings a position at
+   *  the projected `keys` moves by — those at or above it — reading only the
+   *  choices on the way and the list items before it. */
+  placesAlong(value: unknown, keys: Keys, decide: ChoiceDecider): PlaceMap;
+  /** Of `value`'s place map as `decide` decides it, the mappings writing a
+   *  place at or above the written `written`, and those of its root. */
+  placesToward(value: unknown, written: Keys, decide: ChoiceDecider): PlaceMap;
   /** `value` with each place at `paths` beneath it — union keys, a choice
    *  transparent — replaced by `standIn`, whatever any configuration takes
    *  there: a copy a projection reads as it reads the union. */
@@ -372,13 +474,14 @@ export function expandUnion(
   /** Containers held for a projection that are written nowhere. */
   const unwritten = new WeakSet<object>();
   const views: ConditionedView[] = [];
+  const bodies = new Map<ResourceManifest, TemplateBodyReading>();
   /** A whole document's declaration: what moves its root, and its identity. */
   const roots = new WeakMap<object, { mapping: PlaceMapping; resource?: { kind: string; name: string } }>();
-  const deadBranches = new Map<ExpansionSentinel, Map<string, Assignment>>();
+  const deadBranches = new Map<ExpansionSentinel, Map<string, UnreachableOption>>();
   for (const entry of unreachable) {
     let byBranch = deadBranches.get(entry.site.sentinel);
     if (!byBranch) deadBranches.set(entry.site.sentinel, (byBranch = new Map()));
-    byBranch.set(entry.branch, entry.baseline);
+    byBranch.set(entry.branch, entry);
   }
 
   const unionTag = (
@@ -406,17 +509,22 @@ export function expandUnion(
     }
     const ownMetadata = (sentinel as Record<string, unknown>).metadata;
     const named = ownMetadata !== undefined ? { value: ownMetadata, at: from } : metadata;
-    const all: [string | null, Condition, Assignment | undefined][] = [...branches].map(([b, c]) => [b, c, undefined]);
-    for (const [branch, baseline] of deadBranches.get(sentinel) ?? []) {
-      if (!branches.has(branch)) all.push([branch, FALSE, baseline]);
+    const checked = deadBranches.get(sentinel);
+    const all: [string | null, Condition][] = [...branches];
+    for (const branch of checked?.keys() ?? []) {
+      if (!branches.has(branch)) all.push([branch, FALSE]);
     }
     const out: AlternativeOption[] = [];
-    for (const [branch, local, baseline] of all) {
+    for (const [branch, local] of all) {
       const condition = space.and(within, local);
       const taken = space.and(withinTaken, local);
       const steps = [...path, { sentinel, branch, taken: local }];
       const dead = condition === FALSE;
-      const marks = { ...(dead ? { unreachable: true as const } : {}), ...(baseline ? { baseline } : {}) };
+      const entry = branch === null ? undefined : checked?.get(branch);
+      const marks = {
+        ...(dead ? { unreachable: true as const } : {}),
+        ...(entry ? { baseline: entry.baseline, forcing: entry.forcing, world: entry.world } : {}),
+      };
       const at = branch === null || branch === STAND_IN ? from : [...from, ...branchKeys(branch)];
       const element = (present: boolean) =>
         elements.push({ holder, keys: at, condition, present, standIn: branch === STAND_IN, unreachable: dead });
@@ -460,8 +568,8 @@ export function expandUnion(
         continue;
       }
       if (named) {
-        // A branch that is no declaration declares nothing.
-        if (!chosen.value || typeof chosen.value !== "object" || Array.isArray(chosen.value)) {
+        // A branch that is no resource declaration declares nothing.
+        if (!chosen.value || typeof chosen.value !== "object" || Array.isArray(chosen.value) || declaresNoResource(chosen.value)) {
           element(false);
           out.push(option(false));
           continue;
@@ -590,31 +698,41 @@ export function expandUnion(
   const unforcedTaken = (path: readonly ChoiceStep[], forcing: Forcing): Condition =>
     space.every(path.filter((step) => !forcing.has(step.sentinel)).map((step) => step.taken));
 
+  /** How a projection decides: the option it takes of a choice, and the
+   *  condition the projection holds the option it takes under. */
+  interface Selection {
+    select(option: AlternativeOption): boolean;
+    own(option: AlternativeOption): Condition;
+  }
+  const atWitness = (assignment: Assignment, forcing: Forcing | undefined): Selection => ({
+    select: (o) => selects(o.condition, o.path, assignment, forcing),
+    own: (o) => (forcing ? unforcedTaken(o.path, forcing) : o.condition),
+  });
+  const byDecider = (decide: ChoiceDecider): Selection => ({ select: (o) => decide.taken(o), own: (o) => o.condition });
+  /** The mapping a moved option writes its value by. */
+  const movedMapping = (option: AlternativeOption, to: Keys): PlaceMapping => ({
+    from: to,
+    to: option.at,
+    ...(option.metadataAt ? { metadataAt: option.metadataAt } : {}),
+    ...(option.exact ? { exact: true as const } : {}),
+  });
+
   const walk = (
     value: unknown,
-    assignment: Assignment,
-    forcing: Forcing | undefined,
+    selection: Selection,
     to: Keys,
-    from: Keys,
     mappings: PlaceMapping[],
   ): { present: boolean; value?: unknown; taken: Condition } => {
     if (isAlternatives(value)) {
-      const option = value.options.find((o) => selects(o.condition, o.path, assignment, forcing));
+      const option = value.options.find((o) => selection.select(o));
       // The options of a node hold wherever the node is reached; none holding
       // means the node is not reached here.
       if (!option) return { present: false, taken: FALSE };
-      const own = forcing ? unforcedTaken(option.path, forcing) : option.condition;
+      const own = selection.own(option);
       if (!option.present) return { present: false, taken: own };
-      if (option.moved) {
-        mappings.push({
-          from: to,
-          to: option.at,
-          ...(option.metadataAt ? { metadataAt: option.metadataAt } : {}),
-          ...(option.exact ? { exact: true as const } : {}),
-        });
-      }
+      if (option.moved) mappings.push(movedMapping(option, to));
       // Beneath an exact option every place is reported at the option itself.
-      const inner = walk(option.value, assignment, forcing, to, option.at, option.exact ? [] : mappings);
+      const inner = walk(option.value, selection, to, option.exact ? [] : mappings);
       return { ...inner, taken: space.and(own, inner.taken) };
     }
     if (value === null || typeof value !== "object") return { present: true, value, taken: TRUE };
@@ -626,7 +744,7 @@ export function expandUnion(
     if (Array.isArray(value)) {
       const items: unknown[] = [];
       value.forEach((item, i) => {
-        const r = walk(item, assignment, forcing, [...to, items.length], own ? [...own, i] : [], mappings);
+        const r = walk(item, selection, [...to, items.length], mappings);
         taken = space.and(taken, r.taken);
         if (!r.present) return;
         if (own && items.length !== i) mappings.push({ from: [...to, items.length], to: [...own, i] });
@@ -636,21 +754,131 @@ export function expandUnion(
     }
     const record: Record<string, unknown> = {};
     for (const [key, field] of Object.entries(value)) {
-      const r = walk(field, assignment, forcing, [...to, key], own ? [...own, key] : [], mappings);
+      const r = walk(field, selection, [...to, key], mappings);
       taken = space.and(taken, r.taken);
       if (r.present) record[key] = r.value;
     }
     return { present: true, value: record, taken };
   };
 
-  const project = (value: unknown, assignment: Assignment, forcing?: Forcing): Projected => {
+  const projectWith = (value: unknown, selection: Selection): Projected => {
     const mappings: PlaceMapping[] = [];
     const root = value && typeof value === "object" ? roots.get(value) : undefined;
     if (root) mappings.push(root.mapping);
-    const writtenAt = value && typeof value === "object" ? (built.get(value) ?? []) : [];
-    const r = walk(value, assignment, forcing, [], writtenAt, mappings);
+    const r = walk(value, selection, [], mappings);
     return { ...r, places: { mappings, ...(root?.resource ? { resource: root.resource } : {}) } };
   };
+  const project = (value: unknown, assignment: Assignment, forcing?: Forcing): Projected =>
+    projectWith(value, atWitness(assignment, forcing));
+
+  /** Whether a list item is there, its choices decided by `select`. */
+  const presentBy = (item: unknown, select: (option: AlternativeOption) => boolean): boolean => {
+    while (isAlternatives(item)) {
+      const option = item.options.find(select);
+      if (!option?.present) return false;
+      item = option.value;
+    }
+    return true;
+  };
+
+  /**
+   * The walk of {@link walk} along one way down `value`, recording the
+   * mappings it would: `next` names the member to descend into at each
+   * container — by its projected key and, for a list, its projected index —
+   * or ends the way.
+   */
+  const placesOnWay = (
+    value: unknown,
+    decide: ChoiceDecider,
+    next: (container: unknown[] | Record<string, unknown>, place: { readonly own: Keys | undefined; readonly to: Keys }) => { key: string | number; index?: number } | undefined,
+    keep: (mapping: PlaceMapping) => boolean,
+  ): PlaceMap => {
+    const select = (o: AlternativeOption) => decide.taken(o);
+    const mappings: PlaceMapping[] = [];
+    const root = value && typeof value === "object" ? roots.get(value) : undefined;
+    if (root) mappings.push(root.mapping);
+    let at: unknown = value;
+    let to: Keys = [];
+    let recording = true;
+    // A list item's own move, recorded after what the item's choices move, as
+    // the walk records it.
+    let reindexed: PlaceMapping | undefined;
+    for (;;) {
+      while (isAlternatives(at)) {
+        const option = at.options.find(select);
+        if (!option?.present) return { mappings, ...(root?.resource ? { resource: root.resource } : {}) };
+        if (option.moved && recording) {
+          const mapping = movedMapping(option, to);
+          if (keep(mapping)) mappings.push(mapping);
+        }
+        if (option.exact) recording = false;
+        at = option.value;
+      }
+      if (reindexed) {
+        mappings.push(reindexed);
+        reindexed = undefined;
+      }
+      if (at === null || typeof at !== "object") break;
+      const isUnwritten = unwritten.has(at);
+      if (!isUnwritten && !built.has(at)) break;
+      const own = isUnwritten ? undefined : built.get(at)!;
+      const step = next(at as unknown[] | Record<string, unknown>, { own, to });
+      if (!step) break;
+      if (Array.isArray(at)) {
+        const i = step.index!;
+        const projected = at.slice(0, i).filter((item) => presentBy(item, select)).length;
+        if (!presentBy(at[i], select)) break;
+        if (own && projected !== i && recording) {
+          const mapping = { from: [...to, projected], to: [...own, i] };
+          if (keep(mapping)) reindexed = mapping;
+        }
+        to = [...to, projected];
+        at = at[i];
+        continue;
+      }
+      to = [...to, step.key];
+      at = (at as Record<string, unknown>)[step.key as string];
+    }
+    return { mappings, ...(root?.resource ? { resource: root.resource } : {}) };
+  };
+
+  const placesAlong = (value: unknown, keys: Keys, decide: ChoiceDecider): PlaceMap => {
+    const select = (o: AlternativeOption) => decide.taken(o);
+    return placesOnWay(
+      value,
+      decide,
+      (container, { to }) => {
+        if (to.length >= keys.length) return undefined;
+        const key = keys[to.length]!;
+        if (!Array.isArray(container)) return Object.hasOwn(container, String(key)) ? { key } : undefined;
+        if (typeof key !== "number" && !/^\d+$/.test(String(key))) return undefined;
+        // The item standing at the projected index.
+        let projected = -1;
+        for (let i = 0; i < container.length; i++) {
+          if (presentBy(container[i], select)) projected++;
+          if (projected === Number(key)) return { key, index: i };
+        }
+        return undefined;
+      },
+      () => true,
+    );
+  };
+
+  const isPrefix = (keys: Keys, of: Keys): boolean =>
+    keys.length <= of.length && keys.every((key, i) => String(key) === String(of[i]));
+  const placesToward = (value: unknown, written: Keys, decide: ChoiceDecider): PlaceMap =>
+    placesOnWay(
+      value,
+      decide,
+      (container, { own }) => {
+        if (!own || own.length >= written.length || !isPrefix(own, written)) return undefined;
+        const key = written[own.length]!;
+        if (!Array.isArray(container)) return Object.hasOwn(container, String(key)) ? { key } : undefined;
+        const index = Number(key);
+        return Number.isInteger(index) && index >= 0 && index < container.length ? { key, index } : undefined;
+      },
+      (mapping) => mapping.from.length === 0 || isPrefix(mapping.to, written),
+    );
 
   const at = (assignment: Assignment, forcing?: Forcing): ResourceManifest[] =>
     declarations
@@ -692,11 +920,21 @@ export function expandUnion(
     declarations,
     views,
     addView: (view) => views.push(view),
+    bodies,
+    addBody: (reading) => {
+      if (!declarations.some((d) => d.manifest === reading.definition)) {
+        throw new Error(`internal: the body of '${String(reading.definition.metadata?.name)}' is held beside no kind document of the union.`);
+      }
+      bodies.set(reading.definition, reading);
+    },
     hold,
     placeOf,
     elements,
     at,
     project,
+    projectBy: (value, decide) => projectWith(value, byDecider(decide)),
+    placesAlong,
+    placesToward,
     carve,
   };
 }

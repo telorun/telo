@@ -1,0 +1,48 @@
+# A templated kind whose body makes a choice writes a wrong expression in an
+# unconditional entry; the module makes an unrelated choice. The finding holds
+# under every way of deciding the body, so it is reported once, at the
+# definition, unlabelled; neither consumer reports it.
+kind: Telo.Application
+metadata: { name: DefinitionBodyExpressionLifted }
+variables: { flag: { env: FLAG, type: boolean, default: false } }
+---
+kind: Telo.Definition
+metadata: { name: Target }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema: { type: object, properties: { label: { type: string } } }
+---
+kind: Telo.Definition
+metadata: { name: Wrapped }
+capability: Telo.Runnable
+schema:
+  type: object
+  properties: { label: { type: string }, loud: { type: boolean, default: false } }
+resources:
+  - kind: Telo.Sequence
+    metadata: { name: sequence }
+    steps:
+      - { name: wrong, value: !cel "1 + 'a'" }
+  - kind: Self.Target
+    metadata: { name: tone }
+    label: !if
+      if: !cel "self.loud"
+      then: LOUD
+      else: quiet
+run: !ref sequence
+---
+kind: Self.Wrapped
+metadata: { name: firstWrapped }
+label: first
+loud: true
+---
+kind: Self.Wrapped
+metadata: { name: secondWrapped }
+label: second
+---
+kind: Self.Target
+metadata: { name: chosen }
+label: !if
+  if: !cel "variables.flag"
+  then: first
+  else: second

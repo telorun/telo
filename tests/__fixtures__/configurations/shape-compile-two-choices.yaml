@@ -1,0 +1,29 @@
+# A kind reaching two shapes, each refused by a compile only under a choice of
+# its own: two findings, each labelled by its own choice.
+kind: Telo.Application
+metadata: { name: ShapeCompileTwoChoices }
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+  flag2: { env: FLAG_2, type: boolean, default: false }
+---
+kind: Telo.JsonSchema
+metadata: { name: First }
+schema: !if
+  if: !cel "variables.flag1"
+  then: { type: object, properties: { a: { $ref: "#/$defs/missing" } } }
+  else: { type: object }
+---
+kind: Telo.JsonSchema
+metadata: { name: Second }
+schema: !if
+  if: !cel "variables.flag2"
+  then: { type: object, properties: { b: { $ref: "#/$defs/absent" } } }
+  else: { type: object }
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Holder]
+schema:
+  type: object
+  properties: { first: { $ref: "telo://Self/First" }, second: { $ref: "telo://Self/Second" } }

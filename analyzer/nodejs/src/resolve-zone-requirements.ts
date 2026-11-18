@@ -149,7 +149,7 @@ interface ProjectionResult {
 /** Resolve a possibly alias-form kind to its definition in the DECLARING
  *  module's scope — the same layering `AnalysisRegistry.resolveDefinitionIn`
  *  uses. */
-function definitionResolver(
+export function definitionResolver(
   defs: DefinitionRegistry,
   aliases: AliasResolver,
   aliasesByModule: Map<string, AliasResolver>,
@@ -161,7 +161,7 @@ function definitionResolver(
   };
 }
 
-const canonicalOf = (def: ResourceDefinition): string =>
+export const canonicalOf = (def: ResourceDefinition): string =>
   `${def.metadata.module}.${def.metadata.name}`;
 
 /**
@@ -187,7 +187,7 @@ const labelOf = (node: ResourceGraphNode): string =>
 /** The schema node at a slot pattern (`steps`, `routes[].handler`), following
  *  `[]` into `items`, `{}` into `additionalProperties` and local `$defs` refs —
  *  where a slot's zone annotations live. A property name is read as written. */
-function schemaNodeAt(
+export function schemaNodeAt(
   rootSchema: Record<string, any> | undefined,
   slot: Pattern,
 ): Record<string, any> | undefined {
@@ -210,7 +210,7 @@ function schemaNodeAt(
 /** A slot pattern from its dotted spelling — for a step array, and an edge the
  *  reference reach did not find (a value-tree or module-call site), neither of
  *  which carries segments. */
-function dottedPattern(text: string): Pattern {
+export function dottedPattern(text: string): Pattern {
   const out: PatternSegment[] = [];
   for (const part of text.split(".")) {
     const bare = part.replace(/(\[\]|\{\})+$/g, "");
@@ -240,7 +240,7 @@ function dottedPattern(text: string): Pattern {
  * an EDGE points at, cross-module included, for a graph whose consumers tolerate
  * an unresolved target) and states its own reduction the same way.
  */
-function refName(value: unknown): string | undefined {
+export function refName(value: unknown): string | undefined {
   const sentinel = refSentinelTarget(value);
   if (sentinel) {
     if (sentinel.alias === undefined) return sentinel.name;
@@ -316,6 +316,136 @@ function resolveProviderKey(
   return resolveStaticKey(synthetic, [pointer], resolveName);
 }
 
+/** What a requirement reaching an edge's target does at the edge, past a
+ *  discharge: nothing (`stop`), climb to the caller (`continue`), or a finding. */
+export type RequirementEdgeVerdict =
+  | { readonly kind: "stop" }
+  | { readonly kind: "continue" }
+  | { readonly kind: "emit"; readonly severity: DiagnosticSeverity; readonly code: string; readonly why: string };
+
+/** The one rule a requirement follows through an edge it did not discharge at. */
+export function requirementEdgeVerdict(edge: CallGraphEdge): RequirementEdgeVerdict {
+  const emit = (severity: DiagnosticSeverity, code: string, why: string): RequirementEdgeVerdict => ({ kind: "emit", severity, code, why });
+  // A dynamic selector is already a hard diagnostic (validate-ref-slots);
+  // zones do not re-report it — and must not propagate through a use they
+  // cannot read.
+  if (edge.unresolvedReason === "dynamic") return { kind: "stop" };
+  if (edge.use.length === 0) {
+    return emit(
+      DiagnosticSeverity.Warning,
+      "ZONE_REQUIREMENT_DEFERRED",
+      "reaches a slot that declares no use, so whether the zone survives it cannot be decided statically; the runtime check remains the enforcement",
+    );
+  }
+  if (edge.unresolved) {
+    return emit(
+      DiagnosticSeverity.Warning,
+      "ZONE_REQUIREMENT_DEFERRED",
+      `reaches a slot whose use selector could not be resolved (${edge.unresolvedReason}), so whether the zone survives it cannot be decided statically; the runtime check remains the enforcement`,
+    );
+  }
+  if (edge.use.every((u) => u === "dependency" || u === "schema")) return { kind: "stop" };
+  if (edge.use.length > 1) {
+    // The zone's lifetime extends through the edge only if EVERY member is
+    // `call` — a set says several relations hold at once, not that one of
+    // them might.
+    if (edge.use.every((u) => u === "call")) return { kind: "continue" };
+    // A member the runtime guarantees is cleared makes the set decidably
+    // wrong, not undecidable: the detached dispatch is NEVER inside the
+    // caller's zone, so the requirement — a universal claim — is violated on
+    // that path. A cache view's detach is a case map, so a set appears only
+    // where its detach really happens.
+    const guaranteedCleared = edge.use.filter((u) => u === "detached" || u === "trigger.inbound");
+    if (guaranteedCleared.length > 0) {
+      return emit(
+        DiagnosticSeverity.Error,
+        "ZONE_REQUIREMENT_UNSATISFIED",
+        `reaches a slot that dispatches its target several ways in one invocation ([${edge.use.join(", ")}]), and the ${guaranteedCleared.join(" / ")} dispatch is guaranteed a fresh context — so on that path the zone is gone`,
+      );
+    }
+    // A `trigger.consumer` member means a drain site MIGHT be inside the
+    // zone, which no static reading can settle.
+    return emit(
+      DiagnosticSeverity.Warning,
+      "ZONE_REQUIREMENT_DEFERRED",
+      `reaches a slot whose declared use is the set [${edge.use.join(", ")}]; whether the zone survives depends on where the consumer drains it, so it cannot be decided statically and the runtime check remains the enforcement`,
+    );
+  }
+  switch (edge.use[0]) {
+    case "call":
+      return { kind: "continue" };
+    case "detached":
+      return emit(
+        DiagnosticSeverity.Error,
+        "ZONE_REQUIREMENT_UNSATISFIED",
+        "detaches there — the runtime guarantees the detached work a fresh context, outside every zone its caller was in",
+      );
+    case "trigger.inbound":
+      return emit(
+        DiagnosticSeverity.Error,
+        "ZONE_REQUIREMENT_UNSATISFIED",
+        "is an inbound trigger registration — the handler runs on a fresh context driven by a request or timer, outside every zone",
+      );
+    case "trigger.consumer":
+      return emit(
+        DiagnosticSeverity.Warning,
+        "ZONE_REQUIREMENT_DEFERRED",
+        "is dispatched when a returned value is drained, so where it runs is the drain site's choice; the runtime check remains the enforcement",
+      );
+  }
+  return { kind: "stop" };
+}
+
+/** Why a requirement climbing to an Application's boot targets fails there. */
+export const BOOT_TARGETS_WHY = "reaches the application's boot targets, which nothing encloses";
+
+/** The message of a requirement's finding at the path it took. */
+export function requirementMessage(
+  req: { readonly zone: string; readonly correlationLabel?: string; readonly reason?: string; readonly origin: string },
+  path: string,
+  why: string,
+): string {
+  const wanted = req.correlationLabel ? `a ${req.zone} zone on ${req.correlationLabel}` : `a ${req.zone} zone`;
+  const reason = req.reason ? ` ${req.reason}.` : "";
+  return `${req.origin} requires ${wanted}, and the path ${path} ${why}.${reason}`;
+}
+
+/** Why a discharging zone does not hold a requirement's guarantee. */
+export function attributesMissingWhy(zone: string, missing: readonly string[]): string {
+  return (
+    `reaches a ${zone} zone that does not declare ` +
+    `${missing.join(", ")}, so the guarantee this requirement is built on ` +
+    `does not hold inside it`
+  );
+}
+
+/** The requirements a kind declares: at its schema root (every instance) and on
+ *  each top-level property (an instance writing that field). */
+export function requirementSlotsOf(
+  schema: Record<string, any>,
+): { readonly requires: NonNullable<ReturnType<typeof readRequiresZone>>; readonly field: string | undefined }[] {
+  const slots: [Record<string, any>, string | undefined][] = [[schema, undefined]];
+  for (const [field, propSchema] of Object.entries((schema.properties ?? {}) as Record<string, Record<string, any>>)) {
+    slots.push([propSchema, field]);
+  }
+  const out: { requires: NonNullable<ReturnType<typeof readRequiresZone>>; field: string | undefined }[] = [];
+  for (const [slotSchema, field] of slots) {
+    const requires = readRequiresZone(slotSchema);
+    if (requires) out.push({ requires, field });
+  }
+  return out;
+}
+
+/** The zone kind and every kind extending it — what discharges a requirement. */
+export function acceptedZones(defs: DefinitionRegistry, zone: string): ReadonlySet<string> {
+  const out = new Set<string>([zone]);
+  for (const def of defs.getByExtends(zone)) {
+    const module = (def.metadata as { module?: string } | undefined)?.module;
+    if (module && def.metadata?.name) out.add(`${module}.${def.metadata.name as string}`);
+  }
+  return out;
+}
+
 /** Run the projection over one graph. */
 export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult {
   const { graph, defs, aliases, aliasesByModule, reportModules, seeds, exportOf, manifests, composed } = args;
@@ -364,14 +494,7 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
     return bound === NOT_AN_INPUT ? names.resolve(name, moduleOfNode(from), site) : bound;
   };
 
-  const acceptedFor = (zone: string): ReadonlySet<string> => {
-    const out = new Set<string>([zone]);
-    for (const def of defs.getByExtends(zone)) {
-      const module = (def.metadata as { module?: string } | undefined)?.module;
-      if (module && def.metadata?.name) out.add(`${module}.${def.metadata.name as string}`);
-    }
-    return out;
-  };
+  const acceptedFor = (zone: string): ReadonlySet<string> => acceptedZones(defs, zone);
 
   const moduleOf = (node: ResourceGraphNode): string | undefined =>
     (node.manifest.metadata as { module?: string } | undefined)?.module;
@@ -410,14 +533,11 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
     const dedupe = `${code}\0${edge.from}\0${edge.path}\0${req.key}`;
     if (reported.has(dedupe)) return;
     reported.add(dedupe);
-    const wanted = req.correlationLabel
-      ? `a ${req.zone} zone on ${req.correlationLabel}`
-      : `a ${req.zone} zone`;
     const path = [...via, `${shownName(caller)}.${edge.path}`].join(" → ");
-    const reason = req.reason ? ` ${req.reason}.` : "";
     if (anchor) {
       diagnostics.push({
-        ...importAnchoredDiagnostic(code, anchor.module, anchor.via, `${req.origin} requires ${wanted}, and the path ${path} ${why}.${reason}`),
+        // Arising from what the consumer composes, no library's own check reports it.
+        ...importAnchoredDiagnostic(code, anchor.module, anchor.via, requirementMessage(req, path, why), null),
         severity,
       });
       return;
@@ -426,7 +546,7 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
       severity,
       code,
       source: SOURCE,
-      message: `${req.origin} requires ${wanted}, and the path ${path} ${why}.${reason}`,
+      message: requirementMessage(req, path, why),
       data: {
         resource: { kind: caller.kind, name: caller.name },
         filePath: (caller.manifest.metadata as { source?: string } | undefined)?.source,
@@ -517,143 +637,15 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
           // with opposite words.
           const missing = req.attributes.filter((a) => !(a in provides.attributes));
           if (missing.length > 0) {
-            emit(
-              DiagnosticSeverity.Error,
-              "ZONE_ATTRIBUTE_MISSING",
-              edge,
-              caller,
-              req,
-              via,
-              `reaches a ${canonicalOf(callerDef)} zone that does not declare ` +
-                `${missing.join(", ")}, so the guarantee this requirement is built on ` +
-                `does not hold inside it`,
-            );
+            emit(DiagnosticSeverity.Error, "ZONE_ATTRIBUTE_MISSING", edge, caller, req, via, attributesMissingWhy(canonicalOf(callerDef), missing));
           }
           continue;
         }
       }
 
-      // A dynamic selector is already a hard diagnostic (validate-ref-slots);
-      // zones do not re-report it — and must not propagate through a use they
-      // cannot read.
-      if (edge.unresolvedReason === "dynamic") continue;
-
-      if (edge.use.length === 0) {
-        emit(
-          DiagnosticSeverity.Warning,
-          "ZONE_REQUIREMENT_DEFERRED",
-          edge,
-          caller,
-          req,
-          via,
-          "reaches a slot that declares no use, so whether the zone survives it cannot be decided statically; the runtime check remains the enforcement",
-        );
-        continue;
-      }
-      if (edge.unresolved) {
-        emit(
-          DiagnosticSeverity.Warning,
-          "ZONE_REQUIREMENT_DEFERRED",
-          edge,
-          caller,
-          req,
-          via,
-          `reaches a slot whose use selector could not be resolved (${edge.unresolvedReason}), so whether the zone survives it cannot be decided statically; the runtime check remains the enforcement`,
-        );
-        continue;
-      }
-      if (edge.use.every((u) => u === "dependency" || u === "schema")) continue;
-
-      if (edge.use.length > 1) {
-        // The zone's lifetime extends through the edge only if EVERY member is
-        // `call` — a set says several relations hold at once, not that one of
-        // them might.
-        if (edge.use.every((u) => u === "call")) {
-          continueUp(caller, edge, req, via);
-          continue;
-        }
-        // A member the runtime guarantees is cleared makes the set decidably
-        // wrong, not undecidable: the detached dispatch is NEVER inside the
-        // caller's zone, so the requirement — a universal claim — is violated
-        // on that path. What stays unknown is only how often that path is
-        // taken, and "sometimes throws" is not a working manifest.
-        //
-        // This is the one place the plan's original rule was inverted, and
-        // deliberately. That rule existed to stop a cache view's UNCONDITIONAL
-        // `[call, detached]` from hard-erroring every cached transactional call
-        // under the default `revalidate: sync`, where the controller never
-        // detaches — but the same change that added this pass re-annotated that
-        // slot as a case map, so a set now appears only where its detach really
-        // happens. The justification went with the annotation.
-        const guaranteedCleared = edge.use.filter(
-          (u) => u === "detached" || u === "trigger.inbound",
-        );
-        if (guaranteedCleared.length > 0) {
-          emit(
-            DiagnosticSeverity.Error,
-            "ZONE_REQUIREMENT_UNSATISFIED",
-            edge,
-            caller,
-            req,
-            via,
-            `reaches a slot that dispatches its target several ways in one invocation ([${edge.use.join(", ")}]), and the ${guaranteedCleared.join(" / ")} dispatch is guaranteed a fresh context — so on that path the zone is gone`,
-          );
-          continue;
-        }
-        // Everything else in a set is undecidable rather than wrong — a
-        // `trigger.consumer` member means a drain site MIGHT be inside the
-        // zone, which no static reading can settle.
-        emit(
-          DiagnosticSeverity.Warning,
-          "ZONE_REQUIREMENT_DEFERRED",
-          edge,
-          caller,
-          req,
-          via,
-          `reaches a slot whose declared use is the set [${edge.use.join(", ")}]; whether the zone survives depends on where the consumer drains it, so it cannot be decided statically and the runtime check remains the enforcement`,
-        );
-        continue;
-      }
-
-      switch (edge.use[0]) {
-        case "call":
-          continueUp(caller, edge, req, via);
-          break;
-        case "detached":
-          emit(
-            DiagnosticSeverity.Error,
-            "ZONE_REQUIREMENT_UNSATISFIED",
-            edge,
-            caller,
-            req,
-            via,
-            "detaches there — the runtime guarantees the detached work a fresh context, outside every zone its caller was in",
-          );
-          break;
-        case "trigger.inbound":
-          emit(
-            DiagnosticSeverity.Error,
-            "ZONE_REQUIREMENT_UNSATISFIED",
-            edge,
-            caller,
-            req,
-            via,
-            "is an inbound trigger registration — the handler runs on a fresh context driven by a request or timer, outside every zone",
-          );
-          break;
-        case "trigger.consumer":
-          emit(
-            DiagnosticSeverity.Warning,
-            "ZONE_REQUIREMENT_DEFERRED",
-            edge,
-            caller,
-            req,
-            via,
-            "is dispatched when a returned value is drained, so where it runs is the drain site's choice; the runtime check remains the enforcement",
-          );
-          break;
-        // dependency / schema singletons were filtered above.
-      }
+      const verdict = requirementEdgeVerdict(edge);
+      if (verdict.kind === "continue") continueUp(caller, edge, req, via);
+      else if (verdict.kind === "emit") emit(verdict.severity, verdict.code, edge, caller, req, via, verdict.why);
     }
   };
 
@@ -666,15 +658,7 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
     // Nothing encloses an Application's boot targets: an open requirement
     // arriving there surfaces at boot.
     if (caller.kind === "Telo.Application") {
-      emit(
-        DiagnosticSeverity.Error,
-        "ZONE_REQUIREMENT_UNSATISFIED",
-        edge,
-        caller,
-        req,
-        via,
-        "reaches the application's boot targets, which nothing encloses",
-      );
+      emit(DiagnosticSeverity.Error, "ZONE_REQUIREMENT_UNSATISFIED", edge, caller, req, via, BOOT_TARGETS_WHY);
       return;
     }
     propagate(caller, req, [...via, shownName(caller)]);
@@ -699,15 +683,7 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
     // kind is exactly that shape — it has no option that turns the requirement
     // on — and a field-level annotation would have to be attached to some
     // arbitrary property and would then read "…when you set this one".
-    const slots: [Record<string, any>, string | undefined][] = [[schema, undefined]];
-    for (const [field, propSchema] of Object.entries(
-      (schema.properties ?? {}) as Record<string, Record<string, any>>,
-    )) {
-      slots.push([propSchema, field]);
-    }
-    for (const [slotSchema, field] of slots) {
-      const requires = readRequiresZone(slotSchema);
-      if (!requires) continue;
+    for (const { requires, field } of requirementSlotsOf(schema)) {
       if (field !== undefined && (node.manifest as Record<string, unknown>)[field] === undefined) {
         continue;
       }
@@ -863,49 +839,12 @@ export interface ZoneAnalysisArgs {
  */
 export function runZoneAnalysis(args: ZoneAnalysisArgs): AnalysisDiagnostic[] {
   const { manifests, graph, defs, aliases, aliasesByModule, rootModules } = args;
-
-  // Per-library export contracts, derived over each library's own documents.
-  const seeds = new Map<string, ZoneRequirementSpec[]>();
-  const scope = { defs, aliases, aliasesByModule };
-  for (const docs of args.moduleDocuments ?? []) {
-    // A library exporting no instance and declaring no co-referrer has no
-    // contract to derive.
-    if (docs.exportedNames.length === 0 && libraryCoReferrerReading(docs, scope).coReferrers.size === 0) continue;
-    const contracts = deriveLibraryExportRequirements(
-      docs,
-      defs,
-      aliases,
-      aliasesByModule,
-      args.cache,
-    );
-    for (const [exportName, specs] of contracts) {
-      if (specs.length > 0) seeds.set(`${docs.module}\0${exportName}`, specs);
-    }
-  }
-
-  // The entry library's own export surface, for the satisfiability check.
-  const rootLibraries: Array<{ module: string; exportedNames: Set<string>; doc: ResourceManifest }> =
-    [];
-  for (const m of manifests) {
-    if (m.kind !== "Telo.Library") continue;
-    const name = m.metadata?.name as string | undefined;
-    if (!name || !rootModules.has(name)) continue;
-    const exportedNames = new Set<string>();
-    for (const entry of (m as { exports?: { resources?: unknown[] } }).exports?.resources ?? []) {
-      if (typeof entry !== "string") continue;
-      const dot = entry.indexOf(".");
-      exportedNames.add(dot > 0 ? entry.slice(dot + 1) : entry);
-    }
-    if (exportedNames.size > 0) rootLibraries.push({ module: name, exportedNames, doc: m });
-  }
+  const seeds = requirementSeeds(args.moduleDocuments, defs, aliases, aliasesByModule, args.cache);
+  const rootLibraries = rootLibraryExports(manifests, rootModules);
   const exportOf =
     rootLibraries.length > 0
-      ? (node: ResourceGraphNode): string | undefined => {
-          if (node.scoped) return undefined;
-          const module = (node.manifest.metadata as { module?: string } | undefined)?.module;
-          const lib = rootLibraries.find((l) => l.module === module);
-          return lib?.exportedNames.has(node.name) ? node.name : undefined;
-        }
+      ? (node: ResourceGraphNode): string | undefined =>
+          node.scoped ? undefined : exportNameOf(rootLibraries, node.manifest, node.name)
       : undefined;
 
   const { diagnostics, openExports } = projectZoneRequirements({
@@ -931,26 +870,8 @@ export function runZoneAnalysis(args: ZoneAnalysisArgs): AnalysisDiagnostic[] {
         continue;
       }
       for (const spec of specs) {
-        if (spec.correlationName === undefined) continue; // uncorrelated — satisfiable by any zone
-        if (lib.exportedNames.has(spec.correlationName)) continue; // importers can reach it
-        if (spec.correlationInput !== undefined) continue; // importers supply it
-        diagnostics.push({
-          severity: DiagnosticSeverity.Error,
-          code: "ZONE_EXPORT_UNSATISFIABLE",
-          source: SOURCE,
-          message:
-            `exported resource '${exportName}' carries an open requirement: ${spec.origin} requires ` +
-            `a ${spec.zone} zone on ${spec.correlationLabel}, which this library does not export — ` +
-            `no importer can satisfy it. Export '${spec.correlationName}' too (importers wrap ` +
-            `'${exportName}' in their own zone on it), or export a resource that goes through the ` +
-            `provider instead of '${exportName}' directly.` +
-            (spec.reason ? ` ${spec.reason}.` : ""),
-          data: {
-            resource: { kind: node.kind, name: node.name },
-            filePath: (node.manifest.metadata as { source?: string } | undefined)?.source,
-            path: "",
-          },
-        });
+        const found = exportUnsatisfiable(lib, exportName, spec, node);
+        if (found) diagnostics.push(found);
       }
     }
   }
@@ -958,9 +879,98 @@ export function runZoneAnalysis(args: ZoneAnalysisArgs): AnalysisDiagnostic[] {
   return diagnostics;
 }
 
+/** Each imported library's derived export contracts, keyed `${module}\0${name}`. */
+export function requirementSeeds(
+  moduleDocuments: readonly ModuleDocuments[] | undefined,
+  defs: DefinitionRegistry,
+  aliases: AliasResolver,
+  aliasesByModule: Map<string, AliasResolver>,
+  cache: ZoneExportCache | undefined,
+): Map<string, ZoneRequirementSpec[]> {
+  const seeds = new Map<string, ZoneRequirementSpec[]>();
+  const scope = { defs, aliases, aliasesByModule };
+  for (const docs of moduleDocuments ?? []) {
+    // A library exporting no instance and declaring no co-referrer has no
+    // contract to derive.
+    if (docs.exportedNames.length === 0 && libraryCoReferrerReading(docs, scope).coReferrers.size === 0) continue;
+    const contracts = deriveLibraryExportRequirements(docs, defs, aliases, aliasesByModule, cache);
+    for (const [exportName, specs] of contracts) {
+      if (specs.length > 0) seeds.set(`${docs.module}\0${exportName}`, specs);
+    }
+  }
+  return seeds;
+}
+
+/** An entry library exporting instances, and the names it exports. */
+export interface RootLibraryExports {
+  readonly module: string;
+  readonly exportedNames: ReadonlySet<string>;
+}
+
+/** The entry libraries' own export surfaces, for the satisfiability check. */
+export function rootLibraryExports(
+  manifests: readonly ResourceManifest[],
+  rootModules: ReadonlySet<string>,
+): RootLibraryExports[] {
+  const out: RootLibraryExports[] = [];
+  for (const m of manifests) {
+    if (m.kind !== "Telo.Library") continue;
+    const name = m.metadata?.name as string | undefined;
+    if (!name || !rootModules.has(name)) continue;
+    const exportedNames = new Set<string>();
+    for (const entry of (m as { exports?: { resources?: unknown[] } }).exports?.resources ?? []) {
+      if (typeof entry !== "string") continue;
+      const dot = entry.indexOf(".");
+      exportedNames.add(dot > 0 ? entry.slice(dot + 1) : entry);
+    }
+    if (exportedNames.size > 0) out.push({ module: name, exportedNames });
+  }
+  return out;
+}
+
+/** The export name a module-level declaration is listed under by an entry library. */
+export function exportNameOf(
+  libraries: readonly RootLibraryExports[],
+  manifest: ResourceManifest,
+  name: string,
+): string | undefined {
+  const module = (manifest.metadata as { module?: string } | undefined)?.module;
+  const lib = libraries.find((l) => l.module === module);
+  return lib?.exportedNames.has(name) ? name : undefined;
+}
+
+/** An exported resource's open requirement no importer can satisfy. */
+export function exportUnsatisfiable(
+  lib: RootLibraryExports,
+  exportName: string,
+  spec: ZoneRequirementSpec,
+  node: { kind: string; name: string; manifest: ResourceManifest },
+): AnalysisDiagnostic | undefined {
+  if (spec.correlationName === undefined) return undefined; // uncorrelated — satisfiable by any zone
+  if (lib.exportedNames.has(spec.correlationName)) return undefined; // importers can reach it
+  if (spec.correlationInput !== undefined) return undefined; // importers supply it
+  return {
+    severity: DiagnosticSeverity.Error,
+    code: "ZONE_EXPORT_UNSATISFIABLE",
+    source: SOURCE,
+    message:
+      `exported resource '${exportName}' carries an open requirement: ${spec.origin} requires ` +
+      `a ${spec.zone} zone on ${spec.correlationLabel}, which this library does not export — ` +
+      `no importer can satisfy it. Export '${spec.correlationName}' too (importers wrap ` +
+      `'${exportName}' in their own zone on it), or export a resource that goes through the ` +
+      `provider instead of '${exportName}' directly.` +
+      (spec.reason ? ` ${spec.reason}.` : ""),
+    data: {
+      resource: { kind: node.kind, name: node.name },
+      filePath: (node.manifest.metadata as { source?: string } | undefined)?.source,
+      path: "",
+    },
+  };
+}
+
 /** Whether one module imports another, directly or through its imports, read
  *  off the set's `Telo.Import` documents. */
-function importsClosure(manifests: readonly ResourceManifest[]): (module: string, target: string) => boolean {
+export function importsClosure(manifests: readonly ResourceManifest[]): (module: string, target: string) => boolean {
   const direct = new Map<string, string[]>();
   for (const m of manifests) {
     if (m.kind !== "Telo.Import") continue;

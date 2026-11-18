@@ -155,6 +155,16 @@ export async function create(
       ),
     ),
   );
+  // A stamp its author wrote — the load refused those of a library it reached —
+  // refused before anything of the library is expanded or read.
+  if (scope.writtenStamps.length > 0) {
+    throw new RuntimeError(
+      "ERR_METADATA_RESERVED_FIELD",
+      scope.writtenStamps
+        .map((message) => `Imported library '${identity.name}', reached through import '${alias}': ${message}`)
+        .join("\n"),
+    );
+  }
   const forms = markerRefusalsOf(scope, () => analyzer.referenceForms(scope.rawManifests, libraryRegistry));
   if (forms.length > 0) {
     throw new RuntimeError("ERR_INVALID_REFERENCE_FORM", forms.join("\n"));

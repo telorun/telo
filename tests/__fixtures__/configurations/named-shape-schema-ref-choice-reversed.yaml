@@ -1,0 +1,16 @@
+# named-shape-schema-ref-choice.yaml with its configurations read in the other
+# order: the same findings.
+kind: Telo.Application
+metadata: { name: NamedShapeSchemaRef }
+variables: { flag1: { env: FLAG_1, type: boolean, enum: [true, false], default: false } }
+---
+!if
+metadata: { name: Payload }
+if: !cel "variables.flag1"
+then: { kind: Telo.JsonSchema, schema: { type: object } }
+---
+kind: Telo.Definition
+metadata: { name: Handler }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Handler]
+schema: { type: object, properties: { payload: { $ref: "telo://Self/Payload" } } }

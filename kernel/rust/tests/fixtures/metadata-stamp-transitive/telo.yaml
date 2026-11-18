@@ -1,0 +1,4 @@
+# Reaches a library writing a loader stamp through another library.
+kind: Telo.Application
+metadata: { name: MetadataStampTransitive }
+imports: { Mid: ../metadata-stamp-middle }

@@ -1,0 +1,16 @@
+# A library writing `metadata.module` on a nested declaration in a branch of a
+# choice its importer decides, and declaring an optional resource input.
+kind: Telo.Library
+metadata: { name: NestedStampTwiceLib }
+imports: { Kinds: ../../../../../tests/__fixtures__/resource-inputs/optional/kinds }
+variables: { flag: { type: boolean } }
+resources: { store: { kind: Kinds.Store, optional: true } }
+---
+kind: Telo.Sequence
+metadata: { name: job }
+steps:
+  - name: answer
+    invoke: !if
+      if: !cel "variables.flag"
+      then: { kind: Telo.Value, metadata: { module: Elsewhere }, value: 1 }
+      else: { kind: Telo.Value, value: 2 }

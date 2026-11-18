@@ -1,0 +1,44 @@
+# A kind whose input contract names a shape carrying a value-schema-from
+# annotation: `Input` names a location the kind's schema lacks only where flag1
+# holds, so the location is refused there alone. `Options` carries an
+# annotation only where flag1 holds, naming a location the kind declares, and
+# is refused nowhere.
+kind: Telo.Application
+metadata: { name: KindValueSchemaFromShape }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Input }
+schema: !if
+  if: !cel "variables.flag1"
+  then: { type: object, properties: { value: { x-telo-value-schema-from: /absent } } }
+  else:
+    type: object
+    properties: { value: { x-telo-value-schema-from: /valueType } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Options }
+schema: !if
+  if: !cel "variables.flag1"
+  then:
+    type: object
+    properties: { value: { x-telo-value-schema-from: /valueType } }
+  else: { type: object }
+---
+kind: Telo.Definition
+metadata: { name: Convert }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Convert]
+inputType: !ref Input
+schema:
+  type: object
+  properties: { valueType: { x-telo-ref: { kind: Telo.Type, use: schema } } }
+---
+kind: Telo.Definition
+metadata: { name: Configure }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Configure]
+inputType: !ref Options
+schema:
+  type: object
+  properties: { valueType: { x-telo-ref: { kind: Telo.Type, use: schema } } }

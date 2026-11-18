@@ -4,11 +4,10 @@
  *
  * A manifest reaching its own `metadata` is a small binding with one sharp edge.
  * By the time analysis or the runtime sees a module doc, its `metadata` also
- * carries fields nothing authored — `source` and `sourceLine` (the loader's
- * provenance), `module`, `moduleGlobals`, `exportedKinds`, `reExportedKinds`,
- * `forwardedExport` (derived indices the analyzer stamps). Exposing those would
- * publish loader internals as a manifest surface, where they would be read,
- * depended on, and then unchangeable.
+ * carries fields nothing authored — the loader's and the analyzer's stamps
+ * (`metadata-stamps.ts`). Exposing those would publish loader internals as a
+ * manifest surface, where they would be read, depended on, and then
+ * unchangeable.
  *
  * A DENYLIST rather than an allowlist, because the metadata vocabulary is
  * deliberately open: a module may declare a field the standard library has never
@@ -16,17 +15,11 @@
  * are a closed set this repo controls — so the thing that can be enumerated is
  * the thing enumerated.
  */
+import { METADATA_STAMPS } from "./metadata-stamps.js";
 
-/** Fields written by the loader or the analyzer, not by the module's author. */
-export const DERIVED_METADATA_FIELDS: ReadonlySet<string> = new Set([
-  "source",
-  "sourceLine",
-  "module",
-  "moduleGlobals",
-  "exportedKinds",
-  "reExportedKinds",
-  "forwardedExport",
-]);
+/** Fields written by the loader or the analyzer, not by the module's author —
+ *  the one list the loader refuses an author-written key of. */
+export const DERIVED_METADATA_FIELDS: ReadonlySet<string> = METADATA_STAMPS;
 
 /** The author-written half of a module doc's `metadata`. */
 export function authoredModuleMetadata(

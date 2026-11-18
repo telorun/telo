@@ -1,0 +1,16 @@
+# A library writing the loader's `metadata.module` stamp by hand twice: on a
+# top-level definition, found by the loader, and on an inline declaration, found
+# by the analysis. Its own check reports both where they are written.
+kind: Telo.Library
+metadata: { name: Stamps }
+---
+kind: Telo.Definition
+metadata: { name: Greeter, module: Elsewhere }
+capability: Telo.Invocable
+schema: { type: object }
+---
+kind: Telo.Sequence
+metadata: { name: job }
+steps:
+  - name: answer
+    invoke: { kind: Telo.Value, metadata: { module: Elsewhere }, value: 1 }

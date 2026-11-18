@@ -1,6 +1,7 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
+import { withModuleDocs } from "./module-doc-fixtures.js";
 import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 import { DiagnosticSeverity } from "../src/types.js";
 
@@ -53,7 +54,7 @@ function template(overrides: Record<string, unknown>): ResourceManifest {
 }
 
 function analyze(...manifests: ResourceManifest[]) {
-  return new StaticAnalyzer().analyze(withSyntheticPositions(manifests));
+  return new StaticAnalyzer().analyze(withSyntheticPositions(withModuleDocs(manifests)));
 }
 
 const codes = (diags: { code: string }[], code: string) => diags.filter((d) => d.code === code);

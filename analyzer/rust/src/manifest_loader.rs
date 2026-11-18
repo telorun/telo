@@ -18,6 +18,7 @@ use crate::builtin_vocabulary::{builtin_vocabulary_import_message, BUILTIN_VOCAB
 use crate::loaded_types::{
     GraphLoadError, ImportEdge, ImportFailureReason, LoadedFile, LoadedGraph, LoadedModule, ParseErrorOrigin,
 };
+use crate::metadata_stamp_refusals::metadata_stamp_diagnostics;
 use crate::parse_loaded_file::parse_loaded_file;
 use crate::reserved_kind_prefix::{
     is_reserved_kind_prefix, reserved_import_alias_message, reserved_library_name_message,
@@ -164,6 +165,7 @@ pub fn load_graph<P: ImportTargetPort>(port: &P, entry_url: &str) -> Result<Load
         import_edges: HashMap::new(),
         parse_diagnostics: Vec::new(),
         migration_diagnostics: Vec::new(),
+        metadata_diagnostics: Vec::new(),
         errors: Vec::new(),
     };
     let builtin_vocabulary = entry.manifests.first().and_then(Option::as_ref).and_then(kind_of)
@@ -179,6 +181,7 @@ pub fn load_graph<P: ImportTargetPort>(port: &P, entry_url: &str) -> Result<Load
     if builtin_vocabulary {
         graph.parse_diagnostics.push(builtin_vocabulary_entry_refusal(&graph.modules[&root_source].owner));
     }
+    graph.metadata_diagnostics = metadata_stamp_diagnostics(&graph);
     Ok(graph)
 }
 

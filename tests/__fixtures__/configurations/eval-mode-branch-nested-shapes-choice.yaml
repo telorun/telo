@@ -1,0 +1,68 @@
+# Unions inside named shapes, refused at the shape declaring each where a kind
+# reaches it and its branches conflict: `A`'s branch `C` conflicts where flag2
+# holds; `A2`, declared only where flag3 holds, the same; `D` conflicts always,
+# but a kind reaches it only through `E` where flag4 holds.
+kind: Telo.Application
+metadata: { name: EvalModeBranchNestedShapes }
+variables:
+  flag2: { env: FLAG_2, type: boolean, default: false }
+  flag3: { env: FLAG_3, type: boolean, default: false }
+  flag4: { env: FLAG_4, type: boolean, default: false }
+---
+kind: Telo.JsonSchema
+metadata: { name: C }
+schema: !if
+  if: !cel "variables.flag2"
+  then: { type: object, properties: { x: { x-telo-eval: runtime } } }
+  else: { type: object, properties: { x: { x-telo-eval: compile } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: A }
+schema:
+  type: object
+  properties:
+    body:
+      oneOf:
+        - { $ref: "telo://Self/C" }
+        - { type: object, properties: { x: { x-telo-eval: compile } } }
+---
+!if
+metadata: { name: A2 }
+if: !cel "variables.flag3"
+then:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      body:
+        oneOf:
+          - { $ref: "telo://Self/C" }
+          - { type: object, properties: { x: { x-telo-eval: compile } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: D }
+schema:
+  type: object
+  properties:
+    body:
+      oneOf:
+        - { type: object, properties: { x: { x-telo-eval: runtime } } }
+        - { type: object, properties: { x: { x-telo-eval: compile } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: E }
+schema: !if
+  if: !cel "variables.flag4"
+  then: { $ref: "telo://Self/D" }
+  else: { type: string }
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Holder]
+schema:
+  type: object
+  properties:
+    a: { $ref: "telo://Self/A" }
+    a2: { $ref: "telo://Self/A2" }
+    e: { $ref: "telo://Self/E" }

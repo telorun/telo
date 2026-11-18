@@ -1,0 +1,49 @@
+# A holder handing a source's output to a verifier as its `presentation`
+# input. The verifier's input contract names `Presentation`, which declares the
+# member only where flag1 holds; the sibling slot is written through
+# `VerifierSlot`, a reference slot only where flag2 holds. Each refusal holds
+# where its shape says so.
+kind: Telo.Application
+metadata: { name: KindOutputToShape }
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+  flag2: { env: FLAG_2, type: boolean, default: false }
+---
+kind: Telo.JsonSchema
+metadata: { name: Presentation }
+schema: !if
+  if: !cel "variables.flag1"
+  then: { type: object, properties: { presentation: { type: string } } }
+  else: { type: object, properties: { other: { type: string } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: VerifierSlot }
+schema: !if
+  if: !cel "variables.flag2"
+  then: { x-telo-ref: { kind: Self.Verifier, use: call } }
+  else: { type: string }
+---
+kind: Telo.Definition
+metadata: { name: Verifier }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Verifier]
+inputType: !ref Presentation
+schema: { type: object }
+---
+kind: Telo.Definition
+metadata: { name: Source }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Source]
+outputType: { kind: Telo.JsonSchema, schema: { type: string } }
+schema: { type: object }
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Service
+controllers: [pkg:telo/local/js?path=./probe.mjs#Holder]
+schema:
+  type: object
+  properties:
+    source:
+      x-telo-ref: { kind: Self.Source, use: call, outputTo: { slot: /verifier, member: presentation } }
+    verifier: { $ref: "telo://Self/VerifierSlot" }

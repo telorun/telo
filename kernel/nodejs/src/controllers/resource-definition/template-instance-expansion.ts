@@ -19,6 +19,7 @@ import { declarationOfInstance, outermostDeclarationOf } from "../../instance-de
 import type { ModuleContext } from "../../module-context.js";
 import { refuseExpansionConstructs } from "../../expansion-refusals.js";
 import { crossedDeclaration, forwardedValue, type WrittenScope } from "./reference-crossing.js";
+import { refuseWrittenStamps } from "../../metadata-stamp-refusals.js";
 
 /**
  * A TEMPLATE BODY EXPANDED FOR ONE INSTANCE, at its `init()`.
@@ -215,6 +216,7 @@ function withExtractedInlines(
       const name = emittedInlineName(expansion, ["resources", at, ...site.keys]);
       if (!name) continue;
       const inline = site.data;
+      refuseWrittenStamps(inline, `the inline ${inline.kind} at '${pathText(["resources", at, ...site.keys])}'`);
       (site.holder as Record<string | number, unknown>)[site.key] = resolvedReference(inline.kind, name);
       entries.push(
         inputs.stampDeclaringModule({

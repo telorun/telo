@@ -1,0 +1,8 @@
+units:
+  analyzer: Added
+  cli: Added
+body: A union whose branches give a property two eval meanings beneath a named shape
+  (`EVAL_MODE_BRANCH_CONFLICT`) names the two references its branches compare there,
+  quoted as written (`'schema.properties.content' compares 'telo://Self/B' with
+  'telo://Self/C', whose eval sites differ`), where it used to copy the place and the
+  two modes out of the shapes; a conflict in the union's own content keeps its wording.

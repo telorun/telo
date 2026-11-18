@@ -19,24 +19,40 @@
  * / `ports` / `resources` read, every entry. Manifest reads only — a
  * controller reads a module's inputs through its resource's fields.
  *
+ * Nothing here enumerates configurations: every read is taken off the one
+ * union expansion of the module (`conditioned-expansion.ts`) under the
+ * condition of the option holding it, a requirement is the condition of its
+ * reads, and `requiredWhen` is that condition's cover. A read inside a template
+ * body counts wherever its definition is instantiated, whatever value the
+ * definition is given. A library's requirement is a condition in its own space,
+ * derived once and carried into each importer's through the import's binding
+ * ({@link ConditionSpace.translate}).
+ *
  * Browser-safe.
  */
 import type { ResourceManifest } from "@telorun/sdk";
-import { celExpressionsOf, isExpansionSentinel, isTaggedSentinel, walkCelExpressions } from "@telorun/templating";
+import { isCompiledValue } from "@telorun/sdk";
+import {
+  celExpressionsOf,
+  expansionTagOf,
+  isExpansionSentinel,
+  isTaggedSentinel,
+  type ExpansionSentinel,
+} from "@telorun/templating";
 import { wrapCelAst, type CelNode } from "./cel-ast.js";
 import { parseCelSource } from "./cel-environment.js";
-import { expandChoices, isStandInDeclaration } from "./choice-expansion.js";
-import { readChoices, type ChoiceReading } from "./choice-reading.js";
+import { isStandInDeclaration } from "./choice-expansion.js";
+import { branchesOf, branchForValue, readChoices, type ChoiceReading } from "./choice-reading.js";
+import { expandUnion, isAlternatives } from "./conditioned-expansion.js";
 import {
   ABSENT,
   admitsAbsence,
-  assignmentKey,
-  enumerateConfigurations,
+  configurationUniverse,
+  entriesOfBlocks,
   memberOfValue,
   needDimensionKey,
   PRESENT,
   agreesWith,
-  requiredWhenOf,
   type Assignment,
   type Dimension,
 } from "./configuration-dimensions.js";
@@ -47,6 +63,7 @@ import { isModuleKind } from "./module-kinds.js";
 import { DURABLE_DIRECTORY_TYPE, STATE_DIR_HOST_VALUE } from "./durable-directory.js";
 import { needSupplyOf, readNeeds, readSuppliedNeeds } from "./need-type.js";
 import type { NeedEnvironmentEntry, NeedTable } from "./need-table.js";
+import { ConditionSpace, FALSE, TRUE, type Condition } from "./presence-condition.js";
 import { addressNeedPorts, PUBLIC_URL_HOST_VALUES, PUBLIC_URL_TYPE } from "./public-address.js";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
 import { isResolvedReference } from "./resolved-reference.js";
@@ -68,7 +85,6 @@ export interface InputRequirements {
   /** The dimensions requirement is decided over: the choices' own, and the
    *  presence of each optional need a library leaves to the environment. */
   readonly dimensions: readonly Dimension[];
-  readonly configurations: readonly Assignment[];
   readonly inputs: readonly InputRequirement[];
   /** Whether `input` is required in `assignment` — an assignment of every
    *  dimension: it is when some `requiredWhen` entry agrees with it on every
@@ -79,15 +95,18 @@ export interface InputRequirements {
 type Block = "variables" | "secrets" | "ports" | "resources";
 const BLOCKS: ReadonlySet<string> = new Set(["variables", "secrets", "ports", "resources"]);
 
-/** What one set of documents reads: entries by block (`*` for the whole
- *  record), and the names its `!ref`s name. */
+/** What one module's documents read, each with the configurations it is read
+ *  in: entries by block (`*` for the whole record), and the names its `!ref`s
+ *  name. */
 interface Reads {
-  readonly entries: Map<Block, Set<string>>;
-  readonly refs: Set<string>;
+  readonly entries: ReadonlyMap<Block, ReadonlyMap<string, Condition>>;
+  readonly refs: ReadonlyMap<string, Condition>;
 }
 
-function emptyReads(): Reads {
-  return { entries: new Map([...BLOCKS].map((b) => [b as Block, new Set<string>()])), refs: new Set() };
+/** Where `reads` reads `name` of `block`, or the whole block. */
+function readOf(space: ConditionSpace, reads: Reads, block: Block, name: string): Condition {
+  const entries = reads.entries.get(block)!;
+  return space.or(entries.get("*") ?? FALSE, entries.get(name) ?? FALSE);
 }
 
 /**
@@ -134,51 +153,25 @@ export function inputRequirements(
   const callNames = moduleCallNamesByModule(manifests);
 
   const dimensions = requirementDimensionsOf(choices, needTable);
+  const space = new ConditionSpace(dimensions);
+  const universe = configurationUniverse(space, dimensions);
   const keys = new Set(dimensions.map((d) => d.key));
-  const configurations = enumerateConfigurations(dimensions);
-  /** The assignment of the choices' own dimensions within `assignment`. */
-  const own = (assignment: Assignment) => {
-    const out: Record<string, unknown> = {};
-    for (const d of choices.dimensions) out[d.key] = assignment[d.key];
-    return out;
-  };
 
   const ownModule = (m: ResourceManifest) => {
     const module = (m.metadata as { module?: unknown } | undefined)?.module;
     return typeof module !== "string" || module === rootName;
   };
-
-  /** The reads of the application's own documents in one configuration. */
-  const rootReads = new Map<string, Reads>();
-  const readsIn = (assignment: Assignment): Reads => {
-    const key = assignmentKey(own(assignment));
-    const known = rootReads.get(key);
-    if (known) return known;
-    const expanded = expandChoices(manifests, choices.decide(own(assignment))).manifests.filter(
-      (m) => !isStandInDeclaration(m) && ownModule(m),
-    );
-    const reads = documentReads(expanded, rootName, (m, source) => choices.valueIn(m, source, own(assignment)), callNames);
-    rootReads.set(key, reads);
-    return reads;
-  };
+  let rootReads: Reads | undefined;
+  const reads = () => (rootReads ??= conditionedReads(manifests, choices, space, rootName, callNames, ownModule));
 
   const out: InputRequirement[] = [];
-  const predicates = new Map<string, (assignment: Assignment) => boolean>();
   const demands = new Map<string, { required: boolean; requiredWhen?: readonly Assignment[] }>();
-  const record = (block: InputRequirement["block"], name: string, test: (a: Assignment) => boolean) => {
-    predicates.set(`${block}\0${name}`, test);
-    const holding = configurations.filter(test);
-    const requiredWhen = requiredWhenOf(holding, configurations, dimensions);
-    demands.set(`${block}\0${name}`, {
-      required: holding.length > 0,
-      ...(requiredWhen ? { requiredWhen } : {}),
-    });
-    out.push({
-      block,
-      name,
-      required: holding.length > 0,
-      ...(requiredWhen && holding.length > 0 ? { requiredWhen } : {}),
-    });
+  const record = (block: InputRequirement["block"], name: string, condition: Condition) => {
+    const held = space.and(condition, universe);
+    const required = held !== FALSE;
+    const requiredWhen = held === universe ? undefined : entriesOfBlocks(space.cover(held, universe));
+    demands.set(`${block}\0${name}`, { required, ...(requiredWhen ? { requiredWhen } : {}) });
+    out.push({ block, name, required, ...(requiredWhen && required ? { requiredWhen } : {}) });
   };
 
   // The application's own inputs.
@@ -192,17 +185,14 @@ export function inputRequirements(
     for (const [name, entry] of Object.entries(entries as Record<string, Record<string, unknown>>)) {
       if (!entry || typeof entry !== "object") continue;
       if (admitsAbsence(entry) || entry.default !== undefined) {
-        record(block, name, () => false);
+        record(block, name, FALSE);
         continue;
       }
       if (dimensionInputs.has(`${block}.${name}`) || (block === "ports" && addressPorts.has(name))) {
-        record(block, name, () => true);
+        record(block, name, TRUE);
         continue;
       }
-      record(block, name, (a) => {
-        const read = readsIn(a).entries.get(block)!;
-        return read.has("*") || read.has(name);
-      });
+      record(block, name, readOf(space, reads(), block, name));
     }
   }
 
@@ -215,38 +205,40 @@ export function inputRequirements(
       const module = (m.metadata as { module?: unknown } | undefined)?.module;
       return module === undefined || module === rootName;
     }),
+    space,
     keys,
     ownOptional,
     (path, field, member) => needDimensionKey(path.segments, field, member),
     { manifests, libraries, callNames, memo: new Map(), active: new Set() },
   );
   // A `shared` library imported twice reaches one need through both imports.
+  const environmentNeeds = new Map<string, Condition>();
   for (const item of translated.environment) {
-    const key = `needs\0${item.path.segments.join(".")}`;
-    const previous = predicates.get(key);
-    predicates.set(key, previous ? (a) => previous(a) || item.test(a) : item.test);
+    const key = item.path.segments.join(".");
+    environmentNeeds.set(key, space.or(environmentNeeds.get(key) ?? FALSE, item.condition));
   }
 
   // The application's own needs.
   for (const need of ownNeeds) {
     if (need.optional) {
-      record("needs", need.name, () => false);
+      record("needs", need.name, FALSE);
       continue;
     }
     const memberDimension = choices.dimensions.some((d) => d.needPath?.length === 1 && d.needPath[0] === need.name);
-    const forwards = translated.forwarded.get(need.name) ?? [];
-    record("needs", need.name, (a) => {
-      if (memberDimension) return true;
-      const reads = readsIn(a);
-      const read = reads.entries.get("resources")!;
-      return (
-        read.has("*") ||
-        read.has(need.name) ||
-        reads.refs.has(need.name) ||
-        translated.opaque.has(need.name) ||
-        forwards.some((f) => f(a))
-      );
-    });
+    if (memberDimension || translated.opaque.has(need.name)) {
+      record("needs", need.name, TRUE);
+      continue;
+    }
+    const read = reads();
+    record(
+      "needs",
+      need.name,
+      space.some([
+        readOf(space, read, "resources", need.name),
+        read.refs.get(need.name) ?? FALSE,
+        ...(translated.forwarded.get(need.name) ?? []),
+      ]),
+    );
   }
 
   // Every other need the environment is read for: a library's.
@@ -254,15 +246,14 @@ export function inputRequirements(
     if (entry.path.length < 2) continue;
     const name = entry.path.join(".");
     if (entry.need.optional) {
-      record("needs", name, () => false);
+      record("needs", name, FALSE);
       continue;
     }
-    record("needs", name, predicates.get(`needs\0${name}`) ?? (() => true));
+    record("needs", name, environmentNeeds.get(name) ?? TRUE);
   }
 
   return {
     dimensions,
-    configurations,
     inputs: out,
     requiredIn(input, assignment) {
       const demand = demands.get(`${input.block}\0${input.name}`);
@@ -281,10 +272,11 @@ interface NeedPathBelow {
 
 /** What one module's imports require of their libraries' needs, in that
  *  module's terms: each need the environment is read for, by its path below the
- *  module, and each need forwarded whole from one of the module's own needs. */
+ *  module, and each need forwarded whole from one of the module's own needs —
+ *  each with the module's configurations requiring it. */
 interface ImportedRequirements {
-  readonly environment: Array<{ path: NeedPathBelow; optional: boolean; test: (a: Assignment) => boolean }>;
-  readonly forwarded: Map<string, Array<(a: Assignment) => boolean>>;
+  readonly environment: Array<{ path: NeedPathBelow; optional: boolean; condition: Condition }>;
+  readonly forwarded: Map<string, Condition[]>;
   /** The module's own needs forwarded to an import whose library the analysis
    *  holds no documents for: reached whatever it requires. */
   readonly opaque: Set<string>;
@@ -323,16 +315,18 @@ function importTarget(importDoc: ResourceManifest, context: RequirementContext):
 
 /**
  * What the libraries `imports` reach require of their needs, translated through
- * each import's binding into the importing module's configurations (`keys` its
+ * each import's binding into the importing module's `space` (`keys` its
  * dimensions, `ownNeeds` its needs by optionality, `keyOf` the key of a need
  * below it). A library's requirement is derived once, over its own
- * configurations: a literal or a supply is a fact, a bare chain to one of the
- * importer's dimensions is that dimension, an unsupplied optional need its
- * presence dimension, and anything else decides nothing, so the need is
- * required whatever that library dimension holds.
+ * configurations, and carried across: a literal or a supply is a fact the
+ * library's dimension is restricted to, a bare chain to one of the importer's
+ * dimensions renames it, an unsupplied optional need is its presence
+ * dimension, and anything else decides nothing, so the dimension is projected
+ * out — the need is required whatever that library dimension holds.
  */
 function importRequirements(
   imports: readonly ResourceManifest[],
+  space: ConditionSpace,
   keys: ReadonlySet<string>,
   ownNeeds: ReadonlyMap<string, boolean>,
   keyOf: (path: NeedPathBelow, field?: string, member?: string) => string,
@@ -418,47 +412,42 @@ function importRequirements(
       const key = dimension.projection === "member" ? `${chain[0]}.${dimension.member}` : chain[0]!;
       return keys.has(key) ? { key } : undefined;
     };
-    /** Whether an importer configuration agrees with a library one. */
-    const agrees = (assignment: Assignment, a: Assignment) =>
-      library.dimensions.every((dimension) => {
-        const meaning = translate(dimension);
-        if (!meaning) return true;
-        const value = assignment[dimension.key];
-        return "fact" in meaning ? meaning.fact === value : a[meaning.key] === value;
-      });
-    const testOf = (holding: readonly Assignment[]) => (a: Assignment) => holding.some((l) => agrees(l, a));
+    const byKey = new Map(library.dimensions.map((d) => [d.key, d]));
+    const carry = (condition: Condition) =>
+      library.space.translate(condition, space, (key) => translate(byKey.get(key)!));
 
-    for (const [need, { optional, holding }] of library.needs) {
-      const test = testOf(holding);
+    for (const [need, { optional, condition }] of library.needs) {
+      const carried = carry(condition);
       const written = supplied[need];
       if (written === undefined) {
-        out.environment.push({ path: below({ segments: [need], rooted: false }), optional, test });
+        out.environment.push({ path: below({ segments: [need], rooted: false }), optional, condition: carried });
         continue;
       }
       const supply = needSupplyOf(written);
       if (supply.form === "whole" && supply.target.alias === undefined && ownNeeds.has(supply.target.name)) {
-        out.forwarded.set(supply.target.name, [...(out.forwarded.get(supply.target.name) ?? []), test]);
+        out.forwarded.set(supply.target.name, [...(out.forwarded.get(supply.target.name) ?? []), carried]);
       }
     }
     for (const item of library.environment) {
-      out.environment.push({ path: below(item.path), optional: item.optional, test: testOf(item.holding) });
+      out.environment.push({ path: below(item.path), optional: item.optional, condition: carry(item.condition) });
     }
   }
   return out;
 }
 
-/** What one library requires of its needs, over its own configurations: each
- *  of its own needs, and each need of a library it imports that its import
- *  leaves to the environment. */
+/** What one library requires of its needs, as conditions over its own
+ *  configurations: each of its own needs, and each need of a library it
+ *  imports that its import leaves to the environment. */
 interface LibraryRequirement {
   /** The library's dimensions: its choices' own, and the presence of each
    *  optional need of a library it imports left to the environment. */
   readonly dimensions: readonly Dimension[];
+  readonly space: ConditionSpace;
   /** Of those, each nested need's presence by key: the need's path below the
    *  library. */
   readonly nested: ReadonlyMap<string, NeedPathBelow>;
-  readonly needs: Map<string, { optional: boolean; holding: Assignment[] }>;
-  readonly environment: Array<{ path: NeedPathBelow; optional: boolean; holding: Assignment[] }>;
+  readonly needs: Map<string, { optional: boolean; condition: Condition }>;
+  readonly environment: Array<{ path: NeedPathBelow; optional: boolean; condition: Condition }>;
 }
 
 function libraryRequirement(documents: ModuleDocuments, context: RequirementContext): LibraryRequirement {
@@ -470,19 +459,19 @@ function libraryRequirement(documents: ModuleDocuments, context: RequirementCont
   const declared = readNeeds(libraryDoc);
   const libraryName = libraryDoc?.metadata?.name as string | undefined;
 
-  const dimensions: Dimension[] = [...choices.dimensions];
-  const keys = new Set(dimensions.map((d) => d.key));
+  // Which needs the imports leave to the environment decides the nested
+  // presence dimensions, so the imports are read for that over the choices'
+  // own space first, then carried into the space those dimensions complete.
   const nestedKey = (path: NeedPathBelow, field?: string, member?: string) =>
     `${path.rooted ? "/" : ""}${needDimensionKey(path.segments, field, member)}`;
-  const imported = importRequirements(
-    all.filter((m) => m.kind === "Telo.Import"),
-    keys,
-    new Map(declared.map((need) => [need.name, need.optional])),
-    nestedKey,
-    context,
-  );
+  const ownSpace = new ConditionSpace(choices.dimensions);
+  const ownKeys = new Set(choices.dimensions.map((d) => d.key));
+  const keys = new Set(ownKeys);
   const nested = new Map<string, NeedPathBelow>();
-  for (const item of imported.environment) {
+  const dimensions: Dimension[] = [...choices.dimensions];
+  const importDocs = all.filter((m) => m.kind === "Telo.Import");
+  const ownNeeds = new Map(declared.map((need) => [need.name, need.optional]));
+  for (const item of importRequirements(importDocs, ownSpace, ownKeys, ownNeeds, nestedKey, context).environment) {
     if (!item.optional) continue;
     const key = nestedKey(item.path);
     if (keys.has(key)) continue;
@@ -497,45 +486,28 @@ function libraryRequirement(documents: ModuleDocuments, context: RequirementCont
       declaration: {},
     });
   }
-  const configurations = enumerateConfigurations(dimensions);
-  const own = (assignment: Assignment) => {
-    const out: Record<string, unknown> = {};
-    for (const d of choices.dimensions) out[d.key] = assignment[d.key];
-    return out;
-  };
-  const readsOf = new Map<string, Reads>();
-  const readsIn = (assignment: Assignment): Reads => {
-    const key = assignmentKey(own(assignment));
-    const known = readsOf.get(key);
-    if (known) return known;
-    const expanded = expandChoices(all, choices.decide(own(assignment))).manifests.filter((m) => !isStandInDeclaration(m));
-    const reads = documentReads(expanded, libraryName, (m, source) => choices.valueIn(m, source, own(assignment)), context.callNames);
-    readsOf.set(key, reads);
-    return reads;
-  };
+  const space = new ConditionSpace(dimensions);
+  const universe = configurationUniverse(space, dimensions);
+  const imported = importRequirements(importDocs, space, keys, ownNeeds, nestedKey, context);
+  const reads = conditionedReads(all, choices, space, libraryName, context.callNames, () => true);
 
-  const needs = new Map<string, { optional: boolean; holding: Assignment[] }>();
+  const needs = new Map<string, { optional: boolean; condition: Condition }>();
   for (const need of declared) {
-    const forwards = imported.forwarded.get(need.name) ?? [];
-    const holding = configurations.filter((a) => {
-      const reads = readsIn(a);
-      const resources = reads.entries.get("resources")!;
-      return (
-        resources.has("*") ||
-        resources.has(need.name) ||
-        reads.refs.has(need.name) ||
-        imported.opaque.has(need.name) ||
-        forwards.some((f) => f(a))
-      );
-    });
-    needs.set(need.name, { optional: need.optional, holding });
+    const condition = imported.opaque.has(need.name)
+      ? TRUE
+      : space.some([
+          readOf(space, reads, "resources", need.name),
+          reads.refs.get(need.name) ?? FALSE,
+          ...(imported.forwarded.get(need.name) ?? []),
+        ]);
+    needs.set(need.name, { optional: need.optional, condition: space.and(condition, universe) });
   }
   const environment = imported.environment.map((item) => ({
     path: item.path,
     optional: item.optional,
-    holding: configurations.filter(item.test),
+    condition: space.and(item.condition, universe),
   }));
-  return { dimensions, nested, needs, environment };
+  return { dimensions, space, nested, needs, environment };
 }
 
 /** One dimension as a report names it: its key, its values, the environment
@@ -653,37 +625,125 @@ export function requirementSentence(
 }
 
 /**
- * What `documents` read: every entry a CEL expression reads, and every name a
- * `!ref` names — a kind document counted only where its kind is instantiated,
- * a ternary only through the arm `decide` says its guard takes.
+ * What `documents` read across every configuration, off their one union
+ * expansion over `space`: every entry a CEL expression reads and every name a
+ * `!ref` names, each under the condition of the declaration and the options
+ * holding it — a kind document's where its kind is instantiated, a ternary's
+ * arm where its guard takes it. `keep` selects the declarations counted.
  */
-function documentReads(
+function conditionedReads(
   documents: readonly ResourceManifest[],
+  choices: ChoiceReading,
+  space: ConditionSpace,
   moduleName: string | undefined,
-  decide: (holder: ResourceManifest, source: string) => { value: unknown } | undefined,
   callNames: ReturnType<typeof moduleCallNamesByModule>,
+  keep: (m: ResourceManifest) => boolean,
 ): Reads {
-  const reads = emptyReads();
-  const instantiated = instantiatedKinds(documents, moduleName);
-  for (const m of documents) {
-    if (isKindDocument(m) && !instantiated.has(m.metadata?.name as string)) continue;
+  const union = expandUnion(documents, space, choices.branchConditions(space));
+  const declarations = union.declarations.filter(
+    (d) => d.condition !== FALSE && !isStandInDeclaration(d.manifest) && keep(d.manifest),
+  );
+  const entries = new Map<Block, Map<string, Condition>>([...BLOCKS].map((b) => [b as Block, new Map()]));
+  const refs = new Map<string, Condition>();
+  const add = (map: Map<string, Condition>, name: string, condition: Condition) =>
+    map.set(name, space.or(map.get(name) ?? FALSE, condition));
+  const instantiated = instantiatedKinds(declarations, moduleName, space);
+  for (const { manifest: m, condition: declared } of declarations) {
+    const condition = isKindDocument(m) ? (instantiated.get(m.metadata?.name as string) ?? FALSE) : declared;
+    if (condition === FALSE) continue;
     const names = moduleCallNamesOf(callNames, m);
-    walkCelExpressions(m, "", (source, _path, engine) => {
+    const outcomes = new Map<string, ReturnType<ChoiceReading["valueOutcomes"]>>();
+    const decide = (guard: string) => {
+      if (!outcomes.has(guard)) outcomes.set(guard, choices.valueOutcomes(m, guard, space));
+      return outcomes.get(guard);
+    };
+    // A template body's choice the configuration decides holds each branch
+    // where it is taken; one reading the definition's own values holds every
+    // branch, whatever value the definition is given.
+    const bodyBranches =
+      m.kind === "Telo.Definition"
+        ? (sentinel: ExpansionSentinel): Map<string, Condition> | undefined => {
+            const tag = expansionTagOf(sentinel);
+            if (tag !== "if" && tag !== "switch") return undefined;
+            const written = (sentinel as Record<string, unknown>)[tag];
+            const source = isTaggedSentinel(written) ? written.source : isCompiledValue(written) ? written.source : undefined;
+            const outcomes = typeof source === "string" ? decide(source) : undefined;
+            if (!outcomes) return undefined;
+            const out = new Map<string, Condition>();
+            for (const { value, condition: at } of outcomes) {
+              const branch = branchForValue(sentinel, tag, value);
+              if (branch !== null) out.set(branch, space.or(out.get(branch) ?? FALSE, at));
+            }
+            return out;
+          }
+        : undefined;
+    walkConditionedExpressions(space, m, condition, (source, engine, held) => {
       for (const expression of celExpressionsOf(engine, source)) {
         const parsed = parseCelSource(expression, names);
         if (!parsed) continue;
-        visitReads(wrapCelAst(parsed.root, 0), expression, (guard) => decide(m, guard), reads);
+        visitReads(space, wrapCelAst(parsed.root, 0), expression, decide, held, (block, name, at) =>
+          add(entries.get(block)!, name, at),
+        );
       }
-    });
-    collectRefs(m, reads.refs, isModuleKind(m.kind));
+    }, bodyBranches);
+    collectRefs(space, m, condition, (name, at) => add(refs, name, at), isModuleKind(m.kind));
   }
-  return reads;
+  return { entries, refs };
 }
 
-/** The names of the module's own kinds a declaration of `documents`
- *  instantiates — directly, through `extends`, or through the template body of
- *  an instantiated kind. */
-function instantiatedKinds(documents: readonly ResourceManifest[], moduleName: string | undefined): Set<string> {
+/** Each CEL-bearing tag in `value` with the condition it is held under: a
+ *  choice's option under its own, and an unexpanded choice `branches` decides
+ *  each branch under the condition it is taken in. */
+function walkConditionedExpressions(
+  space: ConditionSpace,
+  value: unknown,
+  condition: Condition,
+  found: (source: string, engine: string, condition: Condition) => void,
+  branches?: (sentinel: ExpansionSentinel) => ReadonlyMap<string, Condition> | undefined,
+): void {
+  const walk = (at: unknown, held: Condition) => walkConditionedExpressions(space, at, held, found, branches);
+  if (isTaggedSentinel(value)) {
+    found(value.source, value.engine, condition);
+    return;
+  }
+  if (isAlternatives(value)) {
+    for (const option of value.options) {
+      const held = space.and(condition, option.condition);
+      if (option.present && held !== FALSE) walk(option.value, held);
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) walk(item, condition);
+    return;
+  }
+  if (value === null || typeof value !== "object" || isCompiledValue(value)) return;
+  const proto = Object.getPrototypeOf(value);
+  if (proto !== Object.prototype && proto !== null) return;
+  const sentinel = isExpansionSentinel(value) ? value : undefined;
+  const taken = branches && sentinel ? branches(sentinel) : undefined;
+  if (sentinel && taken) {
+    const tag = expansionTagOf(sentinel) as "if" | "switch";
+    const branchKeys = new Set<string>();
+    for (const [branch, keys] of branchesOf({ sentinel, tag })) {
+      branchKeys.add(String(keys[0]));
+      const held = space.and(condition, taken.get(branch) ?? FALSE);
+      if (held !== FALSE) walk(keys.reduce<unknown>((at, key) => (at as Record<string, unknown>)?.[key], value), held);
+    }
+    for (const key in value) if (!branchKeys.has(key)) walk((value as Record<string, unknown>)[key], condition);
+    return;
+  }
+  for (const key in value) walk((value as Record<string, unknown>)[key], condition);
+}
+
+/** Where each of the module's own kinds is instantiated among `declarations` —
+ *  directly, through `extends`, or through the template body of an
+ *  instantiated kind. */
+function instantiatedKinds(
+  declarations: readonly { readonly manifest: ResourceManifest; readonly condition: Condition }[],
+  moduleName: string | undefined,
+  space: ConditionSpace,
+): Map<string, Condition> {
   const own = (kind: unknown): string | undefined => {
     if (typeof kind !== "string") return undefined;
     const dot = kind.indexOf(".");
@@ -691,39 +751,48 @@ function instantiatedKinds(documents: readonly ResourceManifest[], moduleName: s
     return dot > 0 && (prefix === "Self" || prefix === moduleName) ? kind.slice(dot + 1) : undefined;
   };
   const kinds = new Map<string, ResourceManifest>();
-  for (const m of documents) if (isKindDocument(m)) kinds.set(m.metadata?.name as string, m);
-  const out = new Set<string>();
+  for (const { manifest } of declarations) if (isKindDocument(manifest)) kinds.set(manifest.metadata?.name as string, manifest);
+  const out = new Map<string, Condition>();
   const pending: string[] = [];
-  const add = (name: string | undefined) => {
-    if (name === undefined || out.has(name) || !kinds.has(name)) return;
-    out.add(name);
+  const add = (name: string | undefined, condition: Condition) => {
+    if (name === undefined || !kinds.has(name)) return;
+    const before = out.get(name) ?? FALSE;
+    const after = space.or(before, condition);
+    if (after === before) return;
+    out.set(name, after);
     pending.push(name);
   };
-  for (const m of documents) if (!isKindDocument(m)) add(own(m.kind));
+  for (const { manifest, condition } of declarations) if (!isKindDocument(manifest)) add(own(manifest.kind), condition);
   while (pending.length > 0) {
-    const kind = kinds.get(pending.pop()!) as Record<string, any>;
-    add(own(kind.extends));
+    const name = pending.pop()!;
+    const kind = kinds.get(name) as Record<string, any>;
+    const condition = out.get(name)!;
+    add(own(kind.extends), condition);
     const body = kind.resources;
-    if (Array.isArray(body)) for (const entry of body) add(own(entry?.kind));
+    if (Array.isArray(body)) for (const entry of body) add(own(entry?.kind), condition);
   }
   return out;
 }
 
-/** Every chain `node` reads off a namespace root, each ternary visited through
- *  the arm its guard takes where `decide` says. */
+/** Every chain `node` reads off a namespace root under `condition`, each
+ *  ternary's arm under the condition its guard takes it, where `decide` gives
+ *  the guard's values. */
 function visitReads(
+  space: ConditionSpace,
   node: CelNode,
   source: string,
-  decide: (guard: string) => { value: unknown } | undefined,
-  reads: Reads,
+  decide: (guard: string) => ReturnType<ChoiceReading["valueOutcomes"]>,
+  condition: Condition,
+  read: (block: Block, name: string, condition: Condition) => void,
 ): void {
+  if (condition === FALSE) return;
   const chain = chainOf(node);
   if (chain) {
     const [root, member] = chain;
-    if (BLOCKS.has(root!)) reads.entries.get(root as Block)!.add(member ?? "*");
+    if (BLOCKS.has(root!)) read(root as Block, member ?? "*", condition);
     return;
   }
-  const visit = (child: CelNode) => visitReads(child, source, decide, reads);
+  const visit = (child: CelNode, at: Condition = condition) => visitReads(space, child, source, decide, at, read);
   switch (node.kind) {
     case "literal":
     case "ident":
@@ -732,20 +801,24 @@ function visitReads(
     case "index": {
       const base = chainOf(node.target);
       // A read past an optional member or through an index reads its base whole.
-      if (base && BLOCKS.has(base[0]!)) reads.entries.get(base[0] as Block)!.add(base[1] ?? "*");
+      if (base && BLOCKS.has(base[0]!)) read(base[0] as Block, base[1] ?? "*", condition);
       else visit(node.target);
       if (node.kind === "index") visit(node.index);
       return;
     }
     case "ternary": {
-      const decided = decide(source.slice(node.cond.range[0], node.cond.range[1]));
-      if (decided && typeof decided.value === "boolean") {
-        visit(decided.value ? node.then : node.else);
-        return;
+      const outcomes = decide(source.slice(node.cond.range[0], node.cond.range[1]));
+      let then = FALSE;
+      let otherwise = FALSE;
+      let undecided = outcomes ? FALSE : TRUE;
+      for (const outcome of outcomes ?? []) {
+        if (outcome.value === true) then = space.or(then, outcome.condition);
+        else if (outcome.value === false) otherwise = space.or(otherwise, outcome.condition);
+        else undecided = space.or(undecided, outcome.condition);
       }
-      visit(node.cond);
-      visit(node.then);
-      visit(node.else);
+      visit(node.then, space.and(condition, space.or(then, undecided)));
+      visit(node.else, space.and(condition, space.or(otherwise, undecided)));
+      visit(node.cond, space.and(condition, undecided));
       return;
     }
     case "binary":
@@ -783,29 +856,44 @@ function chainOf(node: CelNode): string[] | undefined {
   return undefined;
 }
 
-/** Every name a reference in `value` names in its own module: a `!ref`
- *  sentinel or a resolved reference with no alias. An import's `needs:` is a
- *  forward, translated through the library's requirement instead. */
-function collectRefs(value: unknown, refs: Set<string>, moduleDoc: boolean, key?: string): void {
+/** Every name a reference in `value` names in its own module, under the
+ *  condition holding it: a `!ref` sentinel or a resolved reference with no
+ *  alias. An import's `needs:` is a forward, translated through the library's
+ *  requirement instead. */
+function collectRefs(
+  space: ConditionSpace,
+  value: unknown,
+  condition: Condition,
+  found: (name: string, condition: Condition) => void,
+  moduleDoc: boolean,
+  key?: string,
+): void {
   if (value === null || typeof value !== "object") return;
+  if (isAlternatives(value)) {
+    for (const option of value.options) {
+      const held = space.and(condition, option.condition);
+      if (option.present && held !== FALSE) collectRefs(space, option.value, held, found, moduleDoc, key);
+    }
+    return;
+  }
   const target = refSentinelTarget(value);
   if (target) {
-    if (target.alias === undefined) refs.add(target.name);
+    if (target.alias === undefined) found(target.name, condition);
     return;
   }
   if (isResolvedReference(value)) {
     const ref = value as { name?: unknown; alias?: unknown };
-    if (typeof ref.name === "string" && ref.alias === undefined) refs.add(ref.name);
+    if (typeof ref.name === "string" && ref.alias === undefined) found(ref.name, condition);
     return;
   }
   if (isTaggedSentinel(value)) return;
   if (Array.isArray(value)) {
-    for (const item of value) collectRefs(item, refs, false);
+    for (const item of value) collectRefs(space, item, condition, found, false);
     return;
   }
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
     if (moduleDoc && (k === "imports" || k === "needs")) continue;
     if (k === "needs" && key === undefined && (value as { kind?: unknown }).kind === "Telo.Import") continue;
-    collectRefs(v, refs, false, k);
+    collectRefs(space, v, condition, found, false, k);
   }
 }

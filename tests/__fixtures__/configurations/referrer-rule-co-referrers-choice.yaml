@@ -1,0 +1,48 @@
+# A referrer rule refusing two referrers that claim one name in the resource
+# they share: the second claim is written only where a choice decides it.
+kind: Telo.Application
+metadata: { name: ReferrerRuleCoReferrersChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets:
+  - !ref first
+  - !ref second
+---
+kind: Telo.Definition
+metadata: { name: Table }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties: {}
+  x-telo-referrer-rules:
+    - referrer: Self.Store
+      coReferrers: /table
+      condition: !cel "!coReferrers.exists(o, o.name == referrer.name)"
+      code: STORE_NAME_DUPLICATE
+      message: claims a name another store in this table already claims
+---
+kind: Telo.Definition
+metadata: { name: Store }
+capability: Telo.Runnable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema:
+  type: object
+  properties:
+    table: { x-telo-ref: { kind: Self.Table, use: dependency } }
+    name: { type: string }
+---
+kind: Self.Table
+metadata: { name: table }
+---
+kind: Self.Store
+metadata: { name: first }
+table: !ref table
+name: orders
+---
+kind: Self.Store
+metadata: { name: second }
+table: !ref table
+name: !if
+  if: !cel "variables.flag1"
+  then: orders
+  else: archive

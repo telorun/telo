@@ -80,7 +80,7 @@ metadata: { name: enumProperty }
 source: ./__fixtures__/contracts/enum-property.yaml
 expect:
   errors:
-    - { code: CONTRACT_INPUTS_MISMATCH, message: "expected one of active | retired" }
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "must be equal to one of the allowed values (active | retired)" }
 ---
 # The `graph_` prefix is the table kind's own, refused by its schema — at check,
 # and again at creation before `base:` maps anything onto the engine table.

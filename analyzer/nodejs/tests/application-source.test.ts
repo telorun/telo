@@ -1,3 +1,4 @@
+import { collectFilePositions } from "../src/diagnostic-location.js";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
 import {
@@ -152,7 +153,7 @@ async function check(parent: string): Promise<Array<[string, string, string]>> {
   const graph = await loaded(parent);
   return new StaticAnalyzer()
     .analyze(flattenForAnalyzer(graph), {
-      moduleDocuments: collectModuleDocuments(graph),
+      moduleDocuments: collectModuleDocuments(graph), positions: collectFilePositions(graph),
       applicationSources: collectApplicationSources(graph),
     })
     .map((d) => [String(d.code), String((d.data as { path?: string } | undefined)?.path), d.message]);
@@ -271,8 +272,8 @@ listen: { http: 70000 }
 `),
     );
     expect(diagnostics.map(([code, path]) => [code, path])).toEqual([
-      ["CEL_TYPE_ERROR", "inputs.values.count"],
       ["SCHEMA_VIOLATION", "inputs.values.who"],
+      ["CEL_TYPE_ERROR", "inputs.values.count"],
       ["SCHEMA_VIOLATION", "listen.http"],
     ]);
   });
@@ -304,8 +305,8 @@ ports:
       ),
     );
     expect(diagnostics.map(([code, path]) => [code, path])).toEqual([
-      ["NEED_FIELD_UNDECLARED", "needs.state.extra"],
       ["NEED_SLOT_MISMATCH", "needs.state"],
+      ["NEED_FIELD_UNDECLARED", "needs.state.extra"],
       ["NEED_FORWARD_INCOMPATIBLE", "needs.state"],
       ["REFERENCE_KIND_MISMATCH", "needs.state"],
     ]);

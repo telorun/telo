@@ -1,0 +1,3 @@
+kind: Telo.Application
+metadata: { name: StampsArtifact }
+imports: { Lib: oci://registry.test/stamps@1.0.0 }

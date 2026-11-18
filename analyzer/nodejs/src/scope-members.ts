@@ -2,6 +2,7 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { isTaggedSentinel } from "@telorun/templating";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { isModuleKind } from "./module-kinds.js";
+import type { ScopeMemberIndex, WrittenInside } from "./placement.js";
 import type { ReachSite } from "./reference-reach.js";
 import { scopeAddress, type ScopeAddress, type ScopeSite } from "./scope-address.js";
 import {
@@ -132,7 +133,7 @@ export function outOfReachNames(declaration: ResourceManifest): Map<string, Outs
 }
 
 /** Every scope member of one analysis. */
-export class ScopeMembers {
+export class ScopeMembers implements ScopeMemberIndex {
   private readonly byToken = new Map<string, ScopeMember>();
 
   constructor(readonly all: readonly ScopeMember[]) {
@@ -140,40 +141,31 @@ export class ScopeMembers {
   }
 
   /**
-   * Move every diagnostic written about a member to its holder: `data.resource`
-   * the top-level declaration holding it, `data.filePath` that declaration's
-   * file, and `data.path` the member's place in it (`with[0].steps[1].invoke`),
-   * at every depth of nested scopes. The index is the member's position in its
-   * scope array when the diagnostic is moved — an extraction placed there is
-   * moved again, to where it was written, with the rest of the extractions.
+   * Where a diagnostic written about a member stands in its holder:
+   * `resource` the top-level declaration holding it, `filePath` that
+   * declaration's file, and `path` the member's place in it
+   * (`with[0].steps[1].invoke`), at every depth of nested scopes. The index is
+   * the member's position in its scope array when the diagnostic is moved — an
+   * extraction placed there is moved again, to where it was written, with the
+   * rest of the extractions.
    */
-  relocate(diagnostics: AnalysisDiagnostic[]): AnalysisDiagnostic[] {
-    if (this.all.length === 0) return diagnostics;
-    return diagnostics.map((d) => {
-      const data = d.data as { filePath?: unknown; path?: unknown } | undefined;
-      const member = typeof data?.filePath === "string" ? this.byToken.get(data.filePath) : undefined;
-      if (!member) return d;
-      let path = typeof data!.path === "string" ? data!.path : "";
-      let current: ScopeMember | undefined = member;
-      let root: ResourceManifest = member.holder;
-      while (current) {
-        const index = current.scope.declarations.indexOf(current.declaration);
-        const at = `${current.scope.path}[${index}]`;
-        path = path ? (path.startsWith("[") ? `${at}${path}` : `${at}.${path}`) : at;
-        root = current.holder;
-        current = members.get(current.holder);
-      }
-      const meta = root.metadata as { name?: string; source?: string };
-      return {
-        ...d,
-        data: {
-          ...(d.data as Record<string, unknown>),
-          resource: { kind: root.kind, name: meta.name },
-          filePath: meta.source,
-          path,
-        },
-      };
-    });
+  memberPlace(d: AnalysisDiagnostic): WrittenInside | undefined {
+    if (this.all.length === 0) return undefined;
+    const data = d.data as { filePath?: unknown; path?: unknown } | undefined;
+    const member = typeof data?.filePath === "string" ? this.byToken.get(data.filePath) : undefined;
+    if (!member) return undefined;
+    let path = typeof data!.path === "string" ? data!.path : "";
+    let current: ScopeMember | undefined = member;
+    let root: ResourceManifest = member.holder;
+    while (current) {
+      const index = current.scope.declarations.indexOf(current.declaration);
+      const at = `${current.scope.path}[${index}]`;
+      path = path ? (path.startsWith("[") ? `${at}${path}` : `${at}.${path}`) : at;
+      root = current.holder;
+      current = members.get(current.holder);
+    }
+    const meta = root.metadata as { name?: string; source?: string };
+    return { resource: { kind: root.kind, name: meta.name }, filePath: meta.source, path };
   }
 }
 
@@ -244,10 +236,8 @@ function stampAsMember(member: ResourceManifest, holder: ResourceManifest, token
   const own = member.metadata as Record<string, unknown>;
   const from = holder.metadata as Record<string, unknown>;
   const stamped: Record<string, unknown> = { ...own };
-  if (typeof from.module === "string" && typeof own.module !== "string") stamped.module = from.module;
-  if (from.moduleGlobals !== undefined && own.moduleGlobals === undefined) {
-    stamped.moduleGlobals = from.moduleGlobals;
-  }
+  if (typeof from.module === "string") stamped.module = from.module;
+  if (from.moduleGlobals !== undefined) stamped.moduleGlobals = from.moduleGlobals;
   if (isForwardedDeclaration(holder)) stamped.forwardedInternal = true;
   stamped.source = token;
   if (typeof from.sourceLine === "number") stamped.sourceLine = from.sourceLine;

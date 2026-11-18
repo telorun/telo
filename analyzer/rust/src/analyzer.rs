@@ -3,15 +3,17 @@
 //! kind document of the graph (a dependency's reported at the entry's import reaching
 //! it), the entry module's reference forms, its own name, and a plain string it leaves
 //! holding `${{`. Each is a refusal the Rust kernel makes; Node's other passes have no
-//! twin yet, so an analysis here reports a subset of Node's, in Node's order, and never a
-//! diagnostic Node does not make.
+//! twin yet, so an analysis here reports a subset of Node's and never a diagnostic Node does
+//! not make. It reports them in Node's order, the finding order (`finding_order`), whatever
+//! order its passes run in.
 //!
 //! Hosts present the result through `graph_diagnostics::assemble_graph_diagnostics`.
 
 use crate::capability_roster::capability_problem;
+use crate::finding_order::FindingOrder;
 use crate::loaded_types::LoadedGraph;
 use crate::reaching_import::{import_anchored_diagnostic, import_reach, module_name_of};
-use crate::types::{kind_of, name_of, AnalysisDiagnostic, DiagnosticData, DiagnosticResource};
+use crate::types::{kind_of, name_of, AnalysisDiagnostic, DiagnosticData, DiagnosticResource, WrittenAt};
 use crate::untagged_interpolation::validate_untagged_interpolation;
 use crate::validate_identifier_names::validate_identifier_names;
 use crate::validate_reference_forms::{validate_reference_forms, AcceptsValue};
@@ -31,7 +33,7 @@ pub fn analyze(graph: &LoadedGraph, options: &AnalysisOptions) -> Vec<AnalysisDi
     diagnostics.extend(validate_reference_forms(graph, options.accepts_value));
     diagnostics.extend(validate_identifier_names(graph));
     diagnostics.extend(validate_untagged_interpolation(graph));
-    diagnostics
+    FindingOrder::new(graph).sort(diagnostics)
 }
 
 /// The closed roster: a `capability:` names a lifecycle role, or the kernel refuses the
@@ -55,18 +57,17 @@ fn capability_diagnostics(graph: &LoadedGraph) -> Vec<AnalysisDiagnostic> {
             };
             let name = name_of(document).unwrap_or_default();
             let message = format!("{kind} '{name}': {}", problem.message);
+            let written = DiagnosticData {
+                resource: Some(DiagnosticResource { kind: kind.to_string(), name: name.to_string() }),
+                file_path: Some(module.owner.source.clone()),
+                path: Some("capability".to_string()),
+                ..Default::default()
+            };
             diagnostics.push(match (via, module_name) {
-                (Some(via), Some(module_name)) => import_anchored_diagnostic(problem.code, module_name, via, &message),
-                _ => AnalysisDiagnostic::error(
-                    problem.code,
-                    message,
-                    DiagnosticData {
-                        resource: Some(DiagnosticResource { kind: kind.to_string(), name: name.to_string() }),
-                        file_path: Some(module.owner.source.clone()),
-                        path: Some("capability".to_string()),
-                        ..Default::default()
-                    },
-                ),
+                (Some(via), Some(module_name)) => {
+                    import_anchored_diagnostic(problem.code, module_name, via, &message, Some(WrittenAt::of(&written)))
+                }
+                _ => AnalysisDiagnostic::error(problem.code, message, written),
             });
         }
     }

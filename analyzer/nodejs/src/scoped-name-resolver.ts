@@ -74,8 +74,13 @@ export class ScopedNameResolver<T> {
     private readonly reading: DeclarationReading<T>,
     /** A resolver over declarations beside these, read as if one set: a name's
      *  module-level declarations are both layers' in `order`, and a scope is
-     *  the layer's declaring it. */
-    private readonly base?: { readonly resolver: ScopedNameResolver<T>; readonly order: (a: T, b: T) => number },
+     *  the layer's declaring it. `hidden` are the base's declarations these
+     *  stand in for. */
+    private readonly base?: {
+      readonly resolver: ScopedNameResolver<T>;
+      readonly order: (a: T, b: T) => number;
+      readonly hidden?: ReadonlySet<T>;
+    },
   ) {
     for (const declaration of declarations) {
       const name = reading.nameOf(declaration);
@@ -163,7 +168,9 @@ export class ScopedNameResolver<T> {
   declarationsOf(name: string): readonly T[] {
     const own = this.moduleLevel.get(name) ?? [];
     if (!this.base) return own;
-    const below = this.base.resolver.declarationsOf(name);
+    const hidden = this.base.hidden;
+    const all = this.base.resolver.declarationsOf(name);
+    const below = hidden && hidden.size > 0 ? all.filter((d) => !hidden.has(d)) : all;
     if (below.length === 0) return own;
     if (own.length === 0) return below;
     const seen = new Set<T>(own);

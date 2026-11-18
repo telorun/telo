@@ -1,0 +1,26 @@
+# An inline step target written inside a `with:` scope's region names one of
+# its members only where a choice takes that branch: out of its reach there.
+kind: Telo.Application
+metadata: { name: ScopedNameReachChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets:
+  - !ref probe
+---
+kind: Telo.Value
+metadata: { name: outerValue }
+value: 1
+---
+kind: Telo.Sequence
+metadata: { name: probe }
+with:
+  - { kind: Telo.Value, metadata: { name: scopedValue }, value: 42 }
+steps:
+  - name: call
+    invoke:
+      kind: Telo.Sequence
+      steps:
+        - name: inner
+          invoke: !if
+            if: !cel "variables.flag1"
+            then: !ref scopedValue
+            else: !ref outerValue

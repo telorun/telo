@@ -1,0 +1,21 @@
+# A boot target naming a resource a choice declares as a sequence or a sink:
+# the reference is of the wrong kind only where the choice declares the sink.
+kind: Telo.Application
+metadata: { name: ReferenceKindReferentChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets:
+  - !ref main
+  - !ref worker
+---
+kind: Telo.Sequence
+metadata: { name: main }
+steps:
+  - { name: done, value: 1 }
+--- !if
+metadata: { name: worker }
+if: !cel "variables.flag1"
+then: { kind: Telo.LogTraceSink }
+else:
+  kind: Telo.Sequence
+  steps:
+    - { name: done, value: 1 }

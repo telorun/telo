@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 use telo_analyzer::sources::oci_ref::is_oci_ref;
 use telo_analyzer::{
     analyze, as_resolved_ref, load_graph, unapplied_library_migrations, AnalysisDiagnostic, AnalysisOptions, DiagnosticSeverity,
-    ImportTargetPort, LoadedFile, LoadedGraph, ManifestLoader, ManifestSource, ParseErrorOrigin, DEFAULT_MANIFEST_FILENAME,
+    FindingOrder, ImportTargetPort, LoadedFile, LoadedGraph, ManifestLoader, ManifestSource, ParseErrorOrigin, DEFAULT_MANIFEST_FILENAME,
 };
 
 use crate::bundle::module_artifact::{
@@ -29,6 +29,7 @@ use crate::controller_registry::ControllerRegistry;
 use crate::controllers::module::import_controller::resolve_import_source;
 use crate::controllers::module::module_controller::{load_module, value_branch_accepts, LoadedModule, ModuleRole};
 use crate::import_load_failure::import_load_failure;
+use crate::metadata_stamp_refusals::metadata_stamp_load_refusal;
 use crate::error::KernelError;
 use crate::evaluation_context::ResourceInstance;
 use crate::resolve_include_sentinels::{resolve_include_sentinels, IncludeCache};
@@ -270,6 +271,12 @@ fn refuse_static_findings(graph: &LoadedGraph) -> Result<(), KernelError> {
         .into_iter()
         .filter(|d| d.severity == Some(DiagnosticSeverity::Error))
         .collect();
+    // An authored loader stamp would forge what the stamp records — a document's module above
+    // all — so it is refused under its own code, beside every other error the analysis found.
+    if !graph.metadata_diagnostics.is_empty() {
+        let stamps = FindingOrder::new(graph).sort(graph.metadata_diagnostics.clone());
+        return Err(metadata_stamp_load_refusal(&stamps, errors));
+    }
     if !errors.is_empty() {
         return Err(KernelError::manifest_validation_failed("Manifest validation failed").with_diagnostics(errors));
     }

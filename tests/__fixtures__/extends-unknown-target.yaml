@@ -1,18 +1,11 @@
 kind: Telo.Application
-metadata:
-  name: ExtendsUnknownTarget
-  version: 1.0.0
-imports:
-  AbstractLib: ./abstract-lib.yaml
+metadata: { name: ExtendsUnknownTarget, version: 1.0.0 }
+imports: { AbstractLib: ./abstract-lib.yaml }
 ---
 # Alias resolves (AbstractLib → abstract-lib) but that module exports no abstract
 # named `DoesNotExist`.
 kind: Telo.Definition
-metadata:
-  name: Orphan
-  module: OrphanLocal
+metadata: { name: Orphan }
 capability: Telo.Invocable
 extends: AbstractLib.DoesNotExist
-schema:
-  type: object
-  properties: {}
+schema: { type: object, properties: {} }

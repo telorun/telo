@@ -1,6 +1,5 @@
 import type { ResourceManifest } from "@telorun/sdk";
-import type { AnalysisDiagnostic } from "./types.js";
-import { reportedAtHolder } from "./quoted-place.js";
+import type { OriginIndex } from "./placement.js";
 
 export interface XTeloOrigin {
   parentKind: string;
@@ -26,61 +25,56 @@ export function readOrigin(manifest: unknown): XTeloOrigin | undefined {
 
 /** Diagnostics emitted on synthetic manifests (resources extracted by
  *  `normalizeInlineResources`) carry the synthetic's identity in
- *  `data.resource`, which has no YAML source. Rewrite each such diagnostic
- *  back to the chain root: walk up `metadata.xTeloOrigin` until a manifest
- *  with no origin is reached, and prepend each hop's `pathFromParent` to
- *  `data.path` so position-index lookups against the root doc resolve.
+ *  `data.resource`, which has no YAML source. The index answers each such
+ *  diagnostic with the chain root: walk up `metadata.xTeloOrigin` until a
+ *  manifest with no origin is reached, and prepend each hop's
+ *  `pathFromParent` to `data.path` so position-index lookups against the root
+ *  doc resolve. Placement moves the diagnostic there.
  *
  *  An extraction from a scope member lives INSIDE the scope array rather than at
  *  the top level, so a diagnostic about it names the top-level owner and a path
  *  through an array index the author never wrote (`with[3]`). That prefix is
  *  unfolded the same way, into the position the declaration was written at. */
-export function rewriteSyntheticOrigins(
-  diagnostics: AnalysisDiagnostic[],
-  manifests: ResourceManifest[],
-): AnalysisDiagnostic[] {
-  const byName = new Map<string, ResourceManifest>();
-  for (const m of manifests) {
-    const name = m.metadata?.name;
-    if (typeof name === "string") byName.set(name, m);
-  }
-
-  return diagnostics.map((d) => {
-    const data = d.data as
-      | { resource?: { kind?: string; name?: string }; path?: string; filePath?: string }
-      | undefined;
-    if (!data?.resource?.name) return d;
-
-    let current = byName.get(data.resource.name);
-    let origin = readOrigin(current);
-    const path = typeof data.path === "string" ? data.path : "";
-    let accumPath = path;
-    let root: { kind?: string; name?: string } = data.resource;
-
-    while (origin) {
-      accumPath = accumPath ? `${origin.pathFromParent}.${accumPath}` : origin.pathFromParent;
-      root = { kind: origin.parentKind, name: origin.parentName };
-      current = byName.get(origin.parentName);
-      origin = readOrigin(current);
+export function syntheticOrigins(manifests: readonly ResourceManifest[]): OriginIndex {
+  let byName: Map<string, ResourceManifest> | undefined;
+  const named = (): Map<string, ResourceManifest> => {
+    if (byName) return byName;
+    byName = new Map();
+    for (const m of manifests) {
+      const name = m.metadata?.name;
+      if (typeof name === "string") byName.set(name, m);
     }
+    return byName;
+  };
+  return {
+    extractionPlace(d) {
+      const data = d.data as { resource?: { kind?: string; name?: string }; path?: string; filePath?: string } | undefined;
+      if (!data?.resource?.name) return undefined;
 
-    const rerouted = root !== data.resource;
-    const unfolded = current ? unfoldScopedOrigins(current, accumPath) : accumPath;
-    if (!rerouted && unfolded === path) return d;
+      let current = named().get(data.resource.name);
+      let origin = readOrigin(current);
+      const path = typeof data.path === "string" ? data.path : "";
+      let accumPath = path;
+      let root: { kind?: string; name?: string } = data.resource;
 
-    const moved = {
-      ...d,
-      data: {
-        ...data,
+      while (origin) {
+        accumPath = accumPath ? `${origin.pathFromParent}.${accumPath}` : origin.pathFromParent;
+        root = { kind: origin.parentKind, name: origin.parentName };
+        current = named().get(origin.parentName);
+        origin = readOrigin(current);
+      }
+
+      const rerouted = root !== data.resource;
+      const unfolded = current ? unfoldScopedOrigins(current, accumPath) : accumPath;
+      if (!rerouted && unfolded === path) return undefined;
+      return {
         resource: root,
-        filePath: rerouted
-          ? ((current?.metadata as { source?: string } | undefined)?.source ?? data.filePath)
-          : data.filePath,
+        filePath: rerouted ? ((current?.metadata as { source?: string } | undefined)?.source ?? data.filePath) : data.filePath,
         path: unfolded,
-      },
-    };
-    return rerouted ? reportedAtHolder(moved, unfolded, data.resource, root) : moved;
-  });
+        rerouted,
+      };
+    },
+  };
 }
 
 export type Segment = string | number;

@@ -29,6 +29,7 @@ pub mod invoke_dispatch;
 pub mod kernel;
 pub mod lexical_path;
 pub mod manifest_sources;
+pub mod metadata_stamp_refusals;
 pub mod module_context;
 pub mod resolve_include_sentinels;
 pub mod resource_context;

@@ -1,0 +1,21 @@
+# A library's optional resource input, referenced where only a variable says so.
+kind: Telo.Library
+metadata:
+  name: OptionalReferenceChoice
+  version: 0.0.0
+  description: Test fixture referencing its optional store under a variable.
+imports: { Kinds: ../../resource-inputs/optional/kinds }
+variables: { flag1: { type: boolean, default: false } }
+resources: { store: { kind: Kinds.Store, optional: true } }
+exports: { resources: [holder] }
+---
+kind: Kinds.Store
+metadata: { name: fallback }
+label: fallback
+---
+kind: Kinds.Holder
+metadata: { name: holder }
+store: !if
+  if: !cel "variables.flag1"
+  then: !ref store
+  else: !ref fallback

@@ -26,8 +26,7 @@ import {
   type ScopeRung,
 } from "./catch-scope.js";
 import type { ValidateFunction } from "ajv";
-import { schemaIssues } from "./schema-error-report.js";
-import { createAjv } from "./schema-compat.js";
+import { createAjv, judgedSchemaIssues } from "./schema-compat.js";
 import { builtinDocumentSchema } from "./builtins.js";
 import { declarableCapabilities, throwsAllowedCapabilities } from "./capability-roster.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
@@ -48,17 +47,93 @@ function checkCatchAllPlacement(
   const diagnostics: AnalysisDiagnostic[] = [];
   for (let i = 0; i < entries.length - 1; i++) {
     const e = entries[i];
-    if (!e?.when) {
-      diagnostics.push({
-        severity: DiagnosticSeverity.Error,
-        code: "CATCHALL_NOT_LAST",
-        source: SOURCE,
-        message: `${channel}: catch-all entry (no \`when:\`) at index ${i} must be last — entries after it are unreachable.`,
-        data: { resource: routing, filePath, path: `${arrayPath}[${i}]` },
-      });
-    }
+    if (!e?.when) diagnostics.push(catchAllNotLastDiagnostic(channel, i, { resource: routing, filePath, path: `${arrayPath}[${i}]` }));
   }
   return diagnostics;
+}
+
+/** Where a throws finding is reported. */
+export interface ThrowsPlacement {
+  resource: { kind: string; name: string };
+  filePath: string | undefined;
+  path: string;
+}
+
+/** Rule 7's finding: the catch-all at `index` of a list is not its last entry. */
+export function catchAllNotLastDiagnostic(channel: "returns" | "catches", index: number, at: ThrowsPlacement): AnalysisDiagnostic {
+  return {
+    severity: DiagnosticSeverity.Error,
+    code: "CATCHALL_NOT_LAST",
+    source: SOURCE,
+    message: `${channel}: catch-all entry (no \`when:\`) at index ${index} must be last — entries after it are unreachable.`,
+    data: { ...at },
+  };
+}
+
+/** Rule 4's finding: entry `index` names a code its denominator cannot produce. */
+export function undeclaredCodeDiagnostic(
+  index: number,
+  code: string,
+  declared: readonly string[],
+  unbounded: boolean,
+  denominator: string,
+  at: ThrowsPlacement,
+): AnalysisDiagnostic {
+  return {
+    severity: DiagnosticSeverity.Error,
+    code: "UNDECLARED_THROW_CODE",
+    source: SOURCE,
+    message: `catches[${index}] references code '${code}' which is not in ${denominator} {${[...declared].sort().join(", ") || "∅"}} (ambient kernel codes ${AMBIENT_CONTRACT_ERROR_CODES.join(", ")} may also be named)${unbounded ? "; the union is unbounded, so a catch-all is required" : ""}.`,
+    data: { ...at },
+  };
+}
+
+/** What a list's codes are checked against, as its finding names it. */
+export function denominatorText(isScope: boolean): string {
+  return isScope ? "the throw union of everything this resource drives" : "the handler's declared throw union";
+}
+
+/** The unbounded-union rule's finding. */
+export function unboundedUnionDiagnostic(at: ThrowsPlacement): AnalysisDiagnostic {
+  return {
+    severity: DiagnosticSeverity.Error,
+    code: "UNBOUNDED_UNION_NEEDS_CATCHALL",
+    source: SOURCE,
+    message: `The handler's throw union is unbounded (inherit/passthrough resolution couldn't enumerate all codes). A catch-all entry (no \`when:\`) is required — on this catches: list or on an enclosing one.`,
+    data: { ...at },
+  };
+}
+
+/** Rule 1's finding: the codes of `handler` no rung of its ladder renders. */
+export function uncoveredCodesDiagnostic(
+  handler: string,
+  uncovered: readonly string[],
+  codeChain: readonly string[] | undefined,
+  at: ThrowsPlacement,
+): AnalysisDiagnostic {
+  return {
+    severity: DiagnosticSeverity.Error,
+    code: "UNCOVERED_THROW_CODE",
+    source: SOURCE,
+    message:
+      `handler ${handler} can throw ${uncovered.length} code${uncovered.length === 1 ? "" : "s"} that no catches: entry handles — at this list or any enclosing scope: ${uncovered.map((c) => `'${c}'`).join(", ")}. ` +
+      `Give each a matching \`when:\`${codeChain ? ` (e.g. \`when: !cel "${codeChain.join(".")} == '${uncovered[0]}'"\`)` : ""}, or add a catch-all entry — one with no \`when:\`, placed last.`,
+    data: { ...at, uncovered: [...uncovered] },
+  };
+}
+
+/** A retry policy's `nonRetryable` code its dispatch cannot throw. */
+export function nonRetryableNotThrownDiagnostic(code: string, codes: readonly string[], at: ThrowsPlacement): AnalysisDiagnostic {
+  return {
+    severity: DiagnosticSeverity.Warning,
+    code: "NON_RETRYABLE_CODE_NOT_THROWN",
+    source: SOURCE,
+    message:
+      `retry.nonRetryable names '${code}', which the retried dispatch cannot throw — its ` +
+      `throw union is {${[...codes].sort().join(", ") || "∅"}}. A code nothing ` +
+      `raises ends nothing, so the re-attempts it was meant to stop still happen.`,
+    data: { ...at },
+  };
 }
 
 /** Rule 4: a coverage-proving `when:` may only name a code the list's own
@@ -87,13 +162,13 @@ function checkUndeclaredCodes(
       // catches: block in the standard library incomplete overnight.
       if (isAmbientContractErrorCode(c)) continue;
       if (declaredCodes.has(c)) continue;
-      diagnostics.push({
-        severity: DiagnosticSeverity.Error,
-        code: "UNDECLARED_THROW_CODE",
-        source: SOURCE,
-        message: `catches[${i}] references code '${c}' which is not in ${denominator} {${[...declaredCodes].sort().join(", ") || "∅"}} (ambient kernel codes ${AMBIENT_CONTRACT_ERROR_CODES.join(", ")} may also be named)${union.unbounded ? "; the union is unbounded, so a catch-all is required" : ""}.`,
-        data: { resource: routing, filePath, path: `${arrayPath}[${i}].when` },
-      });
+      diagnostics.push(
+        undeclaredCodeDiagnostic(i, c, [...declaredCodes], union.unbounded, denominator, {
+          resource: routing,
+          filePath,
+          path: `${arrayPath}[${i}].when`,
+        }),
+      );
     }
   }
 
@@ -115,13 +190,7 @@ function checkCoverage(site: CatchList, union: ThrowsUnion, ladder: CatchLadder,
   // Unbounded union (passthrough or transitive): authors can't enumerate the
   // codes, so a catch-all is mandatory — at this list or any enclosing scope.
   if (union.unbounded && !ladder.ladderFor(site.manifest, site, null).covered) {
-    diagnostics.push({
-      severity: DiagnosticSeverity.Error,
-      code: "UNBOUNDED_UNION_NEEDS_CATCHALL",
-      source: SOURCE,
-      message: `The handler's throw union is unbounded (inherit/passthrough resolution couldn't enumerate all codes). A catch-all entry (no \`when:\`) is required — on this catches: list or on an enclosing one.`,
-      data: { resource: routing, filePath, path: arrayPath },
-    });
+    diagnostics.push(unboundedUnionDiagnostic({ resource: routing, filePath, path: arrayPath }));
   }
 
   // One diagnostic per site, not per code: every uncovered code sits at the
@@ -131,15 +200,13 @@ function checkCoverage(site: CatchList, union: ThrowsUnion, ladder: CatchLadder,
     .filter((c) => !ladder.ladderFor(site.manifest, site, c).covered)
     .sort();
   if (uncovered.length > 0) {
-    diagnostics.push({
-      severity: DiagnosticSeverity.Error,
-      code: "UNCOVERED_THROW_CODE",
-      source: SOURCE,
-      message:
-        `handler ${handlerLabel(site.handler, generated)} can throw ${uncovered.length} code${uncovered.length === 1 ? "" : "s"} that no catches: entry handles — at this list or any enclosing scope: ${uncovered.map((c) => `'${c}'`).join(", ")}. ` +
-        `Give each a matching \`when:\`${site.codeChains[0] ? ` (e.g. \`when: !cel "${site.codeChains[0].join(".")} == '${uncovered[0]}'"\`)` : ""}, or add a catch-all entry — one with no \`when:\`, placed last.`,
-      data: { resource: routing, filePath, path: arrayPath, uncovered },
-    });
+    diagnostics.push(
+      uncoveredCodesDiagnostic(handlerLabel(site.handler, generated), uncovered, site.codeChains[0], {
+        resource: routing,
+        filePath,
+        path: arrayPath,
+      }),
+    );
   }
 
   return diagnostics;
@@ -158,14 +225,23 @@ function scopeListsOf(rung: ScopeRung, out = new Set<CatchList>(), seen = new Se
  *  for a kind string, and "the inline <Kind>" for a declaration an extraction
  *  generated, whose name the author never wrote. */
 function handlerLabel(handler: unknown, generated: ReadonlyMap<string, string>): string {
-  const inline = (name: string) => (generated.has(name) ? `the inline ${generated.get(name)}` : undefined);
-  if (isRefSentinel(handler)) return inline(handler.source) ?? `\`!ref ${handler.source}\``;
+  const inline = (name: string) => (generated.has(name) ? handlerText({ inline: generated.get(name)! }) : undefined);
+  if (isRefSentinel(handler)) return inline(handler.source) ?? handlerText({ ref: handler.source });
   if (handler && typeof handler === "object") {
     const { kind, name } = handler as { kind?: unknown; name?: unknown };
-    if (typeof name === "string") return inline(name) ?? `\`!ref ${name}\``;
-    if (typeof kind === "string") return `\`${kind}\``;
+    if (typeof name === "string") return inline(name) ?? handlerText({ ref: name });
+    if (typeof kind === "string") return handlerText({ kind });
   }
-  return typeof handler === "string" ? `\`${handler}\`` : "`?`";
+  return typeof handler === "string" ? handlerText({ kind: handler }) : handlerText({});
+}
+
+/** A handler as a message names it: a reference by the name it is written
+ *  with, an extracted declaration by its kind, a kind string as written. */
+export function handlerText(handler: { ref?: string; inline?: string; kind?: string }): string {
+  if (handler.inline !== undefined) return `the inline ${handler.inline}`;
+  if (handler.ref !== undefined) return `\`!ref ${handler.ref}\``;
+  if (handler.kind !== undefined) return `\`${handler.kind}\``;
+  return "`?`";
 }
 
 /** The capabilities whose lifecycle includes a dispatch a caller can catch. On
@@ -211,16 +287,18 @@ function abstractThrowsSchema(): Record<string, unknown> {
   return root.$defs ? { ...(throws as Record<string, unknown>), $defs: root.$defs } : (throws as Record<string, unknown>);
 }
 
+let abstractThrowsHost: ReturnType<typeof createAjv> | undefined;
 let abstractThrowsValidator: ValidateFunction | undefined;
 /** The renderer anchors at the validated value; re-anchor its path at `/throws`. */
 const atThrows = (message: string): string =>
   message.startsWith("/ ") ? `/throws ${message.slice(2)}` : message.startsWith("/") ? `/throws${message}` : `/throws ${message}`;
 const validateAbstractThrows = (value: unknown) => {
-  const validate = (abstractThrowsValidator ??= createAjv().compile(abstractThrowsSchema()));
-  return validate(value) ? [] : schemaIssues(validate.errors, value);
+  abstractThrowsHost ??= createAjv();
+  const validate = (abstractThrowsValidator ??= abstractThrowsHost.compile(abstractThrowsSchema()));
+  return validate(value) ? [] : judgedSchemaIssues(abstractThrowsHost, validate.errors, value, validate.schema as object);
 };
 
-function validateThrowsDeclarations(manifests: ResourceManifest[]): AnalysisDiagnostic[] {
+export function validateThrowsDeclarations(manifests: ResourceManifest[]): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
   for (const m of manifests) {
     if (m.kind !== "Telo.Definition" && m.kind !== "Telo.Abstract") continue;
@@ -317,7 +395,7 @@ interface CelString {
 
 /** Every CEL expression `value` holds, with its path — the whole `!cel`
  *  scalar, each hole of a tag with holes. */
-function collectCelStrings(value: unknown, path: string): CelString[] {
+export function collectCelStrings(value: unknown, path: string): CelString[] {
   const out: CelString[] = [];
   if (isTaggedSentinel(value)) {
     for (const expr of celExpressionsOf(value.engine, value.source)) {
@@ -341,7 +419,7 @@ function collectCelStrings(value: unknown, path: string): CelString[] {
 
 /** Each `error.data.<field>` chain of `entry` against the data the retried
  *  dispatch's codes declare. */
-function checkCelChainAgainstDataSchema(
+export function checkCelChainAgainstDataSchema(
   entry: CelString,
   dataSchema: Record<string, any>,
   resource: { kind: string; name: string },
@@ -404,16 +482,9 @@ function checkRetriedDispatches(
       if (Array.isArray(nonRetryable)) {
         nonRetryable.forEach((code: unknown, i: number) => {
           if (typeof code !== "string" || codes.has(code) || isAmbientContractErrorCode(code)) return;
-          diagnostics.push({
-            severity: DiagnosticSeverity.Warning,
-            code: "NON_RETRYABLE_CODE_NOT_THROWN",
-            source: SOURCE,
-            message:
-              `retry.nonRetryable names '${code}', which the retried dispatch cannot throw — its ` +
-              `throw union is {${[...codes.keys()].sort().join(", ") || "∅"}}. A code nothing ` +
-              `raises ends nothing, so the re-attempts it was meant to stop still happen.`,
-            data: { resource: routing, filePath, path: `${at}.nonRetryable[${i}]` },
-          });
+          diagnostics.push(
+            nonRetryableNotThrownDiagnostic(code, [...codes.keys()], { resource: routing, filePath, path: `${at}.nonRetryable[${i}]` }),
+          );
         });
       }
       const schemas = [...codes.values()]
@@ -526,9 +597,7 @@ export function validateThrowsCoverage(
         ladder.denominatorOf(site),
         site.filePath,
         site.arrayPath,
-        site.isScope
-          ? "the throw union of everything this resource drives"
-          : "the handler's declared throw union",
+        denominatorText(site.isScope),
         site.routing,
       ),
     );

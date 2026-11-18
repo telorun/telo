@@ -1,8 +1,7 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
-import { collectScopeMembers, declareInScopeOf, isScopeMemberDeclaration } from "./scope-members.js";
+import { collectScopeMembers, declareInScopeOf } from "./scope-members.js";
 import { CEL_ENGINE, isRefSentinel, isTaggedSentinel, REF_ENGINE } from "@telorun/templating";
 import { moduleScopedDefResolver, type AliasResolver } from "./alias-resolver.js";
-import { relocatePath } from "./choice-expansion.js";
 import type { Assignment } from "./configuration-dimensions.js";
 import {
   Alternatives,
@@ -15,11 +14,13 @@ import {
   type AlternativeOption,
   type ConditionedDeclaration,
   type ConditionedExpansion,
+  type Forcing,
   type Holding,
   type PlaceMap,
   type PlaceMapping,
+  NoWrittenPlace,
   type ViewBody,
-  viewChainOf,
+  type DeadBranchWorld,
 } from "./conditioned-expansion.js";
 import { declarationOf, resolveReferenceOutcome, type NameResolution } from "./reference-resolution.js";
 import type { DeclarationRequests } from "./declaration-requests.js";
@@ -38,19 +39,15 @@ import { namedShapeReading } from "./named-shape-reading.js";
 import { referenceValueOf } from "./peer-binding.js";
 import { cloneForMutation, normalizeInlineResources } from "./normalize-inline-resources.js";
 import { ConditionSpace, FALSE, TRUE } from "./presence-condition.js";
-import { quotedPlacesOf, relocatedRendering, rerootedQuotes, type QuotedPlace } from "./quoted-place.js";
 import { isInjectedDeclaration } from "./resource-input.js";
-import { rewriteSyntheticOrigins } from "./rewrite-synthetic-origins.js";
 import type { ScopeSite } from "./scope-address.js";
 import { declaringScopeOf } from "./scope-members.js";
 import { isConsumerForward, parseKeys, type ConsumerForward } from "./template-expansion.js";
-import { templateBodyEntries } from "./template-body.js";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
 import { isResolvedReference, resolvedReference } from "./resolved-reference.js";
-import { validateReferenceForms } from "./validate-reference-forms.js";
-import { validateTemplateBody } from "./validate-template-body.js";
 import { SELF_PATH } from "./template-self-forward.js";
 import type { AnalysisDiagnostic } from "./types.js";
+import type { ViewBinding } from "./view-binding.js";
 
 /**
  * A VALUE A TEMPLATE BODY FORWARDS IS CHECKED AS THE ENTRY KIND'S OWN FIELD.
@@ -186,7 +183,7 @@ export function formatPath(segments: readonly Segment[]): string {
 }
 
 /** One view of a configuration's analysis, as the analysis holds it. */
-interface ForwardedEntry {
+export interface ForwardedEntry {
   readonly view: ResourceManifest;
   readonly entryKind: string;
   readonly entryName: string;
@@ -207,7 +204,7 @@ interface ForwardedEntry {
    *  stands in the root. */
   readonly rootPlaces?: PlaceMap;
   /** What the view holds of the body itself. */
-  readonly body?: ViewBody;
+  readonly body: ViewBody;
 }
 
 /** The views a configuration's analysis carries, and the questions asked of
@@ -259,7 +256,7 @@ export class TemplateForwardViews {
    *  for a place its consumer's forward moves there, or for no view. */
   bodyWriterAt(view: ResourceManifest, path: string): ResourceManifest | undefined {
     const entry = this.byView.get(view);
-    if (!entry?.body || forwardPointOf(entry.places, path)) return undefined;
+    if (!entry || forwardPointOf(entry.places, path)) return undefined;
     return this.runners.get(entry.upstream) as unknown as ResourceManifest | undefined;
   }
 
@@ -268,7 +265,7 @@ export class TemplateForwardViews {
    *  check judges it exactly as the view would. */
   bodyWroteWhole(view: ResourceManifest, path: string): boolean {
     const entry = this.byView.get(view);
-    if (!entry?.body) return false;
+    if (!entry) return false;
     const keys = parseKeys(path);
     return !entry.places.mappings.some((mapping) => {
       const shared = Math.min(mapping.from.length, keys.length);
@@ -280,7 +277,7 @@ export class TemplateForwardViews {
   /** True when `view` holds, at `path`, a body reference aimed at a sibling
    *  entry's view. */
   holdsSiblingReference(view: ResourceManifest, path: string): boolean {
-    return this.byView.get(view)?.body?.siblings.includes(path) ?? false;
+    return this.byView.get(view)?.body.siblings.includes(path) ?? false;
   }
 
   /** True when the value a view holds at `path` was evaluated before it was
@@ -313,9 +310,7 @@ export class TemplateForwardViews {
     ) {
       return true;
     }
-    const entry = this.byView.get(manifest);
-    if (!entry) return false;
-    return bodyExpressionAt(entry.body, path) || this.evaluatedUpstream(entry, path);
+    return this.evaluatedBefore(manifest, path);
   }
 
   private evaluatedUpstream(entry: ForwardedEntry, path: string): boolean {
@@ -331,112 +326,21 @@ export class TemplateForwardViews {
     return this.sites.get(manifest) ?? NO_CEL_EVAL_SITES;
   }
 
-  /**
-   * `diagnostics` with every one about a view placed by the view's place map,
-   * or dropped.
-   *
-   * `diagnostics` are as the passes wrote them, each naming the declaration it
-   * is about: one about a view's extraction is first moved onto the view. A
-   * path the place map does not move is a place the body wrote: dropped when it
-   * is the view's own identity, when the definition's own check makes the same
-   * finding there, or when it is a body reference the definition resolves; else
-   * reported at the consumer, naming the entry and field. Every other one is
-   * relocated to where its consumer wrote it, a
-   * message quoting places rendered from where they now stand. What is moved
-   * names the consumer as the passes name it — an extraction, a scope member —
-   * so the caller reroutes it with every other diagnostic. A forwarded
-   * diagnostic the consumer's own analysis already makes — same code, same path
-   * — is dropped, so a constraint the enclosing kind restates is reported once.
-   */
-  placed(diagnostics: AnalysisDiagnostic[]): AnalysisDiagnostic[] {
-    if (this.byName.size === 0) return diagnostics;
-    const own: AnalysisDiagnostic[] = [];
-    const found: AnalysisDiagnostic[] = [];
-    const atBody: AnalysisDiagnostic[] = [];
-    const links: { entry: ForwardedEntry; link: PlaceMapping }[] = [];
-    // Placement climbs one origin chain, innermost first: what extraction drew
-    // out of a view is unfolded onto the view and its quotes re-rooted there,
-    // and only then does the view's place map move it to its consumer.
-    for (const d of rerootedQuotes(rewriteSyntheticOrigins(diagnostics, this.analyzed))) {
-      const entry = this.entryOf(d);
-      if (!entry) {
-        own.push(d);
-        continue;
-      }
-      const link = forwardPointOf(entry.places, pathOf(d));
-      if (link) {
-        found.push(d);
-        links.push({ entry, link });
-        continue;
-      }
-      // A place the body wrote: the definition's, where its own check makes
-      // the same finding there; otherwise this consumer's instance of it.
-      // The view's own identity is generated, and no place of either.
-      const path = pathOf(d);
-      if (path === "metadata" || path.startsWith("metadata.")) continue;
-      // A site marker stands for a verdict a keyed run judges by the view's own
-      // places; it moves only with a forward.
-      if (isSiteMarker(d)) continue;
-      if (!entry.body || entry.body.incomplete || entry.body.ownFindings.has(`${String(d.code)}\0${path}`)) continue;
-      // A reference the body wrote to a declaration of its own module resolves
-      // there, which the definition's own check judges.
-      if (entry.body.references.includes(path)) continue;
-      // An expression the body wrote is the definition's to judge, as is a
-      // forward of a value this consumer does not hold.
-      if (bodyExpressionAt(entry.body, path)) continue;
-      atBody.push(bodyFinding(d, entry, entry.body));
-    }
-    const relocated = relocatedRendering(found, (list) =>
-      list.map((d) => {
-        const entry = this.entryOf(d);
-        if (!entry) return d;
-        const data = d.data as { path?: unknown; filePath?: string };
-        const root = entry.root;
-        return {
-          ...d,
-          data: {
-            ...data,
-            resource: entry.reportedAs ?? { kind: root.kind, name: root.metadata?.name as string },
-            filePath: (root.metadata as { source?: string } | undefined)?.source ?? data.filePath,
-            // Which view of its consumer a relation instance marker stands in.
-            ...("relationGroup" in data ? { forwardedFrom: viewChainOf(entry.view, root) } : {}),
-            ...(typeof data.path === "string" ? { path: relocatePath(data.path, entry.places.mappings) } : {}),
-          },
-        } as AnalysisDiagnostic;
-      }),
-    );
-    const moved = relocated.map((d, i) => {
-      const { entry, link } = links[i]!;
-      return forwardedMessage(d, entry, entry.rootPlaces ? { ...link, to: projectedPlace(link.to, entry.rootPlaces) } : link);
-    });
-    return [...own, ...withoutForwardedDuplicates(own, [...moved, ...atBody])];
-  }
-
-  private entryOf(d: AnalysisDiagnostic): ForwardedEntry | undefined {
+  /** The view entry a diagnostic is about, by the view's name. */
+  entryAbout(d: AnalysisDiagnostic): ForwardedEntry | undefined {
     const name = (d.data as { resource?: { name?: unknown } } | undefined)?.resource?.name;
     return typeof name === "string" ? this.byName.get(name) : undefined;
   }
-}
 
-/** Where the written place `written` stands in the projection `places` maps
- *  back: through the mapping writing the longest part of it. */
-function projectedPlace(written: readonly Segment[], places: PlaceMap): readonly Segment[] {
-  let best: PlaceMapping | undefined;
-  for (const mapping of places.mappings) {
-    if (mapping.to.length > written.length || !mapping.to.every((key, i) => String(key) === String(written[i]))) continue;
-    if (!best || mapping.to.length > best.to.length) best = mapping;
+  /** True when the analysis holds a view at all. */
+  get holdsViews(): boolean {
+    return this.byName.size > 0;
   }
-  return best ? [...best.from, ...written.slice(best.to.length)] : written;
-}
-
-function pathOf(d: AnalysisDiagnostic): string {
-  const path = (d.data as { path?: unknown } | undefined)?.path;
-  return typeof path === "string" ? path : "";
 }
 
 /** The forward a place map moves `path` with: the outermost moved place at or
  *  above it, or undefined when nothing moves it. */
-function forwardPointOf(places: PlaceMap, path: string): PlaceMapping | undefined {
+export function forwardPointOf(places: PlaceMap, path: string): PlaceMapping | undefined {
   const keys = parseKeys(path);
   let match: PlaceMapping | undefined;
   for (const mapping of places.mappings) {
@@ -444,127 +348,6 @@ function forwardPointOf(places: PlaceMap, path: string): PlaceMapping | undefine
     if (!match || mapping.from.length < match.from.length) match = mapping;
   }
   return match;
-}
-
-/** A finding about a view, as its consumer reads it: what the consumer wrote,
- *  where it is forwarded, and what the entry's check found there. */
-function forwardedMessage(d: AnalysisDiagnostic, entry: ForwardedEntry, link: PlaceMapping): AnalysisDiagnostic {
-  const viewLabel = `${entry.view.kind}/${entry.view.metadata!.name as string}`;
-  const entryLabel = `the ${entry.entryKind} entry '${entry.entryName}'`;
-  // A consumer written inline is named by the declaration holding it; a scope
-  // member is a declaration its author named.
-  const reported =
-    (isScopeMemberDeclaration(entry.root) ? undefined : entry.reportedAs) ?? { kind: entry.root.kind, name: entry.root.metadata?.name as string };
-  const prefix =
-    `${reported.kind}/${reported.name}: '${formatPath(link.to)}' is forwarded into ${entryLabel} as ` +
-    `'${formatPath(link.from)}', which checks it as its own field — `;
-  const relabel = (text: string, first: boolean) => {
-    const inner = first && text.startsWith(`${viewLabel}: `) ? text.slice(viewLabel.length + 2) : text;
-    return `${first ? prefix : ""}${withoutViewNames(inner.split(viewLabel).join(entryLabel), entry)}`;
-  };
-  const quotes = quotedPlacesOf(d);
-  const quotedPlace: QuotedPlace[] | undefined = quotes?.map((q, i) => ({
-    ...q,
-    before: relabel(q.before, i === 0),
-    after: q.after.split(viewLabel).join(entryLabel),
-  }));
-  return {
-    ...d,
-    message: relabel(d.message, true),
-    ...(quotedPlace ? { data: { ...(d.data as Record<string, unknown>), quotedPlace } } : {}),
-  } as AnalysisDiagnostic;
-}
-
-/** True for a run's internal marker of a verdict judged elsewhere. */
-function isSiteMarker(d: AnalysisDiagnostic): boolean {
-  const data = d.data as Record<string, unknown> | undefined;
-  return !!data && ("celSite" in data || "ownGroup" in data || "relationGroup" in data);
-}
-
-/** `text` naming each sibling view of `entry`'s by the entry name the body
- *  wrote: a view's name is generated, never the author's. */
-function withoutViewNames(text: string, entry: ForwardedEntry): string {
-  const name = entry.view.metadata!.name as string;
-  const suffix = `→${entry.entryName}`;
-  if (!name.endsWith(suffix)) return text;
-  return text.split(`${name.slice(0, -suffix.length)}→`).join("");
-}
-
-/** A finding at a place the body wrote, as its consumer reads it: at the
- *  consumer, naming the body entry and the field it is about. */
-function bodyFinding(d: AnalysisDiagnostic, entry: ForwardedEntry, body: ViewBody): AnalysisDiagnostic {
-  const viewLabel = `${entry.view.kind}/${entry.view.metadata!.name as string}`;
-  const entryLabel = `the ${entry.entryKind} entry '${entry.entryName}'`;
-  const root = entry.root;
-  const reported =
-    (isScopeMemberDeclaration(root) ? undefined : entry.reportedAs) ?? { kind: root.kind, name: root.metadata?.name as string };
-  const path = pathOf(d);
-  const text = d.message.startsWith(`${viewLabel}: `) ? d.message.slice(viewLabel.length + 2) : d.message;
-  // A quoted place names the view's own position, which is no place of the consumer's.
-  const data = { ...((d.data ?? {}) as Record<string, unknown>) };
-  delete data.quotedPlace;
-  return {
-    ...d,
-    message:
-      `${reported.kind}/${reported.name}: \`${body.holderKind}\` body entry \`${entry.entryName}\`` +
-      `${path ? `, field \`${path}\`` : ""}: ${withoutViewNames(text.split(viewLabel).join(entryLabel), entry)}`,
-    data: {
-      ...data,
-      resource: entry.reportedAs ?? { kind: root.kind, name: root.metadata?.name as string },
-      filePath: (root.metadata as { source?: string } | undefined)?.source ?? (data.filePath as string | undefined),
-      ...("relationGroup" in data ? { forwardedFrom: viewChainOf(entry.view, root) } : {}),
-      path: relocatePath("", entry.rootPlaces?.mappings ?? []),
-    },
-  } as AnalysisDiagnostic;
-}
-
-/** `moved` — findings about forward views, each at its consumer — less each
- *  one `own` already makes (same code, same place) and each an earlier one of
- *  `moved` makes with the same message. */
-export function withoutForwardedDuplicates(
-  own: readonly AnalysisDiagnostic[],
-  moved: readonly AnalysisDiagnostic[],
-): AnalysisDiagnostic[] {
-  const reported = new Set(own.map(identityKey));
-  const out: AnalysisDiagnostic[] = [];
-  for (const m of moved) {
-    const key = identityKey(m);
-    if (reported.has(key) || reported.has(`${key}\0${m.message}`)) continue;
-    reported.add(`${key}\0${m.message}`);
-    out.push(m);
-  }
-  return out;
-}
-
-function identityKey(d: AnalysisDiagnostic): string {
-  const data = d.data as
-    | {
-        resource?: { kind?: string; name?: string };
-        path?: unknown;
-        filePath?: string;
-        relationGroup?: string;
-        forwardedFrom?: string;
-        celSite?: string;
-        occurrence?: number;
-        ownOrigin?: string;
-        ownGroup?: string;
-      }
-    | undefined;
-  // A site marker stands for a verdict judged elsewhere: markers at one place
-  // are alike only when they name the same site.
-  return [
-    d.code,
-    data?.resource?.kind ?? "",
-    data?.resource?.name ?? "",
-    data?.filePath ?? "",
-    typeof data?.path === "string" ? data.path : "",
-    data?.relationGroup ?? "",
-    data?.forwardedFrom ?? "",
-    data?.celSite ?? "",
-    data?.occurrence ?? "",
-    data?.ownOrigin ?? "",
-    data?.ownGroup ?? "",
-  ].join("\0");
 }
 
 /** The space of one configuration: no dimension, every holding everywhere. */
@@ -589,6 +372,8 @@ export function buildTemplateForwardViews(
   /** The body a consumer's kind runs, as that consumer expands it — a body
    *  holding an expansion construct; absent, the body as written. */
   bodyOf?: (consumer: ResourceManifest) => ConsumerBody | undefined,
+  /** What a holder gives its runner's body: its views' binding. */
+  bindingOf?: (holder: ResourceManifest, runner: ResourceDefinition) => ViewBinding,
 ): TemplateForwardViews {
   const union = expandUnion([], ONE_CONFIGURATION, new Map());
   const taken = new Set<string>();
@@ -601,6 +386,7 @@ export function buildTemplateForwardViews(
     aliases,
     scopes,
     ...(bodyOf ? { bodyOf } : {}),
+    ...(bindingOf ? { bindingOf } : {}),
     taken,
   });
   const views = new TemplateForwardViews();
@@ -715,9 +501,10 @@ export interface NestedCandidate {
   /** Its union keys in the declaration, choices transparent. */
   readonly unionKeys: readonly Segment[];
   readonly holding: Holding;
-  /** For one only a branch no configuration takes holds: the branch and a
-   *  configuration reaching its choice. */
-  readonly dead?: { readonly sentinel: object; readonly branch: string | null | undefined; readonly baseline: Assignment };
+  /** For one only a branch no configuration takes holds: the innermost such
+   *  option on the way — a configuration reaching its choice, and the choices
+   *  forced to take it there. */
+  readonly dead?: { readonly baseline: Assignment; readonly forcing: Forcing; readonly world: DeadBranchWorld };
 }
 
 /**
@@ -754,12 +541,8 @@ export function nestedCandidatesOf(
       if (isAlternatives(value)) {
         for (const option of value.options) {
           if (!option.present) continue;
-          const step = option.path.at(-1);
           const deadHere =
-            dead ??
-            (option.unreachable && option.baseline && step
-              ? { sentinel: step.sentinel, branch: step.branch, baseline: option.baseline }
-              : undefined);
+            option.unreachable && option.baseline && option.forcing ? { baseline: option.baseline, forcing: option.forcing, world: option.world! } : dead;
           visit(option.value, option.at, unionKeys, meet(space, holding, holdingOf(option)), deadHere, root);
         }
         return;
@@ -816,6 +599,9 @@ export function placedViews(
 ): TemplateForwardViews {
   const views = new TemplateForwardViews();
   for (const entry of entries) {
+    if (!entry.body) {
+      throw new Error(`internal: the forward view of the body entry '${entry.entryName}' holds nothing of its body.`);
+    }
     const [view, ...drawn] = entry.manifests;
     views.extractions.push(...drawn);
     views.addEntry({
@@ -828,7 +614,7 @@ export function placedViews(
       places: entry.places,
       rootPlaces: entry.rootPlaces,
       ...(entry.reportedAs ? { reportedAs: entry.reportedAs } : {}),
-      ...(entry.body ? { body: entry.body } : {}),
+      body: entry.body,
     });
   }
   return views;
@@ -877,12 +663,6 @@ function resolvedCrossing(
       return [{ declaration, holding: EVERYWHERE }];
     },
   };
-}
-
-/** True when the view's place `path` holds, or lies below, an expression the
- *  body wrote — typed by the definition's own check. */
-export function bodyExpressionAt(body: ViewBody | undefined, path: string): boolean {
-  return !!body && body.expressions.some((at) => covers(at, path));
 }
 
 /** True when `path` is `prefix` or lies below it. */
@@ -983,6 +763,9 @@ export interface ForwardViewInput {
   /** The body a consumer's kind runs, as that consumer expands it — a body
    *  holding an expansion construct; absent, the body as written. */
   readonly bodyOf?: (consumer: ResourceManifest) => ConsumerBody | undefined;
+  /** What a holder — a consumer, or a view one template further out — gives
+   *  the expressions its runner's body reads: its views' binding. */
+  readonly bindingOf?: (holder: ResourceManifest, runner: ResourceDefinition) => ViewBinding;
   /** Names a view may not take. */
   readonly taken: ReadonlySet<string>;
 }
@@ -1039,8 +822,6 @@ export function buildForwardViews(input: ForwardViewInput): BuiltViews {
     }
   };
 
-  const ownFindings = (runner: ResourceDefinition) => ownBodyFindings(runner, registry, aliases, scopes.aliasesByModule);
-
   const queue: Holder[] = [];
   for (const consumer of input.consumers) {
     const m = consumer.manifest;
@@ -1066,7 +847,7 @@ export function buildForwardViews(input: ForwardViewInput): BuiltViews {
     if (entries.length === 0) continue;
     runners.set(holder.manifest, runner);
     sites.set(holder.manifest, kindCelEvalSites(holder.definition, registry, registry.shapeLookup));
-    const own = ownFindings(runner);
+    const binding = input.bindingOf?.(holder.manifest, runner);
     const instances = entries.flatMap((entry) => {
       const holding = meet(space, holder.holding, entry.holding);
       if (holding.condition === FALSE && !holder.root.unreachable) return [];
@@ -1098,11 +879,11 @@ export function buildForwardViews(input: ForwardViewInput): BuiltViews {
         definition: entry.definition,
         body: {
           holderKind: holder.manifest.kind,
-          ownFindings: own.get(entry.name) ?? NO_FINDINGS,
+          writtenBy: { name: runner.metadata?.name, source: (runner.metadata as { source?: unknown } | undefined)?.source },
           incomplete: expanded?.refused === true,
-          expressions: entry.expressions,
-          references: entry.references,
+          noPlace: new NoWrittenPlace(entry.expressions, entry.references),
           siblings: entry.siblings.map((reference) => reference.at),
+          ...(binding ? { binding } : {}),
         },
       });
       sites.set(view, kindCelEvalSites(entry.definition, registry, registry.shapeLookup));
@@ -1119,54 +900,6 @@ export function buildForwardViews(input: ForwardViewInput): BuiltViews {
     }
   }
   return { views, runners, sites };
-}
-
-const NO_FINDINGS: ReadonlySet<string> = new Set();
-
-const ownFindingsByRegistry = new WeakMap<DefinitionRegistry, WeakMap<ResourceDefinition, Map<string, Set<string>>>>();
-
-/**
- * What a definition's own check reports inside each body entry, by entry name:
- * each `<code>\0<path>`, the path the entry's own. These are the passes that
- * judge an entry as a declaration of its kind — its schema, its reference
- * forms, a computed value at a reference slot — run over the definition as
- * written, whichever module the analysis is for.
- */
-function ownBodyFindings(
-  runner: ResourceDefinition,
-  registry: DefinitionRegistry,
-  aliases: AliasResolver,
-  aliasesByModule: Map<string, AliasResolver>,
-): ReadonlyMap<string, ReadonlySet<string>> {
-  let byDefinition = ownFindingsByRegistry.get(registry);
-  if (!byDefinition) ownFindingsByRegistry.set(registry, (byDefinition = new WeakMap()));
-  const known = byDefinition.get(runner);
-  if (known) return known;
-  const out = new Map<string, Set<string>>();
-  byDefinition.set(runner, out);
-  const meta = { ...(runner.metadata as Record<string, unknown>) };
-  delete meta.forwardedExport;
-  delete meta.forwardedInternal;
-  delete meta.forwardedShape;
-  const definition = { ...(runner as unknown as Record<string, unknown>), metadata: meta } as unknown as ResourceManifest;
-  const module = typeof meta.module === "string" ? meta.module : undefined;
-  const entries = templateBodyEntries(definition);
-  const found = [
-    ...validateTemplateBody([definition], registry, aliases, aliasesByModule, new Set(module ? [module] : [])),
-    ...validateReferenceForms([definition], registry, aliases, aliasesByModule),
-  ];
-  for (const d of found) {
-    const path = (d.data as { path?: unknown } | undefined)?.path;
-    if (typeof path !== "string") continue;
-    const entry = entries.find((e) => covers(e.prefix, path));
-    const name = entry?.manifest.metadata?.name;
-    if (!entry || typeof name !== "string") continue;
-    const inner = path.slice(entry.prefix.length).replace(/^\./, "");
-    let set = out.get(name);
-    if (!set) out.set(name, (set = new Set()));
-    set.add(`${d.code}\0${inner}`);
-  }
-  return out;
 }
 
 /** A resource of the entry's own modules, as the per-resource checks select one. */
@@ -1221,7 +954,7 @@ interface SiblingReference {
 /** The definition whose body an instance of `definition` runs: its own, or —
  *  for an `extends` child with no body of its own — its controller-bearing
  *  ancestor's, handed its own config or, with `base:`, the mapping over it. */
-function templateRunnerOf(
+export function templateRunnerOf(
   definition: ResourceDefinition,
   resolveDef: DefResolver,
 ): ResourceDefinition | undefined {

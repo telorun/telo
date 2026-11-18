@@ -1,3 +1,4 @@
+import { collectFilePositions } from "../src/diagnostic-location.js";
 import { describe, expect, it } from "vitest";
 import { AnalysisRegistry } from "../src/analysis-registry.js";
 import { StaticAnalyzer } from "../src/analyzer.js";
@@ -128,15 +129,15 @@ describe("a catch list a template body holds", () => {
     });
     const diagnostics = new StaticAnalyzer().analyze(
       flattenForAnalyzer(graph),
-      { moduleDocuments: collectModuleDocuments(graph) },
+      { moduleDocuments: collectModuleDocuments(graph), positions: collectFilePositions(graph) },
       new AnalysisRegistry(),
     );
     const coverage = diagnostics
       .filter((d) => ["UNCOVERED_THROW_CODE", "UNDECLARED_THROW_CODE"].includes(String(d.code)))
       .map((d) => [d.code, (d.data as { resource?: { name?: string } }).resource?.name, (d.data as { path?: string }).path]);
     expect(coverage).toEqual([
-      ["UNDECLARED_THROW_CODE", "open", "catches[0].when"],
       ["UNCOVERED_THROW_CODE", "open", "catches"],
+      ["UNDECLARED_THROW_CODE", "open", "catches[0].when"],
     ]);
   });
 });

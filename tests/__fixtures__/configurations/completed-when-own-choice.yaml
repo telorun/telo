@@ -1,0 +1,18 @@
+# A named shape whose own `completedWhen` is misdirected in one branch of its
+# own choice: refused at the shape where flag1 holds, though no kind reaches
+# it.
+kind: Telo.Application
+metadata: { name: CompletedWhenOwnChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Bound }
+schema:
+  type: object
+  properties:
+    action: !if
+      if: !cel "variables.flag1"
+      then: { x-telo-ref: { kind: Telo.Invocable, use: call, inputs: /inputs, completedWhen: /prompt } }
+      else: { x-telo-ref: { kind: Telo.Invocable, use: call, inputs: /inputs } }
+    inputs: { type: object, default: {} }
+    prompt: { type: string }

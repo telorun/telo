@@ -1,0 +1,109 @@
+# Generic throws kinds for the configuration fixtures: two operations throwing
+# one code each, a router whose routes render what their handlers throw, and a
+# server rendering what reaches it through the routers it mounts.
+kind: Telo.Library
+metadata: { name: ThrowsChoiceKinds }
+exports: { kinds: [FailA, FailB, Router, Server] }
+---
+kind: Telo.Definition
+metadata: { name: FailA }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema: { type: object, additionalProperties: false, properties: {} }
+throws:
+  codes:
+    ERR_A: { description: The operation failed., data: { type: object, additionalProperties: false, properties: { waitA: { type: integer } } } }
+---
+kind: Telo.Definition
+metadata: { name: FailB }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema: { type: object, additionalProperties: false, properties: {} }
+throws:
+  codes:
+    ERR_B: { description: The operation failed., data: { type: object, additionalProperties: false, properties: { waitB: { type: integer } } } }
+---
+kind: Telo.Definition
+metadata: { name: Router }
+capability: Telo.Mount
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  $defs:
+    Catches:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        properties:
+          when: { type: boolean }
+          status: { type: integer }
+  properties:
+    routes:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [handler]
+        properties:
+          handler: { x-telo-ref: { kind: Telo.Executable, use: trigger.inbound } }
+          catches:
+            $ref: "#/$defs/Catches"
+            x-telo-outcome-list: catches
+            x-telo-catches-for: handler
+            x-telo-context:
+              type: object
+              additionalProperties: false
+              properties:
+                error:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    code: { type: string, x-telo-caught-member: code }
+                    data: { type: object, additionalProperties: true, x-telo-caught-member: data }
+    catches:
+      $ref: "#/$defs/Catches"
+      x-telo-outcome-list: catches
+      x-telo-catches-for: ""
+      x-telo-context:
+        type: object
+        additionalProperties: false
+        properties:
+          error:
+            type: object
+            additionalProperties: false
+            properties:
+              code: { type: string, x-telo-caught-member: code }
+              data: { type: object, additionalProperties: true, x-telo-caught-member: data }
+---
+kind: Telo.Definition
+metadata: { name: Server }
+capability: Telo.Service
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    mounts:
+      type: array
+      items: { x-telo-ref: { kind: Self.Router, use: dependency, throwsThrough: true } }
+    catches:
+      type: array
+      x-telo-outcome-list: catches
+      x-telo-catches-for: ""
+      x-telo-context:
+        type: object
+        additionalProperties: false
+        properties:
+          error:
+            type: object
+            additionalProperties: false
+            properties:
+              code: { type: string, x-telo-caught-member: code }
+      items:
+        type: object
+        additionalProperties: false
+        properties:
+          when: { type: boolean }
+          status: { type: integer }

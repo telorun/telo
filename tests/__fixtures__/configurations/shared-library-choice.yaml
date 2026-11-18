@@ -1,0 +1,19 @@
+# Two imports of one shared library hand it the same store in two spellings:
+# one instance where the store is declared, two different names where it is not.
+kind: Telo.Application
+metadata: { name: SharedLibraryChoice, version: 1.0.0 }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+imports:
+  Kinds: ../resource-inputs/optional/kinds
+  First:
+    source: ../resource-inputs/optional/shared
+    resources:
+      store: !ref mine
+  Second:
+    source: ../resource-inputs/optional/shared
+    resources:
+      store: !ref Self.mine
+--- !if
+metadata: { name: mine }
+if: !cel "variables.flag1"
+then: { kind: Kinds.Store, label: mine }

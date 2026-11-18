@@ -5,7 +5,8 @@ import { AliasResolver } from "../src/alias-resolver.js";
 import { DefinitionRegistry } from "../src/definition-registry.js";
 import { resolvedReference } from "../src/resolved-reference.js";
 import { resolveSchemaTypeRefs } from "../src/resolve-schema-type-refs.js";
-import { validateSchemaTypeRefs } from "../src/validate-schema-type-refs.js";
+import { namedShapeReferenceFinding, namedShapeReferenceSites } from "../src/named-shape-references.js";
+import { manifestNames } from "../src/scoped-name-resolver.js";
 
 describe("parseTeloTypeRef", () => {
   it("parses authority/type form", () => {
@@ -90,13 +91,15 @@ describe("resolveSchemaTypeRefs — references to a named shape", () => {
   });
 });
 
-describe("validateSchemaTypeRefs", () => {
+describe("named-shape references", () => {
   function setup(ref: string, opts?: { module?: string; rootModules?: string[] }) {
     const ownModule = opts?.module ?? "app";
     const registry = new DefinitionRegistry();
     // A locally-declared type and one reachable through an import alias.
-    registry.registerNamedTypeSchema(canonicalTypeSchemaId(ownModule, "Filter"), { type: "object" });
-    registry.registerNamedTypeSchema(canonicalTypeSchemaId("other", "Filter"), { type: "object" });
+    const shapes = [
+      { kind: "Telo.JsonSchema", metadata: { name: "Filter", module: ownModule }, schema: { type: "object" } },
+      { kind: "Telo.JsonSchema", metadata: { name: "Filter", module: "other" }, schema: { type: "object" } },
+    ] as unknown as ResourceManifest[];
     const aliases = new AliasResolver();
     aliases.registerImport("Other", "other", []);
     const m = {
@@ -104,13 +107,19 @@ describe("validateSchemaTypeRefs", () => {
       metadata: { name: "Search", module: ownModule },
       inputType: { schema: { properties: { f: { $ref: ref } } } },
     } as unknown as ResourceManifest;
-    return validateSchemaTypeRefs(
-      [m],
-      registry,
+    const aliasesByModule = new Map([[ownModule, aliases]]);
+    const names = manifestNames(shapes);
+    const scope = {
+      defs: registry,
       aliases,
-      new Map([[ownModule, aliases]]),
-      new Set(opts?.rootModules ?? [ownModule]),
-    );
+      aliasesByModule,
+      resolve: (name: string, module: string | undefined) => names.resolve(name, module),
+      inModule: (name: string, module: string) => names.inModule(name, module),
+    };
+    return namedShapeReferenceSites(m, new Set(opts?.rootModules ?? [ownModule]), scope).flatMap((site) => {
+      const found = namedShapeReferenceFinding(m, site, ref, scope);
+      return found ? [found] : [];
+    });
   }
 
   it("accepts a Self ref to a declared type", () => {

@@ -1,4 +1,5 @@
 import { scopedImportAnchorOf } from "./flatten-for-analyzer.js";
+import { stampedIn } from "./analysis-families.js";
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { needSupplyOf, needTypeOf, readSuppliedNeeds } from "./need-type.js";
 import {
@@ -6,13 +7,14 @@ import {
   resolveNeedTable,
   type NeedGraph,
   type NeedGraphImport,
+  type NeedProblem,
   type NeedTable,
 } from "./need-table.js";
 import type { ModuleDocuments } from "./module-documents.js";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { AnalysisRegistry } from "./analysis-registry.js";
 import { declaringModuleScope } from "./module-alias-scope.js";
-import { importAnchoredMessage } from "./reaching-import.js";
+import { importAnchoredDiagnostic } from "./reaching-import.js";
 import { isModuleKind } from "./module-kinds.js";
 import type { ReachSite } from "./reference-reach.js";
 import { type AnalysisDiagnostic, DiagnosticSeverity } from "./types.js";
@@ -61,51 +63,70 @@ export function needTableDiagnostics(
   );
   if (!built) return [];
   const graph: NeedGraph = presentNeeds ? { ...built, presentNeeds } : built;
+  return needProblemDiagnostics(graph, resolveNeedTable(graph).problems, rootModules).map((d) => d.diagnostic);
+}
+
+/** Each of a need table's `problems` as `telo check` reports it, with the
+ *  problems it stands for: one in the entry's own modules where it is written,
+ *  one in an imported library once, at the entry's import reaching it. */
+export function needProblemDiagnostics(
+  graph: NeedGraph,
+  problems: readonly NeedProblem[],
+  rootModules: ReadonlySet<string>,
+): { diagnostic: AnalysisDiagnostic; problems: NeedProblem[] }[] {
   const reaching = reachingImports(graph, rootModules);
-  const out: AnalysisDiagnostic[] = [];
-  const reported = new Set<string>();
-  for (const p of resolveNeedTable(graph).problems) {
+  const out: { diagnostic: AnalysisDiagnostic; problems: NeedProblem[] }[] = [];
+  const reported = new Map<string, NeedProblem[]>();
+  for (const p of problems) {
     if (rootModules.has(p.module)) {
-      if (p.reportedElsewhere) continue;
       out.push({
-        severity: DiagnosticSeverity.Error,
-        code: p.code,
-        source: SOURCE,
-        message: p.message,
-        data: {
-          ...(p.resource ? { resource: p.resource } : {}),
-          filePath: p.filePath,
-          path: p.path,
-          [NEED_TABLE_MARK]: true,
+        diagnostic: {
+          severity: DiagnosticSeverity.Error,
+          code: p.code,
+          source: SOURCE,
+          message: p.message,
+          data: {
+            ...(p.resource ? { resource: p.resource } : {}),
+            filePath: p.filePath,
+            path: p.path,
+            [NEED_TABLE_MARK]: true,
+          },
         },
+        problems: [p],
       });
       continue;
     }
     const via = reaching.get(p.module);
     if (!via) continue;
     const key = `${p.code}\0${p.module}\0${p.message}`;
-    if (reported.has(key)) continue;
-    reported.add(key);
+    const known = reported.get(key);
+    if (known) {
+      known.push(p);
+      continue;
+    }
+    const stands = [p];
+    reported.set(key, stands);
+    const anchor = scopedImportAnchorOf(via.manifest) ?? {
+      resource: { kind: "Telo.Import", name: via.alias },
+      filePath: (via.manifest.metadata as { source?: string } | undefined)?.source,
+      path: "",
+    };
+    const anchored = importAnchoredDiagnostic(
+      p.code,
+      p.module,
+      { alias: via.alias, ...anchor },
+      `${p.message} The repair is the library's — import a version of it that resolves this.`,
+      { ...(p.resource ? { resource: p.resource } : {}), filePath: p.filePath, path: p.path },
+    );
     out.push({
-      severity: DiagnosticSeverity.Error,
-      code: p.code,
-      source: SOURCE,
-      message: importAnchoredMessage(
-        p.module,
-        via.alias,
-        `${p.message} The repair is the library's — import a version of it that resolves this.`,
-      ),
-      data: {
-        ...(scopedImportAnchorOf(via.manifest) ?? {
-          resource: { kind: "Telo.Import", name: via.alias },
-          filePath: (via.manifest.metadata as { source?: string } | undefined)?.source,
-          path: "",
-        }),
-        [NEED_TABLE_MARK]: true,
-      },
+      diagnostic: { ...anchored, data: { ...(anchored.data as object), [NEED_TABLE_MARK]: true } },
+      problems: stands,
     });
   }
-  return out;
+  return out.map((found) => {
+    const family = found.problems[0]?.family;
+    return family ? { ...found, diagnostic: stampedIn(family, found.diagnostic) } : found;
+  });
 }
 
 /** The need table of an analysed set — every module built whole, as

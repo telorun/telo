@@ -1,0 +1,27 @@
+# Stamps written by hand inside a template body whose consumer makes a choice:
+# on an inline declaration in either branch and on a body entry. Each is
+# refused where it is written, once, in every configuration.
+kind: Telo.Application
+metadata: { name: NestedStampTemplateBody }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets: [!ref job]
+---
+kind: Telo.Definition
+metadata: { name: Job }
+capability: Telo.Runnable
+schema: { type: object, properties: { fast: { type: boolean, x-telo-eval: compile } } }
+resources:
+  - kind: Telo.Sequence
+    metadata: { name: body }
+    steps:
+      - name: answer
+        invoke: !if
+          if: !cel "self.fast"
+          then: { kind: Telo.Value, metadata: { xTeloChoice: true }, value: 1 }
+          else: { kind: Telo.Value, metadata: { module: Elsewhere }, value: 2 }
+  - { kind: Telo.Value, metadata: { name: other, xTeloOrigin: forged }, value: 4 }
+run: !ref body
+---
+kind: Self.Job
+metadata: { name: job }
+fast: !cel "variables.flag1"

@@ -67,6 +67,7 @@ import {
   type TemplateBodyExpansion,
 } from "./template-expansion.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
+import type { BindingOutcome, ViewBinding } from "./view-binding.js";
 
 const SOURCE = "telo-analyzer";
 
@@ -181,6 +182,8 @@ export function createConsumerExpander(env: ConsumerExpansionEnvironment): {
     runner: ResourceDefinition,
     sites: ReadonlyMap<unknown, ExpansionSite>,
   ): ConsumerExpansion;
+  /** What `consumer` gives each expression `runner`'s body reads. */
+  binding(consumer: ResourceManifest, runner: ResourceDefinition): ViewBinding;
 } {
   const { registry, aliases, aliasesByModule } = env;
   const records: ConsumerExpansionRecords = { diagnostics: [], reads: [], refused: [], open: new Set() };
@@ -208,35 +211,23 @@ export function createConsumerExpander(env: ConsumerExpansionEnvironment): {
     if (open) records.open.add(diagnostic);
   };
 
-  const expand = (
+  const lift = env.lift;
+  const space = lift?.space;
+  const both = (a: Holding, b: Holding): Holding => meet(space, a, b);
+  const holds = (h: Holding): boolean => h.condition !== FALSE;
+
+  /** How `consumer`'s values are read for `runner`'s body: each chain an
+   *  expression reads, and each expression's value — every outcome, each where
+   *  it holds. `recording`: the reads are the expansion's, which the
+   *  configuration reading takes. */
+  const readerOf = (
     consumer: ResourceManifest,
     runner: ResourceDefinition,
-    sites: ReadonlyMap<unknown, ExpansionSite>,
-  ): ConsumerExpansion => {
+    located: WeakMap<LoopElement, Location>,
+    recording: boolean,
+  ) => {
     const runnerDoc = runner as unknown as ResourceManifest;
     const consumerModule = moduleOf(consumer);
-    const located = new WeakMap<LoopElement, Location>();
-    const bindings = new Map<ExpansionSite, LoopBinding>();
-    let refusals = 0;
-    const refuse = (code: string, at: Location, message: string, open = false) => {
-      refusals++;
-      report(code, at, message, open);
-    };
-    const bindingOf = (site: ExpansionSite): LoopBinding => {
-      const known = bindings.get(site);
-      if (known) return known;
-      const body = expansionBody(site.value as ExpansionSentinel);
-      const binding: LoopBinding = {
-        name: typeof body.as === "string" ? body.as : "each",
-        sentinel: site.value as ExpansionSentinel,
-        site: parseKeys(site.path),
-        keyed: false,
-        element: undefined,
-      };
-      bindings.set(site, binding);
-      return binding;
-    };
-
     /** The schema default of a field `holder`'s kind declares at `keys`. */
     const defaultAt = (holder: ResourceManifest, keys: readonly (string | number)[]): unknown => {
       const kind = definitionInScope<ResourceDefinition>(registry, holder.kind, holder.metadata, aliases, aliasesByModule);
@@ -273,11 +264,6 @@ export function createConsumerExpander(env: ConsumerExpansionEnvironment): {
       return paths;
     };
 
-    const lift = env.lift;
-    const space = lift?.space;
-    const both = (a: Holding, b: Holding): Holding => meet(space, a, b);
-    const holds = (h: Holding): boolean => h.condition !== FALSE;
-
     /** `segments` read down from `start`, which `at` locates — every outcome,
      *  each where it holds (one, everywhere, unless lifted). */
     const navigate = (start: unknown, at: Location, segments: readonly string[], within: Holding = EVERYWHERE): Outcome[] => {
@@ -306,7 +292,9 @@ export function createConsumerExpander(env: ConsumerExpansionEnvironment): {
           return;
         }
         const segment = segments[i]!;
-        if (!isTaggedSentinel(node) && !isCompiledValue(node)) {
+        // Lifted, a reference is still the `!ref` its consumer wrote.
+        const crossable = lift ? isRefSentinel(node) || !isTaggedSentinel(node) : !isTaggedSentinel(node);
+        if (crossable && !isCompiledValue(node)) {
           const location = { holder, keys, ...(written ? { written } : {}) };
           const crossings = lift
             ? lift.declarationsAt(node, location, consumer)
@@ -371,7 +359,7 @@ export function createConsumerExpander(env: ConsumerExpansionEnvironment): {
         if (isTaggedSentinel(node) || isCompiledValue(node)) {
           const source = celSource(node);
           if (source !== undefined) {
-            records.reads.push({ holder, source });
+            if (recording) records.reads.push({ holder, source });
             if (lift) {
               const outcomes = lift.valueOutcomes(holder, source);
               if (outcomes) {
@@ -495,6 +483,58 @@ export function createConsumerExpander(env: ConsumerExpansionEnvironment): {
         }),
       ];
     };
+
+    return { navigate, resolveChain, valueIn, celView };
+  };
+
+  /** What `consumer` gives the expressions `runner`'s body reads, as its
+   *  expansion reads them, each memoized. */
+  const binding = (consumer: ResourceManifest, runner: ResourceDefinition): ViewBinding => {
+    let reader: ReturnType<typeof readerOf> | undefined;
+    const known = new Map<string, readonly BindingOutcome[]>();
+    return {
+      outcomesOf: (source) => {
+        let outcomes = known.get(source);
+        if (outcomes) return outcomes;
+        reader ??= readerOf(consumer, runner, new WeakMap(), false);
+        outcomes = reader.valueIn(source, []).map(({ resolved, holding }): BindingOutcome =>
+          resolved.kind === "open" ? { open: true, condition: holding.condition } : { value: resolved.value, condition: holding.condition },
+        );
+        known.set(source, outcomes);
+        return outcomes;
+      },
+    };
+  };
+
+  const expand = (
+    consumer: ResourceManifest,
+    runner: ResourceDefinition,
+    sites: ReadonlyMap<unknown, ExpansionSite>,
+  ): ConsumerExpansion => {
+    const runnerDoc = runner as unknown as ResourceManifest;
+    const located = new WeakMap<LoopElement, Location>();
+    const bindings = new Map<ExpansionSite, LoopBinding>();
+    let refusals = 0;
+    const refuse = (code: string, at: Location, message: string, open = false) => {
+      refusals++;
+      report(code, at, message, open);
+    };
+    const bindingOf = (site: ExpansionSite): LoopBinding => {
+      const known = bindings.get(site);
+      if (known) return known;
+      const body = expansionBody(site.value as ExpansionSentinel);
+      const binding: LoopBinding = {
+        name: typeof body.as === "string" ? body.as : "each",
+        sentinel: site.value as ExpansionSentinel,
+        site: parseKeys(site.path),
+        keyed: false,
+        element: undefined,
+      };
+      bindings.set(site, binding);
+      return binding;
+    };
+
+    const { navigate, resolveChain, valueIn, celView } = readerOf(consumer, runner, located, true);
 
     /** The key a splice's element emits in `instance` — every outcome, each
      *  where it holds; undefined leaves the element out there. */
@@ -732,7 +772,7 @@ export function createConsumerExpander(env: ConsumerExpansionEnvironment): {
     return { consumer, runner, expansion, refused: refusals > 0, locate };
   };
 
-  return { records, expand };
+  return { records, expand, binding };
 }
 
 /** Each spliced key emitted twice in one mapping, or beside a literal key of

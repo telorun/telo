@@ -24,7 +24,6 @@ import { elementFromItemReads } from "./element-from-item.js";
 import { pathParamsForReads } from "./path-params-slot.js";
 import type { ReadReporter } from "./read-place.js";
 import { refSlotReads } from "./ref-slot.js";
-import { referrerRulesReads } from "./referrer-rule.js";
 import { retryForReads } from "./retry-for-slot.js";
 import { projectionFromReads } from "./schema-projection.js";
 import { scopeReads } from "./scope-declarations.js";

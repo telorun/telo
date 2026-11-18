@@ -1,0 +1,40 @@
+# A kind's `completedWhen` names a sibling written as a named shape that is a
+# boolean only where flag1 holds, and another reached through a chain of two
+# shapes on the pointer's path: each refused where flag1 is false, and only
+# there.
+kind: Telo.Application
+metadata: { name: CompletedWhenShapeChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Flag }
+schema: !if
+  if: !cel "variables.flag1"
+  then: { type: boolean }
+  else: { type: string }
+---
+kind: Telo.JsonSchema
+metadata: { name: Options }
+schema: { type: object, properties: { prompt: { $ref: "telo://Self/Flag" } } }
+---
+kind: Telo.Definition
+metadata: { name: Button }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Button]
+schema:
+  type: object
+  properties:
+    action: { x-telo-ref: { kind: Telo.Invocable, use: call, inputs: /inputs, completedWhen: /prompt } }
+    inputs: { type: object, default: {} }
+    prompt: { $ref: "telo://Self/Flag" }
+---
+kind: Telo.Definition
+metadata: { name: Menu }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Menu]
+schema:
+  type: object
+  properties:
+    action: { x-telo-ref: { kind: Telo.Invocable, use: call, inputs: /inputs, completedWhen: /options/prompt } }
+    inputs: { type: object, default: {} }
+    options: { $ref: "telo://Self/Options" }

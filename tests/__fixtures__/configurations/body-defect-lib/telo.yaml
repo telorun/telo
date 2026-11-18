@@ -1,0 +1,29 @@
+# A library whose templated kind writes a body entry its own check refuses: the
+# literal `limits` of `fixed` holds a `min` of 5 with no `max`. The other
+# entry's `min` is whatever the consumer forwards.
+kind: Telo.Library
+metadata: { name: BodyDefect }
+---
+kind: Telo.Definition
+metadata: { name: Target }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=../probe.mjs#Probe]
+schema:
+  type: object
+  properties:
+    limits:
+      type: object
+      properties: { min: { type: integer }, max: { type: integer } }
+      if: { properties: { min: { const: 5 } }, required: [min] }
+      then: { required: [max] }
+---
+kind: Telo.Definition
+metadata: { name: Pair }
+capability: Telo.Provider
+schema: { type: object, properties: { v: { type: integer } } }
+resources:
+  - kind: Self.Target
+    metadata: { name: target }
+    limits: { min: !cel "self.v" }
+  - { kind: Self.Target, metadata: { name: fixed }, limits: { min: 5 } }
+provide: !ref target

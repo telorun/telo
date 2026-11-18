@@ -1,0 +1,8 @@
+# A library kind whose `schema:` `$ref`s the library's own named shape, which it does not export.
+kind: Telo.Application
+metadata: { name: LibraryOwnNamedShape, version: 1.0.0 }
+imports: { L: ./lib }
+---
+kind: L.Holder
+metadata: { name: h }
+price: { amount: 3 }

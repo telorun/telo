@@ -147,21 +147,40 @@ export function remapMigratedPaths(
   if (index.size === 0) return [...diagnostics];
 
   return diagnostics.map((d) => {
-    const data = d.data as
-      | { resource?: { kind?: string; name?: string }; path?: string; filePath?: string }
-      | undefined;
-    if (typeof data?.path !== "string") return d;
-
-    const records = candidatesFor(
-      index,
-      typeof data.filePath === "string" ? data.filePath : undefined,
-      typeof data.resource?.kind === "string" ? data.resource.kind : undefined,
-      typeof data.resource?.name === "string" ? data.resource.name : undefined,
-    );
-    if (!records || records.length === 0) return d;
-
-    const remapped = remapPath(data.path, records);
-    if (remapped === undefined || remapped === data.path) return d;
-    return { ...d, data: { ...data, path: remapped } };
+    const data = d.data as (Place & { writtenAt?: Place }) | undefined;
+    if (!data) return d;
+    const path = remappedPlace(index, data);
+    // An import-anchored finding names where its defect is written, which the
+    // module's own finding there is reported at in the author's spelling.
+    const written = data.writtenAt ? remappedPlace(index, data.writtenAt) : undefined;
+    if (path === undefined && written === undefined) return d;
+    return {
+      ...d,
+      data: {
+        ...data,
+        ...(path !== undefined ? { path } : {}),
+        ...(written !== undefined ? { writtenAt: { ...data.writtenAt, path: written } } : {}),
+      },
+    };
   });
+}
+
+interface Place {
+  resource?: { kind?: unknown; name?: unknown };
+  path?: string;
+  filePath?: string;
+}
+
+/** `place`'s path in the author's spelling, when a rewrite moved it. */
+function remappedPlace(index: RewriteIndex, place: Place): string | undefined {
+  if (typeof place.path !== "string") return undefined;
+  const records = candidatesFor(
+    index,
+    typeof place.filePath === "string" ? place.filePath : undefined,
+    typeof place.resource?.kind === "string" ? place.resource.kind : undefined,
+    typeof place.resource?.name === "string" ? place.resource.name : undefined,
+  );
+  if (!records || records.length === 0) return undefined;
+  const remapped = remapPath(place.path, records);
+  return remapped === undefined || remapped === place.path ? undefined : remapped;
 }

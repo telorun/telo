@@ -1,0 +1,36 @@
+# An import supplying a library's host-path input from a provider's reported
+# state: the declaration a choice decides reports a host path in one branch and
+# a plain string in the other, so the source is refused only where the choice
+# takes the second. A relative literal beside it is refused whatever the choice.
+kind: Telo.Application
+metadata: { name: HostPathImportChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+imports:
+  Lib:
+    source: ./host-path-import-lib
+    variables:
+      root: !cel "resources.chosen.status.dir"
+      extra: relative/dir
+---
+kind: Telo.Definition
+metadata: { name: PathProvider }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema: { type: object }
+status:
+  type: object
+  properties: { dir: { type: string, x-telo-type: Telo.HostPath } }
+---
+kind: Telo.Definition
+metadata: { name: PlainProvider }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
+schema: { type: object }
+status:
+  type: object
+  properties: { dir: { type: string } }
+--- !if
+metadata: { name: chosen }
+if: !cel "variables.flag1"
+then: { kind: Self.PlainProvider }
+else: { kind: Self.PathProvider }

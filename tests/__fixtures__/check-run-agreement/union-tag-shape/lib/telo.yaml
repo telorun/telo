@@ -1,0 +1,28 @@
+# A named shape that is a tagged union holding a named shape that is one too,
+# reached by a kind's schema through `telo://Self/Node`; the library's own `panel` writes the
+# nested tag misspelled, so the finding is at it, naming both values.
+kind: Telo.Library
+metadata: { name: UnionTagShapeLib, version: 1.0.0 }
+exports: { resources: [Node, Store, value] }
+---
+kind: Telo.JsonSchema
+metadata: { name: Store }
+schema:
+  oneOf:
+    - { type: object, required: [type], properties: { type: { const: list }, rows: { type: integer } } }
+    - { type: object, required: [type], properties: { type: { const: map }, size: { type: integer } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Node }
+schema:
+  oneOf:
+    - { type: string }
+    - type: object
+      required: [type, store]
+      properties: { type: { const: view }, store: { $ref: "telo:UnionTagShapeLib/Store" } }
+    - { type: object, required: [type], properties: { type: { const: text }, text: { type: string } } }
+---
+kind: Telo.Value
+metadata: { name: value }
+outputType: !ref Node
+value: { type: view, store: { type: lst } }

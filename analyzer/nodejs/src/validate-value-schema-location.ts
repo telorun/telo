@@ -20,6 +20,7 @@ import {
   schemaReachesLocation,
   valueSchemaAnnotations,
   valueSchemaMemberProblem,
+  type ValueSchemaAnnotation,
 } from "./value-schema-slot.js";
 import { isResolvedReference } from "./resolved-reference.js";
 
@@ -65,15 +66,26 @@ export interface NamedContractShape {
   schema: Record<string, any>;
 }
 
+/** The sentence an annotation whose location the kind's schema cannot hold is refused with. */
+function unreachableLocation(kindName: string, raw: unknown, location: unknown, where: string): string {
+  return (
+    `'${kindName}' declares \`${ANNOTATION}: ${describeValueSchemaLocation(raw)}\` ${where}, but its schema ` +
+    `declares nothing at ${location === raw ? "that location" : `the location \`${describeValueSchemaLocation(location)}\``}, ` +
+    `so no resource of the kind can name a type there ` +
+    `and the annotated node would be typed from nothing. Name a field the kind's ` +
+    `\`schema:\` declares — by name, or by a JSON Pointer from the resource root, which may ` +
+    `continue through a reference slot and range over a list with '*'.`
+  );
+}
+
 /**
  * Every unreadable or unreachable `x-telo-value-schema-from` of one definition.
  *
  * `schema` is the kind's author schema with inheritance resolved — a location
  * may name a field an ancestor declares. An annotation is judged wherever the
- * contract resolver types it: in the definition's own fields, and in the
- * document of the named shape an `inputType` / `outputType` names, which
- * `resolveShape` reads. The shape's annotations are this kind's there, so each
- * kind naming one shape is judged against its own schema, at the field; a field
+ * contract resolver types it: in the definition's own fields, and — when
+ * `resolveShape` is given — in the document of the named shape an `inputType` /
+ * `outputType` names ({@link shapeValueSchemaFromProblems}). A field
  * `resolveShape` cannot read is not judged.
  */
 export function valueSchemaFromProblems(
@@ -83,14 +95,6 @@ export function valueSchemaFromProblems(
 ): ValueSchemaFromProblem[] {
   const problems: ValueSchemaFromProblem[] = [];
   const kindName = String(definition.metadata?.name);
-  const unreachable = (raw: unknown, location: unknown, where: string): string =>
-    `'${kindName}' declares \`${ANNOTATION}: ${describeValueSchemaLocation(raw)}\` ${where}, but its schema ` +
-    `declares nothing at ${location === raw ? "that location" : `the location \`${describeValueSchemaLocation(location)}\``}, ` +
-    `so no resource of the kind can name a type there ` +
-    `and the annotated node would be typed from nothing. Name a field the kind's ` +
-    `\`schema:\` declares — by name, or by a JSON Pointer from the resource root, which may ` +
-    `continue through a reference slot and range over a list with '*'.`;
-
   for (const field of ANNOTATED_FIELDS) {
     const written = definition[field];
     const writtenRoot = writtenSchemaRoot(written, field);
@@ -103,33 +107,48 @@ export function valueSchemaFromProblems(
           continue;
         }
         if (!schema || !schemaReachesLocation(schema, location.segments)) {
-          problems.push({ path: at, message: unreachable(raw, location.raw, `at '${at}'`) });
+          problems.push({ path: at, message: unreachableLocation(kindName, raw, location.raw, `at '${at}'`) });
         }
         const memberProblem =
           location.member && writtenRoot ? valueSchemaMemberProblem(writtenRoot, annotation, location.member) : undefined;
         if (memberProblem) problems.push({ path: at, message: `'${kindName}' at '${at}': ${memberProblem}` });
       }
     }
+    if (field === "schema") continue;
+    const shape = resolveShape?.(written);
+    if (shape) problems.push(...shapeValueSchemaFromProblems(kindName, field, shape, schema));
+  }
+  return problems;
+}
 
-    const shape = field === "schema" ? undefined : resolveShape?.(written);
-    if (!shape) continue;
-    for (const annotation of valueSchemaAnnotations(shape.schema)) {
-      const { path, raw } = annotation;
-      const within = path === "" ? "its root" : `'${path}'`;
-      const where = `through \`${field}\`, which names the shape '${shape.name}' carrying it at ${within}`;
-      for (const location of readValueSchemaLocations(raw) ?? []) {
-        if ("invalid" in location) {
-          problems.push({ path: field, message: `'${kindName}' ${where}: ${location.invalid}` });
-          continue;
-        }
-        if (!schema || !schemaReachesLocation(schema, location.segments)) {
-          problems.push({ path: field, message: unreachable(raw, location.raw, where) });
-        }
-        const memberProblem = location.member
-          ? valueSchemaMemberProblem(shape.schema, annotation, location.member)
-          : undefined;
-        if (memberProblem) problems.push({ path: field, message: `'${kindName}' ${where}: ${memberProblem}` });
+/**
+ * The annotations a named shape carries, judged as the kind `kindName` whose
+ * `field` names it reads them — against the kind's effective `schema` — each
+ * reported at the field.
+ */
+export function shapeValueSchemaFromProblems(
+  kindName: string,
+  field: "inputType" | "outputType",
+  shape: NamedContractShape,
+  schema: Record<string, any> | undefined,
+  /** The annotations the shape carries, when already read. */
+  annotations: readonly ValueSchemaAnnotation[] = valueSchemaAnnotations(shape.schema),
+): ValueSchemaFromProblem[] {
+  const problems: ValueSchemaFromProblem[] = [];
+  for (const annotation of annotations) {
+    const { path, raw } = annotation;
+    const within = path === "" ? "its root" : `'${path}'`;
+    const where = `through \`${field}\`, which names the shape '${shape.name}' carrying it at ${within}`;
+    for (const location of readValueSchemaLocations(raw) ?? []) {
+      if ("invalid" in location) {
+        problems.push({ path: field, message: `'${kindName}' ${where}: ${location.invalid}` });
+        continue;
       }
+      if (!schema || !schemaReachesLocation(schema, location.segments)) {
+        problems.push({ path: field, message: unreachableLocation(kindName, raw, location.raw, where) });
+      }
+      const memberProblem = location.member ? valueSchemaMemberProblem(shape.schema, annotation, location.member) : undefined;
+      if (memberProblem) problems.push({ path: field, message: `'${kindName}' ${where}: ${memberProblem}` });
     }
   }
   return problems;

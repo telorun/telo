@@ -1,0 +1,29 @@
+# What an import hands a library is declared, and of the kind the library asks
+# for, only in some configurations.
+kind: Telo.Application
+metadata: { name: ResourceInputSupplyChoice, version: 1.0.0 }
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+  flag2: { env: FLAG_2, type: boolean, default: false }
+imports:
+  Kinds: ../resource-inputs/optional/kinds
+  Stores:
+    source: ./resource-input-supply
+    resources:
+      store: !ref mine
+      other: !ref theirs
+--- !if
+metadata: { name: mine }
+if: !cel "variables.flag1"
+then: { kind: Kinds.Store, label: mine }
+--- !if
+metadata: { name: theirs }
+if: !cel "variables.flag2"
+then: { kind: Kinds.Store, label: theirs }
+else:
+  kind: Kinds.Holder
+  store: !ref fixed
+---
+kind: Kinds.Store
+metadata: { name: fixed }
+label: fixed

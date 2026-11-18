@@ -1,0 +1,21 @@
+# A kind spelled through an alias a scoped import carries only where a choice
+# declares it: refused naming the scoped import where it is present, and as a
+# kind no module defines where it is not.
+kind: Telo.Application
+metadata: { name: ScopedImportKindChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets: [!ref seq]
+---
+kind: Telo.Sequence
+metadata: { name: seq }
+with: !if
+  if: !cel "variables.flag1"
+  then:
+    - { kind: Telo.Import, metadata: { name: Inner }, source: ./scoped-import-kind-lib }
+  else: []
+steps:
+  - { name: noop, value: 1 }
+---
+kind: Inner.Thing
+metadata: { name: shape }
+schema: { type: string }

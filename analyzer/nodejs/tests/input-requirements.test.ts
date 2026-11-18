@@ -60,6 +60,13 @@ describe("input requirements", () => {
     });
   });
 
+  it("require an input a template body's branch reads only where a configuration takes that branch", async () => {
+    expect(await requirements("requirements/body-choice.yaml")).toEqual({
+      "variables.x": "never",
+      "variables.y": [{ "variables.x": true }],
+    });
+  });
+
   it("require a need only where its reads and references reach it", async () => {
     expect(await requirements("needs/presence.yaml")).toEqual({
       "variables.expected": "never",
@@ -92,6 +99,13 @@ describe("input requirements", () => {
     expect(await requirements("needs/shelf-app.yaml")).toEqual({
       "needs.Shelf.Notes.databaseAccess": "never",
       "needs.Shelf.Notes.data": [{ "resources.Shelf.Notes.databaseAccess": "absent" }],
+    });
+  });
+
+  it("translate a library's requirement through its import binding a dimension to the importer's", async () => {
+    expect(await requirements("needs/flagged-app.yaml")).toEqual({
+      "variables.flag": "never",
+      "needs.Flagged.data": [{ "variables.flag": true }],
     });
   });
 

@@ -1,0 +1,16 @@
+# A named shape written where a choice decides, named like a kind of its
+# module: both claim one schema id only in the configurations taking the
+# branch.
+kind: Telo.Application
+metadata: { name: TypeNameKindChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.Definition
+metadata: { name: Money }
+capability: Telo.Invocable
+schema: { type: object }
+---
+--- !if
+metadata: { name: Money }
+if: !cel "variables.flag1"
+then: { kind: Telo.JsonSchema, schema: { type: object } }

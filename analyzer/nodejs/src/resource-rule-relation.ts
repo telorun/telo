@@ -13,6 +13,7 @@
  *
  * Browser-safe.
  */
+import { inFamily } from "./analysis-families.js";
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import type { ModuleCallDispatch } from "@telorun/templating";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
@@ -41,6 +42,8 @@ import {
   type CoReferrerGroup,
   type ResourceRuleDiagnostic,
 } from "./validate-resource-rules.js";
+import { compareCodePoints, type FindingOrder, type Place } from "./finding-order.js";
+import { FALSE, type Condition, type ConditionSpace } from "./presence-condition.js";
 import { kindSatisfies } from "./validate-references.js";
 
 const SOURCE = "telo-analyzer";
@@ -55,8 +58,9 @@ const SEVERITY = {
   information: DiagnosticSeverity.Information,
 } as const;
 
-/** What a carrier says: the rule's failure, or whether it met anything. */
-interface RuleReport {
+/** A finding about a rule itself, or whether a rule met anything: the
+ *  declaring kind and rule it is keyed by, and the report it stands for. */
+export interface RuleReport {
   readonly type: "failure" | "exercise";
   /** The declaring kind and rule — what `RuleFailureLedger` and the exercise
    *  tally are keyed by. */
@@ -74,8 +78,30 @@ interface RuleReport {
   };
 }
 
+/**
+ * One referrer rule's verdict at one slot, as only the run placing it can
+ * settle: a rule judges a referrer once however many of its slots reach the
+ * resource (`once`) and stops at its first failure on one resource
+ * (`subject`), and is exercised where it met a referrer. The diagnostics it
+ * decides are written beside it, each marked with its `claim`.
+ */
+export interface ReferrerVerdict {
+  readonly type: "referrer";
+  readonly claim: string;
+  /** Where the referrer writes the reference: the order verdicts settle in. */
+  readonly at: Place;
+  /** The resource and rule the verdict is about. */
+  readonly subject: string;
+  /** The referrer the verdict is the whole of; absent for a per-entry rule. */
+  readonly once?: string;
+  /** The exercise tally entry, for a rule of the entry's own modules. */
+  readonly exercise?: { readonly key: string; readonly exercised: boolean; readonly violated: boolean };
+  /** The rule's failure on this referrer. */
+  readonly failure?: RuleReport;
+}
+
 /** The scope a rule reads declarations in. */
-type RuleDoor = Pick<
+export type RuleDoor = Pick<
   RelationDoor,
   "defs" | "aliases" | "aliasesByModule" | "rootModules" | "libraries" | "requests" | "declared" | "moduleNames" | "subject" | "functions"
 >;
@@ -85,7 +111,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
 }
 
 /** The binder a rule resolves its references through, over the door's requests. */
-function binderOf(door: RuleDoor): PeerBinder {
+export function binderOf(door: RuleDoor): PeerBinder {
   const { defs, aliases, aliasesByModule, requests, libraries, rootModules } = door;
   const sites = new WeakMap<object, CelEvalSites | undefined>();
   const writing = analyzerWritingModules(rootModules, aliasesByModule, requests.names, libraries);
@@ -217,20 +243,6 @@ function coReferrerGroups(door: RuleDoor, declarer: ResourceDefinition, ruleDef:
   };
 }
 
-function carrier(subject: ResourceManifest, report: RuleReport): AnalysisDiagnostic {
-  return {
-    severity: DiagnosticSeverity.Hint,
-    code: RESOURCE_RULE_REPORT,
-    source: SOURCE,
-    message: "",
-    data: {
-      resource: { kind: subject.kind, name: subject.metadata?.name as string },
-      filePath: (subject.metadata as { source?: string } | undefined)?.source,
-      ruleReport: report,
-    },
-  };
-}
-
 function ruleDiagnostic(report: ResourceRuleDiagnostic): AnalysisDiagnostic {
   const diagnostic: AnalysisDiagnostic = {
     severity: SEVERITY[report.severity],
@@ -294,7 +306,7 @@ export function resourceRuleFindings(identity: DeclarationIdentity, door: RuleDo
     for (const report of reportResourceRules(subject, declarer, findings, !declarerModule || door.rootModules.has(declarerModule))) {
       if (report.evaluationFailure) {
         out.push({
-          diagnostic: carrier(subject, {
+          diagnostic: ruleCarrier(subject, {
             type: "failure",
             key: `resource\u0000${declarerModule ?? ""}.${declarerName}`,
             rule: report.rule,
@@ -313,7 +325,7 @@ export function resourceRuleFindings(identity: DeclarationIdentity, door: RuleDo
   if (!module || door.rootModules.has(module)) {
     for (const rule of readResourceRules((definition as Record<string, unknown>).schema)) {
       out.push({
-        diagnostic: carrier(subject, {
+        diagnostic: ruleCarrier(subject, {
           type: "exercise",
           key: `${module}.${definitionName}#${rule.code}`,
           rule: rule.code,
@@ -343,71 +355,261 @@ export class LazyDispatch extends Map<string, (...args: any[]) => unknown> {
   }
 }
 
+/** Where a carrier's verdict marks a diagnostic it decides. */
+export const RULE_CLAIM = "ruleClaim";
+
+/** A carrier of `report`, about `subject`. */
+export function ruleCarrier(subject: ResourceManifest, report: RuleReport | ReferrerVerdict, path?: string): AnalysisDiagnostic {
+  return {
+    severity: DiagnosticSeverity.Hint,
+    code: RESOURCE_RULE_REPORT,
+    source: SOURCE,
+    message: "",
+    data: {
+      resource: { kind: subject.kind, name: subject.metadata?.name as string },
+      filePath: (subject.metadata as { source?: string } | undefined)?.source,
+      ...(path === undefined ? {} : { path }),
+      ruleReport: report,
+    },
+  };
+}
+
 /**
  * What one run makes of the rule carriers its instances' findings hold: a
  * failing rule once per declaring kind, anchored at the `imports:` entry that
- * brought the kind in when it is a dependency's, and — once the run is over —
- * the rules no instance of it exercised.
+ * brought the kind in when it is a dependency's, a referrer rule's verdict on
+ * a referrer once, and — once the run is over — the rules no instance of it
+ * exercised: a resource rule's tallied by its instances, a referrer rule's
+ * wherever a resource of its kind was seen.
  */
-export class ResourceRuleReports {
+export class RuleReports {
   private readonly ledger = new RuleFailureLedger();
   private readonly tally = new Map<string, { exercised: boolean; report: RuleReport }>();
+  private readonly referrerTally = new Map<string, { exercised: boolean; seen?: { order: number; report: AnalysisDiagnostic } }>();
+  private readonly claims = new Map<string, boolean>();
+  private readonly judged = new Set<string>();
+  private readonly stopped = new Set<string>();
 
-  constructor(private readonly anchorOf: (module: string) => { filePath?: string; path: string } | undefined) {}
+  constructor(
+    private readonly anchorOf: (module: string) => { filePath?: string; path: string } | undefined,
+    private readonly order: FindingOrder,
+  ) {}
 
-  /** `diagnostics` with each carrier replaced by what it stands for. */
+  /** `diagnostics` with each carrier replaced by what it stands for, and each
+   *  diagnostic a referrer verdict claims kept only where the verdict holds. */
   settle(diagnostics: readonly AnalysisDiagnostic[]): AnalysisDiagnostic[] {
-    const out: AnalysisDiagnostic[] = [];
-    for (const diagnostic of diagnostics) {
-      const found = (diagnostic.data as { ruleReport?: RuleReport } | undefined)?.ruleReport;
-      if (diagnostic.code !== RESOURCE_RULE_REPORT || !found) {
-        out.push(diagnostic);
-        continue;
+    return this.settleGroups([diagnostics])[0]!;
+  }
+
+  /**
+   * {@link settle} over several lists at once. The carriers of every list are
+   * decided together, in the order they are written — a verdict that failed
+   * stops the later ones on its resource, and the first failure of a rule is
+   * the one reported — and only then is each list read: a carrier's own
+   * replacement and every claimed diagnostic kept or dropped by what was
+   * decided, in the list's order.
+   */
+  settleGroups(groups: readonly (readonly AnalysisDiagnostic[])[]): AnalysisDiagnostic[][] {
+    const carriers: AnalysisDiagnostic[] = [];
+    for (const group of groups) for (const d of group) if (carrierOf(d)) carriers.push(d);
+    const replaced = new Map<AnalysisDiagnostic, AnalysisDiagnostic[]>();
+    const carrierText = (d: AnalysisDiagnostic): string => {
+      const found = carrierOf(d)!;
+      return found.type === "referrer" ? found.claim : `${found.key}\0${found.rule}`;
+    };
+    const ordered = carriers
+      .map((d, index) => ({ d, index }))
+      .sort((a, b) => this.order.compare(a.d, b.d) || compareCodePoints(carrierText(a.d), carrierText(b.d)) || a.index - b.index);
+    for (const { d } of ordered) replaced.set(d, this.decide(carrierOf(d)!));
+    return groups.map((group) => {
+      const out: AnalysisDiagnostic[] = [];
+      for (const diagnostic of group) {
+        const data = diagnostic.data as { [RULE_CLAIM]?: string } | undefined;
+        const claim = data?.[RULE_CLAIM];
+        if (claim !== undefined) {
+          if (!this.claims.get(claim)) continue;
+          const { [RULE_CLAIM]: _claim, ...rest } = data as Record<string, unknown>;
+          out.push({ ...diagnostic, data: rest as typeof diagnostic.data });
+          continue;
+        }
+        const replacement = replaced.get(diagnostic);
+        if (replacement) out.push(...replacement);
+        else if (!carrierOf(diagnostic)) out.push(diagnostic);
       }
+      return out;
+    });
+  }
+
+  /**
+   * {@link settleGroups} over findings each holding under a condition: the
+   * carriers decided in the order they are written, each where no earlier one
+   * decided otherwise, and every claimed diagnostic kept where its verdict
+   * held. `exercised` is where an instance of each resource rule was settled.
+   */
+  settleConditioned<T extends { readonly diagnostic: AnalysisDiagnostic; readonly condition: Condition }>(
+    findings: readonly T[],
+    space: ConditionSpace,
+  ): { diagnostic: AnalysisDiagnostic; condition: Condition; from: T }[] {
+    const carrierText = (d: AnalysisDiagnostic): string => {
+      const found = carrierOf(d)!;
+      return found.type === "referrer" ? found.claim : `${found.key}\0${found.rule}`;
+    };
+    const ordered = findings
+      .map((f, index) => ({ f, index }))
+      .filter(({ f }) => carrierOf(f.diagnostic) !== undefined)
+      .sort((a, b) => this.order.compare(a.f.diagnostic, b.f.diagnostic) || compareCodePoints(carrierText(a.f.diagnostic), carrierText(b.f.diagnostic)) || a.index - b.index);
+    const ledger = new Map<string, Condition>();
+    const stopped = new Map<string, Condition>();
+    const judged = new Map<string, Condition>();
+    const claims = new Map<string, Condition>();
+    const out: { diagnostic: AnalysisDiagnostic; condition: Condition; from: T }[] = [];
+    const failure = (found: RuleReport, condition: Condition, from: T): void => {
+      const key = `${found.key}\u0000${found.rule}`;
+      const before = ledger.get(key) ?? FALSE;
+      ledger.set(key, space.or(before, condition));
+      const held = space.and(condition, space.not(before));
+      if (held === FALSE) return;
+      for (const diagnostic of this.failureDiagnostics(found)) out.push({ diagnostic, condition: held, from });
+    };
+    for (const { f } of ordered) {
+      const found = carrierOf(f.diagnostic)!;
       if (found.type === "exercise") {
-        const known = this.tally.get(found.key);
-        if (known) known.exercised ||= found.exercised === true;
-        else this.tally.set(found.key, { exercised: found.exercised === true, report: found });
+        this.exercised.set(found.key, space.or(this.exercised.get(found.key) ?? FALSE, f.condition));
         continue;
       }
-      if (!this.ledger.first(found.key, found.rule)) continue;
-      const anchor = found.module ? this.anchorOf(found.module) : undefined;
-      out.push(
-        anchor
-          ? {
-              severity: SEVERITY[found.report.severity],
-              code: found.report.code,
-              source: SOURCE,
-              message: found.report.message,
-              data: { filePath: anchor.filePath, path: anchor.path, rule: found.rule },
-            }
-          : this.at(found),
-      );
+      if (found.type !== "referrer") {
+        failure(found, f.condition, f);
+        continue;
+      }
+      claims.set(found.claim, space.and(claims.get(found.claim) ?? FALSE, space.not(f.condition)));
+      let held = space.and(f.condition, space.not(stopped.get(found.subject) ?? FALSE));
+      if (found.once !== undefined) {
+        const before = judged.get(found.once) ?? FALSE;
+        judged.set(found.once, space.or(before, held));
+        held = space.and(held, space.not(before));
+      }
+      if (held === FALSE) continue;
+      if (found.failure) {
+        stopped.set(found.subject, space.or(stopped.get(found.subject) ?? FALSE, held));
+        failure(found.failure, held, f);
+      } else {
+        claims.set(found.claim, space.or(claims.get(found.claim) ?? FALSE, held));
+      }
+    }
+    for (const f of findings) {
+      if (carrierOf(f.diagnostic)) continue;
+      const data = f.diagnostic.data as { [RULE_CLAIM]?: string } | undefined;
+      const claim = data?.[RULE_CLAIM];
+      if (claim === undefined) {
+        out.push({ diagnostic: f.diagnostic, condition: f.condition, from: f });
+        continue;
+      }
+      const held = space.and(f.condition, claims.get(claim) ?? FALSE);
+      if (held === FALSE) continue;
+      const { [RULE_CLAIM]: _claim, ...rest } = data as Record<string, unknown>;
+      out.push({ diagnostic: { ...f.diagnostic, data: rest as typeof f.diagnostic.data }, condition: held, from: f });
     }
     return out;
   }
 
-  /** The unexercised report of every tallied rule no instance exercised. */
-  unexercised(): AnalysisDiagnostic[] {
-    return [...this.tally.values()].filter((each) => !each.exercised).map((each) => this.at(each.report));
+  /** Where an instance of each resource rule was settled by {@link settleConditioned}. */
+  readonly exercised = new Map<string, Condition>();
+
+  private decide(found: RuleReport | ReferrerVerdict): AnalysisDiagnostic[] {
+    if (found.type === "referrer") return this.referrerVerdict(found);
+    if (found.type === "exercise") {
+      const known = this.tally.get(found.key);
+      if (known) known.exercised ||= found.exercised === true;
+      else this.tally.set(found.key, { exercised: found.exercised === true, report: found });
+      return [];
+    }
+    return this.failure(found);
   }
 
-  private at(found: RuleReport): AnalysisDiagnostic {
-    const { report } = found;
-    const diagnostic: AnalysisDiagnostic = {
-      severity: SEVERITY[report.severity],
-      code: report.code,
-      source: SOURCE,
-      message: report.message,
-      data: {
-        resource: { kind: report.definition.kind, name: report.definition.name },
-        filePath: report.definition.source,
-        path: report.path,
-        rule: found.rule,
-      },
-    };
-    return report.path === undefined ? diagnostic : withQuotedPath(diagnostic, report.path);
+  /** A resource of a kind declaring the referrer rule tallied at `key` holds
+   *  in the run: the rule is unexercised, reported as `report`, unless a
+   *  referrer exercises it. */
+  seen(key: string, order: number, report: AnalysisDiagnostic): void {
+    const known = this.referrerTally.get(key);
+    if (known) known.seen ??= { order, report };
+    else this.referrerTally.set(key, { exercised: false, seen: { order, report } });
   }
+
+  /** The unexercised report of every tallied rule no instance exercised. */
+  unexercised(): AnalysisDiagnostic[] {
+    const referrer = [...this.referrerTally.values()]
+      .filter((each) => !each.exercised && each.seen)
+      .sort((a, b) => a.seen!.order - b.seen!.order)
+      .map((each) => each.seen!.report);
+    return inFamily("ruleAbsence", [...[...this.tally.values()].filter((each) => !each.exercised).map((each) => ruleReportDiagnostic(each.report)), ...referrer]);
+  }
+
+  private referrerVerdict(found: ReferrerVerdict): AnalysisDiagnostic[] {
+    const exercise = (exercised: boolean): void => {
+      if (!found.exercise) return;
+      const known = this.referrerTally.get(found.exercise.key);
+      if (known) known.exercised ||= exercised;
+      else this.referrerTally.set(found.exercise.key, { exercised });
+    };
+    exercise(found.exercise?.exercised === true);
+    this.claims.set(found.claim, false);
+    if (this.stopped.has(found.subject)) return [];
+    if (found.once !== undefined) {
+      if (this.judged.has(found.once)) return [];
+      this.judged.add(found.once);
+    }
+    if (found.failure) {
+      this.stopped.add(found.subject);
+      return this.failure(found.failure);
+    }
+    this.claims.set(found.claim, true);
+    // A rule that violated plainly ran, whatever its peer set held.
+    exercise(found.exercise?.violated === true);
+    return [];
+  }
+
+  private failure(found: RuleReport): AnalysisDiagnostic[] {
+    if (!this.ledger.first(found.key, found.rule)) return [];
+    return this.failureDiagnostics(found);
+  }
+
+  private failureDiagnostics(found: RuleReport): AnalysisDiagnostic[] {
+    const anchor = found.module ? this.anchorOf(found.module) : undefined;
+    return [
+      anchor
+        ? {
+            severity: SEVERITY[found.report.severity],
+            code: found.report.code,
+            source: SOURCE,
+            message: found.report.message,
+            data: { filePath: anchor.filePath, path: anchor.path, rule: found.rule },
+          }
+        : ruleReportDiagnostic(found),
+    ];
+  }
+}
+
+function carrierOf(d: AnalysisDiagnostic): RuleReport | ReferrerVerdict | undefined {
+  const found = (d.data as { ruleReport?: RuleReport | ReferrerVerdict } | undefined)?.ruleReport;
+  return d.code === RESOURCE_RULE_REPORT ? found : undefined;
+}
+
+/** A rule's report at the declaration of the kind declaring it. */
+export function ruleReportDiagnostic(found: RuleReport): AnalysisDiagnostic {
+  const { report } = found;
+  const diagnostic: AnalysisDiagnostic = {
+    severity: SEVERITY[report.severity],
+    code: report.code,
+    source: SOURCE,
+    message: report.message,
+    data: {
+      resource: { kind: report.definition.kind, name: report.definition.name },
+      filePath: report.definition.source,
+      path: report.path,
+      rule: found.rule,
+    },
+  };
+  return report.path === undefined ? diagnostic : withQuotedPath(diagnostic, report.path);
 }
 
 export { RESOURCE_RULES_ANNOTATION };
