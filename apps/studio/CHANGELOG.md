@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.39.0 - 2026-11-19
+### Added
+* The desktop build ships one sidecar, telo-host-runner-<triple>, instead of telo-<triple>, and supervises it as its local runner. The local adapter is named Local (host runner) and its field Host runner executable, where empty means the host runner bundled with Studio; a path saved there by an earlier Studio named a telo executable and must now name a host runner, or be cleared to use the bundled one. The docker runner's container is now telo-docker-runner and its volume telo-docker-runner-bundles; starting it stops and removes a telo-local-runner container left by an earlier Studio, and the old volume is left alone.
+
 ## 0.38.0 - 2026-11-15
 ### Fixed
 * The image is built from only the files it uses: a `Dockerfile.dockerignore` beside the Dockerfile admits the workspace packages it installs and the inputs of the root `prepare`, and the install is filtered to this image's packages.

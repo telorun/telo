@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.0 - 2026-11-19
+### Added
+* Requires the telo release that applies library migrations, since the SQL module it imports now declares the `beforeMigrations:` → `prepare:` rename as a migration of its own.
+
 ## 0.5.0 - 2026-11-11
 ### Added
 * Imports of workspace modules are relative paths in the source tree; the published form is written at release.

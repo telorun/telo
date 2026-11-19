@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.138.0 - 2026-11-19
+### Added
+* The built-in vocabulary's `Telo.Library` entry declares `migrations:`, a library's rewrites of the legacy spellings of its own vocabulary, with `match` limited to a closed subset of JSON Schema (`type`, `required`, `const`, `enum`, `properties`, `items`, `<key>: false`).
+
 ## 0.137.0 - 2026-11-15
 ### Fixed
 * A stop asked between `Kernel.Started` and `start()` reaching its idle wait is no longer lost: `forceIdle()` with no wait pending releases the next `waitForIdle()`, so a SIGTERM in that window ends the process instead of leaving it running.

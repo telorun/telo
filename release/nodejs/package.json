@@ -1,6 +1,6 @@
 {
   "name": "@telorun/release",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A polyglot release planner: units shipped through npm, Cargo, Docker, Helm or any registered ecosystem, versioned from the digest of what they ship, with fragments for changelogs, groups that share a version, candidates, and one changelog per unit.",
   "keywords": [
     "release",

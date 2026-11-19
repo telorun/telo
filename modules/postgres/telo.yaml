@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: Postgres
-  version: 0.12.4
+  version: 0.13.0
   repository: https://github.com/telorun/telo
   license: MIT
   categories: [Storage]
@@ -23,7 +23,7 @@ requires:
   # `Connection.access` observes it (`observes:`). 0.116.0 rejects the document
   # kind (`UNDEFINED_KIND`) and the `observes` key (`X_TELO_REF_UNKNOWN_KEY`).
   # Verified by execution against 0.116.0.
-  telo: ">=unreleased"
+  telo: ">=0.138.0"
 imports: { Sql: ../sql }
 exports: { kinds: [DatabaseAccess, Connection, Table, Enum, Schema] }
 migrations:

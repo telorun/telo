@@ -1,9 +1,0 @@
-units:
-  release: Added
-body: "The `pypi` ecosystem: a directory with a `pyproject.toml` whose `[project]`
-  carries `name` is an anchor, versioned from `project.version`, digested from the sdist
-  its `[build-system]` backend builds through PEP 517, read back from an optional
-  simple-API `registry`, and linked to sibling projects through uv, Poetry, PDM and
-  Hatch path dependencies, with `apply` moving the linked requirement and the `uv.lock`,
-  `poetry.lock` and `pdm.lock` entries. `version: pyproject.toml` and TOML pointers such
-  as `/tool/poetry/version` also work on a unit with no ecosystem."

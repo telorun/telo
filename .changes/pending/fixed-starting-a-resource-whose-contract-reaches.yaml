@@ -1,7 +1,0 @@
-units:
-  analyzer: Fixed
-body: "Starting a resource whose contract reaches a large recursive shape, such as a
-  page's UI node tree, no longer stalls the process for seconds on its first dispatch:
-  finding the contract's span attributes and sensitive fields now skips every part of
-  the schema that holds neither, where it used to walk each shared shape once per path
-  to it."

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.0 - 2026-11-19
+### Added
+* The Radix theme rings a pressed node or record in the text colour while its `press` has the keyboard focus, so the theme styles the renderer's new `press` part and passes `CheckTheme` against it.
+
 ## 0.10.0 - 2026-11-15
 ### Added
 * The Radix theme styles the composable-page parts: footer, footer-content, navbar and nav-column, and the aside parts a split view and a page layout share, renamed from split-aside, split-bar, split-actions and split-toggle, with navbar-title, navbar-start and navbar-end renamed from app-title, header-start and header-end. A layout's aside is a chrome column under the sticky header, and a text of the title style is the page's heading. The Navigation control is unchanged: a navigation column in an aside draws it as a column, or as a rail while the aside is folded.

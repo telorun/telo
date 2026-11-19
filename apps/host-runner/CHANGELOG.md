@@ -1,0 +1,5 @@
+# Changelog
+
+## 0.2.0 - 2026-11-19
+### Added
+* A runner that serves the /v1 session contract over local processes on this machine, run as telo-host-runner: it takes the options telo runner took (--port, --host, --allow-remote, --allow-origin, --state-dir, --verbose, -o json), starts each session on the telo it bundles, and runs an application that pins another telo version on the verified release download. telo-host-runner telo <arguments> is that bundled telo. The npm package and the single-file executable carry a THIRD_PARTY_NOTICES file with the license text of every MIT package they bundle.
