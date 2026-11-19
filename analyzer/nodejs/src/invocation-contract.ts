@@ -28,6 +28,7 @@ import { projectionFromReads } from "./schema-projection.js";
 import { valueDerivedSlot } from "./value-derived-contract.js";
 import { membersSlotOf } from "./members-value-slot.js";
 import { resolveRefIn } from "./schema-compat.js";
+import { markReach } from "./schema-mark-reach.js";
 import { isTypeKind, resolveTypeFieldToSchema } from "./validate-cel-context.js";
 import { resolveContractValueSchemas, valueSchemaFromReads, type ValueSchemaHost } from "./value-schema-slot.js";
 import { namedContractShape, type NamedContractShape } from "./validate-value-schema-location.js";
@@ -678,6 +679,7 @@ export function sensitivePaths(
   reached?: Set<object>,
 ): string[][] {
   const out: string[][] = [];
+  const reach = markReach(schema, resolveRef, "x-telo-sensitive");
 
   // A `$ref` is followed wherever it leads — a document-local `$defs` entry
   // against the document the reference sits in, a named shape through
@@ -689,6 +691,7 @@ export function sensitivePaths(
     chain: readonly object[],
   ): void => {
     if (!node || typeof node !== "object") return;
+    if (!reach(node, root)) return;
     if (chain.includes(node)) return;
     const written: object[] = [node];
     let s = node as Record<string, any>;

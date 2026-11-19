@@ -21,6 +21,7 @@
 
 import { isLiveSlot } from "@telorun/sdk";
 import { resolveRefIn, type ExternalSchemaResolver } from "./schema-compat.js";
+import { markReach } from "./schema-mark-reach.js";
 
 export const X_TELO_SPAN_ATTRIBUTE = "x-telo-span-attribute";
 
@@ -185,6 +186,8 @@ export function spanAttributePaths(
     });
   };
 
+  const reach = markReach(schema, resolveRef, X_TELO_SPAN_ATTRIBUTE);
+
   const walk = (
     node: unknown,
     path: string[],
@@ -194,6 +197,7 @@ export function spanAttributePaths(
     chain: readonly object[],
   ): void => {
     if (!node || typeof node !== "object" || Array.isArray(node)) return;
+    if (!reach(node, root)) return;
     if (chain.includes(node)) return;
     const written: object[] = [node];
     let s = node as Record<string, any>;
