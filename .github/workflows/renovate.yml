@@ -1,0 +1,66 @@
+name: Renovate
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: renovate
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  renovate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create the GitHub App token
+        id: app
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          app-id: ${{ vars.RENOVATE_APP_ID }}
+          private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+          permission-workflows: write
+          permission-checks: write
+          permission-statuses: write
+          permission-vulnerability-alerts: read
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      # The post-upgrade tasks run `telo`, built here from the default branch and put on PATH; it
+      # reads Renovate's clone, which scripts/renovate-release-fragments.mjs installs and builds
+      # first (`release status` packs every unit and reads every platform's crates). The install
+      # runs the root `prepare`, which writes the generated entries the build compiles.
+      - name: Build the telo CLI
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter "@telorun/cli..." run build
+          mkdir -p "$RUNNER_TEMP/bin"
+          ln -s "$GITHUB_WORKSPACE/cli/nodejs/bin/telo.mjs" "$RUNNER_TEMP/bin/telo"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Run Renovate
+        env:
+          RENOVATE_TOKEN: ${{ steps.app.outputs.token }}
+          RENOVATE_PLATFORM: github
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
+          RENOVATE_ONBOARDING: "false"
+          RENOVATE_REQUIRE_CONFIG: required
+          # The post-upgrade task installs and builds the whole workspace in the clone.
+          RENOVATE_EXECUTION_TIMEOUT: "60"
+          RENOVATE_ALLOWED_COMMANDS: '["^telo release stage --pin --module modules/[a-z0-9-]+$", "^node scripts/renovate-release-fragments\\.mjs --kind (Security|Fixed) --body [^;&|`$<>]+$"]'
+        # 44.239.1 was published 2026-11-13, past the repository's three-day age rule.
+        run: npx --yes renovate@44.239.1

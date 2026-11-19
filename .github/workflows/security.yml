@@ -1,0 +1,193 @@
+name: Security
+
+on:
+  push:
+    branches: [main, "release/**"]
+  pull_request:
+    branches: [main, "release/**"]
+  schedule:
+    - cron: "17 4 * * *"
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  # A pull request fails only on an advisory it introduces. Both trees are scanned with the pull
+  # request's own suppressions, so a base without them (or with older ones) still compares.
+  osv-diff:
+    name: OSV-Scanner (new advisories)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Keep this pull request's suppressions
+        run: cp osv-scanner.toml .osv-scanner-pr.toml
+      - name: Check out the base
+        run: git checkout --detach "origin/$GITHUB_BASE_REF"
+      - name: Scan the base
+        id: scan-old
+        uses: google/osv-scanner-action/osv-scanner-action@32d3cd482bdadfb38b186c0ad1b031902d55d932 # v2.7.1
+        continue-on-error: true
+        with:
+          scan-args: |-
+            --format=json
+            --output=old-results.json
+            --config=.osv-scanner-pr.toml
+            --lockfile=pnpm-lock.yaml
+            --lockfile=Cargo.lock
+            --lockfile=apps/studio/src-tauri/Cargo.lock
+      - name: Check out this pull request
+        run: git checkout -f --detach "$GITHUB_SHA"
+      - name: Scan this pull request
+        id: scan-new
+        uses: google/osv-scanner-action/osv-scanner-action@32d3cd482bdadfb38b186c0ad1b031902d55d932 # v2.7.1
+        continue-on-error: true
+        with:
+          scan-args: |-
+            --format=json
+            --output=new-results.json
+            --config=.osv-scanner-pr.toml
+            --lockfile=pnpm-lock.yaml
+            --lockfile=Cargo.lock
+            --lockfile=apps/studio/src-tauri/Cargo.lock
+      # A scan exits non-zero both on findings and when it cannot scan; only the second writes no results.
+      - name: Check that both scans completed
+        run: |
+          status=0
+          for side in old new; do
+            if [ ! -s "$side-results.json" ]; then
+              echo "::error::OSV-Scanner did not complete on the $side tree; see its scan step."
+              status=1
+            fi
+          done
+          exit "$status"
+      - name: Fail on an advisory this pull request introduces
+        uses: google/osv-scanner-action/osv-reporter-action@32d3cd482bdadfb38b186c0ad1b031902d55d932 # v2.7.1
+        with:
+          scan-args: |-
+            --output=osv-diff.sarif
+            --old=old-results.json
+            --new=new-results.json
+            --gh-annotations=true
+            --fail-on-vuln=true
+
+  # The whole tree, uploaded under one category so no alert of main reads as fixed on a pull request.
+  # Push and schedule fail on any unsuppressed advisory; a pull request is gated by osv-diff.
+  osv-full:
+    name: OSV-Scanner (whole tree)
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Scan
+        id: scan
+        uses: google/osv-scanner-action/osv-scanner-action@32d3cd482bdadfb38b186c0ad1b031902d55d932 # v2.7.1
+        continue-on-error: true
+        with:
+          scan-args: |-
+            --format=sarif
+            --output=osv-scanner.sarif
+            --config=osv-scanner.toml
+            --lockfile=pnpm-lock.yaml
+            --lockfile=Cargo.lock
+            --lockfile=apps/studio/src-tauri/Cargo.lock
+      - name: Upload SARIF
+        if: ${{ !cancelled() && hashFiles('osv-scanner.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: osv-scanner.sarif
+          category: osv-scanner
+      - name: Fail on an unsuppressed advisory
+        if: ${{ github.event_name != 'pull_request' && steps.scan.outcome == 'failure' }}
+        run: |
+          echo "::error::OSV-Scanner found an unsuppressed advisory or could not scan; see the Scan step."
+          exit 1
+
+  cargo-deny:
+    name: cargo-deny (${{ matrix.workspace }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        workspace: [".", "apps/studio/src-tauri"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
+        with:
+          tool: cargo-deny@0.21.0
+      - name: Check advisories, bans and sources
+        env:
+          WORKSPACE: ${{ matrix.workspace }}
+        run: |
+          status=0
+          cargo deny --manifest-path "$WORKSPACE/Cargo.toml" --config deny.toml --format sarif check advisories bans sources > cargo-deny.sarif || status=$?
+          cargo deny --manifest-path "$WORKSPACE/Cargo.toml" --config deny.toml check advisories bans sources || true
+          exit $status
+      - name: Upload SARIF
+        if: ${{ !cancelled() && hashFiles('cargo-deny.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: cargo-deny.sarif
+          category: cargo-deny/${{ matrix.workspace }}
+
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
+        with:
+          tool: zizmor@1.32.0
+      - name: Audit workflows and actions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          status=0
+          zizmor --config .github/zizmor.yml --format sarif --no-exit-codes .github > zizmor.sarif
+          zizmor --config .github/zizmor.yml --format plain .github || status=$?
+          exit $status
+      - name: Upload SARIF
+        if: ${{ !cancelled() && hashFiles('zizmor.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: zizmor.sarif
+          category: zizmor
+
+  suppressions:
+    name: Suppression rule
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - name: Install the script's dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts --filter .
+      - name: Check suppressions
+        run: pnpm run check:suppressions

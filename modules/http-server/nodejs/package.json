@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
-    "@fastify/static": "^8.0.0",
+    "@fastify/static": "^10.0.0",
     "@fastify/swagger": "^9.6.1",
     "@scalar/core": "0.3.36",
     "@scalar/openapi-parser": "0.24.6",
@@ -21,7 +21,7 @@
     "@telorun/http-dispatch": "workspace:*",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
-    "fastify": "^5.12.1"
+    "fastify": "^5.12.5"
   },
   "devDependencies": {
     "@scalar/fastify-api-reference": "1.44.6",

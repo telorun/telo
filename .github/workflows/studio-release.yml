@@ -31,6 +31,10 @@ on:
         description: 'JSON array of {key, name, version, ecosystem}: the units the release commit moved (release-units.mjs).'
         type: string
         default: '[]'
+    secrets:
+      STUDIO_PAGES_TOKEN:
+        description: 'Token with write access to telorun/studio, which holds the desktop release.'
+        required: false
 
 permissions:
   contents: read
@@ -46,11 +50,12 @@ jobs:
       latest: ${{ steps.pointers.outputs.latest }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.tag }}
           fetch-depth: 0
           fetch-tags: true
+          persist-credentials: false
 
       - name: Did the release move Studio
         id: check
@@ -75,7 +80,10 @@ jobs:
 
       - name: Does the latest tag move forward
         id: pointers
-        run: node scripts/release-pointers.mjs --version "${{ inputs.version }}" --channel "${{ inputs.channel }}"
+        env:
+          VERSION: ${{ inputs.version }}
+          CHANNEL: ${{ inputs.channel }}
+        run: node scripts/release-pointers.mjs --version "$VERSION" --channel "$CHANNEL"
 
   build:
     name: Build (${{ matrix.label }})
@@ -104,9 +112,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.tag }}
+          persist-credentials: false
 
       # Tauri 2 system libraries (webkit2gtk + tray/appindicator + packaging).
       # libdbus-1-dev is required from tauri 2.11: its `tao` 0.35 enables the
@@ -128,7 +137,7 @@ jobs:
             libdbus-1-dev
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
 
       # 24, the same version the standalone release pins. This job stages the
       # host runner sidecar, and that build generates the SEA blob with the Node that
@@ -136,20 +145,16 @@ jobs:
       # major here is a blob and a runtime that were never meant to meet, in the
       # one artifact the editor needs in order to run anything.
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
-          cache: pnpm
 
+      # No package or build cache anywhere in this job: what it builds ships.
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
+          toolchain: stable
           targets: ${{ matrix.target }}
-
-      - name: Cache Rust build
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: apps/studio/src-tauri -> target
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -173,7 +178,7 @@ jobs:
 
       - name: Build Tauri bundles
         id: tauri
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -187,7 +192,7 @@ jobs:
       # the plain (`target/release`, Linux/Windows) and triple-scoped
       # (`target/<triple>/release`, macOS `--target`) layouts.
       - name: Upload bundles
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: studio-${{ matrix.label }}
           path: |
@@ -206,7 +211,7 @@ jobs:
       # By pattern: inside the Publish run the Docker jobs' build records are
       # artifacts too, and they cannot be downloaded.
       - name: Download all bundles
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: studio-*
           path: artifacts
@@ -219,7 +224,7 @@ jobs:
       # that the Pages deploy uses. softprops creates the tag/release if absent
       # and reuses it (appending assets) on re-runs of the same version.
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2 # zizmor: ignore[superfluous-actions]
         with:
           repository: telorun/studio
           token: ${{ secrets.STUDIO_PAGES_TOKEN }}

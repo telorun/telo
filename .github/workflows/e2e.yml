@@ -21,6 +21,9 @@ on:
     branches: [main, "release/*"]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   # `pnpm run test:e2e:hub` — the same command a developer runs — stands up a
   # fresh discovery-hub stack (db=pgvector, storage, embedder, hub, and hub-web on
@@ -37,17 +40,18 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b # v2.4.1
         with:
           version: 10.28.2
 
@@ -57,7 +61,7 @@ jobs:
         run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
 
       - name: Setup pnpm cache
-        uses: actions/cache@v3
+        uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3.5.0
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
@@ -118,7 +122,7 @@ jobs:
 
       - name: Upload logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: e2e-hub-logs
           retention-days: 14
@@ -143,17 +147,18 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b # v2.4.1
         with:
           version: 10.28.2
 
@@ -176,12 +181,15 @@ jobs:
       - name: Decide whether a live example changed
         id: changed
         shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
+          if [ "$EVENT_NAME" != "pull_request" ]; then
             echo "run=true" >> $GITHUB_OUTPUT
             exit 0
           fi
-          git fetch --no-tags origin "${{ github.base_ref }}" || true
+          git fetch --no-tags origin "$BASE_REF" || true
           # FAIL OPEN: only an explicit empty `affected` list skips. A crash, a
           # bad flag or a missing toolchain yields no list, and treating that as
           # "nothing changed" turns a broken gate into a silently disabled test
@@ -189,7 +197,7 @@ jobs:
           affected=$(pnpm run --silent telo changed \
                examples/agent-console/telo.yaml examples/chat-console/telo.yaml \
                examples/test-suite-live.yaml .github/workflows/e2e.yml \
-               --base "origin/${{ github.base_ref }}" -o json | jq '.affected | length') || true
+               --base "origin/$BASE_REF" -o json | jq '.affected | length') || true
           if [ "$affected" = "0" ]; then
             echo "run=false" >> $GITHUB_OUTPUT
             echo "No agent-console/chat-console changes — skipping the live suite." >> $GITHUB_STEP_SUMMARY
@@ -211,7 +219,7 @@ jobs:
 
       - name: Upload logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: e2e-live-examples-logs
           retention-days: 14
@@ -243,17 +251,18 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b # v2.4.1
         with:
           version: 10.28.2
 
@@ -285,14 +294,14 @@ jobs:
 
       - name: Log in to Docker Hub
         if: steps.changed.outputs.run == 'true' && env.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Create the kind cluster
         if: steps.changed.outputs.run == 'true'
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@ea822c7bf1874f08e5a491df991c228edffc3376 # v1.15.2
         with:
           version: v0.27.0
           cluster_name: telo

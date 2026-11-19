@@ -69,15 +69,17 @@ jobs:
         side: [telo, node]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b # v2.4.1
         with:
           version: 10.28.2
 
@@ -89,7 +91,7 @@ jobs:
       - name: Install the published telo CLI
         env:
           TELO_VERSION: ${{ needs.resolve.outputs.telo_version }}
-        run: |
+        run: | # zizmor: ignore[adhoc-packages] the benchmark measures this published CLI release
           npm install -g "@telorun/cli@$TELO_VERSION"
           telo --version
 
@@ -109,7 +111,7 @@ jobs:
 
       - name: Upload records and built apps
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: authoring-${{ matrix.task }}-${{ matrix.side }}
           path: |
@@ -125,18 +127,20 @@ jobs:
     if: ${{ !cancelled() && needs.resolve.result == 'success' }}
     runs-on: ubuntu-24.04
     permissions:
-      contents: write
+      contents: write # zizmor: ignore[excessive-permissions] appends the records to the benchmark-results branch
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
 
       - name: Download the records
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: authoring-*
           path: out
@@ -152,7 +156,7 @@ jobs:
         run: node benchmarks/history/append.mjs --records out/authoring.jsonl --target authoring.jsonl
 
       - name: Keep the combined records
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: authoring-summary
           path: |
@@ -166,15 +170,17 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b # v2.4.1
         with:
           version: 10.28.2
 
@@ -184,10 +190,10 @@ jobs:
       - name: Install the published telo CLI
         env:
           TELO_VERSION: ${{ needs.resolve.outputs.telo_version }}
-        run: npm install -g "@telorun/cli@$TELO_VERSION"
+        run: npm install -g "@telorun/cli@$TELO_VERSION" # zizmor: ignore[adhoc-packages] the benchmark measures this published CLI release
 
       - name: Download the built apps
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: authoring-build-*
           path: out
@@ -197,7 +203,7 @@ jobs:
         run: node benchmarks/authoring/run.mjs compare --out out --run
 
       - name: Upload the comparison record
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: authoring-comparison
           path: out/comparison/comparison.json

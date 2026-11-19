@@ -1,0 +1,5 @@
+units:
+  modules/pdf: Fixed
+body: Pinned @napi-rs/canvas exactly to 1.0.10 and pdfjs-dist to 6.0.227, the versions
+  of the staged native addon and pdf.js worker, so a lockfile refresh can no longer move
+  either wrapper away from the files it loads.

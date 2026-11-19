@@ -23,6 +23,9 @@ concurrency:
   group: ${{ github.ref == 'refs/heads/main' && 'cut-release' || format('finish-release-{0}', github.ref) }}
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   check:
     name: Check
@@ -36,15 +39,16 @@ jobs:
       live: ${{ steps.check.outputs.live }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: pnpm
@@ -71,9 +75,9 @@ jobs:
     name: Finish
     needs: check
     runs-on: ubuntu-latest
+    # The branch and the PR are written with TELO_BOT_TOKEN; the job's own token only lists runs.
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
       actions: read
     # The branch's Publish group: on main, the Publish run the branch's creation starts
     # waits until the release PR is open, then rebuilds it as the final; over candidates,
@@ -86,19 +90,18 @@ jobs:
       RELEASE: ${{ needs.check.outputs.release }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 # zizmor: ignore[artipacked] the job pushes with TELO_BOT_TOKEN and uploads no artifact
         with:
           fetch-depth: 0
           token: ${{ secrets.TELO_BOT_TOKEN }}
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
-          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -171,7 +174,7 @@ jobs:
       # release-pr job rebuilds this same branch and PR.
       - name: Open the release PR
         id: pr
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@c5a7806660adbe173f04e3e038b0ccdcd758773c # v6.1.0
         with:
           token: ${{ secrets.TELO_BOT_TOKEN }}
           branch: release-version/${{ needs.check.outputs.branch }}

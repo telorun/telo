@@ -1,0 +1,4 @@
+# Suppressions for Trivy. One entry names ONE advisory id: `id`, `statement` (why, and what ends it)
+# and `expired_at` (at most 90 days ahead). No package-wide ignores. `pnpm run check:suppressions`
+# enforces it.
+vulnerabilities: []

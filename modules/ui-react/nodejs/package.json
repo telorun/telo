@@ -37,7 +37,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "esbuild": "catalog:",
-    "fastify": "^5.12.1",
+    "fastify": "^5.12.5",
     "happy-dom": "catalog:",
     "jsdom": "^25.0.1",
     "react": "19.2.3",

@@ -34,6 +34,13 @@ onlyBuiltDependencies:
   - bun
   - esbuild
 
+# A version is installable only once it is three days old — npm's 72-hour unpublish
+# window, inside which a compromised release is usually pulled. This repo's own
+# packages are exempt: the release flow installs its freshly published candidates.
+minimumReleaseAge: 4320
+minimumReleaseAgeExclude:
+  - "@telorun/*"
+
 # One esbuild for the whole repo. The kernel builds a local module's controller
 # from source and each module's `build` script builds the bundle that ships; those
 # two must produce the same bytes, and matching flags across two different esbuild
@@ -62,3 +69,21 @@ catalog:
 # (`transform`) is unchanged across it, and the whole suite is what verifies that.
 overrides:
   esbuild: ^0.25.12
+  # monaco-editor pins dompurify 3.2.7 exactly; 3.4.x carries the sanitizer fixes
+  # within the same major.
+  dompurify: ^3.4.18
+  # vitest 2 and vite 5 take @types/node as an optional peer (>=20); a package with no
+  # @types/node of its own gets the newest one pnpm finds, which is 26.x. This keeps
+  # such a request on the repo's Node line; requests that cannot reach 26 (every
+  # package's own ^20) are not matched.
+  "@types/node@>=26": ^24.12.0
+  # templating, analyzer, kernel and release pin yaml 2.8.3 exactly (the YAML reader's
+  # Rust twin is held to it) and hand yaml nodes to their consumers, so a second yaml
+  # in the tree breaks their types. Every ^2.8.3 range resolves to that pin.
+  "yaml@^2.8.3": 2.8.3
+  # ui-lucide's glyphs are generated from lucide 1.8.0 and the icon names a module
+  # accepts follow that release; the React packages stay on the same one.
+  lucide-react: 1.8.0
+  # ui-react-radix's conformance suite is the oracle for Radix's behaviour (1.8 reports no
+  # intents for several controls); a Radix update moves only with that suite passing.
+  radix-ui: 1.4.3

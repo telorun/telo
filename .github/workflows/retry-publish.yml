@@ -20,7 +20,9 @@ name: Retry failed publish
 # when the re-run it started completes — which is what makes the attempts chain.
 
 on:
-  workflow_run:
+  # Safe here: nothing is checked out and no event field is run as code; the run id,
+  # attempt and name are read through `env:` by one `gh` call.
+  workflow_run: # zizmor: ignore[dangerous-triggers]
     # The image, CLI, Studio, VS Code and site workflows are called by Publish, so
     # their jobs belong to its run; `Publish Docker Images` is listed for its
     # by-hand dispatch.
@@ -31,7 +33,6 @@ on:
     branches: [main, "release/*"]
 
 permissions:
-  actions: write
   contents: read
 
 env:
@@ -43,6 +44,8 @@ jobs:
     # `failure` only: a cancelled run was stopped by someone, or superseded.
     if: github.event.workflow_run.conclusion == 'failure'
     runs-on: ubuntu-latest
+    permissions:
+      actions: write # zizmor: ignore[excessive-permissions] re-runs the failed jobs
     steps:
       - name: Re-run the failed jobs
         env:

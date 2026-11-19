@@ -35,6 +35,7 @@
     "check:licenses": "node scripts/check-licenses.mjs",
     "check:module-mentions": "node scripts/check-module-mentions.mjs",
     "check:links": "node scripts/check-links.mjs",
+    "check:suppressions": "node scripts/check-suppressions.mjs",
     "test": "bun ./cli/nodejs/bin/telo.ts ./test-suite.yaml",
     "test:integration": "bun ./cli/nodejs/bin/telo.ts ./test-suite-integration.yaml",
     "test:e2e:hub": "node scripts/hub-e2e.mjs",

@@ -1,0 +1,29 @@
+# cargo-deny: advisories, bans and sources only; licenses are checked by `pnpm run check:licenses`.
+# Run per workspace with --config pointing here (root workspace and apps/studio/src-tauri).
+
+[advisories]
+version = 2
+yanked = "deny"
+unmaintained = "all"
+# Mirrors the Rust entries of osv-scanner.toml, one advisory per entry; expiry lives there.
+ignore = [
+  { id = "RUSTSEC-2024-0429", reason = "Fix only in a major: glib 0.18.5's unsound VariantStrIter is fixed in glib 0.20, a breaking release, and glib 0.18 is held by the gtk-rs 0.18 line that tauri, tao and wry use on Linux (alias GHSA-wrw7-89jp-8q8g). Vulnerable code not reached: nothing in Telo iterates a glib Variant of strings. Ends when tauri / wry / tao move to gtk-rs 0.20 or later." },
+  { id = "RUSTSEC-2024-0370", reason = "No fix exists: proc-macro-error is unmaintained and has no patched release; it is a build-time dependency of glib-macros 0.18 (gtk-rs 0.18, via tauri / wry / tao). Ends when gtk-rs 0.18 is replaced by a line that does not use it." },
+  { id = "RUSTSEC-2026-0370", reason = "No fix exists in the line in use: zvariant is unmaintained and merged into zbus 6, a major; zbus 5 is a direct dependency of telo-desktop-host (root workspace) and is pulled by tauri-plugin-opener and the keyring's secret-service store (Studio's workspace). Ends when those move to zbus 6." },
+  { id = "RUSTSEC-2026-0371", reason = "No fix exists in the line in use: zbus_names 4 is unmaintained and merged into zbus 6, a major; zbus 5 is a direct dependency of telo-desktop-host (root workspace) and is pulled by tauri-plugin-opener and the keyring's secret-service store (Studio's workspace). Ends when those move to zbus 6." },
+  { id = "RUSTSEC-2026-0372", reason = "No fix exists in the line in use: zvariant_derive is unmaintained and merged into zbus 6, a major; zbus 5 is a direct dependency of telo-desktop-host (root workspace) and is pulled by tauri-plugin-opener and the keyring's secret-service store (Studio's workspace). Ends when those move to zbus 6." },
+  { id = "RUSTSEC-2026-0543", reason = "No fix exists: chrono is unmaintained, with every version affected. It is reached only through serde_with in Studio's Tauri workspace. Ends when the dependents move to jiff or time." },
+]
+
+[bans]
+# Duplicate versions are inherent to the Tauri / GTK graph; flagged, not denied.
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+highlight = "all"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

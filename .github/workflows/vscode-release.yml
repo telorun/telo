@@ -31,6 +31,10 @@ on:
         description: 'JSON array of {key, name, version, ecosystem}: the units the release commit moved (release-units.mjs).'
         type: string
         default: '[]'
+    secrets:
+      VSCE_PAT:
+        description: 'Visual Studio Marketplace token; without it the .vsix is only attached to the release.'
+        required: false
 
 permissions:
   contents: read
@@ -40,14 +44,15 @@ jobs:
     name: Package and publish
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # zizmor: ignore[excessive-permissions] attaches the .vsix to the release
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.tag }}
           fetch-depth: 0
           fetch-tags: true
+          persist-credentials: false
 
       - name: Did the release move the extension
         id: check
@@ -82,14 +87,13 @@ jobs:
 
       - name: Setup pnpm
         if: steps.check.outputs.release == 'true'
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
 
       - name: Setup Node.js
         if: steps.check.outputs.release == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
-          cache: pnpm
 
       - name: Install dependencies
         if: steps.check.outputs.release == 'true'
@@ -102,18 +106,22 @@ jobs:
       # script changed, so both callers keep one code path.
       - name: Package the extension
         if: steps.check.outputs.release == 'true'
+        env:
+          VERSION: ${{ steps.check.outputs.version }}
         run: |
           set -euo pipefail
           pnpm --filter "./ide/vscode" vsix
           mv ide/vscode/telo-vscode.vsix \
-             "ide/vscode/telo-vscode-${{ steps.check.outputs.version }}.vsix"
+             "ide/vscode/telo-vscode-$VERSION.vsix"
 
       - name: Attach the .vsix to the release
         if: steps.check.outputs.release == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-        run: node scripts/release-assets.mjs "${{ inputs.tag }}" "ide/vscode/telo-vscode-${{ steps.check.outputs.version }}.vsix"
+          TAG: ${{ inputs.tag }}
+          VERSION: ${{ steps.check.outputs.version }}
+        run: node scripts/release-assets.mjs "$TAG" "ide/vscode/telo-vscode-$VERSION.vsix"
 
       # `--skip-duplicate` so a re-run of the Publish run finds the version
       # already there and succeeds.
@@ -121,12 +129,13 @@ jobs:
         if: steps.check.outputs.release == 'true' && steps.pointers.outputs.latest == 'true'
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          VERSION: ${{ steps.check.outputs.version }}
         run: |
           set -euo pipefail
           # Optional: without it the .vsix is only attached to the release, for a manual Marketplace upload.
           if [ -z "$VSCE_PAT" ]; then
-            echo "::notice::VSCE_PAT is not set, so the Marketplace is not published to; upload telo-vscode-${{ steps.check.outputs.version }}.vsix from the release by hand."
+            echo "::notice::VSCE_PAT is not set, so the Marketplace is not published to; upload telo-vscode-$VERSION.vsix from the release by hand."
             exit 0
           fi
           pnpm --filter "./ide/vscode" exec vsce publish --skip-duplicate \
-            --packagePath "telo-vscode-${{ steps.check.outputs.version }}.vsix"
+            --packagePath "telo-vscode-$VERSION.vsix"

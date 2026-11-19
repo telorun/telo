@@ -1,0 +1,127 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "enabledManagers": ["npm", "cargo", "dockerfile", "helm-values", "helmv3", "github-actions", "custom.regex"],
+  "osvVulnerabilityAlerts": true,
+  "minimumReleaseAge": "3 days",
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 5am on monday"],
+    "postUpgradeTasks": {
+      "commands": ["node scripts/renovate-release-fragments.mjs --kind Fixed --body 'Refreshed locked dependency versions within their ranges.'"],
+      "fileFilters": [".changes/pending/*.yaml"],
+      "executionMode": "branch"
+    }
+  },
+  "postUpgradeTasks": {
+    "commands": ["node scripts/renovate-release-fragments.mjs --kind {{#if isVulnerabilityAlert}}Security{{else}}Fixed{{/if}} --body 'Updated {{{depName}}} to {{{newVersion}}}.'"],
+    "fileFilters": [".changes/pending/*.yaml", "modules/*/telo.yaml"],
+    "executionMode": "update"
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "better-sqlite3 staged by modules/sqlite",
+      "managerFilePatterns": ["/^modules/sqlite/telo\\.yaml$/"],
+      "matchStrings": ["\\n  better-sqlite3:\\n    version: (?<currentValue>\\S+)\\n"],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "WiseLibs/better-sqlite3",
+      "extractVersionTemplate": "^v(?<version>.+)$"
+    },
+    {
+      "customType": "regex",
+      "description": "Scalar API reference staged by modules/http-server",
+      "managerFilePatterns": ["/^modules/http-server/telo\\.yaml$/"],
+      "matchStrings": ["\\n  scalar:\\n    version: (?<currentValue>\\S+)\\n"],
+      "datasourceTemplate": "npm",
+      "depNameTemplate": "@scalar/fastify-api-reference"
+    },
+    {
+      "customType": "regex",
+      "description": "Skia canvas staged by modules/image and modules/pdf",
+      "managerFilePatterns": ["/^modules/(image|pdf)/telo\\.yaml$/"],
+      "matchStrings": ["\\n  canvas:\\n    version: (?<currentValue>\\S+)\\n"],
+      "datasourceTemplate": "npm",
+      "depNameTemplate": "@napi-rs/canvas"
+    },
+    {
+      "customType": "regex",
+      "description": "pdf.js staged by modules/pdf",
+      "managerFilePatterns": ["/^modules/pdf/telo\\.yaml$/"],
+      "matchStrings": ["\\n  pdfjs:\\n    version: (?<currentValue>\\S+)\\n"],
+      "datasourceTemplate": "npm",
+      "depNameTemplate": "pdfjs-dist"
+    },
+    {
+      "customType": "regex",
+      "description": "tesseract.js-core staged by modules/tesseract",
+      "managerFilePatterns": ["/^modules/tesseract/telo\\.yaml$/"],
+      "matchStrings": ["\\n  core:\\n    version: (?<currentValue>\\S+)\\n"],
+      "datasourceTemplate": "npm",
+      "depNameTemplate": "tesseract.js-core"
+    },
+    {
+      "customType": "regex",
+      "description": "tesseract English model staged by modules/tesseract",
+      "managerFilePatterns": ["/^modules/tesseract/telo\\.yaml$/"],
+      "matchStrings": ["\\n  tessdata:\\n    version: (?<currentValue>\\S+)\\n"],
+      "datasourceTemplate": "npm",
+      "depNameTemplate": "@tesseract.js-data/eng"
+    },
+    {
+      "customType": "regex",
+      "description": "lucide icons staged by modules/ui-lucide",
+      "managerFilePatterns": ["/^modules/ui-lucide/telo\\.yaml$/"],
+      "matchStrings": ["\\n  lucide:\\n    version: (?<currentValue>\\S+)\\n"],
+      "datasourceTemplate": "npm",
+      "depNameTemplate": "lucide-static"
+    }
+  ],
+  "packageRules": [
+    { "description": "No major updates, for any manager", "matchUpdateTypes": ["major"], "enabled": false },
+    {
+      "description": "A 0.x minor is a semver-breaking release, so it is held like a major, for any manager",
+      "matchCurrentVersion": "/^0\\./",
+      "matchUpdateTypes": ["minor"],
+      "enabled": false
+    },
+    {
+      "description": "better-sqlite3 and the addon modules/sqlite stages move in one pull request",
+      "matchPackageNames": ["better-sqlite3", "WiseLibs/better-sqlite3"],
+      "groupName": "better-sqlite3"
+    },
+    {
+      "description": "@napi-rs/canvas in modules/image and modules/pdf, pinned equal to the addon each stages, moves in one pull request",
+      "matchPackageNames": ["@napi-rs/canvas"],
+      "groupName": "@napi-rs/canvas"
+    },
+    {
+      "description": "pdfjs-dist in modules/pdf and the pdf.js build it stages move in one pull request",
+      "matchPackageNames": ["pdfjs-dist"],
+      "groupName": "pdfjs-dist"
+    },
+    {
+      "description": "@scalar/fastify-api-reference in modules/http-server and the Scalar bundle it stages move in one pull request",
+      "matchPackageNames": ["@scalar/fastify-api-reference"],
+      "groupName": "@scalar/fastify-api-reference"
+    },
+    {
+      "description": "lucide-react moves only together with regenerating modules/ui-lucide (scripts/generate-ui-lucide-module.mjs), which no post-upgrade task does; lucide-static is the staged side of the same pair",
+      "matchPackageNames": ["lucide-react", "lucide-static"],
+      "enabled": false
+    },
+    { "description": "Pin action and base-image digests", "matchManagers": ["github-actions", "dockerfile", "helm-values", "helmv3"], "pinDigests": true },
+    { "description": "Own packages install fresh candidates", "matchPackageNames": ["@telorun/*"], "minimumReleaseAge": "0 days" },
+    {
+      "description": "A staged-source update re-pins the staged files, then adds its fragment",
+      "matchManagers": ["custom.regex"],
+      "postUpgradeTasks": {
+        "commands": [
+          "telo release stage --pin --module {{{packageFileDir}}}",
+          "node scripts/renovate-release-fragments.mjs --kind {{#if isVulnerabilityAlert}}Security{{else}}Fixed{{/if}} --body 'Updated {{{depName}}} to {{{newVersion}}}.'"
+        ],
+        "fileFilters": [".changes/pending/*.yaml", "modules/*/telo.yaml"],
+        "executionMode": "update"
+      }
+    }
+  ]
+}

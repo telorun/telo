@@ -1,0 +1,14 @@
+rules:
+  # Both workflows run on pushes to release branches but publish nothing from the jobs that
+  # read a cache: a poisoned cache could change only a test result. publish.yml holds
+  # credentials in its other jobs, which restore and save no cache: they pin setup-node to a
+  # release that has no automatic package cache, and artifact-check alone caches pnpm.
+  cache-poisoning:
+    ignore:
+      - test.yml
+      - publish.yml
+  # The Marketplace publish authenticates with VSCE_PAT; trusted publishing needs an
+  # Azure federated credential set up on the Marketplace side first.
+  use-trusted-publishing:
+    ignore:
+      - vscode-release.yml

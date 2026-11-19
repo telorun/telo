@@ -11,6 +11,10 @@ name: Publish
 # dispatch (`record`, never for a candidate), the artifact check (`artifact-check`),
 # then everything built from the tag. Every run also rebuilds the release PR
 # (`release-pr`) from what `telo release status` plans.
+#
+# No job that publishes, tags or holds a release token restores or saves a package cache,
+# and every job here checks out with `persist-credentials: false` except `release-pr`,
+# whose checkout carries TELO_BOT_TOKEN to push the release PR's branch.
 
 on:
   push:
@@ -27,6 +31,9 @@ concurrency:
   group: publish-${{ github.ref }}
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   # npm packages ONLY, from the release commit's moved units: the unit tags first,
   # so the links every packed package names exist, then each npm row of `telo
@@ -36,9 +43,11 @@ jobs:
   release:
     name: Publish npm packages
     runs-on: ubuntu-latest
+    # The tags and the dist-tags are pushed with TELO_BOT_TOKEN and npm's token; the OIDC
+    # token signs the npm provenance.
     permissions:
-      contents: write
-      id-token: write
+      contents: read
+      id-token: write # zizmor: ignore[excessive-permissions] npm provenance needs the run's OIDC token
     outputs:
       # `[{ key, name, version, ecosystem }]`: one row per package of every unit the
       # release commit moved (release-units.mjs).
@@ -58,18 +67,18 @@ jobs:
       record-tag: ${{ steps.release.outputs.record-tag }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
-          cache: pnpm
           registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
@@ -135,26 +144,25 @@ jobs:
     runs-on: ubuntu-latest
     needs: release
     if: ${{ needs.release.result == 'success' }}
+    # The branch and the PR are written with TELO_BOT_TOKEN, never the job's token.
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
     steps:
       # TELO_BOT_TOKEN: the release PR is pushed with the checkout's credentials, and a
       # push made with the default token starts no checks.
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 # zizmor: ignore[artipacked] the job pushes with TELO_BOT_TOKEN and uploads no artifact
         with:
           fetch-depth: 0
           token: ${{ secrets.TELO_BOT_TOKEN }}
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
-          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -202,7 +210,7 @@ jobs:
       # The bot token pushes the PR branch and opens the PR, so the required checks
       # run on it; `telo release check` skips coverage on its head branch.
       - name: Open or rebuild the release PR
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@c5a7806660adbe173f04e3e038b0ccdcd758773c # v6.1.0
         with:
           token: ${{ secrets.TELO_BOT_TOKEN }}
           branch: release-version/${{ github.ref_name }}
@@ -233,23 +241,23 @@ jobs:
     if: ${{ needs.release.result == 'success' && needs.release.outputs.released == 'true' && vars.TELO_OCI_REGISTRY != '' }}
     permissions:
       contents: read
-      packages: write
+      packages: write # zizmor: ignore[excessive-permissions] pushes the modules to GHCR
     outputs:
       modules-tag: ${{ steps.number.outputs.tag }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0 # HEAD^ for the moved versions, tags for the numbering
+          persist-credentials: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
-          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -263,7 +271,7 @@ jobs:
       # The OCI transport reads the ambient Docker credential chain, so logging in
       # here is what authorizes the push.
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -306,21 +314,21 @@ jobs:
     if: ${{ always() && vars.TELO_OCI_REGISTRY != '' }}
     permissions:
       contents: read
-      packages: write
+      packages: write # zizmor: ignore[excessive-permissions] pushes the vocabulary to GHCR
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
-          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -333,7 +341,7 @@ jobs:
 
       # The OCI transport reads the ambient Docker credential chain.
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -362,7 +370,7 @@ jobs:
       (needs.publish-modules.result == 'success' || needs.publish-modules.result == 'skipped') &&
       (needs.release.outputs.release-tag != '' || needs.publish-modules.outputs.modules-tag != '') }}
     permissions:
-      contents: write
+      contents: write # zizmor: ignore[excessive-permissions] creates the GitHub Release
       packages: read
     outputs:
       # The commit every tag of the release names; this run's commit when nothing was rewritten.
@@ -375,18 +383,18 @@ jobs:
       # The release commit, installed and built: the rewrite's release plan digests
       # the controller builds this checkout makes.
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
-          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -404,7 +412,7 @@ jobs:
 
       # The pins are read from the registry.
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -461,18 +469,18 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
-          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -507,16 +515,17 @@ jobs:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
       - name: Checkout the publication commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ needs.publication.outputs.sha }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: pnpm
@@ -529,7 +538,7 @@ jobs:
 
       - name: Restore staged module files
         id: staged
-        uses: ./.github/actions/restore-staged-files
+        uses: $/.github/actions/restore-staged-files
         with:
           scope: ${{ github.job }}
 
@@ -555,7 +564,7 @@ jobs:
 
       - name: Save staged module files
         if: always() && steps.staged.outputs.key != '' && steps.staged.outputs.cache-hit != 'true'
-        uses: ./.github/actions/save-staged-files
+        uses: $/.github/actions/save-staged-files
         with:
           key: ${{ steps.staged.outputs.key }}
           paths: ${{ steps.staged.outputs.paths }}
@@ -574,16 +583,17 @@ jobs:
       contents: read
     steps:
       - name: Checkout the publication commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ needs.publication.outputs.sha }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
 
@@ -609,15 +619,18 @@ jobs:
     # caller job's.
     permissions:
       contents: read
-      packages: write
-    uses: ./.github/workflows/publish-docker.yml
+      packages: write # zizmor: ignore[excessive-permissions] the called jobs push to GHCR
+      security-events: write # the called jobs upload their Trivy findings
+    uses: $/.github/workflows/publish-docker.yml
     with:
       images: kernel
       units: ${{ needs.release.outputs.units }}
       channel: ${{ needs.release.outputs.channel }}
       version: ${{ needs.release.outputs.version }}
       tag: ${{ needs.release.outputs.tag }}
-    secrets: inherit
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   # The image of every `docker` row and the chart of every `helm` row among the units
   # the release moved, built from the publication tag once the artifact check
@@ -636,8 +649,9 @@ jobs:
     # exercises it.
     permissions:
       contents: read
-      packages: write
-    uses: ./.github/workflows/publish-docker.yml
+      packages: write # zizmor: ignore[excessive-permissions] the called jobs push to GHCR
+      security-events: write # the called jobs upload their Trivy findings
+    uses: $/.github/workflows/publish-docker.yml
     with:
       images: apps
       ref: ${{ needs.publication.outputs.tag }}
@@ -645,7 +659,9 @@ jobs:
       channel: ${{ needs.release.outputs.channel }}
       version: ${{ needs.release.outputs.version }}
       tag: ${{ needs.release.outputs.tag }}
-    secrets: inherit
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   # The assets of the release `tag` names. Each is a called workflow, so the files
   # that build them are this branch's. The release is a DRAFT until the standalone
@@ -658,13 +674,15 @@ jobs:
       ${{ always() && needs.release.result == 'success' && needs.release.outputs.channel != 'none' &&
       needs.artifact-check.result == 'success' }}
     permissions:
-      contents: write
-    uses: ./.github/workflows/cli-standalone-release.yml
+      contents: write # zizmor: ignore[excessive-permissions] the called jobs attach assets to the release
+    uses: $/.github/workflows/cli-standalone-release.yml
     with:
       channel: ${{ needs.release.outputs.channel }}
       version: ${{ needs.release.outputs.version }}
       tag: ${{ needs.release.outputs.tag }}
-    secrets: inherit
+    secrets:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
 
   # Whenever the release moved `ide/vscode`, the telo line or not: the `.vsix` is an
   # asset of the release's GitHub Release, and a final version also goes to the
@@ -678,12 +696,13 @@ jobs:
       contains(fromJSON(needs.release.outputs.units).*.key, 'ide/vscode') &&
       needs.artifact-check.result == 'success' }}
     permissions:
-      contents: write
-    uses: ./.github/workflows/vscode-release.yml
+      contents: write # zizmor: ignore[excessive-permissions] the called job attaches the .vsix to the release
+    uses: $/.github/workflows/vscode-release.yml
     with:
       tag: ${{ needs.release.outputs.release-tag }}
       units: ${{ needs.release.outputs.units }}
-    secrets: inherit
+    secrets:
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
   # Studio publishes at the final: its desktop builds, web image and chart, and
   # its web build (an asset of the release, and the pages) — a candidate carries an
@@ -697,15 +716,15 @@ jobs:
       contains(fromJSON(needs.release.outputs.units).*.key, 'apps/studio') &&
       needs.artifact-check.result == 'success' }}
     permissions:
-      contents: write
-      packages: write
-    uses: ./.github/workflows/studio-release.yml
+      contents: read
+    uses: $/.github/workflows/studio-release.yml
     with:
       channel: ${{ needs.release.outputs.channel }}
       version: ${{ needs.release.outputs.version }}
       tag: ${{ needs.release.outputs.tag }}
       units: ${{ needs.release.outputs.units }}
-    secrets: inherit
+    secrets:
+      STUDIO_PAGES_TOKEN: ${{ secrets.STUDIO_PAGES_TOKEN }}
 
   studio-pages:
     name: Studio pages
@@ -715,13 +734,14 @@ jobs:
       (needs.release.outputs.channel == 'final' || needs.release.outputs.channel == 'patch') &&
       needs.artifact-check.result == 'success' }}
     permissions:
-      contents: write
-    uses: ./.github/workflows/studio-pages.yml
+      contents: write # zizmor: ignore[excessive-permissions] the called job attaches the web build to the release
+    uses: $/.github/workflows/studio-pages.yml
     with:
       channel: ${{ needs.release.outputs.channel }}
       version: ${{ needs.release.outputs.version }}
       tag: ${{ needs.release.outputs.tag }}
-    secrets: inherit
+    secrets:
+      STUDIO_PAGES_TOKEN: ${{ secrets.STUDIO_PAGES_TOKEN }}
 
   # Builds the docs site from the release's own tag, attaches it to the release,
   # and deploys: the newest final at `/`, and while a candidate is open its build
@@ -733,11 +753,10 @@ jobs:
       ${{ always() && needs.release.result == 'success' && needs.release.outputs.channel != 'none' &&
       needs.artifact-check.result == 'success' }}
     permissions:
-      contents: write
-      pages: write
-      id-token: write
-    uses: ./.github/workflows/pages.yml
+      contents: write # zizmor: ignore[excessive-permissions] the called jobs attach the site and deploy it
+      pages: write # zizmor: ignore[excessive-permissions] the called jobs attach the site and deploy it
+      id-token: write # zizmor: ignore[excessive-permissions] the called jobs attach the site and deploy it
+    uses: $/.github/workflows/pages.yml
     with:
       tag: ${{ needs.release.outputs.tag }}
       deploy: true
-    secrets: inherit
