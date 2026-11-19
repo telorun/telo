@@ -1,4 +1,0 @@
-units:
-  packages/runner-core: Added
-body: Documentation names the host runner, telo-host-runner, as the local-process
-  backend instead of the telo CLI; the session contract and its behaviour are unchanged.

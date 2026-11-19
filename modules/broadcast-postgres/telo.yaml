@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: BroadcastPostgres
-  version: 0.2.5
+  version: 0.3.0
   repository: https://github.com/telorun/telo
   license: MIT
   categories: [Coordination, Streaming]
@@ -11,7 +11,7 @@ metadata:
     on the same database. A message published inside a transaction is delivered
     when it commits and dropped when it rolls back; a subscription is told when its
     database connection dropped and came back, so it can re-read what it missed.
-requires: { telo: ">=unreleased" }
+requires: { telo: ">=0.138.0" }
 imports: { Broadcast: ../broadcast, Postgres: ../postgres }
 exports: { kinds: [Channel] }
 ---

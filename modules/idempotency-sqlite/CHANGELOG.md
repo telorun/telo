@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.0 - 2026-11-19
+### Added
+* Requires the telo release that applies library migrations, since the SQL module it imports now declares the `beforeMigrations:` → `prepare:` rename as a migration of its own.
+
 ## 0.3.2 - 2026-11-09
 ### Fixed
 * The telo requirement that static checking cannot see is now a `restrictions:` entry carrying its reason, and `requires.telo` holds the measured floor.

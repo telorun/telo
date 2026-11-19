@@ -1,9 +1,0 @@
-units:
-  cli: Added
-body: "telo migrate also applies library migrations to the module it names, an
-  Application or a Library, writing only that module's own files: an unchanged entry
-  keeps its text byte for byte, a comment inside a re-rendered part is reported as
-  dropped, a node holding an anchor or an alias, or a hand-over group with such a
-  member, is reported as not written, and the command exits 1 while any migration failed
-  or anything is not written (-o json adds failed and a reason per unwritable item). The
-  editor offers the same edit set as a quick fix when none of it is unwritable."

@@ -1,8 +1,0 @@
-units:
-  apps/hub: Added
-body: "The `build-ui` guide teaches where a press goes: `to` holding a `Ui.Navigate` or
-  a `Ui.OpenPage` on links, menu items, values, columns, relations, option sources,
-  navigation `link` entries and `onSuccess`, in place of `href` and
-  `onSuccess.navigate`; `press: { to, label }` on the `box`, `stack` and `columns`
-  nodes, `Ui.Listing` and `CrudUi.Admin`; and the listing layout contract
-  `ui_react_layouts-2`, whose records carry their `press`."

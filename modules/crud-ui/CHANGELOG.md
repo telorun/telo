@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.0 - 2026-11-19
+### Added
+* `CrudUi.Admin.press` says what pressing a record does — `{ to, label }`, the `ui` module's press — and is handed to the admin's listing whole, its `row` one record of the collection's list shape as a layout's is. With `press` written, editing a record is its edit button; without it, pressing a record opens the edit form as before. Related records' `relations` entries take `to` where they took `href`.
+
 ## 0.5.0 - 2026-11-09
 ### Added
 * Breaking: the `filters` policy takes `show`, `controls` and `summary` on its `placement` instead of beside it, following `ui`; a bar over a collection declaring `query.search` gains a search.

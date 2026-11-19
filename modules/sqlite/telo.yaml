@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: SQLite
-  version: 0.14.4
+  version: 0.15.0
   repository: https://github.com/telorun/telo
   license: MIT
   categories: [Storage]
@@ -24,7 +24,7 @@ requires:
   # rejects as X_TELO_TYPE_UNKNOWN.
   # 0.121.0: `Connection.file`'s host-path branch declares `entry: file`, which 0.120.1 rejects as
   # X_TELO_TYPE_ARGUMENT_UNKNOWN (verified by execution).
-  telo: ">=unreleased"
+  telo: ">=0.138.0"
 imports: { Sql: ../sql }
 exports: { kinds: [Connection, Table, Enum, Schema] }
 migrations:

@@ -1,8 +1,0 @@
-units:
-  analyzer: Added
-body: "A consumer's `telo check` applies the migrations of every library it imports:
-  each node in a library's legacy spelling is rewritten in memory under any import alias
-  and reported at its own line with the migration's severity and reason, chained
-  migrations are applied in turn, and a node a migration cannot rewrite is left as
-  written and reported as `MIGRATION_FAILED`, at the `imports:` entry when it sits in an
-  imported library's file."
