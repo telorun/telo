@@ -242,10 +242,13 @@ describe.skipIf(process.platform === "win32")("the desktop host's startup window
 
   it("closes the startup window once the application's first visible window is open", async () => {
     const session = scratch();
-    const run = telo(APP, session.env);
+    const injected = path.join(session.dir, "inject.jsonl");
+    const run = telo(APP, { ...session.env, FAKE_HELPER_INJECT: injected });
     await until("the startup window closed", () => ofType(session.log, "Window.Close").some((r) => r.payload.window === STARTUP));
     expect(index(session, "Window.Open", "mainWindow")).toBeLessThan(index(session, "Window.Close", STARTUP));
-    run.child.kill("SIGTERM");
+    // Startup may still be running its later targets; a SIGTERM now would interrupt the boot, which exits 1.
+    // The host's own quit is held until startup ends.
+    inject(injected, "Helper.QuitRequested", {});
     expect(await run.exited).toBe(0);
   }, 120_000);
 
