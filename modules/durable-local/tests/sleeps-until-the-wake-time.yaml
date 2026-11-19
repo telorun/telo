@@ -61,6 +61,11 @@ metadata: { name: outcome }
 journal: !ref journal
 wait: 15s
 ---
+kind: Local.Result
+metadata: { name: settled }
+journal: !ref journal
+wait: 300ms
+---
 kind: Telo.Sequence
 metadata: { name: test }
 steps:
@@ -70,18 +75,24 @@ steps:
     invoke: !ref nap
     inputs:
       ticket: !cel "steps.ticket.result"
-  - name: resumeFirst
-    invoke: !ref nap
-    inputs:
-      ticket: !cel "steps.ticket.result"
-  - name: resumeSecond
-    invoke: !ref nap
-    inputs:
-      ticket: !cel "steps.ticket.result"
   - name: finished
-    invoke: !ref outcome
+    invoke: !ref settled
     inputs:
       run: !cel "steps.start.result.runId"
+  # A submission landing before a wake time has passed parks the run again, so the
+  # run is submitted until it completes rather than a fixed number of times.
+  - name: untilCompleted
+    while: !cel "steps.finished.result.status != 'completed'"
+    maxIterations: 50
+    do:
+      - name: resume
+        invoke: !ref nap
+        inputs:
+          ticket: !cel "steps.ticket.result"
+      - name: finished
+        invoke: !ref settled
+        inputs:
+          run: !cel "steps.start.result.runId"
   - name: assertCompleted
     inputs:
       actual: !cel "steps.finished.result.status"
