@@ -10,14 +10,14 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0"
+    "@modelcontextprotocol/sdk": "^1.32.0"
   },
   "devDependencies": {
     "@telorun/http-dispatch": "workspace:*",
     "@telorun/sdk": "workspace:*",
     "@types/node": "^20.0.0",
     "esbuild": "catalog:",
-    "fastify": "^5.12.1",
+    "fastify": "^5.12.5",
     "typescript": "^5.0.0",
     "vitest": "^2.1.8"
   }

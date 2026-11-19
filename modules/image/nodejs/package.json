@@ -48,7 +48,7 @@
     "@telorun/sdk": "*"
   },
   "dependencies": {
-    "@napi-rs/canvas": "^1.0.10"
+    "@napi-rs/canvas": "1.0.10"
   },
   "private": true
 }

@@ -1,0 +1,159 @@
+name: Build, scan and push an image
+description: >-
+  Builds an image once per platform, scans each build with Trivy, and pushes it with SBOM
+  and provenance attestations only when no fixable Critical or High finding is left. The
+  calling job sets up buildx (and QEMU for a foreign platform), logs in to the registry and
+  holds `security-events: write`.
+
+inputs:
+  context:
+    description: Build context.
+    required: true
+  file:
+    description: Dockerfile path.
+    required: true
+  target:
+    description: Dockerfile target stage.
+    required: true
+  build-args:
+    description: Newline-separated build arguments.
+    default: ""
+  platforms:
+    description: Comma-separated platforms, from `linux/amd64` and `linux/arm64`.
+    default: linux/amd64
+  tags:
+    description: Newline-separated tags to push.
+    required: true
+  repository:
+    description: The image repository (`telorun/node`), the first part of the code-scanning category.
+    required: true
+  variant:
+    description: Names one build of a repository that publishes several; empty otherwise.
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    # A platform with no scan below would still be pushed, so one outside the scanned set stops the run.
+    - name: Require every platform to be scanned
+      shell: bash
+      env:
+        PLATFORMS: ${{ inputs.platforms }}
+      run: |
+        IFS=',' read -ra requested <<< "$PLATFORMS"
+        [ "${#requested[@]}" -gt 0 ] || { echo "::error::platforms is empty."; exit 1; }
+        for platform in "${requested[@]}"; do
+          platform="${platform//[[:space:]]/}"
+          case "$platform" in
+            linux/amd64 | linux/arm64) ;;
+            *) echo "::error::platform '$platform' has no scan step; nothing is pushed unscanned."; exit 1 ;;
+          esac
+        done
+
+    - id: category
+      shell: bash
+      env:
+        REPOSITORY: ${{ inputs.repository }}
+        VARIANT: ${{ inputs.variant }}
+      run: echo "value=trivy/$REPOSITORY${VARIANT:+/$VARIANT}" >> "$GITHUB_OUTPUT"
+
+    # The scan builds have no registry, no attestations and no cache import: the images they
+    # leave are archives for Trivy, and the push below reuses their layers from the builder.
+    - name: Build linux/amd64 for the scan
+      if: contains(inputs.platforms, 'linux/amd64')
+      uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.file }}
+        target: ${{ inputs.target }}
+        build-args: ${{ inputs.build-args }}
+        platforms: linux/amd64
+        tags: telo-scan:amd64
+        outputs: type=docker,dest=${{ runner.temp }}/scan-amd64.tar
+        provenance: false
+        sbom: false
+
+    # Every severity and every unfixed finding is recorded, under one category per image.
+    - name: Record the linux/amd64 findings
+      if: contains(inputs.platforms, 'linux/amd64')
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      with:
+        input: ${{ runner.temp }}/scan-amd64.tar
+        format: sarif
+        output: ${{ runner.temp }}/trivy-amd64.sarif
+        scanners: vuln
+        vuln-type: os,library
+        trivyignores: .trivyignore.yaml
+        cache: "false"
+
+    - name: Upload the findings
+      if: contains(inputs.platforms, 'linux/amd64')
+      uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+      with:
+        sarif_file: ${{ runner.temp }}/trivy-amd64.sarif
+        category: ${{ steps.category.outputs.value }}
+
+    - name: Refuse a fixable Critical or High finding on linux/amd64
+      if: contains(inputs.platforms, 'linux/amd64')
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      with:
+        input: ${{ runner.temp }}/scan-amd64.tar
+        format: table
+        exit-code: "1"
+        ignore-unfixed: "true"
+        severity: CRITICAL,HIGH
+        scanners: vuln
+        vuln-type: os,library
+        trivyignores: .trivyignore.yaml
+        cache: "false"
+
+    - name: Free the linux/amd64 scan archive
+      if: always()
+      shell: bash
+      run: rm -f "$RUNNER_TEMP/scan-amd64.tar" "$RUNNER_TEMP/trivy-amd64.sarif"
+
+    - name: Build linux/arm64 for the scan
+      if: contains(inputs.platforms, 'linux/arm64')
+      uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.file }}
+        target: ${{ inputs.target }}
+        build-args: ${{ inputs.build-args }}
+        platforms: linux/arm64
+        tags: telo-scan:arm64
+        outputs: type=docker,dest=${{ runner.temp }}/scan-arm64.tar
+        provenance: false
+        sbom: false
+
+    - name: Refuse a fixable Critical or High finding on linux/arm64
+      if: contains(inputs.platforms, 'linux/arm64')
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      with:
+        input: ${{ runner.temp }}/scan-arm64.tar
+        format: table
+        exit-code: "1"
+        ignore-unfixed: "true"
+        severity: CRITICAL,HIGH
+        scanners: vuln
+        vuln-type: os,library
+        trivyignores: .trivyignore.yaml
+        cache: "false"
+
+    - name: Free the linux/arm64 scan archive
+      if: always()
+      shell: bash
+      run: rm -f "$RUNNER_TEMP/scan-arm64.tar"
+
+    - name: Push with SBOM and provenance
+      uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.file }}
+        target: ${{ inputs.target }}
+        build-args: ${{ inputs.build-args }}
+        platforms: ${{ inputs.platforms }}
+        tags: ${{ inputs.tags }}
+        push: true
+        sbom: true
+        provenance: mode=max

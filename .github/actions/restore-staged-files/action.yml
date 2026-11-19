@@ -46,7 +46,7 @@ runs:
           echo 'STAGED_PATHS_EOF'
         } >> "$GITHUB_OUTPUT"
     - id: restore
-      uses: actions/cache/restore@v4
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: ${{ steps.paths.outputs.list }}
         key: staged-${{ inputs.scope }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('modules/http-server/telo.yaml', 'modules/tesseract/telo.yaml', 'modules/tesseract-lang/*/telo.yaml', 'modules/pdf/telo.yaml', 'modules/image/telo.yaml', 'modules/sqlite/telo.yaml', 'modules/ui-lucide/telo.yaml') }}

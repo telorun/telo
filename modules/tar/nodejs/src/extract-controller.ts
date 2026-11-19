@@ -83,8 +83,12 @@ function extractEntry(
 
     ex.on("entry", (header, stream, next) => {
       if (found === null && normalize(header.name) === target) {
-        const chunks: Buffer[] = [];
-        stream.on("data", (c: Buffer) => chunks.push(c));
+        const chunks: Uint8Array[] = [];
+        // The stream's `data` event is typed `unknown`; it only ever emits bytes.
+        stream.on("data", (chunk) => {
+          if (chunk instanceof Uint8Array) chunks.push(chunk);
+          else settle(new TypeError(`tar entry stream emitted a ${typeof chunk} chunk, expected bytes`));
+        });
         stream.on("end", () => {
           found = new Uint8Array(Buffer.concat(chunks));
           next();

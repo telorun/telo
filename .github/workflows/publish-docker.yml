@@ -32,6 +32,12 @@ name: Publish Docker Images
 # from its commit or its tag: the image build resolves `@telorun/*` from npm, so it
 # follows the `release` job that published them. Which units a release moved is read
 # once, from its release commit, by the calling run (`release-units.mjs`).
+#
+# Every image is built, scanned and only then pushed
+# (`.github/actions/build-scan-push-image`): a Critical or High Trivy finding that has a
+# fix fails the job with nothing pushed, and a pushed image carries an SBOM and a
+# provenance attestation. No build or package cache is restored or saved, since what
+# these jobs build is what ships.
 
 on:
   workflow_dispatch:
@@ -71,11 +77,21 @@ on:
         description: 'The git tag naming that release (v0.85.0-rc.1); empty when channel is none. A final''s or patch''s may not exist yet when images is kernel.'
         type: string
         default: ''
+    secrets:
+      DOCKERHUB_USERNAME:
+        description: 'Docker Hub account the telorun/* images are pushed with.'
+        required: false
+      DOCKERHUB_TOKEN:
+        description: 'Access token of that Docker Hub account.'
+        required: false
 
 # A Publish run's two calls share the group, so they run one after the other.
 concurrency:
   group: publish-docker-${{ github.ref }}
   cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
   context:
@@ -102,15 +118,17 @@ jobs:
       major: ${{ steps.pointers.outputs.major }}
       minor: ${{ steps.pointers.outputs.minor }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.ref || github.sha }}
           # Tags are what the pointers are compared against.
           fetch-depth: 0
           fetch-tags: true
+          persist-credentials: false
 
       - id: compute
         env:
+          EVENT_NAME: ${{ github.event_name }}
           UNITS: ${{ inputs.units }}
           INPUT_VERSION: ${{ inputs.version }}
           INPUT_CHANNEL: ${{ inputs.channel }}
@@ -137,7 +155,7 @@ jobs:
           if [ -z "$CLI_VERSION" ]; then
             CLI_VERSION=$(echo "$UNITS" | jq -r '[.[] | select(.ecosystem=="npm" and .name=="@telorun/cli")][0].version // ""')
           fi
-          if [ -z "$CLI_VERSION" ] && [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ -z "$CLI_VERSION" ] && [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             CLI_VERSION="${DISPATCH_CLI_VERSION:-$WORKSPACE_VERSION}"
             npm view "@telorun/cli@$CLI_VERSION" version >/dev/null ||
               { echo "::error::@telorun/cli@$CLI_VERSION is not published; there is nothing to build images for."; exit 1; }
@@ -169,8 +187,9 @@ jobs:
         id: units
         env:
           GIVEN: ${{ inputs.units }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [ -n "$GIVEN" ] && [ "$GIVEN" != "[]" ] || [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+          if [ -n "$GIVEN" ] && [ "$GIVEN" != "[]" ] || [ "$EVENT_NAME" != "workflow_dispatch" ]; then
             echo "units=${GIVEN:-[]}" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -183,20 +202,25 @@ jobs:
       - id: pointers
         env:
           CHANNEL: ${{ inputs.channel }}
-        run: node scripts/release-pointers.mjs --version "${{ steps.compute.outputs.base-version }}" --channel "${CHANNEL/none/}"
+          BASE_VERSION: ${{ steps.compute.outputs.base-version }}
+        run: node scripts/release-pointers.mjs --version "$BASE_VERSION" --channel "${CHANNEL/none/}"
 
   kernel-release:
     name: Build telorun/node release tags
     if: needs.context.outputs.release-cli == 'true' && needs.context.outputs.kernel == 'true'
     needs: context
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # uploads the Trivy findings
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.ref || github.sha }}
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -240,49 +264,44 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Build & push lean
-        uses: docker/build-push-action@v6
+        uses: $/.github/actions/build-scan-push-image
         with:
           context: .
           file: cli/nodejs/Dockerfile
           target: lean
-          push: true
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.tags.outputs.lean }}
-          cache-from: type=gha,scope=kernel-lean
-          cache-to: type=gha,mode=max,scope=kernel-lean
+          repository: telorun/node
+          variant: lean
 
       - name: Build & push lean-slim
-        uses: docker/build-push-action@v6
+        uses: $/.github/actions/build-scan-push-image
         with:
           context: .
           file: cli/nodejs/Dockerfile
           target: lean-slim
-          push: true
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.tags.outputs.lean-slim }}
-          cache-from: type=gha,scope=kernel-lean-slim
-          cache-to: type=gha,mode=max,scope=kernel-lean-slim
+          repository: telorun/node
+          variant: lean-slim
 
       # One build, both tag sets. There is no non-slim rust image: the toolchain
       # needs nothing from the fat base, so `-rust-<ver>` is the slim one under
       # its historical name rather than a second ~990 MB-heavier build.
       - name: Build & push rust-slim
-        uses: docker/build-push-action@v6
+        uses: $/.github/actions/build-scan-push-image
         with:
           context: .
           file: cli/nodejs/Dockerfile
           target: rust-slim
-          push: true
           platforms: linux/amd64,linux/arm64
           build-args: |
             RUST_VERSION=${{ needs.context.outputs.rust-version }}
           tags: |
             ${{ steps.tags.outputs.rust }}
             ${{ steps.tags.outputs.rust-slim }}
-          cache-from: |
-            type=gha,scope=kernel-rust-slim
-            type=gha,scope=kernel-lean-slim
-          cache-to: type=gha,mode=max,scope=kernel-rust-slim
+          repository: telorun/node
+          variant: rust-slim
 
   hub:
     name: Build telorun/hub
@@ -296,20 +315,24 @@ jobs:
       (needs.kernel-release.result == 'success' || needs.kernel-release.result == 'skipped')
     needs: [context, kernel-release]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # uploads the Trivy findings
     outputs:
       # The version this run released, or empty — consumed by the chart job, as
       # the k8s-runner job's is.
       released-version: ${{ steps.imgtags.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.ref || github.sha }}
           fetch-depth: 0 # the release commit's parent for the version bump, tags for the forward-only `latest`
           fetch-tags: true
+          persist-credentials: false
 
 
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -331,21 +354,20 @@ jobs:
         id: imgtags
         env:
           MOVED_UNITS: ${{ needs.context.outputs.units }}
-        run: node scripts/image-tags.mjs --key apps/hub --sha "${{ needs.context.outputs.short-sha }}"
+          SHORT_SHA: ${{ needs.context.outputs.short-sha }}
+        run: node scripts/image-tags.mjs --key apps/hub --sha "$SHORT_SHA"
 
       - name: Build & push hub
         if: steps.imgtags.outputs.version != ''
-        uses: docker/build-push-action@v6
+        uses: $/.github/actions/build-scan-push-image
         with:
           context: apps/hub
           file: apps/hub/Dockerfile
           target: production
-          push: true
           build-args: |
             TELO_NODE_VERSION=${{ steps.telo.outputs.version }}
           tags: ${{ steps.imgtags.outputs.tags }}
-          cache-from: type=gha,scope=hub
-          cache-to: type=gha,mode=max,scope=hub
+          repository: telorun/hub
 
   runner:
     name: Build telorun/docker-runner
@@ -354,16 +376,20 @@ jobs:
     if: needs.context.outputs.apps == 'true'
     needs: context
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # uploads the Trivy findings
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.ref || github.sha }}
           fetch-depth: 0 # the release commit's parent for the version bump, tags for the forward-only `latest`
           fetch-tags: true
+          persist-credentials: false
 
 
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -379,19 +405,18 @@ jobs:
         id: imgtags
         env:
           MOVED_UNITS: ${{ needs.context.outputs.units }}
-        run: node scripts/image-tags.mjs --key apps/docker-runner --sha "${{ needs.context.outputs.short-sha }}"
+          SHORT_SHA: ${{ needs.context.outputs.short-sha }}
+        run: node scripts/image-tags.mjs --key apps/docker-runner --sha "$SHORT_SHA"
 
       - name: Build & push runner
         if: steps.imgtags.outputs.version != ''
-        uses: docker/build-push-action@v6
+        uses: $/.github/actions/build-scan-push-image
         with:
           context: .
           file: apps/docker-runner/Dockerfile
           target: production
-          push: true
           tags: ${{ steps.imgtags.outputs.tags }}
-          cache-from: type=gha,scope=runner
-          cache-to: type=gha,mode=max,scope=runner
+          repository: telorun/docker-runner
 
   hub-web:
     name: Build telorun/hub-web
@@ -400,16 +425,20 @@ jobs:
     if: needs.context.outputs.apps == 'true'
     needs: context
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # uploads the Trivy findings
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.ref || github.sha }}
           fetch-depth: 0 # the release commit's parent for the version bump, tags for the forward-only `latest`
           fetch-tags: true
+          persist-credentials: false
 
 
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -425,19 +454,18 @@ jobs:
         id: imgtags
         env:
           MOVED_UNITS: ${{ needs.context.outputs.units }}
-        run: node scripts/image-tags.mjs --key apps/hub-web --sha "${{ needs.context.outputs.short-sha }}"
+          SHORT_SHA: ${{ needs.context.outputs.short-sha }}
+        run: node scripts/image-tags.mjs --key apps/hub-web --sha "$SHORT_SHA"
 
       - name: Build & push hub-web
         if: steps.imgtags.outputs.version != ''
-        uses: docker/build-push-action@v6
+        uses: $/.github/actions/build-scan-push-image
         with:
           context: .
           file: apps/hub-web/Dockerfile
           target: production
-          push: true
           tags: ${{ steps.imgtags.outputs.tags }}
-          cache-from: type=gha,scope=hub-web
-          cache-to: type=gha,mode=max,scope=hub-web
+          repository: telorun/hub-web
 
   k8s-runner:
     name: Build telorun/k8s-runner
@@ -455,6 +483,9 @@ jobs:
       (needs.kernel-release.result == 'success' || needs.kernel-release.result == 'skipped')
     needs: [context, kernel-release]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # uploads the Trivy findings
     outputs:
       # The version this run released, or empty. Published so the chart job
       # consumes the answer instead of re-deriving it from the same two files —
@@ -462,15 +493,16 @@ jobs:
       # data dependency rather than a convention.
       released-version: ${{ steps.imgtags.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.ref || github.sha }}
           fetch-depth: 0 # the release commit's parent for the version bump, tags for the forward-only `latest`
           fetch-tags: true
+          persist-credentials: false
 
 
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -486,7 +518,8 @@ jobs:
         id: imgtags
         env:
           MOVED_UNITS: ${{ needs.context.outputs.units }}
-        run: node scripts/image-tags.mjs --key apps/k8s-runner --sha "${{ needs.context.outputs.short-sha }}"
+          SHORT_SHA: ${{ needs.context.outputs.short-sha }}
+        run: node scripts/image-tags.mjs --key apps/k8s-runner --sha "$SHORT_SHA"
 
       # The session kernel is the CLI this release published; none when no CLI was released.
       - name: Pin the session kernel image
@@ -498,19 +531,17 @@ jobs:
 
       - name: Build & push k8s-runner
         if: steps.imgtags.outputs.version != ''
-        uses: docker/build-push-action@v6
+        uses: $/.github/actions/build-scan-push-image
         with:
           context: .
           file: apps/k8s-runner/Dockerfile
           target: production
-          push: true
           # Empty when no CLI was released, and an empty `build-args` line is
           # ignored by buildx — so the Dockerfile's default applies.
           build-args: |
             ${{ steps.session.outputs.session-image && format('TELO_SESSION_IMAGE={0}', steps.session.outputs.session-image) || '' }}
           tags: ${{ steps.imgtags.outputs.tags }}
-          cache-from: type=gha,scope=k8s-runner
-          cache-to: type=gha,mode=max,scope=k8s-runner
+          repository: telorun/k8s-runner
 
   # The web build of Studio, the image Telo Cloud serves at `studio.telo.run` — the
   # `apps/studio` unit's `docker` row, on GHCR.
@@ -521,17 +552,19 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
+      packages: write # zizmor: ignore[excessive-permissions] pushes the image to GHCR
+      security-events: write # uploads the Trivy findings
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.ref || github.sha }}
           fetch-depth: 0 # tags for the forward-only `latest`
           fetch-tags: true
+          persist-credentials: false
 
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -541,20 +574,19 @@ jobs:
         id: imgtags
         env:
           MOVED_UNITS: ${{ needs.context.outputs.units }}
-        run: node scripts/image-tags.mjs --key apps/studio --sha "${{ needs.context.outputs.short-sha }}"
+          SHORT_SHA: ${{ needs.context.outputs.short-sha }}
+        run: node scripts/image-tags.mjs --key apps/studio --sha "$SHORT_SHA"
 
       - name: Build & push studio-web
         if: steps.imgtags.outputs.version != ''
-        uses: docker/build-push-action@v6
+        uses: $/.github/actions/build-scan-push-image
         with:
           context: .
           file: apps/studio/Dockerfile
           target: production
-          push: true
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.imgtags.outputs.tags }}
-          cache-from: type=gha,scope=studio-web
-          cache-to: type=gha,mode=max,scope=studio-web
+          repository: telorun/studio-web
 
   charts:
     name: Publish the Helm charts
@@ -574,21 +606,21 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
+      packages: write # zizmor: ignore[excessive-permissions] pushes the charts to GHCR
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.ref || github.sha }}
-      - uses: azure/setup-helm@v4
+          persist-credentials: false
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
-          cache: pnpm
 
       # `telo release order` names each chart's directory and destination.
       - name: Install and build
@@ -600,8 +632,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MOVED_UNITS: ${{ needs.context.outputs.units }}
+          ACTOR: ${{ github.actor }}
         run: |
-          echo "${GITHUB_TOKEN}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+          echo "${GITHUB_TOKEN}" | helm registry login ghcr.io -u "$ACTOR" --password-stdin
           node scripts/publish-charts.mjs
 
   authoring-agent:
@@ -619,15 +652,19 @@ jobs:
       (needs.kernel-release.result == 'success' || needs.kernel-release.result == 'skipped')
     needs: [context, kernel-release]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # uploads the Trivy findings
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.ref || github.sha }}
           fetch-depth: 0 # the release commit's parent for the version bump, tags for the forward-only `latest`
           fetch-tags: true
+          persist-credentials: false
 
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Install the release scripts' dependencies
         run: |
@@ -640,23 +677,22 @@ jobs:
         id: imgtags
         env:
           MOVED_UNITS: ${{ needs.context.outputs.units }}
-        run: node scripts/image-tags.mjs --key apps/authoring-agent --sha "${{ needs.context.outputs.short-sha }}" --suffix -slim
+          SHORT_SHA: ${{ needs.context.outputs.short-sha }}
+        run: node scripts/image-tags.mjs --key apps/authoring-agent --sha "$SHORT_SHA" --suffix -slim
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build & push authoring-agent
         if: steps.imgtags.outputs.version != ''
-        uses: docker/build-push-action@v6
+        uses: $/.github/actions/build-scan-push-image
         with:
           context: apps/authoring-agent
           file: apps/authoring-agent/Dockerfile
           target: production
-          push: true
           build-args: |
             TELO_NODE_VERSION=${{ needs.context.outputs.base-version }}
           tags: ${{ steps.imgtags.outputs.tags }}
-          cache-from: type=gha,scope=authoring-agent
-          cache-to: type=gha,mode=max,scope=authoring-agent
+          repository: telorun/authoring-agent

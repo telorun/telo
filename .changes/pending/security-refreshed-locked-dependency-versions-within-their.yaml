@@ -1,0 +1,29 @@
+units:
+  modules/assert: Security
+  modules/auth-bearer: Security
+  modules/benchmark: Security
+  modules/crypto: Security
+  modules/html: Security
+  modules/http-client: Security
+  modules/http-dispatch: Security
+  modules/jose: Security
+  modules/mail: Security
+  modules/pdfmake: Security
+  modules/postgres: Security
+  modules/scheduler: Security
+  modules/sql: Security
+  modules/sqlite: Security
+  modules/svg-chart: Security
+  modules/tar: Security
+  modules/test: Security
+  modules/type: Security
+  modules/vector-store-pgvector: Security
+  modules/ui-react: Security
+  modules/ui-react-radix: Security
+  cli: Security
+  packages/debug-ui: Security
+  apps/host-runner: Security
+  apps/hub-web: Security
+  release: Security
+body: Refreshed locked dependency versions within their declared ranges, as part of a
+  workspace-wide refresh that clears known security advisories.

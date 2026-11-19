@@ -56,6 +56,13 @@ const FIXED_HEADER = {
 
 const EXECUTABLE_MODE = 0o755;
 
+/** A tar stream's `data` event is typed `unknown`; it only ever emits bytes. */
+function chunkBytes(chunk: unknown): Buffer {
+  if (Buffer.isBuffer(chunk)) return chunk;
+  if (chunk instanceof Uint8Array) return Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+  throw new TypeError(`tar stream emitted a ${typeof chunk} chunk, expected bytes`);
+}
+
 /**
  * Pack `entries` into a gzipped tar (`module.tar.gz`) — the module-artifact
  * writer shared by `telo publish` and the transports. Artifacts are small (a
@@ -69,9 +76,15 @@ const EXECUTABLE_MODE = 0o755;
 export async function makeTarGz(entries: readonly BundleEntry[]): Promise<Buffer> {
   const pack = tarPack();
   const chunks: Buffer[] = [];
-  pack.on("data", (c: Buffer) => chunks.push(c));
 
   const done = new Promise<void>((resolve, reject) => {
+    pack.on("data", (chunk) => {
+      try {
+        chunks.push(chunkBytes(chunk));
+      } catch (err) {
+        reject(err);
+      }
+    });
     pack.on("end", resolve);
     pack.on("error", reject);
   });
@@ -135,7 +148,13 @@ export async function readTarGz(
       }
       const executable = ((header.mode ?? 0) & 0o111) !== 0;
       const chunks: Buffer[] = [];
-      stream.on("data", (c: Buffer) => chunks.push(c));
+      stream.on("data", (chunk) => {
+        try {
+          chunks.push(chunkBytes(chunk));
+        } catch (err) {
+          reject(err);
+        }
+      });
       stream.on("end", () => {
         const content = Buffer.concat(chunks);
         entries.push(

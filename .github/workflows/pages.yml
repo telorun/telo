@@ -53,7 +53,7 @@ jobs:
     name: Build the site
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # zizmor: ignore[excessive-permissions] attaches the site build to the release
     outputs:
       channel: ${{ steps.plan.outputs.channel }}
       version: ${{ steps.plan.outputs.version }}
@@ -62,9 +62,10 @@ jobs:
       # The tooling comes from the workflow's own commit; the source from the tag.
       # They are one commit when Publish calls this.
       - name: Checkout the tooling
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           path: tooling
+          persist-credentials: false
 
       - name: Install the release scripts' dependencies
         working-directory: tooling
@@ -75,28 +76,29 @@ jobs:
       - name: Plan the build
         id: plan
         working-directory: tooling
-        run: node scripts/release-site.mjs build --tag "${{ inputs.tag }}"
+        env:
+          TAG: ${{ inputs.tag }}
+        run: node scripts/release-site.mjs build --tag "$TAG"
 
       - name: Checkout ${{ inputs.tag }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.tag }}
           path: source
           # Full history: the sitemap derives each page's <lastmod> from the
           # file's git log, which a shallow clone does not carry.
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
         with:
           package_json_file: source/package.json
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
-          cache: pnpm
-          cache-dependency-path: source/pnpm-lock.yaml
 
       - name: Install dependencies
         working-directory: source
@@ -116,19 +118,23 @@ jobs:
           PLAUSIBLE_DOMAIN: telo.run
 
       - name: Pack the site
+        env:
+          ASSET: ${{ steps.plan.outputs.asset }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/site"
-          tar -czf "$RUNNER_TEMP/site/${{ steps.plan.outputs.asset }}" -C source/pages/build .
+          tar -czf "$RUNNER_TEMP/site/$ASSET" -C source/pages/build .
 
       - name: Attach the site to the release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-        run: node tooling/scripts/release-assets.mjs "${{ inputs.tag }}" "$RUNNER_TEMP/site/${{ steps.plan.outputs.asset }}"
+          TAG: ${{ inputs.tag }}
+          ASSET: ${{ steps.plan.outputs.asset }}
+        run: node tooling/scripts/release-assets.mjs "$TAG" "$RUNNER_TEMP/site/$ASSET"
 
       - name: Keep the build for the deploy
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: site
           path: ${{ runner.temp }}/site/${{ steps.plan.outputs.asset }}
@@ -141,8 +147,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pages: write
-      id-token: write
+      pages: write # zizmor: ignore[excessive-permissions] Pages deployment
+      id-token: write # zizmor: ignore[excessive-permissions] Pages deployment
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -151,10 +157,12 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Download this run's build
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: site
           path: own
@@ -179,10 +187,10 @@ jobs:
           rm -rf site/.download
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:
           path: site
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5

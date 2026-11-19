@@ -55,6 +55,13 @@ on:
         description: 'The release tag (v<version>), checked out; it exists, with a draft release, before this runs.'
         type: string
         required: true
+    secrets:
+      CLOUDFLARE_API_TOKEN:
+        description: 'Cloudflare token that edits the telo.sh redirect rules.'
+        required: false
+      CLOUDFLARE_ZONE_ID:
+        description: 'The Cloudflare zone holding the telo.sh redirect rules.'
+        required: false
 
 permissions:
   contents: read
@@ -91,22 +98,22 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.tag }}
+          persist-credentials: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
 
       # Pinned, not read from the repo's package.json: that file declares no
       # `engines.node`, so `node-version-file` silently leaves the runner's
       # default in place — and which Node builds the binary decides which Node
       # archives the cross-targets can fetch.
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
-          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -139,11 +146,15 @@ jobs:
 
       - name: Build Linux packages
         if: startsWith(matrix.target, 'linux')
-        run: node .github/scripts/package-standalone.mjs --target ${{ matrix.target }} --version ${{ inputs.version }} --dir dist-standalone
+        env:
+          VERSION: ${{ inputs.version }}
+        run: node .github/scripts/package-standalone.mjs --target "${{ matrix.target }}" --version "$VERSION" --dir dist-standalone
 
       - name: Build macOS package
         if: startsWith(matrix.target, 'darwin')
-        run: node .github/scripts/package-standalone.mjs --target ${{ matrix.target }} --version ${{ inputs.version }} --dir dist-standalone
+        env:
+          VERSION: ${{ inputs.version }}
+        run: node .github/scripts/package-standalone.mjs --target "${{ matrix.target }}" --version "$VERSION" --dir dist-standalone
 
       # WiX builds the `.msi`; without it the packaging step fails rather than
       # publishing a Windows release with only a `.zip`.
@@ -159,7 +170,10 @@ jobs:
 
       - name: Build Windows package
         if: startsWith(matrix.target, 'windows')
-        run: node .github/scripts/package-standalone.mjs --target ${{ matrix.target }} --version ${{ inputs.version }} --dir dist-standalone
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: node .github/scripts/package-standalone.mjs --target "${{ matrix.target }}" --version "$VERSION" --dir dist-standalone
 
       # Proof the artifact runs at all, from a shell that cannot see the runner's
       # Node. It is not the full verification — that is the container check below
@@ -196,7 +210,7 @@ jobs:
       # Nothing reads them: the install scripts fetch the archives, and every
       # archive holds the same binary.
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: telo-${{ matrix.target }}
           path: |
@@ -249,13 +263,15 @@ jobs:
       CARGO_PROFILE_RELEASE_STRIP: "true"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.tag }}
+          persist-credentials: false
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
+          toolchain: stable
           targets: ${{ matrix.triple }}
 
       - name: Install the WebKitGTK development libraries
@@ -268,37 +284,43 @@ jobs:
       # crate must carry the release's.
       - name: The crate carries the release's version
         shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           crate=$(awk '/^\[package\]/ { in_package = 1; next } /^\[/ { in_package = 0 } in_package && /^version = / { gsub(/^version = "|"$/, ""); print; exit }' cli/rust/desktop-host/Cargo.toml)
-          [ "$crate" = "${{ inputs.version }}" ] || { echo "cli/rust/desktop-host is $crate, the release is ${{ inputs.version }}" >&2; exit 1; }
+          [ "$crate" = "$VERSION" ] || { echo "cli/rust/desktop-host is $crate, the release is $VERSION" >&2; exit 1; }
 
       - name: Build the helper
         run: cargo build --release --locked -p telo-desktop-host --features gui --target ${{ matrix.triple }}
 
       - name: Stage the asset
         shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           ext=""
           case "${{ matrix.target }}" in windows-*) ext=".exe" ;; esac
           mkdir -p desktop-host-dist
           cp "target/${{ matrix.triple }}/release/telo-desktop-host$ext" \
-            "desktop-host-dist/telo-desktop-host-${{ inputs.version }}-${{ matrix.target }}$ext"
+            "desktop-host-dist/telo-desktop-host-$VERSION-${{ matrix.target }}$ext"
 
       # A GUI-subsystem binary on Windows prints only into a pipe, which this
       # step's stdout is.
       - name: Smoke test
         if: matrix.smoke
         shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           bin=$(ls desktop-host-dist/telo-desktop-host-*)
           out=$("$bin" --version | cat)
-          [ "$out" = "telo-desktop-host ${{ inputs.version }}" ] || { echo "unexpected: $out" >&2; exit 1; }
+          [ "$out" = "telo-desktop-host $VERSION" ] || { echo "unexpected: $out" >&2; exit 1; }
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: telo-desktop-host-${{ matrix.target }}
           path: desktop-host-dist/*
@@ -330,7 +352,7 @@ jobs:
             install: apk add --no-cache libstdc++ && tar xzf /artifacts/*.tar.gz -C /usr/local/bin --strip-components=1
     steps:
       - name: Download ${{ matrix.target }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: telo-${{ matrix.target }}
           path: artifacts
@@ -355,21 +377,24 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.tag }}
+          persist-credentials: false
 
       - name: Download linux-amd64-gnu
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: telo-linux-amd64-gnu
           path: artifacts
 
       - name: Package an example with the built binary
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           mkdir -p bin dist
-          tar xzf artifacts/telo-${{ inputs.version }}-linux-amd64-gnu.tar.gz \
+          tar xzf "artifacts/telo-$VERSION-linux-amd64-gnu.tar.gz" \
             -C bin --strip-components=1
           # The binary IS the carrier here, so nothing is downloaded and the
           # packaged app carries exactly the telo this run built.
@@ -394,12 +419,12 @@ jobs:
     needs: [build, desktop-host, verify, package-app]
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # zizmor: ignore[excessive-permissions] attaches the installers to the draft release and publishes it
     steps:
       # By pattern: inside the Publish run the Docker jobs' build records are
       # artifacts too, and they cannot be downloaded.
       - name: Download every binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: telo-*
           path: artifacts
@@ -431,7 +456,7 @@ jobs:
       # sentence about binaries. `draft: true` keeps the release unpublished until
       # the step below promotes it.
       - name: Attach binaries to the draft release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2 # zizmor: ignore[superfluous-actions]
         with:
           tag_name: ${{ inputs.tag }}
           files: release/*
@@ -441,9 +466,10 @@ jobs:
       # The scripts come from the tag, after the downloads: a checkout cleans
       # the workspace, and nothing downloaded is needed past the attach above.
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.tag }}
+          persist-credentials: false
 
       - name: Install the release scripts' dependencies
         run: |
@@ -457,7 +483,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-        run: node scripts/release-promote.mjs "${{ inputs.tag }}"
+          TAG: ${{ inputs.tag }}
+        run: node scripts/release-promote.mjs "$TAG"
 
   # `telo.sh/install.sh` and `/install.ps1` are Cloudflare redirect rules to the
   # scripts at a release tag; this moves them to the tag just published. Rules
@@ -473,11 +500,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.tag }}
           fetch-depth: 0
           fetch-tags: true
+          persist-credentials: false
 
       - name: Install the release scripts' dependencies
         run: |
@@ -486,7 +514,10 @@ jobs:
 
       - name: Does the redirect move forward
         id: pointers
-        run: node scripts/release-pointers.mjs --version "${{ inputs.version }}" --channel "${{ inputs.channel }}"
+        env:
+          VERSION: ${{ inputs.version }}
+          CHANNEL: ${{ inputs.channel }}
+        run: node scripts/release-pointers.mjs --version "$VERSION" --channel "$CHANNEL"
 
       - name: Update the redirect rules
         if: steps.pointers.outputs.latest == 'true'

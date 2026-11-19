@@ -4,7 +4,9 @@
 // dependency before its dependents), each from the directory its row names with
 // `pnpm publish` — so its `prepack` makes the payload, the one the release plan
 // digests. A candidate version (`<final>-<id>.<k>`) goes out under the dist-tag
-// `<id>` (`rc` by default), any other under `latest`.
+// `<id>` (`rc` by default), any other under `latest`. Every package is published with
+// npm provenance, a signed statement of the workflow run that built it, which needs the
+// job's OIDC token (`id-token: write`) and a `repository` field naming this repository.
 //
 // Idempotent: a version npm already holds is skipped, so a re-run publishes only
 // what an earlier run did not, and a version a commit merely recorded is not
@@ -12,6 +14,7 @@
 // module's `requires: telo` floor is measured with a published CLI.
 //
 // Usage: node scripts/publish-packages.mjs [--dry-run]     env NODE_AUTH_TOKEN
+// (provenance is made only inside a GitHub Actions run, so a publish by hand has none)
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -60,6 +63,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
       execFileSync("pnpm", ["publish", "--tag", pkg.distTag, "--access", "public", "--no-git-checks"], {
         cwd: join(ROOT, pkg.path),
         stdio: "inherit",
+        env: process.env.GITHUB_ACTIONS === "true" ? { ...process.env, NPM_CONFIG_PROVENANCE: "true" } : process.env,
       });
     }
   } catch (error) {

@@ -21,6 +21,10 @@ on:
         description: 'The release tag (v<version>), checked out, whose release the web build is attached to.'
         type: string
         required: true
+    secrets:
+      STUDIO_PAGES_TOKEN:
+        description: 'Token with write access to telorun/studio, whose Pages branch the build is deployed to.'
+        required: false
 
 permissions:
   contents: read
@@ -33,14 +37,15 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # zizmor: ignore[excessive-permissions] attaches the web build to the release
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.tag }}
           fetch-depth: 0
           fetch-tags: true
+          persist-credentials: false
 
       - name: Install the release scripts' dependencies
         run: |
@@ -49,16 +54,18 @@ jobs:
 
       - name: Does the deploy move forward
         id: pointers
-        run: node scripts/release-pointers.mjs --version "${{ inputs.version }}" --channel "${{ inputs.channel }}"
+        env:
+          VERSION: ${{ inputs.version }}
+          CHANNEL: ${{ inputs.channel }}
+        run: node scripts/release-pointers.mjs --version "$VERSION" --channel "$CHANNEL"
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
-          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -73,14 +80,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
           tar -czf "$RUNNER_TEMP/studio-web.tar.gz" -C apps/studio/dist .
-          node scripts/release-assets.mjs "${{ inputs.tag }}" "$RUNNER_TEMP/studio-web.tar.gz"
+          node scripts/release-assets.mjs "$TAG" "$RUNNER_TEMP/studio-web.tar.gz"
 
       - name: Deploy to telorun/studio
         if: steps.pointers.outputs.latest == 'true'
-        uses: peaceiris/actions-gh-pages@v4
+        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0
         with:
           personal_token: ${{ secrets.STUDIO_PAGES_TOKEN }}
           external_repository: telorun/studio

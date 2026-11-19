@@ -1,0 +1,152 @@
+# Suppressions for OSV-Scanner. One entry names ONE advisory id; the reason says which case
+# applies (no fix exists / fix only in a major / vulnerable code not reached) and what ends it.
+# Expiry is at most 90 days ahead. Rust entries are mirrored in deny.toml.
+
+# --- npm (pnpm-lock.yaml) ---
+
+[[IgnoredVulns]]
+id = "GHSA-5xrq-8626-4rwp"
+effectiveUntil = 2027-02-17
+reason = "Fix only in a major: the workspace's test runner is vitest 2.x (vite 5, tinypool 1) in devDependencies; the fixed lines are vitest >=3.2.6, vite >=6.4.4 and tinypool >=2. Dev-only: nothing shipped depends on it, and CI never starts the vitest UI or a vite dev server for these. Ends when the workspace moves to vitest 3 or later."
+
+[[IgnoredVulns]]
+id = "GHSA-82fw-gwwq-j7x9"
+effectiveUntil = 2027-02-17
+reason = "Fix only in a major: @vitest/mocker 2.1.9 under the workspace's vitest 2.x test runner (devDependencies); fixed in vitest / @vitest/mocker 4.1.11. Dev-only: nothing shipped depends on it, and CI never starts the vitest UI or a vite dev server. Ends when the workspace moves to vitest 4.1.11 or later."
+
+[[IgnoredVulns]]
+id = "GHSA-qxg6-89mg-rqv8"
+effectiveUntil = 2027-02-17
+reason = "Fix only in a major: @vitest/mocker 2.1.9 under the workspace's vitest 2.x test runner (devDependencies); fixed in vitest / @vitest/mocker 4.1.12. Dev-only: nothing shipped depends on it, and CI never starts the vitest UI or a vite dev server. Ends when the workspace moves to vitest 4.1.12 or later."
+
+[[IgnoredVulns]]
+id = "GHSA-5gmw-xhrv-c9v3"
+effectiveUntil = 2027-02-17
+reason = "Fix only in a major: the workspace's test runner is vitest 2.x (vite 5, tinypool 1) in devDependencies; the fixed lines are vitest >=3.2.6, vite >=6.4.4 and tinypool >=2. Dev-only: nothing shipped depends on it, and CI never starts the vitest UI or a vite dev server for these. Ends when the workspace moves to vitest 3 or later."
+
+[[IgnoredVulns]]
+id = "GHSA-85c8-ppgw-ccpr"
+effectiveUntil = 2027-02-17
+reason = "Fix only in a major: the workspace's test runner is vitest 2.x (vite 5, tinypool 1) in devDependencies; the fixed lines are vitest >=3.2.6, vite >=6.4.4 and tinypool >=2. Dev-only: nothing shipped depends on it, and CI never starts the vitest UI or a vite dev server for these. Ends when the workspace moves to vitest 3 or later."
+
+[[IgnoredVulns]]
+id = "GHSA-4w7w-66w2-5vf9"
+effectiveUntil = 2027-02-17
+reason = "Fix only in a major: the workspace's test runner is vitest 2.x (vite 5, tinypool 1) in devDependencies; the fixed lines are vitest >=3.2.6, vite >=6.4.4 and tinypool >=2. Dev-only: nothing shipped depends on it, and CI never starts the vitest UI or a vite dev server for these. Ends when the workspace moves to vitest 3 or later."
+
+[[IgnoredVulns]]
+id = "GHSA-587h-7wmj-h5pm"
+effectiveUntil = 2027-02-17
+reason = "Fix only in a major: the workspace's test runner is vitest 2.x (vite 5, tinypool 1) in devDependencies; the fixed lines are vitest >=3.2.6, vite >=6.4.4 and tinypool >=2. Dev-only: nothing shipped depends on it, and CI never starts the vitest UI or a vite dev server for these. Ends when the workspace moves to vitest 3 or later."
+
+[[IgnoredVulns]]
+id = "GHSA-698v-4r3x-3vcv"
+effectiveUntil = 2027-02-17
+reason = "Fix only in a major: the workspace's test runner is vitest 2.x (vite 5, tinypool 1) in devDependencies; the fixed lines are vitest >=3.2.6, vite >=6.4.4 and tinypool >=2. Dev-only: nothing shipped depends on it, and CI never starts the vitest UI or a vite dev server for these. Ends when the workspace moves to vitest 3 or later."
+
+[[IgnoredVulns]]
+id = "GHSA-9jrq-w75r-8gcw"
+effectiveUntil = 2027-02-17
+reason = "Fix only in a major: the workspace's test runner is vitest 2.x (vite 5, tinypool 1) in devDependencies; the fixed lines are vitest >=3.2.6, vite >=6.4.4 and tinypool >=2. Dev-only: nothing shipped depends on it, and CI never starts the vitest UI or a vite dev server for these. Ends when the workspace moves to vitest 3 or later."
+
+[[IgnoredVulns]]
+id = "GHSA-fx2h-pf6j-xcff"
+effectiveUntil = 2027-02-17
+reason = "Fix only in a major: the workspace's test runner is vitest 2.x (vite 5, tinypool 1) in devDependencies; the fixed lines are vitest >=3.2.6, vite >=6.4.4 and tinypool >=2. Dev-only: nothing shipped depends on it, and CI never starts the vitest UI or a vite dev server for these. Ends when the workspace moves to vitest 3 or later."
+
+[[IgnoredVulns]]
+id = "GHSA-r825-w8mm-5pxw"
+effectiveUntil = 2027-02-17
+reason = "Fix only in a major: the workspace's test runner is vitest 2.x (vite 5, tinypool 1) in devDependencies; the fixed lines are vitest >=3.2.6, vite >=6.4.4 and tinypool >=2. Dev-only: nothing shipped depends on it, and CI never starts the vitest UI or a vite dev server for these. Ends when the workspace moves to vitest 3 or later."
+
+[[IgnoredVulns]]
+id = "GHSA-rq7h-c2jc-7f22"
+effectiveUntil = 2027-02-17
+reason = "Fix only in a major: the workspace's test runner is vitest 2.x (vite 5, tinypool 1) in devDependencies; the fixed lines are vitest >=3.2.6, vite >=6.4.4 and tinypool >=2. Dev-only: nothing shipped depends on it, and CI never starts the vitest UI or a vite dev server for these. Ends when the workspace moves to vitest 3 or later."
+
+[[IgnoredVulns]]
+id = "GHSA-v6wh-96g9-6wx3"
+effectiveUntil = 2027-02-17
+reason = "Fix only in a major: the workspace's test runner is vitest 2.x (vite 5, tinypool 1) in devDependencies; the fixed lines are vitest >=3.2.6, vite >=6.4.4 and tinypool >=2. Dev-only: nothing shipped depends on it, and CI never starts the vitest UI or a vite dev server for these. Ends when the workspace moves to vitest 3 or later."
+
+[[IgnoredVulns]]
+id = "GHSA-gg6h-894w-4m9c"
+effectiveUntil = 2027-02-17
+reason = "Vulnerable code not reached: the quadratic matching is in re2js's opt-in LOOKBEHINDS mode, which Telo never enables (a lookbehind pattern is refused by Telo's RE2 profile at parse time). The 2.8.7 fix is a patch but re2js is pinned exactly in cel and templating because the cross-engine conformance vectors pin its answers and the Rust twin tracks 2.8.3. Ends when the pin is moved deliberately with the vectors re-run."
+
+[[IgnoredVulns]]
+id = "GHSA-5c6j-r48x-rmvq"
+effectiveUntil = 2027-02-17
+reason = "Fix only in a major: serialize-javascript 6.0.2 is pinned by Docusaurus's webpack plugins (copy-webpack-plugin, css-minimizer-webpack-plugin) in the documentation site's build; the fix is in 7.x. Build-time only, over trusted configuration, and nothing it serializes ships. Ends when Docusaurus moves to serialize-javascript 7."
+
+[[IgnoredVulns]]
+id = "GHSA-m5mm-p8h7-m29v"
+effectiveUntil = 2027-02-17
+reason = "Fix only in a major: serialize-javascript 6.0.2 is pinned by Docusaurus's webpack plugins (copy-webpack-plugin, css-minimizer-webpack-plugin) in the documentation site's build; the fix is in 7.x. Build-time only, over trusted configuration, and nothing it serializes ships. Ends when Docusaurus moves to serialize-javascript 7."
+
+[[IgnoredVulns]]
+id = "GHSA-qj8w-gfj5-8c6v"
+effectiveUntil = 2027-02-17
+reason = "Fix only in a major: serialize-javascript 6.0.2 is pinned by Docusaurus's webpack plugins (copy-webpack-plugin, css-minimizer-webpack-plugin) in the documentation site's build; the fix is in 7.x. Build-time only, over trusted configuration, and nothing it serializes ships. Ends when Docusaurus moves to serialize-javascript 7."
+
+[[IgnoredVulns]]
+id = "GHSA-hq66-cqwq-w95j"
+effectiveUntil = 2027-02-17
+reason = "Vulnerable code not reached: pdfjs-dist 6.0.227 executes a PDF's embedded JavaScript only through a scripting sandbox a viewer supplies; the pdf module only parses, extracts text and rasterizes through getDocument in Node, with no viewer or sandbox. The fix, 6.2.108, is held back because the pdfjs-dist wrapper must equal the worker and assets staged by sources.pdfjs (6.0.227). Ends when sources.pdfjs moves to 6.2.108 or later together with the wrapper."
+
+[[IgnoredVulns]]
+id = "GHSA-22p9-wv53-3rq4"
+effectiveUntil = 2027-02-17
+reason = "Fix only in a major: linkify-it 3.0.3 is pinned by ansi-to-react 6.2.6 in Studio; the fixes are in linkify-it 5.x. Ends when ansi-to-react moves to linkify-it 5 or Studio drops it."
+
+[[IgnoredVulns]]
+id = "GHSA-v245-v573-v5vm"
+effectiveUntil = 2027-02-17
+reason = "Fix only in a major: linkify-it 3.0.3 is pinned by ansi-to-react 6.2.6 in Studio; the fixes are in linkify-it 5.x. Ends when ansi-to-react moves to linkify-it 5 or Studio drops it."
+
+[[IgnoredVulns]]
+id = "GHSA-3g3m-2fjr-6pw4"
+effectiveUntil = 2027-02-17
+reason = "Fix only in a major: glob 13.0.7 comes from @vscode/vsce, the VS Code extension packaging tool (dev-only, run on trusted local files); fixed in glob 14. Ends when @vscode/vsce moves to glob 14."
+
+[[IgnoredVulns]]
+id = "GHSA-g3hv-75wg-m249"
+effectiveUntil = 2027-02-17
+reason = "Fix only in a major: minimatch 10.2.6 comes from vscode-languageclient and @vscode/vsce (extension build, trusted patterns); fixed in minimatch 11. Ends when they move to minimatch 11."
+
+[[IgnoredVulns]]
+id = "GHSA-w5hq-g745-h8pq"
+effectiveUntil = 2027-02-17
+reason = "Fix only in a major, and vulnerable code not reached: uuid 8.3.2 (sockjs under webpack-dev-server, docs build) and 10.0.0 (dockerode) are pinned by their parents and fixed in uuid 11.1.1 or later; both call only v4(), never the v3/v5/v6 forms taking a buffer. Ends when dockerode and sockjs move to uuid 11 or later."
+
+# --- Rust (Cargo.lock, apps/studio/src-tauri/Cargo.lock) ---
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0429"
+effectiveUntil = 2027-02-17
+reason = "Fix only in a major: glib 0.18.5's unsound VariantStrIter is fixed in glib 0.20, a breaking release, and glib 0.18 is held by the gtk-rs 0.18 line that tauri, tao and wry use on Linux (alias GHSA-wrw7-89jp-8q8g). Vulnerable code not reached: nothing in Telo iterates a glib Variant of strings. Ends when tauri / wry / tao move to gtk-rs 0.20 or later."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0370"
+effectiveUntil = 2027-02-17
+reason = "No fix exists: proc-macro-error is unmaintained and has no patched release; it is a build-time dependency of glib-macros 0.18 (gtk-rs 0.18, via tauri / wry / tao). Ends when gtk-rs 0.18 is replaced by a line that does not use it."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0370"
+effectiveUntil = 2027-02-17
+reason = "No fix exists in the line in use: zvariant is unmaintained and merged into zbus 6, a major; zbus 5 is a direct dependency of telo-desktop-host (root workspace) and is pulled by tauri-plugin-opener and the keyring's secret-service store (Studio's workspace). Ends when those move to zbus 6."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0371"
+effectiveUntil = 2027-02-17
+reason = "No fix exists in the line in use: zbus_names 4 is unmaintained and merged into zbus 6, a major; zbus 5 is a direct dependency of telo-desktop-host (root workspace) and is pulled by tauri-plugin-opener and the keyring's secret-service store (Studio's workspace). Ends when those move to zbus 6."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0372"
+effectiveUntil = 2027-02-17
+reason = "No fix exists in the line in use: zvariant_derive is unmaintained and merged into zbus 6, a major; zbus 5 is a direct dependency of telo-desktop-host (root workspace) and is pulled by tauri-plugin-opener and the keyring's secret-service store (Studio's workspace). Ends when those move to zbus 6."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0543"
+effectiveUntil = 2027-02-17
+reason = "No fix exists: chrono is unmaintained, with every version affected. It is reached only through serde_with in Studio's Tauri workspace. Ends when the dependents move to jiff or time."
