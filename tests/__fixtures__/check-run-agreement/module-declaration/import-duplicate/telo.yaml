@@ -1,0 +1,3 @@
+kind: Telo.Application
+metadata: { name: ImportsDuplicate }
+imports: { Lib: ./lib }

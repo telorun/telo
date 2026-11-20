@@ -1,5 +1,6 @@
 import {
   DEFAULT_MANIFEST_FILENAME,
+  fileSourceFailure,
   manifestCacheKey,
   splitIntegrity,
   verifyIntegrity,
@@ -132,7 +133,12 @@ export class LocalManifestCacheSource implements ManifestSource {
     // A mismatch is a terminal error — a poisoned cache must never be trusted,
     // and unlike the compiled-validator cache this is not a self-healing miss.
     const { integrity } = splitIntegrity(url);
-    const bytes = await fs.readFile(mapped.file);
+    let bytes: Buffer;
+    try {
+      bytes = await fs.readFile(mapped.file);
+    } catch (error) {
+      throw fileSourceFailure(error, pathToFileURL(mapped.file).href);
+    }
     if (integrity) {
       await verifyIntegrity(new Uint8Array(bytes), integrity, splitIntegrity(url).base);
     }

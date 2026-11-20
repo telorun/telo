@@ -204,6 +204,9 @@ pub trait ManifestSource {
 pub enum LoadError {
     #[error("no manifest source supports `{0}`. This kernel reads local paths and oci:// refs only")]
     UnsupportedSource(String),
+    /// The source could not hand the manifest over, worded by Telo.
+    #[error("{0}")]
+    Source(crate::sources::source_failure::ManifestSourceFailure),
     #[error("failed to read `{path}`: {message}")]
     Io { path: String, message: String },
 }

@@ -1,15 +1,13 @@
 kind: Telo.Application
-metadata:
-  name: IncludeRejectsLibraryInPartialTest
-  version: 1.0.0
-imports:
-  Assert: ../modules/assert
+metadata: { name: IncludeRejectsLibraryInPartialTest, version: 1.0.0 }
+imports: { Assert: ../modules/assert }
 targets:
   - !ref testLibraryRejected
 ---
 kind: Assert.Manifest
-metadata:
-  name: testLibraryRejected
+metadata: { name: testLibraryRejected }
 source: ./__fixtures__/include-rejects-library.yaml
 expect:
-  loadError: "not allowed in partial files"
+  errors:
+    - { code: PARTIAL_KIND_FORBIDDEN, message: "may not declare a 'Telo.Library' document" }
+  runFails: "may not declare a 'Telo.Library' document"

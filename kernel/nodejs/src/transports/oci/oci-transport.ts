@@ -1,9 +1,11 @@
 import {
   DEFAULT_MANIFEST_FILENAME,
   IntegrityError,
+  ManifestSourceFailure,
   nestedOciRef,
   selectorKey,
   sha256Base64Url,
+  sourceFailureOf,
   splitIntegrity,
   verifyIntegrity,
   type ArtifactLayer,
@@ -12,6 +14,7 @@ import {
   type ManifestSource,
   type ParsedOciRef,
 } from "@telorun/analyzer";
+import { ERR_NETWORK_UNREACHABLE } from "@telorun/sdk";
 import { fileURLToPath } from "url";
 import {
   computeFilesIntegrity,
@@ -31,6 +34,7 @@ import {
   blobDigest,
   OciClient,
   OCI_MANIFEST_MEDIA_TYPE,
+  registryReplyOf,
   TELO_LAYER_MODULE_ANNOTATION,
   TELO_LAYER_ROLE_ANNOTATION,
   TELO_LEGACY_LAYER_MEDIA_TYPE,
@@ -237,13 +241,20 @@ export class OciTransport implements Transport {
       supports: (url) => this.supports(url),
       read: async (url) => {
         const parsed = parseOciRef(url);
-        if (parsed.path !== undefined) return this.readNested(parsed);
         const { host, repo, reference } = parsed;
-        const read = await pullManifestLayer(url, this.readClient(host, repo));
         const source = `${OCI_SCHEME}${host}/${repo}@${reference}`;
-        this.servedDigests.set(source, read.digest);
-        this.rememberManifestLayer(host, repo, read.digest, read.files);
-        return { text: read.text, source };
+        try {
+          if (parsed.path !== undefined) return await this.readNested(parsed);
+          const read = await pullManifestLayer(url, this.readClient(host, repo));
+          this.servedDigests.set(source, read.digest);
+          this.rememberManifestLayer(host, repo, read.digest, read.files);
+          return { text: read.text, source };
+        } catch (error) {
+          throw ociSourceFailure(
+            error,
+            parsed.path !== undefined ? nestedOciRef({ host, repo, digest: reference }, parsed.path) : source,
+          );
+        }
       },
       resolveRelative: (base, relative) => this.resolveRelative(base, relative),
       // Every `oci://` source a load holds was read by this transport; a copy the
@@ -266,10 +277,12 @@ export class OciTransport implements Transport {
     const entry = nestedManifestEntry(path, (e) => files.has(e));
     const label = this.describeNested(host, repo, digest, path);
     if (entry === undefined) {
-      throw new Error(
-        `${label}: the artifact's manifest layer carries no module there — neither ` +
-          `'${path}/${DEFAULT_MANIFEST_FILENAME}' nor '${path}'.`,
-      );
+      throw new ManifestSourceFailure("not-found", nestedOciRef({ host, repo, digest }, path), {
+        cause: new Error(
+          `${label}: the artifact's manifest layer carries no module there — neither ` +
+            `'${path}/${DEFAULT_MANIFEST_FILENAME}' nor '${path}'.`,
+        ),
+      });
     }
     const text = files.get(entry)!;
     if (integrity) await verifyIntegrity(new TextEncoder().encode(text), integrity, label);
@@ -767,4 +780,23 @@ export class OciTransport implements Transport {
     // version is its own (identity is the ref, not metadata).
     return `${this.resolveRelative(destination, relativeSource)}@${version}`;
   }
+}
+
+/** A read's failure as the closed source-failure set, at the transport's
+ *  boundary: the registry answering 404 for the manifest a reference names is
+ *  `not-found`, any other non-2xx reply `refused`, and a request that reached no
+ *  host `unreachable`. Anything else — an integrity mismatch, an egress refusal,
+ *  a malformed artifact — is no source failure and passes unchanged. */
+export function ociSourceFailure(error: unknown, location: string): unknown {
+  if (sourceFailureOf(error)) return error;
+  const reply = registryReplyOf(error);
+  if (reply) {
+    return reply.status === 404 && reply.read === "manifest"
+      ? new ManifestSourceFailure("not-found", location, { cause: error })
+      : new ManifestSourceFailure("refused", location, { status: reply.status, cause: error });
+  }
+  if ((error as { code?: unknown } | undefined)?.code === ERR_NETWORK_UNREACHABLE) {
+    return new ManifestSourceFailure("unreachable", location, { cause: error });
+  }
+  return error;
 }

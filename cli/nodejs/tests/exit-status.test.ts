@@ -51,7 +51,7 @@ describe("exit status", () => {
     ]) {
       const failed = await telo(args);
       expect(failed.status, args.join(" ")).toBe(1);
-      expect(failed.stderr, args.join(" ")).toMatch(/^no-such-manifest\.yaml {2}.*error.* {2}ENOENT/m);
+      expect(failed.stderr, args.join(" ")).toMatch(/^no-such-manifest\.yaml {2}.*error.* {2}nothing exists at file:\/\/\S*no-such-manifest\.yaml\./m);
       expect(failed.stderr, args.join(" ")).not.toMatch(/^\s+at /m);
     }
   }, 60_000);

@@ -213,8 +213,9 @@ export class OciClient {
       this.pullScope(),
     );
     if (!res.ok) {
-      throw new Error(
+      throw registryReplyError(
         `OCI pull manifest ${this.repo}:${reference} on ${this.host} failed: ${res.status} ${res.statusText}`,
+        { status: res.status, read: "manifest" },
       );
     }
     const bytes = new Uint8Array(await res.arrayBuffer());
@@ -227,8 +228,9 @@ export class OciClient {
   async pullBlob(digest: string): Promise<Buffer> {
     const res = await this.authedFetch(`${this.base()}/blobs/${digest}`, {}, this.pullScope());
     if (!res.ok) {
-      throw new Error(
+      throw registryReplyError(
         `OCI pull blob ${digest} from ${this.repo} on ${this.host} failed: ${res.status} ${res.statusText}`,
+        { status: res.status, read: "blob" },
       );
     }
     return Buffer.from(await res.arrayBuffer());
@@ -366,4 +368,22 @@ export class OciClient {
       data: EMPTY_CONFIG.toString("base64"),
     };
   }
+}
+
+/** A registry reply that was not 2xx: its status and what was being read, so
+ *  the transport's read boundary can tell a missing manifest from a refusal. */
+export interface RegistryReply {
+  status: number;
+  read: "manifest" | "blob";
+}
+
+const REGISTRY_REPLY = Symbol("telo.oci.registryReply");
+
+function registryReplyError(message: string, reply: RegistryReply): Error {
+  return Object.assign(new Error(message), { [REGISTRY_REPLY]: reply });
+}
+
+/** The registry reply `error` reports, when it is one this client raised. */
+export function registryReplyOf(error: unknown): RegistryReply | undefined {
+  return (error as { [REGISTRY_REPLY]?: RegistryReply } | undefined)?.[REGISTRY_REPLY];
 }
