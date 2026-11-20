@@ -11,7 +11,86 @@
     ],
     "properties": {
       "version": {
-        "type": "string"
+        "type": "string",
+        "description": "The release the code is: the newest release whose history `vcs.revision` contains."
+      },
+      "purl": {
+        "type": "string",
+        "format": "package-url",
+        "description": "The versionless package URL of the package this source's files are a release of; its version is `version`. Required unless the source is built from a crate with `build`."
+      },
+      "cpe": {
+        "type": "string",
+        "format": "cpe",
+        "description": "The CPE 2.3 name of the package this source's files are a release of, for scanners that match by CPE."
+      },
+      "vcs": {
+        "type": "object",
+        "description": "The repository and commit this source's files are built from, so advisories filed against commits of that repository reach it.",
+        "required": [
+          "url",
+          "revision"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "vcs-url",
+            "description": "The git repository the code is built from, without a revision (`git+https://github.com/acme/engine`)."
+          },
+          "revision": {
+            "type": "string",
+            "format": "vcs-revision",
+            "description": "The full commit id the staged files were built from; a tag or an abbreviated id is refused."
+          }
+        },
+        "additionalProperties": false
+      },
+      "contains": {
+        "type": "array",
+        "description": "Code linked or bundled into the staged files, each a package URL, the version it is at and optionally its CPE.",
+        "items": {
+          "type": "object",
+          "required": [
+            "purl",
+            "version"
+          ],
+          "properties": {
+            "purl": {
+              "type": "string",
+              "format": "package-url"
+            },
+            "version": {
+              "type": "string",
+              "description": "The release the code is: the newest release whose history `vcs.revision` contains."
+            },
+            "cpe": {
+              "type": "string",
+              "format": "cpe"
+            },
+            "vcs": {
+              "type": "object",
+              "description": "The repository and commit this code is built from, so advisories filed against commits of that repository reach it.",
+              "required": [
+                "url",
+                "revision"
+              ],
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "format": "vcs-url",
+                  "description": "The git repository the code is built from, without a revision (`git+https://github.com/acme/engine`)."
+                },
+                "revision": {
+                  "type": "string",
+                  "format": "vcs-revision",
+                  "description": "The full commit id the staged files were built from; a tag or an abbreviated id is refused."
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
       },
       "url": {
         "type": "string"

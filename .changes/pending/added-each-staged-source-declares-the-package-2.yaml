@@ -1,0 +1,5 @@
+units:
+  modules/tesseract: Added
+body: Each staged source declares the package its files are a release of (`purl` in
+  `sources:`), and the `tessdata` source is split into `tessdata-eng` and
+  `tessdata-osd`, one package each.

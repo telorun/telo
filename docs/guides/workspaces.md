@@ -210,8 +210,9 @@ says where it goes), docker `name` (default the anchor directory's name),
 docker `context` (default the anchor directory; the ignore file is
 `<Dockerfile>.dockerignore` beside the Dockerfile, else `<context>/.dockerignore`,
 its patterns anchored at the context) and `pypi`'s optional `registry` (a simple-API
-index base URL with no default, which a published sdist is read back from; with
-none the layer cannot be verified and keeps its recorded digest). A key none of the entry's ecosystems reads
+index base URL with no default, published to as `<registry>/<normalized name>` and
+read back from; with none the anchor has no destination, and its layer cannot be
+verified and keeps its recorded digest). A key none of the entry's ecosystems reads
 is `WORKSPACE_UNKNOWN_KEY`, naming the ecosystem.
 
 ## Two rules to keep in mind
@@ -234,8 +235,9 @@ ledger entry recorded.
 A module's ref is its registry base plus its **own directory name** — so
 `vendor/aws/s3` under `oci://ghcr.io/telorun/aws` publishes to
 `oci://ghcr.io/telorun/aws/s3`; an image is `<registry>/<name>`, a chart
-`<registry>/<Chart.yaml name>`. A `telo`, `docker` or `helm` anchor whose cascade
-ends with no `registry` is `NO_DESTINATION_KNOWN`, reported by `check`, `order` and
+`<registry>/<Chart.yaml name>`, a Python project `<registry>/<normalized name>`.
+A `telo`, `docker` or `helm` anchor whose cascade ends with no `registry` is
+`NO_DESTINATION_KNOWN` (a `pypi` anchor without one simply has no destination), reported by `check`, `order` and
 `verify`. Two rules follow, and `telo release` checks both before it builds
 anything:
 
@@ -312,6 +314,28 @@ declares as secret wherever the value came from.
 `telo run` refuses a marker using it (`WORKSPACE_INVALID_VALUE` inside `env:`),
 and a marker has no `requires:` to say why — so upgrade every machine and image
 that runs the workspace before writing an entry as `{ name, sensitive }`.
+
+## Accepting advisories for `telo audit`
+
+`audit:` is read by [`telo audit`](/learn/telo-cli#telo-audit-manifest) alone; no other
+command reads its content. Each `ignore:` entry accepts one advisory until a date:
+
+```yaml
+audit:
+  ignore:
+    - id: CVE-2026-15074
+      reason: Brochure serves its own static site; no route guard sits in front of Http.Static.
+      expires: 2026-12-31
+```
+
+`id`, `reason` and `expires` (`YYYY-MM-DD`) are all required. An entry matches an advisory
+whose id or any alias equals its `id`, so the CVE and the GHSA of one advisory are
+accepted by either. A matched advisory is listed as ignored with its reason and
+expiry; after `expires` the entry no longer applies and the advisory is an error
+again, naming the entry. A mistake inside `audit:` refuses `telo audit`. An application
+outside a workspace adds a marker holding only `audit:`; a marker with no `release:` block
+is valid, and it also anchors the cache and bounds the env walk like any other. An older
+telo warns about the unknown block.
 
 ## What happens when the file is wrong
 

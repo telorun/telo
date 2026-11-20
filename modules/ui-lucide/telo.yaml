@@ -24,6 +24,7 @@ assets: [./icons/]
 sources:
   lucide:
     version: 1.8.0
+    purl: pkg:npm/lucide-static
     url: https://registry.npmjs.org/{upstream}/-/{upstream}-{version}.tgz
     archive: tar.gz
     notices: [./notices/lucide.LICENSE]

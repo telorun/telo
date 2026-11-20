@@ -4,6 +4,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 import { loadEsbuild } from "./esbuild-runtime.js";
+import { contributingInputs } from "./bundle-attribution.js";
 
 /**
  * Build a module's **browser entries** — the ES modules its `exports.browser:`
@@ -96,10 +97,14 @@ export interface BuiltBrowserGroup {
   readonly files: readonly string[];
   /** Absolute paths of every file the build read. */
   readonly inputs: readonly string[];
+  /** Per entry path, the absolute paths of the inputs that put bytes into the
+   *  entry or into a file it loads — what the bill of materials attributes. */
+  readonly contributors: Readonly<Record<string, readonly string[]>>;
 }
 
 interface BuildIndexEntry {
   inputs: string[];
+  contributors: Record<string, string[]>;
   key: string;
   files: string[];
 }
@@ -155,7 +160,11 @@ function groupId(group: BrowserBuildGroup): string {
 async function readIndex(file: string): Promise<BuildIndexEntry | null> {
   try {
     const parsed = JSON.parse(await fs.readFile(file, "utf8")) as BuildIndexEntry;
-    return Array.isArray(parsed.inputs) && Array.isArray(parsed.files) && typeof parsed.key === "string"
+    return Array.isArray(parsed.inputs) &&
+      Array.isArray(parsed.files) &&
+      typeof parsed.contributors === "object" &&
+      parsed.contributors !== null &&
+      typeof parsed.key === "string"
       ? parsed
       : null;
   } catch {
@@ -201,7 +210,7 @@ export async function buildBrowserEntries(
     const key = await signInputs(index.inputs, group);
     const directory = path.join(cacheDir, index.key);
     if (key === index.key && (await exists(directory))) {
-      return { directory, files: index.files, inputs: index.inputs };
+      return { directory, files: index.files, inputs: index.inputs, contributors: index.contributors };
     }
   }
   const inFlight = buildsInFlight.get(id);
@@ -274,6 +283,10 @@ async function build(
     contents.set(posix(path.relative(root, file.path)), file.contents);
   }
 
+  // An input inside the module keeps the caller's spelling of the module root.
+  const absoluteInput = (rel: string): string =>
+    rel.startsWith("..") || path.isAbsolute(rel) ? path.resolve(root, rel) : path.join(group.moduleDir, rel);
+  const contributors: Record<string, string[]> = {};
   for (const entry of group.entries) {
     const output = outputs[entry.path];
     if (!output) throw failure(group, `esbuild produced no output for '${entry.specifier}'.`);
@@ -307,14 +320,12 @@ async function build(
       `${entry.path}${BROWSER_SIBLINGS_SUFFIX}`,
       new TextEncoder().encode(serializeBrowserSiblings([...siblings])),
     );
+    contributors[entry.path] = contributingInputs(built.metafile, [entry.path, ...siblings]).map(
+      absoluteInput,
+    );
   }
 
-  // An input inside the module keeps the caller's spelling of the module root.
-  const inputs = Object.keys(built.metafile.inputs).map((rel) =>
-    rel.startsWith("..") || path.isAbsolute(rel)
-      ? path.resolve(root, rel)
-      : path.join(group.moduleDir, rel),
-  );
+  const inputs = Object.keys(built.metafile.inputs).map(absoluteInput);
   const files = [...contents.keys()].sort();
   const key =
     (await signInputs(inputs, group)) ??
@@ -338,12 +349,15 @@ async function build(
   }
   const superseded = (await readIndex(indexFile))?.key;
   const tmpIndex = `${indexFile}.${process.pid}.${tmpCounter++}.tmp`;
-  await fs.writeFile(tmpIndex, JSON.stringify({ inputs, key, files } satisfies BuildIndexEntry));
+  await fs.writeFile(
+    tmpIndex,
+    JSON.stringify({ inputs, contributors, key, files } satisfies BuildIndexEntry),
+  );
   await fs.rename(tmpIndex, indexFile);
   if (superseded && superseded !== key) {
     await fs.rm(path.join(cacheDir, superseded), { force: true, recursive: true }).catch(() => {});
   }
-  return { directory, files, inputs };
+  return { directory, files, inputs, contributors };
 }
 
 /** The sidecar's bytes for `files`: one serialization, since the sidecar is

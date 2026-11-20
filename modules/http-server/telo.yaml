@@ -6,62 +6,13 @@ metadata:
   license: MIT
   categories: [Transport]
   description: >-
-    Serving HTTP: a listener bound to a port with CORS, per-mount authentication
-    of the caller through bearer tokens, API keys, cookies or client certificates,
-    authorization policies, request guards and a generated OpenAPI document, routers whose
-    routes validate the request against a schema, map it into a handler with CEL, and
-    render conditional typed responses buffered or streamed, a browsable API reference
-    router, and a static file router with SPA fallback for shipping a frontend
-    alongside the API.
+    Serve HTTP on a port with CORS, per-mount authentication (bearer tokens, API
+    keys, cookies, client certificates), authorization, request guards and a
+    generated OpenAPI document. Routes validate requests against a schema, map them
+    into handlers with CEL and render typed responses, buffered or streamed. Also
+    serves a browsable API reference and static files with SPA fallback.
 requires:
-  # Controllers return their effects from `init()` / `run()`; a runtime that does
-  # not execute a returned chain allocates nothing and undoes nothing.
-  #
-  # Deliberately NOT raised for the scope-level `catches:` lists: verified by
-  # execution, 0.87.0 reads this module with no issues, because both new
-  # annotation forms degrade to silence there (`x-telo-catches-for: ""` is falsy,
-  # so the list is skipped; `throwsThrough` is an unknown key inside an
-  # x-telo-ref). A floor nothing can refute is a claim nothing checks.
-  #
-  # 0.91.0: a `sources:` entry claimed by an `assets:` pattern, which an older
-  # analyzer rejects as SOURCE_ENTRY_UNCLAIMED, and `ctx.resolveControllerFile`,
-  # which the Reference controller calls.
-  #
-  # 0.98.0: `Http.Static.root` is a `Telo.HostPath`, which 0.97.0 rejects as
-  # X_TELO_TYPE_UNKNOWN (verified by execution).
-  #
-  # 0.104.0: the request span continues an inbound `traceparent` through
-  # `openSpan`'s W3C carrier, which an older kernel ignores and so roots every
-  # trace, and the controllers import `errorTypeOf` from the runtime's SDK, which
-  # 0.103.2 does not export (its load fails; verified by execution).
-  #
-  # 0.108.0: the request binding copies a framework's own bag into a plain
-  # object, asking the value domain with `isCelRecord`. `@telorun/sdk` is
-  # external and collapsed to the runtime's own copy, so on a runtime whose SDK
-  # does not export that name it is undefined and a route dies at creation with
-  # a TypeError naming this module. Verified by execution: the published 0.107.0
-  # tarball exports no such name.
-  # 0.121.0: `Http.Static.root` declares `entry: directory`, which 0.120.1 rejects as
-  # X_TELO_TYPE_ARGUMENT_UNKNOWN (verified by execution).
-  #
-  # 0.123.0: `Http.Server` declares `throws.codes` with a `displayMessage`, which
-  # 0.122.0 rejects on a Service, and the controllers import the problem
-  # renderer's SDK names (`formatDisplayMessage`, `valueIssue`) and call
-  # `ctx.declaredDisplayMessage`, none of which an older runtime has (verified
-  # by execution).
-  #
-  # 0.129.0: the controllers read `ctx.translations`, which an older runtime does
-  # not have, to negotiate `request.lang`: a request on 0.127.0 dies with "Cannot
-  # read properties of undefined (reading 'languages')" (verified by execution).
-  #
-  # 0.130.0: the controllers import `errorValueOf` from the SDK to write the
-  # failure trace into `Http.Api.streamFailed`; a 0.129.0 runtime fails to load
-  # the controller (verified by execution). The same release first reads
-  # `x-telo-context-from-referrer` on an evaluated binding,
-  # `x-telo-context-nullable-when`, `x-telo-ref.outputTo` and the object form of
-  # `x-telo-catches-for`, which the mount authentication schema uses.
-  #
-  # unreleased: the `restrictions:` key below, which no published telo reads.
+  # Measured floor; what raised it is in docs/design-notes.md.
   telo: ">=0.133.0"
 restrictions:
   - requires: { telo: ">=0.133.0" }
@@ -70,11 +21,7 @@ restrictions:
     reason: Http.Server serves a socket the host process supplies through ctx.claimListener, which kernels before this release lack.
 lang: en
 imports:
-  # Single source of truth for the returns:/catches: schema. EVERY slot anchors at
-  # HttpDispatch.Outcomes/$defs/{Returns,Catches} — Server.notFoundHandler, the
-  # two scope-level catch lists, and Api.routes[], which carried its own inline
-  # copy of both shapes until they were collapsed here — so the entry shape, the
-  # MIME negotiation rules and the buffer/stream oneOf live in exactly one place.
+  # Every returns:/catches: slot anchors at HttpDispatch.Outcomes/$defs/{Returns,Catches}.
   HttpDispatch: ../http-dispatch
   # The response-encoder contract this module's own encoder slots pin.
   Codec: ../codec
@@ -83,16 +30,13 @@ imports:
 exports:
   kinds: [Server, Api, Reference, Static, CredentialSource, FromAuthorization, FromBasic, FromHeader, FromQuery, FromCookie, FromClientCertificate, FromForwardedIdentity]
   resources: [Authentication, Authorization, AuthScheme, CredentialRequest]
-# Scalar's browser bundle, served by Reference. Lazily fetched: an app that
-# declares no Reference never downloads it. `sources.scalar.version` must be the
-# @scalar/fastify-api-reference release whose @scalar/core and
-# @scalar/openapi-parser versions nodejs/package.json pins — the page HTML and the
-# script reading it come from one release; nodejs/tests/scalar-release.test.ts
-# checks it.
+# Scalar's browser bundle, fetched lazily; its version is tied to the pins in
+# nodejs/package.json (docs/design-notes.md).
 assets: [./assets/]
 sources:
   scalar:
     version: 1.44.6
+    purl: pkg:npm/%40scalar/fastify-api-reference
     url: https://registry.npmjs.org/@scalar/{upstream}/-/{upstream}-{version}.tgz
     archive: tar.gz
     notices: [./notices/scalar.LICENSE]
@@ -107,14 +51,12 @@ metadata:
   name: "Server"
   description: >-
     Listens on a TCP port and serves HTTP through the routers mounted on it, with
-    CORS, per-mount authentication of the caller and authorization policies,
-    request guards, a generated OpenAPI document and custom content-type parsers. Request bodies are
-    bounded in bytes: a larger one is answered 413, and a body nobody reads to its
-    end closes the connection.
+    CORS, per-mount authentication and authorization, request guards, a generated
+    OpenAPI document and custom content-type parsers. Request bodies are bounded in
+    bytes: a larger one is answered 413.
 capability: Telo.Service
 controllers: [pkg:telo/local/js?path=./nodejs/http-server.mjs&local_path=./nodejs/src/index.ts#HttpServerController]
-# The refusals this server answers itself, before or beside any route — no
-# `catches:` list sees them. Declared for their texts: each is rendered as a
+# Refusals the server answers itself, which no `catches:` list sees; each is a
 # problem whose `detail` is the code's display message.
 throws:
   codes:
@@ -186,11 +128,9 @@ schema:
     listen:
       title: Listen
       description: >-
-        The socket this server binds: the network interface and the TCP port. When
-        the host running the application holds the port's socket, the server serves
-        that one and binds nothing. An address the server is REACHED at is a
-        different thing — a public address need (`Telo.PublicUrl`) a mount names in
-        `hostnames`.
+        The interface and TCP port this server binds; when the host supplies the
+        port's socket, the server serves that one and binds nothing. The address it
+        is reached at is a public address need a mount names in `hostnames`.
       type: "object"
       additionalProperties: false
       required: [ "port" ]
@@ -198,11 +138,9 @@ schema:
         address:
           title: Address
           description: >-
-            Network interface the server listens on. The default `0.0.0.0` accepts
-            connections from other machines, which a container, a runner session or
-            any proxy in front of the app requires — leave it unset for an
-            application. `127.0.0.1` accepts connections from the same machine only;
-            use it for a mock server inside a test.
+            Network interface to listen on. The default `0.0.0.0` accepts other
+            machines, as a container or proxy requires; `127.0.0.1` accepts the same
+            machine only, for a mock server in a test.
           type: "string"
           x-telo-eval: compile
           default: "0.0.0.0"
@@ -239,10 +177,9 @@ schema:
     tls:
       title: TLS
       description: >-
-        Serve HTTPS: the server's certificate and private key, and optionally
-        client certificates for mutual TLS. Unreadable or mismatched material
-        fails the server's creation. Omitted, the server speaks plain HTTP. For
-        a deployment behind a TLS-terminating proxy leave it unset.
+        Serve HTTPS with the certificate and private key, and optionally client
+        certificates for mutual TLS. Unreadable or mismatched material fails creation;
+        omitted, the server speaks plain HTTP, as behind a TLS-terminating proxy.
       type: object
       additionalProperties: false
       required: [cert, key]
@@ -293,32 +230,28 @@ schema:
     trustForwardedHeaders:
       title: Trust Forwarded Headers
       description: >-
-        Trust the standard X-Forwarded-Proto / X-Forwarded-Host (RFC 7239)
-        headers from a fronting proxy. When true, the request protocol/host and
-        the OpenAPI `servers` URL reflect the proxy/ingress URL the client used.
-        Without it the OpenAPI `servers` is relative and resolves against the
-        origin the docs were loaded from. Default false; only enable behind a
-        trusted proxy.
+        Trust the X-Forwarded-Proto / X-Forwarded-Host headers of a fronting proxy, so
+        the request protocol, host and OpenAPI `servers` URL reflect the URL the client
+        used; otherwise `servers` is relative. Enable only behind a trusted proxy.
       type: "boolean"
       x-telo-eval: compile
       default: false
     trustProxy:
       title: Trust Proxy
       description: >-
-        Trust a fronting proxy when deriving the canonical client address
-        (`request.ip`) and forwarded protocol/host. `true` trusts any hop;
-        an integer trusts that many proxy hops (the rightmost N entries of
-        X-Forwarded-For). Supersedes `trustForwardedHeaders` when set. Only
-        enable behind a trusted proxy — otherwise clients can spoof their IP.
+        Trust a fronting proxy for the client address (`request.ip`) and forwarded
+        protocol and host: `true` trusts any hop, an integer that many hops from the
+        right of X-Forwarded-For. Supersedes `trustForwardedHeaders`; enable only
+        behind a trusted proxy, or clients can spoof their IP.
       type: ["boolean", "integer"]
       x-telo-eval: compile
     forwardedClientCertificate:
       title: Forwarded Client Certificate
       description: >-
-        Read the client certificate a TLS-terminating proxy forwards in a header
-        into `request.clientCertificate`, with `verified: false, via: proxy`.
-        Needs `trustProxy`. A header that cannot be read yields null; a
-        certificate this listener verified itself wins.
+        Reads the client certificate a TLS-terminating proxy forwards in a header into
+        `request.clientCertificate` (`verified: false, via: proxy`). Needs
+        `trustProxy`; an unreadable header yields null and a certificate this listener
+        verified itself wins.
       type: object
       additionalProperties: false
       required: [header, format]
@@ -340,12 +273,10 @@ schema:
     preferredLanguages:
       title: Preferred Languages
       description: >-
-        CEL over the request (`headers`, `cookies`, `query`, `path`, `host`,
-        `method`, `ip`, `tls`, `clientCertificate`) returning language tags in
-        preference order — a cookie, a path prefix, a query parameter. They are
-        tried before `Accept-Language`; a malformed or unserved tag is skipped.
-        Evaluated per request; the headers it reads, `Cookie` for a cookie, are
-        added to the response's `Vary`.
+        CEL over the request (`headers`, `cookies`, `query`, `path`, `host`, `method`,
+        `ip`, `tls`, `clientCertificate`) returning language tags in preference order,
+        tried before `Accept-Language`; a malformed or unserved tag is skipped. The
+        headers it reads are added to the response's `Vary`.
       type: array
       items: { type: string }
       x-telo-context:
@@ -393,19 +324,7 @@ schema:
       x-telo-eval: compile
       minimum: 1
       default: 1048576
-    # No `logger:` field. Request logging is not a per-server flag — it is
-    # governed by the structured logging pipeline like everything else. Fastify's
-    # per-request access lines are `info`-severity, so they appear whenever this
-    # server's scope is at `info` or below (the default), and are suppressed by
-    # raising the http-server import to `level: warn`:
-    #
-    #   imports:
-    #     Http:
-    #       source: oci://ghcr.io/telorun/http-server@<version>
-    #       logging:
-    #         level: warn   # server errors only, no per-request access logs
-    #
-    # See docs/guides/logging.md and kernel/specs/logging.md §13.3.
+    # No `logger:` field: request logging follows the logging pipeline (docs/log-events.md).
     openapi:
       title: OpenAPI
       description: >-
@@ -433,12 +352,8 @@ schema:
     mounts:
       title: Mounts
       description: Mount points attached to the HTTP server.
-      # A list of dispatch entries: `entries` on the array, `matcher` on the
-      # field that selects one, `handler` on the reference it dispatches to —
-      # the same three tokens `Http.Api.routes` and `Mcp.Tools.entries` carry.
-      # It is what lets the editor render mounts as an ordered list rather than
-      # as a set of nodes, and mount order is match order, which a picture of
-      # nodes cannot carry.
+      # Dispatch entries, so the editor renders mounts as an ordered list: mount
+      # order is match order.
       x-telo-topology-role: entries
       type: "array"
       # Evaluated per field rather than on the whole list: `guard` holds CEL
@@ -483,9 +398,9 @@ schema:
           hostnames:
             title: Hostnames
             description: >-
-              The hosts this mount answers: references to the application's public address needs,
-              never domain names. Each need must name the port this server listens on; omitted, the
-              mount answers every host. Precedence is in docs/host-routing.md.
+              The hosts this mount answers: references to the application's public
+              address needs, never domain names, each naming the port this server
+              listens on. Omitted, the mount answers every host.
             type: "array"
             minItems: 1
             x-telo-topology-role: matcher
@@ -493,29 +408,21 @@ schema:
           mount:
             title: Mount
             description: >-
-              Mount resource to attach — a reference to a Telo.Mount (Http.Api
-              or any other mountable kind). Use a `!ref` to the resource by name; an
-              `!ref <Alias>.<name>` reaches a mount exported by an imported
-              library.
+              The mount to attach: a `!ref` to a `Telo.Mount` resource, or
+              `!ref <Alias>.<name>` for one an imported library exports.
             x-telo-topology-role: handler
             x-telo-ref:
               kind: Telo.Mount
               use: dependency
-              # `dependency` is the honest use: the server holds the mount and
-              # calls a convention method on it, and control reaches a route
-              # through the MOUNT's own trigger.inbound slot, not through this
-              # one. Yet a throw from that route is exactly what this server
-              # renders — it arrives at the server's error handler because
-              # nothing below claimed it — so the throws closure and the catch
-              # scope both cross here, and nowhere else a `dependency` leads.
+              # A `dependency`: control reaches a route through the mount's own
+              # trigger.inbound slot, but the server renders its unclaimed throws.
               throwsThrough: true
           authentication:
             title: Authentication
             description: >-
-              Who may call this mount's routes: the verifiers tried in order, each
-              with where its credential is read, and whether a request presenting
-              none is served anonymously. A credential that is presented and fails
-              is a 401; it never falls through to a later verifier or to anonymous.
+              Who may call this mount's routes: the verifiers tried in order, and whether
+              a request presenting no credential is served anonymously. A presented
+              credential that fails is a 401, never falling through.
             $ref: "telo://Self/Authentication"
             x-telo-raises: [ERR_HTTP_UNAUTHENTICATED, ERR_HTTP_CROSS_ORIGIN_REFUSED, ERR_HTTP_ACCESS_CHECK_UNAVAILABLE]
           authorization:
@@ -631,10 +538,9 @@ schema:
               catches:
                 title: Catches
                 description: >-
-                  Rendering rules for the guard's structured throws — a 401 or a
-                  403. Tried before the server's `catches:`. Entries see `error`,
-                  `problem` and the request's `headers` / `cookies` / `query` / `path` /
-                  `method` / `ip`.
+                  Rendering rules for the guard's structured throws (a 401 or 403), tried
+                  before the server's `catches:`. Entries see `error`, `problem` and
+                  the request's `headers`, `cookies`, `query`, `path`, `method`, `ip`.
                 x-telo-outcome-list: catches
                 x-telo-catches-for: invoke
                 x-telo-schema-from: "HttpDispatch.Outcomes/$defs/Catches"
@@ -713,19 +619,12 @@ schema:
     catches:
       title: Catches
       description: >-
-        Rendering rules for structured (InvokeError) throws that reach the
-        server — from any mount, and from `notFoundHandler`. The outermost rung
-        of the catch ladder: a route's own entries are tried first, then its
-        router's, then these. A throw no entry claims is answered 500 with its
-        problem (`application/problem+json`).
-
-        Entries see `error`, `problem` and the request's `path` / `method` / `ip` / `cookies`. There is
-        no route here to type `request.query` / `body` / `params` from — those
-        belong to a route's own list.
+        Rendering rules for structured throws reaching the server from any mount or
+        `notFoundHandler`, the outermost catch rung after a route's and its router's.
+        An unclaimed throw is answered 500 as `application/problem+json`. Entries see
+        `error`, `problem` and the request's `path`, `method`, `ip`, `cookies`.
       x-telo-outcome-list: catches
-      # The EMPTY pointer: this list covers everything the server drives, not one
-      # sibling field's target. The four access refusals are raised by the server
-      # itself and answered by default.
+      # The empty pointer: this list covers everything the server drives.
       x-telo-catches-for:
         slot: ""
         raises: [ERR_HTTP_UNAUTHENTICATED, ERR_HTTP_FORBIDDEN, ERR_HTTP_CROSS_ORIGIN_REFUSED, ERR_HTTP_ACCESS_CHECK_UNAVAILABLE]
@@ -827,13 +726,10 @@ schema:
           stream:
             title: Stream Body
             description: |
-              When true, deliver request bodies of this content type to the
-              handler as a raw `Stream<Uint8Array>` — no buffering, no parsing,
-              no schema validation. The matching route must declare
-              `request.schema.body` with `x-telo-type: Telo.Stream`. The body
-              is counted against `maxBodyBytes` as the handler pulls it.
-              Mutually exclusive with `parser`: a content type on one server is
-              either streamed or parsed, never both.
+              Delivers bodies of this content type to the handler as a raw
+              `Stream<Uint8Array>`, unbuffered, unparsed and unvalidated, counted
+              against `maxBodyBytes` as pulled. The route must declare
+              `request.schema.body` as `Telo.Stream`; exclusive with `parser`.
             type: "boolean"
         required: [ "contentType" ]
         not: { required: ["parser", "stream"] }
@@ -1220,22 +1116,13 @@ schema:
     catches:
       title: Catches
       description: >-
-        Rendering rules for structured (InvokeError) throws from any route of
-        this router. A route's own `catches:` entries are tried first, then
-        these, then the server's; a throw no entry claims is answered 500 with
-        its problem (`application/problem+json`).
-
-        This is what lets one route override the rendering of a single code
-        without restating every other. A route entry with no `when:` is a
-        deliberate full override — it makes these entries unreachable for that
-        route alone.
-
-        Entries see `error`, `problem` and the request's `path` / `method` / `ip` / `cookies`. There is
-        no single route here to type `request.query` / `body` / `params` from —
-        those belong to a route's own list.
+        Rendering rules for structured throws from any route of this router, tried
+        after the route's own `catches:` and before the server's. An unclaimed throw is
+        answered 500 as `application/problem+json`; a route entry with no `when:`
+        overrides these for that route. Entries see `error`, `problem` and the
+        request's `path`, `method`, `ip`, `cookies`.
       x-telo-outcome-list: catches
-      # The EMPTY pointer: this list covers every route of this router, not one
-      # sibling field's target.
+      # The empty pointer: this list covers every route of this router.
       x-telo-catches-for:
         slot: ""
         raises: [ERR_HTTP_UNAUTHENTICATED, ERR_HTTP_FORBIDDEN, ERR_HTTP_CROSS_ORIGIN_REFUSED, ERR_HTTP_ACCESS_CHECK_UNAVAILABLE]
@@ -1327,12 +1214,10 @@ schema:
           request:
             title: Request
             description: >-
-              Route matcher — `method` and `path` (required). Declare a nested
-              `schema:` block ({ params, query, body, headers, cookies }, each a
-              JSON Schema) to document and validate the request: it types the CEL
-              `request.*` context AND is rendered into the generated OpenAPI
-              document. Fill the schemas with `type`, `description`, and
-              `examples` so the OpenAPI spec is complete.
+              Route matcher: `method` and `path` (required). A nested `schema:`
+              ({ params, query, body, headers, cookies }, each a JSON Schema) validates
+              the request, types the CEL `request.*` context and feeds the generated
+              OpenAPI document.
             x-telo-topology-role: matcher
             x-telo-schema-from: "HttpDispatch.Request/$defs/Matcher"
           authentication:
@@ -1368,11 +1253,9 @@ schema:
           maxBodyBytes:
             title: Max Body Bytes
             description: >-
-              Largest request body this route accepts, in bytes. Replaces the
-              server's `maxBodyBytes` for this route alone, larger or smaller —
-              an upload route raises it, a route taking a small document can
-              lower it. A larger body is answered 413 by the server; no
-              `catches:` entry sees it.
+              Largest request body this route accepts, in bytes, replacing the server's
+              `maxBodyBytes` for this route alone. A larger body is answered 413 by the
+              server, which no `catches:` entry sees.
             type: "integer"
             x-telo-eval: compile
             minimum: 1
@@ -1427,10 +1310,8 @@ schema:
             title: Handler
             description: Route handler — Invocable or Runnable.
             x-telo-topology-role: handler
-            # Accept either capability. Run.Sequence (Telo.Runnable, but
-            # whose controller also implements `invoke()`) is a real-world
-            # consumer here — its `run()` and `invoke()` both produce the
-            # response body, the kernel calls whichever is appropriate.
+            # Either capability: a Runnable whose controller also implements
+            # `invoke()` is a consumer here.
             x-telo-ref:
               kind: Telo.Executable
               use: trigger.inbound
@@ -1653,11 +1534,9 @@ schema:
   type: "object"
   additionalProperties: false
   description: >-
-    Attach it to an Http.Server mount to publish the docs at a path you choose.
-    The document itself is the server's — it is collected from every mounted
-    route's schema and needs the server's `openapi:` block — so this renders and
-    serves it, and a server without that block is an error rather than an empty
-    page. Give the mount a `when:` to leave the docs out of a deployment.
+    Mounted on a server at a path of your choosing, it renders and serves the
+    server's OpenAPI document, which needs the server's `openapi:` block. Give the
+    mount a `when:` to leave the docs out of a deployment.
   properties:
     title:
       title: Title
@@ -1673,12 +1552,8 @@ schema:
       x-telo-eval: compile
       enum: [default, alternate, moon, purple, solarized, bluePlanet, deepSpace, saturn, kepler, elysiajs, fastify, mars, laserwave, none]
       default: default
-  # The document is the SERVER's — collected from every mounted route's schema —
-  # so a reference mounted on a server that declares no `openapi:` block has
-  # nothing to render. Neither kind can state that alone, and unstated it fails
-  # at boot, after the port is claimed. Declared here rather than on the server
-  # because the requirement is this kind's: a server should not have to know
-  # which mounts need what.
+  # Declared here, not on the server: the requirement is this kind's, and unstated
+  # it fails at boot after the port is claimed.
   x-telo-referrer-rules:
     - referrer: Self.Server
       condition: !cel "has(referrer.openapi)"
@@ -1765,10 +1640,9 @@ metadata:
   name: Authentication
   description: >-
     Who may call an HTTP mount or route: an ordered list of credential verifiers,
-    each with where its credential is read — a header, the query, a cookie, a
-    client certificate — and whether a request presenting no credential is served
-    anonymously. A presented credential that fails is refused, never served as
-    anonymous.
+    each reading its credential from a header, the query, a cookie or a client
+    certificate, and whether a request with none is served anonymously. A presented
+    credential that fails is refused.
 schema:
   type: object
   additionalProperties: false
@@ -1855,11 +1729,8 @@ schema:
       type: [object, "null"]
       x-telo-sensitive: true
 ---
-# A source's reading publishes `schemes` (the authentication schemes a request
-# lacking its credential is challenged with), and may publish `originCheck:
-# { trustedOrigins }` (a credential the browser sends on its own) and
-# `requiresTrustedProxy: true`, and `bearerMethod` (`header` or `query`, the RFC 6750
-# method it reads a Bearer token by). Normative: docs/authentication.md.
+# A source's reading publishes `schemes`, and may publish `originCheck`,
+# `requiresTrustedProxy` and `bearerMethod`. Normative: docs/authentication.md.
 kind: Telo.Abstract
 metadata:
   name: CredentialSource

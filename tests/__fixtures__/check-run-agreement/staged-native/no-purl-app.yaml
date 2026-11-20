@@ -1,0 +1,13 @@
+# Consumes the library whose fetched source names no purl.
+kind: Telo.Application
+metadata:
+  name: NoPurlNativeApp
+  version: 1.0.0
+imports:
+  Lib: ./lib/no-purl.yaml
+targets:
+  - invoke: !ref read
+---
+kind: Lib.Reader
+metadata:
+  name: read

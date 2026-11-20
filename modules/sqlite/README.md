@@ -216,7 +216,7 @@ If a second schema resource — an imported library's, or another application's 
 manages tables in the same namespace, give each its own `ledger:` so their
 histories stay apart; two on one connection naming the same one are refused.
 
-Foreign keys are described in [Foreign keys](docs/foreign-keys.md).
+Foreign keys are described in [Foreign keys](docs/foreign-keys.md). Why the declarations behave as they do — renames, seeds, checks, enums, the native addon — is in [Design notes](docs/design-notes.md).
 
 See [Declarative schema](https://hub.telo.run/module/oci/ghcr.io/telorun/sql/) for tombstoning,
 reclamation, renames, seeds and the ledger rule.

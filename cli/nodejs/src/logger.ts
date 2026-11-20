@@ -263,16 +263,20 @@ export function formatDiagnostics(
 
 /** Format analysis diagnostics with file:line:col locations resolved via
  *  the canonical `LoadedGraph` — no need to thread positionIndex through
- *  manifest metadata. */
+ *  manifest metadata. `stderr` writes them there in both formats, for a
+ *  command whose stdout is a document or nothing. */
 export function formatAnalysisDiagnostics(
-  diagnostics: AnalysisDiagnostic[],
+  diagnostics: readonly AnalysisDiagnostic[],
   graph: LoadedGraph,
   log: Logger,
   entryPath: string,
+  stream: "stdout" | "stderr" = "stdout",
 ): { errorCount: number; warnCount: number; diagnostics: JsonDiagnostic[] } {
   let errorCount = 0;
   let warnCount = 0;
   const out = output();
+  const write = (text: string) => (stream === "stderr" ? out.errLine(text) : out.line(text));
+  const paint = stream === "stderr" ? log.err : log;
   const collected: JsonDiagnostic[] = [];
 
   for (const d of diagnostics) {
@@ -285,23 +289,23 @@ export function formatAnalysisDiagnostics(
     };
     const severity = severityOf(d);
     const isError = severity === "error";
-    const severityLabel = isError ? log.error(severity) : log.warn(severity);
-    const code = d.code ? `  ${log.dim(String(d.code))}` : "";
+    const severityLabel = isError ? paint.error(severity) : paint.warn(severity);
+    const code = d.code ? `  ${paint.dim(String(d.code))}` : "";
     const migration = (d.data as { libraryMigration?: LibraryMigrationDiagnosticData } | undefined)
       ?.libraryMigration;
 
-    // Silent under `-o json`: the structured payload carries the same
-    // diagnostics with their location resolved, so printing here too would
+    // On stdout, silent under `-o json`: the structured payload carries the
+    // same diagnostics with their location resolved, so printing here too would
     // interleave prose into a document a consumer parses.
     if (migration && !isError) {
       // A library migration that applied names the library responsible and the
       // command that writes it, each on a line of its own, then its code.
-      out.line(`${parts.file}:${parts.line}:${parts.column}  ${severityLabel}  ${d.message}`);
-      out.line(`declared by ${migration.module} (${displaySourcePath(migration.source)})`);
-      out.line(`run \`telo migrate ${migrateTargetOf(migration.modulePath, graph)}\` to apply`);
-      if (d.code) out.line(log.dim(String(d.code)));
+      write(`${parts.file}:${parts.line}:${parts.column}  ${severityLabel}  ${d.message}`);
+      write(`declared by ${migration.module} (${displaySourcePath(migration.source)})`);
+      write(`run \`telo migrate ${migrateTargetOf(migration.modulePath, graph)}\` to apply`);
+      if (d.code) write(paint.dim(String(d.code)));
     } else {
-      out.line(`${parts.file}:${parts.line}:${parts.column}  ${severityLabel}  ${d.message}${code}`);
+      write(`${parts.file}:${parts.line}:${parts.column}  ${severityLabel}  ${d.message}${code}`);
     }
 
     // stdout under `-o json` is the machine surface, and a repair the analyzer

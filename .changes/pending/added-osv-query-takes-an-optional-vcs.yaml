@@ -1,0 +1,7 @@
+units:
+  modules/osv: Added
+body: "Osv.Query takes an optional vcs: { url, revision } on each component — the git
+  repository and commit embedded code is built from — and echoes it; such a component is
+  checked by its commit when the database records the repository, its advisories name
+  the fixing commits, and every advisory says whether the version or the commit matched
+  it (matchedBy)."

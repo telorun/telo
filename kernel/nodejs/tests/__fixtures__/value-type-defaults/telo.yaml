@@ -1,0 +1,46 @@
+kind: Telo.Application
+metadata:
+  name: ValueTypeDefaults
+  version: 1.0.0
+---
+# A kind whose instance-typed fields are left to their schema defaults: the resource is
+# created, and the template body reads each default as the value its literal decodes to.
+kind: Telo.Definition
+metadata: { name: Probe }
+capability: Telo.Invocable
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    endpoint:
+      x-telo-type: { name: Telo.Url, scheme: { enum: [http, https] } }
+      default: https://advisories.acme.test/v1
+    timeout:
+      x-telo-type: Telo.Duration
+      default: 5s
+resources:
+  - kind: Telo.Value
+    metadata: { name: read }
+    value: !cel "{ 'host': self.endpoint.host, 'timeout': string(self.timeout) }"
+invoke: !ref read
+---
+kind: Self.Probe
+metadata: { name: probe }
+---
+# A contract whose instance-typed inputs are left to their defaults: the call is bound
+# with each default decoded.
+kind: Telo.Sequence
+metadata: { name: mirrorOf }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      url:
+        x-telo-type: { name: Telo.Url, scheme: { enum: [http, https] } }
+        default: https://mirror.acme.test/pkgs
+      wait: { x-telo-type: Telo.Duration, default: 250ms }
+steps:
+  - name: read
+    value: !cel "{ 'host': inputs.url.host, 'wait': string(inputs.wait) }"
+outputs: !cel "steps.read.result"

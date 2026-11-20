@@ -9,7 +9,8 @@ kind: Telo.Library
 metadata:
   name: HubCatalog
   description: >-
-    Keyed reads over the discovery index: one module's metadata, kinds, an
+    Keyed reads over the discovery index: one module's metadata, kinds, known
+    advisories over its dependency closure, an
     application's declared inputs and versions, the cached manifest text for a version, the
     definitions of named kinds with everything they reference — the built-in
     vocabulary included, at a chosen telo version — a one-line-per-module
@@ -265,9 +266,19 @@ steps:
                 FROM resource_kinds rk
                 WHERE rk.module_id = mv.module_id AND rk.version = mv.version
                   AND rk.extends_kind <> '')
-                 AS parents
+                 AS parents,
+               COALESCE(va.advisories, '[]'::jsonb) AS advisories,
+               COALESCE(va.complete, FALSE) AS advisories_complete,
+               (SELECT cv.version
+                FROM module_versions cv
+                JOIN version_advisories cva ON cva.module_id = cv.module_id AND cva.version = cv.version
+                WHERE cv.module_id = mv.module_id AND cva.complete
+                  AND jsonb_array_length(cva.advisories) = 0
+                ORDER BY version_sort_key(cv.version) DESC NULLS LAST, cv.version ASC
+                LIMIT 1) AS newest_clean
         FROM module_versions mv
         JOIN modules m ON m.id = mv.module_id
+        LEFT JOIN version_advisories va ON va.module_id = mv.module_id AND va.version = mv.version
         WHERE m.ref = $1
           AND (mv.version = $2 OR (($2 = 'latest' OR $3) AND mv.version = m.latest_version))
         ORDER BY (mv.version = $2) DESC
@@ -391,6 +402,20 @@ outputs:
       : inputs.ref + '@' + steps.meta.result.rows[0].version
           + (steps.meta.result.rows[0].integrity == '' ? '' : '#' + steps.meta.result.rows[0].integrity)
   exported: !cel "'selected' in steps ? steps.meta.result.rows[0].exported : []"
+  # What the `# Advisories:` line says about THIS version. It stands beside the
+  # import line and never on it: a caller copies the import line into a manifest,
+  # and a claim about one version must not travel with it.
+  advisoryLine: !cel >-
+    !('selected' in steps) ? ''
+      : cel.bind(row, steps.meta.result.rows[0],
+          (size(row.advisories) > 0
+            ? join(row.advisories.map(a, a.id + ' (' + a.component
+                + (size(a.fixed) > 0 ? ', fixed in ' + join(a.fixed, ', ') : ', no fixed version recorded') + ')'), ', ')
+                + (row.advisories_complete ? '' : '; other components of this version are unchecked')
+            : (row.advisories_complete ? 'none'
+                : 'unchecked: not every component of this version could be checked, so no advisory list is a verdict'))
+          + (row.newest_clean != null && row.newest_clean != row.version
+              ? '; newest clean and complete: ' + row.newest_clean : ''))
   definitions: !cel "'selected' in steps ? steps.selected.result.map(d, d.text) : []"
   notIncluded: !cel "'selected' in steps ? steps.notIncluded.result : []"
   # Each parent is named at the version this module's own `imports:` pins it
@@ -458,6 +483,7 @@ outputs:
   vocabulary: !cel "steps.module.result.vocabulary"
   importRef: !cel "steps.module.result.importRef"
   exported: !cel "steps.module.result.exported"
+  advisoryLine: !cel "steps.module.result.advisoryLine"
   definitions: !cel "steps.module.result.definitions"
   notIncluded: !cel "steps.module.result.notIncluded"
   missing: !cel "steps.module.result.missing"
@@ -633,7 +659,8 @@ outputs:
                   + (e.inherited ? '# Reached through `extends`: a kind above takes these fields too.\n' : '')
               : '# ' + e.m.name
                   + (e.inherited ? ' — reached through `extends`: a kind above takes these fields too\n' : '\n')
-                  + '# imports:\n#   ' + e.m.name + ': ' + e.m.importRef + '\n')
+                  + '# imports:\n#   ' + e.m.name + ': ' + e.m.importRef + '\n'
+                  + '# Advisories: ' + e.m.advisoryLine + '\n')
               + (size(e.m.missing) > 0
                   ? '# NOT DEFINED by this module: ' + join(e.m.missing, ', ')
                       + '. It exports: ' + join(e.m.exported, ', ') + '\n'
@@ -789,7 +816,12 @@ outputType:
       imports: { type: array }
       # How many other modules import this one at their latest version.
       dependents: { type: integer }
-    required: [found, module, kinds, exportedResources, versions, application, imports, dependents]
+      # The advisories over this version's pinned dependency closure, as the
+      # database records them; an empty list is clean only beside
+      # `advisoriesComplete: true`.
+      advisories: { type: array }
+      advisoriesComplete: { type: boolean }
+    required: [found, module, kinds, exportedResources, versions, application, imports, dependents, advisories, advisoriesComplete]
 steps:
   - name: tracked
     invoke: !ref trackedModules
@@ -806,6 +838,8 @@ steps:
                mv.homepage, module_publisher(m.ref, m.transport) AS publisher, m.transport,
                COALESCE(mv.integrity, '') AS integrity,
                mv.deprecated_reason, mv.replaced_by,
+               COALESCE(va.advisories, '[]'::jsonb) AS advisories,
+               COALESCE(va.complete, FALSE) AS "advisoriesComplete",
                /* No runtime reach for an application: the hub does not index the
                   reach of a whole import closure. */
                CASE WHEN mv.root_kind = 'Application' THEN NULL
@@ -888,6 +922,7 @@ steps:
         FROM modules m
         JOIN module_versions mv
           ON mv.module_id = m.id AND mv.version = COALESCE(NULLIF($2, ''), m.latest_version)
+        LEFT JOIN version_advisories va ON va.module_id = mv.module_id AND va.version = mv.version
         WHERE m.ref = $1
       bindings:
         - !cel "inputs.ref"
@@ -916,6 +951,8 @@ outputs:
   application: !cel "steps.row.result.rows.size() > 0 ? steps.row.result.rows[0].application : null"
   imports: !cel "steps.row.result.rows.size() > 0 ? steps.row.result.rows[0].imports : []"
   dependents: !cel "steps.row.result.rows.size() > 0 ? steps.row.result.rows[0].dependents : 0"
+  advisories: !cel "steps.row.result.rows.size() > 0 ? steps.row.result.rows[0].advisories : []"
+  advisoriesComplete: !cel "steps.row.result.rows.size() > 0 && steps.row.result.rows[0].advisoriesComplete"
 ---
 # Newest-first, matching the `telo module versions` CLI verb this mirrors (one
 # contract, three front-ends): valid dotted-numeric versions sort by numeric
@@ -938,9 +975,16 @@ steps:
     invoke: !ref query
     inputs:
       sql: >-
-        SELECT mv.version, COALESCE(mv.integrity, '') AS integrity
+        SELECT mv.version, COALESCE(mv.integrity, '') AS integrity,
+               /* The ids only, one per distinct advisory in the closure: a caller
+                  choosing a version is not sent every summary of every version. */
+               (SELECT COALESCE(jsonb_agg(jsonb_build_object('id', i.id) ORDER BY i.id), '[]'::jsonb)
+                FROM (SELECT DISTINCT item->>'id' AS id
+                      FROM jsonb_array_elements(COALESCE(va.advisories, '[]'::jsonb)) AS item) i) AS advisories,
+               COALESCE(va.complete, FALSE) AS "advisoriesComplete"
         FROM module_versions mv
         JOIN modules m ON m.id = mv.module_id
+        LEFT JOIN version_advisories va ON va.module_id = mv.module_id AND va.version = mv.version
         WHERE m.ref = $1
         ORDER BY version_sort_key(mv.version) DESC NULLS LAST, mv.version ASC
       bindings:
@@ -952,10 +996,14 @@ outputs:
   # array or a keyed side-map could disagree with the list it annotates.
   # `integrity` is omitted for a version ingested before the column existed or
   # one nothing can hash — a consumer treats its absence as "no pin available",
-  # never as an error.
+  # never as an error. `advisories` holds only `{ id }`; the full record is one
+  # version's, read with `moduleDetail`.
   versions: !cel >-
     steps.rows.result.rows.map(r,
-      r.integrity == '' ? {'version': r.version} : {'version': r.version, 'integrity': r.integrity})
+      r.integrity == ''
+        ? {'version': r.version, 'advisories': r.advisories, 'advisoriesComplete': r.advisoriesComplete}
+        : {'version': r.version, 'integrity': r.integrity, 'advisories': r.advisories,
+           'advisoriesComplete': r.advisoriesComplete})
 ---
 # Every kind that implements a given contract, across module boundaries — the
 # derived grouping axis. A backend is discoverable from the abstract it extends

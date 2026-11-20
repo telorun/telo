@@ -77,6 +77,14 @@ import {
   type RootScope,
 } from "./nested-libraries.js";
 import { expandDirectoryClaims } from "./module-path-claims.js";
+import {
+  assembleModuleRecord,
+  assertRecordPathFree,
+  billOfMaterialsLayer,
+  recordSubjectOf,
+  type BundleProduct,
+  type ModuleBillOfMaterials,
+} from "./module-bill-of-materials.js";
 import { partitionLayers, type Partition } from "./partition-layers.js";
 import { assertWithinModule, MODULE_LICENSE_FILE, selectFiles } from "./select-files.js";
 import { assertNamedFiles, readNativeFiles, readSources, stagedEntriesOf } from "./staged-files.js";
@@ -89,6 +97,7 @@ export interface NestedModulePayload {
   readonly manifest: string;
   readonly layers: BuiltLayer[];
   readonly partition: Partition;
+  readonly billOfMaterials: ModuleBillOfMaterials;
 }
 
 export interface ModulePayload {
@@ -98,6 +107,9 @@ export interface ModulePayload {
   readonly manifest: string;
   readonly layers: BuiltLayer[];
   readonly partition: Partition;
+  /** The record the payload's `sbom` layer holds, and the bundle inputs it
+   *  could attribute to no package. */
+  readonly billOfMaterials: ModuleBillOfMaterials;
   /**
    * Absolute paths of every file the controller builds read — the module's own
    * sources, the shared libraries they inline, their dependency tree. The
@@ -576,6 +588,7 @@ export class ModulePayloadBuilder {
           manifest: payload.manifest,
           layers: payload.layers,
           partition: payload.partition,
+          billOfMaterials: payload.billOfMaterials,
         }))
         .sort((a, b) => a.path.localeCompare(b.path)),
     };
@@ -599,12 +612,60 @@ export class ModulePayloadBuilder {
     return work;
   }
 
-  private async buildModule(manifestPath: string, build: RootBuild): Promise<ModulePayload> {
+  /**
+   * One module's stored record, derived from the module on disk by the builders
+   * `telo publish` runs — the same producers over the same partition, through
+   * the same build cache — without canonicalizing, pinning or framing anything.
+   * `root` is the manifest of the artifact the module ships in, when it is a
+   * library nested inside another; its own manifest otherwise.
+   */
+  async derivedBillOfMaterials(manifestPath: string, root?: string): Promise<ModuleBillOfMaterials> {
+    const key = path.resolve(manifestPath);
+    const manifestDir = path.dirname(key);
+    const docs = parseAllDocuments(fs.readFileSync(key, "utf8"), { customTags: defaultCustomTags() });
+    const moduleDoc = findModuleDoc(docs);
+    const sources = readSources(moduleDoc?.toJSON(), manifestDir);
+    const siblings: { manifestPath: string }[] = [];
+    if (moduleDoc) {
+      for (const entry of importSourceRefs(moduleDoc)) {
+        if (!entry.source.startsWith(".") && !entry.source.startsWith("/")) continue;
+        siblings.push({ manifestPath: resolveSiblingManifest(manifestDir, entry.source) });
+      }
+    }
+    moduleDoc?.delete("sources");
+    const manifest = expandAndInlineIncludes(
+      docs.map((doc) => doc.toString()).join("---\n"),
+      manifestDir,
+    );
+    const build: RootBuild = {
+      scope: rootScopeOf(path.resolve(root ?? key)),
+      modules: new Map(),
+      deriving: new Set(),
+    };
+    return (await this.buildContents(key, manifest, sources, siblings, build, true)).billOfMaterials;
+  }
+
+  /**
+   * What a module's payload is made of, before anything is read or framed: the
+   * claims, the partition, every built file and the record its producers
+   * reported. Publishing and derivation share it, so they agree by construction.
+   */
+  private async buildContents(
+    manifestPath: string,
+    manifest: string,
+    sources: ModuleSource[],
+    siblings: readonly { manifestPath: string }[],
+    build: RootBuild,
+    fromPins: boolean,
+  ): Promise<{
+    partition: Partition;
+    built: Map<string, Uint8Array>;
+    buildInputs: Set<string>;
+    staged: ReturnType<typeof stagedEntriesOf>;
+    billOfMaterials: ModuleBillOfMaterials;
+  }> {
     const manifestDir = path.dirname(manifestPath);
     const isRoot = manifestPath === build.scope.manifestPath;
-    const { text: manifest, relativeImports, siblings, authoredPins, sources } =
-      await this.transformManifest(manifestPath, build);
-    const fromPins = (this.options.stagedFiles ?? "pins") === "pins";
 
     const native = readNativeFiles(manifest, manifestDir);
     const assetPatterns = readAssetPatterns(manifest);
@@ -645,11 +706,13 @@ export class ModulePayloadBuilder {
         ...staged.keys(),
       ]),
     ].sort();
-    assertSidecarNamesFree(claims, [
+    const declared = [
       ...selected,
       ...claims.map((claim) => claim.path),
       ...native.map((entry) => entry.path),
-    ]);
+    ];
+    assertSidecarNamesFree(claims, declared);
+    assertRecordPathFree(declared);
     const browser = await buildBrowserClaims(manifestDir, claims, this.options.cacheRoot);
     const built = new Map<string, Uint8Array>(browser.files);
     const buildInputs = new Set<string>(browser.inputs);
@@ -673,6 +736,7 @@ export class ModulePayloadBuilder {
     // on a checkout with no `.mjs` files, publish refused before the builder ran
     // and told the author to run a build step this design removed.
     const externals = siblingLibrariesOf(siblings);
+    const bundles: BundleProduct[] = [...browser.bundles];
     for (const claim of claims) {
       if (claim.role !== "controller" && claim.role !== "library") continue;
       if (!claim.localPath) continue;
@@ -692,8 +756,37 @@ export class ModulePayloadBuilder {
         externals.filter((library) => library.format === claim.selector.format),
       );
       built.set(claim.path, fs.readFileSync(bundle.path));
+      bundles.push({ path: claim.path, contributors: bundle.contributors });
       for (const input of bundle.inputs) buildInputs.add(input);
     }
+
+    const billOfMaterials = await assembleModuleRecord({
+      subject: recordSubjectOf(findModuleDoc(
+        parseAllDocuments(manifest, { customTags: defaultCustomTags() }),
+      )?.toJSON()),
+      partition,
+      claims,
+      native,
+      sources,
+      bundles,
+      publishRoot: build.scope.dir,
+    });
+    return { partition, built, buildInputs, staged, billOfMaterials };
+  }
+
+  private async buildModule(manifestPath: string, build: RootBuild): Promise<ModulePayload> {
+    const manifestDir = path.dirname(manifestPath);
+    const { text: manifest, relativeImports, siblings, authoredPins, sources } =
+      await this.transformManifest(manifestPath, build);
+    const fromPins = (this.options.stagedFiles ?? "pins") === "pins";
+    const { partition, built, buildInputs, staged, billOfMaterials } = await this.buildContents(
+      manifestPath,
+      manifest,
+      sources,
+      siblings,
+      build,
+      fromPins,
+    );
 
     // Built entry points exist once built; staged files, when read from their
     // pins, need not be on disk at all.
@@ -731,6 +824,8 @@ export class ModulePayloadBuilder {
       }
       layers.push({ role: layer.role, ...(layer.selector ? { selector: layer.selector } : {}), files });
     }
+    // The record describes the layers above, so it is the last of them.
+    layers.push(billOfMaterialsLayer(billOfMaterials.text));
     assertLayerEntries(manifestDir, layers);
 
     // The `layers:` index is part of the published manifest, so it is written
@@ -769,6 +864,7 @@ export class ModulePayloadBuilder {
       manifest: index.length > 0 ? injectLayerIndex(manifest, index) : manifest,
       layers,
       partition,
+      billOfMaterials,
       buildInputs: [...buildInputs],
       relativeImports,
       nested: [],

@@ -1,0 +1,9 @@
+units:
+  cli: Added
+body: Every module artifact `telo publish` and `telo release` build now carries an
+  `sbom` layer holding `sbom.cdx.json`, a canonical CycloneDX 1.6 bill of materials of
+  the third-party packages its bundles inline and its `sources:` stage, each tagged with
+  the layers it occurs in; a `Telo.Builtins` archive carries one too. `telo install` and
+  `telo package` store every imported module's record under `<cache root>/layers/`,
+  publish names each bundled file no package claims, and both commands refuse a module
+  file of the author's own at `./sbom.cdx.json`.

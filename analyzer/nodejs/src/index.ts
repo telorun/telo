@@ -1187,6 +1187,7 @@ export {
   type SchemaNodeVisitor,
   type TextLeafMapper,
 } from "./plain-literal-decoding.js";
+export { decodedSchemaDefault, valueTypeDefaultFiller } from "./value-type-defaults.js";
 export {
   boundArgumentRefusal,
   memberSlotSchema,
@@ -1260,11 +1261,13 @@ export {
 } from "./sources/manifest-cache.js";
 export type { ManifestCacheCoords } from "./sources/manifest-cache.js";
 export {
+  ARTIFACT_RECORD_ROLES,
   CODE_LAYER_ROLES,
   LAYER_ROLES,
   PLATFORM_AXES,
   ArtifactSelectorError,
   describeSelector,
+  isArtifactRecordRole,
   isLayerRole,
   normalizeAxisValue,
   normalizeSelector,
@@ -1350,10 +1353,12 @@ export type {
   ModuleSources,
   SourceArchiveFormat,
   SourceBuild,
+  SourceContained,
   SourceEntry,
   SourcePin,
   SourceProblem,
   SourceProblemCode,
+  SourceVcs,
 } from "./source-entries.js";
 // Warnings everywhere, fatal at `telo publish` — descriptive metadata has no
 // runtime failure mode, so it must not stop a manifest running, but it is the
@@ -1443,3 +1448,33 @@ export * from "./release/index.js";
 export * from "./workspace-env/index.js";
 export { formatManifestText, isManifestText } from "./manifest-format.js";
 export type { ManifestFormatFailure, ManifestFormatResult } from "./manifest-format.js";
+export {
+  BILL_OF_MATERIALS_FILE,
+  BILL_OF_MATERIALS_MEDIA_TYPE,
+  BillOfMaterialsError,
+  INCOMPLETE_PROPERTY,
+  LAYER_PROPERTY,
+  buildModuleRecord,
+  canonicalBillOfMaterialsText,
+  componentRef,
+  incompleteLayersOf,
+  layerOccurrence,
+  licenseChoice,
+  npmPackageUrl,
+  readBillOfMaterials,
+  serializeModuleRecord,
+  splitVcsQualifier,
+  VCS_URL_QUALIFIER,
+} from "./bill-of-materials.js";
+export type {
+  BillOfMaterials,
+  ComponentReport,
+  ComponentVcs,
+  ContainsEdge,
+  CycloneDxComponent,
+  CycloneDxDependency,
+  CycloneDxProperty,
+  LicenseChoice,
+  RecordInput,
+  RecordSubject,
+} from "./bill-of-materials.js";

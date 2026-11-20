@@ -1,13 +1,13 @@
 # @telorun/release
 
 A release planner for repositories that ship through several ecosystems at once.
-Each release **unit** — an npm package, a crate, an image, a chart, or several of
-them — gets one version, one changelog (`<unit>/CHANGELOG.md`) and one place for
+Each release **unit** — an npm package, a crate, a Python project, an image, a
+chart, or several of them — gets one version, one changelog (`<unit>/CHANGELOG.md`) and one place for
 change notes. A unit bumps when the digest of what it ships moves, at the level
 its change notes and its dependencies give it. It replaces changesets, and works
 in any Node project: of Telo's packages it needs only `@telorun/glob`.
 
-For a tour of one flow across npm, cargo, Docker and Helm — and Telo modules —
+For a tour of one flow across npm, cargo, Python, Docker and Helm — and Telo modules —
 see [Versioning and releases](https://telo.run/guides/versioning-and-releases).
 
 ## Install
@@ -236,7 +236,7 @@ left for you to rewrite.
   while in candidates), commit the result and open the PR.
 - After it merges: `tag`, push the tags, then publish each `order` row from its
   `path` with its ecosystem's own tool (`npm publish`, `cargo publish`,
-  `docker push`, `helm push`). Rows already published are skipped by the
+  `twine upload`, `docker push`, `helm push`). Rows already published are skipped by the
   registry, so a re-run is safe.
 - Published npm links can name the tag `blob/<tag>/…`, the `tag` the `order` row carries.
 

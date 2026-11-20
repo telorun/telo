@@ -1,0 +1,7 @@
+units:
+  cli: Fixed
+body: "`telo release floor`, `telo release check` and `telo publish` measure a module
+  whose import closure declares `sources:` and whose directories hold a symbolic link to
+  a file on a Windows account that may not create symbolic links: the measurement copy
+  lays such a link as the file it names and leaves a link naming nothing out, where it
+  used to fail."

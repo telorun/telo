@@ -3984,7 +3984,23 @@ to `telo.run/next/`: a module's bytes must not depend on which release publishes
   and picks the first entry matching the host.
 - `sources:` — OPTIONAL map beside `native:` saying where each prebuilt
   file is fetched from, keyed by source name (a lowercase token); `telo builtins
-  ModuleSources` prints a source's fields. `url` is an `https://` template (plain `http://`
+  ModuleSources` prints a source's fields. A source also carries `purl:` — the VERSIONLESS package URL its files are a release of
+  (`pkg:npm/%40napi-rs/canvas`; its version is the source's `version`; a literal `@` in a name
+  is `%40`; never a `vcs_url` qualifier — that is `vcs:`; REQUIRED unless the source has
+  `build:`) — and optionally `cpe:`, `vcs:` and
+  `contains:`, a list of `{ purl, version, cpe?, vcs? }` for code linked into the binary (a
+  `pkg:generic/sqlite` with its CPE 2.3 string). `vcs: { url, revision }` names the git
+  repository and the FULL commit id the code is built from (`url:
+  "git+https://github.com/sqlite/sqlite"`, no `@`, query or fragment; `revision` 40 or 64
+  lower-case hex digits, never a tag or a short id), so OSV can check embedded C code by
+  commit; write the repository whose history holds that commit (a fork's commit under its
+  fork, never under the upstream), take it from the build's submodule pin, and change it with
+  `version`. `version` (and the version in `cpe`) is always a RELEASE: for a commit between
+  releases, the newest release that commit contains, never the unreleased version the code
+  reports (`1.83.0`, `1.6.38.git`). One package per source. A missing or malformed one is a `telo check`
+  `SCHEMA_VIOLATION`. `telo publish` and `telo release stage` refuse a revision no branch or
+  tag of `url` reaches (`SOURCE_REVISION_UNREACHABLE`) or a host that gives no history
+  (`SOURCE_REPOSITORY_UNREADABLE` — use a mirror, or drop `vcs`); never guess a revision. `url` is an `https://` template (plain `http://`
   only for a loopback host) whose ONLY placeholders are `{version}` and
   `{upstream}`, `archive: tar.gz` (the one format; e.g. an npm registry
   tarball), `notices` a non-empty list of module-relative license files, and
@@ -4007,7 +4023,28 @@ to `telo.run/next/`: a module's bytes must not depend on which release publishes
   (module-relative); its `build.inputs` digest is written by
   `telo release stage --pin`, never by hand, and `telo release check` fails when
   the crate or a crate it reaches changed without a re-pin. Publish ships no
-  `sources:` block.
+  `sources:` block. Those `purl`s, and the packages a bundle inlines, are what a
+  module's software bill of materials (SBOM) lists: `telo module sbom <ref>` prints one
+  module's, and `telo sbom <manifest>` writes one CycloneDX document for an application's
+  whole closure (`--platform os/arch[/libc]` / `--abi` keep what that target loads) for
+  the user's own scanner. Its `SBOM_INCOMPLETE` error is reported at the `imports:` entry
+  reaching a module with no complete record: a direct import was published before records
+  existed — import a newer version; a chain (`A (…) imports B (…), which …`) means `A` pins
+  an unrecorded `B` — upgrade `A`; a local module's bundle inlines a file no package with a
+  name and version claims — give it one; a local module of a packaged executable with no
+  record in its payload was packaged by an older telo — package it again.
+  `--allow-incomplete` writes the document anyway
+  with the module marked incomplete; never pass it to make a scanner gate green.
+  `telo audit <manifest>` checks the same closure against OSV and reports, as `telo check`
+  does: `COMPONENT_VULNERABLE` (error) at the `imports:` entry carrying an advisory, with
+  the upgrade `telo upgrade` would make; `COMPONENT_UNCHECKED` (warning) for a component OSV
+  did not judge — a `pkg:generic` one with no `vcs:` (declare it), or one whose repository OSV
+  records no advisory against (an empty answer is then no verdict); the two `SOURCE_*` codes
+  above for a local module's revisions; `ADVISORY_LOOKUP_FAILED` when OSV did not
+  answer (`--osv-url` / `TELO_OSV_URL`). An advisory is accepted only in the
+  `telo-workspace.yaml` `audit:` block as `ignore: [{ id, reason, expires }]` — a reason and
+  an expiry date are both required, and it matches the advisory's id or any alias; never
+  write one to make an audit pass without the user's say-so.
 - `exports.code:` (Library only) — OPTIONAL, and needed only when ANOTHER
   module's controller code imports this one's code. A list of entries, each
   naming the bare specifier dependents import and the file it resolves to:
@@ -4646,6 +4683,19 @@ them before writing any resource from a module you did not author yourself:
     hub tracks when you omit it), so pass your CLI's version (see Manifest file
     structure). A search hit or library-index line marked `builtin: true` is the
     same vocabulary.
+    An `# Advisories:` line follows each module's `imports:` line: the known
+    vulnerabilities of THAT version and of every module it pins, `none`, or
+    `unchecked` when not every component could be checked. It describes the
+    version, so NEVER write it (or any comment of it) into a manifest — copy the
+    import line alone. Pick the newest version with no advisories and
+    `advisoriesComplete: true` (the line names the newest clean and complete
+    version when it is another one; `list_module_versions` carries
+    `advisories` ids and `advisoriesComplete` per version, `get_module` the
+    detail). When every version has advisories, use the newest and name them to
+    the user. When no version is complete (a module embedding C code), use the
+    newest with no advisories and tell the user its embedded code is unchecked.
+    Never read an empty list beside `advisoriesComplete: false` — or an
+    `unchecked` line — as clean.
   - `find_kinds` — for a need the index does not answer: a capability outside
     the standard library, a job you cannot match to a line of the index, a
     backend of an abstract kind, a pack of ready-made instances (each OCR

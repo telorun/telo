@@ -28,6 +28,7 @@
  */
 
 import { isLocalPathSource, lowerBound, readRequires, upperBound } from "@telorun/analyzer";
+import { resolveCacheRoot } from "@telorun/kernel";
 import { defaultCustomTags } from "@telorun/templating";
 import { execFile } from "node:child_process";
 import * as fs from "node:fs";
@@ -38,7 +39,7 @@ import { promisify } from "node:util";
 import { parseAllDocuments } from "yaml";
 import { findModuleDoc, importSourceRefs } from "../commands/manifest-imports.js";
 import { resolveSiblingManifest } from "../bundle/module-payload.js";
-import { measurementCopy } from "./requires-text.js";
+import { measurementCopy, stagedSourcePaths, withoutAuthoringInputs } from "./requires-text.js";
 
 const run = promisify(execFile);
 
@@ -162,16 +163,18 @@ export type CliRun =
   /** It never ran: the binary is missing, a fetch failed, the timeout fired. */
   | { status: "unavailable"; output: string };
 
-/** `telo check <paths>` with `@telorun/cli@<version>`. Injected in tests. */
-export type CliRunner = (version: string, paths: string[]) => Promise<CliRun>;
+/** `telo check <paths>` with `@telorun/cli@<version>`, `env` added to the
+ *  environment it runs in. Injected in tests. */
+export type CliRunner = (version: string, paths: string[], env?: Readonly<Record<string, string>>) => Promise<CliRun>;
 
 /** Started away from the module's directory: `npx` reads the `.npmrc` of the
  *  directory it starts in, and one there naming another registry would decide
  *  which program is installed as `@telorun/cli`. */
-export const npxRunner: CliRunner = async (version, paths) => {
+export const npxRunner: CliRunner = async (version, paths, env) => {
   try {
     await run("npx", ["-y", `@telorun/cli@${version}`, "check", ...paths], {
       cwd: os.tmpdir(),
+      env: env ? { ...process.env, ...env } : process.env,
       timeout: RUN_TIMEOUT_MS,
       maxBuffer: 16 * 1024 * 1024,
     });
@@ -254,6 +257,7 @@ function readDependencyRejection(
   version: string,
   output: string,
   manifestPath: string,
+  unmirror: (file: string) => string,
 ): Reading | undefined {
   const closure = relativeClosure(manifestPath);
   const cwd = os.tmpdir();
@@ -267,7 +271,7 @@ function readDependencyRejection(
     if (cached) {
       return { version, code, location: `${cached[1]}@${cached[2]} ${cached[3]}:${lineNo}` };
     }
-    const file = path.resolve(cwd, located);
+    const file = unmirror(path.resolve(cwd, located));
     if (closure.has(file) && file !== path.resolve(manifestPath)) {
       return { version, code, location: `${path.relative(path.dirname(manifestPath), file)}:${lineNo}` };
     }
@@ -275,11 +279,169 @@ function readDependencyRejection(
   return undefined;
 }
 
+/**
+ * Each relatively imported sibling of the modules whose published form differs
+ * from its file (an authoring-input block to blank), by absolute path. A published
+ * CLI reads a sibling's `telo.yaml` raw, while a consumer of the published
+ * artifact never sees those blocks.
+ */
+function shadowedSiblings(modules: readonly MeasuredModule[]): {
+  shadows: Map<string, string>;
+  closure: Set<string>;
+} {
+  const shadows = new Map<string, string>();
+  const closure = new Set<string>();
+  for (const module of modules) {
+    const entry = path.resolve(module.manifestPath);
+    for (const file of relativeClosure(entry)) {
+      if (file === entry) continue;
+      closure.add(file);
+      const text = fs.readFileSync(file, "utf8");
+      const blanked = withoutAuthoringInputs(text);
+      if (blanked !== text) shadows.set(file, blanked);
+    }
+  }
+  return { shadows, closure };
+}
+
+/** Each file a blanked `sources:` block stages, by absolute path: published, the
+ *  artifact holds them, so the measuring CLI must find them. */
+function stagedPlaceholders(manifests: Iterable<{ file: string; text: string }>): Set<string> {
+  const paths = new Set<string>();
+  for (const { file, text } of manifests) {
+    if (withoutAuthoringInputs(text) === text) continue;
+    for (const staged of stagedSourcePaths(text)) paths.add(path.resolve(path.dirname(file), staged));
+  }
+  return paths;
+}
+
+interface Mirror {
+  root: string;
+  toMirror: (file: string) => string;
+  toReal: (file: string) => string;
+}
+
+/** The cache directory, which a run in the mirror must not reach through a link:
+ *  it is handed the real one by `TELO_CACHE_DIR` instead. */
+const CACHE_DIRECTORY = ".telo";
+
+/**
+ * One real entry in the mirror, needing no privilege on any platform: a
+ * directory as a junction (a symlink elsewhere), a file hard-linked or else
+ * copied, a symlink recreated as one with its own target, dangling or not.
+ * Where a file symlink needs a privilege the account lacks (Windows without
+ * developer mode), a link to a file is laid as the file it resolves to and a
+ * dangling one is left out: either way the mirror path reads as the real one.
+ */
+export function mirrorEntry(real: string, link: string, symlink: typeof fs.symlinkSync = fs.symlinkSync): void {
+  const stat = fs.lstatSync(real);
+  if (stat.isSymbolicLink()) {
+    const target = fs.readlinkSync(real);
+    let resolved: fs.Stats | undefined;
+    try {
+      resolved = fs.statSync(real);
+    } catch {
+      // A dangling link is recreated as it is.
+    }
+    const directory = resolved?.isDirectory() === true;
+    // A junction's target is resolved against the working directory, never the link's.
+    const linked = directory && process.platform === "win32" ? path.resolve(path.dirname(real), target) : target;
+    try {
+      symlink(linked, link, directory ? "junction" : "file");
+    } catch (error) {
+      if (directory || (error as NodeJS.ErrnoException).code !== "EPERM") throw error;
+      if (resolved) linkFile(fs.realpathSync(real), link);
+    }
+  } else if (stat.isDirectory()) {
+    symlink(real, link, "junction");
+  } else {
+    linkFile(real, link);
+  }
+}
+
+/** A file in the mirror: hard-linked, or copied where it cannot be (another volume). */
+function linkFile(real: string, link: string): void {
+  try {
+    fs.linkSync(real, link);
+  } catch {
+    fs.copyFileSync(real, link);
+  }
+}
+
+/**
+ * A scratch tree laying the directories of every shadowed file and every
+ * measurement copy out as in the workspace, relative paths between them intact.
+ * Each real entry is linked ({@link mirrorEntry}) except a cache directory; the
+ * shadowed manifests and the measurement copies are files of their own. The
+ * real tree is never written.
+ */
+function buildMirror(
+  shadows: Map<string, string>,
+  closure: Set<string>,
+  copies: Map<string, string>,
+  placeholders: ReadonlySet<string>,
+): Mirror {
+  const files = new Map<string, string>([...shadows, ...copies]);
+  const dirs = new Set([...files.keys(), ...closure, ...placeholders].map((f) => path.dirname(f)));
+  const ancestor = [...dirs]
+    .map((d) => d.split(path.sep))
+    .reduce((a, b) => {
+      let i = 0;
+      while (i < a.length && i < b.length && a[i] === b[i]) i++;
+      return a.slice(0, i);
+    })
+    .join(path.sep) || path.sep;
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "telo-floor-mirror-"));
+  const toMirror = (file: string): string => path.join(root, path.relative(ancestor, file));
+  const laid = new Set<string>();
+
+  const lay = (dir: string): void => {
+    laid.add(dir);
+    const target = toMirror(dir);
+    fs.mkdirSync(target, { recursive: true });
+    for (const entry of fs.existsSync(dir) ? fs.readdirSync(dir) : []) {
+      const real = path.join(dir, entry);
+      if (files.has(real) || entry === CACHE_DIRECTORY) continue;
+      const holdsLaid = [...dirs].some((d) => d === real || d.startsWith(real + path.sep));
+      if (holdsLaid && fs.statSync(real).isDirectory()) {
+        lay(real);
+      } else {
+        mirrorEntry(real, path.join(target, entry));
+      }
+    }
+    for (const [file, text] of files) {
+      if (path.dirname(file) === dir) fs.writeFileSync(path.join(target, path.basename(file)), text);
+    }
+    for (const staged of placeholders) {
+      if (path.dirname(staged) !== dir) continue;
+      const at = path.join(target, path.basename(staged));
+      try {
+        fs.lstatSync(at);
+      } catch {
+        fs.writeFileSync(at, "");
+      }
+    }
+  };
+  for (const dir of [...dirs].sort((a, b) => a.length - b.length)) {
+    if (!laid.has(dir)) lay(dir);
+  }
+  return {
+    root,
+    toMirror,
+    toReal: (file) =>
+      file === root || file.startsWith(root + path.sep)
+        ? path.join(ancestor, path.relative(root, file))
+        : file,
+  };
+}
+
 export type ProbeVerdict = { accepted: true } | { accepted: false; reading: Reading };
 
 interface Copy {
   module: MeasuredModule;
   path: string;
+  /** Maps a file of the measurement mirror back to the real tree. */
+  unmirror: (file: string) => string;
   atLine: number;
   delta: number;
 }
@@ -302,19 +464,74 @@ export class FloorProbe {
     floor: string | null,
     modules: readonly MeasuredModule[],
   ): Promise<Map<string, ProbeVerdict>> {
-    const copies: Copy[] = [];
-    try {
+    const { shadows, closure } = shadowedSiblings(modules);
+    // A blanked `sources:` block means the mirror, which carries what it staged.
+    const placeholders = stagedPlaceholders([
+      ...modules.map((m) => ({ file: path.resolve(m.manifestPath), text: m.text })),
+      ...[...closure].map((file) => ({ file, text: fs.readFileSync(file, "utf8") })),
+    ]);
+    const mirrored = shadows.size > 0 || modules.some((m) => withoutAuthoringInputs(m.text) !== m.text);
+    // A run in the mirror is given the cache the real tree's run would resolve,
+    // one batch per cache root.
+    const cacheRoots = new Map<string, MeasuredModule[]>();
+    if (mirrored) {
       for (const module of modules) {
-        const copy = measurementCopy(module.text, floor);
-        const file = path.join(path.dirname(module.manifestPath), MEASUREMENT_FILE);
-        fs.writeFileSync(file, copy.text);
-        copies.push({ module, path: file, atLine: copy.atLine, delta: copy.delta });
+        const root = resolveCacheRoot(path.resolve(module.manifestPath)) ?? "";
+        cacheRoots.set(root, [...(cacheRoots.get(root) ?? []), module]);
+      }
+      if (cacheRoots.size > 1) {
+        const verdicts = new Map<string, ProbeVerdict>();
+        for (const group of cacheRoots.values()) {
+          for (const [key, verdict] of await this.probe(version, floor, group)) verdicts.set(key, verdict);
+        }
+        return verdicts;
+      }
+    }
+    const cacheRoot = [...cacheRoots.keys()][0];
+    const env = cacheRoot ? { TELO_CACHE_DIR: cacheRoot } : undefined;
+    const copies: Copy[] = [];
+    let mirrorRoot: string | undefined;
+    try {
+      const texts = modules.map((m) => measurementCopy(m.text, floor));
+      if (!mirrored) {
+        modules.forEach((module, i) => {
+          const file = path.join(path.dirname(module.manifestPath), MEASUREMENT_FILE);
+          fs.writeFileSync(file, texts[i]!.text);
+          copies.push({
+            module,
+            path: file,
+            unmirror: (f) => f,
+            atLine: texts[i]!.atLine,
+            delta: texts[i]!.delta,
+          });
+        });
+      } else {
+        const measured = new Map(
+          modules.map((m, i) => [
+            path.join(path.dirname(path.resolve(m.manifestPath)), MEASUREMENT_FILE),
+            texts[i]!.text,
+          ]),
+        );
+        const mirror = buildMirror(shadows, closure, measured, placeholders);
+        mirrorRoot = mirror.root;
+        modules.forEach((module, i) => {
+          copies.push({
+            module,
+            path: mirror.toMirror(
+              path.join(path.dirname(path.resolve(module.manifestPath)), MEASUREMENT_FILE),
+            ),
+            unmirror: mirror.toReal,
+            atLine: texts[i]!.atLine,
+            delta: texts[i]!.delta,
+          });
+        });
       }
       const verdicts = new Map<string, ProbeVerdict>();
-      await this.judge(version, copies, verdicts);
+      await this.judge(version, copies, verdicts, env);
       return verdicts;
     } finally {
       for (const copy of copies) fs.rmSync(copy.path, { force: true });
+      if (mirrorRoot) fs.rmSync(mirrorRoot, { recursive: true, force: true });
     }
   }
 
@@ -322,8 +539,9 @@ export class FloorProbe {
     version: string,
     copies: Copy[],
     verdicts: Map<string, ProbeVerdict>,
+    env: Readonly<Record<string, string>> | undefined,
   ): Promise<void> {
-    const result = await this.runner(version, copies.map((c) => c.path));
+    const result = await this.runner(version, copies.map((c) => c.path), env);
     if (result.status === "passed") {
       for (const copy of copies) verdicts.set(copy.module.key, { accepted: true });
       return;
@@ -336,6 +554,7 @@ export class FloorProbe {
           version,
           result.output,
           copies[0]!.module.manifestPath,
+          copies[0]!.unmirror,
         );
         if (reading) {
           verdicts.set(copies[0]!.module.key, { accepted: false, reading });
@@ -349,7 +568,7 @@ export class FloorProbe {
             `${result.output.slice(0, 400) || "(none)"}`,
         );
       }
-      for (const copy of copies) await this.judge(version, [copy], verdicts);
+      for (const copy of copies) await this.judge(version, [copy], verdicts, env);
       return;
     }
     for (const copy of named) {
@@ -359,7 +578,7 @@ export class FloorProbe {
       });
     }
     const rest = copies.filter((c) => !named.includes(c));
-    if (rest.length > 0) await this.judge(version, rest, verdicts);
+    if (rest.length > 0) await this.judge(version, rest, verdicts, env);
   }
 }
 

@@ -29,9 +29,16 @@
 import { AXIS_VALUE_FORMS, PLATFORM_AXES, type PlatformAxis } from "./artifact-axes.js";
 
 /** The role a layer plays in a module artifact. `controller`, `library`,
- *  `native` and `browser` layers carry a selector; `assets` and `common` are
- *  singletons and carry none. */
-export type LayerRole = "controller" | "library" | "native" | "browser" | "assets" | "common";
+ *  `native` and `browser` layers carry a selector; `assets`, `common` and `sbom`
+ *  are singletons and carry none. */
+export type LayerRole =
+  | "controller"
+  | "library"
+  | "native"
+  | "browser"
+  | "assets"
+  | "common"
+  | "sbom";
 
 export const LAYER_ROLES: readonly LayerRole[] = [
   "controller",
@@ -40,7 +47,17 @@ export const LAYER_ROLES: readonly LayerRole[] = [
   "browser",
   "assets",
   "common",
+  "sbom",
 ];
+
+/** The roles whose layer describes the artifact and holds no module file: never
+ *  extracted into a module directory, but into the layer store keyed by its
+ *  `blob` (`kernel/specs/module-artifact.md` §5.2). */
+export const ARTIFACT_RECORD_ROLES: readonly LayerRole[] = ["sbom"];
+
+export function isArtifactRecordRole(role: string): boolean {
+  return (ARTIFACT_RECORD_ROLES as readonly string[]).includes(role);
+}
 
 export function isLayerRole(value: unknown): value is LayerRole {
   return typeof value === "string" && (LAYER_ROLES as readonly string[]).includes(value);

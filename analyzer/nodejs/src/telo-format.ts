@@ -13,10 +13,14 @@
  *  survives the cache rather than being a closure lost on load. Browser-safe. */
 
 import { fullFormats } from "ajv-formats/dist/formats.js";
+import { cpeChecker } from "./cpe-format.js";
 import { cssSelectorChecker } from "./css-selector-format.js";
 import { languageTagChecker } from "./language-tag-format.js";
 import { messagePatternChecker } from "./message-pattern-format.js";
+import { packageUrlChecker } from "./package-url-format.js";
 import { re2PatternChecker } from "./re2-pattern-format.js";
+import { vcsRevisionChecker } from "./vcs-revision-format.js";
+import { vcsUrlChecker } from "./vcs-url-format.js";
 import { FORMAT_ENTRY_FILES } from "./formats/entries/index.js";
 
 /** Why a value is not in a format's grammar. */
@@ -41,10 +45,14 @@ export interface TeloFormatEntry {
 }
 
 const CHECKERS: Readonly<Record<string, TeloFormatChecker>> = {
+  cpe: cpeChecker,
   "css-selector": cssSelectorChecker,
   "language-tag": languageTagChecker,
   "message-pattern": messagePatternChecker,
+  "package-url": packageUrlChecker,
   "re2-pattern": re2PatternChecker,
+  "vcs-revision": vcsRevisionChecker,
+  "vcs-url": vcsUrlChecker,
 };
 
 const ENTRY_KEYS = new Set(["name", "grammar", "standIn", "description", "conformance"]);

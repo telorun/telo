@@ -66,6 +66,7 @@ function sourceFor(options: { url?: string; sha256?: string; pinned?: boolean } 
     sources: {
       lib: {
         version: "1.0.0",
+        purl: "pkg:generic/lib",
         url: options.url ?? `${base}/lib-{version}.tgz`,
         archive: "tar.gz",
         notices: ["./LICENSE"],
@@ -205,6 +206,7 @@ describe("ensureStagedEntry", () => {
       sources: {
         other: {
           version: "1.0.0",
+          purl: "pkg:generic/other",
           url: `${base}/lib-{version}.tgz`,
           archive: "tar.gz",
           notices: ["./LICENSE"],

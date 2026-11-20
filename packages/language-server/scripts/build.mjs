@@ -15,7 +15,7 @@
 //
 // `--published` (the `prepack`) builds the engine that ships: the version modules
 // it inlines — its own, the analyzer's and cel's — are substituted at bundle time
-// with their published sources (`generate-telo-version.mjs`'s `versionModules`),
+// with their published sources (`generate-telo-version.mjs`'s `publishedVersionPlugin`),
 // so the bundle embeds exactly the line's version and no other package's source
 // tree is written.
 
@@ -24,7 +24,7 @@ import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { builtinModules } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { VERSION_MODULES, versionModules } from "../../../scripts/generate-telo-version.mjs";
+import { publishedVersionPlugin } from "../../../scripts/generate-telo-version.mjs";
 import { bundleEscapes } from "./bundle-guard.mjs";
 
 const PACKAGE = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -40,22 +40,6 @@ export async function checkProtocolGeneration() {
         `engine by this field — set it to the generation the engine speaks.`,
     );
   }
-}
-
-/** An esbuild plugin answering each inlined version module with its published source. */
-function publishedVersionModules() {
-  const sources = versionModules({ published: true });
-  const byPath = new Map(
-    ["analyzer", "cel", "languageServer"].map((key) => [join(VERSION_MODULES[key].pkg, VERSION_MODULES[key].file), sources[key]]),
-  );
-  return {
-    name: "published-version-modules",
-    setup(context) {
-      context.onLoad({ filter: /(telo-version|engine-version)\.ts$/ }, (args) =>
-        byPath.has(args.path) ? { contents: byPath.get(args.path), loader: "ts" } : undefined,
-      );
-    },
-  };
 }
 
 /** Bundle the engine to `outfile`, with its metafile beside it, and refuse it
@@ -77,7 +61,7 @@ export async function bundleEngine(outfile, { published = false } = {}) {
     logLevel: "warning",
     metafile: true,
     absWorkingDir: PACKAGE,
-    plugins: published ? [publishedVersionModules()] : [],
+    plugins: published ? [publishedVersionPlugin()] : [],
   });
   writeFileSync(outfile.replace(/\.mjs$/, ".meta.json"), JSON.stringify(metafile, null, 2) + "\n");
   const escapes = bundleEscapes(readFileSync(outfile, "utf8"));

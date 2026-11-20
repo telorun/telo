@@ -1,5 +1,5 @@
 ---
-description: "v1.0 spec: the layered module artifact — how a published Telo module is partitioned into layers, how the pinned layer index addresses and verifies them, and how a runtime selects the layers it needs"
+description: "v1.0 spec: the layered module artifact — how a published Telo module is partitioned into layers, how the pinned layer index addresses and verifies them, how a runtime selects the layers it needs, and the bill of materials every artifact carries"
 ---
 
 # Telo Module Artifact Specification (v1.0)
@@ -17,7 +17,8 @@ The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHOULD**, **SHOULD NOT**,
 
 **In scope:** the layer model and roles, the selector grammar and its matching
 rule, the `layers:` index shape, addressing and verification, the OCI mapping,
-materialization semantics, and the modules a module ships inside its artifact.
+materialization semantics, the modules a module ships inside its artifact, and
+the artifact's bill of materials (§7).
 
 **Out of scope:** how an author's `files:` / `assets:` patterns are matched (a
 publisher concern), controller loading and the `pkg:` PURL grammar (see the
@@ -41,13 +42,19 @@ Every layer has exactly one **role**:
 | `browser` | zero or more | the built ES modules of every `exports.browser:` entry sharing one selector, with the files built beside each (§1.3) — code a page imports and no kernel does |
 | `assets` | zero or one | the files the author claimed via `assets:` |
 | `common` | zero or one | every remaining file `files:` selected |
+| `sbom` | zero or one | `sbom.cdx.json`, the artifact's bill of materials (§7) — a layer that **describes the artifact and holds no module file** |
 
 `telo.yaml` MUST be its own layer. Without that, reading a manifest would pull
 the whole artifact and selective fetch would be defeated at the first step.
 
 A `controller`, `library`, `native` or `browser` layer MUST carry a selector (§2),
-and there is at most one layer of each such role per selector. `assets` and
-`common` are singletons and MUST NOT carry one.
+and there is at most one layer of each such role per selector. `assets`,
+`common` and `sbom` are singletons and MUST NOT carry one.
+
+A layer of a role that describes the artifact and holds no module file —
+`sbom` alone today — is never extracted into a module directory (§5.2). A
+publisher MUST give every artifact it publishes with a `layers:` index an
+`sbom` layer.
 
 ### 1.1 Why `library` is its own role
 
@@ -92,6 +99,12 @@ bytes into a new version of the module and of everything importing it. The
 notice files each source names are part of the payload and belong in the
 `common` layer. A publisher MUST refuse a staged file whose bytes or execute bit
 do not match its pin.
+
+**Authoring-input blocks.** The blocks a publisher removes from the published
+`telo.yaml` are, today, `sources:` alone. A tool that judges a module as a
+consumer's runtime reads it — a runtime-requirement measurement above all — MUST
+leave every block on this list out, since no consumer ever reads one. A block
+added to this list is added here, and nowhere else.
 
 A file named `LICENSE` at the module root is the module's own license text. A
 publisher MUST include it whether or not `files:` selects it, and place it in
@@ -322,7 +335,7 @@ Each entry has:
 
 | Field | Required | Meaning |
 | --- | --- | --- |
-| `role` | yes | one of `controller`, `library`, `native`, `browser`, `assets`, `common` |
+| `role` | yes | one of `controller`, `library`, `native`, `browser`, `assets`, `common`, `sbom` |
 | `selector` | on `controller`, `library`, `native` and `browser` only | §2 |
 | `blob` | yes | the layer's transport blob digest, `sha256:` + 64 lowercase hex |
 | `integrity` | yes | the layer's content digest, `sha256-` + 43 base64url characters |
@@ -524,6 +537,9 @@ offending entry's module-relative path and why — for a link, whether its targe
 escapes the module, points at a directory, ships in another layer, or names
 nothing.
 
+A layer of a role that describes the artifact (§1) is the exception: it is
+never extracted into a module directory, but stored as §5.2 says.
+
 ### 5.1 When each layer is materialized
 
 - The **manifest** layer is materialized when the module is resolved.
@@ -554,9 +570,45 @@ nothing.
 - The **assets** layer and the **common** layer are materialized on the first
   module-relative file access. Assets alone is not sufficient — see §1.2.
 
+- The **sbom** layer is never materialized by a run. A cache warm (`telo
+  install`, `telo package`) stores it (§5.2) whatever the target, and a reader
+  of the record reads it from the store when present and otherwise fetches that
+  layer alone.
+
 A module whose assets are never read MUST NOT have its `assets` layer fetched. A
 runtime MUST NOT materialize payload layers as a side effect of reading a manifest:
 static analysis of a module reads its manifest and touches no payload.
+
+### 5.2 The layer store
+
+A layer of a role that describes the artifact is fetched and verified as §3.3
+requires and then extracted into `<cache root>/layers/sha256-<blob hex>/`,
+keyed by its `blob` digest — never into a module directory. Two modules sharing
+one directory (a nested file manifest beside its owner, §6.4) each have such a
+layer, holding a file at the same in-layer path, so a module directory could
+hold only one of them.
+
+`<cache root>` is the root the cache already resolves to: `TELO_CACHE_DIR`,
+else the directory holding the workspace marker, else the entry's `.telo`, and
+in a packaged application's payload its sealed `cache/`, whose analysis key
+covers `cache/layers/`. An implementation:
+
+- MUST write the directory under a private temporary name and rename it into
+  place, so a directory that exists is complete — its presence is the
+  completion record, and no lock is taken;
+- MUST re-derive the layer's `integrity` from that directory alone before
+  reading it, and on a mismatch MUST remove the directory and fetch the layer
+  again;
+- MUST refuse an entry whose path leaves the directory, and apply the
+  entry-path and link rules of §5 to the layer as a whole.
+
+A **packaged local module's** record — a module no registry holds — lives in the
+same store, in the payload's sealed `cache/`, and the payload index references it
+by the layer entry of `packaged-application.md` §3. Its reader never removes or
+rewrites a copy there: a directory that is missing or whose integrity does not
+re-derive is a refusal naming the module and the executable, not a layer to fetch.
+A sealed root consulted for an artifact's layer that it lacks or that no longer
+verifies is left as it is, and the layer is fetched into the working cache root.
 
 ## 6. Nested modules
 
@@ -648,3 +700,184 @@ serialized per directory (§5), which covers a nested file manifest sharing its
 parent's directory. Module-relative resolution — `ctx.resolveModuleFile`,
 `!include-*`, `!module-path` — resolves against that directory, as it does for
 a module on disk.
+
+## 7. The bill of materials
+
+Every artifact published with a `layers:` index carries one `sbom` layer whose
+one file, at the layer's root, is `sbom.cdx.json`: a CycloneDX 1.6 JSON
+document (`application/vnd.cyclonedx+json; version=1.6`) listing the
+third-party components the artifact's own payload ships, as the producers that
+built the payload reported them. The layer is listed in the pinned `layers:`
+index and pushed before the manifest layer (§3.4), so the chain from the import
+pin to `telo.yaml` to the layer's digest proves the record is the artifact's
+own. A nested module (§6) carries its own `sbom` layer in its own index,
+covering its own payload alone. This section is an additive amendment of v1.0:
+an older runtime skips the role under §3.1.
+
+### 7.1 The stored record
+
+The record is a function of the payload and holds no fact that depends on where
+the artifact lives. It MUST hold:
+
+- `bomFormat` `CycloneDX`, `specVersion` `1.6`, `version` `1`;
+- `metadata.component`, the **subject**: `type` — `library` for a
+  `Telo.Library`, `application` for a `Telo.Application`, `data` for a
+  `Telo.Builtins` archive — `name` (the module's `metadata.name`), `version`
+  (its `metadata.version`, omitted when it has none) and `licenses` (from
+  `metadata.license`; a `Telo.Builtins` archive's is `MIT`);
+- `components`: one per package, version and revision, `type` `library`, with
+  `bom-ref` and `purl` both the package URL with its version
+  (`pkg:npm/%40napi-rs/canvas@1.0.10`), `name` (the purl's namespace and name,
+  percent-decoded and joined by `/`), `version`, `cpe` when a producer gave one,
+  `licenses` when a producer gave one, and one `telo:layer` property per layer
+  the component occurs in. A component whose declaration has `vcs` carries it in
+  its purl as the purl specification's `vcs_url` qualifier, valued
+  `<url>@<revision>` and written in the canonical form of §7.5:
+
+  ```
+  pkg:generic/sqlite@3.51.3?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Fsqlite%2Fsqlite%40a5333afb9ad1aa473f8963b92caeaa955f47dc74
+  ```
+
+  Nothing else is added for it. A declared purl carries no `vcs_url` (the
+  `package-url` format refuses one), so every such qualifier in a record comes
+  from a declared `vcs` whose revision the publisher proved reachable. A reader
+  turning a component into lookup input takes the qualifier out of the purl and
+  splits its decoded value at its only `@` into the repository and the commit;
+- `dependencies`: one `{ ref, dependsOn }` per package that contains another
+  component, naming the components it contains.
+
+It MUST NOT hold a subject `bom-ref`, hashes, module nodes, a `serialNumber`
+or a timestamp: the pin hashes `telo.yaml`, which lists the record's
+integrity, and a nested module's location is its parent's digest, so neither
+can be written into the record.
+
+A license is written as `{ "license": { "id": … } }` when it is a single
+identifier (`[A-Za-z0-9.+-]+`, other than `UNLICENSED`), as `{ "expression": … }`
+when it is an SPDX expression joining identifiers with `AND`, `OR` or `WITH`,
+and as `{ "license": { "name": … } }` otherwise.
+
+### 7.2 Producers
+
+The record is the union of what the producers of the payload report. Reports of
+one purl — qualifiers included — and version merge into one component carrying
+every occurrence and the first license and CPE any report gave, so two
+revisions of one version are two components. A publisher MUST verify that each
+revision it writes is reachable from a branch or tag of its repository before
+writing it. Publishing and deriving a record for
+a module on disk run the same producers.
+
+- **Bundles** (controller, library and browser builds). Every input
+  contributing bytes to an output — an input tree-shaken away contributes none —
+  is attributed by three ordered rules: (1) an input inside the artifact root
+  (the publish root: a nested module's input in its parent's tree is its own
+  code) and beneath no `node_modules` directory is the module's own code and is
+  not listed; (2) otherwise, walking up from the input's real path, the nearest
+  `package.json` declaring a `name` decides it — listed as `pkg:npm/<name>` at
+  its `version` with its license when it declares a `version`, unattributed
+  when it does not; a `package.json` declaring no `name` is passed over, and
+  beneath `node_modules` the walk never climbs above the innermost
+  `node_modules/<package>` or `node_modules/@<scope>/<package>` directory;
+  (3) an input the walk attributes to nothing is unattributed. An unattributed
+  input makes its layer incomplete (§7.3). Specifiers a build leaves external
+  (the runtime's own packages, a sibling module's declared specifier, a browser
+  entry's host-supplied `external`) contribute no input and are not listed.
+- **Staging.** Each `sources:` entry with a `purl` — never carrying a `vcs_url`
+  qualifier, which only its `vcs` produces — reports itself
+  (`<purl>@<version>`, with its `cpe` and `vcs`) in every layer one of its staged
+  entries lands in, and each of its `contains` entries as a component in the
+  same layers, with its `cpe` and `vcs`, and a dependency from the source to it. A source's own notices are
+  the module's files and give no occurrence.
+- The module's own authored files — `assets:` / `files:` / `common` content,
+  notices, embedded files, the manifest — are the module itself and are not
+  listed. The runtime running a command is never listed.
+
+### 7.3 Incompleteness
+
+Compiled code the manifest declares that no producer reported makes the record
+incomplete: a `native:` file, or a controller or `exports.code:` entry point, that
+no build produced and no source with a `purl` stages; a staged entry of a
+source without a `purl` (`build:`); a bundle input no package claims. The
+subject then carries one `telo:incomplete` property per such layer. A reader
+MUST treat a record carrying `telo:incomplete` as no complete record of the
+module, so a new controller format fails closed until a producer covers it.
+
+### 7.4 Occurrence properties
+
+A `telo:layer` (on a component) or `telo:incomplete` (on the subject) property's
+value names one layer of the artifact: `role=<role>`, then, when the layer has
+a selector, `;` and the selector's canonical key (§2.2):
+
+```
+role=controller;format=js
+role=native;abi=node-141;arch=arm64;format=node;os=darwin
+role=assets
+```
+
+Every value, minus its `role=` pair, MUST equal the canonical key of a selector
+in the module's `layers:` index, or be empty for a selector-less layer.
+
+A local module that is packaged into an executable has no `layers:` index. Its
+record's values name the layers the module would publish each file in, from the
+partition `telo publish` would make, and the record keeps only the layers whose
+selector matches the platform the payload was packaged for.
+
+### 7.5 Canonical serialization
+
+The record's bytes — and those of every document a reader composes from records
+(§7.7) — are written one way, so republishing an unchanged module yields the
+same digest:
+
+- every array is ordered in UTF-16 code-unit order: `components` by `bom-ref`,
+  `properties` by `name` then `value`, `dependencies` by `ref`, `dependsOn` and
+  `compositions[].assemblies` by value, and any other array by each element's
+  canonical serialization;
+- every purl a writer composes (a component's `bom-ref` and `purl`, every
+  reference to one) writes its qualifiers in canonical form: keys lower-case and
+  sorted in UTF-16 code-unit order, and every octet of a value outside
+  `A–Z a–z 0–9 - . _ ~` percent-encoded with upper-case hexadecimal digits;
+- every member whose value is an empty array (`components`, `dependencies`,
+  `dependsOn`, `properties`, `licenses`, …) is omitted; an array's entries never
+  are, so a dependency with nothing beneath it is written `{ "ref": … }`;
+- the result is serialized as RFC 8785 (JSON Canonicalization Scheme — object
+  keys in UTF-16 code-unit order, ECMAScript number and string serialization,
+  no insignificant whitespace) followed by one line feed.
+
+The sibling list of §1.3 is written the same way. The vectors every writer
+answers are `analyzer/bill-of-materials-conformance/`.
+
+### 7.6 The reserved path
+
+`sbom.cdx.json` is the record's. A publisher MUST refuse a module in which an
+`!include-*` or `!module-path` tag, a `files:` / `assets:` pattern, a `native:`
+entry, a code entry or a staged file puts an author's file at that path,
+relative to the module's own root, naming it:
+
+```
+./sbom.cdx.json is the path the module's bill of materials is written to. Rename
+the file or leave it out of `files:`.
+```
+
+### 7.7 What a reader adds
+
+A reader composing records into one document (`telo sbom`, `telo module sbom`)
+adds what the stored record cannot hold:
+
+- the subject's and each module node's `bom-ref`: its integrity pin as
+  `imports:` writes it (`sha256-<base64url>`); a local module never published
+  uses its path relative to the entry's directory (`./`, `./modules/billing`),
+  with `#` and `%` percent-encoded. Module nodes carry no `hashes`;
+- one module node (`type` `library`, `name`, `version`, `licenses`) per pinned
+  import and per nested module, read from the published `telo.yaml`; one pin
+  yields one node however many imports reach it, and a dependency edge from its
+  importer;
+- each module's components, never merged across modules: a component's
+  `bom-ref` becomes `<module bom-ref>#<component bom-ref>`, the record's
+  `dependencies` are re-keyed to those references, and each module node
+  `dependsOn` the components of its own record that no other of them contains;
+- a module with no complete record marked `incomplete` in `compositions`
+  (`{ "aggregate": "incomplete", "assemblies": [<module bom-ref>] }`) when the
+  reader is asked to go on past it;
+- `serialNumber`: `urn:uuid:` and a name-based UUID (version 5, RFC 9562) in the
+  namespace `6e26d710-2125-542e-9bcb-b7aee122a299` (the version-5 UUID of
+  `https://telo.run/sbom` in the URL namespace) over the canonical bytes (§7.5)
+  of the composed document with `serialNumber` left out.

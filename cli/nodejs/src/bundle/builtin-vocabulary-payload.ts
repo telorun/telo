@@ -1,16 +1,18 @@
-import { readBuiltinVocabulary, type ArtifactLayer } from "@telorun/analyzer";
+import { readBuiltinVocabulary, serializeModuleRecord, type ArtifactLayer } from "@telorun/analyzer";
 import { defaultTransportRegistry, readPayloadFile, type PayloadLayer } from "@telorun/kernel";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { PublishFailure } from "../publish-failure.js";
 import type { BuiltLayer } from "./built-layers.js";
+import { billOfMaterialsLayer } from "./module-bill-of-materials.js";
 import type { Partition } from "./partition-layers.js";
 import { MODULE_LICENSE_FILE } from "./select-files.js";
 
 /**
  * The published payload of a built-in vocabulary archive (`Telo.Builtins`,
- * `kernel/specs/builtin-vocabulary.md`): a manifest-only artifact whose one
- * other layer is `common`, carrying the MIT `LICENSE` beside the archive.
+ * `kernel/specs/builtin-vocabulary.md`): a manifest-only artifact whose other
+ * layers are `common`, carrying the MIT `LICENSE` beside the archive, and
+ * `sbom`, its record of type `data` listing no components.
  *
  * None of a module's payload rules apply — there is no import to canonicalize,
  * no controller to build, nothing staged and no `requires:` — and the manifest
@@ -68,8 +70,22 @@ export async function builtinVocabularyPayload(
 
   const transport = defaultTransportRegistry().forRef(destination);
   if (!transport) throw new Error(`no transport owns publish destination '${destination}'`);
+  // The archive ships no code, so its record lists the archive alone.
+  const metadata = (reading.vocabulary.root.metadata ?? {}) as { name?: unknown };
+  const record = serializeModuleRecord({
+    subject: {
+      type: "data",
+      name: typeof metadata.name === "string" ? metadata.name : "",
+      version: reading.vocabulary.version,
+      license: "MIT",
+    },
+    components: [],
+    contains: [],
+    incomplete: [],
+  });
   const layers: BuiltLayer[] = [
     { role: "common", files: [await readPayloadFile(dir, MODULE_LICENSE_FILE)] },
+    billOfMaterialsLayer(record),
   ];
   const index = await transport.layerIndex(layers as PayloadLayer[]);
   return {

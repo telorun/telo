@@ -9,10 +9,9 @@ metadata:
   categories: [AI]
   description: |
     Recognize Dutch text in images, offline: the trained model for reading
-    printed Dutch (Latin script) with Tesseract optical character recognition.
-    Import it and hand its one ready-made model to a recognizer, beside any other
-    languages a page mixes. Packaged from the integer-quantized best models of the
-    tesseract-ocr project.
+    printed Dutch (Latin script) with Tesseract optical character recognition, ready to
+    hand to a recognizer beside any other languages a page mixes. Packaged from the
+    integer-quantized best models of the tesseract-ocr project.
 requires: { telo: ">=0.133.0" }
 restrictions:
   - requires: { telo: ">=0.100.0" }
@@ -21,10 +20,10 @@ imports: { TesseractModel: ../../tesseract-model }
 exports: { resources: [nld] }
 assets: [./tessdata/]
 sources:
-  # The package carries no notice of its own; the checked-in one is the Apache-2.0
-  # notice of tesseract-ocr/tessdata.
+  # The package carries no notice; the checked-in one is tesseract-ocr/tessdata's.
   tessdata:
     version: 1.0.0
+    purl: pkg:npm/%40tesseract.js-data/nld
     url: https://registry.npmjs.org/@tesseract.js-data/{upstream}/-/{upstream}-{version}.tgz
     archive: tar.gz
     notices: [./notices/tessdata.LICENSE]

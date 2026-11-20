@@ -26,9 +26,10 @@
 // package the checkout holds — an image's build context holds only some. Run
 // from one of the four packages (its `build`, or its `prepack` with
 // `--published`) it writes that package's module alone, so a pack writes only
-// inside the package being packed. The language server inlines the analyzer's
-// and cel's modules into its bundle; its published bundle takes them from
-// `versionModules` at bundle time instead of from their source trees.
+// inside the package being packed. A published bundle that inlines version
+// modules (the language server's engine, the VS Code extension) takes them from
+// `publishedVersionPlugin` at bundle time instead of from their source trees,
+// which a build made before the last version bump may have left stale.
 //
 // Every destination is gitignored AND must stay untracked — `.gitignore` has no
 // effect on a tracked file, so committing one would turn it into a second place
@@ -93,6 +94,21 @@ export const ENGINE_VERSION = ${JSON.stringify(identity)};
 /** This runtime's identity. */
 export const TELO_RUNTIME_VERSION = ${JSON.stringify(identity)};
 `,
+  };
+}
+
+/** An esbuild plugin answering every version module, read from its source tree,
+ *  with its published source as the tree records it now. */
+export function publishedVersionPlugin() {
+  const sources = versionModules({ published: true });
+  const byPath = new Map(Object.entries(VERSION_MODULES).map(([key, { pkg, file }]) => [join(pkg, file), sources[key]]));
+  return {
+    name: "published-version-modules",
+    setup(context) {
+      context.onLoad({ filter: /-version\.ts$/ }, (args) =>
+        byPath.has(args.path) ? { contents: byPath.get(args.path), loader: "ts" } : undefined,
+      );
+    },
   };
 }
 

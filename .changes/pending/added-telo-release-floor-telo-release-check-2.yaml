@@ -1,0 +1,7 @@
+units:
+  cli: Added
+body: telo release floor, telo release check and the telo publish preflight blank the
+  authoring-input blocks (sources:) of the measured module and of every sibling it
+  imports by relative path, measuring each as it is published, in a scratch tree that
+  links no .telo cache directory and needs no privilege to build on Windows, with the
+  published CLI pointed at the real cache through TELO_CACHE_DIR.

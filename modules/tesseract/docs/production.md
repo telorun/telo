@@ -65,3 +65,11 @@ retry:
 ## Logging
 
 Each call logs its format, duration and word count at `debug`. Each engine replacement logs at `warn` with its cause, and a replacement that cannot start at `error`. Everything the engine itself prints is captured per call and never reaches the process's output; a decoder's report becomes the `ERR_UNSUPPORTED_IMAGE` message.
+
+## Engine builds and bundled components
+
+The module stages the full `tesseract.js-core` builds rather than the smaller `-lstm` ones, because orientation and script detection runs on the legacy engine those omit; recognition itself is LSTM-only either way.
+
+`tesseract.js-core` compiles Tesseract and Leptonica to WebAssembly, so the module declares both under `contains:` for vulnerability scanning. The versions are what its pinned third-party sources build: Tesseract is a fork whose `VERSION` file reads 5.3.0 (the binary reports a `git describe` string, `5.1.0-288-g2a9c1`, from a stale tag), and Leptonica is 35 commits past its 1.82.0 release, labelled 1.83.0 in development.
+
+It also builds giflib, libjpeg, libpng, libtiff, libwebp, openlibm and zlib, and every one is declared under `contains:` with the repository and commit of `tesseract.js-core` v7.0.0's submodule pin (`vcs:`), so `telo audit` and the hub check each by commit against OSV. Each version is a release: the newest one that commit's history contains, never the unreleased version the source reports at it — libpng is `1.6.37` though its `png.h` reads `1.6.38.git`, leptonica `1.82.0` though its `configure.ac` names `1.83.0`, and openlibm `0.8.1`, the tag at its commit, though its `Make.inc` still names `0.8.0` — so a scanner matching by version assumes no fix the commit lacks; each CPE names that release as the NVD lists it (openlibm has none, so it declares none). Tesseract is declared under the Balearica fork it is really built from, never under `tesseract-ocr/tesseract`: OSV records no advisory against the fork, so `telo audit` reports it `COMPONENT_UNCHECKED`, as it does openlibm, giflib's mirror and libjpeg's, whose repositories OSV records nothing about. Revisit every entry when `sources.core.version` moves.

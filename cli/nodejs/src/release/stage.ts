@@ -10,6 +10,8 @@
  * written until the edited text reads back with exactly the pins computed.
  */
 
+import type { CommitHistoryReader } from "../commit-reachability/commit-history.js";
+import { checkDeclaredRevisions, declaredRevisions } from "../commit-reachability/declared-revisions.js";
 import {
   applyTextEdits,
   isModuleKind,
@@ -313,11 +315,22 @@ function replaceFile(file: string, text: string): void {
  */
 export async function stageModule(
   target: StageTarget,
-  options: { pin: boolean; archives: ArchiveReader },
+  options: {
+    pin: boolean;
+    archives: ArchiveReader;
+    /** Checks every declared `vcs:` revision against its repository's history, as publish does. */
+    revisions?: CommitHistoryReader;
+  },
 ): Promise<StageResult> {
   const failures: StageFailure[] = [];
   const moduleDoc = readModuleDoc(target, failures, options.pin);
   if (!moduleDoc) return { outcomes: [], failures };
+  if (options.revisions) {
+    for (const finding of await checkDeclaredRevisions(declaredRevisions(moduleDoc.sources), options.revisions)) {
+      failures.push({ module: target.key, message: `${finding.code}  ${finding.message}` });
+    }
+    if (failures.length > 0) return { outcomes: [], failures };
+  }
   if (!options.pin) return stageSources(target, moduleDoc.sources, options.archives);
 
   const pins: PinnedEntry[] = [];

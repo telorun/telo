@@ -20,8 +20,8 @@ metadata:
   name: HubOrigin
   description: >-
     Reads a published Telo module from its own host: which versions exist with
-    each version's content digest, and a version's manifest with the metadata
-    the CLI derives from it.
+    each version's content digest, a version's manifest with the metadata the
+    CLI derives from it, and the third-party components a version ships.
 lifecycle: shared
 requires:
   # `resources:` inputs and `lifecycle:` on a library.
@@ -39,7 +39,7 @@ variables:
     items: { type: string }
     minItems: 1
     default: [telo]
-exports: { resources: [pinnedRef, moduleVersions, moduleManifest] }
+exports: { resources: [pinnedRef, moduleVersions, moduleManifest, moduleSbom, nestedManifest] }
 ---
 kind: Shell.Command
 metadata: { name: teloCli }
@@ -186,4 +186,165 @@ outputs:
   ok: !cel "steps.run.result.exitCode == 0"
   error: !cel "steps.run.result.exitCode == 0 ? '' : steps.run.result.stderr"
   payload: !cel "'payload' in steps ? steps.payload.result.docs[0] : {}"
+  docs: !cel "'docs' in steps ? steps.docs.result.docs : []"
+---
+# The third-party components one version ships, from the bill of materials its
+# artifact carries (`telo module sbom`). Components are reported by purl WITHOUT
+# the version, which is what an advisory database is asked by, and the version
+# beside it.
+#
+# `recorded` is false for an artifact with no record (published before the
+# layer, a direct file), which is an answer, not a failure; `complete` is true
+# only for a record that names no layer holding code no producer reported. A
+# local module is never read: its record is derived by running the module's own
+# builders, which a seed directory on the hub's disk need not have installed, so
+# its closure is simply not covered. Any other non-zero exit is a failure the
+# caller records, never read as "no components".
+#
+# `layers` is the `layers:` index of the manifest the caller already read: the
+# record is a layer of the artifact, so an index listing no `sbom` layer is that
+# same "no record" answer, given without starting a CLI process.
+kind: Telo.Sequence
+metadata: { name: moduleSbom }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      ref: { type: string }
+      version: { type: string }
+      # The `layers:` index of the manifest read at this address, [] when it has none.
+      layers: { type: array }
+      # A module nested in the artifact: its path, and the OCI digest of the
+      # artifact as resolved, which is what names it.
+      path: { type: string }
+      digest: { type: string }
+    required: [ref, version, layers]
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      ok: { type: boolean }
+      error: { type: string }
+      recorded: { type: boolean }
+      complete: { type: boolean }
+      components:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          # `vcsUrl` / `vcsRevision`: the record's `vcs_url` qualifier split at its
+          # `@`, both '' unless it splits into a vcs-url and a vcs-revision, as the
+          # analyzer's splitVcsQualifier reads it.
+          properties:
+            purl: { type: string }
+            version: { type: string }
+            cpe: { type: string }
+            vcsUrl: { type: string }
+            vcsRevision: { type: string }
+          required: [purl, version, cpe, vcsUrl, vcsRevision]
+    required: [ok, error, recorded, complete, components]
+steps:
+  - name: local
+    value: !cel "inputs.ref.startsWith('./')"
+  - name: layered
+    value: !cel "inputs.layers.exists(l, l.?role.orValue('') == 'sbom')"
+  - name: pinned
+    invoke: !ref pinnedRef
+    inputs:
+      ref: !cel "inputs.ref"
+      version: !cel "inputs.version"
+  # The module nested in the artifact is named by its parent's digest, never by
+  # the tag it was reached through.
+  - name: address
+    value: !cel >-
+      inputs.?path.orValue('') == ''
+        ? steps.pinned.result
+        : inputs.ref + '@' + inputs.digest + '/' + inputs.path
+  - name: read
+    if: !cel "!steps.local.result && steps.layered.result"
+    then:
+      - name: run
+        invoke: !ref teloCli
+        inputs:
+          args: !cel "variables.teloCommand + ['module', 'sbom', steps.address.result]"
+          timeoutMs: 120000
+      - name: parsed
+        if: !cel "steps.run.result.exitCode == 0"
+        then:
+          - name: record
+            invoke: !ref parseYaml
+            inputs:
+              text: !cel "steps.run.result.stdout"
+outputs:
+  ok: !cel >-
+    steps.local.result || !steps.layered.result || steps.run.result.exitCode == 0
+      || steps.run.result.stderr.contains('SBOM_INCOMPLETE')
+  error: !cel >-
+    steps.local.result || !steps.layered.result || steps.run.result.exitCode == 0
+      || steps.run.result.stderr.contains('SBOM_INCOMPLETE')
+      ? '' : steps.run.result.stderr
+  recorded: !cel "'record' in steps"
+  complete: !cel >-
+    'record' in steps
+      && !steps.record.result.docs[0].?metadata.?component.?properties.orValue([]).exists(p, p.name == 'telo:incomplete')
+  components: !cel >-
+    'record' in steps
+      ? steps.record.result.docs[0].?components.orValue([])
+          .filter(c, c.?purl.orValue('') != '')
+          .map(c, cel.bind(query, string(c.purl).split('#')[0].contains('?')
+                ? '&' + string(c.purl).split('#')[0].split('?')[1] : '',
+              cel.bind(encoded, query.contains('&vcs_url=') ? query.split('&vcs_url=')[1].split('&')[0] : '',
+                cel.bind(parts,
+                  encoded.matches(r'(?i)^([^%]|%[0-7][0-9a-f]|%(c[2-9a-f]|d[0-9a-f])%[89ab][0-9a-f]|%e0%[ab][0-9a-f]%[89ab][0-9a-f]|%(e[1-9a-c]|e[ef])(%[89ab][0-9a-f]){2}|%ed%[89][0-9a-f]%[89ab][0-9a-f]|%f0%(9[0-9a-f]|[ab][0-9a-f])(%[89ab][0-9a-f]){2}|%f[1-3](%[89ab][0-9a-f]){3}|%f4%8[0-9a-f](%[89ab][0-9a-f]){2})*$')
+                    ? urlDecode(encoded).split('@') : [],
+                  cel.bind(vcs,
+                    size(parts) == 2
+                      && parts[0].matches(r'^git\+https://[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*(:[0-9]{1,5})?(/([^/%@?#\s\x00-\x1f\x7f]|%[0-9A-Fa-f]{2})+)+$')
+                      && !parts[0].matches(r'/\.\.?(/|$)')
+                      && parts[1].matches(r'^([0-9a-f]{40}|[0-9a-f]{64})$')
+                      ? parts : ['', ''],
+                    {'purl': string(c.purl).split('@')[0], 'version': string(c.?version.orValue('')),
+                     'cpe': string(c.?cpe.orValue('')), 'vcsUrl': vcs[0], 'vcsRevision': vcs[1]})))))
+      : []
+---
+# The manifest documents of a module nested in an artifact, named by the
+# artifact's OCI digest and the module's path (`telo module manifest`'s text
+# form), so its own imports can be followed.
+kind: Telo.Sequence
+metadata: { name: nestedManifest }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties: { ref: { type: string }, digest: { type: string }, path: { type: string } }
+    required: [ref, digest, path]
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties: { ok: { type: boolean }, error: { type: string }, docs: { type: array } }
+    required: [ok, error, docs]
+steps:
+  - name: run
+    invoke: !ref teloCli
+    inputs:
+      args: !cel >-
+        variables.teloCommand + ['module', 'manifest', inputs.ref + '@' + inputs.digest + '/' + inputs.path]
+      timeoutMs: 120000
+  - name: parsed
+    if: !cel "steps.run.result.exitCode == 0"
+    then:
+      - name: docs
+        invoke: !ref parseYaml
+        inputs:
+          text: !cel "steps.run.result.stdout"
+outputs:
+  ok: !cel "steps.run.result.exitCode == 0"
+  error: !cel "steps.run.result.exitCode == 0 ? '' : steps.run.result.stderr"
   docs: !cel "'docs' in steps ? steps.docs.result.docs : []"

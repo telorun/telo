@@ -25,6 +25,8 @@ export { HttpTransport } from "./transports/http-transport.js";
 export { OciTransport } from "./transports/oci/oci-transport.js";
 export { OciClient } from "./transports/oci/oci-client.js";
 export { isOciRef, parseOciRef, type ParsedOciRef } from "./transports/oci/oci-ref.js";
+// The `TELO_EGRESS` policy every transport fetch follows, for a host fetching on its own.
+export { assertPublicEgress, EgressDeniedError } from "./transports/egress-guard.js";
 export {
   TransportRegistry,
   defaultTransports,
@@ -93,6 +95,18 @@ export {
   type BrowserBuildGroup,
   type BuiltBrowserGroup,
 } from "./controller-loaders/browser-bundle-builder.js";
+export {
+  attributeBundleInputs,
+  type BundleAttribution,
+  type BundledPackage,
+} from "./controller-loaders/bundle-attribution.js";
+export {
+  LAYER_STORE_DIRECTORY,
+  materializeStoredLayer,
+  readStoredLayer,
+  storedLayerDirectory,
+  type LayerFetcher,
+} from "./bundle/layer-store.js";
 export type {
   PayloadLayer,
   PublishBundle,

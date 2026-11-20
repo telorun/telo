@@ -10,6 +10,7 @@ import {
   celEvalSites,
   declaredCelViewAt,
   declaredViewPaths,
+  decodedSchemaDefault,
   evalPathCovers,
   implicitEvalSites,
   mergeCelEvalSites,
@@ -146,8 +147,9 @@ function declaresDefaults(schema: unknown): boolean {
 /**
  * `value` with every `default:` its schema declares filled in where the value
  * leaves the property out — at every depth AJV's `useDefaults` reaches: nested
- * objects the value holds and array items. Copies what it changes, and never
- * descends into a compiled expression or a live instance.
+ * objects the value holds and array items, each decoded as its literal would be.
+ * Copies what it changes, and never descends into a compiled expression or a live
+ * instance.
  */
 function withSchemaDefaults(value: unknown, schema: unknown): unknown {
   if (!schema || typeof schema !== "object") return value;
@@ -164,7 +166,7 @@ function withSchemaDefaults(value: unknown, schema: unknown): unknown {
   for (const [key, prop] of Object.entries(s.properties as Record<string, any>)) {
     if (!prop || typeof prop !== "object") continue;
     if (out[key] === undefined) {
-      if ("default" in prop) out[key] = structuredClone(prop.default);
+      if ("default" in prop) out[key] = decodedSchemaDefault(prop);
       continue;
     }
     out[key] = withSchemaDefaults(out[key], prop);

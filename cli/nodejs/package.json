@@ -54,6 +54,7 @@
     "@telorun/glob": "workspace:*",
     "@telorun/ide-support": "workspace:*",
     "@telorun/kernel": "workspace:*",
+    "@telorun/osv": "workspace:*",
     "@telorun/release": "workspace:*",
     "@telorun/runner-protocol": "workspace:*",
     "@telorun/sdk": "workspace:*",

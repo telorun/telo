@@ -1,0 +1,5 @@
+units:
+  modules/sqlite: Added
+body: The SQLite that better-sqlite3 embeds is declared with the commit of its tag
+  version-3.51.3 in github.com/sqlite/sqlite, so telo audit and the hub check it against
+  OSV by commit.

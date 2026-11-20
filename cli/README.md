@@ -138,6 +138,7 @@ The cache lives under the **cache root** — `.telo/` beside the manifest, or be
 - `.telo/controller-src/` — bundles built from a **local** module's controller sources. Only ever written for a module that is a working copy on disk: a published module ships a prebuilt bundle in its artifact and never reaches this path. Each entry is named by a digest of every input the build read, so an edit anywhere in the source graph yields a new entry rather than invalidating one.
 - `.telo/manifests/oci/<host>/<repo…>/<tag>/telo.yaml` — manifests imported from an OCI registry by tag; a digest reference is cached under `…/sha256-<hex>/telo.yaml` (`:` cannot be written on Windows), and a library shipped inside an artifact at its path in the manifest layer below it (`…/sha256-<hex>/chat/telo.yaml`, `…/sha256-<hex>/ordering.yaml`). A tag spelled `sha256-<64 hex>` is refused.
 - `.telo/manifests/url/<host>/<pathname>` — manifests imported via raw HTTP URLs.
+- `.telo/layers/sha256-<hex>/` — layers that describe an artifact rather than ship module files (today the `sbom` layer, the module's bill of materials), keyed by the layer's blob digest. `telo install` and `telo package` store every imported module's here; a module directory never holds one.
 - `.telo/manifests/.origins.json` — for each cached import named by a **mutable tag**, the OCI manifest digest that produced the copy. `telo check` revalidates against it with one `HEAD` per reference, and a run reads it to identify the libraries shipped inside a cached artifact; a pinned import needs no entry for `check`, since its bytes are verified against the ref's own hash.
 
 Every manifest entry is keyed `<transport>/<host>/<path…>/<version>/<file>`, the same grammar the
@@ -431,6 +432,8 @@ telo publish ./modules/my-module/telo.yaml --dry-run
 telo publish ./modules/my-module/telo.yaml --skip-controllers
 ```
 
+**Declared revisions.** Before anything is built, every `vcs:` revision a `sources:` block declares — the module's and each library's nested inside its directory — is read against the history of its repository over HTTPS, with no local git: a commit is accepted only when a branch or tag of `vcs.url` reaches it, since the module's bill of materials makes that commit what OSV is asked about. One no branch or tag reaches is `SOURCE_REVISION_UNREACHABLE` at its `vcs.revision` line (`sources.<name>.contains[<i>].vcs.revision <sha> is not reachable from any branch or tag of <repository>. Write the commit the staged files were built from, and the repository whose history holds it.`); a host that gives no history — it does not speak git's version 2 protocol, offers no commits-only fetch, or fails after retries — is `SOURCE_REPOSITORY_UNREADABLE`, naming the host and the cause. Either exits 1 and pushes nothing. `telo release stage` runs the same check.
+
 **Shipping files with `files:`**
 
 A `Telo.Application` or `Telo.Library` may declare a `files:` list to ship files
@@ -473,6 +476,15 @@ assets:
 Omitting it is safe — the files still ship and still resolve, they are just
 fetched alongside the module's controllers instead of on demand.
 
+Every published artifact also carries an `sbom` layer holding `sbom.cdx.json`,
+the module's bill of materials: the third-party packages its bundles inline and
+its `sources:` stage, each with the layers it occurs in, in CycloneDX 1.6. It is
+written by publish, never by you. `./sbom.cdx.json` is reserved, so a module
+whose `files:`, `assets:`, `native:` entries, code entries or embedded files
+name a file of its own at that path is refused, as `telo package` refuses it
+for a local module. The partition printout names each bundled file no package
+claims; the record marks its layer incomplete.
+
 `telo run` materializes layers on demand, so nothing has to be pre-fetched.
 `telo install` pre-fetches everything for one platform so a later run needs no
 network; pass `--platform os/arch[/libc]` (e.g. `linux/arm64/musl`) when baking an
@@ -493,7 +505,7 @@ A version that is already published can be pushed again only when it produces an
 
 ### `telo package <manifest>`
 
-Build a single executable that runs one application on a machine with no Node.js, no telo and no network. The file is the released `telo` binary for the chosen platform with the application's payload inside it: the manifest, every local file its graph reaches, and the whole resolved import closure, already warmed.
+Build a single executable that runs one application on a machine with no Node.js, no telo and no network. The file is the released `telo` binary for the chosen platform with the application's payload inside it: the manifest, every local file its graph reaches, the whole resolved import closure, already warmed, and a software bill of materials for each local module (read by `telo sbom` and `telo audit`).
 
 ```bash
 telo package ./telo.yaml --out dist/orders
@@ -516,6 +528,62 @@ A packaged binary is a manifest source: `telo describe ./orders`, `telo check ./
 
 Full guide: [Packaging an application](/learn/packaging-an-app).
 
+
+---
+
+### `telo sbom <manifest>`
+
+A software bill of materials (SBOM) is the list of every third-party component a piece of software ships, each with its exact version and package URL, which vulnerability scanners match against advisory databases. You need one when a scanner gates your CI, or when a customer or a regulator asks what your application contains. A Telo application usually declares no npm dependency of its own — the code its modules inline and the native files they ship appear in no lockfile — so its scanner has nothing to read until `telo sbom` writes the inventory.
+
+```bash
+telo sbom ./telo.yaml > brochure.cdx.json
+telo sbom ./telo.yaml --platform linux/amd64/gnu --abi node-141 > brochure.cdx.json
+telo sbom ./dist/orders --allow-incomplete > orders.cdx.json
+```
+
+It writes one CycloneDX 1.6 JSON document to stdout and a summary to stderr (`Brochure: 2 modules, 46 components, every selector`). The document covers the application's whole module closure: its own local modules, derived in place by the builders `telo publish` runs; every imported module's published record, for which only the module's `sbom` layer is read (from the cache `telo install` and `telo package` warm, otherwise fetched alone); the modules nested inside an artifact; and every child application a resource runs. A packaged executable is accepted wherever a manifest is, and its document covers the payload: each local module's record is read from the payload's own layer store (`telo package` writes it, for the packaged platform's layers only), nothing is built, and an edited or missing record is refused, naming the module and the executable, whatever the flags. Each module is a node, `bom-ref` its integrity pin (`sha256-…`), or for a module never published its path relative to the application's directory (`./`, `./modules/billing`); each module's components are listed beneath its own node, `<module bom-ref>#<component purl>`, never merged with another module's, so two modules inlining one package list it twice. The bytes are canonical: the same application gives the same document, serial number included.
+
+**Options:**
+
+- `--platform <os/arch[/libc]>` / `--abi <family>-<version>` — keep only what that target loads, spelled as on `telo install`. With neither, every selector is listed. A component's layer is kept when it has no selector or matches every axis the flags name; an axis the flags leave out keeps every value — unlike `telo install`, where a missing `--abi` skips every abi-specific layer. A component left in no layer is dropped; module nodes are always kept. `--platform linux/amd64/gnu` keeps both ABI variants of a native file, adding `--abi node-141` keeps one.
+- `--allow-incomplete` — write the document past each module that has no complete record (below), marking its node `incomplete` in the document's `compositions` and reporting it as a warning; the exit status is then 0.
+
+**What it refuses**, with nothing on stdout and exit status 1:
+
+- A graph `telo check` refuses: its diagnostics are printed on stderr, as `telo check` prints them. `--allow-incomplete` does not change this.
+- A local module whose build fails: the build's own error, at the definition whose controller did not build (`ERR_CONTROLLER_BUILD_FAILED`, naming the unresolved import). No flag lets it through — install the module's dependencies and run again.
+- **`SBOM_INCOMPLETE`**: a module with no complete record — published before records existed (no `sbom` layer, or no `layers:` index at all), published with a record carrying `telo:incomplete` for code no producer reported, a local module whose bundle inlines a file no package with a name and version claims (each such file is listed beneath the error), or a local module of a packaged executable whose payload records none (packaged by a telo that did not write one — package it again). It is reported at the `imports:` entry your own module wrote to reach it — a transitive one names the chain (`Billing (…) imports HttpServer (…), which was published without …`) — with the remedy for that depth: import a version published with one (`telo upgrade`), or upgrade the import that pins it, ask its publisher to republish, or pass `--allow-incomplete`. An inventory that silently left modules out would turn a green scanner gate into a false pass, so partial output has to be asked for.
+
+The diagnostics are written in `telo check`'s text format on stderr under either `-o` value; stdout holds the document or nothing.
+
+---
+
+### `telo audit <manifest>`
+
+Checks an application against known vulnerabilities. It builds the same module closure [`telo sbom`](#telo-sbom-manifest) builds — local modules derived in place, every imported module's record, nested modules, child applications — sends each component's package URL and version — and, for embedded code declaring one, the git repository and commit it is built from — to [OSV](https://osv.dev), and reports each advisory at the import carrying it, with the upgrade that would remove it. It contacts no hub: a local module, a private registry and an advisory published today are all judged.
+
+```bash
+telo audit ./telo.yaml
+telo audit ./telo.yaml --platform linux/amd64/gnu --abi node-141
+telo audit ./telo.yaml --osv-url https://osv.internal.acme.dev -o json
+```
+
+`--platform`, `--abi` and `--allow-incomplete` mean what they mean on `telo sbom`. A summary goes to stderr (`Brochure: 2 modules, 46 components checked, every selector`), naming the endpoint when it is not the default.
+
+**Five codes** come from it, each in `telo check`'s text format on stderr (and as `diagnostics` under `-o json`, the `telo check` envelope):
+
+- **`COMPONENT_VULNERABLE`** (error): one per advisory, anchored at the `imports:` entry of your module that reaches the carrying module — a component of the application's own module at its module document. It names the advisory, its aliases, its summary, its severity as OSV records it and the component's fixed versions — for an advisory matched by a component's commit, `Fixed by commit <sha> of <repository>` — then the upgrade hint. There is no severity threshold: many OSV records carry no severity, so one that has none fails too; accept an advisory instead (below). Under `-o json` each carries `advisory` (`id`, `aliases`, `summary`, `severity`, `component`, `fixed`), `chain` (`{ alias, source }` per import from your module to the carrying one) and `upgrade`.
+- **`COMPONENT_UNCHECKED`** (warning): a component OSV did not judge, reported at the import carrying it with its CPE. Either its package type is not matched by version and it declares no repository (`pkg:generic`, such as the SQLite an embedded binary links) — for a component of your own module the warning names where to declare `vcs:` (`sources.<name>.contains[<i>]`) — or it declares a repository OSV records no advisory against (a fork, a library nobody files advisories for), and the warning names the repository and commit: an empty answer for that revision is no verdict. It does not change the exit status. Hand `telo sbom`'s document to a scanner that matches by CPE (`telo sbom ./telo.yaml > app.cdx.json && grype sbom:app.cdx.json`).
+- **`SOURCE_REVISION_UNREACHABLE`** / **`SOURCE_REPOSITORY_UNREADABLE`** (errors): a local module's `vcs.revision` is reachable from no branch or tag of its `vcs.url`, or the host gave no history of the repository (it refused git's version 2 protocol, or failed after retries) — anchored at the `vcs.revision` line. The audit reads the repository's commits itself for a module on disk, as `telo publish` does before writing a record; the component is then looked up by its package URL alone.
+- **`ADVISORY_LOOKUP_FAILED`** (error, no location): OSV gave no answer after retries (a timeout, a failed connection, a 429 honouring `Retry-After` or a 5xx, with jittered backoff; at most 4 attempts of 30 s each and 120 s for the whole lookup). One failed request fails the run and no component is reported clean.
+
+**The upgrade hint.** For a component of an imported module the hint is what `telo upgrade` would do to the *direct* import reaching it — the version it selects, by the same newest-first walk and prerelease rule. That version's closure is read from the registry (only `sbom` layers, under the same platform filter) and checked in a second request. The hint says the upgrade removes the advisory (`upgrade.resolves: true`), or that the selected version still carries it and names the module that pins it (`false`: ask that publisher, or accept the advisory), or that it cannot tell and why (`null`: the candidate is unrecorded, or the registry did not answer). For a component of a local module it names the dependency, or the `sources:` entry, to raise (`upgrade: null`). A hint never changes the exit status, and an accepted advisory gets none.
+
+**Accepting an advisory.** The `audit:` block of the `telo-workspace.yaml` governing the application lists `ignore:` entries of `{ id, reason, expires }`, all required, `expires` a `YYYY-MM-DD` date. An entry matches an advisory whose id or any alias equals its `id`. A matched advisory is not an error: it is listed as ignored with its reason and expiry in the summary and as `ignored` in `-o json`. After `expires` the entry no longer applies and the advisory's `COMPONENT_VULNERABLE` names the expired entry and its position. A mistake inside `audit:` (`WORKSPACE_INVALID_VALUE`, `WORKSPACE_UNKNOWN_KEY`) refuses the run. See [Workspaces](/guides/workspaces).
+
+**The OSV endpoint** is `--osv-url`, else `TELO_OSV_URL`, else `https://api.osv.dev`; a value that is not an http or https URL refuses the invocation (exit 2). Every request of the run, the hint's included, goes there. There is no offline mode: offline, run `telo sbom` — answered from the cache `telo install` warms — into a scanner with a local database.
+
+**Exit status:** 0 when no `COMPONENT_VULNERABLE` remains; 1 on a `COMPONENT_VULNERABLE`, a `SOURCE_REVISION_UNREACHABLE` or `SOURCE_REPOSITORY_UNREADABLE`, an `SBOM_INCOMPLETE` without `--allow-incomplete` (no OSV request is sent), an `ADVISORY_LOOKUP_FAILED`, a graph `telo check` refuses, a local module whose build fails, or a mistake inside `audit:`; 2 for a refused invocation.
 
 ---
 
@@ -560,6 +628,7 @@ Inspect a module without importing it. `<ref>` is any form the runtime resolves:
 | `manifest` | The module's `telo.yaml`, verified against the inline hash when the ref is pinned; `--json` adds the version read (`ref`), the pin an `imports:` entry writes (`integrity`, `sha256-<base64url>`) and, for an application, its contract (`application`) — each `variables:` / `secrets:` / `ports:` entry with `required` (some configuration of the application requires it), `requiredWhen` (the configurations that do, as partial assignments keyed by dimension, when not every one does) and a `default` only where one is declared, and `dimensions` (`{ key, values, env, member? }`). An application's whole graph is loaded and analysed for it; one the analysis refuses prints its refusals on stderr, nothing on stdout, and exits 1 |
 | `digest` | The version's content-identity digest — a cheap read that downloads no payload. It is not an import pin, and cannot be turned into one: take the pin from `manifest --json` |
 | `resources` | The resource instances the module declares |
+| `sbom` | The module's software bill of materials (SBOM — the third-party components it ships, which vulnerability scanners read) as a CycloneDX 1.6 document: for an artifact the record it was published with, read from its `sbom` layer alone (exactly one payload blob, none when the cache holds it); for a local path the record `telo publish` would write, derived in place. The subject's `bom-ref` is the pin (`./` for a local path) and the document gets a serial number; nothing else differs between the two. `--platform` / `--abi` filter as on [`telo sbom`](#telo-sbom-manifest). A record carrying `telo:incomplete` is printed with a warning naming its layers; an artifact published without one is `SBOM_INCOMPLETE` and exits 1. A module nested in an artifact is read by its identity, `oci://<host>/<repo>@sha256:<artifact digest>/<path>` (`manifest` prints its `telo.yaml` the same way), through its own `sbom` layer |
 | `kinds` | The resource kinds the module defines, with capability and whether each is exported |
 
 ```bash

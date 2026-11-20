@@ -3,7 +3,6 @@ import {
   collectModuleFileClaims,
   flattenForAnalyzer,
   readAssetPatterns,
-  readNativeEntries,
   selectorMatches,
   type LoadedGraph,
   type LoadedModule,
@@ -32,8 +31,23 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { derivationRoot } from "../bill-of-materials/derivation-root.js";
+import {
+  assertRecordPathFree,
+  describeUnattributed,
+  recordSubjectOf,
+  type BundleProduct,
+} from "../bundle/module-bill-of-materials.js";
+import { findModuleDoc } from "../commands/manifest-imports.js";
+import { readFilesPatterns } from "../bundle/manifest-text.js";
+import { readSources, stagedEntriesOf } from "../bundle/staged-files.js";
+import { storedLayerDirectory } from "@telorun/kernel";
+import { defaultCustomTags } from "@telorun/templating";
+import { parseAllDocuments } from "yaml";
+import { packagedModuleRecord } from "./local-module-record.js";
 import { assertSidecarNamesFree, buildBrowserClaims } from "../bundle/browser-entries.js";
 import { MODULE_LICENSE_FILE, selectFiles } from "../bundle/select-files.js";
+import { BILL_OF_MATERIALS_FILE } from "@telorun/analyzer";
 import { expandDirectoryClaims } from "../bundle/module-path-claims.js";
 import { cliVersion } from "../distribution-versions.js";
 import { stageModule } from "../release/stage.js";
@@ -45,6 +59,7 @@ import {
   PAYLOAD_INDEX,
   analysisKeyFor,
   directoryEntries,
+  moduleSourceOf,
   packPayload,
   type AppIndex,
   type AppModuleRecord,
@@ -123,7 +138,7 @@ export async function buildAppPayload(options: PackageBuildOptions): Promise<Pac
     await writeManifestCache(graph, entryDir, manifestsDir);
     await writeNestedOriginDigests(graph, manifestsDir);
 
-    const warmed = await warmModuleLayers(graph, entryDir, manifestsDir, platform);
+    const warmed = await warmModuleLayers(graph, entryDir, manifestsDir, platform, cacheRoot);
     if (warmed.gaps.length > 0) throw new Error(describeGaps(warmed.gaps));
     report(`materialized ${warmed.materialized} module layer${warmed.materialized === 1 ? "" : "s"}`);
 
@@ -321,6 +336,11 @@ async function stageLocalModules(options: {
     locals.map((entry) => entry.dir),
     resolveEntryDir(entryPath) ?? path.dirname(entryPath),
   );
+  const entryDir = resolveEntryDir(entryPath) ?? path.dirname(entryPath);
+  const localManifests = [
+    entryPath,
+    ...locals.map((entry) => localPathOf(entry.module.owner.source)!).filter((file) => file !== entryPath),
+  ];
 
   const archives = createArchiveReader();
   for (const { module, dir } of locals) {
@@ -373,30 +393,33 @@ async function stageLocalModules(options: {
     // library entry points, native files.
     const claims = expandDirectoryClaims(dir, collectModuleFileClaims(module.owner.text), []);
     const assets = selectFiles(dir, readAssetPatterns(owner));
-    assertSidecarNamesFree(claims, [
+    const declared = [
       ...claims.map((claim) => claim.path),
       ...assets,
-      ...readNativeEntries(owner).entries.map((entry) => entry.path),
-    ]);
+      ...owner.native.entries.map((entry) => entry.path),
+    ];
+    assertSidecarNamesFree(claims, declared);
+    assertRecordPathFree(declared);
     for (const claim of claims) {
       if (claim.role === "controller" || claim.role === "library" || claim.role === "browser") continue;
       copy(claim.path, claim.origin);
     }
     // Browser entries are carried built, like every other code entry: with no
     // source on disk the kernel serves the built files it finds at their paths.
-    for (const [rel, content] of (await buildBrowserClaims(dir, claims, cacheRoot)).files) {
+    const browser = await buildBrowserClaims(dir, claims, cacheRoot);
+    for (const [rel, content] of browser.files) {
       const to = path.join(appRoot, relative(dir), rel);
       fs.mkdirSync(path.dirname(to), { recursive: true });
       fs.writeFileSync(to, content);
       copied.add(rel);
     }
     for (const rel of assets) copy(rel, "an assets: pattern");
-    for (const entry of readNativeEntries(owner).entries) {
+    for (const entry of owner.native.entries) {
       if (!selectorMatches(entry.selector, platform)) continue;
       copy(entry.path, entry.origin);
     }
 
-    await buildCode({
+    const codeBundles = await buildCode({
       claims,
       dir,
       appDir: path.join(appRoot, relative(dir)),
@@ -407,11 +430,40 @@ async function stageLocalModules(options: {
       report,
     });
 
+    // The record is built from the builds and staging above, for this payload's platform.
+    const moduleDoc = findModuleDoc(parseAllDocuments(module.owner.text, { customTags: defaultCustomTags() }));
+    const sources = readSources(moduleDoc?.toJSON(), dir);
+    const staged = stagedEntriesOf(sources);
+    const record = await packagedModuleRecord({
+      subject: recordSubjectOf(moduleDoc?.toJSON()),
+      claims,
+      selected: [
+        ...new Set([
+          ...selectFiles(dir, readFilesPatterns(module.owner.text), { links: true }),
+          ...(fs.existsSync(path.join(dir, MODULE_LICENSE_FILE)) ? [MODULE_LICENSE_FILE] : []),
+          ...sources.flatMap((source) => source.notices),
+          ...staged.keys(),
+        ]),
+      ].sort(),
+      assetPatterns: readAssetPatterns(owner),
+      native: owner.native.entries,
+      sources,
+      bundles: [...browser.bundles, ...codeBundles],
+      beside: browser.beside,
+      platform,
+      publishRoot: path.dirname(derivationRoot(localPathOf(module.owner.source)!, entryDir, localManifests) ?? localPathOf(module.owner.source)!),
+    });
+    for (const line of describeUnattributed(record.unattributed)) report(`sbom ${label}: ${line}`);
+    const stored = path.join(storedLayerDirectory(cacheRoot, record.layer.blob), BILL_OF_MATERIALS_FILE);
+    fs.mkdirSync(path.dirname(stored), { recursive: true });
+    fs.writeFileSync(stored, record.text);
+
     records.push({
-      source: relative(dir) || ".",
+      source: moduleSourceOf(relative(localPathOf(module.owner.source)!)),
       ...(owner.name ? { name: owner.name } : {}),
       ...(owner.version ? { version: owner.version } : {}),
       delivery: "local",
+      layers: [record.layer],
     });
   }
 
@@ -433,9 +485,10 @@ async function buildCode(options: {
   libraries: SiblingLibraryMap | undefined;
   copy: (rel: string, why: string) => void;
   report: (message: string) => void;
-}): Promise<void> {
+}): Promise<BundleProduct[]> {
   const { claims, dir, appDir, platform, cacheRoot, libraries, copy, report } = options;
   const externals = externalLibraries(libraries);
+  const bundles: BundleProduct[] = [];
   for (const claim of claims) {
     if (claim.role !== "controller" && claim.role !== "library") continue;
     if (!selectorMatches(claim.selector, platform)) continue;
@@ -457,7 +510,9 @@ async function buildCode(options: {
     const target = path.join(appDir, claim.path);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.copyFileSync(built.path, target);
+    bundles.push({ path: claim.path, contributors: built.contributors });
   }
+  return bundles;
 }
 
 /** The bare specifiers a module's bundles import, with a local sibling's source

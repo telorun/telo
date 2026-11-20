@@ -76,6 +76,7 @@ describe("MODULE_PATH_NOT_FOUND for a path a sources: entry stages", () => {
   const models = [
     "  models:",
     "    version: 1.0.0",
+    "    purl: pkg:npm/%40acme/models",
     "    url: https://example.com/{upstream}-{version}.tgz",
     "    archive: tar.gz",
     "    notices: [./notices/models.LICENSE]",

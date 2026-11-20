@@ -42,14 +42,24 @@ describe("builtinVocabularyPayload", () => {
     expect(payload.manifest.startsWith(root!)).toBe(true);
     expect(payload.manifest.endsWith(rest!)).toBe(true);
     const block = payload.manifest.slice(root!.length, payload.manifest.length - rest!.length);
-    expect(block).toMatch(/^layers:\n {2}- role: "common"\n {4}blob: "sha256:[0-9a-f]{64}"\n {4}integrity: "sha256-[A-Za-z0-9_-]{43}"\n$/);
+    const entry = (role: string) =>
+      ` {2}- role: "${role}"\n {4}blob: "sha256:[0-9a-f]{64}"\n {4}integrity: "sha256-[A-Za-z0-9_-]{43}"\n`;
+    expect(block).toMatch(new RegExp(`^layers:\n${entry("common")}${entry("sbom")}$`));
     expect(readOwnerManifest(payload.manifest)).toMatchObject({
       name: "Telo",
       version: "0.119.0",
       license: "MIT",
-      layers: [{ role: "common" }],
+      layers: [{ role: "common" }, { role: "sbom" }],
     });
-    expect(payload.layers.map((layer) => layer.files.map((file) => file.name))).toEqual([["LICENSE"]]);
+    expect(payload.layers.map((layer) => layer.files.map((file) => file.name))).toEqual([
+      ["LICENSE"],
+      ["sbom.cdx.json"],
+    ]);
+    const record = payload.layers[1]!.files[0] as { content: Uint8Array };
+    expect(new TextDecoder().decode(record.content)).toBe(
+      '{"bomFormat":"CycloneDX","metadata":{"component":{"licenses":[{"license":{"id":"MIT"}}],' +
+        '"name":"Telo","type":"data","version":"0.119.0"}},"specVersion":"1.6","version":1}\n',
+    );
   });
 
   it.each([

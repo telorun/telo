@@ -1,0 +1,28 @@
+{
+  "name": "vcs-revision",
+  "grammar": "https://git-scm.com/docs/hash-function-transition",
+  "standIn": "0000000000000000000000000000000000000000",
+  "description": "A full commit id: exactly 40 (SHA-1) or 64 (SHA-256) lower-case hexadecimal digits. A tag, a branch and an abbreviated commit id are refused, since each can name another commit later or name several.",
+  "conformance": {
+    "valid": [
+      "a5333afb9ad1aa473f8963b92caeaa955f47dc74",
+      "2a9c1c49c360462733c386d2a44fcd22c4e21411",
+      "0000000000000000000000000000000000000000",
+      "7d3c3b6f0e3a1f5c4b2a9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a"
+    ],
+    "invalid": [
+      "",
+      "version-3.51.3",
+      "v7.0.0",
+      "main",
+      "a5333af",
+      "a5333afb9ad1aa473f8963b92caeaa955f47dc7",
+      "a5333afb9ad1aa473f8963b92caeaa955f47dc741",
+      "A5333AFB9AD1AA473F8963B92CAEAA955F47DC74",
+      "a5333afb9ad1aa473f8963b92caeaa955f47dc7g",
+      " a5333afb9ad1aa473f8963b92caeaa955f47dc74",
+      "7d3c3b6f0e3a1f5c4b2a9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8",
+      "7d3c3b6f0e3a1f5c4b2a9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8ab"
+    ]
+  }
+}

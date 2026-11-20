@@ -7,8 +7,8 @@ description: "Version and publish the modules of a workspace with telo release: 
 # Releasing modules
 
 `telo release` versions the **release units** of a workspace — Telo modules, and
-beside them the npm packages, crates, images and charts the same repository
-ships. It exists because a Telo module's artifact *embeds its dependencies*:
+beside them the npm packages, crates, Python projects, images and charts the
+same repository ships. It exists because a Telo module's artifact *embeds its dependencies*:
 esbuild inlines a sibling library's source into the controller bundle, and
 publishing pins each relative import to a hash of that sibling's manifest. npm
 has no such property — a dependent's tarball does not contain its dependency — so
@@ -304,8 +304,9 @@ a tax on nobody's behalf. It fails when no consistent plan can be formed:
 
 - a fragment naming a unit that does not exist (`FRAGMENT_UNKNOWN_UNIT`),
 - a bump above `maxBump` (`MAX_BUMP_EXCEEDED`),
-- a unit whose version locations — the `package.json`, `Cargo.toml`, `Chart.yaml`
-  or `telo.yaml` of each anchor — disagree (`UNIT_VERSION_MISMATCH`),
+- a unit whose version locations — the `package.json`, `Cargo.toml`,
+  `pyproject.toml`, `Chart.yaml` or `telo.yaml` of each anchor — disagree
+  (`UNIT_VERSION_MISMATCH`),
 - a version that disagrees with its ledger entry,
 - digests taken against a different registry base,
 - a destination collision or an anchor with none (`DESTINATION_COLLISION`,
@@ -339,7 +340,8 @@ the telo release it plans, and `telo publish` refuses one still present.
 
 `apply` writes the new version into every anchor of each planned unit (a module's
 `telo.yaml`, `nodejs/package.json` and `rust/Cargo.toml`; a chart's `version` and
-`appVersion`), prepends an entry to the unit's `CHANGELOG.md`, re-records the
+`appVersion`; a Python project's `project.version`, see
+[Python projects](#python-projects)), prepends an entry to the unit's `CHANGELOG.md`, re-records the
 ledger with the digests of what will actually be published, and deletes the
 fragments it consumed. Version rewriting is a byte-splice over the author's own
 text, so a bump lands as a one-line diff rather than a re-serialized file.

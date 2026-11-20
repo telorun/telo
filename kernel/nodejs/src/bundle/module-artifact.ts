@@ -8,6 +8,7 @@ import {
   singletonLayer,
   splitIntegrity,
   describeSelector,
+  isArtifactRecordRole,
   undeterminedAxesBlockingMatch,
   type ArtifactLayer,
   type ArtifactSelector,
@@ -427,6 +428,13 @@ export class ModuleArtifact {
     layer: ArtifactLayer,
     report?: ControllerWorkReporter,
   ): Promise<ResolvedControllerLayer> {
+    if (isArtifactRecordRole(layer.role)) {
+      throw new RuntimeError(
+        "ERR_MODULE_LAYER_INVALID",
+        `The ${layer.role} layer of ${this.pinnedRef} describes the artifact and holds no module file, ` +
+          `so it is never extracted into a module directory.`,
+      );
+    }
     const marker = this.markerPath(layer);
     if (existsSync(marker)) {
       return { layer: { dir: this.dir, files: await readMarker(marker) }, transferred: false };

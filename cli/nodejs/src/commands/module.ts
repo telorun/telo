@@ -1,4 +1,5 @@
 import {
+  incompleteLayersOf,
   isBuiltinVocabularyRoot,
   isHttpsModuleRef,
   isOciRef,
@@ -14,7 +15,12 @@ import {
   splitIntegrity,
   urlManifestCacheCoords,
 } from "@telorun/analyzer";
-import { defaultTransportRegistry, type TransportRegistry } from "@telorun/kernel";
+import {
+  defaultTransportRegistry,
+  readOwnerManifest,
+  resolveCacheRoot,
+  type TransportRegistry,
+} from "@telorun/kernel";
 import { defaultCustomTags } from "@telorun/templating";
 import * as fs from "fs";
 import * as path from "path";
@@ -33,6 +39,11 @@ import { createLogger, type Logger } from "../logger.js";
 import { outErrLine, outLine, output } from "../output.js";
 import { fetchManifestHash } from "../manifest-hash.js";
 import { findModuleDoc } from "./manifest-imports.js";
+import { composeModuleDocument } from "../bill-of-materials/composed-document.js";
+import { SBOM_INCOMPLETE } from "../bill-of-materials/incomplete-records.js";
+import { describeUnattributed, readArtifactBillOfMaterials } from "../bundle/module-bill-of-materials.js";
+import { ModulePayloadBuilder } from "../bundle/module-payload.js";
+import { ABI_OPTION, PLATFORM_OPTION, SBOM_DEFINITION, scopeOrRefuse } from "./sbom.js";
 
 const errMsg = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
@@ -663,6 +674,84 @@ async function runKinds(argv: { ref: string; json: boolean }): Promise<void> {
   }
 }
 
+/**
+ * One module's record as a document: derived for a local path by the builders
+ * `telo publish` runs, read from an artifact's `sbom` layer otherwise — one
+ * payload blob, or none when the layer store holds it. Its subject is given the
+ * module's `bom-ref` (`./` for a local path, the integrity pin for an artifact)
+ * and the document a serial number.
+ */
+async function runSbom(argv: { ref: string; platform?: string; abi?: string }): Promise<void> {
+  const log = createLogger(false);
+  const scope = scopeOrRefuse(argv, log);
+  if (!scope) return;
+
+  const localPath = localManifestPath(argv.ref);
+  if (localPath) {
+    readFileOrExit(localPath, log);
+    let derived;
+    try {
+      derived = await new ModulePayloadBuilder({
+        cacheRoot: resolveCacheRoot(localPath) ?? path.join(path.dirname(localPath), ".telo"),
+      }).derivedBillOfMaterials(localPath);
+    } catch (err) {
+      const code = (err as { code?: unknown } | undefined)?.code;
+      outErrLine(
+        `${path.relative(process.cwd(), localPath)}  ${log.err.error("error")}  ${errMsg(err)}` +
+          (typeof code === "string" ? `  ${log.err.dim(code)}` : ""),
+      );
+      process.exitCode = 1;
+      return;
+    }
+    warnIncomplete(argv.ref, incompleteLayersOf(derived.record), describeUnattributed(derived.unattributed), log);
+    output().raw(composeModuleDocument("./", derived.record, scope));
+    return;
+  }
+
+  const registry = defaultTransportRegistry();
+  const ref = await withNewestVersion(registry, argv.ref, log);
+  const text = await readRemoteManifest(registry, ref, log);
+  const pin = splitIntegrity(ref).integrity ?? (await localDigest(text));
+  const layers = readOwnerManifest(text).layers;
+  let read;
+  try {
+    read = layers
+      ? await readArtifactBillOfMaterials({
+          pinnedRef: ref,
+          layers,
+          cacheRoot: resolveCacheRoot(path.join(process.cwd(), "telo.yaml")) ?? path.join(process.cwd(), ".telo"),
+          transports: registry,
+        })
+      : undefined;
+  } catch (err) {
+    outErrLine(`${log.err.error("error")}  ${errMsg(err)}`);
+    process.exitCode = 1;
+    return;
+  }
+  if (!read) {
+    outErrLine(
+      `${log.err.error("error")}  ${splitIntegrity(ref).base} was published without a software bill of materials ` +
+        `(SBOM: the list of third-party components it ships, which vulnerability scanners read), so what it ships ` +
+        `cannot be listed. Read a version published with one.  ${log.err.dim(SBOM_INCOMPLETE)}`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+  warnIncomplete(splitIntegrity(ref).base, incompleteLayersOf(read.record), [], log);
+  output().raw(composeModuleDocument(pin, read.record, scope));
+}
+
+/** A record that carries `telo:incomplete` is printed as it is, with what it
+ *  leaves out said on stderr. */
+function warnIncomplete(label: string, layers: readonly string[], unattributed: readonly string[], log: Logger): void {
+  if (layers.length === 0) return;
+  outErrLine(
+    `${log.err.warn("warning")}  ${label}'s software bill of materials is incomplete: ${layers.join(", ")} ` +
+      `hold${layers.length === 1 ? "s" : ""} code no producer reported.  ${log.err.dim(SBOM_INCOMPLETE)}`,
+  );
+  for (const line of unattributed) outErrLine(`  ${line}`);
+}
+
 export function moduleCommand(yargs: Argv): Argv {
   return yargs.command(
     "module <subcommand>",
@@ -754,6 +843,24 @@ export function moduleCommand(yargs: Argv): Argv {
           },
         )
         .command(
+          "sbom <ref>",
+          `${SBOM_DEFINITION} Prints one module's CycloneDX 1.6 record — as published for an artifact, derived ` +
+            "for a local path — with its subject's bom-ref and a serial number",
+          (yy) =>
+            yy
+              .positional("ref", {
+                describe:
+                  "Module ref: ./path, oci://host/repo@1.2.0 (oci://host/repo reads the newest published version), or an https URL",
+                type: "string",
+                demandOption: true,
+              })
+              .option("platform", PLATFORM_OPTION)
+              .option("abi", ABI_OPTION),
+          async (argv) => {
+            await runSbom(argv as never);
+          },
+        )
+        .command(
           "kinds <ref>",
           "List the resource kinds a module defines (name, capability, exported)",
           (yy) =>
@@ -774,7 +881,7 @@ export function moduleCommand(yargs: Argv): Argv {
         )
         .demandCommand(
           1,
-          "Specify a module subcommand (versions | manifest | digest | resources | kinds)",
+          "Specify a module subcommand (versions | manifest | digest | resources | sbom | kinds)",
         ),
     () => {},
   );

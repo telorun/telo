@@ -98,6 +98,7 @@ targets:
   - !ref unreadableSourcesAtRuntime
   - !ref pinnedStagedFile
   - !ref pinnedStagedFileRuns
+  - !ref sourceWithoutPurlAtRuntime
   - !ref unpinnedStagedAssetAtRuntime
   - !ref pinnedStagedAssetRuns
   - !ref untaggedUnreadable
@@ -1068,6 +1069,16 @@ kind: Assert.Manifest
 metadata: { name: pinnedStagedFileRuns }
 source: ./__fixtures__/check-run-agreement/staged-native/pinned-app.yaml
 expect: { runs: true }
+---
+# A fetched source that names no purl — the package its files are a release of —
+# is a schema violation, and a kernel reads no staged file beside it.
+kind: Assert.Manifest
+metadata: { name: sourceWithoutPurlAtRuntime }
+source: ./__fixtures__/check-run-agreement/staged-native/no-purl-app.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "sources.greetings is fetched from a url and names no purl" }
+  runFails: "sources: block cannot be read"
 ---
 # A staged asset with no pin is refused by the kernel when the library's
 # controller resolves it; `telo check` reports the library's block as it does a

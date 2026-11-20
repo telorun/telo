@@ -1,0 +1,25 @@
+kind: Telo.Application
+metadata:
+  name: RefusedValueTypeDefault
+  version: 1.0.0
+---
+# A default the slot's type arguments refuse is refused as the same literal written
+# at the field would be.
+kind: Telo.Definition
+metadata: { name: Probe }
+capability: Telo.Invocable
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    endpoint:
+      x-telo-type: { name: Telo.Url, scheme: { enum: [http, https] } }
+      default: ftp://advisories.acme.test/v1
+resources:
+  - kind: Telo.Value
+    metadata: { name: read }
+    value: !cel "{ 'host': self.endpoint.host }"
+invoke: !ref read
+---
+kind: Self.Probe
+metadata: { name: probe }

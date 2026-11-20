@@ -55,6 +55,7 @@ release:
     - { path: packages/debug-wire, ecosystem: npm }
     - { path: packages/editor-protocol, ecosystem: npm }
     - { path: packages/glob, ecosystem: { npm: nodejs, cargo: rust }, version: nodejs/package.json }
+    - { path: packages/osv, ecosystem: npm }
     - { path: packages/language-host, ecosystem: npm }
     - { path: packages/runner-core, ecosystem: npm }
     - { path: packages/runner-protocol, ecosystem: npm }

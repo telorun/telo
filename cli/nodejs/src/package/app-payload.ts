@@ -54,15 +54,37 @@ export interface PlatformLike {
   readonly abi?: string;
 }
 
+/** One layer of a local module's own artifact-describing record, as module-artifact §3 spells a layer entry. */
+export interface AppModuleLayer {
+  readonly role: string;
+  readonly blob: string;
+  readonly integrity: string;
+}
+
 export interface AppModuleRecord {
-  /** The module's canonical source — an `oci://` ref for a published module, a
-   *  payload-relative path for a local one. */
+  /** The module's canonical source — an `oci://` ref for a published module; for
+   *  a local one its manifest path relative to `app/` named as a bom-ref names
+   *  a module (`moduleSourceOf`). */
   readonly source: string;
   readonly name?: string;
   readonly version?: string;
   /** `local` for a module built into `app/`, `artifact` for one materialized
    *  from its layers. */
   readonly delivery: "local" | "artifact";
+  /** A `local` module's artifact-describing layers — today its `sbom` layer,
+   *  stored in the payload's layer store (`cache/layers/sha256-<blob hex>/`).
+   *  Absent on an `artifact` entry and on a payload packaged before it existed. */
+  readonly layers?: readonly AppModuleLayer[];
+}
+
+/** A local module's `source`: its manifest path relative to `app/`, `/`-separated,
+ *  a `telo.yaml` named by its directory (`.` for `app/` itself), any other
+ *  manifest by its file — so two file manifests in one directory differ. */
+export function moduleSourceOf(manifestRelativeToApp: string): string {
+  const posix = path.posix.normalize(manifestRelativeToApp.split(path.sep).join("/"));
+  if (path.posix.basename(posix) !== "telo.yaml") return posix;
+  const dir = path.posix.dirname(posix);
+  return dir === "" ? "." : dir;
 }
 
 export interface AppIndex {

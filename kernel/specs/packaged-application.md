@@ -77,7 +77,17 @@ packages, starts, nor accepts a packaged executable as a manifest source.
    | `telo` | the version of the telo that packaged it |
    | `analysisKey` | the analysis key (rule 4) |
    | `desktopHost` | `{ identifier }`, present exactly when the root declares a `Telo.DesktopHost` need (§3 rule 5); absent from every other index, which is otherwise unchanged |
-   | `modules` | `{ source, name?, version?, delivery: local \| artifact }` per module |
+   | `modules` | `{ source, name?, version?, delivery: local \| artifact, layers? }` per module |
+
+   A `local` module's `source` is its manifest's path relative to `app/`, `/`-separated, a
+   `telo.yaml` named by its directory (`.` for `app/` itself) and any other manifest by its
+   file, so two file manifests sharing a directory have distinct sources; an `artifact`
+   module's is its `oci://` ref. `layers`, on a `local` entry only, is a list of layer
+   entries in the shape of `module-artifact.md` §3 (`role`, `blob`, `integrity`) — today
+   exactly one, `{ role: sbom, … }` — and lists only roles that describe an artifact
+   (`module-artifact.md` §5.2): a module-file role there makes the index malformed, and an
+   unknown role is skipped. An `artifact` entry carries no `layers`. The index's `format`
+   stays `1`: an index without `layers` on its local entries is an older payload.
 
 4. The **analysis key** is the sha256, as lowercase hex, of one line per payload entry —
    every entry except those under `cache/analysis/`, `cache/validators/` and
@@ -133,6 +143,19 @@ packages, starts, nor accepts a packaged executable as a manifest source.
    A start passes the packaged app's own helper — the unpacked payload entry, or on darwin
    `telo-desktop-host` beside the running executable — which `TELO_HOST_DESKTOP_HELPER`
    still overrides.
+
+6. A **local module's bill of materials.** `telo package` writes, for each `local` module,
+   the record `module-artifact.md` §7 defines, built from the same builds and staging that
+   wrote the module's files into `app/` — each bundle's contributing inputs, each `sources:`
+   entry with a `purl` — and keeping only layers whose selector matches the index's
+   `platform` (the payload carries nothing else). Every `telo:layer` and `telo:incomplete`
+   value names the layer the module would publish that file in (`module-artifact.md`
+   §7.4). A record carrying `telo:incomplete` is written as is, and each unattributed input
+   is reported under its layer key, as a publisher reports it, without refusing; a module
+   with no code has a subject-only record. The record is framed as an `sbom` layer exactly
+   as a publisher frames it and stored in the payload's layer store, at
+   `cache/layers/sha256-<blob hex>/sbom.cdx.json`; the module's `layers` entry in the index
+   names it.
 
 ## 4. A start: the application or the CLI
 
@@ -206,3 +229,15 @@ packages, starts, nor accepts a packaged executable as a manifest source.
    from the root. A module the root does not hold is resolved through the transports as for
    any manifest. A command that does not run the application writes nothing into the root;
    a run of it (§4 rule 4) loads against the same root and may add to it.
+5. **Reading a local module's bill of materials.** `telo sbom` and `telo audit` of a packaged
+   executable map each local node of the closure to the index's `local` entry with the same
+   `source` (§3 rule 3's spelling, read off the unpacked path), take its `sbom` layer entry, open
+   `cache/layers/sha256-<blob hex>/` of the sealed root, re-derive the layer's `integrity`
+   from that directory and read the record. Nothing is built, fetched or written, and the
+   sealed root is never touched — a copy that does not verify is not removed. A named layer
+   whose directory is missing, or whose re-derived integrity differs from the index's, is a
+   refusal naming the module and the executable, which no flag passes. An index entry with
+   no `layers` — an older payload — is `SBOM_INCOMPLETE` at the module's document with the
+   remedy "package it again with a telo that records it", marked incomplete under
+   `--allow-incomplete`. A record carrying `telo:incomplete` is no complete record, as for
+   any module.

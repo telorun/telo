@@ -25,6 +25,7 @@ import { registeredDocument, SchemaNodeValidator } from "./schema-node-validator
 import { readStandIn, type StandIns } from "./stand-in-findings.js";
 import { teloFormatOf } from "./telo-format.js";
 import { registerTeloKeywords } from "./value-type-keyword.js";
+import { valueTypeDefaultFiller } from "./value-type-defaults.js";
 
 const Ajv = (AjvModule as any).default ?? AjvModule;
 
@@ -658,10 +659,12 @@ export function validateAgainstSchema(data: unknown, schema: Record<string, any>
 
 const defaultFillingAjv = createAjv({ useDefaults: true });
 const defaultFillingValidators = new WeakMap<Record<string, any>, ReturnType<typeof ajv.compile>>();
+const defaultFillers = new WeakMap<Record<string, any>, ((value: unknown) => void) | null>();
 
 /** Validates `data` the way the kernel binds a contract: declared defaults are
- *  filled into a copy first, so a value a default completes is not reported.
- *  A schema that does not compile is the author's, reported elsewhere. */
+ *  filled into a copy first — one at an instance-typed slot decoded as its literal
+ *  is — so a value a default completes is not reported. A schema that does not
+ *  compile is the author's, reported elsewhere. */
 export function validateAgainstSchemaWithDefaults(
   data: unknown,
   schema: Record<string, any>,
@@ -676,7 +679,10 @@ export function validateAgainstSchemaWithDefaults(
     }
     defaultFillingValidators.set(schema, validate);
   }
+  let filler = defaultFillers.get(schema);
+  if (filler === undefined) defaultFillers.set(schema, (filler = valueTypeDefaultFiller(schema) ?? null));
   const copy = structuredClone(data);
+  filler?.(copy);
   if (validate(copy)) return [];
   return schemaIssues(validate.errors, copy);
 }

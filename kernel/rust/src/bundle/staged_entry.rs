@@ -128,7 +128,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let sha: String = Sha256::digest(b"bar").iter().map(|b| format!("{b:02x}")).collect();
         let owner = json!({ "sources": { "lib": {
-            "version": "1", "url": "https://e.test/x.tgz", "archive": "tar.gz", "notices": ["L"],
+            "version": "1", "purl": "pkg:generic/lib", "url": "https://e.test/x.tgz", "archive": "tar.gz", "notices": ["L"],
             "entries": {
                 "native/libx.so.1": { "upstream": "x", "member": "m", "sha256": sha, "executable": false },
                 "native/libx.so": { "target": "libx.so.1" },

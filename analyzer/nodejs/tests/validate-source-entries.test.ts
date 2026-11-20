@@ -171,6 +171,81 @@ describe("sources: block", () => {
     expect(check(sources)).toEqual([[code, path]]);
   });
 
+  describe("the declared package identity", () => {
+    const fetched = (overrides: Record<string, unknown> = {}) => {
+      const { build: _build, ...rest } = validSource();
+      return { addon: { ...rest, ...overrides, entries: { ...rest.entries } } };
+    };
+    const schemaFindings = (sources: unknown) =>
+      analyze("Telo.Library", sources).filter((d) => d.code === "SCHEMA_VIOLATION");
+
+    it("accepts a purl and contains on a fetched source", () => {
+      const sources = fetched({
+        purl: "pkg:npm/addon",
+        contains: [{ purl: "pkg:generic/sqlite", version: "3.51.3", cpe: "cpe:2.3:a:sqlite:sqlite:3.51.3:*:*:*:*:*:*:*" }],
+      });
+      expect(check(sources)).toEqual([]);
+      expect(schemaFindings(sources)).toEqual([]);
+    });
+
+    it("refuses a fetched source with no purl, and lets a built one omit it", () => {
+      expect(check(fetched())).toEqual([["SCHEMA_VIOLATION", "sources.addon"]]);
+      expect(check({ addon: validSource() })).toEqual([]);
+    });
+
+    it("refuses a purl that names a version, and says what to write", () => {
+      const [finding, ...rest] = schemaFindings(fetched({ purl: "pkg:npm/better-sqlite3@12.8.0" }));
+      expect(rest).toEqual([]);
+      expect(finding!.data?.path).toBe("sources.addon.purl");
+      expect(finding!.message).toContain("it names a version (@12.8.0)");
+      expect(finding!.message).toContain("write pkg:npm/better-sqlite3");
+    });
+
+    it("refuses a cpe with too few fields, and counts them", () => {
+      const [finding, ...rest] = schemaFindings(
+        fetched({ purl: "pkg:npm/addon", contains: [{ purl: "pkg:generic/sqlite", version: "3", cpe: "cpe:2.3:a:sqlite:sqlite:3.51.3" }] }),
+      );
+      expect(rest).toEqual([]);
+      expect(finding!.data?.path).toBe("sources.addon.contains[0].cpe");
+      expect(finding!.message).toContain("13 colon-separated fields, this one has 6");
+    });
+
+    describe("the repository and commit a component is built from", () => {
+      const REVISION = "a5333afb9ad1aa473f8963b92caeaa955f47dc74";
+      const withVcs = (vcs: unknown) =>
+        fetched({ purl: "pkg:npm/addon", contains: [{ purl: "pkg:generic/sqlite", version: "3.51.3", vcs }] });
+
+      it("accepts vcs on a contained component and on the source itself, beside its cpe", () => {
+        const sources = fetched({
+          purl: "pkg:generic/addon",
+          cpe: "cpe:2.3:a:acme:addon:1.0.0:*:*:*:*:*:*:*",
+          vcs: { url: "git+https://github.com/acme/addon", revision: REVISION },
+          contains: [{ purl: "pkg:generic/sqlite", version: "3.51.3", vcs: { url: "git+https://github.com/sqlite/sqlite", revision: REVISION } }],
+        });
+        expect(check(sources)).toEqual([]);
+        expect(schemaFindings(sources)).toEqual([]);
+      });
+
+      it.each([
+        [{ url: "git+https://github.com/sqlite/sqlite", revision: "version-3.51.3" }, "sources.addon.contains[0].vcs.revision", "a revision is a full commit id"],
+        [{ url: "git+https://github.com/sqlite/sqlite", revision: "a5333af" }, "sources.addon.contains[0].vcs.revision", "(this one has 7)"],
+        [{ url: "https://github.com/sqlite/sqlite", revision: REVISION }, "sources.addon.contains[0].vcs.url", "write git+https://github.com/sqlite/sqlite"],
+        [{ url: "git+https://user@github.com/x/y", revision: REVISION }, "sources.addon.contains[0].vcs.url", "no user name, password or revision"],
+      ])("refuses %j at %s", (vcs, path, words) => {
+        const [finding, ...rest] = schemaFindings(withVcs(vcs));
+        expect(rest).toEqual([]);
+        expect(finding!.data?.path).toBe(path);
+        expect(finding!.message).toContain(words);
+      });
+
+      it("refuses vcs without a revision by the schema alone", () => {
+        const sources = withVcs({ url: "git+https://github.com/sqlite/sqlite" });
+        expect(check(sources)).toEqual([]);
+        expect(schemaFindings(sources).map((d) => d.data?.path)).toEqual(["sources.addon.contains[0].vcs.revision"]);
+      });
+    });
+  });
+
   it("is reported by analyze() at a ./-prefixed entry's own key", () => {
     const sources = withEntries({ "./native/x.node": pinned("x.node") });
     expect(analyze("Telo.Library", sources).map((d) => [d.code, d.data?.path])).toEqual([

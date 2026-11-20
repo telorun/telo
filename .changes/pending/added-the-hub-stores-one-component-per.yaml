@@ -1,0 +1,9 @@
+units:
+  apps/hub: Added
+body: The hub stores one component per package URL, version and revision, reading the
+  vcs_url qualifier of each component of a module's bill of materials — one that does
+  not split into a repository and a full commit is stored with no repository, never
+  failing the ingest — and checks a revisioned component by its commit through
+  Osv.Query, so embedded C code declaring its repository counts toward
+  advisoriesComplete; each stored advisory says whether the version or the commit
+  matched it.
