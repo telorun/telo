@@ -6,16 +6,15 @@ metadata:
   license: MIT
   categories: [Data]
   description: |
-    Working with PDF documents: render a page to an image at a chosen scale, read
-    its text, and add editable form fields — text boxes, checkboxes, signatures — at
-    measured positions. Rendering and field placement share one coordinate space,
-    the rendered image's pixels from the top-left, so what a model measures on the
-    image is where the field lands.
+    Render a PDF page to an image at a chosen scale, read its text, and add editable
+    form fields — text boxes, checkboxes, signatures — at measured positions.
+    Rendering and field placement share one coordinate space, the image's pixels
+    from the top-left, so what a model measures on the image is where the field lands.
 exports: { kinds: [Rasterizer, Text, FormFields] }
-requires:
-  # 0.91.0: a `sources:` entry claimed by an `assets:` pattern (0.90.0 reports
-  # SOURCE_ENTRY_UNCLAIMED), and `ctx.resolveControllerFile` for pdf.js's assets.
-  telo: ">=0.91.0"
+requires: { telo: ">=0.133.0" }
+restrictions:
+  - requires: { telo: ">=0.91.0" }
+    reason: "The controller reaches pdf.js's staged assets through `ctx.resolveControllerFile`, which a runtime before 0.91.0 lacks, so the controller fails to load."
 # Skia's addon (with Windows' `icudtl.dat` beside it) and pdf.js's fonts, CMaps,
 # wasm and worker are staged as the module's own files, since both packages look
 # beside themselves and a bundle has no "beside" (README, Platforms).
@@ -32,11 +31,11 @@ native:
   - { name: canvas-icu, format: napi, os: windows, arch: arm64, path: ./native/windows-arm64/icudtl.dat }
 assets: [./assets/]
 sources:
-  # The addon staged here and the `@napi-rs/canvas` wrapper the lockfile holds are
-  # one version: the addon path is process-wide, and `image` stages the same
-  # release.
+  # Same version as the `@napi-rs/canvas` wrapper in the lockfile; `image` stages
+  # the same release, as the addon path is process-wide.
   canvas:
     version: 1.0.10
+    purl: pkg:npm/%40napi-rs/canvas
     url: https://registry.npmjs.org/@napi-rs/{upstream}/-/{upstream}-{version}.tgz
     archive: tar.gz
     notices: [./notices/napi-rs-canvas.LICENSE]
@@ -65,6 +64,7 @@ sources:
         { upstream: canvas-win32-arm64-msvc, member: package/icudtl.dat, sha256: 9f48c7f9c7c94d516a14870707e910ab94d75ae640ff6842c4af53276cd26ebe, executable: false }
   pdfjs:
     version: 6.0.227
+    purl: pkg:npm/pdfjs-dist
     url: https://registry.npmjs.org/{upstream}/-/{upstream}-{version}.tgz
     archive: tar.gz
     notices: [./notices/pdfjs-dist.LICENSE]
@@ -557,8 +557,8 @@ schema:
       enum: [ png, jpeg, webp ]
       default: png
       description: >-
-        Output image format. png keeps text and lines crisp; jpeg/webp shrink
-        the payload for a vision model. Runtime inputs.format takes precedence.
+        Output image format: png keeps text and lines crisp, jpeg and webp shrink the
+        payload. Overridden by `inputs.format` at runtime.
     quality:
       title: Quality
       type: integer
@@ -574,10 +574,9 @@ kind: Telo.Definition
 metadata:
   name: Text
   description: >-
-    Extracts the text a PDF renders, as one string per page and as the whole document.
-    Reading order is the order the producer wrote the content in, with a line break at
-    each end-of-line — not a layout reconstruction, so a multi-column page reads column
-    by column. Reports the document's page count.
+    Extracts the text a PDF renders, per page and as a whole document, with the page
+    count. Reading order is the order the producer wrote the content, with a line
+    break at each end of line, so a multi-column page reads column by column.
 capability: Telo.Invocable
 controllers: [pkg:telo/local/js?path=./nodejs/pdf.mjs&local_path=./nodejs/src/index.ts#text]
 throws:

@@ -99,7 +99,13 @@ describe("install over an artifact with a nested library", () => {
 
     await writeManifestCache(graph, entryDir, manifestsDir);
     await writeNestedOriginDigests(graph, manifestsDir);
-    const warmed = await warmModuleLayers(graph, entryDir, manifestsDir, hostPlatformTarget());
+    const warmed = await warmModuleLayers(
+      graph,
+      entryDir,
+      manifestsDir,
+      hostPlatformTarget(),
+      path.dirname(manifestsDir),
+    );
     expect(warmed.gaps).toEqual([]);
 
     expect((await readOriginDigests(manifestsDir)).get(`${HOST}/${REPO}@1.0.0`)).toBe(digest);

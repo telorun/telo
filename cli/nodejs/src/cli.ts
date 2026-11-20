@@ -29,6 +29,8 @@ import { packageCommand } from "./commands/package.js";
 import { publishCommand } from "./commands/publish.js";
 import { releaseCommand } from "./commands/release.js";
 import { RUN_OPTIONAL_VALUE_SHAPES, RUN_OPTIONS, runCommand } from "./commands/run.js";
+import { auditCommand } from "./commands/audit.js";
+import { sbomCommand } from "./commands/sbom.js";
 import { searchCommand } from "./commands/search.js";
 import { sharesCommand } from "./commands/shares.js";
 import { upgradeCommand } from "./commands/upgrade.js";
@@ -44,6 +46,7 @@ import { parseCommandLine } from "./usage-refusal.js";
  *  `applicationArgs` are the arguments after a run's manifest path. */
 function commandTable(applicationArgs: readonly string[], services: CliServices): Record<string, (yargs: Argv) => Argv> {
   return {
+    audit: auditCommand,
     auth: authCommand(services),
     builtins: builtinsCommand,
     cel: celCommand,
@@ -62,6 +65,7 @@ function commandTable(applicationArgs: readonly string[], services: CliServices)
     publish: publishCommand,
     release: releaseCommand,
     run: (yargs) => runCommand(yargs, applicationArgs, services),
+    sbom: sbomCommand,
     search: searchCommand,
     shares: sharesCommand(services),
     upgrade: upgradeCommand,

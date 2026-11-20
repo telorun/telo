@@ -34,7 +34,9 @@ import { normalizeNativePath } from "./native-entries.js";
 const SOURCE_NAME_TOKEN = /^[a-z0-9][a-z0-9_.-]*$/;
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 const INPUTS_DIGEST = /^sha256-[A-Za-z0-9_-]{43}$/;
-const SOURCE_KEYS = ["version", "url", "archive", "notices", "entries", "build"];
+const SOURCE_KEYS = ["version", "purl", "cpe", "vcs", "contains", "url", "archive", "notices", "entries", "build"];
+const CONTAINED_KEYS = ["purl", "version", "cpe", "vcs"];
+const VCS_KEYS = ["url", "revision"];
 const BUILD_KEYS = ["cargo", "inputs"];
 const URL_PLACEHOLDERS = new Set(["version", "upstream"]);
 const FILE_KEYS = ["upstream", "member", "sha256", "executable"] as const;
@@ -85,9 +87,35 @@ export interface SourceBuild {
   readonly inputs?: string;
 }
 
+/** The repository and commit a component is built from (`vcs-url` and
+ *  `vcs-revision` formats, checked by the owner doc's schema). */
+export interface SourceVcs {
+  /** `git+https://<host>/<path>`, no revision. */
+  readonly url: string;
+  /** The full commit id. */
+  readonly revision: string;
+}
+
+/** Code linked or bundled into a source's staged files, as its author declares it. */
+export interface SourceContained {
+  /** Versionless package URL (`package-url` format, checked by the owner doc's schema). */
+  readonly purl: string;
+  readonly version: string;
+  /** CPE 2.3 formatted string (`cpe` format, checked by the owner doc's schema). */
+  readonly cpe?: string;
+  readonly vcs?: SourceVcs;
+}
+
 export interface ModuleSource {
   readonly name: string;
   readonly version: string;
+  /** Versionless package URL of the package the staged files are a release of;
+   *  absent only on a source built from a crate (`build`). */
+  readonly purl?: string;
+  /** CPE 2.3 formatted string of the package (`cpe` format). */
+  readonly cpe?: string;
+  readonly vcs?: SourceVcs;
+  readonly contains: readonly SourceContained[];
   /** The URL template, as written. */
   readonly url: string;
   readonly archive: SourceArchiveFormat;
@@ -102,9 +130,12 @@ export interface ModuleSource {
  *
  * `SHAPE` is a missing, mistyped or unknown key the owner doc's JSON Schema
  * reports in the same pass; every other code is a rule `telo check` reports.
+ * `SCHEMA_VIOLATION` is a rule the schema cannot state (a `purl` required unless
+ * the source is built), reported under the code the schema's own findings carry.
  */
 export type SourceProblemCode =
   | "SHAPE"
+  | "SCHEMA_VIOLATION"
   | "SOURCE_INVALID"
   | "SOURCE_URL_PLACEHOLDER_UNKNOWN"
   | "SOURCE_URL_INSECURE"
@@ -128,6 +159,15 @@ export interface ModuleSources {
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isVcsShape = (value: unknown): boolean =>
+  isObject(value) &&
+  typeof value.url === "string" &&
+  typeof value.revision === "string" &&
+  Object.keys(value).every((key) => VCS_KEYS.includes(key));
+
+const readVcs = (value: unknown): SourceVcs | undefined =>
+  isObject(value) ? { url: value.url as string, revision: value.revision as string } : undefined;
 
 /** The URL an entry is fetched from: substitution only. */
 export function resolveSourceUrl(source: ModuleSource, upstream: string): string {
@@ -209,8 +249,23 @@ export function readModuleSources(
       continue;
     }
     const build = raw.build;
+    const contains = raw.contains;
     if (
       typeof raw.version !== "string" ||
+      (raw.purl !== undefined && typeof raw.purl !== "string") ||
+      (raw.cpe !== undefined && typeof raw.cpe !== "string") ||
+      (raw.vcs !== undefined && !isVcsShape(raw.vcs)) ||
+      (contains !== undefined &&
+        (!Array.isArray(contains) ||
+          contains.some(
+            (item) =>
+              !isObject(item) ||
+              typeof item.purl !== "string" ||
+              typeof item.version !== "string" ||
+              (item.cpe !== undefined && typeof item.cpe !== "string") ||
+              (item.vcs !== undefined && !isVcsShape(item.vcs)) ||
+              Object.keys(item).some((key) => !CONTAINED_KEYS.includes(key)),
+          ))) ||
       typeof raw.url !== "string" ||
       !(SOURCE_ARCHIVE_FORMATS as readonly unknown[]).includes(raw.archive) ||
       !Array.isArray(raw.notices) ||
@@ -227,8 +282,10 @@ export function readModuleSources(
       problem(
         "SHAPE",
         at,
-        `${label}: a source is { version, url, archive (${SOURCE_ARCHIVE_FORMATS.join(" | ")}), ` +
-          `notices (non-empty list), entries, build? { cargo, inputs? } } and nothing else.`,
+        `${label}: a source is { version, purl?, cpe?, vcs? { url, revision }, contains? ` +
+          `[{ purl, version, cpe?, vcs? }], url, ` +
+          `archive (${SOURCE_ARCHIVE_FORMATS.join(" | ")}), notices (non-empty list), entries, ` +
+          `build? { cargo, inputs? } } and nothing else.`,
       );
       continue;
     }
@@ -249,6 +306,26 @@ export function readModuleSources(
         valid = false;
       }
     }
+    if (raw.purl === undefined && build === undefined) {
+      problem(
+        "SCHEMA_VIOLATION",
+        at,
+        `${at} is fetched from a url and names no purl. Add the package URL its files are a ` +
+          `release of, e.g. purl: pkg:npm/%40scope/name`,
+      );
+      valid = false;
+    }
+    ((contains as Array<Record<string, unknown>> | undefined) ?? []).forEach((item, index) => {
+      if ((item.version as string).trim() === "") {
+        problem(
+          "SCHEMA_VIOLATION",
+          `${at}.contains[${index}].version`,
+          `${at}.contains[${index}].version must not be empty. Name the version of ${item.purl} ` +
+            `the staged files carry.`,
+        );
+        valid = false;
+      }
+    });
     const url = raw.url as string;
     for (const match of url.matchAll(/\{([^{}]*)\}/g)) {
       if (URL_PLACEHOLDERS.has(match[1]!)) continue;
@@ -491,6 +568,15 @@ export function readModuleSources(
     sources.push({
       name,
       version: raw.version as string,
+      ...(raw.purl !== undefined ? { purl: raw.purl as string } : {}),
+      ...(raw.cpe !== undefined ? { cpe: raw.cpe as string } : {}),
+      ...(raw.vcs !== undefined ? { vcs: readVcs(raw.vcs)! } : {}),
+      contains: ((contains as SourceContained[] | undefined) ?? []).map((item) => ({
+        purl: item.purl,
+        version: item.version,
+        ...(item.cpe !== undefined ? { cpe: item.cpe } : {}),
+        ...(item.vcs !== undefined ? { vcs: readVcs(item.vcs)! } : {}),
+      })),
       url,
       archive: raw.archive as SourceArchiveFormat,
       notices,

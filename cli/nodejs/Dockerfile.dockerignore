@@ -23,6 +23,7 @@
 !packages/debug-wire
 !packages/runner-protocol
 !packages/share-tunnel
+!packages/osv
 !packages/debug-ui
 !packages/glob/nodejs
 !release/nodejs

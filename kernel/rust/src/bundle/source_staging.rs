@@ -398,7 +398,7 @@ mod tests {
 
     fn source(url: &str, sha256: &str) -> ModuleSource {
         let read = read_module_sources(&json!({ "sources": { "lib": {
-            "version": "1.0.0", "url": url, "archive": "tar.gz", "notices": ["LICENSE"],
+            "version": "1.0.0", "purl": "pkg:generic/lib", "url": url, "archive": "tar.gz", "notices": ["LICENSE"],
             "entries": {
                 "native/libx.so.1": { "upstream": "x", "member": "package/lib/libx.so.1", "sha256": sha256, "executable": false },
                 "native/libx.so": { "target": "libx.so.1" },

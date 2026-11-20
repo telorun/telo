@@ -1,0 +1,169 @@
+kind: Telo.Application
+metadata:
+  name: OsvQueryTest
+  version: 1.0.0
+  description: >-
+    Osv.Query against a stand-in OSV server started by the test: a vulnerable npm
+    component with its fixed version, a pkg:generic component answered unchecked
+    without being queried, a component whose advisories arrive over two pages, a
+    component checked by the revision of a repository the database records and one of
+    a repository it does not, a refusing server surfacing as ADVISORY_LOOKUP_FAILED, and
+    a query left to its default endpoint, asked about no component, so nothing is sent.
+imports: { Osv: ../, Http: ../../http-server, Assert: ../../assert }
+targets: [!ref test]
+---
+kind: Http.Api
+metadata: { name: standIn }
+routes:
+  - request:
+      path: /querybatch
+      method: POST
+      schema:
+        body:
+          type: object
+          required: [queries]
+          properties:
+            queries:
+              type: array
+              items:
+                type: object
+                properties:
+                  package: { type: object, properties: { purl: { type: string }, ecosystem: { type: string }, name: { type: string } } }
+                  commit: { type: string }
+                  page_token: { type: string }
+    handler: { kind: Telo.Value, value: !cel "inputs" }
+    inputs: { body: !cel "request.body" }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              results: !cel |
+                result.body.queries.map(q,
+                  has(q.commit) ? (q.commit == 'a5333afb9ad1aa473f8963b92caeaa955f47dc74' ? { 'vulns': [{ 'id': 'CVE-2025-29087' }] } : {}) :
+                  has(q.package.ecosystem) ? (q.package.name == 'https://github.com/sqlite/sqlite' ? { 'vulns': [{ 'id': 'CVE-2025-29087' }] } : {}) :
+                  q.package.purl == 'pkg:npm/%40fastify/static@10.1.0' ? { 'vulns': [{ 'id': 'GHSA-83w8-p2f5-377r' }] } :
+                  q.package.purl == 'pkg:npm/paged@1.0.0' && !has(q.page_token) ? { 'vulns': [{ 'id': 'PAGE-1' }], 'next_page_token': 'second' } :
+                  q.package.purl == 'pkg:npm/paged@1.0.0' ? { 'vulns': [{ 'id': 'PAGE-2' }] } :
+                  {})
+  - request: { path: "/vulns/{id}", method: GET }
+    handler: { kind: Telo.Value, value: !cel "inputs" }
+    inputs: { id: !cel "request.params.id" }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel |
+              {
+                'GHSA-83w8-p2f5-377r': {
+                  'id': 'GHSA-83w8-p2f5-377r',
+                  'aliases': ['CVE-2026-15074'],
+                  'summary': 'Dot-dot path segments are not rejected',
+                  'severity': [{ 'type': 'CVSS_V3', 'score': 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N' }],
+                  'affected': [{
+                    'package': { 'ecosystem': 'npm', 'name': '@fastify/static' },
+                    'ranges': [{ 'type': 'SEMVER', 'events': [{ 'introduced': '0' }, { 'fixed': '10.1.1' }] }]
+                  }]
+                },
+                'CVE-2025-29087': {
+                  'id': 'CVE-2025-29087',
+                  'affected': [{
+                    'ranges': [{
+                      'type': 'GIT',
+                      'repo': 'https://github.com/sqlite/sqlite',
+                      'events': [{ 'introduced': '0' }, { 'fixed': '3cd92ce875fd4e5601e535c35fef33494a6684e3' }]
+                    }]
+                  }]
+                },
+                'PAGE-1': { 'id': 'PAGE-1' },
+                'PAGE-2': { 'id': 'PAGE-2' }
+              }[result.id]
+---
+kind: Http.Api
+metadata: { name: refusing }
+routes:
+  - request: { path: /querybatch, method: POST }
+    handler: { kind: Telo.Value, value: {} }
+    returns:
+      - { status: 400, content: { application/json: { body: { error: refused } } } }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: standInServer }
+    listen: { address: 127.0.0.1, port: 18950 }
+    mounts: [{ path: /v1, mount: !ref standIn }]
+  - kind: Http.Server
+    metadata: { name: refusingServer }
+    listen: { address: 127.0.0.1, port: 18951 }
+    mounts: [{ path: /v1, mount: !ref refusing }]
+targets: [!ref standInServer, !ref refusingServer]
+steps:
+  - name: query
+    invoke: { kind: Osv.Query, baseUrl: "http://127.0.0.1:18950" }
+    inputs:
+      components:
+        - { purl: pkg:npm/%40fastify/static, version: 10.1.0 }
+        - { purl: pkg:generic/sqlite, version: 3.51.3 }
+        - { purl: pkg:npm/paged, version: 1.0.0 }
+        - purl: pkg:generic/sqlite
+          version: 3.51.3
+          vcs: { url: "git+https://github.com/sqlite/sqlite", revision: a5333afb9ad1aa473f8963b92caeaa955f47dc74 }
+        - purl: pkg:generic/tesseract
+          version: 5.3.0
+          vcs: { url: "git+https://github.com/Balearica/tesseract", revision: 2a9c1c49c360462733c386d2a44fcd22c4e21411 }
+  - name: assertQuery
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.query.result"
+      expected:
+        components:
+          - purl: pkg:npm/%40fastify/static
+            version: 10.1.0
+            checked: true
+            advisories:
+              - id: GHSA-83w8-p2f5-377r
+                aliases: [CVE-2026-15074]
+                summary: Dot-dot path segments are not rejected
+                severity: [{ type: CVSS_V3, score: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N" }]
+                component: pkg:npm/%40fastify/static@10.1.0
+                fixed: ["10.1.1"]
+                matchedBy: version
+          - { purl: pkg:generic/sqlite, version: 3.51.3, checked: false, advisories: [] }
+          - purl: pkg:npm/paged
+            version: 1.0.0
+            checked: true
+            advisories:
+              - { id: PAGE-1, aliases: [], summary: "", severity: [], component: pkg:npm/paged@1.0.0, fixed: [], matchedBy: version }
+              - { id: PAGE-2, aliases: [], summary: "", severity: [], component: pkg:npm/paged@1.0.0, fixed: [], matchedBy: version }
+          - purl: pkg:generic/sqlite
+            version: 3.51.3
+            vcs: { url: "git+https://github.com/sqlite/sqlite", revision: a5333afb9ad1aa473f8963b92caeaa955f47dc74 }
+            checked: true
+            advisories:
+              - { id: CVE-2025-29087, aliases: [], summary: "", severity: [], component: pkg:generic/sqlite@3.51.3, fixed: [3cd92ce875fd4e5601e535c35fef33494a6684e3], matchedBy: revision }
+          - purl: pkg:generic/tesseract
+            version: 5.3.0
+            vcs: { url: "git+https://github.com/Balearica/tesseract", revision: 2a9c1c49c360462733c386d2a44fcd22c4e21411 }
+            checked: false
+            advisories: []
+  - name: failure
+    try:
+      - name: refused
+        invoke: { kind: Osv.Query, baseUrl: "http://127.0.0.1:18951" }
+        inputs: { components: [{ purl: pkg:npm/lodash, version: 4.17.21 }] }
+      - { name: outcome, value: answered }
+    catch:
+      - { name: outcome, value: !cel "{'code': error.code, 'endpoint': error.data.endpoint}" }
+  - name: assertFailure
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.outcome.result"
+      expected: { code: ADVISORY_LOOKUP_FAILED, endpoint: "http://127.0.0.1:18951/v1/querybatch" }
+  - name: defaultEndpoint
+    invoke: { kind: Osv.Query }
+    inputs: { components: [] }
+  - name: assertDefaultEndpoint
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "steps.defaultEndpoint.result", expected: { components: [] } }

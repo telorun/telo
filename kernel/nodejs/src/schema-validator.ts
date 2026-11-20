@@ -18,6 +18,7 @@ import {
   type SchemaIssue,
   type SchemaNodeFindings,
   type TeloFormatEntry,
+  valueTypeDefaultFiller,
   withReachedFragmentDefs,
 } from "@telorun/analyzer";
 import {
@@ -492,7 +493,17 @@ export class SchemaValidator {
     // reference when there was nothing to normalize, which is what keeps the
     // BigInt-free path identical to a plain `validate(data)`; its context locates
     // the root, so a range check can tell a rendered wide integer from a written one.
+    // A default at a slot whose value type is held as an instance is filled first,
+    // decoded as its literal would be: AJV would write the raw text the assertion refuses.
+    const fillDefaults = valueTypeDefaultFiller(
+      sanitized as Record<string, any>,
+      (id) =>
+        (this.rawSchemas.get(id) ?? (id === ManifestRootSchema.$id ? ManifestRootSchema : undefined)) as
+          | Record<string, any>
+          | undefined,
+    );
     const check = (data: any): boolean => {
+      fillDefaults?.(data);
       const { view, context } = bigIntView(data);
       const ok = validate(view, context);
       if (ok && view !== data) mergeFilledDefaults(data, view);

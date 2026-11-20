@@ -1,0 +1,672 @@
+kind: Telo.Application
+metadata:
+  name: HubAdvisoriesTest
+  version: 1.0.0
+  description: |
+    The hub serves the known advisories of a version's pinned dependency closure.
+
+    - Versions are ingested through the recorded origin, which reports each one's
+      bill of materials as the CLI does: a record, or none for an artifact
+      published before the layer. A version ingested before the module it pins is
+      tracked is rebuilt when that module is ingested.
+    - Nothing is clean before the scheduled pass has answered: an empty list
+      beside `advisoriesComplete: false`. After a pass against a stand-in OSV that
+      knows no advisory, a closure of checked components is clean and complete,
+      while one through a module with no record, or shipping an embedded SQLite
+      (`pkg:generic`, which OSV does not match by version), stays incomplete. One
+      version at two revisions is two components, each checked by its commit once
+      OSV records its repository.
+    - An advisory published afterwards shows on the next pass, on every version
+      pinning the vulnerable one, with no re-ingest; `/module/versions` carries
+      the ids alone; `get_kinds` states them after, never on, the import line.
+    - A pass whose lookup fails records the failure and changes no stored advisory.
+
+    The origin reads run the fixture `__fixtures__/recorded-origin` through the
+    workspace CLI. The embedder, the manifest bucket and OSV are local stand-ins.
+
+    NEEDS A LIVE POSTGRES — a database `pnpm run test:e2e:hub` supplies from its
+    own stack through DB_HOST, DB_PORT, DB_USER, DB_PASSWORD and DB_NAME, never a
+    developer's database. Run only by the hub's own suite through that command.
+imports:
+  Run: ../../../../modules/run
+  Http: ../../../../modules/http-server
+  Sql: ../../../../modules/sql
+  Postgres: ../../../../modules/postgres
+  S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
+  Shell: ../../../../modules/shell
+  Embedding: ../../../../modules/embedding
+  OpenAI: ../../../../modules/openai
+  HttpClient: ../../../../modules/http-client
+  VectorStore: ../../../../modules/vector-store
+  VectorStoreMemory: ../../../../modules/vector-store-memory
+  Timer: ../../../../modules/timer
+  Osv: ../../../../modules/osv
+  Assert: ../../../../modules/assert
+  Schema:
+    source: ../../hub-schema.yaml
+    resources:
+      connection: !ref db
+  Ingest:
+    source: ../../hub-ingest.yaml
+    resources:
+      connection: !ref db
+      bucketPut: !ref putManifest
+      embedPassage: !ref embedPassage
+      vectorUpsert: !ref vectorUpsert
+      vectorRemove: !ref vectorRemove
+      shellHost: !ref localShell
+    variables:
+      # Every read runs the recorded origin, which answers the arguments appended.
+      teloCommand: [bun, ../../../../../cli/nodejs/bin/telo.ts, recorded-origin]
+  Catalog:
+    source: ../../hub-catalog.yaml
+    resources:
+      connection: !ref db
+      bucketGet: !ref getManifest
+  CleanPass:
+    source: ../../hub-advisories.yaml
+    resources:
+      connection: !ref db
+      osvQuery: !ref osvClean
+  AdvisedPass:
+    source: ../../hub-advisories.yaml
+    resources:
+      connection: !ref db
+      osvQuery: !ref osvAdvised
+  RefusedPass:
+    source: ../../hub-advisories.yaml
+    resources:
+      connection: !ref db
+      osvQuery: !ref osvRefusing
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref Schema.migrations
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+access:
+  kind: Postgres.DatabaseAccess
+  fields:
+    url:
+      scheme: postgres
+      host: !cel "variables.dbHost"
+      port: !cel "variables.dbPort"
+      user: !cel "variables.dbUser"
+      password: !cel "variables.dbPassword"
+      path: !cel "'/' + variables.dbName"
+---
+# The origin reads run in the fixtures directory, where the recorded origin is.
+kind: Shell.LocalHost
+metadata: { name: localShell }
+cwd: !module-path __fixtures__
+---
+kind: S3.Bucket
+metadata: { name: standInBucket }
+bucketName: fixture-bucket
+endpoint: http://127.0.0.1:8991
+forcePathStyle: true
+accessKeyId: fixture
+secretAccessKey: fixture
+---
+kind: S3.Put
+metadata: { name: putManifest }
+bucketRef: !ref standInBucket
+---
+kind: S3.Get
+metadata: { name: getManifest }
+bucketRef: !ref standInBucket
+---
+kind: OpenAI.EmbeddingModel
+metadata: { name: standInEmbedder }
+model: stand-in
+request:
+  kind: HttpClient.Request
+  client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:8991 }
+---
+kind: Embedding.Passage
+metadata: { name: embedPassage }
+model: !ref standInEmbedder
+---
+kind: VectorStoreMemory.Store
+metadata: { name: vectorIndex }
+dimensions: 3
+metric: cosine
+---
+kind: VectorStore.Record
+metadata: { name: vectorUpsert }
+store: !ref vectorIndex
+---
+kind: VectorStore.Removal
+metadata: { name: vectorRemove }
+store: !ref vectorIndex
+---
+kind: Osv.Query
+metadata: { name: osvClean }
+baseUrl: http://127.0.0.1:8992
+---
+kind: Osv.Query
+metadata: { name: osvAdvised }
+baseUrl: http://127.0.0.1:8993
+---
+kind: Osv.Query
+metadata: { name: osvRefusing }
+baseUrl: http://127.0.0.1:8994
+---
+# The embedder and the manifest bucket, on one port: one fixed vector per text
+# embedded, a bucket that accepts every put, and the manifests `get_kinds` reads.
+kind: Http.Api
+metadata: { name: standInApi }
+routes:
+  - request:
+      path: /embeddings
+      method: POST
+      schema:
+        body:
+          type: object
+          properties: { input: { type: array, items: { type: string } } }
+          required: [input]
+    handler:
+      kind: Telo.Value
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties: { input: { type: array, items: { type: string } } }
+          required: [input]
+      value: !cel "{'data': inputs.input.map(t, {'embedding': [1.0, 0.0, 0.0]})}"
+    inputs:
+      input: !cel "request.body.input"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+  - request:
+      path: /fixture-bucket/*
+      method: PUT
+      schema: { body: { x-telo-type: { name: Telo.Stream } } }
+    handler: { kind: Telo.Value, value: {} }
+    returns:
+      - { status: 200 }
+  - request: { path: /fixture-bucket/oci/example.test/web/1.0.0/telo.yaml, method: GET }
+    handler:
+      kind: Telo.Value
+      value: !include-text __fixtures__/recorded-origin/web-1.0.0.yaml
+    returns:
+      - status: 200
+        content:
+          text/yaml; charset=utf-8:
+            body: !cel "result"
+---
+# OSV with no advisory for anything it is asked about.
+kind: Http.Api
+metadata: { name: cleanOsv }
+routes:
+  - request:
+      path: /querybatch
+      method: POST
+      schema:
+        body: { type: object, required: [queries], properties: { queries: { type: array } } }
+    handler: { kind: Telo.Value, value: !cel "inputs" }
+    inputs: { body: !cel "request.body" }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              results: !cel "result.body.queries.map(q, {})"
+---
+# OSV once @fastify/static 10.1.0 has an advisory, and records SQLite's
+# repository with an advisory against one of its commits.
+kind: Http.Api
+metadata: { name: advisedOsv }
+routes:
+  - request:
+      path: /querybatch
+      method: POST
+      schema:
+        body:
+          type: object
+          required: [queries]
+          properties:
+            queries:
+              type: array
+              items:
+                type: object
+                properties:
+                  package: { type: object, properties: { purl: { type: string }, ecosystem: { type: string }, name: { type: string } } }
+                  commit: { type: string }
+    handler: { kind: Telo.Value, value: !cel "inputs" }
+    inputs: { body: !cel "request.body" }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              results: !cel >-
+                result.body.queries.map(q,
+                  has(q.commit) ? (q.commit == 'a5333afb9ad1aa473f8963b92caeaa955f47dc74' ? {'vulns': [{'id': 'CVE-2025-29087'}]} : {}) :
+                  has(q.package.ecosystem) ? (q.package.name == 'https://github.com/sqlite/sqlite' ? {'vulns': [{'id': 'CVE-2025-29087'}]} : {}) :
+                  q.package.purl == 'pkg:npm/%40fastify/static@10.1.0' ? {'vulns': [{'id': 'GHSA-83w8-p2f5-377r'}]} : {})
+  - request: { path: "/vulns/{id}", method: GET }
+    handler: { kind: Telo.Value, value: !cel "inputs" }
+    inputs: { id: !cel "request.params.id" }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel |
+              {
+                'GHSA-83w8-p2f5-377r': {
+                  'id': 'GHSA-83w8-p2f5-377r',
+                  'aliases': ['CVE-2026-15074'],
+                  'summary': 'Dot-dot path segments are not rejected',
+                  'severity': [{ 'type': 'CVSS_V3', 'score': 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N' }],
+                  'affected': [{
+                    'package': { 'ecosystem': 'npm', 'name': '@fastify/static' },
+                    'ranges': [{ 'type': 'SEMVER', 'events': [{ 'introduced': '0' }, { 'fixed': '10.1.1' }] }]
+                  }]
+                },
+                'CVE-2025-29087': {
+                  'id': 'CVE-2025-29087',
+                  'summary': 'concat_ws() overflows',
+                  'affected': [{
+                    'ranges': [{
+                      'type': 'GIT',
+                      'repo': 'https://github.com/sqlite/sqlite',
+                      'events': [{ 'introduced': '0' }, { 'fixed': '3cd92ce875fd4e5601e535c35fef33494a6684e3' }]
+                    }]
+                  }]
+                }
+              }[result.id]
+---
+kind: Http.Api
+metadata: { name: refusingOsv }
+routes:
+  - request: { path: /querybatch, method: POST }
+    handler: { kind: Telo.Value, value: {} }
+    returns:
+      - { status: 400, content: { application/json: { body: { error: refused } } } }
+---
+kind: Sql.Query
+metadata: { name: query }
+connection: !ref db
+---
+kind: Sql.Command
+metadata: { name: exec }
+connection: !ref db
+---
+# One version through the ingest run, to completion: a claim minted from the
+# clock (a durable run id is never reused, so a rerun of the test must not start
+# from an attempt an earlier run burnt), the run, and its recorded outcome.
+kind: Telo.Sequence
+metadata: { name: ingestOne }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      moduleId: { type: string }
+      ref: { type: string }
+      version: { type: string }
+      latestVersion: { type: string }
+    required: [moduleId, ref, version, latestVersion]
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties: { completed: { type: boolean }, lastError: { type: string } }
+    required: [completed, lastError]
+steps:
+  - name: seedIngest
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO version_ingest (module_id, version, attempt, completed_at)
+        VALUES ($1::bigint, $2, EXTRACT(EPOCH FROM NOW())::int, NOW())
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
+  - name: claim
+    invoke: !ref Schema.claimVersion
+    inputs:
+      moduleId: !cel "inputs.moduleId"
+      version: !cel "inputs.version"
+      digest: !cel "'sha256:' + inputs.version"
+      rev: 12
+  - name: ingest
+    invoke: !ref Ingest.ingestVersion
+    inputs:
+      moduleId: !cel "inputs.moduleId"
+      ref: !cel "inputs.ref"
+      version: !cel "inputs.version"
+      digest: !cel "'sha256:' + inputs.version"
+      latestVersion: !cel "inputs.latestVersion"
+      attempt: !cel "steps.claim.result.attempt"
+  # Bounded; the last reading leaves the loop, so a run that never completes
+  # fails on what it showed.
+  - name: await
+    inputs:
+      moduleId: !cel "inputs.moduleId"
+      version: !cel "inputs.version"
+    invoke:
+      kind: Run.Loop
+      maxIterations: 90
+      condition: !cel "iteration == 0 || !previous.state.result.rows[0].completed"
+      steps:
+        - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 1s } }
+        - name: state
+          invoke: !ref query
+          inputs:
+            sql: >-
+              SELECT completed_at IS NOT NULL AS completed, last_error AS "lastError"
+              FROM version_ingest WHERE module_id = $1::bigint AND version = $2
+            bindings:
+              - !cel "inputs.moduleId"
+              - !cel "inputs.version"
+      outputs:
+        completed: !cel "steps.state.result.rows[0].completed"
+        lastError: !cel "steps.state.result.rows[0].lastError"
+outputs:
+  completed: !cel "steps.await.result.completed"
+  lastError: !cel "steps.await.result.lastError"
+---
+# What every reader of a version's advisories is served, for the modules asked.
+kind: Telo.Sequence
+metadata: { name: closures }
+steps:
+  - name: nestshop
+    invoke: !ref Catalog.moduleDetail
+    inputs: { ref: oci://example.test/nestshop, version: 1.0.0 }
+  - name: nestlegacy
+    invoke: !ref Catalog.moduleDetail
+    inputs: { ref: oci://example.test/nestlegacy, version: 1.0.0 }
+  - name: web
+    invoke: !ref Catalog.moduleDetail
+    inputs: { ref: oci://example.test/web, version: 1.0.0 }
+  - name: shop
+    invoke: !ref Catalog.moduleDetail
+    inputs: { ref: oci://example.test/shop, version: 1.0.0 }
+  - name: oldshop
+    invoke: !ref Catalog.moduleDetail
+    inputs: { ref: oci://example.test/oldshop, version: 1.0.0 }
+  - name: sqlshop
+    invoke: !ref Catalog.moduleDetail
+    inputs: { ref: oci://example.test/sqlshop, version: 1.0.0 }
+outputs:
+  nestshop: !cel "{'advisories': steps.nestshop.result.advisories, 'advisoriesComplete': steps.nestshop.result.advisoriesComplete}"
+  nestlegacy: !cel "{'advisories': steps.nestlegacy.result.advisories, 'advisoriesComplete': steps.nestlegacy.result.advisoriesComplete}"
+  web: !cel "{'advisories': steps.web.result.advisories, 'advisoriesComplete': steps.web.result.advisoriesComplete}"
+  shop: !cel "{'advisories': steps.shop.result.advisories, 'advisoriesComplete': steps.shop.result.advisoriesComplete}"
+  oldshop: !cel "{'advisories': steps.oldshop.result.advisories, 'advisoriesComplete': steps.oldshop.result.advisoriesComplete}"
+  sqlshop: !cel "{'advisories': steps.sqlshop.result.advisories, 'advisoriesComplete': steps.sqlshop.result.advisoriesComplete}"
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: standIns }
+    listen: { address: 127.0.0.1, port: 8991 }
+    contentTypeParsers:
+      - { contentType: text/yaml, stream: true }
+    mounts: [{ path: /, mount: !ref standInApi }]
+  - kind: Http.Server
+    metadata: { name: cleanServer }
+    listen: { address: 127.0.0.1, port: 8992 }
+    mounts: [{ path: /v1, mount: !ref cleanOsv }]
+  - kind: Http.Server
+    metadata: { name: advisedServer }
+    listen: { address: 127.0.0.1, port: 8993 }
+    mounts: [{ path: /v1, mount: !ref advisedOsv }]
+  - kind: Http.Server
+    metadata: { name: refusingServer }
+    listen: { address: 127.0.0.1, port: 8994 }
+    mounts: [{ path: /v1, mount: !ref refusingOsv }]
+targets: [!ref standIns, !ref cleanServer, !ref advisedServer, !ref refusingServer]
+steps:
+  - name: reset
+    invoke: !ref exec
+    inputs: { sql: DELETE FROM modules WHERE id BETWEEN 9701 AND 9708 }
+  - name: seedModules
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO modules (id, ref, transport) VALUES
+          (9701, 'oci://example.test/web', 'oci'),
+          (9702, 'oci://example.test/legacy', 'oci'),
+          (9703, 'oci://example.test/embeds', 'oci'),
+          (9704, 'oci://example.test/shop', 'oci'),
+          (9705, 'oci://example.test/oldshop', 'oci'),
+          (9706, 'oci://example.test/sqlshop', 'oci'),
+          (9707, 'oci://example.test/nestshop', 'oci'),
+          (9708, 'oci://example.test/nestlegacy', 'oci')
+  # The dependents first: they pin modules the hub does not track yet.
+  - name: shop
+    invoke: !ref ingestOne
+    inputs: { moduleId: "9704", ref: oci://example.test/shop, version: 1.0.0, latestVersion: 1.0.0 }
+  - name: oldshop
+    invoke: !ref ingestOne
+    inputs: { moduleId: "9705", ref: oci://example.test/oldshop, version: 1.0.0, latestVersion: 1.0.0 }
+  - name: sqlshop
+    invoke: !ref ingestOne
+    inputs: { moduleId: "9706", ref: oci://example.test/sqlshop, version: 1.0.0, latestVersion: 1.0.0 }
+  - name: legacy
+    invoke: !ref ingestOne
+    inputs: { moduleId: "9702", ref: oci://example.test/legacy, version: 1.0.0, latestVersion: 1.0.0 }
+  - name: embeds
+    invoke: !ref ingestOne
+    inputs: { moduleId: "9703", ref: oci://example.test/embeds, version: 1.0.0, latestVersion: 1.0.0 }
+  - name: webOlder
+    invoke: !ref ingestOne
+    inputs: { moduleId: "9701", ref: oci://example.test/web, version: 1.0.0, latestVersion: 1.1.0 }
+  - name: webLatest
+    invoke: !ref ingestOne
+    inputs: { moduleId: "9701", ref: oci://example.test/web, version: 1.1.0, latestVersion: 1.1.0 }
+  # Modules nested in an artifact, after the module their nested module pins.
+  - name: nestshop
+    invoke: !ref ingestOne
+    inputs: { moduleId: "9707", ref: oci://example.test/nestshop, version: 1.0.0, latestVersion: 1.0.0 }
+  - name: nestlegacy
+    invoke: !ref ingestOne
+    inputs: { moduleId: "9708", ref: oci://example.test/nestlegacy, version: 1.0.0, latestVersion: 1.0.0 }
+  - name: assertIngested
+    inputs:
+      actual:
+        shop: !cel "steps.shop.result"
+        oldshop: !cel "steps.oldshop.result"
+        sqlshop: !cel "steps.sqlshop.result"
+        legacy: !cel "steps.legacy.result"
+        embeds: !cel "steps.embeds.result"
+        webOlder: !cel "steps.webOlder.result"
+        webLatest: !cel "steps.webLatest.result"
+        nestshop: !cel "steps.nestshop.result"
+        nestlegacy: !cel "steps.nestlegacy.result"
+      expected:
+        shop: { completed: true, lastError: "" }
+        oldshop: { completed: true, lastError: "" }
+        sqlshop: { completed: true, lastError: "" }
+        legacy: { completed: true, lastError: "" }
+        embeds: { completed: true, lastError: "" }
+        webOlder: { completed: true, lastError: "" }
+        webLatest: { completed: true, lastError: "" }
+        nestshop: { completed: true, lastError: "" }
+        nestlegacy: { completed: true, lastError: "" }
+    invoke: { kind: Assert.Equals }
+  - name: components
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT mv.module_id::int AS module, mv.version, mv.sbom_complete AS "sbomComplete",
+               COALESCE((SELECT json_agg(mc.purl || '@' || mc.component_version
+                                           || CASE WHEN mc.vcs_url = '' THEN '' ELSE ' ' || mc.vcs_url || '@' || left(mc.vcs_revision, 7) END
+                                         ORDER BY mc.purl, mc.vcs_revision)
+                         FROM module_components mc
+                         WHERE mc.module_id = mv.module_id AND mc.version = mv.version
+                           AND mc.nested_path = ''), '[]'::json) AS components
+        FROM module_versions mv
+        WHERE mv.module_id BETWEEN 9701 AND 9708
+        ORDER BY mv.module_id, mv.version
+  - name: assertComponents
+    inputs:
+      actual: !cel "steps.components.result.rows"
+      expected:
+        - { module: 9701, version: 1.0.0, sbomComplete: true, components: ["pkg:npm/%40fastify/static@10.1.0"] }
+        - { module: 9701, version: 1.1.0, sbomComplete: true, components: ["pkg:npm/%40fastify/static@10.1.1"] }
+        - { module: 9702, version: 1.0.0, sbomComplete: false, components: [] }
+        - module: 9703
+          version: 1.0.0
+          sbomComplete: true
+          # zlib's vcs_url names no commit, so it is stored with no repository.
+          components: [pkg:generic/sqlite@3.51.3, pkg:generic/sqlite@3.51.3 git+https://github.com/sqlite/sqlite@0b1c2d3, pkg:generic/sqlite@3.51.3 git+https://github.com/sqlite/sqlite@a5333af, pkg:generic/zlib@1.3.1, pkg:npm/kysely@0.28.15]
+        - { module: 9704, version: 1.0.0, sbomComplete: true, components: [] }
+        - { module: 9705, version: 1.0.0, sbomComplete: true, components: [] }
+        - { module: 9706, version: 1.0.0, sbomComplete: true, components: [] }
+        - { module: 9707, version: 1.0.0, sbomComplete: true, components: [] }
+        - { module: 9708, version: 1.0.0, sbomComplete: true, components: [] }
+    invoke: { kind: Assert.Equals }
+  - name: nested
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT n.module_id::int AS module, n.path, n.sbom_complete AS complete,
+               COALESCE((SELECT json_agg(mc.purl || '@' || mc.component_version ORDER BY mc.purl)
+                         FROM module_components mc
+                         WHERE mc.module_id = n.module_id AND mc.version = n.version
+                           AND mc.nested_path = n.path), '[]'::json) AS components
+        FROM module_nested n WHERE n.module_id BETWEEN 9707 AND 9708
+        ORDER BY n.module_id, n.path
+  - name: assertNested
+    inputs:
+      actual: !cel "steps.nested.result.rows"
+      expected:
+        - { module: 9707, path: chat, complete: true, components: [] }
+        - { module: 9707, path: tools, complete: true, components: ["pkg:npm/%40fastify/static@10.1.0"] }
+        - { module: 9708, path: old, complete: false, components: [] }
+    invoke: { kind: Assert.Equals }
+  # Nothing has asked the advisory database yet: no list is a verdict.
+  - name: beforePass
+    invoke: !ref closures
+  - name: assertBeforePass
+    inputs:
+      actual: !cel "steps.beforePass.result"
+      expected:
+        nestshop: { advisories: [], advisoriesComplete: false }
+        nestlegacy: { advisories: [], advisoriesComplete: false }
+        web: { advisories: [], advisoriesComplete: false }
+        shop: { advisories: [], advisoriesComplete: false }
+        oldshop: { advisories: [], advisoriesComplete: false }
+        sqlshop: { advisories: [], advisoriesComplete: false }
+    invoke: { kind: Assert.Equals }
+  - name: cleanPass
+    invoke: !ref CleanPass.checkAdvisories
+  - name: afterCleanPass
+    invoke: !ref closures
+  - name: assertAfterCleanPass
+    inputs:
+      actual: !cel "steps.afterCleanPass.result"
+      expected:
+        nestshop: { advisories: [], advisoriesComplete: true }
+        nestlegacy: { advisories: [], advisoriesComplete: false }
+        web: { advisories: [], advisoriesComplete: true }
+        shop: { advisories: [], advisoriesComplete: true }
+        oldshop: { advisories: [], advisoriesComplete: false }
+        sqlshop: { advisories: [], advisoriesComplete: false }
+    invoke: { kind: Assert.Equals }
+  # The same versions, no re-ingest: an advisory published since reaches every
+  # version whose closure holds the vulnerable one.
+  - name: advisedPass
+    invoke: !ref AdvisedPass.checkAdvisories
+  - name: afterAdvisedPass
+    invoke: !ref closures
+  - name: assertAfterAdvisedPass
+    inputs:
+      actual: !cel "steps.afterAdvisedPass.result"
+      expected:
+        web: &advisory
+          advisories:
+            - id: GHSA-83w8-p2f5-377r
+              aliases: [CVE-2026-15074]
+              summary: Dot-dot path segments are not rejected
+              severity: [{ type: CVSS_V3, score: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N" }]
+              component: pkg:npm/%40fastify/static@10.1.0
+              fixed: ["10.1.1"]
+              matchedBy: version
+          advisoriesComplete: true
+        shop: *advisory
+        nestshop: *advisory
+        nestlegacy: { advisories: [], advisoriesComplete: false }
+        oldshop: { advisories: [], advisoriesComplete: false }
+        sqlshop:
+          advisories:
+            - { id: CVE-2025-29087, aliases: [], summary: concat_ws() overflows, severity: [], component: pkg:generic/sqlite@3.51.3, fixed: [3cd92ce875fd4e5601e535c35fef33494a6684e3], matchedBy: revision }
+          advisoriesComplete: false
+    invoke: { kind: Assert.Equals }
+  # Each revision is its own question: the plain one is matched by nothing, each
+  # revision of a recorded repository by its commit.
+  - name: sqliteAnswers
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT left(vcs_revision, 7) AS revision, checked, jsonb_array_length(advisories)::int AS advisories
+        FROM component_advisories WHERE purl = 'pkg:generic/sqlite' ORDER BY vcs_revision
+  - name: assertSqliteAnswers
+    inputs:
+      actual: !cel "steps.sqliteAnswers.result.rows"
+      expected:
+        - { revision: "", checked: false, advisories: 0 }
+        - { revision: 0b1c2d3, checked: true, advisories: 0 }
+        - { revision: a5333af, checked: true, advisories: 1 }
+    invoke: { kind: Assert.Equals }
+  - name: versions
+    invoke: !ref Catalog.moduleVersionList
+    inputs: { ref: oci://example.test/web }
+  - name: assertVersions
+    inputs:
+      actual: !cel "steps.versions.result.versions"
+      expected:
+        - version: 1.1.0
+          integrity: sha256-q8Vd1kR3mZ7wT2pXc5LbN9fH4jE6sA0uYgK1oQ3iWzM
+          advisories: []
+          advisoriesComplete: true
+        - version: 1.0.0
+          integrity: sha256-Hc2nT7yU4oB9eR1wL6kZ3mX8vP5aJ0dGfS2qN7iKtE4
+          advisories: [{ id: GHSA-83w8-p2f5-377r }]
+          advisoriesComplete: true
+    invoke: { kind: Assert.Equals }
+  # The import line stays exactly the line to copy; the advisories follow it.
+  - name: kinds
+    invoke: !ref Catalog.kindDefinitions
+    inputs:
+      kinds: [{ ref: oci://example.test/web, kind: Server, version: 1.0.0 }]
+  - name: assertKindsHead
+    inputs:
+      actual: !cel >-
+        enumerate(steps.kinds.result.text.split('\n')).filter(e, e.index < 4).map(e, e.value)
+      expected: ["# Web", "# imports:", "#   Web: oci://example.test/web@1.0.0#sha256-Hc2nT7yU4oB9eR1wL6kZ3mX8vP5aJ0dGfS2qN7iKtE4", "# Advisories: GHSA-83w8-p2f5-377r (pkg:npm/%40fastify/static@10.1.0, fixed in 10.1.1); newest clean and complete: 1.1.0"]
+    invoke: { kind: Assert.Equals }
+  # A pass that cannot reach the database records why and changes no advisory.
+  - name: refusedPass
+    invoke: !ref RefusedPass.checkAdvisories
+  - name: afterRefusedPass
+    invoke: !ref closures
+  - name: failures
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT (SELECT COUNT(*)::int FROM component_advisories
+                WHERE last_error LIKE 'ADVISORY_LOOKUP_FAILED%') > 0 AS recorded
+  - name: assertRefusedPass
+    inputs:
+      actual:
+        closures: !cel "steps.afterRefusedPass.result"
+        failureRecorded: !cel "steps.failures.result.rows[0].recorded"
+      expected:
+        closures: !cel "steps.afterAdvisedPass.result"
+        failureRecorded: true
+    invoke: { kind: Assert.Equals }

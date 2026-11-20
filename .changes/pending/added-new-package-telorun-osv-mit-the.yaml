@@ -1,0 +1,5 @@
+units:
+  packages/osv: Added
+body: "New package @telorun/osv (MIT): the one OSV advisory lookup Telo's tools share —
+  the package types OSV matches by version as data, the batched query with paging,
+  retries with backoff, and each component's checked answer."

@@ -1,0 +1,49 @@
+{
+  "name": "vcs-url",
+  "grammar": "https://spdx.github.io/spdx-spec/v2.3/package-information/#77-package-download-location-field",
+  "standIn": "git+https://example.com/stand-in",
+  "description": "The location of a git repository in the SPDX and purl VCS notation, without a revision: git+https://, a host (letters, digits, '-' and '.'), an optional :port, then a path of one or more '/'-separated segments. It carries no user name or password, no '@', no query (?) and no fragment (#): the revision is declared beside it. Path segments are not empty, '.' or '..', and hold no whitespace; a '%' is followed by two hexadecimal digits. Whether the repository exists is not checked.",
+  "conformance": {
+    "valid": [
+      "git+https://github.com/sqlite/sqlite",
+      "git+https://github.com/acme/engine",
+      "git+https://gitlab.com/libtiff/libtiff",
+      "git+https://git.example.com:8443/team/repo.git",
+      "git+https://example.com/a/b/c",
+      "git+https://example.com/with%20space"
+    ],
+    "invalid": [
+      "",
+      "https://github.com/sqlite/sqlite",
+      "git://github.com/sqlite/sqlite",
+      "git+http://github.com/sqlite/sqlite",
+      "git+ssh://github.com/sqlite/sqlite",
+      "hg+https://example.com/repo",
+      "GIT+https://github.com/sqlite/sqlite",
+      "git+https://user@github.com/x/y",
+      "git+https://user:secret@github.com/x/y",
+      "git+https://github.com/sqlite/sqlite@a5333afb9ad1aa473f8963b92caeaa955f47dc74",
+      "git+https://github.com/sqlite/sqlite?ref=main",
+      "git+https://github.com/sqlite/sqlite#version-3.51.3",
+      "git+https://",
+      "git+https:///sqlite/sqlite",
+      "git+https://github.com",
+      "git+https://github.com/",
+      "git+https://github.com/sqlite/",
+      "git+https://github.com//sqlite",
+      "git+https://github.com/./sqlite",
+      "git+https://github.com/../sqlite",
+      "git+https://github.com:/sqlite/sqlite",
+      "git+https://github.com:0/sqlite/sqlite",
+      "git+https://github.com:65536/sqlite/sqlite",
+      "git+https://github.com:x/sqlite/sqlite",
+      "git+https://git hub.com/sqlite/sqlite",
+      "git+https://-github.com/sqlite/sqlite",
+      "git+https://github..com/sqlite/sqlite",
+      "git+https://[::1]/repo",
+      "git+https://github.com/sql ite",
+      "git+https://github.com/sqlite%zz",
+      "git+https://github.com/sqlite%4"
+    ]
+  }
+}

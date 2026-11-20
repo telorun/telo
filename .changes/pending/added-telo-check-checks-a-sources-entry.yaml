@@ -1,0 +1,8 @@
+units:
+  analyzer: Added
+body: "telo check checks a sources: entry's vcs.url and vcs.revision against the vcs-url
+  and vcs-revision formats, reporting a tag, a short commit id, a url without git+ or
+  with a user name as SCHEMA_VIOLATION at that line. A module's bill of materials writes
+  a component declared with vcs into its purl as the vcs_url qualifier, valued
+  <url>@<revision>, every qualifier in canonical form, so two revisions of one version
+  are two components; splitVcsQualifier reads it back."

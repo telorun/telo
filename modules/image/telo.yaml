@@ -30,6 +30,7 @@ native:
 sources:
   canvas:
     version: 1.0.10
+    purl: pkg:npm/%40napi-rs/canvas
     url: https://registry.npmjs.org/@napi-rs/{upstream}/-/{upstream}-{version}.tgz
     archive: tar.gz
     notices: [./notices/napi-rs-canvas.LICENSE]
@@ -284,11 +285,10 @@ kind: Telo.Definition
 metadata:
   name: Fit
   description: >-
-    Scales an image down to fit within a maximum width and height, keeping its
-    aspect ratio and never enlarging it, then re-encodes it as PNG, JPEG or WebP
-    with metadata stripped and its EXIF orientation applied. Oversized files and
-    pixel counts are refused from the header before decoding. Returns the bytes,
-    the final dimensions and the media type.
+    Scales an image down to fit a maximum width and height, keeping its aspect ratio
+    and never enlarging it, then re-encodes it as PNG, JPEG or WebP with metadata
+    stripped and EXIF orientation applied. Oversized files and pixel counts are
+    refused before decoding. Returns the bytes, final dimensions and media type.
 capability: Telo.Invocable
 controllers: [pkg:telo/local/js?path=./nodejs/image.mjs&local_path=./nodejs/src/index.ts#fit]
 throws:
@@ -309,10 +309,9 @@ throws:
           max: { type: integer, description: That limit's value on the resource. }
     ERR_UNSUPPORTED_IMAGE:
       description: >-
-        The bytes are not a PNG, JPEG, WebP or GIF image that can be read: the
-        signature is another format's, the header is truncated or malformed, or
-        the body is corrupt or cut short and the decoder rejects it. A signature
-        or header failure is raised before anything is decoded.
+        The bytes are not a readable PNG, JPEG, WebP or GIF: another format's
+        signature, a truncated or malformed header, or a corrupt body. A signature or
+        header failure is raised before decoding.
 inputType:
   kind: Telo.JsonSchema
   schema:

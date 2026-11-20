@@ -2,10 +2,15 @@ import esbuild from "esbuild";
 import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
+import { publishedVersionPlugin } from "../../scripts/generate-telo-version.mjs";
 
 const watch = process.argv.includes("--watch");
 // The release staging (`scripts/stage-vsix.mjs`) puts the published engine there itself.
 const withEngine = !process.argv.includes("--no-engine");
+// The extension a release ships (`scripts/stage-vsix.mjs`): workspace packages from
+// their sources and their version modules as the tree records them now, so the
+// bundle never carries a `dist` built before the last version bump.
+const published = process.argv.includes("--published");
 
 // A development build bundles @telorun/language-server's built file as is; the
 // engine a release ships is the published build, staged by `scripts/stage-vsix.mjs`.
@@ -31,6 +36,7 @@ const options = {
   target: "node20",
   sourcemap: true,
   metafile: true,
+  ...(published ? { conditions: ["source"], plugins: [publishedVersionPlugin()] } : {}),
 };
 
 if (watch) {

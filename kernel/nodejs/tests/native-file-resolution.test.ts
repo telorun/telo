@@ -204,6 +204,7 @@ describe("resolveNativeFileUri", () => {
       return {
         addon: {
           version: "1.0.0",
+          purl: "pkg:generic/addon",
           url: "http://127.0.0.1:1/{version}/{upstream}.tar.gz",
           archive: "tar.gz",
           notices: ["./LICENSE"],

@@ -193,6 +193,10 @@ level is closed.
 | Key | Required | Meaning |
 | --- | --- | --- |
 | `version` | yes | the upstream version, substituted for `{version}` |
+| `purl` | yes, unless `build` is set | the versionless package URL of the package the staged files are a release of (`pkg:npm/%40napi-rs/canvas`); its version is `version` |
+| `cpe` | no | the package's CPE 2.3 name, for scanners that match by CPE |
+| `vcs` | no | `{ url, revision }`: the git repository and the commit the staged files are built from |
+| `contains` | no | the code linked or bundled into the staged files, a list of `{ purl, version, cpe?, vcs? }` |
 | `url` | yes | an `https://` URL template — plain `http://` only for a loopback host; its only placeholders are `{version}` and `{upstream}` |
 | `archive` | yes | the archive's format; `tar.gz` is the one format |
 | `notices` | yes, non-empty | module-relative notice files covering what the source ships — checked in, or staged as entries |
@@ -207,6 +211,69 @@ An entry is one of two shapes:
   and `executable`, both written by `telo release stage --pin`;
 - **a link** — `target` alone, the link target exactly as it is stored,
   resolved relative to the link's own directory.
+
+**One package per source.** `purl` names the package advisories are filed against — the
+parent package of a platform-split release (`pkg:npm/%40napi-rs/canvas`, never
+`canvas-linux-x64-gnu`) — so a source stages the files of one package; one that took several
+is split into one source per package. A file upstream pre-bundled (a UI build) is listed under
+its own identity, as a lockfile would list it. A source built from a crate with `build` may
+omit `purl`.
+
+**`contains`** is your declaration of what a staged binary links or bundles, such as the
+SQLite a SQLite binding embeds. Revisit it whenever `version` changes. Each entry names a
+versionless `purl`, the `version` carried and, for scanners that match by CPE, a `cpe`:
+
+```yaml
+    purl: pkg:npm/better-sqlite3
+    contains:
+      - { purl: pkg:generic/sqlite, version: 3.51.3, cpe: "cpe:2.3:a:sqlite:sqlite:3.51.3:*:*:*:*:*:*:*" }
+```
+
+`purl` and `contains[].purl` are in the `package-url` Telo format (a Package URL carrying no
+version and no `vcs_url` qualifier: an `@` marks a version, so a literal one inside a name is
+written `%40`, and the repository and commit are declared beside it as `vcs:`, below), and
+`cpe` / `contains[].cpe` in the `cpe` format (a CPE 2.3 formatted string of 13 colon-separated
+fields). A value they refuse, and a fetched source with no `purl`, are schema violations at
+`telo check`. These keys are authoring input: the published `telo.yaml` carries no `sources:`.
+
+**`vcs`** names the repository and commit embedded code is built from, on the source itself or
+on a `contains` entry, so advisories filed against commits of that repository reach it — the
+way most C libraries are tracked, since no package registry versions them:
+
+```yaml
+    contains:
+      - purl: pkg:generic/sqlite
+        version: 3.51.3
+        cpe: "cpe:2.3:a:sqlite:sqlite:3.51.3:*:*:*:*:*:*:*"
+        vcs: { url: "git+https://github.com/sqlite/sqlite", revision: a5333afb9ad1aa473f8963b92caeaa955f47dc74 }
+```
+
+`url` is in the `vcs-url` format — `git+https://<host>[:<port>]/<path>`, the SPDX and purl
+notation, with no user name, no revision, no query and no fragment — and `revision` in the
+`vcs-revision` format: the full commit id, 40 or 64 lower-case hexadecimal digits. A tag, a
+branch or an abbreviated id is refused, because each can later name another commit. Declare
+one revision per component, the commit the staged files were built from (a build that
+vendors a library as a git submodule names it as the submodule's pin), and refresh it
+whenever `version` changes. Two revisions of one version are two components of the record.
+
+`version` (and the version in `cpe`) is always a release: for code built from a commit between
+releases, the newest release that commit contains — never the unreleased version the code
+reports, such as `1.83.0` or `1.6.38.git` — so a scanner matching by version reports every
+advisory that release is open to and assumes no fix the commit lacks, while `vcs` names the
+exact commit.
+
+The record writes it into the component's package URL as the `vcs_url` qualifier — the only
+place that qualifier comes from, since a declared `purl` carrying one is refused — and
+`telo audit` and the hub then ask OSV about that commit once OSV records the repository in
+any advisory. Name the repository whose history holds the commit — its own upstream, or the
+fork the build really used. A host like GitHub answers a fork's commit through every
+repository of the fork network, so a fork's commit written under the upstream's URL would
+be judged by advisories that do not describe it. `telo publish` (and `telo release stage`)
+read the repository's history over HTTPS before writing the record: a commit no branch or
+tag of `url` reaches refuses the publish with `SOURCE_REVISION_UNREACHABLE` at its
+`vcs.revision`, and a host that gives no history with `SOURCE_REPOSITORY_UNREADABLE` —
+point `url` at a mirror that serves it, or remove `vcs` to leave the component unchecked.
+`telo check` reads no network and checks only the two formats.
 
 Entries are keyed by path because the manifest already names every staged file.
 One `version` and one `url` serve every entry, so an upstream bump edits

@@ -57,10 +57,9 @@ metadata:
   categories: [AI]
   description: |
     Recognize ${subject(lang)} in images, offline: the trained model for reading
-    ${described(lang)} with Tesseract optical character recognition.
-    Import it and hand its one ready-made model to a recognizer, beside any other
-    languages a page mixes. Packaged from the integer-quantized best models of the
-    tesseract-ocr project.
+    ${described(lang)} with Tesseract optical character recognition, ready to
+    hand to a recognizer beside any other languages a page mixes. Packaged from the
+    integer-quantized best models of the tesseract-ocr project.
 requires: { telo: ">=unreleased" }
 restrictions:
   - requires: { telo: ">=0.100.0" }
@@ -73,10 +72,10 @@ exports:
 assets:
   - ./tessdata/
 sources:
-  # The package carries no notice of its own; the checked-in one is the Apache-2.0
-  # notice of tesseract-ocr/tessdata.
+  # The package carries no notice; the checked-in one is tesseract-ocr/tessdata's.
   tessdata:
     version: ${TESSDATA_VERSION}
+    purl: pkg:npm/%40tesseract.js-data/${code}
     url: https://registry.npmjs.org/@tesseract.js-data/{upstream}/-/{upstream}-{version}.tgz
     archive: tar.gz
     notices: [./notices/tessdata.LICENSE]

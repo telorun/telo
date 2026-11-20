@@ -1,0 +1,141 @@
+# Known advisories of the components the tracked versions ship.
+#
+# One scheduled pass asks the advisory database about every DISTINCT component
+# once — a component shipped by a hundred versions is one question — and stores
+# the answer per component. That table is the one source: a version's advisories
+# are the materialised read model over its transitive pinned closure, rebuilt
+# from it at the end of every pass (and by ingest, for the version it wrote), so
+# a version that was clean when it was ingested shows an advisory published
+# since, with no re-ingest.
+#
+# Which components the database can judge is its own answer (`checked`): by
+# package type, or by the revision of a repository it records. This library holds
+# no list of package types or tools: a component it reports unchecked stays
+# unchecked, and the closure containing it is never reported complete. A
+# component's revision was proven in its repository's history by the publish that
+# recorded it.
+kind: Telo.Library
+metadata:
+  name: HubAdvisories
+  description: >-
+    Checks the third-party components tracked module versions ship against a
+    known-vulnerability database on a schedule, stores each component's advisories
+    once, and rebuilds every version's advisories over its pinned dependency
+    closure.
+requires:
+  # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+  telo: ">=0.128.0"
+imports:
+  Sql: ../../modules/sql
+  Run: ../../modules/run
+  Console: ../../modules/console
+  Osv: ../../modules/osv
+resources:
+  connection: { kind: Sql.Connection, description: The database holding components and advisories. }
+  osvQuery: { kind: Osv.Query, description: The advisory database lookup. }
+variables:
+  # Components per lookup: the lookup is bounded by its caller.
+  batchSize: { type: integer, minimum: 1, default: 100 }
+exports: { resources: [checkAdvisories] }
+---
+kind: Sql.Query
+metadata: { name: query }
+connection: !ref connection
+---
+kind: Sql.Command
+metadata: { name: exec }
+connection: !ref connection
+---
+# One pass. A lookup that fails is recorded against its components and changes
+# no stored advisory; the pass goes on to the next batch, so one bad batch does
+# not leave the rest stale, and ends by rebuilding every version's advisories from
+# what is stored.
+kind: Telo.Sequence
+metadata: { name: checkAdvisories }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties: { batches: { type: integer } }
+    required: [batches]
+steps:
+  # Every distinct component of every tracked version, in batches the pass
+  # sets: `batch` numbers them, so the grouping is the database's.
+  - name: batches
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT b.batch,
+               jsonb_agg(jsonb_build_object('purl', b.purl, 'version', b.version)
+                           || CASE WHEN b.vcs_url = '' THEN '{}'::jsonb
+                                   ELSE jsonb_build_object('vcs', jsonb_build_object('url', b.vcs_url, 'revision', b.vcs_revision)) END
+                         ORDER BY b.purl, b.version, b.vcs_url, b.vcs_revision) AS components
+        FROM (SELECT d.purl, d.component_version AS version, d.vcs_url, d.vcs_revision,
+                     (row_number() OVER (ORDER BY d.purl, d.component_version, d.vcs_url, d.vcs_revision) - 1) / $1::int AS batch
+              FROM (SELECT DISTINCT purl, component_version, vcs_url, vcs_revision FROM module_components) d) b
+        GROUP BY b.batch ORDER BY b.batch
+      bindings:
+        - !cel "variables.batchSize"
+  - name: each
+    invoke:
+      kind: Run.Iteration
+      inputType:
+        kind: Telo.JsonSchema
+        schema: { type: object, properties: { batches: { type: array } } }
+      collection: !cel "inputs.batches"
+      steps:
+        - name: guard
+          try:
+            - name: lookup
+              invoke: !ref osvQuery
+              inputs:
+                components: !cel "item.components"
+            - name: store
+              invoke: !ref exec
+              inputs:
+                sql: >-
+                  INSERT INTO component_advisories (purl, version, vcs_url, vcs_revision, checked, advisories, queried_at, last_error)
+                  SELECT r.purl, r.version, COALESCE(r.vcs->>'url', ''), COALESCE(r.vcs->>'revision', ''),
+                         r.checked, r.advisories, NOW(), ''
+                  FROM jsonb_to_recordset($1::jsonb) AS r(purl text, version text, vcs jsonb, checked boolean, advisories jsonb)
+                  ON CONFLICT (purl, version, vcs_url, vcs_revision) DO UPDATE SET
+                    checked = EXCLUDED.checked,
+                    advisories = EXCLUDED.advisories,
+                    queried_at = EXCLUDED.queried_at,
+                    last_error = ''
+                bindings:
+                  - !cel "json(steps.lookup.result.components)"
+          catch:
+            - name: log
+              invoke: { kind: Console.WriteLine }
+              inputs:
+                output: !cel >-
+                  '{red advisory lookup failed} for ' + string(size(item.components)) + ' components — '
+                    + error.code + ': ' + error.message
+            - name: record
+              invoke: !ref exec
+              inputs:
+                sql: >-
+                  INSERT INTO component_advisories (purl, version, vcs_url, vcs_revision, last_error)
+                  SELECT r.purl, r.version, COALESCE(r.vcs->>'url', ''), COALESCE(r.vcs->>'revision', ''), $2
+                  FROM jsonb_to_recordset($1::jsonb) AS r(purl text, version text, vcs jsonb)
+                  ON CONFLICT (purl, version, vcs_url, vcs_revision) DO UPDATE SET last_error = EXCLUDED.last_error
+                bindings:
+                  - !cel "json(item.components)"
+                  - !cel "error.code + ': ' + error.message"
+    inputs:
+      batches: !cel "steps.batches.result.rows"
+  # A component no tracked version ships any longer has nothing left to say.
+  - name: prune
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        DELETE FROM component_advisories ca
+        WHERE NOT EXISTS (SELECT 1 FROM module_components mc
+                          WHERE mc.purl = ca.purl AND mc.component_version = ca.version
+                            AND mc.vcs_url = ca.vcs_url AND mc.vcs_revision = ca.vcs_revision)
+  - name: refresh
+    invoke: !ref exec
+    inputs: { sql: SELECT refresh_version_advisories() }
+outputs:
+  batches: !cel "steps.batches.result.rows.size()"

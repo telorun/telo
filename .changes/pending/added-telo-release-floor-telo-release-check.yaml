@@ -1,0 +1,5 @@
+units:
+  cli: Added
+body: "`telo release floor`, `telo release check` and the `telo publish` preflight
+  measure a module as published: a block removed at publish (`sources:`) is left out of
+  the measurement copy."

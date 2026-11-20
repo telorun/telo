@@ -122,6 +122,7 @@ assets:
 sources:
   lucide:
     version: ${version}
+    purl: pkg:npm/lucide-static
     url: ${URL_TEMPLATE}
     archive: tar.gz
     notices: [./notices/lucide.LICENSE]

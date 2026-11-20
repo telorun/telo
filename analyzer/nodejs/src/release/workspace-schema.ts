@@ -1,7 +1,7 @@
 /**
  * The shape of `telo-workspace.yaml`, declared as data: the `release:` block
  * `@telorun/release` declares — with the keys each ecosystem a Telo host serves
- * reads on a unit entry — and the `env:` block `telo run` reads.
+ * reads on a unit entry — and the `env:` block `telo run` reads and the `audit:` block `telo audit` reads.
  *
  * One declaration read by the lenient reader and by the editor's completion, so
  * the editor never offers a key the checker rejects.
@@ -48,6 +48,37 @@ export const ENV_BLOCK_SCHEMA: WorkspaceBlockSchema = {
   },
 };
 
+/** Keys an `audit.ignore` entry carries; all three are required. */
+export const AUDIT_IGNORE_ENTRY_KEYS: Readonly<Record<string, WorkspaceKeySchema>> = {
+  id: {
+    type: "string",
+    description: "The advisory accepted: its id, or any alias of it (GHSA-…, CVE-…).",
+    examples: ["GHSA-83w8-p2f5-377r", "CVE-2026-15074"],
+  },
+  reason: {
+    type: "string",
+    description: "Why the advisory is accepted. Required: an acceptance with no reason is refused.",
+  },
+  expires: {
+    type: "string",
+    description: "The last day the acceptance holds, as YYYY-MM-DD. After it the advisory is an error again.",
+    examples: ["2026-12-31"],
+  },
+};
+
+export const AUDIT_BLOCK_SCHEMA: WorkspaceBlockSchema = {
+  description: "How `telo audit` judges an application's components.",
+  properties: {
+    ignore: {
+      type: "entry[]",
+      description:
+        "Advisories accepted until a date, each { id, reason, expires } with all three required. An entry matches an advisory whose id or any alias equals its id.",
+      examples: ["GHSA-83w8-p2f5-377r"],
+      entry: { key: "id", properties: AUDIT_IGNORE_ENTRY_KEYS },
+    },
+  },
+};
+
 /**
  * Every block, and every key in it, is optional — a marker whose whole content
  * is comments is valid, and is what a runner seeds for the cache anchor alone.
@@ -55,7 +86,7 @@ export const ENV_BLOCK_SCHEMA: WorkspaceBlockSchema = {
 export function workspaceSchema(
   adapters: readonly EcosystemAdapter[],
 ): Readonly<Record<string, WorkspaceBlockSchema>> {
-  return { release: releaseBlockSchema(adapters), env: ENV_BLOCK_SCHEMA };
+  return { release: releaseBlockSchema(adapters), env: ENV_BLOCK_SCHEMA, audit: AUDIT_BLOCK_SCHEMA };
 }
 
 /** The marker as a Telo host reads it. */

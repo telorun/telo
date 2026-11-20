@@ -12,6 +12,9 @@ export interface BuiltBrowserEntries {
   readonly beside: Map<string, string[]>;
   /** Absolute paths of every file the builds read. */
   readonly inputs: string[];
+  /** Per entry path, the inputs that put bytes into it or into a file it
+   *  loads — what the bill of materials attributes. */
+  readonly bundles: Array<{ path: string; contributors: readonly string[] }>;
 }
 
 /**
@@ -74,6 +77,7 @@ export async function buildBrowserClaims(
   const files = new Map<string, Uint8Array>();
   const beside = new Map<string, string[]>();
   const inputs = new Set<string>();
+  const bundles: Array<{ path: string; contributors: readonly string[] }> = [];
   for (const group of groups.values()) {
     const result = await buildBrowserEntries(
       {
@@ -93,11 +97,18 @@ export async function buildBrowserClaims(
     }
     for (const input of result.inputs) inputs.add(input);
     for (const entry of group) {
+      const contributors = result.contributors[entry.path];
+      if (!contributors) {
+        throw new Error(
+          `building browser entry '${entry.specifier}' recorded no inputs for '${entry.path}'.`,
+        );
+      }
+      bundles.push({ path: entry.path, contributors });
       beside.set(entry.path, [
         `${entry.path}${BROWSER_SIBLINGS_SUFFIX}`,
         ...(await readBrowserSiblings(result.directory, entry.path)),
       ]);
     }
   }
-  return { files, beside, inputs: [...inputs] };
+  return { files, beside, inputs: [...inputs], bundles };
 }

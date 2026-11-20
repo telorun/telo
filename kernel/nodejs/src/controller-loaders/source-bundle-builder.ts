@@ -11,6 +11,7 @@ import { readOwnerManifest } from "../bundle/module-manifest.js";
 import { ControllerEnvMissingError } from "./napi-loader.js";
 import { REALM_COLLAPSE_NAMES } from "./realm.js";
 import { loadEsbuild } from "./esbuild-runtime.js";
+import { contributingInputs } from "./bundle-attribution.js";
 
 /**
  * Build a **local** module's bundled controller from its TypeScript source, so a
@@ -179,6 +180,9 @@ function externalSpecifiers(libraries: readonly SiblingLibrary[]): string[] {
 interface BuildIndexEntry {
   /** Absolute paths of every file the last build read, from esbuild's metafile. */
   inputs: string[];
+  /** The inputs that put bytes into the bundle — what was not tree-shaken away,
+   *  which the bill of materials attributes to packages. */
+  contributors: string[];
   /** Signature of those inputs at build time; the built bundle's cache key. */
   key: string;
 }
@@ -282,7 +286,11 @@ export async function lastBuildInputs(
 async function readIndex(file: string): Promise<BuildIndexEntry | null> {
   try {
     const parsed = JSON.parse(await fs.readFile(file, "utf8")) as BuildIndexEntry;
-    return Array.isArray(parsed.inputs) && typeof parsed.key === "string" ? parsed : null;
+    return Array.isArray(parsed.inputs) &&
+      Array.isArray(parsed.contributors) &&
+      typeof parsed.key === "string"
+      ? parsed
+      : null;
   } catch {
     return null;
   }
@@ -351,9 +359,17 @@ export async function buildControllerBundle(
   entryFile: string,
   cacheRoot: string,
   libraries: readonly SiblingLibrary[] = [],
-): Promise<{ path: string; inputs: string[] }> {
-  const path = await buildControllerFromSource(entryFile, cacheRoot, libraries);
-  return { path, inputs: await lastBuildInputs(entryFile, cacheRoot) };
+): Promise<{ path: string; inputs: string[]; contributors: string[] }> {
+  const bundle = await buildControllerFromSource(entryFile, cacheRoot, libraries);
+  const index = await readIndex(indexPath(path.join(cacheRoot, CACHE_DIR), entryFile));
+  if (!index) {
+    throw new RuntimeError(
+      "ERR_CONTROLLER_BUILD_FAILED",
+      `The build cache holds no index for "${entryFile}" after building it, so what the bundle ` +
+        `inlines cannot be read. Remove ${path.join(cacheRoot, CACHE_DIR)} and run again.`,
+    );
+  }
+  return { path: bundle, inputs: index.inputs, contributors: index.contributors };
 }
 
 /**
@@ -668,6 +684,7 @@ async function build(
   // Absolute, so the signature is independent of the working directory the next
   // kernel happens to run from.
   const inputs = Object.keys(built.metafile.inputs).map((rel) => path.resolve(rel));
+  const contributors = contributingInputs(built.metafile).map((rel) => path.resolve(rel));
   assertNoInlinedSiblings(entryFile, inputs, libraries);
   const key = (await signInputs(inputs, externals)) ?? createHash("sha256")
     .update(output.text)
@@ -683,7 +700,7 @@ async function build(
   // Index last: a reader that finds it trusts the bundle it names to be on disk.
   // A torn index self-heals — an unparseable one reads as a miss and rebuilds.
   const tmpIndex = `${index}.${process.pid}.${tmpCounter++}.tmp`;
-  await fs.writeFile(tmpIndex, JSON.stringify({ inputs, key } satisfies BuildIndexEntry));
+  await fs.writeFile(tmpIndex, JSON.stringify({ inputs, contributors, key } satisfies BuildIndexEntry));
   await fs.rename(tmpIndex, index);
   await pruneStale(cacheDir, log);
   return target;

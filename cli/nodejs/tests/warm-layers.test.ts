@@ -89,6 +89,7 @@ describe("warmModuleLayers", () => {
       entryDir,
       path.join(entryDir, ".telo", "manifests"),
       { os: "linux", arch: "amd64" },
+      path.join(entryDir, ".telo"),
     );
 
     // The fetch failed (refused), so nothing materialized and the gap is
@@ -159,6 +160,7 @@ describe("warmModuleLayers", () => {
         moduleCache,
         path.join(moduleCache, "manifests"),
         target,
+        moduleCache,
       );
       return { warmed };
     };

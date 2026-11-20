@@ -1,0 +1,367 @@
+{
+  "canonical": [
+    {
+      "id": "keys/code-unit-order",
+      "document": {
+        "b": 1,
+        "a": 2,
+        "B": 3,
+        "é": 4,
+        "a\u0000": 5,
+        "😀": 6,
+        "￿": 7
+      },
+      "expected": "{\"B\":3,\"a\":2,\"a\\u0000\":5,\"b\":1,\"é\":4,\"😀\":6,\"￿\":7}\n"
+    },
+    {
+      "id": "strings/escapes",
+      "document": {
+        "s": "quote\" back\\ nl\n tab\t cr\r bs\b ff\f nul\u0000 us\u001f del ls  emoji😀 é"
+      },
+      "expected": "{\"s\":\"quote\\\" back\\\\ nl\\n tab\\t cr\\r bs\\b ff\\f nul\\u0000 us\\u001f del ls  emoji😀 é\"}\n"
+    },
+    {
+      "id": "numbers/ecmascript",
+      "document": {
+        "a": 1,
+        "b": 1.5,
+        "c": 1e+21,
+        "d": 0,
+        "e": 0.000001,
+        "f": 1e-7,
+        "g": 123456789012345680000
+      },
+      "expected": "{\"a\":1,\"b\":1.5,\"c\":1e+21,\"d\":0,\"e\":0.000001,\"f\":1e-7,\"g\":123456789012345680000}\n"
+    },
+    {
+      "id": "arrays/named-orders",
+      "document": {
+        "components": [
+          {
+            "bom-ref": "pkg:npm/b@1",
+            "name": "b"
+          },
+          {
+            "bom-ref": "pkg:npm/%40a/x@1",
+            "name": "@a/x"
+          },
+          {
+            "bom-ref": "pkg:npm/a@1",
+            "name": "a"
+          }
+        ],
+        "properties": [
+          {
+            "name": "z",
+            "value": "1"
+          },
+          {
+            "name": "a",
+            "value": "2"
+          },
+          {
+            "name": "a",
+            "value": "1"
+          },
+          {
+            "name": "a!",
+            "value": "0"
+          }
+        ],
+        "dependencies": [
+          {
+            "ref": "y",
+            "dependsOn": [
+              "c",
+              "a",
+              "b"
+            ]
+          },
+          {
+            "ref": "x"
+          }
+        ],
+        "compositions": [
+          {
+            "aggregate": "incomplete",
+            "assemblies": [
+              "m2",
+              "m1"
+            ]
+          }
+        ]
+      },
+      "expected": "{\"components\":[{\"bom-ref\":\"pkg:npm/%40a/x@1\",\"name\":\"@a/x\"},{\"bom-ref\":\"pkg:npm/a@1\",\"name\":\"a\"},{\"bom-ref\":\"pkg:npm/b@1\",\"name\":\"b\"}],\"compositions\":[{\"aggregate\":\"incomplete\",\"assemblies\":[\"m1\",\"m2\"]}],\"dependencies\":[{\"ref\":\"x\"},{\"dependsOn\":[\"a\",\"b\",\"c\"],\"ref\":\"y\"}],\"properties\":[{\"name\":\"a\",\"value\":\"1\"},{\"name\":\"a\",\"value\":\"2\"},{\"name\":\"a!\",\"value\":\"0\"},{\"name\":\"z\",\"value\":\"1\"}]}\n"
+    },
+    {
+      "id": "arrays/other-by-canonical-element",
+      "document": {
+        "licenses": [
+          {
+            "license": {
+              "id": "MIT"
+            }
+          },
+          {
+            "expression": "Apache-2.0 OR MIT"
+          },
+          {
+            "license": {
+              "id": "BSD-3-Clause"
+            }
+          }
+        ],
+        "list": [
+          3,
+          "b",
+          true,
+          null,
+          "a",
+          1
+        ]
+      },
+      "expected": "{\"licenses\":[{\"expression\":\"Apache-2.0 OR MIT\"},{\"license\":{\"id\":\"BSD-3-Clause\"}},{\"license\":{\"id\":\"MIT\"}}],\"list\":[\"a\",\"b\",1,3,null,true]}\n"
+    },
+    {
+      "id": "arrays/empty-omitted",
+      "document": {
+        "components": [],
+        "dependencies": [
+          {
+            "ref": "a",
+            "dependsOn": []
+          }
+        ],
+        "metadata": {
+          "component": {
+            "name": "M",
+            "properties": [],
+            "licenses": []
+          }
+        },
+        "kept": {}
+      },
+      "expected": "{\"dependencies\":[{\"ref\":\"a\"}],\"kept\":{},\"metadata\":{\"component\":{\"name\":\"M\"}}}\n"
+    }
+  ],
+  "records": [
+    {
+      "id": "record/vault",
+      "input": {
+        "subject": {
+          "type": "library",
+          "name": "Vault",
+          "version": "0.3.0",
+          "license": "MIT"
+        },
+        "components": [
+          {
+            "purl": "pkg:npm/better-sqlite3",
+            "version": "12.8.0",
+            "occurrence": "role=controller;format=js",
+            "license": "MIT"
+          },
+          {
+            "purl": "pkg:npm/kysely",
+            "version": "0.28.15",
+            "occurrence": "role=controller;format=js",
+            "license": "MIT"
+          },
+          {
+            "purl": "pkg:npm/%40napi-rs/canvas",
+            "version": "1.0.10",
+            "occurrence": "role=controller;format=js",
+            "license": "MIT"
+          },
+          {
+            "purl": "pkg:npm/better-sqlite3",
+            "version": "12.8.0",
+            "occurrence": "role=native;abi=node-141;arch=amd64;format=node;libc=gnu;os=linux"
+          },
+          {
+            "purl": "pkg:npm/better-sqlite3",
+            "version": "12.8.0",
+            "occurrence": "role=native;abi=node-141;arch=arm64;format=node;os=darwin"
+          },
+          {
+            "purl": "pkg:generic/sqlite",
+            "version": "3.51.3",
+            "occurrence": "role=native;abi=node-141;arch=amd64;format=node;libc=gnu;os=linux",
+            "cpe": "cpe:2.3:a:sqlite:sqlite:3.51.3:*:*:*:*:*:*:*"
+          },
+          {
+            "purl": "pkg:generic/sqlite",
+            "version": "3.51.3",
+            "occurrence": "role=native;abi=node-141;arch=arm64;format=node;os=darwin",
+            "cpe": "cpe:2.3:a:sqlite:sqlite:3.51.3:*:*:*:*:*:*:*"
+          },
+          {
+            "purl": "pkg:npm/%40napi-rs/canvas",
+            "version": "1.0.10",
+            "occurrence": "role=native;arch=amd64;format=napi;libc=gnu;os=linux"
+          },
+          {
+            "purl": "pkg:npm/%40napi-rs/canvas",
+            "version": "1.0.10",
+            "occurrence": "role=native;arch=arm64;format=napi;os=darwin"
+          }
+        ],
+        "contains": [
+          {
+            "from": "pkg:npm/better-sqlite3@12.8.0",
+            "to": "pkg:generic/sqlite@3.51.3"
+          }
+        ],
+        "incomplete": []
+      },
+      "expected": "{\"bomFormat\":\"CycloneDX\",\"components\":[{\"bom-ref\":\"pkg:generic/sqlite@3.51.3\",\"cpe\":\"cpe:2.3:a:sqlite:sqlite:3.51.3:*:*:*:*:*:*:*\",\"name\":\"sqlite\",\"properties\":[{\"name\":\"telo:layer\",\"value\":\"role=native;abi=node-141;arch=amd64;format=node;libc=gnu;os=linux\"},{\"name\":\"telo:layer\",\"value\":\"role=native;abi=node-141;arch=arm64;format=node;os=darwin\"}],\"purl\":\"pkg:generic/sqlite@3.51.3\",\"type\":\"library\",\"version\":\"3.51.3\"},{\"bom-ref\":\"pkg:npm/%40napi-rs/canvas@1.0.10\",\"licenses\":[{\"license\":{\"id\":\"MIT\"}}],\"name\":\"@napi-rs/canvas\",\"properties\":[{\"name\":\"telo:layer\",\"value\":\"role=controller;format=js\"},{\"name\":\"telo:layer\",\"value\":\"role=native;arch=amd64;format=napi;libc=gnu;os=linux\"},{\"name\":\"telo:layer\",\"value\":\"role=native;arch=arm64;format=napi;os=darwin\"}],\"purl\":\"pkg:npm/%40napi-rs/canvas@1.0.10\",\"type\":\"library\",\"version\":\"1.0.10\"},{\"bom-ref\":\"pkg:npm/better-sqlite3@12.8.0\",\"licenses\":[{\"license\":{\"id\":\"MIT\"}}],\"name\":\"better-sqlite3\",\"properties\":[{\"name\":\"telo:layer\",\"value\":\"role=controller;format=js\"},{\"name\":\"telo:layer\",\"value\":\"role=native;abi=node-141;arch=amd64;format=node;libc=gnu;os=linux\"},{\"name\":\"telo:layer\",\"value\":\"role=native;abi=node-141;arch=arm64;format=node;os=darwin\"}],\"purl\":\"pkg:npm/better-sqlite3@12.8.0\",\"type\":\"library\",\"version\":\"12.8.0\"},{\"bom-ref\":\"pkg:npm/kysely@0.28.15\",\"licenses\":[{\"license\":{\"id\":\"MIT\"}}],\"name\":\"kysely\",\"properties\":[{\"name\":\"telo:layer\",\"value\":\"role=controller;format=js\"}],\"purl\":\"pkg:npm/kysely@0.28.15\",\"type\":\"library\",\"version\":\"0.28.15\"}],\"dependencies\":[{\"dependsOn\":[\"pkg:generic/sqlite@3.51.3\"],\"ref\":\"pkg:npm/better-sqlite3@12.8.0\"}],\"metadata\":{\"component\":{\"licenses\":[{\"license\":{\"id\":\"MIT\"}}],\"name\":\"Vault\",\"type\":\"library\",\"version\":\"0.3.0\"}},\"specVersion\":\"1.6\",\"version\":1}\n"
+    },
+    {
+      "id": "record/incomplete-no-components",
+      "input": {
+        "subject": {
+          "type": "library",
+          "name": "Addon",
+          "version": "1.0.0",
+          "license": "Apache-2.0"
+        },
+        "components": [],
+        "contains": [],
+        "incomplete": [
+          "role=native;arch=arm64;format=napi;os=darwin",
+          "role=native;arch=amd64;format=napi;libc=gnu;os=linux",
+          "role=native;arch=arm64;format=napi;os=darwin"
+        ]
+      },
+      "expected": "{\"bomFormat\":\"CycloneDX\",\"metadata\":{\"component\":{\"licenses\":[{\"license\":{\"id\":\"Apache-2.0\"}}],\"name\":\"Addon\",\"properties\":[{\"name\":\"telo:incomplete\",\"value\":\"role=native;arch=amd64;format=napi;libc=gnu;os=linux\"},{\"name\":\"telo:incomplete\",\"value\":\"role=native;arch=arm64;format=napi;os=darwin\"}],\"type\":\"library\",\"version\":\"1.0.0\"}},\"specVersion\":\"1.6\",\"version\":1}\n"
+    },
+    {
+      "id": "record/builtins",
+      "input": {
+        "subject": {
+          "type": "data",
+          "name": "Telo",
+          "version": "0.140.0",
+          "license": "MIT"
+        },
+        "components": [],
+        "contains": [],
+        "incomplete": []
+      },
+      "expected": "{\"bomFormat\":\"CycloneDX\",\"metadata\":{\"component\":{\"licenses\":[{\"license\":{\"id\":\"MIT\"}}],\"name\":\"Telo\",\"type\":\"data\",\"version\":\"0.140.0\"}},\"specVersion\":\"1.6\",\"version\":1}\n"
+    },
+    {
+      "id": "record/licenses-and-versions",
+      "input": {
+        "subject": {
+          "type": "application",
+          "name": "Nested"
+        },
+        "components": [
+          {
+            "purl": "pkg:npm/dual",
+            "version": "2.0.0",
+            "occurrence": "role=controller;format=js",
+            "license": "(MIT OR Apache-2.0)"
+          },
+          {
+            "purl": "pkg:npm/odd",
+            "version": "1.0.0+build.7",
+            "occurrence": "role=browser;abi=ui-1;format=esm",
+            "license": "SEE LICENSE IN LICENSE.md"
+          },
+          {
+            "purl": "pkg:npm/odd",
+            "version": "1.0.0+build.7",
+            "occurrence": "role=assets"
+          }
+        ],
+        "contains": [],
+        "incomplete": []
+      },
+      "expected": "{\"bomFormat\":\"CycloneDX\",\"components\":[{\"bom-ref\":\"pkg:npm/dual@2.0.0\",\"licenses\":[{\"expression\":\"(MIT OR Apache-2.0)\"}],\"name\":\"dual\",\"properties\":[{\"name\":\"telo:layer\",\"value\":\"role=controller;format=js\"}],\"purl\":\"pkg:npm/dual@2.0.0\",\"type\":\"library\",\"version\":\"2.0.0\"},{\"bom-ref\":\"pkg:npm/odd@1.0.0%2Bbuild.7\",\"licenses\":[{\"license\":{\"name\":\"SEE LICENSE IN LICENSE.md\"}}],\"name\":\"odd\",\"properties\":[{\"name\":\"telo:layer\",\"value\":\"role=assets\"},{\"name\":\"telo:layer\",\"value\":\"role=browser;abi=ui-1;format=esm\"}],\"purl\":\"pkg:npm/odd@1.0.0%2Bbuild.7\",\"type\":\"library\",\"version\":\"1.0.0+build.7\"}],\"metadata\":{\"component\":{\"name\":\"Nested\",\"type\":\"application\"}},\"specVersion\":\"1.6\",\"version\":1}\n"
+    },
+    {
+      "id": "record/vcs-two-revisions",
+      "input": {
+        "subject": {
+          "type": "library",
+          "name": "Twin",
+          "version": "1.0.0",
+          "license": "MIT"
+        },
+        "components": [
+          {
+            "purl": "pkg:npm/addon-a",
+            "version": "1.0.0",
+            "occurrence": "role=native;abi=node-141;arch=amd64;format=node;libc=gnu;os=linux",
+            "vcs": {
+              "url": "git+https://github.com/acme/addon-a",
+              "revision": "1111111111111111111111111111111111111111"
+            }
+          },
+          {
+            "purl": "pkg:generic/sqlite",
+            "version": "3.51.3",
+            "occurrence": "role=native;abi=node-141;arch=amd64;format=node;libc=gnu;os=linux",
+            "cpe": "cpe:2.3:a:sqlite:sqlite:3.51.3:*:*:*:*:*:*:*",
+            "vcs": {
+              "url": "git+https://github.com/sqlite/sqlite",
+              "revision": "a5333afb9ad1aa473f8963b92caeaa955f47dc74"
+            }
+          },
+          {
+            "purl": "pkg:npm/addon-b",
+            "version": "2.0.0",
+            "occurrence": "role=native;abi=node-141;arch=amd64;format=node;libc=gnu;os=linux"
+          },
+          {
+            "purl": "pkg:generic/sqlite",
+            "version": "3.51.3",
+            "occurrence": "role=native;abi=node-141;arch=amd64;format=node;libc=gnu;os=linux",
+            "vcs": {
+              "url": "git+https://github.com/sqlite/sqlite",
+              "revision": "0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c"
+            }
+          }
+        ],
+        "contains": [
+          {
+            "from": "pkg:npm/addon-a@1.0.0?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Facme%2Faddon-a%401111111111111111111111111111111111111111",
+            "to": "pkg:generic/sqlite@3.51.3?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Fsqlite%2Fsqlite%40a5333afb9ad1aa473f8963b92caeaa955f47dc74"
+          },
+          {
+            "from": "pkg:npm/addon-b@2.0.0",
+            "to": "pkg:generic/sqlite@3.51.3?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Fsqlite%2Fsqlite%400b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c"
+          }
+        ],
+        "incomplete": []
+      },
+      "expected": "{\"bomFormat\":\"CycloneDX\",\"components\":[{\"bom-ref\":\"pkg:generic/sqlite@3.51.3?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Fsqlite%2Fsqlite%400b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c\",\"name\":\"sqlite\",\"properties\":[{\"name\":\"telo:layer\",\"value\":\"role=native;abi=node-141;arch=amd64;format=node;libc=gnu;os=linux\"}],\"purl\":\"pkg:generic/sqlite@3.51.3?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Fsqlite%2Fsqlite%400b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c\",\"type\":\"library\",\"version\":\"3.51.3\"},{\"bom-ref\":\"pkg:generic/sqlite@3.51.3?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Fsqlite%2Fsqlite%40a5333afb9ad1aa473f8963b92caeaa955f47dc74\",\"cpe\":\"cpe:2.3:a:sqlite:sqlite:3.51.3:*:*:*:*:*:*:*\",\"name\":\"sqlite\",\"properties\":[{\"name\":\"telo:layer\",\"value\":\"role=native;abi=node-141;arch=amd64;format=node;libc=gnu;os=linux\"}],\"purl\":\"pkg:generic/sqlite@3.51.3?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Fsqlite%2Fsqlite%40a5333afb9ad1aa473f8963b92caeaa955f47dc74\",\"type\":\"library\",\"version\":\"3.51.3\"},{\"bom-ref\":\"pkg:npm/addon-a@1.0.0?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Facme%2Faddon-a%401111111111111111111111111111111111111111\",\"name\":\"addon-a\",\"properties\":[{\"name\":\"telo:layer\",\"value\":\"role=native;abi=node-141;arch=amd64;format=node;libc=gnu;os=linux\"}],\"purl\":\"pkg:npm/addon-a@1.0.0?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Facme%2Faddon-a%401111111111111111111111111111111111111111\",\"type\":\"library\",\"version\":\"1.0.0\"},{\"bom-ref\":\"pkg:npm/addon-b@2.0.0\",\"name\":\"addon-b\",\"properties\":[{\"name\":\"telo:layer\",\"value\":\"role=native;abi=node-141;arch=amd64;format=node;libc=gnu;os=linux\"}],\"purl\":\"pkg:npm/addon-b@2.0.0\",\"type\":\"library\",\"version\":\"2.0.0\"}],\"dependencies\":[{\"dependsOn\":[\"pkg:generic/sqlite@3.51.3?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Fsqlite%2Fsqlite%40a5333afb9ad1aa473f8963b92caeaa955f47dc74\"],\"ref\":\"pkg:npm/addon-a@1.0.0?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Facme%2Faddon-a%401111111111111111111111111111111111111111\"},{\"dependsOn\":[\"pkg:generic/sqlite@3.51.3?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Fsqlite%2Fsqlite%400b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c\"],\"ref\":\"pkg:npm/addon-b@2.0.0\"}],\"metadata\":{\"component\":{\"licenses\":[{\"license\":{\"id\":\"MIT\"}}],\"name\":\"Twin\",\"type\":\"library\",\"version\":\"1.0.0\"}},\"specVersion\":\"1.6\",\"version\":1}\n"
+    },
+    {
+      "id": "record/vcs-qualifier-canonical",
+      "input": {
+        "subject": {
+          "type": "library",
+          "name": "Qualified",
+          "version": "1.0.0"
+        },
+        "components": [
+          {
+            "purl": "pkg:generic/zlib?download_url=https://zlib.net/zlib-1.3.1.tar.gz&Checksum=sha256:abc",
+            "version": "1.3.1",
+            "occurrence": "role=assets",
+            "vcs": {
+              "url": "git+https://github.com/madler/zlib",
+              "revision": "51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf"
+            }
+          }
+        ],
+        "contains": [],
+        "incomplete": []
+      },
+      "expected": "{\"bomFormat\":\"CycloneDX\",\"components\":[{\"bom-ref\":\"pkg:generic/zlib@1.3.1?checksum=sha256%3Aabc&download_url=https%3A%2F%2Fzlib.net%2Fzlib-1.3.1.tar.gz&vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Fmadler%2Fzlib%4051b7f2abdade71cd9bb0e7a373ef2610ec6f9daf\",\"name\":\"zlib\",\"properties\":[{\"name\":\"telo:layer\",\"value\":\"role=assets\"}],\"purl\":\"pkg:generic/zlib@1.3.1?checksum=sha256%3Aabc&download_url=https%3A%2F%2Fzlib.net%2Fzlib-1.3.1.tar.gz&vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Fmadler%2Fzlib%4051b7f2abdade71cd9bb0e7a373ef2610ec6f9daf\",\"type\":\"library\",\"version\":\"1.3.1\"}],\"metadata\":{\"component\":{\"name\":\"Qualified\",\"type\":\"library\",\"version\":\"1.0.0\"}},\"specVersion\":\"1.6\",\"version\":1}\n"
+    }
+  ]
+}

@@ -73,6 +73,7 @@ team does not have to build or remember, each described in detail below:
 - **Secret redaction.** `secrets:` values, URL passwords, sensitive dependency settings and contract fields marked `x-telo-sensitive` are redacted in logs, errors and traces. Spans carry no payloads unless a contract field opts in (`x-telo-span-attribute`).
 - **Secrets stay where they belong.** Never packaged or indexed; a published contract shows only a secret's type. A secret read from an env file not marked sensitive is warned about at `telo run` and in Studio's Variables tab, and sensitive env files are never synced to Telo Cloud or into an agent's session.
 - **Verified downloads.** Import pins, layer digests, revalidated mutable tags, pinned `https`-only staged files and checksummed binaries; an archive path escaping its module is refused.
+- **Known-vulnerability audit.** `telo audit` checks what an application actually runs, the code its modules inline and the native libraries they ship included, against OSV — embedded C code by the git commit it is built from, once a module declares it under `sources:` with `vcs:`, and each commit proven to be in its repository's history first. Each finding is named at the import carrying it with the upgrade that removes it, and an accepted advisory needs a reason and an expiry in `telo-workspace.yaml`. `telo sbom` hands the same inventory to any standard scanner.
 - **Egress guard.** `TELO_EGRESS=public-only` refuses module fetches to private and loopback hosts.
 
 ### Delivery

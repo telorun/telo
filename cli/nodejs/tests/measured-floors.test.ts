@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import semver from "semver";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { resolveCacheRoot } from "@telorun/kernel";
 import { checkWorkspaceRequires } from "../src/release/check-requires.js";
 import {
   FloorMeasurementError,
@@ -10,6 +11,7 @@ import {
   RegistryUnreachableError,
   listPublishedFinals,
   mentions,
+  mirrorEntry,
   type CliRunner,
 } from "../src/release/floor-measurement.js";
 import { floorLine, measureAndWriteFloors } from "../src/release/floor-workspace.js";
@@ -511,5 +513,134 @@ describe("what is not attributable fails", () => {
       output: `${paths[0]}:3:1  error  not a source  INVALID_IMPORT_SOURCE`,
     }));
     expect((await authors.probe("0.90.0", null, modules)).get("modules/app")).toMatchObject({ accepted: false });
+  });
+});
+
+describe("measurement mirror", () => {
+  it("blanks an authoring-input block of a relatively imported sibling in the measured tree and leaves the real file untouched", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mirror-"));
+    try {
+      const sibling = path.join(root, "sib", "telo.yaml");
+      const entry = path.join(root, "app", "telo.yaml");
+      fs.mkdirSync(path.dirname(sibling));
+      fs.mkdirSync(path.dirname(entry));
+      const siblingText =
+        "kind: Telo.Library\nmetadata: { name: Sib, version: 1.0.0 }\nsources:\n  a: { newKey: 1 }\nexports: { kinds: [] }\n";
+      fs.writeFileSync(sibling, siblingText);
+      fs.writeFileSync(path.join(root, "sib", "extra.txt"), "x");
+      const entryText =
+        "kind: Telo.Library\nmetadata: { name: App, version: 1.0.0 }\nimports:\n  Sib: ../sib\nexports: { kinds: [] }\n";
+      fs.writeFileSync(entry, entryText);
+
+      let seen: { sibling: string; extra: boolean; copy: string } | undefined;
+      const probe = new FloorProbe(async (_v, paths) => {
+        const dir = path.dirname(paths[0]!);
+        const sib = path.join(dir, "..", "sib");
+        seen = {
+          sibling: fs.readFileSync(path.join(sib, "telo.yaml"), "utf8"),
+          extra: fs.existsSync(path.join(sib, "extra.txt")),
+          copy: path.basename(paths[0]!),
+        };
+        return { status: "passed" };
+      });
+      await probe.probe("0.100.0", "0.100.0", [{ key: "app", manifestPath: entry, text: entryText }]);
+
+      expect(seen!.sibling).not.toContain("newKey");
+      expect(seen!.sibling.split("\n").length).toBe(siblingText.split("\n").length);
+      expect(seen!.extra).toBe(true);
+      expect(fs.readFileSync(sibling, "utf8")).toBe(siblingText);
+      expect(fs.readdirSync(path.join(root, "app"))).toEqual(["telo.yaml"]);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("holds a placeholder for every path a blanked sources block stages, and the real file where there is one, never writing the real tree", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mirror-"));
+    try {
+      const entry = path.join(root, "mod", "telo.yaml");
+      fs.mkdirSync(path.join(root, "mod", "present"), { recursive: true });
+      fs.writeFileSync(path.join(root, "mod", "present", "real.bin"), "real");
+      const text =
+        "kind: Telo.Library\nmetadata: { name: Mod, version: 1.0.0 }\nsources:\n  s:\n    version: 1.0.0\n    entries:\n" +
+        "      ./absent-dir/a.bin: { upstream: a }\n      ./present/missing.bin: { upstream: b }\n      ./present/real.bin: { upstream: c }\n" +
+        "---\nkind: Acme.Thing\nmetadata: { name: t }\ndata: !module-path ./absent-dir/a.bin\n";
+      fs.writeFileSync(entry, text);
+
+      let seen: { absent: string; missing: string; real: string } | undefined;
+      const probe = new FloorProbe(async (_v, paths) => {
+        const dir = path.dirname(paths[0]!);
+        seen = {
+          absent: fs.readFileSync(path.join(dir, "absent-dir", "a.bin"), "utf8"),
+          missing: fs.readFileSync(path.join(dir, "present", "missing.bin"), "utf8"),
+          real: fs.readFileSync(path.join(dir, "present", "real.bin"), "utf8"),
+        };
+        return { status: "passed" };
+      });
+      await probe.probe("0.100.0", "0.100.0", [{ key: "mod", manifestPath: entry, text }]);
+
+      expect(seen).toEqual({ absent: "", missing: "", real: "real" });
+      expect(fs.readdirSync(path.join(root, "mod")).sort()).toEqual(["present", "telo.yaml"]);
+      expect(fs.readdirSync(path.join(root, "mod", "present"))).toEqual(["real.bin"]);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("hands the run the real cache root, links no cache directory, and recreates a dangling link", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mirror-"));
+    try {
+      const sibling = path.join(root, "sib", "telo.yaml");
+      const entry = path.join(root, "app", "telo.yaml");
+      fs.mkdirSync(path.join(root, "sib", ".telo"), { recursive: true });
+      fs.mkdirSync(path.join(root, "app", ".telo", "manifests"), { recursive: true });
+      fs.writeFileSync(sibling, "kind: Telo.Library\nmetadata: { name: Sib, version: 1.0.0 }\nsources:\n  a: { newKey: 1 }\n");
+      fs.symlinkSync("./nowhere", path.join(root, "sib", "dangling"));
+      const entryText = "kind: Telo.Library\nmetadata: { name: App, version: 1.0.0 }\nimports:\n  Sib: ../sib\n";
+      fs.writeFileSync(entry, entryText);
+
+      let seen: { env?: Readonly<Record<string, string>>; caches: boolean[]; dangling: string } | undefined;
+      const probe = new FloorProbe(async (_v, paths, env) => {
+        const dir = path.dirname(paths[0]!);
+        seen = {
+          env,
+          caches: [fs.existsSync(path.join(dir, ".telo")), fs.existsSync(path.join(dir, "..", "sib", ".telo"))],
+          dangling: fs.readlinkSync(path.join(dir, "..", "sib", "dangling")),
+        };
+        return { status: "passed" };
+      });
+      await probe.probe("0.100.0", "0.100.0", [{ key: "app", manifestPath: entry, text: entryText }]);
+
+      expect(seen!.env).toEqual({ TELO_CACHE_DIR: resolveCacheRoot(entry) });
+      expect(seen!.env!.TELO_CACHE_DIR).toMatch(/app[\\/]\.telo$/);
+      expect(seen!.caches).toEqual([false, false]);
+      // Recreated with the target the real link holds, as the platform stores it.
+      expect(seen!.dangling).toBe(fs.readlinkSync(path.join(root, "sib", "dangling")));
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("lays a file link it may not create as the file it names, and leaves a dangling one out", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mirror-"));
+    try {
+      fs.mkdirSync(path.join(root, "real"));
+      fs.mkdirSync(path.join(root, "mirror"));
+      fs.writeFileSync(path.join(root, "real", "notice.txt"), "notice");
+      fs.symlinkSync("./notice.txt", path.join(root, "real", "linked.txt"));
+      fs.symlinkSync("./nowhere", path.join(root, "real", "dangling"));
+      const unprivileged: typeof fs.symlinkSync = () => {
+        throw Object.assign(new Error("EPERM: operation not permitted, symlink"), { code: "EPERM" });
+      };
+
+      mirrorEntry(path.join(root, "real", "linked.txt"), path.join(root, "mirror", "linked.txt"), unprivileged);
+      mirrorEntry(path.join(root, "real", "dangling"), path.join(root, "mirror", "dangling"), unprivileged);
+
+      expect(fs.lstatSync(path.join(root, "mirror", "linked.txt")).isSymbolicLink()).toBe(false);
+      expect(fs.readFileSync(path.join(root, "mirror", "linked.txt"), "utf8")).toBe("notice");
+      expect(fs.readdirSync(path.join(root, "mirror"))).toEqual(["linked.txt"]);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 });

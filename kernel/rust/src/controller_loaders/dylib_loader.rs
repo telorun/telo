@@ -235,7 +235,7 @@ mod tests {
 
     fn sources(url: &str, sha256: &str) -> ModuleSources {
         read_module_sources(&json!({ "sources": { "console": {
-            "version": "1", "url": url, "archive": "tar.gz", "notices": ["LICENSE"],
+            "version": "1", "purl": "pkg:generic/console", "url": url, "archive": "tar.gz", "notices": ["LICENSE"],
             "entries": { "rust/libconsole.so": { "upstream": "x", "member": "m", "sha256": sha256, "executable": false } },
         } } }))
     }

@@ -18,6 +18,7 @@ native:
 sources:
   greetings:
     version: 1.0.0
+    purl: pkg:generic/greetings
     url: https://example.test/greetings-{version}-{upstream}.tar.gz
     archive: tar.gz
     notices: [./LICENSE]

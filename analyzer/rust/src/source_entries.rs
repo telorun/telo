@@ -13,8 +13,12 @@ use std::collections::HashMap;
 use serde_json::{Map, Value};
 
 use crate::native_entries::{normalize_native_path, PathVerdict};
+use crate::telo_format::{describe_failure, format_failure};
 
-const SOURCE_KEYS: [&str; 6] = ["version", "url", "archive", "notices", "entries", "build"];
+const SOURCE_KEYS: [&str; 10] =
+    ["version", "purl", "cpe", "vcs", "contains", "url", "archive", "notices", "entries", "build"];
+const CONTAINED_KEYS: [&str; 4] = ["purl", "version", "cpe", "vcs"];
+const VCS_KEYS: [&str; 2] = ["url", "revision"];
 const BUILD_KEYS: [&str; 2] = ["cargo", "inputs"];
 const URL_PLACEHOLDERS: [&str; 2] = ["version", "upstream"];
 const FILE_KEYS: [&str; 4] = ["upstream", "member", "sha256", "executable"];
@@ -74,10 +78,33 @@ pub struct SourceBuild {
     pub inputs: Option<String>,
 }
 
+/// The repository and commit a component is built from.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SourceVcs {
+    /// `git+https://<host>/<path>`, no revision.
+    pub url: String,
+    /// The full commit id.
+    pub revision: String,
+}
+
+/// Code linked or bundled into a source's staged files, as its author declares it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SourceContained {
+    pub purl: String,
+    pub version: String,
+    pub cpe: Option<String>,
+    pub vcs: Option<SourceVcs>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ModuleSource {
     pub name: String,
     pub version: String,
+    /// Versionless package URL; absent only on a source built from a crate.
+    pub purl: Option<String>,
+    pub cpe: Option<String>,
+    pub vcs: Option<SourceVcs>,
+    pub contains: Vec<SourceContained>,
     pub url: String,
     pub archive: String,
     pub notices: Vec<String>,
@@ -200,6 +227,26 @@ fn runs_through(path: &str, parent: &str) -> bool {
     path.len() > parent.len() && path.starts_with(parent) && path.as_bytes()[parent.len()] == b'/'
 }
 
+fn vcs_shape_ok(value: Option<&Value>) -> bool {
+    match value {
+        None => true,
+        Some(Value::Object(vcs)) => {
+            vcs.get("url").is_some_and(Value::is_string)
+                && vcs.get("revision").is_some_and(Value::is_string)
+                && vcs.keys().all(|key| VCS_KEYS.contains(&key.as_str()))
+        }
+        Some(_) => false,
+    }
+}
+
+fn read_vcs(value: Option<&Value>) -> Option<SourceVcs> {
+    let vcs = value?.as_object()?;
+    Some(SourceVcs {
+        url: vcs.get("url")?.as_str()?.to_string(),
+        revision: vcs.get("revision")?.as_str()?.to_string(),
+    })
+}
+
 fn shape_ok(raw: &Map<String, Value>) -> bool {
     let build_ok = match raw.get("build") {
         None => true,
@@ -210,7 +257,24 @@ fn shape_ok(raw: &Map<String, Value>) -> bool {
         }
         Some(_) => false,
     };
+    let identity_ok = raw.get("purl").map_or(true, Value::is_string)
+        && raw.get("cpe").map_or(true, Value::is_string)
+        && vcs_shape_ok(raw.get("vcs"))
+        && match raw.get("contains") {
+            None => true,
+            Some(Value::Array(items)) => items.iter().all(|item| {
+                item.as_object().is_some_and(|item| {
+                    item.get("purl").is_some_and(Value::is_string)
+                        && item.get("version").is_some_and(Value::is_string)
+                        && item.get("cpe").map_or(true, Value::is_string)
+                        && vcs_shape_ok(item.get("vcs"))
+                        && item.keys().all(|key| CONTAINED_KEYS.contains(&key.as_str()))
+                })
+            }),
+            Some(_) => false,
+        };
     raw.get("version").is_some_and(Value::is_string)
+        && identity_ok
         && raw.get("url").is_some_and(Value::is_string)
         && raw
             .get("archive")
@@ -254,7 +318,7 @@ pub fn read_module_sources(owner: &Value) -> ModuleSources {
                 "SHAPE",
                 at,
                 format!(
-                    "{label}: a source is {{ version, url, archive ({}), notices (non-empty list), entries, build? {{ cargo, inputs? }} }} and nothing else.",
+                    "{label}: a source is {{ version, purl?, cpe?, vcs? {{ url, revision }}, contains? [{{ purl, version, cpe?, vcs? }}], url, archive ({}), notices (non-empty list), entries, build? {{ cargo, inputs? }} }} and nothing else.",
                     SOURCE_ARCHIVE_FORMATS.join(" | ")
                 ),
             );
@@ -277,6 +341,80 @@ pub fn read_module_sources(owner: &Value) -> ModuleSources {
         for (key, value) in [("version", version), ("url", url)] {
             if value.trim().is_empty() {
                 problem("SOURCE_INVALID", format!("{at}.{key}"), format!("{label}: '{key}' must not be empty."));
+                valid = false;
+            }
+        }
+        let purl = raw.get("purl").and_then(Value::as_str);
+        if purl.is_none() && !raw.contains_key("build") {
+            problem(
+                "SCHEMA_VIOLATION",
+                at.clone(),
+                format!(
+                    "{at} is fetched from a url and names no purl. Add the package URL its files are a release of, e.g. purl: pkg:npm/%40scope/name"
+                ),
+            );
+            valid = false;
+        }
+        // The owner doc's JSON Schema checks the formats on the Node side; this crate has none.
+        let mut identities: Vec<(String, &str, &str)> = Vec::new();
+        if let Some(purl) = purl {
+            identities.push((format!("{at}.purl"), "package-url", purl));
+        }
+        let cpe = raw.get("cpe").and_then(Value::as_str);
+        if let Some(cpe) = cpe {
+            identities.push((format!("{at}.cpe"), "cpe", cpe));
+        }
+        let vcs = read_vcs(raw.get("vcs"));
+        if let Some(vcs) = raw.get("vcs") {
+            identities.push((format!("{at}.vcs.url"), "vcs-url", vcs["url"].as_str().unwrap_or_default()));
+            identities.push((format!("{at}.vcs.revision"), "vcs-revision", vcs["revision"].as_str().unwrap_or_default()));
+        }
+        let contains: Vec<SourceContained> = raw
+            .get("contains")
+            .and_then(Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .enumerate()
+                    .map(|(index, item)| {
+                        let purl = item["purl"].as_str().unwrap_or_default();
+                        let version = item["version"].as_str().unwrap_or_default();
+                        let cpe = item.get("cpe").and_then(Value::as_str);
+                        identities.push((format!("{at}.contains[{index}].purl"), "package-url", purl));
+                        if let Some(cpe) = cpe {
+                            identities.push((format!("{at}.contains[{index}].cpe"), "cpe", cpe));
+                        }
+                        if let Some(vcs) = item.get("vcs") {
+                            identities.push((format!("{at}.contains[{index}].vcs.url"), "vcs-url", vcs["url"].as_str().unwrap_or_default()));
+                            identities.push((
+                                format!("{at}.contains[{index}].vcs.revision"),
+                                "vcs-revision",
+                                vcs["revision"].as_str().unwrap_or_default(),
+                            ));
+                        }
+                        if version.trim().is_empty() {
+                            problem(
+                                "SCHEMA_VIOLATION",
+                                format!("{at}.contains[{index}].version"),
+                                format!(
+                                    "{at}.contains[{index}].version must not be empty. Name the version of {purl} the staged files carry."
+                                ),
+                            );
+                            valid = false;
+                        }
+                        SourceContained {
+                            purl: purl.to_string(),
+                            version: version.to_string(),
+                            cpe: cpe.map(str::to_string),
+                            vcs: read_vcs(item.get("vcs")),
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        for (path, format, value) in identities {
+            if let Some(failure) = format_failure(format, value) {
+                problem("SCHEMA_VIOLATION", path.clone(), format!("{path} {}", describe_failure(format, value, &failure)));
                 valid = false;
             }
         }
@@ -575,6 +713,10 @@ pub fn read_module_sources(owner: &Value) -> ModuleSources {
         sources.push(ModuleSource {
             name: name.clone(),
             version: version.to_string(),
+            purl: purl.map(str::to_string),
+            cpe: cpe.map(str::to_string),
+            vcs,
+            contains,
             url: url.to_string(),
             archive: raw["archive"].as_str().unwrap_or_default().to_string(),
             notices,
@@ -596,7 +738,7 @@ mod tests {
 
     fn owner(url: &str, entries: Value) -> Value {
         json!({ "sources": { "addon": {
-            "version": "1.0.0", "url": url, "archive": "tar.gz", "notices": ["./LICENSE"], "entries": entries,
+            "version": "1.0.0", "purl": "pkg:generic/addon", "url": url, "archive": "tar.gz", "notices": ["./LICENSE"], "entries": entries,
         } } })
     }
 
@@ -634,5 +776,48 @@ mod tests {
             ["SOURCE_ENTRY_INVALID"]
         );
         assert_eq!(codes(&json!({ "sources": { "addon": { "version": "1", "url": "https://e.test", "notices": ["L"], "entries": {} } } })), ["SHAPE"]);
+    }
+
+    #[test]
+    fn requires_a_purl_unless_the_source_is_built_and_checks_the_identity_formats() {
+        let source = |extra: Value| {
+            let mut source = json!({ "version": "1", "url": "https://e.test/x.tgz", "archive": "tar.gz", "notices": ["L"], "entries": {} });
+            source.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+            json!({ "sources": { "addon": source } })
+        };
+        assert_eq!(codes(&source(json!({}))), ["SCHEMA_VIOLATION"]);
+        assert_eq!(codes(&source(json!({ "build": { "cargo": "rust" } }))), Vec::<&str>::new());
+        assert_eq!(codes(&source(json!({ "purl": "pkg:npm/better-sqlite3@12.8.0" }))), ["SCHEMA_VIOLATION"]);
+        assert_eq!(
+            codes(&source(json!({ "purl": "pkg:npm/addon", "contains": [{ "purl": "pkg:generic/sqlite", "version": "3.51.3", "cpe": "cpe:2.3:a:sqlite:sqlite:3.51.3" }] }))),
+            ["SCHEMA_VIOLATION"]
+        );
+        let read = read_module_sources(&source(json!({ "purl": "pkg:npm/addon", "contains": [{ "purl": "pkg:generic/sqlite", "version": "3.51.3" }] })));
+        assert_eq!(read.problems, []);
+        assert_eq!(read.sources[0].contains[0].version, "3.51.3");
+    }
+
+    #[test]
+    fn checks_the_repository_and_commit_a_component_is_built_from() {
+        let source = |vcs: Value| {
+            json!({ "sources": { "addon": {
+                "version": "1", "purl": "pkg:npm/addon", "url": "https://e.test/x.tgz", "archive": "tar.gz", "notices": ["L"], "entries": {},
+                "contains": [{ "purl": "pkg:generic/sqlite", "version": "3.51.3", "vcs": vcs }],
+            } } })
+        };
+        let revision = "a5333afb9ad1aa473f8963b92caeaa955f47dc74";
+        let read = read_module_sources(&source(json!({ "url": "git+https://github.com/sqlite/sqlite", "revision": revision })));
+        assert_eq!(read.problems, []);
+        assert_eq!(read.sources[0].contains[0].vcs.as_ref().unwrap().revision, revision);
+        for (vcs, path) in [
+            (json!({ "url": "git+https://github.com/sqlite/sqlite", "revision": "version-3.51.3" }), "sources.addon.contains[0].vcs.revision"),
+            (json!({ "url": "git+https://github.com/sqlite/sqlite", "revision": "a5333af" }), "sources.addon.contains[0].vcs.revision"),
+            (json!({ "url": "https://github.com/sqlite/sqlite", "revision": revision }), "sources.addon.contains[0].vcs.url"),
+            (json!({ "url": "git+https://user@github.com/x/y", "revision": revision }), "sources.addon.contains[0].vcs.url"),
+        ] {
+            let problems = read_module_sources(&source(vcs)).problems;
+            assert_eq!(problems.iter().map(|p| (p.code, p.path.as_str())).collect::<Vec<_>>(), [("SCHEMA_VIOLATION", path)]);
+        }
+        assert_eq!(codes(&source(json!({ "url": "git+https://github.com/sqlite/sqlite" }))), ["SHAPE"]);
     }
 }

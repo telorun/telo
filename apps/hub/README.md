@@ -167,7 +167,8 @@ HTTP twin.
   modules, and an optional `telo` version, and answers in text: per module, the
   line to write under `imports:`
   (`<Name>: <ref>@<version>#<integrity>` for an OCI ref, the bare ref for any
-  other transport), then each asked kind's document cut verbatim out of the
+  other transport), an `# Advisories:` line (see [Advisories](#advisories)),
+  then each asked kind's document cut verbatim out of the
   cached `telo.yaml` — with every named shape and local parent it references,
   three levels deep, and without the keys that say how the kind is implemented
   (`controllers`, `base`, the template body). A kind extending a kind of
@@ -394,8 +395,8 @@ indexed per tracked version and served on `/search/modules`,
 `/search/resources`, `/refs`, and the `search_resources` MCP tool. A module
 that declares none reports them as empty strings, never null.
 `/module/versions` is deliberately excluded: it stays a version list rather
-than a metadata endpoint. Each newest-first entry is `{ version, integrity }`,
-and `integrity` is the one thing beyond the name it carries — the
+than a metadata endpoint. Each newest-first entry is `{ version, integrity,
+advisories, advisoriesComplete }` (see [Advisories](#advisories)), and `integrity` is the one thing beyond the name and the advisory ids it carries — the
 `sha256-<base64url>` import pin for exactly that version, so an editor
 upgrading an `imports:` entry writes the new pin in the request it already
 makes rather than downloading the module to hash it. The pin comes from
@@ -488,6 +489,80 @@ result without a second request. A consumer scanning results is deciding
 *between* modules, and a list that can only describe the kinds a query happened
 to hit forces a navigation per candidate to answer "what else is in here?".
 
+### Advisories
+
+The hub says which known vulnerabilities a version carries, in the third-party
+code it ships and in every module it pins.
+
+- **Ingest reads each version's bill of materials** (`telo module sbom`, the
+  same CLI generation as the manifest read) and stores its components — package
+  URL without version, version, CPE, and the repository and commit a component
+  declares it is built from (the record's `vcs_url` qualifier) — one component
+  per package URL, version and revision, and whether the record is complete
+  (present, and naming no layer holding code no producer reported).
+  An artifact published without a record is an answer, not a failure: the
+  version simply never reads as complete. A `local` ref is never read, so its
+  closure is not covered. Any other failure of the read is recorded on the
+  version like any ingest failure and retried.
+- **A scheduled pass asks OSV** through the `osv` module's `Osv.Query`, once per
+  *distinct* component across every tracked version, in batches the hub bounds,
+  on `TRACK_CRON`. The per-component table is the one source of advisories.
+  Which components can be checked is `Osv.Query`'s `checked` answer: by package
+  type, or — for embedded C code declaring its repository and commit — by that
+  commit, once OSV records the repository in any advisory. The hub holds no list
+  of package types or repositories, and a component it reports unchecked (an
+  embedded `pkg:generic` library with no repository, or one whose repository OSV
+  records nothing about) stays unchecked. A commit in a record was checked
+  against its repository's history when the module was published. A lookup that
+  fails is recorded against its components and changes no stored advisory.
+- **A version's advisories cover its transitive pinned closure** — the version,
+  each version its `imports:` pin, the modules nested in its artifact (found
+  through the relative imports of the version and of each nested module, each
+  read like the version itself), and theirs in turn — and are materialised per
+  version, recomputed at the end of every pass, by ingest (for the version it
+  wrote and every version whose closure contains it) and when versions stop
+  being tracked, then served as stored. An advisory published after a version was
+  ingested therefore reaches it, and every version pinning it, on the next pass,
+  with no re-ingest.
+- **`advisoriesComplete` is false** when any module in the closure is not
+  tracked at the pinned version or has no complete record (a nested module
+  included), or a component is unchecked or not yet queried. **An empty `advisories` list is clean only beside
+  `advisoriesComplete: true`.** A freshly ingested version reads as incomplete
+  until a pass has answered for its components.
+
+`GET /module` and `get_module` serve `advisories` — one item per advisory and
+affected component, as OSV records it: `id`, `aliases`, `summary`, `severity`
+(`[{ type, score }]`, empty when OSV records none), the affected `component`
+(`purl@version`) and the `fixed` versions (for an advisory matched by a commit,
+the commits of the component's repository that fix it) — and `advisoriesComplete`.
+`GET /module/versions` and `list_module_versions` serve, per version,
+`advisories` holding only `{ id }`, one per distinct advisory in the closure, and
+`advisoriesComplete`: a caller choosing a version is not sent every summary of
+every version; the detail is one `get_module` away.
+
+`get_kinds` states them after the import line, never on it — the line stays
+exactly `<Name>: <ref>@<version>#<integrity>`, because a caller copies it into a
+manifest and a claim about one version must not travel with it:
+
+```
+# HttpServer
+# imports:
+#   HttpServer: oci://ghcr.io/telorun/http-server@0.45.0#sha256-Hc2nT7yU4oB9eR1wL6kZ3mX8vP5aJ0dGfS2qN7iKtE4
+# Advisories: GHSA-83w8-p2f5-377r (pkg:npm/%40fastify/static@10.1.0, fixed in 10.1.1); newest clean and complete: 0.46.0
+```
+
+The line is present for every module answered at a version: it names each
+advisory, says `none`, or says `unchecked` when `advisoriesComplete` is false,
+and names the newest clean and complete version when that is another one.
+
+**Choosing a version.** Pick the newest version with no advisories and
+`advisoriesComplete: true`. When every version has advisories, use the newest and
+name them to the user. When no version is complete (a module embedding C code),
+use the newest with no advisories and tell the user its embedded code is
+unchecked. Never read an empty list beside `advisoriesComplete: false` as clean.
+`telo upgrade` does not consult the hub; an application checks what it runs with
+`telo audit`.
+
 ### `GET /module`
 
 Everything a module page renders, in one call: the module's metadata, every
@@ -497,7 +572,8 @@ application's declared contract in the shape above, `null` for a library.
 `version` selects a tracked version and defaults to the latest. For an
 application `kinds` and `exportedResources` are `[]` and `module.runtime` is
 `null`; its versions and pins are where a library's are (`module.integrity`,
-`/module/versions`, `list_module_versions`).
+`/module/versions`, `list_module_versions`). It also carries the version's
+`advisories` and `advisoriesComplete`.
 
 It exists because a search hit cannot answer this question. `/search/*` is
 ranked and returns only the latest version and only the kinds that matched a
@@ -625,10 +701,10 @@ modules than it did.
 | `MANIFEST_BUCKET_FORCE_PATH_STYLE` | `true` for MinIO/RustFS (default `false`) |
 | `SEED_REFS` | JSON array of module refs registered idempotently on boot (the curated seed; publishers also self-register via `POST /register`) |
 | `ALLOW_LOCAL_REFS` | `true` lets `SEED_REFS` name a `./`-relative module directory read from the hub's own disk (default `false`; set by the compose stack) |
-| `TRACK_CRON` | When the reconcile pass runs, as a 5-field cron in UTC (default `0 * * * *`, hourly) |
+| `TRACK_CRON` | When the reconcile pass and the advisory pass run, as a 5-field cron in UTC (default `0 * * * *`, hourly) |
 | `TRACK_ENABLED` | `false` disables the periodic reconcile (tests drive `Ingest.scheduleDueVersions` directly) |
 | `BUILTINS_REF` | Where the built-in vocabulary is published, one version per telo release (default `oci://ghcr.io/telorun/telo`). Registered on every boot before `SEED_REFS`, and the only ref a `Telo.Builtins` root is indexed or registered at |
-| `INGEST_REV` | Revision of the ingest pipeline (default `11`). Raising it makes every tracked version due exactly once — the whole-registry re-ingest control, deployed alongside a change to what ingest extracts |
+| `INGEST_REV` | Revision of the ingest pipeline (default `12`; 12 reads each version's components). Raising it makes every tracked version due exactly once — the whole-registry re-ingest control, deployed alongside a change to what ingest extracts |
 | `TELO_COMMAND` | The command the origin reads run, as a JSON array: a program and its leading arguments (default `["telo"]`). It must be the same telo generation as the hub, since ingest reads that CLI's `module manifest --json` contract — including how it reports a `Telo.Builtins` root |
 | `REGISTER_RATE_LIMIT` | Max `POST /register` calls per client IP per window (default `5`) |
 | `REGISTER_RATE_WINDOW` | Sliding window for that limit (default `10m`) |

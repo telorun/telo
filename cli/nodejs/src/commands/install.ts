@@ -192,7 +192,7 @@ async function installOne(
       // need no network. A layer that did NOT land is a refusal rather than a
       // warning: the tree this produces is the only cache its consumer has, so
       // the gap would surface as a boot failure on another machine.
-      const warmed = await warmModuleLayers(graph, entryDir, manifestsDir, platform);
+      const warmed = await warmModuleLayers(graph, entryDir, manifestsDir, platform, cacheRoot);
       if (warmed.gaps.length > 0) {
         // **Fatal for a NAMED target, a warning for this machine.** An install
         // for a platform the operator named is a deliverable — a baked image, a

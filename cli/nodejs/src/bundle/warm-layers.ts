@@ -1,6 +1,7 @@
 import {
   IntegrityError,
   describeSelector,
+  singletonLayer,
   normalizeAxisValue,
   type LoadedGraph,
   type LoadedModule,
@@ -10,6 +11,7 @@ import {
   buildSiblingLibraries,
   defaultTransportRegistry,
   hostPlatformTarget,
+  materializeStoredLayer,
   moduleArtifactFor,
   moduleDirectoriesOf,
   readOwnerManifest,
@@ -81,12 +83,17 @@ export interface WarmedLayers {
  * non-zero, `telo package` writes no file). An integrity failure, a malformed
  * layer index and a tar entry escaping the module directory stay hard here: a
  * tampered artifact must never be used, and a bad index is an authoring error.
+ *
+ * Each module's `sbom` layer is warmed too, whatever the target, into the layer
+ * store under `cacheRoot` rather than its module directory, so an offline cache
+ * can answer for what every module ships.
  */
 export async function warmModuleLayers(
   graph: LoadedGraph,
   entryDir: string,
   manifestsDir: string,
   target: PlatformTarget,
+  cacheRoot: string,
 ): Promise<WarmedLayers> {
   const transports = defaultTransportRegistry();
   const artifacts = new Map<string, ModuleArtifact>();
@@ -131,6 +138,11 @@ export async function warmModuleLayers(
 
     try {
       materialized += (await artifact.materializeAll(target)).length;
+      const record = singletonLayer(owner.layers ?? [], "sbom");
+      if (record) {
+        await materializeStoredLayer({ cacheRoot, pinnedRef: file.requestedUrl, layer: record, transports });
+        materialized += 1;
+      }
     } catch (err) {
       if (err instanceof IntegrityError) throw err;
       const code = (err as { code?: string } | undefined)?.code;
@@ -191,7 +203,8 @@ export function parsePlatformTarget(
   return target;
 }
 
-function parsePlatformTriple(value: string): PlatformTarget {
+/** `--platform`'s `os/arch[/libc]`, as every command taking the flag spells it. */
+export function parsePlatformTriple(value: string): PlatformTarget {
   const parts = value
     .split("/")
     .map((p) => p.trim().toLowerCase())

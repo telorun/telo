@@ -531,6 +531,9 @@ importers:
       '@telorun/kernel':
         specifier: workspace:*
         version: link:../../kernel/nodejs
+      '@telorun/osv':
+        specifier: workspace:*
+        version: link:../../packages/osv
       '@telorun/release':
         specifier: workspace:*
         version: link:../../release/nodejs
@@ -2471,6 +2474,25 @@ importers:
         specifier: 2.8.3
         version: 2.8.3
 
+  modules/osv/nodejs:
+    dependencies:
+      '@telorun/osv':
+        specifier: workspace:*
+        version: link:../../../packages/osv
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.43
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
   modules/otlp/nodejs:
     devDependencies:
       '@telorun/sdk':
@@ -3641,6 +3663,18 @@ importers:
       yaml:
         specifier: 2.8.3
         version: 2.8.3
+
+  packages/osv:
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.43
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.43)(happy-dom@21.0.4)(jsdom@25.0.1)(lightningcss@1.33.0)(terser@5.51.2)
 
   packages/runner-core:
     dependencies:

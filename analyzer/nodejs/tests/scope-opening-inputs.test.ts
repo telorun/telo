@@ -269,6 +269,11 @@ steps:
     ).toEqual([]);
   });
 
+  it("fills a default at an instance-typed slot as its literal decodes", async () => {
+    const url = "{ x-telo-type: { name: Telo.Url, scheme: { enum: [https] } }, default: 'https://greeting.acme.test' }";
+    expect(await run(app(`{ type: object, required: [greeting], properties: { greeting: ${url} } }`))).toEqual([]);
+  });
+
   it("refuses a contract that still refuses {} once defaults are filled", async () => {
     expect(
       await run(app("{ type: object, minProperties: 1, properties: { greeting: { type: string } } }")),

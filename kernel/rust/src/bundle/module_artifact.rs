@@ -277,6 +277,16 @@ impl ModuleArtifact {
     }
 
     fn materialize(&self, layer: &ArtifactLayer) -> Result<Vec<String>, KernelError> {
+        if layer.role.is_artifact_record() {
+            return Err(KernelError::new(
+                "ERR_MODULE_LAYER_INVALID",
+                format!(
+                    "The {} layer of {} describes the artifact and holds no module file, so it is never extracted into a module directory.",
+                    layer.role.name(),
+                    self.pinned_ref
+                ),
+            ));
+        }
         if let Some(files) = self.materialized.borrow().get(&layer.blob) {
             return Ok(files.clone());
         }

@@ -231,7 +231,7 @@ describe("ModulePayloadBuilder — browser entries", () => {
       "oci://registry.example/test/widgets",
     );
 
-    expect(payload.layers).toHaveLength(1);
+    expect(payload.layers.map((l) => l.role)).toEqual(["browser", "sbom"]);
     const [layer] = payload.layers;
     expect([layer!.role, layer!.selector]).toEqual(["browser", { format: "esm", abi: "ui-1" }]);
     const names = layer!.files.map((f) => f.name);
@@ -296,15 +296,17 @@ describe("ModulePayloadBuilder — the module's license", () => {
     write("notes.txt", "not selected");
 
     const payload = await build();
-    expect(payload.layers.map((l) => [l.role, l.files])).toEqual([
-      ["common", [{ name: "LICENSE", content: Buffer.from("MIT License\n") }]],
+    expect(payload.layers.map((l) => [l.role, l.files.map((f) => f.name)])).toEqual([
+      ["common", ["LICENSE"]],
+      ["sbom", ["sbom.cdx.json"]],
     ]);
+    expect(payload.layers[0]!.files).toEqual([{ name: "LICENSE", content: Buffer.from("MIT License\n") }]);
   });
 
-  it("ships no layer for a module with no LICENSE and no payload", async () => {
+  it("ships only its record for a module with no LICENSE and no payload", async () => {
     write("telo.yaml", manifest);
 
-    expect((await build()).layers).toEqual([]);
+    expect((await build()).layers.map((l) => l.role)).toEqual(["sbom"]);
   });
 });
 
@@ -347,6 +349,7 @@ describe("ModulePayloadBuilder — native entries", () => {
     expect(payload.layers.map((l) => [l.role, l.selector, l.files.map((f) => f.name)])).toEqual([
       ["native", { format: "node", os: "linux", arch: "amd64", abi: "node-137" }, ["native/linux/addon.node"]],
       ["native", { format: "napi", os: "darwin", arch: "arm64" }, ["native/darwin/addon.node"]],
+      ["sbom", undefined, ["sbom.cdx.json"]],
     ]);
     expect(payload.manifest).toContain(`${nativeBlock.join("\n")}\n`);
     expect(payload.manifest).toMatch(/layers:\n\s+- role: native/);
@@ -380,6 +383,7 @@ describe("ModulePayloadBuilder — staged files", () => {
       "sources:",
       "  addon:",
       "    version: 1.2.3",
+      "    purl: pkg:generic/addon",
       `    url: ${url}`,
       "    archive: tar.gz",
       "    notices: [./LICENSE]",
@@ -440,6 +444,18 @@ describe("ModulePayloadBuilder — staged files", () => {
     expect(await digestPayload(after)).toEqual(await digestPayload(before));
   });
 
+  it("moves only the sbom layer, and the manifest indexing it, when only a source's purl changes", async () => {
+    write("telo.yaml", manifest());
+    write("LICENSE", "MIT");
+    const before = await digestPayload(await build("pins"));
+    write("telo.yaml", manifest().replace("pkg:generic/addon", "pkg:generic/addon-core"));
+    const after = await digestPayload(await build("pins"));
+
+    expect(Object.keys(before)).toContain("sbom");
+    const moved = Object.keys(after).filter((layer) => after[layer] !== before[layer]);
+    expect(moved.sort()).toEqual(["manifest", "sbom"]);
+  });
+
   it("refuses at publish a staged file whose bytes do not match its pin", async () => {
     write("telo.yaml", manifest());
     write("LICENSE", "MIT");
@@ -462,6 +478,7 @@ describe("ModulePayloadBuilder — staged files", () => {
         "sources:",
         "  ui:",
         "    version: 1.0.0",
+        "    purl: pkg:generic/ui",
         "    url: https://example.test/{version}/{upstream}.tgz",
         "    archive: tar.gz",
         "    notices: [./LICENSE]",

@@ -23,6 +23,11 @@ import {
  *  a measurement copy: every runtime meets it. */
 export const ANY_RUNTIME_BOUND = ">=0.0.0";
 
+/** The module-doc blocks `telo publish` removes from the published manifest
+ *  (`kernel/specs/module-artifact.md`, authoring inputs). A consumer never reads
+ *  them, so a measurement copy leaves them out. */
+export const AUTHORING_INPUT_BLOCKS: readonly string[] = ["sources"];
+
 export interface FloorEdit {
   text: string;
   /** 0-based line before which lines were added or removed, and how many net
@@ -36,6 +41,14 @@ interface ModuleMap {
   map: YAMLMap;
 }
 
+/** The text holds no `Telo.Application` or `Telo.Library` document to edit. */
+export class NoModuleDocumentError extends Error {
+  constructor() {
+    super("the manifest holds no Telo.Application or Telo.Library document");
+    this.name = "NoModuleDocumentError";
+  }
+}
+
 function moduleMap(text: string): ModuleMap {
   for (const doc of parseAllDocuments(text, { customTags: defaultCustomTags })) {
     const kind = doc.get("kind");
@@ -43,7 +56,7 @@ function moduleMap(text: string): ModuleMap {
       return { doc, map: doc.contents };
     }
   }
-  throw new Error("the manifest holds no Telo.Application or Telo.Library document");
+  throw new NoModuleDocumentError();
 }
 
 function pairOf(map: YAMLMap, key: string): Pair | undefined {
@@ -186,12 +199,65 @@ function removePair(text: string, pair: Pair, parent: YAMLMap): FloorEdit {
   return finish(text, [{ start: previous[1], end: value[1], newText: "" }]);
 }
 
+function authoringInputEdits(text: string, map: YAMLMap): TextEdit[] {
+  const edits: TextEdit[] = [];
+  for (const block of AUTHORING_INPUT_BLOCKS) {
+    const pair = pairOf(map, block);
+    const key = rangeOf(pair?.key);
+    const value = rangeOf(pair?.value);
+    if (!key || !value) continue;
+    const start = lineStart(text, key[0]);
+    const end = afterLine(text, value[1]);
+    edits.push({ start, end, newText: text.slice(start, end).replace(/[^\n]/g, "") });
+  }
+  return edits;
+}
+
+/** The manifest as publish ships it to a consumer: every authoring-input block
+ *  blanked, newlines kept so a reported line still maps back. A text holding no
+ *  module document is returned unchanged. */
+export function withoutAuthoringInputs(text: string): string {
+  let map: YAMLMap;
+  try {
+    map = moduleMap(text).map;
+  } catch (error) {
+    if (error instanceof NoModuleDocumentError) return text;
+    throw error;
+  }
+  return applyTextEdits(text, authoringInputEdits(text, map));
+}
+
+/** The module-relative paths the manifest's `sources:` block stages (each source's
+ *  `entries` keys, file or link), `./`-normalized. None for a text with no module
+ *  document or no such block. */
+export function stagedSourcePaths(text: string): string[] {
+  let map: YAMLMap;
+  try {
+    map = moduleMap(text).map;
+  } catch (error) {
+    if (error instanceof NoModuleDocumentError) return [];
+    throw error;
+  }
+  const sources = pairOf(map, "sources")?.value;
+  if (!isMap(sources)) return [];
+  const paths: string[] = [];
+  for (const source of sources.items) {
+    const entries = isMap(source.value) ? pairOf(source.value, "entries")?.value : undefined;
+    if (!isMap(entries)) continue;
+    for (const entry of entries.items) {
+      if (isScalar(entry.key) && typeof entry.key.value === "string") paths.push(entry.key.value);
+    }
+  }
+  return paths;
+}
+
 /**
  * The manifest as it is measured: `requires.telo` the candidate floor (absent
  * for `null`), and every bound inside a `restrictions:` entry replaced by one
  * the measuring process meets — each `telo` bound by the candidate floor, each
  * host bound by `>=0.0.0` — while every key of every entry stays, so syntax
- * inside an entry still counts.
+ * inside an entry still counts. Every authoring-input block is blanked, its
+ * newlines kept so reported lines still map back: a module is measured as published.
  */
 export function measurementCopy(text: string, candidate: string | null): FloorEdit {
   const floored = writeFloor(text, candidate);
@@ -209,6 +275,8 @@ export function measurementCopy(text: string, candidate: string | null): FloorEd
       newText: quoted(floored.text.slice(range[0], range[1]), bound),
     });
   };
+
+  edits.push(...authoringInputEdits(floored.text, map));
 
   if (isSeq(restrictions)) {
     for (const entry of restrictions.items) {

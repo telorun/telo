@@ -35,6 +35,13 @@ and module assets — already warmed. Nothing is fetched at run time.
   including the application's own `Telo.Definition`s — is built at package time
   and travels as its `path=` bundle. Its TypeScript sources do not travel, which
   is what guarantees nothing compiles on the target machine.
+- **A bill of materials for each local module**, built from the same builds
+  that wrote its files — the packages its bundles inline and the sources it
+  stages — and kept to the platform you packaged for. `telo sbom ./orders` and
+  `telo audit ./orders` read it from the payload, offline, so they list and check
+  what the executable runs. A binary packaged by an older telo carries none:
+  they report `SBOM_INCOMPLETE` for its local modules, and packaging it again
+  fixes that.
 - **The warmed analysis verdict**, so a packaged app re-validates nothing at
   startup — while still checking that the files it loads are the files that
   verdict was about, so an unpacked tree that was truncated or edited is

@@ -103,6 +103,41 @@ describe("the marker's shape", () => {
   });
 });
 
+describe("the audit block", () => {
+  const entry = "audit:\n  ignore:\n    - id: CVE-2026-15074\n      reason: Static site.\n      expires: 2026-12-31\n";
+
+  it("reads an accepted advisory with its position in the list", () => {
+    const { config, diagnostics } = read(entry);
+    expect(diagnostics).toEqual([]);
+    expect(config.audit).toEqual({
+      ignore: [{ index: 0, id: "CVE-2026-15074", reason: "Static site.", expires: "2026-12-31" }],
+    });
+  });
+
+  it("refuses an entry with no reason, naming it, and an expiry that is no date", () => {
+    const noReason = read("audit:\n  ignore:\n    - { id: CVE-1, expires: 2026-12-31 }\n").diagnostics;
+    expect(noReason.map((d) => [d.code, d.path.join(".")])).toEqual([["WORKSPACE_INVALID_VALUE", "audit.ignore.0"]]);
+    expect(noReason[0]!.message).toBe(
+      "audit.ignore[0] has no reason. Every accepted advisory says why it is accepted, beside its id and expires.",
+    );
+    const badDate = read("audit:\n  ignore:\n    - { id: CVE-1, reason: r, expires: 2026-13-40 }\n");
+    expect(badDate.diagnostics.map((d) => d.path.join("."))).toEqual(["audit.ignore.0.expires"]);
+    expect(badDate.config.audit!.ignore).toEqual([]);
+  });
+
+  it("reports an unknown key inside the block and a near-miss of the block's own name", () => {
+    expect(read("audit:\n  ignor: []\n").diagnostics.map((d) => d.code)).toEqual(["WORKSPACE_UNKNOWN_KEY"]);
+    const typo = read("audti:\n  ignore: []\n").diagnostics;
+    expect(typo.map((d) => [d.code, d.severity])).toEqual([["WORKSPACE_UNKNOWN_KEY", "error"]]);
+    expect(typo[0]!.message).toContain("Did you mean 'audit'?");
+    expect(typo[0]!.data).toEqual({ nearMiss: "audit" });
+  });
+
+  it("is a valid marker beside no release block", () => {
+    expect(read(entry).config.release).toBeUndefined();
+  });
+});
+
 describe("what a caller does with the diagnostics", () => {
   it("scopes them per block, so a release typo does not reach the run path", () => {
     const { diagnostics } = read("release:\n  nope: 1\nenv:\n  files: ['a/b']\n");
@@ -123,6 +158,7 @@ describe("the telo ecosystem", () => {
     "sources:",
     "  napi:",
     "    version: 1.0.0",
+    "    purl: pkg:generic/napi",
     "    url: https://example.com/x.tar.gz",
     "    archive: tar.gz",
     "    notices: [LICENSE]",

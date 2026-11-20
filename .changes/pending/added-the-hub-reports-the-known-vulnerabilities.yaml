@@ -1,0 +1,9 @@
+units:
+  apps/hub: Added
+body: "The hub reports the known vulnerabilities of each tracked version and of every
+  module it pins. Ingest stores each version's third-party components, a scheduled pass
+  checks every distinct component against OSV, and get_module, list_module_versions and
+  their HTTP routes serve advisories and advisoriesComplete (an empty list is clean only
+  beside true); get_kinds states them on an # Advisories: line after the import line,
+  never on it. INGEST_REV defaults to 12, so the deploy re-ingests every tracked version
+  once."

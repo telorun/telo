@@ -1,0 +1,5 @@
+units:
+  kernel: Added
+body: "@telorun/kernel exports assertPublicEgress and EgressDeniedError, the
+  TELO_EGRESS=public-only check its transports apply, so a host fetching on its own
+  refuses the same private, loopback, link-local and CGNAT addresses."

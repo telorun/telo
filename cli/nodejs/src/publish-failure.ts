@@ -11,6 +11,7 @@ export type PublishFailureCode =
   | "import_unpinned"
   | "import_pin_mismatch"
   | "import_unreachable"
+  | "source_repository_unreadable"
   | "sibling_not_published"
   | "import_nested"
   | "destination_mismatch"

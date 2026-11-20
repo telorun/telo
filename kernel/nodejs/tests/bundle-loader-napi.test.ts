@@ -85,6 +85,7 @@ describe("BundleControllerLoader napi candidates", () => {
       sources: {
         echo: {
           version: "1.0.0",
+          purl: "pkg:generic/echo",
           url,
           archive: "tar.gz",
           notices: ["./LICENSE"],

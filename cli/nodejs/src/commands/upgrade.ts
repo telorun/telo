@@ -67,7 +67,7 @@ interface Held {
 }
 
 /** What the newest-first walk established. */
-interface Walk {
+export interface Walk {
   /** The newest version this runtime can use — at or above the pin when the pin
    *  is published. `null` when none is. */
   best: string | null;
@@ -141,6 +141,47 @@ async function walkVersions(
   }
   return walk;
 }
+
+/** What selecting a version for one import established. */
+export type VersionChoice =
+  /** The newest published version is the pin: there is no candidate to ask about. */
+  | { kind: "current-is-newest" }
+  | { kind: "walked"; currentPublished: boolean; walk: Walk };
+
+/**
+ * The version `telo upgrade` selects for one import: the highest whose range,
+ * narrowed by the `restrictions:` of newer versions, accepts the runtime, never
+ * below a published pin. Nothing is selected when the newest published version
+ * is the pin already, so the compatibility question costs no manifest fetch on
+ * the path that changes nothing. Shared by `telo audit`'s upgrade hint, so the
+ * hint names what `telo upgrade` would write.
+ */
+export async function chooseVersion(args: {
+  transport: Transport;
+  source: string;
+  /** Published versions as canonical SemVer. */
+  published: string[];
+  currentVersion: string;
+  includePrerelease: boolean;
+  runtime: UpgradeRuntime;
+}): Promise<VersionChoice> {
+  const { transport, source, published, currentVersion, includePrerelease, runtime } = args;
+  const plainLatest = pickLatest(published, includePrerelease);
+  if (plainLatest && semver.eq(plainLatest, currentVersion)) return { kind: "current-is-newest" };
+  const currentPublished = published.some((v) => semver.eq(v, currentVersion));
+  const walk = await walkVersions(
+    transport,
+    source,
+    published,
+    includePrerelease,
+    currentPublished ? currentVersion : null,
+    runtime,
+  );
+  return { kind: "walked", currentPublished, walk };
+}
+
+/** The runtime upgrade judges candidates against, for another command's reading of it. */
+export const upgradeRuntime = currentRuntime;
 
 /** `a`, `a and b`, `a, b and c`. */
 function listOf(versions: string[]): string {
@@ -424,31 +465,20 @@ export async function upgradeManifest(args: {
       continue;
     }
 
-    // Nothing to select when the newest published version is the one already
-    // pinned: there is no candidate to move to, so the compatibility question
-    // has no bearing and asking it would cost a manifest fetch per import on the
-    // path that changes nothing. A pin the runtime cannot read is the LOAD
-    // gate's to report, not this command's — `upgrade` moves pins forward, it
-    // does not walk anyone backwards.
-    const plainLatest = pickLatest(normalized, includePrerelease);
-    if (plainLatest && semver.eq(plainLatest, currentVersion)) {
+    const choice = await chooseVersion({
+      transport,
+      source,
+      published: normalized,
+      currentVersion,
+      includePrerelease,
+      runtime,
+    });
+    if (choice.kind === "current-is-newest") {
       await ensurePinned(importRef, transport, label, currentVersion);
       continue;
     }
-
-    // Selection: the highest version whose range — narrowed by the `restrictions:`
-    // of the newer versions — accepts this runtime, not the highest full stop.
-    // Without it a consumer is handed syntax their runtime cannot read, or a
-    // version a later release marked as broken on it.
-    const currentPublished = normalized.some((v) => semver.eq(v, currentVersion));
-    const { best, held, pinVerdict } = await walkVersions(
-      transport,
-      source,
-      normalized,
-      includePrerelease,
-      currentPublished ? currentVersion : null,
-      runtime,
-    );
+    const { currentPublished } = choice;
+    const { best, held, pinVerdict } = choice.walk;
     const where = `${importRef.alias}: ${splitIntegrity(source).base}`;
     const lines = heldBackLines(held);
     const reportHeld = (): void => {

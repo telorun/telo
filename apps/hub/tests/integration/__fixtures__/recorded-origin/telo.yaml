@@ -17,6 +17,21 @@
 #   release candidate; the hub indexes finals only and drops a candidate it
 #   already indexed. Its manifests are never read.
 #
+# - the advisory fixtures, answered to `module sbom <ref>@<version>` as the CLI
+#   answers: a record, or the SBOM_INCOMPLETE refusal of an artifact that has
+#   none. `web` (1.1.0, 1.0.0) ships @fastify/static 10.1.1 / 10.1.0; `shop`
+#   pins web 1.0.0; `legacy` and the `oldshop` pinning it were published before
+#   the record; `embeds` ships an embedded SQLite (`pkg:generic`), at two
+#   revisions and none, and a zlib whose `vcs_url` names no commit, and the
+#   `sqlshop` pinning it.
+#
+# - the nested-module fixtures, answered as the CLI answers a ref naming a module
+#   inside an artifact (`oci://<repo>@sha256:<digest>/<path>`, the digest the
+#   ingest test gives: `sha256:<version>`), `module manifest` in its text form
+#   and `module sbom`: `nestshop` imports `./chat`, which imports `../tools`
+#   (shipping @fastify/static 10.1.0) and web 1.1.0 by its pin; `nestlegacy`
+#   imports `./old`, published before the record.
+#
 # And the built-in vocabulary at the ref the hub's tests track it at, with a
 # module written against it:
 #
@@ -56,13 +71,15 @@ metadata: { name: answer }
 steps:
   - name: verbGate
     if: !cel >-
-      variables.group != 'module' || !variables.json
-        || !((variables.verb == 'versions' && variables.digests) || (variables.verb == 'manifest' && !variables.digests))
+      variables.group != 'module'
+        || !((variables.verb == 'versions' && variables.json && variables.digests)
+             || (variables.verb == 'manifest' && !variables.digests)
+             || (variables.verb == 'sbom' && !variables.json && !variables.digests))
     then:
       - name: refuse
         throw:
           code: ERR_FIXTURE_UNSUPPORTED_READ
-          message: !interpolate "this origin answers only `module versions <ref> --json --digests` and `module manifest <ref> --json`, not `${{ variables.group }} ${{ variables.verb }}`"
+          message: !interpolate "this origin answers only `module versions <ref> --json --digests`, `module manifest <ref> [--json]` and `module sbom <ref>`, not `${{ variables.group }} ${{ variables.verb }}`"
   # What `module versions --digests` reports, newest first.
   - name: versions
     value:
@@ -166,8 +183,249 @@ steps:
             - { name: Sink, runtimes: [nodejs], languages: [javascript], portable: false }
             - { name: Access, runtimes: [nodejs], languages: [], portable: false }
         application: null
+      oci://example.test/web@1.0.0:
+        ref: oci://example.test/web@1.0.0
+        cacheKey: oci/example.test/web/1.0.0/telo.yaml
+        manifest: !include-text web-1.0.0.yaml
+        integrity: sha256-Hc2nT7yU4oB9eR1wL6kZ3mX8vP5aJ0dGfS2qN7iKtE4
+        runtime: { runtimes: {}, languages: [], portable: true, kinds: [] }
+      oci://example.test/web@1.1.0:
+        ref: oci://example.test/web@1.1.0
+        cacheKey: oci/example.test/web/1.1.0/telo.yaml
+        manifest: !include-text web-1.1.0.yaml
+        integrity: sha256-q8Vd1kR3mZ7wT2pXc5LbN9fH4jE6sA0uYgK1oQ3iWzM
+        runtime: { runtimes: {}, languages: [], portable: true, kinds: [] }
+      oci://example.test/legacy@1.0.0:
+        ref: oci://example.test/legacy@1.0.0
+        cacheKey: oci/example.test/legacy/1.0.0/telo.yaml
+        manifest: |
+          kind: Telo.Library
+          metadata:
+            name: Legacy
+            version: 1.0.0
+        integrity: sha256-Z3aQs8Q0qiXMrxwC8RFylKFbxqMv4BE1d1wJ_akPtb8
+        runtime: { runtimes: {}, languages: [], portable: true, kinds: [] }
+      oci://example.test/embeds@1.0.0:
+        ref: oci://example.test/embeds@1.0.0
+        cacheKey: oci/example.test/embeds/1.0.0/telo.yaml
+        manifest: |
+          kind: Telo.Library
+          metadata:
+            name: Embeds
+            version: 1.0.0
+          layers: [{ role: sbom, blob: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", integrity: "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }]
+        integrity: sha256-Vq3J8nR2xT5mL9cK1wF7hD4pZ6sA0eY2uG8bN3iQ5oE
+        runtime: { runtimes: {}, languages: [], portable: true, kinds: [] }
+      oci://example.test/shop@1.0.0:
+        ref: oci://example.test/shop@1.0.0
+        cacheKey: oci/example.test/shop/1.0.0/telo.yaml
+        manifest: |
+          kind: Telo.Library
+          metadata:
+            name: Shop
+            version: 1.0.0
+          imports:
+            Web: oci://example.test/web@1.0.0#sha256-Hc2nT7yU4oB9eR1wL6kZ3mX8vP5aJ0dGfS2qN7iKtE4
+          layers: [{ role: sbom, blob: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", integrity: "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }]
+        integrity: sha256-2mcx3BNE8y0FfpWZw3YkM8Vh2cHgqS0b1Zk6nHnAq0Q
+        runtime: { runtimes: {}, languages: [], portable: true, kinds: [] }
+      oci://example.test/oldshop@1.0.0:
+        ref: oci://example.test/oldshop@1.0.0
+        cacheKey: oci/example.test/oldshop/1.0.0/telo.yaml
+        manifest: |
+          kind: Telo.Library
+          metadata:
+            name: Oldshop
+            version: 1.0.0
+          imports:
+            Legacy: oci://example.test/legacy@1.0.0#sha256-Z3aQs8Q0qiXMrxwC8RFylKFbxqMv4BE1d1wJ_akPtb8
+          layers: [{ role: sbom, blob: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", integrity: "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }]
+        integrity: sha256-5d2nyy2aZq4WmKk6Rk2kC0Jd1C3rdZQbKkn2tYmD2Yc
+        runtime: { runtimes: {}, languages: [], portable: true, kinds: [] }
+      oci://example.test/sqlshop@1.0.0:
+        ref: oci://example.test/sqlshop@1.0.0
+        cacheKey: oci/example.test/sqlshop/1.0.0/telo.yaml
+        manifest: |
+          kind: Telo.Library
+          metadata:
+            name: Sqlshop
+            version: 1.0.0
+          imports:
+            Embeds: oci://example.test/embeds@1.0.0#sha256-Vq3J8nR2xT5mL9cK1wF7hD4pZ6sA0eY2uG8bN3iQ5oE
+          layers: [{ role: sbom, blob: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", integrity: "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }]
+        integrity: sha256-VhS4Qh8GkpaS4kW0l3PhD1Zz1yJ0jH8dG0Ybq1c2b2E
+        runtime: { runtimes: {}, languages: [], portable: true, kinds: [] }
+      oci://example.test/nestshop@1.0.0:
+        ref: oci://example.test/nestshop@1.0.0
+        cacheKey: oci/example.test/nestshop/1.0.0/telo.yaml
+        manifest: |
+          kind: Telo.Library
+          metadata:
+            name: Nestshop
+            version: 1.0.0
+          imports:
+            Chat: ./chat#sha256-Cq3J8nR2xT5mL9cK1wF7hD4pZ6sA0eY2uG8bN3iQ5oE
+          layers: [{ role: sbom, blob: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", integrity: "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }]
+        integrity: sha256-Nq3J8nR2xT5mL9cK1wF7hD4pZ6sA0eY2uG8bN3iQ5oE
+        runtime: { runtimes: {}, languages: [], portable: true, kinds: [] }
+      oci://example.test/nestlegacy@1.0.0:
+        ref: oci://example.test/nestlegacy@1.0.0
+        cacheKey: oci/example.test/nestlegacy/1.0.0/telo.yaml
+        manifest: |
+          kind: Telo.Library
+          metadata:
+            name: Nestlegacy
+            version: 1.0.0
+          imports:
+            Old: ./old#sha256-Oq3J8nR2xT5mL9cK1wF7hD4pZ6sA0eY2uG8bN3iQ5oE
+          layers: [{ role: sbom, blob: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", integrity: "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }]
+        integrity: sha256-Lq3J8nR2xT5mL9cK1wF7hD4pZ6sA0eY2uG8bN3iQ5oE
+        runtime: { runtimes: {}, languages: [], portable: true, kinds: [] }
+  # What `module manifest` prints in its text form, for a module nested in an
+  # artifact, keyed by its identity.
+  - name: nestedManifests
+    value:
+      oci://example.test/nestshop@sha256:1.0.0/chat: |
+        kind: Telo.Library
+        metadata:
+          name: Chat
+          version: 1.0.0
+        imports:
+          Tools: ../tools#sha256-Tq3J8nR2xT5mL9cK1wF7hD4pZ6sA0eY2uG8bN3iQ5oE
+          Web: oci://example.test/web@1.1.0#sha256-q8Vd1kR3mZ7wT2pXc5LbN9fH4jE6sA0uYgK1oQ3iWzM
+        layers: [{ role: sbom, blob: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", integrity: "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }]
+      oci://example.test/nestshop@sha256:1.0.0/tools: |
+        kind: Telo.Library
+        metadata:
+          name: Tools
+          version: 1.0.0
+        layers: [{ role: sbom, blob: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", integrity: "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }]
+      oci://example.test/nestlegacy@sha256:1.0.0/old: |
+        kind: Telo.Library
+        metadata:
+          name: Old
+          version: 1.0.0
+  # What `module sbom` reports, keyed by the pinned ref: the record as the CLI
+  # prints it. A ref with no entry is an artifact published without one.
+  - name: sboms
+    value:
+      oci://example.test/web@1.0.0:
+        bomFormat: CycloneDX
+        specVersion: "1.6"
+        version: 1
+        metadata: { component: { type: library, name: Web, version: 1.0.0 } }
+        components:
+          - type: library
+            bom-ref: pkg:npm/%40fastify/static@10.1.0
+            name: "@fastify/static"
+            version: 10.1.0
+            purl: pkg:npm/%40fastify/static@10.1.0
+            properties: [{ name: "telo:layer", value: "role=library" }]
+      oci://example.test/web@1.1.0:
+        bomFormat: CycloneDX
+        specVersion: "1.6"
+        version: 1
+        metadata: { component: { type: library, name: Web, version: 1.1.0 } }
+        components:
+          - type: library
+            bom-ref: pkg:npm/%40fastify/static@10.1.1
+            name: "@fastify/static"
+            version: 10.1.1
+            purl: pkg:npm/%40fastify/static@10.1.1
+            properties: [{ name: "telo:layer", value: "role=library" }]
+      oci://example.test/embeds@1.0.0:
+        bomFormat: CycloneDX
+        specVersion: "1.6"
+        version: 1
+        metadata: { component: { type: library, name: Embeds, version: 1.0.0 } }
+        components:
+          - type: library
+            bom-ref: pkg:generic/sqlite@3.51.3
+            name: sqlite
+            version: 3.51.3
+            purl: pkg:generic/sqlite@3.51.3
+            cpe: "cpe:2.3:a:sqlite:sqlite:3.51.3:*:*:*:*:*:*:*"
+            properties: [{ name: "telo:layer", value: "role=native;abi=node-141;arch=amd64;format=node;libc=gnu;os=linux" }]
+          # The same version at two revisions: two components.
+          - type: library
+            bom-ref: pkg:generic/sqlite@3.51.3?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Fsqlite%2Fsqlite%40a5333afb9ad1aa473f8963b92caeaa955f47dc74
+            name: sqlite
+            version: 3.51.3
+            purl: pkg:generic/sqlite@3.51.3?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Fsqlite%2Fsqlite%40a5333afb9ad1aa473f8963b92caeaa955f47dc74
+            properties: [{ name: "telo:layer", value: "role=assets" }]
+          - type: library
+            bom-ref: pkg:generic/sqlite@3.51.3?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Fsqlite%2Fsqlite%400b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c
+            name: sqlite
+            version: 3.51.3
+            purl: pkg:generic/sqlite@3.51.3?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Fsqlite%2Fsqlite%400b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c
+            properties: [{ name: "telo:layer", value: "role=assets" }]
+          # A vcs_url qualifier with no `@<commit>`: no repository, and no failed ingest.
+          - type: library
+            bom-ref: pkg:generic/zlib@1.3.1?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Fmadler%2Fzlib
+            name: zlib
+            version: 1.3.1
+            purl: pkg:generic/zlib@1.3.1?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Fmadler%2Fzlib
+            properties: [{ name: "telo:layer", value: "role=assets" }]
+          - type: library
+            bom-ref: pkg:npm/kysely@0.28.15
+            name: kysely
+            version: 0.28.15
+            purl: pkg:npm/kysely@0.28.15
+            properties: [{ name: "telo:layer", value: "role=controller;format=js" }]
+      oci://example.test/shop@1.0.0:
+        bomFormat: CycloneDX
+        specVersion: "1.6"
+        version: 1
+        metadata: { component: { type: library, name: Shop, version: 1.0.0 } }
+      oci://example.test/nestshop@1.0.0:
+        bomFormat: CycloneDX
+        specVersion: "1.6"
+        version: 1
+        metadata: { component: { type: library, name: Nestshop, version: 1.0.0 } }
+      oci://example.test/nestlegacy@1.0.0:
+        bomFormat: CycloneDX
+        specVersion: "1.6"
+        version: 1
+        metadata: { component: { type: library, name: Nestlegacy, version: 1.0.0 } }
+      oci://example.test/nestshop@sha256:1.0.0/chat:
+        bomFormat: CycloneDX
+        specVersion: "1.6"
+        version: 1
+        metadata: { component: { type: library, name: Chat, version: 1.0.0 } }
+      oci://example.test/nestshop@sha256:1.0.0/tools:
+        bomFormat: CycloneDX
+        specVersion: "1.6"
+        version: 1
+        metadata: { component: { type: library, name: Tools, version: 1.0.0 } }
+        components:
+          - type: library
+            bom-ref: pkg:npm/%40fastify/static@10.1.0
+            name: "@fastify/static"
+            version: 10.1.0
+            purl: pkg:npm/%40fastify/static@10.1.0
+            properties: [{ name: "telo:layer", value: "role=library" }]
+      oci://example.test/oldshop@1.0.0:
+        bomFormat: CycloneDX
+        specVersion: "1.6"
+        version: 1
+        metadata: { component: { type: library, name: Oldshop, version: 1.0.0 } }
+      oci://example.test/sqlshop@1.0.0:
+        bomFormat: CycloneDX
+        specVersion: "1.6"
+        version: 1
+        metadata: { component: { type: library, name: Sqlshop, version: 1.0.0 } }
+  - name: sbomGate
+    if: !cel "variables.verb == 'sbom' && !(variables.ref in steps.sboms.result)"
+    then:
+      - name: noRecord
+        throw:
+          code: SBOM_INCOMPLETE
+          message: !interpolate "${{ variables.ref }} was published without a software bill of materials"
   - name: recorded
-    value: !cel "variables.verb == 'versions' ? steps.versions.result : steps.manifests.result"
+    value: !cel >-
+      variables.verb == 'versions' ? steps.versions.result
+        : (variables.verb == 'sbom' ? steps.sboms.result
+            : (variables.json ? steps.manifests.result : steps.nestedManifests.result))
   - name: refGate
     if: !cel "!(variables.ref in steps.recorded.result)"
     then:
@@ -179,4 +437,6 @@ steps:
     invoke: !ref Console.write
     inputs:
       output: !cel >-
-        json(steps.recorded.result[variables.ref]) + '\n'
+        variables.verb == 'manifest' && !variables.json
+          ? steps.recorded.result[variables.ref]
+          : json(steps.recorded.result[variables.ref]) + '\n'

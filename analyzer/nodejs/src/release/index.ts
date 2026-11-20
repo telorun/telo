@@ -38,6 +38,8 @@ export {
   readWorkspaceConfig,
 } from "./workspace-config.js";
 export type {
+  AuditIgnoreEntry,
+  AuditSettings,
   EnvFileEntry,
   EnvSettings,
   PatternMatch,
@@ -46,6 +48,8 @@ export type {
 } from "./workspace-config.js";
 
 export {
+  AUDIT_BLOCK_SCHEMA,
+  AUDIT_IGNORE_ENTRY_KEYS,
   ENV_BLOCK_SCHEMA,
   ENV_FILE_ENTRY_KEYS,
   WORKSPACE_BLOCKS,

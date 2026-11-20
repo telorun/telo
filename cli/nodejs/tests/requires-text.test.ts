@@ -68,4 +68,13 @@ describe("measurementCopy", () => {
     expect(copy).not.toContain('telo: ">=0.80.0"');
     expect(copy).toContain('requires: { telo: ">=0.0.0", host: { node: ">=0.0.0" } }');
   });
+
+  it("measures a module as published: an authoring-input block is blanked and every line keeps its number", () => {
+    const text = `${BLOCK}sources:\n  addon:\n    purl: pkg:generic/addon\n    version: 1.0.0\nexports: { kinds: [A] }\n`;
+    const copy = measurementCopy(text, "0.100.0").text;
+    expect(copy).not.toContain("sources:");
+    expect(copy).not.toContain("purl");
+    expect(copy).toContain("exports: { kinds: [A] }");
+    expect(copy.split("\n").length).toBe(text.split("\n").length);
+  });
 });

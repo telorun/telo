@@ -1,0 +1,8 @@
+units:
+  analyzer: Added
+body: "Telo formats `package-url` (a Package URL naming no version and carrying no
+  `vcs_url` qualifier — one carrying it is refused naming the purl without it, since the
+  repository and commit are declared beside it as `vcs: { url, revision }`) and `cpe` (a
+  CPE 2.3 formatted string), and `sources.<name>.purl` and `sources.<name>.contains` on
+  a staged source: `purl` is required on a fetched source and optional beside `build`,
+  and a malformed value or a missing `purl` is a schema violation."

@@ -29,16 +29,18 @@ pub enum LayerRole {
     Browser,
     Assets,
     Common,
+    Sbom,
 }
 
 impl LayerRole {
-    pub const ALL: [LayerRole; 6] = [
+    pub const ALL: [LayerRole; 7] = [
         LayerRole::Controller,
         LayerRole::Library,
         LayerRole::Native,
         LayerRole::Browser,
         LayerRole::Assets,
         LayerRole::Common,
+        LayerRole::Sbom,
     ];
 
     pub fn name(self) -> &'static str {
@@ -49,6 +51,7 @@ impl LayerRole {
             LayerRole::Browser => "browser",
             LayerRole::Assets => "assets",
             LayerRole::Common => "common",
+            LayerRole::Sbom => "sbom",
         }
     }
 
@@ -57,7 +60,7 @@ impl LayerRole {
     }
 
     /// `controller`, `library`, `native` and `browser` are keyed by a selector,
-    /// one layer per selector; `assets` and `common` are singletons. A `browser`
+    /// one layer per selector; `assets`, `common` and `sbom` are singletons. A `browser`
     /// layer holds the ES modules of the module doc's `exports.browser:` entries
     /// — served to a page, never imported by a kernel — under `format: esm` plus
     /// the entry's `abi`.
@@ -66,6 +69,12 @@ impl LayerRole {
             self,
             LayerRole::Controller | LayerRole::Library | LayerRole::Native | LayerRole::Browser
         )
+    }
+
+    /// A role whose layer describes the artifact and holds no module file
+    /// (`sbom`): stored by its `blob`, never extracted into a module directory.
+    pub fn is_artifact_record(self) -> bool {
+        matches!(self, LayerRole::Sbom)
     }
 }
 

@@ -35,6 +35,7 @@ const MIT_DIRECTORIES = [
   "templating",
   "release",
   "packages/glob",
+  "packages/osv",
   "packages/editor-protocol",
   "packages/runner-protocol",
   "packages/share-tunnel",

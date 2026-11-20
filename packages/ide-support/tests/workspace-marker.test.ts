@@ -69,7 +69,7 @@ describe("marker diagnostics", () => {
 describe("marker completion", () => {
   it("offers the blocks at the top level", () => {
     const items = workspaceCompletions("", { line: 0, character: 0 });
-    expect(items.map((i) => i.label)).toEqual(["release", "env"]);
+    expect(items.map((i) => i.label)).toEqual(["release", "env", "audit"]);
   });
 
   it("offers a block's own keys inside it", () => {

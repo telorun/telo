@@ -1,0 +1,30 @@
+{
+  "name": "cpe",
+  "grammar": "https://nvlpubs.nist.gov/nistpubs/Legacy/IR/nistir7695.pdf",
+  "standIn": "cpe:2.3:a:vendor:product:1.0:*:*:*:*:*:*:*",
+  "description": "A CPE 2.3 formatted string: cpe:2.3: then the eleven attributes part, vendor, product, version, update, edition, language, sw_edition, target_sw, target_hw and other, 13 colon-separated fields in all. The part is a (application), o (operating system) or h (hardware); each attribute is * (any), - (not applicable) or text of letters, digits, '_', '.', '-' and backslash-escaped punctuation, with * and ? as wildcards. Whether the vendor or product exists is not checked.",
+  "conformance": {
+    "valid": [
+      "cpe:2.3:a:sqlite:sqlite:3.51.3:*:*:*:*:*:*:*",
+      "cpe:2.3:a:openssl:openssl:3.0.0:-:*:*:*:*:*:*",
+      "cpe:2.3:o:linux:linux_kernel:6.1:*:*:*:*:*:*:*",
+      "cpe:2.3:h:cisco:router_x:*:*:*:*:*:*:*:*",
+      "cpe:2.3:a:vendor:prod\\:uct:1.0:*:*:*:*:*:*:*",
+      "cpe:2.3:a:vendor:product:1.0\\+beta:*:*:*:*:*:*:*",
+      "cpe:2.3:a:vendor:pro*:1.?:*:*:*:*:*:*:*"
+    ],
+    "invalid": [
+      "",
+      "cpe:2.3:a:sqlite:sqlite:3.51.3",
+      "cpe:2.3:a:sqlite:sqlite:3.51.3:*:*:*:*:*:*:*:*",
+      "cpe:2.2:a:sqlite:sqlite:3.51.3:*:*:*:*:*:*:*",
+      "cpe:/a:sqlite:sqlite:3.51.3",
+      "CPE:2.3:a:sqlite:sqlite:3.51.3:*:*:*:*:*:*:*",
+      "cpe:2.3:x:sqlite:sqlite:3.51.3:*:*:*:*:*:*:*",
+      "cpe:2.3:a::sqlite:3.51.3:*:*:*:*:*:*:*",
+      "cpe:2.3:a:sql ite:sqlite:3.51.3:*:*:*:*:*:*:*",
+      "cpe:2.3:a:sqlite:sqlite:3.51.3+1:*:*:*:*:*:*:*",
+      "cpe:2.3:a:sqlite:sqlite:3.51.3\\:*:*:*:*:*:*:*"
+    ]
+  }
+}

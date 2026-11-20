@@ -56,7 +56,9 @@ modules/console: >=0.80.0 → (none) (accepted by 0.77.0, the oldest telo that r
 ```
 
 Each module is checked as a copy by published `telo check` runs, and its floor is the lowest
-published telo release that accepts it. It is one of three values:
+published telo release that accepts it. The copy is the module as published: a block removed at
+publish (`sources:`) is left out and never measured, since no consumer reads it — in the module's own
+files and in every sibling it imports by relative path. It is one of three values:
 
 - **`>=<version>`** — the lowest published telo that reads the module's syntax.
 - **`>=unreleased`** — no published telo reads it yet: the module adopts syntax that is still

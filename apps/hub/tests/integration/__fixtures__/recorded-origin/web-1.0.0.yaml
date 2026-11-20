@@ -1,0 +1,13 @@
+kind: Telo.Library
+metadata:
+  name: Web
+  version: 1.0.0
+exports: { kinds: [Server] }
+layers: [{ role: sbom, blob: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", integrity: "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }]
+---
+kind: Telo.Definition
+metadata: { name: Server }
+capability: Telo.Service
+schema:
+  type: object
+  properties: { port: { type: integer } }

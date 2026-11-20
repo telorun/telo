@@ -233,6 +233,24 @@
       "error": { "code": "INVALID_LAYER_INDEX", "message": "layers[0]: a 'common' layer must not declare a selector — it is a singleton." }
     },
     {
+      "name": "reads an sbom layer as a singleton",
+      "layers": [
+        { "role": "common", "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" },
+        { "role": "sbom", "blob": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "integrity": "sha256-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB" }
+      ],
+      "expected": [
+        { "role": "common", "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" },
+        { "role": "sbom", "blob": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "integrity": "sha256-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB" }
+      ]
+    },
+    {
+      "name": "rejects an sbom layer declaring a selector",
+      "layers": [
+        { "role": "sbom", "selector": { "format": "js" }, "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }
+      ],
+      "error": { "code": "INVALID_LAYER_INDEX", "message": "layers[0]: a 'sbom' layer must not declare a selector — it is a singleton." }
+    },
+    {
       "name": "rejects a second singleton of one role",
       "layers": [
         { "role": "assets", "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" },

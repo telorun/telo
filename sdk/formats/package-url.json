@@ -1,0 +1,48 @@
+{
+  "name": "package-url",
+  "grammar": "https://github.com/package-url/purl-spec/blob/main/PURL-SPECIFICATION.rst",
+  "standIn": "pkg:generic/stand-in",
+  "description": "A well-formed Package URL (purl) that names a package and no version: the pkg: scheme, a lower-case type, optional namespace segments and a name, each percent-encoded, then optional qualifiers (?key=value&…) and a subpath (#segment/…). It holds no version and no vcs_url qualifier: an '@' marks a version, so a purl carrying one is refused, and a literal '@' inside a name is written %40 (pkg:npm/%40napi-rs/canvas); the repository and commit code is built from are declared beside it as vcs: { url, revision }, never as a vcs_url qualifier. Whether the type is registered is not checked.",
+  "conformance": {
+    "valid": [
+      "pkg:npm/better-sqlite3",
+      "pkg:npm/%40napi-rs/canvas",
+      "pkg:generic/sqlite",
+      "pkg:cargo/serde",
+      "pkg:maven/org.apache.commons/commons-lang3",
+      "pkg:github/package-url/purl-spec",
+      "pkg:golang/google.golang.org/genproto#googleapis/api/annotations",
+      "pkg:pypi/django?extension=tar.gz",
+      "pkg:docker/library/ubuntu?repository_url=registry.example.com&arch=amd64"
+    ],
+    "invalid": [
+      "",
+      "npm/better-sqlite3",
+      "pkg:",
+      "pkg:npm",
+      "pkg:npm/",
+      "pkg:/better-sqlite3",
+      "pkg:npm/better-sqlite3@12.8.0",
+      "pkg:npm/better-sqlite3@",
+      "pkg:npm/@napi-rs/canvas",
+      "pkg:1npm/foo",
+      "pkg:NPM/foo",
+      "pkg:npm/foo//bar",
+      "pkg:npm/foo/",
+      "pkg:npm/foo%zz",
+      "pkg:npm/foo%4",
+      "pkg:npm/foo bar",
+      "pkg:npm/foo?",
+      "pkg:npm/foo?a",
+      "pkg:npm/foo?a=",
+      "pkg:npm/foo?A=1",
+      "pkg:npm/foo?a=1&a=2",
+      "pkg:npm/foo#",
+      "pkg:npm/foo#a//b",
+      "pkg:npm/foo#../b",
+      "pkg:generic/sqlite?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Fsqlite%2Fsqlite%40a5333afb9ad1aa473f8963b92caeaa955f47dc74",
+      "pkg:generic/sqlite?arch=amd64&vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Fsqlite%2Fsqlite%40a5333afb9ad1aa473f8963b92caeaa955f47dc74",
+      "pkg:generic/sqlite?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Fsqlite%2Fsqlite"
+    ]
+  }
+}

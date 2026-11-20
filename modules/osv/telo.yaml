@@ -1,0 +1,125 @@
+kind: Telo.Library
+metadata:
+  name: Osv
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Reliability]
+  description: >-
+    Known-vulnerability lookup for software components. Give it package URLs with exact
+    versions, or the git repository and commit embedded code is built from, and it
+    returns each component's published security advisories from the OSV database, with
+    severity, aliases and fixes, and says which components it could not judge, so an
+    empty list is never mistaken for a clean bill of health.
+requires: { telo: ">=0.133.0" }
+restrictions:
+  - requires: { telo: ">=unreleased" }
+    reason: "A query left to its default endpoint is refused at start by every earlier runtime, which fills an endpoint default without decoding it into a URL."
+exports: { kinds: [Query] }
+---
+kind: Telo.Definition
+metadata:
+  name: Query
+  description: >-
+    Looks up known vulnerabilities for components, each a versionless package URL, an
+    exact version and optionally the repository and commit it is built from. Returns each
+    with its advisories and whether it was checked, by package type or by a revision of a
+    repository the database records; an unchecked one is not clean. Fails with
+    ADVISORY_LOOKUP_FAILED when the database gives no answer after retries.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/osv.mjs&local_path=./nodejs/src/index.ts#Query]
+throws:
+  codes:
+    ADVISORY_LOOKUP_FAILED:
+      description: >-
+        The advisory database gave no answer after retries (a timeout, a refused
+        connection, a 429 or a 5xx on every attempt, or a refusal that retrying cannot
+        change). No component was judged.
+      displayMessage: "The advisory database at {$endpoint} gave no answer, so no component could be checked."
+      data:
+        type: object
+        additionalProperties: false
+        required: [endpoint]
+        properties:
+          endpoint: { type: string, description: The address of the request that failed. }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [components]
+    properties:
+      components:
+        title: Components
+        description: The components to look up. The caller bounds the list; every call sends it whole.
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [purl, version]
+          properties:
+            purl: { type: string, format: package-url, description: "The package URL, without a version or a vcs_url qualifier (`pkg:npm/%40fastify/static`)." }
+            version: { type: string, minLength: 1, description: The exact version of the component. }
+            vcs:
+              description: The repository and commit the component is built from; the caller has checked the commit is in that repository's history.
+              type: object
+              additionalProperties: false
+              required: [url, revision]
+              properties:
+                url: { type: string, format: vcs-url }
+                revision: { type: string, format: vcs-revision }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [components]
+    properties:
+      components:
+        description: One entry per input component, in order.
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [purl, version, checked, advisories]
+          properties:
+            purl: { type: string }
+            version: { type: string }
+            vcs:
+              type: object
+              additionalProperties: false
+              required: [url, revision]
+              properties: { url: { type: string }, revision: { type: string } }
+            checked: { type: boolean, description: "True when matched by package type, or by a revision of a repository the database records; otherwise the empty advisories are no verdict." }
+            advisories:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: [id, aliases, summary, severity, component, fixed, matchedBy]
+                properties:
+                  id: { type: string }
+                  aliases: { type: array, items: { type: string } }
+                  summary: { type: string, description: Empty when the advisory records none. }
+                  severity:
+                    description: As the database records it; empty when it records none.
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [type, score]
+                      properties: { type: { type: string }, score: { type: string } }
+                  component: { type: string, description: The affected component as `purl@version`. }
+                  fixed: { type: array, items: { type: string }, description: "Versions that fix it; for an advisory matched by revision alone, the fixing commits of the component's repository." }
+                  matchedBy:
+                    description: "`version` when the package and version matched it, `revision` when only the component's commit did."
+                    enum: [version, revision]
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    baseUrl:
+      title: Base URL
+      description: The OSV endpoint queried; http or https.
+      x-telo-type: { name: Telo.Url, scheme: { enum: [http, https] } }
+      default: https://api.osv.dev

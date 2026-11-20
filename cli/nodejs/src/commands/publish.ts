@@ -1,7 +1,8 @@
 import * as fs from "fs";
 import { PackageURL } from "packageurl-js";
 import * as path from "path";
-import { DEFAULT_MANIFEST_FILENAME, Loader, PUBLISH_BLOCKING_CODES, TELO_SURFACE_VERSION, analyzeLoadedGraph, isBuiltinVocabularyRoot, readRequires, readRestrictions, splitIntegrity, type LoadedGraph } from "@telorun/analyzer";
+import { fileURLToPath } from "url";
+import { DEFAULT_MANIFEST_FILENAME, DiagnosticSeverity, Loader, PUBLISH_BLOCKING_CODES, TELO_SURFACE_VERSION, analyzeLoadedGraph, isBuiltinVocabularyRoot, isModuleKind, readModuleSources, readRequires, readRestrictions, splitIntegrity, type AnalysisDiagnostic, type LoadedGraph } from "@telorun/analyzer";
 import { LocalFileSource, defaultTransportRegistry, resolveCacheRoot } from "@telorun/kernel";
 import { defaultCustomTags } from "@telorun/templating";
 import { parseAllDocuments } from "yaml";
@@ -25,8 +26,15 @@ import { pushableLayers, type BuiltLayer } from "../bundle/built-layers.js";
 import { builtinVocabularyPayload } from "../bundle/builtin-vocabulary-payload.js";
 import { ModulePayloadBuilder, type ModulePayload, type NestedModulePayload } from "../bundle/module-payload.js";
 import { describePartition, type Partition } from "../bundle/partition-layers.js";
+import { describeUnattributed, type UnattributedInput } from "../bundle/module-bill-of-materials.js";
 import { checkPublishedPin, describePinMove, manifestPin } from "../bundle/payload-drift.js";
 import { parseAnnotationFlags } from "../publish-annotations.js";
+import { CommitHistoryReader } from "../commit-reachability/commit-history.js";
+import {
+  checkDeclaredRevisions,
+  declaredRevisions,
+  SOURCE_REVISION_UNREACHABLE,
+} from "../commit-reachability/declared-revisions.js";
 import { createLogger, formatAnalysisDiagnostics, type Logger } from "../logger.js";
 import { outEmit, outErrLine, outLine } from "../output.js";
 import type { BumpLevel, ParsedController } from "../publishers/interface.js";
@@ -412,6 +420,43 @@ export async function verifyDeclaredRequirements(
   }
 }
 
+/**
+ * Every revision a `sources:` block in the artifact declares — the root's and each
+ * library nested inside its directory — checked against its repository's
+ * history, since the record makes each one what OSV is asked about. Resolves with
+ * the refusals, empty when every revision is reachable.
+ */
+export async function verifyDeclaredRevisions(
+  filePath: string,
+  graph: LoadedGraph,
+  reader: CommitHistoryReader = new CommitHistoryReader(),
+): Promise<AnalysisDiagnostic[]> {
+  const root = path.dirname(path.resolve(filePath));
+  const diagnostics: AnalysisDiagnostic[] = [];
+  for (const module of graph.modules.values()) {
+    const source = module.owner.source;
+    const local = source.startsWith("file:") ? fileURLToPath(source) : path.isAbsolute(source) ? source : undefined;
+    if (!local) continue;
+    const relative = path.relative(root, local);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) continue;
+    const doc = module.owner.manifests.find((m) => m && isModuleKind(String(m.kind))) as
+      | { kind: string; metadata?: { name?: unknown } }
+      | undefined;
+    if (!doc) continue;
+    const findings = await checkDeclaredRevisions(declaredRevisions(readModuleSources(doc).sources), reader);
+    for (const finding of findings) {
+      diagnostics.push({
+        severity: DiagnosticSeverity.Error,
+        code: finding.code,
+        source: "telo-publish",
+        message: finding.message,
+        data: { resource: { kind: doc.kind, name: String(doc.metadata?.name) }, filePath: source, path: finding.path },
+      });
+    }
+  }
+  return diagnostics;
+}
+
 function indent(text: string): string {
   return text
     .split("\n")
@@ -703,6 +748,26 @@ async function publishOne(
   }
   stepOk(log, "check", "static analysis passed");
 
+  // A revision in the bill of materials is what OSV is asked about, so it must be
+  // a commit of the repository it names before the record is written.
+  const revisionRefusals = await verifyDeclaredRevisions(filePath, analysisGraph);
+  if (revisionRefusals.length > 0) {
+    const located = formatAnalysisDiagnostics(revisionRefusals, analysisGraph, log, filePath, "stderr");
+    const unreachable = revisionRefusals.filter((d) => d.code === SOURCE_REVISION_UNREACHABLE).length;
+    // An unreachable revision is the manifest's to fix; a host giving no history is not.
+    return unreachable > 0
+      ? refused(
+          "manifest_invalid",
+          `${unreachable} declared revision${unreachable !== 1 ? "s are" : " is"} not in its repository's history`,
+          { diagnostics: located.diagnostics },
+        )
+      : refused(
+          "source_repository_unreadable",
+          `${revisionRefusals.length} declared revision${revisionRefusals.length !== 1 ? "s" : ""} could not be checked: the repository gave no history`,
+          { diagnostics: located.diagnostics },
+        );
+  }
+
   // Declared runtime requirements: verify the module's own `requires.telo` range
   // by RUNNING the CLI at each edge of it. Publishing is where the claim becomes
   // consequential — a consumer resolves against it and is told, at load, that
@@ -755,6 +820,7 @@ async function publishOne(
     authoredAnnotations,
     log,
     nested: payload.nested,
+    unattributed: payload.billOfMaterials.unattributed,
     beforePush: (version) => publishControllerPackages(controllers, filePath, version, skipControllers, dryRun, log),
   });
 }
@@ -766,6 +832,8 @@ interface PushOptions {
   log: Logger;
   /** Libraries shipping inside this artifact. */
   nested?: readonly NestedModulePayload[];
+  /** Bundle inputs the bill of materials could attribute to no package. */
+  unattributed?: readonly UnattributedInput[];
   /** Runs once the pin gate and the annotations have passed and before anything
    *  is pushed; a refusal it returns ends the publish. */
   beforePush: (version: string | undefined) => Promise<PublishOutcome | undefined>;
@@ -778,7 +846,7 @@ async function pushManifest(
   content: string,
   layers: BuiltLayer[],
   partition: Partition,
-  { dryRun, authoredAnnotations, log, beforePush, nested = [] }: PushOptions,
+  { dryRun, authoredAnnotations, log, beforePush, nested = [], unattributed = [] }: PushOptions,
 ): Promise<PublishOutcome> {
   // The pin, not a ledger: a version already published must be republished
   // byte-for-byte or not at all, because every import pinned to it verifies
@@ -832,9 +900,13 @@ async function pushManifest(
 
   if (dryRun) {
     for (const line of describePartition(partition)) stepDry(log, "layer", line);
+    for (const line of describeUnattributed(unattributed)) stepDry(log, "sbom", line);
     for (const library of nested) {
       for (const line of describePartition(library.partition)) {
         stepDry(log, "layer", `${library.path}: ${line}`);
+      }
+      for (const line of describeUnattributed(library.billOfMaterials.unattributed)) {
+        stepDry(log, "sbom", `${library.path}: ${line}`);
       }
     }
     for (const [key, value] of Object.entries(annotations)) stepDry(log, "annotate", `${key}=${value}`);
@@ -843,9 +915,13 @@ async function pushManifest(
   }
 
   for (const line of describePartition(partition)) stepOk(log, "layer", line);
+  for (const line of describeUnattributed(unattributed)) stepOk(log, "sbom", line);
   for (const library of nested) {
     for (const line of describePartition(library.partition)) {
       stepOk(log, "layer", `${library.path}: ${line}`);
+    }
+    for (const line of describeUnattributed(library.billOfMaterials.unattributed)) {
+      stepOk(log, "sbom", `${library.path}: ${line}`);
     }
   }
   for (const [key, value] of Object.entries(annotations)) stepOk(log, "annotate", `${key}=${value}`);

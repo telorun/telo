@@ -85,8 +85,9 @@ variables:
   # 10 records an application's requiredness: each input's `requiredWhen` and
   # the dimensions it is keyed by, and a `default` only where one is declared.
   # 11 records a member dimension's `member` with its dimension, which a reader
-  # no longer splits out of the key.
-  ingestRev: { type: integer, default: 11 }
+  # no longer splits out of the key. 12 records each version's components and
+  # whether its bill of materials is complete.
+  ingestRev: { type: integer, default: 12 }
   # The one ref whose `Telo.Builtins` root is indexed — the built-in vocabulary
   # every `Telo.<Kind>` names. Registration is open, so at any other ref such a
   # root is refused: nobody else may publish "built-in" kinds.
@@ -192,6 +193,124 @@ steps:
                   + ' --json reported no `application` contract with its `dimensions` for a '
                   + 'Telo.Application — the telo running the origin reads predates it; point '
                   + 'TELO_COMMAND at the telo that runs this hub'
+      # The third-party components the version ships. An artifact with no
+      # record is an answer (the version is then never complete); a read that
+      # fails is a failure, recorded on the row like any other, so a transient
+      # one is retried rather than stored as "ships nothing".
+      - name: sbom
+        invoke: !ref Origin.moduleSbom
+        inputs:
+          ref: !cel "inputs.ref"
+          version: !cel "inputs.version"
+          layers: !cel "steps.manifest.result.docs[0].?layers.orValue([])"
+        retry: { attempts: 3, initialDelay: 2000, maxDelay: 60000 }
+      - name: sbomGate
+        if: !cel "!steps.sbom.result.ok"
+        then:
+          - name: failSbom
+            throw:
+              code: INGEST_SBOM_FAILED
+              message: !cel >-
+                'telo module sbom ' + inputs.ref + '@' + inputs.version + ' failed: '
+                  + steps.sbom.result.error
+      # The modules nested in the artifact (`oci://<repo>@sha256:<digest>/<path>`),
+      # found through the relative imports of the version and of each nested
+      # module in turn, each read like the version itself. A nested module whose
+      # record cannot be read is a failed ingest, as the version's own is.
+      - name: nestedStart
+        value: !cel >-
+          {'pending': [], 'done': []}
+      - name: nestedRoots
+        if: !cel "inputs.ref.startsWith('oci://')"
+        then:
+          - name: found
+            invoke: !ref query
+            inputs:
+              sql: >-
+                SELECT COALESCE(jsonb_agg(DISTINCT p), '[]'::jsonb) AS paths
+                FROM (SELECT nested_import_path('', r.source) AS p
+                      FROM jsonb_to_recordset($1::jsonb) AS r(source text)
+                      WHERE r.source ~ '^\.\.?/') x
+                WHERE p IS NOT NULL
+              bindings:
+                - !cel >-
+                  json(('imports' in steps.manifest.result.docs[0] ? steps.manifest.result.docs[0].imports : {})
+                    .map(a, {'source': (type(steps.manifest.result.docs[0].imports[a]) == type('')
+                                          ? steps.manifest.result.docs[0].imports[a]
+                                          : steps.manifest.result.docs[0].imports[a].source).split('#')[0]}))
+          - name: nestedStart
+            value: !cel "{'pending': steps.found.result.rows[0].paths, 'done': []}"
+      - name: nestedWalk
+        while: !cel "size(steps.nestedStart.result.pending) > 0"
+        do:
+          - name: current
+            value: !cel "steps.nestedStart.result.pending[0]"
+          - name: nestedManifest
+            invoke: !ref Origin.nestedManifest
+            inputs:
+              ref: !cel "inputs.ref"
+              path: !cel "steps.current.result"
+              digest: !cel "inputs.digest"
+            retry: { attempts: 3, initialDelay: 2000, maxDelay: 60000 }
+          - name: nestedManifestGate
+            if: !cel "!steps.nestedManifest.result.ok"
+            then:
+              - name: failNestedManifest
+                throw:
+                  code: INGEST_SBOM_FAILED
+                  message: !cel >-
+                    'reading the module nested at ' + steps.current.result + ' in ' + inputs.ref + '@'
+                      + inputs.version + ' failed: ' + steps.nestedManifest.result.error
+          - name: nestedSbom
+            invoke: !ref Origin.moduleSbom
+            inputs:
+              ref: !cel "inputs.ref"
+              version: !cel "inputs.version"
+              layers: !cel "steps.nestedManifest.result.docs[0].?layers.orValue([])"
+              path: !cel "steps.current.result"
+              digest: !cel "inputs.digest"
+            retry: { attempts: 3, initialDelay: 2000, maxDelay: 60000 }
+          - name: nestedGate
+            if: !cel "!steps.nestedSbom.result.ok"
+            then:
+              - name: failNested
+                throw:
+                  code: INGEST_SBOM_FAILED
+                  message: !cel >-
+                    'reading the module nested at ' + steps.current.result + ' in ' + inputs.ref + '@'
+                      + inputs.version + ' failed: ' + steps.nestedSbom.result.error
+          - name: nestedImports
+            value: !cel >-
+              ('imports' in steps.nestedManifest.result.docs[0] ? steps.nestedManifest.result.docs[0].imports : {})
+                .map(a, {'alias': a,
+                         'source': (type(steps.nestedManifest.result.docs[0].imports[a]) == type('')
+                                     ? steps.nestedManifest.result.docs[0].imports[a]
+                                     : steps.nestedManifest.result.docs[0].imports[a].source).split('#')[0]})
+                .map(i, {'alias': i.alias, 'source': i.source, 'ref': i.source.split('@')[0],
+                         'version': size(i.source.split('@')) > 1 ? i.source.split('@')[1] : ''})
+          - name: nestedFound
+            invoke: !ref query
+            inputs:
+              sql: >-
+                SELECT COALESCE(jsonb_agg(DISTINCT p), '[]'::jsonb) AS paths
+                FROM (SELECT nested_import_path($1, r.source) AS p
+                      FROM jsonb_to_recordset($2::jsonb) AS r(source text)
+                      WHERE r.source ~ '^\.\.?/') x
+                WHERE p IS NOT NULL
+              bindings:
+                - !cel "steps.current.result"
+                - !cel "json(steps.nestedImports.result)"
+          - name: nestedStart
+            value: !cel >-
+              {'pending': steps.nestedStart.result.pending.filter(p, p != steps.current.result)
+                            + steps.nestedFound.result.rows[0].paths.filter(p,
+                                !(p in steps.nestedStart.result.pending)
+                                && !(p in steps.nestedStart.result.done.map(d, d.path))),
+               'done': steps.nestedStart.result.done + [{
+                 'path': steps.current.result,
+                 'complete': steps.nestedSbom.result.recorded && steps.nestedSbom.result.complete,
+                 'components': steps.nestedSbom.result.components,
+                 'imports': steps.nestedImports.result}]}
       # The CLI gives a local module no cache location, since no editor reads
       # one from the public cache; the hub still keeps its manifest so
       # `get_module_manifest` answers for it, under a key of its own that no
@@ -221,6 +340,8 @@ steps:
           cacheKey: !cel "steps.cacheKey.result"
           payload: !cel "steps.manifest.result.payload"
           docs: !cel "steps.manifest.result.docs"
+          sbom: !cel "steps.sbom.result"
+          nested: !cel "steps.nestedStart.result.done"
       # Embed only the module's latest version, superseding any prior vectors so
       # the vector table holds exactly one vector per (module, resource-kind).
       # Older versions keep their relational rows (pinned reads, history) but no
@@ -290,6 +411,8 @@ inputs:
   cacheKey: !cel "inputs.cacheKey"
   payload: !cel "inputs.payload"
   docs: !cel "inputs.docs"
+  sbom: !cel "inputs.sbom"
+  nested: !cel "inputs.nested"
 ---
 kind: Telo.Sequence
 metadata: { name: writeVersionRows }
@@ -312,6 +435,12 @@ inputType:
       payload: { type: object, additionalProperties: true }
       # The parsed manifest documents.
       docs: { type: array }
+      # What `Origin.moduleSbom` read: the version's components and whether its
+      # record is complete.
+      sbom: { type: object, additionalProperties: true }
+      # The modules nested in the artifact, each `{ path, complete, components,
+      # imports }`.
+      nested: { type: array }
 steps:
   # The rows are SHAPED here, once, as pure values — the two inserts below bind
   # them as one JSON parameter each. Several are not plain reads:
@@ -761,6 +890,90 @@ steps:
         - !cel "inputs.version"
         - !cel "json(steps.resourceRows.result)"
         - !cel "inputs.ref"
+  # The components the version ships and whether its record is complete. The
+  # advisories of each are the scheduled pass's, so a version ingested now reads
+  # as not yet queried until that pass has answered for them.
+  - name: clearComponents
+    invoke: !ref exec
+    inputs:
+      sql: DELETE FROM module_components WHERE module_id = $1 AND version = $2
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
+  - name: insertComponents
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO module_components (module_id, version, purl, component_version, cpe, vcs_url, vcs_revision)
+        SELECT $1, $2, r.purl, r.version, r.cpe, r."vcsUrl", r."vcsRevision"
+        FROM jsonb_to_recordset($3::jsonb) AS r(purl text, version text, cpe text, "vcsUrl" text, "vcsRevision" text)
+        ON CONFLICT DO NOTHING
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
+        - !cel "json(inputs.sbom.components)"
+  - name: recordSbom
+    invoke: !ref exec
+    inputs:
+      sql: UPDATE module_versions SET sbom_complete = $3 WHERE module_id = $1 AND version = $2
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
+        - !cel "inputs.sbom.complete"
+  # The modules nested in the artifact: each one's record and its own imports,
+  # which the version's closure follows.
+  - name: clearNested
+    invoke: !ref exec
+    inputs:
+      sql: DELETE FROM module_nested WHERE module_id = $1 AND version = $2
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
+  - name: insertNested
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO module_nested (module_id, version, path, sbom_complete)
+        SELECT $1, $2, r.path, r.complete
+        FROM jsonb_to_recordset($3::jsonb) AS r(path text, complete boolean)
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
+        - !cel "json(inputs.nested)"
+  - name: insertNestedComponents
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO module_components (module_id, version, nested_path, purl, component_version, cpe, vcs_url, vcs_revision)
+        SELECT $1, $2, r.path, c.purl, c.version, c.cpe, c."vcsUrl", c."vcsRevision"
+        FROM jsonb_to_recordset($3::jsonb) AS r(path text, components jsonb)
+        CROSS JOIN LATERAL jsonb_to_recordset(r.components) AS c(purl text, version text, cpe text, "vcsUrl" text, "vcsRevision" text)
+        ON CONFLICT DO NOTHING
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
+        - !cel "json(inputs.nested)"
+  - name: insertNestedImports
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO module_nested_imports (module_id, version, path, alias, import_ref, pinned_version)
+        SELECT $1, $2, r.path, i.alias, i.ref, i.version
+        FROM jsonb_to_recordset($3::jsonb) AS r(path text, imports jsonb)
+        CROSS JOIN LATERAL jsonb_to_recordset(r.imports) AS i(alias text, source text, ref text, version text)
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
+        - !cel "json(inputs.nested)"
+  # The imports above are written, so this version's closure can be read: its
+  # own advisories, and those of every version whose closure now contains it.
+  - name: refreshAdvisories
+    invoke: !ref exec
+    inputs:
+      sql: SELECT refresh_version_advisories($1::bigint, $2)
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
   # `latest_version` moves WITH the rows it points at. Every search join is
   # `m.latest_version = rk.version`, so advancing it before this version's rows
   # exist would empty the module out of search for as long as the ingest takes —
@@ -958,6 +1171,14 @@ steps:
           AND mv.version IS DISTINCT FROM m.latest_version
       bindings:
         - !cel "inputs.moduleId"
+  # A dropped version leaves every closure that pinned it with an import the hub
+  # no longer tracks.
+  - name: refreshAfterDrop
+    if: !cel "steps.dropPrereleases.result.rowCount > 0"
+    then:
+      - name: refresh
+        invoke: !ref exec
+        inputs: { sql: SELECT refresh_version_advisories() }
   - name: dropPrereleaseClaims
     invoke: !ref exec
     inputs:

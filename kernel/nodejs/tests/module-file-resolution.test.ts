@@ -68,6 +68,7 @@ function stagedBy(options: { url?: string; sha256?: string } = {}) {
   return {
     ui: {
       version: "1.0.0",
+      purl: "pkg:generic/ui",
       url: options.url ?? `${base}/ui-{version}.tar.gz`,
       archive: "tar.gz",
       notices: ["./LICENSE"],

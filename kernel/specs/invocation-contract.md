@@ -347,6 +347,12 @@ property's OWN schema — one written beside a `$ref` counts, one declared on th
 node the reference names does not — and a checker that fills defaults before
 judging a call MUST read them by the same rule.
 
+A default at a node whose value type is held as an instance (a URL, a duration, a
+timestamp) MUST be applied as the value its written literal decodes to through the
+type's plain encoding — exactly the value the same literal written at the node by an
+author becomes — never as the raw text. A default that does not decode is applied as
+written, so the node's type assertion refuses it as it refuses such a literal.
+
 Defaults inside composition keywords (`anyOf`, `oneOf`) are **NOT RECOMMENDED** in
 a contract. Which branch a validator evaluates — and therefore which default it
 applies — is implementation-defined across validators, so a contract relying on

@@ -19,6 +19,7 @@ import { createLogger } from "../logger.js";
 import { outEmit, outErrLine, outLine } from "../output.js";
 import { RegistryUnreachableError, floorText, sameFloor } from "../release/floor-measurement.js";
 import { floorLine, measureAndWriteFloors } from "../release/floor-workspace.js";
+import { CommitHistoryReader } from "../commit-reachability/commit-history.js";
 import { stageModule, stageTargetsOf, type StageFailure, type StageOutcome } from "../release/stage.js";
 import { teloReleaseHost } from "../release/telo-host.js";
 import { loadWorkspace, requireModule } from "../release/workspace.js";
@@ -92,8 +93,9 @@ async function stage(argv: { module?: string[]; pin: boolean }): Promise<void> {
       stageTargetsOf({ key: module.key, dir: module.dir, manifestPath: module.manifestPath }),
     )
     .filter((target) => !seen.has(target.manifestPath) && seen.add(target.manifestPath));
+  const revisions = new CommitHistoryReader();
   for (const target of targets) {
-    const result = await stageModule(target, { pin: argv.pin, archives: createArchiveReader() });
+    const result = await stageModule(target, { pin: argv.pin, archives: createArchiveReader(), revisions });
     for (const outcome of result.outcomes) {
       const mark = outcome.action === "verified" ? log.dim("·") : log.ok("✓");
       outLine(`${mark}  ${outcome.module}  ${outcome.source}  ${outcome.path}  ${log.dim(outcome.action)}`);

@@ -19,15 +19,54 @@ imports: { Ocr: ../ocr, TesseractModel: ../tesseract-model }
 exports:
   kinds: [Recognizer, TesseractModel.Language, TesseractModel.OrientationModel]
   resources: [eng, osd]
-# tesseract.js-core ships the Tesseract C++ engine compiled to WebAssembly: a
-# CommonJS loader beside its `.wasm`, which the controller hands the staged paths
-# to. The full builds rather than the smaller `-lstm` ones: orientation and
-# script detection runs on the legacy engine those omit. Recognition itself is
-# LSTM-only either way.
+# The full builds, not the smaller `-lstm` ones: orientation detection runs on the
+# legacy engine those omit.
 assets: [./engine/, ./tessdata/]
 sources:
   core:
     version: 7.0.0
+    purl: pkg:npm/tesseract.js-core
+    # The libraries tesseract.js-core v7.0.0 builds, at its submodule pins.
+    contains:
+      - purl: pkg:generic/tesseract
+        version: 5.3.0
+        cpe: "cpe:2.3:a:tesseract-ocr:tesseract_ocr:5.3.0:*:*:*:*:*:*:*"
+        # A fork: OSV records no advisory against it, so this stays unchecked.
+        vcs: { url: "git+https://github.com/Balearica/tesseract", revision: 2a9c1c49c360462733c386d2a44fcd22c4e21411 }
+      - purl: pkg:generic/leptonica
+        version: 1.82.0
+        cpe: "cpe:2.3:a:leptonica:leptonica:1.82.0:*:*:*:*:*:*:*"
+        # A commit after 1.82.0 whose configure.ac names the unreleased 1.83.0.
+        vcs: { url: "git+https://github.com/DanBloomberg/leptonica", revision: 4af068b56a9674da915debea4ed7e1b9885b17e8 }
+      - purl: pkg:generic/giflib
+        version: 5.1.4
+        cpe: "cpe:2.3:a:giflib_project:giflib:5.1.4:*:*:*:*:*:*:*"
+        vcs: { url: "git+https://github.com/mirrorer/giflib", revision: fa37672085ce4b3d62c51627ab3c8cf2dda8009a }
+      - purl: pkg:generic/libjpeg
+        version: 9a
+        cpe: "cpe:2.3:a:ijg:libjpeg:9a:*:*:*:*:*:*:*"
+        vcs: { url: "git+https://github.com/LuaDist/libjpeg", revision: 6c0fcb8ddee365e7abc4d332662b06900612e923 }
+      - purl: pkg:generic/libpng
+        version: 1.6.37
+        cpe: "cpe:2.3:a:libpng:libpng:1.6.37:*:*:*:*:*:*:*"
+        # png.h at this commit names the snapshot 1.6.38.git.
+        vcs: { url: "git+https://github.com/glennrp/libpng", revision: a37d4836519517bdce6cb9d956092321eca3e73b }
+      - purl: pkg:generic/libtiff
+        version: 4.3.0
+        cpe: "cpe:2.3:a:libtiff:libtiff:4.3.0:*:*:*:*:*:*:*"
+        vcs: { url: "git+https://gitlab.com/libtiff/libtiff", revision: b51bb157123264e26d34c09cc673d213aea61fc7 }
+      - purl: pkg:generic/libwebp
+        version: 1.2.2
+        cpe: "cpe:2.3:a:webmproject:libwebp:1.2.2:*:*:*:*:*:*:*"
+        vcs: { url: "git+https://github.com/webmproject/libwebp", revision: 20ef03ee351d4ff03fc5ff3ec4804a879d1b9d5c }
+      - purl: pkg:generic/openlibm
+        version: 0.8.1
+        # The commit of tag v0.8.1, whose Make.inc still names 0.8.0. No CPE: the NVD names none.
+        vcs: { url: "git+https://github.com/JuliaMath/openlibm", revision: ae2d91698508701c83cab83714d42a1146dccf85 }
+      - purl: pkg:generic/zlib
+        version: 1.2.12
+        cpe: "cpe:2.3:a:zlib:zlib:1.2.12:*:*:*:*:*:*:*"
+        vcs: { url: "git+https://github.com/madler/zlib", revision: 21767c654d31d2dccdde4330529775c6c5fd5389 }
     url: https://registry.npmjs.org/{upstream}/-/{upstream}-{version}.tgz
     archive: tar.gz
     notices: [./notices/tesseract.js-core.LICENSE]
@@ -46,16 +85,23 @@ sources:
         { upstream: tesseract.js-core, member: package/tesseract-core.wasm, sha256: c7f5ace62ac0ad065e71e9c6725f1d7cdf82e7eda8fba532cbb9563964da7098, executable: true }
       ./notices/tesseract.js-core.LICENSE:
         { upstream: tesseract.js-core, member: package/LICENSE, sha256: c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08, executable: false }
-  # The `4.0.0_best_int` models. The packages carry no notice of their own; the
-  # checked-in one is the Apache-2.0 notice of tesseract-ocr/tessdata.
-  tessdata:
+  # The packages carry no notice; the checked-in one is tesseract-ocr/tessdata's.
+  tessdata-eng:
     version: 1.0.0
+    purl: pkg:npm/%40tesseract.js-data/eng
     url: https://registry.npmjs.org/@tesseract.js-data/{upstream}/-/{upstream}-{version}.tgz
     archive: tar.gz
     notices: [./notices/tessdata.LICENSE]
     entries:
       ./tessdata/eng.traineddata.gz:
         { upstream: eng, member: package/4.0.0_best_int/eng.traineddata.gz, sha256: 45b4cb346724ac1774f1c36f42f182b887bcdb28ebe63e6fff90ac41f3fcff91, executable: false }
+  tessdata-osd:
+    version: 1.0.0
+    purl: pkg:npm/%40tesseract.js-data/osd
+    url: https://registry.npmjs.org/@tesseract.js-data/{upstream}/-/{upstream}-{version}.tgz
+    archive: tar.gz
+    notices: [./notices/tessdata.LICENSE]
+    entries:
       ./tessdata/osd.traineddata.gz:
         { upstream: osd, member: package/4.0.0_best_int/osd.traineddata.gz, sha256: be028ddaac8b03402b92cbf526075c068ec39a9f1dbbcd7536dddb9b22209934, executable: false }
 ---
@@ -70,12 +116,9 @@ kind: TesseractModel.OrientationModel
 metadata: { name: osd }
 data: !module-path ./tessdata/osd.traineddata.gz
 ---
-# Each concurrent recognition runs on its own engine in a worker thread, because a
-# WebAssembly recognition is synchronous: terminating its worker is the only way
-# to stop one, which is how cancellation and `maxRecognitionTime` work.
-#
-# The contract restates the abstract's element shapes inline and adds only
-# optional fields, so it still stands in for `Ocr.Recognizer`.
+# A WebAssembly recognition is synchronous, so each runs in its own worker thread:
+# terminating the worker is the only way to cancel it or enforce `maxRecognitionTime`.
+# The contract restates the abstract's shapes and adds only optional fields.
 kind: Telo.Definition
 metadata:
   name: Recognizer
