@@ -1,6 +1,0 @@
-units:
-  kernel: Added
-body: "The kernel applies library migrations at load: the entry and every library it
-  imports run with the trees the analysis migrated, and a migration that cannot be
-  applied refuses the load as `ERR_MIGRATION_FAILED`, located where `telo check` reports
-  it, before any resource is created."

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.0 - 2026-11-19
+### Added
+* `CheckTheme` reports `property-reserved` for a reservation in a relation to a part, as the renderer's contract now declares them: `position` on any part holding a `press` (in a table, the first `table-cell` of a pressed `table-row`) and on the interactive content after a `press` inside the element it covers, named `holding press: position` and `after press: position`.
+
 ## 0.8.0 - 2026-11-09
 ### Added
 * Holds a control set to the Combobox vectors of ui_react_controls-4, and counts Combobox among the layer controls a set implements as one unit (ten).

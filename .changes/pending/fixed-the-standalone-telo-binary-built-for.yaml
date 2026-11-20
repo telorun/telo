@@ -1,5 +1,0 @@
-units:
-  cli: Fixed
-body: The standalone `telo` binary built for a release now reports its exact version in
-  `telo --version`, as the engine version of CEL and in the built-in vocabulary archive,
-  instead of `<version>+unreleased`.

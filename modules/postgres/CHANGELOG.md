@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.0 - 2026-11-19
+### Added
+* The module declares the rename of `beforeMigrations:` to `prepare:` itself (`SQL_BEFORE_MIGRATIONS_RENAMED`), so a manifest using the old key is migrated under any import alias, reported at its own line, and rewritten by `telo migrate`; it requires a telo release that reads library `migrations:`.
+
 ## 0.12.2 - 2026-11-09
 ### Fixed
 * `requires.telo` now holds the measured floor, raised to the highest floor among the workspace modules this module imports.

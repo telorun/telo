@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.138.0 - 2026-11-19
+### Added
+* A manifest's definitions are registered once per analysed root, before its graph is flattened, and every configuration's analysis reads that one registration instead of registering again.
+* Released under the MIT license instead of the Sustainable Use License: the published artifact declares MIT and carries the MIT license text. Earlier releases keep the license they were published under.
+* telo run logs every library migration it applied to the entry's own files as a warning, as it logs a core migration.
+* The kernel applies library migrations at load: the entry and every library it imports run with the trees the analysis migrated, and a migration that cannot be applied refuses the load as `ERR_MIGRATION_FAILED`, located where `telo check` reports it, before any resource is created.
+* The Rust build reads a library's `migrations:` and, since it does not apply them, its `telo check` and kernel refuse the `imports:` entry first reaching such a library with `ERR_UNSUPPORTED_MANIFEST_FEATURE` wherever a node of a file reaching it could be a candidate of one of its rules, naming the library, the migration and the node; `telo check` reports it on stderr with `ok: false` and no diagnostic, and the kernel refuses before any resource is created. A consumer holding only current spelling checks and runs.
+
 ## 0.137.0 - 2026-11-15
 ### Added
 * `ctx.runtime.check` reports every imported library's own findings, as `telo check` does. The kernel's load is unchanged and refuses what it always did.

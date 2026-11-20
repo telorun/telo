@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.138.0 - 2026-11-19
+### Added
+* Released under the MIT license instead of the Sustainable Use License: the published artifact declares MIT and carries the MIT license text. Earlier releases keep the license they were published under.
+* The editor offers the library migrations of a module as one quick fix on a diagnostic one of them raised, the same edit set telo migrate writes, when none of it is unwritable.
+
 ## 0.137.0 - 2026-11-15
 ### Added
 * CEL completion offers no binding or member the scope withholds (`x-telo-context-withheld`), and hovering one shows why it holds no value there.

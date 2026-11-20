@@ -1,6 +1,0 @@
-units:
-  sdk: Added
-body: "The built-in vocabulary's `Telo.Library` entry declares `migrations:`, a
-  library's rewrites of the legacy spellings of its own vocabulary, with `match` limited
-  to a closed subset of JSON Schema (`type`, `required`, `const`, `enum`, `properties`,
-  `items`, `<key>: false`)."

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.0 - 2026-11-19
+### Added
+* Released under the MIT license instead of the Sustainable Use License: the published artifact declares MIT and carries the MIT license text. Earlier releases keep the license they were published under.
+
 ## 0.7.1 - 2026-11-16
 ### Fixed
 * The extension is published again: its release build failed on a clean checkout, so 0.7.0 was tagged but never shipped as a .vsix or to the Marketplace. This version ships it.

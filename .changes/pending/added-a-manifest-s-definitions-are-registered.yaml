@@ -1,6 +1,0 @@
-units:
-  analyzer: Added
-  kernel: Added
-body: A manifest's definitions are registered once per analysed root, before its graph
-  is flattened, and every configuration's analysis reads that one registration instead
-  of registering again.

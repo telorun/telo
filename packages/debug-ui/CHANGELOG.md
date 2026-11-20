@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.0 - 2026-11-19
+### Added
+* Released under the MIT license instead of the Sustainable Use License: the published artifact declares MIT and carries the MIT license text. Earlier releases keep the license they were published under.
+
 ## 0.6.11
 
 ### Patch Changes

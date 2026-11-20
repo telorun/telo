@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.39.0 - 2026-11-19
+### Added
+* The authoring primer teaches destinations and presses: `to` holding a `Ui.Navigate` (`href`) or a `Ui.OpenPage` (`page`, `pathParams`, `queryParams`, `surface`, kept in the address as `_telo.page.<name>`) wherever a link, value, column, relation, option source, navigation `link` entry or `onSuccess` goes somewhere, in place of `href` and `onSuccess.navigate`; `press: { to, label }` on the `box`, `stack` and `columns` nodes, `Ui.Listing` and `CrudUi.Admin`; a destination reading only the roots bound where it is written; and component layouts built for `ui_react_layouts-2`.
+* The design-library guide and the authoring primer cover library `migrations:`: when a library author writes one, the `Self.<Name>` rule, the closed `match`, legacy-spelling fixtures under `tests/__fixtures__/manifest-migrations/`, and retiring one as a breaking removal.
+* The library-design guidance teaches `x-telo-context-withheld` beside `x-telo-context-from-referrer` — a binding typed where a referrer binds it and refused, with its reason, everywhere else — and an `x-telo-context` at a kind's schema root, in scope at every field and inherited by children extending the kind without `base:`.
+
 ## 0.38.0 - 2026-11-15
 ### Added
 * The authoring agent knows that `telo check` reports every imported library's own findings, and that a run refuses only what it creates.
