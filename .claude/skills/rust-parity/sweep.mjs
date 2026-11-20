@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Two dimensions, run from a repo root: `node .claude/skills/rust-parity/sweep.mjs --out <file>
-// [--dimension run|check] [--filter <text>] [--only rust|node] [--concurrency <n>] [--timeout <seconds>]
-// [--reuse-node <earlier out file> [--reuse-node-any-commit]]` (default: both dimensions).
+// [--dimension run|check|load] [--filter <text>] [--only rust|node] [--concurrency <n>] [--timeout <seconds>]
+// [--reuse-node <earlier out file> [--reuse-node-any-commit]]` (default: `run` and `check`).
 //
 // `run` runs every manifest test `test-suite.yaml` discovers on both kernels and writes one verdict
 // per test per kernel.
@@ -9,12 +9,17 @@
 // `check` runs `telo check` of both CLIs over every manifest the repo holds whose first document is
 // a `Telo.Application` or `Telo.Library`, and judges Rust against Node by `check-debt.json` (below).
 // It exits non-zero when it finds a difference the debt list does not allow, or a stale entry.
+//
+// `load` loads every manifest of the `check` dimension's set with each kernel's analyze-only load
+// (Node's `analyzeOnly` through `load-node.ts`, Rust's through the `analyze_only` example of
+// `telo-kernel`) and compares what each refuses the load with (below).
 
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, globSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { delimiter, dirname, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve, sep } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const options = parseArgs(process.argv.slice(2));
 const root = process.cwd();
@@ -38,7 +43,8 @@ const NO_CODE = "(none)";
 const dimensions = options.dimension ? [options.dimension] : ["run", "check"];
 
 const nodeCommand = options.only === "rust" ? null : readPackageScript("telo").split(/\s+/);
-const rustBinary = options.only === "node" ? null : buildRust();
+const rustBinary = options.only === "node" || !dimensions.some((d) => d === "run" || d === "check") ? null : buildRust();
+const rustLoader = options.only === "node" || !dimensions.includes("load") ? null : buildRustLoader();
 
 const report = { generatedAt: new Date().toISOString(), commit: git(["rev-parse", "HEAD"]).trim(), filter: options.filter };
 let failed = false;
@@ -54,6 +60,12 @@ if (dimensions.includes("check")) {
   failed = check.summary.failed > 0;
   process.stdout.write(`${JSON.stringify({ check: check.summary })}\n`);
 }
+if (dimensions.includes("load")) {
+  const load = await loadDimension();
+  report.load = load;
+  failed ||= load.summary.failed > 0;
+  process.stdout.write(`${JSON.stringify({ load: load.summary })}\n`);
+}
 
 mkdirSync(dirname(resolve(options.out)), { recursive: true });
 writeFileSync(options.out, JSON.stringify(report, null, 2));
@@ -66,6 +78,15 @@ function buildRust() {
   });
   if (build.status !== 0) fail(`cargo build of telo-cli failed (exit ${build.status})`);
   return join(root, "target", "release", process.platform === "win32" ? "telo.exe" : "telo");
+}
+
+function buildRustLoader() {
+  const build = spawnSync("cargo", ["build", "--release", "--locked", "-p", "telo-kernel", "--example", "analyze_only"], {
+    cwd: root,
+    stdio: ["ignore", "inherit", "inherit"],
+  });
+  if (build.status !== 0) fail(`cargo build of the analyze_only example failed (exit ${build.status})`);
+  return join(root, "target", "release", "examples", process.platform === "win32" ? "analyze_only.exe" : "analyze_only");
 }
 
 function git(args) {
@@ -227,6 +248,7 @@ async function checkDimension() {
       ...process.env,
       TELO_CACHE_DIR: cacheDir,
       NO_COLOR: "1",
+      PATH: [join(root, "node_modules", ".bin"), process.env.PATH].join(delimiter),
     });
   };
 
@@ -527,6 +549,94 @@ function staleEntries(debt, covered, swept, results) {
   return failures;
 }
 
+// ---------------------------------------------------------------------------------------------
+// The `load` dimension: what each kernel refuses a load with, over the `check` dimension's set.
+//
+// Each manifest is loaded analyze-only by both kernels under one sweep-owned `TELO_CACHE_DIR`, the
+// working directory the repo root, the path as the repo writes it. Each answers as the
+// check-conformance rows' `runFails` do: the refusal's `[<CODE>] <message>`, then each carried
+// diagnostic on a line of its own, or nothing when it loads; the repo root's prefixes are removed.
+// Verdicts:
+//   - both load, or both refuse with the same text: match;
+//   - Node loads and Rust refuses with `ERR_UNSUPPORTED_MANIFEST_FEATURE`: a gap, counted, not failed;
+//   - Node loads and Rust refuses with anything else: fail;
+//   - any other difference passes only where the manifest's `check-debt.json` entry lists a code
+//     or has `unsupported` (debt), and fails otherwise.
+
+async function loadDimension() {
+  const debt = readDebt();
+  const swept = coveredManifests().filter((path) => path.includes(options.filter));
+  const cacheDir = mkdtempSync(join(tmpdir(), "rp-load-cache-"));
+  const env = {
+    ...process.env,
+    TELO_CACHE_DIR: cacheDir,
+    NO_COLOR: "1",
+    PATH: [join(root, "node_modules", ".bin"), process.env.PATH].join(delimiter),
+  };
+  const loaders = {};
+  if (nodeCommand) loaders.node = (path) => ["bun", [join(root, ".claude", "skills", "rust-parity", "load-node.ts"), path]];
+  if (rustLoader) loaders.rust = (path) => [rustLoader, [path]];
+
+  const results = new Array(swept.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(options.concurrency, swept.length) }, async () => {
+      while (next < swept.length) {
+        const index = next++;
+        const path = swept[index];
+        const result = { path };
+        for (const [name, commandFor] of Object.entries(loaders)) {
+          const [command, args] = commandFor(path);
+          result[name] = readLoad(await runCapture(command, args, env));
+        }
+        result.verdict = result.node && result.rust ? judgeLoad(path, result, debt) : { status: "unjudged" };
+        results[index] = result;
+        process.stderr.write(`load ${path}  ${result.verdict.status}\n`);
+      }
+    }),
+  );
+
+  const failures = results.filter((r) => r.verdict.status === "fail").map((r) => ({ path: r.path, message: r.verdict.reason }));
+  for (const { path, message } of failures) process.stderr.write(`LOAD FAIL ${path}: ${message}\n`);
+  const byStatus = (status) => results.filter((r) => r.verdict.status === status).length;
+  const summary = {
+    swept: results.length,
+    matched: byStatus("match"),
+    debtListed: byStatus("debt"),
+    gaps: byStatus("gap"),
+    nodeUnusable: byStatus("node-unusable"),
+    unjudged: byStatus("unjudged"),
+    failed: failures.length,
+  };
+  return { summary, failures, results };
+}
+
+// One kernel's answer: `loaded`, or the refusal's text with the repo root's prefixes removed.
+function readLoad(run) {
+  if (run.timedOut) return { unusable: "timed out" };
+  if (run.exitCode !== 0 && run.exitCode !== 1) return { unusable: `exit ${run.exitCode}: ${tail(run.stderr)}` };
+  if (run.exitCode === 0) return { loaded: true };
+  const text = [`${pathToFileURL(root).href}/`, `${root}${sep}`].reduce((t, prefix) => t.split(prefix).join(""), run.stdout);
+  return { loaded: false, refusal: text.replace(/\n$/, "") };
+}
+
+function judgeLoad(path, { node, rust }, debt) {
+  if (node.unusable) return { status: "node-unusable", note: node.unusable };
+  if (rust.unusable) return { status: "fail", reason: `Rust: ${rust.unusable}` };
+  if (node.loaded && rust.loaded) return { status: "match" };
+  if (!node.loaded && !rust.loaded && node.refusal === rust.refusal) return { status: "match" };
+  if (node.loaded) {
+    if (rust.refusal.startsWith(`[${HOST_REFUSAL}]`)) return { status: "gap" };
+    return { status: "fail", reason: `Node loads, Rust refuses:\n${rust.refusal}` };
+  }
+  const entry = debt.manifests[path];
+  if (entry?.codes?.length || entry?.unsupported) return { status: "debt" };
+  return {
+    status: "fail",
+    reason: `the refusals differ:\n--- node\n${node.refusal}\n--- rust\n${rust.loaded ? "(loads)" : rust.refusal}`,
+  };
+}
+
 function parseArgs(argv) {
   const parsed = {
     out: null,
@@ -549,7 +659,7 @@ function parseArgs(argv) {
     if (flag === "--out") parsed.out = value;
     else if (flag === "--filter") parsed.filter = value;
     else if (flag === "--only" && (value === "rust" || value === "node")) parsed.only = value;
-    else if (flag === "--dimension" && (value === "run" || value === "check")) parsed.dimension = value;
+    else if (flag === "--dimension" && ["run", "check", "load"].includes(value)) parsed.dimension = value;
     else if (flag === "--reuse-node") parsed.reuseNode = value;
     else if (flag === "--concurrency") parsed.concurrency = positiveInteger(flag, value);
     else if (flag === "--timeout") parsed.timeout = positiveInteger(flag, value);

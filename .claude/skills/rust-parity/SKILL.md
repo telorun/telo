@@ -48,7 +48,7 @@ runs each on both kernels with the environment the suite gives it, and writes a 
 test per kernel. A test's pass is exit code 0, as in the suite. `--filter <text>` narrows it;
 `--only rust` skips the Node half for a quick re-check.
 
-The sweep has a second dimension, `--dimension run|check` (default both): `check` runs `telo check`
+The sweep has two more dimensions, `--dimension run|check|load` (default `run` and `check`): `check` runs `telo check`
 of both CLIs over every manifest whose first document is an Application or a Library, and compares
 `-o json` and the exit status — and the text, byte for byte, wherever the two JSON payloads agree whole — against
 `check-debt.json` beside `sweep.mjs`, the ratchet list of what the Rust analyzer may still miss (`owners`: each Node
@@ -66,6 +66,16 @@ iterating on Rust does not pay for Node's again; it refuses a file made at anoth
 findings (`RESOURCE_RULE_INVALID` / `REFERRER_RULE_INVALID` saying a rule "exceeded its evaluation budget"),
 because both are statements about the machine and its load rather than the manifest; the second stays until
 step 3d slice 14 replaces the wall-clock budget with a counted one.
+
+`load` (run only when named) loads every manifest of the `check` dimension's set with each kernel's
+analyze-only load — the Node kernel's `analyzeOnly` through the sweep-owned `load-node.ts` beside
+`sweep.mjs` (run with the workspace's `bun`), the Rust kernel's `LoadOptions { analyze_only }` through
+the unpublished `analyze_only` example of `telo-kernel` — and compares what each refuses the load with,
+as one `runFails`-style text (the refusal's `[<CODE>] <message>`, then each carried diagnostic), the repo
+root's prefixes removed. Both load, or both refuse with the same text: a match. Node loads and Rust
+refuses with `ERR_UNSUPPORTED_MANIFEST_FEATURE`: a gap, counted and not failed (step 4's to close). Node
+loads and Rust refuses with anything else: a failure. Any other difference passes only where the
+manifest's `check-debt.json` entry lists a code or has `unsupported`, and fails otherwise.
 
 - **The target** is the tests that pass on Node in the same sweep. A test red on Node locally
   (a missing key, a service not running) is outside the target and listed as such — never

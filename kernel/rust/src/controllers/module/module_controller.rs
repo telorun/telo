@@ -16,17 +16,15 @@ use telo_templating::{
     expansion_tag_of, parse_ref_source, ref_sentinel_source, ref_sentinel_verdict, ParsedRef, RefVerdict,
     SPLICE_KEY,
 };
-use telo_analyzer::sources::oci_ref::is_oci_ref;
-use telo_analyzer::system_kinds::{
-    is_module_document, skips_ref_resolution, APPLICATION, DEFINITION, JSON_SCHEMA, LIBRARY,
-};
+use telo_analyzer::system_kinds::{is_module_document, skips_ref_resolution, DEFINITION, JSON_SCHEMA};
+use telo_analyzer::inline_imports::IMPORT;
 use telo_analyzer::{
     declares_name_field, find_invalid_reference_forms, find_unresolved_sentinels, kind_of, name_of,
     reference_form_message, resolve_ref_sentinels, target_reference_forms, RefTargets, ReferenceForm,
     RESOLVED_REFERENCE_MARKER,
 };
 
-use crate::controllers::module::import_controller::parse_import;
+use crate::controllers::module::import_controller::import_spec;
 
 /// The built-in document a need type is declared with.
 const NEED_TYPE: &str = "Telo.NeedType";
@@ -45,6 +43,7 @@ use crate::error::KernelError;
 use crate::evaluation_context::EvaluationContext;
 use crate::sentinel_pass::{compile_sentinels, Owner};
 use crate::kernel::LoadEnv;
+use telo_analyzer::LoadedModule as TargetModule;
 use crate::module_context::ModuleContext;
 use crate::resolve_include_sentinels::{resolve_include_sentinels, IncludeCache};
 use crate::resource_context::create_resource;
@@ -52,9 +51,9 @@ use crate::runtime_registry::ControllerPolicy;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ModuleRole {
-    /// Loaded directly — must be a `Telo.Application`.
+    /// Loaded directly: the load refused one that is not a `Telo.Application`.
     Root,
-    /// Reached through an `imports:` entry — must be a `Telo.Library`.
+    /// Reached through an import: the graph refused a target that is not a `Telo.Library`.
     Import,
 }
 
@@ -71,40 +70,37 @@ pub fn load_module(
     policy: ControllerPolicy,
     role: ModuleRole,
 ) -> Result<LoadedModule, KernelError> {
-    let loaded = env.file(path)?;
-    // The documents the file's text holds: its inline imports are read from the module
+    let module = env.module(path)?;
+    let loaded = &module.owner;
+    // The documents each file's text holds: inline imports are read from the module
     // document, never from the synthetic `Telo.Import`s the loader appends.
-    let written: Vec<Option<Value>> = loaded.manifests.iter().take(loaded.ast_documents.len()).cloned().collect();
-    reject_expansion_constructs(&written, &loaded.text, &loaded.source)?;
-    // The module document first, every other in file order: the load's analysis refused a
-    // file declaring none or several, so exactly one is here, wherever it is written.
+    for file in module.files() {
+        let written: Vec<Option<Value>> = file.manifests.iter().take(file.ast_documents.len()).cloned().collect();
+        reject_expansion_constructs(&written, &file.text, &file.source)?;
+    }
+    // The module document first, every other in file order, then each partial's in module
+    // scope: the load refused a file declaring no module document or several, and a
+    // partial declaring one, so exactly one is here, wherever it is written.
     let mut documents: Vec<Value> = loaded.written_documents().cloned().collect();
     let module_index = documents
         .iter()
         .position(|document| kind_of(document).is_some_and(is_module_document))
         .ok_or_else(|| {
             KernelError::runtime_invalid(format!(
-                "'{path}' reached module creation declaring no module document, which the load's analysis refuses"
+                "'{path}' reached module creation declaring no module document, which the load refuses"
             ))
         })?;
     let module_doc = documents.remove(module_index);
     documents.insert(0, module_doc);
+    let mut declared_in: Vec<&str> = vec![loaded.source.as_str(); documents.len()];
+    for partial in &module.partials {
+        for document in partial.written_documents() {
+            documents.push(document.clone());
+            declared_in.push(&partial.source);
+        }
+    }
     let module_doc = &documents[0];
     let module_kind = kind_of(module_doc).unwrap_or("").to_owned();
-    let expected = match role {
-        ModuleRole::Root => APPLICATION,
-        ModuleRole::Import => LIBRARY,
-    };
-    if module_kind != expected {
-        return Err(KernelError::manifest_validation_failed(match role {
-            ModuleRole::Root => format!(
-                "'{path}' declares a {module_kind}; a manifest run directly must declare a {APPLICATION}"
-            ),
-            ModuleRole::Import => format!(
-                "'{path}' declares a {module_kind}; an imported manifest must be a {LIBRARY}. Applications are run, never imported."
-            ),
-        }));
-    }
     // A reserved name is refused before anything is created: the entry's by the
     // load's analysis, a library's by the graph walk at the import reaching it.
     let module_name = name_of(module_doc)
@@ -121,12 +117,12 @@ pub fn load_module(
     )?;
     let module_doc = &documents[0];
     reject_unsupported_module_fields(module_doc, &loaded.source)?;
+    reject_malformed_import_entries(module_doc)?;
 
     reject_need_types(&documents, &loaded.source)?;
     reject_keyed_translations(&documents, &loaded.source)?;
 
-    let from_artifact = is_oci_ref(path) || is_oci_ref(&loaded.source);
-    let imports = load_imports(env, module_doc, &format!("{module_kind}/{module_name}"), &loaded.source, from_artifact)?;
+    let imports = load_imports(env, module, &format!("{module_kind}/{module_name}"))?;
 
     // The language the module's texts are written in, which a kind's declared
     // error texts are read in.
@@ -168,7 +164,7 @@ pub fn load_module(
 
     let mut includes = IncludeCache::new();
     let module_files = env.loader.module_files(&context.source);
-    for document in documents.iter_mut().skip(1) {
+    for (document, declared_in) in documents.iter_mut().zip(&declared_in).skip(1) {
         // Owned, because reading the kind borrows the document that the embed
         // resolution below rewrites in place.
         let Some(kind) = kind_of(document).map(str::to_owned) else {
@@ -179,10 +175,14 @@ pub fn load_module(
         };
         // A kind document took the pass at registration. A resource takes it here, before the
         // embeds resolve, so text an embed produces is never read as an untagged interpolation.
+        // An import is the module its edge reached, created above.
+        if kind == IMPORT {
+            continue;
+        }
         if kind != DEFINITION {
-            let name = resource_name(document, &context.source)?;
+            let name = resource_name(document, declared_in)?;
             let label = format!("{kind}/{name}");
-            compile_sentinels(Owner { label: &label, source: &context.source }, document, "", &[])?;
+            compile_sentinels(Owner { label: &label, source: declared_in }, document, "", &[])?;
         }
         // Embedded files are read here, immediately before the resource is
         // built, so a marker never reaches a controller and the schema below
@@ -198,7 +198,7 @@ pub fn load_module(
         if kind == DEFINITION {
             continue;
         }
-        let name = resource_name(document, &context.source)?;
+        let name = resource_name(document, declared_in)?;
         let definition = resolve_resource_kind(&context, &kind, name)?;
         let instance = create_resource(definition, document, name, &context.source, &env.controllers)?;
         context.resources.set_resource(instance);
@@ -225,7 +225,6 @@ const UNSUPPORTED_MODULE_FIELDS: &[(&str, &str)] = &[
     ("variables", "binding host environment variables"),
     ("secrets", "binding host secrets"),
     ("ports", "binding inbound ports"),
-    ("include", "loading partial files into the module scope"),
     ("lifecycle", "lifecycle selection"),
     ("resources", "resource inputs supplied by the importer"),
     ("needs", "needs, which a host or an importer supplies"),
@@ -496,23 +495,65 @@ fn unresolved_reference_error(
     }
 }
 
+/// Every `Telo.Import` document of `module`'s files — desugared or authored — created as the
+/// module the load's graph resolved it to. The graph recorded an edge for each import it
+/// identified and refused the load for every other, so an import with none is one whose
+/// `source` is no string, refused by `reject_malformed_import_entries` for an `imports:`
+/// entry and here for an authored document.
 fn load_imports(
     env: &LoadEnv,
-    module_doc: &Value,
+    module: &TargetModule,
     owner: &str,
-    base_source: &str,
-    from_artifact: bool,
 ) -> Result<HashMap<String, Rc<ModuleContext>>, KernelError> {
     let mut imports = HashMap::new();
-    let Some(entries) = module_doc.get("imports").and_then(Value::as_object) else {
-        return Ok(imports);
-    };
-    for (alias, entry) in entries {
-        let spec = parse_import(alias, entry, owner, base_source, from_artifact)?;
-        let child = env.load_import(&spec.source, spec.policy)?;
-        imports.insert(alias.clone(), child);
+    for file in module.files() {
+        let edges = env.graph.import_edges.get(&file.source);
+        for (index, document) in file.manifests.iter().enumerate() {
+            let Some(document) = document.as_ref().filter(|document| kind_of(document) == Some(IMPORT)) else {
+                continue;
+            };
+            let alias = name_of(document).unwrap_or("<unnamed>");
+            let Some(edge) = edges.and_then(|edges| edges.get(alias)) else {
+                return Err(KernelError::manifest_validation_failed(format!(
+                    "'{}': import '{alias}' has no `source`",
+                    file.source
+                )));
+            };
+            let desugared = index >= file.ast_documents.len();
+            let (label, at) = if desugared {
+                (owner.to_string(), format!("imports.{alias}"))
+            } else {
+                (format!("{IMPORT}/{alias}"), String::new())
+            };
+            let spec = import_spec(document, edge, Owner { label: &label, source: &file.source }, &at, alias)?;
+            let child = env.load_import(&spec.source, spec.policy)?;
+            imports.insert(alias.to_string(), child);
+        }
     }
     Ok(imports)
+}
+
+/// An `imports:` entry naming no module: neither a source string nor an object with one. The
+/// desugaring skips it, so it is refused here rather than dropped.
+fn reject_malformed_import_entries(module_doc: &Value) -> Result<(), KernelError> {
+    let Some(entries) = module_doc.get("imports").and_then(Value::as_object) else {
+        return Ok(());
+    };
+    for (alias, entry) in entries {
+        match entry {
+            Value::String(_) => {}
+            Value::Object(map) if map.get("source").is_some_and(Value::is_string) => {}
+            Value::Object(_) => {
+                return Err(KernelError::manifest_validation_failed(format!("import '{alias}' has no `source`")))
+            }
+            other => {
+                return Err(KernelError::manifest_validation_failed(format!(
+                    "import '{alias}' must be a source string or an object, got {other}"
+                )))
+            }
+        }
+    }
+    Ok(())
 }
 
 fn read_exports(
@@ -581,7 +622,7 @@ fn build_ref_targets(
                 context.source
             )));
         };
-        if kind == DEFINITION {
+        if kind == DEFINITION || kind == IMPORT {
             continue;
         }
         let name = resource_name(document, &context.source)?;

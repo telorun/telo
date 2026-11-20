@@ -21,6 +21,16 @@ export {
 } from "./application-source-slot.js";
 export { collectApplicationSources, type ApplicationSourceRecords } from "./child-application.js";
 export { assembleGraphDiagnostics, compromisedFiles, partitionAnalysisDiagnostics } from "./graph-diagnostics.js";
+export {
+  importFailureRefusal,
+  loadRefusal,
+  migrationFailureRefusal,
+  needRefusal,
+  type CarriedFinding,
+  type LoadRefusal,
+  type LoadRefusalHost,
+  type NeedRefusal,
+} from "./load-refusal.js";
 export { analyzeLoadedGraph, type GraphAnalysis, type GraphAnalysisOptions } from "./graph-analysis.js";
 export { registerLoadedGraph, type RegisteredGraph } from "./graph-registration.js";
 export {

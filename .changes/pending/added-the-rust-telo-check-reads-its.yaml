@@ -1,0 +1,5 @@
+units:
+  cli: Added
+body: The Rust `telo check` reads its findings through the analyzer's entry assembly,
+  the one the Rust kernel refuses a load from, so the two hold back the same files when
+  a construct the build cannot read is found.

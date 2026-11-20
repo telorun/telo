@@ -1,0 +1,4 @@
+{
+  "diagnostics": [],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] Root manifest 'telo.yaml' is a Telo.Library. Only Telo.Application manifests can be run directly — libraries are imported via Telo.Import."
+}

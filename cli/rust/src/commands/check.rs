@@ -9,13 +9,8 @@
 //! does not apply where one may apply — is no diagnostic: it is held back like a parse
 //! failure, reported on stderr as a host refusal, and makes the run fail.
 
-use std::collections::HashSet;
-
 use serde_json::json;
-use telo_analyzer::{
-    analyze, assemble_graph_diagnostics, find_positions, unapplied_library_migrations, AnalysisDiagnostic,
-    AnalysisOptions, LoadedGraph,
-};
+use telo_analyzer::{analyze, assemble_entry_diagnostics, AnalysisOptions, UNSUPPORTED_MANIFEST_FEATURE as UNSUPPORTED};
 use telo_kernel::controllers::module::module_controller::value_branch_accepts;
 use telo_kernel::manifest_sources::local_manifest_cache_source::write_manifest_cache;
 use telo_kernel::manifest_sources::origin_digests::write_origin_digests;
@@ -26,9 +21,6 @@ use crate::exit_status::EXIT_FAILED;
 use crate::logger::{display_source_path, format_analysis_diagnostics, load_failure, Counts, JsonDiagnostic, Logger};
 use crate::manifest_input::{resolve_manifest_input, InputRefusal, ManifestInput};
 use crate::output::Output;
-
-/// The code of a host refusal: a construct this build cannot read.
-const UNSUPPORTED: &str = "ERR_UNSUPPORTED_MANIFEST_FEATURE";
 
 pub struct CheckArgs {
     pub paths: Vec<String>,
@@ -90,10 +82,18 @@ fn check_one(
         }
     };
 
-    let (held, refused) = report_unsupported_constructs(&graph, log)?;
     let analysis = analyze(&graph, &AnalysisOptions { accepts_value: &value_branch_accepts });
-    let mut diagnostics = assemble_graph_diagnostics(&graph, analysis).diagnostics;
-    diagnostics.retain(|d| !held.contains(&owning_file(&graph, d)));
+    let entry = assemble_entry_diagnostics(&graph, analysis);
+    // A construct this build cannot read is no diagnostic: it is reported on stderr, naming
+    // where it is, and the files it names are held back.
+    for refusal in &entry.host_refusals {
+        log.out.err_line(&format!(
+            "[{UNSUPPORTED}] {}",
+            refusal.message(|path| display_source_path(path, &log.cwd))
+        ))?;
+    }
+    let refused = !entry.host_refusals.is_empty();
+    let mut diagnostics = entry.diagnostics;
     // Probing costs a process launch per tool the manifest actually calls for, and nothing
     // at all for a manifest of bundled controllers.
     let env: std::collections::HashMap<String, String> = std::env::vars_os().filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?))).collect();
@@ -115,52 +115,6 @@ fn check_one(
     let mut outcome: Outcome = counts.into();
     outcome.refused = refused;
     Ok(outcome)
-}
-
-/// The file a diagnostic is shown in, by the rule the assembly files it by.
-fn owning_file(graph: &LoadedGraph, d: &AnalysisDiagnostic) -> String {
-    find_positions(graph, d.data.as_ref())
-        .map(|positions| positions.file)
-        .or_else(|| d.data.as_ref().and_then(|data| data.file_path.clone()))
-        .unwrap_or_else(|| graph.root_source.clone())
-}
-
-/// Report every construct of the graph this build cannot read on stderr, naming the file,
-/// document, line and column, and every library migration it does not apply, at the import
-/// reaching the library and the node it may apply at. Returns the files held back — whose
-/// diagnostics are dropped, as a file that failed to parse has its analysis held back — and
-/// whether any was found.
-fn report_unsupported_constructs(graph: &LoadedGraph, log: &Logger) -> std::io::Result<(HashSet<String>, bool)> {
-    let mut held = HashSet::new();
-    for file in graph.files() {
-        for error in file.parse_errors.iter().filter(|error| error.is_host_refusal()) {
-            let place = match error.range {
-                Some(range) => format!(
-                    "document {}, line {}, column {}",
-                    error.document_index + 1,
-                    range.start.line + 1,
-                    range.start.character + 1
-                ),
-                None => format!("document {}", error.document_index + 1),
-            };
-            log.out.err_line(&format!(
-                "[{UNSUPPORTED}] '{}', {place}: {}",
-                display_source_path(&file.source, &log.cwd),
-                error.message()
-            ))?;
-            held.insert(file.source.clone());
-        }
-    }
-    for refusal in unapplied_library_migrations(graph) {
-        log.out.err_line(&format!(
-            "[{UNSUPPORTED}] {}",
-            refusal.message(|path| display_source_path(path, &log.cwd))
-        ))?;
-        held.insert(refusal.import_file);
-        held.insert(refusal.node_file);
-    }
-    let refused = !held.is_empty();
-    Ok((held, refused))
 }
 
 fn run_check(args: &CheckArgs, out: &Output) -> std::io::Result<i32> {

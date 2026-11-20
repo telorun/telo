@@ -1,0 +1,2 @@
+kind: Console.WriteLine
+metadata: { name: greet }
