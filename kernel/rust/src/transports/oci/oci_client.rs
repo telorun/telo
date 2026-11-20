@@ -69,12 +69,27 @@ pub struct OciManifest {
 #[error("{message}")]
 pub struct OciError {
     pub message: String,
+    /// What the registry answered, when the failure is one of the source-failure set.
+    pub failure: Option<OciFailure>,
+}
+
+/// A failure a source names from the closed source-failure set: a reply that was not 2xx —
+/// its status, and whether a manifest was being read — or a request that reached no host.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OciFailure {
+    Reply { status: u16, manifest: bool },
+    Unreachable,
 }
 
 fn oci_error(message: impl Into<String>) -> OciError {
     OciError {
         message: message.into(),
+        failure: None,
     }
+}
+
+fn classified(message: impl Into<String>, failure: OciFailure) -> OciError {
+    OciError { message: message.into(), failure: Some(failure) }
 }
 
 /// A blob's OCI digest, `sha256:` + lowercase hex.
@@ -210,9 +225,7 @@ impl OciClient {
                 }
             }
             let response = request.call().map_err(|err| {
-                oci_error(format!(
-                    "{what} {current} failed: {err}. Check the oci:// ref host."
-                ))
+                classified(format!("{what} {current} failed: {err}. Check the oci:// ref host."), OciFailure::Unreachable)
             })?;
             let location = matches!(response.status().as_u16(), 301 | 302 | 303 | 307 | 308)
                 .then(|| response.headers().get("location"))
@@ -233,9 +246,10 @@ impl OciClient {
             }
             current = next;
         }
-        Err(oci_error(format!(
-            "{what} {url} failed: more than {MAX_REDIRECTS} redirects, the last to {current}"
-        )))
+        Err(classified(
+            format!("{what} {url} failed: more than {MAX_REDIRECTS} redirects, the last to {current}"),
+            OciFailure::Unreachable,
+        ))
     }
 
     /// GET with the bearer-token dance: try the cached token, and on a 401
@@ -248,12 +262,16 @@ impl OciClient {
         if response.status().as_u16() != 401 {
             return Ok(response);
         }
+        // Node hands the 401 on to the read, whose refusal it is.
         let unauthorized = |cause: &str| {
-            oci_error(format!(
-                "OCI registry request to {url} answered 401 Unauthorized, and no anonymous token was \
-                 obtained: {cause}. This kernel pulls anonymously; a module a registry serves only with \
-                 credentials cannot be imported here."
-            ))
+            classified(
+                format!(
+                    "OCI registry request to {url} answered 401 Unauthorized, and no anonymous token was \
+                     obtained: {cause}. This kernel pulls anonymously; a module a registry serves only with \
+                     credentials cannot be imported here."
+                ),
+                OciFailure::Reply { status: 401, manifest: false },
+            )
         };
         let Some(challenge) = response
             .headers()
@@ -310,12 +328,10 @@ impl OciClient {
         let url = format!("{}/manifests/{reference}", self.base());
         let mut response = self.authed_get(&url, Some(MANIFEST_ACCEPT), &self.pull_scope())?;
         if !response.status().is_success() {
-            return Err(oci_error(format!(
-                "OCI pull manifest {}:{reference} on {} failed: {}",
-                self.repo,
-                self.host,
-                response.status()
-            )));
+            return Err(classified(
+                format!("OCI pull manifest {}:{reference} on {} failed: {}", self.repo, self.host, response.status()),
+                OciFailure::Reply { status: response.status().as_u16(), manifest: true },
+            ));
         }
         let body = read_body(&mut response, &url)?;
         let json: Value = serde_json::from_slice(&body).map_err(|err| {
@@ -382,12 +398,10 @@ impl OciClient {
         let url = format!("{}/blobs/{digest}", self.base());
         let mut response = self.authed_get(&url, None, &self.pull_scope())?;
         if !response.status().is_success() {
-            return Err(oci_error(format!(
-                "OCI pull blob {digest} from {} on {} failed: {}",
-                self.repo,
-                self.host,
-                response.status()
-            )));
+            return Err(classified(
+                format!("OCI pull blob {digest} from {} on {} failed: {}", self.repo, self.host, response.status()),
+                OciFailure::Reply { status: response.status().as_u16(), manifest: false },
+            ));
         }
         read_body(&mut response, &url)
     }

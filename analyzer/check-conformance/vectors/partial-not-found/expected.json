@@ -1,0 +1,24 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "PARTIAL_NOT_FOUND",
+      "source": "telo-analyzer",
+      "message": "The partial './missing.yaml' cannot be read: nothing exists at missing.yaml.",
+      "data": {
+        "filePath": "telo.yaml"
+      },
+      "range": {
+        "start": {
+          "line": 2,
+          "character": 10
+        },
+        "end": {
+          "line": 2,
+          "character": 24
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] telo.yaml: The partial './missing.yaml' cannot be read: nothing exists at missing.yaml.\n  [PARTIAL_NOT_FOUND] The partial './missing.yaml' cannot be read: nothing exists at missing.yaml."
+}

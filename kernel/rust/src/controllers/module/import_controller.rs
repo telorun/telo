@@ -88,14 +88,21 @@ pub fn parse_import(
 }
 
 /// The location an import's `source`, written under `alias` in the module at
-/// `base_source`, names — the one resolution the load's graph walk and the module
-/// load share, so both reach one module.
+/// `base_source`, names — the resolution the load's graph walk makes, so both reach
+/// one module.
 pub fn resolve_import_source(
     alias: &str,
     source: &str,
     base_source: &str,
     from_artifact: bool,
 ) -> Result<String, KernelError> {
+    refuse_unreadable_import(alias, source, from_artifact)?;
+    Ok(resolve_source(base_source, source))
+}
+
+/// An import this kernel cannot read: a relative path inside an `oci://` artifact (a
+/// nested library), or a transport it has no implementation for.
+pub fn refuse_unreadable_import(alias: &str, source: &str, from_artifact: bool) -> Result<(), KernelError> {
     if from_artifact && source.starts_with('.') {
         return Err(KernelError::new(
             "ERR_UNSUPPORTED_MANIFEST_FEATURE",
@@ -113,8 +120,7 @@ pub fn resolve_import_source(
             ),
         ));
     }
-
-    Ok(resolve_source(base_source, source))
+    Ok(())
 }
 
 #[cfg(test)]

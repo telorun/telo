@@ -17,7 +17,8 @@ use serde_json::{json, Value};
 use telo_analyzer::sources::oci_ref::is_oci_ref;
 use telo_analyzer::{
     analyze, as_resolved_ref, load_graph, unapplied_library_migrations, AnalysisDiagnostic, AnalysisOptions, DiagnosticSeverity,
-    FindingOrder, ImportTargetPort, LoadedFile, LoadedGraph, ManifestLoader, ManifestSource, ParseErrorOrigin, DEFAULT_MANIFEST_FILENAME,
+    FindingOrder, ImportTargetPort, LoadError, LoadedFile, LoadedGraph, LoadedModule as TargetModule, ManifestLoader,
+    ManifestSource, DEFAULT_MANIFEST_FILENAME,
 };
 
 use crate::bundle::module_artifact::{
@@ -26,7 +27,7 @@ use crate::bundle::module_artifact::{
 use crate::bundle::module_manifest::read_owner_manifest;
 use crate::controller_loader::ControllerLoader;
 use crate::controller_registry::ControllerRegistry;
-use crate::controllers::module::import_controller::resolve_import_source;
+use crate::controllers::module::import_controller::refuse_unreadable_import;
 use crate::controllers::module::module_controller::{load_module, value_branch_accepts, LoadedModule, ModuleRole};
 use crate::import_load_failure::import_load_failure;
 use crate::metadata_stamp_refusals::metadata_stamp_load_refusal;
@@ -59,9 +60,9 @@ pub struct ArtifactManifestLoader {
     legacy_manifests_dir: Option<PathBuf>,
 }
 
-/// The import-target port over a list of manifest sources: an import's source is resolved
-/// by the kernel's own rules (`resolve_import_source`, which refuses a transport or nested
-/// library this kernel cannot read) and read through the first source supporting it. The
+/// The import-target port over a list of manifest sources: an import this kernel cannot read
+/// (`refuse_unreadable_import`: a transport or a nested library) is a host refusal, any other
+/// is resolved and read through the loader's sources, each module with its partials. The
 /// load walks it, and a host that reads a graph without creating anything — `telo check` —
 /// walks the same one.
 pub struct SourcesImportPort {
@@ -75,26 +76,23 @@ impl SourcesImportPort {
 }
 
 impl ImportTargetPort for SourcesImportPort {
-    type Error = KernelError;
-
-    fn resolve(&self, from: &LoadedFile, alias: &str, source: &str) -> Result<String, KernelError> {
+    fn resolve(&self, from: &LoadedFile, alias: &str, source: &str) -> Result<String, LoadError> {
         let from_artifact = is_oci_ref(&from.requested_url) || is_oci_ref(&from.source);
-        resolve_import_source(alias, source, &from.source, from_artifact)
+        refuse_unreadable_import(alias, source, from_artifact).map_err(|refusal| LoadError::Unsupported(refusal.message))?;
+        self.manifests.resolve_import_url(&from.source, source)
     }
 
-    fn load(&self, url: &str) -> Result<LoadedFile, KernelError> {
-        Ok(self.manifests.load(url)?)
+    fn load(&self, url: &str) -> Result<TargetModule, LoadError> {
+        self.manifests.load_module(url)
     }
 }
 
 impl ImportTargetPort for ArtifactManifestLoader {
-    type Error = KernelError;
-
-    fn resolve(&self, from: &LoadedFile, alias: &str, source: &str) -> Result<String, KernelError> {
+    fn resolve(&self, from: &LoadedFile, alias: &str, source: &str) -> Result<String, LoadError> {
         self.manifests.resolve(from, alias, source)
     }
 
-    fn load(&self, url: &str) -> Result<LoadedFile, KernelError> {
+    fn load(&self, url: &str) -> Result<TargetModule, LoadError> {
         self.manifests.load(url)
     }
 }
@@ -224,15 +222,14 @@ fn load_env(entry: &str) -> Result<LoadEnv, KernelError> {
 }
 
 /// What the load refuses before any module is created, in the Node kernel's
-/// order: a construct this kernel cannot read at all; a library migration it does not
-/// apply, where one may apply; the import failures, as one error of the first failure's
-/// code; the parse failures, as one `ERR_MANIFEST_VALIDATION_FAILED` naming each file; the
-/// analysis's errors, as one `ERR_MANIFEST_VALIDATION_FAILED`. Each carries its diagnostics.
+/// order: a construct this kernel cannot read at all — an import or a partial included; a
+/// library migration it does not apply, where one may apply; the import failures, as one
+/// error of the first failure's code; the parse and coded loader failures, as one
+/// `ERR_MANIFEST_VALIDATION_FAILED` naming each file; the version conflicts; the analysis's
+/// errors, as one `ERR_MANIFEST_VALIDATION_FAILED`. Each carries its diagnostics.
 fn refuse_static_findings(graph: &LoadedGraph) -> Result<(), KernelError> {
-    for module in graph.modules.values() {
-        let file = &module.owner;
-        for error in &file.parse_errors {
-            let ParseErrorOrigin::Unsupported(construct) = &error.origin else { continue };
+    for file in graph.files() {
+        for error in file.parse_errors.iter().filter(|error| error.is_host_refusal()) {
             let place = match error.range {
                 Some(range) => format!(
                     "document {}, line {}, column {}",
@@ -244,7 +241,7 @@ fn refuse_static_findings(graph: &LoadedGraph) -> Result<(), KernelError> {
             };
             return Err(KernelError::new(
                 "ERR_UNSUPPORTED_MANIFEST_FEATURE",
-                format!("'{}', {place}: {}", file.source, construct.message()),
+                format!("'{}', {place}: {}", file.source, error.message()),
             ));
         }
     }
@@ -266,6 +263,17 @@ fn refuse_static_findings(graph: &LoadedGraph) -> Result<(), KernelError> {
             .join("\n");
         return Err(KernelError::manifest_validation_failed(message)
             .with_diagnostics(graph.parse_diagnostics.clone()));
+    }
+    // An incompatible major mismatch is fatal: the hoist would silently run the wrong major.
+    let conflicts: Vec<AnalysisDiagnostic> = graph
+        .version_diagnostics
+        .iter()
+        .filter(|d| d.code.as_deref() == Some("MODULE_VERSION_CONFLICT"))
+        .cloned()
+        .collect();
+    if !conflicts.is_empty() {
+        let message = conflicts.iter().map(|d| d.message.as_str()).collect::<Vec<_>>().join("\n");
+        return Err(KernelError::manifest_validation_failed(message).with_diagnostics(conflicts));
     }
     let errors: Vec<AnalysisDiagnostic> = analyze(graph, &AnalysisOptions { accepts_value: &value_branch_accepts })
         .into_iter()

@@ -1,0 +1,3 @@
+kind: Telo.Application
+metadata: { name: NoLibraryApp }
+imports: { Lib: ./lib }

@@ -1,0 +1,24 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "MODULE_DECLARATION_MISSING",
+      "source": "telo-analyzer",
+      "message": "This file declares no module: a module's telo.yaml declares exactly one Telo.Application or Telo.Library, and a partial is checked and run through the module that includes it.",
+      "data": {
+        "filePath": "telo.yaml"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 6
+        },
+        "end": {
+          "line": 0,
+          "character": 21
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] telo.yaml: This file declares no module: a module's telo.yaml declares exactly one Telo.Application or Telo.Library, and a partial is checked and run through the module that includes it.\n  [MODULE_DECLARATION_MISSING] This file declares no module: a module's telo.yaml declares exactly one Telo.Application or Telo.Library, and a partial is checked and run through the module that includes it."
+}

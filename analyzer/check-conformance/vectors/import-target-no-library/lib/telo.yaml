@@ -1,0 +1,3 @@
+kind: Telo.Definition
+metadata: { name: Orphan }
+capability: Telo.Invocable

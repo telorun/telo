@@ -1,0 +1,53 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "UNTAGGED_INTERPOLATION",
+      "source": "telo-analyzer",
+      "message": "Self.Greeter/extra: 'metadata.description' is a plain string holding '${{', which is never evaluated. Untagged interpolation is a legacy spelling the 'untagged-interpolation' migration rewrites (a lone hole to !cel, text with holes to !interpolate); run 'telo migrate' to apply it, or tag the value !literal if the text is meant literally.",
+      "data": {
+        "resource": {
+          "kind": "Self.Greeter",
+          "name": "extra"
+        },
+        "filePath": "extra.yaml",
+        "path": "metadata.description"
+      },
+      "range": {
+        "start": {
+          "line": 1,
+          "character": 38
+        },
+        "end": {
+          "line": 1,
+          "character": 49
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "UNTAGGED_INTERPOLATION",
+      "source": "telo-analyzer",
+      "message": "Self.Greeter/greeting: 'metadata.description' is a plain string holding '${{', which is never evaluated. Untagged interpolation is a legacy spelling the 'untagged-interpolation' migration rewrites (a lone hole to !cel, text with holes to !interpolate); run 'telo migrate' to apply it, or tag the value !literal if the text is meant literally.",
+      "data": {
+        "resource": {
+          "kind": "Self.Greeter",
+          "name": "greeting"
+        },
+        "filePath": "parts/greeting.yaml",
+        "path": "metadata.description"
+      },
+      "range": {
+        "start": {
+          "line": 1,
+          "character": 41
+        },
+        "end": {
+          "line": 1,
+          "character": 54
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] Manifest validation failed\n  [UNTAGGED_INTERPOLATION] Self.Greeter/extra: 'metadata.description' is a plain string holding '${{', which is never evaluated. Untagged interpolation is a legacy spelling the 'untagged-interpolation' migration rewrites (a lone hole to !cel, text with holes to !interpolate); run 'telo migrate' to apply it, or tag the value !literal if the text is meant literally.\n  [UNTAGGED_INTERPOLATION] Self.Greeter/greeting: 'metadata.description' is a plain string holding '${{', which is never evaluated. Untagged interpolation is a legacy spelling the 'untagged-interpolation' migration rewrites (a lone hole to !cel, text with holes to !interpolate); run 'telo migrate' to apply it, or tag the value !literal if the text is meant literally."
+}

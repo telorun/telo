@@ -1,0 +1,25 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "UNTAGGED_INTERPOLATION",
+      "source": "telo-analyzer",
+      "message": "Telo.Library/PricedLib: the imported library 'PricedLib' holds a plain string with '${{' that no hole can be read out of (Self.Thing/priced 'metadata.description'), so it fails to load with ERR_UNTAGGED_INTERPOLATION. It is the library's to fix; import a version that writes it as !interpolate or !literal.",
+      "data": {
+        "filePath": "lib/telo.yaml",
+        "path": ""
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 9007199254740991
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] Manifest validation failed\n  [UNTAGGED_INTERPOLATION] Telo.Library/PricedLib: the imported library 'PricedLib' holds a plain string with '${{' that no hole can be read out of (Self.Thing/priced 'metadata.description'), so it fails to load with ERR_UNTAGGED_INTERPOLATION. It is the library's to fix; import a version that writes it as !interpolate or !literal."
+}

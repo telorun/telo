@@ -3,13 +3,16 @@
 //! Mirrors the part of `analyzer/nodejs` the kernel depends on at runtime:
 //! reading a manifest file, parsing its documents (through `telo-templating`'s YAML
 //! composer, with each document's position index beside the tree), applying the manifest
-//! migrations of `analyzer/migrations/` to them, walking an entry's import graph,
+//! migrations of `analyzer/migrations/` to them, walking an entry's module graph — inline
+//! imports desugared, `include:` partials read, versions reconciled, each import's failure
+//! and each file's module-declaration and partial refusal coded as Node codes them —
 //! rewriting `!ref` sentinels, and reading what a schema node says of the value at it (the
 //! host-path slot readers and the walk pairing each text leaf with its node). Its static
 //! analysis is Node's `AnalysisDiagnostic` for the deprecations the migrations report and
-//! the refusals the Rust kernel makes — a YAML parse failure, the loader's expansion
-//! refusals, a reserved kind prefix, the capability roster, the reference forms and a
-//! plain string left holding `${{` — located by Node's fallback chain; the kernel raises
+//! the refusals the Rust kernel makes — a YAML parse failure, the loader's expansion and
+//! file refusals, an import's failure, a version conflict, a reserved kind prefix, the
+//! capability roster, the reference forms and a plain string left holding `${{` — located
+//! by Node's fallback chain; the kernel raises
 //! them from here. A library's `migrations:` block is read and its `match` twinned, but the
 //! consumer stage applying it is not: where one may apply, the hosts refuse the import
 //! reaching the library instead (`library_migrations`). Node's other passes have no
@@ -32,6 +35,7 @@ pub mod finding_order;
 pub mod graph_diagnostics;
 pub mod host_path_slot;
 pub mod import_resolution_diagnostics;
+pub mod inline_imports;
 pub mod levenshtein;
 pub mod library_migrations;
 pub mod loaded_types;
@@ -42,6 +46,8 @@ pub mod metadata_stamp_refusals;
 pub mod metadata_stamps;
 pub mod migrations;
 pub mod module_alias_scope;
+pub mod module_declaration_refusals;
+pub mod module_version_order;
 pub mod native_entries;
 pub mod nearest_name;
 pub mod package_url_format;
@@ -50,6 +56,7 @@ pub mod plain_literal_decoding;
 pub mod position_metadata;
 pub mod quoted_place;
 pub mod reaching_import;
+pub mod reconcile_module_versions;
 pub mod release;
 pub mod reserved_kind_prefix;
 pub mod resolve_ref_sentinels;
@@ -79,7 +86,9 @@ pub use loaded_types::{
     GraphLoadError, ImportEdge, ImportFailureReason, LoadedFile, LoadedGraph, LoadedModule, ParseError,
     ParseErrorOrigin,
 };
-pub use manifest_loader::{load_graph, resolve_source, ImportTargetPort, ManifestLoader};
+pub use manifest_loader::{
+    import_target_identity, is_local_path_source, load_graph, resolve_source, ImportTargetPort, ManifestLoader,
+};
 pub use migrations::{core_migrations, migrate_manifests, remap_migrated_paths, FileMigrations, MigrationRewrite};
 pub use parse_loaded_file::{parse_error_kind, parse_error_message, parse_loaded_file, YamlErrorKind};
 pub use position_metadata::DocumentPosition;
@@ -98,6 +107,6 @@ pub use validate_reference_forms::{
 };
 pub use types::{
     kind_of, name_of, AnalysisDiagnostic, DiagnosticData, DiagnosticFix, DiagnosticFixTag, DiagnosticMigration, DiagnosticResource,
-    DiagnosticSeverity, DiagnosticTag, LoadError, ManifestSource, Position, PositionIndex, Range, ReadManifest,
+    DiagnosticSeverity, DiagnosticTag, join_relative, LoadError, ManifestSource, Position, PositionIndex, Range, ReadManifest,
     ResourceManifest, ANALYZER_SOURCE, DEFAULT_MANIFEST_FILENAME,
 };

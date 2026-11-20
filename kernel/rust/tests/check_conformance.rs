@@ -5,6 +5,7 @@
 use std::path::{Path, PathBuf, MAIN_SEPARATOR};
 
 use serde_json::Value;
+use telo_analyzer::sources::source_failure::file_url;
 use telo_kernel::{Kernel, KernelError};
 
 fn vectors() -> PathBuf {
@@ -27,10 +28,12 @@ fn refusal_text(error: &KernelError, dir: &Path) -> String {
     strip_row_directory(&lines.join("\n"), dir)
 }
 
-/// The row directory's prefix removed, and the separators of the path it began written `/`
-/// as the recorded text has them — in that path alone, since a message may hold a backslash
-/// of its own.
+/// The row directory's prefixes removed — its `file://` URL, then its path — and the
+/// separators of a path it began written `/` as the recorded text has them, in that path
+/// alone, since a message may hold a backslash of its own.
 fn strip_row_directory(text: &str, dir: &Path) -> String {
+    let text = text.replace(&format!("{}/", file_url(dir)), "");
+    let text = text.as_str();
     let prefix = format!("{}{MAIN_SEPARATOR}", dir.display());
     let mut out = String::new();
     let mut rest = text;

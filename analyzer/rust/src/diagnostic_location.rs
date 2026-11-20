@@ -31,10 +31,10 @@ pub fn find_positions<'g>(graph: &'g LoadedGraph, data: Option<&DiagnosticData>)
         }
     }
     let file = data.file_path.as_deref()?;
-    let module = graph.modules.values().find(|module| module.owner.source == file)?;
-    let position = module.owner.positions.first();
+    let found = graph.files().find(|candidate| candidate.source == file)?;
+    let position = found.positions.first();
     Some(DiagnosticPositions {
-        file: module.owner.source.clone(),
+        file: found.source.clone(),
         position_index: position.map(|p| &p.position_index),
         source_line: position.map(|p| p.source_line),
     })
@@ -46,8 +46,7 @@ fn find_by_resource<'g>(
     name: &str,
     in_file: Option<&str>,
 ) -> Option<DiagnosticPositions<'g>> {
-    for module in graph.modules.values() {
-        let file = &module.owner;
+    for file in graph.files() {
         if in_file.is_some_and(|wanted| wanted != file.source) {
             continue;
         }

@@ -16,7 +16,6 @@ use telo_templating::{
     expansion_tag_of, parse_ref_source, ref_sentinel_source, ref_sentinel_verdict, ParsedRef, RefVerdict,
     SPLICE_KEY,
 };
-use telo_analyzer::builtin_vocabulary::{BUILTIN_VOCABULARY_KIND, BUILTIN_VOCABULARY_NOT_A_MODULE};
 use telo_analyzer::sources::oci_ref::is_oci_ref;
 use telo_analyzer::system_kinds::{
     is_module_document, skips_ref_resolution, APPLICATION, DEFINITION, JSON_SCHEMA, LIBRARY,
@@ -73,19 +72,25 @@ pub fn load_module(
     role: ModuleRole,
 ) -> Result<LoadedModule, KernelError> {
     let loaded = env.file(path)?;
-    reject_expansion_constructs(&loaded.manifests, &loaded.text, &loaded.source)?;
-    let mut documents: Vec<Value> = loaded.documents().cloned().collect();
-
-    let module_doc = documents.first().ok_or_else(|| {
-        KernelError::manifest_validation_failed(format!("'{path}' contains no documents"))
-    })?;
+    // The documents the file's text holds: its inline imports are read from the module
+    // document, never from the synthetic `Telo.Import`s the loader appends.
+    let written: Vec<Option<Value>> = loaded.manifests.iter().take(loaded.ast_documents.len()).cloned().collect();
+    reject_expansion_constructs(&written, &loaded.text, &loaded.source)?;
+    // The module document first, every other in file order: the load's analysis refused a
+    // file declaring none or several, so exactly one is here, wherever it is written.
+    let mut documents: Vec<Value> = loaded.written_documents().cloned().collect();
+    let module_index = documents
+        .iter()
+        .position(|document| kind_of(document).is_some_and(is_module_document))
+        .ok_or_else(|| {
+            KernelError::runtime_invalid(format!(
+                "'{path}' reached module creation declaring no module document, which the load's analysis refuses"
+            ))
+        })?;
+    let module_doc = documents.remove(module_index);
+    documents.insert(0, module_doc);
+    let module_doc = &documents[0];
     let module_kind = kind_of(module_doc).unwrap_or("").to_owned();
-    // The built-in vocabulary is read, never run or imported; the refusal says
-    // what it is, in the words `telo check` uses. An import of it is refused by
-    // the load's graph walk, as its import's `INVALID_IMPORT_TARGET`.
-    if role == ModuleRole::Root && module_kind == BUILTIN_VOCABULARY_KIND {
-        return Err(KernelError::manifest_validation_failed(BUILTIN_VOCABULARY_NOT_A_MODULE));
-    }
     let expected = match role {
         ModuleRole::Root => APPLICATION,
         ModuleRole::Import => LIBRARY,
@@ -93,10 +98,10 @@ pub fn load_module(
     if module_kind != expected {
         return Err(KernelError::manifest_validation_failed(match role {
             ModuleRole::Root => format!(
-                "'{path}' starts with '{module_kind}'; a manifest run directly must start with a {APPLICATION} document"
+                "'{path}' declares a {module_kind}; a manifest run directly must declare a {APPLICATION}"
             ),
             ModuleRole::Import => format!(
-                "'{path}' starts with '{module_kind}'; an imported manifest must be a {LIBRARY}. Applications are run, never imported."
+                "'{path}' declares a {module_kind}; an imported manifest must be a {LIBRARY}. Applications are run, never imported."
             ),
         }));
     }
@@ -116,16 +121,6 @@ pub fn load_module(
     )?;
     let module_doc = &documents[0];
     reject_unsupported_module_fields(module_doc, &loaded.source)?;
-
-    if let Some(second) = documents.iter().skip(1).find(|document| {
-        kind_of(document).is_some_and(is_module_document)
-    }) {
-        return Err(KernelError::manifest_validation_failed(format!(
-            "'{}' declares a second '{}' document; a file may declare at most one {APPLICATION} or {LIBRARY}, as its first document",
-            loaded.source,
-            kind_of(second).unwrap_or("")
-        )));
-    }
 
     reject_need_types(&documents, &loaded.source)?;
     reject_keyed_translations(&documents, &loaded.source)?;

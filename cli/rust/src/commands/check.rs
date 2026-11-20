@@ -4,17 +4,17 @@
 //! Loads each path's graph, analyzes it with the analyzer's own passes and prints what
 //! `telo check` prints: the same envelope, text, exit status and cache behaviour, for what
 //! this analyzer covers. It may under-report and never over-report. A construct this build
-//! cannot read — a file the YAML reader holds back, an import it cannot resolve, an input it
-//! cannot open, a library migration it does not apply where one may apply — is no
-//! diagnostic: it is held back like a parse failure, reported on stderr as a host refusal,
-//! and makes the run fail.
+//! cannot read — a file the YAML reader holds back, an import or a partial through a
+//! transport or an artifact path it lacks, an input it cannot open, a library migration it
+//! does not apply where one may apply — is no diagnostic: it is held back like a parse
+//! failure, reported on stderr as a host refusal, and makes the run fail.
 
 use std::collections::HashSet;
 
 use serde_json::json;
 use telo_analyzer::{
     analyze, assemble_graph_diagnostics, find_positions, unapplied_library_migrations, AnalysisDiagnostic,
-    AnalysisOptions, LoadedGraph, ParseErrorOrigin,
+    AnalysisOptions, LoadedGraph,
 };
 use telo_kernel::controllers::module::module_controller::value_branch_accepts;
 use telo_kernel::manifest_sources::local_manifest_cache_source::write_manifest_cache;
@@ -84,9 +84,8 @@ fn check_one(
         Err(GraphFailure::Entry(message)) | Err(GraphFailure::Freshness(message)) => {
             return Ok(load_failure(&display_path(), &message, None, log)?.into());
         }
-        Err(GraphFailure::Refused { file, error }) => {
-            let at = file.map(|file| format!("'{}': ", display_source_path(&file, &log.cwd))).unwrap_or_default();
-            log.out.err_line(&format!("[{}] {at}{}", error.code, error.message))?;
+        Err(GraphFailure::Refused(message)) => {
+            log.out.err_line(&format!("[{UNSUPPORTED}] {message}"))?;
             return Ok(Outcome { refused: true, ..Outcome::default() });
         }
     };
@@ -133,10 +132,8 @@ fn owning_file(graph: &LoadedGraph, d: &AnalysisDiagnostic) -> String {
 /// whether any was found.
 fn report_unsupported_constructs(graph: &LoadedGraph, log: &Logger) -> std::io::Result<(HashSet<String>, bool)> {
     let mut held = HashSet::new();
-    for module in graph.modules.values() {
-        let file = &module.owner;
-        for error in &file.parse_errors {
-            let ParseErrorOrigin::Unsupported(construct) = &error.origin else { continue };
+    for file in graph.files() {
+        for error in file.parse_errors.iter().filter(|error| error.is_host_refusal()) {
             let place = match error.range {
                 Some(range) => format!(
                     "document {}, line {}, column {}",
@@ -149,7 +146,7 @@ fn report_unsupported_constructs(graph: &LoadedGraph, log: &Logger) -> std::io::
             log.out.err_line(&format!(
                 "[{UNSUPPORTED}] '{}', {place}: {}",
                 display_source_path(&file.source, &log.cwd),
-                construct.message()
+                error.message()
             ))?;
             held.insert(file.source.clone());
         }

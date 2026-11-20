@@ -5,10 +5,12 @@
 use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value};
+use telo_analyzer::sources::source_failure::{file_source_failure, file_url, ManifestSourceFailure, SourceFailureKind};
 use telo_analyzer::{
-    analyze, assemble_graph_diagnostics, load_graph, locate_diagnostic, AnalysisOptions, LoadError, ManifestLoader,
-    ManifestSource, ReadManifest, DEFAULT_MANIFEST_FILENAME,
+    analyze, assemble_graph_diagnostics, join_relative, load_graph, locate_diagnostic, AnalysisOptions, LoadError,
+    ManifestLoader, ManifestSource, ReadManifest, DEFAULT_MANIFEST_FILENAME,
 };
+use telorun_glob::{select_by_patterns, SelectOptions};
 
 fn vectors() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -22,29 +24,63 @@ fn slashed(path: &str) -> String {
     path.replace(std::path::MAIN_SEPARATOR, "/")
 }
 
-/// The filesystem, a directory read as its `telo.yaml`.
+/// The filesystem as the kernel's local file source reads it: a directory read as its
+/// `telo.yaml`, a failure in Telo's words, an `include:` glob expanded over the owner's directory.
 struct FileSource;
 
 impl ManifestSource for FileSource {
     fn supports(&self, path: &str) -> bool {
-        !path.contains("://")
+        path.starts_with('/') || path.starts_with("./") || path.starts_with("../") || (!path.contains("://") && !path.contains('@'))
     }
 
     fn read(&self, path: &str) -> Result<ReadManifest, LoadError> {
         let path = Path::new(path);
-        let file = if path.is_dir() { path.join(DEFAULT_MANIFEST_FILENAME) } else { path.to_path_buf() };
-        let text = std::fs::read_to_string(&file)
-            .map_err(|err| LoadError::Io { path: file.display().to_string(), message: err.to_string() })?;
+        let metadata = std::fs::metadata(path).map_err(|err| LoadError::Source(file_source_failure(&err, file_url(path))))?;
+        let file = if metadata.is_dir() { path.join(DEFAULT_MANIFEST_FILENAME) } else { path.to_path_buf() };
+        let text = std::fs::read_to_string(&file).map_err(|err| {
+            LoadError::Source(if metadata.is_dir() && err.kind() == std::io::ErrorKind::NotFound {
+                ManifestSourceFailure::new(SourceFailureKind::NotAModule, file_url(path))
+            } else {
+                file_source_failure(&err, file_url(&file))
+            })
+        })?;
         Ok(ReadManifest { text, source: slashed(&file.display().to_string()) })
+    }
+
+    fn expand_glob(&self, base: &str, patterns: &[String]) -> Option<Result<Vec<String>, LoadError>> {
+        let directory = Path::new(base).parent().expect("an owner's directory").to_path_buf();
+        let mut relative = Vec::new();
+        collect_files(&directory, "", &mut relative);
+        let options = SelectOptions { apply_default_ignore: Some(false), exclude: Vec::new() };
+        Some(Ok(select_by_patterns(&relative, patterns, &options)
+            .into_iter()
+            .map(|rel| join_relative(base, &rel))
+            .collect()))
     }
 }
 
-/// Every string with the row directory's prefix removed, so a file reads relative to it.
-fn relativize(value: &mut Value, prefix: &str) {
+/// Every regular file beneath `directory`, `/`-separated relative to it.
+fn collect_files(directory: &Path, prefix: &str, out: &mut Vec<String>) {
+    for entry in std::fs::read_dir(directory).expect("a listable row directory") {
+        let entry = entry.expect("a directory entry");
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let relative = if prefix.is_empty() { name } else { format!("{prefix}/{name}") };
+        let kind = entry.file_type().expect("a file type");
+        if kind.is_dir() {
+            collect_files(&entry.path(), &relative, out);
+        } else if kind.is_file() {
+            out.push(relative);
+        }
+    }
+}
+
+/// Every string with the row directory's prefixes — its `file://` URL, then its path —
+/// removed, so a file reads relative to it.
+fn relativize(value: &mut Value, prefixes: &[String]) {
     match value {
-        Value::String(text) => *text = text.replace(prefix, ""),
-        Value::Object(map) => map.values_mut().for_each(|item| relativize(item, prefix)),
-        Value::Array(items) => items.iter_mut().for_each(|item| relativize(item, prefix)),
+        Value::String(text) => *text = prefixes.iter().fold(text.clone(), |text, prefix| text.replace(prefix.as_str(), "")),
+        Value::Object(map) => map.values_mut().for_each(|item| relativize(item, prefixes)),
+        Value::Array(items) => items.iter_mut().for_each(|item| relativize(item, prefixes)),
         _ => {}
     }
 }
@@ -76,7 +112,7 @@ fn diagnostics_of(dir: &Path) -> Vec<Value> {
     let entry = dir.join(DEFAULT_MANIFEST_FILENAME).display().to_string();
     let graph = load_graph(&loader, &entry).expect("graph loads");
     let analysis = analyze(&graph, &AnalysisOptions { accepts_value: &|_, _, _| false });
-    let prefix = format!("{}/", slashed(&dir.display().to_string()));
+    let prefixes = [format!("{}/", file_url(dir)), format!("{}/", slashed(&dir.display().to_string()))];
     assemble_graph_diagnostics(&graph, analysis)
         .diagnostics
         .iter()
@@ -87,7 +123,7 @@ fn diagnostics_of(dir: &Path) -> Vec<Value> {
             if let Some(located) = locate_diagnostic(&graph, d) {
                 object.insert("range".to_string(), serde_json::to_value(located.range).expect("range serializes"));
             }
-            relativize(&mut shown, &prefix);
+            relativize(&mut shown, &prefixes);
             shown
         })
         .collect()
