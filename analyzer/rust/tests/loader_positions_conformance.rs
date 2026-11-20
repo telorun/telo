@@ -39,6 +39,7 @@ fn loader_positions() {
                         refused_unsupported = true;
                         return None;
                     }
+                    ParseErrorOrigin::HostRefusal(message) => panic!("{}: refused by the host: {message}", row["name"]),
                 };
                 let mut refusal = Map::new();
                 refusal.insert("documentIndex".into(), json!(error.document_index));

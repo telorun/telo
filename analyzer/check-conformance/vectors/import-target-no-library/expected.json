@@ -1,0 +1,45 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "INVALID_IMPORT_TARGET",
+      "source": "telo-analyzer",
+      "message": "Cannot use import 'Lib' → './lib': Telo.Import target './lib' did not resolve to a Telo.Library. Fetched from: lib/telo.yaml. Fetched 1 document(s) with kinds [Telo.Definition].",
+      "data": {
+        "filePath": "telo.yaml",
+        "path": "imports.Lib",
+        "sourceLine": 2
+      },
+      "range": {
+        "start": {
+          "line": 2,
+          "character": 16
+        },
+        "end": {
+          "line": 2,
+          "character": 21
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "MODULE_DECLARATION_MISSING",
+      "source": "telo-analyzer",
+      "message": "This file declares no module: a module's telo.yaml declares exactly one Telo.Application or Telo.Library, and a partial is checked and run through the module that includes it.",
+      "data": {
+        "filePath": "lib/telo.yaml"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 6
+        },
+        "end": {
+          "line": 0,
+          "character": 21
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_INVALID_IMPORT_TARGET] Telo.Import target './lib' did not resolve to a Telo.Library. Fetched from: lib/telo.yaml. Fetched 1 document(s) with kinds [Telo.Definition].\n  [INVALID_IMPORT_TARGET] Cannot use import 'Lib' → './lib': Telo.Import target './lib' did not resolve to a Telo.Library. Fetched from: lib/telo.yaml. Fetched 1 document(s) with kinds [Telo.Definition]."
+}

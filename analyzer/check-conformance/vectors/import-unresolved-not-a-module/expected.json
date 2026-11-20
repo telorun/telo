@@ -1,0 +1,27 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "IMPORT_UNRESOLVED",
+      "source": "telo-analyzer",
+      "message": "Cannot resolve import 'Lib' → './notes': notes is not a module: it holds no telo.yaml.",
+      "data": {
+        "filePath": "telo.yaml",
+        "path": "imports.Lib",
+        "sourceLine": 2,
+        "sourceFailure": "not-a-module"
+      },
+      "range": {
+        "start": {
+          "line": 2,
+          "character": 16
+        },
+        "end": {
+          "line": 2,
+          "character": 23
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_IMPORT_UNRESOLVED] notes is not a module: it holds no telo.yaml.\n  [IMPORT_UNRESOLVED] Cannot resolve import 'Lib' → './notes': notes is not a module: it holds no telo.yaml."
+}

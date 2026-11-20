@@ -1,0 +1,27 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "IMPORT_UNRESOLVED",
+      "source": "telo-analyzer",
+      "message": "Cannot resolve import 'Lib' → './missing': nothing exists at missing.",
+      "data": {
+        "filePath": "telo.yaml",
+        "path": "imports.Lib",
+        "sourceLine": 2,
+        "sourceFailure": "not-found"
+      },
+      "range": {
+        "start": {
+          "line": 2,
+          "character": 16
+        },
+        "end": {
+          "line": 2,
+          "character": 25
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_IMPORT_UNRESOLVED] nothing exists at missing.\n  [IMPORT_UNRESOLVED] Cannot resolve import 'Lib' → './missing': nothing exists at missing."
+}

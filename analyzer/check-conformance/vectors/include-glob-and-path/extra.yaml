@@ -1,0 +1,2 @@
+kind: Self.Greeter
+metadata: { name: extra, description: "and ${{ 6" }

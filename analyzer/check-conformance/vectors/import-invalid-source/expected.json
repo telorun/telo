@@ -1,0 +1,26 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "INVALID_IMPORT_SOURCE",
+      "source": "telo-analyzer",
+      "message": "Cannot resolve import 'Lib' → 'acme/lib@1.0.0': not a recognized module reference. Expected 'oci://host/repo@tag', 'https://…', or a relative path. The bare '<namespace>/<name>@<version>' form was removed — rewrite it to the module's 'oci://' ref (`telo search <name>` reports it).",
+      "data": {
+        "filePath": "telo.yaml",
+        "path": "imports.Lib",
+        "sourceLine": 2
+      },
+      "range": {
+        "start": {
+          "line": 2,
+          "character": 16
+        },
+        "end": {
+          "line": 2,
+          "character": 30
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_INVALID_IMPORT_SOURCE] No source found for: acme/lib@1.0.0\n  [INVALID_IMPORT_SOURCE] Cannot resolve import 'Lib' → 'acme/lib@1.0.0': not a recognized module reference. Expected 'oci://host/repo@tag', 'https://…', or a relative path. The bare '<namespace>/<name>@<version>' form was removed — rewrite it to the module's 'oci://' ref (`telo search <name>` reports it)."
+}

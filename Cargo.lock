@@ -3146,6 +3146,7 @@ dependencies = [
  "telo-templating",
  "telorun-cel",
  "telorun-cel-value",
+ "telorun-glob",
  "telorun-sdk-core",
  "thiserror 1.0.69",
 ]
@@ -3190,6 +3191,7 @@ dependencies = [
  "telo-analyzer",
  "telo-templating",
  "telorun-abi",
+ "telorun-glob",
  "telorun-message-format",
  "telorun-sdk-core",
  "tempfile",

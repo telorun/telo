@@ -150,16 +150,36 @@ fn refuses_a_redirect_to_plain_http_off_loopback() {
     assert!(err.message.contains("which is not HTTPS"), "{err}");
 }
 
-/// A 401 whose token could not be obtained says what the token service answered.
+/// A 401 no token could be obtained for is the registry refusing the read, in Telo's words.
 #[test]
-fn reports_why_no_token_was_obtained() {
+fn reports_a_pull_no_token_was_obtained_for_as_refused() {
     let registry = TestRegistry::start(true);
     let pinned = registry.publish("aws/telo-s3", "1.2.0", LIBRARY, "", &[]).pinned;
     registry.redirect("/token", "/no-token-service");
 
     let err = OciSource::default().read(&pinned).err().expect("an unauthenticated pull is refused");
 
-    let message = err.to_string();
-    assert!(message.contains("no anonymous token was obtained"), "{message}");
-    assert!(message.contains("answered 404"), "{message}");
+    assert_eq!(
+        err.to_string(),
+        format!("the host refused the request for oci://{}/aws/telo-s3@1.2.0 (HTTP 401).", registry.host())
+    );
+}
+
+/// A registry's answers as the closed source-failure set: the manifest a reference names
+/// answered 404 is not found, any other refused reply is the host refusing, and a host
+/// nothing answers at cannot be reached.
+#[test]
+fn words_each_registry_failure_as_telo_does() {
+    let registry = TestRegistry::start(false);
+    let read = |reference: &str| OciSource::default().read(reference).err().expect("refused").to_string();
+
+    let missing = format!("oci://{}/aws/absent@1.0.0", registry.host());
+    assert_eq!(read(&missing), format!("nothing exists at {missing}."));
+
+    registry.push_manifest("aws/telo-s3", "1.2.0", &[(LEGACY_LAYER, "sha256:0000000000000000000000000000000000000000000000000000000000000000")]);
+    let blobless = format!("oci://{}/aws/telo-s3@1.2.0", registry.host());
+    assert_eq!(read(&blobless), format!("the host refused the request for {blobless} (HTTP 404)."));
+
+    let unreachable = "oci://127.0.0.1:1/aws/telo-s3@1.2.0";
+    assert_eq!(read(unreachable), format!("{unreachable} cannot be reached: no connection to its host could be made."));
 }

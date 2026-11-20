@@ -110,12 +110,10 @@ fn a_path_that_does_not_exist_is_a_load_failure_diagnostic() {
     let payload = envelope(&output);
     assert_eq!(payload["errorCount"], 1);
     assert_eq!(payload["diagnostics"][0]["file"], "missing.yaml");
-    assert!(
-        payload["diagnostics"][0]["message"].as_str().unwrap().starts_with("ENOENT: no such file or directory"),
-        "{payload}"
-    );
+    let message = payload["diagnostics"][0]["message"].as_str().unwrap();
+    assert!(message.starts_with("nothing exists at file://") && message.ends_with("/missing.yaml."), "{payload}");
     // The reason is on stderr in both formats.
-    assert!(stderr(&output).starts_with("missing.yaml  error  ENOENT"), "{}", stderr(&output));
+    assert!(stderr(&output).starts_with("missing.yaml  error  nothing exists at file://"), "{}", stderr(&output));
 }
 
 #[test]

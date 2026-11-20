@@ -16,6 +16,7 @@ use std::rc::Rc;
 
 use telo_analyzer::sources::integrity::verify_integrity;
 use telo_analyzer::sources::oci_ref::{is_oci_ref, parse_oci_ref, OCI_SCHEME};
+use telo_analyzer::sources::source_failure::{ManifestSourceFailure, SourceFailureKind};
 use telo_analyzer::{LoadError, ManifestSource, ReadManifest, DEFAULT_MANIFEST_FILENAME};
 
 use crate::bundle::files_integrity::PayloadFile;
@@ -23,7 +24,7 @@ use crate::bundle::module_artifact::LayerFetcher;
 use crate::bundle::tar::read_tar_gz;
 use crate::error::KernelError;
 use crate::transports::oci::oci_client::{
-    blob_digest, OciClient, TELO_LEGACY_LAYER_MEDIA_TYPE, TELO_MANIFEST_LAYER_MEDIA_TYPE,
+    blob_digest, OciClient, OciError, OciFailure, TELO_LEGACY_LAYER_MEDIA_TYPE, TELO_MANIFEST_LAYER_MEDIA_TYPE,
 };
 
 /// Cheap to clone: the loader holds one handle and every module artifact
@@ -60,48 +61,65 @@ impl OciSource {
     /// `telo.yaml`, which is what makes addressing the rest from its index safe.
     /// A pre-layers single-blob artifact contains `telo.yaml` too and is read
     /// the same way.
-    fn pull_manifest_layer(&self, reference: &str) -> Result<ReadManifest, String> {
-        let parsed = parse_oci_ref(reference).map_err(|err| err.message)?;
+    fn pull_manifest_layer(&self, reference: &str) -> Result<ReadManifest, LoadError> {
+        let parsed = parse_oci_ref(reference).map_err(|err| LoadError::Failed(err.message))?;
         let client = self.client(&parsed.host, &parsed.repo);
-        let manifest = client.pull_manifest(&parsed.reference).map_err(|err| err.message)?;
+        let location = format!("{OCI_SCHEME}{}/{}@{}", parsed.host, parsed.repo, parsed.reference);
+        let failed = |err: OciError| oci_source_failure(err, &location);
+        let manifest = client.pull_manifest(&parsed.reference).map_err(failed)?;
         let layer = manifest
             .layers
             .iter()
             .find(|l| l.media_type == TELO_MANIFEST_LAYER_MEDIA_TYPE)
             .or_else(|| manifest.layers.iter().find(|l| l.media_type == TELO_LEGACY_LAYER_MEDIA_TYPE))
             .or_else(|| manifest.layers.first())
-            .ok_or_else(|| format!("OCI artifact {reference} has no layers"))?;
-        let blob = client.pull_blob(&layer.digest).map_err(|err| err.message)?;
+            .ok_or_else(|| LoadError::Failed(format!("OCI artifact {reference} has no layers")))?;
+        let blob = client.pull_blob(&layer.digest).map_err(failed)?;
         let entries = read_tar_gz(&blob).map_err(|err| {
-            format!("OCI artifact {reference} manifest layer is not a readable tar.gz: {err}")
+            LoadError::Failed(format!("OCI artifact {reference} manifest layer is not a readable tar.gz: {err}"))
         })?;
         let content = match entries.into_iter().find(|e| e.name() == DEFAULT_MANIFEST_FILENAME) {
             None => {
-                return Err(format!(
+                return Err(LoadError::Failed(format!(
                     "OCI artifact {reference} manifest layer does not contain {DEFAULT_MANIFEST_FILENAME}"
-                ))
+                )))
             }
             Some(PayloadFile::Link { .. }) => {
-                return Err(format!(
+                return Err(LoadError::Failed(format!(
                     "OCI artifact {reference} manifest layer carries {DEFAULT_MANIFEST_FILENAME} as a symbolic link; it must be a regular file."
-                ))
+                )))
             }
             Some(PayloadFile::Regular { content, .. }) => content,
         };
         // Telo's inline hash is authoritative; the OCI digest only corroborates.
         if let Some(integrity) = &parsed.integrity {
-            verify_integrity(&content, integrity, reference).map_err(|err| err.message)?;
+            verify_integrity(&content, integrity, reference).map_err(|err| LoadError::Failed(err.message))?;
         }
         let text = String::from_utf8(content).map_err(|err| {
-            format!("OCI artifact {reference} carries a {DEFAULT_MANIFEST_FILENAME} that is not UTF-8: {err}")
+            LoadError::Failed(format!("OCI artifact {reference} carries a {DEFAULT_MANIFEST_FILENAME} that is not UTF-8: {err}"))
         })?;
-        Ok(ReadManifest {
-            text,
-            source: format!(
-                "{OCI_SCHEME}{}/{}@{}",
-                parsed.host, parsed.repo, parsed.reference
-            ),
-        })
+        Ok(ReadManifest { text, source: location })
+    }
+}
+
+/// A read's failure as the closed source-failure set, at the transport's boundary: the
+/// registry answering 404 for the manifest a reference names is `not-found`, any other
+/// non-2xx reply `refused`, a request that reached no host `unreachable`. Anything else — an
+/// egress refusal, a malformed artifact — is no source failure and keeps its own words.
+fn oci_source_failure(error: OciError, location: &str) -> LoadError {
+    match error.failure {
+        Some(OciFailure::Reply { status: 404, manifest: true }) => {
+            LoadError::Source(ManifestSourceFailure::new(SourceFailureKind::NotFound, location))
+        }
+        Some(OciFailure::Reply { status, .. }) => LoadError::Source(ManifestSourceFailure {
+            kind: SourceFailureKind::Refused,
+            location: location.to_string(),
+            status: Some(status),
+        }),
+        Some(OciFailure::Unreachable) => {
+            LoadError::Source(ManifestSourceFailure::new(SourceFailureKind::Unreachable, location))
+        }
+        None => LoadError::Failed(error.message),
     }
 }
 
@@ -112,10 +130,14 @@ impl ManifestSource for OciSource {
 
     fn read(&self, path_or_url: &str) -> Result<ReadManifest, LoadError> {
         self.pull_manifest_layer(path_or_url)
-            .map_err(|message| LoadError::Io {
-                path: path_or_url.to_string(),
-                message,
-            })
+    }
+
+    /// A module read out of an artifact names its partials and nested libraries inside the
+    /// artifact, which this kernel does not read.
+    fn resolve_relative(&self, base: &str, relative: &str) -> Result<String, LoadError> {
+        Err(LoadError::Unsupported(format!(
+            "'{relative}' is a path inside the oci:// artifact {base}; this kernel does not read a file shipped inside another artifact"
+        )))
     }
 }
 

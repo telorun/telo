@@ -1,0 +1,9 @@
+units:
+  analyzer: Added
+body: "The Rust analyzer walks the module graph as the Node analyzer does — inline
+  imports desugared, authored module-level Telo.Import documents, include: partials with
+  globs, version reconciliation — and reports each import's failure under Node's code
+  (INVALID_IMPORT_SOURCE, IMPORT_UNRESOLVED with data.sourceFailure,
+  INVALID_IMPORT_TARGET), MODULE_VERSION_CONFLICT and MODULE_VERSION_HOISTED, the
+  MODULE_DECLARATION_* and PARTIAL_* refusals, and a library's UNTAGGED_INTERPOLATION at
+  the import reaching it."

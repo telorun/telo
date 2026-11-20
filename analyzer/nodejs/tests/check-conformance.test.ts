@@ -1,6 +1,7 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { selectByPatterns } from "@telorun/glob";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
 import { collectApplicationSources } from "../src/child-application.js";
@@ -8,23 +9,53 @@ import { locateDiagnostic } from "../src/diagnostic-location.js";
 import { collectModuleDocuments, flattenForAnalyzer } from "../src/flatten-for-analyzer.js";
 import { assembleGraphDiagnostics } from "../src/graph-diagnostics.js";
 import { Loader } from "../src/manifest-loader.js";
+import { fileSourceFailure, ManifestSourceFailure } from "../src/sources/source-failure.js";
 import type { ManifestSource } from "../src/types.js";
 
 /** `analyzer/check-conformance/`: each row is a manifest tree and what `telo check`
  *  reports for it, every diagnostic whole and at the range it is shown at. */
 const VECTORS = fileURLToPath(new URL("../../check-conformance/vectors/", import.meta.url));
 
-/** The filesystem as `telo check` reads it: every source a `file://` URL, a directory
- *  read as its `telo.yaml`. */
+/** The filesystem as `telo check` reads it — the kernel's local file source: every source
+ *  a `file://` URL, a directory read as its `telo.yaml`, a failure in Telo's words, an
+ *  `include:` glob expanded over the owner's directory. */
 const fileSource: ManifestSource = {
-  supports: (url) => url.startsWith("file://") || isAbsolute(url),
+  supports: (url) =>
+    url.startsWith("file://") ||
+    url.startsWith("/") ||
+    url.startsWith("./") ||
+    url.startsWith("../") ||
+    (!url.includes("://") && !url.includes("@")),
   async read(url) {
-    const path = url.startsWith("file://") ? fileURLToPath(url) : url;
-    const file = existsSync(path) && statSync(path).isDirectory() ? join(path, "telo.yaml") : path;
-    return { text: readFileSync(file, "utf8"), source: pathToFileURL(file).href };
+    const path = resolve(url.startsWith("file://") ? fileURLToPath(url) : url);
+    let directory: boolean;
+    try {
+      directory = statSync(path).isDirectory();
+    } catch (error) {
+      throw fileSourceFailure(error, pathToFileURL(path).href);
+    }
+    const file = directory ? join(path, "telo.yaml") : path;
+    try {
+      return { text: readFileSync(file, "utf8"), source: pathToFileURL(file).href };
+    } catch (error) {
+      const code = (error as { code?: unknown }).code;
+      if (directory && (code === "ENOENT" || code === "ENOTDIR")) {
+        throw new ManifestSourceFailure("not-a-module", pathToFileURL(path).href, { cause: error });
+      }
+      throw fileSourceFailure(error, pathToFileURL(file).href);
+    }
   },
   resolveRelative: (base, relative) =>
     pathToFileURL(resolve(dirname(base.startsWith("file://") ? fileURLToPath(base) : base), relative)).href,
+  async expandGlob(base, patterns) {
+    const baseDir = dirname(resolve(base.startsWith("file://") ? fileURLToPath(base) : base));
+    const rels = readdirSync(baseDir, { recursive: true, withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .map((entry) => relative(baseDir, join(entry.parentPath, entry.name)).replace(/\\/g, "/"));
+    return selectByPatterns(rels, patterns, { applyDefaultIgnore: false }).map(
+      (rel) => pathToFileURL(resolve(baseDir, rel)).href,
+    );
+  },
 };
 
 /** Every string with the row directory's prefix removed, so a file reads relative to it. */

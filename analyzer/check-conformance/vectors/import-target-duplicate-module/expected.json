@@ -1,0 +1,45 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "INVALID_IMPORT_TARGET",
+      "source": "telo-analyzer",
+      "message": "Cannot use import 'Lib' → './lib': it declares 2 module documents (Telo.Library, Telo.Application); a library's telo.yaml declares exactly one Telo.Library.",
+      "data": {
+        "filePath": "telo.yaml",
+        "path": "imports.Lib",
+        "sourceLine": 2
+      },
+      "range": {
+        "start": {
+          "line": 2,
+          "character": 16
+        },
+        "end": {
+          "line": 2,
+          "character": 21
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "MODULE_DECLARATION_DUPLICATE",
+      "source": "telo-analyzer",
+      "message": "This file declares 2 module documents (Telo.Library, Telo.Application): a module's telo.yaml declares exactly one Telo.Application or Telo.Library; keep one and move each other module to a telo.yaml in a directory of its own.",
+      "data": {
+        "filePath": "lib/telo.yaml"
+      },
+      "range": {
+        "start": {
+          "line": 3,
+          "character": 6
+        },
+        "end": {
+          "line": 3,
+          "character": 22
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_INVALID_IMPORT_TARGET] it declares 2 module documents (Telo.Library, Telo.Application); a library's telo.yaml declares exactly one Telo.Library.\n  [INVALID_IMPORT_TARGET] Cannot use import 'Lib' → './lib': it declares 2 module documents (Telo.Library, Telo.Application); a library's telo.yaml declares exactly one Telo.Library."
+}

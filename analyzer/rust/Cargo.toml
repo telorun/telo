@@ -21,3 +21,6 @@ telorun-cel-value = { path = "../../cel/rust/value" }
 # Value types, read as data — backend-free, so no controller backend comes with it.
 telorun-sdk-core = { path = "../../sdk/rust/core" }
 thiserror = "1"
+
+[dev-dependencies]
+telorun-glob = { path = "../../packages/glob/rust" }

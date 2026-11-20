@@ -88,6 +88,17 @@ pub fn http_source_failure(status: u16, location: impl Into<String>) -> Manifest
     }
 }
 
+/// A canonical source as Telo's words name a location: an absolute path — what this
+/// crate's file sources hand over — as its `file://` URL, any other location as it is.
+pub fn location_of(source: &str) -> String {
+    let path = Path::new(source);
+    if path.is_absolute() {
+        file_url(path)
+    } else {
+        source.to_string()
+    }
+}
+
 /// The `file://` URL of an absolute path, encoded as Node's `pathToFileURL` encodes it.
 pub fn file_url(path: &Path) -> String {
     let text = path.to_string_lossy();

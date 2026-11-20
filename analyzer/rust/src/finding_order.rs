@@ -67,9 +67,9 @@ pub struct FindingOrder<'g> {
 impl<'g> FindingOrder<'g> {
     pub fn new(graph: &'g LoadedGraph) -> Self {
         let mut ranks = HashMap::new();
-        for module in graph.modules.values() {
+        for file in graph.files() {
             let next = ranks.len() as i64;
-            ranks.entry(module.owner.source.as_str()).or_insert(next);
+            ranks.entry(file.source.as_str()).or_insert(next);
         }
         Self { graph, ranks }
     }

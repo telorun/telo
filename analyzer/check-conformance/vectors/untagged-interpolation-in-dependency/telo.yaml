@@ -1,0 +1,3 @@
+kind: Telo.Application
+metadata: { name: UntaggedDependencyApp }
+imports: { Lib: ./lib }
