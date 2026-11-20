@@ -1,0 +1,4 @@
+kind: Telo.Definition
+metadata: { name: Orphan }
+capability: Telo.Type
+schema: { type: object }

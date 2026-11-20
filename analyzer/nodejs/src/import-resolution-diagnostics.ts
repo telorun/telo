@@ -114,12 +114,14 @@ export function importFailureDiagnostics(
       path?: string;
       sourceLine?: number;
       resource?: { kind: string; name: string };
+      sourceFailure?: string;
     } = { filePath };
     if (e.scope) {
       data.resource = e.scope.holder;
       data.path = e.scope.path;
     } else if (e.alias) data.path = `imports.${e.alias}`;
     if (e.sourceLine !== undefined) data.sourceLine = e.sourceLine;
+    if (e.sourceFailure !== undefined) data.sourceFailure = e.sourceFailure;
     return {
       severity: DiagnosticSeverity.Error,
       code,

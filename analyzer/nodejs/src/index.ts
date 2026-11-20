@@ -1233,6 +1233,14 @@ export type { DocumentPosition, FilePositions } from "./position-metadata.js";
 export { HttpSource, httpManifestUrl } from "./sources/http-source.js";
 export { defaultSources } from "./sources/default-sources.js";
 export {
+  ManifestSourceFailure,
+  fileSourceFailure,
+  httpSourceFailure,
+  sourceFailureOf,
+  sourceFailureSentence,
+} from "./sources/source-failure.js";
+export type { SourceFailureKind } from "./sources/source-failure.js";
+export {
   splitIntegrity,
   foldIntegrity,
   isCanonicalIntegrity,

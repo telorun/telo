@@ -6,6 +6,7 @@ import type { FileMigrations } from "./migrations/driver.js";
 import type { DocumentPosition } from "./position-metadata.js";
 import type { AnalysisDiagnostic, Range } from "./types.js";
 import type { AstDocument } from "./yaml-ast.js";
+import type { SourceFailureKind } from "./sources/source-failure.js";
 
 /** One physical file's parsed result. Returned for the owner manifest, for
  *  each `include:` partial, and for each external import target.
@@ -224,5 +225,9 @@ export interface GraphLoadError {
   /** Set for an import declared as a scope member, which has no `imports:`
    *  entry: the top-level holder and the member's place in it (`with[0]`). */
   scope?: { holder: { kind: string; name: string }; path: string };
+  /** The kind of source failure that left the target unobtained, when its
+   *  source named one (`sources/source-failure.ts`); `error.message` is then
+   *  that failure's sentence. */
+  sourceFailure?: SourceFailureKind;
   error: Error;
 }

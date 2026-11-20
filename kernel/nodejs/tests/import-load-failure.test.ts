@@ -1,4 +1,4 @@
-import type { ManifestSource } from "@telorun/analyzer";
+import { ManifestSourceFailure, type ManifestSource } from "@telorun/analyzer";
 import { RuntimeError } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
 import { Kernel } from "../src/kernel.js";
@@ -70,6 +70,42 @@ imports:
     ).rejects.toMatchObject({
       code: "ERR_EGRESS_DENIED",
       diagnostics: [expect.objectContaining({ code: "IMPORT_UNRESOLVED" })],
+    });
+  });
+
+  it("refuses a source failure as ERR_IMPORT_UNRESOLVED in Telo's words, never the transport's code", async () => {
+    const unreachable: ManifestSource = {
+      supports: (url) => url.startsWith("https://down.example/"),
+      read: async (url) => {
+        throw new ManifestSourceFailure("unreachable", url, {
+          cause: new RuntimeError("ERR_NETWORK_UNREACHABLE", "getaddrinfo ENOTFOUND down.example"),
+        });
+      },
+      resolveRelative: (base, relative) => relative,
+    };
+    const memory = new MemorySource();
+    memory.set(
+      "app",
+      `kind: Telo.Application
+metadata:
+  name: App
+imports:
+  Lib: https://down.example/lib
+`,
+    );
+    const sentence =
+      "https://down.example/lib cannot be reached: no connection to its host could be made.";
+    await expect(
+      new Kernel({ sources: [memory, unreachable], env: {} }).load("memory://app"),
+    ).rejects.toMatchObject({
+      code: "ERR_IMPORT_UNRESOLVED",
+      message: sentence,
+      diagnostics: [
+        expect.objectContaining({
+          code: "IMPORT_UNRESOLVED",
+          message: `Cannot resolve import 'Lib' → 'https://down.example/lib': ${sentence}`,
+        }),
+      ],
     });
   });
 });

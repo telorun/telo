@@ -1,15 +1,13 @@
 kind: Telo.Application
-metadata:
-  name: IncludeRejectsSystemKindsTest
-  version: 1.0.0
-imports:
-  Assert: ../modules/assert
+metadata: { name: IncludeRejectsSystemKindsTest, version: 1.0.0 }
+imports: { Assert: ../modules/assert }
 targets:
   - !ref testSystemKindRejected
 ---
 kind: Assert.Manifest
-metadata:
-  name: testSystemKindRejected
+metadata: { name: testSystemKindRejected }
 source: ./__fixtures__/include-rejects-system-kinds.yaml
 expect:
-  loadError: "not allowed in partial files"
+  errors:
+    - { code: PARTIAL_KIND_FORBIDDEN, message: "may not declare a 'Telo.Application' document" }
+  runFails: "may not declare a 'Telo.Application' document"
