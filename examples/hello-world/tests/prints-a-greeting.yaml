@@ -7,7 +7,7 @@ metadata:
     smallest example there is, and the one most likely to be read first — so what
     it prints is part of its contract.
 imports:
-  Assert: ../../../modules/assert
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 targets:
   - !ref test
 ---

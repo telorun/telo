@@ -21,25 +21,25 @@ metadata:
 requires: { telo: ">=0.133.0" }
 lang: en
 imports:
-  Http: ../../modules/http-server
-  HttpClient: ../../modules/http-client
-  Ai: ../../modules/ai
-  Anthropic: ../../modules/anthropic
-  AiConversationSql: ../../modules/ai-conversation-sql
+  Http: oci://ghcr.io/telorun/http-server@0.44.2#sha256-Z3aQs8Q0qiXMrxwC8RFylKFbxqMv4BE1d1wJ_akPtb8
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  Ai: oci://ghcr.io/telorun/ai@0.38.0#sha256-KTrg0NH3Ztajo-Xm_ofAo6S6_wPykG46SBizkA6ewg8
+  Anthropic: oci://ghcr.io/telorun/anthropic@0.13.0#sha256-M3RGk3YzN9Smod4VcylGVvLM5XJ70us7OSAEDoOHJvI
+  AiConversationSql: oci://ghcr.io/telorun/ai-conversation-sql@0.6.0#sha256-YzHMlHJSbDF8TUrfoiwF9WrmyCna4csqM4j0bXgAmzQ
   # Not `AiChat`: an alias equal to the module's own name makes its private kinds
   # unreachable until that analyzer defect is fixed.
-  Chat: ../../modules/ai-chat
-  Conversation: ../../modules/conversation
-  RecordStream: ../../modules/record-stream
-  RecordStreamSql: ../../modules/record-stream-sql
-  Scheduler: ../../modules/scheduler
-  BlobFs: ../../modules/blob-fs
-  MediaType: ../../modules/media-type
-  Fs: ../../modules/fs
-  SQLite: ../../modules/sqlite
-  Ui: ../../modules/ui
-  UiLucide: ../../modules/ui-lucide
-  UiReact: ../../modules/ui-react
+  Chat: oci://ghcr.io/telorun/ai-chat@0.6.0#sha256-__tcWQ-UXM-4P4vEXtgZiXmIgP2_uk2wWkKthbJVoH8
+  Conversation: oci://ghcr.io/telorun/conversation@0.3.0#sha256-_V9Lo86u4Wrh_Eiwl6ndmPBnQ8fY6bE-uVlFuL_7LO0
+  RecordStream: oci://ghcr.io/telorun/record-stream@0.21.1#sha256-xVX2OlLHL9AhE3Q2C5c2BxnDutWOM4ReNLu2TUJdo04
+  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.11.4#sha256-gkL_4cu80hqH0aTvtWenQ7yyaUjqB6KtxmQpeLrlmvo
+  Scheduler: oci://ghcr.io/telorun/scheduler@0.12.3#sha256-X9B94U2W__mzKWfSG9FusG3JuIRk63tsFCr94inxL-k
+  BlobFs: oci://ghcr.io/telorun/blob-fs@0.3.3#sha256-OPq2Dm4qX_Usehcs3gtwRe7sm9-arog58Ev_dUOdmdQ
+  MediaType: oci://ghcr.io/telorun/media-type@0.3.1#sha256-DvbExYG8Gf6tmaZfLfaSziKcEAY2bQiDZeqXut3ihhs
+  Fs: oci://ghcr.io/telorun/fs@0.16.0#sha256-P24XqQm6tVmqb4ixO6ulAEeOUfAlmtiuiLBqrUo_g48
+  SQLite: oci://ghcr.io/telorun/sqlite@0.15.0#sha256-R-VPfYSLh-6R4yrmybipAeZMnFaN_7AiHCWHE1rXPpg
+  Ui: oci://ghcr.io/telorun/ui@0.14.0#sha256-Wpl2dcTv4cxU6BPT7HscQqV0znBEciWJnZKA8ro5ZNw
+  UiLucide: oci://ghcr.io/telorun/ui-lucide@0.11.0#sha256-5lQALVF3lJXrxFplYgVxRGv9hGy-2KLtZcM_ZF6ql4E
+  UiReact: oci://ghcr.io/telorun/ui-react@0.15.0#sha256-iXDeYGMRdp6r_r4K1bJtKQjvvDWEYIan_eZi1bMSaKc
 targets:
   - !ref server
   - !ref journalExpiry

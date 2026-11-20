@@ -34,15 +34,15 @@ requires:
   # 0.133.0: `Telo.OpenUrl`.
   telo: ">=0.133.0"
 imports:
-  Http: ../../modules/http-server
-  Multipart: ../../modules/multipart
-  Ndjson: ../../modules/ndjson-codec
-  Sse: ../../modules/sse-codec
-  Codec: ../../modules/codec
-  Stream: ../../modules/stream
-  Sql: ../../modules/sql
-  SQLite: ../../modules/sqlite
-  Run: ../../modules/run
+  Http: oci://ghcr.io/telorun/http-server@0.44.2#sha256-Z3aQs8Q0qiXMrxwC8RFylKFbxqMv4BE1d1wJ_akPtb8
+  Multipart: oci://ghcr.io/telorun/multipart@0.5.0#sha256-HYqZbfzXOf-YAU7TMyZEFFDBDxeMdyRAoNf4_lAj-Zo
+  Ndjson: oci://ghcr.io/telorun/ndjson-codec@0.10.1#sha256-m0u0T_B4LBEfqlfkl0LiMz7oSUSC4PdgwWhx3kCwdvU
+  Sse: oci://ghcr.io/telorun/sse-codec@0.15.0#sha256-JXQLizPP-oGDhlnR0CBEmrrYu7z4PnCLGSrYtlsVRBY
+  Codec: oci://ghcr.io/telorun/codec@0.9.1#sha256-xSQgAOPfZi8HI8AB85Z0QUD3hlqZkGvdOdU7S7_tIi4
+  Stream: oci://ghcr.io/telorun/stream@0.15.1#sha256-0tmjLgpnFJ4TfG0UxOdOxr_vUK2lMPmMPdb3Gsu5Ag0
+  Sql: oci://ghcr.io/telorun/sql@0.31.4#sha256-N-TiIeZ8rA0e9-RXCrsb1s-oLIJ1ajdAIdHbjt8kMxk
+  SQLite: oci://ghcr.io/telorun/sqlite@0.15.0#sha256-R-VPfYSLh-6R4yrmybipAeZMnFaN_7AiHCWHE1rXPpg
+  Run: oci://ghcr.io/telorun/run@0.35.0#sha256-FdrKmwYD_cpBi4_6f0a2Pf0BTtHG3Po4gQOqdpLR2T4
 targets:
   - !ref migrate
   - !ref server

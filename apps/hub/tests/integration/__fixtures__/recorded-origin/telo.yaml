@@ -40,8 +40,8 @@ metadata:
     Answers the hub's `telo module versions --json --digests` and `telo module
     manifest --json` reads with what is recorded for the requested ref.
 imports:
-  Console: ../../../../../../modules/console
-  Run: ../../../../../../modules/run
+  Console: oci://ghcr.io/telorun/console@0.19.4#sha256-MvM9cXMpqGm7PEORPdqrs-fUoD0jmrudthsmfXY3ATk
+  Run: oci://ghcr.io/telorun/run@0.35.0#sha256-FdrKmwYD_cpBi4_6f0a2Pf0BTtHG3Po4gQOqdpLR2T4
 variables:
   group: { type: string, arg: { position: 0 }, default: "" }
   verb: { type: string, arg: { position: 1 }, default: "" }

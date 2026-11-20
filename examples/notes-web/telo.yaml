@@ -21,18 +21,18 @@ metadata:
 lang: en
 requires: { telo: ">=0.133.0" }
 imports:
-  App: ../../modules/app
-  Http: ../../modules/http-server
-  HttpDispatch: ../../modules/http-dispatch
-  HttpClient: ../../modules/http-client
-  Session: ../../modules/session
-  Sql: ../../modules/sql
-  SQLite: ../../modules/sqlite
-  Crud: ../../modules/crud
-  DataModel: ../../modules/data-model
-  KvStoreSql: ../../modules/kv-store-sql
-  Ui: ../../modules/ui
-  UiReact: ../../modules/ui-react
+  App: oci://ghcr.io/telorun/app@0.7.1#sha256-QC8YsWqll6bwUbrPUzbNrKwEov7kH9MCbGTgF5hxOX0
+  Http: oci://ghcr.io/telorun/http-server@0.44.2#sha256-Z3aQs8Q0qiXMrxwC8RFylKFbxqMv4BE1d1wJ_akPtb8
+  HttpDispatch: oci://ghcr.io/telorun/http-dispatch@0.19.2#sha256-Cw8rzRLrbnWWd2OaKNNDDO6V0ojGUec69fcLRhVhcdM
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  Session: oci://ghcr.io/telorun/session@0.2.4#sha256-W31UPc-jR6p1ALqOx4WZl7TFYG9JSL0aZab013dxASc
+  Sql: oci://ghcr.io/telorun/sql@0.31.4#sha256-N-TiIeZ8rA0e9-RXCrsb1s-oLIJ1ajdAIdHbjt8kMxk
+  SQLite: oci://ghcr.io/telorun/sqlite@0.15.0#sha256-R-VPfYSLh-6R4yrmybipAeZMnFaN_7AiHCWHE1rXPpg
+  Crud: oci://ghcr.io/telorun/crud@0.37.0#sha256-ePMDiGLuDPY4iU9DREB21kuPcG5HF42BdslkECJM2U8
+  DataModel: oci://ghcr.io/telorun/data-model@0.3.0#sha256-kve4_9Mk2KXi4vZyvcYNBrEp-ZD_jWDWZwdbpD8qhTs
+  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.17.4#sha256-Arb3DUHLMlXdzBAzr1j8HiLFPtb4JrbZZA8xOHMAkwQ
+  Ui: oci://ghcr.io/telorun/ui@0.14.0#sha256-Wpl2dcTv4cxU6BPT7HscQqV0znBEciWJnZKA8ro5ZNw
+  UiReact: oci://ghcr.io/telorun/ui-react@0.15.0#sha256-iXDeYGMRdp6r_r4K1bJtKQjvvDWEYIan_eZi1bMSaKc
 variables:
   providerUrl:
     env: PROVIDER_URL

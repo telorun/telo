@@ -8,7 +8,7 @@ metadata:
     server. Exported as an instance, so an application and a test dispatch the
     same resource rather than two copies of one expression.
 imports:
-  Run: ../../../modules/run
+  Run: oci://ghcr.io/telorun/run@0.35.0#sha256-FdrKmwYD_cpBi4_6f0a2Pf0BTtHG3Po4gQOqdpLR2T4
 variables:
   discountThresholdCents:
     type: integer
