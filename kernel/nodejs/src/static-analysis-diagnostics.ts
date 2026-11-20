@@ -1,5 +1,10 @@
-import { DiagnosticSeverity, type AnalysisDiagnostic } from "@telorun/analyzer";
-import type { DiagnosticOrigin, RuntimeDiagnostic } from "@telorun/sdk";
+import {
+  DiagnosticSeverity,
+  type AnalysisDiagnostic,
+  type CarriedFinding,
+  type LoadRefusal,
+} from "@telorun/analyzer";
+import { RuntimeError, type DiagnosticOrigin, type RuntimeDiagnostic, type RuntimeErrorCode } from "@telorun/sdk";
 
 /**
  * Carry a static-analysis diagnostic into the runtime failure set.
@@ -48,4 +53,33 @@ function describeResource(
   if (!resource) return undefined;
   const parts = [resource.kind, resource.name].filter((p): p is string => p !== undefined);
   return parts.length > 0 ? parts.join(".") : undefined;
+}
+
+/** A load refusal the analyzer's rule decided, as the runtime failure it is raised as. */
+export function loadRefusalError(refusal: LoadRefusal): RuntimeError {
+  return new RuntimeError(
+    refusal.code as RuntimeErrorCode,
+    refusal.message,
+    refusal.carried.map(carriedToRuntime),
+  );
+}
+
+/** One finding a refusal carries, under the code the refusal raises it as. */
+export function carriedToRuntime(finding: CarriedFinding): RuntimeDiagnostic {
+  if ("need" in finding) {
+    const { need } = finding;
+    return {
+      severity: "error",
+      message: need.message,
+      code: need.runtimeCode,
+      ...(need.resource ? { resource: `${need.resource.kind}.${need.resource.name}` } : {}),
+      origin: {
+        ...(need.filePath !== undefined ? { filePath: need.filePath } : {}),
+        path: need.path,
+        ...(need.resource ? { resource: need.resource } : {}),
+      },
+    };
+  }
+  const runtime = staticDiagnosticToRuntime(finding.diagnostic);
+  return finding.code === undefined ? runtime : { ...runtime, code: finding.code };
 }

@@ -11,7 +11,7 @@ What `telo check` reports for a manifest, and what a run of it is refused with, 
 
 `diagnostics` is every diagnostic `telo check` reports for the entry, every severity: the parse, import-resolution and analysis diagnostics, assembled as every host assembles them (a file that failed to parse, or whose import failed, has its analysis held back). Each is the analyzer's whole `AnalysisDiagnostic` — `severity`, `code`, `source`, `message`, `tags`, all of `data` — with `range` the UTF-16 LSP range the diagnostic is shown at: its own range when it carries one, else the range its position fallback resolves (the resource's position, then its document, then the file's start); a diagnostic nothing locates has no `range`. They are compared as a multiset: a runner sorts both lists by each diagnostic's JSON text with keys sorted at every depth, compared by code point, and compares the sorted lists whole. A row stores them in that order.
 
-`runFails` is what loading the entry and running its targets is refused with, as one text — `[<CODE>] <message>` of the refusal, then each diagnostic it carries on a line of its own as `  [<CODE>] <message>` (`  <message>` for one with no code) — or `null` when the run succeeds. The carried diagnostics are in the canonical finding order, which every kernel takes from its analysis unchanged, while `diagnostics` stays a multiset.
+`runFails` is what loading the entry and running its targets is refused with — decided, in both kernels, by one load refusal rule over the loaded graph and the analysis (the analyzer's `loadRefusal`, twinned by `load_refusal`) — as one text — `[<CODE>] <message>` of the refusal, then each diagnostic it carries on a line of its own as `  [<CODE>] <message>` (`  <message>` for one with no code) — or `null` when the run succeeds. The carried diagnostics are in the canonical finding order, which every kernel takes from its analysis unchanged, while `diagnostics` stays a multiset.
 
 Every file a row's values name is relative to the row directory: a runner removes the row directory's own prefix (its `file://` URL or its path, followed by a separator) from every string it compares.
 
@@ -35,6 +35,7 @@ The values are Node's answers, recorded by running the Node analyzer and the Nod
 - `untagged-interpolation-entry` — `UNTAGGED_INTERPOLATION` for a plain string in the entry left holding a `${{` no hole can be read out of; `untagged-interpolation-in-dependency` — a library's, at the entry's `Telo.Import` reaching it; `untagged-interpolation-in-transitive-dependency` — a library no import of the entry names directly, at the library's own file.
 - `metadata-stamp-entry` — `METADATA_RESERVED_FIELD` for a loader stamp the entry's own document writes in `metadata`, at `metadata.<field>`; `metadata-stamp-in-dependency`, `metadata-stamp-in-transitive-dependency` — a dependency's, reported at the entry's `imports:` entry first reaching it, with `data.writtenAt` naming where the library writes it.
 - `mixed-entry-and-dependency` — several of the above in one manifest.
+- `library-entry` — a `Telo.Library` as the entry: `telo check` reports nothing, and the run is refused by the load refusal rule's root-module group.
 
 ## Runners
 

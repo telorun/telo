@@ -1,0 +1,10 @@
+kind: Telo.Application
+metadata: { name: PartialResources, version: 1.0.0 }
+include: [./resources.yaml]
+targets:
+  - invoke: !ref greet
+    inputs: { output: "Hello from a partial!" }
+---
+kind: Telo.Import
+metadata: { name: Console }
+source: ../../../../../modules/console

@@ -1,11 +1,11 @@
-//! Resolves one `imports:` entry to a child module.
+//! Turns one `Telo.Import` document into a child module.
 //! Mirrors `../../../nodejs/src/controllers/module/import-controller.ts`.
 //!
-//! Two things happen here that shape everything downstream: the child's source
-//! is resolved against the *importing manifest*, and the entry's `runtime:` is
-//! normalised into the controller-selection policy stamped on the child — which
-//! is why a kind's controller is chosen by the import that reached it rather
-//! than by the module that declared it.
+//! The child is the module the load's graph resolved the import to — this file
+//! resolves nothing itself — and the document's `runtime:` is normalised into the
+//! controller-selection policy stamped on the child, which is why a kind's
+//! controller is chosen by the import that reached it rather than by the module
+//! that declared it.
 //!
 //! One deliberate divergence from the Node twin, per the mirror rule: Node's
 //! `resolve-ref-sentinels.ts` walks a `Telo.Import`'s `resources:` block so the
@@ -15,89 +15,45 @@
 //! walk. The walk lands here when the feature does.
 
 use serde_json::Value;
-use telo_analyzer::resolve_source;
 use telo_analyzer::sources::oci_ref::is_oci_ref;
+use telo_analyzer::ImportEdge;
 
 use crate::error::KernelError;
 use crate::sentinel_pass::{compile_sentinels, Owner};
 use crate::runtime_registry::{normalize_runtime, ControllerPolicy};
 
 pub struct ImportSpec {
+    /// The canonical source of the module the graph's edge reached.
     pub source: String,
     pub policy: ControllerPolicy,
 }
 
-/// Expand an `imports:` entry — a bare source string, or the object form.
-///
-/// `from_artifact` is true when the importing module was loaded from an `oci://`
-/// artifact. A relative import there names a library inside that artifact, which
-/// this kernel does not resolve (nested libraries are unsupported), so it is refused
-/// rather than joined to the artifact's cache path.
-pub fn parse_import(
+/// One `Telo.Import` document of a module — desugared from its `imports:` map or authored —
+/// as the module the load's graph resolved it to (`edge`) and the controller policy its
+/// `runtime:` selects. `owner` names it in a refusal and `at` is its path there (the
+/// `imports:` entry a desugared one came from, nothing for an authored one).
+pub fn import_spec(
+    document: &Value,
+    edge: &ImportEdge,
+    owner: Owner,
+    at: &str,
     alias: &str,
-    entry: &Value,
-    owner: &str,
-    base_source: &str,
-    from_artifact: bool,
 ) -> Result<ImportSpec, KernelError> {
-    let (source, runtime) = match entry {
-        Value::String(source) => (source.as_str(), None),
-        Value::Object(map) => {
-            // What the import supplies is consumed here, so it takes the pass before the supply
-            // itself is refused.
-            let mut entry = entry.clone();
-            let mut other = ["source", "runtime", "resources", "needs"].to_vec();
-            other.retain(|key| map.contains_key(*key));
-            compile_sentinels(
-                Owner { label: owner, source: base_source },
-                &mut entry,
-                &format!("imports.{alias}"),
-                &other,
-            )?;
-            for unsupported in ["variables", "secrets", "resources", "needs"] {
-                if map.contains_key(unsupported) {
-                    return Err(KernelError::new(
-                        "ERR_UNSUPPORTED_MANIFEST_FEATURE",
-                        format!(
-                            "import '{alias}' passes `{unsupported}:`, which this kernel does not bind yet"
-                        ),
-                    ));
-                }
-            }
-            let source = map
-                .get("source")
-                .and_then(Value::as_str)
-                .ok_or_else(|| {
-                    KernelError::manifest_validation_failed(format!(
-                        "import '{alias}' has no `source`"
-                    ))
-                })?;
-            (source, map.get("runtime"))
+    // What the import supplies is consumed here, so it takes the pass before the supply
+    // itself is refused.
+    let mut entry = document.clone();
+    let mut skip = ["kind", "metadata", "source", "runtime", "resources", "needs"].to_vec();
+    skip.retain(|key| document.get(*key).is_some());
+    compile_sentinels(owner, &mut entry, at, &skip)?;
+    for unsupported in ["variables", "secrets", "resources", "needs"] {
+        if document.get(unsupported).is_some() {
+            return Err(KernelError::new(
+                "ERR_UNSUPPORTED_MANIFEST_FEATURE",
+                format!("import '{alias}' passes `{unsupported}:`, which this kernel does not bind yet"),
+            ));
         }
-        other => {
-            return Err(KernelError::manifest_validation_failed(format!(
-                "import '{alias}' must be a source string or an object, got {other}"
-            )))
-        }
-    };
-
-    Ok(ImportSpec {
-        source: resolve_import_source(alias, source, base_source, from_artifact)?,
-        policy: normalize_runtime(runtime)?,
-    })
-}
-
-/// The location an import's `source`, written under `alias` in the module at
-/// `base_source`, names — the resolution the load's graph walk makes, so both reach
-/// one module.
-pub fn resolve_import_source(
-    alias: &str,
-    source: &str,
-    base_source: &str,
-    from_artifact: bool,
-) -> Result<String, KernelError> {
-    refuse_unreadable_import(alias, source, from_artifact)?;
-    Ok(resolve_source(base_source, source))
+    }
+    Ok(ImportSpec { source: edge.target_source.clone(), policy: normalize_runtime(document.get("runtime"))? })
 }
 
 /// An import this kernel cannot read: a relative path inside an `oci://` artifact (a
@@ -126,20 +82,14 @@ pub fn refuse_unreadable_import(alias: &str, source: &str, from_artifact: bool) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     #[test]
     fn refuses_a_relative_import_inside_an_artifact_and_keeps_local_ones() {
-        let entry = json!("./lib");
-        let Err(refusal) = parse_import("Lib", &entry, "Telo.Application/App", "oci://ghcr.io/x/app@1.0.0", true) else {
+        let Err(refusal) = refuse_unreadable_import("Lib", "./lib", true) else {
             panic!("a relative import inside an artifact must be refused");
         };
         assert_eq!(refusal.code, "ERR_UNSUPPORTED_MANIFEST_FEATURE");
         assert!(refusal.message.contains("Nested libraries"), "{}", refusal.message);
-
-        let Ok(local) = parse_import("Lib", &entry, "Telo.Application/App", "/work/app/telo.yaml", false) else {
-            panic!("a relative import from a local module must resolve");
-        };
-        assert_eq!(local.source, "/work/app/lib");
+        assert!(refuse_unreadable_import("Lib", "./lib", false).is_ok());
     }
 }

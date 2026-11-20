@@ -26,6 +26,16 @@ fn runs_the_hello_world_manifest() {
     assert_eq!(results, vec![serde_json::json!("Hello from Telo!")]);
 }
 
+/// A resource declared in an `include:` partial is created in the module's scope, and an
+/// authored module-level `Telo.Import` document is the import the load's graph resolved.
+#[test]
+fn runs_a_resource_declared_in_a_partial_through_an_authored_import() {
+    let mut kernel = Kernel::new();
+    kernel.load(&fixture("partial-resources")).expect("manifest loads");
+    let results = kernel.run_targets().expect("targets run");
+    assert_eq!(results, vec![serde_json::json!("Hello from a partial!")]);
+}
+
 /// A field this kernel does not implement must stop the load, not be dropped.
 /// The fixture is a manifest the Node kernel runs happily — the disagreement is
 /// the point, and it has to be loud.

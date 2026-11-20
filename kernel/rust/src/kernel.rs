@@ -16,9 +16,8 @@ use std::rc::Rc;
 use serde_json::{json, Value};
 use telo_analyzer::sources::oci_ref::is_oci_ref;
 use telo_analyzer::{
-    analyze, as_resolved_ref, load_graph, unapplied_library_migrations, AnalysisDiagnostic, AnalysisOptions, DiagnosticSeverity,
-    FindingOrder, ImportTargetPort, LoadError, LoadedFile, LoadedGraph, LoadedModule as TargetModule, ManifestLoader,
-    ManifestSource, DEFAULT_MANIFEST_FILENAME,
+    analyze, as_resolved_ref, load_graph, load_refusal, AnalysisDiagnostic, AnalysisOptions, ImportTargetPort, LoadError,
+    LoadRefusalHost, LoadedFile, LoadedGraph, LoadedModule as TargetModule, ManifestLoader, ManifestSource,
 };
 
 use crate::bundle::module_artifact::{
@@ -29,8 +28,6 @@ use crate::controller_loader::ControllerLoader;
 use crate::controller_registry::ControllerRegistry;
 use crate::controllers::module::import_controller::refuse_unreadable_import;
 use crate::controllers::module::module_controller::{load_module, value_branch_accepts, LoadedModule, ModuleRole};
-use crate::import_load_failure::import_load_failure;
-use crate::metadata_stamp_refusals::metadata_stamp_load_refusal;
 use crate::error::KernelError;
 use crate::evaluation_context::ResourceInstance;
 use crate::resolve_include_sentinels::{resolve_include_sentinels, IncludeCache};
@@ -98,9 +95,10 @@ impl ImportTargetPort for ArtifactManifestLoader {
 }
 
 impl ArtifactManifestLoader {
-    /// Register every module of `graph`'s artifact and `sources:` block — after
-    /// the static refusals, as the Node kernel builds them, so a manifest that
-    /// does not parse is refused before its owner fields are read.
+    /// Register every module of `graph`'s artifact and `sources:` block — between the
+    /// load refusal rule's parse group and its version conflicts, as the Node kernel
+    /// builds them, so a manifest that does not parse is refused before its owner
+    /// fields are read.
     fn build_module_artifacts(&self, graph: &LoadedGraph) -> Result<(), KernelError> {
         for module in graph.modules.values() {
             let loaded = &module.owner;
@@ -143,43 +141,36 @@ pub struct LoadEnv {
     pub graph: LoadedGraph,
     pub registry: ControllerRegistry,
     pub controllers: ControllerLoader,
-    /// Loaded modules by (canonical manifest path, policy). A library imported
+    /// Loaded modules by (the graph's canonical source, policy). A library imported
     /// twice under the same policy must be one module: two copies would give
-    /// each import its own instance of an exported singleton.
-    ///
-    /// The key is *canonical* because two spellings of one path — `../console`
-    /// and `../console/telo.yaml` — are the same module, and treating them as
-    /// two would duplicate every singleton silently. It includes the policy
-    /// because two imports may legitimately select different controllers for the
-    /// same kinds, which is exactly what the Node registry's policy fingerprint
+    /// each import its own instance of an exported singleton. The key includes the
+    /// policy because two imports may legitimately select different controllers for
+    /// the same kinds, which is exactly what the Node registry's policy fingerprint
     /// exists for.
     modules: RefCell<HashMap<String, Rc<ModuleContext>>>,
 }
 
 impl LoadEnv {
+    /// The module the graph's import edge reached at `target_source`, created once per policy.
     pub fn load_import(
         &self,
-        source: &str,
+        target_source: &str,
         policy: ControllerPolicy,
     ) -> Result<Rc<ModuleContext>, KernelError> {
-        let cache_key = format!(
-            "{}\0{}",
-            canonical_module_key(source),
-            policy.load.join(",")
-        );
+        let cache_key = format!("{target_source}\0{}", policy.load.join(","));
         if let Some(cached) = self.modules.borrow().get(&cache_key) {
             return Ok(Rc::clone(cached));
         }
-        let loaded = load_module(self, source, policy, ModuleRole::Import)?;
+        let loaded = load_module(self, target_source, policy, ModuleRole::Import)?;
         self.modules
             .borrow_mut()
             .insert(cache_key, Rc::clone(&loaded.context));
         Ok(loaded.context)
     }
 
-    /// The file the load's graph read for `path_or_url`.
-    pub fn file(&self, path_or_url: &str) -> Result<&LoadedFile, KernelError> {
-        self.graph.module(path_or_url).map(|module| &module.owner).ok_or_else(|| {
+    /// The module the load's graph read for `path_or_url`: its owner file and its partials.
+    pub fn module(&self, path_or_url: &str) -> Result<&TargetModule, KernelError> {
+        self.graph.module(path_or_url).ok_or_else(|| {
             KernelError::runtime_invalid(format!(
                 "'{path_or_url}' is loaded by a module, but the load's import graph never reached it"
             ))
@@ -187,10 +178,18 @@ impl LoadEnv {
     }
 }
 
+/// What a load does once its entry's graph is read and nothing refused it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct LoadOptions {
+    /// Stop after the static pre-flight — the graph, the load refusal rule, the module
+    /// artifacts — before any module is created. The twin of the Node kernel's `analyzeOnly`.
+    pub analyze_only: bool,
+}
+
 /// The environment for one run from `entry`: the `.telo` cache root anchored on
 /// it, and the source chain local file → manifest cache → OCI registry, so a
 /// cached manifest never reaches the network. The entry's whole import graph is
-/// read and its static refusals raised before anything else.
+/// read and refused by the load refusal rule before anything else.
 fn load_env(entry: &str) -> Result<LoadEnv, KernelError> {
     let entry_dir = entry_dir(entry)?;
     let manifests_dir = resolve_cache_root(&entry_dir)
@@ -210,8 +209,10 @@ fn load_env(entry: &str) -> Result<LoadEnv, KernelError> {
         manifests_dir,
     };
     let graph = load_graph(&loader, entry)?;
-    refuse_static_findings(&graph)?;
-    loader.build_module_artifacts(&graph)?;
+    let refusal = load_refusal(&graph, entry, &mut StaticPreflight { loader: &loader, graph: &graph })?;
+    if let Some(refusal) = refusal {
+        return Err(KernelError::new(refusal.code, refusal.message).with_diagnostics(refusal.diagnostics));
+    }
     Ok(LoadEnv {
         loader,
         graph,
@@ -221,74 +222,22 @@ fn load_env(entry: &str) -> Result<LoadEnv, KernelError> {
     })
 }
 
-/// What the load refuses before any module is created, in the Node kernel's
-/// order: a construct this kernel cannot read at all — an import or a partial included; a
-/// library migration it does not apply, where one may apply; the import failures, as one
-/// error of the first failure's code; the parse and coded loader failures, as one
-/// `ERR_MANIFEST_VALIDATION_FAILED` naming each file; the version conflicts; the analysis's
-/// errors, as one `ERR_MANIFEST_VALIDATION_FAILED`. Each carries its diagnostics.
-fn refuse_static_findings(graph: &LoadedGraph) -> Result<(), KernelError> {
-    for file in graph.files() {
-        for error in file.parse_errors.iter().filter(|error| error.is_host_refusal()) {
-            let place = match error.range {
-                Some(range) => format!(
-                    "document {}, line {}, column {}",
-                    error.document_index + 1,
-                    range.start.line + 1,
-                    range.start.character + 1
-                ),
-                None => format!("document {}", error.document_index + 1),
-            };
-            return Err(KernelError::new(
-                "ERR_UNSUPPORTED_MANIFEST_FEATURE",
-                format!("'{}', {place}: {}", file.source, error.message()),
-            ));
-        }
+/// What the load refusal rule asks of this kernel between its groups.
+struct StaticPreflight<'a> {
+    loader: &'a ArtifactManifestLoader,
+    graph: &'a LoadedGraph,
+}
+
+impl LoadRefusalHost for StaticPreflight<'_> {
+    type Error = KernelError;
+
+    fn build_module_artifacts(&mut self) -> Result<(), KernelError> {
+        self.loader.build_module_artifacts(self.graph)
     }
-    if let Some(refusal) = unapplied_library_migrations(graph).into_iter().next() {
-        return Err(KernelError::new("ERR_UNSUPPORTED_MANIFEST_FEATURE", refusal.message(str::to_string)));
+
+    fn analyze(&mut self) -> Vec<AnalysisDiagnostic> {
+        analyze(self.graph, &AnalysisOptions { accepts_value: &value_branch_accepts })
     }
-    if let Some(failure) = import_load_failure(graph) {
-        return Err(failure);
-    }
-    if !graph.parse_diagnostics.is_empty() {
-        let message = graph
-            .parse_diagnostics
-            .iter()
-            .map(|d| match d.data.as_ref().and_then(|data| data.file_path.as_deref()) {
-                Some(file) => format!("{file}: {}", d.message),
-                None => d.message.clone(),
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-        return Err(KernelError::manifest_validation_failed(message)
-            .with_diagnostics(graph.parse_diagnostics.clone()));
-    }
-    // An incompatible major mismatch is fatal: the hoist would silently run the wrong major.
-    let conflicts: Vec<AnalysisDiagnostic> = graph
-        .version_diagnostics
-        .iter()
-        .filter(|d| d.code.as_deref() == Some("MODULE_VERSION_CONFLICT"))
-        .cloned()
-        .collect();
-    if !conflicts.is_empty() {
-        let message = conflicts.iter().map(|d| d.message.as_str()).collect::<Vec<_>>().join("\n");
-        return Err(KernelError::manifest_validation_failed(message).with_diagnostics(conflicts));
-    }
-    let errors: Vec<AnalysisDiagnostic> = analyze(graph, &AnalysisOptions { accepts_value: &value_branch_accepts })
-        .into_iter()
-        .filter(|d| d.severity == Some(DiagnosticSeverity::Error))
-        .collect();
-    // An authored loader stamp would forge what the stamp records — a document's module above
-    // all — so it is refused under its own code, beside every other error the analysis found.
-    if !graph.metadata_diagnostics.is_empty() {
-        let stamps = FindingOrder::new(graph).sort(graph.metadata_diagnostics.clone());
-        return Err(metadata_stamp_load_refusal(&stamps, errors));
-    }
-    if !errors.is_empty() {
-        return Err(KernelError::manifest_validation_failed("Manifest validation failed").with_diagnostics(errors));
-    }
-    Ok(())
 }
 
 fn cwd_unreadable(what: &str, err: std::io::Error) -> KernelError {
@@ -307,23 +256,6 @@ fn entry_dir(entry: &str) -> Result<PathBuf, KernelError> {
         return Ok(absolute);
     }
     Ok(absolute.parent().map(Path::to_path_buf).unwrap_or(absolute))
-}
-
-/// Reduce a module source to one identity per module.
-///
-/// Falls back to the raw string when the path cannot be canonicalised — the load
-/// that follows will produce the real "no such file" error, and inventing one
-/// here would report it against the wrong operation.
-fn canonical_module_key(source: &str) -> String {
-    let path = Path::new(source);
-    let manifest = if path.is_dir() {
-        path.join(DEFAULT_MANIFEST_FILENAME)
-    } else {
-        path.to_path_buf()
-    };
-    std::fs::canonicalize(&manifest)
-        .map(|resolved| resolved.display().to_string())
-        .unwrap_or_else(|_| source.to_string())
 }
 
 pub struct Kernel {
@@ -350,7 +282,16 @@ impl Kernel {
 
     /// Load the entry manifest and initialise every resource it declares.
     pub fn load(&mut self, path: &str) -> Result<(), KernelError> {
+        self.load_with(path, LoadOptions::default())
+    }
+
+    /// Load the entry manifest as `options` say: with `analyze_only`, refuse what the
+    /// static pre-flight refuses and create nothing.
+    pub fn load_with(&mut self, path: &str, options: LoadOptions) -> Result<(), KernelError> {
         let env = self.env.insert(load_env(path)?);
+        if options.analyze_only {
+            return Ok(());
+        }
         let root = load_module(env, path, ControllerPolicy::default(), ModuleRole::Root)?;
         self.root = Some(root);
         Ok(())

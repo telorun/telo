@@ -13,10 +13,8 @@ import {
   undeclaredKindMessage,
   evaluatedField,
   extractCelRegionScopes,
-  DiagnosticSeverity,
   collectFilePositions,
   collectModuleDocuments,
-  FindingOrder,
   inputRequirements,
   requirementDimensions,
   requirementDimensionsOf,
@@ -26,7 +24,6 @@ import {
   diffManifests,
   flattenForAnalyzer,
   registerLoadedGraph,
-  withLibraryMigrationsApplied,
   formatAjvErrors,
   flattenLoadedModule,
   stampScopedImportsIn,
@@ -47,7 +44,6 @@ import {
   UNDETERMINED_LANGUAGE,
   isInjectedDeclaration,
   inheritedCapability,
-  isNeedTableDiagnostic,
   needGraphFromLoadedGraph,
   observationDeadline,
   needGraphScopeOf,
@@ -73,12 +69,13 @@ import {
   type SourceEntry,
   type StandIns,
   type DeclarationRequests,
+  type RegisteredGraph,
+  loadRefusal,
   isKindDocument,
   listRequests,
   namedShapeReading,
   describeModuleSource,
   libraryMigrationDiagnostics,
-  METADATA_RESERVED_FIELD,
 } from "@telorun/analyzer";
 import {
   createArchiveReader,
@@ -339,15 +336,9 @@ import {
 import { policyFingerprint } from "./runtime-registry.js";
 import { describeValue, SchemaValidationError, SchemaValidator } from "./schema-validator.js";
 import { declaredDisplayMessageOf, errorDataRefusal, errorDataValidatorOver } from "./declared-display-messages.js";
-import { staticDiagnosticToRuntime } from "./static-analysis-diagnostics.js";
-import {
-  libraryMigrationRecordOf,
-  refuseFailedMigrations,
-  withLibraryMigrations,
-} from "./library-migration-replay.js";
-import { metadataStampLoadRefusal } from "./metadata-stamp-refusals.js";
+import { loadRefusalError, staticDiagnosticToRuntime } from "./static-analysis-diagnostics.js";
+import { libraryMigrationRecordOf, withLibraryMigrations } from "./library-migration-replay.js";
 import { importLoadFailure } from "./import-load-failure.js";
-import { needRefusalError, type NeedRefusal } from "./need-refusals.js";
 import { refuseReservedKindPrefix } from "./reserved-kind-prefix.js";
 
 /** Walks up the EvaluationContext parent chain to the nearest enclosing
@@ -1452,201 +1443,106 @@ export class Kernel implements IKernel {
     // Telo.Import manifests before discovery walks the graph, so inline imports
     // resolve identically to authored Telo.Import docs.
     const analysisGraph = await this.loader.loadGraph(sourceUrl, { desugarImports: true, migrate: true });
-    // Recorded before the first throw below: the graph is what a renderer
+    // Recorded before the first refusal below: the graph is what a renderer
     // resolves a static failure's `origin` against, and a parse error or a
     // failed import is exactly the failure that most needs to name a line.
     this._loadedGraph = analysisGraph;
-    if (analysisGraph.errors.length > 0) {
-      throw importLoadFailure(analysisGraph);
-    }
-    // A YAML parse failure yields a mangled manifest tree — fatal before any
-    // controller sees it, and more fundamental than a version conflict.
-    if (analysisGraph.parseDiagnostics.length > 0) {
-      throw new RuntimeError(
-        "ERR_MANIFEST_VALIDATION_FAILED",
-        // The message keeps the whole failure for a consumer that only reads
-        // `error.message`; the diagnostics carry the same set structured, so a
-        // renderer can locate each one instead of re-parsing this text.
-        analysisGraph.parseDiagnostics
-          .map((d) => {
-            const filePath = (d.data as { filePath?: string } | undefined)?.filePath;
-            return filePath ? `${describeModuleSource(analysisGraph, filePath)}: ${d.message}` : d.message;
-          })
-          .join("\n"),
-        analysisGraph.parseDiagnostics.map(staticDiagnosticToRuntime),
-      );
-    }
-    this.buildModuleArtifacts(analysisGraph, manifestsDir);
-    // Version reconciliation: an incompatible major mismatch is fatal (the
-    // hoist override would silently run the wrong major); a same-major hoist is
-    // advisory — the override already redirects every importer to the winner.
-    const versionConflicts = analysisGraph.versionDiagnostics.filter(
-      (d) => d.code === "MODULE_VERSION_CONFLICT",
-    );
-    if (versionConflicts.length > 0) {
-      throw new RuntimeError(
-        "ERR_MANIFEST_VALIDATION_FAILED",
-        versionConflicts.map((d) => d.message).join("\n"),
-        versionConflicts.map(staticDiagnosticToRuntime),
-      );
-    }
-    // A tagged file claim naming nothing fails at resource creation anyway; the
-    // loader already knows, so refuse before booting anything — and so that
-    // `telo install`'s analyze-only pass fails the build that would ship it.
-    const missingFiles = analysisGraph.moduleFileDiagnostics;
-    if (missingFiles.length > 0) {
-      throw new RuntimeError(
-        "ERR_MANIFEST_VALIDATION_FAILED",
-        missingFiles
-          .map((d) => {
-            const filePath = (d.data as { filePath?: string } | undefined)?.filePath;
-            return filePath ? `${describeModuleSource(analysisGraph, filePath)}: ${d.message}` : d.message;
-          })
-          .join("\n"),
-        missingFiles.map(staticDiagnosticToRuntime),
-      );
-    }
-    // An authored loader stamp would forge what the stamp records — a document's
-    // module above all — so the load is refused for it, beside every stamp the
-    // analysis finds on a nested declaration, before any resource is created.
-    const loaderStamps = analysisGraph.metadataDiagnostics;
-    for (const d of analysisGraph.versionDiagnostics) {
-      if (d.code === "MODULE_VERSION_HOISTED") {
-        this.logging.kernelLogger().warn(d.message, { "telo.diagnostic.code": d.code });
-      }
-    }
-    // A migration rewrites the entry module's own manifest silently otherwise:
-    // `telo check`, VS Code and the editor all report the deprecation, and
-    // `telo run` — the command an author actually uses — would be the only
-    // surface that does not. Already scoped to the entry's own files by the
-    // loader, so a published dependency's spelling never appears here.
-    for (const d of analysisGraph.migrationDiagnostics) {
-      const filePath = (d.data as { filePath?: string } | undefined)?.filePath;
-      this.logging
-        .kernelLogger()
-        .warn(
-          filePath ? `${describeModuleSource(analysisGraph, filePath)}: ${d.message}` : d.message,
-          d.code === undefined ? undefined : { "telo.diagnostic.code": d.code },
-        );
-    }
-    // Registration of the graph's declaration plane, once, before flatten; the
-    // analysis below reads it and registers nothing.
-    const {
-      registration,
-      manifests: staticManifests,
-      moduleDocuments: analysisDocuments,
-      applicationSources: analysisApplicationSources,
-    } = registerLoadedGraph(analysisGraph, this.registry);
-    // A library migration that applied rewrote the entry's own spelling, reported
-    // like a core one; a failed one is the analysis's to refuse.
-    for (const d of libraryMigrationDiagnostics(analysisGraph)) {
-      if (d.code === "MIGRATION_FAILED") continue;
-      const filePath = (d.data as { filePath?: string } | undefined)?.filePath;
-      this.logging
-        .kernelLogger()
-        .warn(
-          filePath ? `${describeModuleSource(analysisGraph, filePath)}: ${d.message}` : d.message,
-          d.code === undefined ? undefined : { "telo.diagnostic.code": d.code },
-        );
-    }
-    this.staticManifests = staticManifests;
-    this.loadTimeManifests = staticManifests;
-    this.loadTimeDocuments = staticManifests;
-
-    // Register legacy module identities so an already-published module version
-    // whose `x-telo-ref` slots still name their target as
-    // `<namespace>/<module>#<Kind>` keeps resolving. Current manifests declare no
-    // namespace and need none — their constraints name an import alias, which
-    // the analyzer canonicalizes in the declaring module's scope.
-    const rootModuleDoc = staticManifests.find((m) => isModuleKind(m.kind));
-    if (rootModuleDoc?.kind === "Telo.Library") {
-      throw new RuntimeError(
-        "ERR_MANIFEST_VALIDATION_FAILED",
-        `Root manifest '${sourceUrl}' is a Telo.Library. Only Telo.Application manifests can be run directly — libraries are imported via Telo.Import.`,
-      );
-    }
-    for (const m of staticManifests) {
-      if (isModuleKind(m.kind) && m.metadata?.name && m.metadata?.namespace) {
-        this.registry.registerModuleIdentity(
-          m.metadata.namespace as string,
-          m.metadata.name as string,
-        );
-      }
-    }
-
-    // Hash-keyed analysis cache: when the entry's full LoadedGraph matches
-    // a previously-stamped successful run (same file bytes, same stamp
-    // protocol version), skip the per-resource validation walk inside
-    // `analyzeRegistered`. Registration of identities / aliases / definitions
-    // (`registerLoadedGraph`, before flatten) and inline-resource
-    // normalisation still run — only the diagnostic
-    // passes are elided. Memory- / HTTP-rooted entries have no
-    // local stamp store and always re-validate.
-    const analysisSignature = computeAnalysisSignature(analysisGraph, {
-      ...(opts.analysisKey !== undefined ? { appKey: opts.analysisKey } : {}),
-      entryUrl: sourceUrl,
-    });
+    let staticManifests: ResourceManifest[] = [];
+    let rootModuleDoc: ResourceManifest | undefined;
+    let skipValidation = false;
+    let analysisSignature = "";
     // Both halves take the same key: filing under the entry URL while signing
     // over a payload digest would hit a stamp written for another payload.
     const stampKey = opts.analysisKey ?? sourceUrl;
-    const stamp = analysisDir
-      ? await readAnalysisStamp(stampKey, analysisDir, this.logging.kernelLogger())
-      : undefined;
-    const skipValidation = stamp?.signature === analysisSignature;
-    const positions = collectFilePositions(analysisGraph);
-    const analysis = this.analyzer.analyzeRegistered(
-      staticManifests,
-      // Imported libraries' full documents, for the zone stage's per-library
-      // export derivation: `flattenForAnalyzer` forwards only each library's
-      // export surface, never its internal dispatch chain.
-      {
-        skipValidation,
-        moduleDocuments: analysisDocuments,
-        applicationSources: analysisApplicationSources,
-        positions,
-        hostVersions: nodeHostVersions(),
+    let needTable: NeedTable | undefined;
+    let registered: RegisteredGraph | undefined;
+    // The analyzer's load refusal rule decides what the load is refused with,
+    // group by group; the kernel builds, registers and analyses between them.
+    const refusal = await loadRefusal(analysisGraph, sourceUrl, {
+      buildModuleArtifacts: () => this.buildModuleArtifacts(analysisGraph, manifestsDir),
+      register: () => {
+        for (const d of analysisGraph.versionDiagnostics) {
+          if (d.code === "MODULE_VERSION_HOISTED") {
+            this.logging.kernelLogger().warn(d.message, { "telo.diagnostic.code": d.code });
+          }
+        }
+        // A migration rewrites the entry module's own manifest silently otherwise:
+        // `telo check`, VS Code and the editor all report the deprecation, and
+        // `telo run` — the command an author actually uses — would be the only
+        // surface that does not. Already scoped to the entry's own files by the
+        // loader, so a published dependency's spelling never appears here.
+        for (const d of analysisGraph.migrationDiagnostics) this.warnLoadFinding(analysisGraph, d);
+        // Registration of the graph's declaration plane, once, before flatten; the
+        // analysis below reads it and registers nothing.
+        registered = registerLoadedGraph(analysisGraph, this.registry);
+        // A library migration that applied rewrote the entry's own spelling, reported
+        // like a core one; a failed one is the analysis's to refuse.
+        for (const d of libraryMigrationDiagnostics(analysisGraph)) {
+          if (d.code !== "MIGRATION_FAILED") this.warnLoadFinding(analysisGraph, d);
+        }
+        staticManifests = registered.manifests;
+        this.staticManifests = staticManifests;
+        this.loadTimeManifests = staticManifests;
+        this.loadTimeDocuments = staticManifests;
+        rootModuleDoc = staticManifests.find((m) => isModuleKind(m.kind));
+        return { manifests: staticManifests, rootModuleDocument: rootModuleDoc };
       },
-      registration,
-    );
-    // A node a library migration failed on is left as written: the findings
-    // beneath it are held back, as `telo check` holds them back.
-    const errors = withLibraryMigrationsApplied(analysisGraph, analysis).filter(
-      (d) => d.severity === DiagnosticSeverity.Error,
-    );
-    refuseFailedMigrations(analysisGraph, errors);
-    // The need table, over every module the load reached: each refusal decidable
-    // from the declarations is raised here, before any resource initializes, as
-    // its `ERR_` twin — so a load the analysis refused for a need-table problem
-    // (one of the entry's, or a dependency's reported at the import reaching it)
-    // reports the twins, beside every other error the analysis found, rather
-    // than the analysis's aggregate. A required need nothing supplies is refused
-    // only for a run.
-    // A stamp written on a nested declaration, which the analysis found, is
-    // refused as a top-level one is, beside every other error it found.
-    const nestedStamps = errors.filter((d) => d.code === METADATA_RESERVED_FIELD);
-    if (loaderStamps.length > 0 || nestedStamps.length > 0) {
-      throw metadataStampLoadRefusal(
-        analysisGraph,
-        new FindingOrder(staticManifests, positions).sort([...loaderStamps, ...nestedStamps]),
-        errors.filter((d) => d.code !== METADATA_RESERVED_FIELD),
-      );
-    }
-    const needTableRefused = errors.some(isNeedTableDiagnostic);
-    if (errors.length === 0 || needTableRefused) {
-      this._needTable = this.refuseNeedTable(
-        analysisGraph,
-        rootModuleDoc,
-        errors.filter((d) => !isNeedTableDiagnostic(d)),
-        errors.filter(isNeedTableDiagnostic),
-      );
-    }
-    if (errors.length > 0) {
-      throw new RuntimeError(
-        "ERR_MANIFEST_VALIDATION_FAILED",
-        "Manifest validation failed",
-        errors.map(staticDiagnosticToRuntime),
-      );
-    }
+      analyze: async () => {
+        // Register legacy module identities so an already-published module version
+        // whose `x-telo-ref` slots still name their target as
+        // `<namespace>/<module>#<Kind>` keeps resolving. Current manifests declare no
+        // namespace and need none — their constraints name an import alias, which
+        // the analyzer canonicalizes in the declaring module's scope.
+        for (const m of staticManifests) {
+          if (isModuleKind(m.kind) && m.metadata?.name && m.metadata?.namespace) {
+            this.registry.registerModuleIdentity(
+              m.metadata.namespace as string,
+              m.metadata.name as string,
+            );
+          }
+        }
+        // Hash-keyed analysis cache: when the entry's full LoadedGraph matches
+        // a previously-stamped successful run (same file bytes, same stamp
+        // protocol version), skip the per-resource validation walk inside
+        // `analyzeRegistered`. Registration and inline-resource normalisation
+        // still run — only the diagnostic passes are elided. Memory- / HTTP-rooted
+        // entries have no local stamp store and always re-validate.
+        analysisSignature = computeAnalysisSignature(analysisGraph, {
+          ...(opts.analysisKey !== undefined ? { appKey: opts.analysisKey } : {}),
+          entryUrl: sourceUrl,
+        });
+        const stamp = analysisDir
+          ? await readAnalysisStamp(stampKey, analysisDir, this.logging.kernelLogger())
+          : undefined;
+        skipValidation = stamp?.signature === analysisSignature;
+        return this.analyzer.analyzeRegistered(
+          staticManifests,
+          // Imported libraries' full documents, for the zone stage's per-library
+          // export derivation: `flattenForAnalyzer` forwards only each library's
+          // export surface, never its internal dispatch chain.
+          {
+            skipValidation,
+            moduleDocuments: registered!.moduleDocuments,
+            applicationSources: registered!.applicationSources,
+            positions: collectFilePositions(analysisGraph),
+            hostVersions: nodeHostVersions(),
+          },
+          registered!.registration,
+        );
+      },
+      // The need table, over every module the load reached: each refusal decidable
+      // from the declarations is raised as its `ERR_` twin before any resource
+      // initializes. A required need nothing supplies is refused only for a run.
+      needTable: () =>
+        (needTable = resolveNeedTable(
+          needGraphFromLoadedGraph(
+            analysisGraph,
+            needGraphScopeOf(this.registry, rootModuleDoc?.metadata?.name as string | undefined),
+          ),
+        )),
+    });
+    if (refusal) throw loadRefusalError(refusal);
+    if (needTable) this._needTable = needTable;
 
     if (analysisDir && writeCache && !skipValidation) {
       // Best-effort: stamp the verdict so subsequent loads hit the fast
@@ -1857,42 +1753,16 @@ export class Kernel implements IKernel {
     return entry.need.type ? needTypeOf(this.registry.resolveDefinition(entry.need.type)) : undefined;
   }
 
-  /** Resolve the need table of the whole loaded graph and raise its refusals
-   *  as their kernel twins, with `others` — the analysis's errors from outside
-   *  the table — in the same error. A need nothing supplies is not one of them:
-   *  the environment is read for it when the manifests are installed. */
-  private refuseNeedTable(
-    graph: LoadedGraph,
-    rootModuleDoc: ResourceManifest | undefined,
-    others: readonly AnalysisDiagnostic[],
-    analysed: readonly AnalysisDiagnostic[] = [],
-  ): NeedTable {
-    const table = resolveNeedTable(
-      needGraphFromLoadedGraph(
-        graph,
-        needGraphScopeOf(this.registry, rootModuleDoc?.metadata?.name as string | undefined),
-      ),
-    );
-    // A refusal the analysis made in some configurations only stands where a
-    // choice expands, which the loaded graph's documents hold unexpanded: it is
-    // raised as its twin from the analysis's own finding.
-    const refusals: NeedRefusal[] = [...table.problems];
-    for (const d of analysed) {
-      const data = d.data as
-        | { filePath?: string; path?: string; resource?: { kind: string; name: string }; configurations?: unknown }
-        | undefined;
-      if (!data?.configurations || d.code === undefined) continue;
-      if (table.problems.some((p) => p.code === d.code && p.path === data.path && p.filePath === data.filePath)) continue;
-      refusals.push({
-        runtimeCode: `ERR_${d.code}`,
-        message: d.message,
-        path: data.path ?? "",
-        ...(data.filePath !== undefined ? { filePath: data.filePath } : {}),
-        ...(data.resource ? { resource: data.resource } : {}),
-      });
-    }
-    if (refusals.length > 0) throw needRefusalError(refusals, others);
-    return table;
+  /** A finding the load reports without refusing (a migration's deprecation),
+   *  logged as a warning naming its file. */
+  private warnLoadFinding(graph: LoadedGraph, d: AnalysisDiagnostic): void {
+    const filePath = (d.data as { filePath?: string } | undefined)?.filePath;
+    this.logging
+      .kernelLogger()
+      .warn(
+        filePath ? `${describeModuleSource(graph, filePath)}: ${d.message}` : d.message,
+        d.code === undefined ? undefined : { "telo.diagnostic.code": d.code },
+      );
   }
 
   /**
