@@ -1,5 +1,0 @@
-units:
-  release: Fixed
-body: The browser-safety check of the release planner's main entry now words its refusal
-  of an in-repository package as one @telorun/release must not depend on, instead of
-  calling the package not MIT.

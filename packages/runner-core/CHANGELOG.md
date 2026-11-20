@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.0 - 2026-11-19
+### Added
+* Documentation names the host runner, telo-host-runner, as the local-process backend instead of the telo CLI; the session contract and its behaviour are unchanged.
+
 ## 0.25.0
 
 ### Minor Changes

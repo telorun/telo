@@ -1,7 +1,0 @@
-units:
-  analyzer: Added
-body: planLibraryWriteBack renders a module's library migration record into byte splices
-  of its own files — a node's span replaced in its own style, an unchanged entry or item
-  kept byte for byte, dropped comments, anchors and aliases and hand-over groups with an
-  unwritable member reported — and the stage's outcome exposes every hand-over that held
-  as a group (handOvers).

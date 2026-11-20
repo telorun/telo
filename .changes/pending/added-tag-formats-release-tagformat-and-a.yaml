@@ -1,8 +1,0 @@
-units:
-  release: Added
-body: "Tag formats: `release.tagFormat` and a unit entry's own `tagFormat` (placeholders
-  `{key}`, `{name}`, `{version}`; default `{key}@{version}`, `v{version}` for the root
-  unit) set the tag `release tag` creates, and a unit entry's `name` is the label
-  `{name}` reads. A bad format or a collision between two units' tags is refused
-  (`WORKSPACE_TAG_INVALID`, `WORKSPACE_TAG_COLLISION`), and every unit in the JSON of
-  `status`, `check` and `apply` and every `order` row carries its rendered `tag`."

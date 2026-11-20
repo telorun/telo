@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.0 - 2026-11-19
+### Added
+* Requires the telo release that reads `x-telo-context-withheld` beside `x-telo-context-from-referrer`, since the `ui` module it imports declares its destinations' roots that way.
+
 ## 0.10.0 - 2026-11-15
 ### Fixed
 * The README example places its navigation entry in a Ui.Navbar of the application's page layout, as UiReact.App no longer takes a navigation.

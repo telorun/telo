@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.29.0 - 2026-11-19
+### Added
+* The `build-ui` guide teaches where a press goes: `to` holding a `Ui.Navigate` or a `Ui.OpenPage` on links, menu items, values, columns, relations, option sources, navigation `link` entries and `onSuccess`, in place of `href` and `onSuccess.navigate`; `press: { to, label }` on the `box`, `stack` and `columns` nodes, `Ui.Listing` and `CrudUi.Admin`; and the listing layout contract `ui_react_layouts-2`, whose records carry their `press`.
+* The design-library guide and the authoring primer cover library `migrations:`: when a library author writes one, the `Self.<Name>` rule, the closed `match`, legacy-spelling fixtures under `tests/__fixtures__/manifest-migrations/`, and retiring one as a breaking removal.
+* The library-design guidance teaches `x-telo-context-withheld` beside `x-telo-context-from-referrer` — a binding typed where a referrer binds it and refused, with its reason, everywhere else — and an `x-telo-context` at a kind's schema root, in scope at every field and inherited by children extending the kind without `base:`.
+
 ## 0.28.0 - 2026-11-15
 ### Added
 * The build-ui authoring guide describes composable pages: a UiReact.App layout of header, aside and footer, panes (Ui.Navbar, Ui.NavigationColumn), per-page layouts, the title text style, Ui.Aside inside Ui.SplitView and the static check that every linked page is listed.

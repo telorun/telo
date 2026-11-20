@@ -1,8 +1,0 @@
-units:
-  apps/hub: Added
-  apps/authoring-agent: Added
-body: The library-design guidance teaches `x-telo-context-withheld` beside
-  `x-telo-context-from-referrer` — a binding typed where a referrer binds it and
-  refused, with its reason, everywhere else — and an `x-telo-context` at a kind's schema
-  root, in scope at every field and inherited by children extending the kind without
-  `base:`.

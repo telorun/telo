@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.0 - 2026-11-19
+### Added
+* Requires the telo release that applies library migrations, since the SQL module it imports now declares the `beforeMigrations:` → `prepare:` rename as a migration of its own.
+
 ## 0.14.0 - 2026-11-11
 ### Added
 * The Postgres journal replaces a run's entries with a baseline in one transaction (replaceWithBaseline) and deletes a finished run (finishedRuns, deleteFinishedRun) through new nullable workflow and finished_at columns, for the workflow's compactAfter and retainFinished.

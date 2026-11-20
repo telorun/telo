@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.4 - 2026-11-19
+### Fixed
+* Compacting a run on Windows no longer fails or hangs while another handle has the run's file open (a status read, an append's flush): the rename over the file is retried with backoff for up to 10 seconds, and a refusal that outlasts that bound fails the compaction with the error Windows reported.
+
 ## 0.9.3 - 2026-11-15
 ### Fixed
 * Compacting a run on Windows no longer fails with EPERM while another read or append has the run's file open: the rename over it is retried with backoff for up to 10 seconds.

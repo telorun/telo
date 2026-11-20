@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0 - 2026-11-19
+### Added
+* Requires the telo release that applies library migrations, since the SQL module it imports now declares the `beforeMigrations:` → `prepare:` rename as a migration of its own.
+
 ## 0.2.2 - 2026-11-09
 ### Fixed
 * `requires.telo` now holds the measured floor, raised to the highest floor among the workspace modules this module imports.

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.138.0 - 2026-11-19
+### Added
+* Released under the MIT license instead of the Sustainable Use License: the published artifact declares MIT and carries the MIT license text. Earlier releases keep the license they were published under.
+* The editor offers the library migrations of a module as one quick fix on a diagnostic one of them raised, the same edit set telo migrate writes, when none of it is unwritable.
+
 ## 0.137.0 - 2026-11-15
 ### Added
 * Every build of the telo line now reports its recorded version with `+unreleased` — the engine handshake, the kernel's `Kernel.Starting`, the CEL engine's module key, the built-in vocabulary archive and the running surface — and only the published package, built by its own `prepack`, reports exactly its version. The surface generation is the recorded version's `major.minor.patch`; no build reads a release plan any more.
