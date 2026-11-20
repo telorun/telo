@@ -190,22 +190,28 @@ function readPackageScript(name) {
 // first document is a `Telo.Application` or `Telo.Library`.
 //
 // Both CLIs run with `--no-cache-write` under one sweep-owned `TELO_CACHE_DIR`, one invocation per
-// manifest and form (`-o json`, then the text form where the manifest has no debt entry), the
+// manifest and form (`-o json`, then the text form where the JSON payloads agree whole), the
 // working directory the repo root, `NO_COLOR` set. `CONTROLLER_TOOL_MISSING` and a rule that "exceeded its
 // evaluation budget" (a `RESOURCE_RULE_INVALID` or `REFERRER_RULE_INVALID` with that sentence) — statements
 // about the machine and its load, not the manifest, and different on every run — are dropped from both
 // payloads and the counts recomputed; a manifest whose Node text run reports one is not byte-compared.
 //
-// What passes is `check-debt.json`'s to say:
+// What passes is `check-debt.json`'s to say, each finding judged against the module that WRITES it:
 //   - a Rust diagnostic not equal, as a whole, to one of Node's always fails: the Rust analyzer may
 //     under-report and never over-report;
-//   - a Node diagnostic Rust lacks passes only when its code is in the manifest's `codes`;
+//   - a Node diagnostic Rust lacks, written in the manifest's own file (or a partial it `include:`s),
+//     passes only when its code is in the manifest's `codes`;
+//   - one written in a file of ANOTHER module (a dependency's verdict) passes only when that module's
+//     own entry — keyed by its own manifest path, a partial mapped to its owner through the covered
+//     manifests' `include:` lists — lists the code AND that module's own run in the same sweep lacks the
+//     same finding (code, file, line, column, message); under `--filter` the entry alone decides, the
+//     full sweep confirms;
 //   - the exit status and `ok` may differ only under `unsupported` (Rust holds the file back and
 //     says so) or when the only diagnostics Rust lacks are errors;
-//   - a manifest with no entry also matches Node's text, stdout and stderr, byte for byte;
-//   - an entry that no longer holds is stale and fails: a listed code no longer missing, an
-//     `unsupported` on a manifest Rust reads whole, a path not in the repo's covered set, a code
-//     with no owner, an owner in the slice that builds the check itself.
+//   - wherever the two JSON payloads agree whole, the text form is also compared, byte for byte;
+//   - an entry that no longer holds is stale and fails: a listed code no longer missing in the module's
+//     own run, an `unsupported` on a manifest Rust reads whole, a path not in the repo's covered set, a
+//     code with no owner, an owner in the slice that builds the check itself.
 
 async function checkDimension() {
   const debt = readDebt();
@@ -224,6 +230,8 @@ async function checkDimension() {
     });
   };
 
+  const owners = includeOwners(covered);
+  const analyses = new Map();
   const results = new Array(swept.length);
   let next = 0;
   await Promise.all(
@@ -232,19 +240,29 @@ async function checkDimension() {
         const index = next++;
         const path = swept[index];
         const result = { path };
-        const wantText = !debt.manifests[path];
         for (const cli of ["node", "rust"]) {
           if (!(cli === "node" ? nodeCommand : rustBinary)) continue;
-          const reused = cli === "node" ? previous.get(path) : undefined;
-          result[cli] = reused ?? { json: await invoke(cli, path, "json") };
-          if (wantText && !result[cli].text) result[cli].text = await invoke(cli, path, "text");
+          result[cli] = previous.get(path)?.json && cli === "node" ? previous.get(path) : { json: await invoke(cli, path, "json") };
         }
-        result.verdict = nodeCommand && rustBinary ? judgeCheck(path, result, debt) : { status: "unjudged", failures: [] };
+        if (nodeCommand && rustBinary) {
+          const analysis = analyzeCheck(path, result, owners);
+          analyses.set(path, analysis);
+          if (analysis.agree) {
+            for (const cli of ["node", "rust"]) {
+              if (!result[cli].text) result[cli].text = await invoke(cli, path, "text");
+            }
+          }
+          result.verdict = judgeCheck(path, result, debt, analysis);
+        } else {
+          result.verdict = { status: "unjudged", failures: [] };
+        }
         results[index] = result;
         process.stderr.write(`check ${path}  ${result.verdict.status}\n`);
       }
     }),
   );
+
+  if (nodeCommand && rustBinary) judgeDependencyFindings(results, analyses, debt);
 
   const failures = results.flatMap((r) => r.verdict.failures.map((message) => ({ path: r.path, message })));
   if (nodeCommand && rustBinary) failures.push(...staleEntries(debt, covered, swept, results));
@@ -367,38 +385,74 @@ function tail(text) {
   return text.split(/\r?\n/).filter(Boolean).slice(-3).join(" | ");
 }
 
-function judgeCheck(path, result, debt) {
-  const entry = debt.manifests[path];
+// The modules a file belongs to: a covered manifest is its own; a partial belongs to every covered
+// manifest whose `include:` patterns (relative to that manifest's directory) reach it.
+function includeOwners(covered) {
+  const map = new Map(covered.map((path) => [path, [path]]));
+  for (const path of covered) {
+    const text = readFileSync(join(root, path), "utf8");
+    if (!/^include:/m.test(text)) continue;
+    const include = YAML.parseAllDocuments(text, { logLevel: "silent" })[0]?.toJS({ maxAliasCount: -1 })?.include;
+    if (!Array.isArray(include)) continue;
+    const dir = dirname(path);
+    for (const pattern of include.filter((p) => typeof p === "string")) {
+      for (const match of globSync(pattern, { cwd: join(root, dir) })) {
+        const file = (dir === "." ? match : join(dir, match)).split("\\").join("/");
+        if (map.has(file) && map.get(file)[0] === file) continue;
+        map.set(file, [...(map.get(file) ?? []), path]);
+      }
+    }
+  }
+  return map;
+}
+
+// Both CLIs' payloads side by side: what Rust adds, what it lacks, and where the lacks are written.
+function analyzeCheck(path, result, owners) {
   const node = readPayload(result.node.json);
   const rust = readPayload(result.rust.json);
+  const analysis = { node, rust, extra: [], missing: [], own: [], foreign: [], agree: false };
+  if (node.unusable || rust.unusable) return analysis;
+  const unmatched = node.diagnostics.map((d) => JSON.stringify(d));
+  for (const d of rust.diagnostics) {
+    const at = unmatched.indexOf(JSON.stringify(d));
+    if (at === -1) analysis.extra.push(d);
+    else unmatched.splice(at, 1);
+  }
+  analysis.missing = unmatched.map((text) => JSON.parse(text));
+  for (const d of analysis.missing) {
+    const fileOwners = d.file === undefined || d.file === path ? [path] : (owners.get(d.file) ?? []);
+    (fileOwners.includes(path) ? analysis.own : analysis.foreign).push({ d, owners: fileOwners });
+  }
+  analysis.agree = !analysis.extra.length && !analysis.missing.length && rust.exitCode === node.exitCode && rust.ok === node.ok;
+  return analysis;
+}
+
+// The findings written in the manifest's own module; those in another module's file wait for
+// `judgeDependencyFindings`, which needs every module's own run.
+function judgeCheck(path, result, debt, analysis) {
+  const entry = debt.manifests[path];
+  const { node, rust, missing } = analysis;
   const failures = [];
   if (node.unusable) return { status: "node-unusable", failures: [], note: node.unusable };
   if (rust.unusable) return { status: "fail", failures: [`Rust: ${rust.unusable}`] };
 
-  // Every Rust diagnostic must be one of Node's, whole.
-  const unmatched = node.diagnostics.map((d) => JSON.stringify(d));
-  for (const d of rust.diagnostics) {
-    const at = unmatched.indexOf(JSON.stringify(d));
-    if (at === -1) failures.push(`Rust reports what Node does not: ${JSON.stringify(d)}`);
-    else unmatched.splice(at, 1);
-  }
-  const missing = unmatched.map((text) => JSON.parse(text));
+  for (const d of analysis.extra) failures.push(`Rust reports what Node does not: ${JSON.stringify(d)}`);
   const allowedCodes = new Set(entry?.codes ?? []);
-  for (const d of missing) {
+  for (const { d } of analysis.own) {
     if (!allowedCodes.has(d.code ?? NO_CODE)) failures.push(`Rust lacks ${d.code ?? NO_CODE}: ${d.file}:${d.line}:${d.column} ${d.message}`);
   }
 
   const unsupportedAllowed = Boolean(entry?.unsupported) && rust.refused;
   if (rust.refused && !entry?.unsupported) failures.push(`Rust holds something back with no \`unsupported\` entry: ${tail(rust.stderr)}`);
   if (rust.exitCode !== node.exitCode || rust.ok !== node.ok) {
-    // Node fails on errors Rust lacks (each held to the debt codes above), Rust on none.
+    // Node fails on errors Rust lacks (each held to the debt above), Rust on none.
     const missingErrorsExplain = missing.some((d) => d.severity === "error") && rust.errorCount === 0 && !rust.refused;
     if (!unsupportedAllowed && !missingErrorsExplain) {
       failures.push(`exit/ok differ: Node ${node.exitCode}/${node.ok}, Rust ${rust.exitCode}/${rust.ok}`);
     }
   }
 
-  if (!entry) {
+  if (analysis.agree) {
     const [n, r] = [result.node.text, result.rust.text];
     if (n && r && !RULE_BUDGET.test(n.stdout)) {
       if (n.stdout !== r.stdout) failures.push(`text stdout differs from Node's:\n--- node\n${n.stdout}--- rust\n${r.stdout}`);
@@ -407,9 +461,41 @@ function judgeCheck(path, result, debt) {
     }
   }
 
-  const missingCodes = [...new Set(missing.map((d) => d.code ?? NO_CODE))];
-  const status = failures.length ? "fail" : entry ? "debt" : "match";
-  return { status, failures, missingCodes, refused: rust.refused };
+  const codesOf = (items) => [...new Set(items.map((d) => d.code ?? NO_CODE))];
+  const status = failures.length ? "fail" : entry || missing.length ? "debt" : "match";
+  return {
+    status,
+    failures,
+    missingCodes: codesOf(missing),
+    ownMissingCodes: codesOf(analysis.own.map(({ d }) => d)),
+    refused: rust.refused,
+  };
+}
+
+// A Node finding Rust lacks in another module's file passes only through that module's own entry,
+// confirmed by that module's own run lacking the same finding (not under `--filter`).
+function judgeDependencyFindings(results, analyses, debt) {
+  for (const result of results) {
+    const analysis = analyses.get(result.path);
+    for (const { d, owners } of analysis.foreign) {
+      const code = d.code ?? NO_CODE;
+      const finding = JSON.stringify(d);
+      const listed = owners.filter((owner) => (debt.manifests[owner]?.codes ?? []).includes(code));
+      const confirmed = options.filter
+        ? listed.length > 0
+        : listed.some((owner) => analyses.get(owner)?.own.some((own) => JSON.stringify(own.d) === finding));
+      if (confirmed) {
+        continue;
+      }
+      const where = owners.length
+        ? listed.length
+          ? `${owners.join(", ")} lists ${code} but its own run does not lack this finding`
+          : `${owners.join(", ")} does not list ${code}`
+        : "no module owns that file";
+      result.verdict.failures.push(`Rust lacks ${code} in another module's file (${where}): ${d.file}:${d.line}:${d.column} ${d.message}`);
+      result.verdict.status = "fail";
+    }
+  }
 }
 
 function staleEntries(debt, covered, swept, results) {
@@ -429,7 +515,7 @@ function staleEntries(debt, covered, swept, results) {
     if (verdict.status === "node-unusable") continue;
     for (const code of entry.codes ?? []) {
       if (!(code in debt.owners)) failures.push({ path, message: `code ${code} has no owner in \`owners\`` });
-      if (!(verdict.missingCodes ?? []).includes(code)) failures.push({ path, message: `stale: ${code} is no longer missing` });
+      if (!(verdict.ownMissingCodes ?? []).includes(code)) failures.push({ path, message: `stale: ${code} is no longer missing in the module's own run` });
     }
     if (entry.unsupported) {
       if (!entry.unsupported.construct || !entry.unsupported.owedBy) failures.push({ path, message: "`unsupported` needs `construct` and `owedBy`" });

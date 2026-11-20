@@ -50,16 +50,22 @@ test per kernel. A test's pass is exit code 0, as in the suite. `--filter <text>
 
 The sweep has a second dimension, `--dimension run|check` (default both): `check` runs `telo check`
 of both CLIs over every manifest whose first document is an Application or a Library, and compares
-`-o json` and the exit status — and the text, byte for byte, where a manifest has no debt entry — against
+`-o json` and the exit status — and the text, byte for byte, wherever the two JSON payloads agree whole — against
 `check-debt.json` beside `sweep.mjs`, the ratchet list of what the Rust analyzer may still miss (`owners`: each Node
 code to the build-order step 3 slice owing it; `manifests`: each path to the codes it lacks, or to an
-`unsupported` construct). A Rust diagnostic Node does not make always fails, and a stale entry fails; the
+`unsupported` construct). **A finding is judged against the module that writes it**: a Node finding Rust lacks in
+the manifest's own file (or a partial it `include:`s) passes only when the manifest's own entry lists its code; one
+written in a file of another module (a dependency's verdict) passes only when that module's own entry — keyed by
+its manifest path, a partial mapped to its owner through the covered manifests' `include:` lists — lists the code
+and that module's own run in the same sweep lacks the same finding (code, file, line, column, message). Under
+`--filter` the entry alone decides; the full sweep confirms. A listed code is stale when the module's own run no
+longer lacks it. A Rust diagnostic Node does not make always fails, and a stale entry fails; the
 dimension exits non-zero then. `--reuse-node <earlier --out file>` replays that file's recorded Node runs, so
 iterating on Rust does not pay for Node's again; it refuses a file made at another commit unless
 `--reuse-node-any-commit` is given. The sweep leaves out `CONTROLLER_TOOL_MISSING` and the over-budget rule
 findings (`RESOURCE_RULE_INVALID` / `REFERRER_RULE_INVALID` saying a rule "exceeded its evaluation budget"),
 because both are statements about the machine and its load rather than the manifest; the second stays until
-step 3d slice 13 replaces the wall-clock budget with a counted one.
+step 3d slice 14 replaces the wall-clock budget with a counted one.
 
 - **The target** is the tests that pass on Node in the same sweep. A test red on Node locally
   (a missing key, a service not running) is outside the target and listed as such — never
