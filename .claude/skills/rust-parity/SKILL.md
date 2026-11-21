@@ -54,15 +54,26 @@ of both CLIs over every manifest whose first document is an Application or a Lib
 `-o json` and the exit status — and the text, byte for byte, wherever the two JSON payloads agree whole — against
 `check-debt.json` beside `sweep.mjs`, the ratchet list of what the Rust analyzer may still miss (`owners`: each Node
 code to the build-order step 3 slice owing it; `manifests`: each path to the codes it lacks, or to an
-`unsupported` construct). **A finding is judged against the module that writes it**: a Node finding Rust lacks in
-the manifest's own file (or a partial it `include:`s) passes only when the manifest's own entry lists its code; one
-written in a file of another module (a dependency's verdict) passes only when that module's own entry — keyed by
-its manifest path, a partial mapped to its owner through the covered manifests' `include:` lists — lists the code
-and that module's own run in the same sweep lacks the same finding (code, file, line, column, message). Under
-`--filter` the entry alone decides; the full sweep confirms. A listed code is stale when the module's own run no
-longer lacks it. A Rust diagnostic Node does not make always fails, and a stale entry fails; the
-dimension exits non-zero then. Each recorded finding keeps the `path` and `resource` `telo check -o json` gives it,
-which the `load` dimension confirms against. `--reuse-node <earlier --out file>` replays that file's recorded Node runs, so
+`unsupported` construct). **Two comparisons, two identities.** Within one manifest, Node's run and Rust's are
+compared byte for byte: a diagnostic is equal only as a whole JSON object, and the text where the payloads agree
+whole. Across runs — a finding of one manifest's run against another module's own run — a finding is one
+**defect**: its code (a static code C reaching a raised code as C itself or as the analyzer's `runtimeCodeOf(C)`;
+nothing maps backward) and its **written place**, the same file, the same `path` (an empty one is none, as
+`telo check -o json` writes it) and the same `resource`. A finding's written place is its `writtenAt` when it carries
+one (a defect re-reported at an import reaching the module that writes it), else its own file, `path` and
+`resource`; messages are never compared across runs, since one defect is worded differently at an import and with
+a configuration clause. **A finding is judged against the module that writes it**: a Node finding Rust lacks in the
+manifest's own file (or a partial it `include:`s) passes only when the manifest's own entry lists its code. One
+written in a file of another module M (a partial mapped to its owner through the covered manifests' `include:`
+lists, M keyed by its own manifest path) passes, when M's own Node run in the same sweep reports that defect, only
+when M's entry lists the code and M's own Rust run lacks it. When M's own Node run does not report it, it is a
+**context finding** — a defect the consumer's composition makes at M's file (a published ceiling M declares, met
+by this runtime) — owed to the manifest itself: it passes only when the manifest's own entry lists the code. Under
+`--filter` M's or the manifest's entry listing the code passes; the full sweep confirms. A listed code is stale when
+the module's own run no longer lacks it, its context findings counting among its own: so no consumer entry gains a
+code a library writes, "writes" meaning that library's own check reports it. A Rust diagnostic Node does not make
+always fails, and a stale entry fails; the dimension exits non-zero then. Each recorded finding keeps the `path` and
+`resource` `telo check -o json` gives it, which both cross-run comparisons read. `--reuse-node <earlier --out file>` replays that file's recorded Node runs, so
 iterating on Rust does not pay for Node's again; it refuses a file made at another commit unless
 `--reuse-node-any-commit` is given. The sweep leaves out `CONTROLLER_TOOL_MISSING` and the over-budget rule
 findings (`RESOURCE_RULE_INVALID` / `REFERRER_RULE_INVALID` saying a rule "exceeded its evaluation budget"),
@@ -74,26 +85,24 @@ analyze-only load — the Node kernel's `analyzeOnly` through the sweep-owned `l
 `sweep.mjs` (run with the workspace's `bun`), the Rust kernel's `LoadOptions { analyze_only }` through
 the unpublished `analyze_only` example of `telo-kernel` — each printing one JSON answer: the refusal's headline
 code and message, and every finding it carries with its code as raised, its file (the origin; none means the
-entry), its message and `writtenAt` (where the module writing the defect reports it, for a finding re-reported at
-an import), the repo root's prefixes removed. A carried finding is one finding by code, file and message. **The
-`load` rule, beside the `check` rule:**
+entry), its `path` and `resource` (the origin's; absent when it has none), its message and `writtenAt` (where the
+module writing the defect reports it, for a finding re-reported at an import), the repo root's prefixes removed.
+Within one manifest Node's carried finding equals Rust's only when all six are byte-identical. **The `load` rule,
+beside the `check` rule:**
 
 - Both load, or both refuse with the same headline and the same carried findings: a match.
 - Rust refuses with `ERR_UNSUPPORTED_MANIFEST_FEATURE`: passes only under the manifest's own `unsupported` entry —
   a gap, counted and not failed (step 4's to close), when Node loads; debt when Node refuses.
 - Node loads and Rust refuses with anything else: a failure.
 - A finding Rust carries that Node does not: a failure, whatever the debt.
-- A finding Node carries that Rust lacks is **owed by a module**: the one owning `writtenAt.filePath` when the
-  finding has one, else the one owning the finding's file — found as the `check` dimension finds a file's owner
-  (a partial maps to its owner). It passes when that owner's `check-debt.json` entry lists a static code C with C,
-  or `runtimeCodeOf(C)` (the load refusal rule's mapping, read from the built `@telorun/analyzer`), equal to the
-  carried code; the sweep holds no table and maps nothing backward. A consumer's entry lists a code only for its
-  own finding (one with no `writtenAt`), never a code a library writes.
-- **Confirmation**, when `check` and `load` run in one sweep with no `--filter`: the owner's own `check` run must
-  lack the finding too — with `writtenAt`, one of that code at the same file, `path` and `resource` (the defect's
-  identity; messages are not compared, the import's prefix being by design); without it, one of that code, file
-  and message (its repo-root prefixes removed as the load answers' are, and less the `(when …)` clause `telo check`
-  appends to a finding holding in some configurations only). Otherwise the entry decides alone.
+- A finding Node carries that Rust lacks is **owed by the `check` dimension's rule**, at its written place (the file's
+  owner found as the `check` dimension finds it, a partial mapping to its owner). A listed static code C counts when
+  C, or `runtimeCodeOf(C)` (the load refusal rule's mapping, read from the built `@telorun/analyzer`), equals the
+  carried code; the sweep holds no table and maps nothing backward. When `check` and `load` run in one sweep with
+  no `--filter`, the module whose own Node `check` run reports the defect (by defect identity) owes it — its entry
+  lists the code and its own Rust `check` run lacks it — and a defect at another module's file that no module's
+  own `check` run reports is a context finding, owed to the manifest's own entry. Under `--filter` an owner's or
+  the manifest's entry listing the code passes. No consumer entry gains a code a library writes.
 - The headlines may differ only when the carried findings differ and every difference is owed: equal carried
   findings under different headlines fail, so a Node refusal carrying nothing that Rust answers differently fails.
 

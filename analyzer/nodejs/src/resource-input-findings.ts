@@ -252,16 +252,11 @@ export function optionalInputReferenceFindings(inputs: OptionalInputReferenceInp
   };
   const references = optionalInputEdgeReferences(graph, absentOf);
   const forwards: PassFinding[] = forwardedOptionalInputs(union, absentOf).map(({ reference, condition }) => ({
-    diagnostic: referenceDiagnostic(reference, data(reference.holder, reference.path)),
+    diagnostic: forwardedReferenceFinding(reference),
     condition,
   }));
 
-  const render = (reference: EdgeReference, read: ChoiceDecider): AnalysisDiagnostic[] => {
-    const at = edgeReferenceAt(graph, reference, read);
-    // A finding of a declaration written inside another stands at its place
-    // there, as a run moves it.
-    return [aboutDeclaration(referenceDiagnostic(at, data(at.holder, at.path)), reference.holder)];
-  };
+  const render = (reference: EdgeReference, read: ChoiceDecider): AnalysisDiagnostic[] => [edgeReferenceFinding(graph, reference, read)];
 
   const fixed = forwards;
   const deadReader = (branch: DeadBranchRun): WorldReader<Condition> => ({
@@ -358,6 +353,20 @@ export function edgeReferenceAt(
   const path = graph.relativePathBy(reference.holder, reference.edge.keys, read);
   const holder = { ...identity.manifest, kind: identity.kind, metadata: { ...identity.manifest.metadata, name: identity.name } } as ResourceManifest;
   return { input: reference.input, holder, path };
+}
+
+/** The finding of an edge reference, as `read` decides the choices naming and
+ *  placing its holder, before placement. */
+export function edgeReferenceFinding(graph: ConditionedCallGraph, reference: EdgeReference, read: ChoiceDecider): AnalysisDiagnostic {
+  const at = edgeReferenceAt(graph, reference, read);
+  // A finding of a declaration written inside another stands at its place
+  // there, as a run moves it.
+  return aboutDeclaration(referenceDiagnostic(at, data(at.holder, at.path)), reference.holder);
+}
+
+/** The finding of an import forwarding an optional input, before placement. */
+export function forwardedReferenceFinding(reference: Parameters<typeof optionalInputReferenceMessage>[0]): AnalysisDiagnostic {
+  return referenceDiagnostic(reference, data(reference.holder, reference.path));
 }
 
 function data(holder: ResourceManifest, path: string) {

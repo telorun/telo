@@ -2,10 +2,11 @@
 // `bun .claude/skills/rust-parity/load-node.ts <entry manifest>`. Loads the entry with the Node
 // kernel's `analyzeOnly` option — the sources `telo run` reads through, no cache write — and
 // prints the refusal, if any, as one JSON object on stdout, exiting 1:
-// `{ code, message, carried: [{ code?, file?, message, writtenAt? }] }` — each carried finding
-// under the code it is raised as, `file` its origin's file (absent: the entry) and `writtenAt`
-// the place its defect is written (absent for the reporting module's own). A load nothing
-// refuses prints nothing and exits 0. The Rust half is `kernel/rust/examples/analyze_only.rs`.
+// `{ code, message, carried: [{ code?, file?, path?, resource?, message, writtenAt? }] }` — each
+// carried finding under the code it is raised as, `file` its origin's file (absent: the entry),
+// `path` and `resource` its origin's field path and declaration (absent when it has none) and
+// `writtenAt` the place its defect is written (absent for the reporting module's own). A load
+// nothing refuses prints nothing and exits 0. The Rust half is `kernel/rust/examples/analyze_only.rs`.
 
 import { dirname, join, resolve } from "node:path";
 import { Kernel, LocalFileSource, LocalManifestCacheSource } from "../../../kernel/nodejs/src/index.ts";
@@ -32,6 +33,8 @@ try {
   const carried = (diagnostics ?? []).map((d) => ({
     ...(d.code !== undefined ? { code: d.code } : {}),
     ...(d.origin?.filePath !== undefined ? { file: d.origin.filePath } : {}),
+    ...(d.origin?.path !== undefined ? { path: d.origin.path } : {}),
+    ...(d.origin?.resource !== undefined ? { resource: d.origin.resource } : {}),
     message: d.message,
     ...(d.origin?.writtenAt ? { writtenAt: d.origin.writtenAt } : {}),
   }));

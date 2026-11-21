@@ -149,6 +149,7 @@ targets:
   - !ref optionalInputReferenced
   - !ref optionalInputReferencedAtRuntime
   - !ref optionalInputReferencedSupplied
+  - !ref optionalInputReferencedInConfiguration
   - !ref kindThroughDependency
   - !ref kindThroughDependencyAtRuntime
   - !ref undeclaredResourceRead
@@ -1184,6 +1185,17 @@ expect:
   errors:
     - { code: RESOURCE_INPUT_OPTIONAL_REFERENCED, message: "Kinds.Holder/holder: 'store' references resource input 'store', which is optional and may be absent. Reference it only inside an '!if' proving it present ('resources.store != null'), with this library's own default in the other branch, or make the input required." }
   runs: true
+---
+# A library referencing its optional input in one branch of its own choice, from
+# a consumer whose import takes that branch: the check reports the library's own
+# finding once, at the library's file, and the kernel refuses the run at the import.
+kind: Assert.Manifest
+metadata: { name: optionalInputReferencedInConfiguration }
+source: ./__fixtures__/configurations/optional-reference-consumer.yaml
+expect:
+  errors:
+    - { code: RESOURCE_INPUT_OPTIONAL_REFERENCED, message: "Kinds.Holder/holder: 'store' references resource input 'store', which is optional and may be absent. Reference it only inside an '!if' proving it present ('resources.store != null'), with this library's own default in the other branch, or make the input required. (when variables.useStore is true)" }
+  runFails: "[RESOURCE_INPUT_OPTIONAL_REFERENCED] Imported library 'OptionalReferenceLibrary', reached through import 'Reading'"
 ---
 # A kind spelled by the name of a module only a dependency imports. The graph
 # holds that module's definitions, which the analyzer used to resolve by their

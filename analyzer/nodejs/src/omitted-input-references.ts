@@ -27,12 +27,19 @@ import { ABSENT, PRESENT, type Dimension } from "./configuration-dimensions.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import type { ModuleDocuments } from "./module-documents.js";
 import { optionalInputReferenceMessage, type OptionalInputReference } from "./optional-input-references.js";
-import type { WrittenAt } from "./diagnostic-identity.js";
+import { writtenPlaceOf, type WrittenAt } from "./diagnostic-identity.js";
 import { FALSE, TRUE, ConditionSpace, type Condition, type TranslationMeaning } from "./presence-condition.js";
 import { importAnchoredDiagnostic, importReach } from "./reaching-import.js";
 import { readSuppliedResources } from "./resource-input.js";
-import { edgeReferenceAt, forwardedOptionalInputs, optionalInputEdgeReferences } from "./resource-input-findings.js";
+import {
+  edgeReferenceAt,
+  edgeReferenceFinding,
+  forwardedOptionalInputs,
+  forwardedReferenceFinding,
+  optionalInputEdgeReferences,
+} from "./resource-input-findings.js";
 import type { AnalysisDiagnostic } from "./types.js";
+import { unionWorld, type UnionWorld } from "./union-placement.js";
 import type { ReadFinding } from "./union-passes.js";
 import type { WorldReader } from "./world-reader.js";
 
@@ -44,6 +51,9 @@ interface LibraryReference {
   /** The reference as `read` decides the choices naming and placing its
    *  holder. */
   at(read: ChoiceDecider): OptionalInputReference;
+  /** Where the library's own check reports it, as `read` decides the choices:
+   *  its finding placed as the library's own placement places it. */
+  writtenAt(read: ChoiceDecider): WrittenAt;
 }
 
 /** What a library's own configurations hold of references to its optional inputs. */
@@ -85,6 +95,9 @@ export function libraryOptionalReferences(target: ModuleDocuments, scope: Librar
     libraries: scope.documents,
   });
   const reaches = (): Condition => TRUE;
+  let world: UnionWorld | undefined;
+  const placed = (finding: AnalysisDiagnostic, read: ChoiceDecider): WrittenAt =>
+    writtenPlaceOf((world ??= unionWorld(union, graph)).placement.place([finding], read)[0]!);
   const references: LibraryReference[] = [
     ...optionalInputEdgeReferences(graph, reaches)
       .filter((reference) => !isStandInDeclaration(reference.edge.declaration.manifest))
@@ -92,11 +105,13 @@ export function libraryOptionalReferences(target: ModuleDocuments, scope: Librar
       input: reference.input,
       condition: reference.condition,
       at: (read: ChoiceDecider) => edgeReferenceAt(graph, reference, read),
+      writtenAt: (read: ChoiceDecider) => placed(edgeReferenceFinding(graph, reference, read), read),
     })),
     ...forwardedOptionalInputs(union, reaches).map(({ reference, condition }) => ({
       input: reference.input,
       condition,
       at: () => reference,
+      writtenAt: (read: ChoiceDecider) => placed(forwardedReferenceFinding(reference), read),
     })),
   ];
   return { space, dimensions: choices.dimensions, references };
@@ -162,22 +177,20 @@ export function omittedInputFindings(manifests: readonly ResourceManifest[], doc
       held: space.some(held.map((each) => each.condition)),
       render: (read: WorldReader<Condition>) => {
         const inLibrary: ChoiceDecider = { taken: (element) => read.holds(carry(element.condition)) };
-        const refusals = new Map<string, OptionalInputReference>();
+        const refusals = new Map<string, LibraryReference>();
         for (const { reference, condition } of held) {
           if (!read.holds(condition)) continue;
-          const at = reference.at(inLibrary);
-          const message = optionalInputReferenceMessage(at);
-          if (!refusals.has(message)) refusals.set(message, at);
+          const message = optionalInputReferenceMessage(reference.at(inLibrary));
+          if (!refusals.has(message)) refusals.set(message, reference);
         }
         if (refusals.size === 0) return [];
         const message = [...refusals.keys()].join(" ");
-        // The first reference is where the library's own check reports it.
+        // The first reference is where the library's own check reports it, each
+        // choice on the way to it decided where the reference holds.
         const first = [...refusals.values()][0]!;
-        const written: WrittenAt = {
-          resource: { kind: first.holder.kind, name: first.holder.metadata?.name },
-          filePath: (first.holder.metadata as { source?: string } | undefined)?.source,
-          path: first.path,
-        };
+        const written = first.writtenAt({
+          taken: (element) => read.holds(carry(library.space.and(element.condition, first.condition))),
+        });
         return [
           own
             ? importAnchoredDiagnostic(
