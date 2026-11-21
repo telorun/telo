@@ -347,7 +347,7 @@ class Checker implements MacroHost {
     // Reading through an optional answers an optional, whichever form the read is
     // written in: that is what makes a chain of reads over a value that may be absent
     // stay one expression instead of needing a guard at every step.
-    return node.optional || guarded.kind === "optional" ? optionalOf(unwrapOptional(held)) : held;
+    return node.optional || guarded.kind === "optional" ? optionalOf(held) : held;
   }
 
   /**
@@ -376,7 +376,9 @@ class Checker implements MacroHost {
     if (split.rest.length === segments.length - 1) return undefined;
     let held = this.context.variable(split.name)!;
     for (const segment of chain.segments.slice(chain.segments.length - split.rest.length)) {
-      held = this.memberType(held, segment.name, segment.range);
+      const read = this.memberType(held, segment.name, segment.range);
+      // Reading through an optional answers an optional, as a select does.
+      held = held.kind === "optional" ? optionalOf(read) : read;
     }
     return held;
   }
@@ -391,15 +393,22 @@ class Checker implements MacroHost {
     field: string,
     range: SourceRange,
     presence = false,
+    layered = false,
+    whole = operand,
   ): CelType {
     if (isDyn(operand) || operand.kind === "parameter") return DYN;
     if (operand.kind === "optional") {
-      return this.memberType(operand.value, field, range, presence);
+      // Exactly one optional layer is read through, as at runtime.
+      if (layered || operand.value.kind === "optional") {
+        this.report("CEL_TYPE_ERROR", nestedOptionalMessage(whole), range);
+        return DYN;
+      }
+      return this.memberType(operand.value, field, range, presence, true, whole);
     }
     if (operand.kind === "union") {
       return unionOf(
-        presenceBranches(operand, holdsMembers, presence).map((member) =>
-          this.memberType(member, field, range, presence),
+        presenceBranches(operand, (type) => holdsMembers(type, layered), presence).map((member) =>
+          this.memberType(member, field, range, presence, layered, whole),
         ),
       );
     }
@@ -454,7 +463,7 @@ class Checker implements MacroHost {
     const index = this.typeOf(node.index);
     const guarded = this.checkNullable(node.operand, operand, "[…]", node.range);
     const held = this.elementType(guarded, index, node, node.optional);
-    return node.optional || guarded.kind === "optional" ? optionalOf(unwrapOptional(held)) : held;
+    return node.optional || guarded.kind === "optional" ? optionalOf(held) : held;
   }
 
   private elementType(
@@ -462,15 +471,22 @@ class Checker implements MacroHost {
     index: CelType,
     node: Extract<CelNode, { kind: "index" }>,
     presence = false,
+    layered = false,
+    whole = operand,
   ): CelType {
     if (isDyn(operand) || operand.kind === "parameter") return DYN;
     if (operand.kind === "optional") {
-      return this.elementType(operand.value, index, node, presence);
+      // Exactly one optional layer is read through, as at runtime.
+      if (layered || operand.value.kind === "optional") {
+        this.report("CEL_TYPE_ERROR", nestedOptionalMessage(whole), node.range);
+        return DYN;
+      }
+      return this.elementType(operand.value, index, node, presence, true, whole);
     }
     if (operand.kind === "union") {
       return unionOf(
-        presenceBranches(operand, holdsElements, presence).map((member) =>
-          this.elementType(member, index, node, presence),
+        presenceBranches(operand, (type) => holdsElements(type, layered), presence).map((member) =>
+          this.elementType(member, index, node, presence, layered, whole),
         ),
       );
     }
@@ -940,29 +956,32 @@ function presenceBranches(
   return holding.length > 0 ? holding : union.members;
 }
 
+function nestedOptionalMessage(whole: CelType): string {
+  return `${formatType(whole)} is read through one optional only; unwrap the inner optional (.value(), .orValue(…) or optFlatMap) first`;
+}
+
 /** Whether a type can hold a named member at all — what `memberType` reads one of. */
-function holdsMembers(type: CelType): boolean {
+function holdsMembers(type: CelType, layered = false): boolean {
   if (isDyn(type) || type.kind === "parameter") return true;
   if (type.kind === "record" || type.kind === "map") return true;
   if (type.kind === "nominal") return type.fields !== undefined;
-  if (type.kind === "optional") return holdsMembers(type.value);
-  if (type.kind === "union") return type.members.some(holdsMembers);
+  if (type.kind === "optional") {
+    return !layered && type.value.kind !== "optional" && holdsMembers(type.value, true);
+  }
+  if (type.kind === "union") return type.members.some((member) => holdsMembers(member, layered));
   return false;
 }
 
 /** Whether a type can hold an element at all — what `elementType` reads one of. */
-function holdsElements(type: CelType): boolean {
+function holdsElements(type: CelType, layered = false): boolean {
   if (isDyn(type) || type.kind === "parameter") return true;
   if (type.kind === "record" || type.kind === "map" || type.kind === "list") return true;
   if (type.kind === "nominal") return type.fields !== undefined;
-  if (type.kind === "optional") return holdsElements(type.value);
-  if (type.kind === "union") return type.members.some(holdsElements);
+  if (type.kind === "optional") {
+    return !layered && type.value.kind !== "optional" && holdsElements(type.value, true);
+  }
+  if (type.kind === "union") return type.members.some((member) => holdsElements(member, layered));
   return false;
-}
-
-/** An optional of an optional is one optional; a chain of reads does not nest them. */
-function unwrapOptional(type: CelType): CelType {
-  return type.kind === "optional" ? unwrapOptional(type.value) : type;
 }
 
 /**

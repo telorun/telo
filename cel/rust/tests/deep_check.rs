@@ -191,7 +191,7 @@ fn optionals(n: usize) -> CelEnvironment {
     environment
 }
 
-/// Node's answers three and four optionals deep, which depth does not move.
+/// A read goes through exactly one optional layer.
 fn optional_rows() -> Vec<check_support::Row> {
     vec![
         ("o.a", "optional<int>", vec![]),
@@ -201,14 +201,40 @@ fn optional_rows() -> Vec<check_support::Row> {
     ]
 }
 
+/// Two or more layers deep, the read is refused as read through one optional only, at any depth.
+fn refused_through_nested_optionals(environment: &CelEnvironment) {
+    let result = environment.check("o.a");
+    assert_eq!(result.type_name, "optional<dyn>");
+    assert_eq!(result.diagnostics.len(), 1);
+    assert!(
+        result.diagnostics[0].message.ends_with(" is read through one optional only; unwrap the inner optional (.value(), .orValue(…) or optFlatMap) first"),
+        "{}",
+        result.diagnostics[0].message
+    );
+}
+
 #[test]
-fn reads_a_member_through_a_hundred_thousand_optionals() {
+fn reads_a_member_through_one_optional_and_refuses_it_through_more_at_any_depth() {
+    check_support::assert_rows(&optionals(1), optional_rows());
+    check_support::assert_rows(
+        &optionals(2),
+        vec![(
+            "o.a",
+            "optional<dyn>",
+            vec![found(
+                TypeError,
+                "optional<optional<map<string, int>>> is read through one optional only; unwrap the inner optional (.value(), .orValue(…) or optFlatMap) first",
+                2,
+                3,
+            )],
+        )],
+    );
     for n in [3, 4] {
-        check_support::assert_rows(&optionals(n), optional_rows());
+        refused_through_nested_optionals(&optionals(n));
     }
     on_a_small_stack(|| {
         let environment = optionals(DEEP);
-        check_support::assert_rows(&environment, optional_rows());
+        refused_through_nested_optionals(&environment);
         assert_eq!(
             environment.check("o").type_name,
             format!("{}map<string, int>{}", "optional<".repeat(DEEP), ">".repeat(DEEP))

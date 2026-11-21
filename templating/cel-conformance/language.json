@@ -67761,6 +67761,432 @@
           }
         }
       }
+    },
+    {
+      "id": "telo/optional_nesting/map_select",
+      "source": "{'a': optional.of(1)}.?a == optional.of(optional.of(1))",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": []
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "telo/optional_nesting/optional_map_select",
+      "source": "optional.of({'a': optional.of(1)}).?a == optional.of(optional.of(1))",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": []
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "telo/optional_nesting/optional_map_ordinary_select",
+      "source": "optional.of({'a': optional.of(1)}).a == optional.of(optional.of(1))",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": []
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "telo/optional_nesting/map_index",
+      "source": "{'a': optional.of(1)}[?'a'] == optional.of(optional.of(1))",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": []
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "telo/optional_nesting/optional_map_index",
+      "source": "optional.of({'a': optional.of(1)})[?'a'] == optional.of(optional.of(1))",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": []
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "telo/optional_nesting/optional_map_ordinary_index",
+      "source": "optional.of({'a': optional.of(1)})['a'] == optional.of(optional.of(1))",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": []
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "telo/optional_nesting/list_index",
+      "source": "[optional.of(1)][?0] == optional.of(optional.of(1))",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": []
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "telo/optional_nesting/optional_list_index",
+      "source": "optional.of([optional.of(1)])[?0] == optional.of(optional.of(1))",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": []
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "telo/optional_nesting/optional_list_ordinary_index",
+      "source": "optional.of([optional.of(1)])[0] == optional.of(optional.of(1))",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": []
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "telo/optional_nesting/held_optional_type",
+      "source": "{'a': optional.of(1)}.?a",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "optional<optional<int>>",
+          "calls": []
+        },
+        "value": {
+          "$cel": "optional",
+          "value": {
+            "$cel": "optional",
+            "value": {
+              "$telo": "int",
+              "value": "1"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/optional_nesting/held_optional_value_plus",
+      "source": "{'a': optional.of(1)}.?a.value() + 1",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "no \"+\" is declared over optional<int>, int",
+              "range": {
+                "start": 0,
+                "end": 36
+              }
+            }
+          ],
+          "calls": [
+            {
+              "name": "value",
+              "form": "receiver",
+              "arity": 0,
+              "range": {
+                "start": 0,
+                "end": 32
+              },
+              "signature": "optional<A>.value(): A",
+              "returns": "optional<int>",
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ]
+        },
+        "error": {
+          "code": null,
+          "celCode": "CEL_TYPE_ERROR",
+          "message": "no \"+\" is declared over optional<int>, int",
+          "range": {
+            "start": 0,
+            "end": 36
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/optional_nesting/nested_optional_select",
+      "source": "optional.of(optional.of({'a': 1})).a",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "optional<optional<map<string, int>>> is read through one optional only; unwrap the inner optional (.value(), .orValue(…) or optFlatMap) first",
+              "range": {
+                "start": 35,
+                "end": 36
+              }
+            }
+          ],
+          "calls": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "CEL_TYPE_ERROR",
+          "message": "optional<optional<map<string, int>>> is read through one optional only; unwrap the inner optional (.value(), .orValue(…) or optFlatMap) first",
+          "range": {
+            "start": 35,
+            "end": 36
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/optional_nesting/chain_single_optional",
+      "source": "{'a': {'b': 1}}.?a.b",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "optional<int>",
+          "calls": []
+        },
+        "value": {
+          "$cel": "optional",
+          "value": {
+            "$telo": "int",
+            "value": "1"
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/optional_nesting/dotted_declaration_select",
+      "source": "a.c.d",
+      "declarations": {
+        "a.c": "optional<map<string, int>>"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "optional<int>",
+          "calls": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "no_such_variable",
+          "message": "no such variable: a.c.d",
+          "range": {
+            "start": 0,
+            "end": 5
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/optional_nesting/dotted_declaration_arithmetic",
+      "source": "a.c.d + 1",
+      "declarations": {
+        "a.c": "optional<map<string, int>>"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "no \"+\" is declared over optional<int>, int",
+              "range": {
+                "start": 0,
+                "end": 9
+              }
+            }
+          ],
+          "calls": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "no_such_variable",
+          "message": "no such variable: a.c.d",
+          "range": {
+            "start": 0,
+            "end": 5
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/optional_nesting/nested_optional_presence_select",
+      "source": "o.?a",
+      "declarations": {
+        "o": "optional<optional<map<string, int>>>"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "optional<optional<map<string, int>>> is read through one optional only; unwrap the inner optional (.value(), .orValue(…) or optFlatMap) first",
+              "range": {
+                "start": 3,
+                "end": 4
+              }
+            }
+          ],
+          "calls": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "no_such_variable",
+          "message": "no such variable: o",
+          "range": {
+            "start": 0,
+            "end": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/optional_nesting/nested_optional_has",
+      "source": "has(o.a)",
+      "declarations": {
+        "o": "optional<optional<map<string, int>>>"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "optional<optional<map<string, int>>> is read through one optional only; unwrap the inner optional (.value(), .orValue(…) or optFlatMap) first",
+              "range": {
+                "start": 6,
+                "end": 7
+              }
+            }
+          ],
+          "calls": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "no_such_variable",
+          "message": "no such variable: o",
+          "range": {
+            "start": 4,
+            "end": 5
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/optional_nesting/nested_optional_index",
+      "source": "o['a']",
+      "declarations": {
+        "o": "optional<optional<map<string, int>>>"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "optional<optional<map<string, int>>> is read through one optional only; unwrap the inner optional (.value(), .orValue(…) or optFlatMap) first",
+              "range": {
+                "start": 0,
+                "end": 6
+              }
+            }
+          ],
+          "calls": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "no_such_variable",
+          "message": "no such variable: o",
+          "range": {
+            "start": 0,
+            "end": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/optional_nesting/nested_optional_presence_index",
+      "source": "o[?'a']",
+      "declarations": {
+        "o": "optional<optional<map<string, int>>>"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "optional<optional<map<string, int>>> is read through one optional only; unwrap the inner optional (.value(), .orValue(…) or optFlatMap) first",
+              "range": {
+                "start": 0,
+                "end": 7
+              }
+            }
+          ],
+          "calls": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "no_such_variable",
+          "message": "no such variable: o",
+          "range": {
+            "start": 0,
+            "end": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/optional_nesting/nested_optional_list_index",
+      "source": "o[0]",
+      "declarations": {
+        "o": "optional<optional<list<int>>>"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "optional<optional<list<int>>> is read through one optional only; unwrap the inner optional (.value(), .orValue(…) or optFlatMap) first",
+              "range": {
+                "start": 0,
+                "end": 4
+              }
+            }
+          ],
+          "calls": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "no_such_variable",
+          "message": "no such variable: o",
+          "range": {
+            "start": 0,
+            "end": 1
+          }
+        }
+      }
     }
   ]
 }
