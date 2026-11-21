@@ -72,6 +72,20 @@ export function treesEqual(left: CelNode, right: CelNode): boolean {
         )
       );
     }
+    case "struct": {
+      const other = right as typeof left;
+      return (
+        left.typeName === other.typeName &&
+        left.absolute === other.absolute &&
+        left.entries.length === other.entries.length &&
+        left.entries.every(
+          (entry, at) =>
+            entry.field === other.entries[at]!.field &&
+            entry.optional === other.entries[at]!.optional &&
+            treesEqual(entry.value, other.entries[at]!.value),
+        )
+      );
+    }
     case "select": {
       const other = right as typeof left;
       return (

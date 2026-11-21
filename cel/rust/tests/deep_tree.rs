@@ -328,17 +328,19 @@ fn nested(label: &str, depth: usize) -> (String, usize) {
         "ternary" => (around("a?", "1", ":1"), 3 * depth + 1),
         "not" => (around("!", "a", ""), depth + 1),
         "negation" => (around("-", "a", ""), depth + 1),
+        "construction" => (around("B{x:", "1", "}"), depth + 1),
         other => panic!("{other} is not a nesting construct"),
     }
 }
 
-const CONSTRUCTS: [&str; 8] = ["parentheses", "list", "map", "index", "call argument", "ternary", "not", "negation"];
+const CONSTRUCTS: [&str; 9] =
+    ["parentheses", "list", "map", "index", "call argument", "ternary", "not", "negation", "construction"];
 
 #[test]
 fn reads_each_construct_at_its_deepest_nesting_and_refuses_one_deeper() {
     on_a_small_stack(|| {
         // `(construct, the deepest nesting Node reads, its nodes, Node's refusal of one deeper)`.
-        let node_boundaries: [(&str, usize, usize, Option<CelSyntaxDiagnostic>); 8] = [
+        let node_boundaries: [(&str, usize, usize, Option<CelSyntaxDiagnostic>); 9] = [
             ("parentheses", 249, 1, Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more nesting than the limit of 250", 250, 250))),
             ("list", 249, 250, Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more nesting than the limit of 250", 250, 250))),
             ("map", 249, 499, Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more nesting than the limit of 250", 748, 748))),
@@ -347,6 +349,7 @@ fn reads_each_construct_at_its_deepest_nesting_and_refuses_one_deeper() {
             ("ternary", 249, 748, Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more nesting than the limit of 250", 500, 500))),
             ("not", 249, 250, Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more nesting than the limit of 250", 249, 249))),
             ("negation", 249, 250, Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more nesting than the limit of 250", 249, 249))),
+            ("construction", 249, 250, Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more nesting than the limit of 250", 1000, 1000))),
         ];
         assert_eq!(node_boundaries.each_ref().map(|(label, ..)| *label), CONSTRUCTS);
         for (label, depth, node_count, refusal) in node_boundaries {

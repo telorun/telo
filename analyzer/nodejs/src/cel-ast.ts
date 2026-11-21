@@ -64,6 +64,16 @@ export type CelNode =
   | { kind: "list"; range: [number, number]; items: CelNode[] }
   | { kind: "map"; range: [number, number]; entries: { key: CelNode; value: CelNode }[] }
   | {
+      kind: "struct";
+      range: [number, number];
+      /** The constructed type's name as written, without a leading dot. */
+      typeName: string;
+      /** `.Name{…}`: written with a leading dot. */
+      absolute: boolean;
+      typeNameRange: [number, number];
+      entries: { field: string; fieldRange: [number, number]; value: CelNode; optional: boolean }[];
+    }
+  | {
       kind: "ternary";
       range: [number, number];
       cond: CelNode;
@@ -167,6 +177,20 @@ export function wrapCelAst(node: EngineNode, segmentStart: CelOffsetMap): CelNod
         kind: "map",
         range,
         entries: node.entries.map((entry) => ({ key: wrap(entry.key), value: wrap(entry.value) })),
+      };
+    case "struct":
+      return {
+        kind: "struct",
+        range,
+        typeName: node.typeName,
+        absolute: node.absolute,
+        typeNameRange: abs(node.typeNameRange, segmentStart),
+        entries: node.entries.map((entry) => ({
+          field: entry.field,
+          fieldRange: abs(entry.fieldRange, segmentStart),
+          value: wrap(entry.value),
+          optional: entry.optional,
+        })),
       };
     case "conditional":
       return {

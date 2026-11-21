@@ -34,6 +34,7 @@
 //!   value can be awaited.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use telorun_cel_value::{
     cel_error, cel_map_from_entries, cel_none, cel_some, json_quote, CelEvaluationCode, CelList, CelValue, SourceRange,
@@ -42,7 +43,8 @@ use telorun_cel_value::{
 use crate::activation::CelActivation;
 use crate::backend_runtime::{
     bool_operand, compile_error, has_member, optional_entry, read_name, read_name_chain, read_through,
-    search_name_chain, CallSite, CelCompileError, DeclaredNameChain, EnvironmentSnapshot, SearchedNameChain,
+    search_name_chain, CallSite, CelCompileError, CompileTarget, ConstructionSite, DeclaredNameChain,
+    EnvironmentSnapshot, SearchedNameChain,
 };
 use crate::cel_value::literal_value;
 use crate::comprehension_bindings::{namespace_macro_binding, receiver_macro_binding};
@@ -76,6 +78,8 @@ enum Instruction {
     /// `optional` indexes the aggregate's table of which elements were written `[?x]`.
     MakeList { count: usize, optional: Option<usize> },
     MakeMap { count: usize, optional: Option<usize>, range: SourceRange },
+    /// A construction over its fields' values, `optional` as for a list.
+    Construct { site: usize, count: usize, optional: Option<usize> },
     BoolOperand { range: SourceRange },
     /// Leaves a bool equal to `decided` on top and goes on at `target`.
     ShortCircuit { decided: bool, target: usize },
@@ -121,6 +125,7 @@ impl Instruction {
 pub(crate) struct CompiledTree {
     instructions: Box<[Instruction]>,
     sites: Box<[CallSite]>,
+    constructions: Box<[ConstructionSite]>,
     declared: Box<[DeclaredNameChain]>,
     searched: Box<[SearchedNameChain]>,
     optional_entries: Box<[Box<[bool]>]>,
@@ -146,32 +151,34 @@ enum ChainShape<'a> {
     NotPlain(usize),
 }
 
-struct Compiler<'a, 'd> {
+struct Compiler<'a, 'd, 'e> {
     code: Vec<Instruction>,
     labels: Vec<usize>,
     sites: Vec<CallSite>,
+    constructions: Vec<ConstructionSite>,
     declared: Vec<DeclaredNameChain>,
     searched: Vec<SearchedNameChain>,
     optional_entries: Vec<Box<[bool]>>,
     slots: usize,
     /// Each name bound in scope, the innermost binding last.
     scopes: HashMap<&'a str, Vec<usize>>,
-    declares: &'d dyn Fn(&str) -> bool,
+    target: &'d CompileTarget<'e>,
 }
 
-/// Compiles a tree. `declares` answers whether the host declared a name, dotted or not:
-/// a dotted chain splits at the longest declared prefix, as the checker splits it.
-pub(crate) fn compile_tree(root: &CelNode, declares: &dyn Fn(&str) -> bool) -> Result<CompiledTree, CelCompileError> {
+/// Compiles a tree against what the target reads of its environment. A dotted chain splits
+/// at the longest prefix the host declared, as the checker splits it.
+pub(crate) fn compile_tree(root: &CelNode, target: &CompileTarget<'_>) -> Result<CompiledTree, CelCompileError> {
     let mut compiler = Compiler {
         code: Vec::new(),
         labels: Vec::new(),
         sites: Vec::new(),
+        constructions: Vec::new(),
         declared: Vec::new(),
         searched: Vec::new(),
         optional_entries: Vec::new(),
         slots: 0,
         scopes: HashMap::new(),
-        declares,
+        target,
     };
     let mut tasks = vec![Task::Visit(root, 0)];
     while let Some(task) = tasks.pop() {
@@ -188,7 +195,7 @@ pub(crate) fn compile_tree(root: &CelNode, declares: &dyn Fn(&str) -> bool) -> R
             }
         }
     }
-    let Compiler { mut code, labels, sites, declared, searched, optional_entries, slots, .. } = compiler;
+    let Compiler { mut code, labels, sites, constructions, declared, searched, optional_entries, slots, .. } = compiler;
     for instruction in &mut code {
         for target in instruction.targets() {
             *target = labels[*target];
@@ -197,6 +204,7 @@ pub(crate) fn compile_tree(root: &CelNode, declares: &dyn Fn(&str) -> bool) -> R
     Ok(CompiledTree {
         instructions: code.into(),
         sites: sites.into(),
+        constructions: constructions.into(),
         declared: declared.into(),
         searched: searched.into(),
         optional_entries: optional_entries.into(),
@@ -204,7 +212,7 @@ pub(crate) fn compile_tree(root: &CelNode, declares: &dyn Fn(&str) -> bool) -> R
     })
 }
 
-impl<'a> Compiler<'a, '_> {
+impl<'a> Compiler<'a, '_, '_> {
     fn label(&mut self) -> usize {
         self.labels.push(usize::MAX);
         self.labels.len() - 1
@@ -260,6 +268,33 @@ impl<'a> Compiler<'a, '_> {
                 let flags: Vec<bool> = node.entries.iter().map(|entry| entry.optional).collect();
                 let optional = self.optional_entries(flags);
                 tasks.push(Task::Emit(Instruction::MakeMap { count: node.entries.len(), optional, range: node.range }));
+                tasks.push(Task::Place(end));
+                tasks
+            }
+            CelNode::Struct(node) => {
+                // Each field's value in source order, the first error carried out, an absent
+                // optional entry leaving its field unset — then the site builds the value.
+                let end = self.label();
+                let mut tasks = Vec::new();
+                for (at, entry) in node.entries.iter().enumerate() {
+                    tasks.push(Task::Visit(&entry.value, 0));
+                    tasks.push(Task::Emit(Instruction::JumpIfError { target: end, discard: at }));
+                    if entry.optional {
+                        tasks.push(Task::Emit(Instruction::OptionalEntry { range: node.range }));
+                        tasks.push(Task::Emit(Instruction::JumpIfError { target: end, discard: at }));
+                    }
+                }
+                let fields: Vec<(&str, SourceRange)> =
+                    node.entries.iter().map(|entry| (entry.field.as_str(), entry.value.range())).collect();
+                let site = ConstructionSite::new(&node.type_name, &fields, node.range, &self.target.construction);
+                self.constructions.push(site);
+                let flags: Vec<bool> = node.entries.iter().map(|entry| entry.optional).collect();
+                let optional = self.optional_entries(flags);
+                tasks.push(Task::Emit(Instruction::Construct {
+                    site: self.constructions.len() - 1,
+                    count: node.entries.len(),
+                    optional,
+                }));
                 tasks.push(Task::Place(end));
                 tasks
             }
@@ -363,7 +398,7 @@ impl<'a> Compiler<'a, '_> {
 
     /// One dispatch: the arguments in order, the first error carried out, then the site.
     fn call(&mut self, name: &str, form: CallForm, args: Vec<&'a CelNode>, range: SourceRange) -> Vec<Task<'a>> {
-        self.sites.push(CallSite::new(name, form, range));
+        self.sites.push(CallSite::new(name, form, range, Arc::clone(&self.target.types)));
         let site = self.sites.len() - 1;
         let end = self.label();
         let mut tasks = Vec::new();
@@ -429,7 +464,7 @@ impl<'a> Compiler<'a, '_> {
     /// A dotted name: split at compile time over the declared names, or searched in the
     /// activation where nothing declares a prefix of it.
     fn name_chain(&mut self, segments: &[&str], range: SourceRange) -> Task<'a> {
-        if let Some(split) = split_declared_chain(segments, self.declares) {
+        if let Some(split) = split_declared_chain(segments, self.target.declares) {
             self.declared.push(DeclaredNameChain {
                 name: split.name.into(),
                 rest: split.rest.into_iter().map(|field| CelValue::String(field.into())).collect(),
@@ -710,6 +745,22 @@ pub(crate) fn run(
                     Err(error) => error.with_range(*range).into(),
                 });
             }
+            Instruction::Construct { site, count, optional } => {
+                let values = stack.split_off(stack.len() - count);
+                let written: Vec<Option<CelValue>> = match optional {
+                    None => values.into_iter().map(Some).collect(),
+                    Some(flags) => values
+                        .into_iter()
+                        .zip(tree.optional_entries[*flags].iter())
+                        .map(|(value, flagged)| match (value, flagged) {
+                            (CelValue::Optional(held), true) => held.into_held(),
+                            (_, true) => unreachable!("an optional entry was checked"),
+                            (value, false) => Some(value),
+                        })
+                        .collect(),
+                };
+                stack.push(tree.constructions[*site].build(written, snapshot));
+            }
             Instruction::BoolOperand { range } => {
                 let value = pop(&mut stack);
                 stack.push(bool_operand(value, *range));
@@ -761,7 +812,7 @@ pub(crate) fn run(
             Instruction::CallBound { count, range } => {
                 let implementation = bound.pop().expect("a namespaced call's function was bound");
                 let at = stack.len() - count;
-                let answer = implementation(&CelCallContext { range: Some(*range) }, &stack[at..])?;
+                let answer = implementation(&CelCallContext::new(Some(*range)), &stack[at..])?;
                 stack.truncate(at);
                 stack.push(answer);
             }

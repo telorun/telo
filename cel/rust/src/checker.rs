@@ -23,7 +23,7 @@
 //!   code units as Node slices it; a slice a hand-built range cuts inside a character
 //!   holds U+FFFD where Node's holds the lone surrogate no Rust string can.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use telorun_cel_value::{compare_code_units, json_quote, CelValue};
@@ -36,6 +36,7 @@ use crate::cel_type::{
 };
 use crate::cel_value::literal_value;
 use crate::check_diagnostic::{CelCheckCode, CelCheckDiagnostic, CelDiagnosticFix};
+use crate::construction::{construction_target, duplicate_field_message, unknown_field_message, ConstructionTypes};
 use crate::declared_chain::split_declared_chain;
 use crate::function_registry::{
     describe_arguments, describe_candidates, FunctionRegistry, RegisteredFunction, ResolutionFailure,
@@ -43,13 +44,15 @@ use crate::function_registry::{
 };
 use crate::macro_check::{is_macro_call, resume_macro, start_macro, MacroFrame, MacroHost, MacroStep};
 use crate::macro_shape::macro_shape_findings;
+use crate::nominal_type::RegisteredType;
 use crate::nullable_access::{chain_root, chain_text, proven_where_false, proven_where_true};
 use crate::resolved_call::ResolvedCall;
 use crate::serializer::serialize_tree;
 use crate::signature::{format_signature, CallForm};
 use crate::syntax_tree::{
     CelBinaryNode, CelBinaryOperator, CelCallNode, CelConditionalNode, CelIdentNode, CelIndexNode, CelListNode,
-    CelLiteral, CelMapNode, CelNode, CelQualifiedCallNode, CelReceiverCallNode, CelSelectNode, SourceRange,
+    CelLiteral, CelMapNode, CelNode, CelQualifiedCallNode, CelReceiverCallNode, CelSelectNode, CelStructNode,
+    SourceRange,
 };
 use crate::value_text::es_to_lower_case;
 
@@ -104,6 +107,8 @@ pub(crate) struct CheckerContext<'e> {
     /// Whether a namespace declares only part of what it reaches: a name it did not
     /// declare types `dyn`, is listed, and is reported by nobody.
     pub(crate) namespace_is_open: Box<dyn Fn(&str) -> bool + 'e>,
+    /// The registered types a construction's name is resolved against.
+    pub(crate) construction: ConstructionTypes<'e>,
     pub(crate) options: CheckerOptions,
 }
 
@@ -137,6 +142,9 @@ enum Cont<'a> {
     List { node: &'a CelListNode, types: Vec<CelType> },
     MapKeys { node: &'a CelMapNode, keys: Vec<CelType> },
     MapValues { node: &'a CelMapNode, keys: Vec<CelType>, values: Vec<CelType> },
+    /// A construction's field `at` is typed; `registered` is the type its name resolved
+    /// to, nothing where the name was refused, and `written` the fields judged so far.
+    Struct { node: &'a CelStructNode, registered: Option<&'a RegisteredType>, at: usize, written: HashSet<&'a str> },
     Select { node: &'a CelSelectNode, presence: bool },
     IndexOperand { node: &'a CelIndexNode },
     IndexIndex { node: &'a CelIndexNode, operand: CelType },
@@ -239,6 +247,24 @@ impl<'a> Checker<'a, '_> {
                     Step::Eval(&first.key, false)
                 }
             },
+            CelNode::Struct(node) => {
+                // A refused name types the construction `dyn`, its values still checked for
+                // what is wrong inside them.
+                let registered = match construction_target(&node.type_name, &self.context.construction) {
+                    Ok(registered) => Some(registered),
+                    Err(refusal) => {
+                        self.report(refusal.code, refusal.message, node.type_name_range);
+                        None
+                    }
+                };
+                match node.entries.first() {
+                    None => Step::Return(self.finish_struct(node, registered, &HashSet::new())),
+                    Some(first) => {
+                        stack.push(Cont::Struct { node, registered, at: 0, written: HashSet::new() });
+                        Step::Eval(&first.value, false)
+                    }
+                }
+            }
             CelNode::Select(select) => self.start_select(select, select.optional, absent, stack),
             CelNode::Index(index) => {
                 stack.push(Cont::IndexOperand { node: index });
@@ -300,6 +326,18 @@ impl<'a> Checker<'a, '_> {
                 let key = self.reduce(&keys, &key_nodes, "map key");
                 let value = self.reduce(&values, &value_nodes, "map value");
                 Step::Return(map_of(key, value))
+            }
+            Cont::Struct { node, registered, at, mut written } => {
+                if let Some(registered) = registered {
+                    self.check_struct_entry(node, registered, at, ty, &mut written);
+                }
+                match node.entries.get(at + 1) {
+                    Some(next) => {
+                        stack.push(Cont::Struct { node, registered, at: at + 1, written });
+                        Step::Eval(&next.value, false)
+                    }
+                    None => Step::Return(self.finish_struct(node, registered, &written)),
+                }
             }
             Cont::Select { node, presence } => Step::Return(self.finish_select(node, presence, ty)),
             Cont::IndexOperand { node } => {
@@ -526,6 +564,72 @@ impl<'a> Checker<'a, '_> {
         }
     }
 
+    /// One field of a construction, its value typed: written twice, undeclared, required and
+    /// written with `?`, or holding a value its field does not take.
+    fn check_struct_entry(
+        &mut self,
+        node: &'a CelStructNode,
+        registered: &RegisteredType,
+        at: usize,
+        ty: CelType,
+        written: &mut HashSet<&'a str>,
+    ) {
+        let entry = &node.entries[at];
+        let value = if entry.optional { self.held_by_optional(ty, &entry.value, "a field") } else { ty };
+        let own = &registered.self_type;
+        if !written.insert(&entry.field) {
+            self.report(CelCheckCode::InvalidArgument, duplicate_field_message(own, &entry.field), entry.field_range);
+            return;
+        }
+        let fields = own.fields.as_ref().expect("a constructible type declares its fields");
+        let Some(declared) = fields.get(&entry.field) else {
+            self.report(CelCheckCode::UnknownField, unknown_field_message(own, &entry.field), entry.field_range);
+            return;
+        };
+        let name = format_type(&CelType::Nominal(own.clone()), false);
+        if entry.optional && registered.required.contains(&entry.field) {
+            self.report(
+                CelCheckCode::MissingField,
+                format!(
+                    "{name} requires the field {}, which an entry written with '?' may leave unset",
+                    json_quote(&entry.field)
+                ),
+                entry.field_range,
+            );
+        }
+        if !assignable(&value, declared) {
+            let message = format!(
+                "field {} of {name} is {}, and this value is {}",
+                json_quote(&entry.field),
+                format_type(declared, false),
+                format_type(&value, false)
+            );
+            self.report(CelCheckCode::TypeError, message, entry.value.range());
+        }
+    }
+
+    /// A construction's type once its fields are judged: the named type, every required
+    /// field it does not write reported, or `dyn` where its name was refused.
+    fn finish_struct(&mut self, node: &CelStructNode, registered: Option<&RegisteredType>, written: &HashSet<&str>) -> CelType {
+        let Some(registered) = registered else { return DYN };
+        let own = CelType::Nominal(registered.self_type.clone());
+        for field in &registered.required {
+            if written.contains(field.as_str()) {
+                continue;
+            }
+            self.report(
+                CelCheckCode::MissingField,
+                format!(
+                    "{} requires the field {}, and this construction does not write it",
+                    format_type(&own, false),
+                    json_quote(field)
+                ),
+                node.range,
+            );
+        }
+        own
+    }
+
     /// One type for several written values. Mixed types are `dyn` unless the environment
     /// asked for homogeneous aggregates, where the mixture is the mistake.
     fn reduce(&mut self, types: &[CelType], nodes: &[&CelNode], what: &str) -> CelType {
@@ -718,13 +822,7 @@ impl<'a> Checker<'a, '_> {
         if let Some(held) = fields.get(field) {
             return held.clone();
         }
-        let message = format!(
-            "{} is not a field of {} (fields: {})",
-            json_quote(field),
-            format_type(&CelType::Nominal(ty.clone()), false),
-            fields.keys().collect::<Vec<_>>().join(", ")
-        );
-        self.report(CelCheckCode::UnknownField, message, range);
+        self.report(CelCheckCode::UnknownField, unknown_field_message(ty, field), range);
         DYN
     }
 
@@ -1361,6 +1459,7 @@ fn nth_child(node: &CelNode, at: usize) -> Option<&Arc<CelNode>> {
     match node {
         CelNode::Literal(_) | CelNode::Ident(_) | CelNode::Unparsed(_) => None,
         CelNode::List(list) => list.elements.get(at).map(|element| &element.value),
+        CelNode::Struct(node) => node.entries.get(at).map(|entry| &entry.value),
         CelNode::Map(map) => map.entries.get(at / 2).map(|entry| if at % 2 == 0 { &entry.key } else { &entry.value }),
         CelNode::Select(select) => (at == 0).then_some(&select.operand),
         CelNode::Index(index) => [&index.operand, &index.index].get(at).copied(),
@@ -1386,6 +1485,7 @@ fn with_child(node: &CelNode, at: usize, child: Arc<CelNode>) -> Arc<CelNode> {
     let mut rebuilt = node.clone();
     match &mut rebuilt {
         CelNode::List(list) => list.elements[at].value = child,
+        CelNode::Struct(node) => node.entries[at].value = child,
         CelNode::Select(select) => select.operand = child,
         CelNode::Index(index) => *[&mut index.operand, &mut index.index][at] = child,
         CelNode::Call(call) => call.args[at] = child,

@@ -91,6 +91,8 @@ pub fn root_references(root: &CelNode) -> Vec<String> {
                     pending.push(Step::Collect(&entry.value));
                 }
             }
+            // A type name is not a read: it names a registered type, never a value.
+            CelNode::Struct(node) => pending.extend(node.entries.iter().map(|entry| Step::Collect(&entry.value))),
             CelNode::Select(node) => pending.push(Step::Collect(&node.operand)),
             CelNode::Index(node) => {
                 pending.push(Step::Collect(&node.operand));

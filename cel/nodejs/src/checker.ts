@@ -43,6 +43,8 @@ import {
 } from "./cel-type.js";
 import { literalValue } from "./cel-value.js";
 import type { CelCheckCode, CelCheckDiagnostic, CelDiagnosticFix } from "./check-diagnostic.js";
+import type { ConstructionTypes } from "./construction.js";
+import { constructionTarget, duplicateFieldMessage, unknownFieldMessage } from "./construction.js";
 import { splitDeclaredChain } from "./declared-chain.js";
 import { DiagnosticList } from "./check-diagnostic.js";
 import type { FunctionRegistry, RegisteredFunction, ResolutionFailure } from "./function-registry.js";
@@ -115,6 +117,8 @@ export interface CheckerContext {
    * suppress the refusal, which is the after-the-fact classifier this engine exists to retire.
    */
   readonly namespaceIsOpen: (namespace: string) => boolean;
+  /** The registered types a construction's name is resolved against. */
+  readonly construction: ConstructionTypes;
   readonly options: CheckerOptions;
 }
 
@@ -198,6 +202,8 @@ class Checker implements MacroHost {
         return this.listType(node);
       case "map":
         return this.mapType(node);
+      case "struct":
+        return this.structType(node);
       case "select":
         return this.selectType(node, node.optional);
       case "index":
@@ -303,6 +309,62 @@ class Checker implements MacroHost {
       this.reduce(keys, node.entries.map((entry) => entry.key), "map key"),
       this.reduce(values, node.entries.map((entry) => entry.value), "map value"),
     );
+  }
+
+  /**
+   * `Name{field: value, …}`: a value of the named type, each field written checked against
+   * the type's declaration. A refused name types the construction `dyn`, its values still
+   * checked for what is wrong inside them.
+   */
+  private structType(node: Extract<CelNode, { kind: "struct" }>): CelType {
+    const target = constructionTarget(node.typeName, this.context.construction);
+    if (target.refusal) {
+      this.report(target.refusal.code, target.refusal.message, node.typeNameRange);
+      for (const entry of node.entries) this.typeOf(entry.value);
+      return DYN;
+    }
+    const type = target.type.self;
+    const fields = type.fields!;
+    const required = target.type.required;
+    const written = new Set<string>();
+    for (const entry of node.entries) {
+      const valueType = entry.optional
+        ? this.heldByOptional(this.typeOf(entry.value), entry.value, "a field")
+        : this.typeOf(entry.value);
+      if (written.has(entry.field)) {
+        this.report("CEL_INVALID_ARGUMENT", duplicateFieldMessage(type, entry.field), entry.fieldRange);
+        continue;
+      }
+      written.add(entry.field);
+      const declared = fields.get(entry.field);
+      if (!declared) {
+        this.report("CEL_UNKNOWN_FIELD", unknownFieldMessage(type, entry.field), entry.fieldRange);
+        continue;
+      }
+      if (entry.optional && required.includes(entry.field)) {
+        this.report(
+          "CEL_MISSING_FIELD",
+          `${formatType(type)} requires the field ${JSON.stringify(entry.field)}, which an entry written with '?' may leave unset`,
+          entry.fieldRange,
+        );
+      }
+      if (!assignable(valueType, declared)) {
+        this.report(
+          "CEL_TYPE_ERROR",
+          `field ${JSON.stringify(entry.field)} of ${formatType(type)} is ${formatType(declared)}, and this value is ${formatType(valueType)}`,
+          entry.value.range,
+        );
+      }
+    }
+    for (const field of required) {
+      if (written.has(field)) continue;
+      this.report(
+        "CEL_MISSING_FIELD",
+        `${formatType(type)} requires the field ${JSON.stringify(field)}, and this construction does not write it`,
+        node.range,
+      );
+    }
+    return type;
   }
 
   /**
@@ -450,11 +512,7 @@ class Checker implements MacroHost {
   private fieldType(type: NominalType, field: string, range: SourceRange): CelType {
     const held = type.fields!.get(field);
     if (held) return held;
-    this.report(
-      "CEL_UNKNOWN_FIELD",
-      `${JSON.stringify(field)} is not a field of ${formatType(type)} (fields: ${[...type.fields!.keys()].join(", ")})`,
-      range,
-    );
+    this.report("CEL_UNKNOWN_FIELD", unknownFieldMessage(type, field), range);
     return DYN;
   }
 
@@ -1038,6 +1096,16 @@ function replaceNode(root: CelNode, from: CelNode, to: CelNode): CelNode | undef
         if (!key && !value) continue;
         const entries = [...root.entries];
         entries[at] = { ...entry, key: key ?? entry.key, value: value ?? entry.value };
+        return { ...root, entries };
+      }
+      return undefined;
+    }
+    case "struct": {
+      for (const [at, entry] of root.entries.entries()) {
+        const value = replaceNode(entry.value, from, to);
+        if (!value) continue;
+        const entries = [...root.entries];
+        entries[at] = { ...entry, value };
         return { ...root, entries };
       }
       return undefined;

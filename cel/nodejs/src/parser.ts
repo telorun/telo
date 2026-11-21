@@ -44,6 +44,7 @@ import type {
   CelListElement,
   CelMapEntry,
   CelNode,
+  CelStructEntry,
   CelUnaryOperator,
   SourceRange,
 } from "./syntax-tree.js";
@@ -467,6 +468,7 @@ class Parser {
    */
   private absoluteName(dot: Token): CelNode {
     this.advance();
+    if (this.constructionAhead(this.at)) return this.construction(dot.start, true);
     const name = this.peek();
     // A NAME, not a member: cel-spec's leading-dot form takes an identifier, so neither a
     // reserved word nor a quoted name opens one.
@@ -475,7 +477,67 @@ class Parser {
     return this.keep({ kind: "ident", name: name.text, absolute: true, range: [dot.start, name.end] });
   }
 
+  /**
+   * Whether the tokens from `from` spell a type name and the brace that opens its
+   * construction — `C{`, `a.b.C{`. Every segment is an identifier, as cel-spec's
+   * `CreateMessage` reads one, so a member a reserved word names (`a.in{`) or an optional
+   * select (`a.?b{`) opens none, and the brace there stands where nothing may.
+   */
+  private constructionAhead(from: number): boolean {
+    for (let at = from; ; at += 2) {
+      const name = this.tokens[at]!;
+      if (name.type !== "ident" || wordReading(name.text) !== "name") return false;
+      const next = this.tokens[at + 1]!;
+      if (next.type !== "punct") return false;
+      if (next.text === "{") return true;
+      if (next.text !== ".") return false;
+    }
+  }
+
+  /**
+   * `Name{field: value, …}`, the current token being the name's first segment. Each field
+   * is an identifier; an entry left incomplete keeps what it read, as a map entry does.
+   */
+  private construction(start: number, absolute: boolean): CelNode {
+    const first = this.peek();
+    const segments: string[] = [];
+    let nameEnd = first.end;
+    do {
+      const segment = this.advance();
+      segments.push(segment.text);
+      nameEnd = segment.end;
+    } while (this.takePunct("."));
+    const open = this.advance();
+    const entries: CelStructEntry[] = [];
+    while (!this.stopped && !this.isPunct("}")) {
+      const entryStart = this.peek().start;
+      const optional = this.optionalSyntax && this.takePunct("?");
+      const name = this.peek();
+      if (!this.expectIdentifier(name)) break;
+      this.advance();
+      const fieldRange: SourceRange = [name.start, name.end];
+      if (!this.expectPunct(":")) {
+        const value = this.unparsed(name.end);
+        entries.push({ field: name.text, fieldRange, value, optional, range: [entryStart, name.end] });
+        break;
+      }
+      const value = this.conditional();
+      entries.push({ field: name.text, fieldRange, value, optional, range: [entryStart, value.range[1]] });
+      if (!this.takePunct(",")) break;
+    }
+    const end = this.closingEnd("}", open, entries.at(-1)?.range[1]);
+    return this.keep({
+      kind: "struct",
+      typeName: segments.join("."),
+      typeNameRange: [first.start, nameEnd],
+      absolute,
+      entries,
+      range: [start, end],
+    });
+  }
+
   private word(token: Token): CelNode {
+    if (this.constructionAhead(this.at)) return this.construction(token.start, false);
     this.advance();
     const range: SourceRange = [token.start, token.end];
     if (token.text === "true" || token.text === "false") {

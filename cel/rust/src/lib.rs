@@ -51,6 +51,7 @@
 //! - `qualified_calls.rs`        — `qualified-calls.ts`
 //! - `root_references.rs`        — `root-references.ts`
 //! - `declared_chain.rs`         — `declared-chain.ts`
+//! - `construction.rs`           — `construction.ts`
 //! - `cel_type.rs`               — `cel-type.ts`
 //! - `type_expression.rs`        — `type-expression.ts`
 //! - `signature.rs`              — `signature.ts`
@@ -118,6 +119,7 @@ mod checker;
 mod closure_backend;
 mod comprehension_bindings;
 mod comprehension_runtime;
+mod construction;
 mod declared_chain;
 mod environment;
 mod function_catalog;
@@ -203,7 +205,8 @@ pub use comprehension_runtime::{
 };
 pub use declared_chain::{split_declared_chain, DeclaredChain};
 pub use environment::{
-    CelEnvironment, CelEnvironmentOptions, CelEvaluateError, CelProgramError, CelRegistrationError, Definitions,
+    CelEnvironment, CelEnvironmentOptions, CelEvaluateError, CelProgramError, CelRegistrationError, ConstructibleListing,
+    Definitions,
     FunctionDefinition, DEFAULT_COMPILED_CACHE_CAPACITY,
     NamespaceFunctionDeclaration, NamespaceFunctionForm, NamespaceListing, NamespaceOptions, SchemaRegistrationReport,
     SignatureDeclaration, TypeDeclaration, TypeDefinitionListing, VariableDefinition, WithheldReturns,
@@ -228,7 +231,9 @@ pub use member_read::{cel_has, cel_iterable, cel_lookup, cel_read, lookup_absenc
 pub use namespace_resolution::{
     namespace_sets_equal, normalize_namespaces, resolve_namespaces, CelNamespaceError, RESERVED_NAMESPACES,
 };
-pub use nominal_type::{CelTypeRegistrationError, NominalOperatorDeclaration, NominalTypeDefinition};
+pub use nominal_type::{
+    CelConstruct, CelTypeRegistrationError, NominalOperatorDeclaration, NominalTypeDefinition, RegisterTypeOptions,
+};
 pub use parse_limits::{CelParseLimits, DEFAULT_PARSE_LIMITS};
 pub use parser::{parse_syntax, ParseOptions, ParseResult};
 pub use qualified_calls::{qualified_calls, QualifiedCall};
@@ -256,8 +261,8 @@ pub use syntax_diagnostic::{CelSyntaxCode, CelSyntaxDiagnostic};
 pub use syntax_tree::{
     child_nodes, has_unparsed, walk_tree, CelBinaryNode, CelBinaryOperator, CelCallNode, CelConditionalNode,
     CelIdentNode, CelIndexNode, CelListElement, CelListNode, CelLiteral, CelLiteralNode, CelMapEntry, CelMapNode,
-    CelNode, CelQualifiedCallNode, CelReceiverCallNode, CelSelectNode, CelUnaryNode, CelUnaryOperator,
-    CelUnparsedNode, SourceRange, TreeWalk,
+    CelNode, CelQualifiedCallNode, CelReceiverCallNode, CelSelectNode, CelStructEntry, CelStructNode, CelUnaryNode,
+    CelUnaryOperator, CelUnparsedNode, SourceRange, TreeWalk,
 };
 pub use timestamp_value::{
     cel_timestamp, cel_timestamp_from_millis, format_timestamp, parse_timestamp, timestamp_field, timestamp_nanos,
@@ -267,7 +272,7 @@ pub use tree_equality::trees_equal;
 pub use type_expression::{
     parse_type_expression, CelTypeExpressionError, CelTypeTextError, CelUnknownTypeNameError, NominalResolver,
 };
-pub use value_equality::{cel_compare, cel_equal};
+pub use value_equality::{cel_compare, cel_equal, ConstructibleFields};
 pub use value_text::{bytes_to_text, double_text, es_to_lower_case, es_to_upper_case, text_to_bytes};
 pub use zoned_calendar::{
     civil_time_in, date_text_in, days_in_month, instant_of_civil_time, iso_text_in, known_time_zone, CivilTime,

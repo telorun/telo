@@ -17,11 +17,16 @@
 //! Equality across unrelated types is `false`, not an error. Ordering across unrelated
 //! types has no answer, so the caller reports no overload.
 //!
-//! `cel_equal` walks lists, maps and optionals on a heap list, so a value of any depth
-//! is compared on a small stack. Rust's `PartialEq` on a value is identity in the
-//! domain, not this.
+//! A value of a **constructible** type is its fields, so equality compares those: the type
+//! key, which declared fields are present, and each present pair. Any other host value may
+//! hold state the engine cannot see, and is equal only to itself.
+//!
+//! `cel_equal` walks lists, maps, optionals and a constructible value's fields on a heap
+//! list, so a value of any depth is compared on a small stack. Rust's `PartialEq` on a
+//! value is identity in the domain, not this.
 
 use std::cmp::Ordering;
+use std::collections::{HashMap, HashSet};
 
 use telorun_cel_value::{
     cel_type_name_of, compare_code_units, duration_nanos, map_key_identity, timestamp_nanos, CelMapKey, CelValue,
@@ -122,8 +127,23 @@ fn map_lookup<'a>(value: &'a CelValue, identity: &CelMapKey) -> Option<&'a CelVa
     }
 }
 
-/// CEL equality: by value, across the numeric types, and `false` across unrelated ones.
-pub fn cel_equal(left: &CelValue, right: &CelValue) -> bool {
+/// The declared fields of each **constructible** type, by name, and nothing for any other.
+/// An environment hands its own table to the engine's equality; without one a host's value
+/// is equal only to itself.
+pub trait ConstructibleFields {
+    fn constructible(&self, type_name: &str) -> Option<&HashSet<String>>;
+}
+
+impl ConstructibleFields for HashMap<String, HashSet<String>> {
+    fn constructible(&self, type_name: &str) -> Option<&HashSet<String>> {
+        self.get(type_name)
+    }
+}
+
+/// CEL equality: by value, across the numeric types, and `false` across unrelated ones. A
+/// value of a constructible type compares by type, by which declared fields are present,
+/// and field by field.
+pub fn cel_equal(left: &CelValue, right: &CelValue, constructible: Option<&dyn ConstructibleFields>) -> bool {
     let mut pending = vec![(left, right)];
     while let Some((left, right)) = pending.pop() {
         if let (Some(a), Some(b)) = (numeric(left), numeric(right)) {
@@ -174,8 +194,22 @@ pub fn cel_equal(left: &CelValue, right: &CelValue) -> bool {
                 }
                 _ => false,
             },
-            // A host's own named type: equal when the host's operator says so, which it
-            // registers itself. With none registered, identity is all this engine knows.
+            // A host's own named type. A constructible one is its fields; any other is
+            // equal when the host's operator says so, which it registers itself, and with
+            // none registered identity is all this engine knows.
+            (CelValue::Host(a), CelValue::Host(b)) => {
+                match a.type_name().and_then(|name| constructible?.constructible(name)) {
+                    Some(fields) => fields.iter().all(|field| match (a.entries().get(field), b.entries().get(field)) {
+                        (Some(a), Some(b)) => {
+                            pending.push((a, b));
+                            true
+                        }
+                        (None, None) => true,
+                        _ => false,
+                    }),
+                    None => left == right,
+                }
+            }
             _ => left == right,
         };
         if !same {

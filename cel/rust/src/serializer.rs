@@ -102,7 +102,9 @@ const UNPARSED: &str = "an unparsed expression has no source to write";
 fn precedence_of(node: &CelNode) -> Result<u8, CelSerializeError> {
     Ok(match node {
         CelNode::Literal(node) if is_negative_number(&node.literal) => precedence::UNARY,
-        CelNode::Literal(_) | CelNode::Ident(_) | CelNode::List(_) | CelNode::Map(_) => precedence::PRIMARY,
+        CelNode::Literal(_) | CelNode::Ident(_) | CelNode::List(_) | CelNode::Map(_) | CelNode::Struct(_) => {
+            precedence::PRIMARY
+        }
         CelNode::Select(_)
         | CelNode::Index(_)
         | CelNode::Call(_)
@@ -304,6 +306,29 @@ fn push_node<'a>(pending: &mut Vec<Piece<'a>>, node: &'a CelNode, under_minus: b
                 );
             });
             pending.push(Text("{"));
+        }
+        CelNode::Struct(node) => {
+            pending.push(Text("}"));
+            push_separated(pending, &node.entries, |pending, entry| {
+                push_pieces(
+                    pending,
+                    [
+                        optional_mark(entry.optional),
+                        Name(&entry.field, "field name"),
+                        Text(": "),
+                        plain(&entry.value, precedence::CONDITIONAL),
+                    ],
+                );
+            });
+            pending.push(Text("{"));
+            let segments: Vec<&str> = node.type_name.split('.').collect();
+            for (at, segment) in segments.iter().enumerate().rev() {
+                pending.push(Name(segment, "type name"));
+                if at > 0 {
+                    pending.push(Text("."));
+                }
+            }
+            pending.push(Text(if node.absolute { "." } else { "" }));
         }
         CelNode::Select(node) => push_pieces(
             pending,

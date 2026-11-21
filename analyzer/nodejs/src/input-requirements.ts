@@ -839,6 +839,9 @@ function visitReads(
         visit(entry.value);
       }
       return;
+    case "struct":
+      for (const entry of node.entries) visit(entry.value);
+      return;
     case "call":
       for (const arg of node.args) visit(arg);
       return;

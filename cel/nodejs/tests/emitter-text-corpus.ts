@@ -28,6 +28,7 @@ export const NODE_KIND_EXPRESSIONS: Readonly<Record<CelNode["kind"], string | nu
   ident: "x",
   list: "[1, 2, 3]",
   map: "{'a': 1, 'b': 2}",
+  struct: "Place{street: 'Main', number: 4}",
   select: "x.y",
   index: "xs[1]",
   unary: "!(true)",
@@ -85,6 +86,9 @@ const UNENUMERATED_SHAPES: readonly string[] = [
   // An absolute name, and a backtick-quoted member.
   ".x.y",
   "dashed.`content-type`",
+  // A construction with an optional field and one with none.
+  "Place{street: 'x', ?number: optional.none()}",
+  ".Place{}",
 ];
 
 /** The environment the pinned corpus is emitted against. */

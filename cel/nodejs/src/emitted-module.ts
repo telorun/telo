@@ -52,6 +52,7 @@ import { celMapFromEntries } from "./cel-map-value.js";
 import {
   boolOperand,
   callSiteOf,
+  constructionSiteOf,
   memberReadsOf,
   optionalEntry,
   readHostValue,
@@ -91,7 +92,7 @@ import type { CelNode } from "./syntax-tree.js";
  * code the emitter writes for a corpus drawn from the package's own total enumerations, beside
  * this number, so a change to that text fails naming the bump it owes.
  */
-export const EMITTER_FORMAT_GENERATION = 2;
+export const EMITTER_FORMAT_GENERATION = 3;
 
 /** The prefix of the one line a stored module's header is read from. */
 const HEADER_PREFIX = "//@telo.cel ";
@@ -444,6 +445,12 @@ export function emitterRuntime(target: CompileTarget): EmittedRuntime {
     celSome,
     celUint,
     constants: target.constants,
+    constructionSite: (
+      typeName: string,
+      fields: readonly string[],
+      valueRanges: readonly [number, number][],
+      range: [number, number],
+    ) => constructionSiteOf(target, typeName, fields, valueRanges, range),
     hasMember,
     isCelError,
     isCelOptional,

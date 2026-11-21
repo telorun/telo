@@ -68187,6 +68187,1608 @@
           }
         }
       }
+    },
+    {
+      "id": "telo/construction/typed",
+      "source": "Place{street: 'Main', number: 4}",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "Place",
+          "calls": []
+        },
+        "value": {
+          "$cel": "host",
+          "type": "Place",
+          "value": {
+            "number": {
+              "$telo": "int",
+              "value": "4"
+            },
+            "street": "Main"
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/construction/absolute",
+      "source": ".Place{street: 'Main'}",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "Place",
+          "calls": []
+        },
+        "value": {
+          "$cel": "host",
+          "type": "Place",
+          "value": {
+            "street": "Main"
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/construction/field_read",
+      "source": "Place{street: 'Main', number: 4}.number",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "int",
+          "calls": []
+        },
+        "value": {
+          "$telo": "int",
+          "value": "4"
+        }
+      }
+    },
+    {
+      "id": "telo/construction/value_from_variable",
+      "source": "Place{street: s}.street == s",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "declarations": {
+        "s": "string"
+      },
+      "bindings": {
+        "s": "Main"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": []
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "telo/construction/unset_has",
+      "source": "has(Place{street: 'Main'}.tags)",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": []
+        },
+        "value": false
+      }
+    },
+    {
+      "id": "telo/construction/unset_presence",
+      "source": "Place{street: 'Main'}.?tags",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "optional<map<string, string>>",
+          "calls": []
+        },
+        "value": {
+          "$cel": "optional"
+        }
+      }
+    },
+    {
+      "id": "telo/construction/unset_read",
+      "source": "Place{street: 'Main'}.tags",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "map<string, string>",
+          "calls": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "no_such_key",
+          "message": "no such key: \"tags\"",
+          "range": {
+            "start": 0,
+            "end": 26
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/construction/optional_absent",
+      "source": "Place{?number: optional.none(), street: 'x'}",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "Place",
+          "calls": []
+        },
+        "value": {
+          "$cel": "host",
+          "type": "Place",
+          "value": {
+            "street": "x"
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/construction/optional_present",
+      "source": "Place{street: 'x', ?number: optional.of(2)}",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "Place",
+          "calls": []
+        },
+        "value": {
+          "$cel": "host",
+          "type": "Place",
+          "value": {
+            "number": {
+              "$telo": "int",
+              "value": "2"
+            },
+            "street": "x"
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/construction/optional_not_optional",
+      "source": "Place{street: 'x', ?number: 2}",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "a field written with '?' holds an optional, and this one is int",
+              "range": {
+                "start": 28,
+                "end": 29
+              }
+            }
+          ],
+          "calls": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "CEL_TYPE_ERROR",
+          "message": "a field written with '?' holds an optional, and this one is int",
+          "range": {
+            "start": 28,
+            "end": 29
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/construction/nested",
+      "source": "Order{place: Place{street: 'x'}, count: 2}.place.street",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        },
+        {
+          "name": "Order",
+          "base": "dyn",
+          "fields": {
+            "place": "Place",
+            "count": "int"
+          },
+          "constructible": true
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": []
+        },
+        "value": "x"
+      }
+    },
+    {
+      "id": "telo/construction/no_fields",
+      "source": "Marker{}",
+      "types": [
+        {
+          "name": "Marker",
+          "base": "dyn",
+          "fields": {},
+          "constructible": true
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "Marker",
+          "calls": []
+        },
+        "value": {
+          "$cel": "host",
+          "type": "Marker",
+          "value": {}
+        }
+      }
+    },
+    {
+      "id": "telo/construction/error_in_value",
+      "source": "Place{street: 'x', number: 1 / 0}",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "Place",
+          "calls": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "division_by_zero",
+          "message": "division by zero",
+          "range": {
+            "start": 27,
+            "end": 32
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/construction/equal",
+      "source": "Place{street: 'Main'} == Place{street: 'Main'}",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": []
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "telo/construction/equal_absolute",
+      "source": ".Place{street: 'Main', number: 1} == Place{number: 1, street: 'Main'}",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": []
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "telo/construction/not_equal_field",
+      "source": "Place{street: 'Main', number: 1} != Place{street: 'Main', number: 2}",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": []
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "telo/construction/not_equal_presence",
+      "source": "Place{street: 'Main'} == Place{street: 'Main', number: 0}",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": []
+        },
+        "value": false
+      }
+    },
+    {
+      "id": "telo/construction/equal_list",
+      "source": "[Place{street: 'Main'}] == [Place{street: 'Main', number: 1}]",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": []
+        },
+        "value": false
+      }
+    },
+    {
+      "id": "telo/construction/equal_map",
+      "source": "{'a': Place{street: 'x', tags: {'k': 'v'}}} == {'a': Place{street: 'x', tags: {'k': 'v'}}}",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": []
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "telo/construction/equal_nested",
+      "source": "Order{place: Place{street: 'x'}} == Order{place: Place{street: 'x'}}",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        },
+        {
+          "name": "Order",
+          "base": "dyn",
+          "fields": {
+            "place": "Place",
+            "count": "int"
+          },
+          "constructible": true
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": []
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "telo/construction/in_list",
+      "source": "Place{street: 'Main'} in [Place{street: 'Elm'}, Place{street: 'Main'}]",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": []
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "telo/construction/missing_required",
+      "source": "Place{number: 1}",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_MISSING_FIELD",
+              "message": "Place requires the field \"street\", and this construction does not write it",
+              "range": {
+                "start": 0,
+                "end": 16
+              }
+            }
+          ],
+          "calls": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "CEL_MISSING_FIELD",
+          "message": "Place requires the field \"street\", and this construction does not write it",
+          "range": {
+            "start": 0,
+            "end": 16
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/construction/required_optional",
+      "source": "Place{?street: optional.of('x')}",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_MISSING_FIELD",
+              "message": "Place requires the field \"street\", which an entry written with '?' may leave unset",
+              "range": {
+                "start": 7,
+                "end": 13
+              }
+            }
+          ],
+          "calls": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "CEL_MISSING_FIELD",
+          "message": "Place requires the field \"street\", which an entry written with '?' may leave unset",
+          "range": {
+            "start": 7,
+            "end": 13
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/construction/unknown_field",
+      "source": "Place{street: 'x', floor: 2}",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "\"floor\" is not a field of Place (fields: street, number, tags)",
+              "range": {
+                "start": 19,
+                "end": 24
+              }
+            }
+          ],
+          "calls": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "CEL_UNKNOWN_FIELD",
+          "message": "\"floor\" is not a field of Place (fields: street, number, tags)",
+          "range": {
+            "start": 19,
+            "end": 24
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/construction/duplicate_field",
+      "source": "Place{street: 'x', street: 'y'}",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "field \"street\" of Place is written more than once",
+              "range": {
+                "start": 19,
+                "end": 25
+              }
+            }
+          ],
+          "calls": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "CEL_INVALID_ARGUMENT",
+          "message": "field \"street\" of Place is written more than once",
+          "range": {
+            "start": 19,
+            "end": 25
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/construction/field_type",
+      "source": "Place{street: 1}",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "field \"street\" of Place is string, and this value is int",
+              "range": {
+                "start": 14,
+                "end": 15
+              }
+            }
+          ],
+          "calls": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "CEL_TYPE_ERROR",
+          "message": "field \"street\" of Place is string, and this value is int",
+          "range": {
+            "start": 14,
+            "end": 15
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/construction/unknown_type",
+      "source": "Shop{}",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_TYPE",
+              "message": "no type named \"Shop\" is registered — the closest constructible: Place",
+              "range": {
+                "start": 0,
+                "end": 4
+              }
+            }
+          ],
+          "calls": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "CEL_UNKNOWN_TYPE",
+          "message": "no type named \"Shop\" is registered — the closest constructible: Place",
+          "range": {
+            "start": 0,
+            "end": 4
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/construction/unknown_type_dotted",
+      "source": "acme.Shop{street: 'x'}",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_TYPE",
+              "message": "no type named \"acme.Shop\" is registered — the closest constructible: Place",
+              "range": {
+                "start": 0,
+                "end": 9
+              }
+            }
+          ],
+          "calls": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "CEL_UNKNOWN_TYPE",
+          "message": "no type named \"acme.Shop\" is registered — the closest constructible: Place",
+          "range": {
+            "start": 0,
+            "end": 9
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/construction/unknown_type_no_candidates",
+      "source": "Shop{}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_TYPE",
+              "message": "no type named \"Shop\" is registered",
+              "range": {
+                "start": 0,
+                "end": 4
+              }
+            }
+          ],
+          "calls": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "CEL_UNKNOWN_TYPE",
+          "message": "no type named \"Shop\" is registered",
+          "range": {
+            "start": 0,
+            "end": 4
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/construction/language_type",
+      "source": "int{}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_NOT_CONSTRUCTIBLE",
+              "message": "\"int\" is a language type and has no fields; write a literal or a conversion",
+              "range": {
+                "start": 0,
+                "end": 3
+              }
+            }
+          ],
+          "calls": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "CEL_TYPE_NOT_CONSTRUCTIBLE",
+          "message": "\"int\" is a language type and has no fields; write a literal or a conversion",
+          "range": {
+            "start": 0,
+            "end": 3
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/construction/well_known_timestamp",
+      "source": "google.protobuf.Timestamp{seconds: 5}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_NOT_CONSTRUCTIBLE",
+              "message": "\"google.protobuf.Timestamp\" is a protobuf message and no protobuf type provider is present; write timestamp(…) instead",
+              "range": {
+                "start": 0,
+                "end": 25
+              }
+            }
+          ],
+          "calls": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "CEL_TYPE_NOT_CONSTRUCTIBLE",
+          "message": "\"google.protobuf.Timestamp\" is a protobuf message and no protobuf type provider is present; write timestamp(…) instead",
+          "range": {
+            "start": 0,
+            "end": 25
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/construction/well_known_duration",
+      "source": ".google.protobuf.Duration{seconds: 5}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_NOT_CONSTRUCTIBLE",
+              "message": "\"google.protobuf.Duration\" is a protobuf message and no protobuf type provider is present; write duration(…) instead",
+              "range": {
+                "start": 1,
+                "end": 25
+              }
+            }
+          ],
+          "calls": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "CEL_TYPE_NOT_CONSTRUCTIBLE",
+          "message": "\"google.protobuf.Duration\" is a protobuf message and no protobuf type provider is present; write duration(…) instead",
+          "range": {
+            "start": 1,
+            "end": 25
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/construction/not_opted_in",
+      "source": "Token{}",
+      "types": [
+        {
+          "name": "Token",
+          "base": "string"
+        }
+      ],
+      "functions": [
+        {
+          "signature": "token(string): Token"
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_NOT_CONSTRUCTIBLE",
+              "message": "\"Token\" is a registered type that does not allow construction — the closest functions returning it: token(string)",
+              "range": {
+                "start": 0,
+                "end": 5
+              }
+            }
+          ],
+          "calls": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "CEL_TYPE_NOT_CONSTRUCTIBLE",
+          "message": "\"Token\" is a registered type that does not allow construction — the closest functions returning it: token(string)",
+          "range": {
+            "start": 0,
+            "end": 5
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/construction/not_opted_in_no_producer",
+      "source": "Token{}",
+      "types": [
+        {
+          "name": "Token",
+          "base": "string"
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_NOT_CONSTRUCTIBLE",
+              "message": "\"Token\" is a registered type that does not allow construction",
+              "range": {
+                "start": 0,
+                "end": 5
+              }
+            }
+          ],
+          "calls": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "CEL_TYPE_NOT_CONSTRUCTIBLE",
+          "message": "\"Token\" is a registered type that does not allow construction",
+          "range": {
+            "start": 0,
+            "end": 5
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/construction/incomplete",
+      "source": "Place{street: 'a', number",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "the expression ends before it is complete, expected \":\"",
+              "range": {
+                "start": 25,
+                "end": 25
+              }
+            }
+          ],
+          "calls": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "CEL_SYNTAX_ERROR",
+          "message": "the expression ends before it is complete, expected \":\"",
+          "range": {
+            "start": 25,
+            "end": 25
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/construction/field_not_a_name",
+      "source": "Place{street: 'a', `number`: 1}",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "\"`number`\" cannot stand here, expected \"a name\"",
+              "range": {
+                "start": 19,
+                "end": 27
+              }
+            }
+          ],
+          "calls": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "CEL_SYNTAX_ERROR",
+          "message": "\"`number`\" cannot stand here, expected \"a name\"",
+          "range": {
+            "start": 19,
+            "end": 27
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/construction/not_not_equal",
+      "source": "!(Place{street: 'Main'} != Place{street: 'Main'})",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": []
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "telo/construction/equal_list_same",
+      "source": "[Place{street: 'Main'}] == [Place{street: 'Main'}]",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": []
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "telo/construction/equal_optional",
+      "source": "optional.of(Place{street: 'Main'}) == optional.of(Place{street: 'Main'})",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": []
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "telo/construction/field_value_refused",
+      "source": "Place{street: 'a', number: dyn(1.5)}",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "Place",
+          "calls": [
+            {
+              "name": "dyn",
+              "form": "global",
+              "arity": 1,
+              "range": {
+                "start": 27,
+                "end": 35
+              },
+              "signature": "dyn(A): dyn",
+              "returns": "dyn",
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ]
+        },
+        "error": {
+          "code": null,
+          "celCode": "invalid_argument",
+          "message": "field \"number\" of Place is int, and this value is double",
+          "range": {
+            "start": 27,
+            "end": 35
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/construction/field_value_refused_optional",
+      "source": "Place{street: 'a', ?number: optional.of(dyn(1.5))}",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "Place",
+          "calls": [
+            {
+              "name": "dyn",
+              "form": "global",
+              "arity": 1,
+              "range": {
+                "start": 40,
+                "end": 48
+              },
+              "signature": "dyn(A): dyn",
+              "returns": "dyn",
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ]
+        },
+        "error": {
+          "code": null,
+          "celCode": "invalid_argument",
+          "message": "field \"number\" of Place is int, and this value is double",
+          "range": {
+            "start": 28,
+            "end": 49
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/construction/field_value_dyn_admitted",
+      "source": "Place{street: dyn('a')}",
+      "types": [
+        {
+          "name": "Place",
+          "base": "dyn",
+          "fields": {
+            "street": "string",
+            "number": "int",
+            "tags": "map<string, string>"
+          },
+          "constructible": true,
+          "required": [
+            "street"
+          ]
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "Place",
+          "calls": [
+            {
+              "name": "dyn",
+              "form": "global",
+              "arity": 1,
+              "range": {
+                "start": 14,
+                "end": 22
+              },
+              "signature": "dyn(A): dyn",
+              "returns": "dyn",
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ]
+        },
+        "value": {
+          "$cel": "host",
+          "type": "Place",
+          "value": {
+            "street": "a"
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/construction/field_dyn_any",
+      "source": "Holder{held: 1.5}",
+      "types": [
+        {
+          "name": "Holder",
+          "base": "dyn",
+          "fields": {
+            "xs": "list<int>",
+            "held": "dyn"
+          },
+          "constructible": true
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "Holder",
+          "calls": []
+        },
+        "value": {
+          "$cel": "host",
+          "type": "Holder",
+          "value": {
+            "held": 1.5
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/construction/field_list_dyn_elements",
+      "source": "Holder{xs: dyn([1.5])}",
+      "types": [
+        {
+          "name": "Holder",
+          "base": "dyn",
+          "fields": {
+            "xs": "list<int>",
+            "held": "dyn"
+          },
+          "constructible": true
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "Holder",
+          "calls": [
+            {
+              "name": "dyn",
+              "form": "global",
+              "arity": 1,
+              "range": {
+                "start": 11,
+                "end": 21
+              },
+              "signature": "dyn(A): dyn",
+              "returns": "dyn",
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ]
+        },
+        "value": {
+          "$cel": "host",
+          "type": "Holder",
+          "value": {
+            "xs": [
+              1.5
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/construction/field_map_into_list",
+      "source": "Holder{xs: dyn({'a': 1})}",
+      "types": [
+        {
+          "name": "Holder",
+          "base": "dyn",
+          "fields": {
+            "xs": "list<int>",
+            "held": "dyn"
+          },
+          "constructible": true
+        }
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "Holder",
+          "calls": [
+            {
+              "name": "dyn",
+              "form": "global",
+              "arity": 1,
+              "range": {
+                "start": 11,
+                "end": 24
+              },
+              "signature": "dyn(A): dyn",
+              "returns": "dyn",
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ]
+        },
+        "error": {
+          "code": null,
+          "celCode": "invalid_argument",
+          "message": "field \"xs\" of Holder is list<int>, and this value is map",
+          "range": {
+            "start": 11,
+            "end": 24
+          }
+        }
+      }
+    },
+    {
+      "id": "telo/construction/well_known_int64_value",
+      "source": "google.protobuf.Int64Value{value: 1}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_NOT_CONSTRUCTIBLE",
+              "message": "\"google.protobuf.Int64Value\" is a protobuf message and no protobuf type provider is present",
+              "range": {
+                "start": 0,
+                "end": 26
+              }
+            }
+          ],
+          "calls": []
+        },
+        "error": {
+          "code": null,
+          "celCode": "CEL_TYPE_NOT_CONSTRUCTIBLE",
+          "message": "\"google.protobuf.Int64Value\" is a protobuf message and no protobuf type provider is present",
+          "range": {
+            "start": 0,
+            "end": 26
+          }
+        }
+      }
     }
   ]
 }

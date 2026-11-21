@@ -105,6 +105,10 @@ export function canonicalText(node: CelNode): string {
       return `[${node.items.map(canonicalText).join(", ")}]`;
     case "map":
       return `{${node.entries.map((e) => `${canonicalText(e.key)}: ${canonicalText(e.value)}`).join(", ")}}`;
+    case "struct":
+      return `${node.absolute ? "." : ""}${node.typeName}{${node.entries
+        .map((e) => `${e.optional ? "?" : ""}${e.field}: ${canonicalText(e.value)}`)
+        .join(", ")}}`;
     case "ternary":
       return `(${canonicalText(node.cond)} ? ${canonicalText(node.then)} : ${canonicalText(node.else)})`;
     case "unary":

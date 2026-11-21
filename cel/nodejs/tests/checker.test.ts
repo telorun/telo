@@ -10,6 +10,7 @@ import { UNKNOWN_FUNCTION_CANDIDATES } from "../src/function-registry.js";
 function strict(): CelEnvironment {
   return new CelEnvironment({ enableOptionalTypes: true })
     .registerType({ name: "Holder", base: "list<A>", parameters: ["A"] })
+    .registerType({ name: "Place", base: "dyn", fields: { street: "string" }, constructible: true, required: ["street"] })
     .registerVariable("strings", "Holder<string>")
     .registerVariable("ints", "Holder<int>")
     .registerFunction("firstText(Holder<string>): string")
@@ -33,6 +34,9 @@ const CAUSES: readonly [CelCheckCode, string][] = [
   ["CEL_TYPE_ARGUMENT_MISMATCH", "firstText(ints)"],
   ["CEL_NULLABLE_ACCESS", "request.body.id"],
   ["CEL_INVALID_ARGUMENT", "has(1)"],
+  ["CEL_UNKNOWN_TYPE", "Shop{}"],
+  ["CEL_TYPE_NOT_CONSTRUCTIBLE", "int{}"],
+  ["CEL_MISSING_FIELD", "Place{}"],
   ["FUNCTION_UNRESOLVED", "Billing.missing(1)"],
   ["FUNCTION_ARITY_MISMATCH", "Billing.total(1)"],
   ["FUNCTION_ARGUMENT_MISMATCH", "Billing.total(1, 'two')"],

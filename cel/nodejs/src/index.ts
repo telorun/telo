@@ -67,6 +67,8 @@ export type {
   CelQualifiedCallNode,
   CelReceiverCallNode,
   CelSelectNode,
+  CelStructEntry,
+  CelStructNode,
   CelUnaryNode,
   CelUnaryOperator,
   CelUnparsedNode,
@@ -169,9 +171,11 @@ export type {
 
 export { CelTypeRegistrationError } from "./nominal-type.js";
 export type {
+  CelConstruct,
   NominalOperatorDeclaration,
   NominalTypeDefinition,
   RegisteredType,
+  RegisterTypeOptions,
 } from "./nominal-type.js";
 
 export type { ResolvedCall } from "./resolved-call.js";
@@ -396,6 +400,7 @@ export {
 } from "./timestamp-value.js";
 
 export { celCompare, celEqual } from "./value-equality.js";
+export type { ConstructibleFields } from "./value-equality.js";
 
 export { bytesToText, doubleText, textToBytes } from "./value-text.js";
 

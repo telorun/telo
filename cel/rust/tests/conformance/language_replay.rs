@@ -19,7 +19,8 @@
 use serde_json::{Map, Value};
 use telorun_cel::{
     has_unparsed, serialize_tree, trees_equal, CelEnvironment, CelEnvironmentOptions, CelEvaluateError, CelValue,
-    EvaluateOptions, FieldDeclaration, FunctionMetadata, PropertyMap, ResolvedCall, TypeDeclaration,
+    EvaluateOptions, FieldDeclaration, FunctionMetadata, NominalOperatorDeclaration, NominalTypeDefinition, PropertyMap,
+    ResolvedCall, TypeDeclaration,
 };
 
 use super::conformance_error::{check_refusal, language_cel_codes, recorded_error, recorded_range};
@@ -29,7 +30,7 @@ use super::conformance_value::{encode_conformance_value, json_deep_equal, json_t
 pub const DRIVEN_FILE: &str = "language.json";
 
 /// How many rows the file holds. A row deleted leaves every other count true, so it is pinned.
-pub const LANGUAGE_ROWS: usize = 1836;
+pub const LANGUAGE_ROWS: usize = 1882;
 
 /// The prefix of an authored row's id: a row cel-spec's import did not produce.
 pub const AUTHORED_ROW_PREFIX: &str = "telo/";
@@ -49,7 +50,22 @@ pub const DEVIATION_REASONS: [&str; 4] = [
 /// The parts of cel-spec's outcome a `deviation.celSpec` may state.
 pub const CEL_SPEC_PARTS: [&str; 4] = ["value", "error", "type", "unknown"];
 
-const ROW_KEYS: [&str; 8] = ["id", "source", "provenance", "declarations", "functions", "bindings", "expect", "deviation"];
+const ROW_KEYS: [&str; 9] =
+    ["id", "source", "provenance", "types", "declarations", "functions", "bindings", "expect", "deviation"];
+/// What a `types` entry may say: a type definition's own keys, and no implementation.
+const TYPE_KEYS: [&str; 11] = [
+    "name",
+    "base",
+    "parameters",
+    "operators",
+    "comparisons",
+    "conversions",
+    "members",
+    "fields",
+    "constructible",
+    "required",
+    "description",
+];
 const EXPECT_KEYS: [&str; 3] = ["check", "value", "error"];
 const ERROR_KEYS: [&str; 4] = ["code", "celCode", "message", "range"];
 const DEVIATION_KEYS: [&str; 3] = ["celSpec", "reason", "uncarried"];
@@ -99,6 +115,73 @@ fn field_map(node: &Value) -> Result<PropertyMap<FieldDeclaration>, String> {
     Ok(out)
 }
 
+fn texts(node: Option<&Value>, what: &str) -> Result<Vec<String>, String> {
+    match node {
+        None => Ok(Vec::new()),
+        Some(Value::Array(items)) => items
+            .iter()
+            .map(|item| item.as_str().map(str::to_string).ok_or_else(|| format!("`{what}` holds {}, not a string", json_text(item))))
+            .collect(),
+        Some(other) => Err(format!("`{what}` is {}, not a list", json_text(other))),
+    }
+}
+
+/// One entry of a row's `types` as the definition it is data for.
+pub fn type_definition(node: &Value) -> Result<NominalTypeDefinition, String> {
+    let held = node.as_object().ok_or_else(|| format!("declares the type {}, which is not an object", json_text(node)))?;
+    let text = |key: &str| held.get(key).and_then(Value::as_str).map(str::to_string);
+    let operators = match held.get("operators") {
+        None => Vec::new(),
+        Some(Value::Array(items)) => items
+            .iter()
+            .map(|item| {
+                Ok(NominalOperatorDeclaration {
+                    operator: item.get("operator").and_then(Value::as_str).ok_or("an operator has no `operator`")?.into(),
+                    parameters: texts(item.get("parameters"), "parameters")?,
+                    returns: item.get("returns").and_then(Value::as_str).ok_or("an operator has no `returns`")?.into(),
+                })
+            })
+            .collect::<Result<_, String>>()?,
+        Some(other) => return Err(format!("`operators` is {}, not a list", json_text(other))),
+    };
+    let fields = match held.get("fields") {
+        None => None,
+        Some(Value::Object(declared)) => Some(
+            declared
+                .iter()
+                .map(|(name, ty)| {
+                    ty.as_str().map(|ty| (name.clone(), ty.to_string())).ok_or_else(|| format!("field {name:?} is not a type"))
+                })
+                .collect::<Result<PropertyMap<String>, String>>()?,
+        ),
+        Some(other) => return Err(format!("`fields` is {}, not an object", json_text(other))),
+    };
+    Ok(NominalTypeDefinition {
+        name: text("name").ok_or("a type has no `name`")?,
+        base: text("base").ok_or("a type has no `base`")?,
+        parameters: texts(held.get("parameters"), "parameters")?,
+        operators,
+        comparisons: texts(held.get("comparisons"), "comparisons")?,
+        conversions: texts(held.get("conversions"), "conversions")?,
+        members: texts(held.get("members"), "members")?,
+        fields,
+        constructible: held.get("constructible").and_then(Value::as_bool).unwrap_or(false),
+        required: texts(held.get("required"), "required")?,
+        description: text("description"),
+    })
+}
+
+/// The row's types registered onto a copy of the environment, in the order the row lists them.
+fn with_types(base: &CelEnvironment, row: &Value) -> Result<CelEnvironment, String> {
+    let mut environment = base.clone();
+    for node in row.get("types").and_then(Value::as_array).into_iter().flatten() {
+        let definition = type_definition(node)?;
+        let name = definition.name.clone();
+        environment.register_type(definition).map_err(|refusal| format!("the type {name:?} cannot be registered: {refusal}"))?;
+    }
+    Ok(environment)
+}
+
 fn signatures(row: &Value) -> Vec<&str> {
     row.get("functions")
         .and_then(Value::as_array)
@@ -115,9 +198,9 @@ fn register_functions(environment: &mut CelEnvironment, row: &Value) -> Result<(
     Ok(())
 }
 
-/// The environment a row is CHECKED in: its declarations and its functions.
+/// The environment a row is CHECKED in: its types, its declarations and its functions.
 pub fn check_environment(base: &CelEnvironment, row: &Value) -> Result<CelEnvironment, String> {
-    let mut environment = base.clone();
+    let mut environment = with_types(base, row)?;
     if let Some(declarations) = row.get("declarations").and_then(Value::as_object) {
         for (name, declaration) in declarations {
             environment
@@ -129,11 +212,12 @@ pub fn check_environment(base: &CelEnvironment, row: &Value) -> Result<CelEnviro
     Ok(environment)
 }
 
-/// The environment a row is EVALUATED in: its functions, and none of its declarations. A
-/// declared function is a signature with no implementation, so a call that resolves to it
-/// answers `unbound_function`, naming the function and the signature it resolved to.
+/// The environment a row is EVALUATED in: its types and its functions, and none of its
+/// declarations. A declared function is a signature with no implementation, so a call that
+/// resolves to it answers `unbound_function`, naming the function and the signature it
+/// resolved to.
 pub fn evaluation_environment(base: &CelEnvironment, row: &Value) -> Result<CelEnvironment, String> {
-    let mut environment = base.clone();
+    let mut environment = with_types(base, row)?;
     register_functions(&mut environment, row)?;
     Ok(environment)
 }
@@ -342,6 +426,26 @@ pub fn row_shape_problems(row: &Value, after_authored: bool) -> Vec<String> {
         });
         if !well_formed {
             problems.push("is a cel-spec row without a `provenance` of `file`, `section` and `test`".into());
+        }
+    }
+    if let Some(types) = raw.get("types") {
+        match types.as_array().filter(|declared| !declared.is_empty()) {
+            None => problems.push("carries `types` that is not a non-empty list".into()),
+            Some(declared) => {
+                for definition in declared {
+                    let data = definition.as_object().is_some_and(|keys| {
+                        unknown_keys(keys, &TYPE_KEYS).is_empty()
+                            && keys.get("name").is_some_and(Value::is_string)
+                            && keys.get("base").is_some_and(Value::is_string)
+                    });
+                    if !data {
+                        problems.push(format!(
+                            "declares a type that is not definition data with a `name` and a `base`: {}",
+                            json_text(definition)
+                        ));
+                    }
+                }
+            }
         }
     }
     if let Some(functions) = raw.get("functions") {

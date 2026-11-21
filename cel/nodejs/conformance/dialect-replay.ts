@@ -49,7 +49,7 @@ import {
 export const CATALOG_FILE = "catalog.json";
 export const CATALOG_ROWS = 195;
 export const TYPES_FILE = "types.json";
-export const TYPES_ROWS = 74;
+export const TYPES_ROWS = 75;
 
 /** The inputs only a tag site has, which a row of these two files may not carry. */
 export const TAG_SITE_INPUTS = ["context", "explain", "rootsDeclared", "couldNameModule", "modules", "functions"] as const;

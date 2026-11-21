@@ -61,6 +61,7 @@ export const RUNTIME_BINDINGS = [
   "celSome",
   "celUint",
   "constants",
+  "constructionSite",
   "hasMember",
   "isCelError",
   "isCelOptional",
@@ -187,6 +188,8 @@ export class ModuleEmitter {
         return this.list(node, scope, fn);
       case "map":
         return this.map(node, scope, fn);
+      case "struct":
+        return this.struct(node, scope, fn);
       case "select":
         return this.select(node, scope, fn);
       case "index":
@@ -353,6 +356,44 @@ export class ModuleEmitter {
       body =
         `(${key} = ${entry.key}, isCelError(${key}) ? ${key} : ` +
         `(${value} = ${entry.value}, isCelError(${value}) ? ${value} : ${written}))`;
+    }
+    return `(${out} = [], ${body})`;
+  }
+
+  /**
+   * A construction. The site is hoisted, so its type is resolved once per loaded module, as a
+   * compiled closure's is; the values are gathered in source order and an absent optional
+   * entry is `undefined`, which the site reads as an unset field.
+   */
+  private struct(
+    node: Extract<CelNode, { kind: "struct" }>,
+    scope: Scope | undefined,
+    fn: Temporaries,
+  ): string {
+    const out = fn.next();
+    const at = this.range(node.range);
+    const site = this.hoist(
+      `constructionSite(${textSource(node.typeName)}, [${node.entries
+        .map((entry) => textSource(entry.field))
+        .join(", ")}], [${node.entries.map((entry) => this.range(entry.value.range)).join(", ")}], ${at})`,
+    );
+    const entries = node.entries.map((entry) => ({
+      value: this.node(entry.value, scope, fn),
+      optional: entry.optional,
+    }));
+    let body = `${site}.build(${out})`;
+    for (let index = entries.length - 1; index >= 0; index -= 1) {
+      const entry = entries[index]!;
+      const value = fn.next();
+      if (!entry.optional) {
+        body = `(${value} = ${entry.value}, isCelError(${value}) ? ${value} : (${out}.push(${value}), ${body}))`;
+        continue;
+      }
+      const held = fn.next();
+      body =
+        `(${value} = ${entry.value}, isCelError(${value}) ? ${value} : ` +
+        `(${held} = optionalEntry(${value}, ${at}), isCelError(${held}) ? ${held} : ` +
+        `(${out}.push(${held}.present ? ${held}.held : undefined), ${body})))`;
     }
     return `(${out} = [], ${body})`;
   }

@@ -146,6 +146,10 @@ export function celSegmentTokens(
           visit(entry.value);
         }
         return;
+      case "struct":
+        // A type name is no scope root and no member chain: it is left uncoloured.
+        for (const entry of node.entries) visit(entry.value);
+        return;
       case "ternary":
         visit(node.cond);
         visit(node.then);

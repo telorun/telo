@@ -141,11 +141,7 @@ export class FunctionRegistry {
       );
       if (accepts) matching.push(name);
     }
-    return matching
-      .map((name) => ({ name, distance: editDistance(wanted, name) }))
-      .sort((left, right) => left.distance - right.distance || compareNames(left.name, right.name))
-      .slice(0, UNKNOWN_FUNCTION_CANDIDATES)
-      .map((candidate) => candidate.name);
+    return nearestCandidates(wanted, matching, (name) => name);
   }
 
   /**
@@ -214,67 +210,75 @@ export class FunctionRegistry {
       const { signature } = candidate;
       if (signature.parameters.length !== args.length) continue;
       const bindings = new Map<string, CelType>();
-      if (signature.receiver && !this.fits(receiver ?? DYN, signature.receiver, bindings, allowDyn)) continue;
-      if (!signature.parameters.every((want, at) => this.fits(args[at]!, want, bindings, allowDyn))) continue;
+      if (signature.receiver && !fits(receiver ?? DYN, signature.receiver, bindings, allowDyn)) continue;
+      if (!signature.parameters.every((want, at) => fits(args[at]!, want, bindings, allowDyn))) continue;
       return { resolved: candidate, returns: substitute(signature.returns, bindings) };
     }
     return undefined;
   }
+}
 
-  /**
-   * Whether an argument fits a parameter, binding type parameters as it goes.
-   *
-   * **A type parameter is bound by the first argument that mentions it**, and a later
-   * argument does not refine it: `[] + [3, 4]` is `list<T>`, because the empty list
-   * fixed the element type as "unknown" and the second argument cannot retroactively
-   * decide what the first one held.
-   */
-  private fits(
-    argument: CelType,
-    parameter: CelType,
-    bindings: Map<string, CelType>,
-    allowDyn: boolean,
-  ): boolean {
-    if (parameter.kind === "parameter") {
-      const bound = bindings.get(parameter.name);
-      if (!bound) {
-        bindings.set(parameter.name, argument);
-        return true;
-      }
-      // A binding that holds an unresolved parameter holds no information, so a later
-      // concrete argument refines it: `optional.none().orValue(42)` is an int.
-      if (bound.kind === "parameter" && argument.kind !== "parameter") {
-        bindings.set(parameter.name, argument);
-        return true;
-      }
-      if (bound.kind === "parameter" || argument.kind === "parameter") return true;
-      return assignable(argument, bound) || (allowDyn && (isDyn(argument) || isDyn(bound)));
+/**
+ * Whether an argument fits a parameter, binding type parameters as it goes.
+ *
+ * **A type parameter is bound by the first argument that mentions it**, and a later
+ * argument does not refine it: `[] + [3, 4]` is `list<T>`, because the empty list
+ * fixed the element type as "unknown" and the second argument cannot retroactively
+ * decide what the first one held.
+ */
+function fits(
+  argument: CelType,
+  parameter: CelType,
+  bindings: Map<string, CelType>,
+  allowDyn: boolean,
+): boolean {
+  if (parameter.kind === "parameter") {
+    const bound = bindings.get(parameter.name);
+    if (!bound) {
+      bindings.set(parameter.name, argument);
+      return true;
     }
-    if (parameter.kind === "list" && argument.kind === "list") {
-      return this.fits(argument.element, parameter.element, bindings, allowDyn);
+    // A binding that holds an unresolved parameter holds no information, so a later
+    // concrete argument refines it: `optional.none().orValue(42)` is an int.
+    if (bound.kind === "parameter" && argument.kind !== "parameter") {
+      bindings.set(parameter.name, argument);
+      return true;
     }
-    if (parameter.kind === "map" && argument.kind === "map") {
-      return (
-        this.fits(argument.key, parameter.key, bindings, allowDyn) &&
-        this.fits(argument.value, parameter.value, bindings, allowDyn)
-      );
-    }
-    if (parameter.kind === "optional" && argument.kind === "optional") {
-      return this.fits(argument.value, parameter.value, bindings, allowDyn);
-    }
-    if (
-      parameter.kind === "nominal" &&
-      argument.kind === "nominal" &&
-      parameter.name === argument.name &&
-      parameter.args.length === argument.args.length
-    ) {
-      // A named type's arguments are invariant, so they fit one for one — which is also
-      // where a signature written over `Self` binds its own type parameters.
-      return parameter.args.every((want, at) => this.fits(argument.args[at]!, want, bindings, allowDyn));
-    }
-    if (isDyn(argument)) return allowDyn || isDyn(parameter);
-    return assignable(argument, parameter);
+    if (bound.kind === "parameter" || argument.kind === "parameter") return true;
+    return assignable(argument, bound) || (allowDyn && (isDyn(argument) || isDyn(bound)));
   }
+  if (parameter.kind === "list" && argument.kind === "list") {
+    return fits(argument.element, parameter.element, bindings, allowDyn);
+  }
+  if (parameter.kind === "map" && argument.kind === "map") {
+    return (
+      fits(argument.key, parameter.key, bindings, allowDyn) &&
+      fits(argument.value, parameter.value, bindings, allowDyn)
+    );
+  }
+  if (parameter.kind === "optional" && argument.kind === "optional") {
+    return fits(argument.value, parameter.value, bindings, allowDyn);
+  }
+  if (
+    parameter.kind === "nominal" &&
+    argument.kind === "nominal" &&
+    parameter.name === argument.name &&
+    parameter.args.length === argument.args.length
+  ) {
+    // A named type's arguments are invariant, so they fit one for one — which is also
+    // where a signature written over `Self` binds its own type parameters.
+    return parameter.args.every((want, at) => fits(argument.args[at]!, want, bindings, allowDyn));
+  }
+  if (isDyn(argument)) return allowDyn || isDyn(parameter);
+  return assignable(argument, parameter);
+}
+
+/**
+ * Whether dispatch would take a value of `argument` where `parameter` is wanted: the same
+ * loose test a call site resolves on, so a `dyn` element or argument is admitted.
+ */
+export function argumentFits(argument: CelType, parameter: CelType): boolean {
+  return fits(argument, parameter, new Map(), true);
 }
 
 /** The type with every bound parameter replaced; an unbound one stays as it is. */
@@ -302,6 +306,24 @@ export function substitute(type: CelType, bindings: ReadonlyMap<string, CelType>
     default:
       return type;
   }
+}
+
+/**
+ * The candidates nearest a name as written, at most {@link UNKNOWN_FUNCTION_CANDIDATES}: by
+ * the edit distance of each one's name, then by its text in code-unit order. One rule for
+ * every refusal that names what would have worked, so each list is the same on every engine.
+ */
+export function nearestCandidates<T>(
+  wanted: string,
+  candidates: readonly T[],
+  nameOf: (candidate: T) => string,
+  textOf: (candidate: T) => string = nameOf,
+): readonly T[] {
+  return candidates
+    .map((candidate) => ({ candidate, distance: editDistance(wanted, nameOf(candidate)), text: textOf(candidate) }))
+    .sort((left, right) => left.distance - right.distance || compareNames(left.text, right.text))
+    .slice(0, UNKNOWN_FUNCTION_CANDIDATES)
+    .map((held) => held.candidate);
 }
 
 /** Code-unit order, so a port orders two names without a locale. */

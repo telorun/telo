@@ -49,7 +49,7 @@ use crate::syntax_diagnostic::{first_in_source_order, CelSyntaxCode, CelSyntaxDi
 use crate::syntax_tree::{
     each_shared_child, CelBinaryNode, CelBinaryOperator, CelCallNode, CelConditionalNode, CelIdentNode, CelIndexNode, CelListElement,
     CelListNode, CelLiteral, CelLiteralNode, CelMapEntry, CelMapNode, CelNode, CelReceiverCallNode, CelSelectNode,
-    CelUnaryNode, CelUnaryOperator, CelUnparsedNode, SourceRange,
+    CelStructEntry, CelStructNode, CelUnaryNode, CelUnaryOperator, CelUnparsedNode, SourceRange,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -125,7 +125,19 @@ enum Frame {
     MapKey { open: usize, entries: Vec<CelMapEntry>, optional: bool },
     MapValue { open: usize, entries: Vec<CelMapEntry>, optional: bool, key: Arc<CelNode> },
     CallArgument { open: usize, arguments: Vec<Arc<CelNode>>, callee: Callee },
+    /// A construction waits for the value of the field it has just read.
+    StructValue { construction: Construction, optional: bool, field: usize, entry_start: u32 },
     Index { operand: Arc<CelNode>, optional: bool },
+}
+
+/// A construction `Name{…}` read up to its open brace, and the entries read since.
+struct Construction {
+    start: u32,
+    absolute: bool,
+    type_name: String,
+    type_name_range: SourceRange,
+    open: usize,
+    entries: Vec<CelStructEntry>,
 }
 
 struct Parser<'s> {
@@ -546,6 +558,10 @@ impl<'s> Parser<'s> {
                 return self.map(token, Vec::new());
             }
             TokenKind::Punct(".") => {
+                self.advance();
+                if self.construction_ahead(self.at) {
+                    return self.construction(self.span(token).0, true);
+                }
                 let name = self.absolute_name(token);
                 return self.postfix(name);
             }
@@ -564,10 +580,9 @@ impl<'s> Parser<'s> {
         self.postfix(hole)
     }
 
-    /// `.y` — a name resolved against the environment alone. A name, not a member:
-    /// neither a reserved word nor a quoted name opens one.
+    /// `.y` — a name resolved against the environment alone, the dot already read. A name,
+    /// not a member: neither a reserved word nor a quoted name opens one.
     fn absolute_name(&mut self, dot: usize) -> Arc<CelNode> {
-        self.advance();
         let name = self.at;
         let start = self.span(dot).0;
         if !self.expect_identifier(name) {
@@ -581,7 +596,95 @@ impl<'s> Parser<'s> {
         }))
     }
 
+    /// Whether the tokens from `from` spell a type name and the brace that opens its
+    /// construction — `C{`, `a.b.C{`. Every segment is an identifier, as cel-spec's
+    /// `CreateMessage` reads one, so a member a reserved word names (`a.in{`) or an
+    /// optional select (`a.?b{`) opens none, and the brace there stands where nothing may.
+    fn construction_ahead(&self, from: usize) -> bool {
+        let last = self.tokens.len() - 1;
+        let mut at = from;
+        loop {
+            let name = at.min(last);
+            if self.kind(name) != TokenKind::Ident || word_reading(self.text(name)) != WordReading::Name {
+                return false;
+            }
+            match self.kind((at + 1).min(last)) {
+                TokenKind::Punct("{") => return true,
+                TokenKind::Punct(".") => at += 2,
+                _ => return false,
+            }
+        }
+    }
+
+    /// `Name{field: value, …}`, the current token being the name's first segment.
+    fn construction(&mut self, start: u32, absolute: bool) -> Step {
+        let first = self.at;
+        let mut segments: Vec<&str> = Vec::new();
+        let mut name_end;
+        loop {
+            let segment = self.advance();
+            segments.push(self.text(segment));
+            name_end = self.span(segment).1;
+            if !self.take_punct(".") {
+                break;
+            }
+        }
+        let open = self.advance();
+        let construction = Construction {
+            start,
+            absolute,
+            type_name: segments.join("."),
+            type_name_range: range(self.span(first).0, name_end),
+            open,
+            entries: Vec::new(),
+        };
+        self.struct_entry(construction)
+    }
+
+    /// The next field of a construction. Each field is an identifier; an entry left
+    /// incomplete keeps what it read, as a map entry does.
+    fn struct_entry(&mut self, mut construction: Construction) -> Step {
+        if !self.stopped && !self.is_punct("}") {
+            let entry_start = self.span(self.at).0;
+            let optional = self.optional_syntax && self.take_punct("?");
+            let field = self.at;
+            if self.expect_identifier(field) {
+                self.advance();
+                if self.expect_punct(":") {
+                    self.frames.push(Frame::StructValue { construction, optional, field, entry_start });
+                    return Step::Enter(Rule::Conditional);
+                }
+                let (field_start, field_end) = self.span(field);
+                let value = self.unparsed(field_end, field_end);
+                construction.entries.push(CelStructEntry {
+                    field: self.text(field).to_string(),
+                    field_range: range(field_start, field_end),
+                    value,
+                    optional,
+                    range: range(entry_start, field_end),
+                });
+            }
+        }
+        self.close_struct(construction)
+    }
+
+    fn close_struct(&mut self, construction: Construction) -> Step {
+        let last_read = construction.entries.last().map(|entry| entry.range.end);
+        let end = self.closing_end("}", construction.open, last_read);
+        let node = self.keep(CelNode::Struct(CelStructNode {
+            type_name: construction.type_name,
+            type_name_range: construction.type_name_range,
+            absolute: construction.absolute,
+            entries: construction.entries,
+            range: range(construction.start, end),
+        }));
+        self.postfix(node)
+    }
+
     fn word(&mut self, token: usize) -> Step {
+        if self.construction_ahead(token) {
+            return self.construction(self.span(token).0, false);
+        }
         self.advance();
         let (start, end) = self.span(token);
         let text = self.text(token);
@@ -772,6 +875,21 @@ impl<'s> Parser<'s> {
                     return self.close_map(open, entries);
                 }
                 self.map(open, entries)
+            }
+            Frame::StructValue { mut construction, optional, field, entry_start } => {
+                let end = node.range().end;
+                let (field_start, field_end) = self.span(field);
+                construction.entries.push(CelStructEntry {
+                    field: self.text(field).to_string(),
+                    field_range: range(field_start, field_end),
+                    value: node,
+                    optional,
+                    range: range(entry_start, end),
+                });
+                if !self.take_punct(",") {
+                    return self.close_struct(construction);
+                }
+                self.struct_entry(construction)
             }
             Frame::CallArgument { open, mut arguments, callee } => {
                 let end = node.range().end;

@@ -30,10 +30,16 @@
 //! An implementation called directly with values its signature does not take answers
 //! `no_matching_overload`, as a call that resolves to nothing does; through dispatch it
 //! never is.
+//!
+//! Declared differently from the Node file: `EngineCallContext` and `constructibleOf` are
+//! [`CelCallContext`]'s crate-private part — the constructible types an engine call site
+//! hands the equality — so a context is built with [`CelCallContext::new`].
 
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, LazyLock};
+
+use crate::backend_runtime::NominalRuntime;
 
 use telorun_cel_value::{
     cel_duration_from_nanos, cel_error, cel_none, cel_some, cel_type_name_of, cel_type_value, duration_field,
@@ -54,17 +60,39 @@ use crate::standard_library::google_type_names;
 use crate::timestamp_value::{
     cel_timestamp, format_timestamp, parse_timestamp, timestamp_field, timestamp_nanos, TimestampField,
 };
-use crate::value_equality::{cel_compare, cel_equal};
+use crate::value_equality::{cel_compare, cel_equal, ConstructibleFields};
 use crate::value_text::{
     bytes_to_text, double_text, es_string_to_number, es_to_lower_case_within, es_to_upper_case_within, es_trim,
     json_quote, text_to_bytes,
 };
 
 /// What an implementation knows about the call it is answering.
-#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+///
+/// The engine's own call sites also carry the environment's constructible types, which the
+/// engine's equality compares a value of one by — Node's `EngineCallContext`; a host's
+/// implementation is handed the same context and reads `range`.
+#[derive(Clone, Default, PartialEq, Eq, Debug)]
 pub struct CelCallContext {
     /// The span of the call, carried into any error value it produces.
     pub range: Option<SourceRange>,
+    constructible: Option<Arc<HashMap<String, NominalRuntime>>>,
+}
+
+impl CelCallContext {
+    /// The context of a call over `range`.
+    pub fn new(range: Option<SourceRange>) -> Self {
+        Self { range, constructible: None }
+    }
+
+    /// The context an engine call site builds, carrying its environment's named types.
+    pub(crate) fn of_site(range: SourceRange, types: Arc<HashMap<String, NominalRuntime>>) -> Self {
+        Self { range: Some(range), constructible: Some(types) }
+    }
+
+    /// The constructible types the context carries, where an engine site built it.
+    pub(crate) fn constructible(&self) -> Option<&dyn ConstructibleFields> {
+        self.constructible.as_deref().map(|types| types as &dyn ConstructibleFields)
+    }
 }
 
 /// What an implementation IS: its call context, then its arguments — the receiver of a
@@ -1084,7 +1112,7 @@ fn keyed_table() -> Vec<(&'static str, Implementation)> {
         }),
         entry("in(A, list<A>)", |ctx, args| {
             read!(ctx, args, "in"; a: any, b: list);
-            CelValue::Bool(b.iter().any(|held| cel_equal(held, a)))
+            CelValue::Bool(b.iter().any(|held| cel_equal(held, a, ctx.constructible())))
         }),
         entry("in(K, map<K, V>)", |ctx, args| {
             read!(ctx, args, "in"; a: any, b: map);
@@ -1184,11 +1212,11 @@ fn by_name_table() -> Vec<(&'static str, Implementation)> {
     vec![
         entry("==", |ctx, args| {
             read!(ctx, args, "=="; a: any, b: any);
-            CelValue::Bool(cel_equal(a, b))
+            CelValue::Bool(cel_equal(a, b, ctx.constructible()))
         }),
         entry("!=", |ctx, args| {
             read!(ctx, args, "!="; a: any, b: any);
-            CelValue::Bool(!cel_equal(a, b))
+            CelValue::Bool(!cel_equal(a, b, ctx.constructible()))
         }),
         entry("<", |ctx, args| ordering(ctx, args, "<", std::cmp::Ordering::is_lt)),
         entry("<=", |ctx, args| ordering(ctx, args, "<=", std::cmp::Ordering::is_le)),

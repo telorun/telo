@@ -19,7 +19,7 @@
 import type { CelActivation } from "./activation.js";
 import { activationHolds } from "./activation.js";
 import { BoundedCache } from "./bounded-cache.js";
-import type { CelType } from "./cel-type.js";
+import type { CelType, NominalType } from "./cel-type.js";
 import {
   BOOL,
   BYTES,
@@ -27,6 +27,7 @@ import {
   DURATION,
   DYN,
   INT,
+  isDyn,
   listOf,
   mapOf,
   NULL,
@@ -48,13 +49,18 @@ import {
   isCelOptional,
 } from "./cel-value.js";
 import type { FunctionRegistry, Resolution, ResolutionFailure } from "./function-registry.js";
+import { argumentFits } from "./function-registry.js";
 import type { HostFields } from "./member-read.js";
 import { celHas, celLookup, celRead, lookupAbsence, lookupError } from "./member-read.js";
-import type { CelCallContext, CelImplementation } from "./runtime-library.js";
+import type { ConstructionTypes } from "./construction.js";
+import { constructionTarget, fieldValueRefusalMessage, writtenFieldRefusal } from "./construction.js";
+import type { CelConstruct } from "./nominal-type.js";
+import type { CelCallContext, CelImplementation, EngineCallContext } from "./runtime-library.js";
 import { implementationOf } from "./runtime-library.js";
 import type { CallForm, CelSignature } from "./signature.js";
 import { formatSignature } from "./signature.js";
 import type { CelNode, CelSelectNode, SourceRange } from "./syntax-tree.js";
+import type { ConstructibleFields } from "./value-equality.js";
 
 /** A compile-time refusal: a tree neither backend can compile at all. */
 export class CelCompileError extends Error {
@@ -105,6 +111,10 @@ export interface CompileTarget {
   readonly nominalArity: (name: string) => number | undefined;
   /** The fields a host's named type declares, which the member-read seam answers of its values. */
   readonly nominalFields: HostFields;
+  /** The fields of each constructible type, which the engine's equality compares its values by. */
+  readonly constructibleFields: ConstructibleFields;
+  /** The registered types a construction's name is resolved against, as the checker resolves it. */
+  readonly construction: ConstructionTypes;
   /**
    * Whether a host DECLARED this name — including a dotted one. It decides where a chain
    * splits, at compile time, through the same function the checker uses.
@@ -435,7 +445,7 @@ function equalityFallback(name: string): CelImplementation | null {
  */
 export class CallSite {
   private readonly resolved = new BoundedCache<string, Dispatch | null>(CALL_SITE_CACHE_CAPACITY);
-  private readonly context: CelCallContext;
+  private readonly context: EngineCallContext;
   /** The arity the last resolution was made under; `-1` until there is one. */
   private count = -1;
   private t0: string | undefined;
@@ -450,8 +460,9 @@ export class CallSite {
     private readonly range: SourceRange,
     private readonly registry: FunctionRegistry,
     private readonly nominalArity: (name: string) => number | undefined,
+    constructible: ConstructibleFields,
   ) {
-    this.context = { range };
+    this.context = { range, constructible };
   }
 
   call0(): CelValue {
@@ -619,7 +630,109 @@ export function callSiteOf(
   form: CallForm,
   range: SourceRange,
 ): CallSite {
-  return new CallSite(name, form, range, target.registry, target.nominalArity);
+  return new CallSite(name, form, range, target.registry, target.nominalArity, target.constructibleFields);
+}
+
+// --- one construction ------------------------------------------------------
+
+/**
+ * One construction `Name{field: value, …}`, decided once where it is compiled: the type its
+ * name resolves to, through the same resolution the checker reports from, and the builder.
+ *
+ * `build` takes the written fields' values in source order, already evaluated and free of
+ * errors, with `undefined` for an optional entry that was absent — no CEL value is
+ * `undefined`, so an unset field is unambiguous. A name that builds no value, or a field its
+ * type refuses, is answered there rather than at compile time, after the values, as a call
+ * no overload takes is: the backends compile what reads whole and evaluation answers it.
+ *
+ * **Each written value is then held to its field's declared type** by the test dispatch
+ * admits an argument with — the value's runtime type, a container's elements `dyn` — so a
+ * value no field could hold never reaches a builder, and the first one refused in source
+ * order is the answer. A field declared `dyn` is not tested, and a field remembers the last
+ * type name it admitted, so a test costs one type-name read whatever the value's size.
+ */
+export class ConstructionSite {
+  private readonly refusal: CelError | undefined;
+  private readonly typeName: string;
+  private readonly construct: CelConstruct | undefined;
+  private readonly context: CelCallContext;
+  /** Each written field's declared type, nothing where it is `dyn` or the site is refused. */
+  private readonly declared: readonly (CelType | undefined)[];
+  private readonly admitted: (string | undefined)[];
+  private readonly type: NominalType | undefined;
+
+  constructor(
+    typeName: string,
+    private readonly fields: readonly string[],
+    private readonly valueRanges: readonly SourceRange[],
+    private readonly range: SourceRange,
+    types: ConstructionTypes,
+    private readonly nominalArity: (name: string) => number | undefined,
+  ) {
+    this.context = { range };
+    this.typeName = typeName;
+    this.admitted = new Array<string | undefined>(fields.length);
+    const target = constructionTarget(typeName, types);
+    if (target.refusal) {
+      this.refusal = celError("no_matching_overload", target.refusal.message, range);
+      this.construct = undefined;
+      this.declared = [];
+      this.type = undefined;
+      return;
+    }
+    const refused = writtenFieldRefusal(target.type.self, fields);
+    this.refusal = refused ? celError("invalid_argument", refused.message, range) : undefined;
+    this.construct = target.type.construct;
+    this.type = target.type.self;
+    this.declared = refused
+      ? []
+      : fields.map((field) => {
+          const declared = target.type.self.fields!.get(field)!;
+          return isDyn(declared) ? undefined : declared;
+        });
+  }
+
+  build(values: readonly (CelValue | undefined)[]): CelValue {
+    if (this.refusal) return this.refusal;
+    for (let at = 0; at < this.fields.length; at += 1) {
+      const held = values[at];
+      const declared = this.declared[at];
+      if (held === undefined || declared === undefined) continue;
+      const name = celTypeNameOf(held);
+      if (name !== undefined && name === this.admitted[at]) continue;
+      if (name !== undefined && argumentFits(runtimeType(held, this.nominalArity), declared)) {
+        this.admitted[at] = name;
+        continue;
+      }
+      return celError(
+        "invalid_argument",
+        fieldValueRefusalMessage(this.type!, this.fields[at]!, declared, name),
+        this.valueRanges[at]!,
+      );
+    }
+    // The engine's own value carries the type key beside the fields; a builder is handed
+    // the fields alone, as a plain object.
+    const built: Record<string | symbol, CelValue> = this.construct ? {} : { [CEL_VALUE_TYPE]: this.typeName };
+    for (let at = 0; at < this.fields.length; at += 1) {
+      const held = values[at];
+      if (held === undefined) continue;
+      // Defined rather than assigned, so a field named `__proto__` is an entry like any other.
+      Object.defineProperty(built, this.fields[at]!, { value: held, enumerable: true, writable: true, configurable: true });
+    }
+    if (!this.construct) return built as CelValue;
+    return readHostValue(this.construct(this.context, built as Record<string, CelValue>), this.range);
+  }
+}
+
+/** A construction site over an environment, which both backends build one of per construction. */
+export function constructionSiteOf(
+  target: CompileTarget,
+  typeName: string,
+  fields: readonly string[],
+  valueRanges: readonly SourceRange[],
+  range: SourceRange,
+): ConstructionSite {
+  return new ConstructionSite(typeName, fields, valueRanges, range, target.construction, target.nominalArity);
 }
 
 /**

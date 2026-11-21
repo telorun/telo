@@ -112,6 +112,7 @@ fn registers_an_operator_a_constant_and_a_described_variable_and_lists_them() {
             base: "int".into(),
             parameters: vec![],
             fields: None,
+            constructible: None,
             description: Some("an amount in the smallest unit".into()),
         }]
     );

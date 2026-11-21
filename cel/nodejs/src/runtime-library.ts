@@ -69,6 +69,7 @@ import {
   timestampNanos,
   type TimestampField,
 } from "./timestamp-value.js";
+import type { ConstructibleFields } from "./value-equality.js";
 import { celCompare, celEqual } from "./value-equality.js";
 import { bytesToText, doubleText, textToBytes } from "./value-text.js";
 
@@ -76,6 +77,20 @@ import { bytesToText, doubleText, textToBytes } from "./value-text.js";
 export interface CelCallContext {
   /** The span of the call, carried into any error value it produces. */
   readonly range?: SourceRange;
+}
+
+/**
+ * The context the engine's own call sites build. Beside the public {@link CelCallContext} it
+ * carries the environment's constructible types, which the engine's equality compares a
+ * value of one by; a host's implementation is handed the same object and reads `range`.
+ */
+export interface EngineCallContext extends CelCallContext {
+  readonly constructible?: ConstructibleFields;
+}
+
+/** The constructible types a call site's context carries, where an engine site built it. */
+export function constructibleOf(ctx: CelCallContext): ConstructibleFields | undefined {
+  return (ctx as EngineCallContext).constructible;
 }
 
 /**
@@ -482,7 +497,7 @@ const IMPLEMENTATIONS = new Map<string, CelImplementation>([
       for (const held of list(b)) {
         const refused = asyncValueRefused(held);
         if (refused) return refused;
-        if (celEqual(held, value(a))) return true;
+        if (celEqual(held, value(a), constructibleOf(ctx))) return true;
       }
       return false;
     },
@@ -546,8 +561,8 @@ function sizeOfMap(value: CelValue | undefined): number {
  * would then have no implementation.
  */
 const BY_NAME = new Map<string, CelImplementation>([
-  ["==", (ctx, a, b) => celEqual(value(a), value(b))],
-  ["!=", (ctx, a, b) => !celEqual(value(a), value(b))],
+  ["==", (ctx, a, b) => celEqual(value(a), value(b), constructibleOf(ctx))],
+  ["!=", (ctx, a, b) => !celEqual(value(a), value(b), constructibleOf(ctx))],
   ["<", ordering((compared) => compared < 0)],
   ["<=", ordering((compared) => compared <= 0)],
   [">", ordering((compared) => compared > 0)],

@@ -39,6 +39,12 @@ export const CEL_CHECK_CODES = [
   "CEL_NULLABLE_ACCESS",
   /** An argument a construct refuses on sight — a macro's variable that is not a name. */
   "CEL_INVALID_ARGUMENT",
+  /** A construction naming no registered type. */
+  "CEL_UNKNOWN_TYPE",
+  /** A construction naming a language type, a well-known type or a type without the opt-in. */
+  "CEL_TYPE_NOT_CONSTRUCTIBLE",
+  /** A construction that omits a required field, or writes one as `?field:`. */
+  "CEL_MISSING_FIELD",
   /** A namespaced call naming a function the namespace does not declare. */
   "FUNCTION_UNRESOLVED",
   /** A namespaced call with the wrong number of arguments. */

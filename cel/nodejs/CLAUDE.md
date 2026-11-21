@@ -129,7 +129,7 @@ And one the replaced engine answered and cel-spec contradicts, so the engine ans
   `b'ÿ' == b'\303\277'` false. An escape (`\xff`, `\303`) is still the one byte it names, and the
   serializer writes every byte as `\xNN` or as itself, so a round trip cannot change it.
 
-Four the replaced engine refused and cel-spec answers, so the engine answers cel-spec:
+Five the replaced engine refused and cel-spec answers, so the engine answers cel-spec:
 
 - **A member name between backticks** — cel-spec's `ESCAPED_IDENTIFIER`, and **only where a member is
   read**: a backtick anywhere else is a syntax error, and a quoted name never names a called function
@@ -151,14 +151,29 @@ Four the replaced engine refused and cel-spec answers, so the engine answers cel
   applies to it as to a bare name, and `.Alias.fn(x)` is a read of an undeclared name rather than a
   namespaced call.
 
+- **Message construction** (`Name{field: value}`, `.Name{…}`, and `?field: value` under
+  `enableOptionalTypes`): a `struct` node holding the dotted `typeName`, `absolute` and the entries
+  `{ field, fieldRange, value, optional, range }`. The parser opens one only where every segment of
+  the name is an identifier followed by `{`, so `a.in{` and `(a){` stay errors, and each field is
+  an identifier. The name is resolved against the **registered types alone** (`construction.ts`),
+  `.Name` meaning `Name`, so only a host type that opted in builds a value — the protobuf messages
+  cel-spec's own tests construct are not this engine's to build, and a test naming one stays
+  dropped from the vectors.
+
 **A dotted declaration is one name, and the longest prefix wins.** A host may declare `a.b.c`, or `a.b`
 holding a map, or both; `a.b.c` then reads the variable of that name where it is declared and the map's
 entry where only `a.b` is, so the host's own naming decides rather than the shape of the expression. A
 name the expression bound takes precedence, exactly as for a bare name — unless the chain is absolute.
 
-**Deliberately still refused**, and these are not oversights: `rb'…'`; a backtick outside a member read;
-a quoted or absolute name as a namespaced call; and container-dependent resolution of a **bare** name,
-which would mean inventing a container Telo never declares.
+**Deliberately still refused**, and these are not oversights: `rb'…'`; a backtick outside a member read,
+a construction's field name included; a quoted or absolute name as a namespaced call; container-dependent
+resolution of a **bare** name, which would mean inventing a container Telo never declares, and of a
+construction's name for the same reason, since one rule for type names and another for every other name
+would give an expression two resolutions; and a construction of a language type (`int{}`), of any
+protobuf well-known message — `google.protobuf.Any`, the nine wrappers (`BoolValue` … `UInt64Value`),
+`Duration`, `Empty`, `FieldMask`, `ListValue`, `Struct`, `Timestamp`, `Value`; not `NullValue`, an enum —
+(no protobuf type provider is present; only `Timestamp` and `Duration` add `write timestamp(…)` /
+`duration(…) instead`) and of a registered type that did not opt in.
 
 **A single-line literal never holds a line break — a line feed or a carriage return — in any form.** A
 raw literal lets a backslash take the next character with it, both kept as written (`r'\''` is a backslash
@@ -457,6 +472,58 @@ seam's own names so the emitted text is the same whatever an environment declare
 such a type needs (`string(Self)`) is the host's ordinary `registerFunction` with an implementation,
 dispatched on the value's own key. The environment digest carries each type's fields.
 
+**A named type may opt in to CONSTRUCTION** (`constructible: true`, beside `fields` — an empty set is
+a type with none — and with no `parameters`, since the syntax has no place for a type argument), and
+list the fields a construction must write (`required`, each a declared field; a type that is not
+constructible listing any is refused, `<Name> lists required fields and is not constructible`). `Name{field: v}` then
+checks as the type: an undeclared field is `CEL_UNKNOWN_FIELD`, one written twice
+`CEL_INVALID_ARGUMENT`, a value not assignable to its field `CEL_TYPE_ERROR`, and a required field
+omitted or written `?field:` `CEL_MISSING_FIELD`; a name no type is registered under is
+`CEL_UNKNOWN_TYPE` even under `unlistedVariablesAreDyn` (nothing can be constructed from `dyn`),
+naming the nearest constructible names, and a language type, a well-known type or a type without the
+opt-in is `CEL_TYPE_NOT_CONSTRUCTIBLE`, worded by cause — the last naming the registered functions
+returning the type, nearest first. Every bound and order is `nearestCandidates`', the one the
+unknown-function candidates use. `registerType(definition, { construct })` may supply a **builder**,
+called with the call context first and the written fields as a plain object, unset ones left out,
+answering a value or a CEL error value — so a host whose values carry an invariant can still be
+constructible; without one the engine builds `{ [CEL_VALUE_TYPE]: name, ...fields }`, the form a host
+builds. **An unset field reads as absent**, as on a host-built value. A builder's answer is a door a
+thenable comes through. Unchecked, both backends answer a refused name `no_matching_overload` and a
+refused field `invalid_argument`, in the check's own words, after evaluating the values
+(`ConstructionSite`, `backend-runtime.ts`); `required` is the checker's alone.
+
+**Every construction then holds each written value to its field's declared type**, checked and
+unchecked, both backends, before a builder is called or the engine builds: the value's runtime type,
+taken as dispatch takes it (a container's elements `dyn`, a named type's arguments `dyn`), must pass
+dispatch's own loose argument test (`argumentFits`) against the declared type — so a `dyn` list into a
+`list<int>` field is admitted, as it would be at a call, and a `dyn(1.5)` into an `int` field is not.
+The first refused value in source order is `invalid_argument`, `field "<name>" of <Type> is <declared
+type>, and this value is <runtime type name>`, ranged over that value; an absent `?field:` is not
+tested, a field declared `dyn` is skipped at compile, and a field remembers the type name it last
+admitted, so the test costs one type-name read whatever the value's size. A builder's answer is not
+re-checked.
+
+**A constructible type is compared field by field, and nothing else may compare it**: being
+constructible is the promise that a value is its fields, while any other host value may hold state the
+engine cannot see and stays equal only to itself (a host `==` over one replaces as for any type). The
+type declares `==` and `!=` over itself with no implementation, answered by the one equality, which
+compares the type key, which declared fields are present, and each present pair; direct `==`, `!=`,
+`in` over a list, list, map and optional equality and the catalog's `distinct` all read it, because the
+call site hands the environment's constructible-field table (`ConstructibleFields`) to the engine's own
+implementations through its context. **A host override has no home**: one that won at a direct call
+while a list holding the same values stayed field-wise would give one pair two answers. So an `==` or
+`!=` registration — `registerFunction`, `registerOperator` or a type's own declared operators, with or
+without an implementation — whose either parameter, read at top level (the type, `dyn`, a bare type
+parameter, or a union with a member that is one; a container is not read inside), accepts a
+constructible type is refused with `CelTypeRegistrationError`: `<signature> cannot be registered: it
+would compare values of <T>, which is constructible, and a constructible type's values are equal exactly
+when their fields are; normalise the fields in its builder, or register <T> without constructible`, `<T>`
+the first such type by name. And `constructible: true` is refused while such a registration is held,
+other than the type's own `(Self, Self)` comparisons: `<T> cannot be constructible: <signature> is
+registered and would compare its values, and a constructible type's values are equal exactly when their
+fields are`, the first by signature key (`construction.ts`). No standard-library `==` trips it. The
+digest carries `constructible`, `required` and whether a builder is present.
+
 **Two seams let a host's vocabulary in, and only two**: `registerType`, and the `resolveSchemaType`
 resolver asked at every schema node **before** the structural rules, with the document the node belongs to.
 No host type name appears in this package.
@@ -473,7 +540,7 @@ text, a nominal type's parameter list — which is what a definition listing sti
 
 ## The checker
 
-**It decides every verdict, with a range, and nothing reads a message.** The nine CEL codes plus the
+**It decides every verdict, with a range, and nothing reads a message.** The twelve CEL codes plus the
 three namespaced-call codes are each decided where the cause is known — an unknown name, a call written
 in the other form, an argument type no overload takes — which is what lets the after-the-fact classifier
 beside the engine being replaced disappear. **A fix is a whole-source replacement**, built by rewriting
@@ -626,7 +693,7 @@ element is, even if another errors.
 **Equality is universal at runtime, ordering is not.** The checker refuses `1 == 1u` on purpose, but
 `dyn(1) == 1u` reaches evaluation and cel-spec answers `true` there — so where no overload takes the pair
 and the call is an equality, the dispatcher falls back to the universal equality (a host's own
-registration still wins, having resolved first).
+registration over a type that is not constructible still wins, having resolved first).
 
 **There is ONE comparison, and across the numeric types it CONVERTS** (`value-equality.ts`). It serves
 `<`, `<=`, `>`, `>=`, cross-numeric equality and `in` over a list; a list index reads the element its
@@ -736,7 +803,7 @@ list** — one refusal (`asyncValueRefused`, `cel-value.ts`), so no door answers
 wording:
 
 1. an **activation read**;
-2. a **registered implementation's result**;
+2. a **registered implementation's result**, a construction builder's included;
 3. a **member read**, every form — `a.b`, `a['b']`, `a[expr]`, `.?`, `[?]` — checked where the read
    ANSWERS rather than where the value is later used. `resources.<name>.status.<field>` is the shape a
    host actually hands over;
@@ -814,7 +881,7 @@ canonical **ordered** list of expression sources — the order being part of the
 factory answers functions by position. The digest
 (`environment-digest.ts`) is over the environment's **resolved listing**, never its registration history:
 every function signature surviving registration and removal, every named type with its base,
-parameters and fields, every variable with its type, every namespace with its functions, every option
+parameters, fields and construction, every variable with its type, every namespace with its functions, every option
 value, sorted.
 Keying on the history would fragment the cache into one entry per way of arriving at the same
 environment.
@@ -878,8 +945,8 @@ to avoid), or be a `data:` URL import (fine under Node, refused under a browser'
 policy). Nothing under `cel/nodejs` names a path outside it, the cache root included: a host anchors that.
 
 **No bare property access implements a CEL read**, and the gate for it is over the whole emitted text
-rather than over the names of a probe: every property the emitted code reads must be one of six
-structural fields (`activation`, `namespaceFunction`, `present`, `held`, `push`, `call`), so a CEL field
+rather than over the names of a probe: every property the emitted code reads must be one of the
+structural fields (`activation`, `namespaceFunction`, `present`, `held`, `push`, `call` and its `call0` … `call4` entry points, and a construction site's `build`), so a CEL field
 name can never be among them however it was computed — which is the form (`a[request.query.k]`) no word
 list could have protected.
 
@@ -925,9 +992,9 @@ dependency**, and it costs the browser bundle about 420 KB.
 
 The vectors are the cross-engine contract, and this package drives the files a Node engine alone answers (`CEL_CONFORMANCE_DIR`, below): `language.json` whole, and `catalog.json` / `types.json` through a projection. Three drivers live in `conformance/`, and each states its blind spot in its header. There is no list of rows answered otherwise anywhere: a row is the engine's answer, or the run fails.
 
-**`language.json`: one table-free whole-row driver** (`conformance/language-replay.ts`). `languageAnswer` computes the whole `expect` of a row — the check half in the environment with the row's declarations and functions (`diagnostics` with ranges, `type` only when clean, every call the checker lowered, resolved or not), the evaluation half in the environment with the functions alone, which checks first and records a refusal as the first diagnostic's `CEL_*` code with its range, and otherwise evaluates with the bindings — and the driver deep-compares it with the row. Beside it: the row-key gates (`divergence` refused by name), the two classes (the cel-spec import, then authored `telo/` rows with neither `provenance` nor `deviation`), the `celCode` membership check (`conformance-error.ts` holds the vocabulary, the engine-error codes held complete by their type; no new export from this package), the `deviation` checks above, and the round trip of every source that reads — it writes back and reads again to an equal tree. `LANGUAGE_ROWS` pins the count (1,836). The error classifier reads the error that left the seam: an evaluation error or an engine error gives `celCode`, an `ERR_*` gives `code`, no code gives both null — which in `language.json` is the engine failing, never an answer, and fails the row — and any other code fails the row naming it.
+**`language.json`: one table-free whole-row driver** (`conformance/language-replay.ts`). `languageAnswer` computes the whole `expect` of a row — the check half in the environment with the row's types, declarations and functions (`diagnostics` with ranges, `type` only when clean, every call the checker lowered, resolved or not), the evaluation half in the environment with the types and functions alone, which checks first and records a refusal as the first diagnostic's `CEL_*` code with its range, and otherwise evaluates with the bindings — and the driver deep-compares it with the row. Beside it: the row-key gates (`divergence` refused by name), the two classes (the cel-spec import, then authored `telo/` rows with neither `provenance` nor `deviation`), the `celCode` membership check (`conformance-error.ts` holds the vocabulary, the engine-error codes held complete by their type; no new export from this package), the `deviation` checks above, and the round trip of every source that reads — it writes back and reads again to an equal tree. `LANGUAGE_ROWS` pins the count (1,882). A row's `types` — type definitions as data, in registration order, with no builder — are registered before its declarations and functions in both halves. The error classifier reads the error that left the seam: an evaluation error or an engine error gives `celCode`, an `ERR_*` gives `code`, no code gives both null — which in `language.json` is the engine failing, never an answer, and fails the row — and any other code fails the row naming it.
 
-**`catalog.json` and `types.json`: the table-free projection driver** (`conformance/dialect-replay.ts`). These files hold the `cel` tag engine's whole answer, which the templating package's test reproduces; this driver computes the part this engine gives by itself — the projection: the check's diagnostics (`code`, `message`, `fix`, in order, no range) and its type when clean, then the row's value or its error (`code`, `celCode`, `message`) — and deep-compares it with the same projection of the row. Before that a row is held to the **input gate**: the tag `cel`, no `context`, `explain`, `rootsDeclared`, `couldNameModule`, `modules` or `functions`, a source that reads, and only the engine's own errors (`code: null`, a `celCode`). Its static half checks in the dialect environment plus the host's types plus the row's declarations; its runtime half evaluates unchecked in the dialect environment plus the host's types, **without** the declarations, with the bindings — so a row can record a refusal at check and a value at evaluation (`p + 1` over a port). Every conversion and member a host type declares is bound at runtime to a conformance implementation answering `<name>(<conformance text of each argument>)`, the handler set's rule, and the nine host-backed functions answer by the handler set. `CATALOG_ROWS` (195) and `TYPES_ROWS` (74) pin the counts. **Its blind spot:** it sees nothing outside the projection — calls, regions, refs, volatility, a site's context — which only the templating test holds, and its deep equality pins whatever this engine answered.
+**`catalog.json` and `types.json`: the table-free projection driver** (`conformance/dialect-replay.ts`). These files hold the `cel` tag engine's whole answer, which the templating package's test reproduces; this driver computes the part this engine gives by itself — the projection: the check's diagnostics (`code`, `message`, `fix`, in order, no range) and its type when clean, then the row's value or its error (`code`, `celCode`, `message`) — and deep-compares it with the same projection of the row. Before that a row is held to the **input gate**: the tag `cel`, no `context`, `explain`, `rootsDeclared`, `couldNameModule`, `modules` or `functions`, a source that reads, and only the engine's own errors (`code: null`, a `celCode`). Its static half checks in the dialect environment plus the host's types plus the row's declarations; its runtime half evaluates unchecked in the dialect environment plus the host's types, **without** the declarations, with the bindings — so a row can record a refusal at check and a value at evaluation (`p + 1` over a port). Every conversion and member a host type declares is bound at runtime to a conformance implementation answering `<name>(<conformance text of each argument>)`, the handler set's rule, and the nine host-backed functions answer by the handler set. `CATALOG_ROWS` (195) and `TYPES_ROWS` (75) pin the counts. **Its blind spot:** it sees nothing outside the projection — calls, regions, refs, volatility, a site's context — which only the templating test holds, and its deep equality pins whatever this engine answered.
 
 **The host's vocabulary is a PARAMETER, never a name written here.** The driver takes `NominalTypeDefinition`s (`CEL_CONFORMANCE_HOST_TYPES`), which `scripts/check-cel-conformance.mjs` derives from `sdk/value-types/*.json` by rule and naming no type: a `json` entry with no `celType` is a brand over its `base` (its base conversion and `string(Self)`); `fromHost` adds `Self.joinPath(string): Self`; `members` become fields plus `string(Self)`; and `Stream` over `dyn`. The driver fails naming any type a row declares that the list does not carry, which is what lets the gate be driven by the host's rows while the package stays free of a host type name.
 
@@ -1058,6 +1125,10 @@ filter is a result waiting to be re-derived by hand.
 - A host's own named type → `src/nominal-type.ts`, and `registerType` in `src/environment.ts`; its
   fields read at check → `fieldType` in `src/checker.ts`, at evaluation → `celLookup` in
   `src/member-read.ts` with `memberReadsOf` in `src/backend-runtime.ts`
+- A construction `Name{…}`: what its name resolves to and every refusal → `src/construction.ts`;
+  checked → `structType` in `src/checker.ts`; built → `ConstructionSite` in `src/backend-runtime.ts`;
+  compared → `celEqual` in `src/value-equality.ts`, and an `==` / `!=` registration refused over one →
+  `comparedConstructible` in `src/construction.ts`
 - Registration, override, removal and overload resolution → `src/function-registry.ts`, `src/signature.ts`
 - A namespace, what it declares and what it withholds → `registerNamespace` in `src/environment.ts`
   (`NamespaceFunctionDeclaration`, `NamespaceOptions`), `qualifiedCallType` in `src/checker.ts`,

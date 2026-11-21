@@ -31,7 +31,8 @@ use crate::reserved_words::{is_identifier_spelling, is_reserved_word};
 use crate::syntax_tree::{
     each_shared_child,
     CelBinaryNode, CelCallNode, CelConditionalNode, CelIdentNode, CelIndexNode, CelListElement, CelListNode,
-    CelMapEntry, CelMapNode, CelNode, CelQualifiedCallNode, CelReceiverCallNode, CelSelectNode, CelUnaryNode,
+    CelMapEntry, CelMapNode, CelNode, CelQualifiedCallNode, CelReceiverCallNode, CelSelectNode, CelStructEntry,
+    CelStructNode, CelUnaryNode,
 };
 
 /// Names that can never be registered as a namespace.
@@ -177,6 +178,23 @@ fn rebuilt(original: &Arc<CelNode>, children: Vec<Arc<CelNode>>, moved: bool, na
                 .map(|entry| {
                     let key = next(children);
                     CelMapEntry { key, value: next(children), optional: entry.optional }
+                })
+                .collect(),
+            range: node.range,
+        }),
+        CelNode::Struct(node) => CelNode::Struct(CelStructNode {
+            type_name: node.type_name.clone(),
+            type_name_range: node.type_name_range,
+            absolute: node.absolute,
+            entries: node
+                .entries
+                .iter()
+                .map(|entry| CelStructEntry {
+                    field: entry.field.clone(),
+                    field_range: entry.field_range,
+                    value: next(children),
+                    optional: entry.optional,
+                    range: entry.range,
                 })
                 .collect(),
             range: node.range,

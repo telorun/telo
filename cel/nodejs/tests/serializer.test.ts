@@ -53,10 +53,13 @@ const EXPRESSIONS: readonly string[] = [
   ".y",
   ".y.z",
   "[1].map(y, .y)",
+  "B{}",
+  ".a.B{x: 1, y: [2]}",
+  "-B{x: 1}.x",
 ];
 
 /** Forms the optional library's own syntax adds, read only where it is enabled. */
-const OPTIONAL_SYNTAX: readonly string[] = ["[?a]", "[?a, b]", "{?'k': v}", "{?'k': v, 'j': w}"];
+const OPTIONAL_SYNTAX: readonly string[] = ["[?a]", "[?a, b]", "{?'k': v}", "{?'k': v, 'j': w}", "B{?x: v, y: w}"];
 
 describe("the serializer", () => {
   it.each(EXPRESSIONS)("writes %s back to an equal tree", (source) => {
@@ -113,6 +116,9 @@ describe("the serializer", () => {
       range: [0, 0],
     };
     expect(() => serializeTree(tooLarge)).toThrow(CelSerializeError);
+    const reservedField = parseSyntax("B{x: 1}").root as Extract<CelNode, { kind: "struct" }>;
+    const renamed: CelNode = { ...reservedField, entries: [{ ...reservedField.entries[0]!, field: "in" }] };
+    expect(() => serializeTree(renamed)).toThrow(CelSerializeError);
   });
 
   it("writes a hand-built negation of a literal without folding it away", () => {

@@ -10,9 +10,9 @@
  * face.
  *
  * So every line below is a fact about what the environment *is*: every function signature
- * surviving registration and removal, every named type with its base, parameters and fields, every
- * variable with its name and type, every namespace with the functions it declares, and
- * every option value. The lines are sorted, so the order they were produced in cannot
+ * surviving registration and removal, every named type with its base, parameters, fields and
+ * construction, every variable with its name and type, every namespace with the functions it
+ * declares, and every option value. The lines are sorted, so the order they were produced in cannot
  * reach the digest.
  *
  * **What the digest is for, in this engine.** Overloads are resolved at evaluation on the
@@ -92,9 +92,12 @@ export function environmentListing(environment: DigestedEnvironment): readonly s
     );
   }
   for (const held of definitions.types) {
-    // A field decides whether a read of it checks clean, so two environments differing
-    // only in a type's fields must not share an emitted module.
-    lines.push(`type ${held.name} ${held.base} ${canonicalJson(held.parameters)} ${canonicalJson(held.fields ?? null)}`);
+    // A field decides whether a read of it checks clean, and whether a type is constructible,
+    // what it requires and who builds it decide what a construction answers, so two
+    // environments differing only in one of them must not share an emitted module.
+    lines.push(
+      `type ${held.name} ${held.base} ${canonicalJson(held.parameters)} ${canonicalJson(held.fields ?? null)} ${canonicalJson(held.constructible ?? null)}`,
+    );
   }
   for (const held of definitions.namespaces) {
     // Openness is part of the surface, not a convenience: it decides whether an undeclared

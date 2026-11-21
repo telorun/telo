@@ -24,10 +24,13 @@ export const CEL_VERDICT_CODES = {
     "CEL_NULLABLE_ACCESS",
     "CEL_SYNTAX_ERROR",
     "CEL_TYPE_ARGUMENT_MISMATCH",
+    "CEL_MISSING_FIELD",
     "CEL_TYPE_ERROR",
+    "CEL_TYPE_NOT_CONSTRUCTIBLE",
     "CEL_UNKNOWN_FIELD",
     "CEL_UNKNOWN_FUNCTION",
     "CEL_UNKNOWN_IDENTIFIER",
+    "CEL_UNKNOWN_TYPE",
     "CEL_WRONG_CALL_FORM",
     // Forwarded from the engine's checker, which decides them. Whether a module call
     // REACHES a function, and whether its arity and arguments fit, is still the analyzer's

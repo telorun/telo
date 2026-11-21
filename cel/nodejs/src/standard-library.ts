@@ -77,14 +77,18 @@ export interface StandardConstant {
  * each of type `type`, and `google`, through which the well-known type names are read.
  */
 export function standardConstants(optionalTypes: boolean): readonly StandardConstant[] {
-  const names = [...DATA.typeConstants, ...(optionalTypes ? DATA.optionalTypeConstants : [])];
-  const types = names.map((name) => ({ name, type: TYPE }));
+  const types = languageTypeNames(optionalTypes).map((name) => ({ name, type: TYPE }));
   const named = DATA.constants.map((entry) => ({
     name: entry.name,
     type: parseTypeExpression(entry.type),
     ...(entry.description === undefined ? {} : { description: entry.description }),
   }));
   return [...types, ...named];
+}
+
+/** The names of the language's own types, each a constant of type `type` (`int`, `list`, …). */
+export function languageTypeNames(optionalTypes: boolean): readonly string[] {
+  return [...DATA.typeConstants, ...(optionalTypes ? DATA.optionalTypeConstants : [])];
 }
 
 /** The value `google` reads as: the two well-known type names, as type values. */

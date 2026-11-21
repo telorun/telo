@@ -39,6 +39,7 @@ import {
   boolOperand,
   callSiteOf,
   CelCompileError,
+  constructionSiteOf,
   memberReadsOf,
   plainMemberChain,
   optionalEntry,
@@ -95,6 +96,8 @@ class Compiler {
         return this.listStep(node, scope);
       case "map":
         return this.mapStep(node, scope);
+      case "struct":
+        return this.structStep(node, scope);
       case "select":
         return this.selectStep(node, scope);
       case "index":
@@ -208,6 +211,41 @@ class Compiler {
         if (held.present) flat.push(key, held.held as CelValue);
       }
       return celMapFromEntries(flat, range);
+    };
+  }
+
+  /**
+   * A construction: each field's value in source order, the first error carried out, an
+   * absent optional entry leaving its field unset — then the site builds the value.
+   */
+  private structStep(node: Extract<CelNode, { kind: "struct" }>, scope: Binding | undefined): CelStep {
+    const entries = node.entries.map((entry) => ({
+      step: this.compile(entry.value, scope),
+      optional: entry.optional,
+    }));
+    const { range } = node;
+    const site = constructionSiteOf(
+      this.target,
+      node.typeName,
+      node.entries.map((entry) => entry.field),
+      node.entries.map((entry) => entry.value.range),
+      range,
+    );
+    return (frame) => {
+      const values: (CelValue | undefined)[] = new Array<CelValue | undefined>(entries.length);
+      for (let at = 0; at < entries.length; at += 1) {
+        const entry = entries[at]!;
+        const value = entry.step(frame);
+        if (isCelError(value)) return value;
+        if (!entry.optional) {
+          values[at] = value;
+          continue;
+        }
+        const held = optionalEntry(value, range);
+        if (isCelError(held)) return held;
+        values[at] = held.present ? (held.held as CelValue) : undefined;
+      }
+      return site.build(values);
     };
   }
 
