@@ -14,7 +14,7 @@
  * Singleton across sdk copies: cel-js identifies registered types by
  * constructor identity (`v.constructor === RegisteredCtor`). The kernel and
  * any npm-loaded controller can — and routinely do — resolve `@telorun/sdk`
- * to different installs (workspace vs `.telo/npm/<hash>/...`), so two `Stream`
+ * to different installs (workspace vs `.telo/cache/npm/<hash>/...`), so two `Stream`
  * classes with the same shape but different identity would silently break
  * stream-typed CEL evaluations with "Unsupported type: Stream". The first
  * `@telorun/sdk` copy to load registers its `Stream` class on `globalThis`

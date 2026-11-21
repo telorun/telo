@@ -136,13 +136,13 @@ describe.skipIf(process.env.TELO_DOCKER_TESTS !== "1")("install root across runn
 
   /** Install roots present in the shared cache. */
   async function roots(): Promise<string[]> {
-    return (await fs.readdir(path.join(work, ".telo", "npm")).catch(() => [] as string[])).sort();
+    return (await fs.readdir(path.join(work, ".telo", "cache", "npm")).catch(() => [] as string[])).sort();
   }
 
   async function markers(): Promise<Array<{ realm: string[]; os?: string; libc?: string }>> {
     const out = [];
     for (const root of await roots()) {
-      const file = path.join(work, ".telo", "npm", root, ".telo-install-root.json");
+      const file = path.join(work, ".telo", "cache", "npm", root, ".telo-install-root.json");
       out.push(JSON.parse(await fs.readFile(file, "utf8")));
     }
     return out;

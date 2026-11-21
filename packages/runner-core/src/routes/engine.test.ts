@@ -157,7 +157,7 @@ describe("the session container engine", () => {
   it("gives a session nothing when the runner serves no engine", async () => {
     await boot(false);
     const { env, prefix } = await startSession();
-    expect(env).toEqual(RUN_BODY.env);
+    expect(env).toEqual({ ...RUN_BODY.env, TELO_HOST_STATE_DIR: "/var/lib/telo-apps/app" });
     const engineCall = await booted!.server.app.inject({ method: "GET", url: `${prefix}/_ping` });
     expect(engineCall.statusCode).toBe(404);
   });

@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 
+import { KERNEL_HOST_VALUES } from "@telorun/kernel";
 import { AGENT_VARIABLES } from "@telorun/runner-core";
 
 import type { SelfInvocation } from "./self-invocation.js";
@@ -39,8 +40,10 @@ export function spawnAppProcess(args: AppProcessArgs): ChildProcess {
 
 /** What a process this runner spawns inherits from it: its whole environment
  *  by design, except the runner's own agent configuration (`AGENT_*`), which
- *  configures the runner and may hold the agent's secrets, with `overlay` (the
- *  client's env) laid over it. `TELO_APP_CLI` is removed from the result,
+ *  may hold the agent's secrets, `RUNNER_SECRET_SEED`, the root of every
+ *  session's secrets, and the kernel's host values, which answer the runner's
+ *  own environment and never a session's; `overlay` (core's env for the run,
+ *  host values included) is laid over it. `TELO_APP_CLI` is removed from the result,
  *  whichever side set it: every telo the runner starts is itself or a release
  *  binary, and neither holds a payload. */
 export function inheritedEnvironment(
@@ -49,6 +52,8 @@ export function inheritedEnvironment(
 ): NodeJS.ProcessEnv {
   const inherited = { ...env };
   for (const name of AGENT_VARIABLES) delete inherited[name];
+  delete inherited.RUNNER_SECRET_SEED;
+  for (const name of KERNEL_HOST_VALUES) delete inherited[name];
   const merged: NodeJS.ProcessEnv = { ...inherited, ...overlay };
   delete merged.TELO_APP_CLI;
   return merged;

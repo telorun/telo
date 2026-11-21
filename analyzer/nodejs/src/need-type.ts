@@ -164,10 +164,10 @@ export function needReadingSchema(
 
 /**
  * A need's `parameters:` with every `default:` its type's `parameters` schema
- * declares filled in where the need leaves the key out, through `properties` at
- * any depth — what a host reads, so no host reimplements a type's defaults. A
- * copy: the need is unchanged. A value that is not a map is returned as written,
- * for `NEED_PARAMETERS_INVALID` to refuse.
+ * declares filled in where the need leaves the key out, through `properties` and
+ * a list's `items` at any depth — what a host reads, so no host reimplements a
+ * type's defaults. A copy: the need is unchanged. A value that is not a map is
+ * returned as written, for `NEED_PARAMETERS_INVALID` to refuse.
  */
 export function needParametersWithDefaults(shape: NeedTypeShape | undefined, parameters: unknown): unknown {
   const written = parameters ?? {};
@@ -175,8 +175,14 @@ export function needParametersWithDefaults(shape: NeedTypeShape | undefined, par
 }
 
 function withSchemaDefaults(value: unknown, schema: Record<string, unknown>): unknown {
+  if (Array.isArray(value)) {
+    const items = schema.items;
+    return items && typeof items === "object" && !Array.isArray(items)
+      ? value.map((item) => withSchemaDefaults(item, items as Record<string, unknown>))
+      : value;
+  }
   const properties = schema.properties;
-  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  if (!value || typeof value !== "object") return value;
   if (!properties || typeof properties !== "object") return value;
   const out: Record<string, unknown> = { ...(value as Record<string, unknown>) };
   for (const [key, node] of Object.entries(properties as Record<string, unknown>)) {

@@ -17,6 +17,10 @@ const WORKSPACE_DIR = "/workspace";
 /** Where the agent sees its own state (`agent/` of the session volume) —
  *  outside the workspace tree, so nothing syncs it. */
 export const AGENT_STATE_DIR = "/var/lib/telo-agent-state";
+/** Where the `apps` container sees `apps/` of the session volume, holding one state
+ *  directory per application (`<app>/`, its `TELO_HOST_STATE_DIR`): mounted once, so
+ *  the pod does not depend on the app set. */
+export const APPS_STATE_DIR = "/var/lib/telo-apps";
 /** Where the runner's image carries the session supervisor, and where every app
  *  container mounts the copy the init container made. */
 export const SUPERVISOR_DIR = "/opt/telo-runner";
@@ -215,7 +219,7 @@ function hardenedContainerSecurity(): Record<string, unknown> {
 
 /**
  * Copies the session supervisor out of the runner's own image, and makes the
- * session volume's two directories as the pod's user — a `subPath` the kubelet
+ * session volume's directories as the pod's user — a `subPath` the kubelet
  * creates itself is root's, which no container here could write.
  */
 function supervisorInitContainer(args: BuildSessionPodArgs): V1Container {
@@ -226,7 +230,7 @@ function supervisorInitContainer(args: BuildSessionPodArgs): V1Container {
     command: [
       "sh",
       "-c",
-      `mkdir -p ${SESSION_VOLUME_ROOT}/workspace ${SESSION_VOLUME_ROOT}/agent ${SESSION_VOLUME_ROOT}/telo && ` +
+      `mkdir -p ${SESSION_VOLUME_ROOT}/workspace ${SESSION_VOLUME_ROOT}/agent ${SESSION_VOLUME_ROOT}/apps ${SESSION_VOLUME_ROOT}/telo && ` +
         `cp ${SUPERVISOR_PATH} ${SUPERVISOR_OUT_DIR}/supervisor`,
     ],
     resources: podResources(args.resources.app),
@@ -294,6 +298,7 @@ function appsContainer(args: BuildSessionPodArgs): V1Container {
     volumeMounts: [
       workspaceMount,
       { name: "session", mountPath: RELEASES_DIR, subPath: "telo" },
+      { name: "session", mountPath: APPS_STATE_DIR, subPath: "apps" },
       { name: "supervisor", mountPath: SUPERVISOR_DIR, readOnly: true },
       ...scratchMounts("apps"),
     ],

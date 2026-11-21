@@ -331,7 +331,7 @@ applies to the `url` and by `TELO_EGRESS`, and is bounded: five minutes, a
 512 MiB response and 2 GiB decompressed. Every failure names the module and,
 where one applies, the source, the entry path and the URL. Concurrent kernels —
 and `stage` — serialize per archive URL, on a lock under the module's
-`.telo/staging/`, and re-check before fetching, so an archive is fetched once
+`.telo/cache/staging/`, and re-check before fetching, so an archive is fetched once
 while entries from different archives stage side by side. A kernel prints one
 line naming the entry, the module and the URL when a fetch starts.
 

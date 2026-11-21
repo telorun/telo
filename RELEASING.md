@@ -139,7 +139,7 @@ The kernel images and the built-in vocabulary are built from npm, after step 1, 
 
 ### The artifact check
 
-`Check the published release` checks the publication commit as a user receives it: a fresh checkout with no `.telo` cache, `telo check` over the four roots, and the example, starter and blueprint suites. It gates step 6 only. The tags and the record are already out, because they say what was published: a red check leaves the release tagged and recorded with no images, Studio, site, installers or `.vsix`, and the GitHub Release a draft. A re-run that passes completes it after a flake; a defect is fixed by the next patch.
+`Check the published release` checks the publication commit as a user receives it: a fresh checkout with no `.telo/cache`, `telo check` over the four roots, and the example, starter and blueprint suites. It gates step 6 only. The tags and the record are already out, because they say what was published: a red check leaves the release tagged and recorded with no images, Studio, site, installers or `.vsix`, and the GitHub Release a draft. A re-run that passes completes it after a flake; a defect is fixed by the next patch.
 
 ### Failures before the tag
 

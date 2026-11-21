@@ -115,7 +115,7 @@ export interface ControllerLoaderOptions {
   emit?: ControllerLoaderEmit;
   /**
    * URL of the entry manifest. The npm-loader anchors a single per-manifest
-   * `<entry-dir>/.telo/npm/` install tree here, so every controller — registry
+   * `<entry-dir>/.telo/cache/npm/` install tree here, so every controller — registry
    * tag or `local_path` — resolves through the same `node_modules`. Required
    * for `pkg:npm` candidates; absent for callers that only resolve `pkg:cargo`
    * (cargo loader has its own per-crate cache and does not need this).

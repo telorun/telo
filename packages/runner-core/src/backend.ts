@@ -238,6 +238,11 @@ export interface BackendWorkload {
    *  for an adopted live one. */
   addresses(app: string): Promise<AppAddresses>;
 
+  /** The directory `TELO_HOST_STATE_DIR` names in this app's process: `apps/<app>/`
+   *  of the session's storage as the process sees it. Owned by the session user,
+   *  kept by suspend and removed with the session. */
+  appStateDir(app: string): string;
+
   /** Start one run in an app's slot. Resolves once the process started (and
    *  `running` was reported through `onAppState`); rejects with `AppRunRefused`
    *  while another run is live, or with the reason a spawn never ran. A

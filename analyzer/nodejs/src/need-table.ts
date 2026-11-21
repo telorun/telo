@@ -20,6 +20,7 @@ import {
   needSupplyOf,
   needTypeOf,
   readNeeds,
+  needParametersWithDefaults,
   readNeedTypeShape,
   readSuppliedNeeds,
   sensitiveNeedFields,
@@ -60,6 +61,8 @@ import {
   DURABLE_DIRECTORY_TYPE,
   durableDirectoryParameters,
 } from "./durable-directory.js";
+import { generatedParameterRefusals, generatedValueRefusal, isGeneratedSecretType } from "./generated-secret.js";
+import { canonicalJson } from "./canonical-json.js";
 import { isInlineDeclaration, isResolvedReference } from "./resolved-reference.js";
 import { isScopeMember } from "./scope-declarations.js";
 
@@ -839,14 +842,22 @@ function checkParameters(
     substituteCelFields(need.parameters ?? {}, shape.parameters),
     shape.parameters,
   );
-  if (!issue) return;
-  report(
-    module,
-    "NEED_PARAMETERS_INVALID",
-    `Need '${need.name}': parameters do not satisfy need type '${need.kind}' — ` +
-      `${issue.path ? `at '${issue.path}': ` : ""}${issue.message}.`,
-    { path: issue.path ? `${path}.${issue.path}` : path },
-  );
+  if (issue) {
+    report(
+      module,
+      "NEED_PARAMETERS_INVALID",
+      `Need '${need.name}': parameters do not satisfy need type '${need.kind}' — ` +
+        `${issue.path ? `at '${issue.path}': ` : ""}${issue.message}.`,
+      { path: issue.path ? `${path}.${issue.path}` : path },
+    );
+    return;
+  }
+  if (!need.type || !isGeneratedSecretType(need.type)) return;
+  for (const refusal of generatedParameterRefusals(need.type, needParametersWithDefaults(shape, need.parameters))) {
+    report(module, "NEED_PARAMETERS_INVALID", `Need '${need.name}': ${refusal.message}.`, {
+      path: `${path}.${refusal.path}`,
+    });
+  }
 }
 
 /** Every tagged value in a need's parameters, with its dotted path. */
@@ -1111,8 +1122,9 @@ function fieldsFindingsHeld<T>(
 /**
  * What is wrong with a need supplied field by field (`subject` names the supply,
  * `<who>: need '<name>'`): every key a field of the type, every required field
- * present, and each literal held to its field's schema — an expression is held
- * to it when the supplier evaluates it.
+ * present, each literal held to its field's schema, and — for a generated type —
+ * to the need's `parameters` (`NEED_VALUE_INVALID`); an expression is held to
+ * them when the supplier evaluates it.
  */
 export function fieldSupplyFindings(
   fields: Record<string, unknown>,
@@ -1120,8 +1132,12 @@ export function fieldSupplyFindings(
   subject: string,
   type: string,
   path: string,
+  parameters?: unknown,
 ): SupplyFinding[] {
   const out = fieldsFindings(fields, shape, subject, type, path);
+  out.push(
+    ...generatedValueFindings(fields, shape, subject, type, path, parameters, (field) => `field '${field}'`),
+  );
   for (const [field, written] of Object.entries(fields)) {
     const schema = shape.fields[field];
     if (!schema) continue;
@@ -1156,6 +1172,64 @@ export function fieldSupplyFindings(
   return out;
 }
 
+/**
+ * A generated need's literal field values held to the need's parameters
+ * (`NEED_VALUE_INVALID`), `describe` naming where a field's value was written;
+ * an expression is left to whoever evaluates it. The message never quotes the
+ * value.
+ */
+export function generatedValueFindings(
+  fields: Record<string, unknown>,
+  shape: NeedTypeShape,
+  subject: string,
+  type: string,
+  path: string,
+  parameters: unknown,
+  describe: (field: string) => string,
+): SupplyFinding[] {
+  if (!isGeneratedSecretType(type)) return [];
+  const filled = needParametersWithDefaults(shape, parameters);
+  const out: SupplyFinding[] = [];
+  for (const [field, written] of Object.entries(fields)) {
+    if (!(field in shape.fields) || written === undefined || findDynamicLeaf(written)) continue;
+    const rule = generatedValueRefusal(type, filled, written);
+    if (!rule) continue;
+    out.push({
+      code: "NEED_VALUE_INVALID",
+      message: `${subject} (type '${type}'): ${describe(field)} ${rule}.`,
+      path: `${path}.${field}`,
+    });
+  }
+  return out;
+}
+
+/**
+ * A fulfilment handed whole to a generated need, its literal `fields:` held to
+ * that need's parameters — reported at the supply (`path`), since the
+ * fulfilment itself states no parameters.
+ */
+export function fulfilmentValueFindings(
+  fulfilment: ResourceManifest,
+  shape: NeedTypeShape,
+  subject: string,
+  type: string,
+  path: string,
+  parameters: unknown,
+  source: string,
+): SupplyFinding[] {
+  const written = (fulfilment as Record<string, unknown>).fields;
+  if (!written || typeof written !== "object" || Array.isArray(written)) return [];
+  return generatedValueFindings(
+    written as Record<string, unknown>,
+    shape,
+    subject,
+    type,
+    path,
+    parameters,
+    (field) => `'${source}' field '${field}'`,
+  ).map((finding) => ({ ...finding, path }));
+}
+
 /** A need as a whole forward compares it: what it states and whether it may be absent. */
 export interface ForwardedNeed {
   optional: boolean;
@@ -1170,7 +1244,8 @@ export interface ForwardedNeed {
  * supply; `target` the module or application declaring `need`): an optional
  * need supplying a required one, or a need stating less than the one it
  * supplies — no version range or one not within the target's, fewer features, a
- * durable directory's weaker access or smaller size. Each a
+ * durable directory's weaker access or smaller size, or, for any other type, a
+ * parameter the target states (defaults filled) with another value. Each a
  * `NEED_FORWARD_INCOMPATIBLE` message.
  */
 export function wholeForwardRefusals(
@@ -1221,8 +1296,48 @@ export function wholeForwardRefusals(
           `'${source}': ${why}. Change the parameters of '${source}', or supply '${key}' another way.`,
       );
     }
+  } else if (need.parameters !== undefined) {
+    const differ = differingParameters(
+      needParametersWithDefaults(shape, need.parameters),
+      ownNeed.parameters === undefined ? undefined : needParametersWithDefaults(shape, ownNeed.parameters),
+    );
+    if (differ) {
+      out.push(
+        `${subject}: need '${key}' of ${target} states the parameters ${differ.wanted}, and ` +
+          `'${source}' states ${differ.stated}, which differ at ${differ.names}. A need forwarded ` +
+          `whole states every parameter of the need it supplies with an equal value — give ` +
+          `'${source}' the same parameters, or supply '${key}' another way.`,
+      );
+    }
   }
   return out;
+}
+
+/**
+ * Where a need stating `supplied` disagrees with the one stating `wanted` it is
+ * forwarded whole to (both with their type's defaults filled) — each parameter
+ * `wanted` states that `supplied` does not state with an equal value, and both
+ * sets as text — or undefined when it agrees. A value is consumed as the
+ * outermost need's parameters made it, so "at least" does not apply.
+ */
+function differingParameters(
+  wanted: unknown,
+  supplied: unknown,
+): { wanted: string; stated: string; names: string } | undefined {
+  if (!wanted || typeof wanted !== "object" || Array.isArray(wanted)) return undefined;
+  const stated =
+    supplied && typeof supplied === "object" && !Array.isArray(supplied)
+      ? (supplied as Record<string, unknown>)
+      : undefined;
+  const differing = Object.entries(wanted as Record<string, unknown>)
+    .filter(([name, value]) => !stated || canonicalJson(value) !== canonicalJson(stated[name]))
+    .map(([name]) => `'${name}'`);
+  if (differing.length === 0) return undefined;
+  return {
+    wanted: canonicalJson(wanted),
+    stated: stated ? canonicalJson(stated) : "none",
+    names: differing.join(", "),
+  };
 }
 
 function checkSupply(
@@ -1281,6 +1396,7 @@ function checkSupply(
         `Import '${imp.alias}': need '${key}'`,
         need.type!,
         path,
+        need.parameters,
       )) {
         report(module, finding.code, finding.message, { ...anchor, path: finding.path });
       }
@@ -1308,7 +1424,13 @@ function checkSupply(
       for (const declaration of local ? module.declarations!.filter((d) => d.name === supply.target.name) : []) {
         const first = logic.and(declaration.held ?? logic.TRUE, logic.not(before));
         before = logic.or(before, declaration.held ?? logic.TRUE);
-        if (!logic.isFalse(first)) mismatch(declaration.kind, declaration.type, first);
+        if (logic.isFalse(first)) continue;
+        mismatch(declaration.kind, declaration.type, first);
+        if (shape && need.type && declaration.type === need.type) {
+          for (const finding of fulfilmentValueFindings(declaration.manifest, shape, `Import '${imp.alias}': need '${key}'`, need.type, path, need.parameters, source)) {
+            report(module, finding.code, finding.message, { ...anchor, path: finding.path, held: first });
+          }
+        }
       }
       report(
         module,

@@ -72,7 +72,7 @@ reorders or re-tags layers cannot substitute one.
 
 **3. Immutability of the ref itself.** A **mutable OCI tag** (`@latest`) is
 exactly what it sounds like: `check` revalidates it with a `HEAD` against the
-digest recorded in `.telo/manifests/.origins.json` and refetches when it has
+digest recorded in `.telo/cache/manifests/.origins.json` and refetches when it has
 moved. Pin exact versions — plus the `#sha256-` fragment — for anything you
 deploy.
 
@@ -83,7 +83,7 @@ published. A module version cannot quietly acquire new contents.
 ## Reproducible, offline deployment
 
 `telo install` resolves the whole import graph and every controller into the
-`.telo/` cache root — beside the manifest, or beside `telo-workspace.yaml` in a
+`.telo/cache/` cache root — beside the manifest, or beside `telo-workspace.yaml` in a
 monorepo (see [where the cache lands](/deploy/docker#where-the-cache-lands)).
 Run it in your build stage, ship that directory with the manifest, and the
 production process performs **zero network I/O at boot** — so

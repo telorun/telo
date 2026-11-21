@@ -304,6 +304,7 @@ for another holder would hand them to a stranger. Shares are kept in `runner_sha
 | `RUNNER_SESSION_STORE` | `sqlite` (default) or `postgres`; anything else refuses to boot. |
 | `RUNNER_SESSION_STORE_URL` | The Postgres connection URL. Required with `postgres`, refused with `sqlite`. |
 | `RUNNER_STATE_DIR` | The runner's own state directory; the SQLite store is `sessions.sqlite` in it. The container runners require it with `sqlite`; the local runner falls back to its own state root. |
+| `RUNNER_SECRET_SEED` | The root of every session application's secrets: 32 bytes, unpadded base64url. See Application host values. |
 
 SQLite is Node's built-in `node:sqlite`; Postgres keeps its tables under the
 `runner_` prefix. The schema is versioned (SQLite's `user_version`, Postgres's
@@ -371,6 +372,50 @@ answers the Docker Engine API 1.41 requests `Docker.Engine` sends, at
 
 A backend implements `RunnerBackend.containers` (`SessionContainerEngine`); a
 runner turning the setting on over a backend without one refuses to boot.
+
+## Application host values
+
+Core delivers two host values in the environment of every Run of a session's
+application, each application its own, over any value of either the client sent
+(the same way it overwrites the container-engine values). The runner reads no
+manifest and no report.
+
+- **`TELO_HOST_STATE_DIR`** is the application's state directory, `apps/<app name>/`
+  of the session's storage as the application sees it: a `Telo.DurableDirectory`
+  need becomes `<state dir>/needs/<need path>` and a child application beneath
+  `<state dir>/apps/`. The backend names it (`BackendWorkload.appStateDir`) and
+  owns its substrate: on the docker runner the bundle volume's
+  `<session id>/apps/<app name>` mounted at `/var/lib/telo-apps/<app name>`, on
+  the Kubernetes runner `apps/<app name>` of the claim `telo-session-<id>`, whose
+  `apps/` is mounted once at `/var/lib/telo-apps`, and on the local runner the
+  absolute path `sessions/<session id>/apps/<app name>` of its state root. Like
+  `workspace/` and `agent/`, it belongs to the session user, is kept by suspend
+  and is removed with the session. An application is identified by its name in the
+  session: renaming one gives a new directory and new secrets.
+- **`TELO_HOST_SECRET_SEED`** is the application's own seed, which the kernel
+  derives `Telo.GeneratedSecretKey` and `Telo.GeneratedPassword` from. Core
+  derives it per Run from the runner's root seed through `@telorun/secret-seed`
+  (HKDF-SHA256, empty salt) with the label `telo/secret-seed/<session id>/<app name>`
+  — neither part holds `/`. Nothing is stored beside the root, so a restart, a
+  suspend and a resume, and a second replica sharing the root, all give the
+  same value.
+
+The root is `RUNNER_SECRET_SEED` when set. Unset with the SQLite store, core keeps
+it in `secret-seed` in the runner's state directory, beside `sessions.sqlite`
+(created on first use, mode `0600`, never regenerated). Unset with the PostgreSQL
+store no seed is delivered and the runner logs one startup warning naming
+`RUNNER_SECRET_SEED`: replicas share records but not a state directory, so only an
+operator-supplied value can agree, and an application declaring either generated
+type gets `ERR_NEED_UNMET`. A value or file that is not 32 bytes of unpadded
+base64url refuses at boot, naming the variable or the file and never its contents.
+Setting `RUNNER_SECRET_SEED` later, deleting `secret-seed` or rotating the variable
+rotates every session's secrets. A runner whose processes inherit the runner's
+environment must keep `RUNNER_SECRET_SEED` out of them.
+
+**One set of host values serves exactly one root application.** Any other host
+that delivers them — a platform running Telo applications itself — gives each
+application its own state directory and its own seed derived from one root it
+keeps, and replicas of one application agree by sharing them.
 
 ## Public addresses — the host contract
 

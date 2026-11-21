@@ -37,7 +37,7 @@ const ENTRY_DIR = "/srv/app";
  *  forward slashes asserts the host separator as much as the layout and fails on
  *  Windows for a mapping that is correct. `path.join` normalizes the separators
  *  in the tail, so the readable single-string form survives. */
-const cachePath = (relative: string) => path.join(ENTRY_DIR, ".telo/manifests", relative);
+const cachePath = (relative: string) => path.join(ENTRY_DIR, ".telo/cache/manifests", relative);
 
 describe("cachePathForCanonical", () => {
   it("maps an oci ref into the oci/host/repo/version layout", () => {
@@ -61,7 +61,7 @@ describe("cachePathForCanonical", () => {
 
 describe("LocalManifestCacheSource.supports", () => {
   it("matches an oci ref when the on-disk file exists", async () => {
-    const cacheRoot = path.join(workdir, ".telo/manifests/oci/ghcr.io/telorun/type/1.0.5");
+    const cacheRoot = path.join(workdir, ".telo/cache/manifests/oci/ghcr.io/telorun/type/1.0.5");
     await fs.mkdir(cacheRoot, { recursive: true });
     await fs.writeFile(path.join(cacheRoot, "telo.yaml"), "kind: Telo.Library\n");
 
@@ -75,7 +75,7 @@ describe("LocalManifestCacheSource.supports", () => {
   });
 
   it("matches an HTTP URL when the on-disk file exists", async () => {
-    const cacheRoot = path.join(workdir, ".telo/manifests/url/example.com/lib");
+    const cacheRoot = path.join(workdir, ".telo/cache/manifests/url/example.com/lib");
     await fs.mkdir(cacheRoot, { recursive: true });
     await fs.writeFile(path.join(cacheRoot, "telo.yaml"), "kind: Telo.Library\n");
 
@@ -101,12 +101,12 @@ describe("LocalManifestCacheSource.supports", () => {
   });
 
   it("treats a directory at the cache path as a miss (not a hit)", async () => {
-    // `mkdir -p .telo/manifests/oci/ghcr.io/telorun/foo/1.0.0/telo.yaml` — note the
+    // `mkdir -p .telo/cache/manifests/oci/ghcr.io/telorun/foo/1.0.0/telo.yaml` — note the
     // .yaml segment is itself a directory. existsSync would say true here; we need
     // a stricter regular-file check so reads don't blow up with EISDIR and the
     // chain still falls through to the network source.
     await fs.mkdir(
-      path.join(workdir, ".telo/manifests/oci/ghcr.io/telorun/foo/1.0.0/telo.yaml"),
+      path.join(workdir, ".telo/cache/manifests/oci/ghcr.io/telorun/foo/1.0.0/telo.yaml"),
       { recursive: true },
     );
 
@@ -123,7 +123,7 @@ describe("LocalManifestCacheSource.supports", () => {
 
 describe("LocalManifestCacheSource.read", () => {
   it("returns the cached text and a file:// canonical source", async () => {
-    const cacheRoot = path.join(workdir, ".telo/manifests/oci/ghcr.io/telorun/run/0.2.4");
+    const cacheRoot = path.join(workdir, ".telo/cache/manifests/oci/ghcr.io/telorun/run/0.2.4");
     await fs.mkdir(cacheRoot, { recursive: true });
     const expected = "kind: Telo.Library\nmetadata:\n  name: run\n";
     await fs.writeFile(path.join(cacheRoot, "telo.yaml"), expected);
@@ -138,7 +138,7 @@ describe("LocalManifestCacheSource.read", () => {
 
   it("serves a nested module from the mirror of its artifact's manifest layer, a directory meaning its telo.yaml", async () => {
     const digest = `sha256:${"ab".repeat(32)}`;
-    const mirror = path.join(workdir, ".telo/manifests/oci/ghcr.io/telorun/agent", digest.replace(":", "-"));
+    const mirror = path.join(workdir, ".telo/cache/manifests/oci/ghcr.io/telorun/agent", digest.replace(":", "-"));
     await fs.mkdir(path.join(mirror, "chat"), { recursive: true });
     await fs.writeFile(path.join(mirror, "chat", "telo.yaml"), "kind: Telo.Library\nmetadata:\n  name: Chat\n");
     await fs.writeFile(path.join(mirror, "ordering.yaml"), "kind: Telo.Library\nmetadata:\n  name: Ordering\n");
@@ -177,14 +177,14 @@ describe("writeManifestCache", () => {
     expect(written.length).toBe(2);
     const ociFile = path.join(
       workdir,
-      ".telo/manifests/oci/ghcr.io/telorun/type/1.0.5/telo.yaml",
+      ".telo/cache/manifests/oci/ghcr.io/telorun/type/1.0.5/telo.yaml",
     );
-    const httpFile = path.join(workdir, ".telo/manifests/url/example.com/lib/telo.yaml");
+    const httpFile = path.join(workdir, ".telo/cache/manifests/url/example.com/lib/telo.yaml");
     expect(await fs.readFile(ociFile, "utf-8")).toBe("oci-text");
     expect(await fs.readFile(httpFile, "utf-8")).toBe("http-text");
 
     // The entry itself must not be cached — it already lives on disk.
-    const entryCache = path.join(workdir, ".telo/manifests");
+    const entryCache = path.join(workdir, ".telo/cache/manifests");
     const entries = await fs.readdir(entryCache);
     expect(entries.sort()).toEqual(["oci", "url"]);
   });
@@ -214,7 +214,7 @@ describe("writeManifestCache", () => {
     // on-disk bytes must be the freshly fetched ones, not whatever was there.
     const cacheFile = path.join(
       workdir,
-      ".telo/manifests/url/example.com/foo/1.0.0/telo.yaml",
+      ".telo/cache/manifests/url/example.com/foo/1.0.0/telo.yaml",
     );
     await fs.mkdir(path.dirname(cacheFile), { recursive: true });
     await fs.writeFile(cacheFile, "stale-bytes");
@@ -261,7 +261,7 @@ describe("writeManifestCache", () => {
 
     const partialPath = path.join(
       workdir,
-      ".telo/manifests/url/example.com/foo/1.0.0/sub.yaml",
+      ".telo/cache/manifests/url/example.com/foo/1.0.0/sub.yaml",
     );
     expect(await fs.readFile(partialPath, "utf-8")).toBe("partial-text");
   });
@@ -270,7 +270,7 @@ describe("writeManifestCache", () => {
 describe("Loader picks the cache source over HttpSource on hit", () => {
   it("serves an HTTP import from disk and never touches the network", async () => {
     // Seed the cache directly.
-    const libDir = path.join(workdir, ".telo/manifests/url/example.invalid/foo/1.0.0");
+    const libDir = path.join(workdir, ".telo/cache/manifests/url/example.invalid/foo/1.0.0");
     await fs.mkdir(libDir, { recursive: true });
     await fs.writeFile(
       path.join(libDir, "telo.yaml"),
@@ -361,7 +361,7 @@ describe("path traversal guard", () => {
     await fs.mkdir(outside, { recursive: true });
     await fs.writeFile(path.join(outside, "telo.yaml"), "kind: Telo.Library\n");
 
-    // The cache root is workdir/.telo/manifests — so the ref below would
+    // The cache root is workdir/.telo/cache/manifests — so the ref below would
     // otherwise resolve to <workdir>/escape/1.0.0/telo.yaml (above).
     const source = new LocalManifestCacheSource(workdir);
     expect(source.supports("oci://ghcr.io/foo/../../../../escape@1.0.0")).toBe(false);
@@ -403,7 +403,7 @@ describe("query-string disambiguation", () => {
     // normalization, so both import shapes resolve to the same file.
     const writePath = cachePathForCanonical("https://example.com/foo/1.0.0/telo.yaml", workdir);
     expect(writePath).toBe(
-      path.join(workdir, ".telo/manifests/url/example.com/foo/1.0.0/telo.yaml"),
+      path.join(workdir, ".telo/cache/manifests/url/example.com/foo/1.0.0/telo.yaml"),
     );
     await fs.mkdir(path.dirname(writePath!), { recursive: true });
     await fs.writeFile(writePath!, "kind: Telo.Library\n");
@@ -499,7 +499,7 @@ describe("analysis stamp", () => {
   });
 
   it("readAnalysisStamp rejects a stamp from an unknown protocol version", async () => {
-    const target = path.join(workdir, ".telo/manifests/.validated.json");
+    const target = path.join(workdir, ".telo/cache/manifests/.validated.json");
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(
       target,

@@ -157,7 +157,7 @@ argument, exactly as with a local file. The root `telo.yaml` is fetched and
 verified against the pin **before anything boots** — a mismatch stops the run
 before any resource is created, naming the ref, the expected pin and the pin of
 what was served. The same check applies when the manifest comes from the
-`.telo/manifests` cache instead of the network.
+`.telo/cache/manifests` cache instead of the network.
 
 An unpinned ref (`oci://<host>/<repo>@<version>`) runs **unverified**: the tag is
 mutable, so what runs is whatever the registry serves under it today. Publish the

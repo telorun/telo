@@ -245,12 +245,12 @@ function refuseEnvironmentFailure(version: string, code: string | undefined, lin
   }
 }
 
-const CACHED_DEPENDENCY = /(?:^|\/)\.telo\/manifests\/(?:.*\/)?([^/]+)\/([^/]+)\/([^/]+)$/;
+const CACHED_DEPENDENCY = /(?:^|\/)\.telo\/(?:cache\/)?manifests\/(?:.*\/)?([^/]+)\/([^/]+)\/([^/]+)$/;
 
 /**
  * The first diagnostic a failed run located in the module's import closure: a
  * relative import's file, or a pinned remote import as the measuring CLI cached
- * it (`.telo/manifests/**`), rendered as the dependency (`http-server@0.43.0
+ * it (`.telo/cache/manifests/**`), rendered as the dependency (`http-server@0.43.0
  * telo.yaml:137`) rather than as an absolute cache path.
  */
 function readDependencyRejection(

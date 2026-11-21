@@ -28,6 +28,7 @@ const FAKE_TELO = path.join(import.meta.dirname, "__fixtures__", "runner-fake-te
 let app: Awaited<ReturnType<typeof buildServer>>["app"];
 let store: SessionStore;
 let stateRoot: string;
+const ROOT_SEED = new Uint8Array(32).fill(5);
 /** What the release host answers, by URL suffix; anything else is a 404. */
 let release: Record<string, { status: number; body: string }>;
 
@@ -57,6 +58,7 @@ async function boot(agent?: RunnerAgent): Promise<void> {
       corsOrigins: [],
     },
     store,
+    rootSecretSeed: ROOT_SEED,
     version: "test",
     capabilities: localRunnerCapabilities(agent),
     validateConfig: validateLocalRunnerConfig,
@@ -403,6 +405,8 @@ describe("the co-resident agent", () => {
     expect(seen.env).toEqual({
       WORKSPACE_DIR: dir.workspace,
       TELO_HOST_STATE_DIR: dir.agent,
+      TELO_HOST_SECRET_SEED: null,
+      RUNNER_SECRET_SEED: null,
       TELO_CACHE_DIR: path.join(dir.agent, "telo-cache"),
       AGENT_TOKEN: doc.status.agent.token,
       AGENT_PROBE: "operator",
@@ -447,6 +451,49 @@ describe("the co-resident agent", () => {
     const doc = await statusOf(session, "failed");
     expect(doc.status.message).toMatch(/co-resident agent 'authoring-agent' ended \(exit code 3\)/);
     expect(doc.status.message).toContain(path.join(sessionDirectory(stateRoot, session.id).agent, "agent.log"));
+  });
+
+  it("gets its own private state directory under the session and a seed of its own, over what the client sent", async () => {
+    const before = process.env.RUNNER_SECRET_SEED;
+    process.env.RUNNER_SECRET_SEED = Buffer.from(ROOT_SEED).toString("base64url");
+    try {
+      const session = await create({
+        apps: [
+          { name: "a", entryRelativePath: "a.yaml" },
+          { name: "b", entryRelativePath: "b.yaml" },
+        ],
+      });
+      await statusOf(session, "running");
+      await seed(session, { "a.yaml": "", "b.yaml": "" });
+      const forged = { TELO_HOST_STATE_DIR: "/etc", TELO_HOST_SECRET_SEED: "forged" };
+      for (const name of ["a", "b"]) {
+        expect((await run(session, name, { env: forged, io: "streams" })).statusCode).toBe(202);
+      }
+      const workspace = sessionDirectory(stateRoot, session.id).workspace;
+      const seen = (entry: string) =>
+        until(
+          async () => {
+            const file = path.join(workspace, `${entry}.seen.json`);
+            return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : undefined;
+          },
+          (value) => value !== undefined,
+        );
+      const a = (await seen("a.yaml")).env;
+      const b = (await seen("b.yaml")).env;
+
+      const apps = path.join(stateRoot, "sessions", session.id, "apps");
+      expect(a.TELO_HOST_STATE_DIR).toBe(path.join(apps, "a"));
+      expect(b.TELO_HOST_STATE_DIR).toBe(path.join(apps, "b"));
+      if (process.platform !== "win32") {
+        expect(fs.statSync(path.join(apps, "a")).mode & 0o777).toBe(0o700);
+      }
+      expect(a.TELO_HOST_SECRET_SEED).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      expect(a.TELO_HOST_SECRET_SEED).not.toBe(b.TELO_HOST_SECRET_SEED);
+      expect(a.RUNNER_SECRET_SEED).toBeNull();
+    } finally {
+      if (before === undefined) delete process.env.RUNNER_SECRET_SEED;
+      else process.env.RUNNER_SECRET_SEED = before;
+    }
   });
 
   it("keeps the runner's AGENT_* configuration out of every application run", async () => {

@@ -286,7 +286,7 @@ error, since the two are genuinely different code.
 
 When the module is a working copy and `local_path` resolves on disk, the loader
 builds the bundle from source instead, caching it under
-`<entry-manifest-dir>/.telo/controller-src/`. Each cache entry is named by a digest
+`<entry-manifest-dir>/.telo/cache/controller-src/`. Each cache entry is named by a digest
 covering **every input the build read** plus the build options — so an edit anywhere
 in the source graph produces a new entry rather than invalidating one, and two
 concurrent kernel processes that race produce identical bytes at identical paths.
@@ -331,13 +331,13 @@ Each root carries a `.telo-install-root.json` marker naming the key's own
 inputs, written once when the root is created. Nothing reads it; it is there so
 a hashed directory can be traced back to the runner that wrote it.
 
-A sibling `.telo/manifests/` tree, written by the same
+A sibling `.telo/cache/manifests/` tree, written by the same
 `telo install` pass, holds the YAML of every transitively-imported
 `Telo.Library` so boot can resolve manifests without any network I/O. See [Module System](./modules.md#7-manifest-cache) for the cache
 layout; this section covers controller resolution only.
 
 ```
-<workspace>/.telo/npm/<runner+platform hash>/
+<workspace>/.telo/cache/npm/<runner+platform hash>/
   package.json        # holds @telorun/sdk as a file: dep + overrides pinning it
   .telo-state.json    # hash of the materialized package.json (re-runs short-circuit)
   .telo-install-root.json  # the key's inputs: realm path + platform

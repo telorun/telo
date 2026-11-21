@@ -10,6 +10,7 @@ export {
   cachePathForCanonical,
   resolveCacheRoot,
   resolveEntryDir,
+  resolveWorkspaceDir,
   writeManifestCache,
 } from "./manifest-sources/local-manifest-cache-source.js";
 export {
@@ -203,4 +204,4 @@ export {
   toolRequirement,
 } from "./controller-loaders/controller-tool-requirements.js";
 export type { ToolRequirement } from "./controller-loaders/controller-tool-requirements.js";
-export { DESKTOP_HELPER_HOST_VALUE } from "./host-values.js";
+export { DESKTOP_HELPER_HOST_VALUE, KERNEL_HOST_VALUES, withoutHostValues } from "./host-values.js";

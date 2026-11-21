@@ -1,0 +1,7 @@
+kind: Telo.Library
+metadata:
+  name: GeneratedForwardInner
+  version: 0.0.0
+  description: A library decoding a 64-byte key.
+needs:
+  sessionKey: { kind: Telo.GeneratedSecretKey, parameters: { bytes: 64, encoding: base64url } }

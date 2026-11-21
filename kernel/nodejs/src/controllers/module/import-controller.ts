@@ -1,3 +1,4 @@
+import { refuseGeneratedValue } from "../../generated-secrets.js";
 import {
   authoredModuleMetadata,
   DURABLE_DIRECTORY_TYPE,
@@ -1122,6 +1123,14 @@ function bindNeedSupplies(
             `is '${supply.fulfilment.type}'.`,
         );
       }
+      refuseGeneratedValue(
+        `Import '${alias}': need '${need.name}'`,
+        type,
+        shape,
+        need.parameters,
+        supply.fulfilment.fields,
+        (field) => `'${supply.source}' field '${field}'`,
+      );
       out.set(need.name, { manifest, fulfilment: supply.fulfilment });
       continue;
     }
@@ -1173,6 +1182,14 @@ function bindNeedSupplies(
           `${err instanceof Error ? err.message : String(err)}`,
       );
     }
+    refuseGeneratedValue(
+      `Import '${alias}': need '${need.name}'`,
+      type,
+      shape,
+      need.parameters,
+      values,
+      (field) => `field '${field}'`,
+    );
     if (type === DURABLE_DIRECTORY_TYPE) {
       refuseUnusableDirectories([
         {

@@ -28,6 +28,16 @@ export const WORKSPACE_MOUNT = "/workspace";
 /** Where the agent sees its own state (`agent/` of the session's directory),
  *  outside the workspace tree, so nothing syncs it. */
 export const AGENT_STATE_DIR = "/var/lib/telo-agent-state";
+/** Where an app container sees its own state directory (`apps/<app>/` of the
+ *  session's directory), as `TELO_HOST_STATE_DIR`; the k8s `apps` container
+ *  mounts the claim's `apps/` at `/var/lib/telo-apps` whole, so the value reads
+ *  the same on both. */
+export const APPS_STATE_DIR = "/var/lib/telo-apps";
+
+export function appStateMount(app: string): string {
+  return `${APPS_STATE_DIR}/${app}`;
+}
+
 /** Where the runner's image carries the session supervisor, and where every app
  *  container mounts the copy the runner wrote to the bundle volume. */
 export const SUPERVISOR_DIR = "/opt/telo-runner";
@@ -79,7 +89,7 @@ export function appRole(app: string): string {
 }
 
 /** The session's directory on the bundle volume, relative to its root. */
-export function sessionSubpath(sessionId: string, entry: "workspace" | "agent" | `home/${HomeOwner}`): string {
+export function sessionSubpath(sessionId: string, entry: "workspace" | "agent" | `home/${HomeOwner}` | `apps/${string}`): string {
   return `${sessionId}/${entry}`;
 }
 
@@ -216,6 +226,12 @@ export function appContainer(args: SessionContainerArgs, a: AppContainerArgs): C
           VolumeOptions: { Subpath: a.supervisor.subpath },
         },
         homeMount(args, "apps"),
+        {
+          Type: "volume",
+          Source: args.bundleVolume,
+          Target: appStateMount(a.app.name),
+          VolumeOptions: { Subpath: sessionSubpath(args.sessionId, `apps/${a.app.name}`) },
+        },
       ],
     },
   };

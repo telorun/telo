@@ -181,8 +181,9 @@ export interface InputPrompter {
   /** Ask every entry at once (a form); `null` when the person ended the input.
    *  When present the session uses it instead of `ask` per entry. */
   askAll?(inputs: readonly UnresolvedApplicationInput[]): Promise<ReadonlyMap<string, string> | undefined>;
-  /** Ask a yes/no question; anything but yes, and the end of input, is no. */
-  confirm(question: string): Promise<boolean>;
+  /** Ask a yes/no question; anything but yes, and the end of input, is no — an
+   *  empty answer is yes with `defaultYes`. */
+  confirm(question: string, options?: { defaultYes?: boolean }): Promise<boolean>;
   /** A line of prose on the asking stream. */
   say(line: string): void;
 }
@@ -202,11 +203,13 @@ export function terminalPrompter(
       if (answer === null) out.errLine();
       return answer;
     },
-    async confirm(question) {
-      out.errPrompt(`${question} [y/N] `);
+    async confirm(question, options) {
+      const defaultYes = options?.defaultYes === true;
+      out.errPrompt(`${question} ${defaultYes ? "[Y/n]" : "[y/N]"} `);
       const answer = await readAnswerLine(input, false, interrupts);
       if (answer === null) out.errLine();
-      return answer !== null && /^\s*y(es)?\s*$/i.test(answer);
+      if (answer === null) return false;
+      return /^\s*y(es)?\s*$/i.test(answer) || (defaultYes && answer.trim() === "");
     },
     say(line) {
       out.errLine(line);

@@ -586,7 +586,7 @@ async function readMarker(marker: string): Promise<string[]> {
  *
  * Derived from the **pinned** `requestedUrl`, not the canonical `source`, because
  * those diverge exactly when the manifest cache is warm: a cache hit is served as
- * a `file://` URL into `.telo/manifests/`, which no transport claims, so a
+ * a `file://` URL into `.telo/cache/manifests/`, which no transport claims, so a
  * `source`-derived path is `null` on every run after the first. The pinned ref is
  * what the importer wrote and survives the hit, so it places the module
  * identically cold and warm. A genuinely local `source` (development, or a module
@@ -594,7 +594,7 @@ async function readMarker(marker: string): Promise<string[]> {
  *
  * A module's LAYERS extract beside its cached `telo.yaml`, so this has to follow
  * the manifest cache's own fallback to the pre-workspace-anchor root: when the
- * manifest resolved from `<entry-dir>/.telo/manifests/` because the workspace root
+ * manifest resolved from `<entry-dir>/.telo/cache/manifests/` because the workspace root
  * is cold, its already-materialized controller layers are there too. Deriving the
  * directory from the new root alone left an offline hermetic upgrade resolving
  * `telo.yaml` from disk and then going to the network for every bundled

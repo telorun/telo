@@ -693,7 +693,7 @@ jobs:
           # keyed by SDK backend, which is NOT the workspace `target/` this action
           # caches by default. Without naming it every run rebuilds each napi
           # controller and its dependency tree from cold — minutes on Windows.
-          cache-directories: .telo/cargo
+          cache-directories: .telo/cache/cargo
 
       # Package unit tests resolve sibling workspace packages to their built
       # dist/, so the build must run before vitest.
@@ -1086,7 +1086,7 @@ jobs:
           # keyed by SDK backend, which is NOT the workspace `target/` this action
           # caches by default. Without naming it every run rebuilds each napi
           # controller and its dependency tree from cold — minutes on Windows.
-          cache-directories: .telo/cargo
+          cache-directories: .telo/cache/cargo
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -1177,7 +1177,7 @@ jobs:
           # keyed by SDK backend, which is NOT the workspace `target/` this action
           # caches by default. Without naming it every run rebuilds each napi
           # controller and its dependency tree from cold — minutes on Windows.
-          cache-directories: .telo/cargo
+          cache-directories: .telo/cache/cargo
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -1314,7 +1314,7 @@ jobs:
           # keyed by SDK backend, which is NOT the workspace `target/` this action
           # caches by default. Without naming it every run rebuilds each napi
           # controller and its dependency tree from cold — minutes on Windows.
-          cache-directories: .telo/cargo
+          cache-directories: .telo/cache/cargo
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -1405,7 +1405,7 @@ jobs:
           # keyed by SDK backend, which is NOT the workspace `target/` this action
           # caches by default. Without naming it every run rebuilds each napi
           # controller and its dependency tree from cold — minutes on Windows.
-          cache-directories: .telo/cargo
+          cache-directories: .telo/cache/cargo
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -1508,7 +1508,7 @@ jobs:
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          cache-directories: .telo/cargo
+          cache-directories: .telo/cache/cargo
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -1586,7 +1586,7 @@ jobs:
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          cache-directories: .telo/cargo
+          cache-directories: .telo/cache/cargo
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -1641,7 +1641,7 @@ jobs:
           # keyed by SDK backend, which is NOT the workspace `target/` this action
           # caches by default. Without naming it every run rebuilds each napi
           # controller and its dependency tree from cold — minutes on Windows.
-          cache-directories: .telo/cargo
+          cache-directories: .telo/cache/cargo
 
       # The Rust CLI embeds the built-in vocabulary archive, which is rendered,
       # never tracked, and its build refuses to run without it. The workspace is

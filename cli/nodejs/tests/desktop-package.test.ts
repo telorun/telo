@@ -94,7 +94,7 @@ describe.skipIf(process.platform === "win32")("a start of the packaged desktop a
     expect(fs.statSync(data).isDirectory()).toBe(true);
     run.child.kill("SIGTERM");
     expect(await run.exited).toBe(0);
-    expect(fs.readdirSync(path.join(appDirectory, "desktop-host")).sort()).toEqual(["port", "webview"]);
+    expect(fs.readdirSync(path.join(appDirectory, "desktop-host")).sort()).toEqual(["port", "secret-seed", "webview"]);
   }, 120_000);
 
   it("reads its .env from the per-user directory, which may name a state directory of its own", async () => {

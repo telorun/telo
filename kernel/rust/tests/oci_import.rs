@@ -75,7 +75,7 @@ fn resolves_a_pinned_import_from_the_workspace_manifest_cache_with_no_network() 
     let library = "kind: Telo.Library\nmetadata:\n  name: Lib\n  version: 1.0.0\n";
     let cached = workspace
         .path()
-        .join(".telo/manifests/oci")
+        .join(".telo/cache/manifests/oci")
         .join(registry.host())
         .join("acme/lib/1.0.0/telo.yaml");
     fs::create_dir_all(cached.parent().unwrap()).unwrap();

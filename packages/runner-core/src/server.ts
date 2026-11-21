@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance } from "fastify";
+import type { SecretSeed } from "@telorun/secret-seed";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 
@@ -32,6 +33,7 @@ import type { ShareStore } from "./session-store/share-store.js";
 import { IoTickets } from "./session/io-tickets.js";
 import { SessionRegistry } from "./session/registry.js";
 import { callerResolver, type CallerResolver } from "./session/session-credentials.js";
+import { ApplicationHostValues } from "./session/application-host-values.js";
 import { SessionLifecycle } from "./session/session-lifecycle.js";
 
 export interface ServerDeps {
@@ -53,6 +55,9 @@ export interface ServerDeps {
   /** Where session records are kept (`openSessionStore`). Owned by the caller,
    *  who closes it after the server. */
   store: SessionStore;
+  /** The runner's root secret seed (`loadRootSecretSeed`); absent, no seed is
+   *  delivered to any application and one startup warning says so. */
+  rootSecretSeed?: SecretSeed;
   /** Who a request is, from its credentials — every session route asks it.
    *  Defaults to resume secrets (`Authorization: Bearer`), plus DPoP-bound
    *  identities when `config.identity` is set. */
@@ -122,6 +127,15 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
       ...(deps.logStream ? { stream: deps.logStream } : {}),
     },
   });
+
+  if (!deps.rootSecretSeed) {
+    app.log.warn(
+      "RUNNER_SECRET_SEED is not set and the runner has no state directory to keep a seed in (the PostgreSQL session store): no secret " +
+        "seed is delivered to session applications, so one declaring a generated secret need fails " +
+        "with ERR_NEED_UNMET. Set RUNNER_SECRET_SEED (32 bytes, unpadded base64url) to the same " +
+        "value on every replica.",
+    );
+  }
 
   // CORS: SSE and fetch from the editor's browser origin are cross-origin by
   // default. A runner with no auth is driven by whoever can reach the port, so
@@ -244,6 +258,7 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     registry,
     tickets,
     containers,
+    hostValues: new ApplicationHostValues(deps.rootSecretSeed),
     agent: deps.agent,
     settings: deps.config.sessions,
     maxSessions: deps.config.maxSessions,

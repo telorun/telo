@@ -111,6 +111,21 @@ entry's `env` in agreement. `TELO_HOST_STATE_DIR=/var/lib/telo-agent-state` poin
 its durable-directory needs at the claim's `agent/`, outside the workspace tree,
 so nothing syncs it and it survives suspend, resume and app-set changes.
 
+**Each application has a state directory and a seed of its own.** The claim's
+`apps/` (created by the init container, so the pod does not depend on the app set)
+is mounted once into the `apps` container at `/var/lib/telo-apps`; every Run of
+an application receives `TELO_HOST_STATE_DIR=/var/lib/telo-apps/<name>` — `apps/<name>`
+of the claim `telo-session-<id>`, the session user's, kept by suspend and removed
+with the claim — and a `TELO_HOST_SECRET_SEED` derived from the runner's root seed,
+the session id and the application's name, over any value of either the client sent.
+Renaming an application gives a new directory and new generated secrets. The root
+seed is `RUNNER_SECRET_SEED` (chart: `secretSeed.existingSecret`), else the `secret-seed`
+file the runner keeps in its own state claim beside `sessions.sqlite`; with
+`sessionStore.kind: postgres` and no Secret none is delivered, the runner logs one
+startup warning, and an application declaring `Telo.GeneratedSecretKey` or
+`Telo.GeneratedPassword` fails with `ERR_NEED_UNMET` — replicas share records, not a
+directory, so give every replica the same Secret.
+
 **The workspace surface is runner infrastructure.** It is part of the `/v1`
 session contract, so the runner owns its manifest, which it reconciles into a
 content-addressed ConfigMap; a runner upgrade that changes the manifest leaves
@@ -297,6 +312,7 @@ declaring a port the pod reserves.
 | `RUNNER_SESSION_STORE` | `sqlite` | Where session records are kept: `sqlite` (a file in `RUNNER_STATE_DIR`) or `postgres`. Anything else refuses to boot (chart: `sessionStore.kind`) |
 | `RUNNER_SESSION_STORE_URL` | _(unset)_ | The Postgres connection URL; required with `postgres`, refused with `sqlite` (chart: `sessionStore.url` or `sessionStore.existingSecret`) |
 | `RUNNER_STATE_DIR` | _(required with `sqlite`)_ | The runner's own state directory, on persistent storage; holds `sessions.sqlite` (the chart mounts its own claim, `telo-k8s-runner-state`, at `/var/lib/telo-runner` with `sqlite`) |
+| `RUNNER_SECRET_SEED` | _(unset → the `secret-seed` file in `RUNNER_STATE_DIR`; none with `postgres`)_ | 32 bytes, unpadded base64url: the root every application's generated secrets derive from. A value or file that is not a seed refuses to boot; setting, rotating or losing it rotates every session's secrets (chart: `secretSeed.existingSecret`, a Secret reference) |
 | `RUNNER_SESSION_STORAGE_SIZE` | `5Gi` | Size of each session's own PersistentVolumeClaim, a Kubernetes storage quantity (chart: `sessionStorage.size`) |
 | `RUNNER_SESSION_STORAGE_CLASS` | _(unset → cluster default)_ | StorageClass of each session's own PersistentVolumeClaim (chart: `sessionStorage.storageClass`) |
 | `RUNNER_IDENTITY_AUDIENCE` | _(unset)_ | The runner's public https base URL, the audience a signed-in owner's DPoP-bound token must name; set with `RUNNER_IDENTITY_ISSUERS` or not at all (chart: `identity.audience`) |
@@ -475,6 +491,7 @@ namespace, no push credentials.
 | --- | --- | --- |
 | `sessionStore.kind` | `sqlite` | `sqlite` (on the runner's own claim) or `postgres` |
 | `sessionStore.persistence.size` / `.storageClass` | `1Gi` / cluster default | The runner's own claim, with `sqlite` |
+| `secretSeed.existingSecret` (+ `.existingSecretKey`, `seed`) | — | A Secret holding the root seed as unpadded base64url, 32 bytes; unset, the runner keeps its own in its state claim (with `postgres`, none is delivered) |
 | `sessionStore.url` / `.existingSecret` (+ `.existingSecretKey`, `url`) | — | The Postgres connection URL, inline or from a Secret; one of them with `postgres` |
 | `sessionStorage.size` / `.storageClass` | `5Gi` / cluster default | Each session's own claim |
 | `identity.audience` / `identity.issuers` | — | Signed-in owners; set both or neither |

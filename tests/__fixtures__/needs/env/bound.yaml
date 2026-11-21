@@ -18,6 +18,8 @@ needs:
   databaseAccess:
     kind: Fx.DatabaseAccess
     env: { url: DATABASE_URL }
+    # Forwarded whole, it states every parameter of the need it supplies.
+    parameters: { extensions: [pgvector] }
 targets:
   - !ref verify
 ---
@@ -34,7 +36,4 @@ steps:
         library: !cel "steps.describe.result"
       expected:
         root: postgres://bound.internal/main
-        library:
-          url: postgres://bound.internal/main
-          schema: public
-          cache: none
+        library: { url: postgres://bound.internal/main, schema: public, cache: none }

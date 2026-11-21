@@ -19,6 +19,7 @@ import { fileURLToPath } from "url";
 import { promisify } from "util";
 
 import { hostEnv } from "../host-env.js";
+import { withoutHostValues } from "../host-values.js";
 import {
   CARGO_REQUIREMENT,
   isCommandNotFound,
@@ -146,7 +147,7 @@ export class NapiControllerLoader {
    *  since `target_directory` is where the dylib is then looked for — setting it
    *  on only one of the two would build in one place and search in another. */
   private targetDirEnv(): Record<string, string | undefined> {
-    const env = hostEnv();
+    const env = withoutHostValues(hostEnv());
     if (!this.cacheRoot) return env;
     return { ...env, CARGO_TARGET_DIR: path.join(this.cacheRoot, "cargo", "napi", "target") };
   }
