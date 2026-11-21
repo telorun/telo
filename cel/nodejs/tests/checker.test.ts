@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseExpression } from "../src/cel-expression.js";
 import { CEL_CHECK_CODES, CelEngineError } from "../src/check-diagnostic.js";
 import type { CelCheckCode } from "../src/check-diagnostic.js";
+import { INT, STRING, mapOf, optionalOf, unionOf } from "../src/cel-type.js";
 import { CelEnvironment } from "../src/environment.js";
 import { UNKNOWN_FUNCTION_CANDIDATES } from "../src/function-registry.js";
 
@@ -367,6 +368,27 @@ describe("a presence-shaped read — `.?`, `[?]`, `has()`", () => {
     expect(neither.check("either.?b").diagnostics.map((held) => held.code)).toEqual([
       "CEL_TYPE_ERROR",
       "CEL_TYPE_ERROR",
+    ]);
+  });
+});
+
+describe("an optional read through one layer only", () => {
+  const refusal = (whole: string) =>
+    `${whole} is read through one optional only; unwrap the inner optional (.value(), .orValue(…) or optFlatMap) first`;
+  const held = mapOf(STRING, INT);
+
+  it("refuses an optional union branch beneath an optional, and leaves a presence read to the branches that hold", () => {
+    const environment = new CelEnvironment({ enableOptionalTypes: true })
+      .registerVariable("ou", optionalOf(unionOf([optionalOf(held), held])))
+      .registerVariable("up", unionOf([optionalOf(optionalOf(held)), held]));
+    const whole = "optional<optional<map<string, int>>|map<string, int>>";
+    expect(environment.check("ou.a").diagnostics.map((held) => held.message)).toEqual([refusal(whole)]);
+    expect(environment.check("ou['a']").diagnostics.map((held) => held.message)).toEqual([refusal(whole)]);
+    for (const source of ["ou.?a", "has(ou.a)", "ou[?'a']", "up.?a"]) {
+      expect(environment.check(source).diagnostics, source).toEqual([]);
+    }
+    expect(environment.check("up.a").diagnostics.map((held) => held.message)).toEqual([
+      refusal("optional<optional<map<string, int>>>|map<string, int>"),
     ]);
   });
 });

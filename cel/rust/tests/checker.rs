@@ -423,6 +423,39 @@ fn a_presence_read_refuses_an_operand_whose_declared_type_holds_no_members_in_ev
     );
 }
 
+#[test]
+fn a_union_branch_that_is_an_optional_is_refused_beneath_an_optional() {
+    use telorun_cel::{map_of, optional_of, union_of, INT, STRING};
+    let message = |whole: &str| {
+        format!("{whole} is read through one optional only; unwrap the inner optional (.value(), .orValue(…) or optFlatMap) first")
+    };
+    let held = || map_of(STRING.clone(), INT.clone());
+    let whole = "optional<optional<map<string, int>>|map<string, int>>";
+    let mut nested = environment(optional_types());
+    nested.register_variable("ou", optional_of(union_of([optional_of(held()), held()])), None).unwrap();
+    assert_rows(
+        &nested,
+        vec![
+            ("ou.a", "optional<dyn>", vec![found(TypeError, &message(whole), 3, 4)]),
+            ("ou['a']", "optional<dyn>", vec![found(TypeError, &message(whole), 0, 7)]),
+            // A presence read judges only the branches that can hold the member, so the
+            // nested optional branch is the absence case it answers `none` for.
+            ("ou.?a", "optional<int>", vec![]),
+            ("has(ou.a)", "bool", vec![]),
+            ("ou[?'a']", "optional<int>", vec![]),
+        ],
+    );
+    let mut bare = environment(optional_types());
+    bare.register_variable("up", union_of([optional_of(optional_of(held())), held()]), None).unwrap();
+    assert_rows(
+        &bare,
+        vec![
+            ("up.a", "dyn", vec![found(TypeError, &message("optional<optional<map<string, int>>>|map<string, int>"), 3, 4)]),
+            ("up.?a", "optional<int>", vec![]),
+        ],
+    );
+}
+
 fn records() -> CelEnvironment {
     let object = |properties: &str| schema(&format!(r#"{{"type":"object","properties":{{{properties}}}}}"#));
     let mut environment = environment(CelEnvironmentOptions::default());
