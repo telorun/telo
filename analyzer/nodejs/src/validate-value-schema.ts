@@ -54,7 +54,8 @@ export function collectValueSchemaIssues(
   valueSchemaHost?: ValueSchemaHost,
 ): SchemaIssue[] {
   const issues: SchemaIssue[] = [];
-  for (const { path, value, schema, from } of valueSchemaSites(manifest, defSchema, { types, valueSchemaHost })) {
+  for (const { path, value, schema, from: written } of valueSchemaSites(manifest, defSchema, { types, valueSchemaHost })) {
+    const from = locationAsPath(written);
     const standIns: StandIns = new Map();
     const substituted = substituteDecodedCelFields(value, schema, undefined, {
       standIns,
@@ -73,4 +74,12 @@ export function collectValueSchemaIssues(
     }
   }
   return issues;
+}
+
+/** A location written as a JSON Pointer (`/input/model`), as the path of the
+ *  resource it is read from (`input.model`), so a finding moved under an inline
+ *  declaration's place quotes it in full from there; any other form as written. */
+function locationAsPath(location: string): string {
+  if (!/^\/[^/]/.test(location) || /[\s{},]/.test(location)) return location;
+  return pathText(location.slice(1).split("/").map((segment) => segment.replace(/~1/g, "/").replace(/~0/g, "~")));
 }

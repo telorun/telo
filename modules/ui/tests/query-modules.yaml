@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata:
+  name: UiQueryModulesTest
+  version: 1.0.0
+  description: |
+    Two libraries each declaring a query named `account` provide distinct spec
+    ids, so a renderer never shares one read between them.
+imports: { North: ./__fixtures__/query-modules/north, South: ./__fixtures__/query-modules/south, Probe: ./__fixtures__/probe, Assert: ../../assert }
+targets:
+  - !ref main
+---
+kind: Telo.Sequence
+metadata: { name: main }
+steps:
+  - name: north
+    invoke: { kind: Probe.Read, source: !ref North.account }
+  - name: south
+    invoke: { kind: Probe.Read, source: !ref South.account }
+  - name: idsDiffer
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[steps.north.result.id, steps.south.result.id]"
+      expected: [North/account, South/account]

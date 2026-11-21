@@ -1,0 +1,65 @@
+# Reads of the `query` root a query node binds, each naming a parameter its
+# query does not declare: over a query referenced by name, over one declaring
+# parameters named like schema keywords, over one declaring none, through a
+# view placed under the node, over a page's own parameters, and through a view
+# placed both under the node and in the page, which the page does not type.
+kind: Telo.Application
+metadata: { name: InvalidQueryRoots }
+imports: { Ui: ../../../../ }
+---
+kind: Telo.JsonSchema
+metadata: { name: Session }
+schema: { type: object, properties: { name: { type: string } } }
+---
+kind: Ui.Query
+metadata: { name: signinQuery }
+model: !ref Session
+query: { signin: { type: string } }
+url: /api/session
+---
+kind: Ui.Query
+metadata: { name: keywordQuery }
+model: !ref Session
+query: { type: { type: string }, properties: { type: string } }
+url: /api/session
+---
+kind: Ui.Query
+metadata: { name: bareQuery }
+model: !ref Session
+url: /api/session
+---
+kind: Ui.View
+metadata: { name: underQuery }
+content: { type: value, value: !cel "query.signn" }
+---
+kind: Ui.View
+metadata: { name: underPage }
+content: { type: value, value: !cel "query.pge" }
+---
+kind: Ui.View
+metadata: { name: underBoth }
+content: { type: value, value: !cel "query.signin" }
+---
+kind: Ui.Page
+metadata: { name: roots }
+path: /roots
+query: { type: { type: string }, properties: { type: string } }
+children:
+  - { type: text, text: Roots }
+  - type: query
+    query: !ref signinQuery
+    content: [{ type: value, value: !cel "query.signn" }]
+    loading: [{ type: value, value: !cel "query.signn" }]
+    failure: [{ type: value, value: !cel "query.signn" }]
+  - type: query
+    query: !ref keywordQuery
+    content: [{ type: value, value: !cel "query.typo" }]
+  - type: query
+    query: !ref bareQuery
+    content: [{ type: value, value: !cel "query.anything" }]
+  - type: query
+    query: !ref signinQuery
+    content: [{ type: composite, ref: !ref underQuery }, { type: composite, ref: !ref underBoth }]
+  - { type: value, value: !cel "query.tpye" }
+  - { type: composite, ref: !ref underPage }
+  - { type: composite, ref: !ref underBoth }

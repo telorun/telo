@@ -54,6 +54,7 @@ layout:
         - { page: !ref Docs.guide, text: Guide }
         - { href: !ref draft, text: Draft link }
         - { href: /draft, text: Draft address }
+        - { target: { path: !cel "query.path" }, text: Built address }
 handler: !ref flow
 ---
 kind: Reach.Shallow

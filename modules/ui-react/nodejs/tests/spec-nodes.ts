@@ -228,30 +228,43 @@ export const accountSchema = {
 
 const data = (...path: string[]) => ({ root: "data", path });
 
-/** A reader over `/api/account`: the email and the files while signed in, a
- *  banner otherwise; defaults for its loading and failure trees. */
-export const dataNode = (overrides: Record<string, unknown> = {}): SpecNode => ({
-  type: "data",
+/** A query as `ui` provides it, every member present: the account at `/api/account`, read by `GET`. */
+export const querySpec = (overrides: Record<string, unknown> = {}) => ({
+  id: "account",
   schema: accountSchema,
-  source: address("/api/account"),
+  method: "GET",
+  url: address("/api/account"),
+  input: null,
   query: {},
-  content: {
-    type: "stack",
-    children: [
-      { type: "value", value: data("email"), present: { type: "string" }, shown: { at: data("authorized"), matches: { const: true } } },
-      {
-        type: "list",
-        heading: "Files",
-        rows: data("files"),
-        columns: [{ header: "Name", value: row("name"), present: { type: "string" } }],
-        shown: { at: data("authorized"), matches: { const: true } },
-      },
-      { type: "text", text: "Sign in first.", shown: { at: data("authorized"), matches: { const: false } } },
-    ],
-  },
-  loading: { type: "text", text: "Loading…", style: "muted" },
-  failure: defaultFailure,
   reloadOn: [],
+  ...overrides,
+});
+
+/** A query node over `/api/account`: the email and the files while signed in,
+ *  a banner otherwise; defaults for its loading and failure lists. `query`
+ *  overrides members of the query it draws. */
+export const queryNode = (overrides: Record<string, unknown> = {}, query: Record<string, unknown> = {}): SpecNode => ({
+  type: "query",
+  query: querySpec(query),
+  content: [
+    {
+      type: "stack",
+      children: [
+        { type: "value", value: data("email"), present: { type: "string" }, shown: { at: data("authorized"), matches: { const: true } } },
+        {
+          type: "list",
+          heading: "Files",
+          rows: data("files"),
+          columns: [{ header: "Name", value: row("name"), present: { type: "string" } }],
+          shown: { at: data("authorized"), matches: { const: true } },
+        },
+        { type: "text", text: "Sign in first.", shown: { at: data("authorized"), matches: { const: false } } },
+      ],
+    },
+  ],
+  loading: [{ type: "text", text: "Loading…", style: "muted" }],
+  failure: [defaultFailure],
+  fill: false,
   ...overrides,
 });
 

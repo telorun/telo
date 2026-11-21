@@ -82,6 +82,7 @@ interface Variant {
 /** What one side of a comparison holds beneath the place it is compared at. */
 interface MergedWalk {
   readonly sites: ReadonlyMap<string, string>;
+  readonly regions: ReadonlyMap<string, string>;
   readonly refs: readonly DeferredShapeRef[];
   readonly nodes: ReadonlyMap<string, readonly Component[]>;
 }
@@ -195,12 +196,14 @@ export function evalModeBranchFindings(kinds: readonly EvalModeKind[], scope: Ev
 
   const mergedOf = (components: readonly Component[]): MergedWalk => {
     const sites = new Map<string, string>();
+    const regions = new Map<string, string>();
     const refs = new Map<string, DeferredShapeRef>();
     const nodes = new Map<string, Component[]>();
     const seenNodes = new Set<object>();
     for (const component of components) {
       const walked = walkOf(component, false);
       for (const [place, mode] of walked.sites) sites.set(place, mode);
+      for (const [place, region] of walked.regions) regions.set(place, region);
       for (const ref of walked.refs) refs.set(JSON.stringify([ref.path, ref.target, ref.pointer, ref.underEval]), ref);
       for (const found of walked.nodes) {
         if (seenNodes.has(found.node)) continue;
@@ -210,7 +213,7 @@ export function evalModeBranchFindings(kinds: readonly EvalModeKind[], scope: Ev
         nodes.set(found.path, list);
       }
     }
-    return { sites, refs: [...refs.values()], nodes };
+    return { sites, regions, refs: [...refs.values()], nodes };
   };
 
   /** `start` with every shape a reference at its own place names read into it,
@@ -265,6 +268,10 @@ export function evalModeBranchFindings(kinds: readonly EvalModeKind[], scope: Ev
       for (const place of new Set([...left.sites.keys(), ...right.sites.keys()])) {
         if (!inFilter(place) || deferred(place)) continue;
         if (left.sites.get(place) !== right.sites.get(place)) return { local: true, subs: [] };
+      }
+      for (const place of new Set([...left.regions.keys(), ...right.regions.keys()])) {
+        if (!inFilter(place) || deferred(place)) continue;
+        if (left.regions.get(place) !== right.regions.get(place)) return { local: true, subs: [] };
       }
       const subs: { condition: Condition; key: string }[] = [];
       for (const place of places) {
@@ -432,6 +439,28 @@ export function evalModeBranchFindings(kinds: readonly EvalModeKind[], scope: Ev
     const differing = (a: DeferredEvalWalk, b: DeferredEvalWalk) =>
       [...a.sites].find(([place, mode]) => inFilter(place) && !deferred(place) && b.sites.get(place) !== mode)?.[0];
     const place = differing(mine, theirs) ?? differing(theirs, mine);
+    const differingRegion = (a: DeferredEvalWalk, b: DeferredEvalWalk) =>
+      [...a.regions].find(([at, region]) => inFilter(at) && !deferred(at) && b.regions.get(at) !== region)?.[0];
+    const regionPlace = place === undefined ? (differingRegion(mine, theirs) ?? differingRegion(theirs, mine)) : undefined;
+    if (regionPlace !== undefined) {
+      const a = mine.regions.has(regionPlace);
+      const b = theirs.regions.has(regionPlace);
+      const [branch, other] = !a && b ? [j, i] : [i, j];
+      const conflict: EvalModeBranchConflict = {
+        path: "",
+        union: at.union,
+        document: at.document,
+        keyword: at.keyword,
+        branch,
+        other,
+        segment,
+        place: regionPlace,
+        mode: undefined,
+        otherMode: undefined,
+        regions: { branch: branch === i ? a : b, other: branch === i ? b : a },
+      };
+      return { local: conflict };
+    }
     if (place !== undefined) {
       const a = mine.sites.get(place);
       const b = theirs.sites.get(place);
@@ -516,8 +545,8 @@ type PairReading =
 /** What tells two readings apart in one document. */
 function readingKey(reading: PairReading, document: Schema): unknown {
   if ("local" in reading) {
-    const { branch, other, place, mode, otherMode } = reading.local;
-    return ["local", branch, other, place, mode ?? null, otherMode ?? null];
+    const { branch, other, place, mode, otherMode, regions } = reading.local;
+    return ["local", branch, other, place, mode ?? null, otherMode ?? null, regions ?? null];
   }
   return ["deferred", reading.place, reading.anchor, reading.sides.map((side) => [side.branch, side.node ? pointerOf(document, side.node) ?? null : null])];
 }

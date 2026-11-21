@@ -1219,7 +1219,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/eval-mode-branch-nested-shapes-choice.yaml",
       "path": "schema.properties.body.oneOf[0]",
-      "message": "Telo.JsonSchema 'A' declares a union at 'schema.properties.body' whose branches oneOf[0] and oneOf[1] disagree on 'x': 'schema.properties.body' compares 'telo://Self/C' with what oneOf[1] declares there, whose eval sites differ. Every branch is read at one path before a value picks one, so a property means the same in each: give it the same `x-telo-eval` in every branch declaring it, or another name where it means something else. (when variables.flag2 is true)",
+      "message": "Telo.JsonSchema 'A' declares a union at 'schema.properties.body' whose branches oneOf[0] and oneOf[1] disagree on 'x': 'schema.properties.body' compares 'telo://Self/C' with what oneOf[1] declares there, whose eval sites or `x-telo-context` regions differ. Every branch is read at one path before a value picks one, so a property means the same in each: give it the same `x-telo-eval` and `x-telo-context` in every branch declaring it, or another name where it means something else. (when variables.flag2 is true)",
       "configurations": [
         {
           "variables.flag2": true
@@ -1231,7 +1231,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/eval-mode-branch-nested-shapes-choice.yaml",
       "path": "then.schema.properties.body.oneOf[0]",
-      "message": "Telo.JsonSchema 'A2' declares a union at 'schema.properties.body' whose branches oneOf[0] and oneOf[1] disagree on 'x': 'schema.properties.body' compares 'telo://Self/C' with what oneOf[1] declares there, whose eval sites differ. Every branch is read at one path before a value picks one, so a property means the same in each: give it the same `x-telo-eval` in every branch declaring it, or another name where it means something else. (when variables.flag2 is true and variables.flag3 is true)",
+      "message": "Telo.JsonSchema 'A2' declares a union at 'schema.properties.body' whose branches oneOf[0] and oneOf[1] disagree on 'x': 'schema.properties.body' compares 'telo://Self/C' with what oneOf[1] declares there, whose eval sites or `x-telo-context` regions differ. Every branch is read at one path before a value picks one, so a property means the same in each: give it the same `x-telo-eval` and `x-telo-context` in every branch declaring it, or another name where it means something else. (when variables.flag2 is true and variables.flag3 is true)",
       "configurations": [
         {
           "variables.flag2": true,
@@ -1283,7 +1283,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/eval-mode-branch-shapes-choice.yaml",
       "path": "schema.properties.content.anyOf[0]",
-      "message": "Telo.Definition 'Card' declares a union at 'schema.properties.content' whose branches anyOf[0] and anyOf[1] disagree on 'x': 'schema.properties.content' compares 'telo://Self/B' with 'telo://Self/C', whose eval sites differ. Every branch is read at one path before a value picks one, so a property means the same in each: give it the same `x-telo-eval` in every branch declaring it, or another name where it means something else. (when variables.flag1 is true)",
+      "message": "Telo.Definition 'Card' declares a union at 'schema.properties.content' whose branches anyOf[0] and anyOf[1] disagree on 'x': 'schema.properties.content' compares 'telo://Self/B' with 'telo://Self/C', whose eval sites or `x-telo-context` regions differ. Every branch is read at one path before a value picks one, so a property means the same in each: give it the same `x-telo-eval` and `x-telo-context` in every branch declaring it, or another name where it means something else. (when variables.flag1 is true)",
       "configurations": [
         {
           "variables.flag1": true
@@ -1295,7 +1295,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/eval-mode-branch-shapes-choice.yaml",
       "path": "schema.properties.content.anyOf[0]",
-      "message": "Telo.Definition 'Tile' declares a union at 'schema.properties.content' whose branches anyOf[0] and anyOf[1] disagree on 'x': 'schema.properties.content' compares 'telo://Self/B' with 'telo://Self/C', whose eval sites differ. Every branch is read at one path before a value picks one, so a property means the same in each: give it the same `x-telo-eval` in every branch declaring it, or another name where it means something else. (when variables.flag1 is true)",
+      "message": "Telo.Definition 'Tile' declares a union at 'schema.properties.content' whose branches anyOf[0] and anyOf[1] disagree on 'x': 'schema.properties.content' compares 'telo://Self/B' with 'telo://Self/C', whose eval sites or `x-telo-context` regions differ. Every branch is read at one path before a value picks one, so a property means the same in each: give it the same `x-telo-eval` and `x-telo-context` in every branch declaring it, or another name where it means something else. (when variables.flag1 is true)",
       "configurations": [
         {
           "variables.flag1": true
@@ -1307,7 +1307,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/eval-mode-branch-shapes-choice.yaml",
       "path": "schema.properties.content.anyOf[0]",
-      "message": "Telo.Definition 'Tile' declares a union at 'schema.properties.content' whose branches anyOf[0] and anyOf[2] disagree on 'x': 'schema.properties.content' compares 'telo://Self/B' with what anyOf[2] declares there, whose eval sites differ. Every branch is read at one path before a value picks one, so a property means the same in each: give it the same `x-telo-eval` in every branch declaring it, or another name where it means something else. (when variables.flag1 is false)",
+      "message": "Telo.Definition 'Tile' declares a union at 'schema.properties.content' whose branches anyOf[0] and anyOf[2] disagree on 'x': 'schema.properties.content' compares 'telo://Self/B' with what anyOf[2] declares there, whose eval sites or `x-telo-context` regions differ. Every branch is read at one path before a value picks one, so a property means the same in each: give it the same `x-telo-eval` and `x-telo-context` in every branch declaring it, or another name where it means something else. (when variables.flag1 is false)",
       "configurations": [
         {
           "variables.flag1": false

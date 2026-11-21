@@ -62,12 +62,12 @@ metadata: { name: plan }
 path: /plans/{id}
 title: Plan
 children:
-  - type: composite
-    ref:
-      kind: Ui.Data
+  - type: query
+    query:
+      kind: Ui.Query
       model: !ref PlanDetail
-      source: { path: "/api/plans/{id}", pathParams: { id: !cel "params.id" } }
-      content: { type: value, value: !cel "data.title" }
+      url: { path: "/api/plans/{id}", pathParams: { id: !cel "params.id" } }
+    content: [{ type: value, value: !cel "data.title" }]
 ```
 
 - A segment is either wholly literal or exactly `{name}`, the name a Telo name
@@ -102,10 +102,10 @@ children:
 
 `params` is a browser root, beside `query`: the variables of the page drawn,
 by name, each a string. It is in scope wherever a page's nodes are — in the
-page's own tree, and in every reader, listing, layout, source, view, filter bar,
+page's own tree, and in every query, listing, layout, source, view, filter bar,
 split view and option source the page places, at any depth of placement and
 across an import — read by a `value` or `list` node, a `shown` condition, a
-text's values, an address's parameters, a reader's `source`, a listing's
+text's values, an address's parameters, a query's `url`, a listing's
 `filters`, a row action's `inputs` and a collection source's templated
 `basePath`.
 
@@ -140,7 +140,7 @@ answered nothing), and a node an expression made invalid replaced by an
 
 A move to the page already shown — a link whose address is the page's own
 address with other query parameters, back or forward — keeps its nodes mounted:
-each reader and listing re-reads the parameters it declares instead of being
+each query and listing re-reads the parameters it declares instead of being
 drawn again, so a draft, a scroll position and an open surface stay. This is
 how a renderer behaves; `ui` states it so a page can rely on it.
 

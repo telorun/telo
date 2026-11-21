@@ -17,6 +17,8 @@ export type { AssetFile } from "./composite.js";
 export { deliveredMenu, placed, presented, withDestinations, type AuthoredNode, type RootShapes } from "./node-resolution.js";
 // Where a press goes, as a renderer receives it.
 export { destinationAt, isDestination, type DestinationSpec } from "./destination.js";
+// A declared read as a renderer receives it, and the bindings of its body.
+export { isQuery, type BodyBinding, type QueryInstance, type QuerySpec } from "./query-controller.js";
 // What pressing a region or a listing's record does, as a renderer receives it.
 export type { PressSpec } from "./press.js";
 export { modelShape, type Shape, type ShapeReader } from "./model-schema.js";
@@ -76,7 +78,7 @@ export * as ViewController from "./view-controller.js";
 export * as PageController from "./page-controller.js";
 export * as PageLayoutController from "./page-layout.js";
 export { NavbarController, NavigationColumnController } from "./navigation-panes.js";
-export * as DataController from "./data-controller.js";
+export * as QueryController from "./query-controller.js";
 export * as CollectionSourceController from "./collection-source.js";
 export * as ConversationSourceController from "./conversation-source.js";
 export * as ChatController from "./chat-controller.js";

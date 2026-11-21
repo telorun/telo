@@ -1,0 +1,44 @@
+{
+  "diagnostics": [
+    {
+      "code": "VIEWS_DATA_REPLACED",
+      "severity": 2,
+      "file": "hand-over-pointer/telo.yaml",
+      "path": "header[0]",
+      "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
+    }
+  ],
+  "migrated": {
+    "hand-over-pointer/telo.yaml": {
+      "1": {
+        "kind": "V.Layout",
+        "metadata": {
+          "name": "layout"
+        },
+        "header": [
+          {
+            "type": "query",
+            "query": {
+              "kind": "V.Query",
+              "url": {
+                "path": "/api/me"
+              }
+            },
+            "children": [
+              {
+                "type": "text",
+                "text": "Signed in"
+              }
+            ],
+            "loading": [
+              {
+                "type": "text",
+                "text": "Loading"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

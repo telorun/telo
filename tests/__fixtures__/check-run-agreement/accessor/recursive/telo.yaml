@@ -1,0 +1,33 @@
+# A chain inside a region a recursive shape declares on a list names the
+# region's binding at every depth: in a node of the list, and in a node of the
+# same region nested inside it.
+kind: Telo.Application
+metadata: { name: AccessorRecursiveApp, version: 1.0.0 }
+imports: { Acc: ../kinds, Assert: ../../../../../modules/assert }
+targets:
+  - !ref main
+---
+kind: Acc.Tree
+metadata: { name: tree }
+root:
+  label: plain
+  rows:
+    - label: !cel "row.name"
+      rows:
+        - label: !cel "row.name"
+---
+kind: Telo.Sequence
+metadata: { name: main }
+steps:
+  - name: tree
+    invoke: { kind: Acc.Read, source: !ref tree }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.tree.result"
+      expected:
+        label: { value: plain }
+        rows:
+          - label: { root: row, path: [name] }
+            rows:
+              - { label: { root: row, path: [name] } }

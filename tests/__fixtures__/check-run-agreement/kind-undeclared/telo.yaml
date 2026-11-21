@@ -1,0 +1,22 @@
+# Kinds of a gated library: one it removed, one it never declared and one it
+# declares and withholds, at a resource's `kind:` and at a reference slot.
+kind: Telo.Application
+metadata: { name: KindUndeclaredApp }
+imports: { Lib: ./lib }
+---
+kind: Lib.Gone
+metadata: { name: removed }
+---
+kind: Lib.Missing
+metadata: { name: missing }
+---
+kind: Lib.Hidden
+metadata: { name: hidden }
+value: hidden
+---
+kind: Telo.Definition
+metadata: { name: Holder, description: A kind whose reference slot names a kind the library removed. }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties: { source: { x-telo-ref: { kind: Lib.Gone, use: dependency } } }

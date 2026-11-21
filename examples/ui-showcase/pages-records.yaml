@@ -235,20 +235,26 @@ metadata: { name: postRecord }
 path: /records/{id}
 title: Post
 children:
-  - type: composite
-    ref:
-      kind: Ui.Data
+  - type: query
+    query:
+      kind: Ui.Query
       model: !ref Post
-      source:
+      url:
         path: "/api/posts/{id}"
         pathParams: { id: !cel "params.id" }
-      content:
-        type: stack
+    content:
+      - type: stack
         children:
           - type: text
             style: heading
-            text: { text: "{$title}", values: { title: !cel "data.title" } }
-          - { type: value, value: !cel "data.status" }
-          - { type: value, value: !cel "data.publishedOn" }
-          - { type: value, value: !cel "data.body" }
+            text:
+              text: "{$title}"
+              values:
+                title: !cel "data.title"
+          - type: value
+            value: !cel "data.status"
+          - type: value
+            value: !cel "data.publishedOn"
+          - type: value
+            value: !cel "data.body"
           - { type: link, text: All records, to: { kind: Ui.Navigate, href: /records } }

@@ -167,7 +167,7 @@ export async function runOperation(
     return invalid(say("answerNotJson"));
   }
   if (body === null || typeof body !== "object" || Array.isArray(body)) return invalid(say("answerNotObject"));
-  const findings = action.answer ? validate(action.answer, body) : [];
+  const findings = action.answer ? validate(action.answer, body, [], { formats: false }) : [];
   if (findings.length > 0) return invalid(say("answerNotModel", { detail: findingText(findings[0], say) }));
   return { ok: true, result: body as Record<string, unknown>, input, target };
 }

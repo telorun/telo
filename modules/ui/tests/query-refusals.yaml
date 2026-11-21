@@ -1,0 +1,200 @@
+kind: Telo.Application
+metadata:
+  name: UiQueryRefusalsTest
+  version: 1.0.0
+  description: |
+    What a query refuses, each case by `telo check` and again when the manifest
+    is loaded: a method other than `QUERY` or `POST`, a body that does not fit
+    `input.model` (a missing or unknown member, a chain whose format does not
+    fit), a computed value in the body, a parameter format outside the profile,
+    a query slot naming another kind, a read of a field the answer, the error or
+    a placing page does not declare — at any depth inside a query node's
+    lists and through a view placed there — a query parameter the node's query
+    or the page does not declare — in a query's own address and body as well,
+    and in a merge-form kind extending it — and a `Ui.Data` the migration no longer
+    reaches.
+imports: { Assert: ../../assert }
+targets:
+  - !ref methodGet
+  - !ref bodyMissingMember
+  - !ref bodyUnknownMember
+  - !ref chainWithoutFormat
+  - !ref parameterFormat
+  - !ref computedLeaf
+  - !ref queryNamesSchema
+  - !ref answerFieldTypo
+  - !ref contentFieldTypo
+  - !ref errorFieldTypo
+  - !ref viewParamTypo
+  - !ref queryRootTypos
+  - !ref queryRootsHold
+  - !ref querySiteTypos
+  - !ref querySitesHold
+  - !ref dataRemoved
+  - !ref dataMigrated
+---
+kind: Assert.Manifest
+metadata: { name: methodGet }
+source: ./__fixtures__/invalid/query/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Page/report: /children/0/query/input/method must be equal to one of the allowed values (QUERY | POST)"
+  runFails: "[SCHEMA_VIOLATION] Ui.Page/report: /children/0/query/input/method must be equal to one of the allowed values (QUERY | POST)"
+---
+kind: Assert.Manifest
+metadata: { name: bodyMissingMember }
+source: ./__fixtures__/invalid/query/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Page/report: `children[1].query.input.body` does not satisfy the type declared at `children[1].query.input.model`: / is missing required property 'period'"
+  runFails: "[SCHEMA_VIOLATION] Ui.Page/report: `children[1].query.input.body` does not satisfy the type declared at `children[1].query.input.model`: / is missing required property 'period'"
+---
+kind: Assert.Manifest
+metadata: { name: bodyUnknownMember }
+source: ./__fixtures__/invalid/query/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Page/report: `children[1].query.input.body` does not satisfy the type declared at `children[1].query.input.model`: / must NOT have additional properties ('perod' is not allowed)"
+  runFails: "[SCHEMA_VIOLATION] Ui.Page/report: `children[1].query.input.body` does not satisfy the type declared at `children[1].query.input.model`: / must NOT have additional properties ('perod' is not allowed)"
+---
+kind: Assert.Manifest
+metadata: { name: chainWithoutFormat }
+source: ./__fixtures__/invalid/query/telo.yaml
+expect:
+  errors:
+    - code: CEL_TYPE_ERROR
+      message: "Ui.Page/report: CEL at 'children[2].query.input.body.period.from': 'query.from' is a string with no format; the field takes a string of format date."
+  runFails: "[CEL_TYPE_ERROR] Ui.Page/report: CEL at 'children[2].query.input.body.period.from': 'query.from' is a string with no format; the field takes a string of format date."
+---
+kind: Assert.Manifest
+metadata: { name: parameterFormat }
+source: ./__fixtures__/invalid/query/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Page/report: /children/3/query/query/from/format must be equal to one of the allowed values (date | date-time)"
+  runFails: "[SCHEMA_VIOLATION] Ui.Page/report: /children/3/query/query/from/format must be equal to one of the allowed values (date | date-time)"
+---
+kind: Assert.Manifest
+metadata: { name: computedLeaf }
+source: ./__fixtures__/invalid/query/telo.yaml
+expect:
+  errors:
+    - code: ACCESSOR_NOT_PLAIN_CHAIN
+      message: "Ui.Page/report: 'input.body.period.from: !cel \"query.from + 'T00:00'\"' is not a plain chain."
+  runFails: "[ACCESSOR_NOT_PLAIN_CHAIN] Ui.Page/report: 'input.body.period.from: !cel \"query.from + 'T00:00'\"' is not a plain chain."
+---
+kind: Assert.Manifest
+metadata: { name: queryNamesSchema }
+source: ./__fixtures__/invalid/query/telo.yaml
+expect:
+  errors:
+    - code: REFERENCE_KIND_MISMATCH
+      message: "Ui.Page/report: reference at 'children[5].query' → 'Telo.JsonSchema' (resolved: 'Telo.JsonSchema') does not match required 'Ui.Query'"
+  runFails: "[REFERENCE_KIND_MISMATCH] Ui.Page/report: reference at 'children[5].query' → 'Telo.JsonSchema' (resolved: 'Telo.JsonSchema') does not match required 'Ui.Query'"
+---
+kind: Assert.Manifest
+metadata: { name: answerFieldTypo }
+source: ./__fixtures__/invalid/query-typing/telo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Page/report: !cel: 'data.totalHuors' is not defined (available: totalHours)"
+  runFails: "[CEL_UNKNOWN_FIELD] Ui.Page/report: !cel: 'data.totalHuors' is not defined (available: totalHours)"
+---
+kind: Assert.Manifest
+metadata: { name: contentFieldTypo }
+source: ./__fixtures__/invalid/query-typing/telo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Page/report: !cel: 'data.nmae' is not defined (available: name)"
+  runFails: "[CEL_UNKNOWN_FIELD] Ui.Page/report: !cel: 'data.nmae' is not defined (available: name)"
+---
+kind: Assert.Manifest
+metadata: { name: errorFieldTypo }
+source: ./__fixtures__/invalid/query-typing/telo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Page/report: !cel: 'error.mesage' is not defined (available: status, code, message)"
+  runFails: "[CEL_UNKNOWN_FIELD] Ui.Page/report: !cel: 'error.mesage' is not defined (available: status, code, message)"
+---
+kind: Assert.Manifest
+metadata: { name: viewParamTypo }
+source: ./__fixtures__/invalid/query-typing/telo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.View/placed: !cel: 'params.slug' is not defined (available: id)"
+  runFails: "[CEL_UNKNOWN_FIELD] Ui.View/placed: !cel: 'params.slug' is not defined (available: id)"
+---
+# The `query` root of a query node is the parameters of the query it draws,
+# named or inline; a page's, the page's own — a parameter named like a schema
+# keyword included. A view takes the root of each place it is drawn in.
+kind: Assert.Manifest
+metadata: { name: queryRootTypos }
+source: ./__fixtures__/invalid/query-roots/telo.yaml
+expect:
+  errors:
+    - { code: CEL_UNKNOWN_FIELD, message: "Ui.View/underQuery: !cel: 'query.signn' is not defined (available: signin)" }
+    - { code: CEL_UNKNOWN_FIELD, message: "Ui.View/underPage: !cel: 'query.pge' is not defined (available: type, properties)" }
+    - { code: CEL_UNKNOWN_FIELD, message: "Ui.View/underBoth: !cel: 'query.signin' is not defined (available: type, properties) (as Ui.Page/roots references it)" }
+    - { code: CEL_UNKNOWN_FIELD, message: "Ui.Page/roots: !cel: 'query.signn' is not defined (available: signin)" }
+    - { code: CEL_UNKNOWN_FIELD, message: "Ui.Page/roots: !cel: 'query.typo' is not defined (available: type, properties)" }
+    - { code: CEL_UNKNOWN_FIELD, message: "Ui.Page/roots: !cel: 'query.anything' is not defined (available: none)" }
+    - { code: CEL_UNKNOWN_FIELD, message: "Ui.Page/roots: !cel: 'query.tpye' is not defined (available: type, properties)" }
+  runFails: "[CEL_UNKNOWN_FIELD]"
+---
+# What those roots hold reads cleanly, and a query a library's importer
+# supplies is not known in the library, so nothing read from it is refused.
+kind: Assert.Manifest
+metadata: { name: queryRootsHold }
+source: ./__fixtures__/query-roots/telo.yaml
+expect: { errors: [] }
+---
+# `query` and `params` are read at every site of the query itself, direct or of
+# a merge-form kind extending it: a name each does not declare is refused.
+kind: Assert.Manifest
+metadata: { name: querySiteTypos }
+source: ./__fixtures__/invalid/query-sites/telo.yaml
+expect:
+  errors:
+    - { code: CEL_UNKNOWN_FIELD, message: "Ui.Query/direct: !cel: 'params.idd' is not defined (available: id)" }
+    - { code: CEL_UNKNOWN_FIELD, message: "Ui.Query/direct: !cel: 'query.termm' is not defined (available: term)" }
+    - { code: CEL_UNKNOWN_FIELD, message: "Ui.Query/direct: !cel: 'params.idd2' is not defined (available: id)" }
+    - { code: CEL_UNKNOWN_FIELD, message: "Ui.Query/direct: !cel: 'query.termm2' is not defined (available: term)" }
+    - { code: CEL_UNKNOWN_FIELD, message: "Self.Reading/narrowed: !cel: 'params.idd3' is not defined (available: id)" }
+    - { code: CEL_UNKNOWN_FIELD, message: "Self.Reading/narrowed: !cel: 'query.termm3' is not defined (available: term)" }
+    - { code: CEL_UNKNOWN_FIELD, message: "Self.Reading/narrowed: !cel: 'params.idd4' is not defined (available: id)" }
+    - { code: CEL_UNKNOWN_FIELD, message: "Self.Reading/narrowed: !cel: 'query.termm4' is not defined (available: term)" }
+---
+kind: Assert.Manifest
+metadata: { name: querySitesHold }
+source: ./__fixtures__/query-sites/telo.yaml
+expect: { errors: [] }
+---
+# `Ui.Data` is no longer one of the module's kinds: one the migration does not
+# reach — it has no `source` and no `content` — is an undefined kind carrying
+# the migration's reason.
+kind: Assert.Manifest
+metadata: { name: dataRemoved }
+source: ./__fixtures__/invalid/data-removed/telo.yaml
+expect:
+  errors:
+    - code: UNDEFINED_KIND
+      message: "No Telo.Definition found for kind 'Ui.Data': module 'Ui' declares no kind 'Data'. It was removed: Ui.Data is replaced by a query node over a Ui.Query; run `telo migrate`"
+  runFails: "[UNDEFINED_KIND] No Telo.Definition found for kind 'Ui.Data'"
+---
+# A `Ui.Data` the migration does reach loads, with one warning per placement.
+kind: Assert.Manifest
+metadata: { name: dataMigrated }
+source: ./__fixtures__/manifest-migrations/ui-data-replaced/telo.yaml
+expect:
+  errors: []
+  warnings:
+    - { code: UI_DATA_REPLACED }
+    - { code: UI_DATA_REPLACED }

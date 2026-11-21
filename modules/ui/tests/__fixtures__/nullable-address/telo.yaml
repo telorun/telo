@@ -7,16 +7,20 @@ kind: Telo.JsonSchema
 metadata: { name: Record }
 schema: { type: object, properties: { worker: { type: [string, "null"] } } }
 ---
-kind: Ui.Data
+kind: Ui.View
 metadata: { name: nullableLink }
-model: !ref Record
-source: /api/record
 content:
-  type: link
-  text: Worker
-  to:
-    kind: Ui.Navigate
-    href:
-      path: "/workers/{worker}"
-      pathParams: { worker: !cel "data.worker" }
-      queryParams: { by: !cel "data.worker" }
+  type: query
+  query:
+    kind: Ui.Query
+    model: !ref Record
+    url: /api/record
+  content:
+    - type: link
+      text: Worker
+      to:
+        kind: Ui.Navigate
+        href:
+          path: "/workers/{worker}"
+          pathParams: { worker: !cel "data.worker" }
+          queryParams: { by: !cel "data.worker" }

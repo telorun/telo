@@ -91,9 +91,9 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
   "x-telo-eval": {
     title: "Evaluation mode",
     description:
-      "When CEL in this field (`!cel`, `!interpolate`) is evaluated: `compile` at load, `runtime` per invocation. `accessor` is never evaluated — the field holds a plain `!cel` chain rooted at one of its `x-telo-context` bindings, or a literal, and the controller receives it as a binding. A CEL-bearing field MUST declare one, or the expression is read as a literal.",
+      "When CEL in this field (`!cel`, `!interpolate`) is evaluated: `compile` at load, `runtime` per invocation. `accessor` is never evaluated — the field holds a plain `!cel` chain rooted at one of its `x-telo-context` bindings, or a literal, and the controller receives it as a binding. `accessor-template` is an accessor whose value may also be a map or a list of such values, at any depth. A CEL-bearing field MUST declare one, or the expression is read as a literal.",
     type: "string",
-    enum: ["compile", "runtime", "accessor"],
+    enum: ["compile", "runtime", "accessor", "accessor-template"],
   },
   "x-telo-browser-export": {
     title: "Browser export",

@@ -40,8 +40,9 @@ Http.Server (:8140)
                  └── /projects  Projects: a listing of one sheet's projects
 ```
 
-- **Sign-in gate.** A `Ui.Data` reader over `/api/auth` draws the banner with
-  **Connect Google** or the console, by `data.authorized`. It reads again when
+- **Sign-in gate.** A `query` node over `/api/auth` draws the banner with
+  **Connect Google** or the console, by `data.authorized`; the Projects page
+  draws the same named query, one read for both. It reads again when
   the window regains focus and whenever a request inside it answers 401, so an
   ended session swaps the form for the banner while the form keeps what was
   entered. A refused consent comes back as `?signin=denied` (a declared query

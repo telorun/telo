@@ -103,7 +103,8 @@ value:
 - [Routing by host](docs/host-routing.md) — `listen:`, `mounts[].hostnames` over `Telo.PublicUrl` / `Telo.PublicHostPattern` needs, precedence, `unknownHosts`, `request.host`, and the scenario table: one server with several addresses, several servers, tenant subdomains, customer domains, and `status.localUrl`, the URL the socket listens on (not a public address).
 - [Authentication and authorization](docs/authentication.md) — `mounts[].authentication` and `authorization`, the credential sources, route overrides, how `request.principal` is typed, the 401 / 403 / 503 refusals and their `catches:`, `protectedResource` and its derived metadata, the origin check, and what is refused before the app runs.
 - [Mount guards](docs/mount-guard.md) — `mounts[].guard`: per-mount inbound checks, their CEL context, ordering against CORS and body parsing, and how a refusal renders.
-- [API reference docs](docs/api-reference.md) — `Http.Reference`, choosing its prefix, and leaving the docs out of production with `when:`.
+- [The QUERY method](docs/query-method.md) — a route with `method: QUERY`, its body, the origin check and CORS, and the intermediaries that do not forward it.
+- [API reference docs](docs/api-reference.md) — `Http.Reference`, the document's OpenAPI 3.2.0 version, choosing its prefix, and leaving the docs out of production with `when:`.
 - [Serving static files & frontends](docs/static-files.md) — `Http.Static`, `!module-path` and host-path roots, SPA fallback, asset caching.
 - [Serving HTTPS](docs/tls.md) — `tls`: the server certificate and key, `minVersion`, mutual TLS with `clientCa` / `clientCertificate` (`none`, `optional`, `required`), `request.tls`, `request.clientCertificate`, and `forwardedClientCertificate` behind a terminating proxy.
 - [Cookies](docs/cookies.md) — declaring a cookie, setting and clearing it from `returns:` / `catches:`, reading `request.cookies`, `request.schema.cookies`, and what is refused.
@@ -229,7 +230,7 @@ request:
       description: "Must use OpenAPI style path parameters, e.g., /users/{id}"
     method:
       type: "string"
-      enum: ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+      enum: ["GET", "POST", "PUT", "DELETE", "PATCH", "QUERY", "HEAD", "OPTIONS"]
     consumes:
       type: "array"
       items: { type: "string" }

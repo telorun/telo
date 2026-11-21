@@ -135,7 +135,7 @@ h3[data-telo-part="text"] { font-size: var(--telo-font-size-lg); font-style: ita
   font-size: var(--telo-font-size-lg);
   font-weight: 400;
 }
-[data-telo-part="data"] { gap: var(--telo-space-sm); }
+[data-telo-part="query"] { gap: var(--telo-space-sm); }
 
 /* ---- Buttons: every pressable part, quiet by default ---- */
 [data-telo-part="button"], [data-telo-part="listing-create"], [data-telo-part="row-action"], [data-telo-part="row-edit"], [data-telo-part="row-delete"], [data-telo-part="row-menu"],

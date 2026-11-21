@@ -1,0 +1,67 @@
+kind: Telo.Application
+metadata:
+  name: QueryMethodCorsTest
+  version: 1.0.0
+  description: |
+    A cross-origin preflight for `QUERY` is answered with the methods the server
+    allows: the default allowed methods do not include `QUERY`, so it is allowed
+    only where `cors.methods` lists it.
+imports: { Http: ../, HttpClient: ../../http-client, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /report, method: QUERY }
+    returns:
+      - { status: 204 }
+---
+kind: HttpClient.Client
+metadata: { name: client }
+baseUrl: http://127.0.0.1:8972
+throwOnHttpError: false
+---
+kind: HttpClient.Client
+metadata: { name: listedClient }
+baseUrl: http://127.0.0.1:8973
+throwOnHttpError: false
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: defaults }
+    listen: { address: 127.0.0.1, port: 8972 }
+    cors: { origin: "*" }
+    mounts:
+      - { path: /api, mount: !ref api }
+  - kind: Http.Server
+    metadata: { name: listed }
+    listen: { address: 127.0.0.1, port: 8973 }
+    cors: { origin: "*", methods: [GET, POST, QUERY] }
+    mounts:
+      - { path: /api, mount: !ref api }
+targets:
+  - !ref defaults
+  - !ref listed
+steps:
+  - name: byDefault
+    invoke: { kind: HttpClient.Request, client: !ref client }
+    inputs:
+      url: /api/report
+      method: OPTIONS
+      headers: { origin: https://app.test, access-control-request-method: QUERY }
+  - name: whenListed
+    invoke: { kind: HttpClient.Request, client: !ref listedClient }
+    inputs:
+      url: /api/report
+      method: OPTIONS
+      headers: { origin: https://app.test, access-control-request-method: QUERY }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        byDefault: !cel "steps.byDefault.result.headers['access-control-allow-methods']"
+        whenListed: !cel "steps.whenListed.result.headers['access-control-allow-methods']"
+      expected: { byDefault: "GET,HEAD,POST", whenListed: "GET, POST, QUERY" }

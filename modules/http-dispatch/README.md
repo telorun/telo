@@ -15,12 +15,14 @@ transport. Its only instantiable kinds are the cookie declarations.
   `x-telo-schema-from`, so `Http.Api`'s routes, `Http.Server`'s `notFoundHandler`
   and both scope-level catch lists all validate against the same entries.
 - **`HttpDispatch.Request`** — `$defs/Matcher`, the canonical request matcher
-  (`method` + `path`, with an optional `schema` block of `params`, `query`,
+  (`method` — `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `QUERY`, `HEAD` or `OPTIONS` —
+  and `path`, with an optional `schema` block of `params`, `query`,
   `body`, `headers` and `cookies`), and `$defs/Hostname`,
   one entry of a host matcher: a `!ref` to a `Telo.PublicUrl` or
   `Telo.PublicHostPattern` need, never a domain name. `Http.Server`'s
   `mounts[].hostnames` anchors at it, so every HTTP transport reads the same
-  matcher with the same meaning.
+  matcher with the same meaning. A transport that cannot carry a method narrows `method`
+  in its own schema; `QUERY` takes a body like `POST`.
 
 Both are `capability: Telo.Type`: they are never instantiated.
 

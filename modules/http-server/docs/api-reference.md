@@ -30,16 +30,25 @@ Four routes appear under the mount's prefix:
 | `/docs/openapi.json` | the OpenAPI document, JSON |
 | `/docs/openapi.yaml` | the OpenAPI document, YAML |
 
+## The document's version
+
+The document is OpenAPI 3.2.0 for every server declaring `openapi:`, whatever
+routes it holds, because a `QUERY` route is listed under its path item's `query`
+key and that operation exists only from 3.2. A reader limited to 3.1 or earlier
+cannot read it. A server restricting mounts by host lists, for each host, only
+the operations that host reaches, `query` included. The page renders a `QUERY`
+operation like any other, listed as `QUERY /path` with its method badge.
+
 ## Where the page's script comes from
 
 The page is rendered by [Scalar](https://github.com/scalar/scalar), and its
 browser bundle ships inside this module rather than being fetched from a CDN, so
-the page works offline. It is a 3.4 MB file in the module's `assets` layer, which
+the page works offline. It is a 5 MB file in the module's `assets` layer, which
 an application that declares no `Http.Reference` never downloads. Each declared
 reference reads it once at startup, whether or not its mount is gated in.
 
 In a source checkout the bundle is not committed: the first reference to start
-fetches it from the npm release of `@scalar/fastify-api-reference`, verified
+fetches it from the npm release of `@scalar/api-reference`, verified
 against the `sha256` pinned in the module's `sources:` block, and later runs read
 the staged copy. When it cannot be fetched or does not match its pin, the
 reference fails at startup with `ERR_MODULE_FILES_UNAVAILABLE` naming the URL.

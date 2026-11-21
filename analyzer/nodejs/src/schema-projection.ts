@@ -1235,6 +1235,22 @@ function walk(
 export interface DeclarationValue {
   readonly value: unknown;
   readonly holder: Record<string, any>;
+  /** Whether the value sits at one of the holder's reference sites — a type
+   *  field, or a reference the location ends on. */
+  readonly atReference?: boolean;
+  /** The concrete path of the value inside its holder (`query`,
+   *  `routes[0].request.schema`). */
+  readonly at?: string;
+}
+
+/** Every value a location reaches, and whether a crossing on the way could not
+ *  be resolved here — a reference naming nothing this scope declares, a
+ *  library's resource input, a computed value at a reference site, a kind with
+ *  no definition — so a reader can tell "not known here" from "known, and
+ *  absent". */
+export interface DeclarationReading {
+  readonly values: readonly DeclarationValue[];
+  readonly unresolved: boolean;
 }
 
 /**
@@ -1242,8 +1258,9 @@ export interface DeclarationValue {
  * follows: a segment after a value at one of the holder's reference sites
  * continues inside the declaration that value names, resolved in the scope of
  * the module that declared the holder. A `*` segment ranges over every item of a
- * list. A branch that reaches nothing — an absent field, a reference that does
- * not resolve here, a library's resource input — contributes nothing.
+ * list, and a numeric segment names one. A branch that reaches nothing — an
+ * absent field, a reference that does not resolve here, a library's resource
+ * input — contributes nothing.
  *
  * A location ENDING at a contract field (`inputType` / `outputType`) of a
  * declaration reached past a reference reads it as a contract resolves: the
@@ -1257,12 +1274,24 @@ export function declarationValuesAt(
   segments: readonly string[],
   scope: ProjectionScope,
 ): DeclarationValue[] {
+  return [...readDeclarationValuesAt(consumer, segments, scope).values];
+}
+
+/** {@link declarationValuesAt}, with whether a crossing on the way could not be
+ *  resolved. */
+export function readDeclarationValuesAt(
+  consumer: Record<string, any>,
+  segments: readonly string[],
+  scope: ProjectionScope,
+): DeclarationReading {
   const run: Derivation = { scope, consumer };
   const out: DeclarationValue[] = [];
+  let unresolved = false;
   const start: Holder = { declaration: consumer, scope: consumer };
   // A consumer whose reference sites cannot be read still holds its own fields:
   // nothing in it is crossed, and every path is read as data.
   const ownSlots = referenceSlotsOf(start, [], run, "");
+  if (isFailure(ownSlots)) unresolved = true;
   const slots = isFailure(ownSlots) ? [] : ownSlots;
 
   const reach = (
@@ -1275,14 +1304,25 @@ export function declarationValuesAt(
     rest: readonly string[],
   ): void => {
     if (rest.length === 0) {
-      if (value !== undefined) out.push({ value, holder: holder.declaration });
+      if (value !== undefined) {
+        out.push({ value, holder: holder.declaration, atReference, at: concretePath(inner, containers) });
+      }
       return;
     }
     if (atReference) {
+      // An absent reference names nothing; anything else that cannot be
+      // followed here is not known here.
+      if (value === undefined) return;
       const next = followReference(value, holder, inner, "", run);
-      if (isFailure(next)) return;
+      if (isFailure(next)) {
+        unresolved = true;
+        return;
+      }
       const nextSlots = referenceSlotsOf(next, [], run, "");
-      if (isFailure(nextSlots)) return;
+      if (isFailure(nextSlots)) {
+        unresolved = true;
+        return;
+      }
       reach(next, next.declaration, [], [], nextSlots, false, rest);
       return;
     }
@@ -1315,11 +1355,11 @@ export function declarationValuesAt(
       if (Array.isArray(value)) value.forEach((item, index) => into(String(index)));
       return;
     }
-    if (isObject(value)) into(segment!);
+    if (isObject(value) || (Array.isArray(value) && /^\d+$/.test(segment!))) into(segment!);
   };
 
   reach(start, consumer, [], [], slots, false, segments);
-  return out;
+  return { values: out, unresolved };
 }
 
 const isContractField = (key: string): key is ContractDirection =>
@@ -1340,7 +1380,7 @@ function kindContractOf(
   const value = effectiveContractField(definition, resolve, direction);
   const declarer = contractDeclarer(definition, resolve, direction);
   if (value === undefined || value === null || !declarer) return undefined;
-  return { value, holder: declarer as unknown as Record<string, any> };
+  return { value, holder: declarer as unknown as Record<string, any>, atReference: true, at: direction };
 }
 
 function referenceSlotsOf(

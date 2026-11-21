@@ -1,0 +1,56 @@
+kind: Telo.Library
+metadata:
+  name: QuerySites
+  version: 1.0.0
+  description: >-
+    Test fixture: queries, direct and of a merge-form child kind, reading query
+    parameters and path variables in their address and body.
+imports: { Ui: ../../.. }
+---
+kind: Telo.JsonSchema
+metadata: { name: Answer }
+schema: { type: object, properties: { total: { type: number } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Request }
+schema: { type: object, additionalProperties: false, properties: { slug: { type: string }, term: { type: string } } }
+---
+kind: Telo.Definition
+metadata: { name: Reading, description: A query the library names for itself. }
+extends: Ui.Query
+schema: { type: object, additionalProperties: false, properties: {} }
+---
+kind: Ui.Query
+metadata: { name: direct }
+model: !ref Answer
+query: { term: { type: string } }
+url:
+  path: /api/{slug}
+  pathParams: { slug: !cel "params.id" }
+  queryParams: { term: !cel "query.term" }
+input:
+  model: !ref Request
+  body: { slug: !cel "params.id", term: !cel "query.term" }
+---
+kind: Self.Reading
+metadata: { name: narrowed }
+model: !ref Answer
+query: { term: { type: string } }
+url:
+  path: /api/{slug}
+  pathParams: { slug: !cel "params.id" }
+  queryParams: { term: !cel "query.term" }
+input:
+  model: !ref Request
+  body: { slug: !cel "params.id", term: !cel "query.term" }
+---
+kind: Ui.Page
+metadata: { name: report }
+path: /report/{id}
+children:
+  - type: query
+    query: !ref direct
+    content: []
+  - type: query
+    query: !ref narrowed
+    content: []

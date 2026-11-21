@@ -23,7 +23,13 @@ import { CallableFlagsIndex } from "./callable-flags.js";
 import { CelScopeResolver, type CelScope, type ReferrerVariant } from "./cel-scope.js";
 import { withheldReason } from "./context-withheld.js";
 import { DefinitionRegistry } from "./definition-registry.js";
-import { accessorSiteAt, celEvalModeAt, governedCelEvalSites, scopeMatchOf } from "./eval-paths.js";
+import {
+  accessorBindingNamesAt,
+  accessorSiteAt,
+  celEvalModeAt,
+  governedCelEvalSites,
+  scopeMatchOf,
+} from "./eval-paths.js";
 import { buildKernelGlobalsIndex } from "./kernel-globals.js";
 import { bodyResourcesFor } from "./template-body-resources.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
@@ -41,6 +47,8 @@ import {
   contextChainAt,
   extractContextsFromSchema,
   getContextHolder,
+  getContextHolderPath,
+  readContextFrom,
   readContextRefFrom,
   type MatchedContext,
 } from "./validate-cel-context.js";
@@ -64,14 +72,6 @@ export interface ContextDeclarationSite {
 /** Join a concrete path segment, tolerating an empty base (the manifest root). */
 function joinPath(base: string, segment: string): string {
   return base ? `${base}.${segment}` : segment;
-}
-
-/** The concrete path of the array ITEM an `x-telo-context` scope matched — the
- *  path half of `getManifestItem`, which returns only the value. Empty when the
- *  scope is not per-item. */
-function manifestItemPath(exprPath: string, scope: string | undefined): string {
-  const match = scope ? scopeMatchOf(exprPath, scope) : undefined;
-  return match ? match.prefix.slice(0, match.itemEnd) : "";
 }
 
 /** The analyzer state a query resolves against — what an `AnalysisRegistry`
@@ -212,7 +212,7 @@ export class CelScopeQuery {
     const typed = this.resolver.scopeFor(
       variants.length > 1 ? { ...site, variant: commonVariant(variants) } : site,
     );
-    const scope = accessor ? { ...typed, accessorBindings: accessor.bindings } : typed;
+    const scope = accessor && sites ? { ...typed, accessorBindings: accessorBindingNamesAt(sites, path) } : typed;
     byPath.set(path, scope);
     return scope;
   }
@@ -303,12 +303,21 @@ export class CelScopeQuery {
   ): { manifest: Record<string, any>; path: string; propertyMap: boolean } | undefined {
     const root = resource as Record<string, any>;
 
-    // Per-scope: the annotation navigates the enclosing ARRAY ITEM, so the path
-    // it yields is relative to that item rather than to the resource.
+    // Read from the object holding the region, crossing the reference sites on
+    // the way exactly as the typing does: the binding is declared where the
+    // path lands, a property map there, or the type a reference site names.
     const from = annotated["x-telo-context-from"];
     if (typeof from === "string") {
-      const itemPath = manifestItemPath(sitePath, matchedScope);
-      return { manifest: root, path: joinPath(itemPath, from.split("/").join(".")), propertyMap: true };
+      const holderPath = (matchedScope ? getContextHolderPath(sitePath, matchedScope) : undefined) ?? "";
+      const holder = (holderPath ? navigateConcretePath(root, holderPath) : root) as Record<string, any> | undefined;
+      if (!holder || typeof holder !== "object") return undefined;
+      const reading = readContextFrom(from, holder, {
+        contextHolderAt: { root, path: holderPath },
+        referenceHost: this.resolver.referenceHost,
+      });
+      const [landed, ...more] = reading.values;
+      if (reading.unresolved || !landed || more.length > 0 || landed.at === undefined) return undefined;
+      return { manifest: landed.holder, path: landed.at, propertyMap: landed.atReference !== true };
     }
 
     const fromRoot = annotated["x-telo-context-from-root"];

@@ -5,7 +5,6 @@ const PASSING_LISTS = ["children", "start", "center", "end"] as const;
 
 /** The single trees, by node type, whose filling node fills the node holding them. */
 const PASSING_TREES: Readonly<Record<string, readonly string[]>> = {
-  data: ["content", "loading", "failure"],
   filters: ["content"],
   split: ["content"],
 };
@@ -19,7 +18,7 @@ type Mark = (node: SpecNode) => SpecNode;
  * A tree with `fill` decided on every node: a node fills when it was written
  * with `fill: true` or holds a filling node in the room it passes down — its
  * children, a bar's regions, a tab's children, a split view's aside and content,
- * a reader's trees, a filter bar's content. A tree drawn in a box of its own — a
+ * a query's lists, a filter bar's content. A tree drawn in a box of its own — a
  * surface's form, a listing's empty tree, an action's answers, a row action's
  * action, a menu's items, a split view's actions, a chat's header — is decided
  * inside that box and fills nothing around it, and so is a navigation bar's.
@@ -36,7 +35,8 @@ export function filledNode(node: SpecNode): SpecNode {
   const out: Record<string, unknown> = { ...node };
   // A navigation bar's sides are drawn in the bar, and fill nothing around it.
   const listMark = node.type === "navbar" ? own : passing;
-  for (const key of PASSING_LISTS) {
+  const lists = node.type === "query" ? ["content", "loading", "failure"] : PASSING_LISTS;
+  for (const key of lists) {
     const list = node[key];
     if (Array.isArray(list)) out[key] = list.map((child) => (isNode(child) ? listMark(child) : child));
   }

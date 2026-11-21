@@ -36,7 +36,7 @@ source: ./__fixtures__/invalid/address-row-field/telo.yaml
 expect:
   errors:
     - code: CEL_UNKNOWN_FIELD
-      message: "Ui.Data/misspelledField: !cel: 'row.nmae' is not defined (available: id, name)"
+      message: "Ui.View/misspelledField: !cel: 'row.nmae' is not defined (available: id, name)"
 ---
 kind: Assert.Manifest
 metadata: { name: wildcards }

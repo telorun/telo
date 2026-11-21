@@ -33,10 +33,18 @@ turns what it produces into a web application.
   declared once. A layout grouping, spanning or nesting by something the API
   cannot filter by is refused by `telo check`, and another module adds a layout
   without changing this one.
+- **One read, drawn in several places, with a structured input.** A `Ui.Query`
+  is a read declared once: the signed-in account in the layout's header and in
+  the page body is one request and one answer, not two that can disagree. A
+  query can send a record — a period with two dates and a few options — as a
+  `QUERY` (or `POST`) body composed from the page's address, checked by
+  `telo check` against the model the route declares, and it reads again when
+  that body changes. `Ui.Data` is replaced by a `query` node over a query;
+  `telo migrate` rewrites it.
 - **Pages keyed by an ID.** A page's path may hold variables (`/plans/{id}`),
-  read anywhere on the page as `params` — by its readers, its listings'
+  read anywhere on the page as `params` — by its queries, its listings'
   sources and the views it places, a library's included — and a read of a
-  variable the placing page lacks is refused by `telo check`. Readers and
+  variable the placing page lacks is refused by `telo check`. Queries and
   listings can also read again on a timer (`reloadEvery`), keeping what is
   loaded and drawn.
 - **Actions bound to what is on screen.** A `button` node runs an action with
@@ -76,7 +84,7 @@ turns what it produces into a web application.
   refused again by the resource itself for a manifest that never passed it.
 - **An operation's answer is drawn as content.** An action draws a success as
   its `result` tree and anything else as its `failure` tree, then refreshes the
-  readers and listings a success changed and goes where its answer says — to
+  queries and listings a success changed and goes where its answer says — to
   another page, or opening one over the current page; a
   listing's or a list's row draws the answer of the action it ran in place of its
   button.
@@ -110,7 +118,7 @@ turns what it produces into a web application.
 | [`Ui.FileIcon`](docs/icons.md#uifileicon) | An icon drawn from an image file of your own, in the colour of the text beside it. |
 | [`Ui.Icon`](docs/icons.md#uiicon) | The contract every icon provides through: the one image file its glyph is drawn from. |
 | [`Ui.View`](docs/view.md) | One node tree, placed wherever it is needed. |
-| [`Ui.Data`](docs/data.md) | A record read when the page is drawn, and again on a timer if asked, and the trees drawn over it: a sign-in gate, an account panel, a context card. |
+| [`Ui.Query`](docs/query.md) | A declared read that draws nothing: the shape of an answer, its address, an optional structured request body (`QUERY` or `POST`) built from the page's parameters, and when it is read again. A [`query` node](docs/nodes.md#the-query-node) draws one query's answer — a sign-in gate, an account panel, a report — and nodes drawing the same query share one read. |
 | [`Ui.Listing`](docs/listing.md) | A collection's records read page by page, sorted, labelled, opened, acted on and deleted, drawn by a layout. |
 | [`Ui.TableLayout`](docs/listing-layouts.md#uitablelayout) | A listing drawn as a data grid. |
 | [`Ui.ListLayout`, `Ui.CardLayout`](docs/listing-layouts.md#uilistlayout) | A listing drawn as a list or feed, or as cards or a gallery. |
@@ -159,7 +167,7 @@ press goes, the roots a destination reads, and a pressed region or record —
 `when`, `shown`, `Ui.Condition`, `Ui.Enablement`, `Ui.QueryParameters` and the
 interpreted profile `Ui.Match` are in [Conditions](docs/conditions.md). What a
 collection source speaks is [the collection contract](https://hub.telo.run/module/oci/ghcr.io/telorun/data-model/),
-what a reader's speaks is [the record contract](docs/record-contract.md), and
+what a query's speaks is [the record contract](docs/record-contract.md), and
 what an action's speaks is [the action contract](docs/action-contract.md).
 A renderer's controller addresses browser files through the module's code
 entry, [`@telorun/ui`](docs/composite.md#for-a-renderers-controller-telorunui).

@@ -606,6 +606,78 @@
       },
       "value": "1",
       "holds": true
+    },
+    {
+      "name": "format date holds for a full-date",
+      "matches": {
+        "format": "date"
+      },
+      "value": "2026-11-01",
+      "holds": true
+    },
+    {
+      "name": "format date refuses text that is no date",
+      "matches": {
+        "format": "date"
+      },
+      "value": "oops",
+      "holds": false
+    },
+    {
+      "name": "format date refuses a date the calendar lacks",
+      "matches": {
+        "format": "date"
+      },
+      "value": "2026-02-30",
+      "holds": false
+    },
+    {
+      "name": "format date refuses a date-time",
+      "matches": {
+        "format": "date"
+      },
+      "value": "2026-11-01T10:00:00Z",
+      "holds": false
+    },
+    {
+      "name": "format date-time holds for an instant with an offset",
+      "matches": {
+        "format": "date-time"
+      },
+      "value": "2026-11-01T10:00:00+02:00",
+      "holds": true
+    },
+    {
+      "name": "format date-time holds for fractional seconds",
+      "matches": {
+        "format": "date-time"
+      },
+      "value": "2026-11-01T10:00:00.5Z",
+      "holds": true
+    },
+    {
+      "name": "format date-time refuses a bare date",
+      "matches": {
+        "format": "date-time"
+      },
+      "value": "2026-11-01",
+      "holds": false
+    },
+    {
+      "name": "format date-time refuses an instant with no offset",
+      "matches": {
+        "format": "date-time"
+      },
+      "value": "2026-11-01T10:00:00",
+      "holds": false
+    },
+    {
+      "name": "format applies to strings only",
+      "matches": {
+        "format": "date"
+      },
+      "value": 5,
+      "holds": true
     }
   ]
 }

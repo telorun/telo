@@ -1,0 +1,5 @@
+# Imports the library next door: its check is the library's, so the kernel
+# refuses the removed kind when the import creates it.
+kind: Telo.Application
+metadata: { name: KindUndeclaredInLibraryApp }
+imports: { Outer: ./outer }

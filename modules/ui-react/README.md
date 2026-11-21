@@ -24,11 +24,16 @@ by a React renderer this module ships prebuilt.
   none, and every page a link, navigation entry or address names is checked to
   be one the application lists, before it runs. An entry's [icon](docs/app.md#icons) is drawn in the colour of
   its text, so a theme colours it as it colours text.
-- **Data on page load, drawn by condition.** A [`Ui.Data`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)
-  is read when it is drawn — a loading state first, a failure state for a
-  refused read — and read again on window focus, on a timer (`reloadEvery`,
-  keeping what is drawn) or when a request inside it answers 401, so a sign-in
-  gate is a reader and a condition. A node's `shown`
+- **Data on page load, shared, drawn by condition.** A `query` node draws a
+  [`Ui.Query`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) when it is
+  drawn — a loading state first, a failure state for a refused read — and every
+  node drawing the same query, in the page, the layout's header or anywhere
+  else the mount serves, shares one request and one answer. A query with a
+  body sends it by `QUERY` or `POST`, built from the page's query parameters
+  and path variables, and is read again when the body changes, on window
+  focus, on a timer (`reloadEvery`, keeping what is drawn) or when a request
+  inside one of its nodes answers 401, so a sign-in gate is a query and a
+  condition. A node's `shown`
   is decided in the browser over the answer, the page's query parameters or a
   form's values; hidden content keeps what it holds and requests nothing.
 - **Operations that answer in place.** An action draws its answer, or why it
@@ -37,7 +42,7 @@ by a React renderer this module ships prebuilt.
   [Markdown text](docs/markdown.md#annotations) draw theirs in place of their
   button. A prompt completes the bound record and holds it whole to the input
   model before sending; a value one prompt keeps opens the next of its key. A
-  success refreshes the readers and listings it changed and can move the page,
+  success refreshes the queries and listings it changed and can move the page,
   and a serial action's presses run one after another.
 - **Times as people read them.** A [`time`](docs/app.md#times) draws "3 hours
   ago" with the exact time on hover, kept current while shown, or a date in

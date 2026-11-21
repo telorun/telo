@@ -1,0 +1,6 @@
+# Consumes the library next door: the kernel refuses its tree at creation.
+kind: Telo.Application
+metadata: { name: AccessorRecursiveInvalidApp, version: 1.0.0 }
+imports: { Lib: ./lib }
+targets:
+  - !ref Lib.probe

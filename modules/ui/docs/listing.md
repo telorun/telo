@@ -319,9 +319,9 @@ labels.
 of its `request.target` and of each `onSuccess.refreshes` entry; in a listing
 it announces the listing's own `basePath` too, and a listing's own item write
 (create, edit, delete, move) announces the item path (`<basePath>/<key>`) as
-well. A `Ui.Data`, `Ui.Listing` or `Ui.Chat` reads again exactly when the
+well. A `Ui.Query`, `Ui.Listing` or `Ui.Chat` reads again exactly when the
 resolved, encoded, app-relative path of its request equals an announced one;
-the query is not compared. A `Ui.Data.source` and a `Ui.CollectionSource.basePath`
+the query is not compared. A `Ui.Query.url` and a `Ui.CollectionSource.basePath`
 — a templated one as it resolves — are matched this way.
 
 One rule for every reload, whatever causes it:

@@ -63,6 +63,16 @@ impl ModuleContext {
             ))
         })?;
 
+        // Existence before the gate: a kind the import's module does not declare
+        // is undefined, and the gate speaks only of a kind it declares and
+        // withholds. Worded as the Node kernel words it.
+        let Some(definition) = import.definitions.get(suffix) else {
+            return Err(KernelError::undefined_kind(format!(
+                "No Telo.Definition found for kind '{kind}': module '{}' declares no kind '{suffix}'.",
+                import.name
+            )));
+        };
+
         if let Some(exported) = &import.exported_kinds {
             if !exported.contains(suffix) {
                 let mut kinds: Vec<&str> = exported.iter().map(String::as_str).collect();
@@ -78,12 +88,7 @@ impl ModuleContext {
             }
         }
 
-        import.definitions.get(suffix).cloned().ok_or_else(|| {
-            KernelError::undefined_kind(format!(
-                "module '{}' declares no kind '{suffix}'",
-                import.name
-            ))
-        })
+        Ok(Rc::clone(definition))
     }
 
     /// The instance an importer reaches as `!ref <Alias>.<name>`, gated by

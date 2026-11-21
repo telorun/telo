@@ -1,0 +1,72 @@
+kind: Telo.Application
+metadata: { name: HoursReport }
+requires: { telo: ">=0.133.0" }
+lang: en
+imports:
+  Http: ../../../../../http-server
+  Ui: ../../../../
+  UiReact: ../../../../../ui-react
+targets:
+  - !ref server
+  - { name: openApp, invoke: !ref openApp, inputs: { url: !interpolate "http://localhost:${{ ports.http }}/report" } }
+ports: { http: { env: PORT, protocol: tcp, default: 8150 } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Account }
+schema:
+  type: object
+  required: [authorized]
+  properties: { authorized: { type: boolean }, email: { type: string } }
+---
+kind: UiReact.App
+metadata: { name: web }
+title: Hours
+theme: !ref UiReact.defaultTheme
+pages:
+  - kind: Ui.Page
+    path: /report
+    title: Report
+    children:
+      - type: composite
+        ref:
+          kind: Ui.Data
+          model: !ref Account
+          source: /api/auth
+          reloadOn: [focus, unauthorized]
+          content:
+            type: text
+            style: warning
+            text: Sign in to see the report.
+            shown: { at: !cel "data.authorized", matches: { const: false } }
+layout:
+  kind: Ui.PageLayout
+  header:
+    - type: composite
+      ref:
+        kind: Ui.Data
+        model: !ref Account
+        source: /api/auth
+        reloadOn: [focus, unauthorized]
+        loading: { type: stack, children: [] }
+        content: { type: value, value: !cel "data.email", style: muted }
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { port: !cel "ports.http" }
+mounts:
+  - { path: /api, mount: !ref api }
+  - { path: /, mount: !ref web }
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { method: GET, path: /auth }
+    handler:
+      kind: Telo.Value
+      outputType: !ref Account
+      value: { authorized: true, email: ada@acme.test }
+    returns:
+      - { status: 200, content: { application/json: { body: !cel "result" } } }
+---
+kind: Telo.OpenUrl
+metadata: { name: openApp }

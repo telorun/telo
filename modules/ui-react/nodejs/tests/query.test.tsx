@@ -2,13 +2,13 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, type Page, type Rendered } from "./harness.js";
-import { actionNode, dataNode, operation, reportSchema, listingNode, todos, address, navigateTo } from "./spec-nodes.js";
+import { actionNode, address, listingNode, navigateTo, operation, queryNode, reportSchema, todos } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-const reads = (r: Rendered, path = "/api/account") => r.requests.filter((request) => request.startsWith(`GET ${path}`)).length;
+const reads = (r: Rendered, path = "/api/account", method = "GET") => r.requests.filter((request) => request.startsWith(`${method} ${path}`)).length;
 const shownTexts = (r: Rendered, part: string) =>
   r.parts(part).filter((element) => element.closest('[style*="display: none"]') === null).map((element) => element.textContent);
 
@@ -29,14 +29,14 @@ function deferred() {
 
 const page = (...children: Page["children"]) => ({ "/": { title: "Account", children } });
 
-describe("a reader", () => {
+describe("a query node", () => {
   it("draws its loading tree before the first answer, then the branch its conditions select", async () => {
     const server = deferred();
-    rendered = await render({ path: "/", answers: { "/api/account": server.respond }, pages: page(dataNode()) });
-    expect(rendered.part("data").getAttribute("data-state")).toBe("loading");
+    rendered = await render({ path: "/", answers: { "/api/account": server.respond }, pages: page(queryNode()) });
+    expect(rendered.part("query").getAttribute("data-state")).toBe("loading");
     expect(shownTexts(rendered, "text")).toEqual(["Loading…"]);
     await server.release(rendered, json({ authorized: false }));
-    expect(rendered.part("data").getAttribute("data-state")).toBe("idle");
+    expect(rendered.part("query").getAttribute("data-state")).toBe("idle");
     expect(shownTexts(rendered, "text")).toEqual(["Sign in first."]);
     expect(shownTexts(rendered, "value")).toEqual([]);
   });
@@ -54,11 +54,9 @@ describe("a reader", () => {
         },
       },
       pages: page(
-        dataNode({
-          reloadOn: ["unauthorized"],
-          content: {
-            type: "stack",
-            children: [
+        queryNode(
+          {
+            content: [
               { type: "text", text: "Sign in first.", shown: { at: { root: "data", path: ["authorized"] }, matches: { const: false } } },
               {
                 ...listingNode({ columns: [], rowActions: [{ action: operation("/api/todos/archive", "Archive", { type: "object", properties: { id: { type: "integer" } } }), inputs: { id: { root: "row", path: ["id"] } } }] }),
@@ -66,7 +64,8 @@ describe("a reader", () => {
               },
             ],
           },
-        }),
+          { reloadOn: ["unauthorized"] },
+        ),
       ),
     });
     expect(reads(rendered)).toBe(1);
@@ -80,15 +79,15 @@ describe("a reader", () => {
     rendered = await render({
       path: "/",
       answers: { "/api/account": () => json({ type: "about:blank", title: "Unauthorized", status: 401, detail: "Your session has ended.", code: "SIGNED_OUT" }, 401) },
-      pages: page(dataNode({ reloadOn: ["unauthorized", "focus"] })),
+      pages: page(queryNode({}, { reloadOn: ["unauthorized", "focus"] })),
     });
     expect(reads(rendered)).toBe(1);
-    expect(rendered.part("data").getAttribute("data-state")).toBe("error");
+    expect(rendered.part("query").getAttribute("data-state")).toBe("error");
     expect(shownTexts(rendered, "value")).toEqual(["SIGNED_OUT", "Your session has ended."]);
   });
 
   it("refuses an answer that is no object of its model, as ERR_UI_RESPONSE_INVALID", async () => {
-    rendered = await render({ path: "/", answers: { "/api/account": () => json({ email: "no flag" }) }, pages: page(dataNode()) });
+    rendered = await render({ path: "/", answers: { "/api/account": () => json({ email: "no flag" }) }, pages: page(queryNode()) });
     expect(shownTexts(rendered, "value")[0]).toBe("ERR_UI_RESPONSE_INVALID");
   });
 
@@ -98,13 +97,17 @@ describe("a reader", () => {
       path: "/",
       answers: { "/api/account": server.respond },
       pages: page(
-        dataNode({
-          reloadOn: ["focus"],
-          content: {
-            ...actionNode({ result: undefined }),
-            shown: { at: { root: "data", path: ["authorized"] }, matches: { const: true } },
+        queryNode(
+          {
+            content: [
+              {
+                ...actionNode({ result: undefined }),
+                shown: { at: { root: "data", path: ["authorized"] }, matches: { const: true } },
+              },
+            ],
           },
-        }),
+          { reloadOn: ["focus"] },
+        ),
       ),
     });
     await server.release(rendered, json({ authorized: true }));
@@ -123,7 +126,7 @@ describe("a reader", () => {
 
   it("reads exactly once more for any number of triggers during a read", async () => {
     const server = deferred();
-    rendered = await render({ path: "/", answers: { "/api/account": server.respond }, pages: page(dataNode({ reloadOn: ["focus"] })) });
+    rendered = await render({ path: "/", answers: { "/api/account": server.respond }, pages: page(queryNode({}, { reloadOn: ["focus"] })) });
     await server.release(rendered, json({ authorized: true }));
     for (let i = 0; i < 3; i++) await act(async () => window.dispatchEvent(new Event("focus")));
     await rendered.settle();
@@ -142,18 +145,17 @@ describe("a reader", () => {
       answers: { "/api/account": server.respond },
       pages: page(
         { type: "link", text: "Expired", to: navigateTo(address("/?signin=expired")) },
-        dataNode({
-          query: { signin: { type: "string" } },
-          source: address("/api/account", {}, { signin: { root: "query", path: ["signin"] } }),
-          content: { type: "value", value: { root: "data", path: ["email"] }, present: { type: "string" } },
-        }),
+        queryNode(
+          { content: [{ type: "value", value: { root: "data", path: ["email"] }, present: { type: "string" } }] },
+          { query: { signin: { type: "string" } }, url: address("/api/account", {}, { signin: { root: "query", path: ["signin"] } }) },
+        ),
       ),
     });
     expect(rendered.requests.at(-1)).toBe("GET /api/account?signin=denied");
     await rendered.click(rendered.part("link"));
+    expect(rendered.requests.at(-1)).toBe("GET /api/account?signin=expired");
     await server.release(rendered, json({ authorized: true, email: "denied@example.com" }));
     expect(shownTexts(rendered, "value")).toEqual([]);
-    expect(rendered.requests.at(-1)).toBe("GET /api/account?signin=expired");
     await server.release(rendered, json({ authorized: true, email: "expired@example.com" }));
     expect(shownTexts(rendered, "value")).toEqual(["expired@example.com"]);
   });
@@ -167,13 +169,17 @@ describe("a reader", () => {
         "/api/inner": () => json({ authorized: true, email: "inner@example.com" }),
       },
       pages: page(
-        dataNode({
-          reloadOn: ["focus"],
-          content: {
-            ...dataNode({ source: address("/api/inner"), reloadOn: ["focus"] }),
-            shown: { at: { root: "data", path: ["authorized"] }, matches: { const: true } },
+        queryNode(
+          {
+            content: [
+              {
+                ...queryNode({}, { id: "inner", url: address("/api/inner"), reloadOn: ["focus"] }),
+                shown: { at: { root: "data", path: ["authorized"] }, matches: { const: true } },
+              },
+            ],
           },
-        }),
+          { reloadOn: ["focus"] },
+        ),
       ),
     });
     expect(reads(rendered, "/api/inner")).toBe(0);
@@ -190,6 +196,200 @@ describe("a reader", () => {
     await act(async () => window.dispatchEvent(new Event("focus")));
     await rendered.settle();
     expect(reads(rendered, "/api/inner")).toBe(hiddenReads + 1);
+  });
+});
+
+const email = { type: "value", value: { root: "data", path: ["email"] }, present: { type: "string" } };
+
+describe("one query, one read", () => {
+  it("sends one request for every node drawing the query, each loading and then drawing the same answer", async () => {
+    const server = deferred();
+    rendered = await render({
+      path: "/",
+      answers: { "/api/account": server.respond },
+      header: { end: [queryNode({ loading: [], content: [email] })] },
+      pages: page(queryNode({ content: [email] })),
+    });
+    expect(reads(rendered)).toBe(1);
+    expect(rendered.parts("query").map((part) => part.getAttribute("data-state"))).toEqual(["loading", "loading"]);
+    expect(shownTexts(rendered, "text")).toEqual(["Loading…"]);
+    await server.release(rendered, json({ authorized: true, email: "ada@example.com" }));
+    expect(shownTexts(rendered, "value")).toEqual(["ada@example.com", "ada@example.com"]);
+    expect(reads(rendered)).toBe(1);
+  });
+
+  it("keeps two queries resolving to one request two reads", async () => {
+    rendered = await render({
+      path: "/",
+      answers: { "/api/account": () => json({ authorized: true, email: "ada@example.com" }) },
+      pages: page(queryNode({ content: [email] }), queryNode({ content: [email] }, { id: "other" })),
+    });
+    expect(reads(rendered)).toBe(2);
+  });
+
+  it("re-reads once for a 401 inside either node, and never for its own", async () => {
+    let authorized = true;
+    const archiving = {
+      ...listingNode({ columns: [], rowActions: [{ action: operation("/api/todos/archive", "Archive", { type: "object", properties: { id: { type: "integer" } } }), inputs: { id: { root: "row", path: ["id"] } } }] }),
+      shown: { at: { root: "data", path: ["authorized"] }, matches: { const: true } },
+    };
+    rendered = await render({
+      path: "/",
+      collections: { "/api/todos": todos },
+      answers: {
+        "/api/account": () => (authorized ? json({ authorized, email: "ada@example.com" }) : json({ status: 401, code: "SIGNED_OUT", detail: "Signed out." }, 401)),
+        "/api/todos/archive": () => {
+          authorized = false;
+          return json({ error: "Unauthorized" }, 401);
+        },
+      },
+      header: { end: [queryNode({ content: [email] }, { reloadOn: ["unauthorized"] })] },
+      pages: page(queryNode({ content: [archiving] }, { reloadOn: ["unauthorized"] })),
+    });
+    expect(reads(rendered)).toBe(1);
+    await rendered.click(rendered.parts("row-action")[0]);
+    // One re-read for both nodes; its own 401 reads nothing more.
+    expect(reads(rendered)).toBe(2);
+    expect(rendered.parts("query").map((part) => part.getAttribute("data-state"))).toEqual(["error", "error"]);
+  });
+
+  it("keeps the read while one node is hidden, and sends nothing while both are until one is shown, once for what asked", async () => {
+    let gate = { a: true, b: true };
+    const focus = async () => {
+      await act(async () => window.dispatchEvent(new Event("focus")));
+      await rendered!.settle();
+    };
+    const shownBy = (flag: string) => ({ ...queryNode({ content: [email] }, { reloadOn: ["focus"] }), shown: { at: { root: "data", path: [flag] }, matches: { const: true } } });
+    rendered = await render({
+      path: "/",
+      answers: {
+        "/api/gate": () => json({ authorized: true, ...gate }),
+        "/api/account": () => json({ authorized: true, email: "ada@example.com" }),
+      },
+      pages: page(queryNode({ content: [shownBy("a"), shownBy("b")] }, { id: "gate", url: address("/api/gate"), reloadOn: ["focus"] })),
+    });
+    expect(reads(rendered)).toBe(1);
+    gate = { a: false, b: true };
+    await focus();
+    expect([reads(rendered), shownTexts(rendered, "value")]).toEqual([2, ["ada@example.com"]]);
+    gate = { a: false, b: false };
+    await focus();
+    expect(reads(rendered)).toBe(3);
+    // Both hidden: what they draw stays mounted, and a trigger waits.
+    await focus();
+    await focus();
+    expect([reads(rendered), rendered.parts("value").length, shownTexts(rendered, "value")]).toEqual([3, 2, []]);
+    gate = { a: true, b: false };
+    await focus();
+    expect([reads(rendered), shownTexts(rendered, "value")]).toEqual([4, ["ada@example.com"]]);
+  });
+
+  it("re-reads once for a refreshed path, a query read by QUERY or POST as one read by GET", async () => {
+    const report = (method: string) =>
+      queryNode(
+        { content: [{ type: "text", text: method }] },
+        { id: `report-${method}`, method, url: address(`/api/report/${method}`), input: { body: { value: {} } }, schema: { type: "object" } },
+      );
+    const archive = operation("/api/archive", "Archive", { type: "object", properties: {} }, {
+      onSuccess: { refreshes: [address("/api/account"), address("/api/report/QUERY"), address("/api/report/POST")] },
+    });
+    rendered = await render({
+      path: "/",
+      answers: {
+        "/api/account": () => json({ authorized: true, email: "ada@example.com" }),
+        "/api/report": () => json({}),
+        "/api/archive": () => new Response(null, { status: 204 }),
+      },
+      pages: page(queryNode({ content: [email] }), queryNode({ content: [email] }), report("QUERY"), report("POST"), archive),
+    });
+    const counts = () => [reads(rendered!), reads(rendered!, "/api/report/QUERY", "QUERY"), reads(rendered!, "/api/report/POST", "POST")];
+    expect(counts()).toEqual([1, 1, 1]);
+    await rendered.click(rendered.part("submit"));
+    expect(counts()).toEqual([2, 2, 2]);
+  });
+
+  it("aborts the read in flight when the last node drawing it leaves", async () => {
+    const signals: AbortSignal[] = [];
+    rendered = await render({
+      path: "/",
+      answers: {
+        "/api/account": ({ init }) => {
+          signals.push(init?.signal as AbortSignal);
+          return new Promise<Response>(() => {});
+        },
+      },
+      pages: {
+        "/": { title: "Account", children: [{ type: "link", text: "Elsewhere", to: navigateTo(address("/elsewhere")) }, queryNode()] },
+        "/elsewhere": { title: "Elsewhere", children: [] },
+      },
+    });
+    expect(signals.map((signal) => signal.aborted)).toEqual([false]);
+    await rendered.click(rendered.parts("link").find((link) => link.textContent === "Elsewhere") as HTMLElement);
+    expect(signals.map((signal) => signal.aborted)).toEqual([true]);
+  });
+});
+
+describe("a query with a body", () => {
+  const period = {
+    from: { type: "string", format: "date" },
+    to: { type: "string", format: "date" },
+    project: { type: "array", items: { type: "string" } },
+  };
+  const body = {
+    map: {
+      period: { map: { from: { root: "query", path: ["from"] }, to: { root: "query", path: ["to"] } } },
+      projects: { root: "query", path: ["project"] },
+      cursor: { value: null },
+    },
+  };
+  const report = (method: string, path = "/") =>
+    render({
+      path,
+      answers: { "/api/report": () => json({ total: 1 }) },
+      pages: page(queryNode({ content: [] }, { id: "report", method, url: address("/api/report"), query: period, input: { body }, schema: { type: "object" } })),
+    });
+
+  it.each(["QUERY", "POST"])("sends %s with the JSON body the address chooses, leaving out what holds nothing", async (method) => {
+    rendered = await report(method, "/?from=2026-11-01&to=oops");
+    expect(rendered.sent).toEqual([{ request: `${method} /api/report`, contentType: "application/json", body: { period: { from: "2026-11-01" }, cursor: null } }]);
+  });
+
+  it("sends a list parameter as a list", async () => {
+    rendered = await report("QUERY", "/?from=2026-11-01&to=2026-11-15&project=acme");
+    expect(rendered.sent.map((each) => each.body)).toEqual([{ period: { from: "2026-11-01", to: "2026-11-15" }, projects: ["acme"], cursor: null }]);
+  });
+
+  it("sends GET with no body when the query has no input", async () => {
+    rendered = await render({ path: "/", answers: { "/api/account": () => json({ authorized: true }) }, pages: page(queryNode()) });
+    expect([rendered.requests.filter((request) => request.includes("/api/account")), rendered.sent]).toEqual([["GET /api/account"], []]);
+  });
+
+  it("reads again for a changed body, keeping the last answer drawn until the new one is in and never drawing a late one", async () => {
+    const server = deferred();
+    const total = { type: "value", value: { root: "data", path: ["total"] }, present: { type: "integer" } };
+    rendered = await render({
+      path: "/?from=2026-11-01",
+      answers: { "/api/report": server.respond },
+      pages: page(
+        { type: "link", text: "Next day", to: navigateTo(address("/?from=2026-11-02")) },
+        queryNode(
+          { content: [total] },
+          { id: "report", method: "QUERY", url: address("/api/report"), query: period, input: { body }, schema: { type: "object" }, reloadOn: ["focus"] },
+        ),
+      ),
+    });
+    await server.release(rendered, json({ total: 1 }));
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    await rendered.settle();
+    await rendered.click(rendered.part("link"));
+    expect(rendered.sent.map((each) => (each.body as { period: { from: string } }).period.from)).toEqual(["2026-11-01", "2026-11-01", "2026-11-02"]);
+    expect(shownTexts(rendered, "value")).toEqual(["1"]);
+    // The answer to the earlier body arrives late: it is not drawn.
+    await server.release(rendered, json({ total: 2 }));
+    expect(shownTexts(rendered, "value")).toEqual(["1"]);
+    await server.release(rendered, json({ total: 3 }));
+    expect(shownTexts(rendered, "value")).toEqual(["3"]);
+    expect(rendered.parts("query")[0].getAttribute("data-state")).toBe("idle");
   });
 });
 
@@ -246,8 +446,8 @@ describe("a field's condition", () => {
 });
 
 describe("an action's refreshes with wildcard segments", () => {
-  it("reads again every reader whose path they cover, and no other", async () => {
-    const reading = (path: string) => dataNode({ source: address(path), content: { type: "text", text: path } });
+  it("reads again every query whose path they cover, and no other", async () => {
+    const reading = (path: string) => queryNode({ content: [{ type: "text", text: path }] }, { id: path, url: address(path) });
     const archive = operation("/api/archive", "Archive", { type: "object", properties: {} }, {
       onSuccess: { refreshes: [address("/api/projects/{id}/**", { id: { value: 7 } })] },
     });
@@ -291,13 +491,15 @@ describe("an action's enabled condition", () => {
       path: "/",
       answers: { "/api/account": () => json({ authorized: true, files }), "/api/files/remove": () => new Response(null, { status: 204 }) },
       pages: page(
-        dataNode({
-          content: {
-            type: "list",
-            rows: { root: "data", path: ["files"] },
-            columns: [{ header: "Name", value: { root: "row", path: ["name"] }, present: { type: "string" } }],
-            rowActions: [{ action: remove, inputs: { name: { root: "row", path: ["name"] } }, enabled: { at: { root: "data", path: ["authorized"] }, matches: { const: true }, disabledText: "Sign in first." } }],
-          },
+        queryNode({
+          content: [
+            {
+              type: "list",
+              rows: { root: "data", path: ["files"] },
+              columns: [{ header: "Name", value: { root: "row", path: ["name"] }, present: { type: "string" } }],
+              rowActions: [{ action: remove, inputs: { name: { root: "row", path: ["name"] } }, enabled: { at: { root: "data", path: ["authorized"] }, matches: { const: true }, disabledText: "Sign in first." } }],
+            },
+          ],
         }),
       ),
     });
@@ -305,7 +507,7 @@ describe("an action's enabled condition", () => {
     const before = reads(rendered);
     await rendered.click(rendered.parts("row-action")[1]);
     expect(rendered.sent.map((each) => [each.request, each.body])).toEqual([["POST /api/files/remove", { name: "b.pdf" }]]);
-    // The success refreshes the reader; its new answer is a new list, so the
+    // The success refreshes the query; its new answer is a new list, so the
     // row's answer goes with the old one.
     expect(reads(rendered)).toBe(before + 1);
     expect(rendered.parts("row-answer")).toEqual([]);
@@ -318,13 +520,15 @@ describe("an action's enabled condition", () => {
       path: "/",
       answers: { "/api/account": () => json({ authorized: true, files: [{ name: "a.pdf" }] }), "/api/files/remove": () => new Response(null, { status: 204 }) },
       pages: page(
-        dataNode({
-          content: {
-            type: "list",
-            rows: { root: "data", path: ["files"] },
-            columns: [{ header: "Name", value: { root: "row", path: ["name"] } }],
-            rowActions: [{ action: remove, inputs: { name: { root: "row", path: ["name"] } } }],
-          },
+        queryNode({
+          content: [
+            {
+              type: "list",
+              rows: { root: "data", path: ["files"] },
+              columns: [{ header: "Name", value: { root: "row", path: ["name"] } }],
+              rowActions: [{ action: remove, inputs: { name: { root: "row", path: ["name"] } } }],
+            },
+          ],
         }),
       ),
     });
@@ -334,7 +538,7 @@ describe("an action's enabled condition", () => {
   });
 });
 
-describe("a reader on a timer", () => {
+describe("a query on a timer", () => {
   let visibility: DocumentVisibilityState = "visible";
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
@@ -354,7 +558,7 @@ describe("a reader on a timer", () => {
     await act(async () => document.dispatchEvent(new Event("visibilitychange")));
     await r.settle();
   };
-  const timed = () => page(dataNode({ reloadEvery: 5000 }));
+  const timed = () => page(queryNode({}, { reloadEvery: 5000 }));
 
   it("reads again every interval, skipping a tick while its read is in flight", async () => {
     const server = deferred();

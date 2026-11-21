@@ -14,8 +14,8 @@
     "@fastify/cors": "^11.2.0",
     "@fastify/static": "^10.0.0",
     "@fastify/swagger": "^9.6.1",
-    "@scalar/core": "0.3.36",
-    "@scalar/openapi-parser": "0.24.6",
+    "@scalar/client-side-rendering": "0.4.21",
+    "@scalar/json-magic": "0.20.1",
     "@sinclair/typebox": "^0.34.48",
     "@telorun/cel": "workspace:*",
     "@telorun/http-dispatch": "workspace:*",
@@ -24,7 +24,7 @@
     "fastify": "^5.12.5"
   },
   "devDependencies": {
-    "@scalar/fastify-api-reference": "1.44.6",
+    "@scalar/fastify-api-reference": "1.80.0",
     "@telorun/sdk": "workspace:*",
     "@types/node": "^20.0.0",
     "esbuild": "catalog:",

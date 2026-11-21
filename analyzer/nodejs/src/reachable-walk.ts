@@ -219,9 +219,10 @@ const UNREADABLE = Symbol("unreadable");
 /**
  * What the slot at `path` of a view holds. An accessor SITE holds the binding a
  * controller receives: a literal's `{ value }` is the value written, and a
- * chain's `{ root, path }` is data read at run time, which names no declaration;
- * anything else there is a value the walk cannot read. Absent and null hold
- * nothing.
+ * chain's `{ root, path }` is data read at run time, which names no declaration,
+ * as is a template's `{ map }` / `{ list }`, whose leaves are chains and literals
+ * and never a `!ref`; anything else there is a value the walk cannot read.
+ * Absent and null hold nothing.
  */
 function readSlot(declaration: Record<string, unknown>, path: string): unknown {
   const raw = navigatePath(declaration, path);
@@ -232,6 +233,7 @@ function readSlot(declaration: Record<string, unknown>, path: string): unknown {
   if ("value" in binding) {
     return binding.value === undefined || binding.value === null ? NOT_A_REFERENCE : binding.value;
   }
+  if ("map" in binding || "list" in binding) return NOT_A_REFERENCE;
   return typeof binding.root === "string" && Array.isArray(binding.path) ? NOT_A_REFERENCE : UNREADABLE;
 }
 

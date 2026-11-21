@@ -53,17 +53,19 @@ kind: Ui.Page
 metadata: { name: plan }
 path: /plans/{id}
 children:
-  - type: composite
-    ref:
-      kind: Ui.Data
+  - type: query
+    query:
+      kind: Ui.Query
       model: !ref PlanDetail
-      source:
+      url:
         path: "/api/plans/{id}"
         pathParams: { id: !cel "params.id" }
-      content:
-        type: stack
+    content:
+      - type: stack
         children:
-          - { type: time, value: !cel "data.plan.latestRevision.createdAt", relative: true }
+          - type: time
+            value: !cel "data.plan.latestRevision.createdAt"
+            relative: true
           - type: markdown
             value: !cel "data.plan.latestRevision.body"
             annotations:
@@ -90,13 +92,17 @@ children:
                         author: { type: string, title: Your name }
                         body: { type: string, title: Comment }
                   request:
-                    target: { path: "/api/plans/{id}/comments", pathParams: { id: !cel "input.id" } }
+                    target:
+                      path: /api/plans/{id}/comments
+                      pathParams:
+                        id: !cel "input.id"
                   label: Comment
           - type: list
             rows: !cel "data.events"
             columns:
               - value: !cel "row.type"
-              - { type: time, value: !cel "row.createdAt" }
+              - type: time
+                value: !cel "row.createdAt"
 ---
 kind: Telo.Sequence
 metadata: { name: main }
@@ -107,7 +113,7 @@ steps:
   - name: timeIs
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.page.result.children[0].content.children[0]"
+      actual: !cel "steps.page.result.children[0].content[0].children[0]"
       expected:
         type: time
         value: { root: data, path: [plan, latestRevision, createdAt] }
@@ -118,7 +124,7 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual: !cel >-
-        cel.bind(m, steps.page.result.children[0].content.children[1], {
+        cel.bind(m, steps.page.result.children[0].content[0].children[1], {
           'members': sort(keys(m)),
           'value': m.value,
           'rows': m.annotations.rows,
@@ -143,19 +149,19 @@ steps:
   - name: columnsAre
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.page.result.children[0].content.children[2].columns.map(c, has(c.type) ? {'type': c.type, 'header': c.header.text, 'value': c.value, 'present': c.present} : {'header': c.header.text, 'value': c.value, 'present': c.present})"
+      actual: !cel "steps.page.result.children[0].content[0].children[2].columns.map(c, has(c.type) ? {'type': c.type, 'header': c.header.text, 'value': c.value, 'present': c.present} : {'header': c.header.text, 'value': c.value, 'present': c.present})"
       expected:
         - { header: Event, value: { root: row, path: [type] }, present: { type: string } }
         - { type: time, header: When, value: { root: row, path: [createdAt] }, present: { type: string, format: date-time } }
   - name: timeColumnIs
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "sort(keys(steps.page.result.children[0].content.children[2].columns[1]))"
+      actual: !cel "sort(keys(steps.page.result.children[0].content[0].children[2].columns[1]))"
       expected: [header, present, relative, type, value]
   - name: timeColumnRelative
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.page.result.children[0].content.children[2].columns[1].relative"
+      actual: !cel "steps.page.result.children[0].content[0].children[2].columns[1].relative"
       expected: false
 ---
 kind: Assert.Manifest
@@ -164,13 +170,13 @@ source: ./__fixtures__/invalid/markdown-time/check.yaml
 expect:
   errors:
     - code: CEL_UNKNOWN_FIELD
-      message: "Ui.Data/lineTypo: !cel: 'row.lnie' is not defined (available: id, line, count)"
+      message: "Ui.View/lineTypo: !cel: 'row.lnie' is not defined (available: id, line, count)"
     - code: CEL_TYPE_ERROR
-      message: "Ui.Data/markdownNotString: CEL at 'content.value' reads 'data.seq', whose declared shape does not fit what the field expects: /: type mismatch — source is 'integer', target expects 'string'"
+      message: "Ui.View/markdownNotString: CEL at 'content.content[0].value' reads 'data.seq', whose declared shape does not fit what the field expects: /: type mismatch — source is 'integer', target expects 'string'"
     - code: CEL_TYPE_ERROR
-      message: "Ui.Data/timeColumnNoFormat: CEL at 'content.columns[0].value': 'row.type' is a string with no format; the field takes a string of format date or date-time"
+      message: "Ui.View/timeColumnNoFormat: CEL at 'content.content[0].columns[0].value': 'row.type' is a string with no format; the field takes a string of format date or date-time"
     - code: SCHEMA_VIOLATION
-      message: "Ui.Data/valueRelative: /content must NOT have additional properties ('relative' is not allowed)"
+      message: "Ui.View/valueRelative: /content/content/0 must NOT have additional properties ('relative' is not allowed)"
 ---
 kind: Assert.Manifest
 metadata: { name: timeNotDate }
@@ -178,11 +184,11 @@ source: ./__fixtures__/invalid/markdown-time/lib/telo.yaml
 expect:
   errors:
     - code: CEL_TYPE_ERROR
-      message: "Ui.Data/timeNoFormat: CEL at 'content.value': 'data.title' is a string with no format; the field takes a string of format date or date-time"
+      message: "Ui.View/timeNoFormat: CEL at 'content.content[0].value': 'data.title' is a string with no format; the field takes a string of format date or date-time"
 ---
 kind: Assert.Manifest
 metadata: { name: timeNotDateAtRuntime }
 source: ./__fixtures__/invalid/markdown-time/telo.yaml
 expect:
-  errors: [{ code: CEL_TYPE_ERROR, message: "Ui.Data/timeNoFormat: CEL at 'content.value': 'data.title' is a string with no format; the field takes a string of format date or date-time." }]
-  runFails: "Ui.Data 'timeNoFormat' content.value: 'data.title' is a string with no format; a time takes a string of format date or date-time."
+  errors: [{ code: CEL_TYPE_ERROR, message: "Ui.View/timeNoFormat: CEL at 'content.content[0].value': 'data.title' is a string with no format; the field takes a string of format date or date-time." }]
+  runFails: "Ui.View 'timeNoFormat' content.content[0].value: 'data.title' is a string with no format; a time takes a string of format date or date-time."

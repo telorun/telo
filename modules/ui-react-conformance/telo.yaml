@@ -15,7 +15,7 @@ metadata:
 requires:
   # The checks resolve the renderer's built entries through ui-react;
   # its floor is this module's.
-  telo: ">=0.136.0"
+  telo: ">=unreleased"
 imports:
   # The design token names come from `ui`'s code entry, their CSS spelling
   # from ui-react's contract entry.

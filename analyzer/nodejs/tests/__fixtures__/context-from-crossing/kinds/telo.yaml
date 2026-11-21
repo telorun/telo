@@ -1,0 +1,43 @@
+kind: Telo.Library
+metadata: { name: Acme }
+exports: { kinds: [Reader, Panel] }
+---
+kind: Telo.Definition
+metadata: { name: Reader }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    params: { type: object, additionalProperties: { type: object } }
+    model: { x-telo-ref: { kind: Telo.Type, use: schema } }
+---
+# `params` is the parameters of the reader the holder names, `record` its model,
+# and `own` the holder's own map — at a list item and at a nested object.
+kind: Telo.Definition
+metadata: { name: Panel }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    sections: { type: array, items: { $ref: "#/$defs/Section" } }
+    primary: { $ref: "#/$defs/Section" }
+  $defs:
+    Section:
+      type: object
+      additionalProperties: false
+      properties:
+        reader: { x-telo-ref: { kind: Self.Reader, use: dependency } }
+        own: { type: object, additionalProperties: { type: object } }
+        show:
+          type: string
+          x-telo-eval: accessor
+          x-telo-context:
+            type: object
+            properties:
+              params: { x-telo-context-eval: accessor, x-telo-context-from: reader/params, type: object, properties: {}, additionalProperties: false }
+              record: { x-telo-context-eval: accessor, x-telo-context-from: reader/model, type: object, properties: {}, additionalProperties: false }
+              own: { x-telo-context-eval: accessor, x-telo-context-from: own, type: object, properties: {}, additionalProperties: false }

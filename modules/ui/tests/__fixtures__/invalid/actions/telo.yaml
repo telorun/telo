@@ -230,21 +230,25 @@ rowActions:
 ---
 # A list's row actions: one reads a root no form binds here, one leaves the
 # action's required input unbound.
-kind: Ui.Data
+kind: Ui.View
 metadata: { name: listRowActions }
-model:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      todos: { type: array, items: !ref Todo }
-source: { path: /api/todos }
 content:
-  type: list
-  rows: !cel "data.todos"
-  columns: [{ value: !cel "row.name" }]
-  rowActions:
-    - action: !ref archive
-      inputs: { id: !cel "row.id", status: !cel "values.folder" }
-    - action: !ref archive
-      inputs: { status: !cel "row.name" }
+  type: query
+  query:
+    kind: Ui.Query
+    model:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        properties:
+          todos: { type: array, items: !ref Todo }
+    url: { path: /api/todos }
+  content:
+    - type: list
+      rows: !cel "data.todos"
+      columns: [{ value: !cel "row.name" }]
+      rowActions:
+        - action: !ref archive
+          inputs: { id: !cel "row.id", status: !cel "values.folder" }
+        - action: !ref archive
+          inputs: { status: !cel "row.name" }

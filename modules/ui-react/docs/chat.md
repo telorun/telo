@@ -273,7 +273,7 @@ The node's `refreshes` are resolved over the root `conversation` (`{ id }`) and
 announced with `host.notifyChanged`, as an action's are: when a send is admitted
 (a `2xx` of `POST /turns`, in a new or an existing conversation) and when a turn
 the page started or followed ends, whatever its reason. A listing of the
-conversations, or a reader of one, at a refreshed path reads again.
+conversations, or a query of one, at a refreshed path reads again.
 
 ## When something goes wrong
 

@@ -76,7 +76,7 @@ A failure leaves the node untouched and reports `MIGRATION_FAILED` at the node (
 
 The library stage runs once, over the loaded graph: after every file has gone through the core layer, after the whole import closure (`imports:` entries and scoped `Telo.Import` members) has loaded and module versions are reconciled, and before flatten, inline extraction, `!ref` resolution, choice expansion and every analysis pass; modules in import post-order. The definition registry and alias resolvers are built once before it and serve the analysis after it. There is one result per module source. The stage is part of the analyzer, MUST run in a browser, and MUST NOT run for a round-trip view. A closure declaring no `migrations:` costs nothing.
 
-Only the entry module's own files report a diagnostic; every file is rewritten in memory, and provenance maps diagnostics onto the author's spans.
+Only the entry module's own files report a diagnostic; every file is rewritten in memory, and provenance maps diagnostics onto the author's spans. A fired migration is reported once per outermost rewritten node and migration code, at that node — the unit `telo migrate` writes and counts; a rewrite nested inside another of the same code is not reported separately.
 
 ## 10. Library checks
 

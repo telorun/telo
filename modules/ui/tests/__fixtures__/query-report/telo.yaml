@@ -1,0 +1,151 @@
+kind: Telo.Application
+metadata: { name: HoursReport }
+requires: { telo: ">=0.133.0" }
+lang: en
+imports: { Http: ../../../../http-server, Ui: ../../../, UiReact: ../../../../ui-react }
+targets:
+  - !ref server
+  - name: openApp
+    invoke: !ref openApp
+    inputs: { url: !interpolate "http://localhost:${{ ports.http }}/report?from=2026-11-01&to=2026-11-15" }
+ports: { http: { env: PORT, protocol: tcp, default: 8150 } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Account }
+schema:
+  type: object
+  required: [authorized]
+  properties: { authorized: { type: boolean }, email: { type: string } }
+---
+kind: Telo.JsonSchema
+metadata: { name: ReportRequest }
+schema:
+  type: object
+  additionalProperties: false
+  required: [period]
+  properties:
+    period:
+      type: object
+      additionalProperties: false
+      required: [from, to]
+      properties: { from: { type: string, format: date }, to: { type: string, format: date } }
+    projects: { type: array, items: { type: string } }
+---
+kind: Telo.JsonSchema
+metadata: { name: ReportAnswer }
+schema:
+  type: object
+  required: [totalHours, items]
+  properties:
+    totalHours: { type: number }
+    items:
+      type: array
+      items: { type: object, required: [name, hours], properties: { name: { type: string }, hours: { type: number } } }
+---
+kind: Ui.Query
+metadata: { name: account }
+model: !ref Account
+url: /api/auth
+reloadOn: [focus, unauthorized]
+---
+kind: UiReact.App
+metadata: { name: web }
+title: Hours
+theme: !ref UiReact.defaultTheme
+pages:
+  - kind: Ui.Page
+    path: /report
+    title: Report
+    children:
+      - type: query
+        query: !ref account
+        loading: []
+        content:
+          - type: text
+            style: warning
+            text: Sign in to see the report.
+            shown: { at: !cel "data.authorized", matches: { const: false } }
+      - type: query
+        query:
+          kind: Ui.Query
+          model: !ref ReportAnswer
+          query:
+            from: { type: string, format: date }
+            to: { type: string, format: date }
+            project: { type: array, items: { type: string } }
+          url: /api/report
+          input:
+            method: QUERY
+            model: !ref ReportRequest
+            body:
+              period: { from: !cel "query.from", to: !cel "query.to" }
+              projects: !cel "query.project"
+          reloadEvery: 1m
+        loading: [{ type: text, text: Adding up the hours…, style: muted }]
+        failure:
+          - type: text
+            style: warning
+            text: { text: "The report could not be read: {$message}", values: { message: !cel "error.message" } }
+        content:
+          - type: text
+            style: heading
+            text: { text: "{$hours} hours", values: { hours: !cel "data.totalHours" } }
+          - type: list
+            rows: !cel "data.items"
+            columns: [{ header: Project, value: !cel "row.name" }, { header: Hours, value: !cel "row.hours" }]
+layout:
+  kind: Ui.PageLayout
+  header:
+    - type: query
+      query: !ref account
+      loading: []
+      failure: []
+      content: [{ type: value, value: !cel "data.email", style: muted }]
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { port: !cel "ports.http" }
+openapi: { info: { title: Hours, version: 1.0.0 } }
+mounts:
+  - { path: /api, mount: !ref api }
+  - { path: /docs, mount: { kind: Http.Reference } }
+  - { path: /, mount: !ref web }
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { method: GET, path: /auth }
+    handler:
+      kind: Telo.Value
+      outputType: !ref Account
+      value: { authorized: true, email: ada@acme.test }
+    returns:
+      - { status: 200, content: { application/json: { body: !cel "result" } } }
+  - request:
+      method: QUERY
+      path: /report
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [period]
+          properties:
+            period:
+              type: object
+              additionalProperties: false
+              required: [from, to]
+              properties: { from: { type: string, format: date }, to: { type: string, format: date } }
+            projects: { type: array, items: { type: string } }
+    inputs:
+      period: !cel "request.body.period"
+      projects: !cel "has(request.body.projects) ? request.body.projects : []"
+    handler:
+      kind: Telo.Value
+      inputType: !ref ReportRequest
+      outputType: !ref ReportAnswer
+      value: { totalHours: 12.5, items: [{ name: Acme, hours: 8 }, { name: Core, hours: 4.5 }] }
+    returns:
+      - { status: 200, content: { application/json: { body: !cel "result" } } }
+---
+kind: Telo.OpenUrl
+metadata: { name: openApp }

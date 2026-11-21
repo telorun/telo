@@ -26,6 +26,7 @@ expression selects nothing.
 | `bar` | `start?`, `center?`, `end?` | a [bar](#bars): nodes at its start, its centre and its end |
 | `command` | `command`, `text`, `button?` | a button running a [command](#commands) of the place it is written in |
 | `composite` | `ref` | a [composite](composite.md): a `!ref`, or an inline declaration |
+| `query` | `query`, `children`, `loading?`, `failure?` | [one query's answer](#the-query-node): a `!ref` to a [`Ui.Query`](query.md), or one inline |
 | `pane` | `ref` | a [pane](pane.md) — a piece of chrome such as a navigation bar: a `!ref`, or an inline declaration; replaced by the node it answers |
 
 Every node also takes:
@@ -210,12 +211,48 @@ chooses the first. Only the chosen tab's nodes are drawn: another tab's are draw
 and start their requests anew, when it is chosen. A `tabs` node none of whose
 tabs is delivered is left out, as a node whose `when` is false is.
 
+## The query node
+
+`{ type: query, query, content, loading?, failure? }` draws one
+[`Ui.Query`](query.md)'s answer: `query` is a `!ref` to a query, or one declared
+inline; each of the three trees is a list of nodes, laid out as a `box` lays out
+its `children`. It carries `shown` and `fill` as every node does and is
+transparent to `fill`.
+
+- `content` is drawn once an answer is in, over `data` (typed from the query's
+  `model`: `data.nmae` is `CEL_UNKNOWN_FIELD`).
+- `loading` is drawn before the node's first answer; omitted, `ui` fills a muted
+  "Loading…" text, and `loading: []` draws nothing.
+- `failure` is drawn over `error` (a `Ui.RequestError`) when the read does not
+  succeed; omitted, `ui` fills the error's code and message.
+- Each list is also over `query` — the parameters the query declares under its
+  own `query`, whether it is named or inline, closed and empty when it declares
+  none (`query.signn` is `CEL_UNKNOWN_FIELD`, a parameter named `type` read as a
+  parameter) — and `params`. A query a library's importer supplies is not known
+  in the library, so `query` is open there. A `query` slot naming anything but
+  a query is `REFERENCE_KIND_MISMATCH`.
+
+A [`Ui.View`](view.md) placed as a child is typed from each query node placing
+it, as a view placed anywhere is. Several nodes drawing one query share one read
+(see [one query, one read](query.md#one-query-one-read)); to draw nothing until
+a parameter is chosen, hide the node with `shown`.
+
+```yaml
+- type: query
+  query: !ref account
+  loading: []
+  content:
+    - type: value
+      value: !cel "data.email"
+      style: muted
+```
+
 ## Values and lists
 
 A `value` and a `list` name what they draw with [accessors](https://telo.run/docs/extend/accessor-fields)
-over the roots in scope — `data` inside a [`Ui.Data`](data.md), `query` where
+over the roots in scope — `data` inside a [`query` node](#the-query-node)'s `content`, `query` where
 query parameters are declared, `params` — the page's [path
-variables](page.md#params) — wherever a page's nodes are, `error` in a reader's or an action's `failure`,
+variables](page.md#params) — wherever a page's nodes are, `error` in a query node's or an action's `failure`,
 `result`, `input` and `values` in an [action's answer](action.md#the-answer),
 `row` in a list column and its row actions, and in a markdown node's
 [annotations](#markdown):
@@ -278,7 +315,7 @@ absolute date or time in the viewer's language and time zone:
 A chain to a string with no such format is `CEL_TYPE_ERROR` (`'data.plan.title'
 is a string with no format; the field takes a string of format date or
 date-time`), and so is any other type. A tree `telo check` did not judge — a
-reader in an imported library — is refused when it is first read
+query node in an imported library — is refused when it is first read
 (`ERR_UI_TIME_VALUE_NOT_DATE`). A value that turns out not to be a date at run
 time is drawn as plain text. `relative` belongs to `time` alone: on a `value`
 node it is `SCHEMA_VIOLATION`.
@@ -326,7 +363,7 @@ none is lost. A pressed control draws its action's answer as a row action does.
 
 A `button` runs a [`Ui.Action`](action.md) with its inputs bound from the data
 in scope — the page's `params` and `query`, and the roots of the tree it sits
-in, `data` inside a reader. Its members are a
+in, `data` inside a query node's `children`. Its members are a
 [`Ui.BoundAction`](action.md#bound-actions)'s, plus `button`, a
 [`Ui.ButtonDisplay`](#links-drawn-as-buttons) (a text button when left out),
 and it is labelled with the action's `label`:
@@ -391,7 +428,7 @@ on its records; a `menu`'s button only opens its links.
   [`to`](presses.md#the-to-key); a [`Ui.OpenPage`](presses.md#uiopenpage) takes
   an address's `pathParams` and `queryParams` for its page. `image.src` stays
   literal. A request is addressed the same way, as a `Ui.RequestTarget` (a
-  reader's [`source`](data.md)).
+  query's [`url`](query.md)).
 
   | Member | |
   | --- | --- |
@@ -414,7 +451,7 @@ on its records; a `menu`'s button only opens its links.
 
   A bare string is a literal path with no `{` or `}`. Quote a template in flow
   style: `{` starts a mapping in YAML. The address binds no root: the place its
-  `to` is written does — a page's `query` and `params`, a reader's `data`, a list's and a
+  `to` is written does — a page's `query` and `params`, a query node's `data`, a list's and a
   listing's `row`, a relation's related `row` — so `row.nmae` is refused by
   `telo check` like any other read, and so is a root the place does not bind. Every `{name}` has exactly one entry in
   `pathParams` and every entry names a `{name}` (`PATH_PARAMETER_UNBOUND`,
@@ -590,8 +627,8 @@ button's text, one `{ property, label, shown? }` per field, its `failure` tree
 (the default filled in), `onSuccess` (`refreshes` empty when none),
 `concurrency` and `clearAnswerOn`; `answer` (the output model), `result` and
 `enabled` are present exactly when declared. See
-[what an action provides](action.md#what-a-renderer-receives). A `data` node is
-described in [what a reader provides](data.md#what-a-renderer-receives).
+[what an action provides](action.md#what-a-renderer-receives). A `query` node is
+described in [what a query provides](query.md#what-a-renderer-receives).
 
 A `filters` node likewise carries its whole policy: `placement` (a
 [`Ui.FilterPlacementSpec`](filter-placement.md#what-a-renderer-receives), which

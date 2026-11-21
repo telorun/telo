@@ -1,0 +1,329 @@
+{
+  "$comment": "How a query's body template resolves to the body sent. A template is a binding, or a `map` / `list` of templates, to any depth: a chain is the value its path names under its root, a `value` is sent as written, null included. A chain holding nothing \u2014 a missing member, a missing root or null \u2014 leaves its member or its list item out; a map is sent even when every member is left out. A whole body holding nothing is sent as no body, which a row states as `omitted: true`. Every renderer must answer every row.",
+  "rows": [
+    {
+      "name": "a chain holding a value is sent as that value",
+      "template": {
+        "map": {
+          "from": {
+            "root": "query",
+            "path": [
+              "from"
+            ]
+          }
+        }
+      },
+      "roots": {
+        "query": {
+          "from": "2026-11-01"
+        }
+      },
+      "body": {
+        "from": "2026-11-01"
+      }
+    },
+    {
+      "name": "a chain reading a missing member leaves its member out",
+      "template": {
+        "map": {
+          "from": {
+            "root": "query",
+            "path": [
+              "from"
+            ]
+          },
+          "to": {
+            "root": "query",
+            "path": [
+              "to"
+            ]
+          }
+        }
+      },
+      "roots": {
+        "query": {
+          "from": "2026-11-01"
+        }
+      },
+      "body": {
+        "from": "2026-11-01"
+      }
+    },
+    {
+      "name": "a chain reading null leaves its member out",
+      "template": {
+        "map": {
+          "from": {
+            "root": "query",
+            "path": [
+              "from"
+            ]
+          },
+          "to": {
+            "root": "query",
+            "path": [
+              "to"
+            ]
+          }
+        }
+      },
+      "roots": {
+        "query": {
+          "from": "2026-11-01",
+          "to": null
+        }
+      },
+      "body": {
+        "from": "2026-11-01"
+      }
+    },
+    {
+      "name": "a chain from a root that holds nothing leaves its member out",
+      "template": {
+        "map": {
+          "id": {
+            "root": "params",
+            "path": [
+              "id"
+            ]
+          }
+        }
+      },
+      "roots": {},
+      "body": {}
+    },
+    {
+      "name": "a literal is sent as written, null included",
+      "template": {
+        "map": {
+          "size": {
+            "value": 20
+          },
+          "cursor": {
+            "value": null
+          }
+        }
+      },
+      "roots": {},
+      "body": {
+        "size": 20,
+        "cursor": null
+      }
+    },
+    {
+      "name": "false, zero and the empty string are values",
+      "template": {
+        "map": {
+          "a": {
+            "root": "query",
+            "path": [
+              "a"
+            ]
+          },
+          "b": {
+            "root": "query",
+            "path": [
+              "b"
+            ]
+          },
+          "c": {
+            "root": "query",
+            "path": [
+              "c"
+            ]
+          }
+        }
+      },
+      "roots": {
+        "query": {
+          "a": false,
+          "b": 0,
+          "c": ""
+        }
+      },
+      "body": {
+        "a": false,
+        "b": 0,
+        "c": ""
+      }
+    },
+    {
+      "name": "a structure is resolved at every depth",
+      "template": {
+        "map": {
+          "period": {
+            "map": {
+              "from": {
+                "root": "query",
+                "path": [
+                  "from"
+                ]
+              },
+              "to": {
+                "root": "query",
+                "path": [
+                  "to"
+                ]
+              }
+            }
+          },
+          "projects": {
+            "root": "query",
+            "path": [
+              "project"
+            ]
+          }
+        }
+      },
+      "roots": {
+        "query": {
+          "from": "2026-11-01",
+          "to": "2026-11-15",
+          "project": [
+            "acme"
+          ]
+        }
+      },
+      "body": {
+        "period": {
+          "from": "2026-11-01",
+          "to": "2026-11-15"
+        },
+        "projects": [
+          "acme"
+        ]
+      }
+    },
+    {
+      "name": "a nested map whose members all hold nothing is sent empty",
+      "template": {
+        "map": {
+          "period": {
+            "map": {
+              "from": {
+                "root": "query",
+                "path": [
+                  "from"
+                ]
+              }
+            }
+          },
+          "projects": {
+            "root": "query",
+            "path": [
+              "project"
+            ]
+          }
+        }
+      },
+      "roots": {
+        "query": {}
+      },
+      "body": {
+        "period": {}
+      }
+    },
+    {
+      "name": "a list item holding nothing is left out and the rest keep their order",
+      "template": {
+        "list": [
+          {
+            "value": "news"
+          },
+          {
+            "root": "query",
+            "path": [
+              "tag"
+            ]
+          },
+          {
+            "root": "query",
+            "path": [
+              "more"
+            ]
+          }
+        ]
+      },
+      "roots": {
+        "query": {
+          "more": "sport"
+        }
+      },
+      "body": [
+        "news",
+        "sport"
+      ]
+    },
+    {
+      "name": "a list of literals and chains",
+      "template": {
+        "map": {
+          "tags": {
+            "list": [
+              {
+                "value": "news"
+              },
+              {
+                "root": "query",
+                "path": [
+                  "tag"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "roots": {
+        "query": {
+          "tag": "ai"
+        }
+      },
+      "body": {
+        "tags": [
+          "news",
+          "ai"
+        ]
+      }
+    },
+    {
+      "name": "a whole body that is a chain is sent as its value",
+      "template": {
+        "root": "params",
+        "path": [
+          "id"
+        ]
+      },
+      "roots": {
+        "params": {
+          "id": "7"
+        }
+      },
+      "body": "7"
+    },
+    {
+      "name": "a whole body that is a literal is sent as written",
+      "template": {
+        "value": {
+          "size": 20
+        }
+      },
+      "roots": {},
+      "body": {
+        "size": 20
+      }
+    },
+    {
+      "name": "a whole body that is a chain holding nothing is no body",
+      "template": {
+        "root": "params",
+        "path": [
+          "id"
+        ]
+      },
+      "roots": {
+        "params": {}
+      },
+      "omitted": true
+    }
+  ]
+}

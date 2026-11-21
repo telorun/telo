@@ -835,6 +835,14 @@ export class CelScopeResolver {
     this.typedEnvironments = inputs.typedEnvironments ?? new TypedEnvironments();
   }
 
+  /** How a context annotation's path crosses the reference sites of the
+   *  declarations it walks — the host the typing and the declaration resolver
+   *  both read through. */
+  get referenceHost(): ValueSchemaHost {
+    const { defs, aliases, scopes, declarations } = this.inputs;
+    return (this.crossingHost ??= valueSchemaHostOf(analyzerContractScope(defs, aliases, scopes, declarations)));
+  }
+
   /**
    * Every way the bindings this site's regions type from the resource's
    * referrers are typed: one variant per distinct combination of the types ONE
@@ -1355,15 +1363,17 @@ export class CelScopeResolver {
           contextHolder: localScope
             ? getContextHolder(localPath, localScope, rootManifest)
             : rootManifest,
+          contextHolderAt: {
+            root: rootManifest,
+            path: (localScope ? getContextHolderPath(localPath, localScope) : undefined) ?? "",
+          },
           defs,
           aliases,
           aliasesByModule: scopes?.aliasesByModule,
           declarations,
           shapes: this.inputs.shapes,
           sitePath: localPath,
-          referenceHost: (this.crossingHost ??= valueSchemaHostOf(
-            analyzerContractScope(defs, aliases, scopes, declarations),
-          )),
+          referenceHost: this.referenceHost,
         }),
         rootManifest,
       );

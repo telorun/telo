@@ -324,3 +324,23 @@ fn a_node_no_rule_may_rewrite_is_not_refused_for_the_library() {
     let err = Kernel::new().load(&dir.path().join("app/telo.yaml").display().to_string()).expect_err("Other names no import");
     assert_ne!(err.code, "ERR_UNSUPPORTED_MANIFEST_FEATURE", "{err}");
 }
+
+const GATED_LIBRARY: &str = "kind: Telo.Library\nmetadata: { name: GatedLib }\nexports: { kinds: [Thing] }\n---\nkind: Telo.Definition\nmetadata: { name: Thing }\ncapability: Telo.Invocable\nschema: { type: object }\n---\nkind: Telo.Definition\nmetadata: { name: Hidden }\ncapability: Telo.Invocable\nschema: { type: object }\n";
+
+/// Existence is asked before the export gate: a kind the gated module does not declare is
+/// undefined, and only a kind it declares and withholds is not exported.
+#[test]
+fn a_kind_the_module_does_not_declare_is_undefined_before_the_gate() {
+    let (_dir, err) = load(&[
+        ("app/telo.yaml", &app("imports: { Lib: ../lib }\n---\nkind: Lib.Gone\nmetadata: { name: gone }\n")),
+        ("lib/telo.yaml", GATED_LIBRARY),
+    ]);
+    assert_eq!(err.code, "ERR_UNDEFINED_KIND", "{err}");
+    assert_eq!(err.message, "No Telo.Definition found for kind 'Lib.Gone': module 'GatedLib' declares no kind 'Gone'.");
+
+    let (_dir, err) = load(&[
+        ("app/telo.yaml", &app("imports: { Lib: ../lib }\n---\nkind: Lib.Hidden\nmetadata: { name: hidden }\n")),
+        ("lib/telo.yaml", GATED_LIBRARY),
+    ]);
+    assert_eq!(err.code, "ERR_KIND_NOT_EXPORTED", "{err}");
+}

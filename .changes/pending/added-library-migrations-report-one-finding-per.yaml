@@ -1,0 +1,7 @@
+units:
+  analyzer: Added
+body: "Library migrations report one finding per outermost rewritten node and migration
+  code, the unit telo migrate writes and counts, so a placement whose inline declaration
+  is rewritten too is reported once. The consumer stage follows a JSON-Pointer reference
+  into a named shape, so a node under such a reference whose items name the shape
+  through a local # is migrated."

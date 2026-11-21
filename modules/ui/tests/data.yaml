@@ -3,8 +3,9 @@ metadata:
   name: UiDataTest
   version: 1.0.0
   description: |
-    A reader provides a `data` node: its model, its source with each parameter
-    a binding, its declared query parameters, and its three trees resolved —
+    A view over a query provides a `query` node: the query's spec (its model, its
+    url with each parameter a binding, its declared query parameters), and its
+    three trees resolved —
     a node whose `when` is false at creation left out, `shown` carried as
     written, each `value` and `list` node carrying what the model, the query
     parameters or the request error say about the values it names. `loading`
@@ -34,44 +35,46 @@ schema:
           name: { type: string, title: Name }
           url: { type: string, format: uri-reference, title: Link }
 ---
-kind: Ui.Data
+kind: Ui.View
 metadata: { name: account }
-model: !ref Account
-query: { signin: { type: string, enum: [denied, expired] } }
-source:
-  path: /api/auth
-  queryParams:
-    signin: !cel "query.signin"
-    fixed: 1
-reloadOn: [focus, unauthorized]
 content:
-  type: stack
-  children:
-    - type: value
-      value: !cel "data.email"
-      shown: { at: !cel "data.authorized", matches: { const: true } }
-    - type: text
-      text: Never
-      when: !cel "module.version == '0.0.0'"
-    - type: list
-      heading: Files
-      rows: !cel "data.files"
-      columns:
-        - value: !cel "row.name"
-        - header: Open
-          value: !cel "row.url"
+  type: query
+  query:
+    kind: Ui.Query
+    model: !ref Account
+    query: { signin: { type: string, enum: [denied, expired] } }
+    url:
+      path: /api/auth
+      queryParams:
+        signin: !cel "query.signin"
+        fixed: 1
+    reloadOn: [focus, unauthorized]
+  content:
+    - type: stack
+      children:
+        - type: value
+          value: !cel "data.email"
           shown: { at: !cel "data.authorized", matches: { const: true } }
+        - type: text
+          text: Never
+          when: !cel "module.version == '0.0.0'"
+        - type: list
+          heading: Files
+          rows: !cel "data.files"
+          columns:
+            - value: !cel "row.name"
+            - header: Open
+              value: !cel "row.url"
+              shown: { at: !cel "data.authorized", matches: { const: true } }
+        - type: value
+          value: !cel "query.signin"
+  failure:
     - type: value
-      value: !cel "query.signin"
-failure:
-  type: value
-  value: !cel "error.message"
+      value: !cel "error.message"
 ---
-kind: Ui.Data
+kind: Ui.View
 metadata: { name: plain }
-model: { kind: Telo.JsonSchema, schema: { type: object } }
-source: { path: /api/plain }
-content: { type: text, text: Ready }
+content: { type: query, query: { kind: Ui.Query, model: { kind: Telo.JsonSchema, schema: { type: object } }, url: { path: /api/plain } }, content: [{ type: text, text: Ready }] }
 ---
 kind: Ui.Form
 metadata: { name: note }
@@ -117,67 +120,71 @@ steps:
     inputs:
       actual: !cel "steps.account.result.node"
       expected:
-        type: data
+        type: query
         fill: false
-        schema:
-          type: object
-          required: [authorized]
-          properties:
-            authorized: { type: boolean }
-            email: { type: string, title: Email }
-            files:
-              type: array
-              items:
-                type: object
-                properties:
-                  name: { type: string, title: Name }
-                  url: { type: string, format: uri-reference, title: Link }
-        source:
-          path: { value: /api/auth }
-          pathParams: {}
-          queryParams: { signin: { root: query, path: [signin] }, fixed: { value: 1 } }
-        query: { signin: { type: string, enum: [denied, expired] } }
+        query:
+          id: UiDataTest/account/content/query
+          schema:
+            type: object
+            required: [authorized]
+            properties:
+              authorized: { type: boolean }
+              email: { type: string, title: Email }
+              files:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name: { type: string, title: Name }
+                    url: { type: string, format: uri-reference, title: Link }
+          method: GET
+          url:
+            path: { value: /api/auth }
+            pathParams: {}
+            queryParams: { signin: { root: query, path: [signin] }, fixed: { value: 1 } }
+          input: null
+          query: { signin: { type: string, enum: [denied, expired] } }
+          reloadOn: [focus, unauthorized]
         content:
-          type: stack
-          fill: false
-          press: null
-          children:
-            - type: value
-              fill: false
-              value: { root: data, path: [email] }
-              present: { type: string }
-              labels: []
-              shown: { at: { root: data, path: [authorized] }, matches: { const: true } }
-            - type: list
-              fill: false
-              rowActionsDisplay: auto
-              heading: { text: Files, context: null, lang: und, computed: false }
-              rows: { root: data, path: [files] }
-              columns:
-                - header: { text: Name, context: null, lang: und, computed: false }
-                  value: { root: row, path: [name] }
-                  present: { type: string }
-                  labels: []
-                - header: { text: Open, context: null, lang: und, computed: false }
-                  value: { root: row, path: [url] }
-                  present: { type: string, format: uri-reference }
-                  labels: []
-                  shown: { at: { root: data, path: [authorized] }, matches: { const: true } }
-            - type: value
-              fill: false
-              value: { root: query, path: [signin] }
-              present: { type: string }
-              labels:
-                - { value: denied, label: { text: denied, context: null, lang: und, computed: false } }
-                - { value: expired, label: { text: expired, context: null, lang: und, computed: false } }
-        loading: { type: text, fill: false, text: { set: Ui.Translations, key: loading }, style: muted }
+          - type: stack
+            fill: false
+            press: null
+            children:
+              - type: value
+                fill: false
+                value: { root: data, path: [email] }
+                present: { type: string }
+                labels: []
+                shown: { at: { root: data, path: [authorized] }, matches: { const: true } }
+              - type: list
+                fill: false
+                rowActionsDisplay: auto
+                heading: { text: Files, context: null, lang: und, computed: false }
+                rows: { root: data, path: [files] }
+                columns:
+                  - header: { text: Name, context: null, lang: und, computed: false }
+                    value: { root: row, path: [name] }
+                    present: { type: string }
+                    labels: []
+                  - header: { text: Open, context: null, lang: und, computed: false }
+                    value: { root: row, path: [url] }
+                    present: { type: string, format: uri-reference }
+                    labels: []
+                    shown: { at: { root: data, path: [authorized] }, matches: { const: true } }
+              - type: value
+                fill: false
+                value: { root: query, path: [signin] }
+                present: { type: string }
+                labels:
+                  - { value: denied, label: { text: denied, context: null, lang: und, computed: false } }
+                  - { value: expired, label: { text: expired, context: null, lang: und, computed: false } }
+        loading: [{ type: text, fill: false, text: { set: Ui.Translations, key: loading }, style: muted }]
         failure:
-          type: value
-          fill: false
-          labels: []
-          value: { root: error, path: [message] }
-          present: { type: string }
-        reloadOn: [focus, unauthorized]
+          - type: value
+            fill: false
+            labels: []
+            value: { root: error, path: [message] }
+            present: { type: string }
   - name: plain
     invoke: { kind: Probe.Read, source: !ref plain }
   - name: plainIs
@@ -185,22 +192,26 @@ steps:
     inputs:
       actual: !cel "steps.plain.result.node"
       expected:
-        type: data
+        type: query
         fill: false
-        schema: { type: object }
-        source: { path: { value: /api/plain }, pathParams: {}, queryParams: {} }
-        query: {}
-        content: { type: text, fill: false, text: { text: Ready, context: null, lang: und, computed: false } }
-        loading: { type: text, fill: false, text: { set: Ui.Translations, key: loading }, style: muted }
+        query:
+          id: UiDataTest/plain/content/query
+          schema: { type: object }
+          method: GET
+          url: { path: { value: /api/plain }, pathParams: {}, queryParams: {} }
+          input: null
+          query: {}
+          reloadOn: []
+        content: [{ type: text, fill: false, text: { text: Ready, context: null, lang: und, computed: false } }]
+        loading: [{ type: text, fill: false, text: { set: Ui.Translations, key: loading }, style: muted }]
         failure:
-          type: stack
-          fill: false
-          press: null
-          style: danger
-          children:
-            - { type: value, fill: false, value: { root: error, path: [code] }, present: { type: string }, labels: [], style: strong }
-            - { type: value, fill: false, value: { root: error, path: [message] }, present: { type: string }, labels: [] }
-        reloadOn: []
+          - type: stack
+            fill: false
+            press: null
+            style: danger
+            children:
+              - { type: value, fill: false, value: { root: error, path: [code] }, present: { type: string }, labels: [], style: strong }
+              - { type: value, fill: false, value: { root: error, path: [message] }, present: { type: string }, labels: [] }
   - name: note
     invoke: { kind: Probe.Read, source: !ref note }
   - name: noteFields

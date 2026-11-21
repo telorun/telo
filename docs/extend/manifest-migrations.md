@@ -253,7 +253,7 @@ A rule can bind a declaration its node places, at a pointer into the node (inlin
 
 ### Chains, order and failure
 
-A consumer several releases behind needs several migrations on one node. Each node is brought to a fixpoint: the first rule (ordered by migration code, then position) whose type and `match` hold for the node's current value and that has not fired on it applies, each rule fires at most once per node, and a leftover match when none applies is `MIGRATION_FAILED` (a cycle). A node reports one diagnostic per migration that fired, with the migration's `severity` (`info`, `hint`, `warning`).
+A consumer several releases behind needs several migrations on one node. Each node is brought to a fixpoint: the first rule (ordered by migration code, then position) whose type and `match` hold for the node's current value and that has not fired on it applies, each rule fires at most once per node, and a leftover match when none applies is `MIGRATION_FAILED` (a cycle). Each outermost rewritten node reports one diagnostic per migration that fired on it or on a node inside it, at that outer node, with the migration's `severity` (`info`, `hint`, `warning`): a placement whose inline declaration is rewritten too is one finding, while a named declaration placed by two nodes is three — its own and each placement's. `telo migrate` counts rewrites the same way.
 
 Any failure leaves the node untouched and reports `MIGRATION_FAILED` at the node — at the `imports:` entry for a dependency's file — naming the migration and the cause; the kernel raises `ERR_MIGRATION_FAILED` at load. Findings of the current schema under that node are held back.
 

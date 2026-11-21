@@ -7,7 +7,7 @@ import { parseAllDocuments } from "yaml";
 const here = dirname(fileURLToPath(import.meta.url));
 const readJson = (file: string) => JSON.parse(readFileSync(file, "utf8"));
 
-// The page HTML comes from @scalar/core and the script that reads it from the
+// The page HTML comes from @scalar/client-side-rendering and the script that reads it from the
 // staged standalone.js; they agree only when both come from one Scalar release.
 describe("Scalar's staged browser bundle", () => {
   it("is from the release whose rendering libraries the controller bundles", () => {
@@ -17,11 +17,11 @@ describe("Scalar's staged browser bundle", () => {
 
     expect(release.version).toBe(moduleDoc.sources.scalar.version);
     expect({
-      "@scalar/core": own.dependencies["@scalar/core"],
-      "@scalar/openapi-parser": own.dependencies["@scalar/openapi-parser"],
+      "@scalar/client-side-rendering": own.dependencies["@scalar/client-side-rendering"],
+      "@scalar/json-magic": own.dependencies["@scalar/json-magic"],
     }).toEqual({
-      "@scalar/core": release.dependencies["@scalar/core"],
-      "@scalar/openapi-parser": release.dependencies["@scalar/openapi-parser"],
+      "@scalar/client-side-rendering": release.dependencies["@scalar/client-side-rendering"],
+      "@scalar/json-magic": release.dependencies["@scalar/json-magic"],
     });
   });
 });

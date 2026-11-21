@@ -42,25 +42,33 @@ inputModel:
 request: { target: /api/decisions }
 label: Decide
 ---
-kind: Ui.Data
+kind: Ui.View
 metadata: { name: authorUnprompted }
-model: !ref PlanDetail
-source: /api/plan
 content:
-  type: button
-  action: !ref decide
-  inputs: { revision: !cel "data.plan.latestRevision.seq", hash: !cel "data.plan.latestRevision.hash" }
-  prompt: false
+  type: query
+  query:
+    kind: Ui.Query
+    model: !ref PlanDetail
+    url: /api/plan
+  content:
+    - type: button
+      action: !ref decide
+      inputs: { revision: !cel "data.plan.latestRevision.seq", hash: !cel "data.plan.latestRevision.hash" }
+      prompt: false
 ---
-kind: Ui.Data
+kind: Ui.View
 metadata: { name: hashMisspelled }
-model: !ref PlanDetail
-source: /api/plan
 content:
-  type: button
-  action: !ref decide
-  inputs: { revision: !cel "data.plan.latestRevision.seq", hsh: !cel "data.plan.latestRevision.hash" }
-  prompt: true
+  type: query
+  query:
+    kind: Ui.Query
+    model: !ref PlanDetail
+    url: /api/plan
+  content:
+    - type: button
+      action: !ref decide
+      inputs: { revision: !cel "data.plan.latestRevision.seq", hsh: !cel "data.plan.latestRevision.hash" }
+      prompt: true
 ---
 # Its form enters `author` alone, so `id` could never be sent, whatever binds it.
 kind: Ui.Action
@@ -75,24 +83,32 @@ request: { target: /api/comments }
 label: Comment
 fields: [author]
 ---
-kind: Ui.Data
+kind: Ui.View
 metadata: { name: commentBound }
-model: !ref PlanDetail
-source: /api/plan
 content:
-  type: button
-  action: !ref commentIncomplete
-  inputs: { id: !cel "data.plan.id" }
-  prompt: true
+  type: query
+  query:
+    kind: Ui.Query
+    model: !ref PlanDetail
+    url: /api/plan
+  content:
+    - type: button
+      action: !ref commentIncomplete
+      inputs: { id: !cel "data.plan.id" }
+      prompt: true
 ---
-kind: Ui.Data
+kind: Ui.View
 metadata: { name: revisionTypo }
-model: !ref PlanDetail
-source: /api/plan
 content:
-  type: button
-  action: !ref decide
-  inputs:
-    revision: !cel "data.plan.latestRevison.seq"
-    hash: !cel "data.plan.latestRevision.hash"
-  prompt: true
+  type: query
+  query:
+    kind: Ui.Query
+    model: !ref PlanDetail
+    url: /api/plan
+  content:
+    - type: button
+      action: !ref decide
+      inputs:
+        revision: !cel "data.plan.latestRevison.seq"
+        hash: !cel "data.plan.latestRevision.hash"
+      prompt: true

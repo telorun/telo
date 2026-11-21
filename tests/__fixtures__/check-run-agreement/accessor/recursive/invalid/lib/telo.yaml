@@ -1,0 +1,22 @@
+# The chain a recursive node's list region binds, written at the root node,
+# where no region is in force.
+kind: Telo.Library
+metadata:
+  name: AccessorRecursiveInvalidLib
+  version: 1.0.0
+  description: Fixture library whose tree names a list's binding outside every list.
+imports: { Acc: ../../../kinds }
+exports: { resources: [probe] }
+---
+kind: Acc.Tree
+metadata: { name: outside }
+root:
+  label: !cel "row.name"
+  rows:
+    - label: !cel "row.name"
+---
+kind: Telo.Sequence
+metadata: { name: probe }
+steps:
+  - name: tree
+    invoke: { kind: Acc.Read, source: !ref outside }

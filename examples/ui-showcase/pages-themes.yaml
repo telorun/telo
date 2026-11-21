@@ -3,8 +3,7 @@
 # this view on its `/themes` page; the `/` application adds the links between
 # the mounts and the brand switch.
 kind: Ui.View
-metadata:
-  name: themesPage
+metadata: { name: themesPage }
 content:
   type: stack
   children:
@@ -77,8 +76,7 @@ content:
 ---
 # The page every application lists at /themes, placing the view.
 kind: Ui.Page
-metadata:
-  name: themesScreen
+metadata: { name: themesScreen }
 path: /themes
 title: Themes
 children:

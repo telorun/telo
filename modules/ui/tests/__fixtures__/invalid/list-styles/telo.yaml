@@ -13,23 +13,31 @@ schema:
       type: array
       items: { type: object, required: [op, text], properties: { op: { type: string }, text: { type: string } } }
 ---
-kind: Ui.Data
+kind: Ui.View
 metadata: { name: rowStyleComputed }
-model: !ref Diff
-source: /api/plan
 content:
-  type: list
-  rows: !cel "data.lines"
-  rowStyle: { by: !cel "row.op + 's'", cases: { added: success } }
-  columns: [{ value: !cel "row.text" }]
+  type: query
+  query:
+    kind: Ui.Query
+    model: !ref Diff
+    url: /api/plan
+  content:
+    - type: list
+      rows: !cel "data.lines"
+      rowStyle: { by: !cel "row.op + 's'", cases: { added: success } }
+      columns: [{ value: !cel "row.text" }]
 ---
-kind: Ui.Data
+kind: Ui.View
 metadata: { name: cellStyleComputed }
-model: !ref Diff
-source: /api/plan
 content:
-  type: list
-  rows: !cel "data.lines"
-  columns:
-    - value: !cel "row.text"
-      style: { by: !cel "size(row.op)", cases: { "0": muted } }
+  type: query
+  query:
+    kind: Ui.Query
+    model: !ref Diff
+    url: /api/plan
+  content:
+    - type: list
+      rows: !cel "data.lines"
+      columns:
+        - value: !cel "row.text"
+          style: { by: !cel "size(row.op)", cases: { "0": muted } }

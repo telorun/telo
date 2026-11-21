@@ -1,0 +1,42 @@
+# A kind with an ACCESSOR TEMPLATE field: a map or a list of accessors, at any
+# depth, each leaf a plain chain or a literal, handed to the controller as
+# bindings and never evaluated.
+kind: Telo.Library
+metadata:
+  name: Search
+  version: 0.1.0
+  description: >-
+    Fixture library whose criteria kind takes an accessor template — structured
+    search criteria composed from a page's query parameters — and hands it to
+    its controller as bindings.
+lang: en
+exports: { kinds: [Criteria, Read] }
+---
+kind: Telo.Definition
+metadata:
+  name: Criteria
+  description: Search criteria composed from a page's query parameters and sent to a search endpoint.
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Criteria]
+schema:
+  type: object
+  additionalProperties: false
+  required: [criteria]
+  properties:
+    criteria:
+      type: object
+      x-telo-eval: accessor-template
+      x-telo-context:
+        type: object
+        properties:
+          query: { x-telo-context-eval: accessor, type: object, additionalProperties: { type: string } }
+---
+kind: Telo.Definition
+metadata: { name: Read, description: Returns what the provider it names provides. }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Read]
+schema:
+  type: object
+  additionalProperties: false
+  required: [source]
+  properties: { source: { x-telo-ref: { kind: Self.Criteria, use: dependency } } }

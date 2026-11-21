@@ -3,6 +3,7 @@ import {
   accessorProblems,
   type AccessorField,
   type AccessorSite,
+  type CelEvalSites,
 } from "@telorun/analyzer";
 import { RuntimeError, type ResourceManifest } from "@telorun/sdk";
 
@@ -21,6 +22,7 @@ export function refuseNonChainAccessors(
   subject: string,
   resource: ResourceManifest,
   sites: readonly AccessorSite[],
+  contexts: NonNullable<CelEvalSites["contexts"]>,
 ): AccessorField[] {
   if (sites.length === 0) return [];
   const fields = accessorFields(resource as Record<string, unknown>, {
@@ -28,6 +30,7 @@ export function refuseNonChainAccessors(
     runtime: [],
     regions: [],
     accessor: sites,
+    contexts,
   });
   for (const field of fields) {
     for (const problem of accessorProblems(field)) {

@@ -1,10 +1,12 @@
-import { getHtmlDocument } from "@scalar/core/libs/html-rendering";
-import { normalize, toJson, toYaml } from "@scalar/openapi-parser";
+import { renderApiReference } from "@scalar/client-side-rendering";
+import { normalize } from "@scalar/json-magic/helpers/normalize";
 import { type ResourceContext, type ResourceInstance, type RuntimeResource } from "@telorun/sdk";
 import { FastifyInstance, type FastifyRequest } from "fastify";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { stringify } from "yaml";
 import { normalizeMountPrefix } from "./mount-prefix.js";
+import { finalizeDocument } from "./openapi-document.js";
 import { installSpecServerUrlRewrite, specServerUrlIsPerRequest } from "./openapi-spec-servers.js";
 import { documentForHost, hostRoutesOf } from "./host-routes.js";
 import { requestHostOf } from "./request-host.js";
@@ -16,8 +18,8 @@ type HttpReferenceResource = RuntimeResource & {
 
 /** Scalar's browser bundle, staged from its npm release by the module's
  *  `sources:` block and shipped in the `assets` layer. It reads the page
- *  `getHtmlDocument` renders, so `@scalar/core` stays pinned to the version that
- *  release depends on (`tests/scalar-release.test.ts`). */
+ *  `renderApiReference` renders, so `@scalar/client-side-rendering` stays pinned
+ *  to the version that release depends on (`tests/scalar-release.test.ts`). */
 const BROWSER_BUNDLE = "./assets/scalar/standalone.js";
 /** Where the page loads the bundle from, relative to the reference's prefix. */
 const BUNDLE_ROUTE = "js/scalar.js";
@@ -87,6 +89,7 @@ class HttpReference implements ResourceInstance {
       );
     }
     const bundle = this.bundle;
+    const title = this.title;
     if (bundle === undefined) {
       throw new Error(`Http.Reference mounted at '${routePrefix}' was registered before init().`);
     }
@@ -97,18 +100,19 @@ class HttpReference implements ResourceInstance {
       installSpecServerUrlRewrite(app, `${base}/openapi.json`);
     }
     const configuration: Record<string, unknown> = { _integration: "fastify" };
-    if (this.title !== undefined) configuration.pageTitle = this.title;
     if (this.theme !== undefined) configuration.theme = this.theme;
 
     const withSwagger = app as unknown as { swagger(): Record<string, unknown> };
     const routes = hostRoutesOf(app);
     // The document lists exactly the routes the requesting host reaches.
-    const document = (request: FastifyRequest) =>
-      documentForHost(
-        normalize(withSwagger.swagger()) as Record<string, unknown>,
+    const document = (request: FastifyRequest) => {
+      const collected = withSwagger.swagger();
+      return documentForHost(
+        finalizeDocument(collected, normalize(collected) as Record<string, unknown>),
         routes,
         requestHostOf(app, request),
       );
+    };
 
     app.route({
       method: "GET",
@@ -120,7 +124,7 @@ class HttpReference implements ResourceInstance {
           .header("Content-Disposition", `filename=${DOWNLOAD_NAME}.json`)
           .header("Access-Control-Allow-Origin", "*")
           .header("Access-Control-Allow-Methods", "*")
-          .send(JSON.parse(toJson(document(request))));
+          .send(JSON.parse(JSON.stringify(document(request))));
       },
     });
     app.route({
@@ -133,7 +137,7 @@ class HttpReference implements ResourceInstance {
           .header("Content-Disposition", `filename=${DOWNLOAD_NAME}.yaml`)
           .header("Access-Control-Allow-Origin", "*")
           .header("Access-Control-Allow-Methods", "*")
-          .send(toYaml(document(request)));
+          .send(stringify(document(request)));
       },
     });
     if (base !== "" && !ignoresTrailingSlash(app)) {
@@ -159,7 +163,7 @@ class HttpReference implements ResourceInstance {
         return reply
           .header("Content-Type", "text/html; charset=utf-8")
           // Relative, so the page works behind a proxy that rewrites the prefix.
-          .send(getHtmlDocument({ cdn: BUNDLE_ROUTE, ...configuration, url: "./openapi.json" }));
+          .send(renderApiReference({ cdn: BUNDLE_ROUTE, pageTitle: title, config: { ...configuration, url: "./openapi.json" } }));
       },
     });
     app.route({

@@ -10,32 +10,27 @@ metadata:
     Fixture library whose table kind takes row accessors — plain chains typed
     against the table's row model — and hands them to its controller as
     bindings.
-exports:
-  kinds: [Table, Preset, Styled, Read]
+exports: { kinds: [Table, Preset, Styled, Read, Tree], resources: [Node] }
 ---
 kind: Telo.Definition
 metadata:
   name: Table
   description: Provides the title and the row accessors it was configured with, exactly as it received them.
 capability: Telo.Provider
-controllers:
-  - pkg:telo/local/js?path=./probe.mjs#Table
+controllers: [pkg:telo/local/js?path=./probe.mjs#Table]
 schema:
   type: object
   additionalProperties: false
   required: [model]
   properties:
-    model:
-      x-telo-ref: { kind: Telo.Type, use: schema }
+    model: { x-telo-ref: { kind: Telo.Type, use: schema } }
     title: { type: string }
     rowStyle:
       type: string
       x-telo-eval: accessor
       x-telo-context:
         type: object
-        properties:
-          row:
-            x-telo-context-ref-from: "model/schema"
+        properties: { row: { x-telo-context-ref-from: "model/schema" } }
     columns:
       type: array
       items:
@@ -46,11 +41,7 @@ schema:
           header: { type: string }
           value:
             x-telo-eval: accessor
-            x-telo-context:
-              type: object
-              properties:
-                row:
-                  x-telo-context-from-root: "model"
+            x-telo-context: { type: object, properties: { row: { x-telo-context-from-root: "model" } } }
 ---
 # A templated kind composing a table. The accessor it writes in its body reaches
 # the table as written — the body's expansion evaluates only what reads `self`.
@@ -64,8 +55,7 @@ schema:
   additionalProperties: false
   required: [model, label]
   properties:
-    model:
-      x-telo-ref: { kind: Telo.Type, use: schema }
+    model: { x-telo-ref: { kind: Telo.Type, use: schema } }
     label: { type: string }
 resources:
   - kind: Self.Table
@@ -91,16 +81,13 @@ schema:
   additionalProperties: false
   required: [model, rowStyle]
   properties:
-    model:
-      x-telo-ref: { kind: Telo.Type, use: schema }
+    model: { x-telo-ref: { kind: Telo.Type, use: schema } }
     rowStyle:
       type: string
       x-telo-eval: accessor
       x-telo-context:
         type: object
-        properties:
-          row:
-            x-telo-context-ref-from: "model/schema"
+        properties: { row: { x-telo-context-ref-from: "model/schema" } }
 resources:
   - kind: Self.Table
     metadata: { name: table }
@@ -110,16 +97,39 @@ resources:
 provide: !ref table
 ---
 kind: Telo.Definition
-metadata:
-  name: Read
-  description: Returns what the value source it holds provides.
+metadata: { name: Read, description: Returns what the value source it holds provides. }
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./probe.mjs#Read
+controllers: [pkg:telo/local/js?path=./probe.mjs#Read]
 schema:
   type: object
   required: [source]
   additionalProperties: false
+  properties: { source: { x-telo-ref: { kind: Telo.Provider, use: call } } }
+---
+# A recursive node whose `rows` list declares a CEL context: a label is an
+# accessor at every depth, and a chain there starts at `row` only inside a list.
+kind: Telo.JsonSchema
+metadata: { name: Node }
+schema:
+  type: object
+  additionalProperties: false
   properties:
-    source:
-      x-telo-ref: { kind: Telo.Provider, use: call }
+    label: { x-telo-eval: accessor }
+    rows:
+      type: array
+      items: { $ref: "#" }
+      x-telo-context:
+        type: object
+        properties: { row: { type: object, properties: { name: { type: string } } } }
+---
+kind: Telo.Definition
+metadata:
+  name: Tree
+  description: Provides the tree of labels it was configured with, exactly as it received it.
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./probe.mjs#Tree]
+schema:
+  type: object
+  additionalProperties: false
+  required: [root]
+  properties: { root: { $ref: "telo://Self/Node" } }

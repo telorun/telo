@@ -10,85 +10,77 @@ metadata:
   description: >-
     Test fixture declaring views and readers whose conditions and values name
     roots, keywords and query parameters their scope does not declare.
-imports:
-  Ui: ../../../../
+imports: { Ui: ../../../../ }
 ---
 kind: Ui.View
-metadata:
-  name: outsideProfile
+metadata: { name: outsideProfile }
 content:
   type: text
   text: Never
-  shown:
-    at: true
-    matches:
-      if: { const: true }
----
-kind: Ui.Data
-metadata:
-  name: reservedQuery
-model:
-  kind: Telo.JsonSchema
-  schema: { type: object }
-query:
-  _teloOpen: { type: string }
-source: { path: /api/auth }
-content: { type: text, text: Signed in }
----
-kind: Ui.Data
-metadata:
-  name: unsatisfiable
-model:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      count: { type: integer }
-source: { path: /api/counts }
-content:
-  type: text
-  text: Billing
-  shown:
-    at: !cel "data.count"
-    matches: { const: billing }
+  shown: { at: true, matches: { if: { const: true } } }
 ---
 kind: Ui.View
-metadata:
-  name: dataOutsideReader
+metadata: { name: reservedQuery }
+content: { type: query, query: { kind: Ui.Query, model: { kind: Telo.JsonSchema, schema: { type: object } }, query: { _teloOpen: { type: string } }, url: { path: /api/auth } }, content: [{ type: text, text: Signed in }] }
+---
+kind: Ui.View
+metadata: { name: unsatisfiable }
+content:
+  type: query
+  query:
+    kind: Ui.Query
+    model:
+      kind: Telo.JsonSchema
+      schema: { type: object, properties: { count: { type: integer } } }
+    url: { path: /api/counts }
+  content:
+    - type: text
+      text: Billing
+      shown:
+        at: !cel "data.count"
+        matches: { const: billing }
+---
+kind: Ui.View
+metadata: { name: dataOutsideReader }
 content:
   type: value
   value: !cel "data.x"
 ---
 kind: Ui.View
-metadata:
-  name: valuesOutsideForm
+metadata: { name: valuesOutsideForm }
 content:
   type: value
   value: !cel "values.x"
 ---
-kind: Ui.Data
-metadata:
-  name: undeclaredQuery
-model:
-  kind: Telo.JsonSchema
-  schema: { type: object }
-query:
-  signin: { type: string }
-source: { path: /api/auth }
+kind: Ui.View
+metadata: { name: undeclaredQuery }
 content:
-  type: value
-  value: !cel "query.signn"
+  type: query
+  query:
+    kind: Ui.Query
+    model: { kind: Telo.JsonSchema, schema: { type: object } }
+    query: { signin: { type: string } }
+    url: { path: /api/auth }
+  content:
+    - type: value
+      value: !cel "query.signn"
+  loading:
+    - type: value
+      value: !cel "query.sgnin"
+  failure:
+    - type: value
+      value: !cel "query.signi"
 ---
-kind: Ui.Data
-metadata:
-  name: evaluatedData
-model:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      x: { type: string }
-source: { path: /api/x }
+kind: Ui.View
+metadata: { name: evaluatedData }
 content:
-  type: text
-  text: !cel "data.x"
+  type: query
+  query:
+    kind: Ui.Query
+    model:
+      kind: Telo.JsonSchema
+      schema: { type: object, properties: { x: { type: string } } }
+    url: { path: /api/x }
+  content:
+    - type: text
+      text: !cel "data.x"

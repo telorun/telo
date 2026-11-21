@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AnalysisRegistry } from "../src/analysis-registry.js";
 import { StaticAnalyzer } from "../src/analyzer.js";
-import { celEvalModeAt, celEvalSites } from "../src/eval-paths.js";
+import { accessorBindingNamesAt, celEvalModeAt, celEvalSites } from "../src/eval-paths.js";
 import { textSlotAccessorProblems } from "../src/text-slot-accessor.js";
 import { flattenForAnalyzer } from "../src/flatten-for-analyzer.js";
 import { Loader } from "../src/manifest-loader.js";
@@ -161,9 +161,8 @@ describe("typing inside a recursive named shape", () => {
     const { registry, manifests } = await analyze(view(`  children: []`));
     const definition = registry.resolveDefinition("Tree.View")!;
     const sites = celEvalSites(definition.schema as Record<string, any>, registry.shapeLookup);
-    expect(sites.accessor?.map((site) => [site.path, [...site.bindings].sort()])).toEqual([
-      ["content(.children[*])*.shown.at", ["page", "row"]],
-    ]);
+    expect(sites.accessor?.map((site) => site.path)).toEqual(["content(.children[*])*.shown.at"]);
+    expect(accessorBindingNamesAt(sites, "content.children[2].children[0].shown.at").sort()).toEqual(["page", "row"]);
     expect(sites.runtime).toEqual(["content(.children[*])*.shown.label"]);
     expect(celEvalModeAt(sites, "content.children[2].children[0].shown.label")).toBe("runtime");
     expect(manifests.length).toBeGreaterThan(0);

@@ -14,6 +14,7 @@
  * Browser-safe: no Node built-ins.
  */
 import { parseCanonicalTypeSchemaId } from "@telorun/sdk";
+import { evalAnnotationOf } from "./eval-paths.js";
 import { resolveSchemaReference, schemaReferenceParts } from "./schema-reference.js";
 import {
   judgeValues,
@@ -224,6 +225,20 @@ export function walkTextValues(
         if (!segments) continue;
         let target: unknown = node;
         for (const segment of segments) target = isSchema(target) && isSchema(target.properties) ? target.properties[segment] : undefined;
+        // A message's values are one value each: a structure of accessors is
+        // no value a placeholder can be formatted with.
+        const template = [child, target].find((field) => evalAnnotationOf(field) === "accessor-template");
+        if (template !== undefined) {
+          const [p, i] = step(["properties", key]);
+          const which = template === child ? `the values '${key}' are` : `the text it names is`;
+          report(
+            p,
+            shape,
+            i,
+            `pairing values with a text where ${which} an 'x-telo-eval: accessor-template' field, which may hold a structure rather than one value per placeholder. Declare it 'x-telo-eval: accessor'.`,
+            TEXT_VALUES_FOR_ANNOTATION,
+          );
+        }
         if (isSchema(target) && TEXT_VALUES_ANNOTATION in target) {
           const [p, i] = step(["properties", ...segments.flatMap((segment, n) => (n === 0 ? [segment] : ["properties", segment]))]);
           report(p, shape, i, `on a text '${key}' already pairs with values through x-telo-text-values-for: the text is formatted with those. Remove one of the two.`);

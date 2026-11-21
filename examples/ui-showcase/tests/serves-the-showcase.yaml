@@ -250,7 +250,7 @@ steps:
   - name: nodes
     value:
       overview: !cel "steps.overview.result.body.children[1].children"
-      record: !cel "steps.overview.result.body.children[1].children[13].content.children"
+      record: !cel "steps.overview.result.body.children[1].children[13].content[0].children"
       perRequest: !cel "steps.overview.result.body.children[2].children"
       polishPerRequest: !cel "steps.polishOverview.result.body.children[2].children"
       acmePerRequest: !cel "steps.acmeOverview.result.body.children[2].children"
@@ -560,7 +560,7 @@ steps:
           cel.bind(t, steps.nodes.result.overview[25], [t.address, t.tabs.map(tab, [tab.text.message[0], tab.children.map(c, c.type)])])
         polishTab: !cel "steps.polishOverview.result.body.children[1].children[25].tabs[0].text"
       expected:
-        kinds: [ text, text, columns, text, text, columns, columns, text, text, columns, text, text, columns, data, text, text, listing, text, columns, text, text, text, box, text, text, tabs ]
+        kinds: [ text, text, columns, text, text, columns, columns, text, text, columns, text, text, columns, query, text, text, listing, text, columns, text, text, text, box, text, text, tabs ]
         containers: [ box, stack, box ]
         styles: [ heading, subheading, muted, strong, accent, danger, warning, success, [ strong, accent ] ]
         badges: [ [ badge, "-" ], [ badge, accent ], [ badge, success ], [ badge, warning ], [ badge, danger ] ]
@@ -588,7 +588,7 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        source: !cel "steps.nodes.result.overview[13].source"
+        url: !cel "steps.nodes.result.overview[13].query.url"
         presented: !cel >-
           (steps.nodes.result.record[2].children + steps.nodes.result.record[3].children)
             .map(s, [s.children[1].value.path[0], s.children[1].present])
@@ -601,7 +601,7 @@ steps:
         plural: !cel "steps.nodes.result.record[9].text"
         values: !cel "steps.nodes.result.record[10].text"
       expected:
-        source: { path: { value: /api/team }, pathParams: {}, queryParams: {} }
+        url: { path: { value: /api/team }, pathParams: {}, queryParams: {} }
         presented:
           - [ homepage, { type: string, format: uri } ]
           - [ guide, { type: string, format: uri-reference } ]
@@ -712,19 +712,19 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        source: !cel "steps.nodes.result.reader.source"
-        query: !cel "steps.nodes.result.reader.query"
-        neverDelivered: !cel "steps.nodes.result.reader.content.children.exists(c, c.type == 'text' && c.text.message[0].startsWith('Never delivered'))"
-        neverProvided: !cel "steps.nodes.result.reader.content.children.exists(c, c.type == 'text' && c.text.message[0] == 'Never provided.')"
-        hidden: !cel "steps.nodes.result.reader.content.children[2].shown"
-        wrapped: !cel "steps.nodes.result.reader.content.children[5]"
-        keywords: !cel "steps.nodes.result.reader.content.children.filter(c, 'shown' in c && 'root' in c.shown.at && c.shown.at.root == 'data').map(c, [c.shown.at.path, c.shown.matches])"
-        byQuery: !cel "steps.nodes.result.reader.content.children.filter(c, 'shown' in c && 'root' in c.shown.at && c.shown.at.root == 'query').map(c, [c.shown.at.path, c.shown.matches])"
-        links: !cel "steps.nodes.result.reader.content.children[37].children.map(c, c.to.href.path.value)"
+        url: !cel "steps.nodes.result.reader.query.url"
+        query: !cel "steps.nodes.result.reader.query.query"
+        neverDelivered: !cel "steps.nodes.result.reader.content[0].children.exists(c, c.type == 'text' && c.text.message[0].startsWith('Never delivered'))"
+        neverProvided: !cel "steps.nodes.result.reader.content[0].children.exists(c, c.type == 'text' && c.text.message[0] == 'Never provided.')"
+        hidden: !cel "steps.nodes.result.reader.content[0].children[2].shown"
+        wrapped: !cel "steps.nodes.result.reader.content[0].children[5]"
+        keywords: !cel "steps.nodes.result.reader.content[0].children.filter(c, 'shown' in c && 'root' in c.shown.at && c.shown.at.root == 'data').map(c, [c.shown.at.path, c.shown.matches])"
+        byQuery: !cel "steps.nodes.result.reader.content[0].children.filter(c, 'shown' in c && 'root' in c.shown.at && c.shown.at.root == 'query').map(c, [c.shown.at.path, c.shown.matches])"
+        links: !cel "steps.nodes.result.reader.content[0].children[37].children.map(c, c.to.href.path.value)"
         pageQuery: !cel "steps.conditions.result.body.query"
         pageOwn: !cel "steps.conditions.result.body.children[2].children[2].shown"
       expected:
-        source: { path: { value: /api/project-summary }, pathParams: {}, queryParams: { code: { value: TEL-42 } } }
+        url: { path: { value: /api/project-summary }, pathParams: {}, queryParams: { code: { value: TEL-42 } } }
         query:
           mode: { type: string, enum: [ compact, detailed ] }
           tag: { type: array, items: { type: string } }
@@ -818,38 +818,39 @@ steps:
     inputs:
       actual:
         project:
-          source: !cel "steps.nodes.result.data[3].source"
-          query: !cel "steps.nodes.result.data[3].query"
+          url: !cel "steps.nodes.result.data[3].query.url"
+          query: !cel "steps.nodes.result.data[3].query.query"
           loading: !cel "steps.nodes.result.data[3].loading"
-          failure: !cel "steps.nodes.result.data[3].failure.children.map(c, [c.type, 'shown' in c ? c.shown : null])"
-          reloadOn: !cel "steps.nodes.result.data[3].reloadOn"
+          failure: !cel "steps.nodes.result.data[3].failure[0].children.map(c, [c.type, 'shown' in c ? c.shown : null])"
+          reloadOn: !cel "steps.nodes.result.data[3].query.reloadOn"
         nested:
-          source: !cel "steps.nodes.result.data[3].content.children[2].source"
-          content: !cel "steps.nodes.result.data[3].content.children[2].content.columns.map(c, c.header.message[0])"
-        failing: !cel "steps.nodes.result.data[6].children.map(c, [c.source, c.failure.children.map(f, f.value.path[0])])"
-        clock: !cel "[steps.nodes.result.data[9].source.path.value, steps.nodes.result.data[9].reloadOn]"
+          url: !cel "steps.nodes.result.data[3].content[0].children[2].query.url"
+          content: !cel "steps.nodes.result.data[3].content[0].children[2].content[0].columns.map(c, c.header.message[0])"
+        failing: !cel "steps.nodes.result.data[6].children.map(c, [c.query.url, c.failure[0].children.map(f, f.value.path[0])])"
+        clock: !cel "[steps.nodes.result.data[9].query.url.path.value, steps.nodes.result.data[9].query.reloadOn]"
         gate:
-          source: !cel "steps.nodes.result.data[12].source.path.value"
-          reloadOn: !cel "steps.nodes.result.data[12].reloadOn"
-          branches: !cel "steps.nodes.result.data[12].content.children.map(c, c.shown)"
-          signIn: !cel "[steps.nodes.result.data[12].content.children[0].children[1].request.target.path.value, steps.nodes.result.data[12].content.children[0].children[1].fields.map(f, f.property), steps.nodes.result.data[12].content.children[0].children[1].onSuccess]"
-          account: !cel "[steps.nodes.result.data[12].content.children[1].children[0].source.path.value, steps.nodes.result.data[12].content.children[1].children[0].reloadOn]"
-          actions: !cel "steps.nodes.result.data[12].content.children[1].children[1].children.map(a, [a.request.target.path.value, a.label.message[0], a.onSuccess])"
+          type: !cel "steps.nodes.result.data[12].type"
+          url: !cel "steps.nodes.result.data[12].query.url.path.value"
+          reloadOn: !cel "steps.nodes.result.data[12].query.reloadOn"
+          branches: !cel "steps.nodes.result.data[12].content[0].children.map(c, c.shown)"
+          signIn: !cel "[steps.nodes.result.data[12].content[0].children[0].children[1].request.target.path.value, steps.nodes.result.data[12].content[0].children[0].children[1].fields.map(f, f.property), steps.nodes.result.data[12].content[0].children[0].children[1].onSuccess]"
+          account: !cel "[steps.nodes.result.data[12].content[0].children[1].children[0].query.url.path.value, steps.nodes.result.data[12].content[0].children[1].children[0].query.reloadOn]"
+          actions: !cel "steps.nodes.result.data[12].content[0].children[1].children[1].children.map(a, [a.request.target.path.value, a.label.message[0], a.onSuccess])"
       expected:
         project:
-          source:
+          url:
             path: { value: /api/project-summary }
             pathParams: {}
             queryParams: { code: { root: query, path: [ project ] } }
           query: { project: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" } }
-          loading: { type: text, fill: false, style: muted, text: { lang: en, message: [ Reading the project… ] } }
+          loading: [ { type: text, fill: false, style: muted, text: { lang: en, message: [ Reading the project… ] } } ]
           failure:
             - [ text, { at: { root: error, path: [] }, matches: { required: [ status ] } } ]
             - [ text, { at: { root: error, path: [] }, matches: { not: { required: [ status ] } } } ]
             - [ value, null ]
           reloadOn: []
         nested:
-          source: { path: { value: /api/project-people }, pathParams: {}, queryParams: { code: { root: query, path: [ project ] } } }
+          url: { path: { value: /api/project-people }, pathParams: {}, queryParams: { code: { root: query, path: [ project ] } } }
           content: [ Name, Role, E-mail ]
         failing:
           - [ { path: { value: /api/project-summary }, pathParams: {}, queryParams: { code: { value: NOPE-1 } } }, [ code, message ] ]
@@ -857,7 +858,8 @@ steps:
           - [ { path: { value: /api/projects }, pathParams: {}, queryParams: {} }, [ code, message ] ]
         clock: [ /api/clock, [ focus ] ]
         gate:
-          source: /api/session
+          type: query
+          url: /api/session
           reloadOn: [ focus, unauthorized ]
           branches:
             - { at: { root: data, path: [ signedIn ] }, matches: { const: false } }
@@ -1194,7 +1196,7 @@ steps:
         byHand:
           fields: !cel "steps.nodes.result.forms[6].fields.map(f, [f.property, f.control])"
           state: !cel "steps.nodes.result.forms[6].state"
-        requests: !cel "[steps.nodes.result.forms[9].source, steps.nodes.result.forms[9].content.columns.map(c, c.header.message[0])]"
+        requests: !cel "[steps.nodes.result.forms[9].query.url, steps.nodes.result.forms[9].content[0].columns.map(c, c.header.message[0])]"
         booking:
           basePath: !cel "steps.nodes.result.forms[13].basePath"
           groups: !cel "steps.nodes.result.forms[13].groups.map(g, [g.name, g.label.message[0], has(g.description) ? g.description.message[0] : '-', has(g.shown) ? g.shown : null])"
@@ -1215,13 +1217,13 @@ steps:
             cel.bind(f, steps.nodes.result.forms[13].fields[6],
               [f.presets.map(x, [x.label.message[0], x.unit, x.offset]), f.weekStart, f.initialPreset, f.warnLongerThan, f.label.message[0], f.description.message[0]])
           state: !cel "steps.nodes.result.forms[13].state"
-        bookings: !cel "[steps.nodes.result.forms[16].source, steps.nodes.result.forms[16].content.columns.map(c, c.header.message[0])]"
+        bookings: !cel "[steps.nodes.result.forms[16].query.url, steps.nodes.result.forms[16].content[0].columns.map(c, c.header.message[0])]"
         polish: !cel >-
           cel.bind(f, steps.polishForms.result.body.children[0].children, [
             f[0].text.message[0], f[3].fields[0].label.message[0], f[3].fields[1].labels[1].label.message[0],
-            f[13].groups[1].label.message[0], f[13].fields[6].presets[3].label.message[0], f[16].content.columns[3].header.message[0]])
+            f[13].groups[1].label.message[0], f[13].fields[6].presets[3].label.message[0], f[16].content[0].columns[3].header.message[0]])
       expected:
-        kinds: [ text, text, text, form, text, text, form, text, text, data, text, text, text, form, text, text, data ]
+        kinds: [ text, text, text, form, text, text, form, text, text, query, text, text, text, form, text, text, query ]
         derived:
           basePath: /api/requests
           fields:
@@ -1334,7 +1336,7 @@ steps:
           assign: !cel "cel.bind(a, steps.nodes.result.actions[8], [a.request.target.path.value, a.label.message[0], a.fields.map(f, f.property), a.failure.style, a.failure.children.map(c, [c.type, 'shown' in c ? c.shown : null]), a.failure.children[0].text.values, a.result.text.values])"
           refused: !cel "cel.bind(a, steps.nodes.result.actions[10], [a.request.target.path.value, a.answer.required, a.result, a.failure.style, a.failure.children[0].text.values, a.failure.children[1].value])"
         navigate: !cel "steps.nodes.result.actions[13].children.map(a, [a.request.target.path.value, a.fields.map(f, f.type), a.onSuccess])"
-        counts: !cel "[steps.nodes.result.actions[16].source, steps.nodes.result.actions[16].content.text.values.code]"
+        counts: !cel "[steps.nodes.result.actions[16].query.url, steps.nodes.result.actions[16].content[0].text.values.code]"
         move: !cel "cel.bind(a, steps.nodes.result.actions[17], [a.request.target.path.value, a.fields.map(f, f.property), a.onSuccess, a.result.children.map(c, c.type)])"
         comment: !cel "cel.bind(a, steps.nodes.result.actions[20], [a.request.target.path.value, a.concurrency, a.clearAnswerOn, a.enabled, a.onSuccess, a.result.text.values])"
         table:
@@ -1345,10 +1347,10 @@ steps:
               has(r.enabled) ? [r.enabled.matches, r.enabled.disabledText.message[0]] : [],
               r.action.result.text.message])
         list:
-          source: !cel "steps.nodes.result.actions[26].source"
-          rows: !cel "steps.nodes.result.actions[26].content.rows"
+          url: !cel "steps.nodes.result.actions[26].query.url"
+          rows: !cel "steps.nodes.result.actions[26].content[0].rows"
           rowActions: !cel >-
-            steps.nodes.result.actions[26].content.rowActions.map(r, [r.action.request.target.path.value, r.action.label.message[0], r.inputs,
+            steps.nodes.result.actions[26].content[0].rowActions.map(r, [r.action.request.target.path.value, r.action.label.message[0], r.inputs,
               has(r.confirm) ? r.confirm.message[0] : '-', has(r.prompt) ? r.prompt.fields.map(f, f.property) : [],
               has(r.enabled) ? [r.enabled.at, r.enabled.matches] : [], r.action.onSuccess])
         more: !cel >-
@@ -1369,14 +1371,14 @@ steps:
         polish: !cel >-
           cel.bind(a, steps.polishActions.result.body.children[0].children, [
             a[0].text.message[0], a[5].label.message[0], a[23].rowActions[0].action.label.message[0],
-            a[23].rowActions[1].confirm.message[0], a[26].content.rowActions[2].prompt.fields[0].label.message[0],
+            a[23].rowActions[1].confirm.message[0], a[26].content[0].rowActions[2].prompt.fields[0].label.message[0],
             a[29].children[0].label.message[0], a[34].failure.children[1].text.message[0],
             a[38].rowActions[0].confirm.message[0]])
       expected:
         kinds:
           [
             text, text, action, text, text, action, text, text, action, text, action, text, text, columns, text, text,
-            data, action, text, text, action, text, text, listing, text, text, data, text, text, columns, text, text,
+            query, action, text, text, action, text, text, listing, text, text, query, text, text, columns, text, text,
             action, text, action, text, text, columns, listing,
           ]
         bare: [ /api/unblock, Unblock TEL-42, [], { refreshes: [ { path: { value: /api/tasks }, pathParams: {}, queryParams: {} }, { path: { value: /api/task-counts }, pathParams: {}, queryParams: {} } ] }, false, false ]
@@ -1459,7 +1461,7 @@ steps:
               - []
               - [ { placeholder: title }, " is assigned to ", { placeholder: assignee }, "." ]
         list:
-          source: { path: { value: /api/comments }, pathParams: {}, queryParams: {} }
+          url: { path: { value: /api/comments }, pathParams: {}, queryParams: {} }
           rows: { root: data, path: [ comments ] }
           rowActions:
             - - /api/comments/pin
@@ -1672,7 +1674,7 @@ steps:
         menu: !cel "steps.records.result.body.children[0].children[20].items.map(i, i.to)"
         press: !cel "steps.records.result.body.children[0].children[21].press"
         fullPage: !cel "steps.records.result.body.children[0].children[21].layout.content.children[1].to"
-        page: !cel "[steps.recordPage.result.body.path, steps.recordPage.result.body.title.message[0], steps.recordPage.result.body.children[0].source]"
+        page: !cel "[steps.recordPage.result.body.path, steps.recordPage.result.body.title.message[0], steps.recordPage.result.body.children[0].query.url]"
       expected:
         menu:
           - type: openPage

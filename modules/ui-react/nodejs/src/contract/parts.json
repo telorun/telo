@@ -6,7 +6,7 @@
     ],
     "structure": [
       "box", "stack", "columns", "column", "text", "badge", "link", "image", "svg", "value", "time", "list",
-      "list-heading", "list-empty", "data", "bar", "bar-start", "bar-center", "bar-end", "command", "button", "press"
+      "list-heading", "list-empty", "query", "bar", "bar-start", "bar-center", "bar-end", "command", "button", "press"
     ],
     "markdown": [
       "markdown", "markdown-paragraph", "markdown-heading", "markdown-quote", "markdown-list",
@@ -89,7 +89,7 @@
     "status": ["component", "error", "error-code", "error-message", "loading"]
   },
   "states": {
-    "data-state": { "values": ["idle", "loading", "error", "empty", "submitting"], "on": ["page", "data", "listing", "form", "filters", "component", "action", "row-action", "button", "markdown", "chat"] },
+    "data-state": { "values": ["idle", "loading", "error", "empty", "submitting"], "on": ["page", "query", "listing", "form", "filters", "component", "action", "row-action", "button", "markdown", "chat"] },
     "data-actions": { "values": ["inside", "outside"], "on": ["chat-composer"] },
     "data-role": { "values": ["user", "assistant"], "on": ["chat-message"] },
     "data-status": {
@@ -113,7 +113,7 @@
       "values": ["true"],
       "on": [
         "app", "main", "page", "box", "stack", "columns", "text", "badge", "link", "image", "svg", "value", "time", "list", "bar",
-        "command", "button", "data", "listing", "form", "action", "filters", "component", "chat", "split", "aside", "split-content",
+        "command", "button", "query", "listing", "form", "action", "filters", "component", "chat", "split", "aside", "split-content",
         "markdown", "navigation", "tabs", "tab-panel"
       ]
     },
@@ -185,7 +185,7 @@
     },
     { "part": "app", "state": { "attribute": "data-fill", "value": "true" }, "properties": ["grid-template-rows", "height", "min-height"], "because": "a filling page holds the application to the viewport's height" },
     { "part": "box", "state": { "attribute": "data-fill", "value": "true" }, "properties": ["display", "flex-direction"], "because": "a filling box passes the room on to what it holds" },
-    { "part": "data", "state": { "attribute": "data-fill", "value": "true" }, "properties": ["display", "flex-direction"], "because": "a filling reader passes the room on to what it holds" },
+    { "part": "query", "state": { "attribute": "data-fill", "value": "true" }, "properties": ["display", "flex-direction"], "because": "a filling query node passes the room on to what it draws" },
     { "part": "columns", "state": { "attribute": "data-fill", "value": "true" }, "properties": ["align-items"], "because": "filling columns are each as tall as the row" },
     { "part": "filters", "state": { "attribute": "data-fill", "value": "true" }, "properties": ["align-items", "flex-direction", "flex-wrap", "grid-template-rows"], "because": "a filling filter bar passes the room left under its controls on to its content" },
     { "part": "split", "state": { "attribute": "data-fill", "value": "true" }, "properties": ["align-items"], "because": "a filling split view stretches its aside and its content to its height" }

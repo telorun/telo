@@ -263,25 +263,33 @@ path: /
 title: Inbox
 children:
   - { type: text, text: Support tickets, style: title }
-  - type: composite
-    ref:
-      kind: Ui.Data
+  - type: query
+    query:
+      kind: Ui.Query
       model: !ref Inbox
-      source: /api/tickets/inbox
       reloadOn: [focus]
-      content:
-        type: list
+      url: /api/tickets/inbox
+    content:
+      - type: list
         rows: !cel "data.tickets"
         columns:
-          - { header: "#", value: !cel "row.id" }
-          - { header: Subject, value: !cel "row.subject" }
-          - { header: Details, value: !cel "row.body" }
-          - { header: Status, value: !cel "row.status" }
+          - header: "#"
+            value: !cel "row.id"
+          - header: Subject
+            value: !cel "row.subject"
+          - header: Details
+            value: !cel "row.body"
+          - header: Status
+            value: !cel "row.status"
         rowActions:
           - action: !ref closeTicketAction
-            inputs: { id: !cel "row.id" }
+            inputs:
+              id: !cel "row.id"
             confirm: Close this ticket?
-            enabled: { at: !cel "row.status", matches: { const: open }, disabledText: Already closed. }
+            enabled:
+              at: !cel "row.status"
+              matches: { const: open }
+              disabledText: Already closed.
 ---
 kind: UiReact.App
 metadata: { name: ui }

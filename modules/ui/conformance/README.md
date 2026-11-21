@@ -2,7 +2,7 @@
 
 Data files a renderer's tests read, so every renderer answers what `ui`
 answers. Each is one JSON object, `{ description, rows }`, every row carrying a
-`name` and the case's inputs and expected outcome. All seven ship with the
+`name` and the case's inputs and expected outcome. All eight ship with the
 module through `files:`.
 
 | File | Pins |
@@ -14,6 +14,7 @@ module through `files:`.
 | `current-location.json` | whether a link to an address is marked as the current location |
 | `refreshes.json` | which readers a refresh entry, with its `*` / `**` segments, reads again |
 | `filter-tokens.json` | how text typed into a search-box filter bar becomes the bar's values |
+| `template-bindings.json` | the body a query's `input.body` template resolves to from the roots it reads |
 
 ## `listing-reads.json`
 
@@ -121,3 +122,22 @@ text is never a value. The reasons: `unknown-property` (the bar has no filter
 on it), `operator-unsupported` (none of its filters takes the operator),
 `value-not-listed` (an enumeration or boolean value that is not listed) and
 `value-invalid` (not a number, or not a date). Only renderers read this file.
+
+## `template-bindings.json`
+
+One row is one body template in the wire form `ui` produces for a query's
+`input.body` — a binding (`{ root, path }` or `{ value }`), or a `{ map }` /
+`{ list }` of templates, to any depth — the `roots` its chains read from, and
+either `body`, the value sent, or `omitted: true` when no body is. The rules the
+rows pin:
+
+- A chain is the value its path names under its root.
+- A chain holding nothing — a missing member, a missing root, or `null` — leaves
+  its member (or its list item) out of the body; `false`, `0` and `""` are values.
+- A `value` is sent as written, `null` included.
+- A map is sent even when every member was left out; a list keeps the order of
+  the items that remain.
+- A whole body that is a chain holding nothing is no body.
+
+`ui` resolves no body itself — it hands the template through in its wire form —
+so these rows bind the renderer, whose tests read them.

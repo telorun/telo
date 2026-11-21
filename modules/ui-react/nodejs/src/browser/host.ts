@@ -3,6 +3,7 @@ import type { Host, HostLocation } from "../contract/ui-react.js";
 import { changeKey, refreshCovers, type Refresh } from "./address-wire.js";
 import { openKey, openValue, withFiltersOf, withOpen } from "./open-address.js";
 import { pageKey, withOnlyPage, withPage } from "./page-key.js";
+import { QueryReads } from "./query-reads.js";
 
 export type { Host, HostLocation };
 
@@ -72,6 +73,8 @@ export class HostStore {
   protected host: Host;
   private readonly watchers = new Set<() => void>();
   private readonly channels: Channels;
+  /** The application's query reads, shared with a page opened over it. */
+  readonly queries: QueryReads;
   protected readonly guards = new Set<UnsavedGuard>();
   private question?: { guards: UnsavedGuard[]; perform: () => void };
   /** The index of the current history entry among those this application wrote. */
@@ -94,6 +97,7 @@ export class HostStore {
     memory?: { at: HostLocation; shares: HostStore },
   ) {
     this.channels = memory?.shares.channels ?? { changes: new Map(), kept: new Set(), rereads: new Map(), writes: new Map() };
+    this.queries = memory?.shares.queries ?? new QueryReads(this.fetch, this.onChanged);
     if (memory) {
       this.host = this.hostAt(memory.at);
       this.position = 0;

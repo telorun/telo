@@ -43,7 +43,7 @@ import {
   type NamedShapeLookup,
 } from "./eval-paths.js";
 import { isResolvedReference } from "./resolved-reference.js";
-import { declarationValuesAt } from "./schema-projection.js";
+import { declarationValuesAt, readDeclarationValuesAt, type DeclarationValue } from "./schema-projection.js";
 import { namedShapeReading } from "./named-shape-reading.js";
 import type { ValueSchemaHost } from "./value-schema-slot.js";
 
@@ -94,6 +94,12 @@ export interface ContextResolveOpts {
    *  `x-telo-context-ref-from` reads its sibling reference. `manifestItem` when
    *  omitted, for a caller whose context sits on a field of that item. */
   contextHolder?: Record<string, any>;
+  /** Where {@link contextHolder} sits: the declaration it is part of and its
+   *  concrete path there (`""` the declaration itself) — what an
+   *  `x-telo-context-from` path is walked from, so it can cross the
+   *  declaration's reference sites. Absent, the path is read on the holder
+   *  alone. */
+  contextHolderAt?: { readonly root: Record<string, any>; readonly path: string };
   /** When provided alongside `aliases`, used to resolve `x-telo-context-from-ref-kind`
    *  annotations: read a kind name from a path on `manifestRoot` and return the
    *  declared definition's `<field>` schema. */
@@ -546,27 +552,33 @@ export function resolveContextAnnotations(
 
   const from = schema["x-telo-context-from"] as string | undefined;
   if (from) {
-    const navigated = navigatePath(manifestItem, from.split("/")) as Record<string, any> | undefined;
-    // The navigated value is either a plain map of property names → sub-schemas
-    // (a transport scope's `request/schema` → `{ query, body, params }`), or a
-    // `telo#Type` field naming one contract (`inputType:`). The second form has
-    // to be resolved first: the standard library writes it as the inline
-    // `{ kind: Telo.JsonSchema, schema: … }` wrapper, so merging it verbatim
-    // would type the variable as `{ kind, schema }` instead of its properties.
-    // The navigated node — or one of the properties in it — may itself be an
-    // expression: a route whose `request.schema.body` is `!cel "self.model.schema"`
-    // declares a body whose SHAPE is only known once the template is
-    // instantiated. Such a name types as OPEN rather than as nothing, and a
-    // wholly dynamic map leaves the whole node open. Resolving it to nothing
-    // reports `request.body` as undefined, which blames the reader for the
-    // writer's dynamism — the same posture a rule takes when a value it reads
-    // is dynamic: skip the judgement, never invert it.
-    if (isDynamicNode(navigated)) {
-      return { ...schema, properties: { ...(schema.properties ?? {}) }, additionalProperties: true };
+    // The path is read from the context holder and may cross the reference
+    // sites of the declarations it walks (`reader/params`: the declaration the
+    // holder's `reader` names, then its `params`). Where it lands decides how the value is read:
+    // at a reference site it is a TYPE, whose properties the node takes; at any
+    // other field it is a property MAP, its entries the properties. A value an
+    // expression computes — the map, or a crossing that cannot be resolved here
+    // — leaves the node OPEN: not knowing is not knowing it is empty, and
+    // reporting `request.body` as undefined would blame the reader for the
+    // writer's dynamism.
+    const open = { ...schema, properties: { ...(schema.properties ?? {}) }, additionalProperties: true };
+    const reading = readContextFrom(from, contextHolder, normalizedOpts);
+    if (reading.unresolved) return open;
+    const properties: Record<string, any> = {};
+    let required: string[] | undefined;
+    for (const { value, holder, atReference } of reading.values) {
+      if (isDynamicNode(value)) return open;
+      if (atReference) {
+        const type =
+          referenceHost?.typeSchemaOf(value, holder) ??
+          resolveTypeFieldToSchema(value, declarations ?? NO_DECLARATIONS, holder);
+        if (!type || typeof type !== "object") return open;
+        Object.assign(properties, openDynamicProperties(type.properties as Record<string, any> | undefined) ?? {});
+        if (Array.isArray(type.required)) required = [...(required ?? []), ...type.required];
+      } else if (value && typeof value === "object" && !Array.isArray(value)) {
+        Object.assign(properties, openDynamicProperties(value as Record<string, any>));
+      }
     }
-    const asType = resolveTypeFieldToSchema(navigated, declarations ?? NO_DECLARATIONS, manifestRoot);
-    const resolved = openDynamicProperties(asType?.properties ?? navigated);
-    const required = Array.isArray(asType?.required) ? asType.required : undefined;
     // A member typed by an annotation of its own is the kind's, never the
     // merged map's.
     const typedOwn = Object.fromEntries(
@@ -576,7 +588,7 @@ export function resolveContextAnnotations(
     );
     return {
       ...schema,
-      properties: { ...(schema.properties ?? {}), ...(resolved ?? {}), ...typedOwn },
+      properties: { ...(schema.properties ?? {}), ...properties, ...typedOwn },
       ...(required ? { required } : {}),
       additionalProperties: false,
     };
@@ -882,6 +894,34 @@ function refFromSchema(
 }
 
 /**
+ * What an `x-telo-context-from: "<path>"` annotation reaches: the values the
+ * path names from the context holder, each with the declaration holding it,
+ * its path there and whether it sits at a reference site — the one reader the
+ * typing and the go-to-declaration site both call. With the holder's place and
+ * a crossing host it is walked from the declaration root through the holder's
+ * concrete path, a segment after a reference site continuing in the declaration
+ * that site names, resolved in the module that wrote it; without them the path
+ * is read on the holder alone, as data.
+ */
+export function readContextFrom(
+  annotation: string,
+  contextHolder: Record<string, any>,
+  opts: Pick<ContextResolveOpts, "contextHolderAt" | "referenceHost">,
+): { readonly values: readonly DeclarationValue[]; readonly unresolved: boolean } {
+  const segments = annotation.split("/");
+  const { contextHolderAt: place, referenceHost: host } = opts;
+  if (place && host) {
+    const prefix = place.path.match(/[^.[\]]+/g) ?? [];
+    return readDeclarationValuesAt(place.root, [...prefix, ...segments], host.scope);
+  }
+  const value = navigatePath(contextHolder, segments);
+  return {
+    values: value === undefined ? [] : [{ value, holder: contextHolder, atReference: false, at: segments.join(".") }],
+    unresolved: false,
+  };
+}
+
+/**
  * Extracts the concrete manifest array item for a given expression path + scope.
  * e.g. exprPath="routes[0].inputs.q", scope="$.routes[*].inputs" → manifest.routes[0]
  *
@@ -1011,30 +1051,7 @@ export function extractContextsFromSchema(
   return contextRegionsOf(schema, shapes, path).sort((a, b) => b.scope.length - a.scope.length);
 }
 
-/** One region in force at a site, and the concrete place it matched. */
-export interface MatchedContext {
-  scope: string;
-  schema: Record<string, any>;
-}
-
-/**
- * Every region in `contexts` covering `path`, outermost first: each one adds to
- * those enclosing it, a name it declares shadowing theirs. Ordered by how deep
- * the place it matched lies, so a region declared below another is read after
- * it whatever their scope text.
- */
-export function contextChainAt(
-  contexts: ReadonlyArray<{ scope: string; schema: Record<string, any> }>,
-  path: string,
-): MatchedContext[] {
-  const matched: Array<MatchedContext & { depth: number; order: number }> = [];
-  contexts.forEach((ctx, order) => {
-    const match = scopeMatchOf(path, ctx.scope);
-    if (match) matched.push({ scope: ctx.scope, schema: ctx.schema, depth: match.prefix.length, order });
-  });
-  matched.sort((a, b) => a.depth - b.depth || b.order - a.order);
-  return matched.map(({ scope, schema }) => ({ scope, schema }));
-}
+export { contextChainAt, type MatchedContext } from "./eval-paths.js";
 
 /** What `x-telo-context` reads: what the annotations of each of its bindings
  *  read, at any depth. */
@@ -1050,12 +1067,42 @@ export const contextReads: ReadReporter = ({ value, delegate }) => {
   return out;
 };
 
-/** What `x-telo-context-from` reads: the place it navigates from the region's
- *  item — a property map, or a type field naming a shape, which a type reads
- *  by its identity, a named shape whole. */
-export const contextFromReads: ReadReporter = ({ value, item }) => {
-  const keys = fieldPlace(item, value);
-  return keys ? [{ kind: "reference", keys, transitive: false, reads: READS_IDENTITY }] : [];
+const contextFromTargetReads = new Map<string, ReferentReads>();
+
+/** What `x-telo-context-from` reads in each declaration its path crosses into:
+ *  every run of its segments, wherever along it the next reference stands. */
+function contextFromCrossedReads(path: string): ReferentReads {
+  let reads = contextFromTargetReads.get(path);
+  if (reads) return reads;
+  const segments = path.split("/");
+  const runs: ReferentPlace[] = [];
+  for (let from = 1; from < segments.length; from++) {
+    for (let to = from + 1; to <= segments.length; to++) {
+      runs.push({ kind: "reference", keys: placeAt([], `/${segments.slice(from, to).join("/")}`), transitive: false, reads: READS_IDENTITY });
+    }
+  }
+  reads = () => runs;
+  contextFromTargetReads.set(path, reads);
+  return reads;
+}
+
+/** What `x-telo-context-from` reads: the place it navigates from the object
+ *  holding the region — a property map, or a type field naming a shape, which a
+ *  type reads by its identity, a named shape whole — and, for a path of several
+ *  segments, each reference on the way and, transitively, the places the rest
+ *  of the path names in each declaration crossed. */
+export const contextFromReads: ReadReporter = ({ value, at }) => {
+  if (typeof value !== "string") return [];
+  const holder = enclosingKeys(at);
+  const keys = fieldPlace(holder, value);
+  if (!keys) return [];
+  const out: ReadPlace[] = [{ kind: "reference", keys, transitive: false, reads: READS_IDENTITY }];
+  const segments = value.split("/");
+  for (let end = 1; end < segments.length; end++) {
+    const prefix = fieldPlace(holder, segments.slice(0, end).join("/"));
+    if (prefix) out.push({ kind: "reference", keys: prefix, transitive: true, reads: contextFromCrossedReads(value) });
+  }
+  return out;
 };
 
 /** What `x-telo-context-from-root` reads: the place it navigates from the

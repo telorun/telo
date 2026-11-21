@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 priority: medium
 depends-on: [2026-11-15-library-migrations.md, 2026-11-05-ui-press-and-record-detail.md]
 packages: [modules/ui, modules/ui-react, modules/http-server, modules/http-dispatch, analyzer/nodejs, kernel/nodejs, examples/ui-showcase, examples/report-console, examples/notes-web, examples/approval-workflow, examples/feedback-api-repo, examples/support-inbox-mcp, apps/hub, apps/authoring-agent, docs]
@@ -27,7 +27,7 @@ issue: https://github.com/telorun/telo/issues/822
 
 - `Ui.Query` — a declared read: `model`, `url`, `input?`, `query?`, `reloadOn?`, `reloadEvery?`. It draws nothing.
 - `Ui.Query.input` — `{ method?, model, body }`: what a read with a body sends; `method` is `QUERY` (default) or `POST`, `model` the `Telo.Type` the body is judged against, `body` a template of accessors and literals. Without `input` the read is a `GET`.
-- `query` node — `{ type: query, query, children, loading?, failure? }` plus the shared node keys (`shown`, `fill`): draws one query's answer; `query` is a `!ref` to a `Ui.Query` or one inline, each tree a list of nodes.
+- `query` node — `{ type: query, query, content, loading?, failure? }` plus the shared node keys (`shown`, `fill`): draws one query's answer; `query` is a `!ref` to a `Ui.Query` or one inline, each tree a list of nodes.
 - Wire: the `query` node with its three node lists, and `Ui.QuerySpec` `{ id, schema, method, url, input, query, reloadOn, reloadEvery? }` — `method` always filled (`GET` without `input`), `input` `null` or `{ body }`, `reloadEvery` omitted when not written, `id` the declaration's identity, the same in every document a mount serves.
 - `Ui.Match.format` — `date` or `date-time`: a string condition, page query parameter or form value holds only text of that RFC 3339 form.
 - `x-telo-eval: accessor-template` — an accessor field whose value may be a map or list, to any depth, each leaf a plain chain or a literal.
@@ -37,6 +37,9 @@ issue: https://github.com/telorun/telo/issues/822
 
 **Changed**
 
+- `EVAL_MODE_BRANCH_CONFLICT` — also reported when two union branches declaring one property give it different `x-telo-context` regions at or beneath it.
+- `UNDEFINED_KIND` — reported for a kind a gated library does not declare (carrying the reason of a migration that removed it); `KIND_NOT_EXPORTED` only for a declared, withheld kind.
+- Library-migration findings — one per outermost rewritten anchor and code.
 - A read is sent again when its request changes — its resolved address or its resolved body — where today only the address counts.
 - The OpenAPI document `Http.Server` generates — `openapi: 3.2.0` (was `3.0.0`), a `QUERY` route listed under its path item's `query` operation.
 
@@ -67,13 +70,13 @@ Everything `Ui.Data` guaranteed is the query's: at most one read in flight, an a
 
 **Structured accessor values are opted into.** `x-telo-eval: accessor-template` is the accessor mode whose value may also be a map or list of accessor values, at any depth; a computed value anywhere in it that is not a plain chain is `ACCESSOR_NOT_PLAIN_CHAIN` / `ERR_ACCESSOR_NOT_PLAIN_CHAIN`. Every `accessor` field keeps its grammar — chain or literal — so no existing controller receives a structure. A structure holding a chain reaches the controller as `{ map }` or `{ list }` of bindings; one holding none is `{ value }`. The analyzer judges each leaf as an accessor at its own path; the kernel's binding builder and every resolver of a template's bindings (`ui`, `ui-react`) handle the two forms, held to one vector set. A context binding marked `x-telo-context-eval: accessor` is in scope at an `accessor-template` field; `x-telo-context-eval` gains no value. `x-telo-match-for` and `x-telo-text-values-for` naming an `accessor-template` field are refused at the kind with their own codes (`MATCH_FOR_INVALID`, `TEXT_VALUES_INVALID`); a rule or callable data slot reading one reads its binding as plain data, and the reachable walk reads `{ map }` and `{ list }` as holding no reference, since no leaf can be a `!ref`. A union whose branches declare one property as `accessor` and as `accessor-template` is `EVAL_MODE_BRANCH_CONFLICT`, as for any two modes.
 
-**A `query` node draws one.** `{ type: query, query, children, loading?, failure? }` is a group, laid out as a `box` lays out its `children`, carrying `shown` and `fill` as every node does and transparent to `fill`. `children` are over `data` (typed from the query's `model`), `failure` over `error` (a `Ui.RequestError`), `loading` drawn before the first answer — each a list of nodes, each also over `query` (typed from the query's own `query`) and `params`; `ui` fills an omitted `loading` and `failure` as it filled `Ui.Data`'s, and `loading: []` draws nothing. `query` is a reference slot (`x-telo-ref`, `use: dependency`, kind `Ui.Query`) holding a `!ref` or an inline declaration; `data` and `query` are typed through it by `x-telo-context-ref-from`, so `data.nmae` is `CEL_UNKNOWN_FIELD` and a slot naming anything but a query is `REFERENCE_KIND_MISMATCH`. A query used by one node is written inline; one drawn by several gets a name. A `Ui.View` placed as a child is typed from each query node placing it by `x-telo-context-from-referrer`, as a view under `Ui.Data` is today.
+**A `query` node draws one.** `{ type: query, query, content, loading?, failure? }` is a group, laid out as a `box` lays out its `children`, carrying `shown` and `fill` as every node does and transparent to `fill`. `content` is over `data` (typed from the query's `model`), `failure` over `error` (a `Ui.RequestError`), `loading` drawn before the first answer — each a list of nodes, each also over `query` (typed from the query's own `query`) and `params`; `ui` fills an omitted `loading` and `failure` as it filled `Ui.Data`'s, and `loading: []` draws nothing. `query` is a reference slot (`x-telo-ref`, `use: dependency`, kind `Ui.Query`) holding a `!ref` or an inline declaration; `data` and `query` are typed through it by `x-telo-context-ref-from`, so `data.nmae` is `CEL_UNKNOWN_FIELD` and a slot naming anything but a query is `REFERENCE_KIND_MISMATCH`. A query used by one node is written inline; one drawn by several gets a name. A `Ui.View` placed as a child is typed from each query node placing it by `x-telo-context-from-referrer`, as a view under `Ui.Data` is today.
 
-**One query, one read.** Every `query` node naming the same `Ui.Query` — in the page, in the layout's header, in any document the mount serves — draws from one read, keyed by the declaration's identity and its resolved request: one request, one state; the nodes load, succeed and fail together, each drawing that state with its own trees, since a header wants a small placeholder where the body wants a large one. An inline `Ui.Query` inside a `Ui.View` placed twice is one declaration, so one read per resolved request. A read's state is held while at least one mounted node — shown, or hidden by `shown` — resolves to its key, and is dropped, its read in flight aborted, when the last such node unmounts or moves to another key: at most one state per held key, however often a body changes. It reads only while a holding node is shown; a trigger arriving while all are hidden reads once when one is shown. A node whose request changes keeps drawing its last answer until the new key answers; `loading` is drawn only before a node's first answer. `reloadOn: [unauthorized]` re-reads it when a request made by anything drawn in any of its nodes' `children` answers 401; its own read never counts. Two queries that happen to resolve to the same request stay two, so a change to one never silently changes the other.
+**One query, one read.** Every `query` node naming the same `Ui.Query` — in the page, in the layout's header, in any document the mount serves — draws from one read, keyed by the declaration's identity and its resolved request: one request, one state; the nodes load, succeed and fail together, each drawing that state with its own trees, since a header wants a small placeholder where the body wants a large one. An inline `Ui.Query` inside a `Ui.View` placed twice is one declaration, so one read per resolved request. A read's state is held while at least one mounted node — shown, or hidden by `shown` — resolves to its key, and is dropped, its read in flight aborted, when the last such node unmounts or moves to another key: at most one state per held key, however often a body changes. It reads only while a holding node is shown; a trigger arriving while all are hidden reads once when one is shown. A node whose request changes keeps drawing its last answer until the new key answers; `loading` is drawn only before a node's first answer. `reloadOn: [unauthorized]` re-reads it when a request made by anything drawn in any of its nodes' trees answers 401; its own read never counts. Two queries that happen to resolve to the same request stay two, so a change to one never silently changes the other.
 
 **The server side.** `QUERY` joins the shared `HttpDispatch.Request` matcher's `method`, so `Http.Api` accepts it as a route method, with `request.schema.body` validated as for `POST`; a transport that cannot carry it narrows `method` in its own schema. The mount's cookie origin check treats `QUERY` as it treats `POST` — only `GET`, `HEAD` and `OPTIONS` are exempt — and the CORS default allowed methods are unchanged, so a cross-origin `QUERY` needs `cors.methods` (and `trustedOrigins` with a cookie credential), as `PUT` does; the docs say so. The generated OpenAPI document is `3.2.0` for every server declaring `openapi:` — the only version in which a `QUERY` operation is valid, and one version whatever routes a server holds — listing the operation under the path item's `query` key with its request body. The server's own document pass writes the version and the `query` operation whatever the document library emits, and the operations a host-routed mount's document filters by host include `query`.
 
-**Migration.** `ui` ships the `Telo.Migration` `queries`, code `UI_DATA_REPLACED`: a `composite` node placing a `Ui.Data` — inline, or by `!ref` to a named one — becomes a `query` node; a named `Ui.Data` becomes a `Ui.Query`; `source` becomes `url`, `content` becomes `children: [<content>]`, and `loading` / `failure` become one-item lists on each placing node. The in-repo manifests are rewritten by `telo migrate` and formatted.
+**Migration.** `ui` ships the `Telo.Migration` `queries`, code `UI_DATA_REPLACED`: a `composite` node placing a `Ui.Data` — inline, or by `!ref` to a named one — becomes a `query` node; a named `Ui.Data` becomes a `Ui.Query`; `source` becomes `url`, `content` becomes `content: [<content>]`, and `loading` / `failure` become one-item lists on each placing node. The in-repo manifests are rewritten by `telo migrate` and formatted.
 
 ## Example
 
@@ -180,7 +183,7 @@ pages:
           model: !ref Account
           url: /api/auth
           reloadOn: [focus, unauthorized]
-        children:
+        content:
           - type: text
             style: warning
             text: Sign in to see the report.
@@ -195,7 +198,7 @@ layout:
         url: /api/auth
         reloadOn: [focus, unauthorized]
       loading: [{ type: stack, children: [] }]
-      children: [{ type: value, value: !cel "data.email", style: muted }]
+      content: [{ type: value, value: !cel "data.email", style: muted }]
 ```
 
 After: one `account` query read once for the header and the page, and a report read by `QUERY` whose body is a period and a project list the page's address chooses. With no `project` the body leaves `projects` out.
@@ -266,7 +269,7 @@ pages:
       - type: query
         query: !ref account
         loading: []
-        children:
+        content:
           - type: text
             style: warning
             text: Sign in to see the report.
@@ -292,7 +295,7 @@ pages:
           - type: text
             style: warning
             text: { text: "The report could not be read: {$message}", values: { message: !cel "error.message" } }
-        children:
+        content:
           - type: text
             style: heading
             text: { text: "{$hours} hours", values: { hours: !cel "data.totalHours" } }
@@ -306,7 +309,7 @@ layout:
       query: !ref account
       loading: []
       failure: []
-      children: [{ type: value, value: !cel "data.email", style: muted }]
+      content: [{ type: value, value: !cel "data.email", style: muted }]
 ---
 kind: Http.Server
 metadata: { name: server }
@@ -407,15 +410,15 @@ Content-Type: application/problem+json
 The two specs the page carries:
 
 ```json
-{ "id": "account", "schema": { "type": "object", "required": ["authorized"], "properties": { "authorized": { "type": "boolean" }, "email": { "type": "string" } } },
-  "method": "GET", "url": { "value": "/api/auth" }, "input": null, "query": {}, "reloadOn": ["focus", "unauthorized"] }
-{ "id": "web/pages/0/children/1/query",
+{ "id": "Hours/account", "schema": { "type": "object", "required": ["authorized"], "properties": { "authorized": { "type": "boolean" }, "email": { "type": "string" } } },
+  "method": "GET", "url": { "path": { "value": "/api/auth" }, "pathParams": {}, "queryParams": {} }, "input": null, "query": {}, "reloadOn": ["focus", "unauthorized"] }
+{ "id": "Hours/web/pages/0/children/1/query",
   "schema": { "type": "object", "required": ["totalHours", "items"], "properties": { "totalHours": { "type": "number" },
     "items": { "type": "array", "items": { "type": "object", "required": ["name", "hours"], "properties": { "name": { "type": "string" }, "hours": { "type": "number" } } } } } },
-  "method": "QUERY", "url": { "value": "/api/report" },
+  "method": "QUERY", "url": { "path": { "value": "/api/report" }, "pathParams": {}, "queryParams": {} },
   "input": { "body": { "map": { "period": { "map": { "from": { "root": "query", "path": ["from"] }, "to": { "root": "query", "path": ["to"] } } }, "projects": { "root": "query", "path": ["project"] } } } },
   "query": { "from": { "type": "string", "format": "date" }, "to": { "type": "string", "format": "date" }, "project": { "type": "array", "items": { "type": "string" } } },
-  "reloadOn": [], "reloadEvery": "60s" }
+  "reloadOn": [], "reloadEvery": 60000 }
 ```
 
 The OpenAPI document at `/docs/openapi.json` — before, for the Before app's routes; after, for the After app's:
@@ -487,7 +490,7 @@ The controller receives `criteria` as `{ map: { match: { map: { title: { root: "
 - `/report?from=2026-11-01&to=2026-11-15&project=acme` sends the `QUERY` shown above, and the heading and list draw the answer; without `project` the body has no `projects`; a literal `null` leaf is sent as `null`; `?to=oops` reads `to` as absent.
 - Without `to` the `QUERY` is sent with the partial body and the node draws `failure` over the 400; a `url` resolving to nothing sends nothing and draws `failure` with `ERR_UI_ADDRESS_UNRESOLVED`.
 - Changing `from` in the address sends one more `QUERY` and keeps the previous report drawn until it answers; an answer to the earlier body arriving late is not drawn. The report re-reads every minute.
-- An action's `refreshes` naming `/api/auth` re-reads the account once; a 401 inside either account node's `children` re-reads it; hiding one account node by `shown` keeps the read, hiding both keeps their children mounted and sends nothing until one is shown, then exactly one read if a trigger arrived meanwhile.
+- An action's `refreshes` naming `/api/auth` re-reads the account once; a 401 inside either account node's `content` re-reads it; hiding one account node by `shown` keeps the read, hiding both keeps their children mounted and sends nothing until one is shown, then exactly one read if a trigger arrived meanwhile.
 - A body fed by a typed field holds at most one state per mounted node over 1,000 changes; navigating away from the report page aborts its in-flight `QUERY`.
 - A same-origin `QUERY` with a session cookie passes the origin check; a cross-origin one from an untrusted origin is `ERR_HTTP_CROSS_ORIGIN_REFUSED`; a cross-origin preflight for `QUERY` succeeds only with `cors.methods` listing it; a `QUERY` route answers on Node.
 - The report query with `input.method: POST` and a `POST` route sends the same body and re-reads the same way; a query without `input` sends `GET` and its spec carries `method: "GET"` and `input: null`.
@@ -496,7 +499,7 @@ The controller receives `criteria` as `{ map: { match: { map: { title: { root: "
 - The `Search.Criteria` controller receives exactly the bindings shown; an `accessor` (not `accessor-template`) field holding `{ a: !cel "row.x" }` is still `ACCESSOR_NOT_PLAIN_CHAIN`; a template leaf rooted at a binding not marked `accessor` is `CEL_UNKNOWN_IDENTIFIER`; `x-telo-match-for` naming a template field is `MATCH_FOR_INVALID`; a union declaring one property `accessor` and `accessor-template` is `EVAL_MODE_BRANCH_CONFLICT` at check and `ERR_EVAL_MODE_BRANCH_CONFLICT` at registration; the binding vector set passes in `ui` and `ui-react`.
 - A condition `matches: { format: date }` holds for `2026-11-01` and not for `oops` in the `match.json` vectors.
 - The generated documents of the After app, of a server with no `QUERY` route and of a host-restricted server each validate against a pinned copy of the OpenAPI 3.2 schema; a host that cannot reach `/api/report` gets no `query` operation and one that can gets it; `Http.Reference` shows `query /api/report` with its request body.
-- The showcase's sign-in gate, rebuilt as an inline query node, re-reads after a 401 inside its children.
+- The showcase's sign-in gate, rebuilt as an inline query node, re-reads after a 401 inside its `content`.
 
 ## Bookkeeping
 

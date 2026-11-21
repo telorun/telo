@@ -74,7 +74,7 @@ sends `PATCH /api/chat/conversations/<id>` with the body `{ "title": … }`.
 
 A target whose parameter holds nothing is not sent (`ERR_UI_ADDRESS_UNRESOLVED`
 as a failure, naming the parameter). A `GET`, an absolute target and a page
-reference are refused: a read is a [`Ui.Data`](data.md).
+reference are refused: a read is a [`Ui.Query`](query.md).
 
 An action is a [composite](composite.md): it is placed on a page with
 `{ type: composite, ref: !ref generateReports }`, or run with inputs bound from
@@ -136,7 +136,7 @@ with it.
 
 After a 2xx the resolved target's path, and each resolved `onSuccess.refreshes`
 path, are announced as changed, and so is the `basePath` of the listing a row
-action ran in. A [`Ui.Data`](data.md), [`Ui.Listing`](listing.md) or
+action ran in. A [`Ui.Query`](query.md), [`Ui.Listing`](listing.md) or
 [`Ui.Chat`](chat.md) whose request path equals an announced one — resolved,
 encoded and app-relative, the query left out — reads again.
 `onSuccess.refreshes` entries are [request targets](nodes.md#addresses) over
@@ -208,7 +208,7 @@ node](nodes.md#buttons):
 listing, `row`, the listing's declared `query` and the page's `params`; in a
 list, `row` and the roots of the tree it sits in; on a button,
 the roots of that tree — `result`, `input` and `values` in an answer, `data`,
-`query` and `params` in a reader. A root nothing binds there is
+`query` and `params` in a query node. A root nothing binds there is
 `CEL_UNKNOWN_IDENTIFIER`. The inputs are read when the button is pressed.
 
 Every required input is bound there unless `prompt: true`. A prompt asks for

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, type Rendered } from "./harness.js";
-import { actionNode, address, navigateTo, dataNode, listingNode, operation } from "./spec-nodes.js";
+import { actionNode, address, navigateTo, listingNode, operation, queryNode } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => {
@@ -84,12 +84,12 @@ describe("addresses", () => {
   });
 });
 
-describe("a reader over an address", () => {
-  it("sends nothing for a source that does not resolve, and draws its failure", async () => {
+describe("a query over an address", () => {
+  it("sends nothing for a url that does not resolve, and draws its failure", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
-    const source = address("/api/reports/{id}", { id: { root: "query", path: ["id"] } });
-    rendered = await render({ path: "/", pages: { "/": { title: "Home", children: [dataNode({ source, query: { id: { type: "string" } } })] } } });
-    expect(rendered.part("data").getAttribute("data-state")).toBe("error");
+    const url = address("/api/reports/{id}", { id: { root: "query", path: ["id"] } });
+    rendered = await render({ path: "/", pages: { "/": { title: "Home", children: [queryNode({}, { url, query: { id: { type: "string" } } })] } } });
+    expect(rendered.part("query").getAttribute("data-state")).toBe("error");
     expect(rendered.parts("value")[0].textContent).toBe("ERR_UI_ADDRESS_UNRESOLVED");
     expect(rendered.requests.filter((request) => request.includes("/api/reports"))).toEqual([]);
   });
@@ -109,11 +109,10 @@ describe("a request target", () => {
 
   it("sends a rename without the consumed id, and reads the listing and the record at the path again", async () => {
     const item = vi.fn(({ method }: { method: string }) => (method === "PATCH" ? new Response(null, { status: 204 }) : json({ id: "cnv_x", title: "Old name" })));
-    const reader = dataNode({
-      schema: conversationSchema,
-      source: address("/api/chat/conversations/cnv_x"),
-      content: { type: "value", value: { root: "data", path: ["title"] }, present: { type: "string" } },
-    });
+    const reader = queryNode(
+      { content: [{ type: "value", value: { root: "data", path: ["title"] }, present: { type: "string" } }] },
+      { schema: conversationSchema, url: address("/api/chat/conversations/cnv_x") },
+    );
     rendered = await showConversations([conversationList(renaming("PATCH")), reader], { "/api/chat/conversations/cnv_x": item });
     const listed = reads(rendered, "/api/chat/conversations?");
     const read = reads(rendered, "/api/chat/conversations/cnv_x");

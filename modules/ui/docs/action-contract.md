@@ -161,6 +161,6 @@ is.
 
 The resolved target path, each resolved `onSuccess.refreshes` path and, in a
 listing, its `basePath` are announced as changed (a listing's own item writes
-announce the item path too). A `Ui.Data`, `Ui.Listing` or `Ui.Chat` whose
+announce the item path too). A `Ui.Query`, `Ui.Listing` or `Ui.Chat` whose
 request path — resolved, encoded, app-relative, query excluded — equals an
 announced one reads again.

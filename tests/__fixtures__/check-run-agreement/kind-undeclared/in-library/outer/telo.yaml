@@ -1,0 +1,7 @@
+# A library declaring a kind the library it imports removed.
+kind: Telo.Library
+metadata: { name: KindUndeclaredOuter }
+imports: { Lib: ../../lib }
+---
+kind: Lib.Gone
+metadata: { name: removed }

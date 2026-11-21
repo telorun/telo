@@ -13,21 +13,12 @@ imports:
   HttpClient: ../../../../http-client
   Run: ../../../../run
   Assert: ../../../../assert
-ports:
-  http: { env: PORT, default: 8941 }
+ports: { http: { env: PORT, default: 8941 } }
 needs:
-  site:
-    kind: Telo.PublicUrl
-    parameters: { port: http, primary: true }
-  admin:
-    kind: Telo.PublicUrl
-    parameters: { port: http }
-  tenants:
-    kind: Telo.PublicHostPattern
-    parameters: { port: http }
-  regional:
-    kind: Telo.PublicHostPattern
-    parameters: { port: http }
+  site: { kind: Telo.PublicUrl, parameters: { port: http, primary: true } }
+  admin: { kind: Telo.PublicUrl, parameters: { port: http } }
+  tenants: { kind: Telo.PublicHostPattern, parameters: { port: http } }
+  regional: { kind: Telo.PublicHostPattern, parameters: { port: http } }
 targets:
   - !ref test
 ---
@@ -39,8 +30,7 @@ metadata: { name: healthApi }
 routes:
   - request: { path: /, method: GET }
     returns:
-      - status: 200
-        content: { application/json: { body: { who: health } } }
+      - { status: 200, content: { application/json: { body: { who: health } } } }
 ---
 kind: Http.Api
 metadata: { name: siteApi }
@@ -59,8 +49,10 @@ routes:
         content: { application/json: { body: { who: admin, host: !cel "request.host" } } }
   - request: { path: /settings, method: GET }
     returns:
-      - status: 200
-        content: { application/json: { body: { who: admin } } }
+      - { status: 200, content: { application/json: { body: { who: admin } } } }
+  - request: { path: /report, method: QUERY }
+    returns:
+      - { status: 200, content: { application/json: { body: { who: admin } } } }
 ---
 kind: Http.Api
 metadata: { name: tenantApi }
@@ -98,8 +90,7 @@ with:
       address: 127.0.0.1
       port: !cel "ports.http"
     trustProxy: true
-    openapi:
-      info: { title: Hosts, version: 1.0.0 }
+    openapi: { info: { title: Hosts, version: 1.0.0 } }
     mounts:
       - path: /healthz
         mount: !ref healthApi
@@ -161,6 +152,8 @@ steps:
         adminOnSiteStatus: !cel "steps.adminOnSite.result.status"
         sitePaths: !cel "steps.siteDocs.result.body.paths.map(p, p)"
         adminPaths: !cel "steps.adminDocs.result.body.paths.map(p, p)"
+        adminReportOperations: !cel "steps.adminDocs.result.body.paths['/report'].map(m, m)"
+        openapiVersion: !cel "steps.adminDocs.result.body.openapi"
       expected:
         site: { who: site, host: shop.localhost }
         admin: { who: admin, host: admin.shop.localhost }
@@ -170,4 +163,6 @@ steps:
         health: { who: health }
         adminOnSiteStatus: 404
         sitePaths: [ /healthz, /who ]
-        adminPaths: [ /healthz, /who, /settings ]
+        adminPaths: [ /healthz, /who, /settings, /report ]
+        adminReportOperations: [query]
+        openapiVersion: 3.2.0

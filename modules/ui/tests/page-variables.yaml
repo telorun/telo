@@ -28,14 +28,9 @@ kind: Telo.JsonSchema
 metadata: { name: Command }
 schema: { type: object, required: [seq], properties: { seq: { type: integer } } }
 ---
-kind: Ui.Data
+kind: Ui.View
 metadata: { name: plan }
-model: { kind: Telo.JsonSchema, schema: { type: object } }
-source:
-  path: "/api/plans/{id}"
-  pathParams: { id: !cel "params.id" }
-reloadEvery: 30s
-content: { type: value, value: !cel "params.id" }
+content: { type: query, query: { kind: Ui.Query, model: { kind: Telo.JsonSchema, schema: { type: object } }, url: { path: "/api/plans/{id}", pathParams: { id: !cel "params.id" } }, reloadEvery: "30s" }, content: [{ type: value, value: !cel "params.id" }] }
 ---
 kind: Ui.Listing
 metadata: { name: commands }
@@ -83,7 +78,7 @@ steps:
   - name: planIs
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "{'source': steps.plan.result.node.source, 'reloadEvery': steps.plan.result.node.reloadEvery}"
+      actual: !cel "{'source': steps.plan.result.node.query.url, 'reloadEvery': steps.plan.result.node.query.reloadEvery}"
       expected:
         source: { path: { value: "/api/plans/{id}" }, pathParams: { id: { root: params, path: [id] } }, queryParams: {} }
         reloadEvery: 30000
@@ -125,7 +120,7 @@ source: ./__fixtures__/invalid/reload-every/lib/telo.yaml
 expect:
   errors:
     - code: SCHEMA_VIOLATION
-      message: "Ui.Data/tooOften: /reloadEvery must be a Telo.Duration at least 5s, not 1s"
+      message: "Ui.View/tooOften: /content/query/reloadEvery must be a Telo.Duration at least 5s, not 1s"
     - code: SCHEMA_VIOLATION
       message: "Ui.Listing/listedTooOften: /reloadEvery must be a Telo.Duration at least 5s, not 4.999s"
 ---
@@ -133,5 +128,5 @@ kind: Assert.Manifest
 metadata: { name: reloadEveryAtRuntime }
 source: ./__fixtures__/invalid/reload-every/telo.yaml
 expect:
-  errors: [{ code: SCHEMA_VIOLATION, message: "Ui.Data/tooOften: /reloadEvery must be a Telo.Duration at least 5s, not 1s" }, { code: SCHEMA_VIOLATION, message: "Ui.Listing/listedTooOften: /reloadEvery must be a Telo.Duration at least 5s, not 4.999s" }]
+  errors: [{ code: SCHEMA_VIOLATION, message: "Ui.View/tooOften: /content/query/reloadEvery must be a Telo.Duration at least 5s, not 1s" }, { code: SCHEMA_VIOLATION, message: "Ui.Listing/listedTooOften: /reloadEvery must be a Telo.Duration at least 5s, not 4.999s" }]
   runFails: "/reloadEvery must be a Telo.Duration at least 5s, not 1s"

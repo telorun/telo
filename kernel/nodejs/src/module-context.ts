@@ -91,6 +91,24 @@ function safeStringify(value: unknown): string {
   });
 }
 
+/** `lookupKind`'s refusal of a kind the import's `exports.kinds` does not list:
+ *  carrying the resolved module and the kind's name, so a caller holding the
+ *  definitions can first ask whether the module declares the kind at all. */
+export class KindNotExportedError extends Error {
+  constructor(
+    readonly kind: string,
+    readonly module: string,
+    readonly name: string,
+    alias: string,
+    exported: readonly string[],
+  ) {
+    super(
+      `Kind '${name}' is not exported by module '${module}' (imported as '${alias}'). ` +
+        `Exported kinds: ${exported.join(", ")}`,
+    );
+  }
+}
+
 /**
  * Persistent, module-scoped context. Reserved CEL namespaces:
  * variables, secrets, resources, ports (Application-only).
@@ -729,10 +747,7 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     }
     const allowed = this.importedKinds.get(prefix);
     if (allowed !== undefined && !allowed.has(suffix)) {
-      throw new Error(
-        `Kind '${suffix}' is not exported by module '${realModule}' (imported as '${prefix}'). ` +
-          `Exported kinds: ${[...allowed].join(", ")}`,
-      );
+      throw new KindNotExportedError(kind, realModule, suffix, prefix, [...allowed]);
     }
     const library = this.importedKindScopes.get(prefix);
     if (!library) {

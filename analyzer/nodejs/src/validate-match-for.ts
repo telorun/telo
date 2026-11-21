@@ -19,6 +19,7 @@
 import {
   concreteEvalPaths,
   declaredEvalMode,
+  evalAnnotationOf,
   MATCH_FOR_ANNOTATION,
   matchForSitesOf,
   type NamedShapeLookup,
@@ -334,6 +335,9 @@ function targetRefusal(
     [current, doc] = deref(next, doc, shapes);
   }
   if (!field) return "a pointer must name a field of the enclosing object";
+  if (evalAnnotationOf(field) === "accessor-template" || evalAnnotationOf(current) === "accessor-template") {
+    return `the field at '${pointer}' is an 'x-telo-eval: accessor-template' field, whose value may be a structure of accessors rather than one value a schema is matched against`;
+  }
   if (declaredEvalMode(field) === "accessor" || declaredEvalMode(current) === "accessor") return undefined;
   return `the field at '${pointer}' is not an 'x-telo-eval: accessor' field`;
 }

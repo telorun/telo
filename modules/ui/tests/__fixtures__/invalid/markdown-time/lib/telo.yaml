@@ -13,8 +13,6 @@ kind: Telo.JsonSchema
 metadata: { name: Plan }
 schema: { type: object, required: [title], properties: { title: { type: string } } }
 ---
-kind: Ui.Data
+kind: Ui.View
 metadata: { name: timeNoFormat }
-model: !ref Plan
-source: /api/plan
-content: { type: time, value: !cel "data.title" }
+content: { type: query, query: { kind: Ui.Query, model: !ref Plan, url: /api/plan }, content: [{ type: time, value: !cel "data.title" }] }

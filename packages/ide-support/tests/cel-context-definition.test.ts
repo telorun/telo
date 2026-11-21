@@ -179,4 +179,76 @@ describe("CEL context binding navigation", () => {
     const pos = at(text, "request.query.lastEventId", "query");
     expect(buildDefinition(text, pos.line, pos.character, graph, src)).toBeUndefined();
   });
+
+  it("follows a path crossing a reference to the declaration it lands in", () => {
+    const readerDef = {
+      kind: "Telo.Definition",
+      metadata: { name: "Reader", module: "test-acme" },
+      capability: "Telo.Provider",
+      schema: { type: "object", properties: { params: { type: "object", additionalProperties: true } } },
+    } as unknown as ResourceDefinition;
+    const panelDef = {
+      kind: "Telo.Definition",
+      metadata: { name: "Panel", module: "test-acme" },
+      capability: "Telo.Provider",
+      schema: {
+        type: "object",
+        properties: {
+          reader: { "x-telo-ref": { kind: "Acme.Reader", use: "dependency" } },
+          show: {
+            type: "string",
+            "x-telo-eval": "runtime",
+            "x-telo-context": {
+              type: "object",
+              properties: {
+                params: { "x-telo-context-from": "reader/params", type: "object", properties: {}, additionalProperties: false },
+              },
+            },
+          },
+        },
+      },
+    } as unknown as ResourceDefinition;
+    const text = [
+      "kind: Acme.Reader",
+      "metadata:",
+      "  name: signin",
+      "params:",
+      "  signin:",
+      "    type: string",
+      "---",
+      "kind: Acme.Panel",
+      "metadata:",
+      "  name: panel",
+      "reader: !ref signin",
+      'show: !cel "params.signin"',
+    ].join("\n");
+    const reader = {
+      kind: "Acme.Reader",
+      metadata: { name: "signin", module: "test-acme" },
+      params: { signin: { type: "string" } },
+    } as unknown as ResourceManifest;
+    const panel = {
+      kind: "Acme.Panel",
+      metadata: { name: "panel", module: "test-acme" },
+      reader: { __ref: true, kind: "Acme.Reader", name: "signin", indexes: [] },
+      show: { __cel: "params.signin" },
+    } as unknown as ResourceManifest;
+    const src = "/app/telo.yaml";
+    const file = loadedFile(src, text, [reader, panel]);
+    const graph = {
+      rootSource: src,
+      entry: mod(file),
+      modules: new Map([[src, mod(file)]]),
+      importEdges: new Map(),
+    } as unknown as LoadedGraph;
+    const registry = new AnalysisRegistry();
+    registry.registerModuleIdentity("std", "test-acme");
+    registry.registerImport("Acme", "test-acme", ["Reader", "Panel"]);
+    registry.registerDefinition(readerDef);
+    registry.registerDefinition(panelDef);
+    const pos = at(text, "params.signin", "signin");
+    const def = buildDefinition(text, pos.line, pos.character, graph, src, undefined, registry.analysisOf([reader, panel]));
+    expect(def?.uri).toBe(src);
+    expect(def?.range.start.line).toBe(4); // `  signin:` — the reader's own parameter.
+  });
 });

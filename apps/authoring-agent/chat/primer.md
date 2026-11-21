@@ -253,9 +253,15 @@ The path after the reference may cross further references
 reads, each map entry from its own `source`).
 
 In a `oneOf` / `anyOf`, a property two branches declare carries the same
-`x-telo-eval` in each (its type may differ): an accessor `text` in one branch
-and a plain `text` in another is `EVAL_MODE_BRANCH_CONFLICT` — give the other
-meaning another name.
+`x-telo-eval` and the same `x-telo-context` regions in each (its type may
+differ): an accessor `text` in one branch and a plain `text` in another, or a
+region on `children` in one branch and none in another, is
+`EVAL_MODE_BRANCH_CONFLICT` — give the other meaning another name.
+
+`x-telo-eval: accessor-template` is an accessor whose value may be a map or a
+list at any depth, each leaf a plain chain or a literal; the controller
+receives `{ map }` / `{ list }` of bindings, or `{ value }` when it holds no
+chain (a request body that reads `query` and `params` is one).
 
 A resource writes a PLAIN CHAIN there (`rowStyle: !cel "row.status"`) or a
 literal (`rowStyle: muted`). The chain is type-checked against the binding
@@ -4076,7 +4082,9 @@ to `telo.run/next/`: a module's bytes must not depend on which release publishes
 - `exports:` (Library only) — `kinds:` (kind names importers may use) and
   `resources:` (instance names importers may `!ref`). Declaring `kinds:` opts
   the library into a gate: ONLY the listed kinds are importable, and using an
-  unlisted one is a hard `KIND_NOT_EXPORTED` error. A library that declares no
+  unlisted one is a hard `KIND_NOT_EXPORTED` error (a kind the library does not
+  declare at all is `UNDEFINED_KIND`, carrying the reason when a migration
+  removed it). A library that declares no
   `kinds:` at all is currently ungated (every kind importable) — legacy
   behaviour, so never rely on it: list every kind you intend to be public.
   `resources:` is already gated the same way, and `Self.<Kind>` resolves a
@@ -4848,7 +4856,7 @@ Where to start:
     `Ui.Listing` (the records of a collection, paged and sortable, with create,
     edit and delete), `Ui.Form`, `Ui.Filters` (a filter bar over the listings
     inside it), `Ui.Action` (a button sending a request to a route and drawing what it
-    answered), `Ui.Data` (a record read when the page loads) and `Ui.View` (a
+    answered), `Ui.Query` (a declared read, drawn by `query` nodes) and `Ui.View` (a
     node tree placed wherever it is needed), each reading `Telo.JsonSchema`
     shapes. A request target is an ADDRESS: a literal string, or
     `{ path, pathParams, queryParams }` — `path` a template whose `{name}`
@@ -4884,13 +4892,27 @@ Where to start:
     (`UI_ACTION_INPUT_UNSENT`). A 2xx with no body (204) is a success unless
     `result`, `onSuccess.to` or a `refreshes` entry reads `result`. After a 2xx the
     target's path, each `onSuccess.refreshes` request target and a listing's
-    `basePath` are announced, and every `Ui.Data`, `Ui.Listing` and `Ui.Chat`
-    reading exactly that path reads again; a whole segment of a literal
+    `basePath` are announced, and every `Ui.Query`, `Ui.Listing` and `Ui.Chat`
+    reading exactly that path (a `QUERY` or `POST` read counts as a `GET`) reads again; a whole segment of a literal
     `refreshes` (or `Ui.Chat.refreshes`) path may be `*` (one segment) or `**`
     (any number, none included, so `/api/projects/{id}/**` covers
     `/api/projects/7` and its subtree), refused in any other address, and a
-    computed path or `pathParams` value is exact. `Ui.Data.source` is a request target
-    over `query` and `params` (`{ path, pathParams, queryParams }`).
+    computed path or `pathParams` value is exact. `Ui.Query.url` is a request target
+    over `query` and `params` (`{ path, pathParams, queryParams }`). A read is a
+    `Ui.Query` (`model`, `url`, `query?`, `reloadOn?`, `reloadEvery?`, and
+    `input?` — `{ method?: QUERY | POST, model, body }`, `body` an
+    `accessor-template` over `query` / `params`, sent as the JSON body; `QUERY`
+    by default, `POST` when an intermediary does not forward `QUERY`, the route
+    declared with the same method). A `query` node `{ type: query, query,
+    content, loading?, failure? }` draws it: `query` a `!ref` or one inline (a
+    query one node draws is written inline, one several draw gets a name and
+    is shared — one read for the header and the page), `content` / `loading` /
+    `failure` lists of nodes reading `data`, `error`, `query` and `params`.
+    A sign-in gate is an inline query with `reloadOn: [unauthorized]` and a
+    condition on its answer; `shown` on the node draws nothing until a
+    parameter is chosen; a `Ui.Match` over a query parameter may declare
+    `format: date` or `date-time`. `Ui.Data` is gone — `telo migrate` rewrites
+    it. An `Http.Api` route takes `method: QUERY` (OpenAPI 3.2).
     `Ui.SplitView` (a composite) draws an `aside` beside `content`, the aside being
     the `Ui.Aside` shape a layout's `aside` is too: `{ actions?, content }`
     (`actions`: `link` nodes with `button`, drawn under the toggle's bar and kept
@@ -4962,7 +4984,7 @@ Where to start:
     pathParams: { id: !cel "row.id" } }` to open it in place), and a path
     parameter may read a nullable value: null leaves the address unresolved (a
     link is drawn as text). A `Ui.CollectionSource.basePath` may be
-    `{ path, pathParams }` over `params` / `query`. `Ui.Data` and `Ui.Listing`
+    `{ path, pathParams }` over `params` / `query`. `Ui.Query` and `Ui.Listing`
     take `reloadEvery` (a duration, at least `5s`): a timer read that keeps
     loaded pages, scroll and open forms, skipped while the document is hidden or
     a read is in flight. A `markdown` node (`value`, an accessor to a string)

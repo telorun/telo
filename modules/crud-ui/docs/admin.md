@@ -157,12 +157,13 @@ metadata: { name: taskPage }
 path: /tasks/{id}
 title: Task
 children:
-  - type: composite
-    ref:
-      kind: Ui.Data
+  - type: query
+    query:
+      kind: Ui.Query
       model: !ref TaskRecord
-      source: { path: "/api/tasks/{id}", pathParams: { id: !cel "params.id" } }
-      content: { type: value, value: !cel "data.text" }
+      url: { path: "/api/tasks/{id}", pathParams: { id: !cel "params.id" } }
+    content:
+      - { type: value, value: !cel "data.text" }
 ---
 kind: CrudUi.Admin
 metadata: { name: taskScreen }

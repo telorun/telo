@@ -18,5 +18,5 @@ h2[data-telo-part="text"]:not(:first-child) { margin-top: 1.5rem; }
 /* An error node stands out from the content around it. */
 [data-telo-part="error"] { border-left: 4px solid var(--telo-color-danger); }
 
-/* The data a reader is waiting for is drawn faded. */
-[data-telo-part="data"][data-state="loading"] { opacity: 0.6; }
+/* The data a query is waiting for is drawn faded. */
+[data-telo-part="query"][data-state="loading"] { opacity: 0.6; }

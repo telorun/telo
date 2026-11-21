@@ -1,0 +1,20 @@
+# What an accessor template cannot hold. Nothing evaluates it, so each value in
+# it is a literal or a plain chain: a call, an operator, an index and
+# `!interpolate`, at any depth, are each `ACCESSOR_NOT_PLAIN_CHAIN`.
+kind: Telo.Library
+metadata:
+  name: AccessorTemplateInvalidLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose criteria write values an accessor template cannot
+    hold.
+lang: en
+imports: { Search: ../../search }
+exports: { resources: [notChains] }
+---
+kind: Search.Criteria
+metadata: { name: notChains }
+criteria:
+  match: { title: !cel "query.q.upperAscii()" }
+  tags: [news, !cel "query.tag + '!'", !interpolate "${{ query.tag }}!"]
+  nested: { deeper: [{ first: !cel "query.tags[0]" }] }
