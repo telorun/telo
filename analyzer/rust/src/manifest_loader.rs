@@ -29,6 +29,7 @@ use crate::module_declaration_refusals::{
 use crate::parse_loaded_file::parse_loaded_file;
 use crate::reconcile_module_versions::reconcile_module_versions;
 use crate::reserved_kind_prefix::{is_reserved_kind_prefix, reserved_import_alias_message, reserved_library_name_message};
+use crate::sources::module_reference::is_malformed_schemed_reference;
 use crate::sources::source_failure::location_of;
 use crate::system_kinds::{is_module_document, APPLICATION, LIBRARY};
 use crate::types::{join_relative, kind_of, AnalysisDiagnostic, DiagnosticData, LoadError, ManifestSource, Range};
@@ -480,6 +481,12 @@ fn load_import_target<P: ImportTargetPort>(port: &P, graph: &mut LoadedGraph, re
             None,
         );
     }
+    // Refused before any source is asked, a host refusal included: a reference its
+    // scheme's grammar refuses names no module.
+    if is_malformed_schemed_reference(&request.source) {
+        let message = LoadError::UnsupportedSource(request.source.clone()).to_string();
+        return failure(&request.source, ImportFailureReason::Unresolved, message, None);
+    }
     let url = match port.resolve(file_of(graph, &request.from_source), &request.alias, &request.source) {
         Ok(url) => url,
         Err(err) => return unobtained(&request.source, err),
@@ -589,5 +596,30 @@ mod tests {
         assert_eq!(graph.import_edges["/app/telo.yaml"].keys().collect::<Vec<_>>(), ["Lib"]);
         let [gone] = graph.errors.as_slice() else { panic!("{:?}", graph.errors) };
         assert_eq!((gone.alias.as_str(), gone.message.as_str()), ("Gone", "no file /gone/telo.yaml"));
+    }
+
+    #[test]
+    fn refuses_a_source_its_scheme_grammar_refuses_before_the_port_is_asked() {
+        let files: HashMap<&str, &str> = [(
+            "/app/telo.yaml",
+            "kind: Telo.Application\nmetadata: { name: App }\nimports: { Http: \"http://[bad/x\", Oci: oci://host, Web: \"https://[bad/x\" }\n",
+        )]
+        .into();
+        let port = RefusingPort(ManifestLoader::new(vec![Box::new(Files(files))]));
+        let graph = load_graph(&port, "/app/telo.yaml").expect("the entry loads");
+        assert!(graph.entry().owner.parse_errors.is_empty(), "{:?}", graph.entry().owner.parse_errors);
+        let failures: Vec<(&str, &str, &str)> = graph
+            .errors
+            .iter()
+            .map(|e| (e.alias.as_str(), crate::import_resolution_diagnostics::import_failure_code(e), e.message.as_str()))
+            .collect();
+        assert_eq!(
+            failures,
+            [
+                ("Http", "INVALID_IMPORT_SOURCE", "No source found for: http://[bad/x"),
+                ("Oci", "INVALID_IMPORT_SOURCE", "No source found for: oci://host"),
+                ("Web", "INVALID_IMPORT_SOURCE", "No source found for: https://[bad/x"),
+            ]
+        );
     }
 }

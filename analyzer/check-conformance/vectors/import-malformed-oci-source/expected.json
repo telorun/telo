@@ -1,0 +1,26 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "INVALID_IMPORT_SOURCE",
+      "source": "telo-analyzer",
+      "message": "Cannot resolve import 'Lib' → 'oci://host': not a recognized module reference. Expected 'oci://host/repo@tag', 'https://…', or a relative path.",
+      "data": {
+        "filePath": "telo.yaml",
+        "path": "imports.Lib",
+        "sourceLine": 2
+      },
+      "range": {
+        "start": {
+          "line": 2,
+          "character": 16
+        },
+        "end": {
+          "line": 2,
+          "character": 26
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_INVALID_IMPORT_SOURCE] No source found for: oci://host\n  [INVALID_IMPORT_SOURCE] Cannot resolve import 'Lib' → 'oci://host': not a recognized module reference. Expected 'oci://host/repo@tag', 'https://…', or a relative path."
+}

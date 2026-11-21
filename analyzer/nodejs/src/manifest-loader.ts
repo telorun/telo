@@ -33,6 +33,7 @@ import {
   withLoaderErrors,
 } from "./module-declaration-refusals.js";
 import { sourceFailureOf } from "./sources/source-failure.js";
+import { isMalformedSchemedReference } from "./sources/module-reference.js";
 import type { LoadedKindScope } from "./loaded-kind-scope.js";
 import type { MigrationEntry } from "./migrations/types.js";
 import { moduleCallNamesOfFile } from "./module-call-names.js";
@@ -188,6 +189,11 @@ function libraryIdentity(target: LoadedModule, importSource: string): ImportTarg
   return { name, namespace: typeof namespace === "string" ? namespace : null };
 }
 
+/** No registered source reads `url`. */
+function noSourceFor(url: string): Error {
+  return new Error(`No source found for: ${url}`);
+}
+
 /** One import declaration, as the per-import load step reads it. */
 export interface ImportRequest {
   /** The file declaring the import. */
@@ -255,6 +261,12 @@ export async function loadImportTarget(
   // edge registered under it would replace `Telo.` or `Self.`.
   if (alias !== undefined && isReservedKindPrefix(alias)) {
     return failure(source, new Error(reservedImportAliasMessage(alias)), "reserved-prefix");
+  }
+
+  // Refused before any source is asked: a reference its scheme's grammar refuses
+  // names no module, so nothing could be obtained for it.
+  if (isMalformedSchemedReference(source)) {
+    return failure(source, noSourceFor(source), undefined, false);
   }
 
   let resolvedUrl: string;
@@ -381,7 +393,7 @@ export class Loader {
 
   private pick(url: string): ManifestSource {
     const s = this.sources.find((s) => s.supports(url));
-    if (!s) throw new Error(`No source found for: ${url}`);
+    if (!s) throw noSourceFor(url);
     return s;
   }
 

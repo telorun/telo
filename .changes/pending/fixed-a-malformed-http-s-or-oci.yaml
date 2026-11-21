@@ -1,0 +1,6 @@
+units:
+  analyzer: Fixed
+body: A malformed http(s) or oci import source — a URL the URL parser cannot read, an
+  oci:// reference with no repository — is now refused as not a module reference
+  (INVALID_IMPORT_SOURCE, ERR_INVALID_IMPORT_SOURCE at load) before anything is fetched,
+  instead of being reported as unreachable or unresolved.

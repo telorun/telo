@@ -62,6 +62,15 @@ fn a_construct_this_kernel_cannot_read_is_refused_first() {
     assert!(err.diagnostics.is_empty());
 }
 
+/// A well-formed http(s) import reaches the transport this kernel lacks; only a malformed one
+/// is refused before it, as no module reference.
+#[test]
+fn a_well_formed_https_import_is_still_a_construct_this_kernel_cannot_read() {
+    let (_dir, err) = load(&[("app/telo.yaml", &app("imports: { Web: \"https://x.test/lib\" }\n"))]);
+    assert_eq!(err.code, "ERR_UNSUPPORTED_MANIFEST_FEATURE", "{err}");
+    assert!(err.message.contains("import 'Web' resolves through a transport"), "{err}");
+}
+
 fn console() -> String {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../modules/console").display().to_string()
 }
