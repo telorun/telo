@@ -31,6 +31,7 @@ export {
   type LoadRefusalHost,
   type NeedRefusal,
 } from "./load-refusal.js";
+export { runtimeCodeOf } from "./load-refusal-code.js";
 export { analyzeLoadedGraph, type GraphAnalysis, type GraphAnalysisOptions } from "./graph-analysis.js";
 export { registerLoadedGraph, type RegisteredGraph } from "./graph-registration.js";
 export {

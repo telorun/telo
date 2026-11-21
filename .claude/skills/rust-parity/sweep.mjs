@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// Two dimensions, run from a repo root: `node .claude/skills/rust-parity/sweep.mjs --out <file>
-// [--dimension run|check|load] [--filter <text>] [--only rust|node] [--concurrency <n>] [--timeout <seconds>]
-// [--reuse-node <earlier out file> [--reuse-node-any-commit]]` (default: `run` and `check`).
+// Three dimensions, run from a repo root: `node .claude/skills/rust-parity/sweep.mjs --out <file>
+// [--dimension run|check|load ...] [--filter <text>] [--only rust|node] [--concurrency <n>] [--timeout <seconds>]
+// [--reuse-node <earlier out file> [--reuse-node-any-commit]]` (default: `run` and `check`; `--dimension`
+// repeats, or takes a comma-separated list, to run several).
 //
 // `run` runs every manifest test `test-suite.yaml` discovers on both kernels and writes one verdict
 // per test per kernel.
@@ -12,7 +13,8 @@
 //
 // `load` loads every manifest of the `check` dimension's set with each kernel's analyze-only load
 // (Node's `analyzeOnly` through `load-node.ts`, Rust's through the `analyze_only` example of
-// `telo-kernel`) and compares what each refuses the load with (below).
+// `telo-kernel`) and compares what each refuses the load with, finding by finding (below). Run
+// beside `check` with no `--filter`, it confirms each owed finding against the owner's own check.
 
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, globSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -40,7 +42,9 @@ const HOST_REFUSAL = "ERR_UNSUPPORTED_MANIFEST_FEATURE";
 // How a debt entry names a diagnostic that carries no code (a load failure).
 const NO_CODE = "(none)";
 
-const dimensions = options.dimension ? [options.dimension] : ["run", "check"];
+const dimensions = options.dimensions.length ? options.dimensions : ["run", "check"];
+// The `check` dimension's per-manifest analyses, which the `load` dimension confirms against.
+let checkAnalyses = null;
 
 const nodeCommand = options.only === "rust" ? null : readPackageScript("telo").split(/\s+/);
 const rustBinary = options.only === "node" || !dimensions.some((d) => d === "run" || d === "check") ? null : buildRust();
@@ -284,7 +288,10 @@ async function checkDimension() {
     }),
   );
 
-  if (nodeCommand && rustBinary) judgeDependencyFindings(results, analyses, debt);
+  if (nodeCommand && rustBinary) {
+    judgeDependencyFindings(results, analyses, debt);
+    checkAnalyses = analyses;
+  }
 
   const failures = results.flatMap((r) => r.verdict.failures.map((message) => ({ path: r.path, message })));
   if (nodeCommand && rustBinary) failures.push(...staleEntries(debt, covered, swept, results));
@@ -553,19 +560,38 @@ function staleEntries(debt, covered, swept, results) {
 // The `load` dimension: what each kernel refuses a load with, over the `check` dimension's set.
 //
 // Each manifest is loaded analyze-only by both kernels under one sweep-owned `TELO_CACHE_DIR`, the
-// working directory the repo root, the path as the repo writes it. Each answers as the
-// check-conformance rows' `runFails` do: the refusal's `[<CODE>] <message>`, then each carried
-// diagnostic on a line of its own, or nothing when it loads; the repo root's prefixes are removed.
-// Verdicts:
-//   - both load, or both refuse with the same text: match;
-//   - Node loads and Rust refuses with `ERR_UNSUPPORTED_MANIFEST_FEATURE`: a gap, counted, not failed;
+// working directory the repo root, the path as the repo writes it. Each half answers as one JSON
+// object: the refusal's headline code and message, and every finding it carries — its code as
+// raised, its file (the origin; none means the entry), its message and, for a finding re-reported at
+// an import, `writtenAt`, where the module writing the defect reports it; the repo root's prefixes are
+// removed. A carried finding is one finding by its code, file and message.
+//
+// Verdicts, finding by finding:
+//   - both load, or both refuse with the same headline and the same carried findings: match;
+//   - Rust refuses with `ERR_UNSUPPORTED_MANIFEST_FEATURE`: passes only under the manifest's own
+//     `unsupported` entry — a gap when Node loads, debt when Node refuses — and fails otherwise;
 //   - Node loads and Rust refuses with anything else: fail;
-//   - any other difference passes only where the manifest's `check-debt.json` entry lists a code
-//     or has `unsupported` (debt), and fails otherwise.
+//   - a finding Rust carries that Node does not: fail, whatever the debt;
+//   - a finding Node carries that Rust lacks is OWED to a module: the one owning `writtenAt.filePath`
+//     when it has one, else the one owning its file (a partial maps to its owner, as the `check`
+//     dimension maps it). It passes when that module's `check-debt.json` entry lists a static code C
+//     with C, or the analyzer's `runtimeCodeOf(C)`, equal to the carried code — nothing maps backward;
+//     with `check` in the same sweep and no `--filter`, the owner's own `check` run must also lack the
+//     finding: with `writtenAt` one of that code at the same file, path and resource (messages not
+//     compared — the import's prefix is by design), without it one of that code, file and message
+//     (the check message read with the repo root's prefixes removed too, and without the configuration
+//     clause `telo check` appends to a finding holding in some configurations only);
+//   - the headlines may differ only when the carried findings differ and every difference is owed:
+//     equal carried findings under different headlines fail, so a Node refusal carrying nothing that
+//     Rust answers differently fails.
 
 async function loadDimension() {
   const debt = readDebt();
-  const swept = coveredManifests().filter((path) => path.includes(options.filter));
+  const covered = coveredManifests();
+  const swept = covered.filter((path) => path.includes(options.filter));
+  const owners = includeOwners(covered);
+  const runtimeCodeOf = await loadRuntimeCodeOf();
+  const confirmAgainst = !options.filter && checkAnalyses ? checkAnalyses : null;
   const cacheDir = mkdtempSync(join(tmpdir(), "rp-load-cache-"));
   const env = {
     ...process.env,
@@ -576,6 +602,7 @@ async function loadDimension() {
   const loaders = {};
   if (nodeCommand) loaders.node = (path) => ["bun", [join(root, ".claude", "skills", "rust-parity", "load-node.ts"), path]];
   if (rustLoader) loaders.rust = (path) => [rustLoader, [path]];
+  const judging = { debt, owners, runtimeCodeOf, confirmAgainst };
 
   const results = new Array(swept.length);
   let next = 0;
@@ -587,18 +614,19 @@ async function loadDimension() {
         const result = { path };
         for (const [name, commandFor] of Object.entries(loaders)) {
           const [command, args] = commandFor(path);
-          result[name] = readLoad(await runCapture(command, args, env));
+          result[name] = readLoad(await runCapture(command, args, env), path);
         }
-        result.verdict = result.node && result.rust ? judgeLoad(path, result, debt) : { status: "unjudged" };
+        result.verdict = result.node && result.rust ? judgeLoad(path, result, judging) : { status: "unjudged", failures: [] };
         results[index] = result;
         process.stderr.write(`load ${path}  ${result.verdict.status}\n`);
       }
     }),
   );
 
-  const failures = results.filter((r) => r.verdict.status === "fail").map((r) => ({ path: r.path, message: r.verdict.reason }));
+  const failures = results.flatMap((r) => r.verdict.failures.map((message) => ({ path: r.path, message })));
   for (const { path, message } of failures) process.stderr.write(`LOAD FAIL ${path}: ${message}\n`);
   const byStatus = (status) => results.filter((r) => r.verdict.status === status).length;
+  const owed = results.flatMap((r) => r.verdict.owed ?? []);
   const summary = {
     swept: results.length,
     matched: byStatus("match"),
@@ -607,34 +635,146 @@ async function loadDimension() {
     nodeUnusable: byStatus("node-unusable"),
     unjudged: byStatus("unjudged"),
     failed: failures.length,
+    manifestsFailing: byStatus("fail"),
+    owedFindings: owed.length,
+    owedWrittenElsewhere: owed.filter((o) => o.writtenAt).length,
+    confirmedWrittenElsewhere: owed.filter((o) => o.writtenAt && o.confirmed).length,
+    confirmed: owed.filter((o) => o.confirmed).length,
+    confirmation: confirmAgainst ? "check" : "entry alone",
   };
   return { summary, failures, results };
 }
 
-// One kernel's answer: `loaded`, or the refusal's text with the repo root's prefixes removed.
-function readLoad(run) {
+// `runtimeCodeOf` from the built analyzer: the load refusal rule's one static-to-runtime mapping.
+async function loadRuntimeCodeOf() {
+  const built = join(root, "analyzer", "nodejs", "dist", "index.js");
+  if (!existsSync(built)) fail(`${built} does not exist; build the analyzer (pnpm --filter @telorun/analyzer run build)`);
+  const { runtimeCodeOf } = await import(pathToFileURL(built).href);
+  if (typeof runtimeCodeOf !== "function") fail(`${built} exports no runtimeCodeOf; rebuild the analyzer`);
+  return runtimeCodeOf;
+}
+
+// One kernel's answer: `loaded`, or the refusal with the repo root's prefixes removed and each
+// finding's file defaulted to the entry.
+function readLoad(run, entry) {
   if (run.timedOut) return { unusable: "timed out" };
   if (run.exitCode !== 0 && run.exitCode !== 1) return { unusable: `exit ${run.exitCode}: ${tail(run.stderr)}` };
   if (run.exitCode === 0) return { loaded: true };
-  const text = [`${pathToFileURL(root).href}/`, `${root}${sep}`].reduce((t, prefix) => t.split(prefix).join(""), run.stdout);
-  return { loaded: false, refusal: text.replace(/\n$/, "") };
+  let answer;
+  try {
+    answer = JSON.parse(run.stdout);
+  } catch {
+    return { unusable: `stdout is not JSON: ${tail(run.stdout)} ${tail(run.stderr)}` };
+  }
+  const strip = withoutRepoRoot;
+  const writtenAtOf = (at) => {
+    if (!at || Object.keys(at).length === 0) return undefined;
+    return {
+      ...(at.filePath !== undefined ? { filePath: strip(at.filePath) } : {}),
+      ...(at.path !== undefined ? { path: at.path } : {}),
+      ...(at.resource !== undefined ? { resource: at.resource } : {}),
+    };
+  };
+  return {
+    loaded: false,
+    code: answer.code,
+    message: strip(answer.message),
+    carried: (answer.carried ?? []).map((f) => {
+      const writtenAt = writtenAtOf(f.writtenAt);
+      return {
+        code: f.code ?? NO_CODE,
+        file: f.file !== undefined ? strip(f.file) : entry,
+        message: strip(f.message),
+        ...(writtenAt ? { writtenAt } : {}),
+      };
+    }),
+  };
 }
 
-function judgeLoad(path, { node, rust }, debt) {
-  if (node.unusable) return { status: "node-unusable", note: node.unusable };
-  if (rust.unusable) return { status: "fail", reason: `Rust: ${rust.unusable}` };
-  if (node.loaded && rust.loaded) return { status: "match" };
-  if (!node.loaded && !rust.loaded && node.refusal === rust.refusal) return { status: "match" };
-  if (node.loaded) {
-    if (rust.refusal.startsWith(`[${HOST_REFUSAL}]`)) return { status: "gap" };
-    return { status: "fail", reason: `Node loads, Rust refuses:\n${rust.refusal}` };
+// `text` with the repo root's prefixes — as a `file://` URL and as a path — removed.
+function withoutRepoRoot(text) {
+  return [`${pathToFileURL(root).href}/`, `${root}${sep}`].reduce((t, prefix) => t.split(prefix).join(""), String(text));
+}
+
+// Whether the check finding `d` says `message`: its text with the repo root's prefixes removed, and
+// for a finding holding in some configurations only, less the configuration clause `telo check`
+// appends to it (the JSON carries the same as `configurations`), which a load's refusal never has.
+function sameMessage(d, message) {
+  const text = withoutRepoRoot(d.message);
+  return text === message || (Array.isArray(d.configurations) && text.startsWith(`${message} (when `) && text.endsWith(")"));
+}
+
+function findingKey(f) {
+  return JSON.stringify([f.code, f.file, f.message]);
+}
+
+function judgeLoad(path, { node, rust }, judging) {
+  const entry = judging.debt.manifests[path];
+  if (node.unusable) return { status: "node-unusable", failures: [], note: node.unusable };
+  if (rust.unusable) return { status: "fail", failures: [`Rust: ${rust.unusable}`] };
+  if (node.loaded && rust.loaded) return { status: "match", failures: [] };
+  if (!rust.loaded && rust.code === HOST_REFUSAL) {
+    if (!entry?.unsupported) {
+      return { status: "fail", failures: [`Rust holds a construct back with no \`unsupported\` entry: ${rust.message}`] };
+    }
+    return { status: node.loaded ? "gap" : "debt", failures: [] };
   }
-  const entry = debt.manifests[path];
-  if (entry?.codes?.length || entry?.unsupported) return { status: "debt" };
-  return {
-    status: "fail",
-    reason: `the refusals differ:\n--- node\n${node.refusal}\n--- rust\n${rust.loaded ? "(loads)" : rust.refusal}`,
-  };
+  if (node.loaded) return { status: "fail", failures: [`Node loads, Rust refuses: [${rust.code}] ${rust.message}`] };
+
+  const rustCarried = rust.loaded ? [] : rust.carried;
+  const unmatched = [...rustCarried];
+  const nodeOnly = [];
+  for (const f of node.carried) {
+    const at = unmatched.findIndex((r) => findingKey(r) === findingKey(f));
+    if (at === -1) nodeOnly.push(f);
+    else unmatched.splice(at, 1);
+  }
+
+  const failures = unmatched.map((f) => `Rust carries what Node does not: ${JSON.stringify(f)}`);
+  const owed = [];
+  for (const f of nodeOnly) {
+    const owing = oweLoadFinding(f, judging);
+    if (owing.failure) failures.push(owing.failure);
+    else owed.push(owing.owed);
+  }
+  const sameHeadline = !rust.loaded && rust.code === node.code && rust.message === node.message;
+  if (!nodeOnly.length && !unmatched.length && !sameHeadline) {
+    const rustHeadline = rust.loaded ? "(loads)" : `[${rust.code}] ${rust.message}`;
+    failures.push(
+      node.carried.length
+        ? `the carried findings agree, the headlines differ: Node [${node.code}] ${node.message}; Rust ${rustHeadline}`
+        : `Node refuses carrying nothing, Rust answers differently: Node [${node.code}] ${node.message}; Rust ${rustHeadline}`,
+    );
+  }
+  if (failures.length) return { status: "fail", failures, owed };
+  return { status: nodeOnly.length ? "debt" : "match", failures: [], owed };
+}
+
+// The module a finding Node carries and Rust lacks is owed by, and whether its entry and — when
+// confirming — its own check run account for it.
+function oweLoadFinding(f, { debt, owners, runtimeCodeOf, confirmAgainst }) {
+  const written = f.writtenAt;
+  const ownerFile = written?.filePath ?? f.file;
+  const fileOwners = owners.get(ownerFile) ?? [];
+  const codeMatches = (code) => code === f.code || (code !== NO_CODE && runtimeCodeOf(code) === f.code);
+  const listed = fileOwners.filter((owner) => (debt.manifests[owner]?.codes ?? []).some(codeMatches));
+  const describe = `${f.code} ${f.file}${written ? ` (written at ${JSON.stringify(written)})` : ""}: ${f.message}`;
+  if (!listed.length) {
+    const why = fileOwners.length ? `${fileOwners.join(", ")} lists no code raised as ${f.code}` : `no module owns ${ownerFile}`;
+    return { failure: `Rust lacks ${describe} — ${why}` };
+  }
+  if (!confirmAgainst) return { owed: { code: f.code, owners: listed, writtenAt: Boolean(written), confirmed: false } };
+  const resourceText = written?.resource ? `${written.resource.kind}/${written.resource.name}` : undefined;
+  const sameFinding = (d) =>
+    codeMatches(d.code ?? NO_CODE) &&
+    (written
+      ? d.file === written.filePath && (d.path ?? "") === (written.path ?? "") && d.resource === resourceText
+      : d.file === f.file && sameMessage(d, f.message));
+  const confirmedBy = listed.filter((owner) => confirmAgainst.get(owner)?.own.some(({ d }) => sameFinding(d)));
+  if (!confirmedBy.length) {
+    return { failure: `Rust lacks ${describe} — ${listed.join(", ")} lists the code but its own check run does not lack this finding` };
+  }
+  return { owed: { code: f.code, owners: confirmedBy, writtenAt: Boolean(written), confirmed: true } };
 }
 
 function parseArgs(argv) {
@@ -644,7 +784,7 @@ function parseArgs(argv) {
     only: null,
     concurrency: 3,
     timeout: 600,
-    dimension: null,
+    dimensions: [],
     reuseNode: null,
     reuseNodeAnyCommit: false,
   };
@@ -659,7 +799,9 @@ function parseArgs(argv) {
     if (flag === "--out") parsed.out = value;
     else if (flag === "--filter") parsed.filter = value;
     else if (flag === "--only" && (value === "rust" || value === "node")) parsed.only = value;
-    else if (flag === "--dimension" && ["run", "check", "load"].includes(value)) parsed.dimension = value;
+    else if (flag === "--dimension" && value.split(",").every((d) => ["run", "check", "load"].includes(d))) {
+      for (const d of value.split(",")) if (!parsed.dimensions.includes(d)) parsed.dimensions.push(d);
+    }
     else if (flag === "--reuse-node") parsed.reuseNode = value;
     else if (flag === "--concurrency") parsed.concurrency = positiveInteger(flag, value);
     else if (flag === "--timeout") parsed.timeout = positiveInteger(flag, value);

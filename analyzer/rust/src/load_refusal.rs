@@ -1,6 +1,7 @@
 //! How a kernel refuses a load, decided from the loaded graph and what its analysis found.
 //! Mirrors `loadRefusal` in `../../nodejs/src/load-refusal.ts`, group for group, so a manifest
-//! is refused with the same code, message and carried findings whichever kernel loads it.
+//! is refused with the same code, message and carried findings whichever kernel loads it; a
+//! static code is raised under [`runtime_code_of`]'s answer at every group.
 //!
 //! Where it differs, by what this build reads: a construct it cannot read is refused first, as
 //! `ERR_UNSUPPORTED_MANIFEST_FEATURE` ([`host_refusals`]); and the groups whose findings this
@@ -12,6 +13,7 @@
 use crate::entry_diagnostics::host_refusals;
 use crate::finding_order::FindingOrder;
 use crate::import_resolution_diagnostics::{import_failure_code, import_failure_diagnostics};
+use crate::load_refusal_code::runtime_code_of;
 use crate::loaded_types::LoadedGraph;
 use crate::metadata_stamps::METADATA_RESERVED_FIELD;
 use crate::system_kinds::LIBRARY;
@@ -58,7 +60,7 @@ pub fn load_refusal<H: LoadRefusalHost>(
     }
     if let Some(first) = graph.errors.first() {
         return Ok(Some(LoadRefusal {
-            code: format!("ERR_{}", import_failure_code(first)),
+            code: runtime_code_of(import_failure_code(first)),
             message: first.message.clone(),
             diagnostics: import_failure_diagnostics(&graph.errors),
         }));
@@ -102,12 +104,12 @@ pub fn load_refusal<H: LoadRefusalHost>(
         let mut diagnostics: Vec<AnalysisDiagnostic> = stamps
             .into_iter()
             .map(|mut d| {
-                d.code = d.code.map(|code| format!("ERR_{code}"));
+                d.code = d.code.map(|code| runtime_code_of(&code));
                 d
             })
             .collect();
         diagnostics.extend(errors.into_iter().filter(|d| !is_stamp(d)));
-        return Ok(Some(LoadRefusal { code: format!("ERR_{METADATA_RESERVED_FIELD}"), message, diagnostics }));
+        return Ok(Some(LoadRefusal { code: runtime_code_of(METADATA_RESERVED_FIELD), message, diagnostics }));
     }
     if !errors.is_empty() {
         return Ok(Some(LoadRefusal {

@@ -34,6 +34,36 @@ describe("staticDiagnosticToRuntime", () => {
     });
   });
 
+  // A finding re-reported at an import carries the place the library writes the
+  // defect at, so a host can attribute it to that library.
+  it("carries where an import-anchored finding's defect is written", () => {
+    const runtime = staticDiagnosticToRuntime({
+      severity: DiagnosticSeverity.Error,
+      code: "CAPABILITY_UNKNOWN",
+      source: "telo-analyzer",
+      message: "Imported library 'Lib', reached through import 'Lib': …",
+      data: {
+        filePath: "file:///app/telo.yaml",
+        path: "imports.Lib",
+        writtenAt: {
+          filePath: "file:///app/lib/telo.yaml",
+          path: "capability",
+          resource: { kind: "Telo.Definition", name: "Greeter" },
+        },
+      },
+    });
+
+    expect(runtime.origin).toEqual({
+      filePath: "file:///app/telo.yaml",
+      path: "imports.Lib",
+      writtenAt: {
+        filePath: "file:///app/lib/telo.yaml",
+        path: "capability",
+        resource: { kind: "Telo.Definition", name: "Greeter" },
+      },
+    });
+  });
+
   // A parse failure has no parsed tree to index a field path against, so its own
   // range is the only position it will ever have.
   it("carries the diagnostic's own range for a failure with no field path", () => {
