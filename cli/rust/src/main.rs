@@ -6,6 +6,7 @@ mod cli;
 mod color_precedence;
 mod commands;
 mod controller_tool_probe;
+mod dependency_verdict_store;
 mod exit_status;
 mod logger;
 mod manifest_freshness;

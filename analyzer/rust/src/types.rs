@@ -10,7 +10,7 @@
 //! the kernel binary.
 
 use indexmap::IndexMap;
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
 use crate::quoted_place::QuotedPlace;
@@ -18,13 +18,13 @@ use crate::quoted_place::QuotedPlace;
 pub const DEFAULT_MANIFEST_FILENAME: &str = "telo.yaml";
 
 /// A place in a file: 0-based line, and 0-based character in UTF-16 code units.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Position {
     pub line: usize,
     pub character: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Range {
     pub start: Position,
     pub end: Position,
@@ -50,6 +50,18 @@ impl Serialize for DiagnosticSeverity {
     }
 }
 
+impl<'de> Deserialize<'de> for DiagnosticSeverity {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        match u8::deserialize(deserializer)? {
+            1 => Ok(Self::Error),
+            2 => Ok(Self::Warning),
+            3 => Ok(Self::Information),
+            4 => Ok(Self::Hint),
+            other => Err(serde::de::Error::custom(format!("{other} is no diagnostic severity"))),
+        }
+    }
+}
+
 /// LSP's `DiagnosticTag`, serialized as its number — declared whole, as the Node twin is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiagnosticTag {
@@ -63,8 +75,18 @@ impl Serialize for DiagnosticTag {
     }
 }
 
+impl<'de> Deserialize<'de> for DiagnosticTag {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        match u8::deserialize(deserializer)? {
+            1 => Ok(Self::Unnecessary),
+            2 => Ok(Self::Deprecated),
+            other => Err(serde::de::Error::custom(format!("{other} is no diagnostic tag"))),
+        }
+    }
+}
+
 /// The YAML tag a repair writes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DiagnosticFixTag {
     Ref,
@@ -74,7 +96,7 @@ pub enum DiagnosticFixTag {
 
 /// A mechanically applicable repair: the whole value at the diagnostic's `path`,
 /// corrected, optionally written behind a tag.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DiagnosticFix {
     pub replacement: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -82,7 +104,7 @@ pub struct DiagnosticFix {
 }
 
 /// The declaration a diagnostic is about.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DiagnosticResource {
     pub kind: String,
     pub name: String,
@@ -90,7 +112,7 @@ pub struct DiagnosticResource {
 
 /// The `data` stamp a diagnostic carries — the fields Node's `DiagnosticData`
 /// declares, and the further ones its producers stamp, under their Node names.
-#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct DiagnosticData {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resource: Option<DiagnosticResource>,
@@ -123,7 +145,7 @@ pub struct DiagnosticData {
 }
 
 /// Where a defect is written, Node's `WrittenAt`.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WrittenAt {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resource: Option<DiagnosticResource>,
@@ -141,7 +163,7 @@ impl WrittenAt {
 }
 
 /// The rewrite a migration's deprecation reports: the entry, and the path before and after.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DiagnosticMigration {
     pub id: String,
     #[serde(rename = "legacyPath")]
@@ -152,7 +174,7 @@ pub struct DiagnosticMigration {
 
 /// An LSP-compatible diagnostic, Node's `AnalysisDiagnostic`. `range` is absent when only
 /// the diagnostic's `data` locates it (`diagnostic_location::locate_diagnostic`).
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AnalysisDiagnostic {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub range: Option<Range>,

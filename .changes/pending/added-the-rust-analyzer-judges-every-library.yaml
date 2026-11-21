@@ -1,0 +1,7 @@
+units:
+  analyzer: Added
+body: "The Rust analyzer judges every library an application imports by that library's
+  own check, as the Node analyzer does: a library imported by path is reported at its
+  own lines with every severity, a published one's errors as warnings at the `imports:`
+  entry reaching it, and a refusal at an import that the library's own check reports as
+  the same defect is reported once, at the library."

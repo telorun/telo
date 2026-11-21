@@ -1,14 +1,15 @@
 //! `analyzer/check-conformance/`: each row is a manifest tree and what `telo check` reports
-//! for it, every diagnostic whole and at the range it is shown at. This runner holds the
-//! analysis, assembled as every host assembles it, to each row's `diagnostics`.
+//! for it, every diagnostic whole and at the range it is shown at. This runner holds what
+//! `telo check` reports — the entry's assembly plus every imported library's verdict — to each
+//! row's `diagnostics`.
 
 use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value};
 use telo_analyzer::sources::source_failure::{file_source_failure, file_url, ManifestSourceFailure, SourceFailureKind};
 use telo_analyzer::{
-    analyze, assemble_graph_diagnostics, join_relative, load_graph, locate_diagnostic, AnalysisOptions, LoadError,
-    ManifestLoader, ManifestSource, ReadManifest, DEFAULT_MANIFEST_FILENAME,
+    analyze_loaded_graph, join_relative, load_graph, locate_diagnostic, AnalysisOptions, DependencyAnalysisOptions,
+    LoadError, ManifestLoader, ManifestSource, ReadManifest, DEFAULT_MANIFEST_FILENAME,
 };
 use telorun_glob::{select_by_patterns, SelectOptions};
 
@@ -111,9 +112,14 @@ fn diagnostics_of(dir: &Path) -> Vec<Value> {
     let loader = ManifestLoader::new(vec![Box::new(FileSource)]);
     let entry = dir.join(DEFAULT_MANIFEST_FILENAME).display().to_string();
     let graph = load_graph(&loader, &entry).expect("graph loads");
-    let analysis = analyze(&graph, &AnalysisOptions { accepts_value: &|_, _, _| false });
+    let options = DependencyAnalysisOptions {
+        analysis: &AnalysisOptions { accepts_value: &|_, _, _| false },
+        running_surface: "check-conformance",
+        store: None,
+        memo: None,
+    };
     let prefixes = [format!("{}/", file_url(dir)), format!("{}/", slashed(&dir.display().to_string()))];
-    assemble_graph_diagnostics(&graph, analysis)
+    analyze_loaded_graph(&graph, &options)
         .diagnostics
         .iter()
         .map(|d| {

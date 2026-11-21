@@ -61,6 +61,7 @@ impl ParseError {
     }
 }
 
+#[derive(Clone)]
 pub struct LoadedFile {
     /// Canonical location the text was read from — relative imports inside it
     /// resolve against this, never against the process working directory.
@@ -101,6 +102,7 @@ impl LoadedFile {
 }
 
 /// An owner file and every partial its `include:` list names.
+#[derive(Clone)]
 pub struct LoadedModule {
     pub owner: LoadedFile,
     pub partials: Vec<LoadedFile>,

@@ -1421,6 +1421,7 @@
     "starters/apps/api-sync/tests/pulls-every-page.yaml": { "codes": ["CEL_NONDETERMINISTIC_IN_COMPILE_FIELD", "DEPRECATED_KIND"] },
     "starters/apps/approval-flow/telo.yaml": { "codes": ["DURABLE_CONTRACT_REQUIRED"] },
     "starters/apps/approval-flow/tests/approves-and-rejects.yaml": { "codes": ["CEL_NONDETERMINISTIC_IN_COMPILE_FIELD"] },
+    "starters/apps/mcp-server/telo.yaml": { "codes": ["RESOURCE_RULE_UNEXERCISED"] },
     "starters/apps/report-generator/tests/builds-and-serves-a-report.yaml": { "codes": ["CEL_NONDETERMINISTIC_IN_COMPILE_FIELD"] },
     "starters/apps/scheduled-job/telo.yaml": { "codes": ["DEPRECATED_KIND"] },
     "starters/apps/scheduled-job/tests/runs-on-demand-and-reports-health.yaml": { "codes": ["CEL_NONDETERMINISTIC_IN_COMPILE_FIELD"] },

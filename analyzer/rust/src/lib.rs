@@ -14,7 +14,9 @@
 //! capability roster, the reference forms and a plain string left holding `${{` — located
 //! by Node's fallback chain. `telo check` and the kernel read them through one entry assembly
 //! (`entry_diagnostics`, which also names the constructs this build cannot read and holds back
-//! the files they name), and the kernel refuses a load by the twin of Node's load refusal rule
+//! the files they name); `telo check` adds the dependency verdict (`graph_analysis`: each
+//! imported library judged by its own entry assembly, reported by its origin, memoized by a
+//! digest of its closure), and the kernel refuses a load by the twin of Node's load refusal rule
 //! (`load_refusal`), group for group, raising each static code under the rule's one mapping
 //! (`load_refusal_code`). A library's `migrations:` block is read and its `match` twinned, but the
 //! consumer stage applying it is not: where one may apply, the hosts refuse the import
@@ -33,9 +35,13 @@ pub mod builtin_vocabulary_slices;
 pub mod builtins;
 pub mod capability_roster;
 pub mod cpe_format;
+pub mod dependency_configurations;
+pub mod dependency_verdicts;
+pub mod diagnostic_identity;
 pub mod diagnostic_location;
 pub mod entry_diagnostics;
 pub mod finding_order;
+pub mod graph_analysis;
 pub mod graph_diagnostics;
 pub mod host_path_slot;
 pub mod import_resolution_diagnostics;
@@ -53,6 +59,7 @@ pub mod metadata_stamps;
 pub mod migrations;
 pub mod module_alias_scope;
 pub mod module_declaration_refusals;
+pub mod module_origin;
 pub mod module_version_order;
 pub mod native_entries;
 pub mod nearest_name;
@@ -83,9 +90,15 @@ pub mod vcs_url_format;
 pub mod yaml_ast;
 
 pub use analyzer::{analyze, AnalysisOptions};
+pub use dependency_verdicts::{
+    analyze_dependencies, dependency_verdict_key, library_graph, DependencyAnalysis, DependencyAnalysisOptions,
+    DependencyVerdict, DependencyVerdictMemo, DependencyVerdictRecord, DependencyVerdictStore, VERDICT_FORMAT,
+};
+pub use diagnostic_identity::{defect_identity, diagnostic_identity, union_diagnostics, written_place_of};
 pub use diagnostic_location::{find_positions, locate_diagnostic, resolve_range, LocatedDiagnostic};
 pub use entry_diagnostics::{assemble_entry_diagnostics, host_refusals, EntryDiagnostics, HostRefusal};
 pub use finding_order::FindingOrder;
+pub use graph_analysis::{analyze_loaded_graph, GraphAnalysis};
 pub use graph_diagnostics::{assemble_graph_diagnostics, compromised_files, AssembledDiagnostics};
 pub use import_resolution_diagnostics::{import_failure_code, import_failure_diagnostics};
 pub use load_refusal::{load_refusal, LoadRefusal, LoadRefusalHost, UNSUPPORTED_MANIFEST_FEATURE};
@@ -95,6 +108,7 @@ pub use loaded_types::{
     GraphLoadError, ImportEdge, ImportFailureReason, LoadedFile, LoadedGraph, LoadedModule, ParseError,
     ParseErrorOrigin,
 };
+pub use module_origin::{module_origins, reached_module_sources, ModuleOrigin};
 pub use manifest_loader::{
     import_target_identity, is_local_path_source, load_graph, resolve_source, ImportTargetPort, ManifestLoader,
 };
