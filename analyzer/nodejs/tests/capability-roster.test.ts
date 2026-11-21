@@ -70,6 +70,8 @@ describe("the roster", () => {
         "DurableDirectory",
         "FileSink",
         "Function",
+        "GeneratedPassword",
+        "GeneratedSecretKey",
         "JsonSchema",
         "LogTraceSink",
         "OpenUrl",

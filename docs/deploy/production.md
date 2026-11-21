@@ -175,7 +175,7 @@ outside (Kubernetes, ECS) ignore `HEALTHCHECK` and use their own probe.
 **An arbitrary uid** (`docker run --user 12345:12345`, OpenShift, Kubernetes
 `runAsUser`) boots the same image. The user has no entry in `/etc/passwd`, so
 `HOME` is `/` and nothing under `/home/node` is writable by it; the files you
-copied with `--chown=node:node` are read-only to it. The `.telo/` cache is then
+copied with `--chown=node:node` are read-only to it. The `.telo/cache/` cache is then
 unwritable and a run without `--no-cache-write` logs a warning per derived entry
 it cannot store (compiled validators, the analysis stamp, emitted CEL) and runs
 on without them — pass `--no-cache-write`, or make the cache root writable for
@@ -186,7 +186,7 @@ mounted writable:
 
 | Path | Why | Needed when |
 | --- | --- | --- |
-| The `.telo/` cache root | Derived entries (compiled validators, the analysis stamp, emitted CEL) are written beside the warmed controllers. | Never, with `--no-cache-write` and a cache warmed by `telo install`. Without the flag it may be unwritable: the run warns and recomputes those entries on every start. |
+| The `.telo/cache/` cache root | Derived entries (compiled validators, the analysis stamp, emitted CEL) are written beside the warmed controllers. | Never, with `--no-cache-write` and a cache warmed by `telo install`. Without the flag it may be unwritable: the run warns and recomputes those entries on every start. |
 | `TELO_HOST_STATE_DIR`, or the path of each `Telo.DurableDirectory` need | The application's persistent files. The directory must already be writable by the running uid; a fresh Docker named volume mounted at a path the image does not have is root-owned and boots as `ERR_NEED_DIRECTORY_UNUSABLE`. | The application declares a durable directory. Create and `chown` the mount point in the image (`RUN mkdir -p /var/lib/app && chown node:node /var/lib/app`), or `chown` the volume for a uid other than 1000. |
 | `/tmp` | The temporary directory controllers using one expect, and the fallback unpack root of a packaged binary. | A controller or the application uses it; a plain HTTP application booted without it. Mount a tmpfs or `emptyDir` as a matter of course. |
 | `TELO_APP_DIR` | Where a [packaged binary](/learn/packaging-an-app) unpacks itself. | The container runs a packaged binary rather than `telo`. With no writable location the binary refuses to start and names the variable. |
@@ -261,11 +261,11 @@ chart are not a way to run it: they host sandboxed editor sessions (see the
 Notes specific to Telo:
 
 - **The image should be built with a warmed cache.** `telo install` in the build
-  stage puts every controller and imported manifest under the `.telo/` cache
+  stage puts every controller and imported manifest under the `.telo/cache/`
   root, so boot does no network I/O. In a monorepo that root is beside
   `telo-workspace.yaml`, not beside the manifest — see
   [where the cache lands](/deploy/docker#where-the-cache-lands).
-- **The `.telo/` tree is read-only at run time** and identical in every replica,
+- **The `.telo/cache/` tree is read-only at run time** and identical in every replica,
   so it needs no volume and creates no shared state. Replicas are independent
   processes; nothing in the kernel coordinates between them. Coordination you
   want is declared — see the `lease`, `idempotency`, and `rate-limit` modules in

@@ -10,7 +10,7 @@ export interface UnresolvedApplicationInput {
    *  `ports.http`, `needs Orders.databaseAccess.url`. Stable across loads, so a
    *  host may key a session's answers on it. */
   readonly id: string;
-  readonly block: "variables" | "secrets" | "ports" | "needs";
+  readonly block: "variables" | "secrets" | "ports" | "needs" | "host";
   /** The declared name; for a need field, `<need path>.<field>`. */
   readonly name: string;
   /** The environment variable the entry binds. */
@@ -28,6 +28,9 @@ export interface UnresolvedApplicationInput {
   /** Why the last answer given for this entry was refused — the kernel's own
    *  sentence, never quoting a sensitive value. Absent on a first ask. */
   readonly refusal?: string;
+  /** The host can make the value itself when the person agrees (a secret seed),
+   *  so asking for it means offering to generate and keep one. */
+  readonly generable?: boolean;
 }
 
 /**

@@ -589,7 +589,7 @@ layer, holding a file at the same in-layer path, so a module directory could
 hold only one of them.
 
 `<cache root>` is the root the cache already resolves to: `TELO_CACHE_DIR`,
-else the directory holding the workspace marker, else the entry's `.telo`, and
+else the directory holding the workspace marker, else the entry's `.telo/cache`, and
 in a packaged application's payload its sealed `cache/`, whose analysis key
 covers `cache/layers/`. An implementation:
 

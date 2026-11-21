@@ -8,7 +8,7 @@ A repo holding more than one Telo module or application declares itself a
 **workspace** with a `telo-workspace.yaml` at its root.
 
 **Its location is what matters most.** The kernel walks up from an entry manifest
-looking for it and anchors the module cache (`.telo`) at the directory that holds
+looking for it and anchors the module cache (`.telo/cache`) at the directory that holds
 it, so every app in the repo resolves a shared dependency once into one cache
 instead of once per app. The same location bounds the walk that collects `.env`
 files, and every path the release system names — a module key, a ledger entry, a
@@ -16,7 +16,7 @@ changelog fragment, a unit's version — is relative to it.
 
 **For a deployment**, the marker decides where `telo install` writes the cache and
 where `telo run` looks for it: an image that copies only the app directory ships
-no cache at all, and one that copies the marker must copy the `.telo` tree beside
+no cache at all, and one that copies the marker must copy the `.telo/cache` tree beside
 it. `TELO_CACHE_DIR` overrides both — see
 [where the cache lands](/deploy/docker#where-the-cache-lands).
 
@@ -38,7 +38,7 @@ Here is every key, with the default each omission falls back to. For how the
 
 ```yaml
 # telo-workspace.yaml — the anchor. Its LOCATION is what unit keys, ledger
-# entries and fragment paths are measured from, and where the `.telo` cache
+# entries and fragment paths are measured from, and where the `.telo/cache` cache
 # lives. Every FIELD lives in a block scoped to what it governs. Every block,
 # and every key in it, is optional.
 

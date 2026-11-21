@@ -12,5 +12,6 @@ imports:
 needs:
   orderDatabase:
     kind: Fx.DatabaseAccess
-exports:
-  resources: [Orders.describe]
+    # Forwarded whole, it states every parameter of the need it supplies.
+    parameters: { extensions: [pgvector] }
+exports: { resources: [Orders.describe] }

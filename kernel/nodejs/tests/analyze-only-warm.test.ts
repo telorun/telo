@@ -28,9 +28,9 @@ afterEach(async () => {
   for (const p of [
     workdir,
     path.join(workdir, ".telo"),
-    path.join(workdir, ".telo/manifests"),
-    path.join(workdir, ".telo/analysis"),
-    path.join(workdir, ".telo/validators"),
+    path.join(workdir, ".telo/cache/manifests"),
+    path.join(workdir, ".telo/cache/analysis"),
+    path.join(workdir, ".telo/cache/validators"),
   ]) {
     await fs.chmod(p, 0o755).catch(() => {});
   }
@@ -46,9 +46,9 @@ function makeKernel(stderr?: { write: (s: string) => boolean }): Kernel {
 
 async function freezeReadOnly(): Promise<void> {
   for (const p of [
-    path.join(workdir, ".telo/validators"),
-    path.join(workdir, ".telo/analysis"),
-    path.join(workdir, ".telo/manifests"),
+    path.join(workdir, ".telo/cache/validators"),
+    path.join(workdir, ".telo/cache/analysis"),
+    path.join(workdir, ".telo/cache/manifests"),
     path.join(workdir, ".telo"),
     workdir,
   ]) {
@@ -70,7 +70,7 @@ describe("kernel.load analyzeOnly warm pass", () => {
 
     await makeKernel().load(entry, { analyzeOnly: true });
 
-    const stamps = await fs.readdir(path.join(workdir, ".telo/analysis"));
+    const stamps = await fs.readdir(path.join(workdir, ".telo/cache/analysis"));
     expect(stamps).toHaveLength(1);
 
     await freezeReadOnly();
@@ -106,7 +106,7 @@ describe("kernel.load analyzeOnly warm pass", () => {
 
     await makeKernel().load(entry, { analyzeOnly: true });
 
-    const validators = path.join(workdir, ".telo/validators");
+    const validators = path.join(workdir, ".telo/cache/validators");
     const baked = await fs.readdir(validators);
     expect(baked.length).toBeGreaterThan(0);
 

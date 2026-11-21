@@ -543,6 +543,9 @@ importers:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../sdk/nodejs
+      '@telorun/secret-seed':
+        specifier: workspace:*
+        version: link:../../packages/secret-seed
       '@telorun/share-tunnel':
         specifier: workspace:*
         version: link:../../packages/share-tunnel
@@ -689,6 +692,9 @@ importers:
       '@telorun/glob':
         specifier: workspace:*
         version: link:../../packages/glob/nodejs
+      '@telorun/secret-seed':
+        specifier: workspace:*
+        version: link:../../packages/secret-seed
       '@telorun/templating':
         specifier: workspace:*
         version: link:../../templating/nodejs
@@ -3690,6 +3696,9 @@ importers:
       '@telorun/runner-protocol':
         specifier: workspace:*
         version: link:../runner-protocol
+      '@telorun/secret-seed':
+        specifier: workspace:*
+        version: link:../secret-seed
       '@telorun/share-tunnel':
         specifier: workspace:*
         version: link:../share-tunnel
@@ -3739,6 +3748,18 @@ importers:
       vitest:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@24.19.2)(happy-dom@21.0.4)(jsdom@25.0.1)(lightningcss@1.33.0)(terser@5.51.2)
+
+  packages/secret-seed:
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.43
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.43)(happy-dom@21.0.4)(jsdom@25.0.1)(lightningcss@1.33.0)(terser@5.51.2)
 
   packages/share-tunnel:
     dependencies:

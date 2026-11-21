@@ -97,7 +97,7 @@ still see *what* it was.
 
 The Telo CLI exposes this server with `telo run <manifest> --inspect[=[host:]port]`
 (loopback `127.0.0.1:9230` by default). It serves the UI **same-origin**, fetching
-the `app-single` bundle on demand and caching it under the `.telo` cache root — the
+the `app-single` bundle on demand and caching it under the cache root (`.telo/cache`) — the
 CLI bundles no UI bytes (see Scripts). `--debug` is the separate, network-free path:
 it only writes the `.telo.debug.jsonl` event log.
 

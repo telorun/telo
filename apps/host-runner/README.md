@@ -17,18 +17,20 @@ Loopback only unless `--allow-remote`; no browser origin unless `--allow-origin 
 - `--host <address>` - Address to bind (default `127.0.0.1`).
 - `--allow-remote` - Permit a non-loopback bind.
 - `--allow-origin <origin>` - A browser origin allowed to drive the runner (repeatable).
-- `--state-dir <dir>` - The runner's state directory: the session store (`sessions.sqlite`) and every session's directory (`sessions/<id>/workspace`, `sessions/<id>/agent`), kept across suspends, runner restarts and reboots.
+- `--state-dir <dir>` - The runner's state directory: the session store (`sessions.sqlite`) and the root secret seed (`secret-seed`, created on first use, mode `0600`) and every session's directory (`sessions/<id>/workspace`, `sessions/<id>/agent`, `sessions/<id>/apps/<name>`), kept across suspends, runner restarts and reboots.
 - `--verbose` - Log every request.
 - `-o json` - Print the result as JSON: `{ url, host, port, stateDir }`, `stateDir` being the directory in use.
 - `--help`
 
 The state directory is `--state-dir`, else `RUNNER_STATE_DIR`, else the per-user default for application state: `$XDG_STATE_HOME/telo/runner` (`~/.local/state/telo/runner` when `XDG_STATE_HOME` is unset) on Linux, `~/Library/Application Support/telo/runner` on macOS, `%LOCALAPPDATA%\telo\state\runner` on Windows. It is never the temp directory or the telo cache.
 
+Every Run of a session's application receives its own `TELO_HOST_STATE_DIR` — `sessions/<id>/apps/<name>` of the state directory, an absolute path — and its own `TELO_HOST_SECRET_SEED`, derived from the root seed, the session id and the application's name, over any value the client sent. The root seed is `RUNNER_SECRET_SEED` when set (32 bytes, unpadded base64url), else the `secret-seed` file in the state directory; it is never passed on to the processes the runner spawns. Renaming an application gives a new directory and new generated secrets, and rotating the variable or deleting the file rotates every session's.
+
 ## Exit status
 
 - `0` - the runner stopped cleanly.
 - `1` - it failed to start.
-- `2` - the invocation was refused before any work began, with the reason on stderr: an unknown option, a non-loopback `--host` without `--allow-remote`, a `--port` outside 0..65535, a state directory that cannot be resolved, created or written (the message names `--state-dir` and `RUNNER_STATE_DIR`), or `RUNNER_SESSION_USER`, the container runners' session user, which has no meaning here.
+- `2` - the invocation was refused before any work began, with the reason on stderr: an unknown option, a non-loopback `--host` without `--allow-remote`, a `--port` outside 0..65535, a state directory that cannot be resolved, created or written (the message names `--state-dir` and `RUNNER_STATE_DIR`), a `RUNNER_SECRET_SEED` or `secret-seed` file that does not hold 32 bytes of unpadded base64url (named, never its contents), or `RUNNER_SESSION_USER`, the container runners' session user, which has no meaning here.
 
 ## The telo it runs on
 

@@ -6,6 +6,8 @@ import { renameSync, writeFileSync } from "node:fs";
 const RECORDED_ENV = [
   "WORKSPACE_DIR",
   "TELO_HOST_STATE_DIR",
+  "TELO_HOST_SECRET_SEED",
+  "RUNNER_SECRET_SEED",
   "TELO_CACHE_DIR",
   "AGENT_TOKEN",
   "AGENT_PROBE",

@@ -1,5 +1,6 @@
 import {
   describeSensitiveValueFinding,
+  STATE_DIR_HOST_VALUE,
   sensitiveEnvironmentInputs,
   sensitiveValueFindings,
   type LoadedGraph,
@@ -39,6 +40,9 @@ import { DebugEventSubscriber } from "../debug-event-subscriber.js";
 import { serializeEvent, serializeLog } from "../debug-serialize.js";
 import { DebugServer } from "../debug-server.js";
 import { readDesktopHostNeed } from "../desktop/desktop-host-need.js";
+import { defaultRunStateDirectory } from "../run-state-directory.js";
+import { userAppDirectory } from "../desktop/desktop-app-directory.js";
+import { applyDesktopHostValues } from "../desktop/desktop-host-values.js";
 import { startDesktopHost, type DesktopHostSession } from "../desktop/desktop-host-session.js";
 import { DesktopHostUnavailable } from "../desktop/desktop-host-unavailable.js";
 import { createAppDirectory, enterPackagedDesktopStart } from "../desktop/desktop-packaged-start.js";
@@ -612,7 +616,7 @@ function profileKernelStart(
 }
 
 /**
- * Write-through to `<entry-dir>/.telo/manifests/` after a successful load. Same
+ * Write-through to `<entry-dir>/.telo/cache/manifests/` after a successful load. Same
  * persistence path as `telo install` — reuses `writeManifestCache` so cache
  * contents converge no matter which command populates them. Idempotent: a graph
  * whose files all came from `file://` sources (cache hit) results in no writes,
@@ -832,6 +836,8 @@ export async function run(given: RunArgv, services: CliServices = defaultCliServ
     }
     desktop = hosting;
     if (desktop) inputs = argv.input === false ? undefined : new ApplicationInputSession(desktop.inputPrompter());
+    else applyDefaultStateDirectory(argv, packaged);
+    bindSeedOffer(inputs, argv, env, log);
 
     profiler?.start("kernelCreate");
     const kernel = await buildKernel(argv, log, cacheRoot, openUrl, true, desktop?.kernelOptions());
@@ -1047,15 +1053,18 @@ async function hostDesktop(
     output().line(start.line);
     return "running";
   }
-  // The packaged app hosting itself lives in its per-user directory; the helper
-  // and the lock were reached by absolute paths, so moving now disturbs neither.
-  if (packaged?.index.desktopHost) {
-    try {
+  // The host's state directory and seed come from its per-user directory; a
+  // packaged app also lives in it — the helper and the lock were reached by
+  // absolute paths, so moving now disturbs neither.
+  try {
+    const appDirectory = userAppDirectory(reading.need.identifier, { env: process.env });
+    if (appDirectory) applyDesktopHostValues(appDirectory, process.env);
+    if (packaged?.index.desktopHost) {
       enterPackagedDesktopStart({ identifier: reading.need.identifier, env: process.env });
-    } catch (err) {
-      await start.host.close();
-      throw err;
     }
+  } catch (err) {
+    await start.host.close();
+    throw err;
   }
   return start.host;
 }
@@ -1079,6 +1088,33 @@ function openUrlHookFor(
     stdin: process.stdin,
     stderr: process.stderr,
     ...(debug ? { emit: (url) => debug.emitEvent("Kernel.OpenUrlRequested", { url }) } : {}),
+  });
+}
+
+/** Where a seed the person agrees to generate is kept: the run's sensitive env file. */
+function bindSeedOffer(
+  inputs: ApplicationInputSession | undefined,
+  argv: RunArgv,
+  env: AppliedEnvFiles,
+  log: Logger,
+): void {
+  if (!inputs) return;
+  const remote = argv.envAnchor === undefined && /^https?:\/\//i.test(argv.path);
+  inputs.seedOffer = {
+    directory: remote ? undefined : anchorDirectory(argv.envAnchor ?? argv.path),
+    envFiles: env.resolution.entries,
+    log,
+  };
+}
+
+/** With nothing naming `TELO_HOST_STATE_DIR`, a plain run keeps its durable state under its workspace. */
+function applyDefaultStateDirectory(argv: RunArgv, packaged: PackagedInput | undefined): void {
+  const named = process.env[STATE_DIR_HOST_VALUE];
+  if (named !== undefined && named !== "") return;
+  process.env[STATE_DIR_HOST_VALUE] = defaultRunStateDirectory({
+    entry: argv.path,
+    packaged: packaged !== undefined,
+    cwd: process.cwd(),
   });
 }
 
@@ -1198,6 +1234,8 @@ async function runWatch(given: RunArgv, log: Logger, services: CliServices): Pro
   // One session for every reload: a reload asks only for what it has not
   // been told, or for what it refuses.
   const inputs = inputSessionFor(given);
+  bindSeedOffer(inputs, first.argv, env, log);
+  applyDefaultStateDirectory(first.argv, first.packaged);
   const sessionCacheRoot = first.argv.cacheDir ?? resolveCacheRoot(first.argv.path);
   // One inspect endpoint for the whole watch session — reloads re-attach the
   // rebuilt kernel to it (see startDebugSession), so the UI connection survives.

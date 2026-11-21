@@ -1,0 +1,15 @@
+kind: Telo.Application
+metadata: { name: Web, version: 1.0.0 }
+imports: { Console: ../../../../../../modules/console }
+needs:
+  sessionKey: { kind: Telo.GeneratedSecretKey, parameters: { bytes: 32, encoding: base64url } }
+targets:
+  - !ref report
+---
+kind: Telo.Sequence
+metadata: { name: report }
+steps:
+  - name: say
+    invoke: { kind: Console.WriteLine }
+    inputs:
+      output: !interpolate "child-same=${{ resources.sessionKey.key == 'XacUU0uLA5MaU3rISFBnkp_Mvy4SviSTdS3mSAeCvjo' }}"

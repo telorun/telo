@@ -2,9 +2,11 @@ import {
   BaseImageCatalog,
   buildRelayServer,
   buildServer as coreBuildServer,
+  loadRootSecretSeed,
   loadTermsFromEnv,
   openSessionStore,
   type RunnerBackend,
+  type SecretSeed,
   type ServerHandle,
   type SessionConfig,
   type SessionStore,
@@ -35,6 +37,8 @@ export interface ServerDeps {
   /** Base-image catalog whose resolved list becomes the advertised `image`
    *  enum + the server-side allowlist. Omitted → `image` locks to defaultImage. */
   catalog?: BaseImageCatalog;
+  /** The runner's root secret seed, when it has one. */
+  rootSecretSeed?: SecretSeed;
 }
 
 export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
@@ -60,6 +64,7 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     // The operator's co-resident agent (the agent file; none when unset).
     agent,
     store: deps.store,
+    rootSecretSeed: deps.rootSecretSeed,
     // The session config is opaque to core, so this runner enforces its own
     // shape — UNCONDITIONALLY, not only when a catalog is configured: the
     // catalog answers "which image", while the shape check answers "is this a
@@ -129,6 +134,17 @@ async function main(): Promise<void> {
 
   if (config.shares.role === "relay") return runRelay(config);
 
+  let rootSecretSeed: SecretSeed | undefined;
+  try {
+    rootSecretSeed = loadRootSecretSeed(process.env, config.sessionStore);
+  } catch (err) {
+    if (err instanceof RunnerConfigError) {
+      process.stderr.write(`${err.message}\n`);
+      process.exit(2);
+    }
+    throw err;
+  }
+
   const kube = createKubeClient();
   // What runs before the server exists — the session store, adoption and the
   // orphan sweep — logs here, to the same stdout as the server's own log.
@@ -172,7 +188,7 @@ async function main(): Promise<void> {
   // runs the orphan sweep, before the runner listens.
   let app: ServerHandle["app"];
   try {
-    ({ app } = await buildServer({ backend, config, store, catalog }));
+    ({ app } = await buildServer({ backend, config, store, catalog, rootSecretSeed }));
   } catch (err) {
     bootLog.error({ err }, "the runner could not start");
     await store.close();

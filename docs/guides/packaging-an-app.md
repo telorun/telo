@@ -203,7 +203,14 @@ directory of the `identifier` (`$XDG_DATA_HOME/<identifier>` or
 `%LOCALAPPDATA%\<identifier>`), `.env` is read there, and `TELO_HOST_STATE_DIR`
 is `<that directory>/state`, so every `Telo.DurableDirectory` need — a child web
 app's included — lands under `state/` with no setting. A state directory the
-environment already names is kept. When the environment supplies the host instead
+environment already names is kept. A `Telo.GeneratedSecretKey` or
+`Telo.GeneratedPassword` need needs no setting either: the app keeps its seed in
+`desktop-host/secret-seed` of that directory, creating it on the first start, so
+the values stay the same across relaunches (delete the file and they change; a
+file that does not hold a seed refuses the start, naming it). A
+`TELO_HOST_SECRET_SEED` in the environment or an env file wins and the file is
+not read. A packaged app that is not a desktop app keeps its durable state under
+`.telo/state/_` of the directory it is started in unless `TELO_HOST_STATE_DIR` is set. When the environment supplies the host instead
 (`TELO_NEED_…` set) the binary keeps the working directory it was started in and
 only reads its `.env` from the per-user directory.
 

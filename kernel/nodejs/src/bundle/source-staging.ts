@@ -389,7 +389,7 @@ export async function ensureStagedEntry(
 
   // Under the module's own `.telo/`, which every checkout ignores, so a lock left
   // by a killed process never shows up as a change to the module.
-  const lock = path.join(dir, ".telo", "staging", createHash("sha256").update(url).digest("hex").slice(0, 16));
+  const lock = path.join(dir, ".telo", "cache", "staging", createHash("sha256").update(url).digest("hex").slice(0, 16));
   await withDirectoryLock(
     lock,
     "staged file",

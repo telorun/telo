@@ -1,0 +1,13 @@
+# Forwards a 32-byte key whole to a child application asking for 64 bytes.
+kind: Telo.Application
+metadata: { name: GeneratedChildForward, version: 0.0.0 }
+imports: { App: ../../../../../modules/app }
+needs:
+  sessionKey: { kind: Telo.GeneratedSecretKey, parameters: { bytes: 32, encoding: base64url } }
+targets:
+  - !ref web
+---
+kind: App.Instance
+metadata: { name: web }
+source: ./child/telo.yaml
+needs: { sessionKey: !ref sessionKey }

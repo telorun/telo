@@ -43,7 +43,7 @@ application:
   through `variables.*`, `secrets.*` and `ports.*`.
 - Every need's variable — derived (`TELO_NEED_…`) or bound with `env:` — is
   hidden by its exact name, from `process.env` and `ctx.env` alike.
-- The host values (`TELO_HOST_STATE_DIR`, `TELO_HOST_PUBLIC_URL_TEMPLATE`,
+- The host values (`TELO_HOST_STATE_DIR`, `TELO_HOST_SECRET_SEED`, `TELO_HOST_PUBLIC_URL_TEMPLATE`,
   `TELO_HOST_PUBLIC_URL_SECONDARY_TEMPLATE`, `TELO_HOST_DESKTOP_HELPER`) are hidden the same way, and are
   also stripped from the environment of an application started with
   `App.Instance`, which is a root of its own. The container-engine values are
@@ -60,19 +60,20 @@ the manifest declares without naming a place. See
 
 | Variable | Effect |
 | --- | --- |
-| `TELO_HOST_STATE_DIR` | A directory this one application owns. Every `Telo.DurableDirectory` need with no variable of its own becomes `<state dir>/needs/<need path>`, created at load. See [Durable directories](/learn/providing-needs#durable-directories). |
+| `TELO_HOST_STATE_DIR` | A directory this one application owns. `telo run` sets `<workspace dir>/.telo/state/<app directory relative to it>/_` when nothing names one. Every `Telo.DurableDirectory` need with no variable of its own becomes `<state dir>/needs/<need path>`, created at load. See [Durable directories](/learn/providing-needs#durable-directories). |
+| `TELO_HOST_SECRET_SEED` | 32 bytes, unpadded base64url, this one application's; `telo run` at a terminal offers to generate one and save it to the sensitive env file, and a desktop app keeps its own in `desktop-host/secret-seed`. Every `Telo.GeneratedSecretKey` / `Telo.GeneratedPassword` need with no variable of its own is derived from it, the same on every restart and never stored. See [Generated keys and passwords](/learn/providing-needs#generated-keys-and-passwords). |
 | `TELO_HOST_PUBLIC_URL_TEMPLATE` | An `http` / `https` origin with `{port}` optional. Answers each `Telo.PublicUrl` need that is the primary of its port. See [Deriving addresses](/learn/providing-needs#deriving-addresses-from-the-templates). |
 | `TELO_HOST_PUBLIC_URL_SECONDARY_TEMPLATE` | The same with `{label}` required in the host. Answers every other `Telo.PublicUrl` need. |
 | `TELO_HOST_DESKTOP_HELPER` | The absolute path of a `telo-desktop-host` binary `telo run` uses as the desktop host's helper, instead of the packaged, built or downloaded one. A test and development seam. |
 
-The runtime reads the first four. `TELO_HOST_CONTAINER_ENGINE_URL` and
+The runtime reads the first five. `TELO_HOST_CONTAINER_ENGINE_URL` and
 `TELO_HOST_CONTAINER_ENGINE_TOKEN` are a convention instead: a manifest using
 `Docker.Engine` binds them with `env:` (default `unix:///var/run/docker.sock`, no
 token), and a runner with session containers on sets both to its own engine
 route. They are not hidden from a started application.
 
-A malformed template is refused at load (`ERR_NEED_HOST_VALUE_INVALID`) naming
-the variable, never its value.
+A malformed template or seed is refused at load (`ERR_NEED_HOST_VALUE_INVALID`)
+naming the variable, never its value.
 
 ## Need variables
 
@@ -89,7 +90,7 @@ and the table of examples are in
 
 | Variable | Read by | Effect |
 | --- | --- | --- |
-| `TELO_CACHE_DIR` | run, install, check | Relocates the `.telo` cache root. Without it the root is beside `telo-workspace.yaml` when one sits above the manifest, otherwise beside the manifest — [where the cache lands](/deploy/docker#where-the-cache-lands). Ignored inside a packaged application. |
+| `TELO_CACHE_DIR` | run, install, check | Relocates the cache root, which names the cache directory itself. Without it the root is `.telo/cache` beside `telo-workspace.yaml` when one sits above the manifest, otherwise beside the manifest — [where the cache lands](/deploy/docker#where-the-cache-lands). Ignored inside a packaged application. |
 | `TELO_NPM_CACHE_DIR` | run | Where the controller install root of an `http(s)` entry manifest lives; default `$XDG_CACHE_HOME/telo/remote`, else `~/.cache/telo/remote`. A local manifest's install root is under its cache root. |
 | `TELO_PKG_MANAGER` | run, install | The package manager used for controllers delivered over npm; default `npm`. |
 | `TELO_CONTROLLER_BUNDLE` | controller loading | `0`, `false`, `no` or `off` stops the kernel bundling an installed controller package and loads its files loose. On by default. |
@@ -129,5 +130,8 @@ its own: [`apps/docker-runner`](../../apps/docker-runner/README.md),
 and the shared contract in
 [`packages/runner-core`](../../packages/runner-core/README.md).
 A runner starts each application with `--no-input`, so a missing input is a
-refusal, and passes `TELO_CACHE_DIR`, `TELO_HOST_STATE_DIR` and the public-URL
-templates for the sandbox it provides.
+refusal, and passes `TELO_CACHE_DIR`, the public-URL templates for the sandbox it
+provides, and to each application its own `TELO_HOST_STATE_DIR` (`apps/<app name>/` of
+the session's storage) and `TELO_HOST_SECRET_SEED`, derived from the runner's
+`RUNNER_SECRET_SEED` (or the `secret-seed` file in its state directory) and the
+application's name in the session; a client-supplied value of either is overwritten.

@@ -1,0 +1,459 @@
+{
+  "rows": [
+    {
+      "id": "key/base64url",
+      "seed": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "kind": "Telo.GeneratedSecretKey",
+      "path": [
+        "sessionKey"
+      ],
+      "parameters": {
+        "bytes": 32,
+        "encoding": "base64url"
+      },
+      "value": "XacUU0uLA5MaU3rISFBnkp_Mvy4SviSTdS3mSAeCvjo"
+    },
+    {
+      "id": "key/base64url-longer",
+      "seed": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "kind": "Telo.GeneratedSecretKey",
+      "path": [
+        "sessionKey"
+      ],
+      "parameters": {
+        "bytes": 64,
+        "encoding": "base64url"
+      },
+      "value": "Kz5mBT7XtBgr1ydgABv19qS6yQWBEoqU9fcyzClC17pR_JEvLSSto4qbSxmAX4fL-O7DMKIByFreculzJTrlYA"
+    },
+    {
+      "id": "key/base64url-other-need",
+      "seed": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "kind": "Telo.GeneratedSecretKey",
+      "path": [
+        "cookieKey"
+      ],
+      "parameters": {
+        "bytes": 32,
+        "encoding": "base64url"
+      },
+      "value": "WOMrFxtnsgwSY1oO-oGWLIKWmYeD0bvh6fJYwODXKuI"
+    },
+    {
+      "id": "key/base64url-library-path",
+      "seed": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "kind": "Telo.GeneratedSecretKey",
+      "path": [
+        "Auth",
+        "sessionKey"
+      ],
+      "parameters": {
+        "bytes": 32,
+        "encoding": "base64url"
+      },
+      "value": "DRs4pXn-MpHRRHkIpqf4TL8brBFV2nI8Quo32x1LSx0"
+    },
+    {
+      "id": "key/base64url-other-seed",
+      "seed": "__________________________________________8",
+      "kind": "Telo.GeneratedSecretKey",
+      "path": [
+        "sessionKey"
+      ],
+      "parameters": {
+        "bytes": 32,
+        "encoding": "base64url"
+      },
+      "value": "ygiQRhhnuEoakfJf3ZVJ2Ic1xUGm6lmML3Nwoqy2ybc"
+    },
+    {
+      "id": "key/base64url-padded",
+      "seed": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "kind": "Telo.GeneratedSecretKey",
+      "path": [
+        "sessionKey"
+      ],
+      "parameters": {
+        "bytes": 32,
+        "encoding": "base64url-padded"
+      },
+      "value": "1X3uMSxucsD0EtUfQpgejRNmAHw8J2l2HKRO4Yv3_rc="
+    },
+    {
+      "id": "key/base64",
+      "seed": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "kind": "Telo.GeneratedSecretKey",
+      "path": [
+        "sessionKey"
+      ],
+      "parameters": {
+        "bytes": 17,
+        "encoding": "base64"
+      },
+      "value": "sjfeDmH+DjSQlSGsq4PnvNo="
+    },
+    {
+      "id": "key/hex",
+      "seed": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "kind": "Telo.GeneratedSecretKey",
+      "path": [
+        "sessionKey"
+      ],
+      "parameters": {
+        "bytes": 16,
+        "encoding": "hex"
+      },
+      "value": "b038b39a559d407512776f679843b828"
+    },
+    {
+      "id": "key/many-blocks",
+      "seed": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "kind": "Telo.GeneratedSecretKey",
+      "path": [
+        "bulk"
+      ],
+      "parameters": {
+        "bytes": 100,
+        "encoding": "hex"
+      },
+      "value": "f24cee65541b6f5172dbb74f7d790fa61723a09d8f9049023b24ae7c8d7061456a4ad67ec8200277d352eddc63474b3f9f326d67706f01ffeebed9185930d216fbe6ef65da1fc23eca7fcc0b61ad9db983cc131718e2593d845603fe39077617545be35a"
+    },
+    {
+      "id": "password/minimums",
+      "seed": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "kind": "Telo.GeneratedPassword",
+      "path": [
+        "dbPassword"
+      ],
+      "parameters": {
+        "length": 24,
+        "characterSets": [
+          {
+            "characters": "abcdefghijklmnopqrstuvwxyz",
+            "minimum": 1
+          },
+          {
+            "characters": "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+            "minimum": 1
+          },
+          {
+            "characters": "0123456789",
+            "minimum": 1
+          }
+        ]
+      },
+      "value": "Vug7FG16BgnzcOnt7rrWijsy"
+    },
+    {
+      "id": "password/other-kind-same-path",
+      "seed": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "kind": "Telo.GeneratedPassword",
+      "path": [
+        "sessionKey"
+      ],
+      "parameters": {
+        "length": 24,
+        "characterSets": [
+          {
+            "characters": "abcdefghijklmnopqrstuvwxyz",
+            "minimum": 1
+          },
+          {
+            "characters": "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+            "minimum": 1
+          },
+          {
+            "characters": "0123456789",
+            "minimum": 1
+          }
+        ]
+      },
+      "value": "uR2cMBzcKYypqkfa3wzfwkCo"
+    },
+    {
+      "id": "password/minimum-defaulted",
+      "seed": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "kind": "Telo.GeneratedPassword",
+      "path": [
+        "dbPassword"
+      ],
+      "parameters": {
+        "length": 12,
+        "characterSets": [
+          {
+            "characters": "abcdefghijklmnopqrstuvwxyz"
+          },
+          {
+            "characters": "0123456789"
+          }
+        ]
+      },
+      "value": "hpsp6obkk6o1"
+    },
+    {
+      "id": "password/minimums-fill-length",
+      "seed": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "kind": "Telo.GeneratedPassword",
+      "path": [
+        "pin"
+      ],
+      "parameters": {
+        "length": 4,
+        "characterSets": [
+          {
+            "characters": "0123456789",
+            "minimum": 2
+          },
+          {
+            "characters": "!#%",
+            "minimum": 2
+          }
+        ]
+      },
+      "value": "!1!1"
+    },
+    {
+      "id": "password/escaped-characters",
+      "seed": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "kind": "Telo.GeneratedPassword",
+      "path": [
+        "Lib",
+        "token"
+      ],
+      "parameters": {
+        "length": 16,
+        "characterSets": [
+          {
+            "characters": "\"\\/",
+            "minimum": 3
+          },
+          {
+            "characters": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+          }
+        ]
+      },
+      "value": "/qXN\\\\KpxDfnzpjn"
+    },
+    {
+      "id": "password/single-character",
+      "seed": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "kind": "Telo.GeneratedPassword",
+      "path": [
+        "one"
+      ],
+      "parameters": {
+        "length": 1,
+        "characterSets": [
+          {
+            "characters": "x"
+          }
+        ]
+      },
+      "value": "x"
+    }
+  ],
+  "values": [
+    {
+      "id": "key/accepted",
+      "kind": "Telo.GeneratedSecretKey",
+      "parameters": {
+        "bytes": 32,
+        "encoding": "base64url"
+      },
+      "value": "XacUU0uLA5MaU3rISFBnkp_Mvy4SviSTdS3mSAeCvjo",
+      "refusal": null
+    },
+    {
+      "id": "key/too-short",
+      "kind": "Telo.GeneratedSecretKey",
+      "parameters": {
+        "bytes": 32,
+        "encoding": "base64url"
+      },
+      "value": "abc",
+      "refusal": "does not decode as base64url to 32 bytes"
+    },
+    {
+      "id": "key/31-bytes",
+      "kind": "Telo.GeneratedSecretKey",
+      "parameters": {
+        "bytes": 32,
+        "encoding": "base64url"
+      },
+      "value": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHg",
+      "refusal": "does not decode as base64url to 32 bytes"
+    },
+    {
+      "id": "key/wrong-alphabet",
+      "kind": "Telo.GeneratedSecretKey",
+      "parameters": {
+        "bytes": 32,
+        "encoding": "base64url"
+      },
+      "value": "+acUU0uLA5MaU3rISFBnkp_Mvy4SviSTdS3mSAeCvjo",
+      "refusal": "does not decode as base64url to 32 bytes"
+    },
+    {
+      "id": "key/padded-unpadded",
+      "kind": "Telo.GeneratedSecretKey",
+      "parameters": {
+        "bytes": 32,
+        "encoding": "base64url"
+      },
+      "value": "XacUU0uLA5MaU3rISFBnkp_Mvy4SviSTdS3mSAeCvjo=",
+      "refusal": "decodes as base64url to 32 bytes but is not that encoding's canonical text — no '=' padding, and the unused bits of its last character zero"
+    },
+    {
+      "id": "key/padding-missing",
+      "kind": "Telo.GeneratedSecretKey",
+      "parameters": {
+        "bytes": 32,
+        "encoding": "base64url-padded"
+      },
+      "value": "XacUU0uLA5MaU3rISFBnkp_Mvy4SviSTdS3mSAeCvjo",
+      "refusal": "decodes as base64url-padded to 32 bytes but is not that encoding's canonical text — '=' padding to a multiple of four characters, and the unused bits of its last character zero"
+    },
+    {
+      "id": "key/hex-accepted",
+      "kind": "Telo.GeneratedSecretKey",
+      "parameters": {
+        "bytes": 16,
+        "encoding": "hex"
+      },
+      "value": "00112233445566778899aabbccddeeff",
+      "refusal": null
+    },
+    {
+      "id": "key/hex-uppercase",
+      "kind": "Telo.GeneratedSecretKey",
+      "parameters": {
+        "bytes": 16,
+        "encoding": "hex"
+      },
+      "value": "00112233445566778899AABBCCDDEEFF",
+      "refusal": "decodes as hex to 16 bytes but is not that encoding's canonical text — lowercase hex digits"
+    },
+    {
+      "id": "key/base64-accepted",
+      "kind": "Telo.GeneratedSecretKey",
+      "parameters": {
+        "bytes": 17,
+        "encoding": "base64"
+      },
+      "value": "sjfeDmH+DjSQlSGsq4PnvNo=",
+      "refusal": null
+    },
+    {
+      "id": "key/base64-unused-bits",
+      "kind": "Telo.GeneratedSecretKey",
+      "parameters": {
+        "bytes": 17,
+        "encoding": "base64"
+      },
+      "value": "sjfeDmH+DjSQlSGsq4PnvNp=",
+      "refusal": "decodes as base64 to 17 bytes but is not that encoding's canonical text — '=' padding to a multiple of four characters, and the unused bits of its last character zero"
+    },
+    {
+      "id": "key/not-a-string",
+      "kind": "Telo.GeneratedSecretKey",
+      "parameters": {
+        "bytes": 32,
+        "encoding": "base64url"
+      },
+      "value": 42,
+      "refusal": "is not a string"
+    },
+    {
+      "id": "password/accepted",
+      "kind": "Telo.GeneratedPassword",
+      "parameters": {
+        "length": 24,
+        "characterSets": [
+          {
+            "characters": "abcdefghijklmnopqrstuvwxyz",
+            "minimum": 1
+          },
+          {
+            "characters": "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+            "minimum": 1
+          },
+          {
+            "characters": "0123456789",
+            "minimum": 1
+          }
+        ]
+      },
+      "value": "Vug7FG16BgnzcOnt7rrWijsy",
+      "refusal": null
+    },
+    {
+      "id": "password/length",
+      "kind": "Telo.GeneratedPassword",
+      "parameters": {
+        "length": 24,
+        "characterSets": [
+          {
+            "characters": "abcdefghijklmnopqrstuvwxyz",
+            "minimum": 1
+          },
+          {
+            "characters": "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+            "minimum": 1
+          },
+          {
+            "characters": "0123456789",
+            "minimum": 1
+          }
+        ]
+      },
+      "value": "Vug7FG16BgnzcOnt7rrWijs",
+      "refusal": "is not exactly 24 characters"
+    },
+    {
+      "id": "password/outside",
+      "kind": "Telo.GeneratedPassword",
+      "parameters": {
+        "length": 24,
+        "characterSets": [
+          {
+            "characters": "abcdefghijklmnopqrstuvwxyz",
+            "minimum": 1
+          },
+          {
+            "characters": "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+            "minimum": 1
+          },
+          {
+            "characters": "0123456789",
+            "minimum": 1
+          }
+        ]
+      },
+      "value": "aB1!!!!!!!!!!!!!!!!!!!!!",
+      "refusal": "holds a character outside its character sets"
+    },
+    {
+      "id": "password/minimum",
+      "kind": "Telo.GeneratedPassword",
+      "parameters": {
+        "length": 24,
+        "characterSets": [
+          {
+            "characters": "abcdefghijklmnopqrstuvwxyz",
+            "minimum": 1
+          },
+          {
+            "characters": "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+            "minimum": 1
+          },
+          {
+            "characters": "0123456789",
+            "minimum": 1
+          }
+        ]
+      },
+      "value": "aBcccccccccccccccccccccc",
+      "refusal": "holds fewer than 1 character of characterSets[2]"
+    }
+  ]
+}

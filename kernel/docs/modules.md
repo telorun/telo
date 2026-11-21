@@ -295,7 +295,7 @@ Resolution is separate from discovery: the [hub](#62-publishing-locations) index
 ### Layout
 
 ```text
-<entry-manifest-dir>/.telo/manifests/
+<entry-manifest-dir>/.telo/cache/manifests/
   oci/<host>/<repo…>/<tag>/telo.yaml            # OCI imports (source: oci://host/repo@tag)
   oci/<host>/<repo…>/<tag>/<partial>            # any include: target reachable from above
   url/<host>/<pathname>                         # direct URL imports (source: https://…)
@@ -311,7 +311,7 @@ Resolution is separate from discovery: the [hub](#62-publishing-locations) index
 A `LocalManifestCacheSource` registered ahead of the network sources claims any URL that matches a populated cache file. The chain on a typical CLI invocation:
 
 1. `LocalFileSource` — `file://`, absolute, or relative paths (the entry manifest, plus any `include:` and partials of cache-served files).
-2. `LocalManifestCacheSource` — OCI refs and HTTP URLs that have a corresponding file under `.telo/manifests/`.
+2. `LocalManifestCacheSource` — OCI refs and HTTP URLs that have a corresponding file under `.telo/cache/manifests/`.
 3. `HttpSource` and the OCI transport — built-in fallbacks. Hit on cache miss, allowing dev runs without `telo install` to work unchanged.
 
 The cache miss is silent: a missing file falls through to whichever network source claims the URL, exactly as if the cache layer weren't there. This is what keeps `telo install` optional for development and load-bearing only for hermetic deploys.
@@ -320,7 +320,7 @@ The cache miss is silent: a missing file falls through to whichever network sour
 
 The cache is **content-addressed by URL**, not by content hash. `telo install` overwrites existing files with freshly fetched bytes on every run, so re-installing converges on whatever the origin currently serves for the pinned version. The trust model assumes versions are immutable at the origin; mutating a published version after install will silently shadow stale bytes until `telo install` runs again.
 
-The cache is never pruned automatically. Stale entries — for versions no longer referenced by the manifest — stay until `.telo/manifests/` is removed by hand. This matches the `.telo/npm/` convention and keeps re-installs fast.
+The cache is never pruned automatically. Stale entries — for versions no longer referenced by the manifest — stay until `.telo/cache/manifests/` is removed by hand. This matches the `.telo/cache/npm/` convention and keeps re-installs fast.
 
 ### Portability
 

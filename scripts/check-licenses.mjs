@@ -39,6 +39,7 @@ const MIT_DIRECTORIES = [
   "packages/editor-protocol",
   "packages/runner-protocol",
   "packages/share-tunnel",
+  "packages/secret-seed",
   "modules",
   "blueprints",
   "starters",

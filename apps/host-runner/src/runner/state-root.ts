@@ -6,7 +6,8 @@ import * as path from "node:path";
  * Where the host runner keeps what outlives its process — its state root: the
  * session store (`sessions.sqlite`, beside this layout) and one directory per session under
  * `sessions/<sessionId>/`, holding `workspace/` (the application's files and its
- * `.telo` module cache) and `agent/` (a co-resident agent's state).
+ * `.telo` module cache), `agent/` (a co-resident agent's state) and `apps/<app name>/`
+ * (each application's `TELO_HOST_STATE_DIR`, created when the application first runs).
  *
  *  - **It is private.** A session directory holds the user's source, and one
  *    created under the system temp directory with the default mode is readable
@@ -85,11 +86,15 @@ export interface SessionDirectory {
   root: string;
   workspace: string;
   agent: string;
+  /** The level holding one state directory per application. */
+  apps: string;
 }
 
 export function sessionDirectory(stateRoot: string, sessionId: string): SessionDirectory {
   const root = path.join(stateRoot, SESSIONS, sessionId);
-  return { root, workspace: path.join(root, "workspace"), agent: path.join(root, "agent") };
+  return { root, workspace: path.join(root, "workspace"), agent: path.join(root, "agent"),
+    apps: path.join(root, "apps"),
+  };
 }
 
 /** The state root and its `sessions/` level, private to this user and
@@ -109,7 +114,19 @@ export async function createSessionDirectory(
   await privateDirectory(dir.root);
   await privateDirectory(dir.workspace);
   await privateDirectory(dir.agent);
+  await privateDirectory(dir.apps);
   return dir;
+}
+
+/** An application's state directory, private to this user, created on first use. */
+export async function createAppStateDirectory(directory: SessionDirectory, app: string): Promise<string> {
+  const dir = appStateDirectory(directory, app);
+  await privateDirectory(dir);
+  return dir;
+}
+
+export function appStateDirectory(directory: SessionDirectory, app: string): string {
+  return path.join(directory.apps, app);
 }
 
 export async function removeSessionDirectory(stateRoot: string, sessionId: string): Promise<void> {

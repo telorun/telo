@@ -8,7 +8,7 @@ import type { Logger } from "@telorun/sdk";
 import { readKernelVersion, readVersion, reportUndeterminableVersion } from "../runtime-versions.js";
 
 /**
- * Hash-keyed analysis cache: a tiny JSON sidecar under `.telo/analysis/`
+ * Hash-keyed analysis cache: a tiny JSON sidecar under `.telo/cache/analysis/`
  * recording that an exact set of manifest bytes — under specific
  * `@telorun/kernel` and `@telorun/analyzer` package versions — passed
  * `analyzer.analyzeErrors`. The next `kernel.load` reads the sidecar

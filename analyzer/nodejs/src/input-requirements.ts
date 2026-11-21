@@ -61,6 +61,7 @@ import { moduleCallNamesByModule, moduleCallNamesOf } from "./module-call-names.
 import type { ModuleDocuments } from "./module-documents.js";
 import { isModuleKind } from "./module-kinds.js";
 import { DURABLE_DIRECTORY_TYPE, STATE_DIR_HOST_VALUE } from "./durable-directory.js";
+import { isGeneratedSecretType, SECRET_SEED_HOST_VALUE } from "./generated-secret.js";
 import { needSupplyOf, readNeeds, readSuppliedNeeds } from "./need-type.js";
 import type { NeedEnvironmentEntry, NeedTable } from "./need-table.js";
 import { ConditionSpace, FALSE, TRUE, type Condition } from "./presence-condition.js";
@@ -527,6 +528,7 @@ export type RequirementDimension = ReportedDimension;
 function hostValuesOf(entry: NeedEnvironmentEntry): readonly string[] {
   if (entry.need.type === DURABLE_DIRECTORY_TYPE) return [STATE_DIR_HOST_VALUE];
   if (entry.need.type === PUBLIC_URL_TYPE) return PUBLIC_URL_HOST_VALUES;
+  if (isGeneratedSecretType(entry.need.type)) return [SECRET_SEED_HOST_VALUE];
   return [];
 }
 

@@ -168,7 +168,8 @@ one.
    refusals are the only reason the load would fail: each missing required field
    is asked like any other missing input (a sensitive one without echo), its
    answer read as the variable's text would be and delivered only into the need
-   — never set as the variable. See
+   — never set as the variable. A generated key or password is never asked for
+   (see [Generated keys and passwords](#generated-keys-and-passwords)). See
    [Being asked for what is missing](./configuration.md#being-asked-for-what-is-missing).
 
 A need whose presence, or a closed member of whose field, decides an `!if` /
@@ -176,7 +177,8 @@ A need whose presence, or a closed member of whose field, decides an `!if` /
 first, before the documents are expanded, so the branch the application starts
 on is known before anything is created: an optional need is `present` when
 every required variable of it is set (or, for `Telo.DurableDirectory`, when
-`TELO_HOST_STATE_DIR` answers it), `absent` when none is, and some but not all
+`TELO_HOST_STATE_DIR` answers it, and for a generated key or password, when
+`TELO_HOST_SECRET_SEED` does), `absent` when none is, and some but not all
 set is `ERR_NEED_PARTIALLY_SUPPLIED` there. So is the presence of every optional
 need a library leaves to the environment, whether or not a choice reads it,
 since it decides which of the library's needs the application needs. The value
@@ -398,6 +400,130 @@ every need:
 TELO_HOST_STATE_DIR=./data telo run ./shop
 ```
 
+With neither the environment nor an env file naming `TELO_HOST_STATE_DIR`,
+`telo run` sets it for you, without asking and under `--no-input` too:
+`<workspace dir>/.telo/state/<app directory relative to it>/_` — `.telo/state/_`
+for an application at the workspace directory (the one holding
+`telo-workspace.yaml`, else the application's own), `.telo/state/apps/web/_` for
+`apps/web`. Each application gets a state directory of its own, so two of them
+declaring `uploads` never share a directory or report each other's as orphans;
+the `_` leaf keeps one application's directory from ever being another's
+`needs/` or `apps/`. It is derived on every run from where the application is,
+so nothing is saved, and `TELO_CACHE_DIR` does not move it. A packaged
+executable that is not a desktop app, and an application run from an `http(s)`
+or `oci://` address, anchor at the working directory instead
+(`.telo/state/_`). A desktop host keeps its per-user `state/`, and a runner sets
+its own value, which wins. `.telo/` holds the disposable `cache/` and this
+`state/`: delete `.telo/cache` to clear the cache, never the whole of `.telo`.
+
+## Generated keys and passwords
+
+An application or library that needs key material or a password asks for it
+as a need of one of two kernel-declared types, written with no import:
+
+```yaml
+needs:
+  sessionKey: { kind: Telo.GeneratedSecretKey, parameters: { bytes: 32, encoding: base64url } }
+  dbPassword:
+    kind: Telo.GeneratedPassword
+    parameters:
+      length: 24
+      characterSets:
+        - { characters: abcdefghijklmnopqrstuvwxyz, minimum: 1 }
+        - { characters: ABCDEFGHIJKLMNOPQRSTUVWXYZ, minimum: 1 }
+        - { characters: "0123456789", minimum: 1 }
+```
+
+- **`Telo.GeneratedSecretKey`** — field `key` (sensitive): exactly `bytes`
+  bytes (16–1024) written in `encoding` — `base64url` (unpadded),
+  `base64url-padded`, `base64` (RFC 4648 §4, padded) or `hex` (lowercase).
+- **`Telo.GeneratedPassword`** — field `password` (sensitive): exactly
+  `length` characters (1–1024) drawn from the union of `characterSets`, at
+  least `minimum` (default 0) of each set. A set's `characters` are printable
+  ASCII (`!` to `~`), no character twice within or across sets, and the
+  minimums sum to at most `length`.
+
+Both parameters of each type are required, on a library's need as on an
+application's; a parameter outside these rules is refused before the
+application runs.
+
+### Where the value comes from
+
+In this order:
+
+1. a `needs:` supply at the import or the `App.Instance` reaching the need;
+2. the field's variable — `TELO_NEED_<PATH>__KEY` / `TELO_NEED_<PATH>__PASSWORD`
+   (`TELO_NEED_SESSION_KEY__KEY`), or the name the need's `env:` binds;
+3. the host value `TELO_HOST_SECRET_SEED` — 32 bytes as unpadded base64url —
+   from which the kernel derives the value.
+
+A field of either type is never asked for at a terminal. With none of the
+three, the load is refused with `ERR_NEED_UNMET`, naming `TELO_HOST_SECRET_SEED`
+and the need's variable; a seed that is not 32 bytes of unpadded base64url is
+refused with `ERR_NEED_HOST_VALUE_INVALID`, naming the variable and never its
+value.
+
+At a terminal, `telo run` asks one question in place of the fields — the host
+value is the one missing input, marked as one the host can make:
+
+```text
+TELO_HOST_SECRET_SEED is not set — generate one and save it to .env.local? [Y/n]
+```
+
+The file is the workspace's sensitive env file (the last sensitive entry of
+`env.files`, `.env.local` by default, beside the manifest, or in the working
+directory for a packaged app). Yes generates 32 random bytes, appends
+`TELO_HOST_SECRET_SEED=<seed>` there (with a warning when the file is not
+git-ignored) and goes on; every later run reads the seed from that file, so the
+keys and passwords stay the same. Generating and saving are one step — a seed is
+never used unsaved — so a file that cannot be written refuses the run naming it,
+and No ends in `ERR_NEED_UNMET`. Under `--no-input`, a pipe or CI nothing is
+asked and nothing is written; a `--watch` session asks once. It never arises for
+a desktop host or a runner's session, which supply the seed themselves.
+
+```bash
+export TELO_HOST_SECRET_SEED=$(openssl rand -base64 32 | tr '+/' '-_' | tr -d =)
+telo run ./shop
+```
+
+**A supplied value is held to the need's parameters.** A key must decode under
+its `encoding` to exactly `bytes` bytes and be that encoding's canonical text
+(lowercase hex, padding exactly as the encoding names); a password must be
+exactly `length` characters of its sets with every `minimum` met. That holds
+for the variable, a parent's or importer's `needs:` supply and a fulfilment's
+`fields:`: a literal that fails is refused by `telo check`, and any value that
+fails is refused with `ERR_NEED_VALUE_INVALID` before any resource
+initializes, naming the need, where the value came from and the rule broken —
+never the value.
+
+### The derived value's identity
+
+The kernel never stores a derived value: it is a pure function of the seed and
+of the outermost need's kind, need path and parameters (defaults filled), so
+the same seed gives the same value on every restart, reload and resume, and
+two needs, the two types or two parameter sets never share one. The derivation
+is HKDF-SHA256 over the seed; its exact rule and the vectors every kernel meets
+are in [the generated-secret vectors](../../kernel/generated-secret-conformance/README.md).
+
+- **Renaming the need, moving it into a library, or changing a parameter gives
+  a new value**, and nothing reports it — a library's need sits at
+  `<Alias>.<need>`. To keep a value across such a move, keep the old root need
+  and forward it whole to the library's need: the library then reads the
+  root's value.
+- **Two applications under one seed share a value** for one need path, type and
+  parameter set. A seed serves exactly one application, as a state directory
+  does; give each application its own.
+- `TELO_HOST_SECRET_SEED` is hidden from the running application, as a need's
+  variables are, and an application started with `App.Instance` never inherits
+  it: a child declaring either type is refused at its start unless its
+  instance supplies the need (`needs: { sessionKey: !ref sessionKey }`), and
+  then reads the parent's value.
+
+A need forwarded whole states every parameter of the need it supplies with an
+equal value: a library asking for 32 bytes breaks on 64, so "at least" does not
+apply, and a differing `bytes`, `encoding` or `characterSets` is refused by
+`telo check` and before the application runs.
+
 ## Desktop hosts
 
 `Telo.DesktopHost` is the need a desktop application asks the desktop shell for.
@@ -492,14 +618,16 @@ needs:
 ```
 
 A need supplied this way is answered by that value alone, before the child's
-environment variables and before `TELO_HOST_STATE_DIR` or the address templates
-would answer it, and a `supply: root` type is accepted. `telo check` follows
+environment variables and before `TELO_HOST_STATE_DIR`, the address templates
+or `TELO_HOST_SECRET_SEED` would answer it, and a `supply: root` type is accepted. `telo check` follows
 the parent's `source:` and refuses, before anything runs, a name the child does
 not declare (naming the needs it does), a field its type does not declare or a
 literal the type refuses, a required field a map leaves out, a `!ref` to
-anything but a need or fulfilment of the child's type, and a need of the parent
+anything but a need or fulfilment of the child's type, a need of the parent
 stating less than the child's (its version range, its features, a durable
-directory's access or size). The child refuses at load what only the values
+directory's access or size) or, for any other type, a parameter the child's
+need states with another value, and a generated key or password its parameters
+refuse. The child refuses at load what only the values
 decide: a required field an expression left out (`ERR_NEED_PARTIALLY_SUPPLIED`)
 and a durable directory it cannot use (`ERR_NEED_DIRECTORY_UNUSABLE`, naming the
 parent's `App.Instance`). A sensitive

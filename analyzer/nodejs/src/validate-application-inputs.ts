@@ -17,6 +17,7 @@ import { isKindDocument } from "./kind-declaration.js";
 import { isModuleKind } from "./module-kinds.js";
 import {
   fieldSupplyFindings,
+  fulfilmentValueFindings,
   wholeForwardRefusals,
   type ForwardedNeed,
 } from "./need-table.js";
@@ -69,7 +70,9 @@ const isDeclarationDocument = (m: { kind?: unknown }): boolean =>
  * whose referent is no need or fulfilment of the child's need type
  * (`REFERENCE_KIND_MISMATCH`) or a parent need stating less than the child's
  * (`NEED_FORWARD_INCOMPATIBLE`), a field map held to the type's fields
- * (`NEED_FIELD_UNDECLARED` / `NEED_SLOT_MISMATCH` / `SCHEMA_VIOLATION`). A supply
+ * (`NEED_FIELD_UNDECLARED` / `NEED_SLOT_MISMATCH` / `SCHEMA_VIOLATION`), and a
+ * generated key or password, in a map or a fulfilment, held to the child need's
+ * parameters (`NEED_VALUE_INVALID`). A supply
  * by name is a root supply, so a `supply: root` type takes a field map.
  *
  * Every resource of the entry's own modules is judged — top-level, extracted
@@ -221,6 +224,20 @@ export function validateApplicationInputs(
           );
           return;
         }
+        if (supplied.fulfilment && shape) {
+          for (const finding of fulfilmentValueFindings(
+            supplied.fulfilment,
+            shape,
+            `${label}: need '${key}'`,
+            need.type,
+            path,
+            need.parameters,
+            written,
+          )) {
+            report(finding.code, finding.message, finding.path);
+          }
+          return;
+        }
         // An optional referent is refused at every reference slot already
         // (`NEED_OPTIONAL_REFERENCED`), so only what a need states is compared.
         if (!supplied.need || supplied.need.optional) return;
@@ -230,7 +247,7 @@ export function validateApplicationInputs(
         return;
       }
       if (!wants("fed") || !isPlainObject(value) || !shape || !need.type) return;
-      for (const finding of fieldSupplyFindings(value, shape, `${label}: need '${key}'`, need.type, path)) {
+      for (const finding of fieldSupplyFindings(value, shape, `${label}: need '${key}'`, need.type, path, need.parameters)) {
         report(finding.code, finding.message, finding.path);
       }
     }
@@ -242,7 +259,7 @@ export function validateApplicationInputs(
     ref: { kind: string; name: string; alias?: string },
     module: string | undefined,
     within: ScopeSite | undefined,
-  ): { kind: string; type?: string; need?: ForwardedNeed } | undefined => {
+  ): { kind: string; type?: string; need?: ForwardedNeed; fulfilment?: ResourceManifest } | undefined => {
     if (ref.alias !== undefined && ref.alias !== "Self") {
       return { kind: ref.kind, type: scope.resolveKind(module, ref.kind) ?? ref.kind };
     }
@@ -255,7 +272,7 @@ export function validateApplicationInputs(
       const declared = readNeeds(doc).find((n) => n.name === ref.name);
       return declared ? { kind, ...(type ? { type } : {}), need: { ...declared, ...(type ? { type } : {}) } } : undefined;
     }
-    return { kind, ...(type ? { type } : {}) };
+    return { kind, ...(type ? { type } : {}), fulfilment: declaration };
   };
 
   /** The file `m` was written in: its own, or for an extraction its outermost

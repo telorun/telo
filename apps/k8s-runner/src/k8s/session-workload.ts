@@ -34,6 +34,7 @@ import {
   APP_SLOTS,
   APP_SLOTS_ANNOTATION,
   APPS_CONTAINER,
+  APPS_STATE_DIR,
   buildSessionPod,
   inspectPortFor,
   reservedPortsFor,
@@ -196,6 +197,10 @@ export class KubernetesSessionWorkload implements BackendWorkload {
   }
 
   // ---- BackendWorkload -------------------------------------------------------
+
+  appStateDir(app: string): string {
+    return `${APPS_STATE_DIR}/${app}`;
+  }
 
   async addresses(app: string): Promise<AppAddresses> {
     const rt = this.requireRuntime();

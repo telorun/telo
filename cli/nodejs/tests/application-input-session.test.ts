@@ -8,7 +8,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { InputPrompter } from "../src/application-input-prompt.js";
-import { ApplicationInputSession, offerToSaveAnswers } from "../src/application-input-session.js";
+import { ApplicationInputSession, offerToSaveAnswers, unresolvedInputsHint } from "../src/application-input-session.js";
 import { resolveEnvFiles } from "../src/env-files.js";
 import { createLogger } from "../src/logger.js";
 
@@ -176,6 +176,90 @@ ${reader("{'variables': variables, 'secrets': secrets}")}`;
   });
 });
 
+describe("the host's secret seed", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "telo-seed-")));
+  });
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const SENSITIVE_FILE = [".env", "local"].join(".");
+  const SEEDED = `kind: Telo.Application
+metadata: { name: Seeded }
+needs:
+  sessionKey: { kind: Telo.GeneratedSecretKey, parameters: { bytes: 32, encoding: base64url } }
+---
+kind: Telo.NeedType
+metadata: { name: Probe }
+fields:
+  value: { type: integer }
+---
+kind: Self.Probe
+metadata: { name: reader }
+fields:
+  value: !cel "size(resources.sessionKey.key)"
+`;
+
+  function session(confirms: boolean[], remote = false) {
+    const seen: Array<{ question: string; defaultYes?: boolean }> = [];
+    const asked: string[] = [];
+    const prompter: InputPrompter = {
+      async ask(input) {
+        asked.push(input.id);
+        return null;
+      },
+      async confirm(question, options) {
+        seen.push({ question, ...options });
+        return confirms.shift() ?? false;
+      },
+      say: () => undefined,
+    };
+    const result = new ApplicationInputSession(prompter);
+    result.seedOffer = { directory: remote ? undefined : dir, envFiles: DEFAULT_ENV_FILES, log: createLogger(false) };
+    return { result, seen, asked };
+  }
+
+  it("is offered once, written to the sensitive env file on yes, and the values follow from it", async () => {
+    const { result, seen, asked } = session([true]);
+    await load(SEEDED, result);
+    expect(seen).toEqual([
+      { question: `TELO_HOST_SECRET_SEED is not set — generate one and save it to ${SENSITIVE_FILE}?`, defaultYes: true },
+    ]);
+    expect(asked).toEqual([]);
+    const written = fs.readFileSync(path.join(dir, SENSITIVE_FILE), "utf8");
+    const lines = written.split("\n").filter((line) => line.startsWith("TELO_HOST_SECRET_SEED="));
+    expect(lines).toHaveLength(1);
+    const seed = lines[0]!.slice("TELO_HOST_SECRET_SEED=".length);
+    expect(seed).toHaveLength(43);
+
+    // The next run reads the seed from the file and asks nothing; a reload of this one asks nothing either.
+    const again = session([]);
+    await load(SEEDED, again.result, { TELO_HOST_SECRET_SEED: seed });
+    expect(again.seen).toEqual([]);
+    await load(SEEDED, result);
+    expect(seen).toHaveLength(1);
+  });
+
+  it("writes nothing and refuses with ERR_NEED_UNMET on no", async () => {
+    const { result } = session([false]);
+    await expect(load(SEEDED, result)).rejects.toMatchObject({ code: "ERR_NEED_UNMET" });
+    expect(fs.existsSync(path.join(dir, SENSITIVE_FILE))).toBe(false);
+  });
+
+  it("refuses the run naming the file when it cannot be written", async () => {
+    fs.mkdirSync(path.join(dir, SENSITIVE_FILE));
+    const { result } = session([true]);
+    const error = await load(SEEDED, result).catch((e: Error) => e);
+    expect((error as Error).message).toContain(`cannot save TELO_HOST_SECRET_SEED to ${path.join(dir, SENSITIVE_FILE)}`);
+  });
+
+  it("offers nothing for a manifest that is a URL", async () => {
+    const { result, seen } = session([true], true);
+    await expect(load(SEEDED, result)).rejects.toMatchObject({ code: "ERR_NEED_UNMET" });
+    expect(seen).toEqual([]);
+  });
+});
+
 describe("telo run with no terminal", () => {
   const CLI = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../bin/telo.ts");
   const VIA_CMD = process.platform === "win32";
@@ -205,5 +289,22 @@ describe("telo run with no terminal", () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("the hint a refusal ends with when nothing could ask", () => {
+  it("offers generation for the seed and the template for the rest", () => {
+    const hint = unresolvedInputsHint(
+      [
+        { id: "secrets TOKEN", env: "TOKEN" },
+        { id: "host TELO_HOST_SECRET_SEED", env: "TELO_HOST_SECRET_SEED", generable: true },
+      ] as never,
+      true,
+    );
+    expect(hint).toBe(
+      "TOKEN has no value: run without `--no-input` to be asked, or write them with `telo env template --write`. " +
+        "TELO_HOST_SECRET_SEED has no value: run in a terminal without `--no-input` to have one generated and saved, " +
+        "or set it to 32 random bytes as unpadded base64url.",
+    );
   });
 });

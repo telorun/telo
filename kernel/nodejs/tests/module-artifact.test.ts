@@ -515,7 +515,7 @@ describe("moduleDirectoryFor", () => {
   const PINNED = "oci://ghcr.io/acme/demo@1.0.0#sha256-Ab3cDeFgHiJkLmNoPqRsTuVwXyZ0123456789_-ab";
 
   it("places a module identically whether the manifest came from the network or the cache", () => {
-    const manifests = "/tmp/entry/.telo/manifests";
+    const manifests = "/tmp/entry/.telo/cache/manifests";
     const cold = moduleDirectoryFor(PINNED, "oci://ghcr.io/acme/demo@1.0.0", "", undefined, manifests);
     // Warm: the cache source served the file, so `source` is a local file:// URL.
     const warm = moduleDirectoryFor(

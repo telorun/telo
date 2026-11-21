@@ -17,10 +17,12 @@ Every container is named `telo-run-<sessionId>-<role>`, joins `RUNNER_CHILD_NETW
 | Container | Image | Runs | Mounts | Env |
 | --- | --- | --- | --- | --- |
 | `workspace` | The runner's own kernel (`RUNNER_IMAGE`) | The runner's workspace manifest, on port 8099 | The whole bundle volume at `/srv`; `<sessionId>/home/workspace` at `/home/telo` | `PORT`, `WORKSPACE_DIR`, `TELO_CACHE_DIR`, `HOME`, `npm_config_cache` |
-| `app-<name>` | The app's telo version (`RUNNER_TELO_IMAGE_*`), else the session's picked image | `/opt/telo-runner/supervisor`, idle until Run | `<sessionId>/workspace` at `/workspace`; the supervisor build read-only at `/opt/telo-runner`; `<sessionId>/home/apps` at `/home/telo` | `TELO_SUPERVISOR_LISTEN`, `TELO_SUPERVISOR_TOKEN`, `HOME`, `npm_config_cache` only |
+| `app-<name>` | The app's telo version (`RUNNER_TELO_IMAGE_*`), else the session's picked image | `/opt/telo-runner/supervisor`, idle until Run | `<sessionId>/workspace` at `/workspace`; the supervisor build read-only at `/opt/telo-runner`; `<sessionId>/home/apps` at `/home/telo`; `<sessionId>/apps/<name>` at `/var/lib/telo-apps/<name>` | `TELO_SUPERVISOR_LISTEN`, `TELO_SUPERVISOR_TOKEN`, `HOME`, `npm_config_cache` only |
 | `agent` | `AGENT_IMAGE`, or the runner's kernel image running `telo run` on `AGENT_MODULE_REF` | Its own entry point, or `telo run` | `<sessionId>/workspace` at `/workspace`; `<sessionId>/agent` at `/var/lib/telo-agent-state`; `<sessionId>/home/agent` at `/home/telo` | The operator's env from `AGENT_ENV`, `WORKSPACE_DIR`, `TELO_HOST_STATE_DIR=/var/lib/telo-agent-state`, `HOME`, `npm_config_cache` |
 
 **Every container runs as the session user**, `RUNNER_SESSION_USER` (numeric `<uid>:<gid>`, default `1000:1000` — the kernel image's `node` user), whatever its image's own `USER` says — an `AGENT_IMAGE` included — and the session's directory belongs to that user, as a kubernetes session pod runs with the same `runAsUser`, `runAsGroup` and `fsGroup`. **Each container gets a writable `HOME`**, `/home/telo` on its role's directory under `<sessionId>/home/` (`npm_config_cache` beneath it), because Docker gives a uid the image's `/etc/passwd` does not list `HOME=/`, which it cannot write. An `AGENT_IMAGE` must therefore run as an arbitrary numeric non-root uid, with `HOME` supplied by the runner, and a host-path `AGENT_MODULE_REF` must be readable by the session user. The runner itself runs as root: it holds the daemon socket and owns the bundle volume.
+
+**Each application has a state directory and a seed of its own.** `<sessionId>/apps/<name>` is created and given to the session user before `app-<name>` is created, mounted through a volume subpath at `/var/lib/telo-apps/<name>`, kept by suspend and removed with the session. Every Run of the application receives `TELO_HOST_STATE_DIR=/var/lib/telo-apps/<name>` (a `Telo.DurableDirectory` need lands in its `needs/`) and a `TELO_HOST_SECRET_SEED` derived from the runner's root seed, the session id and the application's name, over any value of either the client sent — so renaming an application gives a new directory and new generated secrets. The root seed is `RUNNER_SECRET_SEED`, else the `secret-seed` file the runner keeps in `RUNNER_STATE_DIR` beside `sessions.sqlite`; with `RUNNER_SESSION_STORE=postgres` and no `RUNNER_SECRET_SEED` none is delivered and an application declaring `Telo.GeneratedSecretKey` or `Telo.GeneratedPassword` fails with `ERR_NEED_UNMET`. These values are delivered with the Run, never written to a container definition.
 
 **No session env reaches any container definition.** A run's env arrives with the Run, is handed to the app's supervisor, and lives only in the process it starts — so it never appears in `docker inspect`. The operator env goes on the `agent` alone; `workspace` gets neither.
 
@@ -68,7 +70,7 @@ The runner exits with a descriptive error if any of these is unset.
 
 - **`BUNDLE_VOLUME`** — the daemon-visible name of the Docker volume mounted at `/bundles` in this runner, which session containers mount subdirectories of. In a compose deployment the name is prefixed by the project name (a compose-level key `runner-bundles` under `name: telo` resolves to `telo_runner-bundles`).
 - **`RUNNER_CHILD_NETWORK`** — the Docker network session containers join, which the runner must be on too: it reaches every container at its address there. In compose this is typically `<project>_default`; standalone deployments set this to `bridge`.
-- **`RUNNER_STATE_DIR`** — with the default SQLite session store: the runner's own state directory, on a persistent volume (compose: the `runner-state` volume at `/var/lib/telo-runner`); holds `sessions.sqlite`.
+- **`RUNNER_STATE_DIR`** — with the default SQLite session store: the runner's own state directory, on a persistent volume (compose: the `runner-state` volume at `/var/lib/telo-runner`); holds `sessions.sqlite` and the `secret-seed` file.
 
 Optional, with defaults:
 
@@ -87,6 +89,7 @@ Optional, with defaults:
 | `RUNNER_MAX_SESSIONS` | `8` | Most running sessions at once; suspended ones do not count |
 | `RUNNER_SESSION_STORE` | `sqlite` | Where session records are kept: `sqlite` (a file in `RUNNER_STATE_DIR`) or `postgres`. Anything else refuses to boot |
 | `RUNNER_SESSION_STORE_URL` | _(unset)_ | The Postgres connection URL; required with `postgres`, refused with `sqlite` |
+| `RUNNER_SECRET_SEED` | _(unset → the `secret-seed` file in `RUNNER_STATE_DIR`; none with `postgres`)_ | 32 bytes, unpadded base64url: the root every application's generated secrets derive from. A value or file that is not a seed refuses to boot; setting, rotating or losing it rotates every session's secrets. With `postgres`, set the same value on every replica |
 | `RUNNER_REPLAY_BUFFER_BYTES` | `5000000` | Per-session SSE replay buffer cap |
 | `RUNNER_SESSION_IDLE_SECONDS` | `300` | No SSE/WS subscriber for this long → suspend (containers removed, directory kept) |
 | `RUNNER_SESSION_MAX_RUNNING_SECONDS` | `21600` | A running session suspends after this long |

@@ -87,7 +87,7 @@ describe("the session pod", () => {
         command: [
           "sh",
           "-c",
-          "mkdir -p /telo-session/workspace /telo-session/agent /telo-session/telo && cp /opt/telo-runner/supervisor /telo-runner-out/supervisor",
+          "mkdir -p /telo-session/workspace /telo-session/agent /telo-session/apps /telo-session/telo && cp /opt/telo-runner/supervisor /telo-runner-out/supervisor",
         ],
         volumeMounts: [
           { name: "supervisor", mountPath: "/telo-runner-out" },
@@ -110,6 +110,14 @@ describe("the session pod", () => {
     expect(envOf(byName(pod, "agent")).TELO_HOST_STATE_DIR).toBe("/var/lib/telo-agent-state");
     for (const container of pod.spec!.containers.filter((c) => c.name !== "agent")) {
       expect(container.volumeMounts).not.toContainEqual(agentState);
+    }
+  });
+
+  it("mounts the claim's apps/ once into the apps container alone, whatever the app set", () => {
+    const appsState = { name: "session", mountPath: "/var/lib/telo-apps", subPath: "apps" };
+    expect(byName(pod, "apps").volumeMounts).toContainEqual(appsState);
+    for (const container of pod.spec!.containers.filter((c) => c.name !== "apps")) {
+      expect(container.volumeMounts).not.toContainEqual(appsState);
     }
   });
 

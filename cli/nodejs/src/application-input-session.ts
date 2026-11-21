@@ -1,4 +1,5 @@
 import { appendEnvFileValue, envFileDestination, type EnvFileEntry } from "@telorun/analyzer";
+import { encodeSecretSeed, generateSecretSeed } from "@telorun/secret-seed";
 import type { ApplicationInputResolver, UnresolvedApplicationInput } from "@telorun/kernel";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -12,6 +13,15 @@ export interface GivenAnswer {
   readonly value: string;
 }
 
+/** Where a seed the person agrees to generate is kept: the same places the
+ *  answers' save offer writes to. */
+export interface SeedOffer {
+  /** Where the run read its env files from; `undefined` for a manifest that is a URL, which offers nothing. */
+  directory: string | undefined;
+  envFiles: readonly EnvFileEntry[];
+  log: Logger;
+}
+
 /**
  * The answers of one `telo run` — one load, or every reload of a watch
  * session — keyed by declaration identity. A reload is answered from what was
@@ -22,6 +32,8 @@ export class ApplicationInputSession {
   private readonly answers = new Map<string, string>();
   private fresh = new Map<string, GivenAnswer>();
 
+  seedOffer?: SeedOffer;
+
   constructor(readonly prompter: InputPrompter) {}
 
   readonly resolve: ApplicationInputResolver = async (unresolved) => {
@@ -30,7 +42,12 @@ export class ApplicationInputSession {
     for (const input of unresolved) {
       const known = this.answers.get(input.id);
       if (known !== undefined && input.refusal === undefined) given.set(input.id, known);
-      else toAsk.push(input);
+      else if (input.generable) {
+        const seed = await this.generateAndSave(input);
+        if (seed === undefined) return undefined;
+        given.set(input.id, seed);
+        this.answers.set(input.id, seed);
+      } else toAsk.push(input);
     }
     if (toAsk.length > 0 && this.prompter.askAll) {
       const values = await this.prompter.askAll(toAsk);
@@ -59,6 +76,35 @@ export class ApplicationInputSession {
     }
     return given;
   };
+
+  /** Offer to make the value and keep it in the sensitive env file; generating
+   *  and saving are one step, so nothing is used that is not saved. `undefined`
+   *  when nothing can be offered or the person says no; a write that fails
+   *  refuses the run naming the file. */
+  private async generateAndSave(input: UnresolvedApplicationInput): Promise<string | undefined> {
+    const offer = this.seedOffer;
+    const name = input.env!;
+    if (!offer || offer.directory === undefined) return undefined;
+    const destination = envFileDestination(offer.envFiles, true);
+    if ("refused" in destination) {
+      this.prompter.say(`${destination.refused} ${name} is not generated.`);
+      return undefined;
+    }
+    const target = path.join(offer.directory, destination.name);
+    const question = `${name} is not set — generate one and save it to ${destination.name}?`;
+    if (!(await this.prompter.confirm(question, { defaultYes: true }))) return undefined;
+    const seed = encodeSecretSeed(generateSecretSeed());
+    try {
+      const edit = appendEnvFileValue(readEnvFileIfPresent(target) ?? "", name, seed);
+      if (!edit.ok) throw new Error(edit.reason);
+      fs.writeFileSync(target, edit.text);
+    } catch (error) {
+      throw new Error(`cannot save ${name} to ${target}: ${(error as Error).message}`);
+    }
+    this.prompter.say(`saved ${name} to ${destination.name}`);
+    warnIfNotIgnored(target, offer.log);
+    return seed;
+  }
 
   /** The answers given since the last call — what a run offers to save once
    *  the kernel has accepted them. */
@@ -136,10 +182,24 @@ export function unresolvedInputsHint(
   unresolved: readonly UnresolvedApplicationInput[],
   declined: boolean,
 ): string {
-  const listed = unresolved.map((input) => input.env ?? input.id).join(", ");
+  const asked = unresolved.filter((input) => !input.generable);
+  const generable = unresolved.filter((input) => input.generable);
   const ask = declined ? "run without `--no-input` to be asked" : "run in a terminal to be asked";
-  return (
-    `${listed} ${unresolved.length === 1 ? "has" : "have"} no value: ${ask}, ` +
-    "or write them with `telo env template --write`."
-  );
+  const generate = declined
+    ? "run in a terminal without `--no-input` to have one generated and saved"
+    : "run in a terminal to have one generated and saved";
+  const sentences: string[] = [];
+  if (asked.length > 0) {
+    const listed = asked.map((input) => input.env ?? input.id).join(", ");
+    sentences.push(
+      `${listed} ${asked.length === 1 ? "has" : "have"} no value: ${ask}, ` +
+        "or write them with `telo env template --write`.",
+    );
+  }
+  for (const input of generable) {
+    sentences.push(
+      `${input.env ?? input.id} has no value: ${generate}, or set it to 32 random bytes as unpadded base64url.`,
+    );
+  }
+  return sentences.join(" ");
 }

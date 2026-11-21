@@ -1,6 +1,14 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { isAbsolute } from "node:path";
+import { isAbsolute, join } from "node:path";
+
+import {
+  decodeSecretSeed,
+  readOrCreateSecretSeedFile,
+  SECRET_SEED_FILE_NAME,
+  SecretSeedError,
+  type SecretSeed,
+} from "@telorun/secret-seed";
 
 import type { PullPolicy, RunnerTerms } from "./contract.js";
 
@@ -105,6 +113,8 @@ export type SessionStoreConfig =
       /** `RUNNER_SESSION_STORE_URL`. Carries credentials: never log it. */
       url: string;
     };
+
+export type { SecretSeed };
 
 export class RunnerConfigError extends Error {}
 
@@ -713,6 +723,36 @@ export function requireStateDirectory(store: SessionStoreConfig): void {
       "RUNNER_STATE_DIR is required with RUNNER_SESSION_STORE=sqlite (the default): set it to a " +
         "directory on persistent storage, where the runner keeps its session store — or set " +
         "RUNNER_SESSION_STORE=postgres with RUNNER_SESSION_STORE_URL.",
+    );
+  }
+}
+
+/**
+ * The runner's root secret seed: `RUNNER_SECRET_SEED` when set; else, with the SQLite
+ * store, the `secret-seed` file of the state directory (created on first use); else
+ * undefined — the PostgreSQL store's replicas share records but not a directory, so only
+ * an operator-supplied value can agree. A value or file that is not a seed refuses,
+ * naming it and never its contents.
+ */
+export function loadRootSecretSeed(
+  env: NodeJS.ProcessEnv,
+  store: SessionStoreConfig,
+): SecretSeed | undefined {
+  const supplied = env.RUNNER_SECRET_SEED?.trim();
+  try {
+    if (supplied) return decodeSecretSeed(supplied, { variable: "RUNNER_SECRET_SEED" });
+    if (store.kind !== "sqlite" || store.directory === undefined) return undefined;
+  } catch (err) {
+    if (err instanceof SecretSeedError) throw new RunnerConfigError(err.message);
+    throw err;
+  }
+  const file = join(store.directory, SECRET_SEED_FILE_NAME);
+  try {
+    return readOrCreateSecretSeedFile(file);
+  } catch (err) {
+    if (err instanceof SecretSeedError) throw new RunnerConfigError(err.message);
+    throw new RunnerConfigError(
+      `could not read or create ${file}: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 }

@@ -1,7 +1,7 @@
 //! Fetching, extracting and writing a file a module's `sources:` block stages, on
 //! first use. Mirrors `../../../nodejs/src/bundle/source-staging.ts`: a file is
 //! written only once its bytes and execute bit match the pin, and concurrent
-//! kernels serialize per archive URL under the module's `.telo/staging` and
+//! kernels serialize per archive URL under the module's `.telo/cache/staging` and
 //! re-check before fetching. Staging every entry of a module (`telo release
 //! stage`) is the Node CLI's, which this runtime does not carry.
 
@@ -332,7 +332,7 @@ pub fn ensure_staged_entry(
     let url = resolve_source_url(source, upstream);
 
     // Under the module's own `.telo/`, which every checkout ignores.
-    let lock = dir.join(".telo").join("staging").join(&sha256_hex(url.as_bytes())[..16]);
+    let lock = dir.join(".telo").join("cache").join("staging").join(&sha256_hex(url.as_bytes())[..16]);
     with_directory_lock(&lock, "staged file", || {
         if check_staged_entry(dir, source, file).map_err(io_failed)? != StagedEntryState::Match {
             eprintln!("telo: staging '{path}' of the module at {} from {url}", dir.display());

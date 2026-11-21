@@ -330,7 +330,7 @@ describe("naming a measurement copy in a run's output", () => {
 
 describe("attributing a rejection to the import closure", () => {
   const cachedDiagnostic =
-    "../x/.telo/manifests/oci/ghcr.io/telorun/http-server/0.43.0/telo.yaml:137:7  error  Telo.Definition/Server: nope  SCHEMA_VIOLATION";
+    "../x/.telo/cache/manifests/oci/ghcr.io/telorun/http-server/0.43.0/telo.yaml:137:7  error  Telo.Definition/Server: nope  SCHEMA_VIOLATION";
 
   it("counts a diagnostic located at a cached dependency as a rejection, rendered as the dependency", async () => {
     const file = writeModule("app");
@@ -504,7 +504,7 @@ describe("what is not attributable fails", () => {
     await expect(atCopy.probe("0.90.0", null, modules)).rejects.toThrow(/could not obtain an import \(IMPORT_UNRESOLVED\)/);
 
     const cached =
-      "../x/.telo/manifests/oci/ghcr.io/telorun/http-server/0.43.0/telo.yaml:1:1  error  could not fetch  IMPORT_UNRESOLVED";
+      "../x/.telo/cache/manifests/oci/ghcr.io/telorun/http-server/0.43.0/telo.yaml:1:1  error  could not fetch  IMPORT_UNRESOLVED";
     const inClosure = new FloorProbe(async () => ({ status: "failed", output: cached }));
     await expect(inClosure.probe("0.90.0", null, modules)).rejects.toThrow(FloorMeasurementError);
 
@@ -593,7 +593,7 @@ describe("measurement mirror", () => {
       const sibling = path.join(root, "sib", "telo.yaml");
       const entry = path.join(root, "app", "telo.yaml");
       fs.mkdirSync(path.join(root, "sib", ".telo"), { recursive: true });
-      fs.mkdirSync(path.join(root, "app", ".telo", "manifests"), { recursive: true });
+      fs.mkdirSync(path.join(root, "app", ".telo", "cache", "manifests"), { recursive: true });
       fs.writeFileSync(sibling, "kind: Telo.Library\nmetadata: { name: Sib, version: 1.0.0 }\nsources:\n  a: { newKey: 1 }\n");
       fs.symlinkSync("./nowhere", path.join(root, "sib", "dangling"));
       const entryText = "kind: Telo.Library\nmetadata: { name: App, version: 1.0.0 }\nimports:\n  Sib: ../sib\n";
@@ -612,7 +612,7 @@ describe("measurement mirror", () => {
       await probe.probe("0.100.0", "0.100.0", [{ key: "app", manifestPath: entry, text: entryText }]);
 
       expect(seen!.env).toEqual({ TELO_CACHE_DIR: resolveCacheRoot(entry) });
-      expect(seen!.env!.TELO_CACHE_DIR).toMatch(/app[\\/]\.telo$/);
+      expect(seen!.env!.TELO_CACHE_DIR).toMatch(/app[\\/]\.telo[\\/]cache$/);
       expect(seen!.caches).toEqual([false, false]);
       // Recreated with the target the real link holds, as the platform stores it.
       expect(seen!.dangling).toBe(fs.readlinkSync(path.join(root, "sib", "dangling")));

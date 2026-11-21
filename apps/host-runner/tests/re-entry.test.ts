@@ -61,4 +61,12 @@ describe("a process the runner spawns", () => {
     const inherited = inheritedEnvironment({ PATH: "/bin" }, { TELO_APP_CLI: "0", FOO: "bar" });
     expect(inherited).toEqual({ PATH: "/bin", FOO: "bar" });
   });
+
+  it("inherits none of the runner's own host values, only the run's", () => {
+    const inherited = inheritedEnvironment(
+      { PATH: "/bin", TELO_HOST_SECRET_SEED: "operator", TELO_HOST_STATE_DIR: "/operator", RUNNER_SECRET_SEED: "root" },
+      { TELO_HOST_STATE_DIR: "/session/apps/web" },
+    );
+    expect(inherited).toEqual({ PATH: "/bin", TELO_HOST_STATE_DIR: "/session/apps/web" });
+  });
 });

@@ -57,6 +57,7 @@
     "@telorun/osv": "workspace:*",
     "@telorun/release": "workspace:*",
     "@telorun/runner-protocol": "workspace:*",
+    "@telorun/secret-seed": "workspace:*",
     "@telorun/sdk": "workspace:*",
     "@telorun/share-tunnel": "workspace:*",
     "@telorun/templating": "workspace:*",

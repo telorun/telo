@@ -26,6 +26,8 @@ const ENTRY_FILES: &[(&str, &str)] = &[
     ("Executable.json", include_str!("../../../sdk/builtins/Executable.json")),
     ("FileSink.json", include_str!("../../../sdk/builtins/FileSink.json")),
     ("Function.json", include_str!("../../../sdk/builtins/Function.json")),
+    ("GeneratedPassword.json", include_str!("../../../sdk/builtins/GeneratedPassword.json")),
+    ("GeneratedSecretKey.json", include_str!("../../../sdk/builtins/GeneratedSecretKey.json")),
     ("Import.json", include_str!("../../../sdk/builtins/Import.json")),
     ("Invocable.json", include_str!("../../../sdk/builtins/Invocable.json")),
     ("JsonSchema.json", include_str!("../../../sdk/builtins/JsonSchema.json")),

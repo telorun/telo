@@ -17,7 +17,7 @@ import { TransportRegistry, defaultTransportRegistry } from "../transports/trans
 import { findWorkspaceRoot } from "../workspace-marker.js";
 import { originKey, readOriginDigests } from "./origin-digests.js";
 
-const CACHE_SUBDIR = ".telo/manifests";
+const CACHE_SUBDIR = ".telo/cache/manifests";
 
 /** Verify that `candidate` resolves to a path under `root`. Returns the
  *  candidate path on success, `null` when any segment escapes the root.
@@ -55,7 +55,7 @@ function cachePathForUrl(
 }
 
 /** The PRE-WORKSPACE-ANCHOR manifest cache for an entry: always
- *  `<entry-dir>/.telo/manifests`, regardless of marker or env override. `null`
+ *  `<entry-dir>/.telo/cache/manifests`, regardless of marker or env override. `null`
  *  for an entry with no local anchor.
  *
  *  A single definition because two things read the old location and they must
@@ -88,7 +88,7 @@ export function legacyManifestsDirFallback(
  * Populated by `writeManifestCache` at install time.
  *
  * On a miss it consults the PRE-WORKSPACE-ANCHOR location
- * (`<entry-dir>/.telo/manifests/`) before giving up. Every other cache in `.telo`
+ * (`<entry-dir>/.telo/cache/manifests/`) before giving up. Every other cache in `.telo`
  * costs only CPU when it goes cold; this one costs network, so without the
  * fallback the move to a workspace-anchored root would stop a hermetic setup from
  * booting — its `telo install` output stranded at the old path, with the failure
@@ -219,13 +219,13 @@ export function cachePathForCanonical(
 
 /**
  * Persist every manifest file reachable from `graph` (owners + partials) to
- * `<entryDir>/.telo/manifests/`, except the entry manifest itself and any
+ * `<entryDir>/.telo/cache/manifests/`, except the entry manifest itself and any
  * file:// or memory:// sources (already on disk or transient).
  *
  * Idempotent: rewrites any existing file with the freshly fetched bytes so
  * a partial re-install converges. Never deletes entries — stale versions
- * stay until `.telo/manifests/` is removed by hand, matching the
- * `.telo/npm/` convention.
+ * stay until `.telo/cache/manifests/` is removed by hand, matching the
+ * `.telo/cache/npm/` convention.
  *
  * Returns the list of paths written, for diagnostics.
  */
@@ -294,7 +294,7 @@ export function resolveEntryDir(entryPath: string): string | null {
   }
 }
 
-/** The single `.telo` cache root for an entry, resolved once and threaded to
+/** The single `.telo/cache` cache root for an entry, resolved once and threaded to
  *  every consumer (manifest cache, compiled validators, analysis stamps, npm
  *  install root, cargo target dirs) so none of them re-derive it or read the env
  *  independently.
@@ -302,7 +302,7 @@ export function resolveEntryDir(entryPath: string): string | null {
  *  Precedence: `TELO_CACHE_DIR` (the relocated root a prebuilt image bakes its
  *  deps into) wins; then the directory holding `telo-workspace.yaml`, so every
  *  app in one repo shares a cache instead of each carrying its own copy of the
- *  same manifests, validators, bundles and npm tree; then `<entry-dir>/.telo`.
+ *  same manifests, validators, bundles and npm tree; then `<entry-dir>/.telo/cache`.
  *
  *  Anchoring on the marker's LOCATION only — never its `modules:` list, which is
  *  release scope — so a manifest in no release subtree (an example, a test
@@ -318,7 +318,15 @@ export function resolveEntryDir(entryPath: string): string | null {
 export function resolveCacheRoot(entryPath: string): string | null {
   const override = hostEnv().TELO_CACHE_DIR;
   if (override && override.trim()) return path.resolve(override.trim());
+  const workspaceDir = resolveWorkspaceDir(entryPath);
+  return workspaceDir ? path.join(workspaceDir, ".telo", "cache") : null;
+}
+
+/** The directory `.telo/` lives in for an entry: the one holding
+ *  `telo-workspace.yaml`, else the entry's own directory; `null` for an entry
+ *  with no local anchor. */
+export function resolveWorkspaceDir(entryPath: string): string | null {
   const entryDir = resolveEntryDir(entryPath);
   if (!entryDir) return null;
-  return path.join(findWorkspaceRoot(entryDir) ?? entryDir, ".telo");
+  return findWorkspaceRoot(entryDir) ?? entryDir;
 }
