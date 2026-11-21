@@ -4,27 +4,23 @@
       "severity": 1,
       "code": "CAPABILITY_NOT_DECLARABLE",
       "source": "telo-analyzer",
-      "message": "Imported library 'MixedLib', reached through import 'Lib': Telo.Abstract 'Contract': 'Telo.Executable' cannot be declared as a capability: Anything control can be transferred to with call arguments — a resource that is invoked or run. A reference slot accepting either says so once with this constraint. It names no lifecycle of its own, so no kind declares it as its role: a kind declares the role it implements. Declare one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type.",
+      "message": "Telo.Abstract 'Contract': 'Telo.Executable' cannot be declared as a capability: Anything control can be transferred to with call arguments — a resource that is invoked or run. A reference slot accepting either says so once with this constraint. It names no lifecycle of its own, so no kind declares it as its role: a kind declares the role it implements. Declare one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type.",
       "data": {
-        "filePath": "telo.yaml",
-        "path": "imports.Lib",
-        "writtenAt": {
-          "resource": {
-            "kind": "Telo.Abstract",
-            "name": "Contract"
-          },
-          "filePath": "lib/telo.yaml",
-          "path": "capability"
-        }
+        "resource": {
+          "kind": "Telo.Abstract",
+          "name": "Contract"
+        },
+        "filePath": "lib/telo.yaml",
+        "path": "capability"
       },
       "range": {
         "start": {
-          "line": 2,
-          "character": 16
+          "line": 5,
+          "character": 12
         },
         "end": {
-          "line": 2,
-          "character": 21
+          "line": 5,
+          "character": 27
         }
       }
     },

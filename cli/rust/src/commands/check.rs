@@ -1,22 +1,29 @@
 //! `telo check <paths..>`.
 //! Mirrors `../../../nodejs/src/commands/check.ts`.
 //!
-//! Loads each path's graph, analyzes it with the analyzer's own passes and prints what
-//! `telo check` prints: the same envelope, text, exit status and cache behaviour, for what
-//! this analyzer covers. It may under-report and never over-report. A construct this build
+//! Loads each path's graph, analyzes it with the analyzer's own passes — the entry, then every
+//! imported library by its own verdict — and prints what `telo check` prints: the same
+//! envelope, text, exit status and cache behaviour, for what this analyzer covers, each finding
+//! once across the paths. It may under-report and never over-report. A construct this build
 //! cannot read — a file the YAML reader holds back, an import or a partial through a
 //! transport or an artifact path it lacks, an input it cannot open, a library migration it
 //! does not apply where one may apply — is no diagnostic: it is held back like a parse
 //! failure, reported on stderr as a host refusal, and makes the run fail.
 
+use std::collections::HashSet;
+
 use serde_json::json;
-use telo_analyzer::{analyze, assemble_entry_diagnostics, AnalysisOptions, UNSUPPORTED_MANIFEST_FEATURE as UNSUPPORTED};
+use telo_analyzer::{
+    analyze_loaded_graph, diagnostic_identity, AnalysisOptions, DependencyAnalysisOptions, DependencyVerdictMemo,
+    DependencyVerdictStore, UNSUPPORTED_MANIFEST_FEATURE as UNSUPPORTED,
+};
 use telo_kernel::controllers::module::module_controller::value_branch_accepts;
 use telo_kernel::manifest_sources::local_manifest_cache_source::write_manifest_cache;
 use telo_kernel::manifest_sources::origin_digests::write_origin_digests;
 
 use crate::check_session::{cache_target_for, load_fresh_graph, open_session, CacheTarget, CheckSession, GraphFailure};
 use crate::controller_tool_probe::{command_exists, probe_controller_tools};
+use crate::dependency_verdict_store::{running_surface, verdict_store_for};
 use crate::exit_status::EXIT_FAILED;
 use crate::logger::{display_source_path, format_analysis_diagnostics, load_failure, Counts, JsonDiagnostic, Logger};
 use crate::manifest_input::{resolve_manifest_input, InputRefusal, ManifestInput};
@@ -58,13 +65,24 @@ pub fn check(args: &CheckArgs, out: &Output) -> i32 {
     }
 }
 
+/// What every path of one invocation shares.
+struct Invocation<'a> {
+    session: CheckSession,
+    cache_write: bool,
+    running_surface: String,
+    memo: DependencyVerdictMemo,
+    /// Identities already reported by an earlier path, so a finding reached through several
+    /// paths (`check app app/lib`) is reported once.
+    reported: HashSet<String>,
+    log: &'a Logger<'a>,
+}
+
 fn check_one(
     input: &ManifestInput,
     cache_target: Option<&CacheTarget>,
-    session: &CheckSession,
-    cache_write: bool,
-    log: &Logger,
+    invocation: &mut Invocation,
 ) -> std::io::Result<Outcome> {
+    let (session, cache_write, log) = (&invocation.session, invocation.cache_write, invocation.log);
     let entry_path = &input.entry_path;
     let is_url = entry_path.starts_with("http://") || entry_path.starts_with("https://");
     let display_path = || if is_url { entry_path.clone() } else { display_source_path(entry_path, &log.cwd) };
@@ -82,18 +100,32 @@ fn check_one(
         }
     };
 
-    let analysis = analyze(&graph, &AnalysisOptions { accepts_value: &value_branch_accepts });
-    let entry = assemble_entry_diagnostics(&graph, analysis);
+    // Library verdicts persist beside the manifest cache.
+    let store = verdict_store_for(input, cache_write, log, &invocation.running_surface);
+    let analyzed = analyze_loaded_graph(
+        &graph,
+        &DependencyAnalysisOptions {
+            analysis: &AnalysisOptions { accepts_value: &value_branch_accepts },
+            running_surface: &invocation.running_surface,
+            store: store.as_ref().map(|store| store as &dyn DependencyVerdictStore),
+            memo: Some(&invocation.memo),
+        },
+    );
+    if let Some(store) = store {
+        store.finish()?;
+    }
     // A construct this build cannot read is no diagnostic: it is reported on stderr, naming
     // where it is, and the files it names are held back.
-    for refusal in &entry.host_refusals {
+    for refusal in &analyzed.host_refusals {
         log.out.err_line(&format!(
             "[{UNSUPPORTED}] {}",
             refusal.message(|path| display_source_path(path, &log.cwd))
         ))?;
     }
-    let refused = !entry.host_refusals.is_empty();
-    let mut diagnostics = entry.diagnostics;
+    let refused = !analyzed.host_refusals.is_empty();
+    let reported = &mut invocation.reported;
+    let mut diagnostics: Vec<_> =
+        analyzed.diagnostics.into_iter().filter(|d| reported.insert(diagnostic_identity(d))).collect();
     // Probing costs a process launch per tool the manifest actually calls for, and nothing
     // at all for a manifest of bundled controllers.
     let env: std::collections::HashMap<String, String> = std::env::vars_os().filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?))).collect();
@@ -140,7 +172,21 @@ fn run_check(args: &CheckArgs, out: &Output) -> std::io::Result<i32> {
         }
         cache_targets.push(target);
     }
-    let session = open_session(&targets);
+    let running_surface = match running_surface() {
+        Ok(surface) => surface,
+        Err(reason) => {
+            out.err_line(&format!("telo check: the built-in vocabulary this build embeds is malformed: {reason}"))?;
+            return Ok(EXIT_FAILED);
+        }
+    };
+    let mut invocation = Invocation {
+        session: open_session(&targets),
+        cache_write: args.cache_write,
+        running_surface,
+        memo: DependencyVerdictMemo::default(),
+        reported: HashSet::new(),
+        log: &log,
+    };
 
     let mut total_errors = 0;
     let mut total_warns = 0;
@@ -148,7 +194,7 @@ fn run_check(args: &CheckArgs, out: &Output) -> std::io::Result<i32> {
     let mut all_diagnostics: Vec<JsonDiagnostic> = Vec::new();
     for ((path, input), cache_target) in inputs.iter().zip(&cache_targets) {
         let outcome = match input {
-            Ok(input) => check_one(input, cache_target.as_ref(), &session, args.cache_write, &log)?,
+            Ok(input) => check_one(input, cache_target.as_ref(), &mut invocation)?,
             Err(InputRefusal::Failure(message)) => load_failure(path, message, None, &log)?.into(),
             Err(InputRefusal::Unsupported(sentence)) => {
                 out.err_line(&format!("[{UNSUPPORTED}] {sentence}"))?;

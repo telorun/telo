@@ -4,12 +4,12 @@
 //! one string); the relocation half has no twin, since this analyzer moves no finding.
 //! Node's `parseKeys` / `pathText` live in `template-expansion.ts`, which has no Rust twin.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::types::AnalysisDiagnostic;
 
 /// How a message quotes one place of its declaration.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QuotedPlace {
     /// The text between the previous quote (or the message start) and this one.
     pub before: String,
@@ -26,7 +26,7 @@ pub struct QuotedPlace {
 }
 
 /// How a place is written in a message.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum QuotedForm {
     Pointer,

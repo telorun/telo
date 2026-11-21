@@ -1,0 +1,6 @@
+units:
+  cli: Added
+body: The Rust `telo check` reports each imported library's own findings as the Node one
+  does, reports a finding that several paths of one invocation reach once, and keeps
+  library verdicts as `<cache root>/dependency-verdicts/<key>.json` (none for an
+  unreleased build, none written under `--no-cache-write`).

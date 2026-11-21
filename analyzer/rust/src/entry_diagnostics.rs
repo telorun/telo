@@ -81,10 +81,22 @@ pub struct EntryDiagnostics<'g> {
 /// dropped.
 pub fn assemble_entry_diagnostics(graph: &LoadedGraph, analysis: Vec<AnalysisDiagnostic>) -> EntryDiagnostics<'_> {
     let host_refusals = host_refusals(graph);
-    let held: HashSet<String> = host_refusals.iter().flat_map(HostRefusal::held_files).collect();
-    let mut assembled = assemble_graph_diagnostics(graph, analysis);
-    assembled.diagnostics.retain(|d| !held.contains(&owning_file(graph, d)));
-    EntryDiagnostics { diagnostics: assembled.diagnostics, suppressed: assembled.suppressed, host_refusals }
+    let assembled = assemble_graph_diagnostics(graph, analysis);
+    let diagnostics = without_held_files(graph, &host_refusals, assembled.diagnostics);
+    EntryDiagnostics { diagnostics, suppressed: assembled.suppressed, host_refusals }
+}
+
+/// `diagnostics` minus every one owned by a file one of `refusals` holds back.
+pub fn without_held_files(
+    graph: &LoadedGraph,
+    refusals: &[HostRefusal<'_>],
+    mut diagnostics: Vec<AnalysisDiagnostic>,
+) -> Vec<AnalysisDiagnostic> {
+    let held: HashSet<String> = refusals.iter().flat_map(HostRefusal::held_files).collect();
+    if !held.is_empty() {
+        diagnostics.retain(|d| !held.contains(&owning_file(graph, d)));
+    }
+    diagnostics
 }
 
 /// The file a diagnostic is shown in, by the rule the assembly files it by.
