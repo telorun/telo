@@ -1,0 +1,19 @@
+# Run with TELO_HOST_SECRET_SEED set to the vectors' seed: the root's key is the
+# vector 'key/base64url', which the library and the child each compare against.
+kind: Telo.Application
+metadata: { name: Shop, version: 1.0.0 }
+imports:
+  App: ../../../../../../modules/app
+  Auth:
+    source: ../auth
+    needs: { sessionKey: !ref sessionKey }
+needs:
+  sessionKey: { kind: Telo.GeneratedSecretKey, parameters: { bytes: 32, encoding: base64url } }
+targets:
+  - !ref Auth.report
+  - !ref web
+---
+kind: App.Instance
+metadata: { name: web }
+source: ../web
+needs: { sessionKey: !ref sessionKey }

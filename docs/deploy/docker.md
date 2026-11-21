@@ -30,10 +30,10 @@ The image has a smart entrypoint (like the official `node` image): a bare manife
 
 ## Warm the cache with `telo install`
 
-`telo install` walks the manifest's `imports:` graph transitively, downloads every controller package, and writes both under the **cache root** (`.telo/`, see [below](#where-the-cache-lands)):
+`telo install` walks the manifest's `imports:` graph transitively, downloads every controller package, and writes both under the **cache root** (`.telo/cache/`, see [below](#where-the-cache-lands)):
 
-- `.telo/npm/<hash>/` — controller `node_modules` tree, one per runner rather than per app: keyed by where the CLI sits relative to the tree, plus the host platform. A tree warmed in the build stage is reused when the production stage copies it to another directory at the same depth, while a checkout bind-mounted from a different telo installation — a container over a host checkout — gets its own instead of inheriting one whose paths are true only on the other side.
-- `.telo/manifests/…` — every imported `telo.yaml`, registry-served or HTTP-fetched, plus the module layers (bundled controllers, assets) each one ships.
+- `.telo/cache/npm/<hash>/` — controller `node_modules` tree, one per runner rather than per app: keyed by where the CLI sits relative to the tree, plus the host platform. A tree warmed in the build stage is reused when the production stage copies it to another directory at the same depth, while a checkout bind-mounted from a different telo installation — a container over a host checkout — gets its own instead of inheriting one whose paths are true only on the other side.
+- `.telo/cache/manifests/…` — every imported `telo.yaml`, registry-served or HTTP-fetched, plus the module layers (bundled controllers, assets) each one ships.
 
 Module layers are warmed for the build machine's os, arch and libc; pass `--platform os/arch[/libc]` when the image targets another. A layer built for one runtime ABI is warmed only with `--abi <family>-<version>` naming the runtime the image runs (`--abi node-137` for Node 24), because the process running `telo install` is not necessarily that runtime; without it, install lists each such layer it skipped, and a run that needs one fetches it then.
 
@@ -45,13 +45,13 @@ Skip the warm-up and your container will pull controllers on every boot, suffer 
 
 The cache root is resolved the same way by `install`, `check` and `run`:
 
-1. `TELO_CACHE_DIR`, if set.
-2. `.telo/` **beside `telo-workspace.yaml`**, when that marker sits anywhere above the manifest.
-3. `.telo/` beside the manifest, when there is no marker.
+1. `TELO_CACHE_DIR`, if set — it names the cache root itself.
+2. `.telo/cache/` **beside `telo-workspace.yaml`**, when that marker sits anywhere above the manifest.
+3. `.telo/cache/` beside the manifest, when there is no marker.
 
 The two-stage Dockerfile above copies only the app directory, so no marker is copied and rule 3 applies — the cache is next to the manifest and the `COPY --from=build` ships it.
 
-**A monorepo is different.** [`telo release`](/extend/releasing-modules) asks you to put `telo-workspace.yaml` at the repository root, and a workspace whose apps import shared libraries by relative path has to copy the whole tree into the build stage anyway. Then `telo install apps/my-app` writes to `/build/.telo`, not `/build/apps/my-app/.telo` — and a production stage that copies only `apps/my-app` ships **no cache at all**. Nothing fails at build time; the container pulls on every boot, and fails outright when it has no network.
+**A monorepo is different.** [`telo release`](/extend/releasing-modules) asks you to put `telo-workspace.yaml` at the repository root, and a workspace whose apps import shared libraries by relative path has to copy the whole tree into the build stage anyway. Then `telo install apps/my-app` writes to `/build/.telo/cache`, not `/build/apps/my-app/.telo/cache` — and a production stage that copies only `apps/my-app` ships **no cache at all**. Nothing fails at build time; the container pulls on every boot, and fails outright when it has no network.
 
 Either keep the marker with the manifest, or pin the location:
 
@@ -76,7 +76,7 @@ CMD ["telo", "apps/my-app"]
 Or, independent of any marker:
 
 ```dockerfile
-ENV TELO_CACHE_DIR=/workspace/.telo
+ENV TELO_CACHE_DIR=/workspace/.telo/cache
 ```
 
 set in **both** stages, so the build writes where the run reads. Verify the image before shipping it: run it once with networking disabled (`docker run --network none …`) and it must boot.

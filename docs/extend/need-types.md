@@ -130,6 +130,14 @@ module-root-relative (`"./logo.png"`). Any other tag in `parameters:` — `!cel`
 is not a host path are `NEED_PARAMETERS_INVALID`. A plain relative string is a
 relative host path, which is refused like everywhere else.
 
+A need forwarded whole to another need of its type states every parameter that
+need states (its type's defaults filled in) with an equal value, or it is
+`NEED_FORWARD_INCOMPATIBLE`, at an import's `needs:` and at a child
+application's alike: a value is made for the outermost need's parameters, so a
+library asking for one thing must be handed exactly that. A library need that
+states no parameters accepts any. `Telo.DurableDirectory` compares its own
+parameters by order instead (below).
+
 ## One per module
 
 `unique: true` says a module asks for at most one need of the type — the thing it
@@ -255,6 +263,26 @@ declares that in one library rather than by forwarding. Each is refused by
 `telo check` and, as `ERR_<code>`, by the kernel at load. What `size` and
 `access` promise, how a host supplies the directory and what the kernel checks
 at load are in [Providing needs](/learn/providing-needs#durable-directories).
+
+## Kernel-declared generated secrets
+
+`Telo.GeneratedSecretKey` and `Telo.GeneratedPassword` ask for a secret the
+host derives from its one seed (`TELO_HOST_SECRET_SEED`), so nobody has to
+invent one in the exact format a library decodes. Neither is `supply: root` or
+`unique`.
+
+| Type | Field | Parameters (both required) |
+| --- | --- | --- |
+| `Telo.GeneratedSecretKey` | `key`, sensitive: the bytes in the encoding | `bytes` (16–1024), `encoding` (`base64url`, `base64url-padded`, `base64`, `hex`) |
+| `Telo.GeneratedPassword` | `password`, sensitive | `length` (1–1024), `characterSets` (`{ characters, minimum }`, `minimum` default 0) |
+
+A set's `characters` are printable ASCII; one character twice within or across
+sets, or minimums summing past `length`, is `NEED_PARAMETERS_INVALID`. A value
+supplied in place of the derivation — the need's variable, a `needs:` supply, a
+fulfilment's `fields:` — is held to the need's parameters: a literal that fails
+is `NEED_VALUE_INVALID`, any failing value `ERR_NEED_VALUE_INVALID` at load.
+The value's identity, the order supplies are read in, and what a host does are
+in [Providing needs](/learn/providing-needs#generated-keys-and-passwords).
 
 ## Naming a need type
 

@@ -23,7 +23,7 @@ One API, a lead-intake service, is specified in prose and implemented twice: as 
 - **Throughput** at a fixed concurrency.
 - **Latency (p50, p99) at a fixed rate**, the same for every subject.
 - **CPU time per request** and **resident memory**, in the fixed-rate pass.
-- **Boot time**, cold and warm. A cold boot starts with the subject's `.telo` cache removed, so it includes compiling every controller; a warm boot reuses what the cold one left. For Telo the duration of the startup span is recorded beside them.
+- **Boot time**, cold and warm. A cold boot starts with the subject's `.telo/cache` removed, so it includes compiling every controller; a warm boot reuses what the cold one left. For Telo the duration of the startup span is recorded beside them.
 
 **The core split.** The comparison takes the whole physical cores it may use and splits them in two halves: the first runs the comparison and its load generator, the second runs the subjects, each pinned with `taskset`. The rule is fixed, so every run splits the same way and a bigger machine needs no edit.
 

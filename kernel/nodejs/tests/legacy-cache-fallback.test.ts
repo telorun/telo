@@ -32,8 +32,8 @@ let legacyManifests: string;
 beforeEach(async () => {
   root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "telo-legacy-")));
   entryDir = path.join(root, "app");
-  newManifests = path.join(root, ".telo", "manifests");
-  legacyManifests = path.join(entryDir, ".telo", "manifests");
+  newManifests = path.join(root, ".telo", "cache", "manifests");
+  legacyManifests = path.join(entryDir, ".telo", "cache", "manifests");
   await fs.mkdir(newManifests, { recursive: true });
 });
 

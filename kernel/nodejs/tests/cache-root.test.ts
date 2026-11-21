@@ -6,7 +6,7 @@ import { resolveCacheRoot } from "../src/manifest-sources/local-manifest-cache-s
 import { WORKSPACE_FILENAME } from "../src/workspace-marker.js";
 
 /**
- * The `.telo` cache root's precedence: `TELO_CACHE_DIR`, then the directory
+ * The `.telo/cache` cache root's precedence: `TELO_CACHE_DIR`, then the directory
  * holding `telo-workspace.yaml`, then the entry's own directory.
  *
  * The env override is asserted rather than observed because the whole baked-image
@@ -36,8 +36,8 @@ describe("resolveCacheRoot", () => {
     const deep = path.join(root, "examples", "todo-app", "tests");
     await fs.mkdir(deep, { recursive: true });
 
-    expect(resolveCacheRoot(path.join(deep, "app.telo.yaml"))).toBe(path.join(root, ".telo"));
-    expect(resolveCacheRoot(path.join(root, "app.telo.yaml"))).toBe(path.join(root, ".telo"));
+    expect(resolveCacheRoot(path.join(deep, "app.telo.yaml"))).toBe(path.join(root, ".telo", "cache"));
+    expect(resolveCacheRoot(path.join(root, "app.telo.yaml"))).toBe(path.join(root, ".telo", "cache"));
   });
 
   it("falls back to the entry directory when no marker is above it", async () => {
@@ -46,7 +46,7 @@ describe("resolveCacheRoot", () => {
 
     // Deleting the marker must not break a build, so its absence has to mean
     // exactly what this did before the anchor existed.
-    expect(resolveCacheRoot(path.join(dir, "app.telo.yaml"))).toBe(path.join(dir, ".telo"));
+    expect(resolveCacheRoot(path.join(dir, "app.telo.yaml"))).toBe(path.join(dir, ".telo", "cache"));
   });
 
   it("lets TELO_CACHE_DIR outrank the marker", async () => {

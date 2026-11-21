@@ -1,0 +1,14 @@
+kind: Telo.Library
+metadata: { name: Auth, version: 1.0.0 }
+imports: { Console: ../../../../../../modules/console }
+needs:
+  sessionKey: { kind: Telo.GeneratedSecretKey, parameters: { bytes: 32, encoding: base64url } }
+exports: { resources: [report] }
+---
+kind: Telo.Sequence
+metadata: { name: report }
+steps:
+  - name: say
+    invoke: { kind: Console.WriteLine }
+    inputs:
+      output: !interpolate "library-same=${{ resources.sessionKey.key == 'XacUU0uLA5MaU3rISFBnkp_Mvy4SviSTdS3mSAeCvjo' }}"

@@ -1,3 +1,4 @@
+import { ApplicationHostValues } from "./application-host-values.js";
 import { isEventFrame } from "@telorun/debug-wire";
 
 import {
@@ -65,6 +66,8 @@ export interface SessionLifecycleDeps {
   registry: SessionRegistry;
   tickets: IoTickets;
   containers?: SessionContainers;
+  /** The host values delivered to each application's Runs. */
+  hostValues: ApplicationHostValues;
   /** The operator's co-resident agent (`AGENT_*`), the one a session may name. */
   agent: RunnerAgent | undefined;
   settings: SessionLifecycleConfig;
@@ -373,7 +376,12 @@ export class SessionLifecycle {
         runId,
         argv: runArgv(addresses, app.entryRelativePath),
         env: {
-          ...withoutCacheOverride(args.env),
+          ...this.deps.hostValues.apply(
+            withoutCacheOverride(args.env),
+            entry.sessionId,
+            appName,
+            workload.appStateDir(appName),
+          ),
           ...this.deps.containers?.envOf(entry.sessionId),
         },
         cwd: ".",

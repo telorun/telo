@@ -3,6 +3,7 @@ import type { AddressInfo } from "node:net";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
+import { deriveChildSeed, encodeSecretSeed } from "@telorun/secret-seed";
 
 import { AGENT_NAME, loadAgentFromEnv } from "../config.js";
 import type { RunEvent } from "../contract.js";
@@ -147,6 +148,42 @@ describe("credentials", () => {
   });
 });
 
+describe("an application's host values", () => {
+  const root = new Uint8Array(32).fill(7);
+  const seedOf = (b: Booted, sessionId: string, app: string) =>
+    b.backend.workloadOf(sessionId).runs.find((r) => r.app === app)!.run.env.TELO_HOST_SECRET_SEED;
+
+  it("gives each application its own state directory and a seed derived from the root, over what the client sent", async () => {
+    const b = await boot({ rootSecretSeed: root });
+    const s = await create(b, {
+      apps: [
+        { name: "web", entryRelativePath: "web/telo.yaml", ports: [] },
+        { name: "worker", entryRelativePath: "worker/telo.yaml", ports: [] },
+      ],
+    });
+    const forged = { TELO_HOST_STATE_DIR: "/etc", TELO_HOST_SECRET_SEED: "x" };
+    for (const app of ["web", "worker"]) {
+      await call(b, s, "POST", `/apps/${app}/run`, { env: forged, io: "streams" });
+    }
+
+    const label = (app: string) => `telo/secret-seed/${s.id}/${app}`;
+    const expected = (app: string) => encodeSecretSeed(deriveChildSeed(root, label(app)));
+    expect(seedOf(b, s.id, "web")).toBe(expected("web"));
+    expect(seedOf(b, s.id, "worker")).toBe(expected("worker"));
+    expect(expected("web")).not.toBe(expected("worker"));
+    const stateDirs = b.backend.workloadOf(s.id).runs.map((r) => r.run.env.TELO_HOST_STATE_DIR);
+    expect(stateDirs).toEqual(["/var/lib/telo-apps/web", "/var/lib/telo-apps/worker"]);
+  });
+
+  it("delivers no seed without a root, and drops one the client sent", async () => {
+    const b = await boot();
+    const s = await create(b);
+    await call(b, s, "POST", "/apps/web/run", { env: { TELO_HOST_SECRET_SEED: "x" }, io: "streams" });
+
+    expect(seedOf(b, s.id, "web")).toBeUndefined();
+  });
+});
+
 describe("running an app", () => {
   it("starts the app in its slot with the runner's argv and the run's env, and refuses a second Run while one is live", async () => {
     const b = await boot();
@@ -164,7 +201,7 @@ describe("running an app", () => {
       run: {
         runId,
         argv: ["telo", "run", "--watch", "--no-input", "--inspect", "0.0.0.0:9230", "--no-open", "web/telo.yaml"],
-        env: { NAME: "x" },
+        env: { NAME: "x", TELO_HOST_STATE_DIR: "/var/lib/telo-apps/web" },
         cwd: ".",
         io: "streams",
       },

@@ -1,4 +1,4 @@
-import { PUBLIC_URL_HOST_VALUES, STATE_DIR_HOST_VALUE } from "@telorun/analyzer";
+import { PUBLIC_URL_HOST_VALUES, SECRET_SEED_HOST_VALUE, STATE_DIR_HOST_VALUE } from "@telorun/analyzer";
 
 /** The absolute path of the desktop-host helper binary `telo run` uses as it is;
  *  a test and development seam, read by the CLI and hidden like every host value. */
@@ -14,6 +14,7 @@ export const DESKTOP_HELPER_HOST_VALUE = "TELO_HOST_DESKTOP_HELPER";
 export const KERNEL_HOST_VALUES: readonly string[] = [
   ...PUBLIC_URL_HOST_VALUES,
   STATE_DIR_HOST_VALUE,
+  SECRET_SEED_HOST_VALUE,
   DESKTOP_HELPER_HOST_VALUE,
 ];
 

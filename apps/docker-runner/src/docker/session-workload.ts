@@ -33,6 +33,7 @@ import {
   agentContainer,
   APP_LABEL,
   appContainer,
+  appStateMount,
   appRole,
   inspectPortFor,
   reservedPortsFor,
@@ -225,6 +226,10 @@ export class DockerSessionWorkload implements BackendWorkload {
 
   // ---- BackendWorkload -------------------------------------------------------
 
+  appStateDir(app: string): string {
+    return appStateMount(app);
+  }
+
   async addresses(app: string): Promise<AppAddresses> {
     const slot = this.appSlot(app);
     const port = inspectPortFor(this.indexOf(app));
@@ -413,17 +418,25 @@ export class DockerSessionWorkload implements BackendWorkload {
     this.reportRunning(rt);
   }
 
-  /** The session's directory on the bundle volume: `workspace/`, `agent/` and
-   *  each role's `home/` (all mounted by `Subpath`, which needs them to exist),
+  /** The session's directory on the bundle volume: `workspace/`, `agent/`, `apps/`
+   *  and each role's `home/` (all mounted by `Subpath`, which needs them to exist),
    *  the workspace application's manifest and its cache, all the session
    *  user's. Kept across suspend. */
   private async prepareStorage(): Promise<void> {
     const root = join(this.deps.bundleRoot, this.spec.sessionId);
-    for (const dir of ["workspace", "agent", "workspace-app", "cache", "home/workspace", "home/apps", "home/agent"]) {
+    for (const dir of ["workspace", "agent", "workspace-app", "cache", "apps", "home/workspace", "home/apps", "home/agent"]) {
       await mkdir(join(root, dir), { recursive: true });
     }
     await writeFile(join(root, "workspace-app", WORKSPACE_APP_FILENAME), workspaceAppManifest(), "utf8");
     await giveToSessionUser(root, this.deps.sessionUser);
+  }
+
+  /** An app's state directory, `apps/<app>/` of the session's directory, given to the
+   *  session user before the app's container is created and kept across suspend. */
+  private async prepareAppState(app: string): Promise<void> {
+    const dir = join(this.deps.bundleRoot, this.spec.sessionId, "apps", app);
+    await mkdir(dir, { recursive: true });
+    await giveToSessionUser(dir, this.deps.sessionUser);
   }
 
   private async pullAppImages(apps: BackendAppSpec[]): Promise<void> {
@@ -477,6 +490,7 @@ export class DockerSessionWorkload implements BackendWorkload {
     const planned: Array<{ app: BackendAppSpec; slot: Slot; token: string }> = [];
     try {
       for (const [index, app] of this.apps.entries()) {
+        await this.prepareAppState(app.name);
         const token = randomBytes(32).toString("base64url");
         const slot = await this.startContainer(
           appContainer(this.args, {

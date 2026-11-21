@@ -1,9 +1,11 @@
 import {
   buildServer as coreBuildServer,
   loadAgentFromEnv,
+  loadRootSecretSeed,
   loadTermsFromEnv,
   openSessionStore,
   type RunnerBackend,
+  type SecretSeed,
   type ServerHandle,
   type SessionStore,
 } from "@telorun/runner-core";
@@ -28,6 +30,8 @@ export interface ServerDeps {
   /** Opened before the server: core loads and adopts every stored session
    *  while building it. */
   store: SessionStore;
+  /** The runner's root secret seed, when it has one. */
+  rootSecretSeed?: SecretSeed;
 }
 
 export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
@@ -45,6 +49,7 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     // The operator's co-resident agent (AGENT_*; none when unset).
     agent,
     store: deps.store,
+    rootSecretSeed: deps.rootSecretSeed,
     // Core carries the session config as an opaque bag, so the runner that
     // needs an image is the one that insists on it — a 400 naming the field,
     // rather than a start failure arriving on the event stream.
@@ -80,9 +85,11 @@ async function main(): Promise<void> {
   loadRunnerEnvFiles();
 
   let config: RunnerConfig;
+  let rootSecretSeed: SecretSeed | undefined;
   const docker = createDockerClient() as unknown as SessionDockerClient & EngineDockerClient;
   try {
     config = loadRunnerConfig(process.env);
+    rootSecretSeed = loadRootSecretSeed(process.env, config.sessionStore);
     await refuseDaemonWithoutSubpath(docker);
   } catch (err) {
     if (err instanceof RunnerConfigError) {
@@ -135,7 +142,7 @@ async function main(): Promise<void> {
   // and runs the orphan sweep, before the runner listens.
   let app: ServerHandle["app"];
   try {
-    ({ app } = await buildServer({ backend, config, store }));
+    ({ app } = await buildServer({ backend, config, store, rootSecretSeed }));
   } catch (err) {
     bootLog.error({ err }, "the runner could not start");
     await store.close();

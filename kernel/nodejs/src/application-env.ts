@@ -9,7 +9,9 @@ import {
   type NeedTypeShape,
   effectiveAuthorSchema,
   inputValueTypeName,
+  isGeneratedSecretType,
   readApplicationArguments,
+  SECRET_SEED_HOST_VALUE,
   renderApplicationUsage,
   residualEntrySchema,
   withLiveValuesSkipped,
@@ -37,6 +39,7 @@ import { needRefusalError } from "./need-refusals.js";
 import { SchemaValidator } from "./schema-validator.js";
 import { publicUrlsAwaitingPorts, withDerivedPublicUrls } from "./public-urls.js";
 import { withStateDirectories } from "./durable-directories.js";
+import { generatedSecretAnswers, generatedValueProblem } from "./generated-secrets.js";
 import {
   type ApplicationInputResolver,
   type UnresolvedApplicationInput,
@@ -123,6 +126,7 @@ const INPUT_NOUN: Record<UnresolvedApplicationInput["block"], string> = {
   secrets: "secret",
   ports: "port",
   needs: "need",
+  host: "host value",
 };
 
 /**
@@ -274,10 +278,11 @@ export interface NeedEnvironmentRequest {
 }
 
 /** A need the environment cannot fulfil: nothing set for a required one
- *  (`ERR_NEED_UNMET`), or some fields set and a required one not
- *  (`ERR_NEED_PARTIALLY_SUPPLIED`). */
+ *  (`ERR_NEED_UNMET`), some fields set and a required one not
+ *  (`ERR_NEED_PARTIALLY_SUPPLIED`), or a generated need's value its parameters
+ *  refuse (`ERR_NEED_VALUE_INVALID`). */
 interface NeedEnvironmentRefusal {
-  code: "ERR_NEED_UNMET" | "ERR_NEED_PARTIALLY_SUPPLIED";
+  code: "ERR_NEED_UNMET" | "ERR_NEED_PARTIALLY_SUPPLIED" | "ERR_NEED_VALUE_INVALID";
   message: string;
   entry: NeedEnvironmentEntry;
   /** The required fields still without a value — what a host is asked for. */
@@ -383,15 +388,25 @@ function readApplicationInputs(
   if (needs && (!only || onlyNeeds?.size)) {
     // A need supplied by name is answered by that supply alone. Of the rest, a
     // `Telo.PublicUrl` nothing else supplies is answered from the host's
-    // templates, and a `Telo.DurableDirectory` from the host's state directory,
-    // each read as if its env name held the derived value; an address whose
-    // port has no value yet waits for it rather than being asked.
+    // templates, a `Telo.DurableDirectory` from the host's state directory, and
+    // a generated key or password from the host's secret seed, each read as if
+    // its env name held the derived value; an address whose port has no value
+    // yet waits for it rather than being asked.
     const request: NeedEnvironmentRequest = onlyNeeds
       ? { ...needs, entries: needs.entries.filter((entry) => onlyNeeds.has(entry.path.join("."))) }
       : needs;
     const supplied = suppliedNeedEntries(request.entries, inputs);
     const unsupplied = request.entries.filter((entry) => !supplied.has(entry));
-    const derived = withStateDirectories(unsupplied, withDerivedPublicUrls(unsupplied, env, ports));
+    const seedAnswer = answers.get(seedInputId());
+    const seeded =
+      seedAnswer !== undefined && !isSetIn(env, SECRET_SEED_HOST_VALUE)
+        ? { ...env, [SECRET_SEED_HOST_VALUE]: seedAnswer }
+        : env;
+    const generated = generatedSecretAnswers(unsupplied, seeded, request.shapeOf);
+    const derived = {
+      ...withStateDirectories(unsupplied, withDerivedPublicUrls(unsupplied, seeded, ports)),
+      ...Object.fromEntries(generated),
+    };
     const awaiting = publicUrlsAwaitingPorts(unsupplied, env, ports);
     reading.result.needs = resolveNeedEnvironment(
       request,
@@ -402,6 +417,8 @@ function readApplicationInputs(
       awaiting,
       supplied,
       (path) => demand.required("needs", path),
+      new Set(generated.keys()),
+      inputs?.child,
     );
     for (const entry of supplied) {
       const value = resolveSuppliedNeed(entry, request, inputs!, validator, findings, reading);
@@ -429,7 +446,7 @@ function refusalOf(reading: InputReading): RuntimeError | undefined {
   if (lines.length === 0 && needRefusals.length === 0) return undefined;
   const askable = !reading.invalid && needRefusals.every((refusal) => refusal.missing.length > 0);
   const unresolved = askable
-    ? [...reading.missing, ...needRefusals.flatMap((refusal) => refusal.missing)]
+    ? distinctInputs([...reading.missing, ...needRefusals.flatMap((refusal) => refusal.missing)])
     : undefined;
   if (lines.length === 0) {
     return needRefusalError(
@@ -472,6 +489,9 @@ function resolveNeedEnvironment(
   awaiting: ReadonlySet<NeedEnvironmentEntry>,
   supplied: ReadonlySet<NeedEnvironmentEntry>,
   demanded: (path: string) => boolean,
+  /** The env names the host's secret seed answered, whose values need no check. */
+  derivedSecrets: ReadonlySet<string>,
+  child: ApplicationInputs["child"],
 ): Map<string, Record<string, unknown> | null> {
   const values = new Map<string, Record<string, unknown> | null>();
   for (const entry of request.entries) {
@@ -501,6 +521,10 @@ function resolveNeedEnvironment(
       }
       const required = fields.filter(([, field]) => field.required);
       const optional = fields.filter(([, field]) => !field.required).map(([, field]) => field.env);
+      if (isGeneratedSecretType(entry.need.type)) {
+        reading.needRefusals.push(generatedNeedUnmet(entry, subject, required.map(([, field]) => field.env), child));
+        continue;
+      }
       reading.needRefusals.push({
         code: "ERR_NEED_UNMET",
         entry,
@@ -556,9 +580,76 @@ function resolveNeedEnvironment(
         report(`${label}: ${(e as Error).message}`);
       }
     }
+    const invalid = generatedValueProblem(
+      entry.need.type,
+      shape,
+      entry.need.parameters,
+      Object.fromEntries(
+        Object.entries(decoded).filter(([name]) => !derivedSecrets.has(entry.fields[name]!.env)),
+      ),
+      (name) => entry.fields[name]!.env,
+    );
+    if (invalid) {
+      reading.needRefusals.push({ code: "ERR_NEED_VALUE_INVALID", entry, missing: [], message: `${subject}: ${invalid}.` });
+      continue;
+    }
     values.set(path, decoded);
   }
   return values;
+}
+
+/**
+ * A generated key or password nothing supplies: never asked for — whoever runs
+ * the application sets the host's secret seed, or the need's own env name. A
+ * started application is never handed its parent's seed, so the instance
+ * running it is named as what supplies the need.
+ */
+function generatedNeedUnmet(
+  entry: NeedEnvironmentEntry,
+  subject: string,
+  envNames: readonly string[],
+  child: ApplicationInputs["child"],
+): NeedEnvironmentRefusal {
+  const own = !entry.via && entry.path.length === 1;
+  const message =
+    child && own
+      ? `${subject} is required and nothing supplies it: ${child.kind}/${child.name} runs this ` +
+        `application, and a started application is never given its parent's ` +
+        `${SECRET_SEED_HOST_VALUE}. Supply it on the instance ('needs: { ${entry.need.name}: … }' ` +
+        `on ${child.name}), or mark it 'optional: true'.`
+      : `${subject} is required and nothing supplies it. Set ${SECRET_SEED_HOST_VALUE}, or ` +
+        `${envNames.join(", ")}` +
+        (entry.via
+          ? `, supply it at the import that reaches it ('needs: { ${entry.need.name}: … }'), or mark ` +
+            `it 'optional: true'.`
+          : `, or mark it 'optional: true'.`);
+  // A child never asks.
+  const missing = child && own ? [] : [seedInput()];
+  return { code: "ERR_NEED_UNMET", entry, missing, message };
+}
+
+function seedInputId(): string {
+  return `host ${SECRET_SEED_HOST_VALUE}`;
+}
+
+/** The one entry standing for every generated need's fields: the host's secret
+ *  seed, which the person may have made for them. */
+function seedInput(): UnresolvedApplicationInput {
+  return {
+    id: seedInputId(),
+    block: "host",
+    name: SECRET_SEED_HOST_VALUE,
+    env: SECRET_SEED_HOST_VALUE,
+    sensitive: true,
+    type: "string",
+    schema: { type: "string" },
+    generable: true,
+  };
+}
+
+function distinctInputs(inputs: UnresolvedApplicationInput[]): UnresolvedApplicationInput[] {
+  const seen = new Set<string>();
+  return inputs.filter((input) => !seen.has(input.id) && seen.add(input.id));
 }
 
 /**
@@ -630,7 +721,26 @@ function resolveSuppliedNeed(
     }
     decoded[name] = value;
   }
-  return refused ? undefined : decoded;
+  if (refused) return undefined;
+  const invalid = generatedValueProblem(
+    entry.need.type,
+    shape,
+    entry.need.parameters,
+    decoded,
+    (name) => `the '${name}' ${supplier} supplied`,
+  );
+  if (invalid) {
+    reading.needRefusals.push({
+      code: "ERR_NEED_VALUE_INVALID",
+      entry,
+      missing: [],
+      message:
+        `Need '${path}' (type '${entry.need.type ?? entry.need.kind}', declared by module ` +
+        `'${entry.moduleName}'): ${invalid}.`,
+    });
+    return undefined;
+  }
+  return decoded;
 }
 
 function isSetIn(env: Record<string, string | undefined>, name: string): boolean {

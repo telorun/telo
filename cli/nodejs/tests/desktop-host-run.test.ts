@@ -91,6 +91,7 @@ describe.skipIf(process.platform === "win32")("telo run as the desktop host", ()
     expect(ofType(session.log, "Helper.Quit")).toHaveLength(1);
     expect(fs.readdirSync(path.join(session.dataRoot, "run.telo.tests.desktophost", "desktop-host")).sort()).toEqual([
       "port",
+      "secret-seed",
       "webview",
     ]);
   }, 120_000);

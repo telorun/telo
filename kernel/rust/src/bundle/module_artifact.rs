@@ -508,7 +508,7 @@ fn make_executable(_path: &Path) -> std::io::Result<()> {
 /// The directory a module's layers live in.
 ///
 /// Derived from the **pinned** requested ref, not the canonical `source`: a
-/// cache hit is served from `.telo/manifests/`, and the pinned ref places the
+/// cache hit is served from `.telo/cache/manifests/`, and the pinned ref places the
 /// module identically cold and warm. Layers extract beside the cached manifest,
 /// so the pre-workspace-anchor root is chosen when it — and not the current
 /// root — holds the manifest. A module read straight off disk resolves to its

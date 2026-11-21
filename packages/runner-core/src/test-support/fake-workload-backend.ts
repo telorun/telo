@@ -150,6 +150,10 @@ export class FakeWorkload implements BackendWorkload {
     return this.backend.addresses(app);
   }
 
+  appStateDir(app: string): string {
+    return `/var/lib/telo-apps/${app}`;
+  }
+
   async runApp(app: string, run: AppRun): Promise<void> {
     const live = this.live.get(app);
     if (live === run.runId) return;

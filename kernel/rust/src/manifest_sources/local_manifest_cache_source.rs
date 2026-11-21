@@ -21,7 +21,7 @@ use telo_analyzer::{LoadError, LoadedGraph, ManifestSource, ReadManifest, DEFAUL
 use crate::lexical_path;
 use crate::workspace_marker::find_workspace_root;
 
-const CACHE_SUBDIR: &str = ".telo/manifests";
+const CACHE_SUBDIR: &str = ".telo/cache/manifests";
 
 pub struct LocalManifestCacheSource {
     cache_root: PathBuf,
@@ -30,7 +30,7 @@ pub struct LocalManifestCacheSource {
 
 impl LocalManifestCacheSource {
     /// `manifests_dir` is the resolved `<cache-root>/manifests`; the
-    /// pre-workspace-anchor `<entry-dir>/.telo/manifests` is consulted on a miss.
+    /// pre-workspace-anchor `<entry-dir>/.telo/cache/manifests` is consulted on a miss.
     pub fn new(entry_dir: &Path, manifests_dir: PathBuf) -> Self {
         let legacy_root = legacy_manifests_dir_fallback(entry_dir, &manifests_dir);
         Self {
@@ -84,7 +84,7 @@ impl ManifestSource for LocalManifestCacheSource {
 }
 
 /// The pre-workspace-anchor manifest cache for an entry: always
-/// `<entry-dir>/.telo/manifests`.
+/// `<entry-dir>/.telo/cache/manifests`.
 pub fn legacy_manifests_dir(entry_dir: &Path) -> PathBuf {
     entry_dir.join(CACHE_SUBDIR)
 }
@@ -147,7 +147,7 @@ fn url_scheme(text: &str) -> Option<&str> {
         .then(|| &text[..=end])
 }
 
-/// The `.telo` cache root for work anchored at `from`.
+/// The `.telo/cache` cache root for work anchored at `from`.
 ///
 /// Precedence: `TELO_CACHE_DIR` (the relocated root a prebuilt image bakes its
 /// deps into) wins; then the directory holding `telo-workspace.yaml`, so every
@@ -169,7 +169,8 @@ pub fn resolve_cache_root(from: &Path) -> std::io::Result<PathBuf> {
     }
     Ok(find_workspace_root(from)
         .unwrap_or_else(|| from.to_path_buf())
-        .join(".telo"))
+        .join(".telo")
+        .join("cache"))
 }
 
 /// URL → cache path, the single mapping reader and writer share: `null` for a
@@ -248,10 +249,10 @@ mod tests {
 
         with_cache_dir(None, || {
             // Anchors at the marker, however deep the crate sits.
-            assert_eq!(resolve_cache_root(&deep).unwrap(), base.join(".telo"));
-            assert_eq!(resolve_cache_root(&base).unwrap(), base.join(".telo"));
+            assert_eq!(resolve_cache_root(&deep).unwrap(), base.join(".telo").join("cache"));
+            assert_eq!(resolve_cache_root(&base).unwrap(), base.join(".telo").join("cache"));
             // No marker above → what it did before the anchor existed.
-            assert_eq!(resolve_cache_root(&loose).unwrap(), loose.join(".telo"));
+            assert_eq!(resolve_cache_root(&loose).unwrap(), loose.join(".telo").join("cache"));
         });
 
         let baked = base.join("baked");

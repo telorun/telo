@@ -129,6 +129,13 @@ nothing.
      answer it, and a `Telo.DurableDirectory` field once neither its environment name nor
      `TELO_HOST_STATE_DIR` answers it.
 
+   A generated key or password (`Telo.GeneratedSecretKey` / `Telo.GeneratedPassword`) whose
+   field nothing sets is never asked for field by field. While no seed is set, one entry
+   stands in for every such field: identity `host TELO_HOST_SECRET_SEED`, block `host`,
+   sensitive, marked `generable` — the host may offer to make the value and keep it. The
+   host's answer is the seed as text, read as if `TELO_HOST_SECRET_SEED` held it, and the
+   fields are derived from it. A child application is never asked.
+
    An entry with a `default:`, an optional need with nothing set, an optional field of any
    need and an entry whose supplied value is invalid are never asked for.
 2. **Each entry** carries its identity — `variables.<name>`, `secrets.<name>`,

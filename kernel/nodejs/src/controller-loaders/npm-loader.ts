@@ -10,6 +10,7 @@ import * as path from "path";
 import { fileURLToPath, pathToFileURL } from "url";
 import { promisify } from "util";
 import { hostEnv } from "../host-env.js";
+import { withoutHostValues } from "../host-values.js";
 import { tryBuildControllerBundle } from "./bundle-builder.js";
 import { withDirectoryLock } from "../directory-lock.js";
 import { ControllerEnvMissingError } from "./napi-loader.js";
@@ -25,7 +26,7 @@ const execFileAsync = promisify(execFile);
 const requireFromHere = createRequire(import.meta.url);
 
 /**
- * Package-manager binary used for `<root>/.telo/npm/` installs. Captured once
+ * Package-manager binary used for `<root>/.telo/cache/npm/` installs. Captured once
  * at module load so a mid-process env mutation can't change which binary
  * runs for half an install batch — the kernel's controller installs are
  * sequenced, but predictability beats late-binding here. Override via
@@ -119,7 +120,7 @@ export interface NpmControllerLoaderOptions {
 /**
  * The npm-loader maintains a single install root per kernel process. For a
  * local entry manifest (`file://` URL or bare path) the root lives at
- * `<entry-manifest-dir>/.telo/npm/`; for an HTTP(S) entry URL it lives in a
+ * `<entry-manifest-dir>/.telo/cache/npm/`; for an HTTP(S) entry URL it lives in a
  * user-level cache keyed by `sha256(entryUrl)` (see `computeInstallRoot`).
  * Every controller — registry tag or `local_path` — is installed under a
  * version-scoped npm alias (`npm install <alias>@<spec>`, see `installAlias`)
@@ -662,7 +663,7 @@ function quoteForCmd(token: string): string {
  * resolved script path only for a BARE one. Quoted, `%0` stays `"npm"`, so
  * `%~dp0` — drive and path of a token carrying neither — expands against the
  * current directory instead. The shim then looked for npm inside Telo's install
- * root (`<root>/.telo/npm`), found no `node_modules/npm/bin/`, and both `SET`
+ * root (`<root>/.telo/cache/npm`), found no `node_modules/npm/bin/`, and both `SET`
  * lines produced a MODULE_NOT_FOUND for a path that was never going to exist.
  *
  * A command that genuinely needs quoting is a path rather than a bare name
@@ -681,7 +682,7 @@ async function runPackageManager(cwd: string, args: string[]): Promise<void> {
         ? quoteForCmd(PACKAGE_MANAGER)
         : PACKAGE_MANAGER,
       viaCmd ? args.map(quoteForCmd) : args,
-      { cwd, maxBuffer: 32 * 1024 * 1024, env: hostEnv(), shell: viaCmd },
+      { cwd, maxBuffer: 32 * 1024 * 1024, env: withoutHostValues(hostEnv()), shell: viaCmd },
     );
   } catch (err: any) {
     // The shapes a missing binary arrives in, and the sentence it gets, are the
@@ -757,7 +758,7 @@ async function readDepSpec(installRoot: string, packageName: string): Promise<st
  * Decide where the per-kernel install root lives for a given entry URL.
  *
  * - `file://` URL or bare filesystem path: anchored next to the manifest at
- *   `<entry-dir>/.telo/npm/`. Same as before — keeps the "install lives with
+ *   `<entry-dir>/.telo/cache/npm/`. Same as before — keeps the "install lives with
  *   the project" story for local development and Docker builds where the
  *   tree is `COPY`-d into the image.
  * - `http(s)://` URL: there is no on-disk anchor next to the manifest, so
@@ -780,12 +781,12 @@ async function readDepSpec(installRoot: string, packageName: string): Promise<st
 function computeInstallRoot(entryUrl: string): string {
   if (entryUrl.startsWith("file://")) {
     const entryPath = fileURLToPath(entryUrl);
-    return path.join(path.dirname(path.resolve(entryPath)), ".telo", "npm");
+    return path.join(path.dirname(path.resolve(entryPath)), ".telo", "cache", "npm");
   }
   const schemeMatch = entryUrl.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):\/\//);
   if (!schemeMatch) {
     // Bare filesystem path: same anchor as `file://`.
-    return path.join(path.dirname(path.resolve(entryUrl)), ".telo", "npm");
+    return path.join(path.dirname(path.resolve(entryUrl)), ".telo", "cache", "npm");
   }
   const scheme = schemeMatch[1].toLowerCase();
   if (scheme === "http" || scheme === "https") {

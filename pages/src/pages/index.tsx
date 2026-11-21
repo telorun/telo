@@ -7,6 +7,7 @@ import Layout from "@theme/Layout";
 import TabItem from "@theme/TabItem";
 import Tabs from "@theme/Tabs";
 import ExampleCards from "@site/src/components/ExampleCards";
+import TeloOrbit from "@site/src/components/TeloOrbit";
 
 type SampleFile = { name: string; body: string };
 type SampleCase = {
@@ -30,8 +31,10 @@ export default function Home() {
       </Head>
       <header className="hero heroBanner">
         <div className="container text--center">
-          <img src={logo} alt="Telo" width={96} />
-          <h1 className="hero__title">Telo</h1>
+          <TeloOrbit>
+            <img src={logo} alt="Telo" width={96} />
+            <h1 className="hero__title">Telo</h1>
+          </TeloOrbit>
           <p className="hero__subtitle">Define how your app works. Telo builds and runs it.</p>
           <div className="heroButtons">
             <Link className="button button--primary button--lg margin-right--md" to="/learn/getting-started">
@@ -44,6 +47,8 @@ export default function Home() {
           <p className="margin-top--md">
             or open <a href="https://studio.telo.run">Telo Studio</a> · browse modules on the{" "}
             <a href="https://hub.telo.run">hub</a>
+            {" · "}
+            <Link to="/learn/what-you-get">what you get for free →</Link>
           </p>
 
           <div className="row heroCards margin-top--xl">

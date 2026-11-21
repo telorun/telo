@@ -5,6 +5,7 @@ import { TELO_RUNTIME_VERSION } from "@telorun/kernel";
 import {
   buildServer,
   loadCoreConfig,
+  loadRootSecretSeed,
   openSessionStore,
   parseCorsOrigins,
   type RunnerAgent,
@@ -205,11 +206,13 @@ async function serve(argv: RunnerArgv): Promise<void> {
   // as a PORT value — so the fallback it is handed is a real port and the
   // requested one is written over it below.
   let base: RunnerCoreConfig;
+  let rootSecretSeed: ReturnType<typeof loadRootSecretSeed>;
   try {
     base = loadCoreConfig(process.env, {
       port: argv.port > 0 ? argv.port : DEFAULT_PORT,
       stateDir: stateRoot,
     });
+    rootSecretSeed = loadRootSecretSeed(process.env, base.sessionStore);
   } catch (err) {
     outErrLine(`telo-host-runner: ${message(err)}`);
     process.exitCode = EXIT_REFUSED;
@@ -253,6 +256,7 @@ async function serve(argv: RunnerArgv): Promise<void> {
       backend,
       config,
       store,
+      rootSecretSeed,
       version: hostRunnerVersion() ?? "unversioned build",
       capabilities: localRunnerCapabilities(agent),
       agent,

@@ -437,7 +437,7 @@ export class SchemaValidator {
    *  codegen for each unseen schema. Safe to call before or after
    *  `compile()` — already-compiled in-memory entries are unaffected.
    *  The caller is responsible for choosing a writable directory; the
-   *  kernel anchors this under `<entry-dir>/.telo/manifests/__validators/`
+   *  kernel anchors this under `<entry-dir>/.telo/cache/manifests/__validators/`
    *  so it lives next to the manifest cache and rides along in
    *  `COPY --from=build /srv /srv` Docker images. */
   setCacheDir(dir: string | undefined, opts?: { write?: boolean }): void {

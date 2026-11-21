@@ -244,6 +244,24 @@ export {
   STATE_DIR_HOST_VALUE,
 } from "./durable-directory.js";
 export type { DirectoryAccess, DurableDirectoryParameters } from "./durable-directory.js";
+export {
+  encodeKey,
+  GENERATED_PASSWORD_TYPE,
+  GENERATED_SECRET_KEY_TYPE,
+  generatedKeyParameters,
+  generatedCharacterRules,
+  generatedSecretField,
+  generatedSecretInfo,
+  generatedValueRefusal,
+  isGeneratedSecretType,
+  SECRET_SEED_HOST_VALUE,
+} from "./generated-secret.js";
+export type {
+  CharacterSet,
+  GeneratedKeyParameters,
+  GeneratedPasswordParameters,
+  KeyEncoding,
+} from "./generated-secret.js";
 export { derivedNeedEnvName, envNameSegment, NEED_ENV_PREFIX } from "./need-env-name.js";
 export {
   BINDINGS_ANNOTATION,

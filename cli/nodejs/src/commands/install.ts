@@ -70,9 +70,9 @@ function collectControllerJobs(manifests: ResourceManifest[]): ControllerJob[] {
 }
 
 /**
- * Bake the kernel's analysis caches into `<entryDir>/.telo/manifests/` so a
+ * Bake the kernel's analysis caches into `<entryDir>/.telo/cache/manifests/` so a
  * prebuilt image boots without re-deriving them. `writeManifestCache` (above)
- * only warms the URL→content manifest cache and `.telo/npm/`; the analysis
+ * only warms the URL→content manifest cache and `.telo/cache/npm/`; the analysis
  * stamp (`.validated.json`) and the compiled `__validators/` schema cache are
  * produced exclusively by `kernel.load`. Without this pass the runtime
  * `kernel.load` — running on a read-only session rootfs — misses the stamp,
@@ -133,7 +133,7 @@ async function installOne(
   const displayPath = isUrl ? entryPath : path.relative(process.cwd(), entryPath);
 
   // The install pass deliberately does NOT register LocalManifestCacheSource:
-  // its job is to converge `.telo/manifests/` with whatever each origin
+  // its job is to converge `.telo/cache/manifests/` with whatever each origin
   // currently serves for the pinned versions. Reading from the cache here
   // would freeze stale bytes in place — re-running `telo install` could
   // never refresh a corrupted or outdated entry without manual deletion.
@@ -173,7 +173,7 @@ async function installOne(
   // this map fails to import a module `telo run` loads fine.
   let moduleLibraries: Map<string, SiblingLibraryMap> | undefined;
 
-  // Persist every imported manifest to `<entry-dir>/.telo/manifests/` so the
+  // Persist every imported manifest to `<entry-dir>/.telo/cache/manifests/` so the
   // boot path (`telo run`) can resolve every import from disk and skip
   // the network round-trip. The Dockerfile `COPY --from=build /srv /srv`
   // line then carries this whole tree into the production image.
