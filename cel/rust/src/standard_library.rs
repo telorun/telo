@@ -190,9 +190,8 @@ static LIBRARY: LazyLock<LibraryData> = LazyLock::new(read_library);
 /// each of type `type`, and `google`, through which the well-known type names are read.
 pub fn standard_constants(optional_types: bool) -> Vec<StandardConstant> {
     let data = &*LIBRARY;
-    let optional: &[String] = if optional_types { &data.optional_type_constants } else { &[] };
-    let types = data.type_constants.iter().chain(optional).map(|name| StandardConstant {
-        name: name.clone(),
+    let types = language_type_names(optional_types).map(|name| StandardConstant {
+        name: name.to_string(),
         ty: TYPE,
         description: None,
     });
@@ -203,6 +202,13 @@ pub fn standard_constants(optional_types: bool) -> Vec<StandardConstant> {
         description: entry.description.clone(),
     });
     types.chain(named).collect()
+}
+
+/// The names of the language's own types, each a constant of type `type` (`int`, `list`, …).
+pub(crate) fn language_type_names(optional_types: bool) -> impl Iterator<Item = &'static str> {
+    let data = &*LIBRARY;
+    let optional: &[String] = if optional_types { &data.optional_type_constants } else { &[] };
+    data.type_constants.iter().chain(optional).map(String::as_str)
 }
 
 /// The value `google` reads as: the two well-known type names, by the namespace under

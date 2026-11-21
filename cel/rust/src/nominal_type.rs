@@ -10,13 +10,18 @@
 //!   record of a registered type is crate-private here.
 //! - `RegisteredType.fieldNames` — the member-read seam's lookup, arriving with
 //!   evaluation.
+//!
+//! Declared differently from the Node file:
+//! - `CelConstruct` is handed the written fields as a [`PropertyMap`], where Node's is
+//!   handed a plain object.
 
 use std::fmt;
 use std::sync::Arc;
 
-use telorun_cel_value::{json_quote, PropertyMap};
+use telorun_cel_value::{json_quote, CelValue, PropertyMap};
 
 use crate::cel_type::{parameter_of, CelType, NominalType, TypeFields, DYN};
+use crate::runtime_library::CelCallContext;
 use crate::type_expression::{is_parameter_name, parse_type_expression, CelTypeTextError, NominalResolver};
 
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
@@ -46,7 +51,35 @@ pub struct NominalTypeDefinition {
     /// The fields a value of the type carries, each a type expression. Absent is not
     /// empty: a type with no `fields` holds no members at all.
     pub fields: Option<PropertyMap<String>>,
+    /// Whether an expression may build a value of the type from its fields —
+    /// `Name{field: v}`. The type must declare `fields` (an empty set is a type with none)
+    /// and no `parameters`. Its values then compare field by field, and no `==` or `!=` a
+    /// host registers may compare them instead.
+    pub constructible: bool,
+    /// The fields a construction must write; each one the type declares, on a
+    /// constructible type only.
+    pub required: Vec<String>,
     pub description: Option<String>,
+}
+
+/// Builds a value of a constructible type from the fields a construction wrote, unset ones
+/// left out: a value of the type, or a CEL error value refusing them. The call context
+/// comes first, as a registered implementation's does, so its range is the construction's.
+pub type CelConstruct = Arc<dyn Fn(&CelCallContext, &PropertyMap<CelValue>) -> CelValue + Send + Sync>;
+
+/// What a host supplies with a type beside its definition. Written with
+/// `..Default::default()`.
+#[derive(Clone, Default)]
+pub struct RegisterTypeOptions {
+    /// The builder of a constructible type's values; without one the engine builds them
+    /// itself.
+    pub construct: Option<CelConstruct>,
+}
+
+impl fmt::Debug for RegisterTypeOptions {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RegisterTypeOptions").field("construct", &self.construct.as_ref().map(|_| "…")).finish()
+    }
 }
 
 /// A named type's definition that cannot be registered.
@@ -102,12 +135,18 @@ fn is_field_name(name: &str) -> bool {
 }
 
 /// A registered named type: its definition, its base, and the type `Self` names.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(crate) struct RegisteredType {
     pub(crate) definition: NominalTypeDefinition,
     pub(crate) base: CelType,
     /// The type with its own parameters applied — what `Self` resolves to.
     pub(crate) self_type: NominalType,
+    /// Whether an expression may construct a value of it.
+    pub(crate) constructible: bool,
+    /// The fields a construction must write, in the order the definition lists them.
+    pub(crate) required: Vec<String>,
+    /// The host's builder, where it supplied one.
+    pub(crate) construct: Option<CelConstruct>,
 }
 
 impl RegisteredType {
@@ -148,8 +187,10 @@ pub(crate) fn with_arguments(self_type: &NominalType, args: &[CelType]) -> CelTy
 pub(crate) fn build_registered_type(
     definition: &NominalTypeDefinition,
     resolver: &NominalResolver<'_>,
+    options: &RegisterTypeOptions,
 ) -> Result<RegisteredType, CelTypeRegistrationError> {
     validate_type_name(&definition.name)?;
+    validate_construction(definition, options)?;
     for parameter in &definition.parameters {
         if !is_parameter_name(parameter) {
             return Err(registration_error(format!(
@@ -180,7 +221,56 @@ pub(crate) fn build_registered_type(
         Some(declared) => Some(read_fields(definition, declared, &with_self)?),
     };
     let self_type = NominalType { base: Arc::new(base.clone()), fields, ..unresolved.clone() };
-    Ok(RegisteredType { definition: definition.clone(), base, self_type })
+    let mut required: Vec<String> = Vec::new();
+    for field in &definition.required {
+        if !required.contains(field) {
+            required.push(field.clone());
+        }
+    }
+    Ok(RegisteredType {
+        definition: definition.clone(),
+        base,
+        self_type,
+        constructible: definition.constructible,
+        required,
+        construct: options.construct.clone(),
+    })
+}
+
+/// What a constructible type must be: one with fields to write and no type parameters, the
+/// syntax having no place for a type argument. A required field must be a declared one of a
+/// type that can be constructed, and so must a builder.
+fn validate_construction(
+    definition: &NominalTypeDefinition,
+    options: &RegisterTypeOptions,
+) -> Result<(), CelTypeRegistrationError> {
+    let name = &definition.name;
+    if definition.constructible {
+        if definition.fields.is_none() {
+            return Err(registration_error(format!(
+                "{name} is constructible and declares no fields; declare `fields`, an empty set for a type with none"
+            )));
+        }
+        if !definition.parameters.is_empty() {
+            return Err(registration_error(format!(
+                "{name} is constructible and takes type parameters, which a construction has no place to write"
+            )));
+        }
+    } else if !definition.required.is_empty() {
+        return Err(registration_error(format!("{name} lists required fields and is not constructible")));
+    }
+    for field in &definition.required {
+        if !definition.fields.as_ref().is_some_and(|fields| fields.contains_key(field)) {
+            return Err(registration_error(format!(
+                "required field {} of {name} is not one of its fields",
+                json_quote(field)
+            )));
+        }
+    }
+    if options.construct.is_some() && !definition.constructible {
+        return Err(registration_error(format!("{name} is given a builder and is not constructible")));
+    }
+    Ok(())
 }
 
 fn read_fields(
@@ -214,10 +304,19 @@ pub(crate) fn nominal_signatures(definition: &NominalTypeDefinition) -> impl Ite
     definition.conversions.iter().chain(definition.members.iter())
 }
 
-/// The operator declarations a definition implies, its comparisons expanded.
+/// The operator declarations a definition implies, its comparisons expanded. A
+/// constructible type is compared by `==` and `!=` whether or not it lists them: its values
+/// are its fields, which the engine's equality compares.
 pub(crate) fn nominal_operators(definition: &NominalTypeDefinition) -> Vec<NominalOperatorDeclaration> {
-    let comparisons = definition.comparisons.iter().map(|operator| NominalOperatorDeclaration {
-        operator: operator.clone(),
+    let implied: &[&str] = if definition.constructible { &["==", "!="] } else { &[] };
+    let mut listed: Vec<&str> = Vec::new();
+    for operator in implied.iter().copied().chain(definition.comparisons.iter().map(String::as_str)) {
+        if !listed.contains(&operator) {
+            listed.push(operator);
+        }
+    }
+    let comparisons = listed.into_iter().map(|operator| NominalOperatorDeclaration {
+        operator: operator.into(),
         parameters: vec!["Self".into(), "Self".into()],
         returns: "bool".into(),
     });

@@ -105,7 +105,7 @@ fn node_answers() -> Vec<(CelValue, CelValue, bool, Option<Ordering>)> {
 #[test]
 fn compares_and_orders_every_pair_as_node_does() {
     for (left, right, equal, order) in node_answers() {
-        assert_eq!(cel_equal(&left, &right), equal, "{left:?} == {right:?}");
+        assert_eq!(cel_equal(&left, &right, None), equal, "{left:?} == {right:?}");
         assert_eq!(cel_compare(&left, &right), order, "{left:?} <=> {right:?}");
     }
 }
@@ -123,8 +123,8 @@ fn compares_values_of_any_depth_on_a_small_stack() {
         .stack_size(256 * 1024)
         .spawn(move || {
             let (left, right, other) = (deep(i(1)), deep(d(1.0)), deep(i(2)));
-            assert!(cel_equal(&left, &right));
-            assert!(!cel_equal(&left, &other));
+            assert!(cel_equal(&left, &right, None));
+            assert!(!cel_equal(&left, &other, None));
             assert_eq!(cel_compare(&left, &right), None);
         })
         .unwrap()

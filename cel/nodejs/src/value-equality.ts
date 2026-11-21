@@ -130,8 +130,19 @@ export function celCompare(left: CelValue, right: CelValue): number | undefined 
   return undefined;
 }
 
-/** CEL equality: by value, across the numeric types, and `false` across unrelated ones. */
-export function celEqual(left: CelValue, right: CelValue): boolean {
+/**
+ * The declared fields of each **constructible** type, by name, and nothing for any other: a
+ * value of such a type is its fields, so equality compares those. An environment hands its
+ * own table to the engine's equality; without one a host's value is equal only to itself.
+ */
+export type ConstructibleFields = (typeName: string) => ReadonlySet<string> | undefined;
+
+/**
+ * CEL equality: by value, across the numeric types, and `false` across unrelated ones. A
+ * value of a constructible type compares by type, by which declared fields are present, and
+ * field by field.
+ */
+export function celEqual(left: CelValue, right: CelValue, constructible?: ConstructibleFields): boolean {
   // One identical primitive is equal to itself, and the two edges agree: `-0 === 0` and CEL
   // says they are equal, `NaN !== NaN` and CEL says they are not — so the slow path below
   // answers NaN correctly after this check declines it.
@@ -153,21 +164,44 @@ export function celEqual(left: CelValue, right: CelValue): boolean {
     case "type":
       return isCelTypeValue(left) && isCelTypeValue(right) && left.name === right.name;
     case "list":
-      return equalLists(left as readonly CelValue[], right as readonly CelValue[]);
+      return equalLists(left as readonly CelValue[], right as readonly CelValue[], constructible);
     case "map":
-      return equalMaps(left, right);
+      return equalMaps(left, right, constructible);
     case "optional":
-      return equalOptionals(left, right);
-    default:
-      // A host's own named type: equal when the host's operator says so, which it
-      // registers itself. With none registered, identity is all this engine knows.
-      return left === right;
+      return equalOptionals(left, right, constructible);
+    default: {
+      // A host's own named type. A constructible one is its fields; any other is equal
+      // when the host's operator says so, which it registers itself, and with none
+      // registered identity is all this engine knows.
+      const fields = leftType === undefined ? undefined : constructible?.(leftType);
+      return fields ? equalFields(left, right, fields, constructible) : left === right;
+    }
   }
 }
 
-function equalLists(left: readonly CelValue[], right: readonly CelValue[]): boolean {
+function equalFields(
+  left: CelValue,
+  right: CelValue,
+  fields: ReadonlySet<string>,
+  constructible: ConstructibleFields | undefined,
+): boolean {
+  const a = left as unknown as Readonly<Record<string, CelValue>>;
+  const b = right as unknown as Readonly<Record<string, CelValue>>;
+  for (const field of fields) {
+    const inLeft = Object.prototype.hasOwnProperty.call(a, field);
+    if (inLeft !== Object.prototype.hasOwnProperty.call(b, field)) return false;
+    if (inLeft && !celEqual(a[field]!, b[field]!, constructible)) return false;
+  }
+  return true;
+}
+
+function equalLists(
+  left: readonly CelValue[],
+  right: readonly CelValue[],
+  constructible: ConstructibleFields | undefined,
+): boolean {
   if (left.length !== right.length) return false;
-  return left.every((value, at) => celEqual(value, right[at]!));
+  return left.every((value, at) => celEqual(value, right[at]!, constructible));
 }
 
 /** Every key of a map, as the pairs equality walks. */
@@ -183,19 +217,19 @@ function mapPairs(value: CelValue): Map<CelMapKey, CelValue> | undefined {
   return undefined;
 }
 
-function equalMaps(left: CelValue, right: CelValue): boolean {
+function equalMaps(left: CelValue, right: CelValue, constructible: ConstructibleFields | undefined): boolean {
   const a = mapPairs(left);
   const b = mapPairs(right);
   if (!a || !b || a.size !== b.size) return false;
   for (const [identity, value] of a) {
     if (!b.has(identity)) return false;
-    if (!celEqual(value, b.get(identity)!)) return false;
+    if (!celEqual(value, b.get(identity)!, constructible)) return false;
   }
   return true;
 }
 
-function equalOptionals(left: CelValue, right: CelValue): boolean {
+function equalOptionals(left: CelValue, right: CelValue, constructible: ConstructibleFields | undefined): boolean {
   if (!isCelOptional(left) || !isCelOptional(right)) return false;
   if (left.present !== right.present) return false;
-  return !left.present || celEqual(left.held as CelValue, right.held as CelValue);
+  return !left.present || celEqual(left.held as CelValue, right.held as CelValue, constructible);
 }

@@ -439,7 +439,7 @@ fn difference_a_uuid_refusal_quoting_past_the_longest_string_is_the_bounds_refus
 #[test]
 fn interim_a_list_read_as_text_past_the_longest_string_is_refused() {
     let _heavy = HEAVY.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    let ctx = CelCallContext { range: Some(SourceRange { start: 0, end: 1 }) };
+    let ctx = CelCallContext::new(Some(SourceRange { start: 0, end: 1 }));
     let call = |key: &str, args: &[CelValue]| match catalog_implementation(key, &CelCatalogHandlers::default()).unwrap()(&ctx, args) {
         CelValue::Error(error) => format!("error {} {}", error.code.as_str(), error.message),
         _ => "a value".to_string(),

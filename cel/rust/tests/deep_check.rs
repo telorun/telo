@@ -17,7 +17,7 @@ use check_support::{fixed, found, schema};
 use telorun_cel::CelCheckCode::*;
 use telorun_cel::{
     CelCheckDiagnostic, CelEnvironment, CelEnvironmentOptions, CelExpression, CelNode, CelParseLimits,
-    NamespaceOptions,
+    NamespaceOptions, NominalTypeDefinition,
 };
 
 /// The one stack size any test of this crate names.
@@ -47,6 +47,15 @@ fn deep_environment() -> CelEnvironment {
     environment.register_variable("a.b", "map<string, dyn>", None).unwrap();
     environment.register_namespace("Ns", vec!["f(int): int".into()], NamespaceOptions::default()).unwrap();
     environment
+        .register_type(NominalTypeDefinition {
+            name: "Box".into(),
+            base: "dyn".into(),
+            fields: Some([("held", "dyn".to_string())].into_iter().collect()),
+            constructible: true,
+            ..Default::default()
+        })
+        .unwrap();
+    environment
 }
 
 /// A construct nested `n` deep, and what checking it answers: the type name, the
@@ -58,7 +67,7 @@ struct Nesting {
     calls: usize,
 }
 
-const LABELS: [&str; 16] = [
+const LABELS: [&str; 17] = [
     "negation",
     "conditional",
     "list",
@@ -75,6 +84,7 @@ const LABELS: [&str; 16] = [
     "and-chain",
     "or-chain",
     "chain-scope",
+    "construction",
 ];
 
 /// Node's three-deep and four-deep answers, carried to `n`.
@@ -133,6 +143,18 @@ fn nesting(label: &str, n: usize) -> Nesting {
                 at(8 * n + 42),
             )],
             ..plain(format!("(request.body != null{}) == (request.body.id == 'x')", " && true".repeat(n)), "bool")
+        },
+        // A fix is written through every construction around the call it renames.
+        "construction" => Nesting {
+            diagnostics: vec![fixed(
+                UnknownFunction,
+                "no function named \"Size\" is registered \u{2014} the closest taking 1 argument: size, int, type, uint, bool",
+                at(10 * n),
+                at(10 * n + 9),
+                &around("Box{held: ", "size(\"a\")", "}"),
+            )],
+            calls: 1,
+            ..plain(around("Box{held: ", "Size('a')", "}"), "Box")
         },
         _ => unreachable!("{label} is a nesting"),
     }

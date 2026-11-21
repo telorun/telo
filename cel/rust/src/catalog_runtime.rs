@@ -68,7 +68,7 @@ use crate::runtime_library::{base64_length, base64_text, json_as_cel_value, mism
 use crate::signature::LiteralArgumentCheck;
 use crate::uri_component::{decode_uri_component, encode_uri_component, UriDecodeFault};
 use crate::uuid::{uuid_v1, uuid_v3, uuid_v4, uuid_v5, uuid_v6, uuid_v7, uuid_validate, uuid_version};
-use crate::value_equality::cel_equal;
+use crate::value_equality::{cel_equal, ConstructibleFields};
 use crate::value_text::{es_to_lower_case_within, es_to_upper_case_within};
 use crate::zoned_calendar::{
     civil_time_in, date_text_in, days_in_month, instant_of_civil_time, iso_text_in, known_time_zone, CivilTime,
@@ -1565,7 +1565,7 @@ impl Hasher for HashedKey {
 /// Duplicates removed by CEL equality: a value is dropped exactly when a value already kept
 /// equals it, looked for only among the kept values of its hash, each hash's kept values
 /// chained through the list of them.
-fn distinct(values: &[CelValue]) -> CelValue {
+fn distinct(values: &[CelValue], constructible: Option<&dyn ConstructibleFields>) -> CelValue {
     let mut kept: Vec<CelValue> = Vec::new();
     // For each kept value, the kept value before it of the same hash.
     let mut earlier: Vec<Option<usize>> = Vec::new();
@@ -1580,7 +1580,7 @@ fn distinct(values: &[CelValue]) -> CelValue {
         let mut at = head;
         let mut found = false;
         while let Some(index) = at {
-            if cel_equal(&kept[index], held) {
+            if cel_equal(&kept[index], held, constructible) {
                 found = true;
                 break;
             }
@@ -1622,6 +1622,10 @@ fn range_of(count: i64) -> Result<CelValue, CatalogRefusal> {
 // --- the table --------------------------------------------------------------
 
 type Own = fn(&[CelValue]) -> Outcome;
+
+/// An implementation needing nothing of the host and reading its call context: the
+/// constructible types the engine's equality compares a value of one by.
+type OwnInContext = fn(&CelCallContext, &[CelValue]) -> Outcome;
 
 fn string_value(text: impl Into<Arc<str>>) -> Outcome {
     Ok(CelValue::String(text.into()))
@@ -1702,7 +1706,7 @@ fn named_uuid(name: &str, made: Result<String, crate::uuid::InvalidUuid>, namesp
 }
 
 /// The implementations needing nothing of the host, by dispatch key, in Node's order.
-const OWN: [(&str, Own); 77] = [
+const OWN: [(&str, Own); 76] = [
     // collections
     ("join(list<dyn>, string)", |args| {
         arity(args, 2)?;
@@ -1716,10 +1720,6 @@ const OWN: [(&str, Own); 77] = [
     ("values(map<dyn, dyn>)", |args| {
         arity(args, 1)?;
         Ok(CelValue::List(map_entries("values", &args[0])?.into_iter().map(|(_, value)| value).collect()))
-    }),
-    ("distinct(list<dyn>)", |args| {
-        arity(args, 1)?;
-        Ok(distinct(list("distinct", &args[0])?))
     }),
     ("reverse(list<dyn>)", |args| {
         arity(args, 1)?;
@@ -2191,6 +2191,12 @@ const KEYS: [&str; 86] = [
 
 static OWN_TABLE: LazyLock<HashMap<&'static str, Own>> = LazyLock::new(|| OWN.into_iter().collect());
 
+/// The implementations reading their call context, by dispatch key.
+const OWN_IN_CONTEXT: [(&str, OwnInContext); 1] = [("distinct(list<dyn>)", |ctx, args| {
+    arity(args, 1)?;
+    Ok(distinct(list("distinct", &args[0])?, ctx.constructible()))
+})];
+
 /// The function's name a dispatch key is written over.
 fn name_of(key: &str) -> &str {
     let call = &key[..key.find('(').unwrap_or(key.len())];
@@ -2271,6 +2277,10 @@ fn hosted(name: &'static str, handlers: &CelCatalogHandlers) -> CelImplementatio
 pub fn catalog_implementation(key: &str, handlers: &CelCatalogHandlers) -> Option<CelImplementation> {
     if let Some((_, name)) = HOSTED.iter().find(|(held, _)| *held == key) {
         return Some(hosted(name, handlers));
+    }
+    if let Some((key, run)) = OWN_IN_CONTEXT.iter().find(|(held, _)| *held == key) {
+        let (name, run) = (name_of(key), *run);
+        return Some(Arc::new(move |ctx: &CelCallContext, args: &[CelValue]| answered(ctx, name, args, run(ctx, args))));
     }
     let (key, run) = OWN_TABLE.get_key_value(key)?;
     let (key, run) = (*key, *run);

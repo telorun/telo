@@ -31,16 +31,48 @@ export interface CelSignature {
   readonly returns: CelType;
 }
 
-const SIGNATURE = /^(?:(.+)\.)?([A-Za-z_][A-Za-z0-9_]*)\(([^)]*)\)\s*:\s*(.+)$/;
+const FUNCTION_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+interface SignatureParts {
+  readonly receiverText: string | undefined;
+  readonly name: string;
+  readonly parameterText: string;
+  readonly returnText: string;
+}
+
+/**
+ * `[Receiver.]name(params): returns`, read in one linear pass: a type expression holds no
+ * parenthesis, so the call's own pair is the only one a signature may hold.
+ */
+function signatureParts(text: string): SignatureParts | undefined {
+  const open = text.indexOf("(");
+  const close = text.indexOf(")");
+  if (open < 0 || close < open) return undefined;
+  if (text.indexOf("(", open + 1) >= 0 || text.indexOf(")", close + 1) >= 0) return undefined;
+  const rest = text.slice(close + 1).trimStart();
+  if (!rest.startsWith(":")) return undefined;
+  const returnText = rest.slice(1).trimStart();
+  if (returnText === "") return undefined;
+  const head = text.slice(0, open);
+  const dot = head.lastIndexOf(".");
+  const name = head.slice(dot + 1);
+  if (!FUNCTION_NAME.test(name) || dot === 0) return undefined;
+  return {
+    receiverText: dot < 0 ? undefined : head.slice(0, dot),
+    name,
+    parameterText: text.slice(open + 1, close),
+    returnText,
+  };
+}
 
 export function parseSignature(text: string, resolveNominal?: NominalResolver): CelSignature {
-  const parts = SIGNATURE.exec(text.trim());
+  const parts = signatureParts(text.trim());
   if (!parts) {
     throw new CelTypeExpressionError(
       `${JSON.stringify(text)} is not a signature — write 'name(a, b): r' or 'Receiver.name(a): r'`,
     );
   }
-  const [, receiverText, name, parameterText, returnText] = parts;
+  const { receiverText, name, parameterText, returnText } = parts;
   const parameters = splitParameters(parameterText!).map((part) =>
     parseTypeExpression(part, resolveNominal),
   );

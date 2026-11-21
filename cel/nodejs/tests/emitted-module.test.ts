@@ -46,6 +46,7 @@ const SOURCES = [
   "b'ab' + b'cd'",
   "'ab'.substring(1)",
   "size(x)",
+  "Shop{constructor: 1, ?y: optional.none()}",
 ];
 
 function base(): CelEnvironment {
@@ -107,6 +108,8 @@ describe("an emitted module's text", () => {
       "push",
       "call",
       ...Array.from({ length: CALL_SITE_DIRECT_ARITY + 1 }, (unused, at) => `call${at}`),
+      // A construction site's one entry point; the fields it writes are data it was built with.
+      "build",
     ]);
     // The factory's body, with every string literal emptied: a comment and an expression's
     // own text are prose, and the question is what the CODE reads.

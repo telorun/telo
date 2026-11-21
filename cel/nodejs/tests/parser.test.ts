@@ -223,6 +223,46 @@ describe("the expression grammar", () => {
     expect(parseSyntax("{?'k': v}").diagnostics[0]?.code).toBe("unexpected_token");
   });
 
+  it("reads a construction, its dotted name, its leading dot and its optional entries, each ranged", () => {
+    expect(parseSyntax(".a.B{x: 1, ?y: z}", { optionalSyntax: true })).toEqual({
+      source: ".a.B{x: 1, ?y: z}",
+      diagnostics: [],
+      root: {
+        kind: "struct",
+        typeName: "a.B",
+        typeNameRange: [1, 4],
+        absolute: true,
+        range: [0, 17],
+        entries: [
+          {
+            field: "x",
+            fieldRange: [5, 6],
+            optional: false,
+            range: [5, 9],
+            value: { kind: "literal", literal: { type: "int", value: 1n }, range: [8, 9] },
+          },
+          {
+            field: "y",
+            fieldRange: [12, 13],
+            optional: true,
+            range: [11, 16],
+            value: { kind: "ident", name: "z", absolute: false, range: [15, 16] },
+          },
+        ],
+      },
+    });
+    expect(tree("B{}")).toMatchObject({ kind: "struct", typeName: "B", absolute: false, entries: [] });
+    expect(tree("B{x: 1,}")).toMatchObject({ kind: "struct", entries: [{ field: "x" }] });
+    // Every segment of the name and every field is an identifier, so none of these opens one.
+    expect(parseSyntax("a.in{}").diagnostics[0]?.code).toBe("unexpected_token");
+    expect(parseSyntax("a.?b{}", { optionalSyntax: true }).diagnostics[0]?.code).toBe("unexpected_token");
+    expect(parseSyntax("(a){}").diagnostics[0]?.code).toBe("unexpected_token");
+    expect(parseSyntax("B{if: 1}").diagnostics[0]?.code).toBe("reserved_identifier");
+    expect(parseSyntax("B{`x`: 1}").diagnostics[0]?.code).toBe("unexpected_token");
+    // Off, an optional entry's question mark is a misplaced token.
+    expect(parseSyntax("B{?x: 1}").diagnostics[0]?.code).toBe("unexpected_token");
+  });
+
   it("reads a name a dot opens as an absolute one", () => {
     expect(tree(".y")).toEqual({ kind: "ident", name: "y", absolute: true, range: [0, 2] });
     expect(tree(".y.z")).toMatchObject({
@@ -306,6 +346,22 @@ describe("error recovery", () => {
       left: { kind: "literal", literal: { type: "int", value: 1n } },
       right: { kind: "unparsed", range: [4, 4] },
     });
+  });
+
+  it("keeps the fields a construction read before it stopped", () => {
+    const cut = parseSyntax("B{x: 1, y");
+    expect(cut.diagnostics).toEqual([
+      { code: "unexpected_end", message: 'the expression ends before it is complete, expected ":"', range: [9, 9] },
+    ]);
+    expect(cut.root).toMatchObject({
+      kind: "struct",
+      range: [0, 9],
+      entries: [
+        { field: "x", value: { kind: "literal" } },
+        { field: "y", range: [8, 9], value: { kind: "unparsed", range: [9, 9] } },
+      ],
+    });
+    expect(parseSyntax("B{x: 1, 2: 3}").root).toMatchObject({ kind: "struct", range: [0, 6], entries: [{ field: "x" }] });
   });
 
   it("leaves a member read with no name as a select an editor can complete", () => {

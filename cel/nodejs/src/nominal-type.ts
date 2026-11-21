@@ -18,6 +18,8 @@
 
 import type { CelType, NominalType } from "./cel-type.js";
 import { parameterOf } from "./cel-type.js";
+import type { CelValue } from "./cel-value.js";
+import type { CelCallContext } from "./runtime-library.js";
 import type { NominalResolver } from "./type-expression.js";
 import { parseTypeExpression } from "./type-expression.js";
 
@@ -49,7 +51,29 @@ export interface NominalTypeDefinition {
    * the member-read seam answers no other entry of it.
    */
   readonly fields?: Readonly<Record<string, string>>;
+  /**
+   * Whether an expression may build a value of the type from its fields — `Name{field: v}`.
+   * The type must declare `fields` (an empty set is a type with none) and no `parameters`.
+   * Its values then compare field by field, and no `==` or `!=` a host registers may compare
+   * them instead.
+   */
+  readonly constructible?: boolean;
+  /** The fields a construction must write; each one the type declares, on a constructible type only. */
+  readonly required?: readonly string[];
   readonly description?: string;
+}
+
+/**
+ * Builds a value of a constructible type from the fields a construction wrote, unset ones
+ * left out: a value of the type, or a CEL error value refusing them. The call context comes
+ * first, as a registered implementation's does, so `ctx.range` is the construction's.
+ */
+export type CelConstruct = (ctx: CelCallContext, fields: Readonly<Record<string, CelValue>>) => CelValue;
+
+/** What a host supplies with a type beside its definition. */
+export interface RegisterTypeOptions {
+  /** The builder of a constructible type's values; without one the engine builds them itself. */
+  readonly construct?: CelConstruct;
 }
 
 const NAME = /^[A-Za-z_][A-Za-z0-9_.]*$/;
@@ -89,6 +113,12 @@ export interface RegisteredType {
   readonly self: NominalType;
   /** The names of its declared fields, for the member-read seam; absent when it declares none. */
   readonly fieldNames?: ReadonlySet<string>;
+  /** Whether an expression may construct a value of it. */
+  readonly constructible: boolean;
+  /** The fields a construction must write, in the order the definition lists them. */
+  readonly required: readonly string[];
+  /** The host's builder, where it supplied one. */
+  readonly construct?: CelConstruct;
 }
 
 export function validateTypeName(name: string): void {
@@ -112,8 +142,10 @@ export function validateTypeName(name: string): void {
 export function buildRegisteredType(
   definition: NominalTypeDefinition,
   resolveNominal: NominalResolver,
+  options: RegisterTypeOptions = {},
 ): RegisteredType {
   validateTypeName(definition.name);
+  validateConstruction(definition, options);
   const parameters = definition.parameters ?? [];
   for (const parameter of parameters) {
     if (!PARAMETER.test(parameter)) {
@@ -147,7 +179,41 @@ export function buildRegisteredType(
     parameters,
     self: { ...self, base, ...(fields ? { fields } : {}) },
     ...(fields ? { fieldNames: new Set(fields.keys()) } : {}),
+    constructible: definition.constructible === true,
+    required: [...new Set(definition.required ?? [])],
+    ...(options.construct ? { construct: options.construct } : {}),
   };
+}
+
+/**
+ * What a constructible type must be: one with fields to write and no type parameters, the
+ * syntax having no place for a type argument. A required field must be a declared one of a
+ * type that can be constructed, and so must a builder.
+ */
+function validateConstruction(definition: NominalTypeDefinition, options: RegisterTypeOptions): void {
+  const { name } = definition;
+  if (definition.constructible === true) {
+    if (definition.fields === undefined) {
+      throw new CelTypeRegistrationError(
+        `${name} is constructible and declares no fields; declare \`fields\`, an empty set for a type with none`,
+      );
+    }
+    if ((definition.parameters ?? []).length > 0) {
+      throw new CelTypeRegistrationError(
+        `${name} is constructible and takes type parameters, which a construction has no place to write`,
+      );
+    }
+  } else if ((definition.required ?? []).length > 0) {
+    throw new CelTypeRegistrationError(`${name} lists required fields and is not constructible`);
+  }
+  for (const field of definition.required ?? []) {
+    if (definition.fields === undefined || !Object.prototype.hasOwnProperty.call(definition.fields, field)) {
+      throw new CelTypeRegistrationError(`required field ${JSON.stringify(field)} of ${name} is not one of its fields`);
+    }
+  }
+  if (options.construct !== undefined && definition.constructible !== true) {
+    throw new CelTypeRegistrationError(`${name} is given a builder and is not constructible`);
+  }
 }
 
 function readFields(definition: NominalTypeDefinition, resolve: NominalResolver): ReadonlyMap<string, CelType> {
@@ -172,9 +238,14 @@ export function nominalSignatures(definition: NominalTypeDefinition): readonly s
   return [...(definition.conversions ?? []), ...(definition.members ?? [])];
 }
 
-/** The operator declarations a definition implies, its comparisons expanded. */
+/**
+ * The operator declarations a definition implies, its comparisons expanded. A constructible
+ * type is compared by `==` and `!=` whether or not it lists them: its values are its fields,
+ * which the engine's equality compares.
+ */
 export function nominalOperators(definition: NominalTypeDefinition): readonly NominalOperatorDeclaration[] {
-  const comparisons = (definition.comparisons ?? []).map((operator) => ({
+  const listed = [...(definition.constructible === true ? ["==", "!="] : []), ...(definition.comparisons ?? [])];
+  const comparisons = [...new Set(listed)].map((operator) => ({
     operator,
     parameters: ["Self", "Self"],
     returns: "bool",

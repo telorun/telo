@@ -187,6 +187,8 @@ function mapChildren(node: CelNode, map: (child: CelNode) => CelNode): CelNode {
       return { ...node, elements: node.elements.map((element) => ({ ...element, value: map(element.value) })) };
     case "map":
       return { ...node, entries: node.entries.map((entry) => ({ ...entry, key: map(entry.key), value: map(entry.value) })) };
+    case "struct":
+      return { ...node, entries: node.entries.map((entry) => ({ ...entry, value: map(entry.value) })) };
     case "select":
     case "unary":
       return { ...node, operand: map(node.operand) };

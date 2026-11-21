@@ -21,7 +21,8 @@ serializeTree(expression.root); // "Billing.total(cart.items)"
   triple-quoted strings, raw strings, `b"…"` and `br"…"` bytes, with every escape CEL defines; `true`,
   `false`, `null`; list and map literals; the operator precedence table; member access and index access
   in both their plain and optional forms (`.`, `.?`, `[]`, `[?]`), a member name between backticks, and
-  a name a dot opens (`.y`); global calls and receiver calls.
+  a name a dot opens (`.y`); global calls and receiver calls; and message construction,
+  `Name{field: value}` and `.Name{…}`, with `?field: value` under `enableOptionalTypes`.
 - **Qualified calls.** `Alias.fn(x)` and `obj.method(x)` are the same syntax, so the only thing that
   can tell them apart is a set of names that denote namespaces. Pass that set as `namespaces` and
   every call on one of those names becomes a `qcall` node. An expression records the set it was
@@ -75,9 +76,39 @@ environment.check("request.query.limit").typeName; // "int"
 - **A named type is not its base.** `registerType({ name: "Money", base: "int" })` gives a type its own
   operators, comparisons, conversions, members and invariant type parameters; a plain `int` is refused at
   a `Money` slot, and `Holder<string>` where `Holder<int>` is wanted is `CEL_TYPE_ARGUMENT_MISMATCH`.
+- **A named type with fields may be constructed**, when it opts in:
+
+  ```ts
+  const environment = new CelEnvironment({ enableOptionalTypes: true }).registerType(
+    {
+      name: "Place",
+      base: "dyn",
+      fields: { street: "string", number: "int" },
+      constructible: true,
+      required: ["street"],
+    },
+    // Optional; without it the engine builds { [CEL_VALUE_TYPE]: "Place", ...fields } itself.
+    { construct: (ctx, fields) => (fields.street === "" ? celError("invalid_argument", "empty street", ctx.range) : { [CEL_VALUE_TYPE]: "Place", ...fields }) },
+  );
+  environment.check("Place{street: 'Main', ?number: optional.none()}").typeName; // "Place"
+  environment.evaluate("Place{street: 'Main'} == Place{street: 'Main'}"); // true
+  environment.check("Place{number: 1}").diagnostics[0].code; // "CEL_MISSING_FIELD"
+  ```
+
+  The name is resolved against the registered types alone. A field left unset reads as absent — `has()`
+  is `false`, an ordinary read `no_such_key` — and values of a constructible type compare field by field,
+  everywhere: an `==` or `!=` registration that would compare them (over the type, `dyn` or a bare type
+  parameter) is refused, so normalise a value in its builder instead. A written value its field's type
+  does not admit is refused at evaluation too (`Place{street: 'a', number: dyn(1.5)}` is
+  `invalid_argument`), by the same loose test a call's argument passes. A name nothing registers is
+  `CEL_UNKNOWN_TYPE`, naming the nearest constructible names; a language type (`int{}`), a protobuf
+  well-known message (`google.protobuf.Timestamp{…}`, `google.protobuf.Int64Value{…}`) and a registered
+  type that did not opt in are `CEL_TYPE_NOT_CONSTRUCTIBLE`, the last naming the functions that return
+  one.
 - **Every verdict carries a range and is decided by the checker** — `CEL_SYNTAX_ERROR`,
   `CEL_TYPE_ERROR`, `CEL_UNKNOWN_IDENTIFIER`, `CEL_UNKNOWN_FIELD`, `CEL_UNKNOWN_FUNCTION`,
-  `CEL_WRONG_CALL_FORM`, `CEL_TYPE_ARGUMENT_MISMATCH`, `CEL_NULLABLE_ACCESS`, `CEL_INVALID_ARGUMENT`, and
+  `CEL_WRONG_CALL_FORM`, `CEL_TYPE_ARGUMENT_MISMATCH`, `CEL_NULLABLE_ACCESS`, `CEL_INVALID_ARGUMENT`,
+  `CEL_UNKNOWN_TYPE`, `CEL_TYPE_NOT_CONSTRUCTIBLE`, `CEL_MISSING_FIELD`, and
   `FUNCTION_UNRESOLVED` / `FUNCTION_ARITY_MISMATCH` / `FUNCTION_ARGUMENT_MISMATCH` for a namespaced call.
   A fix, where one is offered, is the whole corrected source.
 - **A namespaced call is judged only against what you declared.** `registerNamespace("Billing", […],

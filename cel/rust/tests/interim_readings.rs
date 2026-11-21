@@ -88,6 +88,7 @@ fn interim_a_named_type_registered_again_keeps_its_earlier_signatures() {
         base: base.into(),
         parameters: vec![],
         fields: None,
+        constructible: None,
         description: description.map(Into::into),
     };
     assert_eq!(listing.types, [listed("A1", "int", None), listed("Money", "string", Some("again"))]);

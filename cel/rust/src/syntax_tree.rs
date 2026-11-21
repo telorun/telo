@@ -154,6 +154,31 @@ pub struct CelMapNode {
     pub range: SourceRange,
 }
 
+/// One field written in a construction: `field: value`, and `?field: value` when
+/// `optional`, whose value holds an `optional<T>` and leaves the field unset when absent.
+#[derive(Clone)]
+pub struct CelStructEntry {
+    pub field: String,
+    pub field_range: SourceRange,
+    pub value: Arc<CelNode>,
+    pub optional: bool,
+    /// From the `?` of an optional entry, or the field's name, to the end of its value.
+    pub range: SourceRange,
+}
+
+/// `Name{field: value, …}`: a value of a named type, built from the fields written. The
+/// name is dotted text (`a.b.C`) and is resolved against the registered types alone;
+/// `absolute` marks the leading dot of `.Name{…}`, which resolves the same and is kept so
+/// the source writes back as it was read.
+#[derive(Clone)]
+pub struct CelStructNode {
+    pub type_name: String,
+    pub type_name_range: SourceRange,
+    pub absolute: bool,
+    pub entries: Vec<CelStructEntry>,
+    pub range: SourceRange,
+}
+
 /// `operand.field`, `operand.?field` when `optional`, `` operand.`field` `` when `quoted`.
 #[derive(Clone)]
 pub struct CelSelectNode {
@@ -242,6 +267,7 @@ pub enum CelNode {
     Ident(CelIdentNode),
     List(CelListNode),
     Map(CelMapNode),
+    Struct(CelStructNode),
     Select(CelSelectNode),
     Index(CelIndexNode),
     Call(CelCallNode),
@@ -265,6 +291,7 @@ impl CelNode {
             Self::Ident(node) => node.range,
             Self::List(node) => node.range,
             Self::Map(node) => node.range,
+            Self::Struct(node) => node.range,
             Self::Select(node) => node.range,
             Self::Index(node) => node.range,
             Self::Call(node) => node.range,
@@ -286,6 +313,7 @@ enum NodeRef<'a> {
     Ident(&'a CelIdentNode),
     List(&'a CelListNode),
     Map(&'a CelMapNode),
+    Struct(&'a CelStructNode),
     Select(&'a CelSelectNode),
     Index(&'a CelIndexNode),
     Call(&'a CelCallNode),
@@ -304,6 +332,7 @@ impl<'a> From<&'a CelNode> for NodeRef<'a> {
             CelNode::Ident(node) => Self::Ident(node),
             CelNode::List(node) => Self::List(node),
             CelNode::Map(node) => Self::Map(node),
+            CelNode::Struct(node) => Self::Struct(node),
             CelNode::Select(node) => Self::Select(node),
             CelNode::Index(node) => Self::Index(node),
             CelNode::Call(node) => Self::Call(node),
@@ -329,6 +358,7 @@ pub(crate) fn each_shared_child<'a>(node: &'a CelNode, mut visit: impl FnMut(&'a
             visit(&entry.key);
             visit(&entry.value);
         }),
+        CelNode::Struct(node) => node.entries.iter().for_each(|entry| visit(&entry.value)),
         CelNode::Select(node) => visit(&node.operand),
         CelNode::Index(node) => {
             visit(&node.operand);
@@ -426,6 +456,17 @@ fn same_node<'a>(left: NodeRef<'a>, right: NodeRef<'a>, pending: &mut NodePairs<
                     a.optional == b.optional
                 })
         }
+        (Struct(a), Struct(b)) => {
+            a.type_name == b.type_name
+                && a.type_name_range == b.type_name_range
+                && a.absolute == b.absolute
+                && a.range == b.range
+                && a.entries.len() == b.entries.len()
+                && a.entries.iter().zip(&b.entries).all(|(a, b)| {
+                    pending.push((&a.value, &b.value));
+                    a.field == b.field && a.field_range == b.field_range && a.optional == b.optional && a.range == b.range
+                })
+        }
         (Select(a), Select(b)) => {
             pending.push((&a.operand, &b.operand));
             a.field == b.field
@@ -505,6 +546,16 @@ impl PartialEq for CelMapEntry {
     }
 }
 
+impl PartialEq for CelStructEntry {
+    fn eq(&self, other: &Self) -> bool {
+        self.field == other.field
+            && self.field_range == other.field_range
+            && self.optional == other.optional
+            && self.range == other.range
+            && same_pairs(vec![(&self.value, &other.value)])
+    }
+}
+
 // --- written for a reader ------------------------------------------------------
 
 enum Piece<'a> {
@@ -516,6 +567,7 @@ enum Piece<'a> {
     Node(NodeRef<'a>),
     Element(&'a CelListElement),
     Entry(&'a CelMapEntry),
+    Field(&'a CelStructEntry),
 }
 
 fn push_pieces<'a, const N: usize>(pending: &mut Vec<Piece<'a>>, pieces: [Piece<'a>; N]) {
@@ -568,6 +620,22 @@ fn push_node<'a>(pending: &mut Vec<Piece<'a>>, node: NodeRef<'a>) {
             push_pieces(pending, [range_label(), Range(node.range), close()]);
             push_sequence(pending, &node.entries, Piece::Entry);
             pending.push(Text("CelMapNode { entries: "));
+        }
+        NodeRef::Struct(node) => {
+            push_pieces(pending, [range_label(), Range(node.range), close()]);
+            push_sequence(pending, &node.entries, Piece::Field);
+            push_pieces(
+                pending,
+                [
+                    Text("CelStructNode { type_name: "),
+                    Quoted(&node.type_name),
+                    Text(", type_name_range: "),
+                    Range(node.type_name_range),
+                    Text(", absolute: "),
+                    Flag(node.absolute),
+                    Text(", entries: "),
+                ],
+            );
         }
         NodeRef::Select(node) => push_pieces(
             pending,
@@ -724,6 +792,22 @@ fn write_pieces(f: &mut fmt::Formatter<'_>, mut pending: Vec<Piece<'_>>) -> fmt:
                     Piece::Text(" }"),
                 ],
             ),
+            Piece::Field(entry) => push_pieces(
+                &mut pending,
+                [
+                    Piece::Text("CelStructEntry { field: "),
+                    Piece::Quoted(&entry.field),
+                    Piece::Text(", field_range: "),
+                    Piece::Range(entry.field_range),
+                    Piece::Text(", value: "),
+                    node_piece(&entry.value),
+                    Piece::Text(", optional: "),
+                    Piece::Flag(entry.optional),
+                    Piece::Text(", range: "),
+                    Piece::Range(entry.range),
+                    Piece::Text(" }"),
+                ],
+            ),
         }
     }
     Ok(())
@@ -744,6 +828,12 @@ impl fmt::Debug for CelListElement {
 impl fmt::Debug for CelMapEntry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write_pieces(f, vec![Piece::Entry(self)])
+    }
+}
+
+impl fmt::Debug for CelStructEntry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write_pieces(f, vec![Piece::Field(self)])
     }
 }
 
@@ -768,6 +858,7 @@ kind_struct! {
     CelIdentNode => Ident,
     CelListNode => List,
     CelMapNode => Map,
+    CelStructNode => Struct,
     CelSelectNode => Select,
     CelIndexNode => Index,
     CelCallNode => Call,
@@ -811,6 +902,7 @@ fn unlink_children(node: &mut CelNode, pending: &mut Vec<Arc<CelNode>>, placehol
                 pending.push(entry.value);
             }
         }
+        CelNode::Struct(node) => pending.extend(std::mem::take(&mut node.entries).into_iter().map(|entry| entry.value)),
         CelNode::Select(node) => unlink(&mut node.operand, pending, placeholder),
         CelNode::Index(node) => {
             unlink(&mut node.operand, pending, placeholder);

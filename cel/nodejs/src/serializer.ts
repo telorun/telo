@@ -74,6 +74,7 @@ function precedenceOf(node: CelNode): number {
     case "ident":
     case "list":
     case "map":
+    case "struct":
       return PRECEDENCE.primary;
     case "select":
     case "index":
@@ -232,6 +233,16 @@ function writeNode(node: CelNode, underMinus: boolean): string {
         .map(
           (entry) =>
             `${entry.optional ? "?" : ""}${write(entry.key, PRECEDENCE.conditional)}: ${write(entry.value, PRECEDENCE.conditional)}`,
+        )
+        .join(", ")}}`;
+    case "struct":
+      return `${node.absolute ? "." : ""}${node.typeName
+        .split(".")
+        .map((segment) => name(segment, "type name"))
+        .join(".")}{${node.entries
+        .map(
+          (entry) =>
+            `${entry.optional ? "?" : ""}${name(entry.field, "field name")}: ${write(entry.value, PRECEDENCE.conditional)}`,
         )
         .join(", ")}}`;
     case "select":

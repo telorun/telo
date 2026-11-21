@@ -46,6 +46,8 @@ export function celChildren(node: CelNode): CelNode[] {
       return node.items;
     case "map":
       return node.entries.flatMap((e) => [e.key, e.value]);
+    case "struct":
+      return node.entries.map((e) => e.value);
     case "ternary":
       return [node.cond, node.then, node.else];
     case "unary":

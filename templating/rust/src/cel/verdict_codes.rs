@@ -6,12 +6,13 @@
 //! refuses a code the list does not hold — the checker's codes are forwarded through an
 //! exhaustive conversion. A coded failure is built by [`cel_verdict_error`] alone.
 //!
-//! Four codes the engine decides are in the list and no row can pin, because these engines
+//! Five codes the engine decides are in the list and no row can pin, because these engines
 //! cannot reach them: `FUNCTION_UNRESOLVED`, `FUNCTION_ARITY_MISMATCH` and
 //! `FUNCTION_ARGUMENT_MISMATCH` need a namespace declared closed with a parameter list, and
 //! a module's names are registered open with their parameters withheld;
 //! `CEL_TYPE_ARGUMENT_MISMATCH` needs a parameterized value type on both sides, and the
-//! brands registered here are nominal. The conformance runner exempts them.
+//! brands registered here are nominal; `CEL_MISSING_FIELD` needs a constructible type, and
+//! none is registered here. The conformance runner exempts them.
 //!
 //! Declared here and not in the Node file: [`TemplatingError`] — Node throws a
 //! `RuntimeError` or the engine's own error; a Rust engine answers this.
@@ -30,10 +31,13 @@ pub enum CelDiagnosticCode {
     CelNullableAccess,
     CelSyntaxError,
     CelTypeArgumentMismatch,
+    CelMissingField,
     CelTypeError,
+    CelTypeNotConstructible,
     CelUnknownField,
     CelUnknownFunction,
     CelUnknownIdentifier,
+    CelUnknownType,
     CelWrongCallForm,
     FunctionArgumentMismatch,
     FunctionArityMismatch,
@@ -49,10 +53,13 @@ impl CelDiagnosticCode {
             Self::CelNullableAccess => "CEL_NULLABLE_ACCESS",
             Self::CelSyntaxError => "CEL_SYNTAX_ERROR",
             Self::CelTypeArgumentMismatch => "CEL_TYPE_ARGUMENT_MISMATCH",
+            Self::CelMissingField => "CEL_MISSING_FIELD",
             Self::CelTypeError => "CEL_TYPE_ERROR",
+            Self::CelTypeNotConstructible => "CEL_TYPE_NOT_CONSTRUCTIBLE",
             Self::CelUnknownField => "CEL_UNKNOWN_FIELD",
             Self::CelUnknownFunction => "CEL_UNKNOWN_FUNCTION",
             Self::CelUnknownIdentifier => "CEL_UNKNOWN_IDENTIFIER",
+            Self::CelUnknownType => "CEL_UNKNOWN_TYPE",
             Self::CelWrongCallForm => "CEL_WRONG_CALL_FORM",
             Self::FunctionArgumentMismatch => "FUNCTION_ARGUMENT_MISMATCH",
             Self::FunctionArityMismatch => "FUNCTION_ARITY_MISMATCH",
@@ -76,6 +83,9 @@ impl From<CelCheckCode> for CelDiagnosticCode {
             CelCheckCode::TypeArgumentMismatch => Self::CelTypeArgumentMismatch,
             CelCheckCode::NullableAccess => Self::CelNullableAccess,
             CelCheckCode::InvalidArgument => Self::CelInvalidArgument,
+            CelCheckCode::UnknownType => Self::CelUnknownType,
+            CelCheckCode::TypeNotConstructible => Self::CelTypeNotConstructible,
+            CelCheckCode::MissingField => Self::CelMissingField,
             CelCheckCode::FunctionUnresolved => Self::FunctionUnresolved,
             CelCheckCode::FunctionArityMismatch => Self::FunctionArityMismatch,
             CelCheckCode::FunctionArgumentMismatch => Self::FunctionArgumentMismatch,
@@ -110,10 +120,13 @@ pub const CEL_VERDICT_CODES: CelVerdictCodes = CelVerdictCodes {
         CelDiagnosticCode::CelNullableAccess,
         CelDiagnosticCode::CelSyntaxError,
         CelDiagnosticCode::CelTypeArgumentMismatch,
+        CelDiagnosticCode::CelMissingField,
         CelDiagnosticCode::CelTypeError,
+        CelDiagnosticCode::CelTypeNotConstructible,
         CelDiagnosticCode::CelUnknownField,
         CelDiagnosticCode::CelUnknownFunction,
         CelDiagnosticCode::CelUnknownIdentifier,
+        CelDiagnosticCode::CelUnknownType,
         CelDiagnosticCode::CelWrongCallForm,
         CelDiagnosticCode::FunctionArgumentMismatch,
         CelDiagnosticCode::FunctionArityMismatch,

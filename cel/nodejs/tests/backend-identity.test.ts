@@ -31,6 +31,7 @@ import {
   CEL_VALUE_TYPE,
   CelCompileError,
   CelEnvironment,
+  celError,
   celUint,
   walkTree,
   type CelNode,
@@ -51,6 +52,7 @@ const NODE_KINDS: Readonly<Record<CelNode["kind"], true>> = {
   ident: true,
   list: true,
   map: true,
+  struct: true,
   select: true,
   index: true,
   unary: true,
@@ -96,6 +98,23 @@ function environments(): Record<string, CelEnvironment> {
     // A host's own named type, whose values carry a key of their own: the registered-type
     // case of the member-less values below, which is a value no literal can write.
     branded: base.clone().registerType({ name: "Handle", base: "dyn" }).registerVariable("handle", "Handle"),
+    // A constructible type, built by the engine and, under a second name, by the host.
+    constructed: base
+      .clone()
+      .registerType({
+        name: "Place",
+        base: "dyn",
+        fields: { street: "string", number: "int" },
+        constructible: true,
+        required: ["street"],
+      })
+      .registerType(
+        { name: "Built", base: "dyn", fields: { street: "string" }, constructible: true },
+        {
+          construct: (ctx, fields) =>
+            fields.street === "" ? celError("invalid_argument", "empty", ctx.range) : ({ [CEL_VALUE_TYPE]: "Built", ...fields } as CelValue),
+        },
+      ),
   };
 }
 
@@ -352,6 +371,23 @@ const CASES: readonly Case[] = [
   { source: "held.optFlatMap(v, optional.of(v))" },
   { source: "cel.bind(v, awaited.p, 1)" },
   { source: "typed + 1u" },
+
+  // constructions: built, read, compared, an optional field, and each runtime refusal
+  { source: "Place{street: 'Main', number: 4}", on: "constructed" },
+  { source: ".Place{street: 'Main'}.street", on: "constructed" },
+  { source: "has(Place{street: 'Main'}.number)", on: "constructed" },
+  { source: "Place{street: 'Main'}.number", on: "constructed" },
+  { source: "Place{street: 'x', ?number: optional.none()}", on: "constructed" },
+  { source: "Place{street: 'x', ?number: 1}", on: "constructed" },
+  { source: "Place{street: x.nope}", on: "constructed" },
+  { source: "Place{street: 'a'} == Place{street: 'a'}", on: "constructed" },
+  { source: "Place{street: 'a'} in [Place{street: 'b'}, Place{street: 'a'}]", on: "constructed" },
+  { source: "Built{street: 'a'}", on: "constructed" },
+  { source: "Built{street: ''}", on: "constructed" },
+  { source: "Shop{}", on: "constructed" },
+  { source: "Place{floor: 1}", on: "constructed" },
+  { source: "Place{street: 'a', street: 'b'}", on: "constructed" },
+  { source: "Place{street: awaited.p}", on: "constructed" },
 ];
 
 const SOURCES = environments();

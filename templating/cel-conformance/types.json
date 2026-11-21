@@ -2685,6 +2685,36 @@
         },
         "value": "string({\"$cel\":\"host\",\"type\":\"Telo.Url\",\"value\":{\"host\":\"db.internal\",\"path\":\"/orders\",\"port\":{\"$telo\":\"int\",\"value\":\"5432\"},\"query\":{\"sslmode\":\"require\"},\"scheme\":\"postgres\",\"user\":\"app\"}})"
       }
+    },
+    {
+      "id": "types/Url/construction_not_constructible",
+      "tag": "cel",
+      "source": "Telo.Url{scheme: 'https'}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_NOT_CONSTRUCTIBLE",
+              "message": "\"Telo.Url\" is a registered type that does not allow construction"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 25
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "celCode": "no_matching_overload",
+          "message": "\"Telo.Url\" is a registered type that does not allow construction"
+        }
+      }
     }
   ]
 }

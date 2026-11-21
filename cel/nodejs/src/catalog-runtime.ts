@@ -29,7 +29,7 @@ import type {
   CelCallContext,
   CelImplementation,
 } from "./runtime-library.js";
-import { base64Text, jsonAsCelValue } from "./runtime-library.js";
+import { base64Text, constructibleOf, jsonAsCelValue } from "./runtime-library.js";
 import type { LiteralArgumentCheck } from "./signature.js";
 import type {
   CelEvaluationCode,
@@ -55,6 +55,7 @@ import { scanJsonPrefix } from "./json-text-scan.js";
 import { re2Pattern, RE2_FLAG_LETTERS } from "./regular-expression.js";
 import type { RE2JS } from "re2js";
 import { celTimestamp, formatTimestamp } from "./timestamp-value.js";
+import type { ConstructibleFields } from "./value-equality.js";
 import { celEqual } from "./value-equality.js";
 import { bytesToText, doubleText } from "./value-text.js";
 import {
@@ -544,10 +545,10 @@ function sorted(what: string, values: readonly CelValue[]): CelValue[] {
  * has: a uint, an instant and a map are objects here, so a host-level identity would call
  * two equal values different and answer a list the expression never asked for.
  */
-function distinct(values: readonly CelValue[]): CelValue[] {
+function distinct(values: readonly CelValue[], constructible: ConstructibleFields | undefined): CelValue[] {
   const out: CelValue[] = [];
   for (const held of values) {
-    if (!out.some((kept) => celEqual(kept, held))) out.push(held);
+    if (!out.some((kept) => celEqual(kept, held, constructible))) out.push(held);
   }
   return out;
 }
@@ -569,7 +570,7 @@ const IMPLEMENTATIONS = new Map<string, CatalogImplementation>([
   ["join(list<dyn>, string)", own((ctx, a, b) => list("join", a).map((held) => textOf("join", held)).join(text(b)))],
   ["keys(map<dyn, dyn>)", own((ctx, a) => mapEntries("keys", a).map(([key]) => key))],
   ["values(map<dyn, dyn>)", own((ctx, a) => mapEntries("values", a).map(([, value]) => value))],
-  ["distinct(list<dyn>)", own((ctx, a) => distinct(list("distinct", a)))],
+  ["distinct(list<dyn>)", own((ctx, a) => distinct(list("distinct", a), constructibleOf(ctx)))],
   ["reverse(list<dyn>)", own((ctx, a) => [...list("reverse", a)].reverse())],
   ["flatten(list<dyn>)", own((ctx, a) => (list("flatten", a) as CelValue[]).flat())],
   ["sort(list<dyn>)", own((ctx, a) => sorted("sort", list("sort", a)))],

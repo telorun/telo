@@ -40,6 +40,12 @@ pub enum CelCheckCode {
     /// An argument a construct refuses on sight: a macro's shape, or a literal a
     /// registration's guard refuses.
     InvalidArgument,
+    /// A construction naming no registered type.
+    UnknownType,
+    /// A construction naming a language type, a well-known type or a type without the opt-in.
+    TypeNotConstructible,
+    /// A construction that omits a required field, or writes one as `?field:`.
+    MissingField,
     /// A namespaced call naming a function the namespace does not declare.
     FunctionUnresolved,
     /// A namespaced call with the wrong number of arguments.
@@ -60,6 +66,9 @@ impl CelCheckCode {
             CelCheckCode::TypeArgumentMismatch => "CEL_TYPE_ARGUMENT_MISMATCH",
             CelCheckCode::NullableAccess => "CEL_NULLABLE_ACCESS",
             CelCheckCode::InvalidArgument => "CEL_INVALID_ARGUMENT",
+            CelCheckCode::UnknownType => "CEL_UNKNOWN_TYPE",
+            CelCheckCode::TypeNotConstructible => "CEL_TYPE_NOT_CONSTRUCTIBLE",
+            CelCheckCode::MissingField => "CEL_MISSING_FIELD",
             CelCheckCode::FunctionUnresolved => "FUNCTION_UNRESOLVED",
             CelCheckCode::FunctionArityMismatch => "FUNCTION_ARITY_MISMATCH",
             CelCheckCode::FunctionArgumentMismatch => "FUNCTION_ARGUMENT_MISMATCH",
@@ -74,7 +83,7 @@ impl fmt::Display for CelCheckCode {
 }
 
 /// Every code, in the one order a host reading the vocabulary reads it.
-pub const CEL_CHECK_CODES: [CelCheckCode; 12] = [
+pub const CEL_CHECK_CODES: [CelCheckCode; 15] = [
     CelCheckCode::SyntaxError,
     CelCheckCode::TypeError,
     CelCheckCode::UnknownIdentifier,
@@ -84,6 +93,9 @@ pub const CEL_CHECK_CODES: [CelCheckCode; 12] = [
     CelCheckCode::TypeArgumentMismatch,
     CelCheckCode::NullableAccess,
     CelCheckCode::InvalidArgument,
+    CelCheckCode::UnknownType,
+    CelCheckCode::TypeNotConstructible,
+    CelCheckCode::MissingField,
     CelCheckCode::FunctionUnresolved,
     CelCheckCode::FunctionArityMismatch,
     CelCheckCode::FunctionArgumentMismatch,

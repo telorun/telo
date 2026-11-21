@@ -73,6 +73,7 @@ fn names_the_hosts_own_type_in_the_definition_listing_with_its_base() {
             base: "list<A>".into(),
             parameters: vec!["A".into()],
             fields: None,
+            constructible: None,
             description: None,
         }]
     );

@@ -194,6 +194,9 @@ function visit(node: CelNode, reads: DecisionRead[], bound: ReadonlySet<string>)
         visit(entry.value, reads, bound);
       }
       return;
+    case "struct":
+      for (const entry of node.entries) visit(entry.value, reads, bound);
+      return;
     case "call":
       for (const arg of node.args) visit(arg, reads, bound);
       return;

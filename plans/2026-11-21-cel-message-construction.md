@@ -1,8 +1,8 @@
 ---
-status: draft
+status: done
 priority: medium
 depends-on: []
-packages: [cel/nodejs, cel/rust, templating/cel-conformance, templating/nodejs, templating/rust, analyzer/nodejs]
+packages: [cel/nodejs, cel/rust, templating/cel-conformance, templating/nodejs, templating/rust, analyzer/nodejs, packages/ide-support]
 refinement: not-started
 ---
 
@@ -34,7 +34,7 @@ The engine already has most of what construction needs. A host's `registerType` 
 - `telo/construction/<case>`: row ids of the authored construction rows
 
 **Changed**
-- equality: values of a constructible type compare field by field instead of by identity; a host-registered `==` still wins
+- equality: values of a constructible type compare field by field, everywhere; an `==`/`!=` registration that could compare them is refused
 - `EMITTER_FORMAT_GENERATION`: bumped from 2 to 3, invalidating every stored emitted module
 - `templating/cel-conformance/README.md` drop rule: a cel-spec test is dropped because it names a message type defined by a protobuf descriptor, no longer because of its syntax
 
@@ -45,14 +45,17 @@ The engine already has most of what construction needs. A host's `registerType` 
 
 Construction becomes an operation of the named type, declared in the data the host already registers. `registerType` takes two new definition keys and one new option:
 - `constructible: true` opts the type in. The type must declare `fields` (an empty set is fine) and no `parameters`.
-- `required` lists the field names a construction must write.
-- `construct` is an optional builder. Without one, the engine builds the value itself, in the same form a host-built value has today. With one, the builder receives the written fields (unset ones left out) and answers a value or a CEL error value, as a registered implementation does. A host whose values carry an invariant can therefore make its type constructible without giving the invariant up.
+- `required` lists the field names a construction must write; it is refused on a type that is not constructible.
+- `construct` is an optional builder. Without one, the engine builds the value itself, in the same form a host-built value has today. With one, the builder receives the call context and then the written fields (unset ones left out) and answers a value or a CEL error value, as a registered implementation does. A host whose values carry an invariant can therefore make its type constructible without giving the invariant up.
 
 **Parser and serializer.** Both read and write the new `struct` node. The leading dot of an absolute name is kept. Error recovery keeps the field entries already read. Every tree walker in the engine, the templating tag engines and the analyzer handles the new node.
 
 **Checker.** A construction name is resolved only against the registered types, by its full dotted name; `.Name` means the same as `Name`.
 - A name with no registered type is `CEL_UNKNOWN_TYPE`, even under `unlistedVariablesAreDyn`. The message lists the nearest constructible names, the way unknown-function candidates are listed.
-- `int{}`, `google.protobuf.Timestamp{…}` and a registered type without the opt-in are `CEL_TYPE_NOT_CONSTRUCTIBLE`.
+- `int{}`, `google.protobuf.Timestamp{…}` and a registered type without the opt-in are `CEL_TYPE_NOT_CONSTRUCTIBLE`, worded by cause, with no fix:
+  - a language type: `int` is a language type and has no fields; write a literal or a conversion;
+  - a protobuf well-known message (`google.protobuf.Any`, the wrappers, `Struct`, `Value`, `ListValue`, `Empty`, `FieldMask`, `Timestamp`, `Duration`): it is a protobuf message and no protobuf type provider is present, and for Timestamp and Duration it adds use `timestamp(…)` / `duration(…)`;
+  - a registered type without the opt-in: `X` is a registered type that does not allow construction, followed by the registered functions returning `X`, nearest first and bounded as unknown-function candidates are, when there are any.
 - Each field is checked:
   - one the type does not declare is `CEL_UNKNOWN_FIELD`;
   - one written twice is `CEL_INVALID_ARGUMENT`;
@@ -62,8 +65,9 @@ Construction becomes an operation of the named type, declared in the data the ho
 
 **Runtime.** The closure backend and the JS-source emitter build the value through the builder or the engine's default. The value is read like any host-built value:
 - an unset field is `no_such_key` on an ordinary read and absence under `.?`, `[?]` and `has()`;
-- the engine's one equality compares values of a constructible type by type key, set of present fields, and pairwise field equality, unless the host registered `==`, which wins;
-- `!=`, `in` over a list, and list and map equality inherit it;
+- each written field is admitted by dispatch's argument test before the value is built or the builder called; a refusal is `invalid_argument`, ranged over the field's value; container elements are not walked;
+- the engine's one equality compares values of a constructible type by type key, set of present fields and pairwise field equality; `==`, `!=`, `in` over a list, list/map/optional equality and `distinct` all read it;
+- an `==`/`!=` registration that could compare a constructible type's values is refused at registration, and so is making a type constructible while one is held;
 - the environment digest carries `constructible` and `required`.
 
 **Rust twin.** `cel/rust` gets the same definition keys, the same builder, refusals, node, codes and equality. Both engines are held to authored rows `telo/construction/<case>` in `language.json`, which register their types through the new row key `types` (the definition data, in registration order, declared without implementations). The builder is pinned by twin unit tests in `tests/nominal-fields.test.ts` and `cel/rust/tests/nominal_fields.rs`, since a row cannot carry an implementation.
@@ -73,7 +77,7 @@ Construction becomes an operation of the named type, declared in the data the ho
 **Docs and release.**
 - `cel/nodejs/CLAUDE.md`: the named-types section, the "deliberately still refused" list and the check-code count.
 - `cel/rust/README.md`.
-- The conformance README: the `types` row key, and the reworded drop rule. A test constructing `google.protobuf.Timestamp` or `google.protobuf.Duration` in message syntax is kept, answering `CEL_TYPE_NOT_CONSTRUCTIBLE` with `deviation.reason: feature-not-carried`.
+- The conformance README: the `types` row key, and the reworded drop rule. The pinned cel-spec commit has no test constructing `google.protobuf.Timestamp` or `google.protobuf.Duration` in message syntax, so no cel-spec row is added; authored rows pin the refusal.
 - One `Added` fragment on the `cel` unit.
 
 ## Decisions
@@ -83,6 +87,8 @@ Construction becomes an operation of the named type, declared in the data the ho
 - **An unset field reads as absent**, the same for a constructed value and a host-built one. Proto3 zero values were rejected: a `dyn`, union or named field has none. Per-field defaults were rejected: they need a value encoding in the type data, and `.?f.orValue(x)` already gives a default.
 - **`required` is checked statically**, so a missing field the source plainly omits is reported at the literal rather than at runtime as `no_such_key`.
 - **Field-wise equality only for constructible types**: being constructible is a promise that a value is its fields, while a non-constructible host value may hold state the engine cannot see.
+- **No host equality over a constructible type**: a second definition of its equality could only repeat the fields' answer or contradict it, and honouring a host `==` inside `in` and container equality would make the engine's boolean equality fallible. A host wanting another equality normalises the fields in its builder, or leaves the type non-constructible. This is cel-go's, cel-java's and cel-cpp's shape too: equality belongs to the type, and containers and `in` call it.
+- **Fields are admitted at runtime by dispatch's own test**: the checker types `.number` as declared, so a `dyn` value of another type must be refused where it is written, not two operations later. Reusing dispatch's top-level test keeps the cost constant per field and one runtime type rule.
 - **Parameterized types are not constructible**: the syntax has no place for type arguments, and inferring them from the written fields guesses a type that both engines would have to guess identically.
 - **No `container` option**: resolving type names against a container while every other name ignores it would give one expression two resolution rules.
 - **`CEL_UNKNOWN_TYPE` is its own code** rather than `CEL_UNKNOWN_IDENTIFIER`, because a host that suppresses unknown identifiers must still refuse an unknown type: nothing can be constructed from `dyn`.
@@ -90,12 +96,62 @@ Construction becomes an operation of the named type, declared in the data the ho
 
 ## Complete example after the change
 
-A host registers `Place` with fields `street: string`, `number: int`, `tags: map<string, string>`, `constructible: true` and `required: [street]`.
+```ts
+import { CelEnvironment, CEL_VALUE_TYPE, celError } from "@telorun/cel";
+
+const env = new CelEnvironment({ enableOptionalTypes: true })
+  .registerType(
+    {
+      name: "Place",
+      base: "dyn",
+      fields: { street: "string", number: "int", tags: "map<string, string>" },
+      constructible: true,
+      required: ["street"],
+    },
+    {
+      // Optional; without it the engine builds the value itself.
+      construct: (ctx, fields) =>
+        fields.street === ""
+          ? celError("invalid_argument", "Place: street must not be empty", ctx.range)
+          : { [CEL_VALUE_TYPE]: "Place", ...fields },
+    },
+  )
+  .registerType({ name: "Token", base: "string" })
+  .registerFunction("token(string): Token", { implementation: (ctx, text) => text });
+
+env.check("Place{street: 'Main', number: 4}").typeName;
+// "Place"
+
+env.evaluate("Place{street: 'Main', number: 4}");
+// { [CEL_VALUE_TYPE]: "Place", street: "Main", number: 4n }
+
+env.evaluate("has(Place{street: 'Main'}.tags)");
+// false
+
+env.evaluate("Place{street: 'Main'} == Place{street: 'Main'}");
+// true
+
+env.check("Place{number: 1}").diagnostics[0].code;
+// "CEL_MISSING_FIELD"
+
+env.check("Token{}").diagnostics[0].code;
+// "CEL_TYPE_NOT_CONSTRUCTIBLE", naming token(string) as where a Token comes from
+
+env.evaluate("Place{street: ''}");
+// throws CelEvaluationError: invalid_argument, "Place: street must not be empty"
+```
+
+The builder takes the call context first, as a registered implementation does, so a refusal is ranged over the construction.
+
+The same registration, case by case: `Place` has fields `street: string`, `number: int`, `tags: map<string, string>`, `constructible: true` and `required: [street]`.
 - `Place{street: 'Main', number: 4}` checks as `Place`. Evaluated, `.street` is `'Main'`, `has(.tags)` is `false`, and an ordinary `.tags` is `no_such_key`.
 - `Place{street: 'Main'} == Place{street: 'Main'}` is `true`, and `[Place{street: 'Main'}] == [Place{street: 'Main', number: 1}]` is `false`.
 - `.Place{street: 'Main'}` is the same construction and writes back with its dot.
 - `Place{?number: optional.none(), street: 'x'}` leaves `number` unset.
 - `Place{number: 1}` is `CEL_MISSING_FIELD`; `Place{street: 'x', floor: 2}` is `CEL_UNKNOWN_FIELD`; `Place{street: 'x', street: 'y'}` is `CEL_INVALID_ARGUMENT`; `Place{street: 1}` is `CEL_TYPE_ERROR`.
 - `Shop{}` is `CEL_UNKNOWN_TYPE`, naming `Place` as a candidate, even under `unlistedVariablesAreDyn`.
-- `int{}` is `CEL_TYPE_NOT_CONSTRUCTIBLE`.
+- `int{}` is `CEL_TYPE_NOT_CONSTRUCTIBLE`, saying `int` is a language type to write as a literal or a conversion; `google.protobuf.Timestamp{seconds: 5}` is the same code, pointing at `timestamp(…)`.
+- A host registers `Token` without `constructible`, plus `token(string): Token`. `Token{}` is `CEL_TYPE_NOT_CONSTRUCTIBLE`, naming `token(string)` as where a `Token` comes from.
+- `Place{street: 'a', number: dyn(1.5)}` checks clean and evaluates to `invalid_argument`, `field "number" of Place is int, and this value is double`, before any builder runs.
+- Registering `==(Place, Place)` after `Place` is refused at registration, and so is registering `Place` constructible while such an `==` is held.
 - With a builder that refuses an empty street, `Place{street: ''}` evaluates to the builder's error value on both backends and in both engines.

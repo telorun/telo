@@ -32,6 +32,8 @@
 //!   `CelEvaluateError::Host`, where Node throws the host's own error.
 //! - [`CelEnvironment::functions_named`] — Node's `definitions().functions` read for one
 //!   name, without listing the rest.
+//! - [`CelEnvironment::register_type_with`] — Node's `registerType(definition, options)`;
+//!   `register_type` is that with no options.
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -41,7 +43,7 @@ use std::sync::{Arc, Mutex};
 use telorun_cel_value::{compare_code_units, json_quote, CelError, CelValue, PropertyMap, CEL_VALUE_KEYS};
 
 use crate::activation::CelActivation;
-use crate::backend_runtime::{CelCompileError, EnvironmentSnapshot, NominalRuntime};
+use crate::backend_runtime::{CelCompileError, CompileTarget, EnvironmentSnapshot, NominalRuntime};
 use crate::bounded_cache::BoundedCache;
 use crate::cel_expression::{parse_expression, resolved_under, CelExpression, ParseExpressionOptions};
 use crate::cel_type::{format_type, is_dyn, CelType, NominalType, DYN};
@@ -49,6 +51,10 @@ use crate::cel_program::{CelEvaluationError, CelProgram, EvaluateOptions};
 use crate::check_diagnostic::{CelEngineError, CelEngineErrorCode};
 use crate::checker::{check_expression, CheckResult, CheckerContext, CheckerOptions, NamespaceFunction};
 use crate::closure_backend::compile_tree;
+use crate::construction::{
+    compared_constructible, constructible_equality_refusal, equality_comparing, equality_registration_refusal,
+    is_own_comparison, ConstructionTypes,
+};
 use crate::function_registry::{FunctionRegistry, RegisteredFunction};
 use crate::json_schema_type::{
     field_map_type, schema_type, FieldDeclaration, JsonSchemaDocument, RecursiveSchemaReference, SchemaConversion,
@@ -57,7 +63,7 @@ use crate::json_schema_type::{
 use crate::namespace_resolution::{normalize_namespaces, CelNamespaceError};
 use crate::nominal_type::{
     build_registered_type, nominal_operators, nominal_signatures, registration_error, with_arguments,
-    CelTypeRegistrationError, NominalTypeDefinition, RegisteredType,
+    CelTypeRegistrationError, NominalTypeDefinition, RegisterTypeOptions, RegisteredType,
 };
 use crate::parse_limits::CelParseLimits;
 use crate::parser::ParseOptions;
@@ -306,7 +312,18 @@ pub struct TypeDefinitionListing {
     pub parameters: Vec<String>,
     /// Each declared field with its type, as printed; absent when it declares none.
     pub fields: Option<PropertyMap<String>>,
+    /// Present exactly when an expression may construct a value of it.
+    pub constructible: Option<ConstructibleListing>,
     pub description: Option<String>,
+}
+
+/// How a constructible type is constructed.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct ConstructibleListing {
+    /// The fields a construction must write, each once, in the order the definition lists them.
+    pub required: Vec<String>,
+    /// Whether the host supplied the builder.
+    pub builder: bool,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -695,9 +712,21 @@ impl CelEnvironment {
         metadata: FunctionMetadata,
     ) -> Result<(), CelRegistrationError> {
         let signature = self.signature_of(signature.into())?;
+        self.refuse_constructible_equality(&signature)?;
         self.compiled.clear();
         Arc::make_mut(&mut self.registry).register(signature, metadata)?;
         Ok(())
+    }
+
+    /// A constructible type's equality is its fields', with no host override: an `==` or
+    /// `!=` registration that would compare its values is refused, implemented or not.
+    fn refuse_constructible_equality(&self, signature: &CelSignature) -> Result<(), CelTypeRegistrationError> {
+        let constructible: Vec<&str> =
+            self.types.order.iter().filter(|held| held.constructible).map(|held| held.definition.name.as_str()).collect();
+        match compared_constructible(signature, &constructible) {
+            Some(ty) => Err(registration_error(equality_registration_refusal(signature, ty))),
+            None => Ok(()),
+        }
     }
 
     /// Removes the one registration answering that call. Answers whether it was there.
@@ -727,6 +756,7 @@ impl CelEnvironment {
         let parameters = parameters.iter().map(|text| self.read_type(text.as_ref())).collect::<Result<Vec<_>, _>>()?;
         let returns = self.read_type(returns)?;
         let signature = CelSignature { name: operator.into(), receiver: None, parameters, returns };
+        self.refuse_constructible_equality(&signature)?;
         self.compiled.clear();
         Arc::make_mut(&mut self.registry).register(signature, metadata)?;
         Ok(())
@@ -808,14 +838,26 @@ impl CelEnvironment {
             .collect()
     }
 
-    /// Registers a named type, with every operator, conversion and member it declares.
+    /// Registers a named type, with every operator, conversion and member it declares:
+    /// [`CelEnvironment::register_type_with`] with no builder.
+    pub fn register_type(&mut self, definition: NominalTypeDefinition) -> Result<(), CelRegistrationError> {
+        self.register_type_with(definition, RegisterTypeOptions::default())
+    }
+
+    /// Registers a named type, with every operator, conversion and member it declares. A
+    /// `constructible` type may be built by an expression — by `options.construct` where
+    /// the host supplies a builder, and by the engine where it does not.
     ///
     /// The type is held before its signatures are registered, one by one, and a type
     /// registered again keeps the signatures its earlier registration made — so a
     /// signature refused part way leaves the type and the signatures before it, as on
     /// Node. Once the type is held, what was compiled is forgotten, a refusal part way
     /// included.
-    pub fn register_type(&mut self, definition: NominalTypeDefinition) -> Result<(), CelRegistrationError> {
+    pub fn register_type_with(
+        &mut self,
+        definition: NominalTypeDefinition,
+        options: RegisterTypeOptions,
+    ) -> Result<(), CelRegistrationError> {
         // A value of a named type carries its name under the engine's own value key.
         if CEL_VALUE_KEYS.contains(&definition.name.as_str()) {
             return Err(registration_error(format!(
@@ -827,8 +869,15 @@ impl CelEnvironment {
         let registered = {
             let types = &self.types;
             let resolver = |name: &str, args: &[CelType]| resolve_nominal(types, name, args);
-            build_registered_type(&definition, &resolver)?
+            build_registered_type(&definition, &resolver, &options)?
         };
+        if registered.constructible {
+            let mut registrations = self.registry.named("==");
+            registrations.extend(self.registry.named("!="));
+            if let Some(comparing) = equality_comparing(&registrations, &definition.name) {
+                return Err(registration_error(constructible_equality_refusal(&definition.name, &comparing)).into());
+            }
+        }
         let self_type = registered.self_type.clone();
         self.compiled.clear();
         Arc::make_mut(&mut self.runtime_types).insert(
@@ -836,6 +885,7 @@ impl CelEnvironment {
             NominalRuntime {
                 arity: registered.parameters().len(),
                 fields: self_type.fields.as_ref().map(|fields| fields.keys().map(str::to_owned).collect()),
+                constructible: registered.constructible,
             },
         );
         self.types.set(&definition.name, registered);
@@ -882,7 +932,13 @@ impl CelEnvironment {
                 let returns = parse_type_expression(&operator.returns, Some(resolver))?;
                 CelSignature { name: operator.operator.clone(), receiver: None, parameters, returns }
             };
-            Arc::make_mut(&mut self.registry).register(signature, metadata())?;
+            let metadata = metadata();
+            // The comparisons a constructible type implies of itself are its field-wise
+            // equality; any other `==` or `!=` it declares passes the door a host's does.
+            if !(definition.constructible && is_own_comparison(&signature, &metadata, &definition.name)) {
+                self.refuse_constructible_equality(&signature)?;
+            }
+            Arc::make_mut(&mut self.registry).register(signature, metadata)?;
         }
         Ok(())
     }
@@ -1066,7 +1122,9 @@ impl CelEnvironment {
         // longer than every declared name is no declared name.
         let longest = self.variables.keys().map(String::len).max().unwrap_or(0);
         let declares = |name: &str| name.len() <= longest && self.variables.contains_key(name);
-        let tree = compile_tree(&expression.root, &declares)?;
+        let target =
+            CompileTarget { declares: &declares, types: Arc::clone(&self.runtime_types), construction: self.construction_types() };
+        let tree = compile_tree(&expression.root, &target)?;
         let snapshot = EnvironmentSnapshot {
             registry: Arc::clone(&self.registry),
             constants: Arc::clone(&self.constants),
@@ -1085,11 +1143,24 @@ impl CelEnvironment {
             declared_variable_names: Box::new(move || variables.keys().map(String::as_str).collect()),
             namespace_function: Box::new(move |namespace, name| namespace_functions.get(namespace)?.get(name)),
             namespace_is_open: Box::new(move |namespace| open_namespaces.contains(namespace)),
+            construction: self.construction_types(),
             options: CheckerOptions {
                 unlisted_variables_are_dyn: self.options.unlisted_variables_are_dyn,
                 homogeneous_aggregate_literals: self.options.homogeneous_aggregate_literals,
                 enable_optional_types: self.options.enable_optional_types,
             },
+        }
+    }
+
+    /// What a construction's name is resolved against — one reading for the checker and the
+    /// evaluator.
+    fn construction_types(&self) -> ConstructionTypes<'_> {
+        let types = &self.types;
+        ConstructionTypes {
+            types: &types.order,
+            registered_type: Box::new(move |name| types.get(name)),
+            optional_types: self.options.enable_optional_types,
+            registry: &self.registry,
         }
     }
 
@@ -1134,6 +1205,10 @@ impl CelEnvironment {
                         .fields
                         .as_ref()
                         .map(|fields| fields.iter().map(|(name, ty)| (name, format_type(ty, false))).collect()),
+                    constructible: registered.constructible.then(|| ConstructibleListing {
+                        required: registered.required.clone(),
+                        builder: registered.construct.is_some(),
+                    }),
                     description: registered.definition.description.clone(),
                 })
                 .collect(),

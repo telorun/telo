@@ -69,6 +69,10 @@ function collect(node: CelNode, bound: BoundNames, found: Set<string>): void {
         collect(entry.value, bound, found);
       }
       return;
+    case "struct":
+      // A type name is not a read: it names a registered type, never a value.
+      for (const entry of node.entries) collect(entry.value, bound, found);
+      return;
     case "select":
       collect(node.operand, bound, found);
       return;

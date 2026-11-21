@@ -19,7 +19,7 @@
  */
 
 import { isIdentifierSpelling, isReservedWord } from "./reserved-words.js";
-import type { CelMapEntry, CelNode } from "./syntax-tree.js";
+import type { CelMapEntry, CelNode, CelStructEntry } from "./syntax-tree.js";
 
 /** Names that can never be registered as a namespace. */
 export const RESERVED_NAMESPACES: readonly string[] = ["cel", "optional"];
@@ -96,6 +96,17 @@ function resolveNode(node: CelNode, namespaces: readonly string[]): CelNode {
         if (key === entry.key && value === entry.value) continue;
         entries ??= node.entries.slice();
         entries[at] = { ...entry, key, value };
+      }
+      return entries ? { ...node, entries } : node;
+    }
+    case "struct": {
+      let entries: CelStructEntry[] | undefined;
+      for (let at = 0; at < node.entries.length; at++) {
+        const entry = node.entries[at]!;
+        const value = resolveNode(entry.value, namespaces);
+        if (value === entry.value) continue;
+        entries ??= node.entries.slice();
+        entries[at] = { ...entry, value };
       }
       return entries ? { ...node, entries } : node;
     }

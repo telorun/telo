@@ -51,7 +51,15 @@ import type {
 } from "./json-schema-type.js";
 import { fieldMapType, schemaType } from "./json-schema-type.js";
 import { normalizeNamespaces } from "./namespace-resolution.js";
-import type { NominalTypeDefinition, RegisteredType } from "./nominal-type.js";
+import type { ConstructionTypes } from "./construction.js";
+import {
+  comparedConstructible,
+  constructibleEqualityRefusal,
+  equalityComparing,
+  equalityRegistrationRefusal,
+  isOwnComparison,
+} from "./construction.js";
+import type { NominalTypeDefinition, RegisteredType, RegisterTypeOptions } from "./nominal-type.js";
 import {
   buildRegisteredType,
   CelTypeRegistrationError,
@@ -61,7 +69,7 @@ import {
 import type { CelParseLimits } from "./parse-limits.js";
 import type { CelSignature, FunctionMetadata } from "./signature.js";
 import { formatSignature, parseSignature } from "./signature.js";
-import { registerStandardLibrary, standardConstants } from "./standard-library.js";
+import { languageTypeNames, registerStandardLibrary, standardConstants } from "./standard-library.js";
 import { standardConstantValues } from "./runtime-library.js";
 import type { NominalResolver } from "./type-expression.js";
 import { parseTypeExpression } from "./type-expression.js";
@@ -137,6 +145,11 @@ export interface TypeDefinitionListing {
   readonly parameters: readonly string[];
   /** Each declared field with its type, as printed; absent when it declares none. */
   readonly fields?: Readonly<Record<string, string>>;
+  /**
+   * Present exactly when an expression may construct a value of it: the fields a
+   * construction must write, and whether the host supplied the builder.
+   */
+  readonly constructible?: { readonly required: readonly string[]; readonly builder: boolean };
   readonly description?: string;
 }
 
@@ -306,9 +319,24 @@ export class CelEnvironment {
    * replaceable library exists to avoid.
    */
   registerFunction(signature: string | CelSignature, metadata: FunctionMetadata = {}): this {
-    this.registry.register(this.signatureOf(signature), metadata);
+    const read = this.signatureOf(signature);
+    this.refuseConstructibleEquality(read);
+    this.registry.register(read, metadata);
     this.compiled.clear();
     return this;
+  }
+
+  /**
+   * A constructible type's equality is its fields', with no host override: an `==` or `!=`
+   * registration that would compare its values is refused, implemented or not.
+   */
+  private refuseConstructibleEquality(signature: CelSignature): void {
+    const type = comparedConstructible(signature, this.constructibleNames());
+    if (type !== undefined) throw new CelTypeRegistrationError(equalityRegistrationRefusal(signature, type));
+  }
+
+  private constructibleNames(): readonly string[] {
+    return [...this.types.values()].filter((type) => type.constructible).map((type) => type.definition.name);
   }
 
   /** Removes the one registration answering that call. Answers whether it was there. */
@@ -332,15 +360,14 @@ export class CelEnvironment {
     returns: string,
     metadata: FunctionMetadata = {},
   ): this {
-    this.registry.register(
-      {
-        name: operator,
-        form: "global",
-        parameters: parameters.map((text) => this.readType(text)),
-        returns: this.readType(returns),
-      },
-      metadata,
-    );
+    const signature: CelSignature = {
+      name: operator,
+      form: "global",
+      parameters: parameters.map((text) => this.readType(text)),
+      returns: this.readType(returns),
+    };
+    this.refuseConstructibleEquality(signature);
+    this.registry.register(signature, metadata);
     this.compiled.clear();
     return this;
   }
@@ -399,8 +426,12 @@ export class CelEnvironment {
     return reports;
   }
 
-  /** Registers a named type, with every operator, conversion and member it declares. */
-  registerType(definition: NominalTypeDefinition): this {
+  /**
+   * Registers a named type, with every operator, conversion and member it declares. A
+   * `constructible` type may be built by an expression, by `options.construct` where the
+   * host supplies a builder and by the engine where it does not.
+   */
+  registerType(definition: NominalTypeDefinition, options: RegisterTypeOptions = {}): this {
     // A value of a named type carries its name under the engine's own value key, so a
     // name the engine already uses there would make two types one value.
     if ((CEL_VALUE_KEYS as readonly string[]).includes(definition.name)) {
@@ -408,7 +439,12 @@ export class CelEnvironment {
         `${JSON.stringify(definition.name)} is the type key of a value this engine builds`,
       );
     }
-    const registered = buildRegisteredType(definition, this.nominalResolver);
+    const registered = buildRegisteredType(definition, this.nominalResolver, options);
+    if (registered.constructible) {
+      const registrations = ["==", "!="].flatMap((name) => this.registry.named(name));
+      const comparing = equalityComparing(registrations, definition.name);
+      if (comparing) throw new CelTypeRegistrationError(constructibleEqualityRefusal(definition.name, comparing));
+    }
     this.types.set(definition.name, registered);
     const resolver: NominalResolver = (name, args) =>
       name === "Self" ? { ...registered.self, args: args.length > 0 ? args : registered.self.args } : this.nominalResolver(name, args);
@@ -419,15 +455,19 @@ export class CelEnvironment {
       });
     }
     for (const operator of nominalOperators(definition)) {
-      this.registry.register(
-        {
-          name: operator.operator,
-          form: "global",
-          parameters: operator.parameters.map((text) => parseTypeExpression(text, resolver)),
-          returns: parseTypeExpression(operator.returns, resolver),
-        },
-        { deterministic: true, origin: `type:${definition.name}` },
-      );
+      const signature: CelSignature = {
+        name: operator.operator,
+        form: "global",
+        parameters: operator.parameters.map((text) => parseTypeExpression(text, resolver)),
+        returns: parseTypeExpression(operator.returns, resolver),
+      };
+      const metadata = { deterministic: true, origin: `type:${definition.name}` };
+      // The comparisons a constructible type implies of itself are its field-wise equality;
+      // any other `==` or `!=` it declares passes the door a host's registration does.
+      if (!(registered.constructible && isOwnComparison({ signature, metadata }, definition.name))) {
+        this.refuseConstructibleEquality(signature);
+      }
+      this.registry.register(signature, metadata);
     }
     this.compiled.clear();
     return this;
@@ -533,6 +573,7 @@ export class CelEnvironment {
       declaredVariableNames: () => [...this.variables.keys()],
       namespaceFunction: (namespace, name) => this.namespaceFunctions.get(namespace)?.get(name),
       namespaceIsOpen: (namespace) => this.openNamespaces.has(namespace),
+      construction: this.constructionTypes(),
       options: {
         unlistedVariablesAreDyn: this.options.unlistedVariablesAreDyn,
         homogeneousAggregateLiterals: this.options.homogeneousAggregateLiterals,
@@ -624,8 +665,23 @@ export class CelEnvironment {
       constants: this.constants,
       nominalArity: (name) => this.types.get(name)?.parameters.length,
       nominalFields: (name) => this.types.get(name)?.fieldNames,
+      constructibleFields: (name) => {
+        const registered = this.types.get(name);
+        return registered?.constructible ? registered.fieldNames : undefined;
+      },
+      construction: this.constructionTypes(),
       // The same declarations the checker splits a dotted chain on.
       declares: (name) => this.variables.has(name),
+    };
+  }
+
+  /** What a construction's name is resolved against — one reading for the checker and the backends. */
+  private constructionTypes(): ConstructionTypes {
+    return {
+      registeredType: (name) => this.types.get(name),
+      registeredTypes: () => [...this.types.values()],
+      languageTypeNames: new Set(languageTypeNames(this.options.enableOptionalTypes)),
+      functions: () => this.registry.list().map((entry) => entry.signature),
     };
   }
 
@@ -699,6 +755,9 @@ export class CelEnvironment {
                 [...registered.self.fields].map(([field, type]) => [field, formatType(type)]),
               ),
             }),
+        ...(registered.constructible
+          ? { constructible: { required: registered.required, builder: registered.construct !== undefined } }
+          : {}),
         ...(registered.definition.description === undefined
           ? {}
           : { description: registered.definition.description }),

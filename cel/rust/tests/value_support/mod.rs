@@ -107,5 +107,5 @@ pub fn signature(key: &str) -> CelSignature {
 /// What the implementation behind a dispatch key answers, called about [`RANGE`].
 pub fn call(key: &str, args: &[CelValue]) -> CelValue {
     let implementation = implementation_of(&signature(key)).unwrap_or_else(|| panic!("{key} has an implementation"));
-    implementation(&CelCallContext { range: Some(RANGE) }, args)
+    implementation(&CelCallContext::new(Some(RANGE)), args)
 }

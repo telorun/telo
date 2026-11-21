@@ -163,6 +163,31 @@ export interface CelConditionalNode extends Ranged {
 }
 
 /**
+ * One field written in a construction: `field: value`, and `?field: value` when
+ * `optional`, whose value holds an `optional<T>` and leaves the field unset when absent.
+ */
+export interface CelStructEntry extends Ranged {
+  readonly field: string;
+  readonly fieldRange: SourceRange;
+  readonly value: CelNode;
+  readonly optional: boolean;
+}
+
+/**
+ * `Name{field: value, …}`: a value of a named type, built from the fields written. The
+ * name is dotted text (`a.b.C`) and is resolved against the registered types alone;
+ * `absolute` marks the leading dot of `.Name{…}`, which resolves the same and is kept so
+ * the source writes back as it was read.
+ */
+export interface CelStructNode extends Ranged {
+  readonly kind: "struct";
+  readonly typeName: string;
+  readonly typeNameRange: SourceRange;
+  readonly absolute: boolean;
+  readonly entries: readonly CelStructEntry[];
+}
+
+/**
  * The hole error recovery leaves where an expression was expected and none could
  * be read. It stands for text the parser could not make sense of, so the tree
  * around it stays usable; it is never serializable and never evaluable.
@@ -176,6 +201,7 @@ export type CelNode =
   | CelIdentNode
   | CelListNode
   | CelMapNode
+  | CelStructNode
   | CelSelectNode
   | CelIndexNode
   | CelCallNode
@@ -197,6 +223,8 @@ export function childNodes(node: CelNode): readonly CelNode[] {
       return node.elements.map((element) => element.value);
     case "map":
       return node.entries.flatMap((entry) => [entry.key, entry.value]);
+    case "struct":
+      return node.entries.map((entry) => entry.value);
     case "select":
       return [node.operand];
     case "index":

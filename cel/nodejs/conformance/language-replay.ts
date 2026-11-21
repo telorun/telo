@@ -18,6 +18,7 @@ import {
   serializeTree,
   treesEqual,
   type CelValue,
+  type NominalTypeDefinition,
   type ResolvedCall,
   type TypeDeclaration,
 } from "../src/index.js";
@@ -39,7 +40,7 @@ import {
 export const DRIVEN_FILE = "language.json";
 
 /** How many rows the file holds. A row deleted leaves every other count true, so it is pinned. */
-export const LANGUAGE_ROWS = 1836;
+export const LANGUAGE_ROWS = 1882;
 
 /** The prefix of an authored row's id: a row cel-spec's import did not produce. */
 export const AUTHORED_ROW_PREFIX = "telo/";
@@ -82,6 +83,8 @@ export interface LanguageRow {
   readonly id: string;
   readonly source: string;
   readonly provenance?: { readonly file: string; readonly section: string; readonly test: string };
+  /** The types the row registers, as definition data in registration order, none with a builder. */
+  readonly types?: readonly NominalTypeDefinition[];
   readonly declarations?: Readonly<Record<string, unknown>>;
   readonly functions?: readonly { readonly signature: string }[];
   readonly bindings?: Readonly<Record<string, unknown>>;
@@ -110,7 +113,21 @@ export type DeviationReason = (typeof DEVIATION_REASONS)[number];
 /** The parts of cel-spec's outcome a `deviation.celSpec` may state. */
 export const CEL_SPEC_PARTS = ["value", "error", "type", "unknown"] as const;
 
-const ROW_KEYS = ["id", "source", "provenance", "declarations", "functions", "bindings", "expect", "deviation"];
+const ROW_KEYS = ["id", "source", "provenance", "types", "declarations", "functions", "bindings", "expect", "deviation"];
+/** What a `types` entry may say: a type definition's own keys, and no implementation. */
+const TYPE_KEYS = [
+  "name",
+  "base",
+  "parameters",
+  "operators",
+  "comparisons",
+  "conversions",
+  "members",
+  "fields",
+  "constructible",
+  "required",
+  "description",
+];
 const EXPECT_KEYS = ["check", "value", "error"];
 const ERROR_KEYS = ["code", "celCode", "message", "range"];
 const DEVIATION_KEYS = ["celSpec", "reason", "uncarried"];
@@ -129,10 +146,17 @@ export function languageEnvironment(): CelEnvironment {
   });
 }
 
-/** The environment a row is CHECKED in: its declarations and its functions. */
-export function checkEnvironment(base: CelEnvironment, row: LanguageRow): CelEnvironment {
-  if (!row.declarations && !row.functions) return base;
+/** The row's types registered onto a copy of the environment, in the order the row lists them. */
+function withTypes(base: CelEnvironment, row: LanguageRow): CelEnvironment {
   const environment = base.clone();
+  for (const definition of row.types ?? []) environment.registerType(definition);
+  return environment;
+}
+
+/** The environment a row is CHECKED in: its types, its declarations and its functions. */
+export function checkEnvironment(base: CelEnvironment, row: LanguageRow): CelEnvironment {
+  if (!row.types && !row.declarations && !row.functions) return base;
+  const environment = withTypes(base, row);
   for (const [name, declaration] of Object.entries(row.declarations ?? {})) {
     environment.registerVariable(name, declaration as TypeDeclaration);
   }
@@ -141,15 +165,16 @@ export function checkEnvironment(base: CelEnvironment, row: LanguageRow): CelEnv
 }
 
 /**
- * The environment a row is EVALUATED in: its functions, and none of its declarations. A
+ * The environment a row is EVALUATED in: its types and its functions, and none of its
+ * declarations. A
  * declared function is a signature with no implementation, so a call that resolves to it
  * answers `unbound_function`, naming the function and the signature it resolved to; its
  * arguments are evaluated first, since their types choose the overload.
  */
 export function evaluationEnvironment(base: CelEnvironment, row: LanguageRow): CelEnvironment {
-  if (!row.functions || row.functions.length === 0) return base;
-  const environment = base.clone();
-  for (const declared of row.functions) environment.registerFunction(declared.signature);
+  if (!row.types && (!row.functions || row.functions.length === 0)) return base;
+  const environment = withTypes(base, row);
+  for (const declared of row.functions ?? []) environment.registerFunction(declared.signature);
   return environment;
 }
 
@@ -304,6 +329,22 @@ export function rowShapeProblems(row: LanguageRow, afterAuthored: boolean): stri
       PROVENANCE_KEYS.some((key) => typeof provenance[key] !== "string")
     ) {
       problems.push("is a cel-spec row without a `provenance` of `file`, `section` and `test`");
+    }
+  }
+  const types = (row as { types?: unknown }).types;
+  if (types !== undefined) {
+    if (!Array.isArray(types) || types.length === 0) problems.push("carries `types` that is not a non-empty list");
+    else {
+      for (const definition of types as unknown[]) {
+        if (
+          !isPlainObject(definition) ||
+          unknownKeys(definition, TYPE_KEYS).length > 0 ||
+          typeof definition.name !== "string" ||
+          typeof definition.base !== "string"
+        ) {
+          problems.push(`declares a type that is not definition data with a \`name\` and a \`base\`: ${JSON.stringify(definition)}`);
+        }
+      }
     }
   }
   for (const declared of row.functions ?? []) {

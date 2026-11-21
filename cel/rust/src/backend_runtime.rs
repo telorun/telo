@@ -25,9 +25,11 @@
 //!   dispatch and a host implementation's answer — no Rust value can be awaited or be
 //!   `undefined`.
 //! - `NamespaceDispatch` — it is `EvaluateOptions::namespace_function`'s type.
-//! - `EvaluationFrame`, `CelStep`, `CompileTarget`, `MemberReads`, `memberReadsOf`,
-//!   `callSiteOf` — the emitter-facing shape of a step; the evaluator's frame, its
-//!   snapshot and its sites are crate-private here.
+//! - `EvaluationFrame`, `CelStep`, `MemberReads`, `memberReadsOf`, `callSiteOf`,
+//!   `constructionSiteOf` — the emitter-facing shape of a step; the evaluator's frame,
+//!   its snapshot, its compile target and its sites are crate-private here.
+//! - `CompileTarget.registry`, `constants`, `nominalArity` and `nominalFields` — the
+//!   snapshot carries them to the evaluation, and the target holds what a compile decides.
 //! - `CallSite`'s array entry point `call` and its `call0` … `call4` — one entry point
 //!   takes the arguments as a slice of the operand stack.
 //!
@@ -41,13 +43,17 @@ use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use telorun_cel_value::{
-    cel_error, cel_none, cel_some, cel_type_name_of, json_quote, CelEvaluationCode, CelValue, PropertyMap, SourceRange,
+    cel_error, cel_none, cel_some, cel_type_name_of, json_quote, CelEvaluationCode, CelHostValue, CelValue, PropertyMap,
+    SourceRange,
 };
 
 use crate::activation::CelActivation;
 use crate::bounded_cache::BoundedCache;
-use crate::cel_type::{list_of, map_of, optional_of, CelType, NominalType, BOOL, BYTES, DOUBLE, DURATION, DYN, INT, NULL, STRING, TIMESTAMP, TYPE, UINT};
-use crate::function_registry::{FunctionRegistry, Resolution, ResolutionFailure};
+use crate::construction::{construction_target, field_value_refusal_message, written_field_refusal, ConstructionTypes};
+use crate::nominal_type::CelConstruct;
+use crate::value_equality::ConstructibleFields;
+use crate::cel_type::{is_dyn, list_of, map_of, optional_of, CelType, NominalType, BOOL, BYTES, DOUBLE, DURATION, DYN, INT, NULL, STRING, TIMESTAMP, TYPE, UINT};
+use crate::function_registry::{argument_fits, FunctionRegistry, Resolution, ResolutionFailure};
 use crate::member_read::{cel_has, cel_lookup, cel_read, lookup_absence, lookup_error, HostFields, Lookup};
 use crate::runtime_library::{implementation_of, CelCallContext, CelImplementation, CALL_SITE_DIRECT_ARITY};
 use crate::signature::{format_signature, CallForm, CelSignature};
@@ -119,11 +125,30 @@ pub(crate) fn compile_error(message: impl Into<String>) -> CelCompileError {
 pub const CALL_SITE_CACHE_CAPACITY: usize = 16;
 
 /// What a registered named type is at evaluation: how many type arguments it takes, for
-/// dispatch on one of its values, and the fields the member-read seam answers of them.
-#[derive(Clone, Debug)]
+/// dispatch on one of its values, the fields the member-read seam answers of them, and
+/// whether its values are their fields, which the engine's equality then compares.
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub(crate) struct NominalRuntime {
     pub(crate) arity: usize,
     pub(crate) fields: Option<HashSet<String>>,
+    pub(crate) constructible: bool,
+}
+
+impl ConstructibleFields for HashMap<String, NominalRuntime> {
+    fn constructible(&self, type_name: &str) -> Option<&HashSet<String>> {
+        self.get(type_name).filter(|held| held.constructible)?.fields.as_ref()
+    }
+}
+
+/// What a compile reads of the environment it compiles against: whether a host declared a
+/// name — a dotted one included — which decides where a chain splits, through the same
+/// function the checker uses; the named types, which a call site hands the engine's
+/// equality; and the registered types a construction's name is resolved against, as the
+/// checker resolves it.
+pub(crate) struct CompileTarget<'e> {
+    pub(crate) declares: &'e dyn Fn(&str) -> bool,
+    pub(crate) types: Arc<HashMap<String, NominalRuntime>>,
+    pub(crate) construction: ConstructionTypes<'e>,
 }
 
 /// What a program compiled against, shared and never changed.
@@ -350,12 +375,14 @@ pub(crate) struct CallSite {
 }
 
 impl CallSite {
-    pub(crate) fn new(name: &str, form: CallForm, range: SourceRange) -> Self {
+    /// A site over the environment's named types, which its context carries to the
+    /// engine's equality.
+    pub(crate) fn new(name: &str, form: CallForm, range: SourceRange, types: Arc<HashMap<String, NominalRuntime>>) -> Self {
         let capacity = NonZeroUsize::new(CALL_SITE_CACHE_CAPACITY).expect("a call site remembers at least one resolution");
         Self {
             name: name.into(),
             form,
-            context: CelCallContext { range: Some(range) },
+            context: CelCallContext::of_site(range, types),
             first: OnceLock::new(),
             resolved: Mutex::new(BoundedCache::new(capacity)),
         }
@@ -466,6 +493,119 @@ fn runtime_type(value: &CelValue, snapshot: &EnvironmentSnapshot) -> CelType {
                 args: vec![DYN; arity].into(),
                 fields: None,
             })
+        }
+    }
+}
+
+// --- one construction ----------------------------------------------------------
+
+/// What a construction builds once its name resolved and its fields were accepted.
+struct ConstructionBuild {
+    type_name: Box<str>,
+    self_type: NominalType,
+    fields: Box<[ConstructionField]>,
+    construct: Option<CelConstruct>,
+    context: CelCallContext,
+}
+
+/// One written field: its name, the range of its value, and its declared type — nothing
+/// where that is `dyn` — with the first type name it admitted.
+struct ConstructionField {
+    name: Box<str>,
+    value_range: SourceRange,
+    declared: Option<CelType>,
+    admitted: OnceLock<Box<str>>,
+}
+
+/// One construction `Name{field: value, …}`, decided once where it is compiled: the type
+/// its name resolves to, through the same resolution the checker reports from, and the
+/// builder. A name that builds no value, or a field its type refuses, is answered at
+/// evaluation, after the values, as a call no overload takes is.
+///
+/// Each written value is then held to its field's declared type by the test dispatch
+/// admits an argument with, before any builder is called; a field remembers the first
+/// type name it admitted, where Node's remembers the last.
+pub(crate) struct ConstructionSite {
+    outcome: Result<ConstructionBuild, CelValue>,
+}
+
+impl ConstructionSite {
+    pub(crate) fn new(
+        type_name: &str,
+        fields: &[(&str, SourceRange)],
+        range: SourceRange,
+        types: &ConstructionTypes<'_>,
+    ) -> Self {
+        let refused = |code: CelEvaluationCode, message: String| Err(cel_error(code, message, Some(range)).into());
+        let names: Vec<&str> = fields.iter().map(|(name, _)| *name).collect();
+        let outcome = match construction_target(type_name, types) {
+            Err(refusal) => refused(CelEvaluationCode::NoMatchingOverload, refusal.message),
+            Ok(registered) => match written_field_refusal(&registered.self_type, &names) {
+                Some((_, message)) => refused(CelEvaluationCode::InvalidArgument, message),
+                None => {
+                    let declared = registered.self_type.fields.as_ref().expect("a constructible type declares its fields");
+                    Ok(ConstructionBuild {
+                        type_name: type_name.into(),
+                        self_type: registered.self_type.clone(),
+                        fields: fields
+                            .iter()
+                            .map(|(name, value_range)| {
+                                let ty = declared.get(name).expect("a written field was accepted");
+                                ConstructionField {
+                                    name: (*name).into(),
+                                    value_range: *value_range,
+                                    declared: (!is_dyn(ty)).then(|| ty.clone()),
+                                    admitted: OnceLock::new(),
+                                }
+                            })
+                            .collect(),
+                        construct: registered.construct.clone(),
+                        context: CelCallContext::new(Some(range)),
+                    })
+                }
+            },
+        };
+        Self { outcome }
+    }
+
+    /// The value, from the written fields' values in source order — already evaluated and
+    /// free of errors — with nothing for an optional entry that was absent.
+    pub(crate) fn build(&self, values: Vec<Option<CelValue>>, snapshot: &EnvironmentSnapshot) -> CelValue {
+        let build = match &self.outcome {
+            Err(refusal) => return refusal.clone(),
+            Ok(build) => build,
+        };
+        for (field, value) in build.fields.iter().zip(&values) {
+            let (Some(value), Some(declared)) = (value, &field.declared) else { continue };
+            let held = cel_type_name_of(value);
+            if held.is_some() && field.admitted.get().is_some_and(|admitted| Some(&**admitted) == held) {
+                continue;
+            }
+            if let Some(name) = held {
+                if argument_fits(&runtime_type(value, snapshot), declared) {
+                    let _ = field.admitted.set(name.into());
+                    continue;
+                }
+            }
+            return cel_error(
+                CelEvaluationCode::InvalidArgument,
+                field_value_refusal_message(&build.self_type, &field.name, declared, held),
+                Some(field.value_range),
+            )
+            .into();
+        }
+        let mut written = PropertyMap::new();
+        for (field, value) in build.fields.iter().zip(values) {
+            if let Some(value) = value {
+                written.insert(&*field.name, value);
+            }
+        }
+        match &build.construct {
+            Some(construct) => construct(&build.context, &written),
+            None => CelValue::Host(
+                CelHostValue::with_entries(&*build.type_name, Arc::new(()), written)
+                    .expect("a registered type's name is not one of the engine's own value keys"),
+            ),
         }
     }
 }

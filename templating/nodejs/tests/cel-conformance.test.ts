@@ -340,15 +340,17 @@ describe("CEL conformance vectors", () => {
    * engines nonetheless cannot produce, so no row can pin one. Declared here rather than
    * silently missing, and held to being unreachable below.
    *
-   * All four need an environment these engines do not build. A module's names are registered
+   * All of them need an environment these engines do not build. A module's names are registered
    * `open`, which answers nothing for a name the host declared no function for, and they
    * withhold the parameter list, so there is no arity and no argument to mismatch — whether a
    * call reaches a function and whether it fits are the analyzer's verdicts against its own
-   * environment. `CEL_TYPE_ARGUMENT_MISMATCH` needs a parameterized value type on both sides,
+   * environment. `CEL_MISSING_FIELD` needs a constructible type, and the dialect registers
+   * none, so every construction is refused before a field is judged. `CEL_TYPE_ARGUMENT_MISMATCH` needs a parameterized value type on both sides,
    * and the brands registered here are nominal: a type argument is the schema layer's and is
    * erased at the CEL boundary.
    */
   const UNREACHABLE_DIAGNOSTICS = [
+    "CEL_MISSING_FIELD",
     "CEL_TYPE_ARGUMENT_MISMATCH",
     "FUNCTION_ARGUMENT_MISMATCH",
     "FUNCTION_ARITY_MISMATCH",

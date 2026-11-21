@@ -1,8 +1,8 @@
 //! Compiling and evaluating recurse with nothing: a tree a hundred thousand deep is
 //! compiled, evaluated and released on a stack of 256 KiB, in a debug build — every
 //! construct whose nesting nests a program: operators, `&&` and `||` both ways round, the
-//! conditional, aggregates, a call, a namespaced call, `cel.bind`, each comprehension and
-//! a member chain.
+//! conditional, aggregates and constructions, a call, a namespaced call, `cel.bind`, each
+//! comprehension and a member chain.
 //!
 //! No Node test file is the twin of this one, and every answer here is this crate's own:
 //! Node's closure backend recurses with the tree, compiling and evaluating, and throws
@@ -17,7 +17,7 @@ use std::sync::Arc;
 use support::{binary, literal_bool};
 use telorun_cel::{
     CelCallContext, CelEnvironment, CelEnvironmentOptions, CelExpression, CelParseLimits, CelValue, NamespaceImplementation,
-    EvaluateOptions, NamespaceOptions, PropertyMap,
+    EvaluateOptions, NamespaceOptions, NominalTypeDefinition, PropertyMap,
 };
 use value_support::{i, rec};
 
@@ -39,6 +39,15 @@ fn deep_environment() -> CelEnvironment {
         ..Default::default()
     });
     environment.register_namespace("Ns", vec!["f(int): int".into()], NamespaceOptions::default()).unwrap();
+    environment
+        .register_type(NominalTypeDefinition {
+            name: "Box".into(),
+            base: "dyn".into(),
+            fields: Some([("held", "dyn".to_string())].into_iter().collect()),
+            constructible: true,
+            ..Default::default()
+        })
+        .unwrap();
     environment
 }
 
@@ -107,6 +116,9 @@ fn evaluates_aggregates_a_hundred_thousand_deep() {
         assert_eq!(list_depth(&lists), DEEP);
         let maps = evaluated(&format!("{}1{}['k']", "{'k': ".repeat(DEEP), "}".repeat(DEEP)), &none);
         let CelValue::Map(_) = maps else { panic!("a map") };
+        // Two constructions as deep compare field by field, down to the innermost.
+        let boxed = format!("{}1{}", "Box{held: ".repeat(DEEP), "}".repeat(DEEP));
+        assert_eq!(evaluated(&format!("{boxed} == {boxed}"), &none), CelValue::Bool(true));
     });
 }
 

@@ -217,6 +217,39 @@ fn reads_an_optional_entry_only_where_the_optional_syntax_is_enabled() {
 }
 
 #[test]
+fn reads_a_construction_its_dotted_name_its_leading_dot_and_its_optional_entries_each_ranged() {
+    let x = |start, end| struct_entry("x", (2, 3), literal_int(1, 5, 6), false, start, end);
+    assert_reads_as_node(vec![
+        reading(
+            ".a.B{x: 1, ?y: z}",
+            optional_syntax(),
+            construction(
+                "a.B",
+                (1, 4),
+                true,
+                vec![
+                    struct_entry("x", (5, 6), literal_int(1, 8, 9), false, 5, 9),
+                    struct_entry("y", (12, 13), ident("z", false, 15, 16), true, 11, 16),
+                ],
+                0,
+                17,
+            ),
+            None,
+        ),
+        reading("B{}", defaults(), construction("B", (0, 1), false, vec![], 0, 3), None),
+        reading("B{x: 1,}", defaults(), construction("B", (0, 1), false, vec![x(2, 6)], 0, 8), None),
+        // Every segment of the name and every field is an identifier, so none of these opens one.
+        reading("a.in{}", defaults(), select(ident("a", false, 0, 1), "in", (2, 4), false, false, 0, 4), Some(diagnostic(CelSyntaxCode::UnexpectedToken, "\"{\" cannot stand here", 4, 5))),
+        reading("a.?b{}", optional_syntax(), select(ident("a", false, 0, 1), "b", (3, 4), true, false, 0, 4), Some(diagnostic(CelSyntaxCode::UnexpectedToken, "\"{\" cannot stand here", 4, 5))),
+        reading("(a){}", defaults(), ident("a", false, 1, 2), Some(diagnostic(CelSyntaxCode::UnexpectedToken, "\"{\" cannot stand here", 3, 4))),
+        reading("B{if: 1}", defaults(), construction("B", (0, 1), false, vec![], 0, 2), Some(diagnostic(CelSyntaxCode::ReservedIdentifier, "\"if\" is a reserved word and cannot be used as a name", 2, 4))),
+        reading("B{`x`: 1}", defaults(), construction("B", (0, 1), false, vec![], 0, 2), Some(diagnostic(CelSyntaxCode::UnexpectedToken, "\"`x`\" cannot stand here, expected \"a name\"", 2, 5))),
+        // Off, an optional entry's question mark is a misplaced token.
+        reading("B{?x: 1}", defaults(), construction("B", (0, 1), false, vec![], 0, 2), Some(diagnostic(CelSyntaxCode::UnexpectedToken, "\"?\" cannot stand here, expected \"a name\"", 2, 3))),
+    ]);
+}
+
+#[test]
 fn reads_a_name_a_dot_opens_as_an_absolute_one() {
     assert_reads_as_node(vec![
         reading(".y", defaults(), ident("y", true, 0, 2), None),
@@ -285,6 +318,20 @@ fn reads_any_word_as_a_member_name() {
 fn keeps_the_longest_prefix_it_read_and_says_where_it_stopped() {
     assert_reads_as_node(vec![
         reading("1 + ", defaults(), binary("+", literal_int(1, 0, 1), unparsed(4, 4), 0, 4), Some(diagnostic(CelSyntaxCode::UnexpectedEnd, "the expression ends before it is complete", 4, 4))),
+    ]);
+}
+
+#[test]
+fn keeps_the_fields_a_construction_read_before_it_stopped() {
+    let x = struct_entry("x", (2, 3), literal_int(1, 5, 6), false, 2, 6);
+    assert_reads_as_node(vec![
+        reading(
+            "B{x: 1, y",
+            defaults(),
+            construction("B", (0, 1), false, vec![x.clone(), struct_entry("y", (8, 9), unparsed(9, 9), false, 8, 9)], 0, 9),
+            Some(diagnostic(CelSyntaxCode::UnexpectedEnd, "the expression ends before it is complete, expected \":\"", 9, 9)),
+        ),
+        reading("B{x: 1, 2: 3}", defaults(), construction("B", (0, 1), false, vec![x], 0, 6), Some(diagnostic(CelSyntaxCode::UnexpectedToken, "\"2\" cannot stand here, expected \"a name\"", 8, 9))),
     ]);
 }
 

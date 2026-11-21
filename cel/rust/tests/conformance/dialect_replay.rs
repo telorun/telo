@@ -41,7 +41,7 @@ use super::language_replay::type_declaration;
 pub const CATALOG_FILE: &str = "catalog.json";
 pub const CATALOG_ROWS: usize = 195;
 pub const TYPES_FILE: &str = "types.json";
-pub const TYPES_ROWS: usize = 74;
+pub const TYPES_ROWS: usize = 75;
 
 /// The inputs only a tag site has, which a row of these two files may not carry.
 pub const TAG_SITE_INPUTS: [&str; 6] = ["context", "explain", "rootsDeclared", "couldNameModule", "modules", "functions"];

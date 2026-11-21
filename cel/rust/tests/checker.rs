@@ -31,6 +31,16 @@ fn strict() -> CelEnvironment {
             ..Default::default()
         })
         .unwrap();
+    environment
+        .register_type(NominalTypeDefinition {
+            name: "Place".into(),
+            base: "dyn".into(),
+            fields: Some([("street", "string".to_string())].into_iter().collect()),
+            constructible: true,
+            required: vec!["street".into()],
+            ..Default::default()
+        })
+        .unwrap();
     environment.register_variable("strings", "Holder<string>", None).unwrap();
     environment.register_variable("ints", "Holder<int>", None).unwrap();
     environment.register_function("firstText(Holder<string>): string", FunctionMetadata::default()).unwrap();
@@ -51,6 +61,9 @@ fn causes() -> Vec<(CelCheckCode, check_support::Row)> {
         (TypeArgumentMismatch, ("firstText(ints)", "dyn", vec![found(TypeArgumentMismatch, "Holder<int> and Holder<string> are the same type with different type arguments, which never match", 0, 15)])),
         (NullableAccess, ("request.body.id", "string", vec![found(NullableAccess, "\"request.body\" may be null \u{2014} guard it (e.g. 'request.body != null && \u{2026}' or 'request.body == null ? \u{2026} : request.body.id') before reading .id", 13, 15)])),
         (InvalidArgument, ("has(1)", "bool", vec![found(InvalidArgument, "has() asks whether a member is there, so it takes a member read: write has(a.b)", 4, 5)])),
+        (UnknownType, ("Shop{}", "dyn", vec![found(UnknownType, "no type named \"Shop\" is registered \u{2014} the closest constructible: Place", 0, 4)])),
+        (TypeNotConstructible, ("int{}", "dyn", vec![found(TypeNotConstructible, "\"int\" is a language type and has no fields; write a literal or a conversion", 0, 3)])),
+        (MissingField, ("Place{}", "Place", vec![found(MissingField, "Place requires the field \"street\", and this construction does not write it", 0, 7)])),
         (FunctionUnresolved, ("Billing.missing(1)", "dyn", vec![found(FunctionUnresolved, "\"Billing\" declares no function named \"missing\"", 0, 18)])),
         (FunctionArityMismatch, ("Billing.total(1)", "int", vec![found(FunctionArityMismatch, "Billing.total takes 2 arguments, and 1 is written", 0, 16)])),
         (FunctionArgumentMismatch, ("Billing.total(1, 'two')", "int", vec![found(FunctionArgumentMismatch, "Billing.total takes int here, and this argument is string", 17, 22)])),
@@ -85,6 +98,9 @@ fn decides_every_code_of_its_declared_vocabulary() {
             "CEL_TYPE_ARGUMENT_MISMATCH",
             "CEL_NULLABLE_ACCESS",
             "CEL_INVALID_ARGUMENT",
+            "CEL_UNKNOWN_TYPE",
+            "CEL_TYPE_NOT_CONSTRUCTIBLE",
+            "CEL_MISSING_FIELD",
             "FUNCTION_UNRESOLVED",
             "FUNCTION_ARITY_MISMATCH",
             "FUNCTION_ARGUMENT_MISMATCH",

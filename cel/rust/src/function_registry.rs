@@ -150,8 +150,7 @@ impl FunctionRegistry {
     /// distance over UTF-16 code units, then name, at most
     /// [`UNKNOWN_FUNCTION_CANDIDATES`]. A name that is not a name is never offered.
     pub fn candidate_names(&self, wanted: &str, form: CallForm, arity: usize) -> Vec<String> {
-        let wanted_units: Vec<u16> = wanted.encode_utf16().collect();
-        let mut matching: Vec<(usize, &String)> = self
+        let matching: Vec<&String> = self
             .by_name
             .iter()
             .filter(|(name, _)| name.as_str() != wanted)
@@ -161,10 +160,9 @@ impl FunctionRegistry {
                     entry.function.signature.form() == form && entry.function.signature.parameters.len() == arity
                 })
             })
-            .map(|(name, _)| (edit_distance(&wanted_units, &name.encode_utf16().collect::<Vec<_>>()), name))
+            .map(|(name, _)| name)
             .collect();
-        matching.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| compare_code_units(left.1, right.1)));
-        matching.into_iter().take(UNKNOWN_FUNCTION_CANDIDATES).map(|(_, name)| name.clone()).collect()
+        nearest_candidates(wanted, matching, |name| name.as_str(), |name| name.as_str()).into_iter().cloned().collect()
     }
 
     /// The function a call resolves to. `receiver` is the type the call is written on,
@@ -294,6 +292,12 @@ fn fits(pairs: &[(&CelType, &CelType)], bindings: &mut HashMap<String, CelType>,
     true
 }
 
+/// Whether dispatch would take a value of `argument` where `parameter` is wanted: the same
+/// loose test a call site resolves on, so a `dyn` element or argument is admitted.
+pub(crate) fn argument_fits(argument: &CelType, parameter: &CelType) -> bool {
+    fits(&[(argument, parameter)], &mut HashMap::new(), true)
+}
+
 /// The type with every bound parameter replaced; an unbound one stays as it is. A union
 /// and a record are left as they are, as on Node.
 pub fn substitute(ty: &CelType, bindings: &HashMap<String, CelType>) -> CelType {
@@ -357,6 +361,27 @@ pub fn substitute(ty: &CelType, bindings: &HashMap<String, CelType>) -> CelType 
         }
     }
     results.pop().expect("the root is substituted last").0
+}
+
+/// The candidates nearest a name as written, at most [`UNKNOWN_FUNCTION_CANDIDATES`]: by the
+/// edit distance of each one's name, then by its text in code-unit order. One rule for every
+/// refusal that names what would have worked, so each list is the same on every engine.
+pub(crate) fn nearest_candidates<T>(
+    wanted: &str,
+    candidates: Vec<T>,
+    name_of: impl Fn(&T) -> &str,
+    text_of: impl Fn(&T) -> &str,
+) -> Vec<T> {
+    let wanted_units: Vec<u16> = wanted.encode_utf16().collect();
+    let mut ranked: Vec<(usize, Vec<u16>, T)> = candidates
+        .into_iter()
+        .map(|candidate| {
+            let distance = edit_distance(&wanted_units, &name_of(&candidate).encode_utf16().collect::<Vec<_>>());
+            (distance, text_of(&candidate).encode_utf16().collect(), candidate)
+        })
+        .collect();
+    ranked.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
+    ranked.into_iter().take(UNKNOWN_FUNCTION_CANDIDATES).map(|(_, _, candidate)| candidate).collect()
 }
 
 /// Levenshtein distance in UTF-16 code units.

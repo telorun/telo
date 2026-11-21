@@ -534,7 +534,7 @@ fn answers_each_row_as_node_does() {
 /// does: the catalog's own refusal, as Node's `catalogImplementation` answers it.
 #[test]
 fn refuses_a_value_its_signature_does_not_take_in_the_catalogs_words() {
-    let ctx = CelCallContext { range: Some(SourceRange { start: 0, end: 1 }) };
+    let ctx = CelCallContext::new(Some(SourceRange { start: 0, end: 1 }));
     let call = |key: &str, args: &[CelValue]| {
         let value = catalog_implementation(key, &CelCatalogHandlers::default()).unwrap()(&ctx, args);
         match &value {

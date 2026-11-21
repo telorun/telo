@@ -90,6 +90,9 @@ fn writes_each_expression_back_to_an_equal_tree() {
             (".y", ".y"),
             (".y.z", ".y.z"),
             ("[1].map(y, .y)", "[1].map(y, .y)"),
+            ("B{}", "B{}"),
+            (".a.B{x: 1, y: [2]}", ".a.B{x: 1, y: [2]}"),
+            ("-B{x: 1}.x", "-B{x: 1}.x"),
         ],
     );
 }
@@ -103,6 +106,7 @@ fn writes_each_optional_entry_back_to_an_equal_tree() {
             ("[?a, b]", "[?a, b]"),
             ("{?'k': v}", "{?\"k\": v}"),
             ("{?'k': v, 'j': w}", "{?\"k\": v, \"j\": w}"),
+            ("B{?x: v, y: w}", "B{?x: v, y: w}"),
         ],
     );
 }
@@ -337,7 +341,18 @@ fn writes_or_refuses_every_name_member_and_field_as_node_does() {
         (select(ident("a", false, 0, 0), "a\rb", (0, 0), false, false, 0, 0), Err("\"a\\rb\" cannot be written as a member name")),
         (select(ident("a", false, 0, 0), "", (0, 0), false, true, 0, 0), Err("\"\" cannot be written as a member name")),
         (select(ident("a", false, 0, 0), "", (0, 0), false, false, 0, 0), Err("\"\" cannot be written as a member name")),
+        (construction("a.B", (0, 0), true, vec![field("x", literal_int(1, 0, 0))], 0, 0), Ok(".a.B{x: 1}")),
+        (construction("B", (0, 0), false, vec![field("in", literal_int(1, 0, 0))], 0, 0), Err("\"in\" is not a name, so it cannot be written as a field name")),
+        (construction("B", (0, 0), false, vec![field("a-b", literal_int(1, 0, 0))], 0, 0), Err("\"a-b\" is not a name, so it cannot be written as a field name")),
+        (construction("a.if.B", (0, 0), false, vec![], 0, 0), Err("\"if\" is not a name, so it cannot be written as a type name")),
+        (construction("a..B", (0, 0), false, vec![], 0, 0), Err("\"\" is not a name, so it cannot be written as a type name")),
+        (construction("a-b", (0, 0), false, vec![], 0, 0), Err("\"a-b\" is not a name, so it cannot be written as a type name")),
     ]);
+}
+
+/// `field: value`, every range empty.
+fn field(name: &str, value: std::sync::Arc<telorun_cel::CelNode>) -> telorun_cel::CelStructEntry {
+    struct_entry(name, (0, 0), value, false, 0, 0)
 }
 
 #[test]
@@ -415,6 +430,8 @@ fn reports_the_first_fault_in_the_order_the_text_is_written() {
         (select(ident("if", false, 0, 0), "a`b", (0, 0), false, false, 0, 0), Err("\"if\" is not a name, so it cannot be written as a name")),
         (qualified_call("if", (0, 0), "a b", (0, 0), vec![unparsed(0, 0)], 0, 0), Err("\"if\" is not a name, so it cannot be written as a namespace")),
         (qualified_call("M", (0, 0), "a b", (0, 0), vec![unparsed(0, 0)], 0, 0), Err("\"a b\" is not a name, so it cannot be written as a function name")),
+        (construction("if", (0, 0), false, vec![field("x", unparsed(0, 0))], 0, 0), Err("\"if\" is not a name, so it cannot be written as a type name")),
+        (construction("B", (0, 0), false, vec![field("if", unparsed(0, 0))], 0, 0), Err("\"if\" is not a name, so it cannot be written as a field name")),
         (qualified_call("M", (0, 0), "f", (0, 0), vec![unparsed(0, 0), ident("if", false, 0, 0)], 0, 0), Err("an unparsed expression has no source to write")),
         (list(vec![element(unparsed(0, 0), false), element(ident("if", false, 0, 0), false)], 0, 0), Err("an unparsed expression has no source to write")),
         (list(vec![element(ident("if", false, 0, 0), false), element(unparsed(0, 0), false)], 0, 0), Err("\"if\" is not a name, so it cannot be written as a name")),

@@ -8749,6 +8749,66 @@
         },
         "value": "text"
       }
+    },
+    {
+      "id": "verdicts/CEL_TYPE_NOT_CONSTRUCTIBLE/language_type",
+      "tag": "cel",
+      "source": "int{}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_NOT_CONSTRUCTIBLE",
+              "message": "\"int\" is a language type and has no fields; write a literal or a conversion"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 5
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "celCode": "no_matching_overload",
+          "message": "\"int\" is a language type and has no fields; write a literal or a conversion"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_TYPE/unregistered_name",
+      "tag": "cel",
+      "source": "Shop{}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_TYPE",
+              "message": "no type named \"Shop\" is registered"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 6
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "celCode": "no_matching_overload",
+          "message": "no type named \"Shop\" is registered"
+        }
+      }
     }
   ]
 }

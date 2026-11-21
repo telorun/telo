@@ -12,7 +12,8 @@ use std::sync::Arc;
 use telorun_cel::{
     parse_expression, parse_syntax, serialize_tree, CelBinaryNode, CelBinaryOperator, CelCallNode, CelConditionalNode, CelIdentNode, CelIndexNode,
     CelListElement, CelListNode, CelLiteral, CelLiteralNode, CelMapEntry, CelMapNode, CelNode, CelParseLimits,
-    CelQualifiedCallNode, CelReceiverCallNode, CelSelectNode, CelSyntaxCode, CelSyntaxDiagnostic, CelUnaryNode,
+    CelQualifiedCallNode, CelReceiverCallNode, CelSelectNode, CelStructEntry, CelStructNode, CelSyntaxCode,
+    CelSyntaxDiagnostic, CelUnaryNode,
     CelUnaryOperator, CelUnparsedNode, ParseExpressionOptions, ParseOptions, ParseResult, QualifiedCall, SourceRange,
 };
 
@@ -71,6 +72,28 @@ pub fn entry(key: Arc<CelNode>, value: Arc<CelNode>, optional: bool) -> CelMapEn
 
 pub fn map(entries: Vec<CelMapEntry>, start: u32, end: u32) -> Arc<CelNode> {
     Arc::new(CelNode::Map(CelMapNode { entries, range: range(start, end) }))
+}
+
+/// `field: value`, or `?field: value` when `optional`, ranged from its `?` or its field.
+pub fn struct_entry(field: &str, field_range: (u32, u32), value: Arc<CelNode>, optional: bool, start: u32, end: u32) -> CelStructEntry {
+    CelStructEntry { field: field.to_string(), field_range: range(field_range.0, field_range.1), value, optional, range: range(start, end) }
+}
+
+pub fn construction(
+    type_name: &str,
+    type_name_range: (u32, u32),
+    absolute: bool,
+    entries: Vec<CelStructEntry>,
+    start: u32,
+    end: u32,
+) -> Arc<CelNode> {
+    Arc::new(CelNode::Struct(CelStructNode {
+        type_name: type_name.to_string(),
+        type_name_range: range(type_name_range.0, type_name_range.1),
+        absolute,
+        entries,
+        range: range(start, end),
+    }))
 }
 
 pub fn select(
@@ -204,6 +227,7 @@ pub fn kind_name(node: &CelNode) -> &'static str {
         CelNode::Ident(_) => "ident",
         CelNode::List(_) => "list",
         CelNode::Map(_) => "map",
+        CelNode::Struct(_) => "struct",
         CelNode::Select(_) => "select",
         CelNode::Index(_) => "index",
         CelNode::Call(_) => "call",

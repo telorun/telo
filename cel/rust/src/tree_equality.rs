@@ -46,6 +46,16 @@ fn same_step<'a>(left: &'a CelNode, right: &'a CelNode, pending: &mut NodePairs<
                     a.optional == b.optional
                 })
         }
+        // A leading dot is kept so the source writes back as it was read.
+        (Struct(a), Struct(b)) => {
+            a.type_name == b.type_name
+                && a.absolute == b.absolute
+                && a.entries.len() == b.entries.len()
+                && a.entries.iter().zip(&b.entries).all(|(a, b)| {
+                    pending.push((&a.value, &b.value));
+                    a.field == b.field && a.optional == b.optional
+                })
+        }
         (Select(a), Select(b)) => {
             pending.push((&a.operand, &b.operand));
             a.field == b.field && a.optional == b.optional

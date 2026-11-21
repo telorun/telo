@@ -177,6 +177,7 @@ fn lists_a_named_types_fields_members_operators_and_variables() {
             base: "map<string, int>".into(),
             parameters: vec![],
             fields: fields(&[("y", "int"), ("x", "Point"), ("label", "list<Point>")]),
+            constructible: None,
             description: Some("a point".into()),
         }]
     );
