@@ -1,0 +1,14 @@
+# Three imports of the library above omitting its optional input, each deciding
+# every choice of it so that one holder reads the input.
+kind: Telo.Application
+metadata: { name: OptionalInputConsumer, version: 1.0.0 }
+imports:
+  Plain:
+    source: ./optional-input
+    variables: { plain: true, mode: fallback, outer: false, inner: false }
+  Switched:
+    source: ./optional-input
+    variables: { plain: false, mode: store, outer: false, inner: false }
+  Nested:
+    source: ./optional-input
+    variables: { plain: false, mode: fallback, outer: true, inner: true }

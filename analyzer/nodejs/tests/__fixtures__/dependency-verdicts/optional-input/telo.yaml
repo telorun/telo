@@ -1,0 +1,42 @@
+# A library reading its optional resource input in one branch of each of its own
+# choices: a plain `!if`, a `!switch` case and an `!if` nested in another.
+kind: Telo.Library
+metadata:
+  name: OptionalInputPlaces
+  version: 0.0.0
+  description: Test fixture reading an optional resource input in a plain, a switched and a nested branch of its own choices.
+imports: { Kinds: ../../../../../../tests/__fixtures__/resource-inputs/optional/kinds }
+variables:
+  plain: { type: boolean, default: false }
+  mode: { type: string, enum: [store, fallback], default: fallback }
+  outer: { type: boolean, default: false }
+  inner: { type: boolean, default: false }
+resources: { store: { kind: Kinds.Store, optional: true } }
+exports: { resources: [plain, switched, nested] }
+---
+kind: Kinds.Store
+metadata: { name: fallback }
+label: fallback
+---
+kind: Kinds.Holder
+metadata: { name: plain }
+store: !if
+  if: !cel "variables.plain"
+  then: !ref store
+  else: !ref fallback
+---
+kind: Kinds.Holder
+metadata: { name: switched }
+store: !switch
+  switch: !cel "variables.mode"
+  cases: { store: !ref store, fallback: !ref fallback }
+---
+kind: Kinds.Holder
+metadata: { name: nested }
+store: !if
+  if: !cel "variables.outer"
+  then: !if
+    if: !cel "variables.inner"
+    then: !ref store
+    else: !ref fallback
+  else: !ref fallback

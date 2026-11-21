@@ -45,6 +45,8 @@ const NO_CODE = "(none)";
 const dimensions = options.dimensions.length ? options.dimensions : ["run", "check"];
 // The `check` dimension's per-manifest analyses, which the `load` dimension confirms against.
 let checkAnalyses = null;
+// The built analyzer's `runtimeCodeOf`, read once (`loadRuntimeCodeOf`).
+let builtRuntimeCodeOf = null;
 
 const nodeCommand = options.only === "rust" ? null : readPackageScript("telo").split(/\s+/);
 const rustBinary = options.only === "node" || !dimensions.some((d) => d === "run" || d === "check") ? null : buildRust();
@@ -226,17 +228,22 @@ function readPackageScript(name) {
 //     under-report and never over-report;
 //   - a Node diagnostic Rust lacks, written in the manifest's own file (or a partial it `include:`s),
 //     passes only when its code is in the manifest's `codes`;
-//   - one written in a file of ANOTHER module (a dependency's verdict) passes only when that module's
-//     own entry — keyed by its own manifest path, a partial mapped to its owner through the covered
-//     manifests' `include:` lists — lists the code AND that module's own run in the same sweep lacks the
-//     same finding (code, file, line, column, message); under `--filter` the entry alone decides, the
-//     full sweep confirms;
+//   - one written in a file of ANOTHER module M (a dependency's verdict) is judged by DEFECT IDENTITY
+//     across runs — its code, file, path and resource (`sameDefect`, below), never its message — against
+//     M's own run in the same sweep (M keyed by its own manifest path, a partial mapped to its owner
+//     through the covered manifests' `include:` lists): when M's own Node run reports that defect, it
+//     passes only when M's entry lists the code AND M's own Rust run lacks it; when M's own Node run
+//     does not report it, it is a CONTEXT finding the consumer's composition makes, owed to the manifest
+//     itself, passing only when the manifest's own entry lists the code, which then counts among the
+//     manifest's own missing codes for staleness; under `--filter` M's or the manifest's entry listing
+//     the code passes, the full sweep confirms;
 //   - the exit status and `ok` may differ only under `unsupported` (Rust holds the file back and
 //     says so) or when the only diagnostics Rust lacks are errors;
 //   - wherever the two JSON payloads agree whole, the text form is also compared, byte for byte;
 //   - an entry that no longer holds is stale and fails: a listed code no longer missing in the module's
-//     own run, an `unsupported` on a manifest Rust reads whole, a path not in the repo's covered set, a
-//     code with no owner, an owner in the slice that builds the check itself.
+//     own run (its own files and its context findings), an `unsupported` on a manifest Rust reads whole,
+//     a path not in the repo's covered set, a code with no owner, an owner in the slice that builds the
+//     check itself. So no consumer entry may list a code only a library's own check reports.
 
 async function checkDimension() {
   const debt = readDebt();
@@ -289,7 +296,7 @@ async function checkDimension() {
   );
 
   if (nodeCommand && rustBinary) {
-    judgeDependencyFindings(results, analyses, debt);
+    judgeDependencyFindings(results, analyses, debt, await loadRuntimeCodeOf());
     checkAnalyses = analyses;
   }
 
@@ -501,30 +508,108 @@ function judgeCheck(path, result, debt, analysis) {
   };
 }
 
-// A Node finding Rust lacks in another module's file passes only through that module's own entry,
-// confirmed by that module's own run lacking the same finding (not under `--filter`).
-function judgeDependencyFindings(results, analyses, debt) {
+// A Node finding Rust lacks in another module's file: owed to the module whose own run writes it, or
+// — a context finding — to the manifest itself (`judgeOwed`).
+function judgeDependencyFindings(results, analyses, debt, runtimeCodeOf) {
+  const lists = listsCode(debt, runtimeCodeOf);
   for (const result of results) {
-    const analysis = analyses.get(result.path);
+    const entry = result.path;
+    const analysis = analyses.get(entry);
     for (const { d, owners } of analysis.foreign) {
       const code = d.code ?? NO_CODE;
-      const finding = JSON.stringify(d);
-      const listed = owners.filter((owner) => (debt.manifests[owner]?.codes ?? []).includes(code));
-      const confirmed = options.filter
-        ? listed.length > 0
-        : listed.some((owner) => analyses.get(owner)?.own.some((own) => JSON.stringify(own.d) === finding));
-      if (confirmed) {
-        continue;
-      }
-      const where = owners.length
-        ? listed.length
-          ? `${owners.join(", ")} lists ${code} but its own run does not lack this finding`
-          : `${owners.join(", ")} does not list ${code}`
-        : "no module owns that file";
-      result.verdict.failures.push(`Rust lacks ${code} in another module's file (${where}): ${d.file}:${d.line}:${d.column} ${d.message}`);
+      const judged = judgeOwed({
+        code,
+        at: checkPlace(d, entry),
+        entry,
+        owners,
+        lists,
+        runtimeCodeOf,
+        confirm: options.filter ? null : analyses,
+      });
+      const ownMissing = (result.verdict.ownMissingCodes ??= []);
+      // Under `--filter` a foreign finding the manifest lists may be a context finding.
+      const contextCode = judged.context || (options.filter && !judged.failure && lists(entry, code));
+      if (contextCode && !ownMissing.includes(code)) ownMissing.push(code);
+      if (!judged.failure) continue;
+      result.verdict.failures.push(`Rust lacks ${code} in another module's file (${judged.failure}): ${d.file}:${d.line}:${d.column} ${d.message}`);
       result.verdict.status = "fail";
     }
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Defect identity across runs, shared by the `check` and `load` dimensions. A finding of one run is
+// the same defect as a finding of another when both are raised from one static code (a code C reaches
+// the raised code as C itself or as the analyzer's `runtimeCodeOf(C)`; nothing maps backward) and both
+// are WRITTEN at one place: the same file, the same field path (an empty one is none, as
+// `telo check -o json` writes it) and the same resource. A finding's written place is its `writtenAt`
+// when it carries one — a defect re-reported at an import reaching the module that writes it — and
+// its own file, path and resource otherwise. Messages are never compared across runs: one defect is
+// worded differently at an import and with a configuration clause, by design.
+
+// A resource as `telo check -o json` writes it.
+function resourceText(resource) {
+  if (resource === undefined || resource === null) return undefined;
+  return typeof resource === "string" ? resource : `${resource.kind}/${resource.name}`;
+}
+
+function place(file, path, resource) {
+  return { file, path: path || undefined, resource: resourceText(resource) };
+}
+
+// Where a `check` finding of the run of `entry` is written.
+function checkPlace(d, entry) {
+  return place(d.file ?? entry, d.path, d.resource);
+}
+
+// Where a carried load finding of the load of `entry` is written.
+function loadPlace(f, entry) {
+  const at = f.writtenAt;
+  return at ? place(at.filePath ?? entry, at.path, at.resource) : place(f.file, f.path, f.resource);
+}
+
+function codeReaches(staticCode, raised, runtimeCodeOf) {
+  return staticCode === raised || (staticCode !== NO_CODE && runtimeCodeOf(staticCode) === raised);
+}
+
+// Whether `check` finding `d` of the run of `entry` is the defect raised as `code`, written at `at`.
+function sameDefect(d, entry, code, at, runtimeCodeOf) {
+  const own = checkPlace(d, entry);
+  return codeReaches(d.code ?? NO_CODE, code, runtimeCodeOf) && own.file === at.file && own.path === at.path && own.resource === at.resource;
+}
+
+// Whether a manifest's debt entry lists a code reaching the raised `code`.
+function listsCode(debt, runtimeCodeOf) {
+  return (manifest, code) => (debt.manifests[manifest]?.codes ?? []).some((listed) => codeReaches(listed, code, runtimeCodeOf));
+}
+
+// A Node-only finding raised as `code` and written at `at`, in the run of `entry`, where `owners` are
+// the modules owning `at.file`: `{ owners, confirmed, context? }` when it is owed, `{ failure }` when
+// not. With `confirm` (the `check` dimension's analyses), a module whose own Node run reports the
+// defect writes it, and its entry must list the code and its own Rust run lack it; a defect at
+// another module's file no module's own run reports is a context finding, owed to `entry`, whose
+// entry must list the code. Without `confirm`, any owner's entry or `entry`'s own listing it passes.
+function judgeOwed({ code, at, entry, owners, lists, runtimeCodeOf, confirm }) {
+  if (!owners.length) return { failure: `no module owns ${at.file}` };
+  const ownFile = owners.includes(entry);
+  if (!confirm) {
+    const listed = [...new Set([...owners, entry])].filter((m) => lists(m, code));
+    if (listed.length) return { owners: listed, confirmed: false };
+    return { failure: `${[...new Set([...owners, entry])].join(", ")} lists no code raised as ${code}` };
+  }
+  const writers = owners.filter((m) => (confirm.get(m)?.node.diagnostics ?? []).some((d) => sameDefect(d, m, code, at, runtimeCodeOf)));
+  if (writers.length) {
+    const listed = writers.filter((m) => lists(m, code));
+    if (!listed.length) return { failure: `${writers.join(", ")} writes it and lists no code raised as ${code}` };
+    const confirmedBy = listed.filter((m) => confirm.get(m).own.some(({ d }) => sameDefect(d, m, code, at, runtimeCodeOf)));
+    if (!confirmedBy.length) return { failure: `${listed.join(", ")} lists the code but its own check run does not lack this finding` };
+    return { owners: confirmedBy, confirmed: true };
+  }
+  if (ownFile) return { failure: `${entry}'s own check run does not report this finding` };
+  if (!lists(entry, code)) {
+    return { failure: `a context finding: ${owners.join(", ")}'s own check run does not report it, and ${entry} lists no code raised as ${code}` };
+  }
+  return { owners: [entry], confirmed: true, context: true };
 }
 
 function staleEntries(debt, covered, swept, results) {
@@ -562,9 +647,10 @@ function staleEntries(debt, covered, swept, results) {
 // Each manifest is loaded analyze-only by both kernels under one sweep-owned `TELO_CACHE_DIR`, the
 // working directory the repo root, the path as the repo writes it. Each half answers as one JSON
 // object: the refusal's headline code and message, and every finding it carries — its code as
-// raised, its file (the origin; none means the entry), its message and, for a finding re-reported at
-// an import, `writtenAt`, where the module writing the defect reports it; the repo root's prefixes are
-// removed. A carried finding is one finding by its code, file and message.
+// raised, its file (the origin; none means the entry), its `path` and `resource` (the origin's;
+// absent when it has none), its message and, for a finding re-reported at an import, `writtenAt`,
+// where the module writing the defect reports it; the repo root's prefixes are removed. Within one
+// manifest, Node's carried finding is Rust's only when all six are byte-identical.
 //
 // Verdicts, finding by finding:
 //   - both load, or both refuse with the same headline and the same carried findings: match;
@@ -572,15 +658,15 @@ function staleEntries(debt, covered, swept, results) {
 //     `unsupported` entry — a gap when Node loads, debt when Node refuses — and fails otherwise;
 //   - Node loads and Rust refuses with anything else: fail;
 //   - a finding Rust carries that Node does not: fail, whatever the debt;
-//   - a finding Node carries that Rust lacks is OWED to a module: the one owning `writtenAt.filePath`
-//     when it has one, else the one owning its file (a partial maps to its owner, as the `check`
-//     dimension maps it). It passes when that module's `check-debt.json` entry lists a static code C
-//     with C, or the analyzer's `runtimeCodeOf(C)`, equal to the carried code — nothing maps backward;
-//     with `check` in the same sweep and no `--filter`, the owner's own `check` run must also lack the
-//     finding: with `writtenAt` one of that code at the same file, path and resource (messages not
-//     compared — the import's prefix is by design), without it one of that code, file and message
-//     (the check message read with the repo root's prefixes removed too, and without the configuration
-//     clause `telo check` appends to a finding holding in some configurations only);
+//   - a finding Node carries that Rust lacks is OWED by the rule the `check` dimension judges another
+//     module's finding by (`judgeOwed`), at its written place (`writtenAt`, else its own file, path and
+//     resource; the file's owner found as the `check` dimension finds it, a partial mapped to its
+//     owner): a listed code C passes when C, or the analyzer's `runtimeCodeOf(C)`, equals the carried
+//     code — nothing maps backward. With `check` in the same sweep and no `--filter`, the module whose
+//     own Node check reports the defect (by defect identity, above) owes it, and its own Rust check
+//     must lack it; a defect at another module's file no module's own check reports is a context
+//     finding, owed to the manifest's own entry. Under `--filter` an owner's or the manifest's entry
+//     listing the code passes;
 //   - the headlines may differ only when the carried findings differ and every difference is owed:
 //     equal carried findings under different headlines fail, so a Node refusal carrying nothing that
 //     Rust answers differently fails.
@@ -592,6 +678,7 @@ async function loadDimension() {
   const owners = includeOwners(covered);
   const runtimeCodeOf = await loadRuntimeCodeOf();
   const confirmAgainst = !options.filter && checkAnalyses ? checkAnalyses : null;
+  const lists = listsCode(debt, runtimeCodeOf);
   const cacheDir = mkdtempSync(join(tmpdir(), "rp-load-cache-"));
   const env = {
     ...process.env,
@@ -602,7 +689,7 @@ async function loadDimension() {
   const loaders = {};
   if (nodeCommand) loaders.node = (path) => ["bun", [join(root, ".claude", "skills", "rust-parity", "load-node.ts"), path]];
   if (rustLoader) loaders.rust = (path) => [rustLoader, [path]];
-  const judging = { debt, owners, runtimeCodeOf, confirmAgainst };
+  const judging = { owners, runtimeCodeOf, confirmAgainst, lists, debt };
 
   const results = new Array(swept.length);
   let next = 0;
@@ -640,6 +727,7 @@ async function loadDimension() {
     owedWrittenElsewhere: owed.filter((o) => o.writtenAt).length,
     confirmedWrittenElsewhere: owed.filter((o) => o.writtenAt && o.confirmed).length,
     confirmed: owed.filter((o) => o.confirmed).length,
+    owedContext: owed.filter((o) => o.context).length,
     confirmation: confirmAgainst ? "check" : "entry alone",
   };
   return { summary, failures, results };
@@ -647,10 +735,12 @@ async function loadDimension() {
 
 // `runtimeCodeOf` from the built analyzer: the load refusal rule's one static-to-runtime mapping.
 async function loadRuntimeCodeOf() {
+  if (builtRuntimeCodeOf) return builtRuntimeCodeOf;
   const built = join(root, "analyzer", "nodejs", "dist", "index.js");
   if (!existsSync(built)) fail(`${built} does not exist; build the analyzer (pnpm --filter @telorun/analyzer run build)`);
   const { runtimeCodeOf } = await import(pathToFileURL(built).href);
   if (typeof runtimeCodeOf !== "function") fail(`${built} exports no runtimeCodeOf; rebuild the analyzer`);
+  builtRuntimeCodeOf = runtimeCodeOf;
   return runtimeCodeOf;
 }
 
@@ -667,12 +757,17 @@ function readLoad(run, entry) {
     return { unusable: `stdout is not JSON: ${tail(run.stdout)} ${tail(run.stderr)}` };
   }
   const strip = withoutRepoRoot;
+  // A resource with its members in one order, so two answers compare byte for byte.
+  const resourceOf = (resource) => ({
+    ...(resource.kind !== undefined ? { kind: resource.kind } : {}),
+    ...(resource.name !== undefined ? { name: resource.name } : {}),
+  });
   const writtenAtOf = (at) => {
     if (!at || Object.keys(at).length === 0) return undefined;
     return {
       ...(at.filePath !== undefined ? { filePath: strip(at.filePath) } : {}),
       ...(at.path !== undefined ? { path: at.path } : {}),
-      ...(at.resource !== undefined ? { resource: at.resource } : {}),
+      ...(at.resource !== undefined ? { resource: resourceOf(at.resource) } : {}),
     };
   };
   return {
@@ -684,6 +779,8 @@ function readLoad(run, entry) {
       return {
         code: f.code ?? NO_CODE,
         file: f.file !== undefined ? strip(f.file) : entry,
+        ...(f.path !== undefined ? { path: f.path } : {}),
+        ...(f.resource !== undefined ? { resource: resourceOf(f.resource) } : {}),
         message: strip(f.message),
         ...(writtenAt ? { writtenAt } : {}),
       };
@@ -696,16 +793,9 @@ function withoutRepoRoot(text) {
   return [`${pathToFileURL(root).href}/`, `${root}${sep}`].reduce((t, prefix) => t.split(prefix).join(""), String(text));
 }
 
-// Whether the check finding `d` says `message`: its text with the repo root's prefixes removed, and
-// for a finding holding in some configurations only, less the configuration clause `telo check`
-// appends to it (the JSON carries the same as `configurations`), which a load's refusal never has.
-function sameMessage(d, message) {
-  const text = withoutRepoRoot(d.message);
-  return text === message || (Array.isArray(d.configurations) && text.startsWith(`${message} (when `) && text.endsWith(")"));
-}
-
+// A carried finding as Node's and Rust's are compared within one manifest: all six members.
 function findingKey(f) {
-  return JSON.stringify([f.code, f.file, f.message]);
+  return JSON.stringify([f.code, f.file, f.path ?? null, f.resource ?? null, f.message, f.writtenAt ?? null]);
 }
 
 function judgeLoad(path, { node, rust }, judging) {
@@ -733,7 +823,7 @@ function judgeLoad(path, { node, rust }, judging) {
   const failures = unmatched.map((f) => `Rust carries what Node does not: ${JSON.stringify(f)}`);
   const owed = [];
   for (const f of nodeOnly) {
-    const owing = oweLoadFinding(f, judging);
+    const owing = oweLoadFinding(f, path, judging);
     if (owing.failure) failures.push(owing.failure);
     else owed.push(owing.owed);
   }
@@ -750,31 +840,24 @@ function judgeLoad(path, { node, rust }, judging) {
   return { status: nodeOnly.length ? "debt" : "match", failures: [], owed };
 }
 
-// The module a finding Node carries and Rust lacks is owed by, and whether its entry and — when
-// confirming — its own check run account for it.
-function oweLoadFinding(f, { debt, owners, runtimeCodeOf, confirmAgainst }) {
-  const written = f.writtenAt;
-  const ownerFile = written?.filePath ?? f.file;
-  const fileOwners = owners.get(ownerFile) ?? [];
-  const codeMatches = (code) => code === f.code || (code !== NO_CODE && runtimeCodeOf(code) === f.code);
-  const listed = fileOwners.filter((owner) => (debt.manifests[owner]?.codes ?? []).some(codeMatches));
-  const describe = `${f.code} ${f.file}${written ? ` (written at ${JSON.stringify(written)})` : ""}: ${f.message}`;
-  if (!listed.length) {
-    const why = fileOwners.length ? `${fileOwners.join(", ")} lists no code raised as ${f.code}` : `no module owns ${ownerFile}`;
-    return { failure: `Rust lacks ${describe} — ${why}` };
+// The module a finding Node carries and Rust lacks is owed by, judged at its written place.
+function oweLoadFinding(f, entry, { owners, runtimeCodeOf, confirmAgainst, lists }) {
+  const at = loadPlace(f, entry);
+  const judged = judgeOwed({ code: f.code, at, entry, owners: owners.get(at.file) ?? [], lists, runtimeCodeOf, confirm: confirmAgainst });
+  if (judged.failure) {
+    const where = [f.file, f.path, resourceText(f.resource)].filter((part) => part !== undefined).join(" ");
+    const written = f.writtenAt ? ` (written at ${JSON.stringify(f.writtenAt)})` : "";
+    return { failure: `Rust lacks ${f.code} ${where}${written}: ${f.message} — ${judged.failure}` };
   }
-  if (!confirmAgainst) return { owed: { code: f.code, owners: listed, writtenAt: Boolean(written), confirmed: false } };
-  const resourceText = written?.resource ? `${written.resource.kind}/${written.resource.name}` : undefined;
-  const sameFinding = (d) =>
-    codeMatches(d.code ?? NO_CODE) &&
-    (written
-      ? d.file === written.filePath && (d.path ?? "") === (written.path ?? "") && d.resource === resourceText
-      : d.file === f.file && sameMessage(d, f.message));
-  const confirmedBy = listed.filter((owner) => confirmAgainst.get(owner)?.own.some(({ d }) => sameFinding(d)));
-  if (!confirmedBy.length) {
-    return { failure: `Rust lacks ${describe} — ${listed.join(", ")} lists the code but its own check run does not lack this finding` };
-  }
-  return { owed: { code: f.code, owners: confirmedBy, writtenAt: Boolean(written), confirmed: true } };
+  return {
+    owed: {
+      code: f.code,
+      owners: judged.owners,
+      writtenAt: Boolean(f.writtenAt),
+      confirmed: judged.confirmed,
+      ...(judged.context ? { context: true } : {}),
+    },
+  };
 }
 
 function parseArgs(argv) {
