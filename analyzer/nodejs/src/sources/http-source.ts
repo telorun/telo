@@ -1,5 +1,11 @@
 import { DEFAULT_MANIFEST_FILENAME, type ManifestSource } from "../types.js";
-import { splitIntegrity, verifiedFetch } from "./integrity.js";
+import {
+  ManifestNotFoundError,
+  manifestFetchFailureOf,
+  splitIntegrity,
+  verifiedFetch,
+} from "./integrity.js";
+import { ManifestSourceFailure, httpSourceFailure } from "./source-failure.js";
 
 /** The URL a module requested as `ref` is read from, or `undefined` when `ref`
  *  is not an http(s) URL: the URL itself when it names a YAML file, else the
@@ -18,8 +24,12 @@ export class HttpSource implements ManifestSource {
   async read(url: string): Promise<{ text: string; source: string }> {
     const { integrity } = splitIntegrity(url);
     const fetchUrl = httpManifestUrl(url) ?? url;
-    const { text } = await verifiedFetch(fetchUrl, integrity, fetchUrl);
-    return { text, source: fetchUrl };
+    try {
+      const { text } = await verifiedFetch(fetchUrl, integrity, fetchUrl);
+      return { text, source: fetchUrl };
+    } catch (error) {
+      throw httpReadFailure(error, fetchUrl);
+    }
   }
 
   resolveRelative(base: string, relative: string): string {
@@ -73,4 +83,16 @@ export class HttpSource implements ManifestSource {
   locate(base: string, relative: string): string {
     return this.resolveRelative(base, relative);
   }
+}
+
+/** A read's failure as the closed source-failure set: a reply of 404 is
+ *  `not-found`, any other non-2xx `refused`, a request that reached no host
+ *  `unreachable`. An integrity mismatch or an error page passes unchanged. */
+function httpReadFailure(error: unknown, location: string): unknown {
+  if (error instanceof ManifestNotFoundError) return httpSourceFailure(error.status, location, error);
+  const failure = manifestFetchFailureOf(error);
+  if (!failure) return error;
+  return failure.reached
+    ? httpSourceFailure(failure.status, location, error)
+    : new ManifestSourceFailure("unreachable", location, { cause: error });
 }

@@ -1,0 +1,9 @@
+kind: Telo.Library
+metadata: { name: PricedLib }
+---
+kind: Telo.Definition
+metadata: { name: Thing }
+capability: Telo.Invocable
+---
+kind: Self.Thing
+metadata: { name: priced, description: "costs ${{ 5" }

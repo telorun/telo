@@ -1,0 +1,5 @@
+kind: Telo.Library
+metadata: { name: First }
+---
+kind: Telo.Library
+metadata: { name: Second }

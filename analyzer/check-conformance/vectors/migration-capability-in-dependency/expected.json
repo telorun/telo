@@ -1,6 +1,38 @@
 {
   "diagnostics": [
     {
+      "severity": 2,
+      "code": "CAPABILITY_SHADOWS_EXTENDS",
+      "source": "telo-analyzer",
+      "tags": [
+        2
+      ],
+      "message": "`capability: Base.Store` is now written `extends: Base.Store`.\n`capability:` names a lifecycle role and nothing else. A kind this one specializes is declared in `extends:`, which also applies the parent's schema, invocation contract and throws ceiling to it.\nno quick fix (renames a key) — run `telo migrate`",
+      "data": {
+        "filePath": "lib/telo.yaml",
+        "path": "capability",
+        "resource": {
+          "kind": "Telo.Abstract",
+          "name": "Mine"
+        },
+        "migration": {
+          "id": "capability-as-extends",
+          "legacyPath": "capability",
+          "migratedPath": "extends"
+        }
+      },
+      "range": {
+        "start": {
+          "line": 6,
+          "character": 12
+        },
+        "end": {
+          "line": 6,
+          "character": 22
+        }
+      }
+    },
+    {
       "severity": 1,
       "code": "CAPABILITY_UNKNOWN",
       "source": "telo-analyzer",

@@ -62,6 +62,15 @@ fn a_construct_this_kernel_cannot_read_is_refused_first() {
     assert!(err.diagnostics.is_empty());
 }
 
+/// A well-formed http(s) import reaches the transport this kernel lacks; only a malformed one
+/// is refused before it, as no module reference.
+#[test]
+fn a_well_formed_https_import_is_still_a_construct_this_kernel_cannot_read() {
+    let (_dir, err) = load(&[("app/telo.yaml", &app("imports: { Web: \"https://x.test/lib\" }\n"))]);
+    assert_eq!(err.code, "ERR_UNSUPPORTED_MANIFEST_FEATURE", "{err}");
+    assert!(err.message.contains("import 'Web' resolves through a transport"), "{err}");
+}
+
 fn console() -> String {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../modules/console").display().to_string()
 }
@@ -258,24 +267,20 @@ fn a_literal_reaches_schema_validation_as_its_text() {
     assert!(err.to_string().contains("is invalid"), "{err}");
 }
 
-/// What the load's analysis leaves — a library's own string holding a `${{` no hole can be
-/// read out of — is refused where the kernel consumes it, in the words of Node's backstop.
+/// A library's own string holding a `${{` no hole can be read out of is refused before
+/// anything is created, at the import reaching the library.
 #[test]
-fn a_plain_string_left_holding_an_interpolation_is_refused_where_it_is_consumed() {
-    let (dir, err) = load(&[
+fn a_library_string_left_holding_an_interpolation_is_refused_at_its_import() {
+    let (_dir, err) = load(&[
         ("app/telo.yaml", &string_field_app("ok")),
         (
             "lib/telo.yaml",
             &format!("{THING_LIBRARY}---\nkind: Self.Thing\nmetadata: {{ name: priced }}\ntext: \"costs ${{{{ 5\"\n"),
         ),
     ]);
-    assert_eq!(err.code, "ERR_UNTAGGED_INTERPOLATION", "{err}");
     assert_eq!(
-        err.message,
-        format!(
-            "Failed to compile manifest in {}: 'text' is a plain string holding '${{{{', which is never evaluated. Untagged interpolation is a legacy spelling the 'untagged-interpolation' migration rewrites (a lone hole to !cel, text with holes to !interpolate); run 'telo migrate' to apply it, or tag the value !literal if the text is meant literally.",
-            source(dir.path(), "lib/telo.yaml")
-        )
+        err.to_string(),
+        "[ERR_MANIFEST_VALIDATION_FAILED] Manifest validation failed\n  [UNTAGGED_INTERPOLATION] Telo.Import/Lib: the imported library 'Lib' holds a plain string with '${{' that no hole can be read out of (Self.Thing/priced 'text'), so it fails to load with ERR_UNTAGGED_INTERPOLATION. It is the library's to fix; import a version that writes it as !interpolate or !literal."
     );
 }
 

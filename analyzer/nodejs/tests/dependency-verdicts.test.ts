@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -23,6 +23,7 @@ import {
   type LoadedGraph,
   type ManifestSource,
 } from "../src/index.js";
+import { defectIdentity } from "../src/diagnostic-identity.js";
 import { ROOT } from "./configuration-corpus.js";
 
 /**
@@ -247,6 +248,37 @@ describe("dependency verdicts", () => {
       expect.objectContaining({ code: "CAPABILITY_UNKNOWN", file: join(FIXTURES, "capability/telo.yaml"), path: "capability" }),
     ]);
   }, 120_000);
+
+  it("re-reports an omitted optional input where the library's own check places it", async () => {
+    const graph = await load("optional-input.yaml");
+    const writtenAt = (d: AnalysisDiagnostic) => (d.data as { writtenAt?: { resource?: { name?: unknown }; path?: string } }).writtenAt;
+    expect(entryAlone(graph).map((d) => [(d.data as { path?: string }).path, writtenAt(d)?.resource?.name, writtenAt(d)?.path])).toEqual([
+      ["imports.Plain", "plain", "store.then"],
+      ["imports.Switched", "switched", "store.cases.store"],
+      ["imports.Nested", "nested", "store.then.then"],
+    ]);
+  }, 120_000);
+
+  it("re-reports an editable library's defect as a finding that library's own check reports", async () => {
+    const entries = readdirSync(FIXTURES).filter((file) => file.endsWith(".yaml"));
+    let checked = 0;
+    for (const entry of entries) {
+      const graph = await load(entry);
+      const origins = moduleOrigins(graph);
+      const ownerOf = (file: string) =>
+        [...graph.modules.entries()].find(([, module]) => [module.owner, ...module.partials].some((f) => f.source === file))?.[0];
+      for (const d of entryAlone(graph)) {
+        const file = (d.data as { writtenAt?: { filePath?: string } }).writtenAt?.filePath;
+        const owner = file === undefined ? undefined : ownerOf(file);
+        if (owner === undefined || owner === graph.rootSource || origins.get(owner) !== "editable") continue;
+        const library = await new Loader([fixtureSource()]).loadGraph(owner, { desugarImports: true });
+        const own = (await analyzeLoadedGraph(library, { memo: new DependencyVerdictMemo() })).diagnostics;
+        expect(own.map(defectIdentity), `${entry}: ${d.message}`).toContain(defectIdentity(d));
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  }, 600_000);
 
   it("reports an editable library's load findings with its analysis, each once at its own line", async () => {
     const STAMPS = join(FIXTURES, "stamps/telo.yaml");

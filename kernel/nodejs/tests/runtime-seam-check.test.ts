@@ -184,19 +184,23 @@ async function assembled(source: string) {
 
 describe("RuntimeSeam.check over the import refusals", () => {
   it.each([
-    ["check-run-agreement/builtin-vocabulary/telo.yaml", "INVALID_IMPORT_TARGET", "imports.Builtins"],
-    ["check-run-agreement/reserved-prefix/telo.yaml", "KIND_PREFIX_RESERVED", "imports.Lib"],
-    ["check-run-agreement/reserved-prefix/alias-telo/telo.yaml", "KIND_PREFIX_RESERVED", "imports.Telo"],
-    ["imports-an-application.yaml", "INVALID_IMPORT_TARGET", "imports.ForbiddenApp"],
-    ["imports-a-non-library.yaml", "INVALID_IMPORT_TARGET", "imports.NonLibrary"],
-  ])("answers %s exactly as the shared assembler does", async (fixture, code, path) => {
+    ["check-run-agreement/builtin-vocabulary/telo.yaml", "INVALID_IMPORT_TARGET", "imports.Builtins", []],
+    ["check-run-agreement/reserved-prefix/telo.yaml", "KIND_PREFIX_RESERVED", "imports.Lib", []],
+    ["check-run-agreement/reserved-prefix/alias-telo/telo.yaml", "KIND_PREFIX_RESERVED", "imports.Telo", []],
+    ["imports-an-application.yaml", "INVALID_IMPORT_TARGET", "imports.ForbiddenApp", []],
+    // The target declares no module, which is also refused at its own file.
+    ["imports-a-non-library.yaml", "INVALID_IMPORT_TARGET", "imports.NonLibrary", ["MODULE_DECLARATION_MISSING"]],
+  ])("answers %s exactly as the shared assembler does", async (fixture, code, path, atTarget) => {
     const source = pathToFileURL(join(FIXTURES, fixture)).href;
 
     const result = await new KernelRuntimeSeam(new Kernel({ sources: [new LocalFileSource()], env: {} })).check(source);
     const expected = await assembled(source);
 
     expect(result.loadError).toBeUndefined();
-    expect(expected).toEqual([expect.objectContaining({ code, path, line: 5 })]);
+    expect(expected).toEqual([
+      ...atTarget.map((targetCode) => expect.objectContaining({ code: targetCode, line: 0 })),
+      expect.objectContaining({ code, path, line: 5 }),
+    ]);
     expect(
       result.diagnostics.map(({ code, message, path, line }) => ({ code, message, path, line })),
     ).toEqual(expected);

@@ -99,6 +99,9 @@ impl KernelError {
 
 impl From<telo_analyzer::LoadError> for KernelError {
     fn from(err: telo_analyzer::LoadError) -> Self {
-        Self::new("ERR_MANIFEST_LOAD_FAILED", err.to_string())
+        match err {
+            telo_analyzer::LoadError::Unsupported(message) => Self::new("ERR_UNSUPPORTED_MANIFEST_FEATURE", message),
+            other => Self::new("ERR_MANIFEST_LOAD_FAILED", other.to_string()),
+        }
     }
 }

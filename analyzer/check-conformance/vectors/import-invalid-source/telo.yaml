@@ -1,0 +1,3 @@
+kind: Telo.Application
+metadata: { name: BareRefApp }
+imports: { Lib: acme/lib@1.0.0 }

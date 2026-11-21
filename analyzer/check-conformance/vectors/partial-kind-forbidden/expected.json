@@ -1,0 +1,24 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "PARTIAL_KIND_FORBIDDEN",
+      "source": "telo-analyzer",
+      "message": "A partial may not declare a 'Telo.Definition' document: Telo.Application, Telo.Library, Telo.Import and Telo.Definition documents are declared only in the telo.yaml that includes it.",
+      "data": {
+        "filePath": "part.yaml"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 6
+        },
+        "end": {
+          "line": 0,
+          "character": 21
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] part.yaml: A partial may not declare a 'Telo.Definition' document: Telo.Application, Telo.Library, Telo.Import and Telo.Definition documents are declared only in the telo.yaml that includes it.\n  [PARTIAL_KIND_FORBIDDEN] A partial may not declare a 'Telo.Definition' document: Telo.Application, Telo.Library, Telo.Import and Telo.Definition documents are declared only in the telo.yaml that includes it."
+}

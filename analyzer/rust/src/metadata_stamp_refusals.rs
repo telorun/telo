@@ -1,6 +1,6 @@
 //! The refusal of every loader stamp an author wrote, over the loaded graph. Mirrors
 //! `metadataStampDiagnostics` in `../../nodejs/src/metadata-stamp-refusals.ts` for the
-//! top-level documents of each module; a nested declaration's stamp and a scoped
+//! top-level documents of each module's files; a nested declaration's stamp and a scoped
 //! `Telo.Import`'s have no twin, since this analyzer has no nested judge and this loader
 //! walks no scoped import.
 
@@ -15,35 +15,36 @@ use crate::types::{kind_of, name_of, AnalysisDiagnostic, DiagnosticData, Diagnos
 /// dependency's at the entry's import that first reaches it — the entry's `imports:` in
 /// declaration order, each followed breadth-first through every library it reaches.
 pub fn metadata_stamp_diagnostics(graph: &LoadedGraph) -> Vec<AnalysisDiagnostic> {
-    let mut out = written_stamps(&graph.entry().owner);
+    let entry = graph.entry();
+    let mut out: Vec<AnalysisDiagnostic> = entry.files().flat_map(written_stamps).collect();
 
     let mut reached: HashSet<&str> = HashSet::from([graph.root_source.as_str()]);
-    let Some(entry_imports) = graph.import_edges.get(&graph.root_source) else {
-        return out;
-    };
-    for (alias, edge) in entry_imports {
-        let via = ReachingImport {
-            alias: alias.clone(),
-            file_path: graph.root_source.clone(),
-            path: format!("imports.{alias}"),
-        };
-        let mut queue = VecDeque::from([edge]);
-        while let Some(next) = queue.pop_front() {
-            if !reached.insert(next.target_source.as_str()) {
-                continue;
+    for file in entry.files() {
+        let Some(entry_imports) = graph.import_edges.get(&file.source) else { continue };
+        for (alias, edge) in entry_imports {
+            let via = ReachingImport {
+                alias: alias.clone(),
+                file_path: file.source.clone(),
+                path: format!("imports.{alias}"),
+            };
+            let mut queue = VecDeque::from([edge]);
+            while let Some(next) = queue.pop_front() {
+                if !reached.insert(next.target_source.as_str()) {
+                    continue;
+                }
+                let Some(module) = graph.modules.get(&next.target_source) else { continue };
+                for stamp in module.files().flat_map(written_stamps) {
+                    let written = stamp.data.as_ref().map(WrittenAt::of);
+                    out.push(import_anchored_diagnostic(
+                        METADATA_RESERVED_FIELD,
+                        &next.target_module_name,
+                        &via,
+                        &stamp.message,
+                        written,
+                    ));
+                }
+                queue.extend(edges_of(graph, module));
             }
-            let Some(module) = graph.modules.get(&next.target_source) else { continue };
-            for stamp in written_stamps(&module.owner) {
-                let written = stamp.data.as_ref().map(WrittenAt::of);
-                out.push(import_anchored_diagnostic(
-                    METADATA_RESERVED_FIELD,
-                    &next.target_module_name,
-                    &via,
-                    &stamp.message,
-                    written,
-                ));
-            }
-            queue.extend(edges_of(graph, module));
         }
     }
     out
@@ -77,8 +78,8 @@ fn written_stamps(file: &LoadedFile) -> Vec<AnalysisDiagnostic> {
     out
 }
 
-fn edges_of<'g>(graph: &'g LoadedGraph, module: &LoadedModule) -> impl Iterator<Item = &'g crate::loaded_types::ImportEdge> {
-    graph.import_edges.get(&module.owner.source).into_iter().flat_map(|aliases| aliases.values())
+fn edges_of<'g>(graph: &'g LoadedGraph, module: &LoadedModule) -> Vec<&'g crate::loaded_types::ImportEdge> {
+    module.files().filter_map(|file| graph.import_edges.get(&file.source)).flat_map(|aliases| aliases.values()).collect()
 }
 
 #[cfg(test)]

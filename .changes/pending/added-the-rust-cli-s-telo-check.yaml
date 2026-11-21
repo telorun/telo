@@ -1,0 +1,5 @@
+units:
+  cli: Added
+body: The Rust CLI's telo check reports a missing entry, each import's failure and the
+  loader's file refusals as the Node CLI does, holding back only the file that names an
+  import or partial it cannot read.

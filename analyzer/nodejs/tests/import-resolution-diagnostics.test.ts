@@ -100,6 +100,28 @@ describe("importResolutionDiagnostics", () => {
     expect(importResolutionDiagnostics(graph)[0].message).not.toContain("was removed");
   });
 
+  it.each(["http://[bad/x", "oci://host"])(
+    "codes %s, which its scheme's grammar refuses, as INVALID_IMPORT_SOURCE without asking a source",
+    async (malformed) => {
+      const source = inMemorySource({ "/ws/telo.yaml": appWithImport("Lib", malformed) });
+      const reads: string[] = [];
+      const read = source.read.bind(source);
+      source.read = (url) => (reads.push(url), read(url));
+      const graph = await new Loader([source]).loadGraph("/ws/telo.yaml");
+
+      const [diagnostic, ...rest] = importResolutionDiagnostics(graph);
+      expect(rest).toEqual([]);
+      expect(diagnostic.code).toBe("INVALID_IMPORT_SOURCE");
+      expect(diagnostic.message).toBe(
+        `Cannot resolve import 'Lib' → '${malformed}': not a recognized module reference. ` +
+          `Expected 'oci://host/repo@tag', 'https://…', or a relative path.`,
+      );
+      expect(diagnostic.data).not.toHaveProperty("sourceFailure");
+      expect(graph.errors[0].error.message).toBe(`No source found for: ${malformed}`);
+      expect(reads).toEqual(["/ws/telo.yaml"]);
+    },
+  );
+
   it("codes a well-formed but unresolvable source as IMPORT_UNRESOLVED, quoting the author string", async () => {
     // `./nope` is a valid relative-path shape; it just doesn't exist.
     const loader = new Loader([

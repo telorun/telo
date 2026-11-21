@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata: { name: IncludeApp }
+include: ["./parts/*.yaml", ./extra.yaml]
+---
+kind: Telo.Definition
+metadata: { name: Greeter }
+capability: Telo.Invocable

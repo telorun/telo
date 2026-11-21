@@ -149,6 +149,7 @@ targets:
   - !ref optionalInputReferenced
   - !ref optionalInputReferencedAtRuntime
   - !ref optionalInputReferencedSupplied
+  - !ref optionalInputReferencedInConfiguration
   - !ref kindThroughDependency
   - !ref kindThroughDependencyAtRuntime
   - !ref undeclaredResourceRead
@@ -523,6 +524,13 @@ targets:
   - !ref builtinVocabularyEntry
   - !ref builtinVocabularyDeclared
   - !ref builtinVocabularyImport
+  - !ref moduleDeclarationMissing
+  - !ref moduleDeclarationMissingEmpty
+  - !ref moduleDeclarationDuplicate
+  - !ref moduleDeclarationDuplicateImported
+  - !ref moduleDeclarationMissingImported
+  - !ref partialNotFound
+  - !ref importSourceFailures
   - !ref reservedApplicationName
   - !ref reservedLibraryName
   - !ref reservedLibraryNameAtImport
@@ -1177,6 +1185,17 @@ expect:
   errors:
     - { code: RESOURCE_INPUT_OPTIONAL_REFERENCED, message: "Kinds.Holder/holder: 'store' references resource input 'store', which is optional and may be absent. Reference it only inside an '!if' proving it present ('resources.store != null'), with this library's own default in the other branch, or make the input required." }
   runs: true
+---
+# A library referencing its optional input in one branch of its own choice, from
+# a consumer whose import takes that branch: the check reports the library's own
+# finding once, at the library's file, and the kernel refuses the run at the import.
+kind: Assert.Manifest
+metadata: { name: optionalInputReferencedInConfiguration }
+source: ./__fixtures__/configurations/optional-reference-consumer.yaml
+expect:
+  errors:
+    - { code: RESOURCE_INPUT_OPTIONAL_REFERENCED, message: "Kinds.Holder/holder: 'store' references resource input 'store', which is optional and may be absent. Reference it only inside an '!if' proving it present ('resources.store != null'), with this library's own default in the other branch, or make the input required. (when variables.useStore is true)" }
+  runFails: "[RESOURCE_INPUT_OPTIONAL_REFERENCED] Imported library 'OptionalReferenceLibrary', reached through import 'Reading'"
 ---
 # A kind spelled by the name of a module only a dependency imports. The graph
 # holds that module's definitions, which the analyzer used to resolve by their
@@ -5615,6 +5634,85 @@ expect:
     - code: INVALID_IMPORT_TARGET
       message: "Cannot use import 'Builtins' → './builtins.yaml': './builtins.yaml' is the built-in vocabulary of telo 0.119.0; its kinds need no import — remove this `imports:` entry and write them as `Telo.<Kind>`."
   runFails: "[INVALID_IMPORT_TARGET] Cannot use import 'Builtins' → './builtins.yaml': './builtins.yaml' is the built-in vocabulary of telo 0.119.0; its kinds need no import — remove this `imports:` entry and write them as `Telo.<Kind>`."
+---
+# A module's telo.yaml declares exactly one Telo.Application or Telo.Library. The
+# loader refuses the file itself as it refuses a parse failure: `telo check`
+# reports it at the file and holds back the rest of it, and the kernel refuses
+# the load before analysis.
+kind: Assert.Manifest
+metadata: { name: moduleDeclarationMissing }
+source: ./__fixtures__/check-run-agreement/module-declaration/no-module.yaml
+expect:
+  errors:
+    - code: MODULE_DECLARATION_MISSING
+      message: "This file declares no module: a module's telo.yaml declares exactly one Telo.Application or Telo.Library, and a partial is checked and run through the module that includes it."
+  runFails: "[MODULE_DECLARATION_MISSING] This file declares no module: a module's telo.yaml declares exactly one Telo.Application or Telo.Library, and a partial is checked and run through the module that includes it."
+---
+kind: Assert.Manifest
+metadata: { name: moduleDeclarationMissingEmpty }
+source: ./__fixtures__/check-run-agreement/module-declaration/empty.yaml
+expect:
+  errors:
+    - code: MODULE_DECLARATION_MISSING
+      message: "This file declares no module: a module's telo.yaml declares exactly one Telo.Application or Telo.Library, and a partial is checked and run through the module that includes it."
+  runFails: "[MODULE_DECLARATION_MISSING] This file declares no module: a module's telo.yaml declares exactly one Telo.Application or Telo.Library, and a partial is checked and run through the module that includes it."
+---
+kind: Assert.Manifest
+metadata: { name: moduleDeclarationDuplicate }
+source: ./__fixtures__/check-run-agreement/module-declaration/duplicate.yaml
+expect:
+  errors:
+    - code: MODULE_DECLARATION_DUPLICATE
+      message: "This file declares 2 module documents (Telo.Application, Telo.Library): a module's telo.yaml declares exactly one Telo.Application or Telo.Library; keep one and move each other module to a telo.yaml in a directory of its own."
+  runFails: "[MODULE_DECLARATION_DUPLICATE] This file declares 2 module documents (Telo.Application, Telo.Library): a module's telo.yaml declares exactly one Telo.Application or Telo.Library; keep one and move each other module to a telo.yaml in a directory of its own."
+---
+# An imported library holding two module documents is refused at its file, and
+# the import takes neither of them: it is an unusable target, refused at load.
+kind: Assert.Manifest
+metadata: { name: moduleDeclarationDuplicateImported }
+source: ./__fixtures__/check-run-agreement/module-declaration/import-duplicate/telo.yaml
+expect:
+  errors:
+    - code: MODULE_DECLARATION_DUPLICATE
+      message: "This file declares 2 module documents (Telo.Library, Telo.Library): a module's telo.yaml declares exactly one Telo.Application or Telo.Library; keep one and move each other module to a telo.yaml in a directory of its own."
+    - code: INVALID_IMPORT_TARGET
+      message: "Cannot use import 'Lib' → './lib': it declares 2 module documents (Telo.Library, Telo.Library); a library's telo.yaml declares exactly one Telo.Library."
+  runFails: "[INVALID_IMPORT_TARGET] Cannot use import 'Lib' → './lib': it declares 2 module documents (Telo.Library, Telo.Library); a library's telo.yaml declares exactly one Telo.Library."
+---
+kind: Assert.Manifest
+metadata: { name: moduleDeclarationMissingImported }
+source: ./__fixtures__/check-run-agreement/module-declaration/import-no-module/telo.yaml
+expect:
+  errors:
+    - code: MODULE_DECLARATION_MISSING
+      message: "This file declares no module: a module's telo.yaml declares exactly one Telo.Application or Telo.Library, and a partial is checked and run through the module that includes it."
+    - code: INVALID_IMPORT_TARGET
+      message: "Cannot use import 'Lib' → './lib': Telo.Import target './lib' did not resolve to a Telo.Library."
+  runFails: "[INVALID_IMPORT_TARGET] Cannot use import 'Lib' → './lib': Telo.Import target './lib' did not resolve to a Telo.Library."
+---
+# An `include:` entry naming a partial its source cannot read is refused at the
+# entry, in Telo's words for the source's failure.
+kind: Assert.Manifest
+metadata: { name: partialNotFound }
+source: ./__fixtures__/check-run-agreement/module-declaration/partial-missing.yaml
+expect:
+  errors:
+    - code: PARTIAL_NOT_FOUND
+      message: "The partial './absent.yaml' cannot be read: nothing exists at file://"
+  runFails: "[PARTIAL_NOT_FOUND] The partial './absent.yaml' cannot be read: nothing exists at file://"
+---
+# An import whose source fails is worded by Telo from one closed set of kinds,
+# never the operating system's error text.
+kind: Assert.Manifest
+metadata: { name: importSourceFailures }
+source: ./__fixtures__/check-run-agreement/source-failures/telo.yaml
+expect:
+  errors:
+    - code: IMPORT_UNRESOLVED
+      message: "Cannot resolve import 'Gone' → './absent': nothing exists at file://"
+    - code: IMPORT_UNRESOLVED
+      message: "/source-failures/not-a-module is not a module: it holds no telo.yaml."
+  runFails: "[IMPORT_UNRESOLVED] Cannot resolve import 'Gone' → './absent': nothing exists at file://"
 ---
 # `Telo` and `Self` are the runtime's kind prefixes, so no module may be named
 # after one and no import aliased one: a library named `Telo` used to replace the

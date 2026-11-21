@@ -8,8 +8,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 
-use telo_analyzer::{load_graph, ImportTargetPort, LoadedFile, LoadedGraph};
-use telo_kernel::error::KernelError;
+use telo_analyzer::{load_graph, LoadError, LoadedGraph};
 use telo_kernel::kernel::SourcesImportPort;
 use telo_kernel::manifest_sources::local_file_source::LocalFileSource;
 use telo_kernel::manifest_sources::local_manifest_cache_source::{resolve_entry_dir, LocalManifestCacheSource};
@@ -37,7 +36,7 @@ pub fn cache_target_for(input: &ManifestInput) -> std::io::Result<Option<CacheTa
 }
 
 pub struct CheckSession {
-    port: CheckPort,
+    port: SourcesImportPort,
     /// One recorder per distinct cache root, so the freshness pass can tell which manifests
     /// were served from disk and from which file.
     recorders: Vec<ServedFiles>,
@@ -67,7 +66,7 @@ pub fn open_session(targets: &[CacheTarget]) -> CheckSession {
     }
     sources.push(Box::new(oci.clone()));
     CheckSession {
-        port: CheckPort::new(SourcesImportPort::new(sources)),
+        port: SourcesImportPort::new(sources),
         recorders,
         manifests_dirs: targets.iter().map(|t| t.manifests_dir.clone()).collect(),
         oci,
@@ -80,52 +79,10 @@ pub fn open_session(targets: &[CacheTarget]) -> CheckSession {
 pub enum GraphFailure {
     /// The entry itself could not be read: the load failure Node reports for the path.
     Entry(String),
-    /// A module the entry's imports reach could not be resolved or read. Node reports it as
-    /// a diagnostic this analyzer has no producer for, so it is a host refusal here.
-    Refused { file: Option<String>, error: KernelError },
+    /// The entry names a construct this build cannot read.
+    Refused(String),
     /// The freshness pass could not ask the registry.
     Freshness(String),
-}
-
-/// The port the walk goes through, noting where it failed: an entry that does not read is a
-/// load failure and every other refusal belongs to an import. No Node twin — Node's loader
-/// throws errors that carry this themselves.
-struct CheckPort {
-    inner: SourcesImportPort,
-    entry: RefCell<Option<String>>,
-    entry_error: RefCell<Option<KernelError>>,
-    import_failure_in: RefCell<Option<String>>,
-}
-
-impl CheckPort {
-    fn new(inner: SourcesImportPort) -> Self {
-        Self {
-            inner,
-            entry: RefCell::new(None),
-            entry_error: RefCell::new(None),
-            import_failure_in: RefCell::new(None),
-        }
-    }
-}
-
-impl ImportTargetPort for CheckPort {
-    type Error = KernelError;
-
-    fn resolve(&self, from: &LoadedFile, alias: &str, source: &str) -> Result<String, KernelError> {
-        self.inner.resolve(from, alias, source).inspect_err(|_| {
-            *self.import_failure_in.borrow_mut() = Some(from.source.clone());
-        })
-    }
-
-    fn load(&self, url: &str) -> Result<LoadedFile, KernelError> {
-        let is_entry = self.entry.borrow().as_deref() == Some(url);
-        self.inner.load(url).map_err(|err| {
-            if is_entry {
-                *self.entry_error.borrow_mut() = Some(KernelError::new(&err.code, err.message.clone()));
-            }
-            err
-        })
-    }
 }
 
 /// Drop a stale cache entry: the file, and the record that it was ever served. The next
@@ -155,12 +112,9 @@ pub fn load_fresh_graph(
     log: &Logger,
 ) -> Result<(LoadedGraph, BTreeMap<String, String>), GraphFailure> {
     let load = || -> Result<LoadedGraph, GraphFailure> {
-        *session.port.entry.borrow_mut() = Some(entry_path.to_string());
-        *session.port.entry_error.borrow_mut() = None;
-        *session.port.import_failure_in.borrow_mut() = None;
-        load_graph(&session.port, entry_path).map_err(|error| match session.port.entry_error.borrow_mut().take() {
-            Some(entry_error) => GraphFailure::Entry(node_io_message(&entry_error)),
-            None => GraphFailure::Refused { file: session.port.import_failure_in.borrow_mut().take(), error },
+        load_graph(&session.port, entry_path).map_err(|error| match error {
+            LoadError::Unsupported(message) => GraphFailure::Refused(message),
+            other => GraphFailure::Entry(other.to_string()),
         })
     };
     let graph = load()?;
@@ -192,16 +146,4 @@ pub fn load_fresh_graph(
         drop_stale_entry(file, session, log).map_err(|err| GraphFailure::Freshness(err.to_string()))?;
     }
     Ok((load()?, freshness.digests))
-}
-
-/// The text Node reports for a path that does not read: the runtime's own errno wording.
-/// Only the two a person meets are spelled so; any other keeps the kernel's sentence.
-fn node_io_message(error: &KernelError) -> String {
-    let Some(rest) = error.message.strip_prefix("failed to read `") else { return error.message.clone() };
-    let Some((path, reason)) = rest.split_once("`: ") else { return error.message.clone() };
-    match reason {
-        "No such file or directory (os error 2)" => format!("ENOENT: no such file or directory, open '{path}'"),
-        "Permission denied (os error 13)" => format!("EACCES: permission denied, open '{path}'"),
-        _ => error.message.clone(),
-    }
 }

@@ -10,7 +10,7 @@
 //! the kernel binary.
 
 use indexmap::IndexMap;
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
 use crate::quoted_place::QuotedPlace;
@@ -18,13 +18,13 @@ use crate::quoted_place::QuotedPlace;
 pub const DEFAULT_MANIFEST_FILENAME: &str = "telo.yaml";
 
 /// A place in a file: 0-based line, and 0-based character in UTF-16 code units.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Position {
     pub line: usize,
     pub character: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Range {
     pub start: Position,
     pub end: Position,
@@ -50,6 +50,18 @@ impl Serialize for DiagnosticSeverity {
     }
 }
 
+impl<'de> Deserialize<'de> for DiagnosticSeverity {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        match u8::deserialize(deserializer)? {
+            1 => Ok(Self::Error),
+            2 => Ok(Self::Warning),
+            3 => Ok(Self::Information),
+            4 => Ok(Self::Hint),
+            other => Err(serde::de::Error::custom(format!("{other} is no diagnostic severity"))),
+        }
+    }
+}
+
 /// LSP's `DiagnosticTag`, serialized as its number — declared whole, as the Node twin is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiagnosticTag {
@@ -63,8 +75,18 @@ impl Serialize for DiagnosticTag {
     }
 }
 
+impl<'de> Deserialize<'de> for DiagnosticTag {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        match u8::deserialize(deserializer)? {
+            1 => Ok(Self::Unnecessary),
+            2 => Ok(Self::Deprecated),
+            other => Err(serde::de::Error::custom(format!("{other} is no diagnostic tag"))),
+        }
+    }
+}
+
 /// The YAML tag a repair writes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DiagnosticFixTag {
     Ref,
@@ -74,7 +96,7 @@ pub enum DiagnosticFixTag {
 
 /// A mechanically applicable repair: the whole value at the diagnostic's `path`,
 /// corrected, optionally written behind a tag.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DiagnosticFix {
     pub replacement: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -82,7 +104,7 @@ pub struct DiagnosticFix {
 }
 
 /// The declaration a diagnostic is about.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DiagnosticResource {
     pub kind: String,
     pub name: String,
@@ -90,7 +112,7 @@ pub struct DiagnosticResource {
 
 /// The `data` stamp a diagnostic carries — the fields Node's `DiagnosticData`
 /// declares, and the further ones its producers stamp, under their Node names.
-#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct DiagnosticData {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resource: Option<DiagnosticResource>,
@@ -104,6 +126,9 @@ pub struct DiagnosticData {
     /// The line of the declaration a file-level diagnostic belongs to (an import's).
     #[serde(rename = "sourceLine", skip_serializing_if = "Option::is_none")]
     pub source_line: Option<usize>,
+    /// The kind of source failure that left an import's target unobtained.
+    #[serde(rename = "sourceFailure", skip_serializing_if = "Option::is_none")]
+    pub source_failure: Option<String>,
     /// The places the message quotes, in order.
     #[serde(rename = "quotedPlace", skip_serializing_if = "Option::is_none")]
     pub quoted_place: Option<Vec<QuotedPlace>>,
@@ -120,7 +145,7 @@ pub struct DiagnosticData {
 }
 
 /// Where a defect is written, Node's `WrittenAt`.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WrittenAt {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resource: Option<DiagnosticResource>,
@@ -138,7 +163,7 @@ impl WrittenAt {
 }
 
 /// The rewrite a migration's deprecation reports: the entry, and the path before and after.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DiagnosticMigration {
     pub id: String,
     #[serde(rename = "legacyPath")]
@@ -149,7 +174,7 @@ pub struct DiagnosticMigration {
 
 /// An LSP-compatible diagnostic, Node's `AnalysisDiagnostic`. `range` is absent when only
 /// the diagnostic's `data` locates it (`diagnostic_location::locate_diagnostic`).
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AnalysisDiagnostic {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub range: Option<Range>,
@@ -194,16 +219,58 @@ pub struct ReadManifest {
     pub source: String,
 }
 
-/// A transport a manifest can be read through. The Rust kernel registers the local-file source, the workspace manifest cache and the OCI registry source; an HTTP(S) import has no Rust source, so it fails at resolution with a precise message rather than being silently skipped.
+/// A transport a manifest can be read through, mirroring Node's `ManifestSource`. The Rust kernel registers the local-file source, the workspace manifest cache and the OCI registry source; an HTTP(S) import has no Rust source, so the kernel refuses it as a construct this build cannot read.
 pub trait ManifestSource {
     fn supports(&self, path_or_url: &str) -> bool;
     fn read(&self, path_or_url: &str) -> Result<ReadManifest, LoadError>;
+
+    /// `relative` resolved against `base`, a location this source reads (Node's
+    /// `resolveRelative`): by default the path joined to `base`'s directory.
+    fn resolve_relative(&self, base: &str, relative: &str) -> Result<String, LoadError> {
+        Ok(join_relative(base, relative))
+    }
+
+    /// The files `patterns` select beside `base`, `.gitignore`-style (Node's `expandGlob`);
+    /// `None` for a source that cannot list files.
+    fn expand_glob(&self, base: &str, patterns: &[String]) -> Option<Result<Vec<String>, LoadError>> {
+        let _ = (base, patterns);
+        None
+    }
+}
+
+/// `relative` joined to the directory of `base`, `.` and `..` collapsed lexically, so an
+/// unreadable path still names what was looked for. An absolute `relative` is itself.
+pub fn join_relative(base: &str, relative: &str) -> String {
+    let base_dir = std::path::Path::new(base).parent().unwrap_or_else(|| std::path::Path::new("."));
+    let mut out = std::path::PathBuf::new();
+    for component in base_dir.join(relative).components() {
+        match component {
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            std::path::Component::CurDir => {}
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out.to_string_lossy().into_owned()
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum LoadError {
-    #[error("no manifest source supports `{0}`. This kernel reads local paths and oci:// refs only")]
+    /// No registered source reads the location: Node's loader's own words.
+    #[error("No source found for: {0}")]
     UnsupportedSource(String),
+    /// The source could not hand the manifest over, worded by Telo.
+    #[error("{0}")]
+    Source(crate::sources::source_failure::ManifestSourceFailure),
+    /// A read that failed for a reason outside the source-failure set (an integrity
+    /// mismatch, a malformed artifact), in the source's own words.
+    #[error("{0}")]
+    Failed(String),
+    /// A construct this build cannot read — a transport or a nested artifact the Rust
+    /// sources do not implement: never a diagnostic, a refusal of the Rust hosts.
+    #[error("{0}")]
+    Unsupported(String),
     #[error("failed to read `{path}`: {message}")]
     Io { path: String, message: String },
 }

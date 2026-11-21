@@ -1,11 +1,23 @@
-import { DiagnosticSeverity, type AnalysisDiagnostic } from "@telorun/analyzer";
-import type { DiagnosticOrigin, RuntimeDiagnostic } from "@telorun/sdk";
+import {
+  DiagnosticSeverity,
+  type AnalysisDiagnostic,
+  type CarriedFinding,
+  type LoadRefusal,
+} from "@telorun/analyzer";
+import {
+  RuntimeError,
+  type DiagnosticOrigin,
+  type DiagnosticWrittenAt,
+  type RuntimeDiagnostic,
+  type RuntimeErrorCode,
+} from "@telorun/sdk";
 
 /**
  * Carry a static-analysis diagnostic into the runtime failure set.
  *
- * The analyzer's `data` — the file, the field path within it, and the owning
- * resource — travels as `origin`, alongside the diagnostic's own `range` for
+ * The analyzer's `data` — the file, the field path within it, the owning
+ * resource, and for a finding re-reported at an import the place its defect is
+ * written (`writtenAt`) — travels as `origin`, alongside the diagnostic's own `range` for
  * the failures that have no field path to look up (a YAML parse error knows
  * where the syntax broke but has no parsed tree to index). That is what lets a
  * renderer resolve the same `file:line:col` `telo check` prints; flattening it
@@ -23,6 +35,7 @@ export function staticDiagnosticToRuntime(d: AnalysisDiagnostic): RuntimeDiagnos
   if (data?.path !== undefined) origin.path = data.path;
   if (data?.resource !== undefined) origin.resource = data.resource;
   if (d.range !== undefined) origin.range = d.range;
+  if (data?.writtenAt) origin.writtenAt = writtenAtOf(data.writtenAt);
   return {
     // Mapped, not assumed: every current caller passes a pre-filtered error set,
     // but a warning routed through here must not be rendered in red and counted
@@ -40,6 +53,15 @@ export function staticDiagnosticToRuntime(d: AnalysisDiagnostic): RuntimeDiagnos
   };
 }
 
+/** The written place with only the members it holds. */
+function writtenAtOf(at: DiagnosticWrittenAt): DiagnosticWrittenAt {
+  return {
+    ...(at.filePath !== undefined ? { filePath: at.filePath } : {}),
+    ...(at.path !== undefined ? { path: at.path } : {}),
+    ...(at.resource !== undefined ? { resource: at.resource } : {}),
+  };
+}
+
 /** `Kind.name`, or whichever half is present — a diagnostic carrying only one
  *  of them used to render as `undefined.foo`. */
 function describeResource(
@@ -48,4 +70,33 @@ function describeResource(
   if (!resource) return undefined;
   const parts = [resource.kind, resource.name].filter((p): p is string => p !== undefined);
   return parts.length > 0 ? parts.join(".") : undefined;
+}
+
+/** A load refusal the analyzer's rule decided, as the runtime failure it is raised as. */
+export function loadRefusalError(refusal: LoadRefusal): RuntimeError {
+  return new RuntimeError(
+    refusal.code as RuntimeErrorCode,
+    refusal.message,
+    refusal.carried.map(carriedToRuntime),
+  );
+}
+
+/** One finding a refusal carries, under the code the refusal raises it as. */
+export function carriedToRuntime(finding: CarriedFinding): RuntimeDiagnostic {
+  if ("need" in finding) {
+    const { need } = finding;
+    return {
+      severity: "error",
+      message: need.message,
+      code: need.runtimeCode,
+      ...(need.resource ? { resource: `${need.resource.kind}.${need.resource.name}` } : {}),
+      origin: {
+        ...(need.filePath !== undefined ? { filePath: need.filePath } : {}),
+        path: need.path,
+        ...(need.resource ? { resource: need.resource } : {}),
+      },
+    };
+  }
+  const runtime = staticDiagnosticToRuntime(finding.diagnostic);
+  return finding.code === undefined ? runtime : { ...runtime, code: finding.code };
 }

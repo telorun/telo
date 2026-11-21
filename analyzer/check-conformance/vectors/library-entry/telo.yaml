@@ -1,0 +1,6 @@
+kind: Telo.Library
+metadata: { name: Greetings }
+---
+kind: Telo.Definition
+metadata: { name: Greeter }
+capability: Telo.Invocable

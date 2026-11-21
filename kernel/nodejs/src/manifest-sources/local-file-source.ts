@@ -1,4 +1,9 @@
-import { DEFAULT_MANIFEST_FILENAME, type ManifestSource } from "@telorun/analyzer";
+import {
+  DEFAULT_MANIFEST_FILENAME,
+  ManifestSourceFailure,
+  fileSourceFailure,
+  type ManifestSource,
+} from "@telorun/analyzer";
 import { selectByPatterns } from "@telorun/glob";
 import * as fs from "fs/promises";
 import * as path from "path";
@@ -23,12 +28,28 @@ export class LocalFileSource implements ManifestSource {
     );
   }
 
+  /** A failure is the closed `ManifestSourceFailure` set, named by the file URL
+   *  asked for: a path that does not exist is `not-found`, a directory holding
+   *  no `telo.yaml` `not-a-module`, anything else the OS refuses `unreadable`. */
   async read(pathOrUrl: string): Promise<{ text: string; source: string }> {
     const resolvedPath = path.resolve(toFilePath(pathOrUrl));
-    const stat = await fs.stat(resolvedPath);
+    let stat: Awaited<ReturnType<typeof fs.stat>>;
+    try {
+      stat = await fs.stat(resolvedPath);
+    } catch (error) {
+      throw fileSourceFailure(error, toFileUrl(resolvedPath));
+    }
     const filePath = stat.isDirectory() ? path.join(resolvedPath, DEFAULT_MANIFEST_FILENAME) : resolvedPath;
-    const text = await fs.readFile(filePath, "utf-8");
-    return { text, source: toFileUrl(filePath) };
+    try {
+      const text = await fs.readFile(filePath, "utf-8");
+      return { text, source: toFileUrl(filePath) };
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (stat.isDirectory() && (code === "ENOENT" || code === "ENOTDIR")) {
+        throw new ManifestSourceFailure("not-a-module", toFileUrl(resolvedPath), { cause: error });
+      }
+      throw fileSourceFailure(error, toFileUrl(filePath));
+    }
   }
 
   async readAll(pathOrUrl: string): Promise<string[]> {

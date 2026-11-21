@@ -217,13 +217,15 @@ mod tests {
     fn graph_of(manifest: &str) -> LoadedGraph {
         let file = telo_analyzer::parse_loaded_file("/app/telo.yaml", "/app/telo.yaml", manifest);
         let mut modules = indexmap::IndexMap::new();
-        modules.insert("/app/telo.yaml".to_string(), telo_analyzer::LoadedModule { owner: file });
+        modules.insert("/app/telo.yaml".to_string(), telo_analyzer::LoadedModule { owner: file, partials: Vec::new() });
         LoadedGraph {
             root_source: "/app/telo.yaml".to_string(),
             modules,
             requested: HashMap::new(),
-            import_edges: HashMap::new(),
+            import_edges: Default::default(),
+            overrides: Default::default(),
             parse_diagnostics: Vec::new(),
+            version_diagnostics: Vec::new(),
             migration_diagnostics: Vec::new(),
             metadata_diagnostics: Vec::new(),
             errors: Vec::new(),

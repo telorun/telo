@@ -173,14 +173,16 @@ mod tests {
     fn graph_of(sources: &[&str]) -> LoadedGraph {
         let mut modules = IndexMap::new();
         for source in sources {
-            modules.insert(source.to_string(), LoadedModule { owner: file(source) });
+            modules.insert(source.to_string(), LoadedModule { owner: file(source), partials: Vec::new() });
         }
         LoadedGraph {
             root_source: sources[0].to_string(),
             modules,
             requested: HashMap::new(),
-            import_edges: HashMap::new(),
+            import_edges: Default::default(),
+            overrides: Default::default(),
             parse_diagnostics: Vec::new(),
+            version_diagnostics: Vec::new(),
             migration_diagnostics: Vec::new(),
             metadata_diagnostics: Vec::new(),
             errors: Vec::new(),

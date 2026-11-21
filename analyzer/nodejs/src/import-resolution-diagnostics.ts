@@ -1,22 +1,8 @@
 import type { GraphLoadError, LoadedGraph } from "./loaded-types.js";
-import { isLocalPathSource } from "./sources/local-path-ref.js";
-import { isOciRef } from "./sources/oci-ref.js";
+import { isModuleReference } from "./sources/module-reference.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
 const SOURCE = "telo-analyzer";
-
-/** True when `source` is a shape some transport claims — an OCI ref, an HTTP(S)
- *  URL, or a relative/absolute path. A source matching none of these is
- *  malformed (no transport can ever resolve it), which we report differently
- *  from a well-formed ref that simply failed to fetch. */
-function isRecognizedSourceShape(source: string): boolean {
-  return (
-    isOciRef(source) ||
-    source.startsWith("http://") ||
-    source.startsWith("https://") ||
-    isLocalPathSource(source)
-  );
-}
 
 /** Which of the three failures this is. Kept as one function so the code and
  *  the sentence can never disagree about which cause was established — shared
@@ -26,7 +12,9 @@ export function importFailureCode(
 ): "INVALID_IMPORT_TARGET" | "INVALID_IMPORT_SOURCE" | "IMPORT_UNRESOLVED" | "KIND_PREFIX_RESERVED" {
   if (e.reason === "reserved-prefix") return "KIND_PREFIX_RESERVED";
   if (e.reason === "unusable-target") return "INVALID_IMPORT_TARGET";
-  return isRecognizedSourceShape(e.source ?? e.url) ? "IMPORT_UNRESOLVED" : "INVALID_IMPORT_SOURCE";
+  // A source no module reference reads is malformed, however its read failed —
+  // reported apart from a well-formed one that could not be obtained.
+  return isModuleReference(e.source ?? e.url) ? "IMPORT_UNRESOLVED" : "INVALID_IMPORT_SOURCE";
 }
 
 /** The removed bare `<namespace>/<name>@<version>` ref: no scheme, not a path,
@@ -114,12 +102,14 @@ export function importFailureDiagnostics(
       path?: string;
       sourceLine?: number;
       resource?: { kind: string; name: string };
+      sourceFailure?: string;
     } = { filePath };
     if (e.scope) {
       data.resource = e.scope.holder;
       data.path = e.scope.path;
     } else if (e.alias) data.path = `imports.${e.alias}`;
     if (e.sourceLine !== undefined) data.sourceLine = e.sourceLine;
+    if (e.sourceFailure !== undefined) data.sourceFailure = e.sourceFailure;
     return {
       severity: DiagnosticSeverity.Error,
       code,

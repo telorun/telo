@@ -5,10 +5,10 @@
 //! fetched bytes and compares against it before the manifest is parsed or
 //! cached. A mismatch is a terminal error — never a cache miss.
 //!
-//! Only what the Rust kernel consumes is here. `verifiedFetch` and its
+//! Only what the Rust loader and kernel consume is here. `verifiedFetch` and its
 //! object-storage sniff belong to the Node analyzer's HTTP source, which has no
-//! Rust counterpart; `foldIntegrity` and `isCanonicalIntegrity` serve the import
-//! object form and pin writing, neither of which this kernel implements.
+//! Rust counterpart; `isCanonicalIntegrity` serves pin writing, which no Rust host
+//! implements.
 
 use sha2::{Digest, Sha256};
 
@@ -26,6 +26,16 @@ impl IntegrityError {
         Self {
             message: message.into(),
         }
+    }
+}
+
+/// `source` with the object form's `integrity:` sibling attached as a `#<alg>-…` fragment
+/// — unchanged when `integrity` is no string or `source` already carries a fragment, so an
+/// authored pin is never overwritten. The inverse of [`split_integrity`].
+pub fn fold_integrity(source: &str, integrity: Option<&serde_json::Value>) -> String {
+    match integrity.and_then(serde_json::Value::as_str) {
+        Some(integrity) if !source.contains('#') => format!("{source}#{integrity}"),
+        _ => source.to_string(),
     }
 }
 

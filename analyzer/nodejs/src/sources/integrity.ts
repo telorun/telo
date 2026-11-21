@@ -43,6 +43,23 @@ export class ManifestNotFoundError extends Error {
   }
 }
 
+/** Why `verifiedFetch` got no manifest: the request reached no host (the fetch
+ *  itself rejected), or the host answered with a non-2xx status other than
+ *  404 / 410. Carried beside the error's own message, which it leaves as it was. */
+export type ManifestFetchFailure = { reached: false } | { reached: true; status: number };
+
+const FETCH_FAILURE = Symbol("telo.manifestFetchFailure");
+
+function withFetchFailure(error: unknown, failure: ManifestFetchFailure): unknown {
+  if (error === null || typeof error !== "object") return error;
+  return Object.assign(error, { [FETCH_FAILURE]: failure });
+}
+
+/** The fetch failure `error` reports, when `verifiedFetch` raised it. */
+export function manifestFetchFailureOf(error: unknown): ManifestFetchFailure | undefined {
+  return (error as { [FETCH_FAILURE]?: ManifestFetchFailure } | undefined)?.[FETCH_FAILURE];
+}
+
 /** Split a trailing integrity fragment off a ref/URL. Returns the bare ref in
  *  `base` (safe to build fetch URLs and cache paths from) and the fragment in
  *  `integrity` (e.g. `sha256-<base64url>`), or `undefined` when absent. */
@@ -149,13 +166,23 @@ export async function verifiedFetch(
   integrity: string | undefined,
   describe: string,
 ): Promise<{ bytes: Uint8Array; text: string }> {
-  const response = await fetch(fetchUrl);
+  // Parsed before the request: a URL its parser refuses asked no host, so it is
+  // no fetch failure.
+  if (!URL.canParse(fetchUrl)) {
+    throw new Error(`Cannot fetch manifest ${describe}: '${fetchUrl}' is not a well-formed URL.`);
+  }
+  let response: Response;
+  try {
+    response = await fetch(fetchUrl);
+  } catch (error) {
+    throw withFetchFailure(error, { reached: false });
+  }
   if (!response.ok) {
     const message = `Failed to fetch manifest ${describe}: ${response.status} ${response.statusText} (${fetchUrl})`;
     if (response.status === 404 || response.status === 410) {
       throw new ManifestNotFoundError(message, fetchUrl, response.status);
     }
-    throw new Error(message);
+    throw withFetchFailure(new Error(message), { reached: true, status: response.status });
   }
   const bytes = new Uint8Array(await response.arrayBuffer());
   const text = new TextDecoder().decode(bytes);

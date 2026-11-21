@@ -110,12 +110,10 @@ fn a_path_that_does_not_exist_is_a_load_failure_diagnostic() {
     let payload = envelope(&output);
     assert_eq!(payload["errorCount"], 1);
     assert_eq!(payload["diagnostics"][0]["file"], "missing.yaml");
-    assert!(
-        payload["diagnostics"][0]["message"].as_str().unwrap().starts_with("ENOENT: no such file or directory"),
-        "{payload}"
-    );
+    let message = payload["diagnostics"][0]["message"].as_str().unwrap();
+    assert!(message.starts_with("nothing exists at file://") && message.ends_with("/missing.yaml."), "{payload}");
     // The reason is on stderr in both formats.
-    assert!(stderr(&output).starts_with("missing.yaml  error  ENOENT"), "{}", stderr(&output));
+    assert!(stderr(&output).starts_with("missing.yaml  error  nothing exists at file://"), "{}", stderr(&output));
 }
 
 #[test]
@@ -337,4 +335,94 @@ fn writes_the_manifest_cache_unless_told_not_to() {
     let written = cached(persistent.path());
     assert_eq!(written.len(), 1, "{written:?}");
     assert!(written[0].ends_with("1.0.0/telo.yaml"), "{written:?}");
+}
+
+/// `analyzer/nodejs/tests/__fixtures__/dependency-verdicts/`, relative to the repo root.
+const VERDICTS: &str = "analyzer/nodejs/tests/__fixtures__/dependency-verdicts";
+
+/// The capability defect of `dependency-verdicts/capability`, as `telo check` prints it at the
+/// library's own line.
+fn capability_line() -> String {
+    format!(
+        "{VERDICTS}/capability/telo.yaml:8:13  error  Telo.Definition 'Gadget': 'Telo.Servise' is not a capability. Did you mean 'Telo.Service'? A capability names a lifecycle role — one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type.  CAPABILITY_UNKNOWN"
+    )
+}
+
+/// `telo check` run at the repo root, with a cache of its own.
+fn check_at_root(paths: &[&str]) -> Output {
+    let cache = tempfile::tempdir().unwrap();
+    Command::new(env!("CARGO_BIN_EXE_telo"))
+        .current_dir(support::repo_root())
+        .env("NO_COLOR", "1")
+        .env("TELO_CACHE_DIR", cache.path())
+        .arg("check")
+        .arg("--no-cache-write")
+        .args(paths.iter().map(|path| format!("{VERDICTS}/{path}")))
+        .output()
+        .expect("telo runs")
+}
+
+#[test]
+fn reports_a_path_imported_library_finding_at_its_own_line_once_however_deep() {
+    for entry in ["capability-app.yaml", "chain.yaml"] {
+        let output = check_at_root(&[entry]);
+        assert_eq!(output.status.code(), Some(1), "{entry}: {}", stderr(&output));
+        assert_eq!(stdout(&output), format!("{}\n\n1 error\n", capability_line()), "{entry}");
+    }
+}
+
+#[test]
+fn reports_a_finding_several_paths_reach_once() {
+    let output = check_at_root(&["capability-app.yaml", "chain.yaml", "capability/telo.yaml"]);
+    assert_eq!(output.status.code(), Some(1), "{}", stderr(&output));
+    assert_eq!(stdout(&output), format!("{}\n\n1 error\n", capability_line()));
+}
+
+/// An application importing `library`, published to a loopback registry, by its pinned ref.
+fn importing_published(registry: &support::TestRegistry, library: &str) -> tempfile::TempDir {
+    let (owner, rest) = library.split_once("---\n").expect("a module document, then the rest");
+    let pinned = registry.publish("acme/lib", "1.0.0", owner, &format!("---\n{rest}"), &[]).pinned;
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "telo.yaml", format!("kind: Telo.Application\nmetadata:\n  name: App\nimports:\n  Lib: {pinned}\n").as_bytes());
+    dir
+}
+
+#[test]
+fn reports_a_published_library_error_as_a_warning_at_the_import_reaching_it() {
+    let registry = support::TestRegistry::start(false);
+    let dir = importing_published(
+        &registry,
+        "kind: Telo.Library\nmetadata:\n  name: Lib\n  version: 1.0.0\n---\nkind: Telo.Definition\nmetadata: { name: Greeter }\ncapability: Telo.Invocable\n---\nkind: Telo.Definition\nmetadata: { name: Router }\ncapability: Telo.Invocable\nschema:\n  type: object\n  properties: { handler: { x-telo-ref: { kind: Telo.Invocable, use: call } } }\n---\nkind: Self.Greeter\nmetadata: { name: greeter }\n---\nkind: Self.Router\nmetadata: { name: router }\nhandler: { kind: Self.Greeter, name: greeter }\n",
+    );
+    let output = telo(dir.path(), &["check", "--no-cache-write", "-o", "json", "telo.yaml"]);
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    let payload = envelope(&output);
+    assert_eq!((payload["ok"].clone(), payload["errorCount"].clone(), payload["warnCount"].clone()), (json!(true), json!(0), json!(1)));
+    let found = &payload["diagnostics"][0];
+    assert_eq!(
+        (found["file"].clone(), found["line"].clone(), found["severity"].clone(), found["code"].clone(), found["path"].clone()),
+        (json!("telo.yaml"), json!(5), json!("warning"), json!("INVALID_REFERENCE_FORM"), json!("imports.Lib"))
+    );
+    assert!(
+        found["message"].as_str().unwrap().starts_with("Imported library 'Lib', reached through import 'Lib': Self.Router/router: "),
+        "{found}"
+    );
+}
+
+#[test]
+fn keeps_the_entry_refusal_at_a_published_import_without_the_library_warning_it_covers() {
+    let registry = support::TestRegistry::start(false);
+    let dir = importing_published(
+        &registry,
+        "kind: Telo.Library\nmetadata:\n  name: Lib\n  version: 1.0.0\n---\nkind: Telo.Definition\nmetadata: { name: Gadget }\ncapability: Telo.Servise\n",
+    );
+    let output = telo(dir.path(), &["check", "--no-cache-write", "-o", "json", "telo.yaml"]);
+    assert_eq!(output.status.code(), Some(1), "{}", stderr(&output));
+    let payload = envelope(&output);
+    assert_eq!((payload["errorCount"].clone(), payload["warnCount"].clone()), (json!(1), json!(0)));
+    let found = &payload["diagnostics"][0];
+    assert_eq!(
+        (found["severity"].clone(), found["code"].clone(), found["path"].clone()),
+        (json!("error"), json!("CAPABILITY_UNKNOWN"), json!("imports.Lib"))
+    );
 }

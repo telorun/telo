@@ -1,8 +1,8 @@
 //! The static analysis of a loaded graph, mirroring the passes of
 //! `../../nodejs/src/analyzer.ts` this analyzer has: the capability roster over every
 //! kind document of the graph (a dependency's reported at the entry's import reaching
-//! it), the entry module's reference forms, its own name, and a plain string it leaves
-//! holding `${{`. Each is a refusal the Rust kernel makes; Node's other passes have no
+//! it), the entry module's reference forms, its own name, and a plain string left holding
+//! `${{` — the entry's own, and an imported library's at the entry's import reaching it. Each is a refusal the Rust kernel makes; Node's other passes have no
 //! twin yet, so an analysis here reports a subset of Node's and never a diagnostic Node does
 //! not make. It reports them in Node's order, the finding order (`finding_order`), whatever
 //! order its passes run in.

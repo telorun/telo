@@ -1,0 +1,6 @@
+kind: Telo.Application
+metadata: { name: AuthoredImportApp }
+---
+kind: Telo.Import
+metadata: { name: Lib }
+source: ./missing

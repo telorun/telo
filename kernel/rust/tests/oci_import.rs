@@ -98,3 +98,26 @@ fn resolves_a_pinned_import_from_the_workspace_manifest_cache_with_no_network() 
 
     assert!(registry.requests().is_empty(), "{:?}", registry.requests());
 }
+
+/// One module imported at two majors is refused before anything is created, at the import
+/// reaching the losing version.
+#[test]
+fn refuses_a_module_imported_at_two_major_versions() {
+    let registry = TestRegistry::start(false);
+    let library = |version: &str| format!("kind: Telo.Library\nmetadata:\n  name: Store\n  version: {version}\n");
+    let old = registry.publish("acme/store", "1.0.0", &library("1.0.0"), "", &[]).pinned;
+    let new = registry.publish("acme/store", "2.0.0", &library("2.0.0"), "", &[]).pinned;
+    let workspace = tempfile::tempdir().unwrap();
+    let app = workspace.path().join("telo.yaml");
+    fs::write(&app, format!("kind: Telo.Application\nmetadata:\n  name: App\nimports:\n  Old: {old}\n  New: {new}\n")).unwrap();
+
+    let err = Kernel::new().load(app.to_str().unwrap()).expect_err("two majors are refused");
+
+    assert_eq!(
+        err.to_string(),
+        format!(
+            "[ERR_MANIFEST_VALIDATION_FAILED] Module 'oci://{host}/acme/store' is imported at incompatible major versions: 1.0.0 here and 2.0.0 elsewhere in the same graph. Major versions can carry breaking changes and cannot be reconciled automatically — align every importer on one major.\n  [MODULE_VERSION_CONFLICT] Module 'oci://{host}/acme/store' is imported at incompatible major versions: 1.0.0 here and 2.0.0 elsewhere in the same graph. Major versions can carry breaking changes and cannot be reconciled automatically — align every importer on one major.",
+            host = registry.host()
+        )
+    );
+}

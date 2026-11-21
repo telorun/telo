@@ -1,0 +1,8 @@
+units:
+  kernel: Added
+body: "The Rust kernel creates each import as the module the loaded graph's import edge
+  reached, authored module-level `Telo.Import` documents included, reads `include:`
+  partials into the module's scope, and refuses a load by the analyzer's load refusal
+  rule, so an entry that is a `Telo.Library` is refused with the Node kernel's message.
+  `Kernel::load_with(path, LoadOptions { analyze_only: true })` stops after that static
+  pre-flight, as the Node kernel's `analyzeOnly` does."

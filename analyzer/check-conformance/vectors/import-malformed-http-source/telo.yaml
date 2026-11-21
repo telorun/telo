@@ -1,0 +1,3 @@
+kind: Telo.Application
+metadata: { name: MalformedHttpApp }
+imports: { Lib: "http://[bad/x" }

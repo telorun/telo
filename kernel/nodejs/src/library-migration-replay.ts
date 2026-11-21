@@ -1,7 +1,7 @@
 import {
   applyLibraryMigrationRecord,
   cloneMigrationTree,
-  libraryMigrationDiagnostics,
+  migrationFailureRefusal,
   migrationRecordMismatches,
   type AnalysisDiagnostic,
   type LoadedFile,
@@ -10,7 +10,7 @@ import {
   type ModuleMigrationRecord,
 } from "@telorun/analyzer";
 import { RuntimeError } from "@telorun/sdk";
-import { staticDiagnosticToRuntime } from "./static-analysis-diagnostics.js";
+import { loadRefusalError } from "./static-analysis-diagnostics.js";
 
 /**
  * The library migration stage's edit record, replayed over a compiled load.
@@ -61,23 +61,10 @@ export function libraryMigrationRecordOf(
 /**
  * Every `MIGRATION_FAILED` of `graph`, located as `telo check` reports it,
  * raised as `ERR_MIGRATION_FAILED` beside `others` — the analysis's remaining
- * errors — before any resource is created. Nothing when no migration failed.
+ * errors — before any resource is created (`migrationFailureRefusal`). Nothing
+ * when no migration failed.
  */
 export function refuseFailedMigrations(graph: LoadedGraph, others: readonly AnalysisDiagnostic[]): void {
-  const failed = libraryMigrationDiagnostics(graph).filter((d) => d.code === "MIGRATION_FAILED");
-  if (failed.length === 0) return;
-  const diagnostics = [
-    ...failed.map((d) => ({ ...staticDiagnosticToRuntime(d), code: "ERR_MIGRATION_FAILED" })),
-    ...others.map(staticDiagnosticToRuntime),
-  ];
-  throw new RuntimeError(
-    "ERR_MIGRATION_FAILED",
-    diagnostics
-      .map((d) => {
-        const filePath = d.origin?.filePath;
-        return `${filePath ? `${filePath}: ` : ""}${d.message}${d.code ? ` (${d.code})` : ""}`;
-      })
-      .join("\n"),
-    diagnostics,
-  );
+  const refusal = migrationFailureRefusal(graph, others);
+  if (refusal) throw loadRefusalError(refusal);
 }

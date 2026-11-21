@@ -1,0 +1,3 @@
+kind: Telo.Library
+metadata: { name: MidLib }
+imports: { Inner: ../lib }

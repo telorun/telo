@@ -12,6 +12,7 @@ import type {
   LoadedFile,
   LoadedGraph,
   LoadedModule,
+  ParseError,
   ScopedImportEdge,
 } from "./loaded-types.js";
 import { scopedImportsOf, scopedMemberPath } from "./scoped-imports.js";
@@ -21,6 +22,18 @@ import {
   isBuiltinVocabularyRoot,
 } from "./builtin-vocabulary.js";
 import { desugarLoadedFile } from "./inline-imports.js";
+import {
+  duplicateModuleTargetMessage,
+  moduleDeclarationErrors,
+  moduleDocumentKinds,
+  partialGlobUnsupportedError,
+  partialKindErrors,
+  partialFailureReason,
+  partialNotFoundError,
+  withLoaderErrors,
+} from "./module-declaration-refusals.js";
+import { sourceFailureOf } from "./sources/source-failure.js";
+import { isMalformedSchemedReference } from "./sources/module-reference.js";
 import type { LoadedKindScope } from "./loaded-kind-scope.js";
 import type { MigrationEntry } from "./migrations/types.js";
 import { moduleCallNamesOfFile } from "./module-call-names.js";
@@ -130,6 +143,11 @@ function libraryIdentity(target: LoadedModule, importSource: string): ImportTarg
     };
   }
 
+  // A file holding several module documents is refused at the file itself
+  // (`MODULE_DECLARATION_DUPLICATE`); no import may take one of them for it.
+  const moduleKinds = moduleDocumentKinds(target.owner);
+  if (moduleKinds.length > 1) return { unusable: duplicateModuleTargetMessage(moduleKinds) };
+
   const library = target.owner.manifests.find((m) => m?.kind === "Telo.Library");
   const application = target.owner.manifests.find((m) => m?.kind === "Telo.Application");
 
@@ -169,6 +187,11 @@ function libraryIdentity(target: LoadedModule, importSource: string): ImportTarg
 
   const namespace = (library.metadata as { namespace?: string | null } | undefined)?.namespace;
   return { name, namespace: typeof namespace === "string" ? namespace : null };
+}
+
+/** No registered source reads `url`. */
+function noSourceFor(url: string): Error {
+  return new Error(`No source found for: ${url}`);
 }
 
 /** One import declaration, as the per-import load step reads it. */
@@ -216,6 +239,7 @@ export async function loadImportTarget(
     reason?: GraphLoadError["reason"],
     stampLine = true,
   ): { failure: GraphLoadError } => {
+    const sourceFailure = sourceFailureOf(error)?.sourceFailure;
     if (stampLine && sourceLine !== undefined) {
       (error as { sourceLine?: number }).sourceLine = sourceLine;
     }
@@ -227,6 +251,7 @@ export async function loadImportTarget(
         ...(alias !== undefined ? { alias } : {}),
         ...(sourceLine !== undefined ? { sourceLine } : {}),
         ...(reason ? { reason } : {}),
+        ...(sourceFailure ? { sourceFailure } : {}),
         error,
       },
     };
@@ -236,6 +261,12 @@ export async function loadImportTarget(
   // edge registered under it would replace `Telo.` or `Self.`.
   if (alias !== undefined && isReservedKindPrefix(alias)) {
     return failure(source, new Error(reservedImportAliasMessage(alias)), "reserved-prefix");
+  }
+
+  // Refused before any source is asked: a reference its scheme's grammar refuses
+  // names no module, so nothing could be obtained for it.
+  if (isMalformedSchemedReference(source)) {
+    return failure(source, noSourceFor(source), undefined, false);
   }
 
   let resolvedUrl: string;
@@ -279,13 +310,6 @@ function builtinVocabularyEntryRefusal(file: LoadedFile): AnalysisDiagnostic | u
     data: { filePath: file.source },
   };
 }
-
-const SYSTEM_KINDS = new Set([
-  "Telo.Application",
-  "Telo.Library",
-  "Telo.Import",
-  "Telo.Definition",
-]);
 
 /** File cache variant tags: compile (c/r) × desugarImports (d/n) × migrate
  *  (m/x), plus the inherited CEL call names a partial compiles with. A desugared
@@ -369,7 +393,7 @@ export class Loader {
 
   private pick(url: string): ManifestSource {
     const s = this.sources.find((s) => s.supports(url));
-    if (!s) throw new Error(`No source found for: ${url}`);
+    if (!s) throw noSourceFor(url);
     return s;
   }
 
@@ -533,37 +557,57 @@ export class Loader {
 
   /** Load an owner file plus every partial reachable through its `include:`
    *  list. Globs are expanded via the owning source's `expandGlob`. The
-   *  partials list is empty when the owner declares no `include:`. */
+   *  partials list is empty when the owner declares no `include:`.
+   *
+   *  What the loader refuses about the files themselves is a coded parse error
+   *  on the file that writes it, held back as a parse failure is: the owner's
+   *  module-declaration rule, an `include:` glob its source cannot expand or a
+   *  partial it cannot read (on the owner), and a module-only kind in a partial. */
   async loadModule(url: string, options?: LoadOptions): Promise<LoadedModule> {
-    const owner = await this.loadFile(url, options);
-    this.assertSingleModuleDeclaration(owner);
-    this.assertNoSystemKindsInPartialContext(owner, /*isPartial*/ false);
+    const loadedOwner = await this.loadFile(url, options);
+    const ownerErrors: ParseError[] = [...moduleDeclarationErrors(loadedOwner)];
 
-    const moduleManifest = owner.manifests.find((m) => m && isModuleKind(m.kind));
+    const moduleIndex = loadedOwner.manifests.findIndex((m) => m && isModuleKind(m.kind));
+    const moduleManifest = moduleIndex >= 0 ? loadedOwner.manifests[moduleIndex] : undefined;
     // An entry that is not a string — an expansion tag, which the parse refused
     // (`loader-expansion-refusals.ts`) — names no file.
     const included = (moduleManifest as { include?: unknown } | undefined)?.include;
-    const includePatterns = Array.isArray(included)
-      ? included.filter((p): p is string => typeof p === "string")
-      : undefined;
+    const entries = Array.isArray(included)
+      ? included.flatMap((pattern, index) => (typeof pattern === "string" ? [{ pattern, index }] : []))
+      : [];
 
-    if (!includePatterns?.length) return { owner, partials: [] };
+    if (entries.length === 0) return { owner: withLoaderErrors(loadedOwner, ownerErrors), partials: [] };
 
-    const picked = this.pick(owner.source);
-    const includedFiles = await this.resolveIncludes(owner.source, includePatterns, picked);
+    const positions = loadedOwner.positions[moduleIndex]?.positionIndex;
+    const rangeOf = (index: number | undefined) =>
+      index === undefined ? positions?.get("include") : positions?.get(`include[${index}]`);
+    const picked = this.pick(loadedOwner.source);
+    const includedFiles = await this.resolveIncludes(loadedOwner.source, entries, picked);
+    for (const glob of includedFiles.unexpanded) {
+      ownerErrors.push(partialGlobUnsupportedError(glob.pattern, moduleIndex, rangeOf(glob.index)));
+    }
     // A partial's CEL is written in the INCLUDING module's scope, so it compiles
     // with that module's call names — the owner's `imports:` keys, `Self`, its
     // `metadata.name` and `Telo`. Derived from the owner alone: a partial may
     // declare no module doc, no import and no definition.
-    const moduleNames = moduleCallNamesOfFile(owner.manifests);
+    const moduleNames = moduleCallNamesOfFile(loadedOwner.manifests);
     const partials: LoadedFile[] = [];
-    for (const includedUrl of includedFiles) {
-      const partial = await this.loadFile(includedUrl, options, moduleNames);
-      this.assertNoSystemKindsInPartialContext(partial, /*isPartial*/ true);
-      partials.push(partial);
+    for (const { url: includedUrl, entry } of includedFiles.files) {
+      let partial: LoadedFile;
+      try {
+        partial = await this.loadFile(includedUrl, options, moduleNames);
+      } catch (err) {
+        const failure = sourceFailureOf(err);
+        if (!failure) throw err;
+        ownerErrors.push(
+          partialNotFoundError(entry?.pattern ?? includedUrl, partialFailureReason(failure), moduleIndex, rangeOf(entry?.index)),
+        );
+        continue;
+      }
+      partials.push(withLoaderErrors(partial, partialKindErrors(partial)));
     }
 
-    return { owner, partials };
+    return { owner: withLoaderErrors(loadedOwner, ownerErrors), partials };
   }
 
   /** Load a module and every transitively-imported library. Returns the full
@@ -876,50 +920,43 @@ export class Loader {
     return this.pick(fromSource).resolveRelative(fromSource, importSource);
   }
 
-  private assertSingleModuleDeclaration(file: LoadedFile): void {
-    const moduleManifests = file.manifests.filter(
-      (m): m is ResourceManifest => !!m && isModuleKind(m.kind),
-    );
-    if (moduleManifests.length > 1) {
-      const kinds = moduleManifests.map((m) => m.kind).join(", ");
-      throw new Error(
-        `File '${file.source}' contains ${moduleManifests.length} module declarations (${kinds}). ` +
-          `A file may declare at most one Telo.Application or Telo.Library.`,
-      );
-    }
-  }
-
-  private assertNoSystemKindsInPartialContext(file: LoadedFile, isPartial: boolean): void {
-    if (!isPartial) return;
-    for (const m of file.manifests) {
-      if (!m) continue;
-      const kind = m.kind;
-      if (typeof kind === "string" && SYSTEM_KINDS.has(kind)) {
-        throw new Error(
-          `Included file '${file.source}' contains '${kind}' which is not allowed in partial files. ` +
-            `Only the owner telo.yaml may declare ${kind} resources.`,
-        );
-      }
-    }
-  }
-
+  /** The files an `include:` list names, each with the entry naming it when one
+   *  does by path — a file a glob reached has none — and the glob entries the
+   *  source cannot expand, which name no file. A path entry the expansion did not
+   *  reach keeps its own read, so a missing one is refused beside a glob as it is
+   *  alone; a `!` entry beside a glob is an exclusion, never a path. */
   private async resolveIncludes(
     ownerSource: string,
-    patterns: string[],
+    entries: { pattern: string; index: number }[],
     source: ManifestSource,
-  ): Promise<string[]> {
-    const hasGlobs = patterns.some((p) => /[*?{}\[\]]/.test(p));
-    if (hasGlobs) {
-      if (!source.expandGlob) {
-        throw new Error(
-          `Include patterns in '${ownerSource}' contain globs but the source for this URL ` +
-            `does not support glob expansion. Use explicit file paths instead of patterns like: ` +
-            patterns.filter((p) => /[*?{}\[\]]/.test(p)).join(", "),
-        );
-      }
-      return source.expandGlob(ownerSource, patterns);
+  ): Promise<{
+    files: { url: string; entry?: { pattern: string; index: number } }[];
+    unexpanded: { pattern: string; index: number }[];
+  }> {
+    const isGlob = (pattern: string) => /[*?{}\[\]]/.test(pattern);
+    const byUrl = new Map<string, { pattern: string; index: number }>();
+    for (const entry of entries) {
+      if (isGlob(entry.pattern)) continue;
+      const url = source.resolveRelative(ownerSource, entry.pattern);
+      if (!byUrl.has(url)) byUrl.set(url, entry);
     }
-    return [...new Set(patterns.map((p) => source.resolveRelative(ownerSource, p)))];
+    const globs = entries.filter((entry) => isGlob(entry.pattern));
+    if (globs.length === 0) {
+      return { files: [...byUrl].map(([url, entry]) => ({ url, entry })), unexpanded: [] };
+    }
+    if (!source.expandGlob) {
+      return { files: [...byUrl].map(([url, entry]) => ({ url, entry })), unexpanded: globs };
+    }
+    const urls = await source.expandGlob(
+      ownerSource,
+      entries.map((entry) => entry.pattern),
+    );
+    const expanded = new Set(urls);
+    const unreached = [...byUrl].filter(([url, entry]) => !expanded.has(url) && !entry.pattern.startsWith("!"));
+    return {
+      files: [...urls.map((url) => ({ url, entry: byUrl.get(url) })), ...unreached.map(([url, entry]) => ({ url, entry }))],
+      unexpanded: [],
+    };
   }
 
   /** Find the owning telo.yaml for `fileUrl` (or use it directly if it's an

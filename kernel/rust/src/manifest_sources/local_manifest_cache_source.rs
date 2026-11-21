@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 
 use telo_analyzer::sources::integrity::{split_integrity, verify_integrity};
 use telo_analyzer::sources::oci_ref::parse_oci_ref;
+use telo_analyzer::sources::source_failure::{file_source_failure, file_url};
 use telo_analyzer::{LoadError, LoadedGraph, ManifestSource, ReadManifest, DEFAULT_MANIFEST_FILENAME};
 
 use crate::lexical_path;
@@ -60,22 +61,19 @@ impl ManifestSource for LocalManifestCacheSource {
     }
 
     fn read(&self, path_or_url: &str) -> Result<ReadManifest, LoadError> {
-        let mapped = self.try_map(path_or_url).ok_or_else(|| LoadError::Io {
-            path: path_or_url.to_string(),
-            message: "the manifest cache holds no file for it".to_string(),
-        })?;
-        let io = |message: String| LoadError::Io {
-            path: mapped.display().to_string(),
-            message,
-        };
-        let bytes = std::fs::read(&mapped).map_err(|err| io(err.to_string()))?;
+        let mapped = self
+            .try_map(path_or_url)
+            .ok_or_else(|| LoadError::Failed(format!("the manifest cache holds no file for {path_or_url}")))?;
+        let bytes =
+            std::fs::read(&mapped).map_err(|err| LoadError::Source(file_source_failure(&err, file_url(&mapped))))?;
         // A poisoned cache is terminal, never a self-healing miss.
         let split = split_integrity(path_or_url);
         if let Some(integrity) = split.integrity {
-            verify_integrity(&bytes, integrity, split.base).map_err(|err| io(err.message))?;
+            verify_integrity(&bytes, integrity, split.base).map_err(|err| LoadError::Failed(err.message))?;
         }
-        let text = String::from_utf8(bytes)
-            .map_err(|err| io(format!("the cached manifest is not UTF-8: {err}")))?;
+        let text = String::from_utf8(bytes).map_err(|err| {
+            LoadError::Failed(format!("the cached manifest {} is not UTF-8: {err}", mapped.display()))
+        })?;
         Ok(ReadManifest {
             text,
             source: mapped.display().to_string(),

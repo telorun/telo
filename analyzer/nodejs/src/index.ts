@@ -21,6 +21,17 @@ export {
 } from "./application-source-slot.js";
 export { collectApplicationSources, type ApplicationSourceRecords } from "./child-application.js";
 export { assembleGraphDiagnostics, compromisedFiles, partitionAnalysisDiagnostics } from "./graph-diagnostics.js";
+export {
+  importFailureRefusal,
+  loadRefusal,
+  migrationFailureRefusal,
+  needRefusal,
+  type CarriedFinding,
+  type LoadRefusal,
+  type LoadRefusalHost,
+  type NeedRefusal,
+} from "./load-refusal.js";
+export { runtimeCodeOf } from "./load-refusal-code.js";
 export { analyzeLoadedGraph, type GraphAnalysis, type GraphAnalysisOptions } from "./graph-analysis.js";
 export { registerLoadedGraph, type RegisteredGraph } from "./graph-registration.js";
 export {
@@ -1232,6 +1243,14 @@ export {
 export type { DocumentPosition, FilePositions } from "./position-metadata.js";
 export { HttpSource, httpManifestUrl } from "./sources/http-source.js";
 export { defaultSources } from "./sources/default-sources.js";
+export {
+  ManifestSourceFailure,
+  fileSourceFailure,
+  httpSourceFailure,
+  sourceFailureOf,
+  sourceFailureSentence,
+} from "./sources/source-failure.js";
+export type { SourceFailureKind } from "./sources/source-failure.js";
 export {
   splitIntegrity,
   foldIntegrity,

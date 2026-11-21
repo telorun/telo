@@ -19,6 +19,7 @@ tar = { version = "0.4", default-features = false }
 telo-analyzer = { path = "../../analyzer/rust" }
 telo-templating = { path = "../../templating/rust" }
 telorun-abi = { path = "../../sdk/rust/abi" }
+telorun-glob = { path = "../../packages/glob/rust" }
 # Judges a kind's declared error texts, as the Node kernel does through its twin.
 telorun-message-format = { path = "../../message-format/rust" }
 # Value types, read as data. The backend-free half of the SDK: `telorun-sdk`
