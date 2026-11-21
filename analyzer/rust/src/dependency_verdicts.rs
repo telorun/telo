@@ -6,7 +6,8 @@
 //!
 //! A verdict depends on the library's closure alone, so it is memoized by a digest of that
 //! closure and the running surface, in process ([`DependencyVerdictMemo`]) and through a
-//! host-supplied store ([`DependencyVerdictStore`]), under Node's key and format. It touches no
+//! host-supplied store ([`DependencyVerdictStore`]), in Node's format and keyed by Node's key
+//! function over what this build reads — no host versions, stamps or children. It touches no
 //! filesystem. The running surface is the caller's to give, since this crate embeds no
 //! built-in vocabulary.
 
@@ -531,7 +532,7 @@ mod tests {
     }
 
     #[test]
-    fn keys_a_closure_by_node_s_text() {
+    fn keys_a_closure_by_the_digest_of_its_files_and_import_edges() {
         let lib = "kind: Telo.Library\nmetadata: { name: Lib }\n";
         let graph = graph(&[("/app/telo.yaml", &app("./lib")), ("/app/lib/telo.yaml", lib)]);
         let text = serde_json::to_string(&json!([3, "1.0.0", [], [["/app/lib/telo.yaml", lib]], [], [], []])).unwrap();
@@ -548,6 +549,26 @@ mod tests {
         ]))
         .unwrap();
         assert_eq!(dependency_verdict_key(&graph, "/app/telo.yaml", "1.0.0"), sha256_base64url(text.as_bytes()));
+    }
+
+    /// Tripwire: Node keeps a dependency's finding carrying `data.configurations` only where an
+    /// import reaches one of them (`dependency-configurations.ts`). This stage has no such filter,
+    /// which holds only while no diagnostic can carry configurations — so this literal names
+    /// every field, and a field added for them breaks it: port the filter in the same change.
+    #[test]
+    fn no_diagnostic_carries_configurations_while_no_import_filters_them() {
+        let DiagnosticData {
+            resource: _,
+            file_path: _,
+            path: _,
+            fix: _,
+            source_line: _,
+            source_failure: _,
+            quoted_place: _,
+            runtime_code: _,
+            migration: _,
+            written_at: _,
+        } = DiagnosticData::default();
     }
 
     #[test]

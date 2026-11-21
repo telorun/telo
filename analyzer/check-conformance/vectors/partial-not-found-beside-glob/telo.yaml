@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata: { name: PartialMissingBesideGlobApp }
+include: [./missing.yaml, "./parts/*.yaml"]
+---
+kind: Telo.Definition
+metadata: { name: Greeter }
+capability: Telo.Invocable

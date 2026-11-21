@@ -145,6 +145,23 @@ describe("the partials of a module", () => {
     ]);
   });
 
+  it("refuses a missing path entry beside a glob, reading no exclusion as a path", async () => {
+    const files = {
+      "/ws/telo.yaml": owner('./missing.yaml, "./parts/*.yaml", "!./parts/b.yaml"'),
+      "/ws/parts/a.yaml": "",
+    };
+    const source = { ...memorySource(files), expandGlob: async () => ["/ws/parts/a.yaml"] };
+    const module = await new Loader([source]).loadModule("/ws/telo.yaml");
+    expect(module.owner.parseErrors).toEqual([
+      expect.objectContaining({
+        code: "PARTIAL_NOT_FOUND",
+        message: "The partial './missing.yaml' cannot be read: nothing exists at file:///ws/missing.yaml.",
+        range: at(2, 10, 14),
+      }),
+    ]);
+    expect(module.partials.map((p) => p.source)).toEqual(["/ws/parts/a.yaml"]);
+  });
+
   it("says a partial naming a directory is not a file, never that it is not a module", async () => {
     const files = { "/ws/telo.yaml": owner("./parts") };
     const source = memorySource(files);

@@ -7,7 +7,7 @@ import { runtimeCodeOf } from "./load-refusal-code.js";
 import { METADATA_RESERVED_FIELD } from "./metadata-stamps.js";
 import type { NeedTable } from "./need-table.js";
 import { describeModuleSource } from "./nested-module-origin.js";
-import type { ResourceManifest } from "@telorun/sdk";
+import { RuntimeError, type ResourceManifest } from "@telorun/sdk";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { isNeedTableDiagnostic } from "./validate-needs.js";
 
@@ -135,18 +135,18 @@ export async function loadRefusal(
 /**
  * The refusal of import failures: one error carrying every import's diagnostic
  * as `telo check` reports it, headed by the first failure's own message. Its
- * code is the first failure's own runtime code when its error carries one —
- * a transport's refusal is never masked — else the twin of that diagnostic's
- * code. Also what an import no load walked is refused with; `entrySource` is
- * the file a failure with no `fromSource` is reported against.
+ * code is the first failure's own when its error is a Telo `RuntimeError`,
+ * else the twin of that diagnostic's code — a platform error's code
+ * (`ERR_INVALID_FILE_URL_HOST`) is not Telo's. Also what an import no load
+ * walked is refused with; `entrySource` is the file a failure with no
+ * `fromSource` is reported against.
  */
 export function importFailureRefusal(errors: readonly GraphLoadError[], entrySource: string): LoadRefusal {
   const [first] = errors;
   if (!first) throw new Error("importFailureRefusal called with no import failure");
   const diagnostics = importFailureDiagnostics(errors, entrySource);
-  const own = (first.error as { code?: unknown }).code;
   return {
-    code: typeof own === "string" && own.startsWith("ERR_") ? own : runtimeCodeOf(String(diagnostics[0]!.code)),
+    code: first.error instanceof RuntimeError ? first.error.code : runtimeCodeOf(String(diagnostics[0]!.code)),
     message: first.error.message,
     carried: diagnostics.map((diagnostic) => ({ diagnostic })),
   };

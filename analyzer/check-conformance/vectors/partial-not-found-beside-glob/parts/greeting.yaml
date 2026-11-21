@@ -1,0 +1,2 @@
+kind: Self.Greeter
+metadata: { name: greeting, description: "costs ${{ 5" }

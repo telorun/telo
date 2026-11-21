@@ -23,6 +23,33 @@ function memorySource(files: Record<string, string>): ManifestSource {
 const EMPTY_TABLE: NeedTable = { entries: [], problems: [], environment: [], applications: [] };
 
 describe("loadRefusal", () => {
+  it("raises an import failure whose error is no Telo runtime error under the diagnostic's code", async () => {
+    // What Node's fileURLToPath throws for a file URL naming a host, on POSIX.
+    const platformError = Object.assign(new TypeError('File URL host must be "localhost" or empty on linux'), {
+      code: "ERR_INVALID_FILE_URL_HOST",
+    });
+    const files = memorySource({
+      [ENTRY]: "kind: Telo.Application\nmetadata: { name: App }\nimports: { Lib: file://somehost/x }\n",
+    });
+    const source: ManifestSource = {
+      ...files,
+      async read(url: string) {
+        if (url.startsWith("file://somehost/")) throw platformError;
+        return files.read(url);
+      },
+    };
+    const graph = await new Loader([source]).loadGraph(ENTRY, { desugarImports: true });
+    expect(graph.errors[0]?.error).toBe(platformError);
+    const refusal = await loadRefusal(graph, ENTRY, {
+      buildModuleArtifacts: () => {},
+      register: () => ({ manifests: [], rootModuleDocument: undefined }),
+      analyze: () => [],
+      needTable: () => EMPTY_TABLE,
+    });
+    expect(refusal?.code).toBe("ERR_INVALID_IMPORT_SOURCE");
+  });
+
+
   it("raises a need refusal holding in some configurations only under the code of an unconditional one", async () => {
     const graph = await new Loader([memorySource({ [ENTRY]: "kind: Telo.Application\nmetadata: { name: App }\n" })]).loadGraph(
       ENTRY,

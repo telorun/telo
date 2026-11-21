@@ -58,6 +58,8 @@ pub fn load_refusal<H: LoadRefusalHost>(
             diagnostics: Vec::new(),
         }));
     }
+    // An import failure of this build carries no Telo runtime error of its own, as one may in
+    // Node, so the first failure is always raised as its diagnostic code's twin.
     if let Some(first) = graph.errors.first() {
         return Ok(Some(LoadRefusal {
             code: runtime_code_of(import_failure_code(first)),

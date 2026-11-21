@@ -31,8 +31,9 @@ if (!existsSync(suitePath)) fail(`no test-suite.yaml in ${root}; run from the re
 const YAML = createRequire(join(root, "package.json"))("yaml");
 // The `check` dimension's constants, declared before the main flow awaits.
 const CHECK_DEBT_FILE = join(root, ".claude", "skills", "rust-parity", "check-debt.json");
-// The slice that builds `telo check` owes nothing: its debt is nothing.
-const CHECK_SLICE_OWNER = /^3a-2\b|slice 14\b/;
+// A completed slice owes nothing: 3a-2 (slice 14, which builds `telo check`) and 3a-3 (slice 15, the
+// module graph).
+const CHECK_SLICE_OWNER = /^3a-[23]\b|slice 1[45]\b/;
 const TOOL_MISSING = "CONTROLLER_TOOL_MISSING";
 // A rule's evaluation budget is wall-clock time, so whether it is exceeded depends on the load.
 const RULE_BUDGET = /exceeded its evaluation budget \(\d+ms\)/;
@@ -242,8 +243,9 @@ function readPackageScript(name) {
 //   - wherever the two JSON payloads agree whole, the text form is also compared, byte for byte;
 //   - an entry that no longer holds is stale and fails: a listed code no longer missing in the module's
 //     own run (its own files and its context findings), an `unsupported` on a manifest Rust reads whole,
-//     a path not in the repo's covered set, a code with no owner, an owner in the slice that builds the
-//     check itself. So no consumer entry may list a code only a library's own check reports.
+//     a path not in the repo's covered set, a code with no owner (the entry's own `owners` override,
+//     else `owners`), an override naming a code the entry does not list, an owner that is a completed
+//     slice. So no consumer entry may list a code only a library's own check reports.
 
 async function checkDimension() {
   const debt = readDebt();
@@ -310,7 +312,7 @@ async function checkDimension() {
   for (const r of results) {
     for (const code of r.verdict.missingCodes ?? []) {
       missingByCode[code] = (missingByCode[code] ?? 0) + 1;
-      const owner = debt.owners[code] ?? "(no owner)";
+      const owner = ownerOf(debt, r.path, code) ?? "(no owner)";
       missingByOwner[owner] = (missingByOwner[owner] ?? 0) + 1;
     }
   }
@@ -326,6 +328,11 @@ async function checkDimension() {
     missingByOwner,
   };
   return { summary, failures, results: results.map(({ path, node, rust, verdict }) => ({ path, verdict, node, rust })) };
+}
+
+// The slice owing `code` at `path`: the entry's own `owners` override, else the code's.
+function ownerOf(debt, path, code) {
+  return debt.manifests[path]?.owners?.[code] ?? debt.owners[code];
 }
 
 function readDebt() {
@@ -617,7 +624,7 @@ function staleEntries(debt, covered, swept, results) {
   const sweptSet = new Set(swept);
   const byPath = new Map(results.map((r) => [r.path, r]));
   for (const [code, owner] of Object.entries(debt.owners)) {
-    if (CHECK_SLICE_OWNER.test(owner)) failures.push({ path: "check-debt.json", message: `code ${code} is owed by ${owner}, the slice that builds \`telo check\`: nothing it owes may be debt` });
+    if (CHECK_SLICE_OWNER.test(owner)) failures.push({ path: "check-debt.json", message: `code ${code} is owed by ${owner}, a completed slice: nothing it owes may be debt` });
   }
   for (const [path, entry] of Object.entries(debt.manifests)) {
     if (!covered.includes(path)) {
@@ -627,13 +634,17 @@ function staleEntries(debt, covered, swept, results) {
     if (!sweptSet.has(path)) continue;
     const verdict = byPath.get(path).verdict;
     if (verdict.status === "node-unusable") continue;
+    for (const [code, owner] of Object.entries(entry.owners ?? {})) {
+      if (!(entry.codes ?? []).includes(code)) failures.push({ path, message: `stale: \`owners\` names ${code}, which the entry does not list` });
+      if (CHECK_SLICE_OWNER.test(owner)) failures.push({ path, message: `code ${code} is owed by ${owner}, a completed slice` });
+    }
     for (const code of entry.codes ?? []) {
-      if (!(code in debt.owners)) failures.push({ path, message: `code ${code} has no owner in \`owners\`` });
+      if (!ownerOf(debt, path, code)) failures.push({ path, message: `code ${code} has no owner in \`owners\`` });
       if (!(verdict.ownMissingCodes ?? []).includes(code)) failures.push({ path, message: `stale: ${code} is no longer missing in the module's own run` });
     }
     if (entry.unsupported) {
       if (!entry.unsupported.construct || !entry.unsupported.owedBy) failures.push({ path, message: "`unsupported` needs `construct` and `owedBy`" });
-      else if (CHECK_SLICE_OWNER.test(entry.unsupported.owedBy)) failures.push({ path, message: `unsupported is owed by ${entry.unsupported.owedBy}, the slice that builds \`telo check\`` });
+      else if (CHECK_SLICE_OWNER.test(entry.unsupported.owedBy)) failures.push({ path, message: `unsupported is owed by ${entry.unsupported.owedBy}, a completed slice` });
       if (!verdict.refused) failures.push({ path, message: "stale: `unsupported` on a manifest Rust reads whole" });
     }
     if (!(entry.codes?.length) && !entry.unsupported) failures.push({ path, message: "stale: an entry that lists nothing" });
