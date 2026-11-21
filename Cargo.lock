@@ -3149,6 +3149,7 @@ dependencies = [
  "telorun-glob",
  "telorun-sdk-core",
  "thiserror 1.0.69",
+ "url",
 ]
 
 [[package]]

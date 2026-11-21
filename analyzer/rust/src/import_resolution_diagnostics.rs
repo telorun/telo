@@ -6,21 +6,15 @@
 //! declared as a scope member has no twin: this loader walks none.
 
 use crate::loaded_types::{GraphLoadError, ImportFailureReason, LoadedGraph};
-use crate::manifest_loader::is_local_path_source;
-use crate::sources::oci_ref::is_oci_ref;
+use crate::sources::module_reference::is_module_reference;
 use crate::types::{AnalysisDiagnostic, DiagnosticData};
-
-/// A shape some transport claims — an OCI ref, an HTTP(S) URL, or a path.
-fn is_recognized_source_shape(source: &str) -> bool {
-    is_oci_ref(source) || source.starts_with("http://") || source.starts_with("https://") || is_local_path_source(source)
-}
 
 /// The code an import failure is reported under.
 pub fn import_failure_code(error: &GraphLoadError) -> &'static str {
     match error.reason {
         ImportFailureReason::ReservedPrefix => "KIND_PREFIX_RESERVED",
         ImportFailureReason::UnusableTarget => "INVALID_IMPORT_TARGET",
-        ImportFailureReason::Unresolved if is_recognized_source_shape(&error.source) => "IMPORT_UNRESOLVED",
+        ImportFailureReason::Unresolved if is_module_reference(&error.source) => "IMPORT_UNRESOLVED",
         ImportFailureReason::Unresolved => "INVALID_IMPORT_SOURCE",
     }
 }

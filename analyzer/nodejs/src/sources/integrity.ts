@@ -43,9 +43,9 @@ export class ManifestNotFoundError extends Error {
   }
 }
 
-/** Why `verifiedFetch` got no manifest: the request reached no host, or the
- *  host answered with a non-2xx status other than 404 / 410. Carried beside the
- *  error's own message, which it leaves as it was. */
+/** Why `verifiedFetch` got no manifest: the request reached no host (the fetch
+ *  itself rejected), or the host answered with a non-2xx status other than
+ *  404 / 410. Carried beside the error's own message, which it leaves as it was. */
 export type ManifestFetchFailure = { reached: false } | { reached: true; status: number };
 
 const FETCH_FAILURE = Symbol("telo.manifestFetchFailure");
@@ -166,6 +166,11 @@ export async function verifiedFetch(
   integrity: string | undefined,
   describe: string,
 ): Promise<{ bytes: Uint8Array; text: string }> {
+  // Parsed before the request: a URL its parser refuses asked no host, so it is
+  // no fetch failure.
+  if (!URL.canParse(fetchUrl)) {
+    throw new Error(`Cannot fetch manifest ${describe}: '${fetchUrl}' is not a well-formed URL.`);
+  }
   let response: Response;
   try {
     response = await fetch(fetchUrl);

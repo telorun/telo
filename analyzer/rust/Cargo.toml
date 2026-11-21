@@ -21,6 +21,8 @@ telorun-cel-value = { path = "../../cel/rust/value" }
 # Value types, read as data — backend-free, so no controller backend comes with it.
 telorun-sdk-core = { path = "../../sdk/rust/core" }
 thiserror = "1"
+# The WHATWG URL parser: whether an http(s) import source is a URL at all.
+url = "=2.5.8"
 
 [dev-dependencies]
 telorun-glob = { path = "../../packages/glob/rust" }

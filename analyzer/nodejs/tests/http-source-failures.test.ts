@@ -2,7 +2,10 @@ import * as http from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { importResolutionDiagnostics } from "../src/import-resolution-diagnostics.js";
+import { Loader } from "../src/manifest-loader.js";
 import { HttpSource } from "../src/sources/http-source.js";
+import type { ManifestSource } from "../src/types.js";
 
 let server: http.Server;
 let origin: string;
@@ -42,5 +45,24 @@ describe("HttpSource read failures", () => {
       message: `${closedOrigin}/app/telo.yaml cannot be reached: no connection to its host could be made.`,
     });
     expect((failure as Error).cause).toBeInstanceOf(Error);
+  });
+
+  it("keeps an import of a well-formed URL whose host cannot be reached IMPORT_UNRESOLVED, unreachable", async () => {
+    const entry: ManifestSource = {
+      supports: (url) => url === "/ws/telo.yaml",
+      read: async (url) => ({
+        text: `kind: Telo.Application\nmetadata: { name: App }\nimports: { Lib: "${closedOrigin}/lib" }\n`,
+        source: url,
+      }),
+      resolveRelative: (base, relative) => relative,
+    };
+    const graph = await new Loader([entry, new HttpSource()]).loadGraph("/ws/telo.yaml", {
+      desugarImports: true,
+    });
+    const [diagnostic] = importResolutionDiagnostics(graph);
+    expect(diagnostic).toMatchObject({
+      code: "IMPORT_UNRESOLVED",
+      data: { sourceFailure: "unreachable", path: "imports.Lib" },
+    });
   });
 });
