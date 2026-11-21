@@ -42,7 +42,9 @@ pages:
   `telo check`, `ERR_UI_PAGE_PATH_DUPLICATE` at creation. The rule reads the
   page of each entry, whether it is written alone or in a `Ui.PageRoute`.
 - A page's `query` declares the query parameters its own nodes read; the page
-  document carries it, `{}` when none is declared.
+  document carries it, `{}` when none is declared. A parameter whose value its
+  declaration refuses reads as absent — a `format: date` one given `oops`
+  included.
 
 ### Routing
 
@@ -161,8 +163,8 @@ gives each page (`pages[].layout`) and the default (`layout`).
 
 ### What a layout and `notFound` read
 
-A layout's regions and `notFound` read `request` (`headers`, `ip`, `lang`) at run time and withhold `params` and `query` (`x-telo-context-withheld`), because one layout is drawn on pages with different variables: a composite placed there reading `params.id` is `CEL_UNKNOWN_IDENTIFIER`, naming the layout and why. A [`Ui.Data`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)
-there still reads the `query` it declares itself. A composite and a pane
+A layout's regions and `notFound` read `request` (`headers`, `ip`, `lang`) at run time and withhold `params` and `query` (`x-telo-context-withheld`), because one layout is drawn on pages with different variables: a composite placed there reading `params.id` is `CEL_UNKNOWN_IDENTIFIER`, naming the layout and why. A `query` node
+there still reads the `query` its [`Ui.Query`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) declares itself. A composite and a pane
 inside it are resolved once, when the application starts; a pane placed in a
 region or a page's `children` is invoked for every request. The structure of
 the tree and its references are literal, as for a page.
@@ -444,7 +446,7 @@ is drawn as an error node in place of its listing
 (`ERR_UI_COMPONENT_ABI_UNSUPPORTED`).
 
 - A listing, a form, a filter bar and an option source read and write their
-  `basePath` under the mount, as a reader reads its resolved `source`: mounted
+  `basePath` under the mount, as a query reads its resolved `url`: mounted
   at `/admin`, `basePath: /api/todos` lists from `/admin/api/todos` and edits
   `/admin/api/todos/<key>`. A templated `basePath` is resolved over `params`
   and `query` as a request target is; one that does not resolve sends nothing
@@ -452,7 +454,7 @@ is drawn as an error node in place of its listing
   listing, at the top of a form, as the failure of a filter's present values
   or of an option source. A write announces the change under the resolved
   `basePath` (and an edit or delete also under the record's own path), which
-  is what a reader or an action's `refreshes` names.
+  is what a query or an action's `refreshes` names.
 - A filter bar shows the filters on one property together: one label, and
   each control captioned by its operator — `from` and `to` for a range
   (`gte`, `lte`), `after` and `before` for `gt` and `lt`.
@@ -609,7 +611,8 @@ delete. A [`button` node](#buttons) and a markdown node's
   An item typed twice is kept once.
 - **Live validation.** What the model refuses of a field is shown as values are
   entered, once the field has been touched, and of every field on a
-  submission — the keywords of the interpreted profile; any other is the API's.
+  submission — the keywords of the interpreted profile, a `date` or `date-time`
+  `format` included (only RFC 3339 text of that form holds); any other is the API's.
   A 400 problem's issue (`data.issues`) lands on the field whose property is
   the first segment of its `pointer` after `/body` (`/body/period/from`
   reaches the date range entering `period`), worded from its `keyword` and
@@ -688,7 +691,7 @@ below it what the operation answered.
   `params` by `ui`'s validation texts, every other issue under the fields.
 - After a success the resolved target path and each resolved
   `onSuccess.refreshes` path are announced (an entry that does not resolve is
-  skipped and reported in the console), and every reader reading exactly one
+  skipped and reported in the console), and every query reading exactly one
   reads again ([invalidation](urls.md#invalidation)). The page then goes to
   `onSuccess.to`, its address over `result` and `input`: within the
   application to an address a declared page opens, by a full load to any other

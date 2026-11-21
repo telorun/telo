@@ -7,30 +7,22 @@ metadata:
   description: >-
     Test fixture: a table and a list whose row actions are bound from the row,
     over actions that draw their answer.
-imports:
-  Ui: ../../../
-  DataModel: ../../../../data-model
+imports: { Ui: ../../../, DataModel: ../../../../data-model }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Todo
+metadata: { name: Todo }
 schema:
   type: object
   required: [id]
-  properties:
-    id: { type: integer }
-    text: { type: string }
-    count: { type: integer }
+  properties: { id: { type: integer }, text: { type: string }, count: { type: integer } }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Removal
+metadata: { name: Removal }
 schema:
   type: object
   additionalProperties: false
   required: [count]
-  properties:
-    count: { type: integer }
+  properties: { count: { type: integer } }
 ---
 kind: Ui.CollectionPresentation
 metadata: { name: todos }
@@ -40,35 +32,29 @@ source:
   collection:
     kind: DataModel.Collection
     model: !ref Todo
-    query:
-      filters: []
-      sort: []
+    query: { filters: [], sort: [] }
 ---
 kind: Ui.Action
-metadata:
-  name: remove
+metadata: { name: remove }
 inputModel: !ref Removal
 request: { target: /api/todos/remove }
 label: Remove
 ---
 kind: Ui.Action
-metadata:
-  name: removeAndShow
+metadata: { name: removeAndShow }
 inputModel: !ref Removal
 outputModel:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      receipt: { type: string, format: uri-reference }
+    properties: { receipt: { type: string, format: uri-reference } }
 request: { target: /api/todos/remove }
 label: Remove
 result: { type: value, value: !cel "result.receipt", text: Receipt }
 onSuccess: { refreshes: [/api/todos] }
 ---
 kind: Ui.Listing
-metadata:
-  name: listless
+metadata: { name: listless }
 model: !ref Todo
 presentation: !ref todos
 rowActions:
@@ -76,8 +62,7 @@ rowActions:
     inputs: { count: !cel "row.count" }
 ---
 kind: Ui.Listing
-metadata:
-  name: answered
+metadata: { name: answered }
 model: !ref Todo
 presentation: !ref todos
 rowActions:
@@ -85,20 +70,23 @@ rowActions:
     inputs: { count: !cel "row.count" }
     enabled: { at: !cel "row.count", matches: { minimum: 1 }, disabledText: Nothing to remove. }
 ---
-kind: Ui.Data
-metadata:
-  name: listed
-model:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      todos: { type: array, items: !ref Todo }
-source: { path: /api/todos }
+kind: Ui.View
+metadata: { name: listed }
 content:
-  type: list
-  rows: !cel "data.todos"
-  columns: [{ value: !cel "row.text" }]
-  rowActions:
-    - action: !ref removeAndShow
-      inputs: { count: !cel "row.count" }
+  type: query
+  query:
+    kind: Ui.Query
+    model:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        properties:
+          todos: { type: array, items: !ref Todo }
+    url: { path: /api/todos }
+  content:
+    - type: list
+      rows: !cel "data.todos"
+      columns: [{ value: !cel "row.text" }]
+      rowActions:
+        - action: !ref removeAndShow
+          inputs: { count: !cel "row.count" }

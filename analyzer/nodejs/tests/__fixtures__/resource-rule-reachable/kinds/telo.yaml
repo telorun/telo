@@ -1,5 +1,6 @@
 # Generic fixture kinds: a site lists pages and is drawn in a layout whose header
-# holds bars; a bar's items (by `page`, and by `href`, an accessor field) and an
+# holds bars; a bar's items (by `page`, by `href`, an accessor field, and by
+# `target`, an accessor template) and an
 # action name pages by shape. `Site`'s rule walks every call and dependency
 # slot, step targets included; `Shallow`'s walks dependency slots only.
 kind: Telo.Library
@@ -30,6 +31,10 @@ schema:
           href:
             x-telo-eval: accessor
             anyOf: [{ type: string }, { x-telo-ref: { kind: Self.Page, use: schema } }]
+          target:
+            x-telo-eval: accessor-template
+            x-telo-context: { type: object, properties: { query: { type: object } } }
+            anyOf: [{ type: object }, { x-telo-ref: { kind: Self.Page, use: schema } }]
           text: { type: string }
 ---
 kind: Telo.Definition

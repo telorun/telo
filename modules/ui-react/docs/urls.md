@@ -402,7 +402,7 @@ documents conditionally. Streams end when the server stops.
 Every address the page document carries — the `href` of a destination (the
 `to` of a `link` node, a menu item, a `value` node, a `list` or
 `Ui.TableLayout` column, a relation, an option source, a navigation `link`
-entry, a press and an action's `onSuccess`), a reader's `source`, an action's
+entry, a press and an action's `onSuccess`), a query's `url`, an action's
 `request.target` and `onSuccess.refreshes` — is `{ path, pathParams,
 queryParams }`, expanded in the browser over the roots its site binds (`row`,
 `query`, `params`, `data`, `input`, `result`). A collection source's templated
@@ -416,7 +416,7 @@ the result must be an address under the mount or an `https:`, `http:` or
 `mailto:` one. An app-relative address is requested and linked under the mount.
 
 - **Unresolved.** A link or cell is drawn as plain text, a menu item is left
-  out, a reader sends nothing and draws its `failure` tree, an action sends
+  out, a query sends nothing and draws its `failure` nodes, an action sends
   nothing and draws its `failure` tree, a refresh is skipped and a navigation
   goes nowhere; each is reported once in the console as
   `ERR_UI_ADDRESS_UNRESOLVED`, naming the parameter.
@@ -431,8 +431,8 @@ the result must be an address under the mount or an `https:`, `http:` or
   followed to its own address.
 - **The page already shown.** A move to the page being shown (same path, new
   query or fragment) fetches no document and keeps every node mounted — what a
-  form or an action holds, a listing's loaded pages — and each reader re-reads
-  the query parameters it declares from the new address. A move to another
+  form or an action holds, a listing's loaded pages — and each query node
+  re-reads the query parameters its query declares from the new address. A move to another
   value of its variables fetches no document either, and draws the page afresh.
 
 ## Invalidation
@@ -442,11 +442,58 @@ app-relative path, its query left out. After a 2xx the renderer announces an
 action's resolved target path, each resolved `refreshes` path and, inside a
 listing, its `basePath`; a listing's own edit (`PUT`) and delete also announce
 the record's path (`<basePath>/<key>`). Announcing reloads, by exact equality:
-every `data` reader whose resolved `source` path is that path (a `refreshes`
+every query whose resolved `url` path is that path, whatever its method (a `refreshes`
 entry whose literal path holds a `*` / `**` segment instead reads again every
-subscribed reader — `data`, listing or chat — whose key it matches, segment by
+subscribed reader — query, listing or chat — whose key it matches, segment by
 segment: `*` one non-empty segment, `**` any number, none included), every listing
 whose resolved `basePath` is (with its facet and relation label reads), and a `chat`
 whose open conversation path (`<basePath>/conversations/<id>`) is — read again
 unless a turn is running in it. A chat announces its own `refreshes` when a send
 is admitted and when a turn ends.
+
+## Queries
+
+A `query` node carries its query's spec — `{ id, schema, method, url, input,
+query, reloadOn }`, plus `reloadEvery` in milliseconds when set — and three node
+lists, `content`, `loading` and `failure`, laid out as a `box` lays out its
+children.
+
+- **One read per query and request.** Every `query` node naming the same `id`
+  — in the page, a layout region, a page opened over it — and resolving to the
+  same request (address and body) draws from one read: one request, one state,
+  each node drawing it with its own lists. Two queries with different ids stay
+  two reads, whatever they resolve to.
+- **Hold, read, drop.** A read is held while a mounted node resolves to it,
+  shown or hidden by `shown`; it reads only while one of them is shown, and a
+  trigger arriving while all are hidden reads once when one is shown. When the
+  last node unmounts or resolves to another request, the read is dropped and
+  its request in flight aborted, so a node holds at most one read however
+  often its body changes.
+- **Drawing.** `loading` is drawn before a node's first answer; a node whose
+  request changes keeps drawing its last answer until the new one is in, and
+  an answer to a request it no longer makes is never drawn. A failed read
+  draws `failure` over `error` and keeps `content` out of sight; a failed tick
+  of `reloadEvery` keeps `content` drawn, the failure beside it.
+- **What is sent.** `GET` when `input` is null, else `method` (`QUERY` or
+  `POST`) with the body as JSON and `content-type: application/json`. The body
+  template resolves over `query` and `params` as
+  `modules/ui/conformance/template-bindings.json` pins: a chain holding nothing
+  — missing or `null` — leaves its member or list item out, a literal is sent
+  as written (`null` included), a map is sent even when empty, and a whole body
+  that is a chain holding nothing sends no body. The browser does not judge the
+  body; the route does, and a refusal draws `failure`. A `url` that does not
+  resolve sends nothing and draws `failure` with `ERR_UI_ADDRESS_UNRESOLVED`.
+- **Answers.** A 2xx JSON object valid against `schema` is a success; anything
+  else, or no answer, is a failure (`ERR_UI_RESPONSE_INVALID` for a 2xx that
+  is not one).
+- **Reading again.** When the resolved request changes; on `focus` (and a
+  restore from the back/forward cache); every `reloadEvery`, skipped while a
+  read is in flight or the document is hidden; when its path is announced
+  ([invalidation](#invalidation)), once however many nodes draw it; and, under
+  `reloadOn: [unauthorized]`, when a request made by anything drawn in any of
+  its nodes' lists answers 401 — its own read never counts. Any number of
+  triggers during a read cause exactly one more.
+- **Query parameters.** A declared parameter the address leaves out, gives
+  twice for a scalar, or gives a value its declaration refuses is absent —
+  `format: date` / `date-time` included, so `?to=oops` under
+  `{ type: string, format: date }` reads `to` as absent.

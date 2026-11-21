@@ -1,13 +1,14 @@
 /**
- * WHAT AN ACCESSOR FIELD HOLDS — the one reader of `x-telo-eval: accessor`
- * values.
+ * WHAT AN ACCESSOR FIELD HOLDS — the one reader of `x-telo-eval: accessor` and
+ * `x-telo-eval: accessor-template` values.
  *
  * An accessor field NAMES a value for the resource's consumer to resolve: a
  * `!cel` plain chain rooted at one of the field's context bindings
  * (`row.isDone`), or a literal. It is typed like any CEL leaf and never
  * evaluated, so nothing but a chain can be written as an expression there — a
  * call, an operator, an index, `!interpolate` or a tag anywhere beneath the
- * field has nothing to run it.
+ * field has nothing to run it. An accessor TEMPLATE field may also hold a map
+ * or a list of such values, at any depth: each leaf is a chain or a literal.
  *
  * The static verdict (`ACCESSOR_NOT_PLAIN_CHAIN`) and the kernel's refusal at
  * creation (`ERR_ACCESSOR_NOT_PLAIN_CHAIN`) both read this file, and
@@ -29,14 +30,25 @@ import {
 } from "@telorun/templating";
 import { accessChains } from "./cel-access-chains.js";
 import { buildCelEnvironment } from "./cel-environment.js";
-import { accessorFieldAt, type AccessorSite, type CelEvalSites } from "./eval-paths.js";
+import {
+  accessorBindingNamesAt,
+  accessorFieldAt,
+  type AccessorSite,
+  type CelEvalSites,
+} from "./eval-paths.js";
 
 /**
  * What a controller receives at an accessor field: a chain as its root binding
  * and the member names below it, or a literal wrapped so that a literal shaped
- * like a chain is never mistaken for one.
+ * like a chain is never mistaken for one. At an `accessor-template` field a
+ * structure holding a chain is `{ map }` / `{ list }` of the bindings of its
+ * entries; one holding none is `{ value }`.
  */
-export type AccessorBinding = { root: string; path: string[] } | { value: unknown };
+export type AccessorBinding =
+  | { root: string; path: string[] }
+  | { value: unknown }
+  | { map: Record<string, AccessorBinding> }
+  | { list: AccessorBinding[] };
 
 /** A value an accessor field cannot hold, at its concrete path. */
 export interface AccessorProblem {
@@ -54,6 +66,8 @@ export interface AccessorField {
   /** The segments reaching `path` from the resource root. */
   keys: (string | number)[];
   value: unknown;
+  /** The names a chain written here may start at, read at `path`. */
+  bindings: readonly string[];
 }
 
 /** A tag as either half holds one: the analyzer's sentinel, or the compiled
@@ -78,10 +92,16 @@ function isLiteralTag(value: unknown, tag: { engine: string; source: string }): 
   return !isCompiledValue(compiled) && !isTaggedSentinel(compiled);
 }
 
-function describeBindings(site: AccessorSite): string {
-  return site.bindings.length > 0
-    ? site.bindings.map((name) => `'${name}'`).join(", ")
+function describeBindings(bindings: readonly string[]): string {
+  return bindings.length > 0
+    ? bindings.map((name) => `'${name}'`).join(", ")
     : "none — no x-telo-context binding here exists at an accessor";
+}
+
+function isPlainObject(node: unknown): node is Record<string, unknown> {
+  if (!node || typeof node !== "object" || Array.isArray(node)) return false;
+  const prototype = Object.getPrototypeOf(node);
+  return prototype === Object.prototype || prototype === null;
 }
 
 /** Every accessor field `resource` fills, at its concrete path. */
@@ -95,7 +115,7 @@ export function accessorFields(
     if (path !== "") {
       const site = accessorFieldAt(sites, path);
       if (site) {
-        if (node !== undefined) out.push({ site, path, keys, value: node });
+        if (node !== undefined) out.push({ site, path, keys, value: node, bindings: accessorBindingNamesAt(sites, path) });
         return;
       }
     }
@@ -116,8 +136,9 @@ export function accessorFields(
 
 /**
  * The tags an author may write where an accessor field's value goes, by engine
- * name: `!cel` — one plain chain — as the field's whole value, and none
- * anywhere beneath it. What an editor offers there, so it offers nothing
+ * name: `!cel` — one plain chain — as the field's whole value (or, in an
+ * `accessor-template` field, as any value within it), and none anywhere beneath
+ * that. What an editor offers there, so it offers nothing
  * {@link accessorProblems} then refuses.
  */
 export function accessorTagEngines(atField: boolean): readonly string[] {
@@ -143,39 +164,57 @@ export function accessorProblems(
   field: AccessorField,
   resolvedEarlier: (tag: AccessorTag) => boolean = () => false,
 ): AccessorProblem[] {
-  const { site, path, value } = field;
+  const { site, path, value, bindings } = field;
   const isLiteral = (node: unknown, tag: AccessorTag) =>
     isLiteralTag(node, tag) || resolvedEarlier(tag);
-  const tag = tagOf(value);
-  if (tag && !isLiteral(value, tag)) {
-    const chain = plainChainOf(value);
+  const chainProblem = (node: unknown, at: string, tag: AccessorTag): AccessorProblem | undefined => {
+    const chain = plainChainOf(node);
     if (chain === undefined) {
-      return [
-        {
-          path,
-          message:
-            `'${path}: !${tag.engine} "${tag.source}"' is not a plain chain. An accessor field ` +
+      return {
+        path: at,
+        message: site.template
+          ? `'${at}: !${tag.engine} "${tag.source}"' is not a plain chain. An accessor template ` +
+            `names values for its consumer to resolve and is never evaluated, so each value in ` +
+            `it is a literal or a plain chain — identifiers joined by dots, rooted at one of ` +
+            `the field's bindings (${describeBindings(bindings)}). A call, an operator, an index or ` +
+            `interpolation has nothing to run it. Write a plain chain, or a literal value.`
+          : `'${at}: !${tag.engine} "${tag.source}"' is not a plain chain. An accessor field ` +
             `names a value for its consumer to resolve and is never evaluated, so only ` +
             `identifiers joined by dots can be written there as an expression — rooted at one of ` +
-            `the field's bindings (${describeBindings(site)}). A call, an operator, an index or ` +
+            `the field's bindings (${describeBindings(bindings)}). A call, an operator, an index or ` +
             `interpolation has nothing to run it. Write a plain chain, or a literal value.`,
-        },
-      ];
+      };
     }
     const root = chain.split(".")[0]!;
-    if (!site.bindings.includes(root)) {
-      return [
-        {
-          path,
-          unboundRoot: root,
-          message:
-            `'${path}: !cel "${tag.source}"' is not a plain chain the field can name: it starts ` +
-            `at '${root}', which the field's context does not declare at an accessor (${describeBindings(site)}). ` +
-            `An accessor field is never evaluated, so a chain there starts at one of its own bindings.`,
-        },
-      ];
-    }
-    return [];
+    if (bindings.includes(root)) return undefined;
+    return {
+      path: at,
+      unboundRoot: root,
+      message:
+        `'${at}: !cel "${tag.source}"' is not a plain chain the field can name: it starts ` +
+        `at '${root}', which the field's context does not declare at an accessor (${describeBindings(bindings)}). ` +
+        `An accessor field is never evaluated, so a chain there starts at one of its own bindings.`,
+    };
+  };
+  if (site.template) {
+    const problems: AccessorProblem[] = [];
+    const walk = (node: unknown, at: string): void => {
+      const tag = tagOf(node);
+      if (tag) {
+        const problem = isLiteral(node, tag) ? undefined : chainProblem(node, at, tag);
+        if (problem) problems.push(problem);
+        return;
+      }
+      if (Array.isArray(node)) node.forEach((item, index) => walk(item, `${at}[${index}]`));
+      else if (isPlainObject(node)) for (const [key, child] of Object.entries(node)) walk(child, `${at}.${key}`);
+    };
+    walk(value, path);
+    return problems;
+  }
+  const tag = tagOf(value);
+  if (tag && !isLiteral(value, tag)) {
+    const problem = chainProblem(value, path, tag);
+    return problem ? [problem] : [];
   }
   const problems: AccessorProblem[] = [];
   const walk = (node: unknown, at: string): void => {
@@ -222,17 +261,54 @@ export function readsOnlySelf(tag: AccessorTag): boolean {
 
 /** What a controller receives for a value {@link accessorProblems} accepts. A
  *  tag `resolvedEarlier` names is a literal of a value not yet known, so it is
- *  wrapped as written and never read as a chain. */
+ *  wrapped as written and never read as a chain. With `template`, a map or a
+ *  list holding a chain is the `{ map }` / `{ list }` of its entries' bindings. */
 export function accessorBindingOf(
   value: unknown,
   resolvedEarlier: (tag: AccessorTag) => boolean = () => false,
+  template = false,
 ): AccessorBinding {
-  const tag = tagOf(value);
-  if (tag && resolvedEarlier(tag)) return { value };
-  const chain = plainChainOf(value);
-  if (chain === undefined) return { value };
-  const [root, ...path] = chain.split(".");
-  return { root: root!, path };
+  const chainOf = (node: unknown): string | undefined => {
+    const tag = tagOf(node);
+    return tag && resolvedEarlier(tag) ? undefined : plainChainOf(node);
+  };
+  const holdsChain = (node: unknown): boolean => {
+    if (tagOf(node)) return chainOf(node) !== undefined;
+    if (Array.isArray(node)) return node.some(holdsChain);
+    return isPlainObject(node) && Object.values(node).some(holdsChain);
+  };
+  const bind = (node: unknown): AccessorBinding => {
+    const chain = chainOf(node);
+    if (chain !== undefined) {
+      const [root, ...path] = chain.split(".");
+      return { root: root!, path };
+    }
+    if (!template || !holdsChain(node)) return { value: node };
+    if (Array.isArray(node)) return { list: node.map(bind) };
+    return {
+      map: Object.fromEntries(Object.entries(node as Record<string, unknown>).map(([key, child]) => [key, bind(child)])),
+    };
+  };
+  return bind(value);
+}
+
+/** Every place within an accessor field where a chain is written, each with
+ *  the segments reaching it from the resource root: the field itself, or —
+ *  in an `accessor-template` field — any value within it. */
+export function accessorChainPlaces(field: AccessorField): { path: string; keys: (string | number)[]; value: unknown }[] {
+  const out: { path: string; keys: (string | number)[]; value: unknown }[] = [];
+  const walk = (node: unknown, path: string, keys: (string | number)[]): void => {
+    const tag = tagOf(node);
+    if (tag) {
+      if (plainChainOf(node) !== undefined) out.push({ path, keys, value: node });
+      return;
+    }
+    if (!field.site.template) return;
+    if (Array.isArray(node)) node.forEach((item, index) => walk(item, `${path}[${index}]`, [...keys, index]));
+    else if (isPlainObject(node)) for (const [key, child] of Object.entries(node)) walk(child, `${path}.${key}`, [...keys, key]);
+  };
+  walk(field.value, field.path, field.keys);
+  return out;
 }
 
 /**
@@ -259,10 +335,10 @@ export function withAccessorBindings<T extends Record<string, unknown>>(
     return fresh;
   };
   const root = { ...resource } as Record<string | number, unknown>;
-  for (const { keys, value } of fields) {
+  for (const { keys, value, site } of fields) {
     let holder = root;
     for (const key of keys.slice(0, -1)) holder = copy(holder, key);
-    holder[keys[keys.length - 1]!] = accessorBindingOf(value, resolvedEarlier);
+    holder[keys[keys.length - 1]!] = accessorBindingOf(value, resolvedEarlier, site.template === true);
   }
   return root as T;
 }

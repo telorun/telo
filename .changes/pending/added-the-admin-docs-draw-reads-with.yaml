@@ -1,0 +1,4 @@
+units:
+  modules/crud-ui: Added
+body: The admin docs draw reads with the `query` node over a `Ui.Query`, and the module
+  requires the telo release the `ui` module it imports needs.

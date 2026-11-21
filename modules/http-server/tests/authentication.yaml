@@ -71,6 +71,13 @@ routes:
   - request: { path: /submit, method: POST }
     returns:
       - { status: 204 }
+  - request:
+      path: /report
+      method: QUERY
+      schema: { body: { type: object, required: [from], properties: { from: { type: string } } } }
+    returns:
+      - status: 200
+        content: { application/json: { body: { from: !cel "request.body.from" } } }
 ---
 kind: Authz.CelPolicy
 metadata: { name: writers }
@@ -330,6 +337,37 @@ steps:
       url: /web/submit
       method: POST
       headers: { cookie: !interpolate "session=${{ steps.webUser.result.token }}", origin: https://app.test }
+  - name: queryCrossSite
+    invoke: !ref call
+    inputs:
+      url: /web/report
+      method: QUERY
+      body: { from: a }
+      headers:
+        cookie: !interpolate "session=${{ steps.webUser.result.token }}"
+        origin: https://evil.test
+        sec-fetch-site: cross-site
+  - name: queryNoOrigin
+    invoke: !ref call
+    inputs:
+      url: /web/report
+      method: QUERY
+      body: { from: a }
+      headers: { cookie: !interpolate "session=${{ steps.webUser.result.token }}" }
+  - name: querySameOrigin
+    invoke: !ref call
+    inputs:
+      url: /web/report
+      method: QUERY
+      body: { from: a }
+      headers: { cookie: !interpolate "session=${{ steps.webUser.result.token }}", sec-fetch-site: same-origin }
+  - name: queryBadBody
+    invoke: !ref call
+    inputs:
+      url: /web/report
+      method: QUERY
+      body: { to: b }
+      headers: { cookie: !interpolate "session=${{ steps.webUser.result.token }}", sec-fetch-site: same-origin }
   - name: bearerCrossSite
     invoke: !ref call
     inputs:
@@ -388,6 +426,12 @@ steps:
         cookieNoOrigin: !cel "steps.cookieNoOrigin.result.status"
         cookieSameOrigin: !cel "steps.cookieSameOrigin.result.status"
         cookieTrustedOrigin: !cel "steps.cookieTrustedOrigin.result.status"
+        queryCrossSite:
+          status: !cel "steps.queryCrossSite.result.status"
+          code: !cel "steps.queryCrossSite.result.body.code"
+        queryNoOrigin: !cel "steps.queryNoOrigin.result.status"
+        querySameOrigin: { status: !cel "steps.querySameOrigin.result.status", body: !cel "steps.querySameOrigin.result.body" }
+        queryBadBody: { status: !cel "steps.queryBadBody.result.status", pointers: !cel "steps.queryBadBody.result.body.data.issues.map(i, i.pointer)" }
         bearerCrossSite: !cel "steps.bearerCrossSite.result.status"
       expected:
         accepted: { status: 200, body: { subject: alice } }
@@ -440,4 +484,8 @@ steps:
         cookieNoOrigin: 403
         cookieSameOrigin: 204
         cookieTrustedOrigin: 204
+        queryCrossSite: { status: 403, code: ERR_HTTP_CROSS_ORIGIN_REFUSED }
+        queryNoOrigin: 403
+        querySameOrigin: { status: 200, body: { from: a } }
+        queryBadBody: { status: 400, pointers: [/body/from] }
         bearerCrossSite: 204

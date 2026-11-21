@@ -112,7 +112,7 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        page: { status: !cel "steps.page.result.status", reads: !cel "steps.page.result.body.children[1].source.path.value", signInLink: !cel "steps.page.result.body.children[1].content.children[1].children[1].to.href.path.value" }
+        page: { status: !cel "steps.page.result.status", reads: !cel "steps.page.result.body.children[1].query.url.path.value", signInLink: !cel "steps.page.result.body.children[1].content[0].children[1].children[1].to.href.path.value" }
         anonymous: { status: !cel "steps.anonymous.result.status", user: !cel "steps.anonymous.result.body.user" }
         login:
           status: !cel "steps.login.result.status"

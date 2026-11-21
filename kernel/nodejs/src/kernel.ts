@@ -7,8 +7,10 @@ import {
   browserExportSites,
   pathParamsAnnotationProblems,
   pathParamsProblems,
-  buildAccessorSites,
   buildEvalPaths,
+  celEvalSites,
+  removedKindReason,
+  undeclaredKindMessage,
   evaluatedField,
   extractCelRegionScopes,
   DiagnosticSeverity,
@@ -188,7 +190,7 @@ import {
   type ReconcileOutcome,
 } from "./reconcile.js";
 import { ambientInvokeContext, EvaluationContext } from "./evaluation-context.js";
-import { ModuleContext } from "./module-context.js";
+import { KindNotExportedError, ModuleContext } from "./module-context.js";
 import { bindModuleFunctions, type FunctionResolutionHost } from "./module-functions.js";
 import { refuseInvalidCallableInstance } from "./controllers/resource-definition/callable-guard.js";
 import { refuseUndeclarableCapability } from "./controllers/resource-definition/kind-document-guard.js";
@@ -509,6 +511,9 @@ export class Kernel implements IKernel {
   /** Each module file's `lang:` — the language the texts it writes are in — by
    *  the file's source, partials included. */
   private readonly moduleLangs = new Map<string, string | null>();
+  /** Each loaded module's own document, by module name: what a kind refusal
+   *  reads the module's migrations off. */
+  private readonly moduleDocuments = new Map<string, ResourceManifest>();
   /** Resolved native file URIs per module and name; a rejection is dropped so a
    *  file staged after a failed lookup resolves on the next ask. */
   private readonly nativeFileUris = new Map<string, Promise<string>>();
@@ -2831,6 +2836,7 @@ export class Kernel implements IKernel {
     this.nativeFileModules.clear();
     this.directImports.clear();
     this.moduleLangs.clear();
+    this.moduleDocuments.clear();
     this.nativeFileUris.clear();
     this.stagedEntryMatches.clear();
     this.bundlePreparations.clear();
@@ -2870,7 +2876,9 @@ export class Kernel implements IKernel {
         assetPatterns: owner.assetPatterns,
         browser: owner.browser,
       };
-      const lang = moduleLangOf(file.manifests.find((m) => m && isModuleKind(m.kind)));
+      const moduleDoc = file.manifests.find((m) => m && isModuleKind(m.kind));
+      if (owner.name !== undefined && moduleDoc) this.moduleDocuments.set(owner.name, moduleDoc);
+      const lang = moduleLangOf(moduleDoc);
       for (const declaring of [file, ...module.partials]) {
         this.nativeFileModules.set(declaring.source, native);
         this.moduleLangs.set(declaring.source, lang);
@@ -3001,6 +3009,18 @@ export class Kernel implements IKernel {
    *  source and its `native:` and `sources:` blocks. */
   getDeclaringModule(source: string | undefined): NativeFileModule | undefined {
     return source ? this.nativeFileModules.get(source) : undefined;
+  }
+
+  /** `kind` resolved in `module`, a kind the import's module does not declare
+   *  refused as undefined before the export gate is consulted. */
+  private resolveDeclaredKind(module: ModuleContext, kind: string): string {
+    try {
+      return module.resolveKind(kind);
+    } catch (error) {
+      if (!(error instanceof KindNotExportedError) || this.registry.resolveDefinition(`${error.module}.${error.name}`)) throw error;
+      const reason = removedKindReason(this.moduleDocuments.get(error.module), error.name);
+      throw new RuntimeError("ERR_UNDEFINED_KIND", undeclaredKindMessage(kind, error.module, error.name, reason));
+    }
   }
 
   /** The `lang:` of the module one of whose files resolved from `source`, `null`
@@ -3284,7 +3304,7 @@ export class Kernel implements IKernel {
     // remain visible from inside imported libraries; sibling modules stay
     // isolated because they're not in the chain.
     const kindModule = mappedBy?.writer ?? findEnclosingModule(evalContext) ?? this.rootContext;
-    const resolvedKind = kindModule.resolveKind(kind);
+    const resolvedKind = this.resolveDeclaredKind(kindModule, kind);
 
     // A kind document names a lifecycle role the roster holds, or nothing else
     // about it is worth reading — refused before its schema is.
@@ -3401,11 +3421,12 @@ export class Kernel implements IKernel {
     const compile = [...parentEval.compile, ...ownEval.compile, ...implicitEval.compile];
     const runtime = [...parentEval.runtime, ...ownEval.runtime];
     // Fields whose value is named, never evaluated: kept out of the compile
-    // expansion below and handed to the controller as bindings.
-    const accessor = [
-      ...(parentDef?.schema ? buildAccessorSites(parentDef.schema, shapes) : []),
-      ...buildAccessorSites(configSchema, shapes),
-    ];
+    // expansion below and handed to the controller as bindings. The regions
+    // beside them say what a chain may start at, per concrete place.
+    const parentSites = parentDef?.schema ? celEvalSites(parentDef.schema, shapes) : undefined;
+    const ownSites = celEvalSites(configSchema, shapes);
+    const accessor = [...(parentSites?.accessor ?? []), ...(ownSites.accessor ?? [])];
+    const accessorContexts = [...(parentSites?.contexts ?? []), ...(ownSites.contexts ?? [])];
     // Regions cover what a controller evaluates per call without `x-telo-eval`
     // (a route's per-request fields). A structural kind's bodies are evaluated
     // by rules of their own.
@@ -3569,7 +3590,7 @@ export class Kernel implements IKernel {
         { isEvaluated: (path) => evaluatedField({ compile, runtime, regions, accessor }, path) },
       );
     }
-    const accessorFieldsHeld = refuseNonChainAccessors(resourceLabel, resource, accessor);
+    const accessorFieldsHeld = refuseNonChainAccessors(resourceLabel, resource, accessor, accessorContexts);
 
     // A startup read of observed state waits for its producer's `init()`.
     if (compile.length && evalContext instanceof EvaluationContext) {

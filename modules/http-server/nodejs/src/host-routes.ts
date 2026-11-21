@@ -67,7 +67,7 @@ export function hostRoutesOf(app: FastifyInstance): HostRoutes | undefined {
   return (app as unknown as Record<string, unknown>)[HOST_ROUTES] as HostRoutes | undefined;
 }
 
-const OPERATION_METHODS = new Set(["get", "put", "post", "delete", "options", "head", "patch", "trace"]);
+const OPERATION_METHODS = new Set(["get", "put", "post", "delete", "options", "head", "patch", "trace", "query"]);
 
 /** The document with every operation `host` cannot reach removed, and a path
  *  left with none removed whole. */

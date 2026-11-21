@@ -407,6 +407,12 @@ targets:
   - !ref accessorNotPlainChainAtRuntime
   - !ref accessorForwarded
   - !ref accessorForwardedAtRuntime
+  - !ref accessorRecursiveRuns
+  - !ref accessorRecursiveOutside
+  - !ref accessorRecursiveOutsideAtRuntime
+  - !ref accessorTemplateRuns
+  - !ref accessorTemplateNotPlainChain
+  - !ref accessorTemplateNotPlainChainAtRuntime
   - !ref browserEntryRuns
   - !ref browserEntryUnknown
   - !ref browserEntryUnknownAtRuntime
@@ -693,6 +699,12 @@ targets:
   - !ref pathParamsForInvalidAtRuntime
   - !ref evalModeBranchConflict
   - !ref evalModeBranchConflictAtRuntime
+  - !ref evalModeTemplateConflict
+  - !ref evalModeTemplateConflictAtRuntime
+  - !ref evalModeRegionConflict
+  - !ref evalModeRegionConflictAtRuntime
+  - !ref kindUndeclared
+  - !ref kindUndeclaredInLibrary
   - !ref scopeInputsUndeclaredField
   - !ref scopeInputsNotOpenedByDispatch
   - !ref scopeInputsRunDefaults
@@ -4459,6 +4471,31 @@ expect:
     - { code: CEL_TYPE_ERROR, message: "Acc.Table/mistyped: CEL at 'rowStyle' reads 'row.done', whose declared shape does not fit what the field expects: /: type mismatch — source is 'boolean', target expects 'string'." }
   runFails: "AccessorKinds.Table/notChains: 'rowStyle: !cel \"variables.style\"' is not a plain chain the field can name"
 ---
+# The names an accessor chain may start at are read at its concrete place: a
+# region a recursive shape declares on a list binds its name in a node of the
+# list and in a node of the same region nested inside it…
+kind: Assert.Manifest
+metadata: { name: accessorRecursiveRuns }
+source: ./__fixtures__/check-run-agreement/accessor/recursive/telo.yaml
+expect: { errors: [], runs: true }
+---
+# …and nowhere outside every list, where the same chain names nothing…
+kind: Assert.Manifest
+metadata: { name: accessorRecursiveOutside }
+source: ./__fixtures__/check-run-agreement/accessor/recursive/invalid/lib/telo.yaml
+expect:
+  errors:
+    - { code: CEL_UNKNOWN_IDENTIFIER, message: "Acc.Tree/outside: !cel: unknown identifier 'row' — nothing by that name is in scope here." }
+---
+# …which the kernel refuses at creation.
+kind: Assert.Manifest
+metadata: { name: accessorRecursiveOutsideAtRuntime }
+source: ./__fixtures__/check-run-agreement/accessor/recursive/invalid/telo.yaml
+expect:
+  errors:
+    - { code: CEL_UNKNOWN_IDENTIFIER, message: "Acc.Tree/outside: !cel: unknown identifier 'row' — nothing by that name is in scope here." }
+  runFails: "AccessorKinds.Tree/outside: 'root.label: !cel \"row.name\"' is not a plain chain the field can name: it starts at 'row'"
+---
 # A templated kind's own accessor field, forwarded to the entry it composes, is
 # judged where its consumer wrote it: no plain chain is refused there, and a
 # chain is typed as the entry's field — each once…
@@ -4481,6 +4518,42 @@ expect:
     - { code: ACCESSOR_NOT_PLAIN_CHAIN, message: "Acc.Styled/notChain: 'rowStyle: !cel \"row.text + '!'\"' is not a plain chain. An accessor field names a value for its consumer to resolve and is never evaluated, so only identifiers joined by dots can be written there as an expression — rooted at one of the field's bindings ('row'). A call, an operator, an index or interpolation has nothing to run it. Write a plain chain, or a literal value." }
     - { code: CEL_UNKNOWN_FIELD, message: "Acc.Styled/mistyped: 'rowStyle' is forwarded into the Self.Table entry 'table' as 'rowStyle', which checks it as its own field — !cel: 'row.txt' is not defined (available: text)" }
   runFails: "AccessorKinds.Styled/notChain: 'rowStyle: !cel \"row.text + '!'\"' is not a plain chain"
+---
+# An accessor template (`x-telo-eval: accessor-template`) may hold a map or a
+# list of accessors at any depth: a structure holding a chain reaches the
+# controller as `{ map }` / `{ list }` of its entries' bindings, one holding
+# none as `{ value }`.
+kind: Assert.Manifest
+metadata: { name: accessorTemplateRuns }
+source: ./__fixtures__/check-run-agreement/accessor-template/telo.yaml
+expect: { errors: [], runs: true }
+---
+# Each value in it is a literal or a plain chain, at any depth…
+kind: Assert.Manifest
+metadata: { name: accessorTemplateNotPlainChain }
+source: ./__fixtures__/check-run-agreement/accessor-template/invalid/lib/telo.yaml
+expect:
+  errors:
+    - code: ACCESSOR_NOT_PLAIN_CHAIN
+      message: "Search.Criteria/notChains: 'criteria.match.title: !cel \"query.q.upperAscii()\"' is not a plain chain"
+    - code: ACCESSOR_NOT_PLAIN_CHAIN
+      message: "Search.Criteria/notChains: 'criteria.tags[1]: !cel \"query.tag + '!'\"' is not a plain chain"
+    - code: ACCESSOR_NOT_PLAIN_CHAIN
+      message: !literal "Search.Criteria/notChains: 'criteria.tags[2]: !interpolate \"${{ query.tag }}!\"' is not a plain chain"
+    - code: ACCESSOR_NOT_PLAIN_CHAIN
+      message: "Search.Criteria/notChains: 'criteria.nested.deeper[0].first: !cel \"query.tags[0]\"' is not a plain chain"
+---
+# …and the kernel refuses the resource at creation.
+kind: Assert.Manifest
+metadata: { name: accessorTemplateNotPlainChainAtRuntime }
+source: ./__fixtures__/check-run-agreement/accessor-template/invalid/telo.yaml
+expect:
+  errors:
+    - { code: ACCESSOR_NOT_PLAIN_CHAIN, message: "Search.Criteria/notChains: 'criteria.match.title: !cel \"query.q.upperAscii()\"' is not a plain chain. An accessor template names values for its consumer to resolve and is never evaluated, so each value in it is a literal or a plain chain — identifiers joined by dots, rooted at one of the field's bindings ('query'). A call, an operator, an index or interpolation has nothing to run it. Write a plain chain, or a literal value." }
+    - { code: ACCESSOR_NOT_PLAIN_CHAIN, message: "Search.Criteria/notChains: 'criteria.tags[1]: !cel \"query.tag + '!'\"' is not a plain chain. An accessor template names values for its consumer to resolve and is never evaluated, so each value in it is a literal or a plain chain — identifiers joined by dots, rooted at one of the field's bindings ('query'). A call, an operator, an index or interpolation has nothing to run it. Write a plain chain, or a literal value." }
+    - { code: ACCESSOR_NOT_PLAIN_CHAIN, message: !literal "Search.Criteria/notChains: 'criteria.tags[2]: !interpolate \"${{ query.tag }}!\"' is not a plain chain. An accessor template names values for its consumer to resolve and is never evaluated, so each value in it is a literal or a plain chain — identifiers joined by dots, rooted at one of the field's bindings ('query'). A call, an operator, an index or interpolation has nothing to run it. Write a plain chain, or a literal value." }
+    - { code: ACCESSOR_NOT_PLAIN_CHAIN, message: "Search.Criteria/notChains: 'criteria.nested.deeper[0].first: !cel \"query.tags[0]\"' is not a plain chain. An accessor template names values for its consumer to resolve and is never evaluated, so each value in it is a literal or a plain chain — identifiers joined by dots, rooted at one of the field's bindings ('query'). A call, an operator, an index or interpolation has nothing to run it. Write a plain chain, or a literal value." }
+  runFails: "Search.Criteria/notChains: 'criteria.match.title: !cel \"query.q.upperAscii()\"' is not a plain chain. An accessor template"
 ---
 # A browser entry is resolved by its specifier — the one a resource names
 # against the module that declared the resource, the controller's own against
@@ -7474,6 +7547,67 @@ expect:
   errors:
     - { code: EVAL_MODE_BRANCH_CONFLICT, message: "Telo.Definition 'Card' declares a union at 'schema.properties.content' whose branches give 'text' two eval modes: oneOf[0] makes it an accessor (`x-telo-eval: accessor`), and oneOf[1] makes it a literal (no `x-telo-eval`). Every branch is read at one path before a value picks one, so a property means the same in each: give it the same `x-telo-eval` in every branch declaring it, or another name where it means something else." }
   runFails: "[EVAL_MODE_BRANCH_CONFLICT] Imported library 'EvalModeBranchConflictLib', reached through import 'Lib': Telo.Definition 'Card' declares a union at 'schema.properties.content' whose branches give 'text' two eval modes"
+---
+# An accessor and an accessor template are two eval modes too…
+kind: Assert.Manifest
+metadata: { name: evalModeTemplateConflict }
+source: ./__fixtures__/check-run-agreement/eval-mode-branch-conflict/template/lib/telo.yaml
+expect:
+  errors:
+    - code: EVAL_MODE_BRANCH_CONFLICT
+      message: "Telo.Definition 'Card' declares a union at 'schema.properties.content' whose branches give 'text' two eval modes: oneOf[1] makes it an accessor template (`x-telo-eval: accessor-template`), and oneOf[0] makes it an accessor (`x-telo-eval: accessor`)."
+---
+# …refused by the kernel when the import registers the kind.
+kind: Assert.Manifest
+metadata: { name: evalModeTemplateConflictAtRuntime }
+source: ./__fixtures__/check-run-agreement/eval-mode-branch-conflict/template/telo.yaml
+expect:
+  errors:
+    - { code: EVAL_MODE_BRANCH_CONFLICT, message: "Telo.Definition 'Card' declares a union at 'schema.properties.content' whose branches give 'text' two eval modes: oneOf[1] makes it an accessor template (`x-telo-eval: accessor-template`), and oneOf[0] makes it an accessor (`x-telo-eval: accessor`). Every branch is read at one path before a value picks one, so a property means the same in each: give it the same `x-telo-eval` in every branch declaring it, or another name where it means something else." }
+  runFails: "[EVAL_MODE_BRANCH_CONFLICT] Imported library 'EvalModeTemplateConflictLib', reached through import 'Lib': Telo.Definition 'Card' declares a union at 'schema.properties.content' whose branches give 'text' two eval modes"
+---
+# A CEL context is an eval meaning too: one branch declaring a region on a key
+# another branch declares without one is refused at the kind…
+kind: Assert.Manifest
+metadata: { name: evalModeRegionConflict }
+source: ./__fixtures__/check-run-agreement/eval-mode-branch-conflict/region/lib/telo.yaml
+expect:
+  errors:
+    - code: EVAL_MODE_BRANCH_CONFLICT
+      message: "Telo.Definition 'Card' declares a union at 'schema.properties.content' whose branches give 'children' two CEL contexts: oneOf[0] declares an `x-telo-context` region there and oneOf[1] declares none."
+---
+# …refused by the kernel when the import registers the kind.
+kind: Assert.Manifest
+metadata: { name: evalModeRegionConflictAtRuntime }
+source: ./__fixtures__/check-run-agreement/eval-mode-branch-conflict/region/telo.yaml
+expect:
+  errors:
+    - { code: EVAL_MODE_BRANCH_CONFLICT, message: "Telo.Definition 'Card' declares a union at 'schema.properties.content' whose branches give 'children' two CEL contexts: oneOf[0] declares an `x-telo-context` region there and oneOf[1] declares none. Every branch is read at one path before a value picks one, so a property means the same in each: give it the same `x-telo-context` in every branch declaring it, or another name where it means something else." }
+  runFails: "[EVAL_MODE_BRANCH_CONFLICT] Imported library 'EvalModeRegionConflictLib', reached through import 'Lib': Telo.Definition 'Card' declares a union at 'schema.properties.content' whose branches give 'children' two CEL contexts: oneOf[0] declares an `x-telo-context` region there and oneOf[1] declares none"
+---
+# A kind the imported module does not declare is undefined, whatever its
+# `exports.kinds` lists — naming the migration that removed it, if one did —
+# and only a kind it declares and withholds is not exported.
+kind: Assert.Manifest
+metadata: { name: kindUndeclared }
+source: ./__fixtures__/check-run-agreement/kind-undeclared/telo.yaml
+expect:
+  errors:
+    - { code: UNDEFINED_KIND, message: "No Telo.Definition found for kind 'Lib.Gone': module 'KindUndeclaredLib' declares no kind 'Gone'. It was removed: Gone is replaced by Kept." }
+    - { code: UNDEFINED_KIND, message: "No Telo.Definition found for kind 'Lib.Missing': module 'KindUndeclaredLib' declares no kind 'Missing'." }
+    - { code: KIND_NOT_EXPORTED, message: "Kind 'Lib.Hidden' is not exported by module 'KindUndeclaredLib'." }
+    - { code: UNDEFINED_KIND, message: "x-telo-ref at 'schema.properties.source': No Telo.Definition found for kind 'Lib.Gone': module 'KindUndeclaredLib' declares no kind 'Gone'. It was removed: Gone is replaced by Kept." }
+  runFails: "[UNDEFINED_KIND] No Telo.Definition found for kind 'Lib.Gone': module 'KindUndeclaredLib' declares no kind 'Gone'. It was removed: Gone is replaced by Kept."
+---
+# …and the kernel resolves a kind in the same order, refusing one a library
+# declares when the import creating it initializes.
+kind: Assert.Manifest
+metadata: { name: kindUndeclaredInLibrary }
+source: ./__fixtures__/check-run-agreement/kind-undeclared/in-library/telo.yaml
+expect:
+  errors:
+    - { code: UNDEFINED_KIND, message: "No Telo.Definition found for kind 'Lib.Gone': module 'KindUndeclaredLib' declares no kind 'Gone'. It was removed: Gone is replaced by Kept." }
+  runFails: "[ERR_UNDEFINED_KIND] RuntimeError: No Telo.Definition found for kind 'Lib.Gone': module 'KindUndeclaredLib' declares no kind 'Gone'. It was removed: Gone is replaced by Kept."
 ---
 # A scope annotation the kind cannot honour is refused at the kind writing it…
 kind: Assert.Manifest

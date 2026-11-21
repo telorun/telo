@@ -23,6 +23,7 @@ import {
 } from "./bound-actions.js";
 import { answerAtCreation, isPane, paneAssets } from "./pane.js";
 import { isPressable, pressSpec, type PressConfig } from "./press.js";
+import { QUERY_LISTS, queryListOf, queryListRoots, queryOf } from "./query-node.js";
 import { sourceKeys } from "./source-keys.js";
 
 /** A `Ui.Node` as its author wrote it, references already live. */
@@ -54,6 +55,7 @@ export const NO_ROOTS: RootShapes = {};
  *  `children`, a bar's three regions. */
 export function nodeLists(node: { type: string; [key: string]: unknown }): string[] {
   if (node.type === "bar") return ["start", "center", "end"];
+  if (node.type === "query") return [...QUERY_LISTS];
   return Array.isArray(node.children) ? ["children"] : [];
 }
 
@@ -87,6 +89,24 @@ export async function resolveNode(
     // A composite with nothing to show is left out, like a node switched off.
     if (!provided.node) return undefined;
     return { node: placed(provided.node, node), assets: provided.assets };
+  }
+  if (node.type === "query") {
+    const spec = queryOf(node.query, ctx, where);
+    const queryAssets: AssetFile[][] = [];
+    const resolvedLists: Record<string, SpecNode[]> = {};
+    for (const list of QUERY_LISTS) {
+      const listRoots = queryListRoots(spec, list, roots, reader);
+      const children: SpecNode[] = [];
+      for (const [index, child] of queryListOf(node, list).entries()) {
+        const resolved = await resolveNode(child, ctx, `${where}.${list}[${index}]`, listRoots);
+        if (!resolved?.node) continue;
+        children.push(resolved.node);
+        queryAssets.push(resolved.assets);
+      }
+      resolvedLists[list] = children;
+    }
+    const { when, ...own } = withoutAbsent(node);
+    return { node: { ...own, query: spec, ...resolvedLists, fill: node.fill === true } as SpecNode, assets: mergeAssets(...queryAssets) };
   }
   if (node.type === "pane") {
     const pane = ctx.resolveRef(node.ref, isPane, () => `'ref' of the pane node at ${where}`, "Ui.Pane");
@@ -270,6 +290,15 @@ export function presented(node: AuthoredNode, roots: RootShapes, reader: ShapeRe
           : tab,
       ),
     };
+  }
+  if (own.type === "query") {
+    const spec = queryOf(own.query, reader.ctx, where);
+    const listed: AuthoredNode = { ...own };
+    for (const list of QUERY_LISTS) {
+      const listRoots = queryListRoots(spec, list, roots, reader);
+      listed[list] = queryListOf(own, list).map((child, index) => presented(child, listRoots, reader, `${where}.${list}[${index}]`));
+    }
+    return listed;
   }
   if (own.type === "bar") for (const list of nodeLists(own)) own[list] ??= [];
   if (isPressable(own.type)) own.press ??= null;

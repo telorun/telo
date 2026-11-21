@@ -86,7 +86,7 @@ drawn on pages with different ones, so a region withholds `params` and `query`
 `'params' is not available here — Ui.PageLayout/layout withholds it: a layout
 region is drawn on pages with different path variables and query parameters,
 so it reads none.` The same view placed in a page at `/x/{id}` reads it. A
-`Ui.Data` in a region still reads the `query` it declares itself.
+A `query` node in a region still reads the `query` it declares itself.
 
 The region context is `Ui.Node`'s `$defs/Region` — a list of nodes reading
 `request` and withholding `params` and `query`, the reason written once in

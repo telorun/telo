@@ -11,21 +11,7 @@
       "code": "VIEWS_DATA_REPLACED",
       "severity": 2,
       "file": "hand-over-inline/telo.yaml",
-      "path": "children[0].ref",
-      "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
-    },
-    {
-      "code": "VIEWS_DATA_REPLACED",
-      "severity": 2,
-      "file": "hand-over-inline/telo.yaml",
       "path": "pages[0].then.children[0]",
-      "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
-    },
-    {
-      "code": "VIEWS_DATA_REPLACED",
-      "severity": 2,
-      "file": "hand-over-inline/telo.yaml",
-      "path": "pages[0].then.children[0].ref",
       "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
     },
     {
@@ -39,21 +25,7 @@
       "code": "VIEWS_DATA_REPLACED",
       "severity": 2,
       "file": "hand-over-inline/telo.yaml",
-      "path": "resources[0].children[0].ref",
-      "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
-    },
-    {
-      "code": "VIEWS_DATA_REPLACED",
-      "severity": 2,
-      "file": "hand-over-inline/telo.yaml",
       "path": "with[0].children[0]",
-      "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
-    },
-    {
-      "code": "VIEWS_DATA_REPLACED",
-      "severity": 2,
-      "file": "hand-over-inline/telo.yaml",
-      "path": "with[0].children[0].ref",
       "message": "A read is a query, and what is drawn over its answer belongs to the node that places it."
     }
   ],

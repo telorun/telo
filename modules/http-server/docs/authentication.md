@@ -190,7 +190,7 @@ A request authenticated through `Http.FromCookie` — any source publishing `ori
 2. Otherwise `Origin` must equal the mount's origin (its public address, else the request's origin) or be listed in the source's `trustedOrigins`.
 3. A request with neither header is refused.
 
-A refusal is `ERR_HTTP_CROSS_ORIGIN_REFUSED`, 403. There is no switch to turn it off. The same request authenticated by a bearer token is not checked, since a browser never sends one on its own. A trusted origin is a scheme and host, with a port when it is not the default, and nothing after it; anything else is refused by `telo check` (`HTTP_TRUSTED_ORIGIN_INVALID`) and when the source is created.
+A refusal is `ERR_HTTP_CROSS_ORIGIN_REFUSED`, 403. `QUERY` is checked like `POST`, so a cross-origin `QUERY` also needs `cors.methods` to list it ([The QUERY method](query-method.md)). There is no switch to turn it off. The same request authenticated by a bearer token is not checked, since a browser never sends one on its own. A trusted origin is a scheme and host, with a port when it is not the default, and nothing after it; anything else is refused by `telo check` (`HTTP_TRUSTED_ORIGIN_INVALID`) and when the source is created.
 
 ## Refused before the app runs
 

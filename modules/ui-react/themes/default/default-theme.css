@@ -180,7 +180,7 @@ button[data-telo-part="button"][data-state="submitting"] { opacity: 0.7; }
 /* A relative time is underlined with dots: its exact time is its tooltip. */
 [data-telo-part="time"] { font-variant-numeric: tabular-nums; }
 [data-telo-part="time"][title] { text-decoration: underline dotted; text-decoration-color: color-mix(in oklab, currentColor 40%, transparent); text-underline-offset: 3px; cursor: help; }
-[data-telo-part="data"] { min-width: 0; }
+[data-telo-part="query"] { min-width: 0; }
 
 /* Buttons */
 :where(button)[data-telo-part] { gap: 0.375rem; box-sizing: border-box; padding: 0 0.625rem; margin: 0; border: 1px solid transparent; border-radius: var(--telo-radius-md); background: transparent; background-clip: padding-box; color: var(--telo-color-text); font: inherit; font-weight: 500; line-height: 1; outline: none; user-select: none; transition: background-color 150ms, border-color 150ms, color 150ms, box-shadow 150ms, opacity 150ms; }

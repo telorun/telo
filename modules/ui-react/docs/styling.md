@@ -107,7 +107,7 @@ a `link`, a `row-edit` or a control in a pressed card.
 | — | `data-fill="true"` | `flex-basis`, `flex-grow`, `flex-shrink`, `height`, `min-height`, `overflow-y` | a filling node takes the room its container leaves, the last of a chain scrolling inside itself and the page scrolling below their minimum |
 | `app` | `data-fill="true"` | `grid-template-rows`, `height`, `min-height` | a filling page holds the application to the viewport's height |
 | `box` | `data-fill="true"` | `display`, `flex-direction` | a filling box passes the room on to what it holds |
-| `data` | `data-fill="true"` | `display`, `flex-direction` | a filling reader passes the room on to what it holds |
+| `query` | `data-fill="true"` | `display`, `flex-direction` | a filling query node passes the room on to what it draws |
 | `columns` | `data-fill="true"` | `align-items` | filling columns are each as tall as the row |
 | `filters` | `data-fill="true"` | `align-items`, `flex-direction`, `flex-wrap`, `grid-template-rows` | a filling filter bar passes the room left under its controls on to its content |
 | `split` | `data-fill="true"` | `align-items` | a filling split view stretches its aside and its content to its height |
@@ -264,7 +264,7 @@ navigation text alone, so no part holds it.
 | `list` | a `list` node, or one list of an action's answer: its heading, then its grid |
 | `list-heading` | a list's heading, an `h3`; absent when the list declares none |
 | `list-empty` | the cell a list shows when its rows hold none |
-| `data` | a `data` node: a reader, holding its `loading` tree before the first answer, its `content` once one is in, its `failure` when the read did not succeed |
+| `query` | a `query` node: one query's answer, laid out as a `box` lays out its children — its `loading` nodes before the node's first answer, its `content` nodes once one is in, its `failure` nodes when the read did not succeed |
 | `bar` | a `bar` node: its three regions in a row, `bar-center` centred whatever the sides hold; below the breakpoint the regions wrap. A bar is as tall as every bar (`--ui-react-bar-height`) |
 | `bar-start` | the bar's `start` nodes, at its start edge |
 | `bar-center` | the bar's `center` nodes; drawn, empty, when there are none |
@@ -521,9 +521,10 @@ controls contract lists for it: `data-state` on `tab` and `tab-panel`.
 | `tab` | one tab, a button: `aria-selected="true"` and `data-state="active"` on the chosen one |
 | `tab-panel` | the chosen tab's content, `role="tabpanel"`; another tab's is drawn anew when it is chosen |
 
-A `data` part carries `data-state`: `loading` before the first answer, `idle`
-once one is drawn, `error` while its `failure` is drawn. A reload keeps the
-content mounted; while the failure is drawn the content is kept, out of sight.
+A `query` part carries `data-state`: `loading` before the node's first answer,
+`idle` once one is drawn, `error` while its `failure` is drawn. A reload keeps
+the content mounted; while the failure is drawn the content is kept, out of
+sight.
 
 A node whose `shown` does not hold is drawn inside an element with
 `display: none` — kept mounted, so what it holds survives — and one that holds
@@ -918,7 +919,7 @@ listed.
 
 | Attribute | Values | On |
 | --- | --- | --- |
-| `data-state="…"` | `idle`, `loading`, `error`, `empty`, `submitting` | `page`, `data`, `listing`, `form`, `filters`, `component`, `action`, `row-action`, `button`, `markdown`, `chat` |
+| `data-state="…"` | `idle`, `loading`, `error`, `empty`, `submitting` | `page`, `query`, `listing`, `form`, `filters`, `component`, `action`, `row-action`, `button`, `markdown`, `chat` |
 | `data-invalid="…"` | `true`, while what it holds is refused; the control inside carries its own | `field`, `picker` |
 | `data-dirty="…"` | `true`, while it holds input that is not saved | `form` |
 | `data-compact="…"` | `true`, while the viewport is below the application's `compactBelow` | `app` |
@@ -933,7 +934,7 @@ listed.
 | `data-embedded="…"` | `true`, on a part that draws a frame of its own (an outer border, radius and background) while it is the direct content of a flush split view's aside or content — a listing's layout counting as its listing — so it draws none, the split's frame being the one panel | `chat`, `list-layout`, `table-frame`, `tree-layout`, `calendar-grid` |
 | `data-button="…"` | `text`, `icon`: a `link` node drawn as a button, by its text or by a glyph, absent on a link drawn inline; how a `command` or a `button` is drawn | `link`, `command`, `button` |
 | `data-command="…"` | `chat.exportTranscript`, `chat.copyTranscript`, `chat.stop`, `chat.newConversation`: the command a `command` part runs, so a look can choose its glyph | `command` |
-| `data-fill="…"` | `true`, while the part [fills](#filling) the room it is in | `app`, `main`, `page`, `box`, `stack`, `columns`, `text`, `badge`, `link`, `image`, `svg`, `value`, `time`, `list`, `bar`, `command`, `button`, `data`, `listing`, `form`, `action`, `filters`, `component`, `chat`, `split`, `aside`, `split-content`, `markdown`, `navigation`, `tabs`, `tab-panel` |
+| `data-fill="…"` | `true`, while the part [fills](#filling) the room it is in | `app`, `main`, `page`, `box`, `stack`, `columns`, `text`, `badge`, `link`, `image`, `svg`, `value`, `time`, `list`, `bar`, `command`, `button`, `query`, `listing`, `form`, `action`, `filters`, `component`, `chat`, `split`, `aside`, `split-content`, `markdown`, `navigation`, `tabs`, `tab-panel` |
 | `data-record="…"` | `true`: a link drawn from a record's own content — a layout's content, a column's or value's `to` — and never from a relation's label, an action's answer or a form; absent otherwise | `link` |
 | `data-selected="…"` | `true`, while a link or press the record draws leads to where the viewer is — moving to the current location, with the same address and query, or opening the page open in a surface now — and never by a relation's label; absent otherwise | `table-row`, `list-item`, `card`, `board-card`, `calendar-event`, `timeline-bar`, `tree-item` |
 | `data-align="…"` | `start`, `center`, `end` — a popover's, along its side; a table column's alignment | `surface`, `markdown-table-header-cell`, `markdown-table-cell` |

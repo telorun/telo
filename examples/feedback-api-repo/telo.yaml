@@ -125,7 +125,7 @@ routes:
             body: !cel "result.rows"
 
   # GET /v1/feedback/recent — the list as an object, which is what a screen
-  # reads (`Ui.Data` takes a JSON object, never a bare array).
+  # reads (a `Ui.Query` takes a JSON object, never a bare array).
   - request: { path: /feedback/recent, method: GET }
     handler: !ref readFeedback
     inputs: { filters: {} }
@@ -207,20 +207,24 @@ children:
   - { type: text, text: Tell us what you think, style: title }
   - { type: composite, ref: !ref sendFeedback }
   - { type: text, text: What came in, style: subheading }
-  - type: composite
-    ref:
-      kind: Ui.Data
+  - type: query
+    query:
+      kind: Ui.Query
       model: !ref FeedbackEntries
-      source: /v1/feedback/recent
       reloadOn: [focus]
-      content:
-        type: list
+      url: /v1/feedback/recent
+    content:
+      - type: list
         rows: !cel "data.entries"
         columns:
-          - { header: Rating, value: !cel "row.rating" }
-          - { header: Feedback, value: !cel "row.text" }
-          - { header: Source, value: !cel "row.source" }
-          - { header: Received, value: !cel "row.created_at" }
+          - header: Rating
+            value: !cel "row.rating"
+          - header: Feedback
+            value: !cel "row.text"
+          - header: Source
+            value: !cel "row.source"
+          - header: Received
+            value: !cel "row.created_at"
 ---
 kind: UiReact.App
 metadata: { name: ui }

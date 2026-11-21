@@ -45,7 +45,7 @@ schema:
           title: Method
           description: HTTP method matched by the route.
           type: string
-          enum: ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+          enum: ["GET", "POST", "PUT", "DELETE", "PATCH", "QUERY", "HEAD", "OPTIONS"]
         query:
           title: Query
           description: Query parameter schema for request matching.

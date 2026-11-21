@@ -409,19 +409,23 @@ rowActions:
     inputs: { total: !cel "row.count", note: 5 }
 ---
 # The same inputs, given by a row of a list a reader draws.
-kind: Ui.Data
+kind: Ui.View
 metadata: { name: listRowActionInputs }
-model:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      todos: { type: array, items: !ref Todo }
-source: { path: /api/todos }
 content:
-  type: list
-  rows: !cel "data.todos"
-  columns: [{ value: !cel "row.text" }]
-  rowActions:
-    - action: !ref remove
-      inputs: { total: !cel "row.count", note: 5 }
+  type: query
+  query:
+    kind: Ui.Query
+    model:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        properties:
+          todos: { type: array, items: !ref Todo }
+    url: { path: /api/todos }
+  content:
+    - type: list
+      rows: !cel "data.todos"
+      columns: [{ value: !cel "row.text" }]
+      rowActions:
+        - action: !ref remove
+          inputs: { total: !cel "row.count", note: 5 }

@@ -137,7 +137,7 @@ h3[data-telo-part="text"] { font-size: var(--telo-font-size-lg); font-weight: 60
 /* A relative time is underlined with dots: its exact time is its tooltip. */
 [data-telo-part="time"] { font-variant-numeric: tabular-nums; }
 [data-telo-part="time"][title] { text-decoration: underline dotted; text-decoration-color: color-mix(in oklab, currentColor 40%, transparent); text-underline-offset: 3px; cursor: help; }
-[data-telo-part="data"] { min-width: 0; }
+[data-telo-part="query"] { min-width: 0; }
 [data-telo-part="list"] { gap: var(--telo-space-md); }
 [data-telo-part="list-heading"] { margin: 0; color: var(--telo-color-muted); font-family: var(--telo-font-heading); font-size: var(--telo-font-size-sm); font-weight: 600; letter-spacing: 0.04em; line-height: var(--telo-line-height-heading); text-transform: uppercase; }
 

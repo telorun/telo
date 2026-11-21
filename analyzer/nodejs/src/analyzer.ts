@@ -292,6 +292,7 @@ import {
   resolveTypeFieldToSchema,
 } from "./validate-cel-context.js";
 import {
+  accessorBindingNamesAt,
   accessorFieldAt,
   accessorSiteAt,
   celEvalModeAt,
@@ -580,6 +581,7 @@ import {
   type DeclaredDefinitionScope,
   type ImportersByModule,
 } from "./declared-definition.js";
+import { removedKindReason, undeclaredKindMessage } from "./undeclared-kind.js";
 import { resolveScopeValues, valueSchemaSlots, type ValueSchemaHost } from "./value-schema-slot.js";
 import { fieldPlace, pointerReads, READS_IDENTITY, type ReadPlace, type ReferentPlace, type ReferentReads } from "./read-place.js";
 import { valueDerivedSlot } from "./value-derived-contract.js";
@@ -1316,7 +1318,11 @@ function contractOwnerLabel(
 
 
 /** A reference constraint a kind's schema writes that names no kind, as a diagnostic. */
-function refConstraintDiagnostic(issue: RefConstraintIssue, defs: DefinitionRegistry): AnalysisDiagnostic | undefined {
+function refConstraintDiagnostic(
+  issue: RefConstraintIssue,
+  defs: DefinitionRegistry,
+  moduleDocuments: NonNullable<AnalysisOptions["moduleDocuments"]>,
+): AnalysisDiagnostic | undefined {
   // An `unknown` prefix is also what an ALREADY-CANONICAL value looks like
   // (`acme.Store` names a module, not an alias). Now that every kind is
   // registered, the registry separates the two — anything it resolves was
@@ -1393,6 +1399,18 @@ function refConstraintDiagnostic(issue: RefConstraintIssue, defs: DefinitionRegi
     };
   }
   if (issue.reason === "gated") {
+    const name = issue.ref.slice(issue.ref.indexOf(".") + 1);
+    const module = issue.gate?.module;
+    if (module !== undefined && !defs.resolve(`${module}.${name}`)) {
+      const libraryDoc = moduleDocuments.find((doc) => doc.module === module)?.manifests.find((doc) => doc.kind === "Telo.Library");
+      return {
+        severity: DiagnosticSeverity.Error,
+        code: "UNDEFINED_KIND",
+        source: SOURCE,
+        message: `x-telo-ref at '${issue.path}': ${undeclaredKindMessage(issue.ref, module, name, removedKindReason(libraryDoc, name))}`,
+        data,
+      };
+    }
     return {
       severity: DiagnosticSeverity.Error,
       code: "KIND_NOT_EXPORTED",
@@ -1633,7 +1651,7 @@ const OWN_GROUPS: ReadonlyArray<readonly [SchemaGroup, (world: OwnCheckWorld, m:
       reportOwnStage("shapeRefSlots", world.inConfigurationRun);
       // Each message quotes the place of its slot, which a placement moves.
       return [
-        ...refConstraintIssuesOf(raw, shape).flatMap((issue) => refConstraintDiagnostic(issue, world.defs) ?? []),
+        ...refConstraintIssuesOf(raw, shape).flatMap((issue) => refConstraintDiagnostic(issue, world.defs, world.moduleDocuments) ?? []),
         ...validateRefSlotDeclarations(raw).map(refSlotIssueDiagnostic),
       ]
         .map((d) => withQuotedPath(d, (d.data as { path: string }).path))
@@ -1749,6 +1767,18 @@ function declarationKindFindings(world: OwnCheckWorld, m: ResourceManifest, decl
           `to make it importable. Exported kinds: ${declared.exported.join(", ") || "(none)"}.`,
         data: { resource, filePath, path: "kind" },
       });
+    case "undeclared": {
+      const libraryDoc = world.moduleDocuments
+        .find((doc) => doc.module === declared.module)
+        ?.manifests.find((doc) => doc.kind === "Telo.Library");
+      return found({
+        severity: DiagnosticSeverity.Error,
+        code: "UNDEFINED_KIND",
+        source: SOURCE,
+        message: undeclaredKindMessage(m.kind, declared.module, declared.name, removedKindReason(libraryDoc, declared.name)),
+        data: { resource, filePath, path: "kind" },
+      });
+    }
     case "unimported": {
       // The kernel resolves an entry-module resource's kind through that module's
       // own aliases alone, so a module another module imports is not reachable by
@@ -3137,7 +3167,7 @@ const RELATION_READERS: RelationReaderTable = {
       if (!site) return [];
       // A chain rooted at a name the field does not bind is left to the
       // expression's own verdict.
-      return accessorProblems({ site, path, keys: [...instance.anchor], value })
+      return accessorProblems({ site, path, keys: [...instance.anchor], value, bindings: accessorBindingNamesAt(sites, path) })
         .filter((problem) => problem.unboundRoot === undefined)
         .map((problem) => relationFindingAt(identity, "ACCESSOR_NOT_PLAIN_CHAIN", problem.message, problem.path));
     },
@@ -4057,8 +4087,9 @@ function accessorChainFieldsOf(
     prefix: readonly (string | number)[],
   ): void => {
     if (!sites) return;
+    // An accessor template's chains are judged by the slot fit.
     const fields = accessorFields(manifest, sites).filter(
-      (field) => isTaggedSentinel(field.value) && field.value.engine === CEL_ENGINE,
+      (field) => !field.site.template && isTaggedSentinel(field.value) && field.value.engine === CEL_ENGINE,
     );
     if (fields.length === 0) return;
     const declared = withSlots ? schema() : undefined;
@@ -4208,7 +4239,7 @@ function slotFinding(
   // chain has a producer schema to read; a guarded, computed or `dyn`
   // expression says nothing here and is left to the runtime.
   const nullable = facts.produced;
-  if (!result && nullable && producerAdmitsNull(nullable) && !slotAdmitsNull(target)) {
+  if (!result && !slot.accessorTemplate && nullable && producerAdmitsNull(nullable) && !slotAdmitsNull(target)) {
     const chain = expression.trim();
     return {
       severity: DiagnosticSeverity.Error,
@@ -4242,6 +4273,16 @@ function slotFinding(
     };
   }
   const produced = facts.produced;
+  const formatMisfit = slot.accessorTemplate && produced ? accessorFormatMisfit(target, produced, namedShape) : undefined;
+  if (formatMisfit) {
+    return {
+      severity: DiagnosticSeverity.Error,
+      code: "CEL_TYPE_ERROR",
+      source: SOURCE,
+      message: `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}': '${expression.trim()}' ${formatMisfit}.`,
+      data,
+    };
+  }
   if (!produced) {
     const composed = facts.composed;
     if (!composed) return undefined;
@@ -4391,6 +4432,10 @@ type JoinSlot = CelValueSlot & {
   /** Set for a call-site argument: the target whose declared inputType the
    *  slot's schema is. */
   callTarget?: string;
+  /** Set for a chain within an `accessor-template` field: its consumer leaves
+   *  out a member whose chain holds nothing, and the chain names a value, so
+   *  its format is judged as an accessor's. */
+  accessorTemplate?: true;
 };
 
 /** Where a declaration's slots are found: its own fields, a template's
@@ -4732,8 +4777,12 @@ function slotFitAt(
     const labels = misfits.map((v) => v.label).filter((l): l is string => l !== undefined);
     return labels.length === 0 ? first : { ...first, message: `${first.message} (as ${labels.join(", ")} references it)` };
   };
+  const evalSites = slotRuleSites(identity, door);
+  const accessorTemplate = evalSites !== undefined && accessorSiteAt(evalSites, leafPath)?.template === true;
   const callSiteVerdicts = new Map<JoinSlot, AnalysisDiagnostic | undefined>();
-  for (const slot of slots) {
+  for (const unmarked of slots) {
+    const slot =
+      accessorTemplate && unmarked.callTarget === undefined ? { ...unmarked, accessorTemplate: true as const } : unmarked;
     if (narrowed.has(slot.path)) continue;
     if (slot.callTarget !== undefined) {
       if (!callSiteVerdicts.has(slot)) callSiteVerdicts.set(slot, judgeSlot(slot));
@@ -9582,7 +9631,7 @@ export class StaticAnalyzer {
     // they are the same object).
     if (!options?.skipValidation || collectKind) {
       for (const issue of refConstraintIssues) {
-        const found = refConstraintDiagnostic(issue, defs);
+        const found = refConstraintDiagnostic(issue, defs, options?.moduleDocuments ?? []);
         if (found) kindOut("kindDocuments", found);
       }
       // Each reference form judged once per key of its declaration, and a
@@ -9594,7 +9643,7 @@ export class StaticAnalyzer {
       if (!configuration?.own && !collectKind) diagnostics.push(...expansion.diagnostics);
       // A named shape's own declaration is its keys' to judge.
       for (const issue of shapeConstraintIssues) {
-        const found = refConstraintDiagnostic(issue, defs);
+        const found = refConstraintDiagnostic(issue, defs, options?.moduleDocuments ?? []);
         if (found) diagnostics.push(found);
       }
       for (const issue of shapeSlotIssues) diagnostics.push(refSlotIssueDiagnostic(issue));

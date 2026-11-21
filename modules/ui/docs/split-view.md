@@ -62,7 +62,7 @@ A [`Ui.NavigationColumn`](navigation.md#uinavigationcolumn) in an aside folds
 with it into a rail of glyphs.
 
 Neither tree reads a root: a `value` or `list` node needs one, so put such
-nodes in a composite that declares it (`Ui.Data`, `Ui.Listing`).
+nodes in a composite that declares it (`Ui.View`, `Ui.Listing`).
 
 ## Frame
 

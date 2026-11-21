@@ -31,4 +31,33 @@ describe("a kind whose union gives one property two eval modes", () => {
       }),
     );
   });
+
+  it("is refused for an accessor and an accessor template", () => {
+    const kernel = new Kernel({ sources: [new LocalFileSource()], env: {} });
+    expect(() =>
+      kernel.registerResourceDefinition({
+        kind: "Telo.Definition",
+        metadata: { name: "Card", module: "Acme" },
+        capability: "Telo.Provider",
+        schema: {
+          type: "object",
+          properties: {
+            content: {
+              oneOf: [
+                { type: "object", properties: { text: { "x-telo-eval": "accessor" } } },
+                { type: "object", properties: { text: { "x-telo-eval": "accessor-template" } } },
+              ],
+            },
+          },
+        },
+      } as any),
+    ).toThrow(
+      expect.objectContaining({
+        code: "ERR_EVAL_MODE_BRANCH_CONFLICT",
+        message: expect.stringContaining(
+          "oneOf[1] makes it an accessor template (`x-telo-eval: accessor-template`), and oneOf[0] makes it an accessor (`x-telo-eval: accessor`)",
+        ),
+      }),
+    );
+  });
 });

@@ -57,13 +57,13 @@ content:
     - type: text
       style: muted
       text: The latest requests the two forms sent, read again after every save.
-    - type: composite
-      ref:
-        kind: Ui.Data
+    - type: query
+      query:
+        kind: Ui.Query
         model: !ref RequestList
-        source: { path: /api/requests }
-        content:
-          type: list
+        url: { path: /api/requests }
+      content:
+        - type: list
           rows: !cel "data.requests"
           columns:
             - value: !cel "row.title"
@@ -171,13 +171,13 @@ content:
     - type: text
       style: muted
       text: The latest bookings, read again after every save.
-    - type: composite
-      ref:
-        kind: Ui.Data
+    - type: query
+      query:
+        kind: Ui.Query
         model: !ref BookingList
-        source: { path: /api/bookings }
-        content:
-          type: list
+        url: { path: /api/bookings }
+      content:
+        - type: list
           rows: !cel "data.bookings"
           columns:
             - value: !cel "row.project"

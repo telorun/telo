@@ -16,6 +16,8 @@ import {
 import { headerReads, type HeaderReads } from "./request-header-reads.js";
 import { boundActionsOf, placedBoundAction, withBoundActions } from "./bound-actions.js";
 import { isPane, paneAssets, paneInputs, type PaneInstance, type PaneRequest } from "./pane.js";
+import { type QuerySpec } from "./query-controller.js";
+import { queryOf } from "./query-node.js";
 import { uiText } from "./spec-texts.js";
 
 /** The node standing where one could not be produced. */
@@ -80,9 +82,25 @@ export function producedNode(
   validator: DataValidator,
   invalid: Invalid,
   answered: (ref: unknown) => SpecNode | null | undefined = () => undefined,
+  queried: (ref: unknown) => QuerySpec | undefined = () => undefined,
 ): SpecNode | undefined {
   if (node.when === false) return undefined;
   const { when, ...rest } = node;
+  if (node.type === "query") {
+    const spec = queried(node.query);
+    if (!spec) return refuse(rest as SpecNode, "its 'query' names nothing this application resolved", invalid);
+    const produced: Record<string, unknown> = { ...rest, query: spec };
+    const judged: Record<string, unknown> = { ...rest, query: spec };
+    for (const list of nodeLists(node)) {
+      const children = ((node[list] as EvaluatedNode[] | undefined) ?? [])
+        .map((child) => producedNode(child, provided, validator, invalid, answered, queried))
+        .filter((child): child is SpecNode => child !== undefined);
+      produced[list] = children;
+      judged[list] = children.map(() => JUDGED);
+    }
+    const reason = refusalOf(judged as SpecNode, validator);
+    return reason === undefined ? (produced as SpecNode) : refuse(produced as SpecNode, reason, invalid);
+  }
   if (node.type === "composite" || node.type === "pane") {
     const standing = node.type === "composite" ? provided(node.ref) : answered(node.ref);
     // One with nothing to show is left out, like a node switched off.
@@ -109,7 +127,7 @@ export function producedNode(
         ? {
             ...tab,
             children: (tab.children as EvaluatedNode[])
-              .map((child) => producedNode(child, provided, validator, invalid, answered))
+              .map((child) => producedNode(child, provided, validator, invalid, answered, queried))
               .filter((child): child is SpecNode => child !== undefined),
           }
         : tab,
@@ -142,7 +160,7 @@ export function producedNode(
   const judged: Record<string, unknown> = { ...rest };
   for (const list of lists) {
     const children = ((node[list] as EvaluatedNode[] | undefined) ?? [])
-      .map((child) => producedNode(child, provided, validator, invalid, answered))
+      .map((child) => producedNode(child, provided, validator, invalid, answered, queried))
       .filter((child): child is SpecNode => child !== undefined);
     produced[list] = children;
     judged[list] = children.map(() => JUDGED);
@@ -190,6 +208,8 @@ const provides = (candidate: unknown): candidate is Providing =>
 interface Numbering {
   placed: unknown[];
   panes: PaneInstance[];
+  queries: QuerySpec[];
+  query(ref: unknown, where: string): QuerySpec;
   composite(ref: unknown, where: string): Providing;
   pane(ref: unknown, where: string): PaneInstance;
 }
@@ -208,6 +228,11 @@ function withCompositesNumbered(node: unknown, numbering: Numbering, where: stri
   const { type, ref, tabs } = node as EvaluatedNode;
   if (type === "composite") return { ...node, ref: numbering.placed.push(numbering.composite(ref, where)) - 1 };
   if (type === "pane") return { ...node, ref: numbering.panes.push(numbering.pane(ref, where)) - 1 };
+  if (type === "query") {
+    const numbered: Record<string, unknown> = { ...node, query: numbering.queries.push(numbering.query((node as EvaluatedNode).query, where)) - 1 };
+    for (const list of nodeLists(node as EvaluatedNode)) numbered[list] = withCompositesNumbered((node as EvaluatedNode)[list], numbering, `${where}.${list}`);
+    return numbered;
+  }
   if (type === "tabs" && Array.isArray(tabs)) {
     return {
       ...node,
@@ -264,6 +289,8 @@ export class RequestNodes {
     private readonly composites: (SpecNode | null)[],
     /** Each numbered pane. */
     private readonly panes: PaneInstance[],
+    /** Each numbered query's spec. */
+    private readonly queries: QuerySpec[],
     private readonly validator: DataValidator,
     /** Every file the composites and panes can name, each once. */
     readonly assets: AssetFile[],
@@ -285,6 +312,8 @@ export class RequestNodes {
     const numbering: Numbering = {
       placed: [],
       panes: [],
+      queries: [],
+      query: (ref, at) => queryOf(ref, ctx, `${where}${at}`),
       composite: (ref, at) => ctx.resolveRef(ref, provides, () => `'ref' of the composite node at ${where}${at}`, "Ui.Composite"),
       pane: (ref, at) => ctx.resolveRef(ref, isPane, () => `'ref' of the pane node at ${where}${at}`, "Ui.Pane"),
     };
@@ -311,7 +340,7 @@ export class RequestNodes {
     }
     for (const pane of numbering.panes) assets.push(paneAssets(pane));
     const reads = numbering.panes.length > 0 ? "*" : headerReads(tree);
-    return new RequestNodes(ctx, where, tree, composites, numbering.panes, validator, mergeAssets(...assets, ...buttons), reads);
+    return new RequestNodes(ctx, where, tree, composites, numbering.panes, numbering.queries, validator, mergeAssets(...assets, ...buttons), reads);
   }
 
   /** The nodes for one request: evaluated over it, each pane it delivers
@@ -345,6 +374,7 @@ export class RequestNodes {
           this.validator,
           invalid,
           (ref) => answers.get(ref as number),
+          (ref) => this.queries[ref as number],
         ),
       )
       .filter((node): node is SpecNode => node !== undefined)

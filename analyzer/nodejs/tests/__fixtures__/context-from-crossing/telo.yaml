@@ -1,0 +1,34 @@
+kind: Telo.Application
+metadata: { name: AcmeApp }
+imports: { Acme: ./kinds }
+---
+kind: Telo.JsonSchema
+metadata: { name: Account }
+schema: { type: object, required: [name], properties: { name: { type: string } } }
+---
+kind: Acme.Reader
+metadata: { name: keywords }
+params: { type: { type: string }, properties: { type: string } }
+model: !ref Account
+---
+kind: Acme.Reader
+metadata: { name: bare }
+model: !ref Account
+---
+kind: Acme.Panel
+metadata: { name: fits }
+sections:
+  - { reader: !ref keywords, show: !cel "params.type" }
+  - { reader: !ref keywords, show: !cel "params.properties" }
+  - { reader: !ref keywords, show: !cel "record.name" }
+  - { own: { type: { type: string } }, show: !cel "own.type" }
+primary: { reader: !ref keywords, show: !cel "params.type" }
+---
+kind: Acme.Panel
+metadata: { name: misses }
+sections:
+  - { reader: !ref keywords, show: !cel "params.typo" }
+  - { reader: !ref keywords, show: !cel "record.nmae" }
+  - { reader: !ref bare, show: !cel "params.any" }
+  - { own: { type: { type: string } }, show: !cel "own.typo" }
+primary: { reader: !ref bare, show: !cel "params.other" }

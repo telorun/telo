@@ -16,8 +16,8 @@ describe("a kind extending Telo.JsonSchema", () => {
     expect(findings).toEqual([
       "CEL_UNKNOWN_FIELD local: Telo.Sequence/local: !cel: 'inputs.kye' is not defined (available: userId, email)",
       "CEL_UNKNOWN_FIELD imported: Telo.Sequence/imported: !cel: 'inputs.kye' is not defined (available: userId, email)",
-      "SCHEMA_VIOLATION wrong: Kinds.Probe/wrong: `value` does not satisfy the type declared at `/event`: / is missing required property 'email'",
-      "SCHEMA_VIOLATION wrong: Kinds.Probe/wrong: `value` does not satisfy the type declared at `/event`: /userId must be string",
+      "SCHEMA_VIOLATION wrong: Kinds.Probe/wrong: `value` does not satisfy the type declared at `event`: / is missing required property 'email'",
+      "SCHEMA_VIOLATION wrong: Kinds.Probe/wrong: `value` does not satisfy the type declared at `event`: /userId must be string",
       "CEL_UNKNOWN_FIELD wrong: Kinds.Probe/wrong: !cel: 'payload.nope' is not defined (available: userId, email)",
       "REFERENCE_KIND_MISMATCH refusesPlain: Kinds.Strict/refusesPlain: reference at 'event' → 'Telo.JsonSchema' (resolved: 'Telo.JsonSchema') does not match required 'SubtypeKinds.Event'",
     ]);

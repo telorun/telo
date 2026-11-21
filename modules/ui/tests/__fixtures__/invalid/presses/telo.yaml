@@ -34,17 +34,26 @@ children:
       label: First post
     children: [{ type: text, text: First post }]
   # CEL_UNKNOWN_FIELD — a label's values read the holder's roots, typed: `Post` has no `titel`.
-  - type: composite
-    ref:
-      kind: Ui.Data
+  - type: query
+    query:
+      kind: Ui.Query
       model: !ref Post
-      source: /api/posts/hello
-      content:
-        type: box
+      url: /api/posts/hello
+    content:
+      - type: box
         press:
-          to: { kind: Ui.OpenPage, page: !ref postPage, pathParams: { id: !cel "data.id" } }
-          label: { text: "Read {$title}", values: { title: !cel "data.titel" } }
-        children: [{ type: value, value: !cel "data.title" }]
+          to:
+            kind: Ui.OpenPage
+            page: !ref postPage
+            pathParams:
+              id: !cel "data.id"
+          label:
+            text: Read {$title}
+            values:
+              title: !cel "data.titel"
+        children:
+          - type: value
+            value: !cel "data.title"
 ---
 # CEL_UNKNOWN_FIELD — a listing's press reads `row`, typed from `model`: `Post` has no `idd`.
 kind: Ui.Listing

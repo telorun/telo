@@ -19,7 +19,7 @@ import { isInstantiableDefinition } from "./instantiable-kind.js";
 import { computeSuggestKind, computeValidUserFacingKinds } from "./kind-suggest.js";
 import { visitManifest as runVisitManifest, type ManifestVisitor } from "./manifest-visitor.js";
 import {
-  accessorFieldAt,
+  accessorChainSiteAt,
   celEvalModeAt,
   governedCelEvalSites,
   type NamedShapeLookup,
@@ -405,12 +405,13 @@ export class AnalysisRegistry {
     return sites ? celEvalModeAt(sites, path) : undefined;
   }
 
-  /** Whether `path` of a resource of `kind` IS an accessor field, rather than a
-   *  place beneath one — the two take different tags
-   *  (`accessorTagEngines`). */
+  /** Whether a chain may be written as the whole value at `path` of a resource
+   *  of `kind`: an accessor field itself, or any place within an
+   *  `accessor-template` field — rather than a place beneath an accessor's
+   *  value. The two take different tags (`accessorTagEngines`). */
   accessorFieldAt(kind: string, path: string): boolean {
     const sites = this.governedSitesOf(kind);
-    return sites !== undefined && accessorFieldAt(sites, path) !== undefined;
+    return sites !== undefined && accessorChainSiteAt(sites, path) !== undefined;
   }
 
   private contractForKind(

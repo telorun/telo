@@ -27,6 +27,7 @@ import {
   type NamedShapeLookup,
 } from "./schema-reference.js";
 import { isStepSlot } from "./step-slot.js";
+import { canonicalJson } from "./canonical-json.js";
 import { bindingExistsAt } from "./context-eval.js";
 import { withWithheldReferencesRead } from "./context-withheld.js";
 
@@ -214,42 +215,65 @@ export function buildEvalPaths(
 
 /**
  * A field annotated `x-telo-eval: accessor`: its value NAMES a value for the
- * resource's consumer to resolve and is never evaluated. `bindings` are the
- * names a chain there may start at — the properties of every `x-telo-context`
- * in force at the field, its own and each one above it.
+ * resource's consumer to resolve and is never evaluated. The names a chain
+ * there may start at depend on the concrete place it is written — a field
+ * inside a recursive shape is one site at every depth, under different
+ * regions — so they are read per place ({@link accessorBindingNamesAt}).
  */
 export interface AccessorSite {
   /** The field, in the eval-path grammar. */
   path: string;
-  bindings: readonly string[];
+  /** `x-telo-eval: accessor-template`: the value may also be a map or a list
+   *  of accessor values, at any depth, each leaf a chain or a literal. */
+  template?: true;
 }
 
-/** Every field `schema` annotates `x-telo-eval: accessor`, found by the walk
+/** The {@link AccessorSite} an eval site found by the walk is, or none. */
+function accessorSiteOf(site: EvalSite): AccessorSite | undefined {
+  if (site.mode !== "accessor" && site.mode !== "accessor-template") return undefined;
+  return {
+    path: evalPathOf(site.path),
+    ...(site.mode === "accessor-template" ? { template: true as const } : {}),
+  };
+}
+
+/** Every field `schema` annotates `x-telo-eval: accessor` or
+ *  `accessor-template`, found by the walk
  *  {@link buildEvalPaths} makes. The annotation is a field's; written on the
  *  schema root it names nothing. */
 export function buildAccessorSites(
   schema: Record<string, any>,
   shapes: NamedShapeLookup = NO_NAMED_SHAPES,
 ): AccessorSite[] {
-  return collectedOf(schema, shapes).eval.flatMap((site) =>
-    site.mode === "accessor" ? [{ path: evalPathOf(site.path), bindings: site.bindings.present }] : [],
-  );
+  return collectedOf(schema, shapes).eval.flatMap((site) => accessorSiteOf(site) ?? []);
 }
 
 /** What `x-telo-eval` says of a field: evaluated at load, evaluated per
  *  invocation, or — `accessor` — named for the resource's consumer and never
- *  evaluated. */
+ *  evaluated. An `accessor-template` field and every place within it are
+ *  `accessor`. */
 export type CelEvalMode = "compile" | "runtime" | "accessor";
 
-const EVAL_MODES: readonly unknown[] = ["compile", "runtime", "accessor"];
+/** The value of `x-telo-eval` itself: a {@link CelEvalMode}, or
+ *  `accessor-template` — an accessor whose value may be a structure. */
+export type EvalAnnotation = CelEvalMode | "accessor-template";
 
-/** The mode this schema node's own `x-telo-eval` declares. Node-level, like
- *  {@link declaresCelRegion}: the reader the path walk below is built on, and
- *  the one a consumer holding a single field's schema asks. */
-export function declaredEvalMode(schema: unknown): CelEvalMode | undefined {
+const EVAL_ANNOTATIONS: readonly unknown[] = ["compile", "runtime", "accessor", "accessor-template"];
+
+/** The value this schema node's own `x-telo-eval` declares. */
+export function evalAnnotationOf(schema: unknown): EvalAnnotation | undefined {
   if (!schema || typeof schema !== "object") return undefined;
   const mode = (schema as Record<string, unknown>)["x-telo-eval"];
-  return EVAL_MODES.includes(mode) ? (mode as CelEvalMode) : undefined;
+  return EVAL_ANNOTATIONS.includes(mode) ? (mode as EvalAnnotation) : undefined;
+}
+
+/** The mode this schema node's own `x-telo-eval` declares, an
+ *  `accessor-template` read as `accessor`. Node-level, like
+ *  {@link declaresCelRegion}: the one a consumer holding a single field's
+ *  schema asks. */
+export function declaredEvalMode(schema: unknown): CelEvalMode | undefined {
+  const annotation = evalAnnotationOf(schema);
+  return annotation === "accessor-template" ? "accessor" : annotation;
 }
 
 /** Schema keys that declare a CEL-bearing region: a field carrying any of these
@@ -356,7 +380,10 @@ export function evalModeBranchConflicts(
  * its properties beneath no eval site, everything else of it beneath one.
  */
 export interface DeferredEvalWalk {
-  readonly sites: ReadonlyMap<string, CelEvalMode>;
+  readonly sites: ReadonlyMap<string, EvalAnnotation>;
+  /** The `x-telo-context` regions beneath the node by place, each as its
+   *  canonical text, so two readings compare by what they declare. */
+  readonly regions: ReadonlyMap<string, string>;
   readonly refs: readonly DeferredShapeRef[];
   readonly nodes: readonly WalkedNode[];
   readonly unions: readonly WalkedUnion[];
@@ -374,16 +401,16 @@ export function deferredEvalWalk(
   if (options.kindRoot) {
     if (node.properties && typeof node.properties === "object") {
       for (const [key, propSchema] of Object.entries(node.properties as Record<string, any>)) {
-        walk(propSchema, `.${key}`, node, [], found, state, NO_NAMES, false);
+        walk(propSchema, `.${key}`, node, [], found, state, false);
       }
     }
-    descendBeyondProperties(node, "", node, [], found, state, NO_NAMES, true);
+    descendBeyondProperties(node, "", node, [], found, state, true);
   } else {
-    walk(node, "", document, [], found, state, NO_NAMES, options.underEval);
+    walk(node, "", document, [], found, state, options.underEval);
   }
-  const sites = new Map<string, CelEvalMode>();
+  const sites = new Map<string, EvalAnnotation>();
   for (const site of found.eval) sites.set(site.path, site.mode);
-  return { sites, refs: found.refs, nodes: found.nodes, unions: found.unions };
+  return { sites, regions: regionsByPlace(found.contexts, ""), refs: found.refs, nodes: found.nodes, unions: found.unions };
 }
 
 /** The first segments a union branch gives a value, as the content walk reads
@@ -404,20 +431,9 @@ function evalPathOf(path: string): string {
 }
 
 interface EvalSite {
-  mode: CelEvalMode;
+  mode: EvalAnnotation;
   path: string;
-  bindings: AccessorNames;
 }
-
-/** The context names an accessor chain may root at (`present`), and those a
- *  region declared for other modes only (`hidden`), which shadow an outer
- *  name when a walk inside a shape joins the one that entered it. */
-interface AccessorNames {
-  readonly present: readonly string[];
-  readonly hidden: readonly string[];
-}
-
-const NO_NAMES: AccessorNames = { present: [], hidden: [] };
 
 /**
  * Two branches of one `oneOf` / `anyOf` giving a property they both declare
@@ -440,8 +456,12 @@ export interface EvalModeBranchConflict {
   readonly segment: string;
   /** Where beneath the union the two differ, in the walk's spelling. */
   readonly place: string;
-  readonly mode: CelEvalMode | undefined;
-  readonly otherMode: CelEvalMode | undefined;
+  readonly mode: EvalAnnotation | undefined;
+  readonly otherMode: EvalAnnotation | undefined;
+  /** Set when the two differ in the `x-telo-context` region declared at
+   *  `place` rather than in eval mode: whether `branch` and `other` each
+   *  declare one there (both: two different regions). */
+  readonly regions?: { readonly branch: boolean; readonly other: boolean };
   /** The named shape whose document holds the union; none for the kind's own
    *  schema. */
   readonly shape?: string;
@@ -536,7 +556,6 @@ interface WalkState {
 function collectedOf(schema: Record<string, any>, shapes: NamedShapeLookup): Collected {
   const state: WalkState = { shapes, resolved: new Map() };
   const found = emptyCollected();
-  const own = withContextNames(NO_NAMES, schema);
   // A context at the schema root names what every site may read and marks no
   // field as evaluated, so the root is no region.
   if (isContextNode(schema)) found.contexts.push({ path: "", schema: contextOf(schema, schema, state) });
@@ -544,10 +563,10 @@ function collectedOf(schema: Record<string, any>, shapes: NamedShapeLookup): Col
   // eval sites are reached through the root's own `properties` alone.
   if (schema.properties && typeof schema.properties === "object") {
     for (const [key, propSchema] of Object.entries(schema.properties as Record<string, any>)) {
-      walk(propSchema, `.${key}`, schema, [], found, state, own, false);
+      walk(propSchema, `.${key}`, schema, [], found, state, false);
     }
   }
-  descendBeyondProperties(schema, "", schema, [], found, state, own, true);
+  descendBeyondProperties(schema, "", schema, [], found, state, true);
   return found;
 }
 
@@ -567,35 +586,6 @@ function isContextNode(schema: Record<string, any>): boolean {
   return !!context && typeof context === "object";
 }
 
-/** `names` with a node's own `x-telo-context` applied: a binding existing at
- *  accessor sites joins, one existing at other modes only shadows. */
-function withContextNames(names: AccessorNames, schema: Record<string, any>): AccessorNames {
-  const context = schema["x-telo-context"];
-  if (!context || typeof context !== "object") return names;
-  const properties = (context as Record<string, any>).properties;
-  if (!properties || typeof properties !== "object") return names;
-  return joinNames(names, splitNames(properties as Record<string, unknown>));
-}
-
-function splitNames(properties: Record<string, unknown>): AccessorNames {
-  const present: string[] = [];
-  const hidden: string[] = [];
-  for (const [name, binding] of Object.entries(properties)) {
-    (bindingExistsAt(binding, "accessor") ? present : hidden).push(name);
-  }
-  return { present, hidden };
-}
-
-/** `outer` with `inner`'s names over it. */
-function joinNames(outer: AccessorNames, inner: AccessorNames): AccessorNames {
-  if (inner.present.length === 0 && inner.hidden.length === 0) return outer;
-  const shadowed = new Set([...inner.present, ...inner.hidden]);
-  return {
-    present: [...new Set([...outer.present.filter((name) => !shadowed.has(name)), ...inner.present])],
-    hidden: [...new Set([...outer.hidden.filter((name) => !shadowed.has(name)), ...inner.hidden])],
-  };
-}
-
 function walk(
   node: unknown,
   path: string,
@@ -603,14 +593,12 @@ function walk(
   frames: readonly Frame[],
   out: Collected,
   state: WalkState,
-  inherited: AccessorNames,
   underEval: boolean,
 ): void {
   if (!node || typeof node !== "object" || Array.isArray(node)) return;
   const schema = node as Record<string, any>;
   const deferred = deferredShapeOf(schema, state);
   if (state.defers && !underEval && deferred === undefined) out.nodes.push({ path, node: schema, document });
-  const bindings = withContextNames(inherited, schema);
   if (declaresCelRegion(schema)) out.regions.push(path);
   if (isContextNode(schema)) out.contexts.push({ path, schema: contextOf(schema, document, state) });
   if (typeof schema[MATCH_FOR_ANNOTATION] === "string") {
@@ -618,9 +606,9 @@ function walk(
   }
   // A node's own annotation wins over whatever its `$ref` leads to; nothing
   // below it is an eval site, while regions and contexts below it still are.
-  const declared = declaredEvalMode(schema);
+  const declared = evalAnnotationOf(schema);
   if (declared && !underEval) {
-    out.eval.push({ mode: declared, path, bindings });
+    out.eval.push({ mode: declared, path });
     underEval = true;
   }
   if (deferred !== undefined) {
@@ -632,15 +620,15 @@ function walk(
     const target = resolveSchemaReference(schema.$ref, document, state.shapes);
     if (shape !== undefined) state.resolved.set(shape, target?.document);
     if (!target) return;
-    enter(target.node, target.document, target.shape, path, frames, out, state, bindings, underEval);
+    enter(target.node, target.document, target.shape, path, frames, out, state, underEval);
     return;
   }
   if (schema.properties && typeof schema.properties === "object") {
     for (const [key, propSchema] of Object.entries(schema.properties as Record<string, any>)) {
-      walk(propSchema, `${path}.${key}`, document, frames, out, state, bindings, underEval);
+      walk(propSchema, `${path}.${key}`, document, frames, out, state, underEval);
     }
   }
-  descendBeyondProperties(schema, path, document, frames, out, state, bindings, underEval);
+  descendBeyondProperties(schema, path, document, frames, out, state, underEval);
 }
 
 /** The named shape a node's `$ref` names when the deferring walk stops there. */
@@ -657,7 +645,6 @@ function descendBeyondProperties(
   frames: readonly Frame[],
   out: Collected,
   state: WalkState,
-  bindings: AccessorNames,
   underEval: boolean,
 ): void {
   const mapValues = [
@@ -666,24 +653,24 @@ function descendBeyondProperties(
   ];
   for (const value of mapValues) {
     if (value && typeof value === "object") {
-      walk(value, `${path}.*`, document, frames, out, state, bindings, underEval);
+      walk(value, `${path}.*`, document, frames, out, state, underEval);
     }
   }
   if (schema.items && typeof schema.items === "object" && !Array.isArray(schema.items)) {
-    walk(schema.items, `${path}[*]`, document, frames, out, state, bindings, underEval);
+    walk(schema.items, `${path}[*]`, document, frames, out, state, underEval);
   }
   for (const key of ["oneOf", "anyOf", "allOf"] as const) {
     if (!Array.isArray(schema[key])) continue;
     // A conjunction is not judged: every member holds at once.
     if (key === "allOf" || underEval) {
       for (const branch of schema[key]) {
-        walk(branch, path, document, frames, out, state, bindings, underEval);
+        walk(branch, path, document, frames, out, state, underEval);
       }
       continue;
     }
     const branches: Collected[] = schema[key].map((branch: unknown) => {
       const found = emptyCollected();
-      walk(branch, path, document, frames, found, state, bindings, underEval);
+      walk(branch, path, document, frames, found, state, underEval);
       return found;
     });
     // The deferring walk judges no union itself: it names each, and the
@@ -703,10 +690,22 @@ function descendBeyondProperties(
   }
 }
 
+/** The regions found beneath `path`, by place relative to it, each as its
+ *  canonical text. */
+function regionsByPlace(
+  contexts: readonly { path: string; schema: Record<string, any> }[],
+  path: string,
+): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const context of contexts) out.set(context.path.slice(path.length), canonicalJson(context.schema));
+  return out;
+}
+
 /**
  * The conflicts between a union's branches: a site at the union's own path
  * with another mode (or none) in another branch, and a property two branches
- * declare whose sites at and beneath it differ. Once per property.
+ * declare whose sites at and beneath it differ — an eval site, or an
+ * `x-telo-context` region, which is an eval meaning too. Once per property.
  */
 function branchConflicts(
   union: Record<string, any>,
@@ -718,13 +717,23 @@ function branchConflicts(
 ): EvalModeBranchConflict[] {
   if (branches.length < 2) return [];
   const sitesBySegment = branches.map((found) => {
-    const bySegment = new Map<string, Map<string, CelEvalMode>>();
+    const bySegment = new Map<string, Map<string, EvalAnnotation>>();
     for (const site of found.eval) {
       const place = site.path.slice(path.length);
       const segment = firstSegment(place);
       let sites = bySegment.get(segment);
       if (!sites) bySegment.set(segment, (sites = new Map()));
       sites.set(place, site.mode);
+    }
+    return bySegment;
+  });
+  const regionsBySegment = branches.map((found) => {
+    const bySegment = new Map<string, Map<string, string>>();
+    for (const [place, region] of regionsByPlace(found.contexts, path)) {
+      const segment = firstSegment(place);
+      let regions = bySegment.get(segment);
+      if (!regions) bySegment.set(segment, (regions = new Map()));
+      regions.set(place, region);
     }
     return bySegment;
   });
@@ -751,19 +760,54 @@ function branchConflicts(
       otherMode: branch === i ? b : a,
     });
   };
+  const regionConflict = (i: number, j: number, segment: string, place: string): void => {
+    judged.add(segment);
+    const a = regionsBySegment[i]!.get(segment)?.has(place) === true;
+    const b = regionsBySegment[j]!.get(segment)?.has(place) === true;
+    const [branch, other] = a && !b ? [i, j] : !a && b ? [j, i] : [i, j];
+    conflicts.push({
+      path,
+      union,
+      document,
+      keyword,
+      branch,
+      other,
+      segment,
+      place,
+      mode: undefined,
+      otherMode: undefined,
+      regions: { branch: branch === i ? a : b, other: branch === i ? b : a },
+    });
+  };
+  const differingRegion = (i: number, j: number, segment: string): string | undefined => {
+    const mine = regionsBySegment[i]!.get(segment) ?? new Map<string, string>();
+    const yours = regionsBySegment[j]!.get(segment) ?? new Map<string, string>();
+    return (
+      [...mine].find(([place, region]) => yours.get(place) !== region)?.[0] ??
+      [...yours].find(([place, region]) => mine.get(place) !== region)?.[0]
+    );
+  };
   for (let i = 0; i < branches.length; i++) {
     for (let j = i + 1; j < branches.length; j++) {
       const own = sitesBySegment[i]!.get("")?.get("");
       const theirs = sitesBySegment[j]!.get("")?.get("");
       if (!judged.has("") && own !== theirs) conflict(i, j, "", "");
+      if (!judged.has("") && regionsBySegment[i]!.get("")?.get("") !== regionsBySegment[j]!.get("")?.get("")) {
+        regionConflict(i, j, "", "");
+      }
       for (const segment of declared[i]!) {
         if (segment === "" || judged.has(segment) || !declared[j]!.has(segment)) continue;
-        const mine = sitesBySegment[i]!.get(segment) ?? new Map<string, CelEvalMode>();
-        const yours = sitesBySegment[j]!.get(segment) ?? new Map<string, CelEvalMode>();
+        const mine = sitesBySegment[i]!.get(segment) ?? new Map<string, EvalAnnotation>();
+        const yours = sitesBySegment[j]!.get(segment) ?? new Map<string, EvalAnnotation>();
         const differing =
           [...mine].find(([place, mode]) => yours.get(place) !== mode)?.[0] ??
           [...yours].find(([place, mode]) => mine.get(place) !== mode)?.[0];
-        if (differing !== undefined) conflict(i, j, segment, differing);
+        if (differing !== undefined) {
+          conflict(i, j, segment, differing);
+          continue;
+        }
+        const region = differingRegion(i, j, segment);
+        if (region !== undefined) regionConflict(i, j, segment, region);
       }
     }
   }
@@ -838,7 +882,6 @@ function enter(
   frames: readonly Frame[],
   out: Collected,
   state: WalkState,
-  bindings: AccessorNames,
   underEval: boolean,
 ): void {
   const openAt = frames.findIndex((frame) => frame.node === target);
@@ -847,8 +890,7 @@ function enter(
     for (let i = openAt + 1; i < frames.length; i++) frames[i]!.dirty = true;
     return;
   }
-  // Everything found inside is relative to the entry and owes its bindings to
-  // what the target itself declares; the bindings above it join on the way out.
+  // Everything found inside is relative to the entry.
   // Remembered only while every shape it reached still resolves as it did.
   // The deferring walk enters no named shape, so it remembers none either.
   const isShape = shape !== undefined && !state.defers;
@@ -864,7 +906,7 @@ function enter(
     const frame: Frame = { node: target, at: path, loops: [], dirty: false };
     const absolute = emptyCollected();
     const resolvedBefore = new Set(state.resolved.keys());
-    walk(target, path, document, [...frames, frame], absolute, state, NO_NAMES, underEval);
+    walk(target, path, document, [...frames, frame], absolute, state, underEval);
     loop = frame.loops.length > 0 ? `(${[...new Set(frame.loops)].join("|")})*` : "";
     const relative = (p: string) => p.slice(path.length);
     inside = {
@@ -891,7 +933,7 @@ function enter(
   }
   const at = (rel: string) => `${path}${loop}${rel}`;
   for (const site of inside.eval) {
-    out.eval.push({ ...site, path: at(site.path), bindings: joinNames(bindings, site.bindings) });
+    out.eval.push({ ...site, path: at(site.path) });
   }
   for (const region of inside.regions) out.regions.push(at(region));
   for (const context of inside.contexts) out.contexts.push({ ...context, path: at(context.path) });
@@ -957,6 +999,9 @@ export interface CelEvalSites {
   regions: readonly string[];
   /** The fields whose value is an accessor: named, never evaluated. */
   accessor?: readonly AccessorSite[];
+  /** Every `x-telo-context` region, which says what an accessor chain at a
+   *  concrete place may start at ({@link accessorBindingNamesAt}). */
+  contexts?: readonly ContextRegion[];
 }
 
 export const NO_CEL_EVAL_SITES: CelEvalSites = { compile: [], runtime: [], regions: [] };
@@ -974,9 +1019,10 @@ export function celEvalSites(
   for (const site of found.eval) {
     if (site.mode === "compile") compile.push(evalPathOf(site.path));
     else if (site.mode === "runtime") runtime.push(evalPathOf(site.path));
-    else accessor.push({ path: evalPathOf(site.path), bindings: site.bindings.present });
+    else accessor.push(accessorSiteOf(site)!);
   }
-  return { compile, runtime, regions: found.regions.map((path) => `$${path}`), accessor };
+  const contexts = found.contexts.map((context) => ({ scope: `$${context.path}`, schema: context.schema }));
+  return { compile, runtime, regions: found.regions.map((path) => `$${path}`), accessor, contexts };
 }
 
 /**
@@ -1018,6 +1064,7 @@ export function mergeCelEvalSites(...sites: CelEvalSites[]): CelEvalSites {
     runtime: sites.flatMap((s) => s.runtime),
     regions: sites.flatMap((s) => s.regions),
     accessor: sites.flatMap((s) => s.accessor ?? []),
+    contexts: sites.flatMap((s) => s.contexts ?? []),
   };
 }
 
@@ -1115,6 +1162,51 @@ export function celEvalModeAt(sites: CelEvalSites, path: string): CelEvalMode | 
   return null;
 }
 
+/** One region in force at a site. */
+export interface MatchedContext {
+  scope: string;
+  schema: Record<string, any>;
+}
+
+/**
+ * Every region in `contexts` covering `path`, outermost first: each one adds to
+ * those enclosing it, a name it declares shadowing theirs. Ordered by how deep
+ * the place it matched lies, so a region declared below another is read after
+ * it whatever their scope text.
+ */
+export function contextChainAt(
+  contexts: ReadonlyArray<{ scope: string; schema: Record<string, any> }>,
+  path: string,
+): MatchedContext[] {
+  const matched: Array<MatchedContext & { depth: number; order: number }> = [];
+  contexts.forEach((ctx, order) => {
+    const match = scopeMatchOf(path, ctx.scope);
+    if (match) matched.push({ scope: ctx.scope, schema: ctx.schema, depth: match.prefix.length, order });
+  });
+  matched.sort((a, b) => a.depth - b.depth || b.order - a.order);
+  return matched.map(({ scope, schema }) => ({ scope, schema }));
+}
+
+/**
+ * The names an accessor chain written at the concrete `path` may start at: the
+ * bindings existing at an accessor of the regions in force there, read
+ * outermost first — a region's binding for other modes only hides an outer
+ * name of the same spelling. The one reader of accessor binding names, so the
+ * static verdict, the kernel's refusal and the editor offer the same set.
+ */
+export function accessorBindingNamesAt(sites: CelEvalSites, path: string): string[] {
+  const names = new Set<string>();
+  for (const region of contextChainAt(sites.contexts ?? [], path)) {
+    const properties = region.schema?.properties;
+    if (!properties || typeof properties !== "object") continue;
+    for (const [name, binding] of Object.entries(properties as Record<string, unknown>)) {
+      names.delete(name);
+      if (bindingExistsAt(binding, "accessor")) names.add(name);
+    }
+  }
+  return [...names];
+}
+
 /** The accessor field `path` is, or lies beneath. */
 export function accessorSiteAt(sites: CelEvalSites, path: string): AccessorSite | undefined {
   return sites.accessor?.find((site) => evalPathCovers(site.path, path));
@@ -1123,6 +1215,12 @@ export function accessorSiteAt(sites: CelEvalSites, path: string): AccessorSite 
 /** The accessor field `path` IS — not a place beneath one. */
 export function accessorFieldAt(sites: CelEvalSites, path: string): AccessorSite | undefined {
   return sites.accessor?.find((site) => evalPathIs(site.path, path));
+}
+
+/** The accessor field whose chain may be written as the whole value at `path`:
+ *  an accessor field itself, or any place within an `accessor-template` one. */
+export function accessorChainSiteAt(sites: CelEvalSites, path: string): AccessorSite | undefined {
+  return accessorFieldAt(sites, path) ?? sites.accessor?.find((site) => site.template && evalPathCovers(site.path, path));
 }
 
 function topLevelKey(path: string): string {

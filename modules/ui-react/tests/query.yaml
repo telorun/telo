@@ -1,0 +1,100 @@
+kind: Telo.Application
+metadata:
+  name: UiReactQueryTest
+  version: 1.0.0
+  description: |
+    A page document holding two query nodes over one named query: each carries
+    the query's spec under the same `id`, so the renderer draws both from one
+    read, with its own lists — `loading` and `failure` filled where left out —
+    and every `shown` condition as written; the page's declared query
+    parameters beside its children, and no `when` key anywhere.
+imports: { App: ../../app, HttpClient: ../../http-client, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: fixture }
+    source: ./__fixtures__/query/telo.yaml
+    ports: { http: 8121 }
+targets:
+  - !ref fixture
+steps:
+  - name: visitor
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8121/_telo/ui/page?path=/" }
+  - name: staff
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8121/_telo/ui/page?path=/" }
+    inputs: { headers: { x-role: staff } }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        query: !cel "steps.visitor.result.body.query"
+        visitor: !cel "steps.visitor.result.body.children"
+        staff: !cel "steps.staff.result.body.children.map(c, c.type == 'text' ? c.text : c.type)"
+      expected:
+        query: { signin: { type: string, enum: [denied, expired] } }
+        visitor:
+          - type: text
+            fill: false
+            text: { lang: und, message: [Your sign-in was refused.] }
+            shown: { at: { root: query, path: [signin] }, matches: { const: denied } }
+          - type: query
+            fill: false
+            query:
+              id: UiQueryFixtureApp/account
+              schema:
+                type: object
+                required: [authorized]
+                properties: { authorized: { type: boolean }, email: { type: string, title: Email } }
+              method: GET
+              url: { path: { value: /api/auth }, pathParams: {}, queryParams: {} }
+              input: null
+              query: {}
+              reloadOn: [focus, unauthorized]
+            content:
+              - type: value
+                fill: false
+                value: { root: data, path: [email] }
+                present: { type: string }
+                shown: { at: { root: data, path: [authorized] }, matches: { const: true } }
+                labels: []
+            loading: []
+            failure: []
+          - type: query
+            fill: false
+            query:
+              id: UiQueryFixtureApp/account
+              schema:
+                type: object
+                required: [authorized]
+                properties: { authorized: { type: boolean }, email: { type: string, title: Email } }
+              method: GET
+              url: { path: { value: /api/auth }, pathParams: {}, queryParams: {} }
+              input: null
+              query: {}
+              reloadOn: [focus, unauthorized]
+            content:
+              - type: text
+                fill: false
+                text: { lang: und, message: [Sign in first.] }
+                shown: { at: { root: data, path: [authorized] }, matches: { const: false } }
+            loading: [{ type: text, fill: false, text: { set: Ui.Translations, key: loading }, style: muted }]
+            failure:
+              - type: stack
+                fill: false
+                press: null
+                style: danger
+                children:
+                  - { type: value, fill: false, value: { root: error, path: [code] }, present: { type: string }, style: strong, labels: [] }
+                  - { type: value, fill: false, value: { root: error, path: [message] }, present: { type: string }, labels: [] }
+        staff: [{ lang: und, message: [Your sign-in was refused.] }, { lang: und, message: [Staff] }, query, query]
+  - name: answer
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8121/api/auth" }
+  - name: verifyAnswer
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.answer.result.body"
+      expected: { authorized: true, email: ada@example.com }

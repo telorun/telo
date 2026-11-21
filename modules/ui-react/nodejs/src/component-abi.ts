@@ -40,10 +40,10 @@ export function withUnhostedComponentsReplaced(
       next.tabs = current.tabs.map((tab: Record<string, any>) => ({ ...tab, children: tab.children.map(down) }));
     }
     if (current.type === "filters") next.content = down(current.content);
-    if (current.type === "data") {
-      next.content = down(current.content);
-      next.loading = down(current.loading);
-      next.failure = down(current.failure);
+    if (current.type === "query") {
+      next.content = current.content.map(down);
+      next.loading = current.loading.map(down);
+      next.failure = current.failure.map(down);
     }
     if (current.type === "action") {
       if (current.result !== undefined) next.result = down(current.result);

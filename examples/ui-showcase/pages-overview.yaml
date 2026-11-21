@@ -78,13 +78,13 @@ content:
             <circle cx="64" cy="32" r="22" fill="#dc2626" fill-opacity="0.7"/></svg>
 
     # ---- One record, read when the page opens ----
-    - type: composite
-      ref:
-        kind: Ui.Data
+    - type: query
+      query:
+        kind: Ui.Query
         model: !ref Team
-        source: { path: /api/team }
-        content:
-          type: stack
+        url: { path: /api/team }
+      content:
+        - type: stack
           children:
             - { type: text, text: Values by their schema, style: heading }
             - type: text
@@ -94,43 +94,56 @@ content:
               children:
                 - type: stack
                   children:
-                    - { type: text, text: "A uri, drawn as a link with a text of its own", style: muted }
-                    - { type: value, value: !cel "data.homepage", text: Visit the team homepage }
+                    - type: text
+                      text: A uri, drawn as a link with a text of its own
+                      style: muted
+                    - type: value
+                      value: !cel "data.homepage"
+                      text: Visit the team homepage
                 - type: stack
                   children:
                     - { type: text, text: A uri-reference to a declared page, style: muted }
-                    - { type: value, value: !cel "data.guide" }
+                    - type: value
+                      value: !cel "data.guide"
                 - type: stack
                   children:
                     - { type: text, text: A uri-reference to a served file, style: muted }
-                    - { type: value, value: !cel "data.handbook" }
+                    - type: value
+                      value: !cel "data.handbook"
                 - type: stack
                   children:
                     - { type: text, text: A mailto address, style: muted }
-                    - { type: value, value: !cel "data.contact" }
+                    - type: value
+                      value: !cel "data.contact"
                 - type: stack
                   children:
-                    - { type: text, text: "An address the rule refuses, drawn as plain text", style: muted }
-                    - { type: value, value: !cel "data.mirror" }
+                    - type: text
+                      text: An address the rule refuses, drawn as plain text
+                      style: muted
+                    - type: value
+                      value: !cel "data.mirror"
             - type: columns
               children:
                 - type: stack
                   children:
                     - { type: text, text: A date, style: muted }
-                    - { type: value, value: !cel "data.foundedOn" }
+                    - type: value
+                      value: !cel "data.foundedOn"
                 - type: stack
                   children:
                     - { type: text, text: A date and time, style: muted }
-                    - { type: value, value: !cel "data.updatedAt" }
+                    - type: value
+                      value: !cel "data.updatedAt"
                 - type: stack
                   children:
                     - { type: text, text: A boolean, style: muted }
-                    - { type: value, value: !cel "data.hiring" }
+                    - type: value
+                      value: !cel "data.hiring"
                 - type: stack
                   children:
                     - { type: text, text: An enumeration's label, style: muted }
-                    - { type: value, value: !cel "data.plan" }
-
+                    - type: value
+                      value: !cel "data.plan"
             - { type: text, text: A list, style: subheading }
             - type: text
               style: muted
@@ -143,8 +156,9 @@ content:
                 - header: Project
                   value: !cel "row.name"
                 - value: !cel "row.startedOn"
-                  shown: { at: !cel "data.hiring", matches: { const: true } }
-
+                  shown:
+                    at: !cel "data.hiring"
+                    matches: { const: true }
             - { type: text, text: Texts, style: heading }
             - type: text
               style: muted
@@ -158,11 +172,14 @@ content:
                     "=0": No projects yet.
                     one: "{$count} project so far."
                     other: "{$count} projects so far."
-                values: { count: !cel "data.projectCount" }
+                values:
+                  count: !cel "data.projectCount"
             - type: text
               text:
                 text: "{$team} started {$project} most recently."
-                values: { team: !cel "data.name", project: !cel "data.latestProject" }
+                values:
+                  team: !cel "data.name"
+                  project: !cel "data.latestProject"
 
     # ---- Style rules ----
     - { type: text, text: Style rules, style: heading }

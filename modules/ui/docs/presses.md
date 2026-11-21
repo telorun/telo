@@ -139,7 +139,7 @@ press:
 ```
 
 `label`'s values read the roots of the place holding the press — `row` in a
-listing's, `data` inside a `Ui.Data` — typed as that place types them, and
+listing's, `data` inside a query node — typed as that place types them, and
 `to` the roots bound where it is written, as every destination does. A press
 with no `label` is `SCHEMA_VIOLATION`, a misspelt value `CEL_UNKNOWN_FIELD`,
 and `press` on a node other than a `box`, `stack` or `columns` is

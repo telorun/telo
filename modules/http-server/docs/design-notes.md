@@ -15,7 +15,7 @@ Why the module's manifest is written the way it is.
 
 ## Scalar bundle
 
-Scalar's browser bundle is staged from `@scalar/fastify-api-reference` and fetched lazily, so an app that declares no `Http.Reference` never downloads it. `sources.scalar.version` must be the release whose `@scalar/core` and `@scalar/openapi-parser` versions `nodejs/package.json` pins, so the page HTML and the script reading it come from one release; `nodejs/tests/scalar-release.test.ts` checks it.
+Scalar's browser bundle is `@scalar/api-reference`'s browser build (`dist/browser/standalone.js`, the script `@scalar/fastify-api-reference` embeds), staged from the upstream archive and fetched lazily, so an app that declares no `Http.Reference` never downloads it; its notice comes from `@scalar/fastify-api-reference`. `sources.scalar.version` must be the `@scalar/fastify-api-reference` release whose `@scalar/client-side-rendering` and `@scalar/json-magic` versions `nodejs/package.json` pins, so the page HTML and the script reading it come from one release; `nodejs/tests/scalar-release.test.ts` checks it.
 
 ## Floor history
 

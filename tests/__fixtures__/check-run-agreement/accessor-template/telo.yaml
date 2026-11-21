@@ -1,0 +1,40 @@
+# An accessor template arrives at the controller as BINDINGS: a structure
+# holding a chain as `{ map }` / `{ list }` of its entries' bindings, each
+# chain as its root and member names, each literal wrapped as `{ value }`; a
+# structure holding no chain as one `{ value }`.
+kind: Telo.Application
+metadata: { name: SearchDemo }
+lang: en
+imports: { Search: ./search, Assert: ../../../../modules/assert }
+targets:
+  - !ref main
+---
+kind: Search.Criteria
+metadata: { name: titleSearch }
+criteria: { match: { title: !cel "query.q" }, size: 20, tags: [news, !cel "query.tag"] }
+---
+kind: Search.Criteria
+metadata: { name: fixedSearch }
+criteria: { size: 20 }
+---
+kind: Telo.Sequence
+metadata: { name: main }
+steps:
+  - name: titleSearch
+    invoke: { kind: Search.Read, source: !ref titleSearch }
+  - name: fixedSearch
+    invoke: { kind: Search.Read, source: !ref fixedSearch }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        titleSearch: !cel "steps.titleSearch.result"
+        fixedSearch: !cel "steps.fixedSearch.result"
+      expected:
+        titleSearch:
+          criteria:
+            map:
+              match: { map: { title: { root: query, path: [q] } } }
+              size: { value: 20 }
+              tags: { list: [{ value: news }, { root: query, path: [tag] }] }
+        fixedSearch: { criteria: { value: { size: 20 } } }

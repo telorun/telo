@@ -7,12 +7,9 @@ metadata:
 imports: { Ui: ../../../../../, DataModel: ../../../../../../data-model }
 exports: { resources: [tooOften, listedTooOften] }
 ---
-kind: Ui.Data
+kind: Ui.View
 metadata: { name: tooOften }
-model: { kind: Telo.JsonSchema, schema: { type: object } }
-source: /api/status
-reloadEvery: 1s
-content: { type: text, text: Ready }
+content: { type: query, query: { kind: Ui.Query, model: { kind: Telo.JsonSchema, schema: { type: object } }, url: /api/status, reloadEvery: "1s" }, content: [{ type: text, text: Ready }] }
 ---
 kind: Ui.Listing
 metadata: { name: listedTooOften }

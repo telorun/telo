@@ -49,7 +49,7 @@ node of what they answer.
   tree is delivered per request: the pane is invoked per request with
   `{ request }`, after the tree's `when`s, and only when it is delivered.
 - Inside a composite — a [`Ui.SplitView`](split-view.md)'s aside, a
-  [`Ui.View`](view.md), a reader's content — the tree is resolved once, when
+  [`Ui.View`](view.md), a query node's children — the tree is resolved once, when
   the composite is created: the pane is invoked once, with `{}`, and its
   answer stands for every request, however many pages place the composite.
 

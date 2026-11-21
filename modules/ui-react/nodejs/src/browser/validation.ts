@@ -34,15 +34,46 @@ export function equal(a: unknown, b: unknown): boolean {
 
 const show = (value: unknown) => JSON.stringify(value);
 
+const FULL_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const DATE_TIME = /^(\d{4}-\d{2}-\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(\.\d+)?([Zz]|[+-](\d{2}):(\d{2}))$/;
+
+/** Whether a text is an RFC 3339 full-date the calendar holds. */
+function isFullDate(text: string): boolean {
+  const parts = FULL_DATE.exec(text);
+  if (!parts) return false;
+  const [year, month, day] = parts.slice(1).map(Number);
+  const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+  return days !== undefined && day >= 1 && day <= days;
+}
+
+/** Whether a text is an RFC 3339 date-time: a full-date, a time with seconds, and an offset. */
+function isDateTime(text: string): boolean {
+  const parts = DATE_TIME.exec(text);
+  if (!parts || !isFullDate(parts[1])) return false;
+  const [hour, minute, second] = parts.slice(2, 5).map(Number);
+  if (hour > 23 || minute > 59 || second > 60) return false;
+  return parts[7] === undefined || (Number(parts[7]) <= 23 && Number(parts[8]) <= 59);
+}
+
+const FORMATS: Readonly<Record<string, (text: string) => boolean>> = { date: isFullDate, "date-time": isDateTime };
+
+/** How a schema is read: `formats` says whether `format` is — for what a person
+ *  or an address supplies, not for an answer the API already judged. */
+export interface Reading {
+  formats: boolean;
+}
+
 /**
  * Check a value against a schema in the interpreted profile — `type`, `const`,
  * `enum`, `not`, `allOf`, `anyOf`, `required`, `properties`, `items`, the list
- * and string lengths, `uniqueItems`, `pattern` and the numeric bounds —
- * interpreting the schema as data; no code is generated. Every other keyword
- * is left to the API. One evaluator answers both a condition and a form's
- * validation, so the two cannot disagree about what a keyword means.
+ * and string lengths, `uniqueItems`, `pattern`, `format` (`date`, `date-time`)
+ * and the numeric bounds — interpreting the schema as data; no code is
+ * generated. Every other keyword is left to the API. One evaluator answers a
+ * condition, a page's query parameters and a form's validation, so they cannot
+ * disagree about what a keyword means.
  */
-export function validate(schema: JsonSchema, value: unknown, path: string[] = []): Finding[] {
+export function validate(schema: JsonSchema, value: unknown, path: string[] = [], reading: Reading = { formats: true }): Finding[] {
   const findings: Finding[] = [];
   const fail = (key: string, values?: OwnText["values"]) => findings.push({ path, text: values ? { key, values } : { key } });
   if (schema.type !== undefined && ![schema.type].flat().some((type: string) => fitsType(value, type))) {
@@ -53,9 +84,9 @@ export function validate(schema: JsonSchema, value: unknown, path: string[] = []
     fail("enum", { allowed: schema.enum.map((allowed: unknown) => (typeof allowed === "string" ? allowed : show(allowed))).join(", ") });
   }
   if ("const" in schema && !equal(schema.const, value)) fail("const", { value: show(schema.const) });
-  if (schema.not !== undefined && validate(schema.not, value, path).length === 0) fail("not");
-  for (const member of (Array.isArray(schema.allOf) ? schema.allOf : []) as JsonSchema[]) findings.push(...validate(member, value, path));
-  if (Array.isArray(schema.anyOf) && !schema.anyOf.some((member: JsonSchema) => validate(member, value, path).length === 0)) {
+  if (schema.not !== undefined && validate(schema.not, value, path, reading).length === 0) fail("not");
+  for (const member of (Array.isArray(schema.allOf) ? schema.allOf : []) as JsonSchema[]) findings.push(...validate(member, value, path, reading));
+  if (Array.isArray(schema.anyOf) && !schema.anyOf.some((member: JsonSchema) => validate(member, value, path, reading).length === 0)) {
     fail("anyOf");
   }
   if (typeof value === "string") {
@@ -63,6 +94,8 @@ export function validate(schema: JsonSchema, value: unknown, path: string[] = []
     if (schema.minLength !== undefined && length < schema.minLength) fail("minLength", { limit: schema.minLength });
     if (schema.maxLength !== undefined && length > schema.maxLength) fail("maxLength", { limit: schema.maxLength });
     if (schema.pattern !== undefined && !new RegExp(schema.pattern, "u").test(value)) fail("pattern");
+    const format = reading.formats && typeof schema.format === "string" && Object.hasOwn(FORMATS, schema.format) ? FORMATS[schema.format] : undefined;
+    if (format && !format(value)) fail("format", { format: schema.format });
   }
   if (typeof value === "number") {
     if (schema.minimum !== undefined && value < schema.minimum) fail("minimum", { limit: schema.minimum });
@@ -79,14 +112,14 @@ export function validate(schema: JsonSchema, value: unknown, path: string[] = []
     if (schema.uniqueItems === true && value.some((item, i) => value.findIndex((other) => equal(other, item)) !== i)) {
       fail("uniqueItems");
     }
-    if (isObject(schema.items)) value.forEach((item, index) => findings.push(...validate(schema.items, item, [...path, String(index)])));
+    if (isObject(schema.items)) value.forEach((item, index) => findings.push(...validate(schema.items, item, [...path, String(index)], reading)));
   }
   if (isObject(value)) {
     for (const name of (schema.required ?? []) as string[]) {
       if (value[name] === undefined) findings.push({ path: [...path, name], text: { key: "required" } });
     }
     for (const [name, member] of Object.entries((schema.properties ?? {}) as Record<string, JsonSchema>)) {
-      if (value[name] !== undefined) findings.push(...validate(member, value[name], [...path, name]));
+      if (value[name] !== undefined) findings.push(...validate(member, value[name], [...path, name], reading));
     }
   }
   return findings;

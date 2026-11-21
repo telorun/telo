@@ -1,0 +1,182 @@
+kind: Telo.Application
+metadata:
+  name: UiQueryTest
+  version: 1.0.0
+  description: |
+    A query provides its `Ui.QuerySpec`: a read with no input is a `GET` with
+    `input: null`, a read with one carries its method (`QUERY` by default) and
+    its body as bindings — a map and list holding chains, a structure holding
+    none a single value — and `reloadEvery` crosses in milliseconds, omitted
+    when not written. A `query` node placed in a page carries the spec of the
+    query it names, a named one by its name and an inline one by its place.
+imports: { Ui: ../, Probe: ./__fixtures__/probe, Assert: ../../assert }
+targets:
+  - !ref main
+---
+kind: Telo.JsonSchema
+metadata: { name: Account }
+schema:
+  type: object
+  required: [authorized]
+  properties: { authorized: { type: boolean }, email: { type: string } }
+---
+kind: Telo.JsonSchema
+metadata: { name: ReportRequest }
+schema:
+  type: object
+  additionalProperties: false
+  required: [period]
+  properties:
+    period:
+      type: object
+      additionalProperties: false
+      required: [from, to]
+      properties: { from: { type: string, format: date }, to: { type: string, format: date } }
+    projects: { type: array, items: { type: string } }
+    size: { type: integer }
+    note: { type: [string, "null"] }
+---
+kind: Telo.JsonSchema
+metadata: { name: ReportAnswer }
+schema: { type: object, required: [totalHours], properties: { totalHours: { type: number } } }
+---
+kind: Ui.Query
+metadata: { name: account }
+model: !ref Account
+url: /api/auth
+reloadOn: [focus, unauthorized]
+---
+kind: Ui.Query
+metadata: { name: report }
+model: !ref ReportAnswer
+query:
+  from: { type: string, format: date }
+  to: { type: string, format: date }
+  project: { type: array, items: { type: string } }
+url: /api/report
+input:
+  model: !ref ReportRequest
+  body:
+    period: { from: !cel "query.from", to: !cel "query.to" }
+    projects: !cel "query.project"
+    size: 20
+    note: null
+reloadEvery: 1m
+---
+kind: Ui.Query
+metadata: { name: posted }
+model: !ref ReportAnswer
+url: /api/report
+input:
+  method: POST
+  model: !ref ReportRequest
+  body: { period: { from: "2026-11-01", to: "2026-11-15" } }
+---
+kind: Ui.Page
+metadata: { name: reportPage }
+path: /report
+query: { from: { type: string, format: date } }
+children:
+  - type: query
+    query: !ref account
+    loading: []
+    content: [{ type: text, text: Signed in }]
+  - type: query
+    query:
+      kind: Ui.Query
+      model: !ref ReportAnswer
+      url: /api/report
+    content: [{ type: text, text: Done }]
+---
+kind: Ui.View
+metadata: { name: planBadge }
+content: { type: value, value: !cel "params.id" }
+---
+# Chains at depth: inside a box, inside a nested query's content, and a view
+# placed there reading the page's `params`.
+kind: Ui.Page
+metadata: { name: planPage }
+path: /plans/{id}
+children:
+  - type: query
+    query: !ref account
+    content:
+      - type: box
+        children:
+          - type: value
+            value: !cel "data.email"
+          - type: query
+            query: !ref report
+            content: [{ type: value, value: !cel "data.totalHours" }, { type: composite, ref: !ref planBadge }]
+            failure: [{ type: value, value: !cel "error.message" }]
+    failure: [{ type: value, value: !cel "error.code" }]
+---
+kind: Telo.Sequence
+metadata: { name: main }
+steps:
+  - name: account
+    invoke: { kind: Probe.Read, source: !ref account }
+  - name: accountIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.account.result"
+      expected:
+        id: UiQueryTest/account
+        schema: { type: object, required: [authorized], properties: { authorized: { type: boolean }, email: { type: string } } }
+        method: GET
+        url: { path: { value: /api/auth }, pathParams: {}, queryParams: {} }
+        input: null
+        query: {}
+        reloadOn: [focus, unauthorized]
+  - name: report
+    invoke: { kind: Probe.Read, source: !ref report }
+  - name: reportIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.report.result"
+      expected:
+        id: UiQueryTest/report
+        schema: { type: object, required: [totalHours], properties: { totalHours: { type: number } } }
+        method: QUERY
+        url: { path: { value: /api/report }, pathParams: {}, queryParams: {} }
+        input:
+          body:
+            map:
+              period: { map: { from: { root: query, path: [from] }, to: { root: query, path: [to] } } }
+              projects: { root: query, path: [project] }
+              size: { value: 20 }
+              note: { value: null }
+        query: { from: { type: string, format: date }, to: { type: string, format: date }, project: { type: array, items: { type: string } } }
+        reloadOn: []
+        reloadEvery: 60000
+  - name: posted
+    invoke: { kind: Probe.Read, source: !ref posted }
+  - name: postedIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "{'method': steps.posted.result.method, 'body': steps.posted.result.input}"
+      expected:
+        method: POST
+        body: { body: { value: { period: { from: "2026-11-01", to: "2026-11-15" } } } }
+  - name: page
+    invoke: !ref reportPage
+    inputs: { request: { headers: {} } }
+  - name: pageIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[steps.page.result.children[0].type, steps.page.result.children[0].query.id, steps.page.result.children[0].loading, steps.page.result.children[1].query.method, steps.page.result.children[1].query.id, steps.page.result.children[1].content[0].type]"
+      expected: [query, UiQueryTest/account, [], GET, UiQueryTest/reportPage/children/1/query, text]
+  - name: plan
+    invoke: !ref planPage
+    inputs: { request: { headers: {} } }
+  - name: planIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[steps.plan.result.children[0].content[0].children[0].value, steps.plan.result.children[0].content[0].children[1].query.id, steps.plan.result.children[0].content[0].children[1].content[0].value, steps.plan.result.children[0].content[0].children[1].content[1].value, steps.plan.result.children[0].content[0].children[1].failure[0].value, steps.plan.result.children[0].failure[0].value]"
+      expected:
+        - { root: data, path: [email] }
+        - UiQueryTest/report
+        - { root: data, path: [totalHours] }
+        - { root: params, path: [id] }
+        - { root: error, path: [message] }
+        - { root: error, path: [code] }

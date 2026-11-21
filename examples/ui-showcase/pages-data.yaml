@@ -20,59 +20,72 @@ content:
         - { type: link, text: APP-5, to: { kind: Ui.Navigate, href: "/data?project=APP-5" } }
         - { type: link, text: A code no project has, to: { kind: Ui.Navigate, href: "/data?project=NOPE-1" } }
         - { type: link, text: No project, to: { kind: Ui.Navigate, href: /data } }
-    - type: composite
-      ref:
-        kind: Ui.Data
+    - type: query
+      query:
+        kind: Ui.Query
         model: !ref ProjectSummary
         query: { project: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" } }
-        source:
+        url:
           path: /api/project-summary
           queryParams: { code: !cel "query.project" }
-        loading: { type: text, text: Reading the project…, style: muted }
-        content:
-          type: stack
+      content:
+        - type: stack
           children:
             - type: text
               style: subheading
               text:
                 text: "{$code} {$name}, led by {$lead}"
-                values: { code: !cel "data.code", name: !cel "data.name", lead: !cel "data.lead.name" }
+                values:
+                  code: !cel "data.code"
+                  name: !cel "data.name"
+                  lead: !cel "data.lead.name"
             - type: text
               style: muted
               text: A reader nested in this one's content reads the people working on the same project.
-            - type: composite
-              ref:
-                kind: Ui.Data
+            - type: query
+              query:
+                kind: Ui.Query
                 model: !ref ProjectPeople
                 query: { project: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" } }
-                source:
+                url:
                   path: /api/project-people
-                  queryParams: { code: !cel "query.project" }
-                content:
-                  type: list
+                  queryParams:
+                    code: !cel "query.project"
+              content:
+                - type: list
                   heading: Working on it
                   rows: !cel "data.people"
                   columns:
                     - value: !cel "row.name"
                     - value: !cel "row.role"
                     - value: !cel "row.email"
-        failure:
-          type: stack
+      loading:
+        - { type: text, text: Reading the project…, style: muted }
+      failure:
+        - type: stack
           style: danger
           children:
             - type: text
               style: strong
               text:
-                text: "HTTP {$status} · {$code}"
-                values: { status: !cel "error.status", code: !cel "error.code" }
-              shown: { at: !cel "error", matches: { required: [ status ] } }
+                text: HTTP {$status} · {$code}
+                values:
+                  status: !cel "error.status"
+                  code: !cel "error.code"
+              shown:
+                at: !cel "error"
+                matches: { required: [status] }
             - type: text
               style: strong
               text:
-                text: "No answer · {$code}"
-                values: { code: !cel "error.code" }
-              shown: { at: !cel "error", matches: { not: { required: [ status ] } } }
-            - { type: value, value: !cel "error.message" }
+                text: No answer · {$code}
+                values:
+                  code: !cel "error.code"
+              shown:
+                at: !cel "error"
+                matches: { not: { required: [status] } }
+            - type: value
+              value: !cel "error.message"
 
     # ---- Readers that fail ----
     - { type: text, text: Readers that fail, style: heading }
@@ -81,58 +94,65 @@ content:
       text: With no failure tree of their own, readers draw the error's code and message — for a project that does not exist, for a guarded route read with no session, and for an answer the reader's model refuses (the projects list read as one project).
     - type: columns
       children:
-        - type: composite
-          ref:
-            kind: Ui.Data
+        - type: query
+          query:
+            kind: Ui.Query
             model: !ref ProjectSummary
-            source: { path: /api/project-summary, queryParams: { code: NOPE-1 } }
-            content: { type: text, text: "Never drawn: there is no such project." }
-        - type: composite
-          ref:
-            kind: Ui.Data
+            url: { path: /api/project-summary, queryParams: { code: NOPE-1 } }
+          content:
+            - { type: text, text: "Never drawn: there is no such project." }
+        - type: query
+          query:
+            kind: Ui.Query
             model: !ref Account
-            source: { path: /api/private/account }
-            content:
-              type: text
+            url: { path: /api/private/account }
+          content:
+            - type: text
               text:
                 text: "Signed in, so this reads: {$name}"
-                values: { name: !cel "data.name" }
-        - type: composite
-          ref:
-            kind: Ui.Data
+                values:
+                  name: !cel "data.name"
+        - type: query
+          query:
+            kind: Ui.Query
             model: !ref ProjectSummary
-            source: { path: /api/projects }
-            content: { type: text, text: "Never drawn: a list is no project." }
+            url: { path: /api/projects }
+          content:
+            - { type: text, text: "Never drawn: a list is no project." }
 
     # ---- Read again on focus ----
     - { type: text, text: Read again on focus, style: heading }
     - type: text
       style: muted
       text: This reader reads the server's time again whenever the window regains focus. Switch to another window and back.
-    - type: composite
-      ref:
-        kind: Ui.Data
+    - type: query
+      query:
+        kind: Ui.Query
         model: !ref Clock
-        source: { path: /api/clock }
         reloadOn: [ focus ]
-        content: { type: value, value: !cel "data.readAt" }
+        url: { path: /api/clock }
+      content:
+        - type: value
+          value: !cel "data.readAt"
 
     # ---- A sign-in gate ----
     - { type: text, text: A sign-in gate, style: heading }
     - type: text
       style: muted
       text: The gate reads whether a session is open, and reads again whenever a request inside it answers 401. Signing in opens a session for a member of the team; an e-mail nobody on the team has is refused on its field. Inside, a reader over a guarded route shows the account. Ending the session quietly leaves the account on screen until the next guarded request — the check below, or a focus — is refused, and the gate then swaps to the signed-out view.
-    - type: composite
-      ref:
-        kind: Ui.Data
+    - type: query
+      query:
+        kind: Ui.Query
         model: !ref Session
-        source: { path: /api/session }
         reloadOn: [ focus, unauthorized ]
-        content:
-          type: stack
+        url: { path: /api/session }
+      content:
+        - type: stack
           children:
             - type: stack
-              shown: { at: !cel "data.signedIn", matches: { const: false } }
+              shown:
+                at: !cel "data.signedIn"
+                matches: { const: false }
               children:
                 - { type: text, text: You are signed out., style: subheading }
                 - type: composite
@@ -141,30 +161,35 @@ content:
                     inputModel: !ref SignIn
                     request: { target: /api/session/signin }
                     label: Sign in
-                    onSuccess: { refreshes: [ /api/session ] }
+                    onSuccess: { refreshes: [/api/session] }
             - type: stack
-              shown: { at: !cel "data.signedIn", matches: { const: true } }
+              shown:
+                at: !cel "data.signedIn"
+                matches: { const: true }
               children:
-                - type: composite
-                  ref:
-                    kind: Ui.Data
+                - type: query
+                  query:
+                    kind: Ui.Query
                     model: !ref Account
-                    source: { path: /api/private/account }
-                    reloadOn: [ focus ]
-                    content:
-                      type: stack
+                    url: { path: /api/private/account }
+                    reloadOn: [focus]
+                  content:
+                    - type: stack
                       children:
                         - type: text
                           style: subheading
                           text:
-                            text: "Signed in as {$name}"
-                            values: { name: !cel "data.name" }
-                        - { type: value, value: !cel "data.email" }
+                            text: Signed in as {$name}
+                            values:
+                              name: !cel "data.name"
+                        - type: value
+                          value: !cel "data.email"
                         - type: text
                           style: muted
                           text:
-                            text: "Member since {$since}"
-                            values: { since: !cel "data.memberSince" }
+                            text: Member since {$since}
+                            values:
+                              since: !cel "data.memberSince"
                 - type: columns
                   children:
                     - type: composite
@@ -173,7 +198,7 @@ content:
                         inputModel: !ref NoInput
                         request: { target: /api/private/ping }
                         label: Check the session
-                        onSuccess: { refreshes: [ /api/private/account ] }
+                        onSuccess: { refreshes: [/api/private/account] }
                     - type: composite
                       ref:
                         kind: Ui.Action
@@ -186,7 +211,7 @@ content:
                         inputModel: !ref NoInput
                         request: { target: /api/session/signout }
                         label: Sign out
-                        onSuccess: { refreshes: [ /api/session ] }
+                        onSuccess: { refreshes: [/api/session] }
 ---
 # The page every application lists at /data, placing the view.
 kind: Ui.Page

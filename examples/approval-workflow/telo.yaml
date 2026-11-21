@@ -425,25 +425,32 @@ title: Expense
 width: contained
 children:
   - { type: text, text: Where the expense stands, style: title }
-  - type: composite
-    ref:
-      kind: Ui.Data
+  - type: query
+    query:
+      kind: Ui.Query
       model: !ref ExpenseScreen
       query: { run: { type: string } }
-      source: { path: "/api/expenses/{run}/screen", pathParams: { run: !cel "query.run" } }
       reloadOn: [focus]
-      content:
-        type: list
+      url: { path: "/api/expenses/{run}/screen", pathParams: { run: !cel "query.run" } }
+    content:
+      - type: list
         rows: !cel "data.expenses"
         columns:
-          - { header: Expense, value: !cel "row.run" }
-          - { header: Status, value: !cel "row.status" }
+          - header: Expense
+            value: !cel "row.run"
+          - header: Status
+            value: !cel "row.status"
         rowActions:
           - action: !ref approveAction
-            inputs: { token: !cel "row.token" }
+            inputs:
+              token: !cel "row.token"
             prompt: true
-            enabled: { at: !cel "row.status", matches: { const: parked }, disabledText: Waiting for the run to reach its approval step. }
-      failure: { type: text, text: Open an expense by submitting one., style: muted }
+            enabled:
+              at: !cel "row.status"
+              matches: { const: parked }
+              disabledText: Waiting for the run to reach its approval step.
+    failure:
+      - { type: text, text: Open an expense by submitting one., style: muted }
 ---
 kind: UiReact.App
 metadata: { name: ui }

@@ -1,0 +1,12 @@
+units:
+  analyzer: Added
+  kernel: Added
+body: An accessor field's binding names are read at the concrete path of each chain, so
+  a chain inside a region that a recursive shape declares on a list is accepted at every
+  depth by telo check and at start alike. A union whose branches give one property
+  different x-telo-context regions is refused as two eval modes are
+  (EVAL_MODE_BRANCH_CONFLICT, and ERR_EVAL_MODE_BRANCH_CONFLICT when the kind
+  registers). A kind the imported module does not declare is now UNDEFINED_KIND
+  (ERR_UNDEFINED_KIND at start) instead of KIND_NOT_EXPORTED, and names the reason of
+  the library migration that removed it; KIND_NOT_EXPORTED stays for a kind the module
+  declares and does not export.

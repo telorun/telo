@@ -77,6 +77,7 @@ export {
 } from "./flatten-for-analyzer.js";
 export {
   accessorBindingOf,
+  accessorChainPlaces,
   accessorFields,
   accessorProblems,
   accessorTagEngines,
@@ -87,6 +88,8 @@ export {
   type AccessorTag,
 } from "./accessor-binding.js";
 export {
+  accessorBindingNamesAt,
+  accessorChainSiteAt,
   accessorFieldAt,
   accessorSiteAt,
   buildAccessorSites,
@@ -96,6 +99,7 @@ export {
   concreteEvalPaths,
   declaredEvalMode,
   declaresCelRegion,
+  evalAnnotationOf,
   evalPathCovers,
   extractCelRegionScopes,
   governedCelEvalSites,
@@ -110,6 +114,7 @@ export type {
   AccessorSite,
   CelEvalMode,
   CelEvalSites,
+  EvalAnnotation,
   NamedShapeLookup,
   ScopeMatch,
 } from "./eval-paths.js";
@@ -778,6 +783,7 @@ export type {
 } from "./text-schemas.js";
 export { textSlotAccessorProblems } from "./text-slot-accessor.js";
 export { evalModeBranchConflicts } from "./eval-paths.js";
+export { removedKindReason, undeclaredKindMessage } from "./undeclared-kind.js";
 export type { EvalModeBranchConflict } from "./eval-paths.js";
 export { conflictShape, evalModeBranchConflictMessage } from "./eval-mode-branch-conflict.js";
 export {

@@ -39,7 +39,8 @@ describe("resource rules — reachable", () => {
       "RESOURCE_RULE_VIOLATED site layout.header[0]",
       // A bar written inline in an inline layout.
       "RESOURCE_RULE_VIOLATED site layout.header[1].items[1].page",
-      // A page named at an accessor field; an address there names none.
+      // A page named at an accessor field; an address there names none, nor
+      // does an accessor template's structure.
       "RESOURCE_RULE_VIOLATED site layout.header[1].items[3].href",
     ]);
     expect(diagnostics.some((d) => d.code === "DEPENDENCY_CYCLE")).toBe(false);

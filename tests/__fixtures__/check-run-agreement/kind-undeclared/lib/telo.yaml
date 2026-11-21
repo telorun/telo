@@ -1,0 +1,23 @@
+# A gated library: `Kept` exported, `Hidden` declared and withheld, `Gone`
+# removed by a migration that rewrites it to `Kept`.
+kind: Telo.Library
+metadata: { name: KindUndeclaredLib }
+exports: { kinds: [Kept] }
+migrations:
+  KIND_UNDECLARED_GONE_REPLACED:
+    reason: Gone is replaced by Kept.
+    rules:
+      - rewrite: Self.Gone
+        match: { type: object, required: [legacy] }
+        remove: [/legacy]
+        set: { kind: Self.Kept, value: kept }
+---
+kind: Telo.Definition
+metadata: { name: Kept, description: A value kind the library exports. }
+extends: Telo.Value
+schema: { type: object, properties: { value: { type: string } } }
+---
+kind: Telo.Definition
+metadata: { name: Hidden, description: A value kind the library declares and does not export. }
+extends: Telo.Value
+schema: { type: object, properties: { value: { type: string } } }

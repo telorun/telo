@@ -31,6 +31,7 @@ import { isModuleKind } from "../module-kinds.js";
 import { reachedModuleSources } from "../module-origin.js";
 import { templateBodyEntries } from "../template-body.js";
 import { refSentinelTarget } from "../ref-sentinel-target.js";
+import { schemaReferenceParts } from "../schema-reference.js";
 import { inheritedCapability } from "../extends-resolution.js";
 import { resolveModuleReferences, type ResolvedModuleReference } from "./reference-resolution.js";
 import { foldTypeExtends } from "../validate-cel-context.js";
@@ -325,12 +326,14 @@ class ModuleStage {
       if (!node || typeof node !== "object") return node;
       const out: Record<string, unknown> = {};
       for (const [key, child] of Object.entries(node)) {
-        const ref = key === "$ref" ? parseTeloTypeRef(child) : null;
+        const parts = key === "$ref" && typeof child === "string" ? schemaReferenceParts(child) : undefined;
+        const ref = parts?.shape !== undefined ? parseTeloTypeRef(parts.shape) : null;
         if (ref) {
           const own = ref.authority === "Self" || ref.authority === moduleNameOf(mod);
           const target = own ? mod : importTarget(this.graph, mod, ref.authority);
           const name = target ? moduleNameOf(target) : undefined;
-          out[key] = name ? canonicalTypeSchemaId(name, ref.typeName) : child;
+          const pointer = parts!.pointer === "#" ? "" : parts!.pointer;
+          out[key] = name ? `${canonicalTypeSchemaId(name, ref.typeName)}${pointer}` : child;
         } else out[key] = canonical(child);
       }
       return out;
@@ -353,7 +356,24 @@ class ModuleStage {
       return parent_ ? this.namedShape(parent_) : undefined;
     });
     this.shapes.set(id, read);
+    this.shapeIds.set(read, id);
     return read;
+  }
+
+  /** The named shape each document {@link namedShape} returned reads. */
+  private readonly shapeIds = new WeakMap<object, string>();
+
+  /**
+   * The library type a `$ref` names when it names a named shape whole: by its
+   * id, or — a local `#` written inside a shape's document, reached through a
+   * pointer into the shape or not — that shape. A pointer to a node below a
+   * shape's root names no type.
+   */
+  private referencedShapeTarget(ref: string, root: Record<string, any>): TypeTarget | undefined {
+    const { shape, pointer } = schemaReferenceParts(ref);
+    if (pointer.replace(/^#\/?/, "") !== "") return undefined;
+    const id = shape ?? this.shapeIds.get(root);
+    return id !== undefined ? this.shapeTarget(id) : undefined;
   }
 
   /** `schema` with every named shape it reaches inlined under `$defs`, so it
@@ -369,15 +389,16 @@ class ModuleStage {
       if (!node || typeof node !== "object") return node;
       const out: Record<string, unknown> = {};
       for (const [key, child] of Object.entries(node)) {
-        const shape = key === "$ref" && typeof child === "string" ? this.namedShape(child) : undefined;
+        const parts = key === "$ref" && typeof child === "string" ? schemaReferenceParts(child) : undefined;
+        const shape = parts?.shape !== undefined ? this.namedShape(parts.shape) : undefined;
         if (shape) {
-          let local = keys.get(child as string);
+          let local = keys.get(parts!.shape!);
           if (!local) {
             local = `__libraryMigrationShape${keys.size}`;
-            keys.set(child as string, local);
+            keys.set(parts!.shape!, local);
             defs[local] = inline(shape, `/$defs/${local}`);
           }
-          out[key] = `#/$defs/${local}`;
+          out[key] = `#/$defs/${local}${parts!.pointer.slice(1)}`;
         } else if (key === "$ref" && typeof child === "string" && child.startsWith("#") && base !== "") {
           out[key] = `#${base}${child.slice(1)}`;
         } else out[key] = inline(child, base);
@@ -560,7 +581,7 @@ class ModuleStage {
       visit: (visit) => {
         const path = [...prefix, ...visit.path];
         const ref = visit.node.$ref;
-        const target = typeof ref === "string" ? this.shapeTarget(ref) : undefined;
+        const target = typeof ref === "string" ? this.referencedShapeTarget(ref, visit.root) : undefined;
         if (target && !visit.boundary) {
           own.push({ path, library: target.library });
           this.add(found, { ...target, path, declaration: false });
@@ -1275,6 +1296,7 @@ function migrateModule(
     if (failing.size === 0) break;
     for (const [key, cause] of failing) blocked.set(key, cause);
   }
+  const firstFinding = findings.length;
   findings.push(...pass.findings);
   failed.push(...pass.failed);
   handOvers.push(...heldHandOvers(stage, pass, mod));
@@ -1294,10 +1316,37 @@ function migrateModule(
       read.add(file.source);
     }
   }
+  findings.splice(firstFinding, findings.length - firstFinding, ...perAnchor(findings.slice(firstFinding), entries));
   if (entries.length === 0) return undefined;
   const files: Record<string, string> = {};
   for (const file of filesOf(mod)) if (read.has(file.source)) files[file.source] = migrationTextDigest(file.text);
   return { module: mod.owner.source, files, entries };
+}
+
+/**
+ * One finding per outermost rewritten anchor and migration code — the unit the
+ * edit record and write-back splice: a rewrite nested inside an anchor is
+ * reported at the anchor, once per code. A failure keeps its own node.
+ */
+function perAnchor(found: readonly LibraryMigrationFinding[], entries: readonly MigrationRecordEntry[]): LibraryMigrationFinding[] {
+  const out: LibraryMigrationFinding[] = [];
+  const seen = new Set<string>();
+  for (const finding of found) {
+    if (finding.code === "MIGRATION_FAILED") {
+      out.push(finding);
+      continue;
+    }
+    const anchor = entries.find(
+      ({ anchor }) =>
+        anchor.file === finding.at.file && anchor.document === finding.at.document && startsWithPath(finding.at.path, anchor.path),
+    )?.anchor;
+    const at = anchor ?? finding.at;
+    const key = JSON.stringify([at.file, at.document, at.path, finding.code, finding.library.module]);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(anchor ? { ...finding, at: anchor } : finding);
+  }
+  return out;
 }
 
 /** Every candidate of one top-level document. */

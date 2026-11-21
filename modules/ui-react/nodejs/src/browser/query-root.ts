@@ -1,7 +1,7 @@
 import { validate, type JsonSchema } from "./validation.js";
 
 /**
- * The `query` root of a page or a reader: each declared parameter the address
+ * The `query` root of a page or a query: each declared parameter the address
  * holds, read as its declaration says — a list for a list parameter, one value
  * for a scalar. A parameter the address leaves out, a scalar given more than
  * once, or a value its declaration refuses is absent.

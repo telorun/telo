@@ -1,0 +1,55 @@
+# Reads of the `query` root that hold: parameters named like schema keywords,
+# on a query and on a page, a query a library's importer supplies, and a view
+# placed under a query node and directly in a page.
+kind: Telo.Library
+metadata:
+  name: QueryRoots
+  version: 1.0.0
+  description: >-
+    Test fixture reading query parameters through query nodes, pages and the
+    views placed in them.
+imports: { Ui: ../../.. }
+resources: { suppliedQuery: { kind: Ui.Query } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Session }
+schema: { type: object, properties: { name: { type: string } } }
+---
+kind: Ui.Query
+metadata: { name: signinQuery }
+model: !ref Session
+query: { signin: { type: string } }
+url: /api/session
+---
+kind: Ui.Query
+metadata: { name: keywordQuery }
+model: !ref Session
+query: { type: { type: string }, properties: { type: string } }
+url: /api/session
+---
+kind: Ui.View
+metadata: { name: underQuery }
+content: { type: value, value: !cel "query.signin" }
+---
+kind: Ui.View
+metadata: { name: underPage }
+content: { type: value, value: !cel "query.properties" }
+---
+kind: Ui.Page
+metadata: { name: roots }
+path: /roots
+query: { type: { type: string }, properties: { type: string } }
+children:
+  - type: query
+    query: !ref keywordQuery
+    content:
+      - { type: value, value: !cel "query.type" }
+      - { type: value, value: !cel "query.properties" }
+  - type: query
+    query: !ref suppliedQuery
+    content: [{ type: value, value: !cel "query.anything" }]
+  - type: query
+    query: !ref signinQuery
+    content: [{ type: composite, ref: !ref underQuery }]
+  - { type: value, value: !cel "query.type" }
+  - { type: composite, ref: !ref underPage }

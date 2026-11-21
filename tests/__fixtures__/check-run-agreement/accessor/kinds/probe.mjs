@@ -17,3 +17,9 @@ export const Read = {
     return { invoke: () => resource.source.provide() };
   },
 };
+
+export const Tree = {
+  async create(resource) {
+    return { provide: async () => resource.root };
+  },
+};

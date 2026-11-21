@@ -81,7 +81,7 @@ steps:
     inputs:
       actual:
         homeNodes: !cel "steps.home.result.body.children.map(c, c.type)"
-        expenseReads: !cel "steps.expensePage.result.body.children[1].source.path.value"
+        expenseReads: !cel "steps.expensePage.result.body.children[1].query.url.path.value"
         submit: { status: !cel "steps.submit.result.status", token: !cel "steps.submit.result.body.token" }
         parked: !cel "steps.parked.result.status"
         approve: !cel "steps.approve.result.body.delivered"

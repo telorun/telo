@@ -1,0 +1,76 @@
+kind: Telo.Application
+metadata:
+  name: UiQueryReportTest
+  version: 1.0.0
+  description: |
+    Runs the hours-report application: its page document carries the shared
+    `account` query's spec once for the header and the body and the report
+    query's spec with its `QUERY` body as bindings, and the report route answers
+    a `QUERY` with a body and refuses one missing a member.
+imports: { App: ../../app, HttpClient: ../../http-client, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ./__fixtures__/query-report/telo.yaml
+    ports: { http: 8846 }
+targets:
+  - !ref app
+steps:
+  - name: page
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8846/_telo/ui/page?path=/report", method: GET }
+  - name: specs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[steps.page.result.body.children[0].query, steps.page.result.body.children[1].query]"
+      expected:
+        - id: HoursReport/account
+          schema: { type: object, required: [authorized], properties: { authorized: { type: boolean }, email: { type: string } } }
+          method: GET
+          url: { path: { value: /api/auth }, pathParams: {}, queryParams: {} }
+          input: null
+          query: {}
+          reloadOn: [focus, unauthorized]
+        - id: HoursReport/web_pages_0/children/1/query
+          schema:
+            type: object
+            required: [totalHours, items]
+            properties:
+              totalHours: { type: number }
+              items:
+                type: array
+                items: { type: object, required: [name, hours], properties: { name: { type: string }, hours: { type: number } } }
+          method: QUERY
+          url: { path: { value: /api/report }, pathParams: {}, queryParams: {} }
+          input:
+            body:
+              map:
+                period: { map: { from: { root: query, path: [from] }, to: { root: query, path: [to] } } }
+                projects: { root: query, path: [project] }
+          query: { from: { type: string, format: date }, to: { type: string, format: date }, project: { type: array, items: { type: string } } }
+          reloadOn: []
+          reloadEvery: 60000
+  - name: report
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8846/api/report, method: QUERY }
+    inputs: { body: { period: { from: "2026-11-01", to: "2026-11-15" }, projects: [acme] } }
+  - name: answer
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "{'status': steps.report.result.status, 'body': steps.report.result.body}"
+      expected:
+        status: 200
+        body: { totalHours: 12.5, items: [{ name: Acme, hours: 8 }, { name: Core, hours: 4.5 }] }
+  - name: partial
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8846/api/report, method: QUERY }
+    inputs: { body: { period: { from: "2026-11-01" } } }
+  - name: refused
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "{'status': steps.partial.result.status, 'issues': steps.partial.result.body.data.issues}"
+      expected:
+        status: 400
+        issues: [{ pointer: /body/period/to, keyword: required, params: { missingProperty: to } }]

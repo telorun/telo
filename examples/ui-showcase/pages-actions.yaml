@@ -150,13 +150,13 @@ content:
       text: >-
         Moving a task reads again both the counts below, a reader, and the TEL-42 table further down. The answer
         names the task and its new status.
-    - type: composite
-      ref:
-        kind: Ui.Data
+    - type: query
+      query:
+        kind: Ui.Query
         model: !ref TaskCounts
-        source: { path: /api/task-counts, queryParams: { code: TEL-42 } }
-        content:
-          type: text
+        url: { path: /api/task-counts, queryParams: { code: TEL-42 } }
+      content:
+        - type: text
           style: strong
           text:
             text: "{$code}: {$todo} to do, {$doing} in progress, {$review} in review, {$done} finished, {$blocked} blocked."
@@ -278,13 +278,13 @@ content:
         The latest comments, a list a reader draws, pinned ones first. Pin runs at once on a comment not yet
         pinned, Delete asks first, and Edit asks for the new text in a dialog; leaving it empty is refused on
         its field. The list reads again after each.
-    - type: composite
-      ref:
-        kind: Ui.Data
+    - type: query
+      query:
+        kind: Ui.Query
         model: !ref CommentList
-        source: { path: /api/comments }
-        content:
-          type: list
+        url: { path: /api/comments }
+      content:
+        - type: list
           heading: Latest comments
           rows: !cel "data.comments"
           columns:
@@ -298,8 +298,9 @@ content:
                 inputModel: !ref CommentRef
                 request: { target: /api/comments/pin }
                 label: Pin
-                onSuccess: { refreshes: [ /api/comments ] }
-              inputs: { id: !cel "row.id" }
+                onSuccess: { refreshes: [/api/comments] }
+              inputs:
+                id: !cel "row.id"
               enabled:
                 at: !cel "row.pinned"
                 matches: { const: false }
@@ -309,16 +310,18 @@ content:
                 inputModel: !ref CommentRef
                 request: { target: /api/comments/delete }
                 label: Delete
-                onSuccess: { refreshes: [ /api/comments ] }
-              inputs: { id: !cel "row.id" }
+                onSuccess: { refreshes: [/api/comments] }
+              inputs:
+                id: !cel "row.id"
               confirm: Delete this comment?
             - action:
                 kind: Ui.Action
                 inputModel: !ref CommentEdit
                 request: { target: /api/comments/edit }
                 label: Edit
-                onSuccess: { refreshes: [ /api/comments ] }
-              inputs: { id: !cel "row.id" }
+                onSuccess: { refreshes: [/api/comments] }
+              inputs:
+                id: !cel "row.id"
               confirm: Rewrite this comment?
               prompt: true
 

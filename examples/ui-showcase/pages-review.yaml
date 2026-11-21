@@ -58,16 +58,16 @@ children:
     text: >-
       A document addressed by its ID, read again every thirty seconds. The buttons decide on the revision on screen,
       and each item the server names in it has a Comment control.
-  - type: composite
-    ref:
-      kind: Ui.Data
+  - type: query
+    query:
+      kind: Ui.Query
       model: !ref ReviewDetail
-      source:
+      url:
         path: "/api/review/reviews/{id}"
         pathParams: { id: !cel "params.id" }
-      reloadEvery: 30s
-      content:
-        type: stack
+      reloadEvery: "30s"
+    content:
+      - type: stack
         children:
           - type: text
             style: heading
@@ -193,58 +193,78 @@ children:
   - type: text
     style: muted
     text: Two revisions compared line by line. Choose either end from the lists; added lines are green, removed ones red.
-  - type: composite
-    ref:
-      kind: Ui.Data
+  - type: query
+    query:
+      kind: Ui.Query
       model: !ref ReviewComparison
       query:
         base: { type: string, pattern: "^[0-9]{1,9}$" }
         target: { type: string, pattern: "^[0-9]{1,9}$" }
-      source:
+      url:
         path: "/api/review/reviews/{id}/compare"
         pathParams: { id: !cel "params.id" }
         queryParams: { base: !cel "query.base", target: !cel "query.target" }
-      content:
-        type: stack
+    content:
+      - type: stack
         children:
           # The server marks what it compared, its defaults included.
           - type: list
             heading: Compare from
             rows: !cel "data.revisions"
-            rowStyle: { by: !cel "row.base", cases: { "true": strong } }
+            rowStyle:
+              by: !cel "row.base"
+              cases: { "true": strong }
             columns:
               - value: !cel "row.seq"
                 to:
                   kind: Ui.Navigate
                   href:
                     path: !ref compare
-                    pathParams: { id: !cel "params.id" }
-                    queryParams: { base: !cel "row.seq", target: !cel "data.target" }
-              - { type: time, value: !cel "row.createdAt", relative: true }
+                    pathParams:
+                      id: !cel "params.id"
+                    queryParams:
+                      base: !cel "row.seq"
+                      target: !cel "data.target"
+              - type: time
+                value: !cel "row.createdAt"
+                relative: true
           - type: list
             heading: Compare to
             rows: !cel "data.revisions"
-            rowStyle: { by: !cel "row.target", cases: { "true": strong } }
+            rowStyle:
+              by: !cel "row.target"
+              cases: { "true": strong }
             columns:
               - value: !cel "row.seq"
                 to:
                   kind: Ui.Navigate
                   href:
                     path: !ref compare
-                    pathParams: { id: !cel "params.id" }
-                    queryParams: { base: !cel "data.base", target: !cel "row.seq" }
-              - { type: time, value: !cel "row.createdAt", relative: true }
+                    pathParams:
+                      id: !cel "params.id"
+                    queryParams:
+                      base: !cel "data.base"
+                      target: !cel "row.seq"
+              - type: time
+                value: !cel "row.createdAt"
+                relative: true
           - type: text
             style: muted
             text: Too large to compare line by line.
-            shown: { at: !cel "data.comparable", matches: { const: false } }
+            shown:
+              at: !cel "data.comparable"
+              matches: { const: false }
           # A line diff as a list with row and column styles.
           - type: list
             rows: !cel "data.lines"
-            rowStyle: { by: !cel "row.op", cases: { added: success, removed: danger } }
+            rowStyle:
+              by: !cel "row.op"
+              cases: { added: success, removed: danger }
             columns:
               - value: !cel "row.text"
-                style: { by: !cel "row.op", cases: { context: muted } }
+                style:
+                  by: !cel "row.op"
+                  cases: { context: muted }
 ---
 kind: Ui.Page
 metadata: { name: worker }

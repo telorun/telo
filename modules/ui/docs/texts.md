@@ -40,7 +40,7 @@ by `telo check`, and `values` binds nothing the text does not name.
 
 What a renderer draws on its own — "Loading…", "Save", a pager's
 "1–25 of 340", each validation message — and what `ui` fills in for you — a
-reader's `loading`, a listing's `empty` — are `ui`'s own texts. They are
+query node's `loading`, a listing's `empty` — are `ui`'s own texts. They are
 declared by key in `ui`'s `Telo.KeyedTranslations` document `Translations`,
 which declares the kind `Ui.Translations`: each key with its English wording
 and the values it is formatted with. An application writes nothing to show
@@ -101,8 +101,9 @@ listing all fourteen shipped catalogs, on which `telo check` reports no
 fixture application that lists every translation you ship.
 
 A kind showing these texts names the set with `x-telo-text-keys` on its
-schema root: `Ui.Data`, `Ui.Listing` and `Ui.Chat`, which fill `loading`,
-`empty` and the default header's `chatExport`, name `[Self.Translations]`, and a renderer's application names `[Ui.Translations]` to
+schema root: `Ui.Listing` and `Ui.Chat`, which fill `empty` and the default
+header's `chatExport`, name `[Self.Translations]` (a `query` node's `loading` is
+filled by whatever holds the node), and a renderer's application names `[Ui.Translations]` to
 receive the messages of every served language.
 
 | Key | English |

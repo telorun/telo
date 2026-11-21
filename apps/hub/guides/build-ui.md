@@ -85,8 +85,8 @@ inline; `taskTable` is used twice. List a `Telo.OpenUrl` after the server in
   text, style: title }` (the one `h1`) first. A page an address, a navigation
   entry or a `Ui.OpenPage` names must be listed (`UI_PAGE_UNROUTED`).
 - `layout` is the `Ui.PageLayout` every page is drawn in (omitted: no chrome):
-  `{ width?, header?, aside?, footer? }`; `{ page, layout: { kind: Ui.PageLayout } }`
-  is an empty layout: no chrome. `notFound` is the nodes drawn for an unknown
+  `{ width?, header?, aside?, footer? }`; a page's `{ page, layout: { kind:
+  Ui.PageLayout } }` has none. `notFound` is the nodes drawn for an unknown
   path. Layout regions read `request`; they withhold `params`/`query`.
 - A `pane` node `{ type: pane, ref }` places a `Ui.Pane` (chrome answering one
   node). `Ui.Navbar { title?, start?, end?, navigation, placement? }` is the
@@ -95,7 +95,7 @@ inline; `taskTable` is used twice. List a `Telo.OpenUrl` after the server in
   aside is a column, a rail when folded. A composite's regions withhold `request`:
   read it in a page's children or a layout region.
 - A path segment may be a variable: `/reviews/{id}` matches one percent-decoded
-  segment, a literal one winning. Nodes, readers and sources
+  segment, a literal one winning. Nodes and queries
   the page places read it as `params.id` (a string); `telo check` refuses a
   variable the page lacks. A navigation `page` entry cannot name such a page:
   reach it with a `to` (*Where a press goes*).
@@ -127,18 +127,19 @@ A page's `children` are nodes, plain data with a `type`:
 | `value` | `value` (an accessor), `text?`, `to?` — one value, presented as its schema says |
 | `list` | `rows` (an accessor), `columns: [{ header?, value, shown?, style? }]` (or `{ type: time, value, relative? }`), `heading?`, `rowStyle?` |
 | `markdown` | `value` (an accessor to a string), `annotations?` |
-| `time` | `value` (an accessor to a `date` / `date-time` string), `relative?` — `true` draws "3 hours ago", the exact time on hover |
+| `time` | `value` (an accessor to a `date` / `date-time` string), `relative?` ("3 hours ago") |
 | `button` | `action`, `inputs`, `confirm?`, `prompt?`, `enabled?`, `button?` |
 | `bar` | `start?`, `center?`, `end?` — node lists |
 | `command` | `command` (a root's command: `!cel "chat.stop"`), `text`, `button?` |
+| `query` | `query` (a `Ui.Query`), `content` (over `data`), `loading?`, `failure?` |
 | `composite` | `ref` — a `!ref`, or an inline declaration |
 | `pane` | `ref` — a `Ui.Pane`, in a layout or page |
 
 Every node also takes `style` (not `tabs`; one or a list of `title`,
 `heading`, `subheading`, `muted`, `strong`, `accent`, `danger`, `warning`, `success`),
 `when` (a boolean deciding on the server whether the node is delivered),
-`shown` (a condition deciding in the browser whether it is drawn — see "Data
-and conditions") and `fill: true` (reach the page's bottom; the innermost
+`shown` (a condition deciding in the browser whether it is drawn — see *Reads and
+conditions*) and `fill: true` (reach the page's bottom; the innermost
 filling node scrolls; not on menu items).
 
 **Markdown.** A `markdown` node draws CommonMark with GFM; raw HTML is never
@@ -149,10 +150,11 @@ action over each `row` of `rows`, on its 1-based source `line`, `count` a badge.
 text over data names its values (`text: { text: "{$n} tasks", values: { n:
 !cel "data.open" } }`; plurals are `{ plural: n, cases: { one, other } }`).
 
-**Addresses.** An address inside the application (a page `path`, a
-`Ui.Navigate`'s `href`, an `image`'s `src`, a `basePath`, a request target's
-`path`) is app-relative: `/` followed by anything but `/` or `\`. An `href` may also start `https://`, `http://` or `mailto:`; an `image`, `https://` or `http://`. It resolves under the mount: at `/admin`,
-`/api/reports` is requested at `/admin/api/reports`.
+**Addresses.** A page `path`, an `href`, an `image`'s `src`, a `basePath` and a
+request target's `path` are app-relative (`/` then anything but `/` or `\`),
+resolved under the mount: at `/admin`, `/api/reports` is `/admin/api/reports`.
+An `href` may also start `https://`, `http://` or `mailto:`, a `src` `https://`
+or `http://`.
 
 An `href` or request target is a string, or
 `{ path, pathParams, queryParams }`: `path` a template whose `{name}`
@@ -230,12 +232,11 @@ pageSize? } }` — `label`, `hint` and `to` read `row`, the related record. A
 presentation holds no keys: a related value is always the target's `key`.
 
 A `Ui.Listing` draws records: `presentation`, `model` (row shape), `filters`
-(fixed equalities), `query`, `pageSize`, `paging` (`pages`, `more`,
-`scroll`), `rowStyle`, `create` / `edit`, `delete`, `rowActions`, `empty`,
+(fixed equalities), `query`, `pageSize`, `paging`, `rowStyle`, `create` / `edit`, `delete`, `rowActions`, `empty`,
 `layout` (a kind under `Ui.ListingLayout`; default `Ui.TableLayout`, a column
 per model property but the key) and `compact` (the layout below `compactBelow`). Also `sort: { by?: { property,
 direction }, choosable }` (`choosable: false` fixes the order), `show: { count }` and
-`rowActionsDisplay` (`auto` | `inline` | `menu`). `press` says what pressing a
+`rowActionsDisplay`. `press` says what pressing a
 record does (editing then stays on its edit button).
 
 - Layouts: `Ui.TableLayout` (`columns`), `Ui.ListLayout`, `Ui.CardLayout`
@@ -305,10 +306,9 @@ content: { type: composite, ref: !ref taskList }
   presentation's relation. `values: all` (default) offers every one; `present`
   only those occurring under the bar's other filters, with counts, and needs
   the property under the collection's `facets`. `options` overrides the source.
-- `policy`'s choices combine freely: `apply` (`commit` | `typing` | `button`),
-  `placement`, `state`. The display options sit on the placement that draws
-  controls: `show` (`all` | `chosen`), `controls` (`direct` | `chips`),
-  `summary` (`none` | `chips`); a `compact` placement inherits omitted ones.
+- `policy`'s choices combine freely: `apply`, `placement`, `state`. The display
+  options (`show`, `controls`, `summary`) sit on the placement that draws
+  controls; a `compact` placement inherits omitted ones.
 - **Placements and stores are kinds**: `Ui.AbovePlacement` (default),
   `Ui.AsidePlacement`, `Ui.CollapsiblePlacement`, `Ui.OverlayPlacement`,
   `Ui.SearchBoxPlacement`; `Ui.LocalStore`, `Ui.SessionStore`. A `state` keeps
@@ -316,9 +316,8 @@ content: { type: composite, ref: !ref taskList }
 - `search: { pinned?, default? }` adds a text search (sent as `search`, first
   among the controls). Left out, a bar without `fields` has it when the
   collection declares `query.search`; a bar with `fields` only by writing it.
-- `Ui.SearchBoxPlacement` (`placeholder?`) draws the bar as one box, filters
-  as chips. It takes no
-  `show`, `controls`, `summary` or `compact`.
+- `Ui.SearchBoxPlacement` (`placeholder?`) is one box, filters as chips; it
+  takes no `show`, `controls`, `summary` or `compact`.
 
 ## Forms and where they open — `Ui.Form` and surfaces
 
@@ -427,7 +426,8 @@ write the shape out and keep it equal to `inputModel`.
 - `onSuccess.to` is a destination over `result` and `input`;
   `refreshes` lists request targets; after a 2xx those, the target
   and a listing's `basePath` are announced and every reader of exactly that
-  path (`Ui.Data`, `Ui.Listing`, `Ui.Chat`) reads again. A literal segment may
+  path (`Ui.Query`, `Ui.Listing`, `Ui.Chat`) reads again; a `QUERY` or `POST`
+  read matches as a `GET`. A literal segment may
   be `*` (one) or `**` (any): `/api/projects/{id}/**`.
 - `concurrency: serial` runs presses in turn; `clearAnswerOn: [<property>]`
   clears the answer on that input's change.
@@ -457,43 +457,47 @@ rowActions:
 - A pressed one draws its `result` in place of the button and its `failure`
   beside it.
 
-## Data and conditions — `Ui.Data`
+## Reads and conditions — `Ui.Query`
 
-Data a screen needs when it opens (who is signed in) is a `Ui.Data` reader:
-`GET source`, answered by a JSON object valid against `model`, then `content`
-drawn over `data`. It is a composite; place it on a page. A sign-in gate is a reader plus conditions:
+Data a screen needs when it opens is a `Ui.Query` (`model`, `url` an address
+over `query` and `params`, optional `query`, `reloadOn`, `reloadEvery`), drawn
+by a `query` node. A sign-in gate is an inline query plus conditions:
 
 ```yaml
-- type: composite
-  ref:
-    kind: Ui.Data
+- type: query
+  query:
+    kind: Ui.Query
     model: !ref Auth
     query:
       signin: { type: string, enum: [denied, expired] }
-    source: { path: /api/auth, queryParams: { reason: !cel "query.signin" } }
+    url: { path: /api/auth, queryParams: { reason: !cel "query.signin" } }
     reloadOn: [focus, unauthorized]
-    content:
-      type: stack
+  content:
+    - type: stack
       children:
         - { type: value, value: !cel "data.email", shown: { at: !cel "data.authorized", matches: { const: true } } }
         - { type: text, text: Sign in., shown: { at: !cel "data.authorized", matches: { const: false } } }
 ```
 
-- `loading` / `failure` are node trees; left out, `ui` fills them.
-- `reloadEvery: 30s` (at least `5s`; on `Ui.Data` and `Ui.Listing`) reads again
-  on a timer.
-- `reloadOn: [focus]` reads again on window focus, `[unauthorized]` on a 401
-  inside `content`.
+- A named query (`metadata: { name: session }`) several nodes place (`query:
+  !ref session`) is one request; each node draws its own trees.
+- `input: { method?, model, body }` sends `body`, a map or list of plain chains
+  over `query` / `params` or literals typed by `input.model` (an empty chain
+  drops its member), as `QUERY` (route `method: QUERY`) or `POST`.
+- `shown` on the node (over `query`) holds back drawing and reading until it
+  holds.
+- `loading` / `failure` left out, `ui` fills them. `reloadEvery: 30s` (at least
+  `5s`; also on `Ui.Listing`) reads on a timer, `reloadOn: [focus]` on window
+  focus, `[unauthorized]` on a 401 in the node's trees.
 - A condition is `{ at, matches }`: `at` a plain chain over the roots in
   scope, `matches` a schema in a closed profile (`type`, `const`, `enum`,
   `not`, `allOf`, `anyOf`, `required`, `properties`, `items`, `minItems`,
   `maxItems`, `uniqueItems`, `minLength`, `maxLength`, `pattern`, bounds). A missing value never matches, even under `not`; test absence on the
   parent: `{ at: !cel "data", matches: { not: { required: [email] } } }`.
-- Roots: `data` (a reader's `content`), `error` (its `failure`), `query`,
-  `params`,
-  `values` (a form's or action's fields), `row` (a `list` column). Only a
-  condition, a `value` / `list` / `command` node or an address's params read
-  one.
+- Roots: `data` (a query node's `content`), `error` (its `failure`), `query`,
+  `params`, `values` (a form's or action's fields), `row` (a `list` column).
+  Only a condition, a `value` / `list` / `command` node or an address's params
+  read one.
 - A field's `shown` reads `values`: a hidden field is not sent, but a required
   property still blocks submitting. An action's `enabled: { at, matches,
   disabledText }` disables its button until it holds.
@@ -503,9 +507,7 @@ drawn over `data`. It is a composite; place it on a page. A sign-in gate is a re
 
 One composite, no conversation list. A `Ui.ConversationSource` pairs a
 `Conversation.Conversation` (`ai-chat`'s) with its `basePath`; `Ui.Chat` names
-it plus `placeholder`, `starters` (a text, or `{ prompt, onChoose: send | fill }`),
-`show: { reasoning, toolDetail, usage, copy }`, `composer: { actions: inside | outside }`,
-`buttons` (`Ui.TextButton` / `Ui.IconButton`) and `header` (nodes over
+it plus `placeholder`, `starters`, `show`, `composer`, `buttons` and `header` (nodes over
 `conversation` and `chat`'s commands `exportTranscript`, `copyTranscript`,
 `stop`, `newConversation`; default a `bar` holding export, `[]` none).
 
@@ -515,27 +517,26 @@ it plus `placeholder`, `starters` (a text, or `{ prompt, onChoose: send | fill }
 - Mount
   `{ kind: Chat.Api, conversation: !ref … }` at the same `basePath`; import
   `ai-chat` as `Chat`, never `AiChat`.
-- Compose the list: a `Ui.SplitView`, `aside.actions` a button `link` (New
-  conversation), `aside.content` a `Ui.Listing` over a `Ui.CollectionSource`
-  for `Conversation.conversations` (`basePath: /api/chat/conversations`,
-  `model: !ref Conversation.ConversationSummary`), `delete: true`, rows linking
-  with `queryParams: { conversation: !cel "row.id" }`, rename / archive as
-  `PATCH` row actions; the chat is `content` with `fill: true`.
+- The list is a `Ui.SplitView`: `aside.actions` a button `link` (New
+  conversation), `aside.content` a `Ui.Listing` over a `Ui.CollectionSource` for
+  `Conversation.conversations`
+  (`basePath: /api/chat/conversations`, `model: !ref
+  Conversation.ConversationSummary`), `delete: true`, rows linking with
+  `queryParams: { conversation: !cel "row.id" }`, rename / archive as `PATCH`
+  row actions; the chat is `content` with `fill: true`.
 
 ### Ui.SplitView
 
-A composite placing `aside` by `content`; the same `Ui.Aside` shape a layout's
-`aside` is: `{ side` (`start` | `end`), `size` (`small` | `medium` | `large`),
-`label` (required), `collapse: { collapsed?, state: { key, store } }`,
-`compact` (default a `Ui.Drawer` below `compactBelow`), `frame` (`flush` |
-`framed`), `toggle` (`Ui.IconButton` | `Ui.TextButton`), `actions?`, `content }`.
+A composite placing `aside` by `content`, `aside` the `Ui.Aside` a layout's is:
+`side`, `size`, `label` (required), `collapse` (with a kept `state`), `compact`
+(default a `Ui.Drawer` below `compactBelow`), `frame`, `toggle`, `actions?`,
+`content`.
 Trees hold no root: put `value` / `list` in a composite that declares one.
 
 ## An admin screen over one table — `crud` and `crud-ui`
 
-For a listing over one SQL table, two modules give both halves from one
-declaration. `crud` imports no `ui`; `crud-ui` imports
-`crud` and `ui`.
+Over one SQL table, `crud` (no `ui`) and `crud-ui` (`crud` and `ui`) give both
+halves from one declaration.
 
 - `Crud.Collection` is a `DataModel.Collection` (with `relations` and
   `query.facets`) over a `table`, an `Sql.Table` whose primary key is `id`,

@@ -1,0 +1,24 @@
+# One property under a CEL context in one union branch and under none in the
+# other.
+kind: Telo.Library
+metadata: { name: EvalModeRegionConflictLib }
+imports: { Run: ../../../../../../modules/run }
+exports: { kinds: [Card] }
+---
+kind: Telo.Definition
+metadata: { name: Card, description: A card whose union branches disagree about the context of one field. }
+extends: Run.Value
+schema:
+  type: object
+  properties:
+    content:
+      oneOf:
+        - type: object
+          properties:
+            type: { const: framed }
+            children:
+              type: array
+              items: { type: object }
+              x-telo-context: { type: object, properties: { data: { type: object } } }
+        - { type: object, properties: { type: { const: plain }, children: { type: array, items: { type: object } } } }
+base: { value: card }

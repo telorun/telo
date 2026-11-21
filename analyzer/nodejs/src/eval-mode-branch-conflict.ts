@@ -10,7 +10,7 @@
  * Browser-safe: no Node built-ins.
  */
 import { parseCanonicalTypeSchemaId } from "@telorun/sdk";
-import type { CelEvalMode, EvalModeBranchConflict } from "./eval-paths.js";
+import type { EvalAnnotation, EvalModeBranchConflict } from "./eval-paths.js";
 import { renderValuePath, type ValuePath } from "./text-slot.js";
 
 export const EVAL_MODE_BRANCH_CONFLICT = "EVAL_MODE_BRANCH_CONFLICT";
@@ -53,10 +53,12 @@ export function conflictLocation(conflict: EvalModeBranchConflict, root: Schema 
   return at;
 }
 
-function modeText(mode: CelEvalMode | undefined): string {
+function modeText(mode: EvalAnnotation | undefined): string {
   switch (mode) {
     case "accessor":
       return "an accessor (`x-telo-eval: accessor`)";
+    case "accessor-template":
+      return "an accessor template (`x-telo-eval: accessor-template`)";
     case "compile":
       return "evaluated at load (`x-telo-eval: compile`)";
     case "runtime":
@@ -82,6 +84,17 @@ export function evalModeBranchConflictMessage(
   const other = `${conflict.keyword}[${conflict.other}]`;
   const place = conflict.place.startsWith(".") ? conflict.place.slice(1) : conflict.place;
   const what = place === "" ? "the union's own value" : `'${place}'`;
+  if (conflict.regions) {
+    const declares = conflict.regions.other
+      ? `${branch} and ${other} declare different \`x-telo-context\` regions there`
+      : `${branch} declares an \`x-telo-context\` region there and ${other} declares none`;
+    return (
+      `${subject} declares a union at '${union}' whose branches give ${what} two CEL contexts: ${declares}. ` +
+      `Every branch is read at one path before a value picks one, so a property means the same in ` +
+      `each: give it the same \`x-telo-context\` in every branch declaring it, or another name where it ` +
+      `means something else.`
+    );
+  }
   return (
     `${subject} declares a union at '${union}' whose branches give ${what} two eval modes: ` +
     `${branch} makes it ${modeText(conflict.mode)}, and ${other} makes it ${modeText(conflict.otherMode)}. ` +
@@ -120,10 +133,10 @@ export function evalModeBranchDeferredMessage(
   return (
     `${subject} declares a union at '${union}' whose branches ${keyword}[${sides[0].branch}] and ` +
     `${keyword}[${sides[1].branch}] disagree on ${what}: ${at} compares ${side(sides[0])} with ` +
-    `${side(sides[1])}, whose eval sites differ. ` +
+    `${side(sides[1])}, whose eval sites or \`x-telo-context\` regions differ. ` +
     `Every branch is read at one path before a value picks one, so a property means the same in ` +
-    `each: give it the same \`x-telo-eval\` in every branch declaring it, or another name where it ` +
-    `means something else.`
+    `each: give it the same \`x-telo-eval\` and \`x-telo-context\` in every branch declaring it, or ` +
+    `another name where it means something else.`
   );
 }
 

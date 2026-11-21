@@ -1,0 +1,15 @@
+kind: Telo.Application
+metadata: { name: Header }
+lang: en
+imports: { V: ../__fixtures__/views }
+targets: []
+---
+kind: V.Layout
+metadata: { name: layout }
+header:
+  - type: composite
+    ref:
+      kind: V.Data
+      source: { path: /api/me }
+      content: { type: text, text: Signed in }
+      loading: { type: text, text: Loading }

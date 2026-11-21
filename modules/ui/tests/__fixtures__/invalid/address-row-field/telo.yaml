@@ -12,13 +12,17 @@ schema:
       type: array
       items: { type: object, properties: { id: { type: integer }, name: { type: string } } }
 ---
-kind: Ui.Data
+kind: Ui.View
 metadata: { name: misspelledField }
-model: !ref Rows
-source: /api/rows
 content:
-  type: list
-  rows: !cel "data.items"
-  columns:
-    - value: !cel "row.name"
-      to: { kind: Ui.Navigate, href: { path: "/items/{id}", pathParams: { id: !cel "row.nmae" } } }
+  type: query
+  query:
+    kind: Ui.Query
+    model: !ref Rows
+    url: /api/rows
+  content:
+    - type: list
+      rows: !cel "data.items"
+      columns:
+        - value: !cel "row.name"
+          to: { kind: Ui.Navigate, href: { path: "/items/{id}", pathParams: { id: !cel "row.nmae" } } }

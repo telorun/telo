@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata: { name: Views }
 lang: en
-exports: { kinds: [Query, View, Page, Screen], resources: [Node] }
+exports: { kinds: [Query, View, Page, Screen, Layout], resources: [Node] }
 migrations:
   VIEWS_DATA_REPLACED:
     reason: A read is a query, and what is drawn over its answer belongs to the node that places it.
@@ -43,6 +43,8 @@ schema:
         children: { type: array, items: { $ref: "#" } }
         loading: { type: array, items: { $ref: "#" } }
         failure: { type: array, items: { $ref: "#" } }
+  $defs:
+    Region: { type: array, items: { $ref: "#" } }
 ---
 kind: Telo.Definition
 metadata: { name: Query }
@@ -77,3 +79,12 @@ schema:
   additionalProperties: false
   properties:
     pages: { type: array, items: { x-telo-ref: { kind: Self.Page, use: dependency } } }
+---
+kind: Telo.Definition
+metadata: { name: Layout }
+capability: Telo.Invocable
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    header: { $ref: "telo://Self/Node#/$defs/Region" }

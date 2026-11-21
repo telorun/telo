@@ -23,7 +23,7 @@ import {
   plainChainOf,
 } from "@telorun/templating";
 import type { AccessorProblem } from "./accessor-binding.js";
-import { accessorFields, accessorProblems } from "./accessor-binding.js";
+import { accessorChainPlaces, accessorFields, accessorProblems } from "./accessor-binding.js";
 import type { AliasResolver } from "./alias-resolver.js";
 import { renderChain } from "./callable-flags.js";
 import { parseCelSource, valueBrandHint } from "./cel-environment.js";
@@ -233,7 +233,18 @@ export class CelJudge {
     this.accessorsByPath = new Map();
     if (this.ruleApplies) {
       for (const field of accessorFields(m as Record<string, unknown>, this.sites)) {
-        this.accessorsByPath.set(field.path, accessorProblems(field));
+        const problems = accessorProblems(field);
+        if (!field.site.template) {
+          this.accessorsByPath.set(field.path, problems);
+          continue;
+        }
+        // Each value an accessor template holds is a leaf of its own.
+        for (const place of accessorChainPlaces(field)) {
+          this.accessorsByPath.set(place.path, problems.filter((problem) => problem.path === place.path));
+        }
+        for (const problem of problems) {
+          if (!this.accessorsByPath.has(problem.path)) this.accessorsByPath.set(problem.path, [problem]);
+        }
       }
     }
   }

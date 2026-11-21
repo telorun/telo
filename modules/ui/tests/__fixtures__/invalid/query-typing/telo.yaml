@@ -1,0 +1,41 @@
+kind: Telo.Application
+metadata: { name: InvalidQueryTyping }
+imports: { Ui: ../../../../ }
+---
+kind: Telo.JsonSchema
+metadata: { name: Account }
+schema: { type: object, required: [name], properties: { name: { type: string } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: ReportAnswer }
+schema: { type: object, required: [totalHours], properties: { totalHours: { type: number } } }
+---
+kind: Ui.View
+metadata: { name: placed }
+content: { type: value, value: !cel "params.slug" }
+---
+kind: Ui.Page
+metadata: { name: report }
+path: /report/{id}
+children:
+  - type: query
+    query: { kind: Ui.Query, model: !ref ReportAnswer, url: /api/report }
+    content: [{ type: value, value: !cel "data.totalHuors" }]
+  - type: query
+    query: { kind: Ui.Query, model: !ref Account, url: /api/account }
+    content: [{ type: value, value: !cel "data.nmae" }]
+  - type: query
+    query: { kind: Ui.Query, model: !ref ReportAnswer, url: /api/report }
+    content:
+      - type: box
+        children:
+          - type: query
+            query: { kind: Ui.Query, model: !ref Account, url: /api/account }
+            content: [{ type: value, value: !cel "data.nmae" }]
+  - type: query
+    query: { kind: Ui.Query, model: !ref Account, url: /api/account }
+    content: []
+    failure: [{ type: value, value: !cel "error.mesage" }]
+  - type: query
+    query: { kind: Ui.Query, model: !ref Account, url: /api/account }
+    content: [{ type: composite, ref: !ref placed }]

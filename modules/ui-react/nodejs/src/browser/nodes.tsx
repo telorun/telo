@@ -5,7 +5,6 @@ import { Displayed, type ButtonSpec } from "./display-button.js";
 import { ChatNode, type ChatNodeSpec } from "./chat/chat-node.js";
 import { CommandNode } from "./command-node.js";
 import { ComponentNode } from "./component.js";
-import { DataNode } from "./data.js";
 import { DestinationAnchor, resolveDestination, type DestinationWire } from "./destination.js";
 import { Filters } from "./filters.js";
 import { Form } from "./form.js";
@@ -19,6 +18,7 @@ import { ButtonNode, type ButtonNodeSpec } from "./button-node.js";
 import { MarkdownNode, type MarkdownNodeSpec } from "./markdown/markdown-node.js";
 import { MenuNode } from "./menu-node.js";
 import { Press, type PressSpec } from "./press.js";
+import { QueryNode } from "./query-node.js";
 import { RelatedContext, RelatedValue } from "./related-labels.js";
 import { EmbeddedContext, RecordLinkContext, RendererContext, RootsContext, underMount, VisibleContext } from "./renderer-context.js";
 import { NavbarNode, NavigationColumnNode, type NavbarNodeSpec, type NavigationColumnNodeSpec } from "./site-navigation.js";
@@ -285,8 +285,8 @@ function Drawn({ node, embedded }: { node: SpecNode; embedded: boolean }): React
           fill={node.fill === true}
         />
       );
-    case "data":
-      return <DataNode node={node} />;
+    case "query":
+      return <QueryNode node={node} />;
     case "listing":
       return <Listing node={node} embedded={embedded} />;
     case "form":

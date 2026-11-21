@@ -66,6 +66,7 @@ import {
   requestBodyTooLarge,
 } from "./request-body-limit.js";
 import { createFastifyTeloLogger } from "./fastify-telo-logger.js";
+import { OPENAPI_VERSION } from "./openapi-document.js";
 import { publishSpecServerUrlPolicy } from "./openapi-spec-servers.js";
 import { HostRoutes, publishHostRoutes } from "./host-routes.js";
 import { MalformedTargets } from "./malformed-target.js";
@@ -1174,7 +1175,7 @@ class HttpServer implements ResourceInstance {
       const servers = [{ url: "/" }];
       await this.app.register(swagger, {
         openapi: {
-          openapi: "3.0.0",
+          openapi: OPENAPI_VERSION,
           info: this.resource.openapi.info,
           servers,
         },

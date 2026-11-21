@@ -25,13 +25,13 @@ expect:
     - code: SCHEMA_VIOLATION
       message: "Ui.Page/homePage: /children/7 must NOT have additional properties ('href' is not allowed)"
     - code: SCHEMA_VIOLATION
-      message: "Ui.Page/homePage: /children/6/ref/content must NOT have additional properties ('href' is not allowed)"
+      message: "Ui.Page/homePage: /children/6/content/0 must NOT have additional properties ('href' is not allowed)"
     - code: SCHEMA_VIOLATION
       message: "Ui.Page/homePage: /children/8/ref/onSuccess must NOT have additional properties ('navigate' is not allowed)"
     - code: PATH_PARAMETER_UNBOUND
       message: "Ui.Page/homePage: the template 'path: /authors/{id}' of 'authorPage' (named at 'page') reads '{id}', which 'pathParams' does not bind. Add 'id' to 'pathParams'."
-    - code: KIND_NOT_EXPORTED
-      message: "Kind 'Ui.Close' is not exported by module 'Ui'."
+    - code: UNDEFINED_KIND
+      message: "No Telo.Definition found for kind 'Ui.Close': module 'Ui' declares no kind 'Close'."
     - code: CEL_UNKNOWN_IDENTIFIER
       message: "Ui.Page/homePage: !cel: 'row' is not available here — Ui.Page/homePage withholds it: a destination reads only the roots bound where it is written"
     - code: REFERENCE_KIND_MISMATCH
@@ -48,9 +48,9 @@ source: ./__fixtures__/invalid/destination-roots/telo.yaml
 expect:
   errors:
     - code: CEL_UNKNOWN_FIELD
-      message: "Ui.Data/team: !cel: 'row.idd' is not defined (available: id)"
+      message: "Ui.View/team: !cel: 'row.idd' is not defined (available: id)"
     - code: CEL_UNKNOWN_FIELD
-      message: "Ui.Data/team: !cel: 'data.ownr' is not defined (available: owner, members)"
+      message: "Ui.View/team: !cel: 'data.ownr' is not defined (available: owner, members)"
     - code: CEL_UNKNOWN_FIELD
       message: "Ui.Listing/people: !cel: 'row.idd' is not defined (available: id, name)"
     - code: CEL_UNKNOWN_IDENTIFIER

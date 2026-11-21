@@ -55,10 +55,14 @@ wins over a provider's implicit compile-eval: the field is left out of what the
 kernel evaluates when the resource is created, while everything beside it is
 still evaluated.
 
-A chain may start at a binding of every `x-telo-context` enclosing the field —
-its own and each one above it. An accessor field inside a named shape
-the kind's schema `$ref`s, recursive ones included, is an accessor field at every
-depth the data goes, with the bindings the regions on the way to it declare.
+A chain may start at a binding of every `x-telo-context` enclosing the place it
+is written — the field's own and each one above it, an inner binding hiding an
+outer one of the same name. The names are worked out at that concrete place, so
+an accessor field inside a named shape the kind's schema `$ref`s, recursive ones
+included, is an accessor field at every depth the data goes, each time with the
+bindings the regions on the way to that depth declare: a chain in a node of a
+list whose region binds `row` may start at `row`, and the same chain in a node
+outside every such list may not.
 
 A JSON Pointer `$ref` reads a member as if it were written in place: a member
 of a named shape (`$ref: "telo://Self/BoundAction#/properties/inputs"`) or of a
@@ -71,12 +75,13 @@ shape and is refused where it climbs above the shape's root, since nothing there
 says what holds the shape.
 
 Inside a `oneOf` / `anyOf`, a property two branches declare must have the same
-eval mode in each — the same `x-telo-eval`, at the same paths beneath it — though
-its type may differ. Every branch is read at one path before any value says
+eval mode in each — the same `x-telo-eval`, at the same paths beneath it, and the
+same `x-telo-context` regions at and beneath it, since a region is an eval
+meaning too — though its type may differ. Every branch is read at one path before any value says
 which one applies, so an accessor `text` in one branch would make `text` an
 accessor in every branch. `telo check` refuses such a union where it is declared
 and the kernel refuses every kind reaching it when it registers the kind, naming
-both branches and both modes. Give the other meaning another property name.
+both branches and what each declares. Give the other meaning another property name.
 `allOf` is a conjunction and is not judged.
 
 ## Where a binding exists
@@ -212,10 +217,95 @@ The same seven lines work in a browser, which is the point: a controller can put
 the binding in a document it serves, and the page resolves it against each row
 with no expression engine on the client.
 
+## Accessor templates
+
+A field whose value is a whole record of accessors — a request body built from
+a page's query parameters, search criteria nested a few levels deep — declares
+`x-telo-eval: accessor-template`. Its value may be a map or a list of accessor
+values, at any depth; each leaf is a plain chain or a literal:
+
+```yaml
+kind: Telo.Definition
+metadata:
+  name: Criteria
+capability: Telo.Provider
+schema:
+  type: object
+  properties:
+    criteria:
+      type: object
+      x-telo-eval: accessor-template
+      x-telo-context:
+        type: object
+        properties:
+          query: { x-telo-context-eval: accessor, type: object, additionalProperties: { type: string } }
+```
+
+```yaml
+kind: Search.Criteria
+metadata: { name: titleSearch }
+criteria: { match: { title: !cel "query.q" }, size: 20, tags: [news, !cel "query.tag"] }
+```
+
+Each leaf is judged as an accessor at its own path: a binding marked
+`x-telo-context-eval: accessor` is in scope there, a chain rooted at a binding
+that exists at no accessor is `CEL_UNKNOWN_IDENTIFIER`, and a computed value
+anywhere in the structure that is not a plain chain is `ACCESSOR_NOT_PLAIN_CHAIN`
+— refused again by the kernel at creation as `ERR_ACCESSOR_NOT_PLAIN_CHAIN`. A
+plain `accessor` field keeps its own grammar: `{ a: !cel "row.x" }` there is
+still `ACCESSOR_NOT_PLAIN_CHAIN`.
+
+A structure holding a chain reaches the controller as `{ map }` or `{ list }` of
+its entries' bindings, each leaf as a chain's `{ root, path }` or a literal's
+`{ value }`:
+
+```json
+{ "map": {
+    "match": { "map": { "title": { "root": "query", "path": ["q"] } } },
+    "size": { "value": 20 },
+    "tags": { "list": [{ "value": "news" }, { "root": "query", "path": ["tag"] }] } } }
+```
+
+A structure holding no chain is one literal: `criteria: { size: 20 }` arrives
+as `{ value: { size: 20 } }`, and a single chain written as the whole value is a
+single `{ root, path }`. A resolver handles the two structural forms beside the
+two leaf forms:
+
+```ts
+function resolveTemplate(binding, bindings) {
+  if ("map" in binding) {
+    return Object.fromEntries(Object.entries(binding.map).map(([key, entry]) => [key, resolveTemplate(entry, bindings)]));
+  }
+  if ("list" in binding) return binding.list.map((entry) => resolveTemplate(entry, bindings));
+  return resolve(binding, bindings);
+}
+```
+
+What the consumer does with a chain that resolves to nothing — leave its member
+out, send `null` — is the kind's to say and document.
+
+**A template judged against a declared type.** With
+`x-telo-value-schema-from: <location>` beside it, the structure is judged against
+the type the location names: a literal that does not fit or a missing member is
+`SCHEMA_VIOLATION` (`` `body` does not satisfy the type declared at `model`: / is
+missing required property 'period' ``), and a chain whose type or format does
+not fit its member is `CEL_TYPE_ERROR` — format-aware, as an accessor field is,
+so a string with no format at a member declared `format: date` is refused. The
+check types the value a chain holds when it holds one: a chain that may hold
+nothing (a nullable or optional member of its binding) is admitted at a required
+member.
+
+`x-telo-match-for` and `x-telo-text-values-for` cannot name an
+`accessor-template` field (`MATCH_FOR_INVALID`, `TEXT_VALUES_INVALID` at the
+kind): neither a schema match nor a message's placeholders can be judged over a
+structure. Inside a `oneOf` / `anyOf`, `accessor` and `accessor-template` are two
+eval modes like any other two.
+
 ## What a rule reads
 
 A [resource rule](./resource-rules.md) or a [referrer rule](./referrer-rules.md)
-reads an accessor field as the same binding, in every declaration it binds — so
+reads an accessor field as the same binding — an accessor template's `{ map }` /
+`{ list }` included, as plain data — in every declaration it binds — so
 a rule over a resource that fills such a field evaluates rather than being
 skipped for holding an expression, and may state a relation over what the field
 names (`this.value.root == 'row'`). A field holding something other than a
@@ -359,7 +449,8 @@ written and reaches the entry as a chain.
 
 - The annotation is a field's: the whole value is one chain or one literal.
   A map of accessors annotates the map's values (`additionalProperties`), a list
-  its `items`.
+  its `items`; a value that is a structure of accessors is an
+  `accessor-template` field.
 - Under a provider's implicit compile-eval, only the accessor field itself is
   left unevaluated: an expression beside it under the same top-level property is
   evaluated at creation. A `runtime` field still keeps its whole top-level

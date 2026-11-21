@@ -33,35 +33,39 @@ inputModel:
 request: { target: /api/comments }
 label: Comment
 ---
-kind: Ui.Data
+kind: Ui.View
 metadata: { name: lineTypo }
-model: !ref Revision
-source: /api/revision
 content:
-  type: markdown
-  value: !cel "data.body"
-  annotations:
-    rows: !cel "data.items"
-    line: !cel "row.lnie"
-    action: { action: !ref comment, inputs: { item: !cel "row.id" }, prompt: true }
+  type: query
+  query:
+    kind: Ui.Query
+    model: !ref Revision
+    url: /api/revision
+  content:
+    - type: markdown
+      value: !cel "data.body"
+      annotations:
+        rows: !cel "data.items"
+        line: !cel "row.lnie"
+        action: { action: !ref comment, inputs: { item: !cel "row.id" }, prompt: true }
 ---
-kind: Ui.Data
+kind: Ui.View
 metadata: { name: markdownNotString }
-model: !ref Revision
-source: /api/revision
-content: { type: markdown, value: !cel "data.seq" }
+content: { type: query, query: { kind: Ui.Query, model: !ref Revision, url: /api/revision }, content: [{ type: markdown, value: !cel "data.seq" }] }
 ---
-kind: Ui.Data
+kind: Ui.View
 metadata: { name: timeColumnNoFormat }
-model: !ref Revision
-source: /api/revision
 content:
-  type: list
-  rows: !cel "data.events"
-  columns: [{ type: time, value: !cel "row.type", relative: true }]
+  type: query
+  query:
+    kind: Ui.Query
+    model: !ref Revision
+    url: /api/revision
+  content:
+    - type: list
+      rows: !cel "data.events"
+      columns: [{ type: time, value: !cel "row.type", relative: true }]
 ---
-kind: Ui.Data
+kind: Ui.View
 metadata: { name: valueRelative }
-model: !ref Revision
-source: /api/revision
-content: { type: value, value: !cel "data.body", relative: true }
+content: { type: query, query: { kind: Ui.Query, model: !ref Revision, url: /api/revision }, content: [{ type: value, value: !cel "data.body", relative: true }] }

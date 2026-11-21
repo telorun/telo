@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata: { name: DataRemoved }
+imports: { Ui: ../../../../ }
+---
+kind: Ui.Data
+metadata: { name: account }
+model: { kind: Telo.JsonSchema, schema: { type: object } }

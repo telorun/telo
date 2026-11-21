@@ -2,7 +2,7 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { render, wireText, type Rendered } from "./harness.js";
-import { address, navigateTo, dataNode, operation } from "./spec-nodes.js";
+import { address, navigateTo, operation, queryNode } from "./spec-nodes.js";
 import { transcriptMarkdown } from "../src/browser/chat/chat-blocks.js";
 
 // The markdown renderer is a chunk fetched on first use; transforming it is slower than a test waits.
@@ -1328,7 +1328,7 @@ describe("the chat follows the page", () => {
         return undefined;
       },
     };
-    const { r, calls } = await show([dataNode({ source: address("/api/chat/conversations") }), chat({ operations: [] }, { refreshes: [address("/api/chat/conversations")] })], served(world), {
+    const { r, calls } = await show([queryNode({}, { id: "conversations", url: address("/api/chat/conversations") }), chat({ operations: [] }, { refreshes: [address("/api/chat/conversations")] })], served(world), {
       path: "/?conversation=c1",
     });
     const reads = () => calls.filter((call) => call.method === "GET" && call.path === "/conversations").length;
@@ -1343,7 +1343,7 @@ describe("the chat follows the page", () => {
 
   it("notifies its refreshes, over the conversation's id, when a send is admitted and when its turn ends", async () => {
     const events = tail();
-    const readers = [dataNode({ source: address("/api/chat/conversations") }), dataNode({ source: address("/api/chat/conversations/c1") })];
+    const readers = [queryNode({}, { id: "conversations", url: address("/api/chat/conversations") }), queryNode({}, { id: "conversation", url: address("/api/chat/conversations/c1") })];
     const refreshes = [address("/api/chat/conversations"), address("/api/chat/conversations/{id}", { id: { root: "conversation", path: ["id"] } })];
     const { r, calls } = await show(
       [...readers, chat({ operations: [] }, { refreshes })],

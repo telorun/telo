@@ -1,7 +1,7 @@
 # Conditions
 
 What a page shows can depend on data the browser holds — a record a
-[`Ui.Data`](data.md) read, a query parameter in the address, what a form holds
+[`query` node](nodes.md#the-query-node)'s read, a query parameter in the address, what a form holds
 now. A **condition** says so as data: it names a value and a schema the value
 must satisfy, and the renderer decides it in the browser, with no expression
 engine there.
@@ -26,7 +26,7 @@ reads `request` — `telo check` refuses either (`CEL_UNKNOWN_IDENTIFIER`).
 
 Content whose `shown` does not hold stays mounted, out of sight: a form keeps
 what was typed, a listing keeps its page, and nothing inside starts a request. A
-reload that a [reader](data.md) is asked for while hidden is remembered and
+reload that a [query](query.md) is asked for while hidden is remembered and
 read once when it is shown; a request already in flight completes into the kept
 state. Hiding and disabling are inverted with `not`.
 
@@ -60,6 +60,7 @@ conditions and for a form's validation alike:
 | `required`, `properties` | an object's members (members present only) |
 | `items`, `minItems`, `maxItems`, `uniqueItems` | a list (`items` is one schema) |
 | `minLength`, `maxLength`, `pattern` | a string; lengths count characters, `pattern` is an [`re2-pattern`](https://telo.run/docs/extend/telo-formats) searched in the text |
+| `format` | a string, `date` or `date-time`: holds only for text of that RFC 3339 form (a full-date; an instant with an offset), and for any value that is not a string. A page query parameter or a form value declared with it reads as absent when its text is not of the form |
 | `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf` | a number |
 
 Any other keyword (`if`, `format`, `$ref`, …) is a `SCHEMA_VIOLATION` where it
@@ -81,21 +82,21 @@ in.
 
 | Root | Where |
 | --- | --- |
-| `data` | inside a [`Ui.Data`](data.md)'s `content`, typed from its `model` |
-| `error` | inside a `Ui.Data`'s or a [`Ui.Action`](action.md#the-answer)'s `failure`: a `Ui.RequestError` |
+| `data` | inside a [`query` node](nodes.md#the-query-node)'s `children`, typed from the query's `model` |
+| `error` | inside a query node's or a [`Ui.Action`](action.md#the-answer)'s `failure`: a `Ui.RequestError` |
 | `result` | inside an action's `result`, and its `onSuccess` (`to`, `refreshes`): the answer, typed from `outputModel` |
 | `input` | inside an action's `request.target`, `result`, `failure` and `onSuccess`: the record sent, typed from `inputModel` |
-| `query` | wherever the resource or the page declares `query:` (a page, a reader, a listing's row actions); with none declared it is closed and empty |
+| `query` | wherever the resource or the page declares `query:` (a page, a query, a listing's row actions); with none declared it is closed and empty |
 | `values` | a form's or an action's field `shown`, an action's `enabled`, its `result` and `failure`, typed from the model |
 | `row` | a `list` node's column and row actions, a listing's row actions and layouts; typed as an element of what the list's `rows` names, or from the listing's model |
 
 Every root is read only by what is named — a condition's `at`, a `value` or
-`list` node, a reader's `source` — and never by an expression the
+`list` node, a query's `url` — and never by an expression the
 server evaluates: `!cel "data.x"` in a `text` is `CEL_UNKNOWN_IDENTIFIER`.
 
 ## Query parameters
 
-`Ui.QueryParameters` declares the query parameters a page or a reader reads,
+`Ui.QueryParameters` declares the query parameters a page or a query reads,
 each a string schema, or a list of strings for a key given more than once:
 
 ```yaml

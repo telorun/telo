@@ -16,6 +16,7 @@ describe("the schema interpreter", () => {
     [{ minLength: 3 }, "ab", ": Must be at least 3 characters"],
     [{ maxLength: 1 }, "ab", ": Must be at most 1 character"],
     [{ pattern: "^[a-z]+$" }, "A1", ": Is not in the expected format"],
+    [{ format: "date" }, "2026-02-30", ": Is not a valid date"],
     [{ minimum: 2 }, 1, ": Must be at least 2"],
     [{ maximum: 2 }, 3, ": Must be at most 2"],
     [{ exclusiveMinimum: 2 }, 2, ": Must be greater than 2"],

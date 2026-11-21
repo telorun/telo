@@ -21,18 +21,22 @@ kind: Telo.JsonSchema
 metadata: { name: Person }
 schema: { type: object, required: [id], properties: { id: { type: string }, name: { type: string } } }
 ---
-kind: Ui.Data
+kind: Ui.View
 metadata: { name: team }
-model: !ref Team
-source: /api/team
 content:
-  type: list
-  rows: !cel "data.members"
-  columns:
-    - value: !cel "row.id"
-      to:
-        kind: Ui.Navigate
-        href: { path: "/people/{id}", pathParams: { id: !cel "row.idd" }, queryParams: { owner: !cel "data.ownr" } }
+  type: query
+  query:
+    kind: Ui.Query
+    model: !ref Team
+    url: /api/team
+  content:
+    - type: list
+      rows: !cel "data.members"
+      columns:
+        - value: !cel "row.id"
+          to:
+            kind: Ui.Navigate
+            href: { path: "/people/{id}", pathParams: { id: !cel "row.idd" }, queryParams: { owner: !cel "data.ownr" } }
 ---
 kind: Ui.Listing
 metadata: { name: people }

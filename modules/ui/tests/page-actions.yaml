@@ -61,15 +61,15 @@ kind: Ui.Page
 metadata: { name: plan }
 path: /plans/{id}
 children:
-  - type: composite
-    ref:
-      kind: Ui.Data
+  - type: query
+    query:
+      kind: Ui.Query
       model: !ref PlanDetail
-      source:
+      url:
         path: "/api/plans/{id}"
         pathParams: { id: !cel "params.id" }
-      content:
-        type: stack
+    content:
+      - type: stack
         children:
           - type: button
             inputs:
@@ -82,15 +82,23 @@ children:
               kind: Ui.Action
               inputModel: !ref PlanDecision
               request:
-                target: { path: "/api/plans/{id}/decisions", pathParams: { id: !cel "input.id" } }
+                target:
+                  path: /api/plans/{id}/decisions
+                  pathParams:
+                    id: !cel "input.id"
               label: Approve
               fields: [id, decision, revision, hash, author]
           - type: list
             rows: !cel "data.lines"
-            rowStyle: { by: !cel "row.op", cases: { added: success, removed: danger } }
+            rowStyle:
+              by: !cel "row.op"
+              cases: { added: success, removed: danger }
             columns:
               - value: !cel "row.text"
-                style: { by: !cel "row.op", cases: { context: muted }, default: strong }
+                style:
+                  by: !cel "row.op"
+                  cases: { context: muted }
+                  default: strong
           - type: button
             inputs:
               id: !cel "params.id"
@@ -125,7 +133,7 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual: !cel >-
-        cel.bind(b, steps.page.result.children[0].content.children[0], {
+        cel.bind(b, steps.page.result.children[0].content[0].children[0], {
           'members': sort(keys(b)),
           'inputs': b.inputs,
           'prompted': b.prompt.fields.map(f, f.property),
@@ -146,7 +154,7 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual: !cel >-
-        steps.page.result.children[0].content.children.filter(c, c.type == 'button').map(b, [b.inputs.decision, b.action.label.text, b.prompt.fields.map(f, f.property)])
+        steps.page.result.children[0].content[0].children.filter(c, c.type == 'button').map(b, [b.inputs.decision, b.action.label.text, b.prompt.fields.map(f, f.property)])
       expected:
         - [{ value: approve }, Approve, [author]]
         - [{ value: request_changes }, Decide, [author, note]]
@@ -155,7 +163,7 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual: !cel >-
-        cel.bind(l, steps.page.result.children[0].content.children[1], {
+        cel.bind(l, steps.page.result.children[0].content[0].children[1], {
           'rowStyle': l.rowStyle,
           'style': l.columns[0].style
         })
@@ -169,13 +177,13 @@ source: ./__fixtures__/invalid/page-actions/lib/telo.yaml
 expect:
   errors:
     - code: CONTRACT_INPUTS_MISMATCH
-      message: "Ui.Data/authorUnprompted: inputs at 'content.inputs' do not satisfy decide's declared inputType: / is missing required property 'author'"
+      message: "Ui.View/authorUnprompted: inputs at 'content.content[0].inputs' do not satisfy decide's declared inputType: / is missing required property 'author'"
     - code: CONTRACT_INPUTS_MISMATCH
-      message: "Ui.Data/hashMisspelled: inputs at 'content.inputs' do not satisfy decide's declared inputType: / must NOT have additional properties ('hsh' is not allowed)"
+      message: "Ui.View/hashMisspelled: inputs at 'content.content[0].inputs' do not satisfy decide's declared inputType: / must NOT have additional properties ('hsh' is not allowed)"
     - code: RESOURCE_RULE_VIOLATED
       message: "Ui.Action/commentIncomplete: leaves a property the input model requires with no field"
     - code: CEL_UNKNOWN_FIELD
-      message: "Ui.Data/revisionTypo: !cel: 'data.plan.latestRevison' is not defined (available: id, title, latestRevision)"
+      message: "Ui.View/revisionTypo: !cel: 'data.plan.latestRevison' is not defined (available: id, title, latestRevision)"
 ---
 kind: Assert.Manifest
 metadata: { name: stylesRefused }
@@ -183,13 +191,13 @@ source: ./__fixtures__/invalid/list-styles/telo.yaml
 expect:
   errors:
     - code: ACCESSOR_NOT_PLAIN_CHAIN
-      message: "Ui.Data/rowStyleComputed: 'content.rowStyle.by: !cel \"row.op + 's'\"' is not a plain chain"
+      message: "Ui.View/rowStyleComputed: 'content.content[0].rowStyle.by: !cel \"row.op + 's'\"' is not a plain chain"
     - code: ACCESSOR_NOT_PLAIN_CHAIN
-      message: "Ui.Data/cellStyleComputed: 'content.columns[0].style.by: !cel \"size(row.op)\"' is not a plain chain"
+      message: "Ui.View/cellStyleComputed: 'content.content[0].columns[0].style.by: !cel \"size(row.op)\"' is not a plain chain"
 ---
 kind: Assert.Manifest
 metadata: { name: buttonInputsAtRuntime }
 source: ./__fixtures__/invalid/page-actions/telo.yaml
 expect:
-  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Ui.Action/commentIncomplete: leaves a property the input model requires with no field, so a valid record could never be sent. List a field for every required property, or leave `fields` out where each one is a scalar or a list of scalars." }, { code: CONTRACT_INPUTS_MISMATCH, message: "Ui.Data/authorUnprompted: inputs at 'content.inputs' do not satisfy decide's declared inputType: / is missing required property 'author'" }, { code: CONTRACT_INPUTS_MISMATCH, message: "Ui.Data/hashMisspelled: inputs at 'content.inputs' do not satisfy decide's declared inputType: / must NOT have additional properties ('hsh' is not allowed)" }, { code: CEL_UNKNOWN_FIELD, message: "Ui.Data/revisionTypo: !cel: 'data.plan.latestRevison' is not defined (available: id, title, latestRevision)" }]
-  runFails: "Ui.Data 'authorUnprompted' content: 'inputs' cannot make a record of the action's input model: required input 'author' is not bound."
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Ui.Action/commentIncomplete: leaves a property the input model requires with no field, so a valid record could never be sent. List a field for every required property, or leave `fields` out where each one is a scalar or a list of scalars." }, { code: CONTRACT_INPUTS_MISMATCH, message: "Ui.View/authorUnprompted: inputs at 'content.content[0].inputs' do not satisfy decide's declared inputType: / is missing required property 'author'" }, { code: CONTRACT_INPUTS_MISMATCH, message: "Ui.View/hashMisspelled: inputs at 'content.content[0].inputs' do not satisfy decide's declared inputType: / must NOT have additional properties ('hsh' is not allowed)" }, { code: CEL_UNKNOWN_FIELD, message: "Ui.View/revisionTypo: !cel: 'data.plan.latestRevison' is not defined (available: id, title, latestRevision)" }]
+  runFails: "Ui.View 'authorUnprompted' content.content[0]: 'inputs' cannot make a record of the action's input model: required input 'author' is not bound."

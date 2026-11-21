@@ -1,0 +1,74 @@
+kind: Telo.Application
+metadata: { name: InvalidQueries }
+imports: { Ui: ../../../../ }
+---
+kind: Telo.JsonSchema
+metadata: { name: ReportRequest }
+schema:
+  type: object
+  additionalProperties: false
+  required: [period]
+  properties:
+    period:
+      type: object
+      additionalProperties: false
+      required: [from, to]
+      properties: { from: { type: string, format: date }, to: { type: string, format: date } }
+---
+kind: Telo.JsonSchema
+metadata: { name: ReportAnswer }
+schema: { type: object, required: [totalHours], properties: { totalHours: { type: number } } }
+---
+kind: Ui.Page
+metadata: { name: report }
+path: /report
+children:
+  - type: query
+    query:
+      kind: Ui.Query
+      model: !ref ReportAnswer
+      url: /api/report
+      input:
+        method: GET
+        model: !ref ReportRequest
+        body: { period: { from: "2026-11-01", to: "2026-11-15" } }
+    content: []
+  - type: query
+    query:
+      kind: Ui.Query
+      model: !ref ReportAnswer
+      url: /api/report
+      input:
+        model: !ref ReportRequest
+        body: { perod: { from: "2026-11-01", to: "2026-11-15" } }
+    content: []
+  - type: query
+    query:
+      kind: Ui.Query
+      model: !ref ReportAnswer
+      query: { from: { type: string }, to: { type: string, format: date } }
+      url: /api/report
+      input:
+        model: !ref ReportRequest
+        body: { period: { from: !cel "query.from", to: !cel "query.to" } }
+    content: []
+  - type: query
+    query:
+      kind: Ui.Query
+      model: !ref ReportAnswer
+      query: { from: { type: string, format: time } }
+      url: /api/report
+    content: []
+  - type: query
+    query:
+      kind: Ui.Query
+      model: !ref ReportAnswer
+      query: { from: { type: string, format: date } }
+      url: /api/report
+      input:
+        model: !ref ReportRequest
+        body: { period: { from: !cel "query.from + 'T00:00'", to: "2026-11-15" } }
+    content: []
+  - type: query
+    query: !ref ReportAnswer
+    content: []

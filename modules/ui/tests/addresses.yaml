@@ -38,7 +38,17 @@ children:
     text: Go
     items:
       - { type: link, text: Archive, to: { kind: Ui.Navigate, href: { path: !ref archive, queryParams: { tag: x } } } }
-  - { type: composite, ref: !ref account }
+  - type: query
+    query: !ref account
+    content:
+      - type: stack
+        children:
+          - { type: value, value: !cel "data.home", to: { kind: Ui.Navigate, href: { path: !cel "data.home" } } }
+          - type: list
+            rows: !cel "data.items"
+            columns:
+              - value: !cel "row.name"
+                to: { kind: Ui.Navigate, href: { path: "/items/{id}", pathParams: { id: !cel "row.id" }, queryParams: { from: !cel "query.tag" } } }
 ---
 kind: Telo.JsonSchema
 metadata: { name: Account }
@@ -52,23 +62,14 @@ schema:
         type: object
         properties: { id: { type: integer }, name: { type: string, title: Name } }
 ---
-kind: Ui.Data
+kind: Ui.Query
 metadata: { name: account }
 model: !ref Account
 query: { tag: { type: string } }
-source:
+url:
   path: "/api/accounts/{tag}"
   pathParams: { tag: !cel "query.tag" }
   queryParams: { expand: [items, home] }
-content:
-  type: stack
-  children:
-    - { type: value, value: !cel "data.home", to: { kind: Ui.Navigate, href: { path: !cel "data.home" } } }
-    - type: list
-      rows: !cel "data.items"
-      columns:
-        - value: !cel "row.name"
-          to: { kind: Ui.Navigate, href: { path: "/items/{id}", pathParams: { id: !cel "row.id" }, queryParams: { from: !cel "query.tag" } } }
 ---
 kind: Telo.Sequence
 metadata: { name: main }
@@ -117,7 +118,7 @@ steps:
   - name: reader
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "{'source': steps.read.result.children[4].source, 'content': steps.read.result.children[4].content}"
+      actual: !cel "{'source': steps.read.result.children[4].query.url, 'content': steps.read.result.children[4].content[0]}"
       expected:
         source:
           path: { value: "/api/accounts/{tag}" }

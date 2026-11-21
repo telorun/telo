@@ -92,6 +92,6 @@ steps:
         after: !cel "steps.inboxAfter.result.body.tickets.map(t, t.status)"
       expected:
         before: [open, open, open]
-        page: [text, data]
+        page: [text, query]
         closed: { closed: true, id: 2 }
         after: [open, closed, open]

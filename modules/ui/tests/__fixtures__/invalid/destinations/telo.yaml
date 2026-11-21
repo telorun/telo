@@ -33,12 +33,17 @@ children:
   # KIND_NOT_EXPORTED — closing is no destination.
   - { type: link, text: Done, to: { kind: Ui.Close } }
   # SCHEMA_VIOLATION — `href` is gone from `value`.
-  - type: composite
-    ref:
-      kind: Ui.Data
+  - type: query
+    query:
+      kind: Ui.Query
       model: !ref Author
-      source: /api/authors/ada
-      content: { type: value, value: !cel "data.id", href: { path: !ref authorPage, pathParams: { id: ada } } }
+      url: /api/authors/ada
+    content:
+      - type: value
+        value: !cel "data.id"
+        href:
+          path: !ref authorPage
+          pathParams: { id: ada }
   # SCHEMA_VIOLATION — `href` is gone from `link`.
   - { type: link, text: Authors, href: /authors }
   # SCHEMA_VIOLATION — `onSuccess.navigate` is gone.

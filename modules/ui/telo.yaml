@@ -13,20 +13,53 @@ metadata:
     custom components and design tokens — rendered into an admin panel or
     back-office screen without frontend code.
 requires:
-  # 0.137.0 refuses this file: a destination's roots hold `x-telo-context-withheld`
-  # beside `x-telo-context-from-referrer`. Measured by `telo release floor`.
-  telo: ">=0.136.0"
+  # Measured by `telo release floor`: 0.137.0 refuses this file.
+  telo: ">=0.138.0"
+restrictions:
+  - requires: { telo: ">=unreleased" }
+    reason: >-
+      Ui.Query.input.body is an accessor-template field, and a query node types
+      its `query` root through the reference to its query; earlier runtimes
+      neither type nor deliver them.
 lang: en
 # The conformance rows a renderer's tests read: the interpreted profile's,
 # which control fits which property, what a listing's read plan requests, and how
-# text typed into a search box becomes filter values.
-files: [conformance/match.json, conformance/control-fits.json, conformance/listing-reads.json, conformance/addresses.json, conformance/current-location.json, conformance/refreshes.json, conformance/filter-tokens.json]
+# text typed into a search box becomes filter values, and what a query's body
+# template resolves to.
+files: [conformance/match.json, conformance/control-fits.json, conformance/listing-reads.json, conformance/addresses.json, conformance/current-location.json, conformance/refreshes.json, conformance/filter-tokens.json, conformance/template-bindings.json]
 # ui's own texts translated, one `Self.Translations` per language.
 include: [./translations/de.yaml, ./translations/es.yaml, ./translations/fr.yaml, ./translations/hi.yaml, ./translations/it.yaml, ./translations/ja.yaml, ./translations/ko.yaml, ./translations/nl.yaml, ./translations/pl.yaml, ./translations/pt.yaml, ./translations/ru.yaml, ./translations/tr.yaml, ./translations/uk.yaml, ./translations/zh.yaml]
 imports: { Font: ../font, DataModel: ../data-model, Conversation: ../conversation }
+migrations:
+  UI_DATA_REPLACED:
+    reason: Ui.Data is replaced by a query node over a Ui.Query; run `telo migrate`
+    rules:
+      - rewrite: Self.Data
+        match: { type: object, required: [source, content] }
+        move: { /source: /url }
+        remove: [/content, /loading, /failure]
+        set: { kind: Self.Query }
+      - rewrite: Self.Node
+        match: { type: object, required: [type, ref], properties: { type: { const: composite } } }
+        resolve: { data: { at: /ref, before: Self.Data } }
+        move: { /ref: /query }
+        copy: { data#/content: /content/0, data#/loading: /loading/0, data#/failure: /failure/0 }
+        set: { type: query }
+      - rewrite: Self.Data
+        match: { type: object, required: [source, content] }
+        move:
+          /model: /content/query/model
+          /query: /content/query/query
+          /source: /content/query/url
+          /reloadOn: /content/query/reloadOn
+          /reloadEvery: /content/query/reloadEvery
+          /content: /content/content/0
+          /loading: /content/loading/0
+          /failure: /content/failure/0
+        set: { kind: Self.View, content: { type: query, query: { kind: Self.Query } } }
 exports:
-  kinds: [Translations, Composite, Surface, Overlay, ViewportOverlay, Dialog, Drawer, Popover, InlineSurface, Panel, PageSurface, Destination, Navigate, OpenPage, FilterPlacement, FoldingFilterPlacement, AbovePlacement, AsidePlacement, CollapsiblePlacement, OverlayPlacement, SearchBoxPlacement, StateStore, LocalStore, SessionStore, NavigationPlacement, CompactNavigationPlacement, HeaderNavigation, OverlayNavigation, TabBarNavigation, Icon, FileIcon, ButtonDisplay, TextButton, IconButton, Page, PageLayout, Pane, NavigationPane, Navbar, NavigationColumn, View, CollectionSource, ConversationSource, CollectionPresentation, Chat, SplitView, Listing, ListingLayout, TableLayout, ListLayout, CardLayout, BoardLayout, CalendarLayout, TimelineLayout, TreeLayout, ComponentLayout, Form, Action, Filters, Component, ComponentExport, DesignTokens, Data, Field, InputField, ChoiceField, PickerField, DateRangeField, OptionSource, CollectionOptions]
-  resources: [chineseTranslations, dutchTranslations, frenchTranslations, germanTranslations, hindiTranslations, italianTranslations, japaneseTranslations, koreanTranslations, polishTranslations, portugueseTranslations, russianTranslations, spanishTranslations, turkishTranslations, ukrainianTranslations, BoundText, Match, Condition, Enablement, RequestError, AppRelativeReference, QueryParameters, Address, RequestTarget, RefreshTarget, Control, FieldGroup, StateRecord, FieldAnswer, OptionSourceSpec, Relations, ListingLayoutSpec, ListingLayoutAnswer, controlFits, BoundAction, Command, Press, Grouping, Span, Node, SpecNode, OverlaySpec, SurfaceSpec, DestinationSpec, PressSpec, ButtonDisplaySpec, AfterCreate, AfterEdit, UnsavedInput, FilterPolicy, FilterDisplay, FilterPlacementSpec, StateStoreSpec, Navigation, NavigationItem, NavigationPlacementSpec, PageWidth, Frame, RowActionsDisplay, Aside, PageRoute]
+  kinds: [Translations, Composite, Surface, Overlay, ViewportOverlay, Dialog, Drawer, Popover, InlineSurface, Panel, PageSurface, Destination, Navigate, OpenPage, FilterPlacement, FoldingFilterPlacement, AbovePlacement, AsidePlacement, CollapsiblePlacement, OverlayPlacement, SearchBoxPlacement, StateStore, LocalStore, SessionStore, NavigationPlacement, CompactNavigationPlacement, HeaderNavigation, OverlayNavigation, TabBarNavigation, Icon, FileIcon, ButtonDisplay, TextButton, IconButton, Page, PageLayout, Pane, NavigationPane, Navbar, NavigationColumn, View, CollectionSource, ConversationSource, CollectionPresentation, Chat, SplitView, Listing, ListingLayout, TableLayout, ListLayout, CardLayout, BoardLayout, CalendarLayout, TimelineLayout, TreeLayout, ComponentLayout, Form, Action, Filters, Component, ComponentExport, DesignTokens, Query, Field, InputField, ChoiceField, PickerField, DateRangeField, OptionSource, CollectionOptions]
+  resources: [chineseTranslations, dutchTranslations, frenchTranslations, germanTranslations, hindiTranslations, italianTranslations, japaneseTranslations, koreanTranslations, polishTranslations, portugueseTranslations, russianTranslations, spanishTranslations, turkishTranslations, ukrainianTranslations, BoundText, Match, Condition, Enablement, RequestError, AppRelativeReference, QueryParameters, Address, RequestTarget, RefreshTarget, Control, FieldGroup, StateRecord, FieldAnswer, OptionSourceSpec, Relations, ListingLayoutSpec, ListingLayoutAnswer, controlFits, BoundAction, Command, Press, Grouping, Span, Node, SpecNode, OverlaySpec, SurfaceSpec, DestinationSpec, QuerySpec, PressSpec, ButtonDisplaySpec, AfterCreate, AfterEdit, UnsavedInput, FilterPolicy, FilterDisplay, FilterPlacementSpec, StateStoreSpec, Navigation, NavigationItem, NavigationPlacementSpec, PageWidth, Frame, RowActionsDisplay, Aside, PageRoute]
   # The entry point a renderer's controller bundle resolves `@telorun/ui` to:
   # how a built browser entry becomes the files a page loads, so a renderer
   # addresses its own entries exactly as a placed component's are addressed.
@@ -91,6 +124,7 @@ schema:
     minLength: { type: integer, minimum: 0 }
     maxLength: { type: integer, minimum: 0 }
     pattern: { type: string, format: re2-pattern }
+    format: { enum: [date, date-time] }
     minimum: { type: number }
     maximum: { type: number }
     exclusiveMinimum: { type: number }
@@ -1163,6 +1197,42 @@ schema:
         when: { type: boolean, default: true }
         shown: { $ref: "telo:Ui/Condition" }
         fill: { type: boolean, default: false }
+    # One query's answer drawn: `content` over `data`, `loading` before the
+    # first answer, `failure` over `error`; each also over the query's own
+    # `query` and the placing page's `params`. A query drawn by several nodes is
+    # read once.
+    - additionalProperties: false
+      required: [type, query, content]
+      properties:
+        type: { const: query }
+        query: { x-telo-ref: { kind: Self.Query, use: dependency } }
+        content:
+          type: array
+          items: { $ref: "#" }
+          x-telo-context:
+            type: object
+            properties:
+              data: { x-telo-context-ref-from: query/model, x-telo-context-eval: accessor }
+              query: { x-telo-context-eval: accessor, x-telo-context-from: query/query, type: object, properties: {}, additionalProperties: false }
+        loading:
+          type: array
+          items: { $ref: "#" }
+          x-telo-context:
+            type: object
+            properties:
+              query: { x-telo-context-eval: accessor, x-telo-context-from: query/query, type: object, properties: {}, additionalProperties: false }
+        failure:
+          type: array
+          items: { $ref: "#" }
+          x-telo-context:
+            type: object
+            properties:
+              error: { x-telo-context-eval: accessor, $ref: "telo:Ui/RequestError" }
+              query: { x-telo-context-eval: accessor, x-telo-context-from: query/query, type: object, properties: {}, additionalProperties: false }
+        style: { $ref: "#/$defs/Style" }
+        when: { type: boolean, default: true }
+        shown: { $ref: "telo:Ui/Condition" }
+        fill: { type: boolean, default: false }
     # A piece of chrome, replaced by the node the pane answers and left out when
     # it answers none: invoked per request where the tree is delivered per
     # request, once when the composite holding it is created.
@@ -1569,23 +1639,16 @@ schema:
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
         fill: { type: boolean }
-    # Data read when it is drawn, under the record contract: `content` drawn
-    # over `data` once an answer is in, `loading` before the first, `failure`
-    # over `error` when the read does not succeed.
+    # One query's answer drawn: `content` once an answer is in, `loading`
+    # before the first, `failure` when the read does not succeed.
     - additionalProperties: false
-      required: [type, schema, source, query, content, loading, failure, reloadOn, fill]
+      required: [type, query, content, loading, failure, fill]
       properties:
-        type: { const: data }
-        schema: { type: object }
-        source: { $ref: "#/$defs/Address" }
-        # The declared query parameters, by name; empty when none is.
-        query: { type: object }
-        content: { $ref: "#" }
-        loading: { $ref: "#" }
-        failure: { $ref: "#" }
-        reloadOn: { type: array, items: { enum: [focus, unauthorized] } }
-        # Present when the record is read again on a timer: the interval in milliseconds.
-        reloadEvery: { type: integer, minimum: 5000 }
+        type: { const: query }
+        query: { $ref: "telo:Ui/QuerySpec" }
+        content: { type: array, items: { $ref: "#" } }
+        loading: { type: array, items: { $ref: "#" } }
+        failure: { type: array, items: { $ref: "#" } }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
         fill: { type: boolean }
@@ -3672,13 +3735,14 @@ schema:
   properties:
     content:
       title: Content
-      description: The node this view stands for, over the placing page's `params`.
+      description: The node this view stands for, over the `params` and `query` in force where it is placed.
       $ref: "telo://Self/Node"
       x-telo-context:
         type: object
         properties:
           request: { $ref: "telo://Self/Node#/$defs/CompositeRequest", x-telo-context-eval: runtime }
           params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
+          query: { x-telo-context-eval: accessor, x-telo-context-from-referrer: query }
 ---
 # A piece of chrome placed by a `pane` node: invoked with the request where the
 # tree placing it is delivered per request (a page's children, a layout region),
@@ -3979,24 +4043,67 @@ schema:
       description: The layout the page is drawn in. One with nothing written draws the page with no chrome.
       x-telo-ref: { kind: Self.PageLayout, use: call }
 ---
-kind: Telo.Definition
-metadata:
-  name: Data
-  description: >-
-    Loads a record when a page is drawn and shows content built from it: an
-    account panel, a sign-in gate, a context card over one API answer. Draws a
-    loading state before the first answer and a failure state for a refused
-    read, reloads on window focus, on a timer or when a request inside answers
-    401, and fills the read from the page's query parameters and path
-    variables.
-capability: Telo.Provider
-extends: Self.Composite
-controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#DataController]
+# What a renderer receives of one query, every member present: `id` the
+# declaration's identity, so every node drawing it shares one read; `method`
+# `GET` when there is no `input`; `input` null or the body's bindings.
+kind: Telo.JsonSchema
+metadata: { name: QuerySpec }
 schema:
   type: object
-  x-telo-text-keys: [Self.Translations]
   additionalProperties: false
-  required: [model, source, content]
+  required: [id, schema, method, url, input, query, reloadOn]
+  properties:
+    id: { type: string }
+    schema: { type: object }
+    method: { enum: [GET, QUERY, POST] }
+    url: { $ref: "telo:Ui/SpecNode#/$defs/Address" }
+    input:
+      anyOf:
+        - { type: "null" }
+        - type: object
+          additionalProperties: false
+          required: [body]
+          properties: { body: { $ref: "#/$defs/Template" } }
+    # The declared query parameters, by name; empty when none is.
+    query: { type: object }
+    reloadOn: { type: array, items: { enum: [focus, unauthorized] } }
+    # Present when the read is sent again on a timer: the interval in milliseconds.
+    reloadEvery: { type: integer, minimum: 5000 }
+  $defs:
+    # A body: a path from a named root, a fixed value, or a map or list of them.
+    Template:
+      oneOf:
+        - { $ref: "telo:Ui/SpecNode#/$defs/Binding" }
+        - type: object
+          additionalProperties: false
+          required: [map]
+          properties: { map: { type: object, additionalProperties: { $ref: "#/$defs/Template" } } }
+        - type: object
+          additionalProperties: false
+          required: [list]
+          properties: { list: { type: array, items: { $ref: "#/$defs/Template" } } }
+---
+kind: Telo.Definition
+metadata:
+  name: Query
+  description: >-
+    A read a page declares once and any number of places draw: the shape of
+    the answer, where it is read from, an optional structured request body
+    composed from the page's query parameters and path variables, and when it
+    is read again — on window focus, on a timer or after a 401. Draws nothing
+    itself; nodes drawing the same query share one request.
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#QueryController]
+schema:
+  type: object
+  additionalProperties: false
+  required: [model, url]
+  # The read's two roots, `query` and `params`, are in force at every site of the query.
+  x-telo-context:
+    type: object
+    properties:
+      query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
+      params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
   examples:
     - model:
         kind: Telo.JsonSchema
@@ -4004,88 +4111,67 @@ schema:
           type: object
           required: [authorized]
           properties: { authorized: { type: boolean }, email: { type: string } }
-      source: { path: /api/auth }
+      url: /api/auth
       reloadOn: [focus, unauthorized]
-      content:
-        type: stack
-        children:
-          - type: value
-            value: !cel "data.email"
-            shown:
-              at: !cel "data.authorized"
-              matches: { const: true }
   properties:
     model:
       title: Model
-      description: The shape of the record the read answers with.
+      description: The shape of the answer; a 2xx JSON object valid against it is a success.
       x-telo-ref: { kind: Telo.Type, use: schema }
+    url:
+      title: URL
+      description: >-
+        Where the answer is read from: an app-relative path, or a path template
+        filled from `query` and `params` with query parameters appended. A
+        value that holds nothing leaves the read unsent.
+      $ref: "telo://Self/RequestTarget"
+    input:
+      title: Input
+      description: >-
+        What the read sends as a JSON body. Without it the read is `GET`.
+      type: object
+      additionalProperties: false
+      required: [model, body]
+      properties:
+        method:
+          title: Method
+          description: >-
+            `QUERY`, the safe method with a body, unless written `POST` for an
+            intermediary that does not forward `QUERY`.
+          enum: [QUERY, POST]
+          default: QUERY
+        model:
+          title: Model
+          description: The shape of the body, which `body` is judged against.
+          x-telo-ref: { kind: Telo.Type, use: schema }
+        body:
+          title: Body
+          description: >-
+            The body as a template: a map or list to any depth, each leaf a
+            plain chain over `query` and `params` or a literal. A chain holding
+            nothing leaves its member out.
+          x-telo-eval: accessor-template
+          x-telo-value-schema-from: /input/model
     query:
       title: Query
       description: >-
-        The page query parameters this reader reads, each a string or a list of
+        The page query parameters this read uses, each a string or a list of
         strings for a key given more than once. Read as `query`.
       $ref: "telo://Self/QueryParameters"
-    source:
-      title: Source
-      description: >-
-        Where the record is read from with `GET`: an app-relative path, or a
-        path template filled from `query` and `params` with query parameters
-        appended. A value that holds nothing leaves the read unsent.
-      $ref: "telo://Self/RequestTarget"
-      x-telo-context:
-        type: object
-        properties:
-          query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
-          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
-    content:
-      title: Content
-      description: What is drawn once an answer is in, over `data`, `query` and `params`.
-      $ref: "telo://Self/Node"
-      x-telo-context:
-        type: object
-        properties:
-          request: { $ref: "telo://Self/Node#/$defs/CompositeRequest", x-telo-context-eval: runtime }
-          data: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
-          query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
-          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
-    loading:
-      title: Loading
-      description: What is drawn before the first answer. Omitted, the muted text `loading`.
-      $ref: "telo://Self/Node"
-      x-telo-context:
-        type: object
-        properties:
-          request: { $ref: "telo://Self/Node#/$defs/CompositeRequest", x-telo-context-eval: runtime }
-          query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
-          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
-    failure:
-      title: Failure
-      description: >-
-        What is drawn when the read does not succeed, over `error`, `query`
-        and `params`.
-        Omitted, the error's code and message.
-      $ref: "telo://Self/Node"
-      x-telo-context:
-        type: object
-        properties:
-          request: { $ref: "telo://Self/Node#/$defs/CompositeRequest", x-telo-context-eval: runtime }
-          error: { x-telo-context-eval: accessor, $ref: "telo://Self/RequestError" }
-          query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
-          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
     reloadOn:
       title: Reload on
       description: >-
-        What reads the record again: `focus` — the window regains focus or the
+        What reads the answer again: `focus` — the window regains focus or the
         page returns from the back/forward cache — and `unauthorized` — a
-        request made inside the content answers 401.
+        request made inside a node drawing it answers 401.
       type: array
       uniqueItems: true
       items: { enum: [focus, unauthorized] }
     reloadEvery:
       title: Reload every
       description: >-
-        How often the record is read again while it is shown, at least `5s`.
-        Omitted, it is not read on a timer.
+        How often the answer is read again while a node drawing it is shown, at
+        least `5s`. Omitted, it is not read on a timer.
       x-telo-type: { name: Telo.Duration, minimum: 5s }
 ---
 # A collection as the browser reaches it: what it is and where its list

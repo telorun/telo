@@ -35,14 +35,16 @@ exports:
 assets: [./assets/]
 sources:
   scalar:
-    version: 1.44.6
+    version: 1.80.0
     purl: pkg:npm/%40scalar/fastify-api-reference
+    contains:
+      - { purl: pkg:npm/%40scalar/api-reference, version: 1.80.0 }
     url: https://registry.npmjs.org/@scalar/{upstream}/-/{upstream}-{version}.tgz
     archive: tar.gz
     notices: [./notices/scalar.LICENSE]
     entries:
       ./assets/scalar/standalone.js:
-        { upstream: fastify-api-reference, member: package/dist/js/standalone.js, sha256: 06257160bce05df2dd25eeced830c5e3de2ac82e59bd2861db74fc068a4e429d, executable: false }
+        { upstream: api-reference, member: package/dist/browser/standalone.js, sha256: 9ddcc35592b1943605a8a8bd0a637d5173cdb31311d61c0c96b75212a6841acf, executable: false }
       ./notices/scalar.LICENSE:
         { upstream: fastify-api-reference, member: package/LICENSE, sha256: 380cd0a6ad700e1f821f2a509f0dd9ff835041cee2d43daf5dedc1adb2bcc620, executable: false }
 ---

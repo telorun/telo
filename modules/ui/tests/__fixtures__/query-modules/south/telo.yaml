@@ -1,0 +1,9 @@
+kind: Telo.Library
+metadata: { name: South, version: 1.0.0 }
+imports: { Ui: ../../../../ }
+exports: { resources: [account] }
+---
+kind: Ui.Query
+metadata: { name: account }
+model: { kind: Telo.JsonSchema, schema: { type: object } }
+url: /api/south

@@ -31,6 +31,8 @@ export type DeclaredDefinition =
       readonly module: string;
       readonly exported: readonly string[];
     }
+  /** A kind spelled through an import whose module declares no such kind. */
+  | { readonly status: "undeclared"; readonly module: string; readonly name: string }
   /** A kind spelled by the canonical name of a module only an import loads. */
   | { readonly status: "unimported"; readonly prefix: string; readonly ownAliases: readonly string[] }
   | { readonly status: "builtin-vocabulary" }
@@ -76,10 +78,13 @@ export function declaredDefinitionOf(m: ResourceManifest, scope: DeclaredDefinit
   const rooted = aliases.resolveKindResult(m.kind);
   const kindResult =
     scoped?.status === "ok" ? scoped : rooted.status === "ok" ? rooted : scoped?.status === "gated" ? scoped : rooted;
-  // The gate is checked before any definition lookup: the registry is keyed
-  // `<module>.<Kind>`, so an alias equal to its module's name would otherwise
-  // reach a kind the module does not export.
+  // Whether the module declares the kind is asked first, of its resolved
+  // identity; the gate then before any definition lookup, since the registry is
+  // keyed `<module>.<Kind>` and an alias equal to its module's name would
+  // otherwise reach a kind the module does not export.
   if (kindResult.status === "gated") {
+    const name = m.kind.slice(m.kind.indexOf(".") + 1);
+    if (!defs.resolve(`${kindResult.module}.${name}`)) return { status: "undeclared", module: kindResult.module, name };
     return { status: "gated", module: kindResult.module, exported: kindResult.exported };
   }
   const resolvedKind = kindResult.status === "ok" ? kindResult.kind : undefined;

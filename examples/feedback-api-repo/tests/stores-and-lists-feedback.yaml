@@ -83,5 +83,5 @@ steps:
       expected:
         recentStatus: 200
         recentText: the docs made sense
-        page: [text, action, text, data]
+        page: [text, action, text, query]
         formPosts: /v1/feedback
