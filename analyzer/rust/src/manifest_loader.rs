@@ -155,6 +155,8 @@ impl ManifestLoader {
         self.pick(from_source)?.resolve_relative(from_source, import_source)
     }
 
+    /// What an `include:` list names. A path entry the expansion did not reach keeps its own
+    /// read; a `!` entry beside a glob is an exclusion, never a path.
     fn resolve_includes(
         &self,
         owner_source: &str,
@@ -175,13 +177,21 @@ impl ManifestLoader {
         let patterns: Vec<String> = entries.iter().map(|entry| entry.pattern.clone()).collect();
         match source.expand_glob(owner_source, &patterns) {
             None => Ok(ResolvedIncludes { files: by_path(by_url), unexpanded: globs }),
-            Some(urls) => Ok(ResolvedIncludes {
-                files: urls?.into_iter().map(|url| {
-                    let entry = by_url.get(&url).cloned();
-                    (url, entry)
-                }).collect(),
-                unexpanded: Vec::new(),
-            }),
+            Some(urls) => {
+                let urls = urls?;
+                let expanded: HashSet<&String> = urls.iter().collect();
+                let unreached: Vec<(String, Option<IncludeEntry>)> = by_url
+                    .iter()
+                    .filter(|(url, entry)| !expanded.contains(url) && !entry.pattern.starts_with('!'))
+                    .map(|(url, entry)| (url.clone(), Some(entry.clone())))
+                    .collect();
+                let mut files: Vec<(String, Option<IncludeEntry>)> = urls
+                    .iter()
+                    .map(|url| (url.clone(), by_url.get(url).cloned()))
+                    .collect();
+                files.extend(unreached);
+                Ok(ResolvedIncludes { files, unexpanded: Vec::new() })
+            }
         }
     }
 }

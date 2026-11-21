@@ -54,7 +54,10 @@ of both CLIs over every manifest whose first document is an Application or a Lib
 `-o json` and the exit status — and the text, byte for byte, wherever the two JSON payloads agree whole — against
 `check-debt.json` beside `sweep.mjs`, the ratchet list of what the Rust analyzer may still miss (`owners`: each Node
 code to the build-order step 3 slice owing it; `manifests`: each path to the codes it lacks, or to an
-`unsupported` construct). **Two comparisons, two identities.** Within one manifest, Node's run and Rust's are
+`unsupported` construct, and optionally `owners` — a code of that entry to the slice owing it there, overriding
+the code's own owner, for a manifest whose lack another slice owes than the code's usual one: a scope-member
+`Telo.Import`'s `IMPORT_UNRESOLVED` is 3b-7's). A completed slice (3a-2, 3a-3) may own nothing, in either place;
+an override naming a code its entry does not list is stale. **Two comparisons, two identities.** Within one manifest, Node's run and Rust's are
 compared byte for byte: a diagnostic is equal only as a whole JSON object, and the text where the payloads agree
 whole. Across runs — a finding of one manifest's run against another module's own run — a finding is one
 **defect**: its code (a static code C reaching a raised code as C itself or as the analyzer's `runtimeCodeOf(C)`;

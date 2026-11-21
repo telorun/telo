@@ -1,5 +1,6 @@
 // The Node half of the sweep's `load` dimension, run by `sweep.mjs` from the repo root:
-// `bun .claude/skills/rust-parity/load-node.ts <entry manifest>`. Loads the entry with the Node
+// `bun .claude/skills/rust-parity/load-node.ts <entry manifest>`, under the workspace's `bun` from
+// `node_modules/.bin`, which the sweep puts first on PATH. Loads the entry with the Node
 // kernel's `analyzeOnly` option — the sources `telo run` reads through, no cache write — and
 // prints the refusal, if any, as one JSON object on stdout, exiting 1:
 // `{ code, message, carried: [{ code?, file?, path?, resource?, message, writtenAt? }] }` — each

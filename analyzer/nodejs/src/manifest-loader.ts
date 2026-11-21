@@ -910,7 +910,9 @@ export class Loader {
 
   /** The files an `include:` list names, each with the entry naming it when one
    *  does by path — a file a glob reached has none — and the glob entries the
-   *  source cannot expand, which name no file. */
+   *  source cannot expand, which name no file. A path entry the expansion did not
+   *  reach keeps its own read, so a missing one is refused beside a glob as it is
+   *  alone; a `!` entry beside a glob is an exclusion, never a path. */
   private async resolveIncludes(
     ownerSource: string,
     entries: { pattern: string; index: number }[],
@@ -937,7 +939,12 @@ export class Loader {
       ownerSource,
       entries.map((entry) => entry.pattern),
     );
-    return { files: urls.map((url) => ({ url, entry: byUrl.get(url) })), unexpanded: [] };
+    const expanded = new Set(urls);
+    const unreached = [...byUrl].filter(([url, entry]) => !expanded.has(url) && !entry.pattern.startsWith("!"));
+    return {
+      files: [...urls.map((url) => ({ url, entry: byUrl.get(url) })), ...unreached.map(([url, entry]) => ({ url, entry }))],
+      unexpanded: [],
+    };
   }
 
   /** Find the owning telo.yaml for `fileUrl` (or use it directly if it's an

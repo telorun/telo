@@ -1,0 +1,48 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "PARTIAL_NOT_FOUND",
+      "source": "telo-analyzer",
+      "message": "The partial './missing.yaml' cannot be read: nothing exists at missing.yaml.",
+      "data": {
+        "filePath": "telo.yaml"
+      },
+      "range": {
+        "start": {
+          "line": 2,
+          "character": 10
+        },
+        "end": {
+          "line": 2,
+          "character": 24
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "UNTAGGED_INTERPOLATION",
+      "source": "telo-analyzer",
+      "message": "Self.Greeter/greeting: 'metadata.description' is a plain string holding '${{', which is never evaluated. Untagged interpolation is a legacy spelling the 'untagged-interpolation' migration rewrites (a lone hole to !cel, text with holes to !interpolate); run 'telo migrate' to apply it, or tag the value !literal if the text is meant literally.",
+      "data": {
+        "resource": {
+          "kind": "Self.Greeter",
+          "name": "greeting"
+        },
+        "filePath": "parts/greeting.yaml",
+        "path": "metadata.description"
+      },
+      "range": {
+        "start": {
+          "line": 1,
+          "character": 41
+        },
+        "end": {
+          "line": 1,
+          "character": 54
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] telo.yaml: The partial './missing.yaml' cannot be read: nothing exists at missing.yaml.\n  [PARTIAL_NOT_FOUND] The partial './missing.yaml' cannot be read: nothing exists at missing.yaml."
+}
