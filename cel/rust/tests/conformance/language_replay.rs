@@ -29,7 +29,7 @@ use super::conformance_value::{encode_conformance_value, json_deep_equal, json_t
 pub const DRIVEN_FILE: &str = "language.json";
 
 /// How many rows the file holds. A row deleted leaves every other count true, so it is pinned.
-pub const LANGUAGE_ROWS: usize = 1816;
+pub const LANGUAGE_ROWS: usize = 1836;
 
 /// The prefix of an authored row's id: a row cel-spec's import did not produce.
 pub const AUTHORED_ROW_PREFIX: &str = "telo/";

@@ -576,7 +576,7 @@ impl<'a> Checker<'a, '_> {
         // Reading through an optional answers an optional, whichever form the read is
         // written in.
         if node.optional || matches!(guarded, CelType::Optional(_)) {
-            optional_of(unwrap_optional(held))
+            optional_of(held)
         } else {
             held
         }
@@ -614,7 +614,9 @@ impl<'a> Checker<'a, '_> {
         }
         let mut held = variable(&split.name).expect("the split names a declared variable").clone();
         for (name, range) in &segments[segments.len() - split.rest.len()..] {
-            held = self.member_type(&held, name, *range, false);
+            let read = self.member_type(&held, name, *range, false);
+            // Reading through an optional answers an optional, as a select does.
+            held = if matches!(held, CelType::Optional(_)) { optional_of(read) } else { read };
         }
         Some(held)
     }
@@ -635,30 +637,36 @@ impl<'a> Checker<'a, '_> {
     /// The type of a named member, reported against whatever the operand turned out to be.
     fn member_type(&mut self, operand: &CelType, field: &str, range: SourceRange, presence: bool) -> CelType {
         enum Task<'t> {
-            Visit(&'t CelType),
+            Visit(&'t CelType, bool),
             Union(usize),
         }
         let mut results: Vec<CelType> = Vec::new();
-        let mut tasks = vec![Task::Visit(operand)];
+        let mut tasks = vec![Task::Visit(operand, false)];
         while let Some(task) = tasks.pop() {
-            let ty = match task {
+            let (ty, layered) = match task {
                 Task::Union(count) => {
                     let members = results.split_off(results.len() - count);
                     results.push(union_of(members));
                     continue;
                 }
-                Task::Visit(ty) => ty,
+                Task::Visit(ty, layered) => (ty, layered),
             };
             let answer = match ty {
                 CelType::Dyn | CelType::Parameter(_) => DYN,
+                // Exactly one optional layer is read through, as at runtime.
                 CelType::Optional(optional) => {
-                    tasks.push(Task::Visit(&optional.value));
+                    if layered || matches!(&*optional.value, CelType::Optional(_)) {
+                        self.report(CelCheckCode::TypeError, nested_optional_message(operand), range);
+                        results.push(DYN);
+                    } else {
+                        tasks.push(Task::Visit(&optional.value, true));
+                    }
                     continue;
                 }
                 CelType::Union(union) => {
-                    let branches = presence_branches(union, false, presence);
+                    let branches = presence_branches(union, false, presence, layered);
                     tasks.push(Task::Union(branches.len()));
-                    tasks.extend(branches.into_iter().rev().map(Task::Visit));
+                    tasks.extend(branches.into_iter().rev().map(|branch| Task::Visit(branch, layered)));
                     continue;
                 }
                 CelType::Record(record) => self.record_member_type(record, field, range),
@@ -724,7 +732,7 @@ impl<'a> Checker<'a, '_> {
         let guarded = self.check_nullable(&node.operand, operand, "[…]", node.range);
         let held = self.element_type(&guarded, &index, node, node.optional);
         if node.optional || matches!(guarded, CelType::Optional(_)) {
-            optional_of(unwrap_optional(held))
+            optional_of(held)
         } else {
             held
         }
@@ -732,7 +740,7 @@ impl<'a> Checker<'a, '_> {
 
     fn element_type(&mut self, operand: &CelType, index: &CelType, node: &CelIndexNode, presence: bool) -> CelType {
         enum Task<'t> {
-            Visit(&'t CelType),
+            Visit(&'t CelType, bool),
             Union(usize),
         }
         let literal_key = match &*node.index {
@@ -744,26 +752,32 @@ impl<'a> Checker<'a, '_> {
         };
         let index_range = node.index.range();
         let mut results: Vec<CelType> = Vec::new();
-        let mut tasks = vec![Task::Visit(operand)];
+        let mut tasks = vec![Task::Visit(operand, false)];
         while let Some(task) = tasks.pop() {
-            let ty = match task {
+            let (ty, layered) = match task {
                 Task::Union(count) => {
                     let members = results.split_off(results.len() - count);
                     results.push(union_of(members));
                     continue;
                 }
-                Task::Visit(ty) => ty,
+                Task::Visit(ty, layered) => (ty, layered),
             };
             let answer = match ty {
                 CelType::Dyn | CelType::Parameter(_) => DYN,
+                // Exactly one optional layer is read through, as at runtime.
                 CelType::Optional(optional) => {
-                    tasks.push(Task::Visit(&optional.value));
+                    if layered || matches!(&*optional.value, CelType::Optional(_)) {
+                        self.report(CelCheckCode::TypeError, nested_optional_message(operand), node.range);
+                        results.push(DYN);
+                    } else {
+                        tasks.push(Task::Visit(&optional.value, true));
+                    }
                     continue;
                 }
                 CelType::Union(union) => {
-                    let branches = presence_branches(union, true, presence);
+                    let branches = presence_branches(union, true, presence, layered);
                     tasks.push(Task::Union(branches.len()));
-                    tasks.extend(branches.into_iter().rev().map(Task::Visit));
+                    tasks.extend(branches.into_iter().rev().map(|branch| Task::Visit(branch, layered)));
                     continue;
                 }
                 CelType::List(list) => {
@@ -1293,11 +1307,11 @@ fn same_arguments(left: &[CelType], right: &[CelType]) -> bool {
 
 /// Which branches of a union a read is judged against. A presence-shaped read judges only
 /// the branches that can hold the member or element, when any can.
-fn presence_branches(union: &UnionType, elements: bool, presence: bool) -> Vec<&CelType> {
+fn presence_branches(union: &UnionType, elements: bool, presence: bool, layered: bool) -> Vec<&CelType> {
     if !presence {
         return union.members().iter().collect();
     }
-    let holding: Vec<&CelType> = union.members().iter().filter(|member| holds(member, elements)).collect();
+    let holding: Vec<&CelType> = union.members().iter().filter(|member| holds(member, elements, layered)).collect();
     if holding.is_empty() {
         union.members().iter().collect()
     } else {
@@ -1305,30 +1319,29 @@ fn presence_branches(union: &UnionType, elements: bool, presence: bool) -> Vec<&
     }
 }
 
+fn nested_optional_message(whole: &CelType) -> String {
+    format!(
+        "{} is read through one optional only; unwrap the inner optional (.value(), .orValue(…) or optFlatMap) first",
+        format_type(whole, false)
+    )
+}
+
 /// Whether a type can hold a named member (or, for `elements`, an element) at all.
-fn holds(ty: &CelType, elements: bool) -> bool {
-    let mut pending = vec![ty];
-    while let Some(ty) = pending.pop() {
+fn holds(ty: &CelType, elements: bool, layered: bool) -> bool {
+    let mut pending = vec![(ty, layered)];
+    while let Some((ty, layered)) = pending.pop() {
         match ty {
             CelType::Dyn | CelType::Parameter(_) | CelType::Record(_) | CelType::Map(_) => return true,
             CelType::List(_) if elements => return true,
             CelType::Nominal(nominal) if nominal.fields.is_some() => return true,
-            CelType::Optional(optional) => pending.push(&optional.value),
-            CelType::Union(union) => pending.extend(union.members()),
+            CelType::Optional(optional) if !layered && !matches!(&*optional.value, CelType::Optional(_)) => {
+                pending.push((&optional.value, true))
+            }
+            CelType::Union(union) => pending.extend(union.members().iter().map(|member| (member, layered))),
             _ => {}
         }
     }
     false
-}
-
-/// An optional of an optional is one optional; a chain of reads does not nest them.
-fn unwrap_optional(ty: CelType) -> CelType {
-    let mut held = ty;
-    while let CelType::Optional(optional) = &held {
-        let inner = (*optional.value).clone();
-        held = inner;
-    }
-    held
 }
 
 /// `source.slice(start, end)` over UTF-16 code units, as ECMAScript slices a string.

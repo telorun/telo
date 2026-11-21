@@ -1,0 +1,7 @@
+units:
+  cel: Fixed
+body: "The checker now types a read of an optional's held value as a nested optional —
+  `{'a': optional.of(1)}.?a` is `optional<optional<int>>` — so equality against
+  `optional.of(optional.of(x))` checks, and a member or element read through more than
+  one optional layer is refused at check in `.b`, `.?b`, `[k]`, `[?k]` and `has()`
+  alike, where it used to check clean as a single optional."
