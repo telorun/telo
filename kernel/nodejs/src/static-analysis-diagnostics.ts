@@ -4,13 +4,20 @@ import {
   type CarriedFinding,
   type LoadRefusal,
 } from "@telorun/analyzer";
-import { RuntimeError, type DiagnosticOrigin, type RuntimeDiagnostic, type RuntimeErrorCode } from "@telorun/sdk";
+import {
+  RuntimeError,
+  type DiagnosticOrigin,
+  type DiagnosticWrittenAt,
+  type RuntimeDiagnostic,
+  type RuntimeErrorCode,
+} from "@telorun/sdk";
 
 /**
  * Carry a static-analysis diagnostic into the runtime failure set.
  *
- * The analyzer's `data` — the file, the field path within it, and the owning
- * resource — travels as `origin`, alongside the diagnostic's own `range` for
+ * The analyzer's `data` — the file, the field path within it, the owning
+ * resource, and for a finding re-reported at an import the place its defect is
+ * written (`writtenAt`) — travels as `origin`, alongside the diagnostic's own `range` for
  * the failures that have no field path to look up (a YAML parse error knows
  * where the syntax broke but has no parsed tree to index). That is what lets a
  * renderer resolve the same `file:line:col` `telo check` prints; flattening it
@@ -28,6 +35,7 @@ export function staticDiagnosticToRuntime(d: AnalysisDiagnostic): RuntimeDiagnos
   if (data?.path !== undefined) origin.path = data.path;
   if (data?.resource !== undefined) origin.resource = data.resource;
   if (d.range !== undefined) origin.range = d.range;
+  if (data?.writtenAt) origin.writtenAt = writtenAtOf(data.writtenAt);
   return {
     // Mapped, not assumed: every current caller passes a pre-filtered error set,
     // but a warning routed through here must not be rendered in red and counted
@@ -42,6 +50,15 @@ export function staticDiagnosticToRuntime(d: AnalysisDiagnostic): RuntimeDiagnos
     // Only when something is actually set, so `origin` stays usable as the
     // "this came from static analysis" predicate its contract promises.
     ...(Object.keys(origin).length > 0 ? { origin } : {}),
+  };
+}
+
+/** The written place with only the members it holds. */
+function writtenAtOf(at: DiagnosticWrittenAt): DiagnosticWrittenAt {
+  return {
+    ...(at.filePath !== undefined ? { filePath: at.filePath } : {}),
+    ...(at.path !== undefined ? { path: at.path } : {}),
+    ...(at.resource !== undefined ? { resource: at.resource } : {}),
   };
 }
 

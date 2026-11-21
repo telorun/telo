@@ -5,6 +5,7 @@ import type { AnalysisRegistry } from "./analysis-registry.js";
 import { readApplicationSourceSlot } from "./application-source-slot.js";
 import { isKindDocument } from "./kind-declaration.js";
 import type { LoadedGraph } from "./loaded-types.js";
+import { runtimeCodeOf } from "./load-refusal-code.js";
 import {
   edgesFrom,
   flattenLoadedModule,
@@ -316,16 +317,6 @@ export interface NeedTable {
    *  module instance's path and the resource's name (`web`, `Admin.web`) — the
    *  paths a host gives each child a state directory by. */
   applications: string[][];
-}
-
-const STATIC_TO_RUNTIME: Record<string, string> = {
-  DUPLICATE_RESOURCE_NAME: "ERR_DUPLICATE_RESOURCE",
-  SCHEMA_VIOLATION: "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED",
-  UNRESOLVED_REFERENCE: "ERR_REF_UNRESOLVED",
-};
-
-function runtimeCodeOf(code: string): string {
-  return STATIC_TO_RUNTIME[code] ?? `ERR_${code}`;
 }
 
 function sourceOf(m: ResourceManifest | undefined): string | undefined {

@@ -3,6 +3,7 @@ import { FindingOrder } from "./finding-order.js";
 import { importFailureDiagnostics } from "./import-resolution-diagnostics.js";
 import { libraryMigrationDiagnostics, withLibraryMigrationsApplied } from "./library-migrations/report.js";
 import type { GraphLoadError, LoadedGraph } from "./loaded-types.js";
+import { runtimeCodeOf } from "./load-refusal-code.js";
 import { METADATA_RESERVED_FIELD } from "./metadata-stamps.js";
 import type { NeedTable } from "./need-table.js";
 import { describeModuleSource } from "./nested-module-origin.js";
@@ -14,6 +15,7 @@ import { isNeedTableDiagnostic } from "./validate-needs.js";
  * How a kernel refuses a load, decided from the loaded graph and what its
  * analysis found — the one rule every kernel applies, so a manifest is refused
  * with the same code, message and carried findings whichever kernel loads it.
+ * A static code is raised under `runtimeCodeOf`'s answer at every group.
  * Browser-safe: the result is data, and the kernel raises it as its own error.
  */
 
@@ -51,6 +53,7 @@ export interface LoadRefusalHost {
 }
 
 const MANIFEST_VALIDATION_FAILED = "ERR_MANIFEST_VALIDATION_FAILED";
+const MIGRATION_FAILED = "MIGRATION_FAILED";
 
 /**
  * The refusal of a load of `graph` from `entryUrl`, or `undefined` when it
@@ -99,10 +102,10 @@ export async function loadRefusal(
   if (stamps.length > 0) {
     const sorted = new FindingOrder(manifests, collectFilePositions(graph)).sort(stamps);
     return {
-      code: `ERR_${METADATA_RESERVED_FIELD}`,
+      code: runtimeCodeOf(METADATA_RESERVED_FIELD),
       message: sorted.map((d) => `${located(graph, d)}${d.message}`).join("\n"),
       carried: [
-        ...sorted.map((diagnostic) => ({ diagnostic, code: `ERR_${diagnostic.code}` })),
+        ...sorted.map((diagnostic) => ({ diagnostic, code: runtimeCodeOf(String(diagnostic.code)) })),
         ...errors.filter((d) => d.code !== METADATA_RESERVED_FIELD).map((diagnostic) => ({ diagnostic })),
       ],
     };
@@ -143,7 +146,7 @@ export function importFailureRefusal(errors: readonly GraphLoadError[], entrySou
   const diagnostics = importFailureDiagnostics(errors, entrySource);
   const own = (first.error as { code?: unknown }).code;
   return {
-    code: typeof own === "string" && own.startsWith("ERR_") ? own : `ERR_${String(diagnostics[0]!.code)}`,
+    code: typeof own === "string" && own.startsWith("ERR_") ? own : runtimeCodeOf(String(diagnostics[0]!.code)),
     message: first.error.message,
     carried: diagnostics.map((diagnostic) => ({ diagnostic })),
   };
@@ -155,13 +158,14 @@ export function migrationFailureRefusal(
   graph: LoadedGraph,
   others: readonly AnalysisDiagnostic[],
 ): LoadRefusal | undefined {
-  const failed = libraryMigrationDiagnostics(graph).filter((d) => d.code === "MIGRATION_FAILED");
+  const failed = libraryMigrationDiagnostics(graph).filter((d) => d.code === MIGRATION_FAILED);
   if (failed.length === 0) return undefined;
+  const code = runtimeCodeOf(MIGRATION_FAILED);
   const carried: CarriedFinding[] = [
-    ...failed.map((diagnostic) => ({ diagnostic, code: "ERR_MIGRATION_FAILED" })),
+    ...failed.map((diagnostic) => ({ diagnostic, code })),
     ...others.map((diagnostic) => ({ diagnostic })),
   ];
-  return { code: "ERR_MIGRATION_FAILED", message: carried.map(codedLine).join("\n"), carried };
+  return { code, message: carried.map(codedLine).join("\n"), carried };
 }
 
 /** Need refusals raised together with `others`, each line naming its own code —
@@ -188,7 +192,7 @@ function needTableRefusals(table: NeedTable, analysed: readonly AnalysisDiagnost
     if (!data?.configurations || d.code === undefined) continue;
     if (table.problems.some((p) => p.code === d.code && p.path === data.path && p.filePath === data.filePath)) continue;
     refusals.push({
-      runtimeCode: `ERR_${d.code}`,
+      runtimeCode: runtimeCodeOf(String(d.code)),
       message: d.message,
       path: data.path ?? "",
       ...(data.filePath !== undefined ? { filePath: data.filePath } : {}),

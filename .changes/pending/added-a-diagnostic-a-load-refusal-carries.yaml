@@ -1,0 +1,7 @@
+units:
+  sdk: Added
+  kernel: Added
+body: "A diagnostic a load refusal carries for a finding re-reported at an import now
+  says where its defect is written: `origin.writtenAt` (`filePath`, `path`, `resource`),
+  the place the module writing it reports it at in its own `telo check`. It is absent
+  for a finding that is the reporting module's own."

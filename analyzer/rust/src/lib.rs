@@ -15,7 +15,8 @@
 //! by Node's fallback chain. `telo check` and the kernel read them through one entry assembly
 //! (`entry_diagnostics`, which also names the constructs this build cannot read and holds back
 //! the files they name), and the kernel refuses a load by the twin of Node's load refusal rule
-//! (`load_refusal`), group for group. A library's `migrations:` block is read and its `match` twinned, but the
+//! (`load_refusal`), group for group, raising each static code under the rule's one mapping
+//! (`load_refusal_code`). A library's `migrations:` block is read and its `match` twinned, but the
 //! consumer stage applying it is not: where one may apply, the hosts refuse the import
 //! reaching the library instead (`library_migrations`). Node's other passes have no
 //! counterpart yet, and this crate is where they belong when they arrive.
@@ -43,6 +44,7 @@ pub mod levenshtein;
 pub mod library_migrations;
 pub mod loaded_types;
 pub mod load_refusal;
+pub mod load_refusal_code;
 pub mod loader_expansion_refusals;
 pub mod manifest_loader;
 pub mod manifest_navigation;
@@ -87,6 +89,7 @@ pub use finding_order::FindingOrder;
 pub use graph_diagnostics::{assemble_graph_diagnostics, compromised_files, AssembledDiagnostics};
 pub use import_resolution_diagnostics::{import_failure_code, import_failure_diagnostics};
 pub use load_refusal::{load_refusal, LoadRefusal, LoadRefusalHost, UNSUPPORTED_MANIFEST_FEATURE};
+pub use load_refusal_code::runtime_code_of;
 pub use library_migrations::{unapplied_library_migrations, UnappliedLibraryMigration};
 pub use loaded_types::{
     GraphLoadError, ImportEdge, ImportFailureReason, LoadedFile, LoadedGraph, LoadedModule, ParseError,

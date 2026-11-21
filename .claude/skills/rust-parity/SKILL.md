@@ -48,7 +48,8 @@ runs each on both kernels with the environment the suite gives it, and writes a 
 test per kernel. A test's pass is exit code 0, as in the suite. `--filter <text>` narrows it;
 `--only rust` skips the Node half for a quick re-check.
 
-The sweep has two more dimensions, `--dimension run|check|load` (default `run` and `check`): `check` runs `telo check`
+The sweep has two more dimensions, `--dimension run|check|load` (default `run` and `check`; repeat the flag, or
+give a comma-separated list, to run several — `--dimension check,load`): `check` runs `telo check`
 of both CLIs over every manifest whose first document is an Application or a Library, and compares
 `-o json` and the exit status — and the text, byte for byte, wherever the two JSON payloads agree whole — against
 `check-debt.json` beside `sweep.mjs`, the ratchet list of what the Rust analyzer may still miss (`owners`: each Node
@@ -60,7 +61,8 @@ its manifest path, a partial mapped to its owner through the covered manifests' 
 and that module's own run in the same sweep lacks the same finding (code, file, line, column, message). Under
 `--filter` the entry alone decides; the full sweep confirms. A listed code is stale when the module's own run no
 longer lacks it. A Rust diagnostic Node does not make always fails, and a stale entry fails; the
-dimension exits non-zero then. `--reuse-node <earlier --out file>` replays that file's recorded Node runs, so
+dimension exits non-zero then. Each recorded finding keeps the `path` and `resource` `telo check -o json` gives it,
+which the `load` dimension confirms against. `--reuse-node <earlier --out file>` replays that file's recorded Node runs, so
 iterating on Rust does not pay for Node's again; it refuses a file made at another commit unless
 `--reuse-node-any-commit` is given. The sweep leaves out `CONTROLLER_TOOL_MISSING` and the over-budget rule
 findings (`RESOURCE_RULE_INVALID` / `REFERRER_RULE_INVALID` saying a rule "exceeded its evaluation budget"),
@@ -70,12 +72,30 @@ step 3d slice 14 replaces the wall-clock budget with a counted one.
 `load` (run only when named) loads every manifest of the `check` dimension's set with each kernel's
 analyze-only load — the Node kernel's `analyzeOnly` through the sweep-owned `load-node.ts` beside
 `sweep.mjs` (run with the workspace's `bun`), the Rust kernel's `LoadOptions { analyze_only }` through
-the unpublished `analyze_only` example of `telo-kernel` — and compares what each refuses the load with,
-as one `runFails`-style text (the refusal's `[<CODE>] <message>`, then each carried diagnostic), the repo
-root's prefixes removed. Both load, or both refuse with the same text: a match. Node loads and Rust
-refuses with `ERR_UNSUPPORTED_MANIFEST_FEATURE`: a gap, counted and not failed (step 4's to close). Node
-loads and Rust refuses with anything else: a failure. Any other difference passes only where the
-manifest's `check-debt.json` entry lists a code or has `unsupported`, and fails otherwise.
+the unpublished `analyze_only` example of `telo-kernel` — each printing one JSON answer: the refusal's headline
+code and message, and every finding it carries with its code as raised, its file (the origin; none means the
+entry), its message and `writtenAt` (where the module writing the defect reports it, for a finding re-reported at
+an import), the repo root's prefixes removed. A carried finding is one finding by code, file and message. **The
+`load` rule, beside the `check` rule:**
+
+- Both load, or both refuse with the same headline and the same carried findings: a match.
+- Rust refuses with `ERR_UNSUPPORTED_MANIFEST_FEATURE`: passes only under the manifest's own `unsupported` entry —
+  a gap, counted and not failed (step 4's to close), when Node loads; debt when Node refuses.
+- Node loads and Rust refuses with anything else: a failure.
+- A finding Rust carries that Node does not: a failure, whatever the debt.
+- A finding Node carries that Rust lacks is **owed by a module**: the one owning `writtenAt.filePath` when the
+  finding has one, else the one owning the finding's file — found as the `check` dimension finds a file's owner
+  (a partial maps to its owner). It passes when that owner's `check-debt.json` entry lists a static code C with C,
+  or `runtimeCodeOf(C)` (the load refusal rule's mapping, read from the built `@telorun/analyzer`), equal to the
+  carried code; the sweep holds no table and maps nothing backward. A consumer's entry lists a code only for its
+  own finding (one with no `writtenAt`), never a code a library writes.
+- **Confirmation**, when `check` and `load` run in one sweep with no `--filter`: the owner's own `check` run must
+  lack the finding too — with `writtenAt`, one of that code at the same file, `path` and `resource` (the defect's
+  identity; messages are not compared, the import's prefix being by design); without it, one of that code, file
+  and message (its repo-root prefixes removed as the load answers' are, and less the `(when …)` clause `telo check`
+  appends to a finding holding in some configurations only). Otherwise the entry decides alone.
+- The headlines may differ only when the carried findings differ and every difference is owed: equal carried
+  findings under different headlines fail, so a Node refusal carrying nothing that Rust answers differently fails.
 
 - **The target** is the tests that pass on Node in the same sweep. A test red on Node locally
   (a missing key, a service not running) is outside the target and listed as such — never

@@ -17,6 +17,17 @@ export interface DiagnosticOrigin {
     start: { line: number; character: number };
     end: { line: number; character: number };
   };
+  /** Where the defect is written, for a finding reported at an import reaching
+   *  the module that writes it: the place that module's own `telo check`
+   *  reports it at. Absent when the finding is the reporting module's own. */
+  writtenAt?: DiagnosticWrittenAt;
+}
+
+/** A written place: the file, the field path and the declaration, no position. */
+export interface DiagnosticWrittenAt {
+  filePath?: string;
+  path?: string;
+  resource?: { kind?: string; name?: string };
 }
 
 export interface RuntimeDiagnostic {

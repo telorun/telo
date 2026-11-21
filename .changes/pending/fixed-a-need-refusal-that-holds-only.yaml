@@ -1,0 +1,8 @@
+units:
+  analyzer: Fixed
+body: A need refusal that holds only in some configurations is now raised at load under
+  the same code as an unconditional one (`ERR_DUPLICATE_RESOURCE`,
+  `ERR_RESOURCE_SCHEMA_VALIDATION_FAILED`, `ERR_REF_UNRESOLVED`), where it was raised as
+  `ERR_` plus its static code (`ERR_DUPLICATE_RESOURCE_NAME`, …). Every code the load
+  refusal rule raises from a static code now goes through one mapping, exported as
+  `runtimeCodeOf`.
