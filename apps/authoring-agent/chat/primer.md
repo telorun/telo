@@ -4271,12 +4271,35 @@ to `telo.run/next/`: a module's bytes must not depend on which release publishes
   `file`, an Fs kind's `cwd: !cel "resources.data.path"`), never with string
   concatenation. NEVER write a data directory as a variable or a literal path
   when the files must survive redeployment — the host supplies the directory
-  (`TELO_NEED_DATA__PATH`, or once for every need with `TELO_HOST_STATE_DIR`).
+  (`TELO_NEED_DATA__PATH`, or once for every need with `TELO_HOST_STATE_DIR`;
+  a plain `telo run` sets `TELO_HOST_STATE_DIR` to `.telo/state/<app dir>/_`
+  of the workspace itself).
   Keep SQLite on `single-writer`; on `shared` the app coordinates its own
   writes. A library declares its own and the application may forward one whole
   (`needs: { files: !ref data }`) — a `shared` one into a `single-writer` need
   or a smaller `size` into a larger one is `NEED_FORWARD_INCOMPATIBLE`, one
   directory forwarded to two needs `NEED_DIRECTORY_FORWARDED_TWICE`.
+
+  A KEY OR A PASSWORD the app or a library needs is a need of
+  `Telo.GeneratedSecretKey` or `Telo.GeneratedPassword`, written with no
+  import — NEVER a secret someone must invent in the format a library decodes:
+  `needs: { sessionKey: { kind: Telo.GeneratedSecretKey, parameters: { bytes:
+  32, encoding: base64url } } }` (`encoding` one of `base64url`,
+  `base64url-padded`, `base64`, `hex`; read it as `resources.sessionKey.key`),
+  and `dbPassword: { kind: Telo.GeneratedPassword, parameters: { length: 24,
+  characterSets: [{ characters: abcdefghijklmnopqrstuvwxyz, minimum: 1 }, {
+  characters: "0123456789", minimum: 1 }] } }` (`resources.dbPassword.password`;
+  printable ASCII, no character in two sets). Both parameters are required on a
+  library's need too. The host derives each value from `TELO_HOST_SECRET_SEED`
+  (or an operator sets `TELO_NEED_SESSION_KEY__KEY`; `telo run` at a terminal
+  offers to generate and save the seed in the sensitive env file); the value is tied to the
+  need's name, path and parameters, so renaming or moving it into a library
+  changes it — forward the old root need whole to keep it. A need forwarded
+  whole (`needs: { sessionKey: !ref sessionKey }`, at an import or an
+  `App.Instance`) states EXACTLY the parameters of the need it supplies, or it
+  is `NEED_FORWARD_INCOMPATIBLE`; a child application never inherits the seed,
+  so its instance must forward the need. A literal that breaks the parameters
+  is `NEED_VALUE_INVALID`.
 - `kind: Telo.NeedType` — declares a need type a library exports through
   `exports.kinds` (`telo builtins NeedType` prints its fields). A credential
   field is `type: string` with `x-telo-sensitive: true`, and is then redacted
@@ -5146,8 +5169,9 @@ with studio, not a preference.
   directory is its application's, so its partials and assets sit there too,
   named for the library (`apps/my-app/ordering-queries.yaml`).
 - NEVER write into `.telo/` (the resolved-dependency cache), `node_modules/`,
-  `dist/` or `.git/`. `.telo/` is generated — an edit there is overwritten and
-  changes nothing. Do not READ it to learn a module either: it holds only the
+  `dist/` or `.git/`. `.telo/cache` is generated — an edit there is overwritten and
+  changes nothing — and `.telo/state` holds an app's durable data, never to be
+  edited or deleted. Do not READ it to learn a module either: it holds only the
   manifests an app in this workspace already imports, at the pinned version,
   so it can tell you what one pin declares and can never tell you a module
   exists. Read a kind's exact schema with `get_kinds` and find a capability

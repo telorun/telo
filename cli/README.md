@@ -15,11 +15,11 @@ These apply to every command.
 
 **Machine output shapes.** Commands that report a *result* (`check`, `install`, `upgrade`, `migrate`, `publish`, `release`) emit an envelope `{ ok, … }` under `-o json` and nothing on stdout under `text`. Commands that produce a *document* (`cel`, `search`, `module versions|manifest|digest|resources|kinds`) write that document under either format — their older per-command `--json` flags predate `-o` and keep working — and never mix an error envelope into it: a failure there is prose on stderr plus a non-zero exit.
 
-**The cache root.** Every command that reads or writes `.telo/` resolves its location the same way, in this order:
+**The cache root.** Every command that reads or writes the cache resolves its location the same way, in this order:
 
-1. `TELO_CACHE_DIR`, if set.
-2. `.telo/` beside the nearest `telo-workspace.yaml` above the manifest — so one repository has one cache, whatever the manifest's depth.
-3. `.telo/` beside the manifest, when no marker exists above it.
+1. `TELO_CACHE_DIR`, if set — it names the cache root itself (the directory holding `manifests/`, `npm/`, …).
+2. `.telo/cache/` beside the nearest `telo-workspace.yaml` above the manifest — so one repository has one cache, whatever the manifest's depth.
+3. `.telo/cache/` beside the manifest, when no marker exists above it.
 
 A monorepo therefore keeps its cache at the workspace root, which matters when you `COPY` a single app into an image — see [Docker image](/deploy/docker#where-the-cache-lands).
 
@@ -52,7 +52,7 @@ Load and run a Telo manifest. `run` is the default command, so `telo ./manifest.
 - `--no-input` - Never ask for an input nothing supplies. Without it, a run whose stdin and stderr are both a terminal asks for each missing `variables:` / `secrets:` / `ports:` value and required need field (a secret without echo), then offers to save the answers to `.env` / `.env.local`; with it, or with no terminal, the load is refused naming them. Every runner passes it. See [Being asked for what is missing](/learn/configuration#being-asked-for-what-is-missing).
 - `--share[=<name>]` - Share every `tcp` port of the root Application publicly through a runner, and answer its `Telo.PublicUrl` needs from the share. `<name>` names the share; without it each real manifest path gets a UUID name of its own, kept in `share-names.json` in telo's per-user state directory. Needs a sign-in (`telo login`); at a terminal without `--no-input`, a run with no sign-in covering the runner asks `Sign in to Telo now? [Y/n]` first. Refused before boot with `ERR_RUNNER_SIGN_IN_REQUIRED`, `ERR_RUNNER_IDENTITY_MISMATCH`, `ERR_SIGN_IN_FAILED`, `ERR_SHARE_RUNNER_UNSUPPORTED`, `ERR_SHARE_APP_UNSUPPORTED` or `ERR_SHARE_HOST_VALUE_CONFLICT`; ends with `ERR_SHARE_LOST` (exit 1) when the share is deleted or taken over. See [Sharing a local run](/learn/sharing-a-local-run).
 - `--share-runner <url>` - The runner a share goes to: else `TELO_RUNNER_URL`, else `https://runner.telo.run`. Legal only beside `--share`.
-- `--no-cache-write` - Validate in-memory and read the existing `.telo` cache, but never persist new derived entries (compiled validators, analysis stamp). For ephemeral, read-only runs (e.g. a prebuilt container whose deps are baked at `TELO_CACHE_DIR`); the cache is still used, only writes are suppressed.
+- `--no-cache-write` - Validate in-memory and read the existing cache, but never persist new derived entries (compiled validators, analysis stamp). For ephemeral, read-only runs (e.g. a prebuilt container whose deps are baked at `TELO_CACHE_DIR`); the cache is still used, only writes are suppressed.
 - `--` - Ends `telo`'s own options. Every token after the manifest path is the application's own whether or not `--` appears: it is read against the `arg:` bindings of the root Application's `variables:` / `ports:` entries, and a token it does not declare is refused before boot. `telo run <path> --help` prints the application's usage. No controller reads the command line (spec: `kernel/specs/application-arguments.md`).
 
 See [Global options](#global-options) for `--verbose`, `-o` and the cache root.
@@ -72,10 +72,10 @@ telo check https://example.com/manifest.yaml
 
 Accepts local paths, directories containing a `telo.yaml`, packaged executables (`telo package`), or HTTP(S) URLs.
 
-Imports resolve through the same `.telo/manifests/` cache `telo run` reads, and `check` writes through to it after a successful load (disable with `--no-cache-write`). Freshness depends on how the import addresses its target:
+Imports resolve through the same `.telo/cache/manifests/` cache `telo run` reads, and `check` writes through to it after a successful load (disable with `--no-cache-write`). Freshness depends on how the import addresses its target:
 
 - **Pinned** (`…@1.2.3#sha256-…`, or an `@sha256:` reference) — verified against the hash on read, so a repeat check of a fully pinned manifest needs no network at all.
-- **Mutable OCI tag** — revalidated with one `HEAD` per reference against the digest recorded in `.telo/manifests/.origins.json`. If the tag has moved, that entry is dropped and refetched.
+- **Mutable OCI tag** — revalidated with one `HEAD` per reference against the digest recorded in `.telo/cache/manifests/.origins.json`. If the tag has moved, that entry is dropped and refetched.
 - **HTTP(S) URL** — never read from the cache by `check`, since its key carries no version segment and a hit would be served indefinitely. Always re-fetched (one request, the same cost revalidating would have).
 
 One loader serves every path in a single invocation, so `telo check a b c` resolves a module shared between them once.
@@ -132,19 +132,19 @@ telo install ./apps/a/telo.yaml ./apps/b/telo.yaml
 
 - `TELO_PKG_MANAGER` — Override the package manager invoked for controller installs. Defaults to `npm`. Set to `pnpm` (or any compatible CLI) when the runtime environment ships a different manager.
 
-The cache lives under the **cache root** — `.telo/` beside the manifest, or beside `telo-workspace.yaml` when one sits above it (see [Global options](#global-options)):
+The cache lives under the **cache root** — `.telo/cache/` beside the manifest, or beside `telo-workspace.yaml` when one sits above it (see [Global options](#global-options)):
 
-- `.telo/npm/` — controller node_modules tree (one realm per manifest), for the modules that still deliver their controller from npm.
-- `.telo/controller-src/` — bundles built from a **local** module's controller sources. Only ever written for a module that is a working copy on disk: a published module ships a prebuilt bundle in its artifact and never reaches this path. Each entry is named by a digest of every input the build read, so an edit anywhere in the source graph yields a new entry rather than invalidating one.
-- `.telo/manifests/oci/<host>/<repo…>/<tag>/telo.yaml` — manifests imported from an OCI registry by tag; a digest reference is cached under `…/sha256-<hex>/telo.yaml` (`:` cannot be written on Windows), and a library shipped inside an artifact at its path in the manifest layer below it (`…/sha256-<hex>/chat/telo.yaml`, `…/sha256-<hex>/ordering.yaml`). A tag spelled `sha256-<64 hex>` is refused.
-- `.telo/manifests/url/<host>/<pathname>` — manifests imported via raw HTTP URLs.
-- `.telo/layers/sha256-<hex>/` — layers that describe an artifact rather than ship module files (today the `sbom` layer, the module's bill of materials), keyed by the layer's blob digest. `telo install` and `telo package` store every imported module's here; a module directory never holds one.
-- `.telo/manifests/.origins.json` — for each cached import named by a **mutable tag**, the OCI manifest digest that produced the copy. `telo check` revalidates against it with one `HEAD` per reference, and a run reads it to identify the libraries shipped inside a cached artifact; a pinned import needs no entry for `check`, since its bytes are verified against the ref's own hash.
+- `.telo/cache/npm/` — controller node_modules tree (one realm per manifest), for the modules that still deliver their controller from npm.
+- `.telo/cache/controller-src/` — bundles built from a **local** module's controller sources. Only ever written for a module that is a working copy on disk: a published module ships a prebuilt bundle in its artifact and never reaches this path. Each entry is named by a digest of every input the build read, so an edit anywhere in the source graph yields a new entry rather than invalidating one.
+- `.telo/cache/manifests/oci/<host>/<repo…>/<tag>/telo.yaml` — manifests imported from an OCI registry by tag; a digest reference is cached under `…/sha256-<hex>/telo.yaml` (`:` cannot be written on Windows), and a library shipped inside an artifact at its path in the manifest layer below it (`…/sha256-<hex>/chat/telo.yaml`, `…/sha256-<hex>/ordering.yaml`). A tag spelled `sha256-<64 hex>` is refused.
+- `.telo/cache/manifests/url/<host>/<pathname>` — manifests imported via raw HTTP URLs.
+- `.telo/cache/layers/sha256-<hex>/` — layers that describe an artifact rather than ship module files (today the `sbom` layer, the module's bill of materials), keyed by the layer's blob digest. `telo install` and `telo package` store every imported module's here; a module directory never holds one.
+- `.telo/cache/manifests/.origins.json` — for each cached import named by a **mutable tag**, the OCI manifest digest that produced the copy. `telo check` revalidates against it with one `HEAD` per reference, and a run reads it to identify the libraries shipped inside a cached artifact; a pinned import needs no entry for `check`, since its bytes are verified against the ref's own hash.
 
 Every manifest entry is keyed `<transport>/<host>/<path…>/<version>/<file>`, the same grammar the
 discovery hub uses for its cached manifests.
 
-The whole `.telo/` tree is portable: `COPY` the directory that holds it into your image and both caches travel with it. Without a workspace marker that is the manifest's own directory; with one it is the marker's — copy that, or pin the location with `TELO_CACHE_DIR` in both build and production stages.
+The whole `.telo/cache/` tree is portable: `COPY` the directory that holds it into your image and both caches travel with it. Without a workspace marker that is the manifest's own directory; with one it is the marker's — copy that, or pin the location with `TELO_CACHE_DIR` in both build and production stages.
 
 **Example output:**
 
@@ -187,7 +187,7 @@ Every variant runs as the unprivileged `node` user (uid 1000) in `/workspace`, w
 
 Pin to an exact CLI version for reproducible builds; `latest`, `<major>`, and `<major>.<minor>` are rolling tags.
 
-The build stage materializes `.telo/npm/` and `.telo/manifests/` under the cache root; the production stage is a single `COPY` and does no network I/O at boot.
+The build stage materializes `.telo/cache/npm/` and `.telo/cache/manifests/` under the cache root; the production stage is a single `COPY` and does no network I/O at boot.
 
 
 ---

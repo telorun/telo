@@ -971,7 +971,7 @@ export class Kernel implements IKernel {
 
   /** The full LoadedGraph captured during `load()`. Used by the CLI to
    *  feed `writeManifestCache` so a successful `telo run` populates
-   *  `<entry-dir>/.telo/manifests/` for subsequent runs — the same on-disk
+   *  `<entry-dir>/.telo/cache/manifests/` for subsequent runs — the same on-disk
    *  layout `telo install` writes. Undefined before `load()` has been
    *  called or if it threw before the graph was captured. */
   getLoadedGraph(): LoadedGraph | undefined {
@@ -2693,7 +2693,7 @@ export class Kernel implements IKernel {
    * The trigger is "this manifest carries a `layers:` index", never "its source
    * maps to a cache path". Those differ the moment the cache is warm:
    * `LocalManifestCacheSource` serves a hit as a `file://` URL into
-   * `.telo/manifests/`, which no transport claims, so deriving the directory from
+   * `.telo/cache/manifests/`, which no transport claims, so deriving the directory from
    * `source` yields nothing and every OCI module would silently lose its artifact
    * on the second and every later run — taking lazy asset materialization with it.
    * The **pinned** `requestedUrl` survives a cache hit, so placement is derived

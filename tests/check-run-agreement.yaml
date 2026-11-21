@@ -452,6 +452,13 @@ targets:
   - !ref needDirectorySharedForwardAtRuntime
   - !ref needDirectoryForwardedTwice
   - !ref needDirectoryForwardedTwiceAtRuntime
+  - !ref needGeneratedForward
+  - !ref needGeneratedForwardAtRuntime
+  - !ref needGeneratedChildForward
+  - !ref needGeneratedParameters
+  - !ref needGeneratedParametersAtRuntime
+  - !ref needGeneratedValue
+  - !ref needGeneratedValueAtRuntime
   - !ref resourceInputNeedType
   - !ref resourceInputNeedTypeAtRuntime
   - !ref needUndeclared
@@ -4932,6 +4939,64 @@ expect:
   errors:
     - { code: NEED_DIRECTORY_FORWARDED_TWICE, message: "Durable directory 'uploads' is forwarded whole to 2 needs — 'First.files', 'Second.files' — and each would write over the others' files. Give each its own directory; a library that must share one with another declares that in one library, not by forwarding." }
   runFails: "ERR_NEED_DIRECTORY_FORWARDED_TWICE"
+---
+# A generated key or password forwarded whole states every parameter of the
+# need it supplies with an equal value — at an import and at a child application
+# alike; a password's parameters and a value supplied in place of the
+# derivation are held to the type's rules.
+kind: Assert.Manifest
+metadata: { name: needGeneratedForward }
+source: ./__fixtures__/needs/agreement/generated-forward/lib/telo.yaml
+expect:
+  errors:
+    - { code: NEED_FORWARD_INCOMPATIBLE, message: "which differ at 'bytes'" }
+---
+kind: Assert.Manifest
+metadata: { name: needGeneratedForwardAtRuntime }
+source: ./__fixtures__/needs/agreement/generated-forward/telo.yaml
+expect:
+  errors:
+    - { code: NEED_FORWARD_INCOMPATIBLE, message: "Import 'Inner': need 'sessionKey' of module 'GeneratedForwardInner' states the parameters {\"bytes\":64,\"encoding\":\"base64url\"}, and 'sessionKey' states {\"bytes\":32,\"encoding\":\"base64url\"}, which differ at 'bytes'. A need forwarded whole states every parameter of the need it supplies with an equal value — give 'sessionKey' the same parameters, or supply 'sessionKey' another way." }
+  runFails: "ERR_NEED_FORWARD_INCOMPATIBLE"
+---
+kind: Assert.Manifest
+metadata: { name: needGeneratedChildForward }
+source: ./__fixtures__/needs/agreement/generated-child-forward/telo.yaml
+expect:
+  errors:
+    - { code: NEED_FORWARD_INCOMPATIBLE, message: "App.Instance/web: need 'sessionKey' of the application at './child/telo.yaml' states the parameters {\"bytes\":64,\"encoding\":\"base64url\"}, and 'sessionKey' states {\"bytes\":32,\"encoding\":\"base64url\"}, which differ at 'bytes'. A need forwarded whole states every parameter of the need it supplies with an equal value — give 'sessionKey' the same parameters, or supply 'sessionKey' another way." }
+  runFails: "[NEED_FORWARD_INCOMPATIBLE] App.Instance/web: need 'sessionKey' of the application at './child/telo.yaml' states the parameters {\"bytes\":64,\"encoding\":\"base64url\"}, and 'sessionKey' states {\"bytes\":32,\"encoding\":\"base64url\"}, which differ at 'bytes'. A need forwarded whole states every parameter of the need it supplies with an equal value — give 'sessionKey' the same parameters, or supply 'sessionKey' another way."
+---
+kind: Assert.Manifest
+metadata: { name: needGeneratedParameters }
+source: ./__fixtures__/needs/agreement/generated-parameters/lib/telo.yaml
+expect:
+  errors:
+    - { code: NEED_PARAMETERS_INVALID, message: "both hold 'c'" }
+---
+kind: Assert.Manifest
+metadata: { name: needGeneratedParametersAtRuntime }
+source: ./__fixtures__/needs/agreement/generated-parameters/telo.yaml
+expect:
+  errors:
+    - { code: NEED_PARAMETERS_INVALID, message: "Need 'dbPassword': characterSets[0] and characterSets[1] both hold 'c'." }
+  runFails: "ERR_NEED_PARAMETERS_INVALID"
+---
+kind: Assert.Manifest
+metadata: { name: needGeneratedValue }
+source: ./__fixtures__/needs/agreement/generated-value/lib/telo.yaml
+expect:
+  errors:
+    - code: NEED_VALUE_INVALID
+      message: "'fixedKey' field 'key' does not decode as base64url to 32 bytes"
+---
+kind: Assert.Manifest
+metadata: { name: needGeneratedValueAtRuntime }
+source: ./__fixtures__/needs/agreement/generated-value/telo.yaml
+expect:
+  errors:
+    - { code: NEED_VALUE_INVALID, message: "Import 'Inner': need 'sessionKey' (type 'Telo.GeneratedSecretKey'): 'fixedKey' field 'key' does not decode as base64url to 32 bytes." }
+  runFails: "ERR_NEED_VALUE_INVALID"
 ---
 kind: Assert.Manifest
 metadata: { name: resourceInputNeedType }

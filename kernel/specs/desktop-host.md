@@ -81,7 +81,7 @@ The lock is a local socket in the per-user application directory — `$XDG_DATA_
 
 A start that finds the lock answered is a **second start**. It sends one JSON line `{"type":"show"}`; the holder shows its windows (§5.6) and answers one line `{"pid":<process id>,"source":"<the manifest or packaged executable it runs>"}` and closes. The second start prints `<productName> is already running (process <pid>, <source>); its windows are shown` on stdout and exits 0, having started nothing.
 
-Everything under `desktop-host/` — the lock, `port`, the helper's `webview/` store — is read and written only by the lock's holder.
+Everything under `desktop-host/` — the lock, `port`, the helper's `webview/` store and `secret-seed` — is read and written only by the lock's holder. `secret-seed` is the host's seed: the holder reads it, creating it on the first start, and hands it to the kernel as `TELO_HOST_SECRET_SEED` unless the environment, env files included, names one (then the file is not read); the read-or-create rule and the file's format are `packages/secret-seed/README.md`'s. A file that does not hold a seed is `ERR_NEED_HOST_VALUE_INVALID` naming the file, never regenerated, and a second start that finds the lock held writes nothing. `TELO_HOST_STATE_DIR` is the per-user `state/` unless one is named.
 
 ### 5.3 The origins
 

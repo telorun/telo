@@ -48,6 +48,7 @@
     "@fastify/websocket": "^11.0.1",
     "@telorun/debug-wire": "workspace:*",
     "@telorun/runner-protocol": "workspace:*",
+    "@telorun/secret-seed": "workspace:*",
     "@telorun/share-tunnel": "workspace:*",
     "fastify": "^5.12.5",
     "jose": "^6.2.3",

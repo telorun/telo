@@ -173,7 +173,7 @@ describe("a packaged executable as a manifest source", () => {
     const input = await resolveManifestInput(manifest, { env: env() });
     expect(input).toEqual({
       entryPath: manifest,
-      cacheRoot: path.join(dir, ".telo"),
+      cacheRoot: path.join(dir, ".telo", "cache"),
       cacheSealed: false,
     });
     expect(existsSync(path.join(appDir, "apps"))).toBe(false);

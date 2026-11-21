@@ -90,6 +90,18 @@ sessionStore:
   existingSecret: ""
   existingSecretKey: "url"
 
+# The root every session application's generated secrets derive from
+# (`Telo.GeneratedSecretKey`, `Telo.GeneratedPassword`): 32 random bytes as
+# unpadded base64url, taken from a Secret you create (`openssl rand -base64 32 |
+# tr '+/' '-_' | tr -d '=\n'`), key `existingSecretKey`. Unset with the sqlite
+# store, the runner keeps a seed of its own in `secret-seed` beside its session
+# store. Unset with postgres, no seed is delivered and an application declaring a
+# generated type fails with ERR_NEED_UNMET. Setting, rotating or losing it
+# changes every session's secrets.
+secretSeed:
+  existingSecret: ""
+  existingSecretKey: "seed"
+
 # Each session's own storage: one PersistentVolumeClaim per session in
 # sessionNamespace, holding its workspace (with its module cache) and the
 # co-resident agent's state. Owned by no pod, so suspending a session (deleting

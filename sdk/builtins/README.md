@@ -5,7 +5,7 @@ One JSON file per built-in document, and one per shared schema fragment under
 every kind a manifest names without an import — `Telo.Application`,
 `Telo.Library`, `Telo.Definition`, `Telo.Abstract`, `Telo.Import`,
 `Telo.NeedType`, `Telo.JsonSchema`, `Telo.Function`, `Telo.Sequence`, `Telo.Value`, the sinks,
-the capability abstracts, the public-address need types — plus the fragments a
+the capability abstracts, the kernel-declared need types — plus the fragments a
 schema points at with `$ref: "telo://manifest#/$defs/<Name>"`.
 
 The files live **here**, beside the language halves rather than inside either,

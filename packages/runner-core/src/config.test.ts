@@ -1,6 +1,10 @@
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
-import { loadCoreConfig, requireStateDirectory, RunnerConfigError } from "./config.js";
+import { loadCoreConfig, loadRootSecretSeed, requireStateDirectory, RunnerConfigError } from "./config.js";
 import { openSessionStore } from "./session-store/open-session-store.js";
 
 describe("core config", () => {
@@ -207,5 +211,42 @@ describe("share settings", () => {
     expect(() => loadCoreConfig({ ...noIdentity, RUNNER_SHARES: "1" })).toThrow(
       /^RUNNER_SHARES needs RUNNER_IDENTITY_AUDIENCE and RUNNER_IDENTITY_ISSUERS/,
     );
+  });
+});
+
+describe("the runner's root secret seed", () => {
+  const SEED = Buffer.alloc(32, 9).toString("base64url");
+  const dir = () => mkdtempSync(join(tmpdir(), "runner-seed-"));
+
+  it("is RUNNER_SECRET_SEED when set, kept in secret-seed beside the SQLite store otherwise, and absent with PostgreSQL", () => {
+    const state = dir();
+    const store = { kind: "sqlite", directory: state } as const;
+
+    expect(loadRootSecretSeed({ RUNNER_SECRET_SEED: SEED }, store)).toEqual(new Uint8Array(32).fill(9));
+    expect(existsSync(join(state, "secret-seed"))).toBe(false);
+
+    const created = loadRootSecretSeed({}, store);
+    expect(created).toHaveLength(32);
+    expect(loadRootSecretSeed({}, store)).toEqual(created);
+    expect(readFileSync(join(state, "secret-seed"), "utf8").trim()).toHaveLength(43);
+
+    expect(loadRootSecretSeed({}, { kind: "postgres", url: "postgres://db/x" })).toBeUndefined();
+    expect(loadRootSecretSeed({ RUNNER_SECRET_SEED: SEED }, { kind: "postgres", url: "postgres://db/x" })).toEqual(
+      new Uint8Array(32).fill(9),
+    );
+  });
+
+  it("refuses a variable or a file that is not 32 bytes, naming it and never its contents, and keeps the file", () => {
+    const state = dir();
+    expect(() => loadRootSecretSeed({ RUNNER_SECRET_SEED: "hunter2" }, { kind: "sqlite", directory: state })).toThrow(
+      new RunnerConfigError("RUNNER_SECRET_SEED must be 32 bytes of unpadded base64url"),
+    );
+
+    const file = join(state, "secret-seed");
+    writeFileSync(file, "hunter2\n");
+    expect(() => loadRootSecretSeed({}, { kind: "sqlite", directory: state })).toThrow(
+      new RunnerConfigError(`${file} does not hold 32 bytes of unpadded base64url`),
+    );
+    expect(readFileSync(file, "utf8")).toBe("hunter2\n");
   });
 });

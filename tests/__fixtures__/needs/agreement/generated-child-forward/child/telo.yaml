@@ -1,0 +1,4 @@
+kind: Telo.Application
+metadata: { name: GeneratedChildForwardChild, version: 0.0.0 }
+needs:
+  sessionKey: { kind: Telo.GeneratedSecretKey, parameters: { bytes: 64, encoding: base64url } }

@@ -1,0 +1,13 @@
+kind: Telo.Library
+metadata:
+  name: GeneratedValue
+  version: 0.0.0
+  description: Hands a library a fixed key that is not 32 bytes of base64url.
+imports:
+  Inner:
+    source: ./inner
+    needs: { sessionKey: !ref fixedKey }
+---
+kind: Telo.GeneratedSecretKey
+metadata: { name: fixedKey }
+fields: { key: abc }

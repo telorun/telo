@@ -149,7 +149,16 @@ describe.skipIf(NO_LOOPBACK_ALIASES)("a session's containers", () => {
         VolumeOptions: { Subpath: SUPERVISOR.subpath },
       },
       { Type: "volume", Source: VOLUME, Target: "/home/telo", VolumeOptions: { Subpath: "s1/home/apps" } },
+      {
+        Type: "volume",
+        Source: VOLUME,
+        Target: "/var/lib/telo-apps/web",
+        VolumeOptions: { Subpath: "s1/apps/web" },
+      },
     ]);
+    expect(workload.appStateDir("web")).toBe("/var/lib/telo-apps/web");
+    expect(existsSync(join(bundleRoot, "s1", "apps", "web"))).toBe(true);
+    expect(existsSync(join(bundleRoot, "s1", "apps", "worker"))).toBe(true);
     const worker = engine.created.find((c) => c.name === "telo-run-s1-app-worker")!;
     expect(worker.Env[0]).toBe("TELO_SUPERVISOR_LISTEN=0.0.0.0:9331");
     expect(worker.Env[1]).not.toBe(web.Env[1]);
@@ -189,6 +198,7 @@ describe.skipIf(NO_LOOPBACK_ALIASES)("a session's containers", () => {
     await workload.suspend();
     expect(engine.names()).toEqual([]);
     expect(existsSync(join(bundleRoot, "s1", "agent"))).toBe(true);
+    expect(existsSync(join(bundleRoot, "s1", "apps", "web"))).toBe(true);
 
     await backend.create(spec("s1"), recorder().callbacks);
     expect(engine.names()).toHaveLength(3);

@@ -771,7 +771,7 @@ For humans on a terminal. Layout:
       at Http.Api.api#/routes/3/handler (telo.yaml:18:9)
     caused by TypeError: Cannot read properties of undefined (reading 'rows')
       host stack
-        at SqlExec.invoke (/home/me/app/.telo/controller-src/sql-3f2a91/sql.mjs:814:22)
+        at SqlExec.invoke (/home/me/app/.telo/cache/controller-src/sql-3f2a91/sql.mjs:814:22)
   ```
 
 **Colors.** The modal convention across pino-pretty, zap, tint,

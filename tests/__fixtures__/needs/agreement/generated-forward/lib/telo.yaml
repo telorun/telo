@@ -1,0 +1,11 @@
+kind: Telo.Library
+metadata:
+  name: GeneratedForward
+  version: 0.0.0
+  description: Forwards a 32-byte key whole to a library asking for 64 bytes.
+needs:
+  sessionKey: { kind: Telo.GeneratedSecretKey, parameters: { bytes: 32, encoding: base64url } }
+imports:
+  Inner:
+    source: ./inner
+    needs: { sessionKey: !ref sessionKey }

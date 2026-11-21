@@ -41,7 +41,7 @@ release:
 ```
 
 `release.units` lists what the workspace releases. That is not derivable — a
-whole-tree scan would read every example, starter and cached `.telo/manifests/**`
+whole-tree scan would read every example, starter and cached `.telo/cache/manifests/**`
 copy as a released module. A unit is a directory with **one version, one
 changelog (`<unit>/CHANGELOG.md`) and one fragment target**, and its key is its
 workspace-relative path (`modules/sql`), never a bare name — two directories in

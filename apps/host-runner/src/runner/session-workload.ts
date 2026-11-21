@@ -25,7 +25,12 @@ import {
 import { spawnAgentProcess } from "./agent-process.js";
 import { hasExited, spawnAppProcess, spawned, stopAppProcess } from "./app-process.js";
 import type { SelfInvocation } from "./self-invocation.js";
-import { createSessionDirectory, type SessionDirectory } from "./state-root.js";
+import {
+  appStateDirectory,
+  createAppStateDirectory,
+  createSessionDirectory,
+  type SessionDirectory,
+} from "./state-root.js";
 import { TeloVersionUnavailable, type TeloSupply } from "./telo-supply.js";
 import { WorkspaceDirectory } from "./workspace-directory.js";
 
@@ -128,6 +133,10 @@ export class LocalSessionWorkload implements BackendWorkload {
     };
   }
 
+  appStateDir(app: string): string {
+    return appStateDirectory(this.directory, app);
+  }
+
   async runApp(appName: string, run: AppRun): Promise<void> {
     const slot = this.slotOf(appName);
     if (slot.run) {
@@ -135,6 +144,7 @@ export class LocalSessionWorkload implements BackendWorkload {
       throw new AppRunRefused("run_active", `app '${appName}' already has a live run`);
     }
     if (this.closed) throw new Error("the session's workload has ended");
+    await createAppStateDirectory(this.directory, appName);
 
     const child = spawnAppProcess({
       telo: slot.telo,

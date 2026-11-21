@@ -472,7 +472,7 @@ export async function buildApplicationClosure(options: {
 const moduleOfNode = new WeakMap<ClosureModule, LoadedModule>();
 
 function workingCacheRoot(): string {
-  return resolveCacheRoot(path.join(process.cwd(), "telo.yaml")) ?? path.join(process.cwd(), ".telo");
+  return resolveCacheRoot(path.join(process.cwd(), "telo.yaml")) ?? path.join(process.cwd(), ".telo", "cache");
 }
 
 function located(message: string, data: ClosureAnchor["data"], code?: string): AnalysisDiagnostic {

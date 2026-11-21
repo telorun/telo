@@ -1,0 +1,13 @@
+kind: Telo.Library
+metadata:
+  name: GeneratedParameters
+  version: 0.0.0
+  description: A password need naming one character in two sets.
+needs:
+  dbPassword:
+    kind: Telo.GeneratedPassword
+    parameters:
+      length: 16
+      characterSets:
+        - { characters: abc, minimum: 1 }
+        - { characters: c01, minimum: 1 }

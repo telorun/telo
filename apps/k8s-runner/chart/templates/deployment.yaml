@@ -122,6 +122,13 @@ spec:
             - name: RUNNER_SESSION_STORE_URL
               value: {{ .Values.sessionStore.url | quote }}
             {{- end }}
+            {{- if .Values.secretSeed.existingSecret }}
+            - name: RUNNER_SECRET_SEED
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretSeed.existingSecret | quote }}
+                  key: {{ .Values.secretSeed.existingSecretKey | quote }}
+            {{- end }}
             - name: RUNNER_SESSION_STORAGE_SIZE
               value: {{ .Values.sessionStorage.size | quote }}
             {{- if .Values.sessionStorage.storageClass }}

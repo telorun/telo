@@ -64,7 +64,7 @@ describe("selectFiles", () => {
   it("never ships the default-ignore set even when a pattern selects it", () => {
     write("node_modules/dep/index.js");
     write(".git/config");
-    write(".telo/manifests/x/telo.yaml");
+    write(".telo/cache/manifests/x/telo.yaml");
     write("public/app.js");
     expect(selectFiles(workdir, ["**"])).toEqual(["public/app.js"]);
   });

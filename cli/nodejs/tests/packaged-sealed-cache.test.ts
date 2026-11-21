@@ -151,8 +151,8 @@ describe("a packaged executable's sealed cache", () => {
     const other = path.join(dir, "other");
     const otherLibrary = fs.readFileSync(path.join(FIXTURE, "other-greetings.yaml"));
     const pin = `sha256-${createHash("sha256").update(otherLibrary).digest("base64url")}`;
-    fs.mkdirSync(path.join(other, ".telo", ...LIBRARY_CACHE_PATH.slice(0, -1)), { recursive: true });
-    fs.writeFileSync(path.join(other, ".telo", ...LIBRARY_CACHE_PATH), otherLibrary);
+    fs.mkdirSync(path.join(other, ".telo", "cache", ...LIBRARY_CACHE_PATH.slice(0, -1)), { recursive: true });
+    fs.writeFileSync(path.join(other, ".telo", "cache", ...LIBRARY_CACHE_PATH), otherLibrary);
     fs.writeFileSync(
       path.join(other, "telo.yaml"),
       [

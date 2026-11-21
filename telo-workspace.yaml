@@ -1,5 +1,5 @@
 # The release anchor. Its LOCATION is what every module key, ledger entry and
-# fragment path is relative to, and where the shared `.telo` cache lives. Every
+# fragment path is relative to, and where the shared `.telo/cache` lives. Every
 # field sits in a block scoped to what it governs.
 #
 # `release:` is read by `telo release` alone. `telo run` reads the location — as
@@ -60,6 +60,7 @@ release:
     - { path: packages/runner-core, ecosystem: npm }
     - { path: packages/runner-protocol, ecosystem: npm }
     - { path: packages/share-tunnel, ecosystem: npm }
+    - { path: packages/secret-seed, ecosystem: npm }
     # Images built from the repository root: each Dockerfile's
     # `Dockerfile.dockerignore` admits only what that image builds from.
     - path: apps/studio
