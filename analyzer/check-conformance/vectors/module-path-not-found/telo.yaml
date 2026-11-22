@@ -1,0 +1,29 @@
+kind: Telo.Application
+metadata: { name: ModulePathApp }
+ports: { http: { env: PORT, default: 8080 } }
+needs:
+  shell:
+    kind: Telo.DesktopHost
+    parameters:
+      identifier: run.telo.rows
+      productName: Rows
+      port: http
+      icon: !module-path ./icon.png
+---
+kind: Telo.Definition
+metadata: { name: Site }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    root: { x-telo-type: Telo.HostPath }
+    port: { type: integer, x-telo-eval: compile }
+---
+kind: Self.Site
+metadata: { name: public }
+root: !module-path ./public
+port: !cel "ports.http"
+---
+kind: Self.Site
+metadata: { name: logo }
+root: !module-path ./images/logo.png

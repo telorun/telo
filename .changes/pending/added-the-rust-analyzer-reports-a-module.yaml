@@ -1,0 +1,9 @@
+units:
+  analyzer: Added
+body: "The Rust analyzer reports a module file claim naming nothing as the Node analyzer
+  does — INCLUDE_FILE_NOT_FOUND and MODULE_PATH_NOT_FOUND, with the near-miss fix its
+  directory offers, and MODULE_FILE_UNREADABLE for one its source could not answer for —
+  for the entry and every library its path imports reach, a path a sources: entry stages
+  counting as present. Its manifest source seam gains entry_at, read_head, locate and
+  list_directory, and each claim that names something is stamped with foundEntry and
+  foundHead as Node stamps it."

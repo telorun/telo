@@ -1,0 +1,77 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "MODULE_PATH_NOT_FOUND",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/ModulePathApp: `!module-path ./icon.png` names 'icon.png', and there is nothing there (icon.png). The path is relative to the module root — the directory holding telo.yaml. Create it or correct the path; if it exists in your checkout, whatever copied the module here left it out (an ignore file, a COPY step).",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "ModulePathApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "needs.shell.parameters.icon"
+      },
+      "range": {
+        "start": {
+          "line": 10,
+          "character": 25
+        },
+        "end": {
+          "line": 10,
+          "character": 35
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "MODULE_PATH_NOT_FOUND",
+      "source": "telo-analyzer",
+      "message": "Self.Site/logo: `!module-path ./images/logo.png` names 'images/logo.png', and there is nothing there (images/logo.png). The path is relative to the module root — the directory holding telo.yaml. Create it or correct the path; if it exists in your checkout, whatever copied the module here left it out (an ignore file, a COPY step).",
+      "data": {
+        "resource": {
+          "kind": "Self.Site",
+          "name": "logo"
+        },
+        "filePath": "telo.yaml",
+        "path": "root"
+      },
+      "range": {
+        "start": {
+          "line": 28,
+          "character": 19
+        },
+        "end": {
+          "line": 28,
+          "character": 36
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "MODULE_PATH_NOT_FOUND",
+      "source": "telo-analyzer",
+      "message": "Self.Site/public: `!module-path ./public` names 'public', and there is nothing there (public). The path is relative to the module root — the directory holding telo.yaml. Create it or correct the path; if it exists in your checkout, whatever copied the module here left it out (an ignore file, a COPY step).",
+      "data": {
+        "resource": {
+          "kind": "Self.Site",
+          "name": "public"
+        },
+        "filePath": "telo.yaml",
+        "path": "root"
+      },
+      "range": {
+        "start": {
+          "line": 23,
+          "character": 19
+        },
+        "end": {
+          "line": 23,
+          "character": 27
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] telo.yaml: Telo.Application/ModulePathApp: `!module-path ./icon.png` names 'icon.png', and there is nothing there (icon.png). The path is relative to the module root — the directory holding telo.yaml. Create it or correct the path; if it exists in your checkout, whatever copied the module here left it out (an ignore file, a COPY step).\ntelo.yaml: Self.Site/public: `!module-path ./public` names 'public', and there is nothing there (public). The path is relative to the module root — the directory holding telo.yaml. Create it or correct the path; if it exists in your checkout, whatever copied the module here left it out (an ignore file, a COPY step).\ntelo.yaml: Self.Site/logo: `!module-path ./images/logo.png` names 'images/logo.png', and there is nothing there (images/logo.png). The path is relative to the module root — the directory holding telo.yaml. Create it or correct the path; if it exists in your checkout, whatever copied the module here left it out (an ignore file, a COPY step).\n  [MODULE_PATH_NOT_FOUND] Telo.Application/ModulePathApp: `!module-path ./icon.png` names 'icon.png', and there is nothing there (icon.png). The path is relative to the module root — the directory holding telo.yaml. Create it or correct the path; if it exists in your checkout, whatever copied the module here left it out (an ignore file, a COPY step).\n  [MODULE_PATH_NOT_FOUND] Self.Site/public: `!module-path ./public` names 'public', and there is nothing there (public). The path is relative to the module root — the directory holding telo.yaml. Create it or correct the path; if it exists in your checkout, whatever copied the module here left it out (an ignore file, a COPY step).\n  [MODULE_PATH_NOT_FOUND] Self.Site/logo: `!module-path ./images/logo.png` names 'images/logo.png', and there is nothing there (images/logo.png). The path is relative to the module root — the directory holding telo.yaml. Create it or correct the path; if it exists in your checkout, whatever copied the module here left it out (an ignore file, a COPY step)."
+}

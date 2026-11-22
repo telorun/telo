@@ -1,0 +1,11 @@
+kind: Telo.Library
+metadata: { name: Chat }
+---
+kind: Telo.Definition
+metadata: { name: Prompt }
+capability: Telo.Invocable
+schema: { type: object, properties: { text: { type: string } } }
+---
+kind: Self.Prompt
+metadata: { name: primer }
+text: !include-text ./primer.md

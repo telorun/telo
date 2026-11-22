@@ -5,9 +5,9 @@
 //!
 //! Where it differs, by what this build reads: a construct it cannot read is refused first, as
 //! `ERR_UNSUPPORTED_MANIFEST_FEATURE` ([`host_refusals`]); and the groups whose findings this
-//! analyzer does not make yet — the module-file claims, a failed library migration (this build
-//! refuses the import reaching one instead), a nested declaration's stamp and the need table
-//! (this kernel refuses `needs:`) — have nothing to refuse here, so their steps are absent.
+//! analyzer does not make yet — a failed library migration (this build refuses the import
+//! reaching one instead), a nested declaration's stamp and the need table (this kernel refuses
+//! `needs:`) — have nothing to refuse here, so their steps are absent.
 //! Node's registration step has no counterpart: this analyzer has no registry.
 
 use crate::entry_diagnostics::host_refusals;
@@ -43,8 +43,8 @@ pub trait LoadRefusalHost {
 
 /// The refusal of a load of `graph` from `entry_url`, or `None` when it loads, by the first
 /// group that refuses, in Node's order: (1) the import failures; (2) the parse and coded loader
-/// findings; the module artifacts are built; (3) the version conflicts; (5) an entry that is a
-/// library; the analysis runs; (6) the metadata stamps, beside every other error the analysis
+/// findings; the module artifacts are built; (3) the version conflicts; (4) the module-file
+/// findings; (5) an entry that is a library; the analysis runs; (6) the metadata stamps, beside every other error the analysis
 /// found; (8) the analysis's errors. A construct this build cannot read is refused before all.
 pub fn load_refusal<H: LoadRefusalHost>(
     graph: &LoadedGraph,
@@ -85,6 +85,9 @@ pub fn load_refusal<H: LoadRefusalHost>(
             message: conflicts.iter().map(|d| d.message.as_str()).collect::<Vec<_>>().join("\n"),
             diagnostics: conflicts,
         }));
+    }
+    if !graph.module_file_diagnostics.is_empty() {
+        return Ok(Some(file_findings_refusal(graph.module_file_diagnostics.clone())));
     }
     if graph.entry().owner.module_document().and_then(kind_of) == Some(LIBRARY) {
         return Ok(Some(LoadRefusal {

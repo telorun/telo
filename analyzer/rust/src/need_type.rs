@@ -1,23 +1,26 @@
 //! A module document's `needs:` block, read for the one position of a document that holds a
-//! value the kernel resolves. A PARTIAL twin of `../../nodejs/src/need-type.ts`: only
-//! `needParametersPaths` and `isAtOrBeneathPath`, which the include-placement pass reads.
-//! Owed to `3e-20 need types`, with the need table and the rest of that file.
+//! value the kernel resolves. A PARTIAL twin of `../../nodejs/src/need-type.ts`: only the
+//! `parameters:` half of `readNeeds`, `needParametersPaths` and `isAtOrBeneathPath`, which the
+//! include-placement pass and the module-file walk read. Owed to `3e-20 need types`, with the
+//! need table and the rest of that file.
 
 use serde_json::Value;
+
+/// Each need's name and its `parameters:` value, in written order, for every need `readNeeds`
+/// reads — an object naming a non-empty kind — that writes `parameters:`.
+pub fn need_parameters(module_doc: &Value) -> Vec<(&str, &Value)> {
+    let Some(needs) = module_doc.get("needs").and_then(Value::as_object) else { return Vec::new() };
+    needs
+        .iter()
+        .filter(|(_, need)| need.get("kind").and_then(Value::as_str).is_some_and(|kind| !kind.is_empty()))
+        .filter_map(|(name, need)| need.get("parameters").map(|parameters| (name.as_str(), parameters)))
+        .collect()
+}
 
 /// The dotted path of every `parameters:` a module document's needs write — the one position of
 /// a module document holding a value the kernel resolves, whose tags the need table judges.
 pub fn need_parameters_paths(module_doc: &Value) -> Vec<String> {
-    let Some(needs) = module_doc.get("needs").and_then(Value::as_object) else { return Vec::new() };
-    needs
-        .iter()
-        .filter(|(_, need)| {
-            // A need counts when it is an object naming a non-empty kind (`readNeeds`).
-            need.get("kind").and_then(Value::as_str).is_some_and(|kind| !kind.is_empty())
-                && need.get("parameters").is_some()
-        })
-        .map(|(name, _)| format!("needs.{name}.parameters"))
-        .collect()
+    need_parameters(module_doc).into_iter().map(|(name, _)| format!("needs.{name}.parameters")).collect()
 }
 
 /// Whether a dotted path lies at or beneath one of `paths`.

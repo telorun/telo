@@ -1,0 +1,4 @@
+units:
+  cli: Added
+body: The Rust telo check reports an !include-* or !module-path naming nothing, in the
+  entry and in every library its path imports reach, as the Node one does.

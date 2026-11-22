@@ -346,6 +346,7 @@ pub fn library_graph(graph: &LoadedGraph, library_source: &str) -> LoadedGraph {
         overrides: graph.overrides.clone(),
         migration_diagnostics,
         version_diagnostics: graph.version_diagnostics.iter().filter(|d| in_closure(d)).cloned().collect(),
+        module_file_diagnostics: graph.module_file_diagnostics.iter().filter(|d| in_closure(d)).cloned().collect(),
         parse_diagnostics: graph.parse_diagnostics.iter().filter(|d| in_closure(d)).cloned().collect(),
         metadata_diagnostics: Vec::new(),
         errors: graph.errors.iter().filter(|e| files.contains(&e.from_source)).cloned().collect(),

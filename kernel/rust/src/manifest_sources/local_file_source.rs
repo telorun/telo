@@ -5,14 +5,17 @@
 //! `file://` URLs. Nothing in this kernel consumes a URL — a controller's
 //! `local_path` and an import's relative `source` both resolve as paths — and a
 //! path is one fewer conversion at every use. A failure still names its location
-//! as the `file://` URL, as Telo's words do. The Node source's `readAll`,
-//! `resolveOwnerOf`, `entryAt`, `readHead` and `listDirectory` serve the editor and
-//! the module-file checks, which no Rust host has yet.
+//! as the `file://` URL, as Telo's words do. The Node source's `readAll` and
+//! `resolveOwnerOf` serve the editor, which no Rust host has. What the module-file
+//! walk asks (`entry_at`, `read_head`, `locate`, `list_directory`) is answered from
+//! the disk, a failure in the words the Node source lets through: the platform's,
+//! as Node's `fs` writes them.
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use telo_analyzer::sources::source_failure::{file_source_failure, file_url, ManifestSourceFailure, SourceFailureKind};
-use telo_analyzer::{LoadError, ManifestSource, ReadManifest, DEFAULT_MANIFEST_FILENAME};
+use telo_analyzer::{HostEntryKind, LoadError, ManifestSource, ReadManifest, DEFAULT_MANIFEST_FILENAME};
 use telorun_glob::{is_pruned, select_by_patterns, SelectOptions};
 
 use crate::lexical_path;
@@ -80,6 +83,104 @@ impl ManifestSource for LocalFileSource {
         };
         Some(expanded())
     }
+
+    fn entry_at(&self, base: &str, relative: &str) -> Option<Result<Option<HostEntryKind>, LoadError>> {
+        let answer = || -> Result<Option<HostEntryKind>, LoadError> {
+            let path = self.located(base, relative)?;
+            match std::fs::metadata(&path) {
+                Ok(metadata) => Ok(Some(if metadata.is_dir() { HostEntryKind::Directory } else { HostEntryKind::File })),
+                Err(err) if is_absent(&err) => Ok(None),
+                Err(err) => Err(LoadError::Failed(fs_error_message(&err, "stat", Some(&path)))),
+            }
+        };
+        Some(answer())
+    }
+
+    fn read_head(&self, base: &str, relative: &str, length: usize) -> Option<Result<Option<Vec<u8>>, LoadError>> {
+        let answer = || -> Result<Option<Vec<u8>>, LoadError> {
+            let path = self.located(base, relative)?;
+            let file = match std::fs::File::open(&path) {
+                Ok(file) => file,
+                Err(err) if is_absent(&err) || err.kind() == std::io::ErrorKind::IsADirectory => return Ok(None),
+                Err(err) => return Err(LoadError::Failed(fs_error_message(&err, "open", Some(&path)))),
+            };
+            let mut head = Vec::with_capacity(length);
+            match file.take(length as u64).read_to_end(&mut head) {
+                Ok(_) => Ok(Some(head)),
+                Err(err) if err.kind() == std::io::ErrorKind::IsADirectory => Ok(None),
+                Err(err) => Err(LoadError::Failed(fs_error_message(&err, "read", None))),
+            }
+        };
+        Some(answer())
+    }
+
+    fn locate(&self, base: &str, relative: &str) -> Option<String> {
+        self.located(base, relative).ok().map(|path| path.display().to_string())
+    }
+
+    /// The names in a directory, sorted as Node's `readdir` hands them over.
+    fn list_directory(&self, base: &str, relative: &str) -> Option<Result<Option<Vec<String>>, LoadError>> {
+        let answer = || -> Result<Option<Vec<String>>, LoadError> {
+            let path = self.located(base, relative)?;
+            let listed: std::io::Result<Vec<String>> = std::fs::read_dir(&path).and_then(|entries| {
+                entries.map(|entry| entry.map(|entry| entry.file_name().to_string_lossy().into_owned())).collect()
+            });
+            match listed {
+                Ok(mut names) => {
+                    names.sort();
+                    Ok(Some(names))
+                }
+                Err(err) if is_absent(&err) => Ok(None),
+                Err(err) => Err(LoadError::Failed(fs_error_message(&err, "scandir", Some(&path)))),
+            }
+        };
+        Some(answer())
+    }
+}
+
+impl LocalFileSource {
+    /// `relative` beside the module file `base`: where every module-file question looks.
+    fn located(&self, base: &str, relative: &str) -> Result<PathBuf, LoadError> {
+        let base = Self::absolute(base)?;
+        let directory = base.parent().unwrap_or(&base);
+        Ok(lexical_path::normalize(&directory.join(relative)))
+    }
+}
+
+/// Nothing at the path, or a path running through a file: what every question reads as absent.
+fn is_absent(err: &std::io::Error) -> bool {
+    matches!(err.kind(), std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory)
+}
+
+/// `ELOOP`, whose kind std does not name yet.
+const ELOOP: i32 = if cfg!(any(target_os = "macos", target_os = "ios", target_os = "freebsd")) { 62 } else { 40 };
+
+/// A filesystem failure as Node's `fs` words it — `<CODE>: <description>, <syscall> '<path>'` —
+/// for the failures a stat, an open, a read or a listing raises; any other in the platform's
+/// own words.
+fn fs_error_message(err: &std::io::Error, syscall: &str, path: Option<&Path>) -> String {
+    use std::io::ErrorKind;
+    let described = match (err.kind(), err.raw_os_error()) {
+        (ErrorKind::PermissionDenied, Some(1)) => Some(("EPERM", "operation not permitted")),
+        (ErrorKind::PermissionDenied, _) => Some(("EACCES", "permission denied")),
+        (_, Some(code)) if cfg!(unix) && code == ELOOP => Some(("ELOOP", "too many symbolic links encountered")),
+        (ErrorKind::InvalidFilename, _) => Some(("ENAMETOOLONG", "name too long")),
+        (ErrorKind::IsADirectory, _) => Some(("EISDIR", "illegal operation on a directory")),
+        (ErrorKind::NotADirectory, _) => Some(("ENOTDIR", "not a directory")),
+        (ErrorKind::NotFound, _) => Some(("ENOENT", "no such file or directory")),
+        (ErrorKind::OutOfMemory, _) => Some(("ENOMEM", "not enough memory")),
+        (ErrorKind::ResourceBusy, _) => Some(("EBUSY", "resource busy or locked")),
+        (ErrorKind::InvalidInput, _) => Some(("EINVAL", "invalid argument")),
+        (_, Some(5)) if cfg!(unix) => Some(("EIO", "i/o error")),
+        (_, Some(23)) if cfg!(unix) => Some(("ENFILE", "file table overflow")),
+        (_, Some(24)) if cfg!(unix) => Some(("EMFILE", "too many open files")),
+        _ => None,
+    };
+    let Some((code, description)) = described else { return err.to_string() };
+    match path {
+        Some(path) => format!("{code}: {description}, {syscall} '{}'", path.display()),
+        None => format!("{code}: {description}, {syscall}"),
+    }
 }
 
 /// Every regular file beneath `directory`, as `/`-separated paths relative to it.
@@ -129,5 +230,42 @@ mod tests {
         let owner = root.join("telo.yaml").display().to_string();
         let found = LocalFileSource.expand_glob(&owner, &["**/*.yaml".to_string(), "!telo.yaml".to_string()]).expect("lists").expect("expands");
         assert_eq!(found, [root.join("parts/a.yaml"), root.join("parts/b.yaml")].map(|p| p.display().to_string()));
+    }
+
+    #[test]
+    fn answers_what_a_module_file_claim_names_beside_the_owner() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path().canonicalize().expect("canonical");
+        std::fs::create_dir_all(root.join("public/css")).expect("mkdir");
+        std::fs::write(root.join("public/index.html"), "<html>").expect("write");
+        std::fs::write(root.join("public/about.html"), "").expect("write");
+        let owner = root.join("telo.yaml").display().to_string();
+        let entry = |relative: &str| LocalFileSource.entry_at(&owner, relative).expect("answers").expect("reads");
+        assert_eq!(entry("public"), Some(HostEntryKind::Directory));
+        assert_eq!(entry("public/index.html"), Some(HostEntryKind::File));
+        assert_eq!(entry("missing.png"), None);
+        assert_eq!(entry("public/index.html/x"), None);
+        let head = |relative: &str| LocalFileSource.read_head(&owner, relative, 3).expect("answers").expect("reads");
+        assert_eq!(head("public/index.html"), Some(b"<ht".to_vec()));
+        assert_eq!(head("public/about.html"), Some(Vec::new()));
+        assert_eq!(head("public"), None);
+        assert_eq!(head("missing.png"), None);
+        let list = |relative: &str| LocalFileSource.list_directory(&owner, relative).expect("answers").expect("reads");
+        assert_eq!(list("public"), Some(vec!["about.html".to_string(), "css".to_string(), "index.html".to_string()]));
+        assert_eq!(list("missing"), None);
+        assert_eq!(LocalFileSource.locate(&owner, "./public/../icon.png"), Some(root.join("icon.png").display().to_string()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn words_a_failed_question_as_node_s_fs_does() {
+        let denied = std::io::Error::from_raw_os_error(13);
+        assert_eq!(fs_error_message(&denied, "stat", Some(Path::new("/m/x"))), "EACCES: permission denied, stat '/m/x'");
+        assert_eq!(fs_error_message(&std::io::Error::from_raw_os_error(1), "open", Some(Path::new("/m/x"))), "EPERM: operation not permitted, open '/m/x'");
+        assert_eq!(fs_error_message(&std::io::Error::from_raw_os_error(5), "read", None), "EIO: i/o error, read");
+        assert_eq!(
+            fs_error_message(&std::io::Error::from_raw_os_error(ELOOP), "scandir", Some(Path::new("/m/loop"))),
+            "ELOOP: too many symbolic links encountered, scandir '/m/loop'"
+        );
     }
 }

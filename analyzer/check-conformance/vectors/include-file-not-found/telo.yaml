@@ -1,0 +1,15 @@
+kind: Telo.Application
+metadata: { name: IncludeApp }
+---
+kind: Telo.Definition
+metadata: { name: Prompt }
+capability: Telo.Invocable
+schema: { type: object, properties: { text: { type: string } } }
+---
+kind: Self.Prompt
+metadata: { name: primer }
+text: !include-text ./prompts/primer.md
+---
+kind: Self.Prompt
+metadata: { name: system }
+text: !include-text ./missing/system.md

@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
 use telo_analyzer::sources::oci_ref::{is_oci_ref, parse_oci_ref};
-use telo_analyzer::{LoadError, LoadedGraph, ManifestSource, ReadManifest};
+use telo_analyzer::{HostEntryKind, LoadError, LoadedGraph, ManifestSource, ReadManifest};
 use telo_kernel::manifest_sources::local_manifest_cache_source::LocalManifestCacheSource;
 use telo_kernel::manifest_sources::origin_digests::origin_key;
 
@@ -56,6 +56,22 @@ impl ManifestSource for RecordingCacheSource {
         let read = self.inner.read(path_or_url)?;
         self.served.borrow_mut().insert(path_or_url.to_string(), read.source.clone());
         Ok(read)
+    }
+
+    fn entry_at(&self, base: &str, relative: &str) -> Option<Result<Option<HostEntryKind>, LoadError>> {
+        self.inner.entry_at(base, relative)
+    }
+
+    fn read_head(&self, base: &str, relative: &str, length: usize) -> Option<Result<Option<Vec<u8>>, LoadError>> {
+        self.inner.read_head(base, relative, length)
+    }
+
+    fn locate(&self, base: &str, relative: &str) -> Option<String> {
+        self.inner.locate(base, relative)
+    }
+
+    fn list_directory(&self, base: &str, relative: &str) -> Option<Result<Option<Vec<String>>, LoadError>> {
+        self.inner.list_directory(base, relative)
     }
 }
 
@@ -184,6 +200,7 @@ mod tests {
             parse_diagnostics: Vec::new(),
             version_diagnostics: Vec::new(),
             migration_diagnostics: Vec::new(),
+            module_file_diagnostics: Vec::new(),
             metadata_diagnostics: Vec::new(),
             errors: Vec::new(),
         }

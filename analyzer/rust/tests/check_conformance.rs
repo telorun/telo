@@ -3,12 +3,13 @@
 //! `telo check` reports — the entry's assembly plus every imported library's verdict — to each
 //! row's `diagnostics`.
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value};
 use telo_analyzer::sources::source_failure::{file_source_failure, file_url, ManifestSourceFailure, SourceFailureKind};
 use telo_analyzer::{
-    analyze_loaded_graph, join_relative, load_graph, locate_diagnostic, AnalysisOptions, DependencyAnalysisOptions,
+    analyze_loaded_graph, join_relative, load_graph, HostEntryKind, locate_diagnostic, AnalysisOptions, DependencyAnalysisOptions,
     LoadError, ManifestLoader, ManifestSource, ReadManifest, DEFAULT_MANIFEST_FILENAME, TELO_RUNNING_SURFACE,
 };
 use telorun_glob::{select_by_patterns, SelectOptions};
@@ -26,7 +27,8 @@ fn slashed(path: &str) -> String {
 }
 
 /// The filesystem as the kernel's local file source reads it: a directory read as its
-/// `telo.yaml`, a failure in Telo's words, an `include:` glob expanded over the owner's directory.
+/// `telo.yaml`, a failure in Telo's words, an `include:` glob expanded over the owner's directory,
+/// and what a module file claim names answered from the disk.
 struct FileSource;
 
 impl ManifestSource for FileSource {
@@ -58,6 +60,50 @@ impl ManifestSource for FileSource {
             .map(|rel| join_relative(base, &rel))
             .collect()))
     }
+
+    fn entry_at(&self, base: &str, relative: &str) -> Option<Result<Option<HostEntryKind>, LoadError>> {
+        Some(match std::fs::metadata(join_relative(base, relative)) {
+            Ok(metadata) => Ok(Some(if metadata.is_dir() { HostEntryKind::Directory } else { HostEntryKind::File })),
+            Err(err) if absent(&err) => Ok(None),
+            Err(err) => Err(LoadError::Failed(err.to_string())),
+        })
+    }
+
+    fn read_head(&self, base: &str, relative: &str, length: usize) -> Option<Result<Option<Vec<u8>>, LoadError>> {
+        let file = match std::fs::File::open(join_relative(base, relative)) {
+            Ok(file) => file,
+            Err(err) if absent(&err) || err.kind() == std::io::ErrorKind::IsADirectory => return Some(Ok(None)),
+            Err(err) => return Some(Err(LoadError::Failed(err.to_string()))),
+        };
+        let mut head = Vec::new();
+        Some(match file.take(length as u64).read_to_end(&mut head) {
+            Ok(_) => Ok(Some(head)),
+            Err(err) if err.kind() == std::io::ErrorKind::IsADirectory => Ok(None),
+            Err(err) => Err(LoadError::Failed(err.to_string())),
+        })
+    }
+
+    fn locate(&self, base: &str, relative: &str) -> Option<String> {
+        Some(slashed(&join_relative(base, relative)))
+    }
+
+    fn list_directory(&self, base: &str, relative: &str) -> Option<Result<Option<Vec<String>>, LoadError>> {
+        let listed: std::io::Result<Vec<String>> = std::fs::read_dir(join_relative(base, relative))
+            .and_then(|entries| entries.map(|entry| entry.map(|e| e.file_name().to_string_lossy().into_owned())).collect());
+        Some(match listed {
+            Ok(mut names) => {
+                names.sort();
+                Ok(Some(names))
+            }
+            Err(err) if absent(&err) => Ok(None),
+            Err(err) => Err(LoadError::Failed(err.to_string())),
+        })
+    }
+}
+
+/// Nothing at the path, or a path running through a file.
+fn absent(err: &std::io::Error) -> bool {
+    matches!(err.kind(), std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory)
 }
 
 /// Every regular file beneath `directory`, `/`-separated relative to it.
