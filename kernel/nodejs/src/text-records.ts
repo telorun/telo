@@ -743,14 +743,16 @@ export function syncInjectedReferences(declaration: object): void {
   if (!held) return;
   const sync = (from: any, to: any, below: readonly ValuePath[]): void => {
     for (const key of Object.keys(from)) {
-      if (from[key] === to[key]) continue;
+      const value = from[key];
+      const current = Object.hasOwn(to, key) ? to[key] : undefined;
+      if (value === current) continue;
       const deeper = below.filter((path) => path[0] === key || path[0] === Number(key));
       if (deeper.some((path) => path.length === 1)) continue;
-      if (deeper.length > 0 && from[key] && to[key] && typeof from[key] === "object" && typeof to[key] === "object") {
-        sync(from[key], to[key], deeper.map((path) => path.slice(1)));
+      if (deeper.length > 0 && value && current && typeof value === "object" && typeof current === "object") {
+        sync(value, current, deeper.map((path) => path.slice(1)));
         continue;
       }
-      to[key] = from[key];
+      Object.defineProperty(to, key, { value, writable: true, enumerable: true, configurable: true });
     }
   };
   sync(declaration, held.copy, held.textPaths);

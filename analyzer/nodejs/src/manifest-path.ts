@@ -8,6 +8,7 @@
  * the IDE resolving the same map for completion — and three copies of one
  * traversal is exactly what the shared-answer rule exists to prevent.
  */
+import { setOwnProperty } from "./own-property.js";
 
 /**
  * The value at `path`, or `undefined` when any segment is absent.
@@ -52,5 +53,5 @@ export function assignConcretePath(root: Record<string, any>, path: string, valu
   if (last === undefined || container === null || typeof container !== "object") {
     throw new Error(`manifest path '${path}' addresses no value in the resource`);
   }
-  container[last] = value;
+  setOwnProperty(container, last, value);
 }

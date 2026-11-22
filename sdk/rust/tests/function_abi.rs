@@ -128,6 +128,32 @@ fn drives_every_function_slot_over_typed_frames() {
     assert_eq!(std::fs::read_to_string(&marker).unwrap(), "dropped");
 }
 
+#[test]
+fn refuses_pointers_and_handles_the_host_cannot_vouch_for() {
+    let loaded = Loaded::open();
+    let mut lines: Vec<String> = Vec::new();
+    let host = TeloFunctionHost { ctx: &mut lines as *mut Vec<String> as *mut c_void, log: record_log };
+    let is_before = loaded.vtable("is_before");
+
+    let mut err = TeloBuf::empty();
+    let handle = unsafe { (is_before.create)(std::ptr::null(), 5, &host, &mut err) };
+    assert!(handle.is_null());
+    let error: serde_json::Value = serde_json::from_str(&take(is_before, err)).unwrap();
+    assert_eq!(error["code"], "ERR_NULL_POINTER");
+
+    // An empty config is not JSON, so it is refused at decode, not at the pointer check.
+    let mut err = TeloBuf::empty();
+    let handle = unsafe { (is_before.create)(std::ptr::null(), 0, &host, &mut err) };
+    assert!(handle.is_null());
+    let error: serde_json::Value = serde_json::from_str(&take(is_before, err)).unwrap();
+    assert_eq!(error["code"], "ERR_FUNCTION_CONFIG_INVALID");
+
+    let (status, error) = call(is_before, std::ptr::null_mut(), "{}");
+    assert_eq!(status, TELO_ERR);
+    let error: serde_json::Value = serde_json::from_str(&error).unwrap();
+    assert_eq!(error["code"], "ERR_INVALID_HANDLE");
+}
+
 fn tempfile_path(name: &str) -> String {
     let path = std::env::temp_dir().join(format!("telorun-sdk-function-abi-{}-{name}", std::process::id()));
     if path.exists() {

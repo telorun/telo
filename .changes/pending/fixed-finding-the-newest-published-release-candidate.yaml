@@ -1,0 +1,4 @@
+units:
+  cli: Fixed
+body: Finding the newest published release candidate no longer builds a regular
+  expression from the surface version.

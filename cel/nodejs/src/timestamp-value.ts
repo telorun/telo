@@ -119,7 +119,13 @@ export function formatTimestamp(value: CelTimestamp): string {
 
 function fractionText(nanos: number): string {
   if (nanos === 0) return "";
-  return `.${pad(nanos, 9).replace(/0+$/, "")}`;
+  return `.${trimTrailingZeros(pad(nanos, 9))}`;
+}
+
+function trimTrailingZeros(text: string): string {
+  let end = text.length;
+  while (end > 0 && text[end - 1] === "0") end--;
+  return text.slice(0, end);
 }
 
 function pad(value: number, width: number): string {

@@ -73,7 +73,7 @@ const UNIT_NANOS: Readonly<Record<string, bigint>> = {
   w: 604_800_000_000_000n,
 };
 
-const PART = /([0-9]*)(?:\.([0-9]*))?(ns|us|µs|μs|ms|s|m|h|d|w)/g;
+const PART = /([0-9]*)(?:\.([0-9]*))?(ns|us|µs|μs|ms|s|m|h|d|w)/y;
 
 /**
  * A duration from CEL's own text: a sign, then one or more number-and-unit parts over
@@ -109,8 +109,8 @@ export function durationNanosFromText(text: string, range?: SourceRange): bigint
   PART.lastIndex = 0;
   let total = 0n;
   let at = 0;
+  // codeql[js/polynomial-redos] PART is sticky, so each exec is one attempt at `at` and the whole parse is linear in the text
   for (let found = PART.exec(body); found; found = PART.exec(body)) {
-    if (found.index !== at) return refuse();
     const [whole, digits, fraction, unit] = found;
     if (!digits && !fraction) return refuse();
     const scale = UNIT_NANOS[unit!]!;

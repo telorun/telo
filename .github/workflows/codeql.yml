@@ -39,3 +39,22 @@ jobs:
       - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           category: /language:${{ matrix.language }}
+          upload: never
+          output: sarif-results
+      # Drops results a `codeql[<rule id>] <reason>` comment on the line above suppresses; fails on a malformed one, and on a
+      # stale one except on a pull request, whose diff-informed analysis reports data-flow results on changed lines only.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Filter suppressed results
+        env:
+          LANGUAGE: ${{ matrix.language }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then skip=--skip-stale; else skip=; fi
+          node scripts/filter-codeql-sarif.mjs --language "$LANGUAGE" $skip sarif-results
+      - uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: sarif-results
+          category: /language:${{ matrix.language }}

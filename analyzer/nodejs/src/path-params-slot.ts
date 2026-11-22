@@ -46,7 +46,7 @@ export const PATH_PARAMS_FOR_ANNOTATION = "x-telo-path-params-for";
 
 const ANNOTATION_KEYS = ["template", "through"] as const;
 const VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const ABSOLUTE_URL = /^(https?):\/\/([^/?#]*)(.*)$/i;
+const ABSOLUTE_URL = /^(https?):\/\/([^/?#]*)((?:[/?#].*)?)$/i;
 const MAILTO = /^mailto:(.*)$/i;
 
 type Schema = Record<string, any>;

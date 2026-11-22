@@ -14,6 +14,7 @@ pub struct Instants {
 }
 
 #[function(entry = "is_before")]
+// codeql[rust/access-invalid-pointer] napi-derive's generated unwrap starts from null_mut() and napi_unwrap fills it through an out-parameter, which this query cannot see
 impl Function for IsBefore {
     type Config = Value;
     type Args = Instants;
@@ -37,6 +38,7 @@ pub struct Data {
 }
 
 #[function(entry = "echo_bytes")]
+// codeql[rust/access-invalid-pointer] napi-derive's generated unwrap starts from null_mut() and napi_unwrap fills it through an out-parameter, which this query cannot see
 impl Function for EchoBytes {
     type Config = Value;
     type Args = Data;
@@ -54,6 +56,7 @@ impl Function for EchoBytes {
 pub struct Explode;
 
 #[function(entry = "explode")]
+// codeql[rust/access-invalid-pointer] napi-derive's generated unwrap starts from null_mut() and napi_unwrap fills it through an out-parameter, which this query cannot see
 impl Function for Explode {
     type Config = Value;
     type Args = Value;
@@ -78,6 +81,7 @@ pub struct MarkedConfig {
 }
 
 #[function(entry = "marked")]
+// codeql[rust/access-invalid-pointer] napi-derive's generated unwrap starts from null_mut() and napi_unwrap fills it through an out-parameter, which this query cannot see
 impl Function for Marked {
     type Config = MarkedConfig;
     type Args = Value;

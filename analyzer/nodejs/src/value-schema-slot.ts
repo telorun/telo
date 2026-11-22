@@ -11,6 +11,7 @@
  * its location leads.
  */
 import { isRefSlot } from "./ref-slot.js";
+import { setOwnProperty } from "./own-property.js";
 import { resolveSchemaPointer } from "./manifest-navigation.js";
 import { declarationValuesAt, type ProjectionScope } from "./schema-projection.js";
 import {
@@ -321,13 +322,13 @@ export function resolveContractValueSchemas(
       if (next === child.schema) continue;
       if (walked === node) walked = { ...node };
       if (child.at === undefined) {
-        walked[child.keyword] = next;
+        setOwnProperty(walked, child.keyword, next);
         continue;
       }
       if (walked[child.keyword] === node[child.keyword]) {
-        walked[child.keyword] = Array.isArray(node[child.keyword]) ? [...node[child.keyword]] : { ...node[child.keyword] };
+        setOwnProperty(walked, child.keyword, Array.isArray(node[child.keyword]) ? [...node[child.keyword]] : { ...node[child.keyword] });
       }
-      walked[child.keyword][child.at] = next;
+      setOwnProperty(walked[child.keyword], child.at, next);
     }
     const conjuncts = [
       ...valueSchemaTypes(declaration, node[VALUE_SCHEMA_ANNOTATION], host)

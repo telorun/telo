@@ -22,6 +22,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { UnitKey } from "../../fragment.js";
+import { trimTrailingSlashes } from "../../trailing-slash.js";
 import {
   PYPI_LOCKFILES,
   PYPROJECT_TOML,
@@ -235,7 +236,7 @@ export function pypiEvidenceWith(options: PypiEvidenceOptions = {}): EvidenceAda
         return [...found].sort();
       };
       const registryOf = (ref: AnchorRef): string | undefined =>
-        typeof ref.anchor.settings.registry === "string" ? ref.anchor.settings.registry.replace(/\/+$/, "") : undefined;
+        typeof ref.anchor.settings.registry === "string" ? trimTrailingSlashes(ref.anchor.settings.registry) : undefined;
       const indexPage = async (ref: AnchorRef) => {
         const registry = registryOf(ref);
         if (registry === undefined) return undefined;

@@ -100,6 +100,7 @@ export class RedirectListenerResource implements ResourceInstance {
       const waiter = this.waiters.get(state);
       if (waiter) {
         this.waiters.delete(state);
+        // codeql[js/unvalidated-dynamic-method-call] waiters is a Map of callbacks this class alone registers; the state is only a lookup key
         waiter(result);
       } else {
         // The awaiting step may not have reached its turn yet; hold the result so

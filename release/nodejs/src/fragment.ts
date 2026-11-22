@@ -12,6 +12,7 @@
 
 import { Document, parseDocument } from "yaml";
 import { isFragmentKind, type FragmentKind } from "./bump-level.js";
+import { trimTrailingSlashes } from "./trailing-slash.js";
 
 /** A unit's workspace-relative directory path — `modules/sql`, `kernel`. */
 export type UnitKey = string;
@@ -115,5 +116,5 @@ export function serializeFragment(units: ReadonlyMap<UnitKey, FragmentKind>, bod
 /** Unit keys are POSIX-separated and carry no leading `./` or trailing slash, so
  *  the same directory written three ways is one key. */
 export function normalizeUnitKey(key: string): UnitKey {
-  return key.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/+$/, "");
+  return trimTrailingSlashes(key.replace(/\\/g, "/").replace(/^\.\//, ""));
 }

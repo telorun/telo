@@ -136,6 +136,7 @@ export class ModuleEmitter {
   emitFunction(root: CelNode): string {
     const temporaries = this.temporaries();
     const body = this.node(root, undefined, temporaries);
+    // codeql[js/bad-code-sanitization] body is built from fixed text plus generated names and literals, each written through textSource / integerSource / doubleSource, never raw expression text
     return `(frame) => { ${temporaries.declaration()}return ${body}; }`;
   }
 

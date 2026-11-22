@@ -43,6 +43,12 @@ export function numberRefusal(value: unknown, subject: string): string | null {
   return `${subject} is not a number`;
 }
 
+function trimTrailingZeros(text: string): string {
+  let end = text.length;
+  while (end > 0 && text[end - 1] === "0") end--;
+  return text.slice(0, end);
+}
+
 /** The significant digits of `|value|` and where the decimal point sits among them. */
 function significantDigits(value: NumberValue): { digits: string; point: number } {
   let digits: string;
@@ -57,7 +63,7 @@ function significantDigits(value: NumberValue): { digits: string; point: number 
     point = integer.length + Number(exponent);
   }
   const leading = digits.length - digits.replace(/^0+/, "").length;
-  return { digits: digits.slice(leading).replace(/0+$/, ""), point: point - leading };
+  return { digits: trimTrailingZeros(digits.slice(leading)), point: point - leading };
 }
 
 /** Adds one to the last digit, carrying; a carry out of the first digit adds a digit. */
@@ -95,7 +101,7 @@ export function roundedDecimal(value: NumberValue, pattern: string): RoundedDeci
   }
   let integer = point > 0 ? (digits.slice(0, point) + "0".repeat(Math.max(0, point - digits.length))) : "";
   let fraction = point >= 0 ? digits.slice(point) : "0".repeat(-point) + digits;
-  fraction = fraction.replace(/0+$/, "");
+  fraction = trimTrailingZeros(fraction);
   fraction += "0".repeat(Math.max(0, minimumFractionDigits - fraction.length));
   integer = integer.replace(/^0+/, "");
   const zero = integer === "" && !/[1-9]/.test(fraction);

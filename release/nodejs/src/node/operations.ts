@@ -443,7 +443,7 @@ async function reconcile(
   recorded: UnitLayers | undefined,
   findings: VerifyFinding[],
 ): Promise<{ published: boolean; layers: UnitLayers }> {
-  const ecosystems: Record<string, Record<string, AnchorDigest>> = {};
+  const ecosystems: Record<string, Record<string, AnchorDigest>> = Object.create(null);
   let published = false;
   let verifiable = false;
   let kept = false;
@@ -453,7 +453,7 @@ async function reconcile(
     const was = recorded?.ecosystems[anchor.ecosystem]?.[anchor.anchor];
     const keep = () => {
       if (was === undefined) return;
-      (ecosystems[anchor.ecosystem] ??= {})[anchor.anchor] = was;
+      (ecosystems[anchor.ecosystem] ??= Object.create(null))[anchor.anchor] = was;
       kept = true;
     };
     const layer = `${anchor.ecosystem}/${anchor.anchor}`;
@@ -477,7 +477,7 @@ async function reconcile(
     for (const drift of answer.drift) {
       findings.push({ key: unit.key, layer: drift, kind: "drift", detail: `the ledger disagrees with what is published at ${version}` });
     }
-    (ecosystems[anchor.ecosystem] ??= {})[anchor.anchor] = answer.layer;
+    (ecosystems[anchor.ecosystem] ??= Object.create(null))[anchor.anchor] = answer.layer;
   }
   // A layer that cannot be read back is as published as its ledger says.
   if (kept || (!verifiable && recorded)) published = true;
@@ -551,7 +551,7 @@ export async function baselineLedger(
       result.unrecorded.push({ key: unit.key, reason: `'${version}' is not a release version` });
       continue;
     }
-    const ecosystems: Record<string, Record<string, AnchorDigest>> = {};
+    const ecosystems: Record<string, Record<string, AnchorDigest>> = Object.create(null);
     let registry = registryOf(unit, sessions);
     let absent: string | undefined;
     for (const anchor of unit.anchors) {
@@ -564,11 +564,11 @@ export async function baselineLedger(
         break;
       }
       if (answer?.kind === "published") {
-        (ecosystems[anchor.ecosystem] ??= {})[anchor.anchor] = answer.layer;
+        (ecosystems[anchor.ecosystem] ??= Object.create(null))[anchor.anchor] = answer.layer;
         continue;
       }
       const found = await session.collect(ref);
-      if (found.layer !== undefined) (ecosystems[anchor.ecosystem] ??= {})[anchor.anchor] = found.layer;
+      if (found.layer !== undefined) (ecosystems[anchor.ecosystem] ??= Object.create(null))[anchor.anchor] = found.layer;
       registry ??= found.registry;
     }
     if (absent !== undefined) {

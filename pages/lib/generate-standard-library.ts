@@ -22,7 +22,7 @@ interface ModuleEntry {
 const SUMMARY_BUDGET = 200;
 
 function summarize(description: string): string {
-  const flat = description.replace(/\s+/g, " ").trim().replace(/\|/g, "\\|");
+  const flat = description.replace(/\s+/g, " ").trim().replace(/[\\|]/g, "\\$&");
   if (flat.length <= SUMMARY_BUDGET) return flat;
   const head = flat.slice(0, SUMMARY_BUDGET);
   const lastStop = head.lastIndexOf(". ");

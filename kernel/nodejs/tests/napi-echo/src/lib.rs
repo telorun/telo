@@ -14,6 +14,7 @@ pub fn echo_create(_resource: JsObject, _ctx: JsObject) -> EchoInstance {
 }
 
 #[napi]
+// codeql[rust/access-invalid-pointer] napi-derive's generated unwrap starts from null_mut() and napi_unwrap fills it through an out-parameter, which this query cannot see
 pub struct EchoInstance {}
 
 #[napi]

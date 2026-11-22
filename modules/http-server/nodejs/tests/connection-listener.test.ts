@@ -67,6 +67,7 @@ describe("ConnectionListener", () => {
     const arrived: string[] = [];
     const { listener, port } = await listening((request, response) => {
       arrived.push(request.url!);
+      response.setHeader("content-type", "text/plain");
       setTimeout(() => response.end(request.url), request.url === "/slow" ? 200 : 0);
     });
     const idle = await connect(port);

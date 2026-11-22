@@ -115,7 +115,7 @@ export async function verifyFloor(
 export function newestCandidateOf(surface: string, published: readonly string[]): string | undefined {
   const candidates = published
     .map((v) => (v.startsWith("v") ? v.slice(1) : v))
-    .filter((v) => new RegExp(`^${surface.replace(/\./g, "\\.")}-rc\\.\\d+$`).test(v));
+    .filter((v) => v.startsWith(`${surface}-rc.`) && /^\d+$/.test(v.slice(`${surface}-rc.`.length)));
   return candidates.sort((a, b) => (compareModuleVersions(b, a) ?? 0))[0];
 }
 

@@ -14,6 +14,7 @@
  * Browser-safe: no Node built-ins.
  */
 import { cloneMigrationTree } from "./rule-application.js";
+import { setOwnProperty } from "../own-property.js";
 import { isExpansionSentinel } from "@telorun/templating";
 
 /** A node of a module's trees: a document of one file, and a path inside it. */
@@ -97,7 +98,7 @@ export function applyLibraryMigrationRecord(
     if ("list" in node) return node.list.map(materialize);
     if ("map" in node) {
       const out: Record<string, unknown> = {};
-      for (const [key, child] of Object.entries(node.map)) out[key] = materialize(child);
+      for (const [key, child] of Object.entries(node.map)) setOwnProperty(out, key, materialize(child));
       return out;
     }
     const found = treeValueAt(documentsOf(node.from.file), node.from);
@@ -119,7 +120,7 @@ export function applyLibraryMigrationRecord(
     if (parent === null || typeof parent !== "object") {
       throw new Error(`library migration record of ${record.module}: ${entry.anchor.file} document ${entry.anchor.document} holds no container at /${path.slice(0, -1).join("/")}`);
     }
-    (parent as Record<string | number, unknown>)[path[path.length - 1]!] = values[i];
+    setOwnProperty(parent, path[path.length - 1]!, values[i]);
   });
 }
 

@@ -190,6 +190,7 @@ function material(password: CryptoInput, pepper: CryptoInput | undefined): Uint8
   const bytes = toBytes(password);
   if (pepper === undefined) return bytes;
   return new Uint8Array(
+    // codeql[js/insufficient-password-hash] the pepper MAC only prepares the input of the slow password KDF applied to it, it is not the stored hash
     Buffer.from(createHmac("sha256", toBytes(pepper)).update(bytes).digest("base64")),
   );
 }

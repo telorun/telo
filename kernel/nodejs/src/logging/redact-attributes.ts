@@ -159,8 +159,9 @@ function writeKey(container: unknown, key: string | number, policy: RedactionPol
   if (!isPlainContainer(container)) return;
   const name = String(key);
   if (!hasOwn(container, name)) return;
+  // codeql[js/prototype-polluting-assignment] deletes an own property only: hasOwn above refuses any key the container does not hold itself
   if (policy.remove) delete container[name];
-  else container[name] = policy.censor;
+  else Object.defineProperty(container, name, { value: policy.censor });
 }
 
 function isPlainContainer(value: unknown): value is Record<string, unknown> {

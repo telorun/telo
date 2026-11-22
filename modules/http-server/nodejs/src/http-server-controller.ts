@@ -1286,6 +1286,7 @@ class HttpServer implements ResourceInstance {
         });
         // Authentication, then authorization, then the guard: hooks run in the
         // order they are added.
+        // codeql[js/missing-rate-limiting] this is the mount's authentication and authorization hook; throttling is the author's `authentication.throttle`, enforced inside it
         scope.addHook("onRequest", await this.accessHook(mount, index));
         scope.addHook("onRoute", (route) => this.checkRouteAccess(mount, index, route.config));
         if (guard) scope.addHook("onRequest", this.guardHook(guard, `/mounts/${index}/guard/invoke`));

@@ -1,6 +1,7 @@
 import type { ManifestSource } from "../types.js";
 import { DEFAULT_MANIFEST_FILENAME } from "../types.js";
 import { splitIntegrity, verifiedFetch } from "./integrity.js";
+import { trimTrailingSlashes } from "./trailing-slash.js";
 import { OCI_SCHEME, isDigestSpelledTag, isOciRef, parseOciRef } from "./oci-ref.js";
 
 /** The hub's static manifest cache: an R2 bucket bound directly to the domain,
@@ -142,7 +143,7 @@ export function manifestCacheUrl(
   const coords = typeof refOrCoords === "string" ? ociManifestCacheCoords(refOrCoords) : refOrCoords;
   if (!coords) return null;
   const key = manifestCacheKey(coords);
-  return key ? `${baseUrl.replace(/\/+$/, "")}/${key}` : null;
+  return key ? `${trimTrailingSlashes(baseUrl)}/${key}` : null;
 }
 
 /** Resolves `oci://` module refs against the hub's static manifest cache with a

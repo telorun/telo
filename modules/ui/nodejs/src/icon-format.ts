@@ -7,7 +7,7 @@ export interface IconFormat {
 }
 
 const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-const SVG_START = /^﻿?\s*(<\?xml[^>]*\?>\s*)?(<!--[\s\S]*?-->\s*|<!DOCTYPE[^>]*>\s*)*<svg[\s>]/;
+const SVG_START = /^﻿?\s*(<\?xml[^>]*\?>\s*)?(?:<!DOCTYPE[^>]*>\s*)*(?:<!--[\s\S]*-->\s*(?:<!DOCTYPE[^>]*>\s*)*)?<svg[\s>]/;
 
 const ascii = (bytes: Uint8Array, from: number, to: number) => String.fromCharCode(...bytes.subarray(from, to));
 
@@ -16,6 +16,7 @@ export function iconFormat(bytes: Uint8Array): IconFormat | undefined {
   if (PNG.every((byte, index) => bytes[index] === byte)) return { extension: "png", mediaType: "image/png" };
   if (ascii(bytes, 0, 4) === "RIFF" && ascii(bytes, 8, 12) === "WEBP") return { extension: "webp", mediaType: "image/webp" };
   const head = new TextDecoder("utf-8", { fatal: false }).decode(bytes.subarray(0, 4096));
+  // codeql[js/polynomial-redos] the pattern is anchored at the start of a head of at most 4096 bytes, so one test is linear in it
   if (SVG_START.test(head)) return { extension: "svg", mediaType: "image/svg+xml" };
   return undefined;
 }

@@ -1,5 +1,6 @@
 import * as path from "path";
 
+import { trimTrailingSlashes } from "../trailing-slash.js";
 import { isPayloadLink, type LayerEntry, type PayloadLink } from "./files-integrity.js";
 
 /** An entry of one layer breaking the layer's entry rules, and why. `target` is
@@ -69,7 +70,7 @@ export function findLayerViolations(
  *  absolute or climbs out of the module directory. */
 function entryPath(name: string): string | undefined {
   if (path.posix.isAbsolute(name)) return undefined;
-  const normalized = path.posix.normalize(name).replace(/\/+$/, "");
+  const normalized = trimTrailingSlashes(path.posix.normalize(name));
   if (normalized === "." || normalized === ".." || normalized.startsWith("../")) return undefined;
   return normalized;
 }
