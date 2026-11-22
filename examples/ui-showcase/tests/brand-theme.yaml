@@ -9,8 +9,8 @@ metadata:
     scene drawn with Radix's controls, and every vector of those controls met.
 imports:
   Brand: ../brand
-  Conformance: ../../../modules/ui-react-conformance
-  Assert: ../../../modules/assert
+  Conformance: oci://ghcr.io/telorun/ui-react-conformance@0.12.1#sha256-rukSFmz643u0EAxPNku3VKggb12fahNRvKQL9ET_S3k
+  Assert: oci://ghcr.io/telorun/assert@0.22.2#sha256-Rh9B2qPXTZKRjB9hbsGaFJKk25OmsxL2YfBSit177Lw
 targets:
   - !ref checkBrandTheme
 ---

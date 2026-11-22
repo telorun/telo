@@ -4,8 +4,8 @@ metadata:
   version: 1.0.0
   description: A demo showcasing a JavaScript script run from flat `targets`.
 imports:
-  JavaScript: ../../modules/javascript
-  Console: ../../modules/console
+  JavaScript: oci://ghcr.io/telorun/javascript@0.14.2#sha256-DDkoguHieiZwCQOEc3F8fTBv-Ouw5CDC8qM_WKs0ERQ
+  Console: oci://ghcr.io/telorun/console@0.19.5#sha256-aWnhpC9EodktO29y8zxc5YeFvgMwYD1bP0NkRsK2lic
 targets:
   - name: step1
     invoke: !ref multiplyBy2

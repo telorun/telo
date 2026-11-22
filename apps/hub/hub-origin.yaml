@@ -27,7 +27,7 @@ requires:
   # `resources:` inputs and `lifecycle:` on a library.
   # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
   telo: ">=0.128.0"
-imports: { Shell: ../../modules/shell, Yaml: ../../modules/yaml, Run: ../../modules/run }
+imports: { Shell: oci://ghcr.io/telorun/shell@0.13.3#sha256-AXRHgGrsKfJpClRdRpdA5KDPtgrBohQeJ1JJmKuJ_xg, Yaml: oci://ghcr.io/telorun/yaml@0.11.2#sha256-xELlFc2kTlCixzkzHXWrC4IR3Mna93aQHCD94C-VqGg, Run: oci://ghcr.io/telorun/run@0.35.1#sha256-m6oA-tLMj4v0JvzkvRt17CBuWzXSYpumtxyNRb3qVz8 }
 resources: { shellHost: { kind: Shell.LocalHost, description: Where the telo CLI runs. } }
 variables:
   # The command these reads run: a program and its leading arguments, to which

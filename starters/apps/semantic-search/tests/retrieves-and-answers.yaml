@@ -12,11 +12,11 @@ metadata:
     for itself: each form must be built from the shape its route validates, and
     post to that route.
 imports:
-  Run: ../../../../modules/run
-  App: ../../../../modules/app
-  Http: ../../../../modules/http-server
-  HttpClient: ../../../../modules/http-client
-  Assert: ../../../../modules/assert
+  Run: oci://ghcr.io/telorun/run@0.35.1#sha256-m6oA-tLMj4v0JvzkvRt17CBuWzXSYpumtxyNRb3qVz8
+  App: oci://ghcr.io/telorun/app@0.7.2#sha256-29SmNhB_A4l2fGjs5eiV0pYRetQ8-ylNBnPHY_iqgOs
+  Http: oci://ghcr.io/telorun/http-server@0.45.0#sha256-U4OB7744bjifdIJjxKDn7t0vMfpVSOqSSyIB7S3rrlE
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.1#sha256-yODGL4HqbynR4aaPrcN1I2RIsmNBDn3ciL1uobA8nqA
+  Assert: oci://ghcr.io/telorun/assert@0.22.2#sha256-Rh9B2qPXTZKRjB9hbsGaFJKk25OmsxL2YfBSit177Lw
 targets:
   - !ref test
 ---

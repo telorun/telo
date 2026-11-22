@@ -13,9 +13,9 @@ metadata:
     the route, a document, a comparison, decisions on the revision read and on
     a replaced one, and comments.
 imports:
-  App: ../../../modules/app
-  HttpClient: ../../../modules/http-client
-  Assert: ../../../modules/assert
+  App: oci://ghcr.io/telorun/app@0.7.2#sha256-29SmNhB_A4l2fGjs5eiV0pYRetQ8-ylNBnPHY_iqgOs
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.1#sha256-yODGL4HqbynR4aaPrcN1I2RIsmNBDn3ciL1uobA8nqA
+  Assert: oci://ghcr.io/telorun/assert@0.22.2#sha256-Rh9B2qPXTZKRjB9hbsGaFJKk25OmsxL2YfBSit177Lw
 variables:
   # The DIRECTORY each run's database goes in; see `serves-the-showcase.yaml`.
   dbFile:

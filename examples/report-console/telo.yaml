@@ -15,12 +15,12 @@ metadata:
 requires: { telo: ">=0.133.0" }
 lang: en
 imports:
-  Http: ../../modules/http-server
-  HttpDispatch: ../../modules/http-dispatch
-  Run: ../../modules/run
-  DataModel: ../../modules/data-model
-  Ui: ../../modules/ui
-  UiReact: ../../modules/ui-react
+  Http: oci://ghcr.io/telorun/http-server@0.45.0#sha256-U4OB7744bjifdIJjxKDn7t0vMfpVSOqSSyIB7S3rrlE
+  HttpDispatch: oci://ghcr.io/telorun/http-dispatch@0.20.0#sha256-DbcU6CHXqdeDkJv7MXxtx23UwjgjLGBust8-OS8azK4
+  Run: oci://ghcr.io/telorun/run@0.35.1#sha256-m6oA-tLMj4v0JvzkvRt17CBuWzXSYpumtxyNRb3qVz8
+  DataModel: oci://ghcr.io/telorun/data-model@0.3.1#sha256-2dX0bjCoV8quBDNDD-O34bReRV-Rv97XrS7bobxdBYo
+  Ui: oci://ghcr.io/telorun/ui@0.15.0#sha256-Hpbmf228r4fDNHiDA7v1v4p-lHGYIJVp-LJL8lpFTQU
+  UiReact: oci://ghcr.io/telorun/ui-react@0.16.1#sha256-SW7Z9_GbaxvDgMyVUb1jg-Ep3pY7zvFsSAC1ofTjhl8
 # The backend the screen calls — stub routes answering fixture data — and the
 # Polish translation, each in a file of its own.
 include: [./stub-api.yaml, ./polish.yaml]
