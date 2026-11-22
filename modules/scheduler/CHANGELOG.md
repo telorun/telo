@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.12.4 - 2026-11-22
+### Security
+* Refreshed locked dependency versions within their declared ranges, as part of a workspace-wide refresh that clears known security advisories.
+
 ## 0.12.3 - 2026-11-11
 ### Fixed
 * The restriction's lower bound named telo 0.130.0, which was never published; it now names 0.131.0, the first published release at or above it.

@@ -1,8 +1,0 @@
-units:
-  cli: Added
-body: "telo audit <manifest> checks an application's whole module closure against OSV,
-  reporting each advisory at the import carrying it with the upgrade that would remove
-  it. Advisories are accepted until a date in the audit: block of telo-workspace.yaml,
-  each with a reason and an expiry; --osv-url and TELO_OSV_URL choose the endpoint.
-  Under -o json it writes the telo check envelope with each finding's advisory, import
-  chain and upgrade, and the accepted advisories as ignored."

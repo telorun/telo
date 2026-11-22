@@ -1,4 +1,0 @@
-units:
-  apps/docker-runner: Security
-body: Updated @grpc/grpc-js to a release that fixes the server crash on malformed
-  requests (GHSA-5375-pq7m-f5r2) and fast-uri to patched releases (GHSA-v2hh-gcrm-f6hx).

@@ -1,9 +1,0 @@
-units:
-  kernel: Added
-  cli: Added
-body: "The default cache root moves from <workspace dir>/.telo to <workspace
-  dir>/.telo/cache (manifests/, analysis/, layers/, npm/, ... beneath it) in both
-  kernels and the CLI, so .telo/ can hold more than the cache. TELO_CACHE_DIR still
-  names the cache root itself and wins. A cache at the old location is never read or
-  moved: a run fetches again, and a tree an older CLI installed for offline use must be
-  installed again. To clear the cache, delete .telo/cache."

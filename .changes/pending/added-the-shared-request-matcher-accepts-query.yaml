@@ -1,4 +1,0 @@
-units:
-  modules/http-dispatch: Added
-body: The shared request matcher accepts QUERY as a method, taking a body like POST; a
-  transport that cannot carry it narrows method in its own schema.

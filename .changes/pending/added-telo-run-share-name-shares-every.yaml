@@ -1,6 +1,0 @@
-units:
-  cli: Added
-body: telo run --share[=<name>] shares every tcp port of the root Application publicly
-  through a runner and answers its Telo.PublicUrl needs from the share; --share-runner
-  <url> and TELO_RUNNER_URL choose the runner. telo shares list and telo shares delete
-  <id> manage a signed-in user's shares.

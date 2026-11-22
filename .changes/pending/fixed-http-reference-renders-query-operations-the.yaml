@@ -1,4 +1,0 @@
-units:
-  modules/http-server: Fixed
-body: "Http.Reference renders QUERY operations: the bundled Scalar reference is updated
-  to 1.80.0, which lists a QUERY route beside the other operations."

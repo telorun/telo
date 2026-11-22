@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.45.0 - 2026-11-22
+### Added
+* Each staged source declares the package its files are a release of (`purl` in `sources:`), the identity a software bill of materials lists.
+* Http.Api routes accept method QUERY, the safe method that carries a body, validated as a POST body is and answered by a 400 with issues at /body/… when refused. The cookie origin check treats QUERY as a POST, and a cross-origin QUERY needs cors.methods to list it. The generated OpenAPI document is now 3.2.0 for every server declaring openapi:, listing a QUERY route under its path item query key, so a reader limited to 3.1 or earlier no longer reads it.
+### Fixed
+* Http.Reference renders QUERY operations: the bundled Scalar reference is updated to 1.80.0, which lists a QUERY route beside the other operations.
+### Security
+* Updated @fastify/static to 10.x, which fixes the path traversal that bypassed route guards for Http.Static (GHSA-83w8-p2f5-377r, GHSA-x428-ghpx-8j92, GHSA-8pvw-jcv7-9cmj, GHSA-pr96-94w5-mx2h), fastify to 5.12.5 or later (GHSA-p68q-wchp-6fh7, GHSA-hwr6-493r-vm6h) and ajv's fast-uri to a patched release (GHSA-v2hh-gcrm-f6hx).
+
 ## 0.44.2 - 2026-11-12
 ### Fixed
 * A request whose path holds a percent-escape that does not decode is answered as a request no route matches — by the mount's not-found handler, notFoundHandler, or the bare 404 problem — and passes the request log, span, unknownHosts and mount access like any request, instead of Fastify's own 400 FST_ERR_BAD_URL body.

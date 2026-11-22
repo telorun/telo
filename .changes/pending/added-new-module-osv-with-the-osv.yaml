@@ -1,6 +1,0 @@
-units:
-  modules/osv: Added
-body: "New module osv with the Osv.Query kind: looks up known vulnerabilities for
-  components given as package URLs and exact versions, returning each component's
-  advisories and whether its package type is matched by version; fails with
-  ADVISORY_LOOKUP_FAILED when the database gives no answer."

@@ -1,4 +1,0 @@
-units:
-  modules/sqlite: Added
-body: The better-sqlite3 source declares the SQLite it links (`contains`, with its CPE),
-  so the embedded code is named.

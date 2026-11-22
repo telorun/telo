@@ -1,5 +1,0 @@
-units:
-  analyzer: Added
-body: A marker diagnostic for an unknown block that is a near-miss of a known one
-  carries the block it is a near-miss of as `data.nearMiss`, so a reader need not match
-  the message.

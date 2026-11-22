@@ -1,4 +1,0 @@
-units:
-  modules/ui-lucide: Added
-  modules/ui-react-conformance: Added
-body: Requires the telo release the `ui` module it imports needs.

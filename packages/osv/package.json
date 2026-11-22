@@ -1,6 +1,6 @@
 {
   "name": "@telorun/osv",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "The OSV advisory lookup Telo's tools share: the package types OSV matches by version, the batched query with paging and retries, and each component's checked answer.",
   "keywords": [
     "telo",

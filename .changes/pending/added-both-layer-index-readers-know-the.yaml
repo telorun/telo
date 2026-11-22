@@ -1,6 +1,0 @@
-units:
-  analyzer: Added
-body: "Both layer-index readers know the `sbom` role, a singleton holding a module
-  artifact's bill of materials, and the analyzer writes and reads that record: the
-  CycloneDX 1.6 shape, the `telo:layer` / `telo:incomplete` property grammar and its
-  canonical bytes (RFC 8785 with ordered arrays), pinned by a shared conformance set."

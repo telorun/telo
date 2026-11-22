@@ -1,5 +1,0 @@
-units:
-  analyzer: Added
-body: A diagnostic re-reported at the import reaching the library that writes its defect
-  carries `data.writtenAt` — the resource, file and path where that library's own check
-  reports it — in the Node and the Rust analyzer alike.

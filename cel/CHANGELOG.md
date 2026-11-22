@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.139.0 - 2026-11-22
+### Added
+* CEL message construction: `Name{field: value}`, `.Name{…}` and, under optional types, `?field: value` build a value of a host-registered named type that opts in with `constructible: true`. `required` lists the fields a construction must write, and an optional `construct` builder passed to `registerType` builds the value or refuses it with a CEL error. A construction refuses a field value its declared type does not admit, before any builder runs. Values of a constructible type compare field by field everywhere, and an `==` or `!=` registration that could compare them is refused. New check codes: `CEL_UNKNOWN_TYPE`, `CEL_TYPE_NOT_CONSTRUCTIBLE` and `CEL_MISSING_FIELD`. Both the Node and the Rust engine carry it.
+### Fixed
+* The checker now types a read of an optional's held value as a nested optional — `{'a': optional.of(1)}.?a` is `optional<optional<int>>` — so equality against `optional.of(optional.of(x))` checks, and a member or element read through more than one optional layer is refused at check in `.b`, `.?b`, `[k]`, `[?k]` and `has()` alike, where it used to check clean as a single optional.
+
 ## 0.137.0 - 2026-11-15
 ### Added
 * Every build of the telo line now reports its recorded version with `+unreleased` — the engine handshake, the kernel's `Kernel.Starting`, the CEL engine's module key, the built-in vocabulary archive and the running surface — and only the published package, built by its own `prepack`, reports exactly its version. The surface generation is the recorded version's `major.minor.patch`; no build reads a release plan any more.

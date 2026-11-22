@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2 - 2026-11-22
+### Security
+* Refreshed locked dependency versions within their declared ranges, as part of a workspace-wide refresh that clears known security advisories.
+
 ## 0.3.1 - 2026-11-09
 ### Fixed
 * `requires.telo` now holds the measured floor, raised to the highest floor among the workspace modules this module imports.

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.30.0 - 2026-11-22
+### Added
+* The hub reports the known vulnerabilities of each tracked version and of every module it pins. Ingest stores each version's third-party components, a scheduled pass checks every distinct component against OSV, and get_module, list_module_versions and their HTTP routes serve advisories and advisoriesComplete (an empty list is clean only beside true); get_kinds states them on an # Advisories: line after the import line, never on it. INGEST_REV defaults to 12, so the deploy re-ingests every tracked version once.
+* The hub stores one component per package URL, version and revision, reading the vcs_url qualifier of each component of a module's bill of materials — one that does not split into a repository and a full commit is stored with no repository, never failing the ingest — and checks a revisioned component by its commit through Osv.Query, so embedded C code declaring its repository counts toward advisoriesComplete; each stored advisory says whether the version or the commit matched it.
+
 ## 0.29.0 - 2026-11-19
 ### Added
 * The `build-ui` guide teaches where a press goes: `to` holding a `Ui.Navigate` or a `Ui.OpenPage` on links, menu items, values, columns, relations, option sources, navigation `link` entries and `onSuccess`, in place of `href` and `onSuccess.navigate`; `press: { to, label }` on the `box`, `stack` and `columns` nodes, `Ui.Listing` and `CrudUi.Admin`; and the listing layout contract `ui_react_layouts-2`, whose records carry their `press`.

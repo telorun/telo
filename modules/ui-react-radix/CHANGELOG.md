@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.0 - 2026-11-22
+### Added
+* The theme styles the query part, the renderer's query node, in place of the data part it replaces.
+### Security
+* Refreshed locked dependency versions within their declared ranges, as part of a workspace-wide refresh that clears known security advisories.
+
 ## 0.11.0 - 2026-11-19
 ### Added
 * The Radix theme rings a pressed node or record in the text colour while its `press` has the keyboard focus, so the theme styles the renderer's new `press` part and passes `CheckTheme` against it.

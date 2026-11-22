@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1 - 2026-11-22
+### Security
+* Refreshed locked dependency versions within their declared ranges, as part of a workspace-wide refresh that clears known security advisories.
+
 ## 0.3.0 - 2026-11-19
 ### Added
 * `baseline [--unit <key>…] [--dry-run]` records the current state of every unit with no ledger entry without bumping anything, so a repository that already has published things can adopt `release` with `verify --write` then `baseline`; units with an entry are skipped and unpublished or candidate units are reported.

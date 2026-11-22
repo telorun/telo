@@ -1,6 +1,6 @@
 {
   "name": "@telorun/runner-protocol",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The Telo runner protocol: the client-facing /v1 contract of a runner — sessions, events, capabilities, errors and shares — as a normative README, a JSON Schema and TypeScript types.",
   "keywords": [
     "telo",

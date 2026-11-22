@@ -1,7 +1,0 @@
-units:
-  analyzer: Fixed
-  kernel: Fixed
-  cli: Fixed
-body: "An application importing a library whose kind's `schema:` `$ref`s a named shape
-  the library declares but does not export no longer gets `SCHEMA_COMPILE_ERROR: can't
-  resolve reference` at its check and at start."

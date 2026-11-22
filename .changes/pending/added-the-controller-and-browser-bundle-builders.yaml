@@ -1,7 +1,0 @@
-units:
-  kernel: Added
-body: The controller and browser bundle builders record, beside each cached bundle, the
-  inputs that put bytes into it, and attribute them to the packages they come from;
-  layers that describe an artifact rather than ship module files (the `sbom` role) are
-  stored under `<cache root>/layers/sha256-<hex>/`, never in a module directory, and
-  re-fetched when a stored copy no longer verifies.
