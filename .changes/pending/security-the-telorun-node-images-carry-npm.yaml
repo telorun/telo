@@ -1,0 +1,6 @@
+units:
+  cli: Security
+body: The `telorun/node` images carry npm 11's latest release, whose bundled `undici`
+  and `brace-expansion` are fixed, and an esbuild binary built from the same esbuild
+  release with a current Go, so the Go standard-library advisories of the published
+  binary are gone and bundles are unchanged.

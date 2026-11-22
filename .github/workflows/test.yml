@@ -278,6 +278,7 @@ jobs:
       core_test_args: ${{ steps.packages.outputs.core_test_args }}
       integration_mode: ${{ steps.integration.outputs.integration_mode }}
       integration_args: ${{ steps.integration.outputs.integration_args }}
+      kernel_image: ${{ steps.kernel-image.outputs.scan }}
 
     steps:
       - name: Checkout code
@@ -336,6 +337,32 @@ jobs:
             *) echo "release=$full" >> "$GITHUB_OUTPUT" ;;
           esac
           echo "full=$full" >> "$GITHUB_OUTPUT"
+
+      # The release PR scans the kernel images its merge publishes; any other PR does when
+      # it changes what they are built or judged from. A diff that cannot be taken scans.
+      - name: Decide whether to scan the kernel images
+        id: kernel-image
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          scan=false
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            case "$HEAD_REF" in
+              release-version/*) scan=true ;;
+              *)
+                git fetch --no-tags origin "$BASE_REF" || true
+                if ! changed=$(git diff --name-only "origin/$BASE_REF...HEAD"); then
+                  scan=true
+                elif grep -qE '^(cli/nodejs/Dockerfile|\.trivyignore\.yaml|\.github/actions/build-scan-push-image/.*)$' <<<"$changed"; then
+                  scan=true
+                fi
+                ;;
+            esac
+          fi
+          echo "scan=$scan" >> "$GITHUB_OUTPUT"
 
       # FAIL OPEN at every step: a diff that cannot be taken, or a `telo
       # changed` that fails, runs everything. Only an explicit empty `affected`
@@ -1696,3 +1723,42 @@ jobs:
       # subprocess, so this covers the native backend end to end.
       - name: Run tests
         run: cargo test --workspace --locked
+
+  # The kernel images, built and scanned by the action Publish pushes them with, so a
+  # fixable Critical or High finding refuses the release PR (or a change to the image)
+  # rather than a half-published release. Findings that land between this run and the
+  # publish are still refused there.
+  kernel-image-scan:
+    name: "Scan telorun/node (${{ matrix.target }})"
+    needs: select
+    if: needs.select.outputs.kernel_image == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [lean, lean-slim, rust-slim]
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - name: Log in to Docker Hub
+        if: env.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build and scan
+        uses: $/.github/actions/build-scan-push-image
+        with:
+          context: .
+          file: cli/nodejs/Dockerfile
+          target: ${{ matrix.target }}
+          platforms: linux/amd64,linux/arm64
+          repository: telorun/node
+          variant: ${{ matrix.target }}
+          push: "false"
