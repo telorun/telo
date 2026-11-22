@@ -11,7 +11,7 @@ import { LocalFileSource } from "../src/manifest-sources/local-file-source.js";
 const VECTORS = fileURLToPath(new URL("../../../analyzer/check-conformance/vectors/", import.meta.url));
 
 /** The refusal as one text: `[<code>] <message>`, then each diagnostic it carries on a
- *  line of its own as `  [<CODE>] <message>`, the row directory's prefix removed and this
+ *  line of its own as `  [<CODE>] <message>`, relative to the row directory and with this
  *  build's running surface written as `<running-surface>`. */
 async function runFails(dir: string): Promise<string | null> {
   const kernel = new Kernel({ sources: [new LocalFileSource()], env: {} });
@@ -27,11 +27,18 @@ async function runFails(dir: string): Promise<string | null> {
     };
     const lines = [`[${code}] ${message}`];
     for (const d of diagnostics ?? []) lines.push(d.code ? `  [${d.code}] ${d.message}` : `  ${d.message}`);
-    return [`${pathToFileURL(dir).href}/`, `${dir}${sep}`]
-      .reduce((text, prefix) => text.split(prefix).join(""), lines.join("\n"))
-      .split(TELO_RUNNING_SURFACE)
-      .join("<running-surface>");
+    return relativeToRow(lines.join("\n"), dir).split(TELO_RUNNING_SURFACE).join("<running-surface>");
   }
+}
+
+/** `text` with the row directory's prefix removed, so a file reads relative to it with `/`
+ *  separators on every platform. */
+function relativeToRow(text: string, dir: string): string {
+  const parts = text.split(`${pathToFileURL(dir).href}/`).join("").split(`${dir}${sep}`);
+  if (sep === "/") return parts.join("");
+  return parts
+    .map((part, i) => (i === 0 ? part : part.replace(/^[^\s()'"`]*/, (path) => path.split(sep).join("/"))))
+    .join("");
 }
 
 describe("check conformance", () => {
