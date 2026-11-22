@@ -15,7 +15,7 @@ use std::collections::HashSet;
 use serde_json::json;
 use telo_analyzer::{
     analyze_loaded_graph, diagnostic_identity, AnalysisOptions, DependencyAnalysisOptions, DependencyVerdictMemo,
-    DependencyVerdictStore, UNSUPPORTED_MANIFEST_FEATURE as UNSUPPORTED,
+    DependencyVerdictStore, TELO_RUNNING_SURFACE, UNSUPPORTED_MANIFEST_FEATURE as UNSUPPORTED,
 };
 use telo_kernel::controllers::module::module_controller::value_branch_accepts;
 use telo_kernel::manifest_sources::local_manifest_cache_source::write_manifest_cache;
@@ -23,7 +23,7 @@ use telo_kernel::manifest_sources::origin_digests::write_origin_digests;
 
 use crate::check_session::{cache_target_for, load_fresh_graph, open_session, CacheTarget, CheckSession, GraphFailure};
 use crate::controller_tool_probe::{command_exists, probe_controller_tools};
-use crate::dependency_verdict_store::{running_surface, verdict_store_for};
+use crate::dependency_verdict_store::verdict_store_for;
 use crate::exit_status::EXIT_FAILED;
 use crate::logger::{display_source_path, format_analysis_diagnostics, load_failure, Counts, JsonDiagnostic, Logger};
 use crate::manifest_input::{resolve_manifest_input, InputRefusal, ManifestInput};
@@ -69,7 +69,6 @@ pub fn check(args: &CheckArgs, out: &Output) -> i32 {
 struct Invocation<'a> {
     session: CheckSession,
     cache_write: bool,
-    running_surface: String,
     memo: DependencyVerdictMemo,
     /// Identities already reported by an earlier path, so a finding reached through several
     /// paths (`check app app/lib`) is reported once.
@@ -101,12 +100,11 @@ fn check_one(
     };
 
     // Library verdicts persist beside the manifest cache.
-    let store = verdict_store_for(input, cache_write, log, &invocation.running_surface);
+    let store = verdict_store_for(input, cache_write, log, &TELO_RUNNING_SURFACE);
     let analyzed = analyze_loaded_graph(
         &graph,
         &DependencyAnalysisOptions {
             analysis: &AnalysisOptions { accepts_value: &value_branch_accepts },
-            running_surface: &invocation.running_surface,
             store: store.as_ref().map(|store| store as &dyn DependencyVerdictStore),
             memo: Some(&invocation.memo),
         },
@@ -172,17 +170,9 @@ fn run_check(args: &CheckArgs, out: &Output) -> std::io::Result<i32> {
         }
         cache_targets.push(target);
     }
-    let running_surface = match running_surface() {
-        Ok(surface) => surface,
-        Err(reason) => {
-            out.err_line(&format!("telo check: the built-in vocabulary this build embeds is malformed: {reason}"))?;
-            return Ok(EXIT_FAILED);
-        }
-    };
     let mut invocation = Invocation {
         session: open_session(&targets),
         cache_write: args.cache_write,
-        running_surface,
         memo: DependencyVerdictMemo::default(),
         reported: HashSet::new(),
         log: &log,

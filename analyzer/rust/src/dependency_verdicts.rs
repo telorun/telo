@@ -5,11 +5,10 @@
 //! warnings at the entry's import reaching it. Mirrors `../../nodejs/src/dependency-verdicts.ts`.
 //!
 //! A verdict depends on the library's closure alone, so it is memoized by a digest of that
-//! closure and the running surface, in process ([`DependencyVerdictMemo`]) and through a
-//! host-supplied store ([`DependencyVerdictStore`]), in Node's format and keyed by Node's key
-//! function over what this build reads — no host versions, stamps or children. It touches no
-//! filesystem. The running surface is the caller's to give, since this crate embeds no
-//! built-in vocabulary.
+//! closure and the running surface (`TELO_RUNNING_SURFACE`), in process
+//! ([`DependencyVerdictMemo`]) and through a host-supplied store ([`DependencyVerdictStore`]), in
+//! Node's format and keyed by Node's key function over what this build reads — no host
+//! versions, stamps or children. It touches no filesystem.
 
 use std::sync::{Arc, Mutex};
 
@@ -26,6 +25,7 @@ use crate::metadata_stamp_refusals::metadata_stamp_diagnostics;
 use crate::module_origin::{module_origins, reached_module_sources, ModuleOrigin};
 use crate::reaching_import::{import_anchored_diagnostic, import_reach, ReachingImport};
 use crate::sources::integrity::sha256_base64url;
+use crate::telo_version::TELO_RUNNING_SURFACE;
 use crate::types::{name_of, AnalysisDiagnostic, DiagnosticSeverity};
 
 /// Bumped whenever what a verdict holds changes; Node's, so a store holds one format.
@@ -92,9 +92,6 @@ impl DependencyVerdictMemo {
 pub struct DependencyAnalysisOptions<'a> {
     /// What each library's analysis needs from the host.
     pub analysis: &'a AnalysisOptions<'a>,
-    /// The surface this build implements as a `requires:` gate compares it (`X`, or
-    /// `X+unreleased`): part of every key.
-    pub running_surface: &'a str,
     /// Verdicts kept between processes; none when absent.
     pub store: Option<&'a dyn DependencyVerdictStore>,
     /// Verdicts kept in process; one for this call when absent.
@@ -152,7 +149,7 @@ pub fn analyze_dependencies(graph: &LoadedGraph, options: &DependencyAnalysisOpt
 
     let mut verdicts = Vec::new();
     for source in libraries {
-        let key = dependency_verdict_key(graph, source, options.running_surface);
+        let key = dependency_verdict_key(graph, source);
         let verdict = memo.obtain(&key, || {
             if let Some(kept) = options.store.and_then(|store| store.get(&key)) {
                 if kept.format == VERDICT_FORMAT {
@@ -292,10 +289,10 @@ pub fn without_covered_artifact_warnings(
 
 /// The verdict key of the library at `library_source`: a digest of every file its closure
 /// holds (by source and text) and how each of its imports resolved, under the verdict format
-/// and `running_surface`. Node's text, so one closure has one key: this build reads no host
+/// and the running surface. Node's text, so one closure has one key: this build reads no host
 /// version, stamps nothing on a file claim and runs no child application, so those three
 /// members are empty.
-pub fn dependency_verdict_key(graph: &LoadedGraph, library_source: &str, running_surface: &str) -> String {
+pub fn dependency_verdict_key(graph: &LoadedGraph, library_source: &str) -> String {
     let mut closure: Vec<String> = reached_module_sources(graph, library_source).into_iter().collect();
     // JavaScript's default sort: by UTF-16 code unit.
     closure.sort_by(|a, b| a.encode_utf16().cmp(b.encode_utf16()));
@@ -309,7 +306,7 @@ pub fn dependency_verdict_key(graph: &LoadedGraph, library_source: &str, running
             }
         }
     }
-    let text = json!([VERDICT_FORMAT, running_surface, [], files, edges, [], []]).to_string();
+    let text = json!([VERDICT_FORMAT, *TELO_RUNNING_SURFACE, [], files, edges, [], []]).to_string();
     sha256_base64url(text.as_bytes())
 }
 
@@ -410,7 +407,7 @@ mod tests {
         store: Option<&'a dyn DependencyVerdictStore>,
         memo: Option<&'a DependencyVerdictMemo>,
     ) -> DependencyAnalysisOptions<'a> {
-        DependencyAnalysisOptions { analysis, running_surface: "1.0.0", store, memo }
+        DependencyAnalysisOptions { analysis, store, memo }
     }
 
     const ANALYSIS: AnalysisOptions<'static> = AnalysisOptions { accepts_value: &|_, _, _| false };
@@ -499,8 +496,8 @@ mod tests {
         let fixed = BAD_CAPABILITY.replace("Telo.Servise", "Telo.Service");
         let edited = graph(&[files[0], ("/app/lib/telo.yaml", fixed.as_str())]);
         assert_ne!(
-            dependency_verdict_key(&edited, "/app/lib/telo.yaml", "1.0.0"),
-            dependency_verdict_key(&graph(&files), "/app/lib/telo.yaml", "1.0.0")
+            dependency_verdict_key(&edited, "/app/lib/telo.yaml"),
+            dependency_verdict_key(&graph(&files), "/app/lib/telo.yaml")
         );
         assert!(analyze_dependencies(&edited, &options(&ANALYSIS, Some(&store), Some(&memo))).diagnostics.is_empty());
         assert_eq!(store.sets.get(), 2);
@@ -511,7 +508,7 @@ mod tests {
         let files = [("/app/telo.yaml", app("./lib")), ("/app/lib/telo.yaml", BAD_CAPABILITY.to_string())];
         let files: Vec<(&str, &str)> = files.iter().map(|(path, text)| (*path, text.as_str())).collect();
         let graph = graph(&files);
-        let key = dependency_verdict_key(&graph, "/app/lib/telo.yaml", "1.0.0");
+        let key = dependency_verdict_key(&graph, "/app/lib/telo.yaml");
         let kept = AnalysisDiagnostic::error(
             "KEPT",
             "kept",
@@ -535,12 +532,13 @@ mod tests {
     fn keys_a_closure_by_the_digest_of_its_files_and_import_edges() {
         let lib = "kind: Telo.Library\nmetadata: { name: Lib }\n";
         let graph = graph(&[("/app/telo.yaml", &app("./lib")), ("/app/lib/telo.yaml", lib)]);
-        let text = serde_json::to_string(&json!([3, "1.0.0", [], [["/app/lib/telo.yaml", lib]], [], [], []])).unwrap();
-        assert_eq!(dependency_verdict_key(&graph, "/app/lib/telo.yaml", "1.0.0"), sha256_base64url(text.as_bytes()));
+        let surface = TELO_RUNNING_SURFACE.as_str();
+        let text = serde_json::to_string(&json!([3, surface, [], [["/app/lib/telo.yaml", lib]], [], [], []])).unwrap();
+        assert_eq!(dependency_verdict_key(&graph, "/app/lib/telo.yaml"), sha256_base64url(text.as_bytes()));
         let app_text = app("./lib");
         let text = serde_json::to_string(&json!([
             3,
-            "1.0.0",
+            surface,
             [],
             [["/app/lib/telo.yaml", lib], ["/app/telo.yaml", app_text]],
             [["/app/telo.yaml", "Lib", "/app/lib/telo.yaml"]],
@@ -548,7 +546,7 @@ mod tests {
             []
         ]))
         .unwrap();
-        assert_eq!(dependency_verdict_key(&graph, "/app/telo.yaml", "1.0.0"), sha256_base64url(text.as_bytes()));
+        assert_eq!(dependency_verdict_key(&graph, "/app/telo.yaml"), sha256_base64url(text.as_bytes()));
     }
 
     /// Tripwire: Node keeps a dependency's finding carrying `data.configurations` only where an

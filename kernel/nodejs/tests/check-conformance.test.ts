@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { TELO_RUNNING_SURFACE } from "@telorun/analyzer";
 import { describe, expect, it } from "vitest";
 import { Kernel } from "../src/kernel.js";
 import { LocalFileSource } from "../src/manifest-sources/local-file-source.js";
@@ -10,7 +11,8 @@ import { LocalFileSource } from "../src/manifest-sources/local-file-source.js";
 const VECTORS = fileURLToPath(new URL("../../../analyzer/check-conformance/vectors/", import.meta.url));
 
 /** The refusal as one text: `[<code>] <message>`, then each diagnostic it carries on a
- *  line of its own as `  [<CODE>] <message>`, the row directory's prefix removed. */
+ *  line of its own as `  [<CODE>] <message>`, the row directory's prefix removed and this
+ *  build's running surface written as `<running-surface>`. */
 async function runFails(dir: string): Promise<string | null> {
   const kernel = new Kernel({ sources: [new LocalFileSource()], env: {} });
   try {
@@ -25,10 +27,10 @@ async function runFails(dir: string): Promise<string | null> {
     };
     const lines = [`[${code}] ${message}`];
     for (const d of diagnostics ?? []) lines.push(d.code ? `  [${d.code}] ${d.message}` : `  ${d.message}`);
-    return [`${pathToFileURL(dir).href}/`, `${dir}${sep}`].reduce(
-      (text, prefix) => text.split(prefix).join(""),
-      lines.join("\n"),
-    );
+    return [`${pathToFileURL(dir).href}/`, `${dir}${sep}`]
+      .reduce((text, prefix) => text.split(prefix).join(""), lines.join("\n"))
+      .split(TELO_RUNNING_SURFACE)
+      .join("<running-surface>");
   }
 }
 

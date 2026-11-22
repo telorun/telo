@@ -1,0 +1,29 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "MODULE_REQUIRES_OLDER_RUNTIME",
+      "source": "telo-analyzer",
+      "message": "telo.yaml is restricted to telo '<0.1.0'; this runtime reports <running-surface>. Reason: Greeting never returns on telo 0.1.0 and later. Use telo below 0.1.0, or another version of OlderApp.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "OlderApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "restrictions[0].requires.telo"
+      },
+      "range": {
+        "start": {
+          "line": 3,
+          "character": 22
+        },
+        "end": {
+          "line": 3,
+          "character": 30
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] Manifest validation failed\n  [MODULE_REQUIRES_OLDER_RUNTIME] telo.yaml is restricted to telo '<0.1.0'; this runtime reports <running-surface>. Reason: Greeting never returns on telo 0.1.0 and later. Use telo below 0.1.0, or another version of OlderApp."
+}

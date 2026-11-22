@@ -1,0 +1,5 @@
+kind: Telo.Library
+metadata: { name: MalformedLib, version: 1.0.0 }
+requires: { telo: ">=0.1.0 <999.0.0", host: { node: "~20.0.0" } }
+restrictions:
+  - { requires: { telo: "0.1.0" }, reason: A bare version }

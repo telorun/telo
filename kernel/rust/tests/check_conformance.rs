@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf, MAIN_SEPARATOR};
 
 use serde_json::Value;
 use telo_analyzer::sources::source_failure::file_url;
+use telo_analyzer::TELO_RUNNING_SURFACE;
 use telo_kernel::{Kernel, KernelError};
 
 fn vectors() -> PathBuf {
@@ -16,7 +17,8 @@ fn vectors() -> PathBuf {
 }
 
 /// The refusal as one text: `[<code>] <message>`, then each diagnostic it carries on a line
-/// of its own as `  [<CODE>] <message>`, the row directory's prefix removed.
+/// of its own as `  [<CODE>] <message>`, the row directory's prefix removed and this build's
+/// running surface written as `<running-surface>`.
 fn refusal_text(error: &KernelError, dir: &Path) -> String {
     let mut lines = vec![format!("[{}] {}", error.code, error.message)];
     for diagnostic in &error.diagnostics {
@@ -25,7 +27,7 @@ fn refusal_text(error: &KernelError, dir: &Path) -> String {
             None => format!("  {}", diagnostic.message),
         });
     }
-    strip_row_directory(&lines.join("\n"), dir)
+    strip_row_directory(&lines.join("\n"), dir).replace(TELO_RUNNING_SURFACE.as_str(), "<running-surface>")
 }
 
 /// The row directory's prefixes removed — its `file://` URL, then its path — and the

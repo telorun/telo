@@ -1,0 +1,6 @@
+kind: Telo.Application
+metadata: { name: InvalidRequiresApp }
+requires:
+  telo: ">=0.1.0 <999.0.0"
+  host: { node: "^20.0.0", deno: ">=1.0.0" }
+  rust: ">=1.80.0"

@@ -1,7 +1,8 @@
 //! SemVer precedence for module versions, mirroring the parse and compare halves of
 //! `../../nodejs/src/module-version-order.ts` — what version reconciliation orders by. An
-//! unparseable version (a digest, a moving tag) is never ordered. The upgrade helpers serve
-//! `telo upgrade` and the editor, which no Rust host implements.
+//! unparseable version (a digest, a moving tag) is never ordered — and of the `requires:` /
+//! `restrictions:` readers, which order a module's own versions by it. The upgrade helpers
+//! serve `telo upgrade` and the editor, which no Rust host implements.
 
 use std::cmp::Ordering;
 
@@ -71,6 +72,12 @@ pub fn compare_parsed_module_versions(a: &ParsedModuleVersion, b: &ParsedModuleV
     Ordering::Equal
 }
 
+/// The order of two versions when both parse, `None` when either does not: the text-in
+/// convenience over [`compare_parsed_module_versions`].
+pub fn compare_module_versions(a: &str, b: &str) -> Option<Ordering> {
+    Some(compare_parsed_module_versions(&parse_module_version(a)?, &parse_module_version(b)?))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -90,5 +97,7 @@ mod tests {
         assert!(parse_module_version("latest").is_none());
         assert!(parse_module_version("1.0").is_none());
         assert!(parse_module_version("sha256:abc").is_none());
+        assert_eq!(compare_module_versions("1.0.0", "0.9.0"), Some(Ordering::Greater));
+        assert_eq!(compare_module_versions("1.0.0", "latest"), None);
     }
 }

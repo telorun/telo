@@ -10,8 +10,10 @@
 //! host-path slot readers and the walk pairing each text leaf with its node). Its static
 //! analysis is Node's `AnalysisDiagnostic` for the deprecations the migrations report and
 //! the refusals the Rust kernel makes — a YAML parse failure, the loader's expansion and
-//! file refusals, an import's failure, a version conflict, a reserved kind prefix, the
-//! capability roster, the reference forms and a plain string left holding `${{` — located
+//! file refusals, an import's failure, a version conflict, a reserved kind prefix, a module's
+//! declared runtime requirements against the surface this build implements (`telo_version`,
+//! read from the built-in vocabulary archive it embeds) with the gate's cover, the capability
+//! roster, the reference forms and a plain string left holding `${{` — located
 //! by Node's fallback chain. `telo check` and the kernel read them through one entry assembly
 //! (`entry_diagnostics`, which also names the constructs this build cannot read and holds back
 //! the files they name); `telo check` adds the dependency verdict (`graph_analysis`: each
@@ -41,6 +43,7 @@ pub mod diagnostic_identity;
 pub mod diagnostic_location;
 pub mod entry_diagnostics;
 pub mod finding_order;
+pub mod finishing_pipeline;
 pub mod graph_analysis;
 pub mod graph_diagnostics;
 pub mod host_path_slot;
@@ -48,9 +51,9 @@ pub mod import_resolution_diagnostics;
 pub mod inline_imports;
 pub mod levenshtein;
 pub mod library_migrations;
-pub mod loaded_types;
 pub mod load_refusal;
 pub mod load_refusal_code;
+pub mod loaded_types;
 pub mod loader_expansion_refusals;
 pub mod manifest_loader;
 pub mod manifest_navigation;
@@ -65,28 +68,36 @@ pub mod native_entries;
 pub mod nearest_name;
 pub mod package_url_format;
 pub mod parse_loaded_file;
+pub mod placement;
 pub mod plain_literal_decoding;
 pub mod position_metadata;
 pub mod quoted_place;
 pub mod reaching_import;
 pub mod reconcile_module_versions;
 pub mod release;
+pub mod requires_block;
+pub mod requires_gate;
 pub mod reserved_kind_prefix;
 pub mod resolve_ref_sentinels;
 pub mod resolved_reference;
+pub mod restrictions;
+pub mod runtime_range;
 pub mod schema_compat;
 pub mod schema_region;
 pub mod source_entries;
 pub mod sources;
 pub mod system_kinds;
 pub mod telo_format;
+pub mod telo_version;
 pub mod types;
 pub mod untagged_interpolation;
 pub mod validate_identifier_names;
 pub mod validate_reference_forms;
+pub mod validate_requires;
 pub mod value_type_keyword;
 pub mod vcs_revision_format;
 pub mod vcs_url_format;
+pub mod version_range;
 pub mod yaml_ast;
 
 pub use analyzer::{analyze, AnalysisOptions};
@@ -116,6 +127,7 @@ pub use migrations::{core_migrations, migrate_manifests, remap_migrated_paths, F
 pub use parse_loaded_file::{parse_error_kind, parse_error_message, parse_loaded_file, YamlErrorKind};
 pub use position_metadata::DocumentPosition;
 pub use release::WORKSPACE_FILENAME;
+pub use telo_version::{TELO_RUNNING_SURFACE, TELO_SURFACE_VERSION};
 pub use resolve_ref_sentinels::{
     as_resolved_ref, find_unresolved_sentinels, resolve_ref_sentinels, RefTargets, ResolvedRef,
     UnresolvedRef,

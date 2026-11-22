@@ -1,0 +1,125 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "REQUIRES_INVALID",
+      "source": "telo-analyzer",
+      "message": "'requires.host.node': '~20.0.0' is not accepted. Pre-1.0, '~' allows only 20.0.0 up to 21.0.0, and Telo ships breaking changes as minor bumps — so it pins this module to a single release generation, which is almost never what is meant. Write '>=20.0.0' instead.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Library",
+          "name": "MalformedLib"
+        },
+        "filePath": "lib/telo.yaml",
+        "path": "requires.host.node"
+      },
+      "range": {
+        "start": {
+          "line": 2,
+          "character": 52
+        },
+        "end": {
+          "line": 2,
+          "character": 61
+        }
+      }
+    },
+    {
+      "severity": 2,
+      "code": "REQUIRES_INVALID",
+      "source": "telo-analyzer",
+      "message": "Telo.Library/MalformedLib: 'requires.host.node': '~20.0.0' is not accepted. Pre-1.0, '~' allows only 20.0.0 up to 21.0.0, and Telo ships breaking changes as minor bumps — so it pins this module to a single release generation, which is almost never what is meant. Its declared requirement cannot be read, so it is not enforced here and `telo upgrade` will not select this version. Only the module's publisher can fix it.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Library",
+          "name": "MalformedLib"
+        },
+        "filePath": "lib/telo.yaml",
+        "path": "requires.host.node"
+      },
+      "range": {
+        "start": {
+          "line": 2,
+          "character": 52
+        },
+        "end": {
+          "line": 2,
+          "character": 61
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "REQUIRES_INVALID",
+      "source": "telo-analyzer",
+      "message": "requires.telo '>=0.1.0 <999.0.0' declares an upper bound; requires.telo is a floor only. Write the ceiling as a restrictions: entry without versions, which covers this version.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Library",
+          "name": "MalformedLib"
+        },
+        "filePath": "lib/telo.yaml",
+        "path": "requires.telo"
+      },
+      "range": {
+        "start": {
+          "line": 2,
+          "character": 18
+        },
+        "end": {
+          "line": 2,
+          "character": 36
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "RESTRICTIONS_INVALID",
+      "source": "telo-analyzer",
+      "message": "'restrictions[0].requires.telo': '0.1.0' has no comparator. A bare version reads as an exact pin in semver, which is almost never meant here. Write '>=0.1.0' instead.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Library",
+          "name": "MalformedLib"
+        },
+        "filePath": "lib/telo.yaml",
+        "path": "restrictions[0].requires.telo"
+      },
+      "range": {
+        "start": {
+          "line": 4,
+          "character": 24
+        },
+        "end": {
+          "line": 4,
+          "character": 31
+        }
+      }
+    },
+    {
+      "severity": 2,
+      "code": "RESTRICTIONS_INVALID",
+      "source": "telo-analyzer",
+      "message": "Telo.Library/MalformedLib: 'restrictions[0].requires.telo': '0.1.0' has no comparator. A bare version reads as an exact pin in semver, which is almost never meant here. The entry cannot be read, so it is not enforced here and `telo upgrade` will not select this version. Only the module's publisher can fix it.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Library",
+          "name": "MalformedLib"
+        },
+        "filePath": "lib/telo.yaml",
+        "path": "restrictions[0].requires.telo"
+      },
+      "range": {
+        "start": {
+          "line": 4,
+          "character": 24
+        },
+        "end": {
+          "line": 4,
+          "character": 31
+        }
+      }
+    }
+  ],
+  "runFails": null
+}

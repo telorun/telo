@@ -1,0 +1,9 @@
+units:
+  analyzer: Added
+body: "The Rust analyzer reads a module's requires: and restrictions: as the Node
+  analyzer does — MODULE_REQUIRES_NEWER_RUNTIME, MODULE_REQUIRES_OLDER_RUNTIME,
+  REQUIRES_INVALID and RESTRICTIONS_INVALID, word for word, an error on the entry's own
+  modules and a warning on a dependency's — judged against the surface of the built-in
+  vocabulary archive it now embeds (TELO_SURFACE_VERSION, TELO_RUNNING_SURFACE), and
+  holds back every other analysis finding in the files of a module this telo is outside
+  the range of."

@@ -1,14 +1,21 @@
-//! Emits the migration entry list from the directory listing of `analyzer/migrations/`.
+//! Emits the migration entry list from the directory listing of `analyzer/migrations/`, and
+//! refuses to build without the built-in vocabulary archive the crate embeds.
 //!
 //! The one Rust file with no Node twin here, because it is Cargo's: the Node half emits
 //! its barrel from the same listing in `scripts/copy-migration-entries.mjs`. Nothing lists
 //! the entries by hand, so a file that exists always runs and a deleted one never does —
 //! a hand-maintained list is the one place the mechanism could fail silently.
+//!
+//! The archive is rendered from `sdk/builtins` by the Node half's `prepare` and never tracked,
+//! so a fresh checkout has none until the renderer runs — and `include_str!` would then fail
+//! naming a missing path but not the remedy. Its presence is only checked: this never runs node
+//! and writes nothing, so a Rust build cannot become a second renderer.
 
 use std::fmt::Write as _;
 use std::path::PathBuf;
 
 fn main() {
+    require_builtin_vocabulary_archive();
     let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../migrations");
     println!("cargo:rerun-if-changed={}", directory.display());
     let listing = std::fs::read_dir(&directory).unwrap_or_else(|err| {
@@ -32,4 +39,20 @@ fn main() {
     out.push_str("];\n");
     let target = PathBuf::from(std::env::var("OUT_DIR").expect("Cargo sets OUT_DIR")).join("migration_entries.rs");
     std::fs::write(target, out).expect("write the migration entry list");
+}
+
+fn require_builtin_vocabulary_archive() {
+    let archive = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../nodejs/src/builtin-vocabulary/builtins.yaml");
+    println!("cargo:rerun-if-changed={}", archive.display());
+    if !archive.is_file() {
+        panic!(
+            "\n{} does not exist.\n\
+             The analyzer embeds the built-in vocabulary archive, which is rendered from \
+             sdk/builtins and never committed. Render it from the repository root with \
+             `pnpm install`, or, once the workspace is installed (the version generator reads \
+             analyzer/nodejs/package.json):\n\n    \
+             node scripts/generate-telo-version.mjs && node scripts/render-builtin-vocabulary.mjs\n",
+            archive.display()
+        );
+    }
 }
