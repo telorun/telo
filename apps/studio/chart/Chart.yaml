@@ -5,8 +5,8 @@ type: application
 # BOTH are the `apps/studio` unit's version, written by `telo release apply`
 # (the unit's `helm` anchor): the chart deploys exactly one image,
 # `ghcr.io/telorun/studio-web`, tagged with that version.
-version: 0.40.0
-appVersion: "0.40.0"
+version: 0.40.1
+appVersion: "0.40.1"
 keywords:
   - telo
   - studio
