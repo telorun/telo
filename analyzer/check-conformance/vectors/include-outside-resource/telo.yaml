@@ -2,7 +2,13 @@ kind: Telo.Application
 metadata:
   name: IncludeOutsideApp
   notes: !include-text ./notes.txt
-imports: { Console: ../../../../modules/console }
 targets:
-  - invoke: !ref Console.writeLine
+  - invoke: !ref echo
     inputs: { output: !include-text ./notes.txt }
+---
+kind: Telo.Definition
+metadata: { name: Echo }
+capability: Telo.Invocable
+---
+kind: Self.Echo
+metadata: { name: echo }

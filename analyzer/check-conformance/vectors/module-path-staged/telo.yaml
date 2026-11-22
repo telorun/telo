@@ -1,6 +1,6 @@
 kind: Telo.Application
 metadata: { name: StagedApp }
-assets: [./tessdata/]
+assets: [./models/]
 sources:
   models:
     version: 1.0.0
@@ -9,8 +9,8 @@ sources:
     archive: tar.gz
     notices: [./LICENSE]
     entries:
-      ./tessdata/eng.traineddata.gz:
-        { upstream: eng, member: eng.traineddata.gz, sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, executable: false }
+      ./models/eng.bin:
+        { upstream: eng, member: eng.bin, sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, executable: false }
 ---
 kind: Telo.Definition
 metadata: { name: Model }
@@ -19,11 +19,11 @@ schema: { type: object, properties: { data: { x-telo-type: Telo.HostPath } } }
 ---
 kind: Self.Model
 metadata: { name: directory }
-data: !module-path ./tessdata
+data: !module-path ./models
 ---
 kind: Self.Model
 metadata: { name: file }
-data: !module-path ./tessdata/eng.traineddata.gz
+data: !module-path ./models/eng.bin
 ---
 kind: Telo.Definition
 metadata: { name: Broken }
