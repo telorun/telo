@@ -1,0 +1,125 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "RESTRICTIONS_INVALID",
+      "source": "telo-analyzer",
+      "message": "restrictions[0].versions '>=0.9.0 <2.0.0' reaches past this module's version 1.0.0; an entry covers only this version and earlier ones. Leave the upper bound off to cover through this version.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "RestrictedApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "restrictions[0].versions"
+      },
+      "range": {
+        "start": {
+          "line": 4,
+          "character": 14
+        },
+        "end": {
+          "line": 4,
+          "character": 30
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "RESTRICTIONS_INVALID",
+      "source": "telo-analyzer",
+      "message": "restrictions[1] has no reason; say what breaks, so whoever is held back knows why.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "RestrictedApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "restrictions[1]"
+      },
+      "range": {
+        "start": {
+          "line": 7,
+          "character": 4
+        },
+        "end": {
+          "line": 7,
+          "character": 32
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "RESTRICTIONS_INVALID",
+      "source": "telo-analyzer",
+      "message": "restrictions[1].requires states no bound.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "RestrictedApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "restrictions[1].requires"
+      },
+      "range": {
+        "start": {
+          "line": 7,
+          "character": 16
+        },
+        "end": {
+          "line": 7,
+          "character": 18
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "RESTRICTIONS_INVALID",
+      "source": "telo-analyzer",
+      "message": "restrictions[2] leaves 1.0.0 usable by no telo: requires.telo '>=0.5.0' and '<0.4.0' do not overlap. Deprecate the module instead.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "RestrictedApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "restrictions[2]"
+      },
+      "range": {
+        "start": {
+          "line": 8,
+          "character": 4
+        },
+        "end": {
+          "line": 8,
+          "character": 66
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "RESTRICTIONS_INVALID",
+      "source": "telo-analyzer",
+      "message": "'restrictions[3].since' is not a restriction key; an entry holds 'versions', 'requires', 'reason'.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "RestrictedApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "restrictions[3].since"
+      },
+      "range": {
+        "start": {
+          "line": 11,
+          "character": 11
+        },
+        "end": {
+          "line": 11,
+          "character": 16
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] Manifest validation failed\n  [RESTRICTIONS_INVALID] restrictions[0].versions '>=0.9.0 <2.0.0' reaches past this module's version 1.0.0; an entry covers only this version and earlier ones. Leave the upper bound off to cover through this version.\n  [RESTRICTIONS_INVALID] restrictions[1] has no reason; say what breaks, so whoever is held back knows why.\n  [RESTRICTIONS_INVALID] restrictions[1].requires states no bound.\n  [RESTRICTIONS_INVALID] restrictions[2] leaves 1.0.0 usable by no telo: requires.telo '>=0.5.0' and '<0.4.0' do not overlap. Deprecate the module instead.\n  [RESTRICTIONS_INVALID] 'restrictions[3].since' is not a restriction key; an entry holds 'versions', 'requires', 'reason'."
+}

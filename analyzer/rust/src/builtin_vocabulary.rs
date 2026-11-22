@@ -2,7 +2,12 @@
 //! read and never declared, run or imported. Mirrors the part of
 //! `../../nodejs/src/builtin-vocabulary.ts` a kernel refuses with — the kind, and
 //! the two sentences that say what such a document is — and the release an
-//! archive is the vocabulary of, which a CLI prints as its identity.
+//! archive is the vocabulary of, which a CLI prints as its identity. The archive this build
+//! embeds is [`index`]'s.
+
+pub mod index;
+
+pub use index::BUILTIN_VOCABULARY_ARCHIVE;
 
 use telo_templating::{compose_first_yaml_document, YamlDocument, YamlNodeKind};
 

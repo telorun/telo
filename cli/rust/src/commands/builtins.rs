@@ -2,16 +2,13 @@
 //! Mirrors `../../../nodejs/src/commands/builtins.ts`.
 //!
 //! The built-in vocabulary of the telo this binary is: the `Telo.Builtins`
-//! archive rendered for this build, embedded byte for byte — the same bytes the
-//! Node CLI imports from `@telorun/analyzer` — or only the named entries of it.
+//! archive `telo-analyzer` embeds — the same bytes the Node CLI imports from
+//! `@telorun/analyzer` — or only the named entries of it.
 
+use telo_analyzer::builtin_vocabulary::BUILTIN_VOCABULARY_ARCHIVE;
 use telo_analyzer::builtin_vocabulary_slices::{select_builtins, SelectionError};
 
 use crate::output;
-
-/// The archive this build was rendered with. `build.rs` refuses a build without it.
-pub const BUILTIN_VOCABULARY_ARCHIVE: &str =
-    include_str!("../../../../analyzer/nodejs/src/builtin-vocabulary/builtins.yaml");
 
 /// Returns the process exit code.
 pub fn builtins(names: &[String]) -> i32 {

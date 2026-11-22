@@ -9,7 +9,7 @@ use serde_json::{Map, Value};
 use telo_analyzer::sources::source_failure::{file_source_failure, file_url, ManifestSourceFailure, SourceFailureKind};
 use telo_analyzer::{
     analyze_loaded_graph, join_relative, load_graph, locate_diagnostic, AnalysisOptions, DependencyAnalysisOptions,
-    LoadError, ManifestLoader, ManifestSource, ReadManifest, DEFAULT_MANIFEST_FILENAME,
+    LoadError, ManifestLoader, ManifestSource, ReadManifest, DEFAULT_MANIFEST_FILENAME, TELO_RUNNING_SURFACE,
 };
 use telorun_glob::{select_by_patterns, SelectOptions};
 
@@ -76,10 +76,14 @@ fn collect_files(directory: &Path, prefix: &str, out: &mut Vec<String>) {
 }
 
 /// Every string with the row directory's prefixes — its `file://` URL, then its path —
-/// removed, so a file reads relative to it.
+/// removed, so a file reads relative to it, then this build's running surface written as
+/// `<running-surface>`.
 fn relativize(value: &mut Value, prefixes: &[String]) {
     match value {
-        Value::String(text) => *text = prefixes.iter().fold(text.clone(), |text, prefix| text.replace(prefix.as_str(), "")),
+        Value::String(text) => {
+            let relative = prefixes.iter().fold(text.clone(), |text, prefix| text.replace(prefix.as_str(), ""));
+            *text = relative.replace(TELO_RUNNING_SURFACE.as_str(), "<running-surface>");
+        }
         Value::Object(map) => map.values_mut().for_each(|item| relativize(item, prefixes)),
         Value::Array(items) => items.iter_mut().for_each(|item| relativize(item, prefixes)),
         _ => {}
@@ -114,7 +118,6 @@ fn diagnostics_of(dir: &Path) -> Vec<Value> {
     let graph = load_graph(&loader, &entry).expect("graph loads");
     let options = DependencyAnalysisOptions {
         analysis: &AnalysisOptions { accepts_value: &|_, _, _| false },
-        running_surface: "check-conformance",
         store: None,
         memo: None,
     };

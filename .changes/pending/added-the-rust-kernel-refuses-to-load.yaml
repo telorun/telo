@@ -1,0 +1,6 @@
+units:
+  kernel: Added
+body: "The Rust kernel refuses to load a manifest whose module, or a library it imports,
+  declares a requires: or restrictions: range this telo is outside of, or a malformed
+  one, as the Node kernel does: one ERR_MANIFEST_VALIDATION_FAILED carrying the same
+  findings."

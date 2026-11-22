@@ -1,0 +1,5 @@
+units:
+  cli: Added
+body: "The Rust telo check reports a module's requires: and restrictions: findings as
+  the Node one does, and telo --version, telo builtins and its dependency verdict keys
+  read the built-in vocabulary archive the Rust analyzer embeds."

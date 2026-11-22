@@ -1,0 +1,5 @@
+kind: Telo.Application
+metadata: { name: OlderApp, version: 1.0.0 }
+restrictions:
+  - requires: { telo: "<0.1.0" }
+    reason: Greeting never returns on telo 0.1.0 and later

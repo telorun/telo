@@ -45,8 +45,8 @@ pub fn document_line_offsets(text: &str) -> Vec<usize> {
     offsets
 }
 
-/// What ECMAScript's `trimEnd` removes.
-fn is_js_whitespace(c: char) -> bool {
+/// What ECMAScript's `trim` removes, and its `\s` matches.
+pub(crate) fn is_js_whitespace(c: char) -> bool {
     matches!(
         c,
         '\u{9}' | '\u{a}' | '\u{b}' | '\u{c}' | '\u{d}' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}'

@@ -8,6 +8,7 @@ import { locateDiagnostic } from "../src/diagnostic-location.js";
 import { analyzeLoadedGraph } from "../src/graph-analysis.js";
 import { Loader } from "../src/manifest-loader.js";
 import { fileSourceFailure, ManifestSourceFailure } from "../src/sources/source-failure.js";
+import { TELO_RUNNING_SURFACE } from "../src/telo-version.js";
 import type { ManifestSource } from "../src/types.js";
 
 /** `analyzer/check-conformance/`: each row is a manifest tree and what `telo check`
@@ -57,9 +58,13 @@ const fileSource: ManifestSource = {
   },
 };
 
-/** Every string with the row directory's prefix removed, so a file reads relative to it. */
+/** Every string with the row directory's prefix removed, so a file reads relative to it,
+ *  then this build's running surface written as `<running-surface>`. */
 function relativize(value: unknown, prefixes: string[]): unknown {
-  if (typeof value === "string") return prefixes.reduce((text, prefix) => text.split(prefix).join(""), value);
+  if (typeof value === "string") {
+    const relative = prefixes.reduce((text, prefix) => text.split(prefix).join(""), value);
+    return relative.split(TELO_RUNNING_SURFACE).join("<running-surface>");
+  }
   if (Array.isArray(value)) return value.map((item) => relativize(item, prefixes));
   if (value !== null && typeof value === "object") {
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, relativize(item, prefixes)]));
