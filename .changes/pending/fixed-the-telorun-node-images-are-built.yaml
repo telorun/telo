@@ -1,0 +1,4 @@
+units:
+  cli: Fixed
+body: The telorun/node images are built from base images pinned by digest, so a release
+  builds and scans the same base its release PR scanned.
