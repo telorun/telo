@@ -15,6 +15,11 @@ jobs:
   checks:
     name: Static & release checks
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # The release-imports gate reads the module registry, which answers a
+      # repository it has never seen only to an authenticated client.
+      packages: read
 
     steps:
       - name: Checkout code
@@ -205,6 +210,17 @@ jobs:
       # The release PR's gate on the publication commit its merge makes: every import
       # must come out published, or await this release's own publish. The release plan
       # it reads digests the controller builds, so the workspace is built for it alone.
+      # Anonymously, GHCR refuses a token for a repository that does not exist yet
+      # (a module this release publishes for the first time), which reads as an
+      # error; authenticated, it answers 404 and the import awaits this release.
+      - name: Log in to the module registry
+        if: startsWith(github.head_ref, 'release-version/')
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Check every import of the release PR publishes (a module with changes its version does not carry fails here)
         if: startsWith(github.head_ref, 'release-version/')
         timeout-minutes: 20
