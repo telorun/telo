@@ -1,8 +1,0 @@
-units:
-  cli: Added
-body: telo run sets TELO_HOST_STATE_DIR to .telo/state/<app directory relative to the
-  workspace>/_ when nothing names one, so durable directories work with no setting and
-  each application has its own. At a terminal it offers to generate
-  TELO_HOST_SECRET_SEED and save it to the sensitive env file when a generated key or
-  password has no value, and a desktop host keeps its seed in desktop-host/secret-seed
-  of its per-user directory.

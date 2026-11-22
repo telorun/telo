@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.0 - 2026-11-22
+### Added
+* Each staged source declares the package its files are a release of (`purl` in `sources:`), the identity a software bill of materials lists.
+### Fixed
+* Pinned @napi-rs/canvas exactly to 1.0.10, the version of the staged native addon, so a lockfile refresh can no longer move the wrapper away from the addon it loads.
+
 ## 0.11.0 - 2026-11-12
 ### Added
 * The controllers ship inside the module's own artifact instead of the npm package @telorun/image, and Skia's addon is downloaded for the running platform on first use, so the module runs with no package manager and from the standalone telo binary.

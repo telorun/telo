@@ -1,6 +1,0 @@
-units:
-  apps/authoring-agent: Added
-body: "The authoring agent reads the hub's # Advisories: line and advisoriesComplete
-  when choosing a version: it never copies the line into a manifest, picks the newest
-  version with no advisories and complete coverage, names the advisories when every
-  version has some, and tells the user when a module's embedded code is unchecked."

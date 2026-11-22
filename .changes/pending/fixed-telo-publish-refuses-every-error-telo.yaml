@@ -1,5 +1,0 @@
-units:
-  cli: Fixed
-body: "`telo publish` refuses every error `telo check` reports for the manifest, an
-  imported library's load findings included, so a consumer of a path-imported library
-  writing a loader stamp by hand is no longer published."

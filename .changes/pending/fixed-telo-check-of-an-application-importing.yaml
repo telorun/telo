@@ -1,5 +1,0 @@
-units:
-  analyzer: Fixed
-body: telo check of an application importing a library that references an optional
-  resource input inside one branch of its own choice reported that one defect twice,
-  once at the import and once in the library, and now reports it once, in the library.

@@ -1,6 +1,0 @@
-units:
-  kernel: Added
-body: "`telo run` refuses a loader stamp written by hand in a document's `metadata` at
-  load, before any resource is created, as `ERR_METADATA_RESERVED_FIELD`, each located
-  as `telo check` reports it and a library's at the `imports:` entry reaching it. The
-  Rust kernel refuses a top-level document's the same way."

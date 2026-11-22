@@ -1,4 +1,0 @@
-units:
-  apps/authoring-agent: Added
-body: "The primer covers the vcs: key of a sources: entry and its contains items, and
-  the SOURCE_REVISION_UNREACHABLE and SOURCE_REPOSITORY_UNREADABLE refusals."

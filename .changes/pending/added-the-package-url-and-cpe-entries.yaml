@@ -1,4 +1,0 @@
-units:
-  sdk: Added
-body: The `package-url` and `cpe` entries of the Telo format vocabulary, and the `purl`
-  and `contains` keys of the `ModuleSources` fragment.

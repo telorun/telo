@@ -1,8 +1,0 @@
-units:
-  analyzer: Fixed
-body: "`telo check` of a consumer reports an imported library's own findings exactly as
-  `telo check` of that library does, its load findings included: a hand-written
-  `metadata.module` stamp in a library reached by path is reported once, at the
-  library's line, rather than at the import. A refusal at an import is now covered only
-  by the library's finding of the same defect — its code where it is written — so an
-  unrelated finding of the same code no longer hides it."

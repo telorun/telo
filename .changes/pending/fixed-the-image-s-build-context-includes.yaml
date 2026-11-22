@@ -1,4 +1,0 @@
-units:
-  apps/docker-runner: Fixed
-body: The image's build context includes @telorun/runner-protocol and
-  @telorun/share-tunnel, which runner-core depends on.

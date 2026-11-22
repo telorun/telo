@@ -1,5 +1,0 @@
-units:
-  analyzer: Security
-  kernel: Security
-body: Updated ajv to 8.20, which brings fast-uri releases that fix host confusion and
-  SSRF (GHSA-v2hh-gcrm-f6hx, GHSA-f65p-4m7j-42xc).

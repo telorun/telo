@@ -1,7 +1,0 @@
-units:
-  kernel: Added
-body: "The Rust kernel's manifest sources report a failure in Telo's words (not found,
-  not a module, unreadable, refused, unreachable), its local file source expands
-  include: globs, and its load refuses every import failure, coded loader refusal and
-  version conflict under Node's codes; an import or partial it cannot read is refused as
-  ERR_UNSUPPORTED_MANIFEST_FEATURE without ending the graph walk."

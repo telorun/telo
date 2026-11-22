@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.1 - 2026-11-22
+### Security
+* Refreshed locked dependency versions within their declared ranges, as part of a workspace-wide refresh that clears known security advisories.
+
 ## 0.7.0 - 2026-11-19
 ### Added
 * Released under the MIT license instead of the Sustainable Use License: the published artifact declares MIT and carries the MIT license text. Earlier releases keep the license they were published under.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.0 - 2026-11-22
+### Fixed
+* The extension reports exactly its telo version instead of a development build identity (`0.138.0+unreleased`), and a release that moves the telo line no longer leaves a needless extension patch behind it: the shipped extension is built from sources at the version the release records, not from a build made before the version moved.
+
 ## 0.8.0 - 2026-11-19
 ### Added
 * Released under the MIT license instead of the Sustainable Use License: the published artifact declares MIT and carries the MIT license text. Earlier releases keep the license they were published under.

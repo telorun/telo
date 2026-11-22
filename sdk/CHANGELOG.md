@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.139.0 - 2026-11-22
+### Added
+* A diagnostic a load refusal carries for a finding re-reported at an import now says where its defect is written: `origin.writtenAt` (`filePath`, `path`, `resource`), the place the module writing it reports it at in its own `telo check`. It is absent for a finding that is the reporting module's own.
+* A sources: entry and each of its contains items may declare vcs: { url, revision } — the git repository and the full commit the component is built from — and a sources: entry its own cpe. The new Telo formats vcs-url (git+https://<host>[:<port>]/<path>, no user name, @, query or fragment) and vcs-revision (a full 40- or 64-digit lower-case commit id; a tag or a short id is refused) check them, each with its conformance set.
+* The built-in module and kind metadata no longer list `metadata.module` and `metadata.source` as fields an author may write: the loader writes them, and one written by hand is refused.
+* The `package-url` and `cpe` entries of the Telo format vocabulary, and the `purl` and `contains` keys of the `ModuleSources` fragment.
+* Two built-in need types, `Telo.GeneratedSecretKey` (key material of an exact number of bytes in `base64url`, `base64url-padded`, `base64` or `hex`) and `Telo.GeneratedPassword` (a password of an exact length drawn from named character sets, each with a minimum), answered from the host value `TELO_HOST_SECRET_SEED`.
+
 ## 0.138.0 - 2026-11-19
 ### Added
 * The built-in vocabulary's `Telo.Library` entry declares `migrations:`, a library's rewrites of the legacy spellings of its own vocabulary, with `match` limited to a closed subset of JSON Schema (`type`, `required`, `const`, `enum`, `properties`, `items`, `<key>: false`).

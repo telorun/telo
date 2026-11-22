@@ -1,5 +1,0 @@
-units:
-  analyzer: Added
-body: "The telo-workspace.yaml marker's known blocks gain audit: (ignore: entries of id,
-  reason and expires, read by telo audit); audti: is a near-miss error, and
-  workspaceSchema, readWorkspaceConfig and the editor's completion know the block."

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.0 - 2026-11-22
+### Added
+* Each staged source declares the package its files are a release of (`purl` in `sources:`), the identity a software bill of materials lists.
+
 ## 0.4.3 - 2026-11-09
 ### Fixed
 * The telo requirement that static checking cannot see is now a `restrictions:` entry carrying its reason, and `requires.telo` holds the measured floor.

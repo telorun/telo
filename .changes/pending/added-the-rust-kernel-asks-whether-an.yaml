@@ -1,6 +1,0 @@
-units:
-  kernel: Added
-body: "The Rust kernel asks whether an imported module declares a kind before applying
-  its export gate: a kind the module does not declare is ERR_UNDEFINED_KIND, worded as
-  the Node kernel words it, and ERR_KIND_NOT_EXPORTED stays for a kind the module
-  declares and does not export."

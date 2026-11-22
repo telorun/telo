@@ -1,6 +1,0 @@
-units:
-  sdk: Added
-body: Two built-in need types, `Telo.GeneratedSecretKey` (key material of an exact
-  number of bytes in `base64url`, `base64url-padded`, `base64` or `hex`) and
-  `Telo.GeneratedPassword` (a password of an exact length drawn from named character
-  sets, each with a minimum), answered from the host value `TELO_HOST_SECRET_SEED`.
