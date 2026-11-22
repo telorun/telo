@@ -15,8 +15,9 @@
 //! read from the built-in vocabulary archive it embeds) with the gate's cover, the capability
 //! roster, the reference forms, a plain string left holding `${{`, and the module documents' own
 //! blocks (a library's `env:` / `arg:` keys and exported names, the `native:` and `sources:` blocks
-//! and the module files they and the manifest claim, the placement of file embeds) — located
-//! by Node's fallback chain. `telo check` and the kernel read them through one entry assembly
+//! and the module files they and the manifest claim, the placement of file embeds), and whether
+//! each module file claim of the entry and its path imports names something, asked of the
+//! module's own source (`module_file_existence`) — located by Node's fallback chain. `telo check` and the kernel read them through one entry assembly
 //! (`entry_diagnostics`, which also names the constructs this build cannot read and holds back
 //! the files they name); `telo check` adds the dependency verdict (`graph_analysis`: each
 //! imported library judged by its own entry assembly, reported by its origin, memoized by a
@@ -67,6 +68,7 @@ pub mod module_alias_scope;
 pub mod module_browser;
 pub mod module_declaration_refusals;
 pub mod module_file_claims;
+pub mod module_file_existence;
 pub mod module_library;
 pub mod module_named_files;
 pub mod module_origin;
@@ -156,6 +158,6 @@ pub use validate_reference_forms::{
 };
 pub use types::{
     kind_of, name_of, AnalysisDiagnostic, DiagnosticData, DiagnosticFix, DiagnosticFixTag, DiagnosticMigration, DiagnosticResource,
-    DiagnosticSeverity, DiagnosticTag, join_relative, LoadError, ManifestSource, Position, PositionIndex, Range, ReadManifest,
+    DiagnosticSeverity, DiagnosticTag, HostEntryKind, join_relative, LoadError, ManifestSource, Position, PositionIndex, Range, ReadManifest,
     ResourceManifest, ANALYZER_SOURCE, DEFAULT_MANIFEST_FILENAME,
 };

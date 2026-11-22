@@ -81,6 +81,10 @@ impl ImportTargetPort for SourcesImportPort {
     fn load(&self, url: &str) -> Result<TargetModule, LoadError> {
         self.manifests.load_module(url)
     }
+
+    fn source_for(&self, url: &str) -> Option<&dyn ManifestSource> {
+        self.manifests.source_for(url)
+    }
 }
 
 impl ImportTargetPort for ArtifactManifestLoader {
@@ -90,6 +94,10 @@ impl ImportTargetPort for ArtifactManifestLoader {
 
     fn load(&self, url: &str) -> Result<TargetModule, LoadError> {
         self.manifests.load(url)
+    }
+
+    fn source_for(&self, url: &str) -> Option<&dyn ManifestSource> {
+        self.manifests.source_for(url)
     }
 }
 

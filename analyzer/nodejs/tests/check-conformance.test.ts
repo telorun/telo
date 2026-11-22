@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
+import { open, readdir, stat, type FileHandle } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { selectByPatterns } from "@telorun/glob";
@@ -18,7 +19,8 @@ const VECTORS = fileURLToPath(new URL("../../check-conformance/vectors/", import
 
 /** The filesystem as `telo check` reads it — the kernel's local file source: every source
  *  a `file://` URL, a directory read as its `telo.yaml`, a failure in Telo's words, an
- *  `include:` glob expanded over the owner's directory. */
+ *  `include:` glob expanded over the owner's directory, and what a module file claim names
+ *  answered from the disk. */
 const fileSource: ManifestSource = {
   supports: (url) =>
     url.startsWith("file://") ||
@@ -56,7 +58,51 @@ const fileSource: ManifestSource = {
       (rel) => pathToFileURL(resolve(baseDir, rel)).href,
     );
   },
+  async entryAt(base, relative) {
+    try {
+      return (await stat(locate(base, relative))).isDirectory() ? "directory" : "file";
+    } catch (error) {
+      const code = (error as { code?: unknown }).code;
+      if (code === "ENOENT" || code === "ENOTDIR") return undefined;
+      throw error;
+    }
+  },
+  async readHead(base, relative, length) {
+    let handle: FileHandle;
+    try {
+      handle = await open(locate(base, relative), "r");
+    } catch (error) {
+      const code = (error as { code?: unknown }).code;
+      if (code === "ENOENT" || code === "ENOTDIR" || code === "EISDIR") return undefined;
+      throw error;
+    }
+    try {
+      const buffer = new Uint8Array(length);
+      const { bytesRead } = await handle.read(buffer, 0, length, 0);
+      return buffer.subarray(0, bytesRead);
+    } catch (error) {
+      if ((error as { code?: unknown }).code === "EISDIR") return undefined;
+      throw error;
+    } finally {
+      await handle.close();
+    }
+  },
+  locate,
+  async listDirectory(base, relative) {
+    try {
+      return await readdir(locate(base, relative));
+    } catch (error) {
+      const code = (error as { code?: unknown }).code;
+      if (code === "ENOENT" || code === "ENOTDIR") return undefined;
+      throw error;
+    }
+  },
 };
+
+/** Where `relative` lies beside the module file `base`, as the local file source places it. */
+function locate(base: string, relative: string): string {
+  return resolve(dirname(resolve(base.startsWith("file://") ? fileURLToPath(base) : base)), relative);
+}
 
 /** Every string with the row directory's prefix removed, so a file reads relative to it,
  *  then this build's running surface written as `<running-surface>`. */

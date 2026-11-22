@@ -22,6 +22,7 @@ use crate::loaded_types::{
     GraphLoadError, ImportEdge, ImportFailureReason, LoadedFile, LoadedGraph, LoadedModule, ParseError, ParseErrorOrigin,
 };
 use crate::metadata_stamp_refusals::metadata_stamp_diagnostics;
+use crate::module_file_existence::collect_local_module_file_diagnostics;
 use crate::module_declaration_refusals::{
     duplicate_module_target_message, module_declaration_errors, module_document_kinds, partial_failure_reason,
     partial_glob_unsupported_error, partial_kind_errors, partial_not_found_error,
@@ -209,6 +210,13 @@ pub trait ImportTargetPort {
     /// The location the import `source`, written under `alias` in `from`, names.
     fn resolve(&self, from: &LoadedFile, alias: &str, source: &str) -> Result<String, LoadError>;
     fn load(&self, url: &str) -> Result<LoadedModule, LoadError>;
+
+    /// The source reading `url` — the first that supports it — which the module-file walk asks
+    /// what a claim names; `None` for a host with none, which asks nothing.
+    fn source_for(&self, url: &str) -> Option<&dyn ManifestSource> {
+        let _ = url;
+        None
+    }
 }
 
 impl ImportTargetPort for ManifestLoader {
@@ -218,6 +226,10 @@ impl ImportTargetPort for ManifestLoader {
 
     fn load(&self, url: &str) -> Result<LoadedModule, LoadError> {
         self.load_module(url)
+    }
+
+    fn source_for(&self, url: &str) -> Option<&dyn ManifestSource> {
+        self.pick(url).ok()
     }
 }
 
@@ -350,6 +362,7 @@ pub fn load_graph<P: ImportTargetPort>(port: &P, entry_url: &str) -> Result<Load
         parse_diagnostics: Vec::new(),
         version_diagnostics: Vec::new(),
         migration_diagnostics: Vec::new(),
+        module_file_diagnostics: Vec::new(),
         metadata_diagnostics: Vec::new(),
         errors: Vec::new(),
     };
@@ -368,6 +381,7 @@ pub fn load_graph<P: ImportTargetPort>(port: &P, entry_url: &str) -> Result<Load
     // Rewrite always, report locally: every file was migrated, and only the entry's own report.
     graph.migration_diagnostics =
         graph.modules[&root_source].files().flat_map(|file| file.migrations.diagnostics.iter().cloned()).collect();
+    graph.module_file_diagnostics = collect_local_module_file_diagnostics(&mut graph, &|url| port.source_for(url))?;
     graph.metadata_diagnostics = metadata_stamp_diagnostics(&graph);
     Ok(graph)
 }

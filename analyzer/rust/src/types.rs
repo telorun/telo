@@ -236,6 +236,62 @@ pub trait ManifestSource {
         let _ = (base, patterns);
         None
     }
+
+    /// What `relative` names beside the module file `base` (Node's `entryAt`): a file, a
+    /// directory, or nothing (`Ok(None)`); an error when the source could not tell. The default,
+    /// `None`, is a source that cannot answer — never "nothing there" — and a source either
+    /// answers every call or none.
+    fn entry_at(&self, base: &str, relative: &str) -> Option<Result<Option<HostEntryKind>, LoadError>> {
+        let _ = (base, relative);
+        None
+    }
+
+    /// The first `length` bytes (fewer when the file is shorter) of the file at `relative`,
+    /// resolved as [`ManifestSource::entry_at`] resolves it, or `Ok(None)` when no file is there
+    /// (Node's `readHead`). `None` when the source cannot read one.
+    fn read_head(&self, base: &str, relative: &str, length: usize) -> Option<Result<Option<Vec<u8>>, LoadError>> {
+        let _ = (base, relative, length);
+        None
+    }
+
+    /// Where `relative`, resolved as [`ManifestSource::entry_at`] resolves it, is on this host,
+    /// for a message a reader acts on (Node's `locate`). `None` when the source cannot say.
+    fn locate(&self, base: &str, relative: &str) -> Option<String> {
+        let _ = (base, relative);
+        None
+    }
+
+    /// The entry names of the directory at `relative`, resolved as [`ManifestSource::entry_at`]
+    /// resolves it, or `Ok(None)` when no directory is there (Node's `listDirectory`). `None`
+    /// when the source cannot list one.
+    fn list_directory(&self, base: &str, relative: &str) -> Option<Result<Option<Vec<String>>, LoadError>> {
+        let _ = (base, relative);
+        None
+    }
+}
+
+/// What a path names on the host: a token of the value types' `HOST_ENTRY_KINDS`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HostEntryKind {
+    File,
+    Directory,
+}
+
+impl HostEntryKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            HostEntryKind::File => "file",
+            HostEntryKind::Directory => "directory",
+        }
+    }
+
+    pub fn from_token(token: &str) -> Option<Self> {
+        match token {
+            "file" => Some(HostEntryKind::File),
+            "directory" => Some(HostEntryKind::Directory),
+            _ => None,
+        }
+    }
 }
 
 /// `relative` joined to the directory of `base`, `.` and `..` collapsed lexically, so an

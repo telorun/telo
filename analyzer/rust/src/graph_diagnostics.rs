@@ -1,9 +1,8 @@
 //! The complete diagnostic set of a loaded graph, as every host presents it. Mirrors
-//! `../../nodejs/src/graph-diagnostics.ts`: parse, migration, metadata-stamp and
-//! version-reconciliation, metadata-stamp and import-resolution diagnostics first, then the
-//! analysis diagnostics of every file whose analysis is not a cascade of a parse or import
-//! failure, each path remapped onto what the author wrote. This loader reads no module file
-//! claim, so that group has no twin.
+//! `../../nodejs/src/graph-diagnostics.ts`: parse, migration, version-reconciliation,
+//! module-file, metadata-stamp and import-resolution diagnostics first, then the analysis
+//! diagnostics of every file whose analysis is not a cascade of a parse or import failure, each
+//! path remapped onto what the author wrote.
 
 use std::collections::HashSet;
 
@@ -50,6 +49,7 @@ pub fn assemble_graph_diagnostics(graph: &LoadedGraph, analysis: Vec<AnalysisDia
     let mut diagnostics = graph.parse_diagnostics.clone();
     diagnostics.extend(graph.migration_diagnostics.iter().cloned());
     diagnostics.extend(graph.version_diagnostics.iter().cloned());
+    diagnostics.extend(graph.module_file_diagnostics.iter().cloned());
     diagnostics.extend(graph.metadata_diagnostics.iter().cloned());
     diagnostics.extend(import_resolution_diagnostics(graph));
     diagnostics.extend(live);
