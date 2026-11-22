@@ -1,4 +1,0 @@
-units:
-  modules/ui-react: Fixed
-body: The bill of materials records the version of @telorun/message-format the renderer
-  inlines, so it names the release that ships it.

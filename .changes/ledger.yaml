@@ -134,9 +134,9 @@ units:
       npm:
         nodejs: sha256-8vWGgV-qkHHFo1Fk_mimvMs2HCfdjeVE0oyVrbkVN2c
   ide/vscode:
-    version: 0.9.0
+    version: 0.9.1
     layers:
-      payload: sha256-nZjerIWAo3ABOsPhW2Tsh4uf0wyOcxXx59hfvCKhmlk
+      payload: sha256-jMjZWqJE9muSAWBPMeT95R08k7BjlkFHdT2V3KJoFts
   kernel:
     version: 0.139.1
     layers:
@@ -2695,7 +2695,7 @@ units:
           manifest: sha256-Lnn8xts9IDfmsdeF5THGkT81LOGycUVbaRQPJirQQHc
           sbom: sha256-54NzoufaWe_gYap36hdzmVJm0U8LG20pOYWTFUKJgOg
   modules/ui-react:
-    version: 0.16.0
+    version: 0.16.1
     registry: oci://ghcr.io/telorun
     layers:
       telo:
@@ -2705,20 +2705,20 @@ units:
           common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
           controller/js: sha256-VgfZJM0T06ujoxFFYSJ1QKggjTWvEDtdCnUe7qMLnHI
           library/js: sha256-j6ppqNgTT1x7ytCtGWugGXW7iWEbTUpodK_NkzgLB2k
-          manifest: sha256-UtX-tDS_CHpkqGmg8RSRSr5aS0MIeKixM9rEjjUcEoc
-          sbom: sha256-gw-G8m04yJ2Sd8ztX-hJFuPyOGA-ePsjtIORCn4X-iY
+          manifest: sha256-dJfAY2sTdZ3V1I7IDUf43-vOhklnytqEKVGst-sPmNM
+          sbom: sha256-nLcsp8iMhrWt6rQ2U9TQlKb07DYLA7ifzAT2W4saEOs
   modules/ui-react-conformance:
-    version: 0.12.0
+    version: 0.12.1
     registry: oci://ghcr.io/telorun
     layers:
       telo:
         .:
           common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
           controller/js: sha256-p2jEPXUlGCsOzlUhSs33oQwuWpZD9xC37snLnELNW0s
-          manifest: sha256-x3KzfFQxzVtSz1MN1ujYtPNYyyiTt1HlaTIVZlXyzlI
-          sbom: sha256-FFfjT17tn6EMCiHw4GURZvfm92-fjwVKGXh5IOczgTQ
+          manifest: sha256-IOoT0pYj-kP17GQnSRwhMU9dHax9WNPsPajRkNEqg-E
+          sbom: sha256-RBCheHpY8zU4xFSvF0LtEXVGhjOV6NxZHPO2EBrorog
   modules/ui-react-radix:
-    version: 0.12.0
+    version: 0.12.1
     registry: oci://ghcr.io/telorun
     layers:
       telo:
@@ -2726,8 +2726,8 @@ units:
           assets: sha256-nywWYpVaIyDjUUVjT9jTyn_NNuD7qad2fjnxlsl9wc8
           browser/esm+ui_react_controls-4: sha256-_JcDDzpkFwOb40-roQh8h_u3eWXLUrLL2LLNfRWrN0Y
           common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-          manifest: sha256-yZG6zDtKGgJCTJxcTNRMv-u_gCNUbpJIkwJZs_C4k68
-          sbom: sha256-h9IFhjP_YluSn2M5OgXAUyE0ZeGU4OK7f5lPaZm6ieg
+          manifest: sha256-0xoYbzl5MFIul5AULpPxGzNRVXHdgFL8UVk4k2illis
+          sbom: sha256-IGA1ShSpsbE50PDOcdDj4SYTN26C8xKfMDWXBkHTJwY
   modules/vector-store:
     version: 0.11.3
     registry: oci://ghcr.io/telorun
