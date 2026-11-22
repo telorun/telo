@@ -1,0 +1,3 @@
+kind: Telo.Application
+metadata: { name: NativeClaimedApp }
+imports: { Lib: ./lib }

@@ -4,7 +4,9 @@
 //! capability roster over every kind document of the graph (a dependency's reported at the
 //! entry's import reaching it), the entry module's reference forms, its own name, and a plain
 //! string left holding `${{` — the entry's own, and an imported library's at the entry's import
-//! reaching it. Each is a refusal the Rust kernel makes; Node's other passes have no twin yet,
+//! reaching it, and the module documents' own blocks (`native:`, `sources:`, a library's
+//! `variables:` / `exports:`, the placement of file embeds). Each is a refusal the Rust kernel
+//! makes; Node's other passes have no twin yet,
 //! so an analysis here reports a subset of Node's and never a diagnostic Node does not make.
 //!
 //! Every finding is placed and finished as Node's are (`placement`, `finishing_pipeline`): a
@@ -28,7 +30,11 @@ use crate::types::{kind_of, name_of, AnalysisDiagnostic, DiagnosticData, Diagnos
 use crate::untagged_interpolation::validate_untagged_interpolation;
 use crate::validate_identifier_names::validate_identifier_names;
 use crate::validate_reference_forms::{validate_reference_forms, AcceptsValue};
+use crate::validate_include_placement::validate_include_placement;
+use crate::validate_library_blocks::library_block_diagnostics;
+use crate::validate_native_entries::validate_native_entries;
 use crate::validate_requires::{validate_requires, SourcedDocument, ValidateRequiresOptions};
+use crate::validate_source_entries::validate_source_entries;
 
 /// What an analysis needs from its host.
 pub struct AnalysisOptions<'a> {
@@ -55,6 +61,12 @@ pub fn analyze(graph: &LoadedGraph, options: &AnalysisOptions) -> Vec<AnalysisDi
     diagnostics.extend(validate_reference_forms(graph, options.accepts_value));
     diagnostics.extend(validate_identifier_names(graph));
     diagnostics.extend(validate_untagged_interpolation(graph));
+    // The module documents' own blocks, in Node's order: native files, staged sources, the
+    // placement of file embeds, a library's variable and export blocks.
+    diagnostics.extend(validate_native_entries(&documents, Some(&root_modules)));
+    diagnostics.extend(validate_source_entries(&documents, Some(&root_modules)));
+    diagnostics.extend(validate_include_placement(&documents));
+    diagnostics.extend(library_block_diagnostics(&documents));
     let refusals = unreadable_module_refusals(unreadable_files);
     let placement = Placement::new(PlacementWorld { refusals: Some(&refusals) });
     FindingOrder::new(graph).sort(finish_findings(placement.place(diagnostics)))

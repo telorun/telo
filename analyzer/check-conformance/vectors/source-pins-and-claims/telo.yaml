@@ -1,0 +1,30 @@
+kind: Telo.Application
+metadata: { name: SourcePinsApp }
+native:
+  - { name: pinned, format: napi, os: linux, arch: amd64, path: ./native/pinned.node }
+  - { name: unpinned, format: napi, os: linux, arch: arm64, path: ./native/unpinned.node }
+assets: [data/*.bin]
+sources:
+  addon:
+    version: 1.0.0
+    purl: pkg:generic/addon
+    url: https://example.test/{version}/{upstream}.tar.gz
+    archive: tar.gz
+    notices: [./LICENSE]
+    entries:
+      native/pinned.node:
+        { upstream: linux, member: p.node, sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, executable: true }
+      native/unpinned.node: { upstream: arm, member: u.node }
+      data/claimed.bin:
+        { upstream: linux, member: c.bin, sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, executable: false }
+      other/unclaimed.bin:
+        { upstream: linux, member: o.bin, sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, executable: false }
+      LICENSE.txt:
+        { upstream: linux, member: l.txt, sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, executable: false }
+  built:
+    version: 1.0.0
+    url: https://example.test/{version}.tar.gz
+    archive: tar.gz
+    notices: [./LICENSE]
+    entries: {}
+    build: { cargo: rust }

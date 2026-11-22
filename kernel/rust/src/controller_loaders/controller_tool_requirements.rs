@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 
-use crate::controller_loaders::purl::Purl;
+use telo_analyzer::purl::Purl;
 
 /// One external program a controller needs, as it is looked up on `PATH`.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -20,7 +20,7 @@ use telo_analyzer::DEFAULT_MANIFEST_FILENAME;
 
 use crate::bundle::module_artifact::ModuleFiles;
 use crate::controller_loaders::native_abi::LoadedController;
-use crate::controller_loaders::purl::Purl;
+use telo_analyzer::purl::Purl;
 use crate::error::KernelError;
 use crate::lexical_path;
 use crate::manifest_sources::local_manifest_cache_source::resolve_cache_root;

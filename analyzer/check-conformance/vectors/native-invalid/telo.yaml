@@ -1,0 +1,8 @@
+kind: Telo.Application
+metadata: { name: NativeInvalidApp }
+native:
+  - { name: Bad Name, format: napi, os: linux, arch: amd64, path: ./native/a.node }
+  - { name: escape, format: napi, os: linux, arch: amd64, path: ../elsewhere/a.node }
+  - { name: pattern, format: napi, os: linux, arch: amd64, path: ./native/*.node }
+  - { name: blank, format: napi, os: " ", arch: amd64, path: ./native/b.node }
+  - { name: abi, format: napi, os: linux, arch: amd64, abi: "137", path: ./native/c.node }

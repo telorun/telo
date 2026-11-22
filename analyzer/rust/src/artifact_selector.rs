@@ -301,6 +301,17 @@ pub fn selector_from_qualifiers(
     )
 }
 
+/// Build a selector from an entry's `format` and the platform axes of the map it is
+/// written in (Node's `selectorFromQualifiers` over an object): the other keys of the
+/// map are ignored.
+pub fn selector_from_record(
+    format: Option<&Value>,
+    record: &serde_json::Map<String, Value>,
+    describe: &str,
+) -> Result<ArtifactSelector, ArtifactSelectorError> {
+    build_selector(format, |axis| record.get(axis.name()).cloned(), describe)
+}
+
 /// Validate and normalize a selector read off a published layer index.
 ///
 /// `Ok(None)` when the selector carries an axis this runtime does not know: the
@@ -365,9 +376,55 @@ pub fn selector_matches(selector: &ArtifactSelector, target: &PlatformTarget) ->
     })
 }
 
+/// A selector that no host can match as its author meant it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SelectorContradiction {
+    /// Suffix of the diagnostic code; each surface prefixes its own.
+    pub rule: &'static str,
+    pub axis: PlatformAxis,
+    pub detail: String,
+}
+
+/// The combinations of axes the grammar accepts and no host can mean: an N-API addon
+/// stating a runtime ABI, and a libc on an os that has none.
+pub fn selector_contradictions(selector: &ArtifactSelector) -> Vec<SelectorContradiction> {
+    let mut out = Vec::new();
+    if let (true, Some(abi)) = (selector.format == "napi", selector.axes.get(PlatformAxis::Abi)) {
+        out.push(SelectorContradiction {
+            rule: "NAPI_ABI_FORBIDDEN",
+            axis: PlatformAxis::Abi,
+            detail: format!(
+                "an N-API addon is ABI-stable across runtime releases and states no abi — remove abi {abi}, which would keep it from loading anywhere else."
+            ),
+        });
+    }
+    if let (Some(libc), Some(os)) = (selector.axes.get(PlatformAxis::Libc), selector.axes.get(PlatformAxis::Os)) {
+        if os != "linux" {
+            out.push(SelectorContradiction {
+                rule: "LIBC_OFF_LINUX",
+                axis: PlatformAxis::Libc,
+                detail: format!(
+                    "libc is only determined on linux, so a selector for os '{os}' that states libc {libc} could never match a host. Remove libc."
+                ),
+            });
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn contradictions_are_the_node_rules() {
+        let mut napi = ArtifactSelector { format: "napi".into(), axes: AxisValues::default() };
+        napi.axes.set(PlatformAxis::Abi, Some("node-137".into()));
+        napi.axes.set(PlatformAxis::Os, Some("darwin".into()));
+        napi.axes.set(PlatformAxis::Libc, Some("gnu".into()));
+        let rules: Vec<_> = selector_contradictions(&napi).into_iter().map(|c| (c.rule, c.axis)).collect();
+        assert_eq!(rules, [("NAPI_ABI_FORBIDDEN", PlatformAxis::Abi), ("LIBC_OFF_LINUX", PlatformAxis::Libc)]);
+    }
 
     /// The vocabulary is `axes.json`; this enum restates it, so every property
     /// the JSON declares is compared here and a divergence fails the build's tests.

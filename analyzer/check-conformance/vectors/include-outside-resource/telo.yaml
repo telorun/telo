@@ -1,0 +1,8 @@
+kind: Telo.Application
+metadata:
+  name: IncludeOutsideApp
+  notes: !include-text ./notes.txt
+imports: { Console: ../../../../modules/console }
+targets:
+  - invoke: !ref Console.writeLine
+    inputs: { output: !include-text ./notes.txt }

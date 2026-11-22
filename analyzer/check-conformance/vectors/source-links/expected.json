@@ -1,0 +1,149 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "SOURCE_LINK_CYCLE",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/SourceLinksApp: source 'loops' entry 'native/loop/a': the link never reaches a file — it cycles through 'native/loop/a' → 'native/loop/b' → 'native/loop/a'. A link chain must end at a file entry.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "SourceLinksApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "sources.loops.entries.native/loop/a.target"
+      },
+      "range": {
+        "start": {
+          "line": 28,
+          "character": 31
+        },
+        "end": {
+          "line": 28,
+          "character": 32
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "SOURCE_LINK_CYCLE",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/SourceLinksApp: source 'loops' entry 'native/loop/b': the link never reaches a file — it cycles through 'native/loop/b' → 'native/loop/a' → 'native/loop/b'. A link chain must end at a file entry.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "SourceLinksApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "sources.loops.entries.native/loop/b.target"
+      },
+      "range": {
+        "start": {
+          "line": 29,
+          "character": 31
+        },
+        "end": {
+          "line": 29,
+          "character": 32
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "SOURCE_LINK_CYCLE",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/SourceLinksApp: source 'loops' entry 'native/loop/self': link target 'self' resolves to the link itself.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "SourceLinksApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "sources.loops.entries.native/loop/self.target"
+      },
+      "range": {
+        "start": {
+          "line": 30,
+          "character": 34
+        },
+        "end": {
+          "line": 30,
+          "character": 38
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "SOURCE_LINK_TARGET_UNRESOLVED",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/SourceLinksApp: source 'cross' entry 'native/darwin/libx.so': the link ships in the native napi (darwin/arm64) layer, but its target 'native/linux/libx.so.1' ships in the native napi (linux/amd64) layer. A runtime extracts only the layers it needs, so the link would dangle — point it at a file of its own layer.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "SourceLinksApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "sources.cross.entries.native/darwin/libx.so.target"
+      },
+      "range": {
+        "start": {
+          "line": 20,
+          "character": 39
+        },
+        "end": {
+          "line": 20,
+          "character": 57
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "SOURCE_LINK_TARGET_UNRESOLVED",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/SourceLinksApp: source 'loops' entry 'native/loop/missing': link target 'nowhere' resolves, relative to the link's directory, to 'native/loop/nowhere', which is not another entry of this source.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "SourceLinksApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "sources.loops.entries.native/loop/missing.target"
+      },
+      "range": {
+        "start": {
+          "line": 31,
+          "character": 37
+        },
+        "end": {
+          "line": 31,
+          "character": 44
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "SOURCE_LINK_TARGET_UNRESOLVED",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/SourceLinksApp: source 'loops' entry 'native/loop/outside': link target '../../../x' resolves, relative to the link's directory, to a path outside the module, which is not another entry of this source.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "SourceLinksApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "sources.loops.entries.native/loop/outside.target"
+      },
+      "range": {
+        "start": {
+          "line": 32,
+          "character": 37
+        },
+        "end": {
+          "line": 32,
+          "character": 47
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] Manifest validation failed\n  [SOURCE_LINK_TARGET_UNRESOLVED] Telo.Application/SourceLinksApp: source 'cross' entry 'native/darwin/libx.so': the link ships in the native napi (darwin/arm64) layer, but its target 'native/linux/libx.so.1' ships in the native napi (linux/amd64) layer. A runtime extracts only the layers it needs, so the link would dangle — point it at a file of its own layer.\n  [SOURCE_LINK_CYCLE] Telo.Application/SourceLinksApp: source 'loops' entry 'native/loop/a': the link never reaches a file — it cycles through 'native/loop/a' → 'native/loop/b' → 'native/loop/a'. A link chain must end at a file entry.\n  [SOURCE_LINK_CYCLE] Telo.Application/SourceLinksApp: source 'loops' entry 'native/loop/b': the link never reaches a file — it cycles through 'native/loop/b' → 'native/loop/a' → 'native/loop/b'. A link chain must end at a file entry.\n  [SOURCE_LINK_CYCLE] Telo.Application/SourceLinksApp: source 'loops' entry 'native/loop/self': link target 'self' resolves to the link itself.\n  [SOURCE_LINK_TARGET_UNRESOLVED] Telo.Application/SourceLinksApp: source 'loops' entry 'native/loop/missing': link target 'nowhere' resolves, relative to the link's directory, to 'native/loop/nowhere', which is not another entry of this source.\n  [SOURCE_LINK_TARGET_UNRESOLVED] Telo.Application/SourceLinksApp: source 'loops' entry 'native/loop/outside': link target '../../../x' resolves, relative to the link's directory, to a path outside the module, which is not another entry of this source."
+}

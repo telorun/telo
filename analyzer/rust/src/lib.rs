@@ -13,7 +13,9 @@
 //! file refusals, an import's failure, a version conflict, a reserved kind prefix, a module's
 //! declared runtime requirements against the surface this build implements (`telo_version`,
 //! read from the built-in vocabulary archive it embeds) with the gate's cover, the capability
-//! roster, the reference forms and a plain string left holding `${{` — located
+//! roster, the reference forms, a plain string left holding `${{`, and the module documents' own
+//! blocks (a library's `env:` / `arg:` keys and exported names, the `native:` and `sources:` blocks
+//! and the module files they and the manifest claim, the placement of file embeds) — located
 //! by Node's fallback chain. `telo check` and the kernel read them through one entry assembly
 //! (`entry_diagnostics`, which also names the constructs this build cannot read and holds back
 //! the files they name); `telo check` adds the dependency verdict (`graph_analysis`: each
@@ -44,6 +46,7 @@ pub mod diagnostic_location;
 pub mod entry_diagnostics;
 pub mod finding_order;
 pub mod finishing_pipeline;
+pub mod flatten_for_analyzer;
 pub mod graph_analysis;
 pub mod graph_diagnostics;
 pub mod host_path_slot;
@@ -61,16 +64,23 @@ pub mod metadata_stamp_refusals;
 pub mod metadata_stamps;
 pub mod migrations;
 pub mod module_alias_scope;
+pub mod module_browser;
 pub mod module_declaration_refusals;
+pub mod module_file_claims;
+pub mod module_library;
+pub mod module_named_files;
 pub mod module_origin;
+pub mod module_relative_path;
 pub mod module_version_order;
 pub mod native_entries;
 pub mod nearest_name;
+pub mod need_type;
 pub mod package_url_format;
 pub mod parse_loaded_file;
 pub mod placement;
 pub mod plain_literal_decoding;
 pub mod position_metadata;
+pub mod purl;
 pub mod quoted_place;
 pub mod reaching_import;
 pub mod reconcile_module_versions;
@@ -92,8 +102,12 @@ pub mod telo_version;
 pub mod types;
 pub mod untagged_interpolation;
 pub mod validate_identifier_names;
+pub mod validate_include_placement;
+pub mod validate_library_blocks;
+pub mod validate_native_entries;
 pub mod validate_reference_forms;
 pub mod validate_requires;
+pub mod validate_source_entries;
 pub mod value_type_keyword;
 pub mod vcs_revision_format;
 pub mod vcs_url_format;
