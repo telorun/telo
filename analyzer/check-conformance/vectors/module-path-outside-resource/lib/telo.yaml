@@ -1,0 +1,4 @@
+kind: Telo.Library
+metadata:
+  name: ModulePathOutsideLib
+  assets: !module-path ./static

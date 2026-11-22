@@ -30,7 +30,6 @@ use crate::controllers::module::import_controller::refuse_unreadable_import;
 use crate::controllers::module::module_controller::{load_module, value_branch_accepts, LoadedModule, ModuleRole};
 use crate::error::KernelError;
 use crate::evaluation_context::ResourceInstance;
-use crate::resolve_include_sentinels::{resolve_include_sentinels, IncludeCache};
 use crate::sentinel_pass::{compile_sentinels_at, Owner};
 use crate::invoke_dispatch;
 use telorun_sdk_core::FailureFrame;
@@ -320,8 +319,8 @@ impl Kernel {
         target: &Value,
         index: usize,
     ) -> Result<Value, KernelError> {
-        // The entry is consumed now, so it takes the pass a resource takes at creation, then
-        // its embeds resolve against the root module's files.
+        // The entry is consumed now, so it takes the pass a resource takes at creation. Its
+        // embeds are not resolved: the analysis refuses a file embed on the Application.
         let label = format!("Telo.Application/{}", root.context.name);
         let mut target = target.clone();
         compile_sentinels_at(
@@ -329,10 +328,6 @@ impl Kernel {
             &mut target,
             &format!("targets[{index}]"),
         )?;
-        let files = self.env.as_ref().map(|env| env.loader.module_files(&root.context.source));
-        if let Some(files) = files {
-            resolve_include_sentinels(&mut target, &root.context.source, &files, &mut IncludeCache::new())?;
-        }
         let target = &target;
         if target.get("when").is_some() {
             return Err(KernelError::new(

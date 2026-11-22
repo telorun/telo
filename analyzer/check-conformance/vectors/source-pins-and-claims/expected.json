@@ -1,0 +1,101 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "SOURCE_BUILD_UNPINNED",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/SourcePinsApp: source 'built' names the crate its files are built from but records no build inputs, so a later edit to that crate cannot be caught — run `telo release stage --pin` after building its files. `telo release check` and publish refuse it.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "SourcePinsApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "sources.built.build"
+      },
+      "range": {
+        "start": {
+          "line": 29,
+          "character": 11
+        },
+        "end": {
+          "line": 29,
+          "character": 26
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "SOURCE_ENTRY_UNCLAIMED",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/SourcePinsApp: source 'addon' entry 'LICENSE.txt': nothing in the module names 'LICENSE.txt' — no native: entry's path, no platform-qualified controller candidate's path=, no assets: pattern, and none of the source's notices. Name the file where it is used, or remove the entry.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "SourcePinsApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "sources.addon.entries.LICENSE.txt"
+      },
+      "range": {
+        "start": {
+          "line": 22,
+          "character": 8
+        },
+        "end": {
+          "line": 22,
+          "character": 135
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "SOURCE_ENTRY_UNCLAIMED",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/SourcePinsApp: source 'addon' entry 'other/unclaimed.bin': nothing in the module names 'other/unclaimed.bin' — no native: entry's path, no platform-qualified controller candidate's path=, no assets: pattern, and none of the source's notices. Name the file where it is used, or remove the entry.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "SourcePinsApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "sources.addon.entries.other/unclaimed.bin"
+      },
+      "range": {
+        "start": {
+          "line": 20,
+          "character": 8
+        },
+        "end": {
+          "line": 20,
+          "character": 135
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "SOURCE_ENTRY_UNPINNED",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/SourcePinsApp: source 'addon' entry 'native/unpinned.node' carries no pin (sha256 and executable), so nothing can verify the file it stages: a kernel refuses to read it and publish refuses to ship it — run `telo release stage --pin`.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "SourcePinsApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "sources.addon.entries.native/unpinned.node"
+      },
+      "range": {
+        "start": {
+          "line": 16,
+          "character": 28
+        },
+        "end": {
+          "line": 16,
+          "character": 61
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] Manifest validation failed\n  [SOURCE_ENTRY_UNPINNED] Telo.Application/SourcePinsApp: source 'addon' entry 'native/unpinned.node' carries no pin (sha256 and executable), so nothing can verify the file it stages: a kernel refuses to read it and publish refuses to ship it — run `telo release stage --pin`.\n  [SOURCE_ENTRY_UNCLAIMED] Telo.Application/SourcePinsApp: source 'addon' entry 'other/unclaimed.bin': nothing in the module names 'other/unclaimed.bin' — no native: entry's path, no platform-qualified controller candidate's path=, no assets: pattern, and none of the source's notices. Name the file where it is used, or remove the entry.\n  [SOURCE_ENTRY_UNCLAIMED] Telo.Application/SourcePinsApp: source 'addon' entry 'LICENSE.txt': nothing in the module names 'LICENSE.txt' — no native: entry's path, no platform-qualified controller candidate's path=, no assets: pattern, and none of the source's notices. Name the file where it is used, or remove the entry.\n  [SOURCE_BUILD_UNPINNED] Telo.Application/SourcePinsApp: source 'built' names the crate its files are built from but records no build inputs, so a later edit to that crate cannot be caught — run `telo release stage --pin` after building its files. `telo release check` and publish refuse it."
+}

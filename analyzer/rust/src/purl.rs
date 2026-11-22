@@ -1,10 +1,11 @@
 //! The package-URL grammar a controller candidate is written in:
 //! `pkg:<type>/<namespace…>/<name>@<version>?<qualifiers>#<subpath>`.
 //!
-//! No Node twin: the Node loaders parse with the `packageurl-js` library. This
-//! kernel hand-rolls the grammar rather than taking a dependency for it, and two
-//! loaders read it, so it lives once here. Components are percent-decoded, as
-//! the library decodes them; a malformed escape makes the PURL unparseable.
+//! No Node twin: Node parses a PURL with the `packageurl-js` library. The Rust half
+//! hand-rolls the grammar rather than taking a dependency for it, and its readers —
+//! the kernel's controller loaders and this analyzer's module-file claims — share this
+//! one parser, so there is no second one. Components are percent-decoded, as the
+//! library decodes them; a malformed escape makes the PURL unparseable.
 
 use std::collections::HashMap;
 

@@ -1,0 +1,9 @@
+units:
+  analyzer: Added
+body: "The Rust analyzer reports the module documents' own blocks as the Node analyzer
+  does, for the entry's own modules: a library's `env:` / `arg:` keys and non-string
+  exported names, every `native:` entry rule (`NATIVE_*`), every `sources:` entry rule
+  (`SOURCE_*`), and a file embed or module path written on a document nothing
+  instantiates. They are read through whole twins of the native-entry, source-entry,
+  library-candidate, browser-entry and module-file-claim readers, and the Rust kernel
+  refuses a load carrying them."

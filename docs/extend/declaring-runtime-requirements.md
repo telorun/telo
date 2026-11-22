@@ -206,8 +206,9 @@ released together at one version, and their Rust twins carry the same number. So
 telo 0.100.0 whichever of them you look at: the CLI that measures, the kernel that loads the module,
 and the editor engine checking it as you type.
 
-A kernel that implements only a *subset* of a generation claims none and skips the check. The Rust
-kernel reads no `requires:` today.
+Every kernel checks `requires: telo` against the release it comes from, including a kernel that
+hosts only part of what that release can say: a construct such a kernel cannot run is refused by
+name when the manifest loads, never by version, because a version says *older*, not *smaller*.
 
 ## In the editor
 

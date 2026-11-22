@@ -13,6 +13,8 @@ serde = { version = "1", features = ["derive"] }
 # Manifest key order is part of what a manifest says, and what the Node half keeps.
 serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"
+# The `.gitignore`-style selector an `assets:` pattern list is read with.
+telorun-glob = { path = "../../packages/glob/rust" }
 telo-templating = { path = "../../templating/rust" }
 # RE2, the pattern language a migration entry's value patterns are written in.
 telorun-cel = { path = "../../cel/rust" }
@@ -24,5 +26,3 @@ thiserror = "1"
 # The WHATWG URL parser: whether an http(s) import source is a URL at all.
 url = "=2.5.8"
 
-[dev-dependencies]
-telorun-glob = { path = "../../packages/glob/rust" }

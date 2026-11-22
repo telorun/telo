@@ -1,0 +1,173 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "SCHEMA_VIOLATION",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/SourceUrlApp: sources.Bad_Name is fetched from a url and names no purl. Add the package URL its files are a release of, e.g. purl: pkg:npm/%40scope/name",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "SourceUrlApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "sources.Bad_Name"
+      },
+      "range": {
+        "start": {
+          "line": 32,
+          "character": 4
+        },
+        "end": {
+          "line": 37,
+          "character": 0
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "SOURCE_INVALID",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/SourceUrlApp: source 'Bad_Name': the name is not a canonical token. Use lowercase letters, digits, '.', '-' or '_', starting with a letter or digit.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "SourceUrlApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "sources.Bad_Name"
+      },
+      "range": {
+        "start": {
+          "line": 32,
+          "character": 4
+        },
+        "end": {
+          "line": 37,
+          "character": 0
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "SOURCE_INVALID",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/SourceUrlApp: source 'Bad_Name': notice path '../LICENSE' points above the module root. A native file must ship inside the module directory.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "SourceUrlApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "sources.Bad_Name.notices[0]"
+      },
+      "range": {
+        "start": {
+          "line": 35,
+          "character": 14
+        },
+        "end": {
+          "line": 35,
+          "character": 24
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "SOURCE_INVALID",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/SourceUrlApp: source 'Bad_Name': 'version' must not be empty.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "SourceUrlApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "sources.Bad_Name.version"
+      },
+      "range": {
+        "start": {
+          "line": 32,
+          "character": 13
+        },
+        "end": {
+          "line": 32,
+          "character": 15
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "SOURCE_INVALID",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/SourceUrlApp: source 'relative': url 'example.test/x.tar.gz' is not an absolute URL. Write an https:// URL template.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "SourceUrlApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "sources.relative.url"
+      },
+      "range": {
+        "start": {
+          "line": 27,
+          "character": 9
+        },
+        "end": {
+          "line": 27,
+          "character": 30
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "SOURCE_URL_INSECURE",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/SourceUrlApp: source 'insecure': url 'http://example.test/{version}/{upstream}.tar.gz' is fetched over http, where the archive could be altered on the way. Use https; plain http is accepted only for a loopback host (localhost, 127.0.0.0/8, [::1]).",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "SourceUrlApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "sources.insecure.url"
+      },
+      "range": {
+        "start": {
+          "line": 6,
+          "character": 9
+        },
+        "end": {
+          "line": 6,
+          "character": 56
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "SOURCE_URL_PLACEHOLDER_UNKNOWN",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/SourceUrlApp: source 'placeholder': the url placeholder '{os}' is not recognized. A url template may use only {version} (the source's version) and {upstream} (each entry's upstream).",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "SourceUrlApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "sources.placeholder.url"
+      },
+      "range": {
+        "start": {
+          "line": 20,
+          "character": 9
+        },
+        "end": {
+          "line": 20,
+          "character": 51
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] Manifest validation failed\n  [SOURCE_URL_INSECURE] Telo.Application/SourceUrlApp: source 'insecure': url 'http://example.test/{version}/{upstream}.tar.gz' is fetched over http, where the archive could be altered on the way. Use https; plain http is accepted only for a loopback host (localhost, 127.0.0.0/8, [::1]).\n  [SOURCE_URL_PLACEHOLDER_UNKNOWN] Telo.Application/SourceUrlApp: source 'placeholder': the url placeholder '{os}' is not recognized. A url template may use only {version} (the source's version) and {upstream} (each entry's upstream).\n  [SOURCE_INVALID] Telo.Application/SourceUrlApp: source 'relative': url 'example.test/x.tar.gz' is not an absolute URL. Write an https:// URL template.\n  [SCHEMA_VIOLATION] Telo.Application/SourceUrlApp: sources.Bad_Name is fetched from a url and names no purl. Add the package URL its files are a release of, e.g. purl: pkg:npm/%40scope/name\n  [SOURCE_INVALID] Telo.Application/SourceUrlApp: source 'Bad_Name': the name is not a canonical token. Use lowercase letters, digits, '.', '-' or '_', starting with a letter or digit.\n  [SOURCE_INVALID] Telo.Application/SourceUrlApp: source 'Bad_Name': 'version' must not be empty.\n  [SOURCE_INVALID] Telo.Application/SourceUrlApp: source 'Bad_Name': notice path '../LICENSE' points above the module root. A native file must ship inside the module directory."
+}

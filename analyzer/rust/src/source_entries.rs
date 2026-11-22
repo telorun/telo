@@ -6,7 +6,10 @@
 //! the other refuses.
 //!
 //! One part of the Node reader has no counterpart: `ignorePins` serves the one
-//! writer of pins, `telo release stage --pin`, which this runtime does not carry.
+//! writer of pins, `telo release stage --pin`, which this runtime does not carry. One part is
+//! added: the identity formats (`purl`, `cpe`, `vcs`) the Node half leaves to the owner doc's
+//! JSON Schema are checked here too, each marked `owner_schema`, since a kernel refuses a
+//! staged file whenever the block has a problem and has no schema pass of its own.
 
 use std::collections::HashMap;
 
@@ -119,6 +122,10 @@ pub struct SourceProblem {
     pub code: &'static str,
     pub path: String,
     pub message: String,
+    /// A rule the Node reader leaves to the owner doc's JSON Schema (an identity's format), which
+    /// this reader checks itself because a kernel refuses the block whole. `validate_source_entries`
+    /// leaves it to the schema's own report, as Node's does.
+    pub owner_schema: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -296,8 +303,9 @@ pub fn read_module_sources(owner: &Value) -> ModuleSources {
     let Some(declared) = owner.get("sources") else {
         return out;
     };
+    let schema_rule = std::cell::Cell::new(false);
     let mut problem = |code: &'static str, path: String, message: String| {
-        out.problems.push(SourceProblem { code, path, message })
+        out.problems.push(SourceProblem { code, path, message, owner_schema: schema_rule.get() })
     };
     let Some(declared) = declared.as_object() else {
         problem("SHAPE", "sources".into(), "sources: expected a map of source name to source.".into());
@@ -412,12 +420,14 @@ pub fn read_module_sources(owner: &Value) -> ModuleSources {
                     .collect()
             })
             .unwrap_or_default();
+        schema_rule.set(true);
         for (path, format, value) in identities {
             if let Some(failure) = format_failure(format, value) {
                 problem("SCHEMA_VIOLATION", path.clone(), format!("{path} {}", describe_failure(format, value, &failure)));
                 valid = false;
             }
         }
+        schema_rule.set(false);
         let mut rest = url;
         while let Some(open) = rest.find('{') {
             let after = &rest[open + 1..];

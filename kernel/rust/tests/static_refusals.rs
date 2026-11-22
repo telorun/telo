@@ -226,16 +226,15 @@ fn an_unreadable_interpolation_is_refused_with_the_engines_message() {
     assert!(err.message.contains("!interpolate"), "{err}");
 }
 
-/// A target is consumed when it runs: `!literal` is its text and `!include-text` the file's.
+/// A target is consumed when it runs: `!literal` is its text.
 #[test]
-fn a_target_resolves_a_literal_and_an_include_when_it_runs() {
+fn a_target_resolves_a_literal_when_it_runs() {
     let dir = tempfile::tempdir().expect("temp dir");
     let entry = dir.path().join("telo.yaml");
-    std::fs::write(dir.path().join("note.txt"), "from a file").expect("write note");
     std::fs::write(
         &entry,
         app(&format!(
-            "imports: {{ Console: {} }}\ntargets:\n  - invoke: !ref Console.writeLine\n    inputs: {{ output: !literal \"costs ${{{{ 5 }}}}\" }}\n  - invoke: !ref Console.writeLine\n    inputs: {{ output: !include-text note.txt }}\n",
+            "imports: {{ Console: {} }}\ntargets:\n  - invoke: !ref Console.writeLine\n    inputs: {{ output: !literal \"costs ${{{{ 5 }}}}\" }}\n",
             console()
         )),
     )
@@ -243,7 +242,30 @@ fn a_target_resolves_a_literal_and_an_include_when_it_runs() {
     let mut kernel = Kernel::new();
     kernel.load(&entry.display().to_string()).expect("the load consumes no target");
     let results = kernel.run_targets().expect("the targets run");
-    assert_eq!(results, vec![serde_json::json!("costs ${{ 5 }}"), serde_json::json!("from a file")]);
+    assert_eq!(results, vec![serde_json::json!("costs ${{ 5 }}")]);
+}
+
+/// A file embed on the Application is never read: the load is refused, as Node's is.
+#[test]
+fn an_include_in_a_target_is_refused_at_load() {
+    let (_dir, err) = load(&[
+        ("app/note.txt", "from a file"),
+        (
+            "app/telo.yaml",
+            &app(&format!(
+                "imports: {{ Console: {} }}\ntargets:\n  - invoke: !ref Console.writeLine\n    inputs: {{ output: !include-text note.txt }}\n",
+                console()
+            )),
+        ),
+    ]);
+    assert_eq!(err.code, "ERR_MANIFEST_VALIDATION_FAILED", "{err}");
+    let found = err
+        .diagnostics
+        .iter()
+        .find(|d| d.code.as_deref() == Some("INCLUDE_OUTSIDE_RESOURCE"))
+        .expect("INCLUDE_OUTSIDE_RESOURCE");
+    assert_eq!(found.data.as_ref().and_then(|d| d.path.as_deref()), Some("targets[0].inputs.output"));
+    assert!(found.message.starts_with("Telo.Application/App: `!include-text note.txt` at 'targets[0].inputs.output' is never read"), "{err}");
 }
 
 /// A kind taking one string field, which no controller backs: a `!literal` that reached

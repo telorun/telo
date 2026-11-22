@@ -1,0 +1,29 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "MODULE_PATH_OUTSIDE_RESOURCE",
+      "source": "telo-analyzer",
+      "message": "Telo.Library/ModulePathOutsideLib: `!module-path ./static` at 'metadata.assets' is never read — a Telo.Library doc is not instantiated, and a module path is resolved when the resource holding it is created. Move it onto the resource that needs the location.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Library",
+          "name": "ModulePathOutsideLib"
+        },
+        "filePath": "lib/telo.yaml",
+        "path": "metadata.assets"
+      },
+      "range": {
+        "start": {
+          "line": 3,
+          "character": 23
+        },
+        "end": {
+          "line": 3,
+          "character": 31
+        }
+      }
+    }
+  ],
+  "runFails": null
+}

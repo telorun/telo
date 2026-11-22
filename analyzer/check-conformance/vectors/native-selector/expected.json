@@ -1,0 +1,77 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "NATIVE_LIBC_OFF_LINUX",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/NativeSelectorApp: native[2] ('libc'): libc is only determined on linux, so a selector for os 'darwin' that states libc gnu could never match a host. Remove libc.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "NativeSelectorApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "native[2].libc"
+      },
+      "range": {
+        "start": {
+          "line": 5,
+          "character": 63
+        },
+        "end": {
+          "line": 5,
+          "character": 66
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "NATIVE_NAPI_ABI_FORBIDDEN",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/NativeSelectorApp: native[1] ('napi'): an N-API addon is ABI-stable across runtime releases and states no abi — remove abi node-137, which would keep it from loading anywhere else.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "NativeSelectorApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "native[1].abi"
+      },
+      "range": {
+        "start": {
+          "line": 4,
+          "character": 62
+        },
+        "end": {
+          "line": 4,
+          "character": 70
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "NATIVE_NODE_ABI_MISSING",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/NativeSelectorApp: native[0] ('addon'): a 'node' addon is built against one Node ABI and must state it — add abi: node-<NODE_MODULE_VERSION>, e.g. 'node-137'. Without it the file matches every Node release and fails to load on all but one.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "NativeSelectorApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "native[0]"
+      },
+      "range": {
+        "start": {
+          "line": 3,
+          "character": 4
+        },
+        "end": {
+          "line": 3,
+          "character": 90
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] Manifest validation failed\n  [NATIVE_NODE_ABI_MISSING] Telo.Application/NativeSelectorApp: native[0] ('addon'): a 'node' addon is built against one Node ABI and must state it — add abi: node-<NODE_MODULE_VERSION>, e.g. 'node-137'. Without it the file matches every Node release and fails to load on all but one.\n  [NATIVE_NAPI_ABI_FORBIDDEN] Telo.Application/NativeSelectorApp: native[1] ('napi'): an N-API addon is ABI-stable across runtime releases and states no abi — remove abi node-137, which would keep it from loading anywhere else.\n  [NATIVE_LIBC_OFF_LINUX] Telo.Application/NativeSelectorApp: native[2] ('libc'): libc is only determined on linux, so a selector for os 'darwin' that states libc gnu could never match a host. Remove libc."
+}
