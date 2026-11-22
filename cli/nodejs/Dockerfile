@@ -45,6 +45,11 @@ RUN node -e "const fs=require('fs');const v=JSON.parse(fs.readFileSync('/build/p
 
 FROM node:24-trixie AS lean
 
+# The full base ships hundreds of Debian packages and is rebuilt upstream less often
+# than Debian publishes fixes, so the release scan would refuse it between rebuilds.
+RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
+ && rm -rf /var/lib/apt/lists/*
 COPY --from=build /deploy/ /opt/telo/
 COPY cli/LICENSE /opt/telo/LICENSE
 COPY cli/nodejs/docker-entrypoint.sh /usr/local/bin/telo-entrypoint.sh
