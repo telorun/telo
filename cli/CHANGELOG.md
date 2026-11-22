@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.139.1 - 2026-11-22
+### Fixed
+* telo publish no longer refuses a version that has never been published when the registry reports it as not found in Telo's own words; any other registry failure still fails the publish.
+* The telorun/node image (the full variant) upgrades its Debian packages at build, so Debian security fixes published since the upstream Node image was last rebuilt are included.
+
 ## 0.139.0 - 2026-11-22
 ### Added
 * A contract or signature that cannot stand in for an abstract ancestor's (`CONTRACT_NOT_SUBSTITUTABLE`) is judged per pair where it compares through a named shape: each failing pair of a named shape and what it is compared with is its own finding, naming the two sides (`comparing 'A' with 'B'`, and `compared as an alternative at '<pointer>'` where it is one alternative of a union), where its reasons used to be folded into the finding of the comparison reaching it; a union whose alternatives compare through named shapes reports `no alternative matches` naming those alternatives (`the alternative comparing 'A' with 'B' does not stand in`). A named shape that differs under an `!if` / `!switch` is judged per branch, each finding labelled by where it holds, and a recursive shape compared with itself is compatible.
