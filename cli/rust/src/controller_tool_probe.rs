@@ -227,6 +227,7 @@ mod tests {
             parse_diagnostics: Vec::new(),
             version_diagnostics: Vec::new(),
             migration_diagnostics: Vec::new(),
+            module_file_diagnostics: Vec::new(),
             metadata_diagnostics: Vec::new(),
             errors: Vec::new(),
         }

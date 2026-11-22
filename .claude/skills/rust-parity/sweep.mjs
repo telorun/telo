@@ -31,9 +31,9 @@ if (!existsSync(suitePath)) fail(`no test-suite.yaml in ${root}; run from the re
 const YAML = createRequire(join(root, "package.json"))("yaml");
 // The `check` dimension's constants, declared before the main flow awaits.
 const CHECK_DEBT_FILE = join(root, ".claude", "skills", "rust-parity", "check-debt.json");
-// A completed slice owes nothing: 3a-2 (slice 14, which builds `telo check`) and 3a-3 (slice 15, the
-// module graph).
-const CHECK_SLICE_OWNER = /^3a-[23]\b|slice 1[45]\b/;
+// A completed slice owes nothing: 3a-2 (slice 14, which builds `telo check`), 3a-3 (slice 15, the
+// module graph) and 3a-4 (slice 16, module findings and runtime requirements).
+const CHECK_SLICE_OWNER = /^3a-[234]\b|slice 1[456]\b/;
 const TOOL_MISSING = "CONTROLLER_TOOL_MISSING";
 // A rule's evaluation budget is wall-clock time, so whether it is exceeded depends on the load.
 const RULE_BUDGET = /exceeded its evaluation budget \(\d+ms\)/;
@@ -312,7 +312,10 @@ async function checkDimension() {
   for (const r of results) {
     for (const code of r.verdict.missingCodes ?? []) {
       missingByCode[code] = (missingByCode[code] ?? 0) + 1;
-      const owner = ownerOf(debt, r.path, code) ?? "(no owner)";
+      // A finding written in another module's file is owed through that module's entry.
+      const own = (r.verdict.ownMissingCodes ?? []).includes(code);
+      const writer = own ? r.path : (r.verdict.foreignWriters?.[code] ?? r.path);
+      const owner = ownerOf(debt, writer, code) ?? "(no owner)";
       missingByOwner[owner] = (missingByOwner[owner] ?? 0) + 1;
     }
   }
@@ -537,7 +540,10 @@ function judgeDependencyFindings(results, analyses, debt, runtimeCodeOf) {
       // Under `--filter` a foreign finding the manifest lists may be a context finding.
       const contextCode = judged.context || (options.filter && !judged.failure && lists(entry, code));
       if (contextCode && !ownMissing.includes(code)) ownMissing.push(code);
-      if (!judged.failure) continue;
+      if (!judged.failure) {
+        (result.verdict.foreignWriters ??= {})[code] ??= judged.owners[0];
+        continue;
+      }
       result.verdict.failures.push(`Rust lacks ${code} in another module's file (${judged.failure}): ${d.file}:${d.line}:${d.column} ${d.message}`);
       result.verdict.status = "fail";
     }

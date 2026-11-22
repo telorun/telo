@@ -1,0 +1,56 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "INCLUDE_FILE_NOT_FOUND",
+      "source": "telo-analyzer",
+      "message": "Self.Prompt/primer: `!include-text ./prompts/primer.md` names 'prompts/primer.md', and there is nothing there (prompts/primer.md). Did you mean './prompts/primr.md'? The path is relative to the module root — the directory holding telo.yaml. Create it or correct the path; if it exists in your checkout, whatever copied the module here left it out (an ignore file, a COPY step).",
+      "data": {
+        "resource": {
+          "kind": "Self.Prompt",
+          "name": "primer"
+        },
+        "filePath": "telo.yaml",
+        "path": "text",
+        "fix": {
+          "replacement": "./prompts/primr.md"
+        }
+      },
+      "range": {
+        "start": {
+          "line": 10,
+          "character": 20
+        },
+        "end": {
+          "line": 10,
+          "character": 39
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "INCLUDE_FILE_NOT_FOUND",
+      "source": "telo-analyzer",
+      "message": "Self.Prompt/system: `!include-text ./missing/system.md` names 'missing/system.md', and there is nothing there (missing/system.md). The directory 'missing/' does not exist. The path is relative to the module root — the directory holding telo.yaml. Create it or correct the path; if it exists in your checkout, whatever copied the module here left it out (an ignore file, a COPY step).",
+      "data": {
+        "resource": {
+          "kind": "Self.Prompt",
+          "name": "system"
+        },
+        "filePath": "telo.yaml",
+        "path": "text"
+      },
+      "range": {
+        "start": {
+          "line": 14,
+          "character": 20
+        },
+        "end": {
+          "line": 14,
+          "character": 39
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] telo.yaml: Self.Prompt/primer: `!include-text ./prompts/primer.md` names 'prompts/primer.md', and there is nothing there (prompts/primer.md). Did you mean './prompts/primr.md'? The path is relative to the module root — the directory holding telo.yaml. Create it or correct the path; if it exists in your checkout, whatever copied the module here left it out (an ignore file, a COPY step).\ntelo.yaml: Self.Prompt/system: `!include-text ./missing/system.md` names 'missing/system.md', and there is nothing there (missing/system.md). The directory 'missing/' does not exist. The path is relative to the module root — the directory holding telo.yaml. Create it or correct the path; if it exists in your checkout, whatever copied the module here left it out (an ignore file, a COPY step).\n  [INCLUDE_FILE_NOT_FOUND] Self.Prompt/primer: `!include-text ./prompts/primer.md` names 'prompts/primer.md', and there is nothing there (prompts/primer.md). Did you mean './prompts/primr.md'? The path is relative to the module root — the directory holding telo.yaml. Create it or correct the path; if it exists in your checkout, whatever copied the module here left it out (an ignore file, a COPY step).\n  [INCLUDE_FILE_NOT_FOUND] Self.Prompt/system: `!include-text ./missing/system.md` names 'missing/system.md', and there is nothing there (missing/system.md). The directory 'missing/' does not exist. The path is relative to the module root — the directory holding telo.yaml. Create it or correct the path; if it exists in your checkout, whatever copied the module here left it out (an ignore file, a COPY step)."
+}

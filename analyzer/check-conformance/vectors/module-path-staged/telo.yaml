@@ -1,0 +1,30 @@
+kind: Telo.Application
+metadata: { name: StagedApp }
+assets: [./tessdata/]
+sources:
+  models:
+    version: 1.0.0
+    purl: pkg:generic/models
+    url: https://example.test/{version}/{upstream}.tar.gz
+    archive: tar.gz
+    notices: [./LICENSE]
+    entries:
+      ./tessdata/eng.traineddata.gz:
+        { upstream: eng, member: eng.traineddata.gz, sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, executable: false }
+---
+kind: Telo.Definition
+metadata: { name: Model }
+capability: Telo.Invocable
+schema: { type: object, properties: { data: { x-telo-type: Telo.HostPath } } }
+---
+kind: Self.Model
+metadata: { name: directory }
+data: !module-path ./tessdata
+---
+kind: Self.Model
+metadata: { name: file }
+data: !module-path ./tessdata/eng.traineddata.gz
+---
+kind: Telo.Definition
+metadata: { name: Broken }
+capability: Telo.Invokable

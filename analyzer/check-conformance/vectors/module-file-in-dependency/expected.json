@@ -1,0 +1,29 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "INCLUDE_FILE_NOT_FOUND",
+      "source": "telo-analyzer",
+      "message": "Self.Prompt/primer: `!include-text ./primer.md` names 'primer.md', and there is nothing there (lib/primer.md). The path is relative to the module root — the directory holding telo.yaml. Create it or correct the path; if it exists in your checkout, whatever copied the module here left it out (an ignore file, a COPY step).",
+      "data": {
+        "resource": {
+          "kind": "Self.Prompt",
+          "name": "primer"
+        },
+        "filePath": "lib/telo.yaml",
+        "path": "text"
+      },
+      "range": {
+        "start": {
+          "line": 10,
+          "character": 20
+        },
+        "end": {
+          "line": 10,
+          "character": 31
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] lib/telo.yaml: Self.Prompt/primer: `!include-text ./primer.md` names 'primer.md', and there is nothing there (lib/primer.md). The path is relative to the module root — the directory holding telo.yaml. Create it or correct the path; if it exists in your checkout, whatever copied the module here left it out (an ignore file, a COPY step).\n  [INCLUDE_FILE_NOT_FOUND] Self.Prompt/primer: `!include-text ./primer.md` names 'primer.md', and there is nothing there (lib/primer.md). The path is relative to the module root — the directory holding telo.yaml. Create it or correct the path; if it exists in your checkout, whatever copied the module here left it out (an ignore file, a COPY step)."
+}

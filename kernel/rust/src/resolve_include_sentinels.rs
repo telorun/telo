@@ -275,13 +275,22 @@ mod tests {
         assert_eq!(err.code, "ERR_INCLUDE_PATH_INVALID");
     }
 
+    /// The backstop behind the load's `INCLUDE_FILE_NOT_FOUND`, worded as the Node kernel words it.
     #[test]
     fn reports_a_missing_file() {
-        let (_dir, manifest) = fixture();
-        let mut doc = json!({ "kind": "X", "a": sentinel(INCLUDE_TEXT_ENGINE, "nope.txt") });
+        let (dir, manifest) = fixture();
+        let mut doc = json!({ "kind": "X", "a": sentinel(INCLUDE_TEXT_ENGINE, "./prompts/nope.txt") });
         let err = resolve_include_sentinels(&mut doc, &manifest, &ModuleFiles::OnDisk, &mut IncludeCache::new())
             .expect_err("missing file is refused");
         assert_eq!(err.code, "ERR_INCLUDE_FILE_NOT_FOUND");
+        assert_eq!(
+            err.message,
+            format!(
+                "Cannot embed 'prompts/nope.txt': no such file at '{}'. The path is relative to the module root — \
+                 the directory holding telo.yaml — not to the file the tag was written in.",
+                dir.path().join("prompts/nope.txt").display()
+            )
+        );
     }
 
     #[test]
@@ -318,13 +327,22 @@ mod tests {
         assert_eq!(resolved, std::path::absolute(dir.path().join("theme.txt")).unwrap());
     }
 
+    /// The backstop behind the load's `MODULE_PATH_NOT_FOUND`, worded as the Node kernel words it.
     #[test]
     fn reports_a_missing_module_path() {
-        let (_dir, manifest) = fixture();
-        let mut doc = json!({ "kind": "X", "root": sentinel(MODULE_PATH_ENGINE, "public") });
+        let (dir, manifest) = fixture();
+        let mut doc = json!({ "kind": "X", "root": sentinel(MODULE_PATH_ENGINE, "./public") });
         let err = resolve_include_sentinels(&mut doc, &manifest, &ModuleFiles::OnDisk, &mut IncludeCache::new())
             .expect_err("nothing there is refused");
         assert_eq!(err.code, "ERR_MODULE_PATH_NOT_FOUND");
+        assert_eq!(
+            err.message,
+            format!(
+                "Cannot resolve 'public': nothing at '{}'. The path is relative to the module root — the directory \
+                 holding telo.yaml — not to the file the tag was written in.",
+                std::path::absolute(dir.path().join("public")).unwrap().display()
+            )
+        );
     }
 
     #[test]
