@@ -139,6 +139,19 @@ pub fn evaluate_range(
     Ok(())
 }
 
+/// The first constraint on a host axis whose running version `host` does not supply, or supplies
+/// unparsed — one [`evaluate_range`] passes over without judging.
+pub fn unjudged_host_constraint<'c>(constraints: &'c [RangeConstraint], host: &HostVersions) -> Option<&'c RangeConstraint> {
+    constraints.iter().find(|c| match c.key {
+        RequirementKey::Host(axis) => {
+            !host.get(axis).filter(|running| !running.is_empty()).is_some_and(|running| {
+                parse_module_version(split_build_metadata(running).0).is_some()
+            })
+        }
+        RequirementKey::Telo => false,
+    })
+}
+
 /// True when some version meets every range at once. `>=unreleased` lies above every published
 /// release, so it meets no ceiling, which must name one.
 pub fn ranges_overlap(ranges: &[&VersionRange]) -> bool {

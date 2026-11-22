@@ -510,8 +510,8 @@ mod tests {
         }
     }
 
-    const APP: &str = "kind: Telo.Application\nmetadata: { name: App, version: 1.0.0 }\ninclude: [./part.yaml]\n---\nkind: Http.Static\nmetadata: { name: site }\nroot: !module-path ./public\n";
-    const PART: &str = "kind: Http.Static\nmetadata: { name: assets }\nroot: !module-path ./assets\n";
+    const APP: &str = "kind: Telo.Application\nmetadata: { name: App, version: 1.0.0 }\ninclude: [./part.yaml]\n---\nkind: Acme.Static\nmetadata: { name: site }\nroot: !module-path ./public\n";
+    const PART: &str = "kind: Acme.Static\nmetadata: { name: assets }\nroot: !module-path ./assets\n";
 
     fn graph_of(disk: Disk, entry: &str) -> crate::LoadedGraph {
         load_graph(&ManifestLoader::new(vec![Box::new(disk)]), entry).expect("graph loads")
@@ -549,7 +549,7 @@ mod tests {
 
     #[test]
     fn stamps_what_one_claim_found_and_the_head_of_a_file() {
-        let app = "kind: Telo.Application\nmetadata: { name: App }\nneeds:\n  shell: { kind: Telo.DesktopHost, parameters: { icon: !module-path ./icon.png } }\n---\nkind: Http.Static\nmetadata: { name: site }\nroot: !module-path ./public\nlogo: !module-path ./icon.png\n";
+        let app = "kind: Telo.Application\nmetadata: { name: App }\nneeds:\n  shell: { kind: Telo.DesktopHost, parameters: { icon: !module-path ./icon.png } }\n---\nkind: Acme.Static\nmetadata: { name: site }\nroot: !module-path ./public\nlogo: !module-path ./icon.png\n";
         let mut disk = Disk::new(&[("/app/telo.yaml", app)], &["/app/public/index.html", "/app/icon.png"]);
         disk.heads.insert("/app/icon.png".to_string(), vec![0x89, b'P', b'N', b'G']);
         let graph = graph_of(disk, "/app/telo.yaml");
@@ -568,10 +568,10 @@ mod tests {
     fn staging(paths: &[&str], sources_extra: &str) -> String {
         let pin = format!("sha256: {}, executable: false", "a".repeat(64));
         let mut text = format!(
-            "kind: Telo.Library\nmetadata: {{ name: Lib, version: 1.0.0 }}\nassets: [./tessdata/]\nnative:\n  - {{ name: engine, format: napi, os: linux, arch: amd64, path: ./native/engine.node }}\nsources:\n  models:\n    version: 1.0.0\n    purl: pkg:npm/%40acme/models\n    url: https://example.com/{{upstream}}-{{version}}.tgz\n    archive: tar.gz\n    notices: [./notices/models.LICENSE]\n    entries:\n      ./tessdata/eng.traineddata.gz: {{ upstream: eng, member: package/eng.traineddata.gz, {pin} }}\n      ./notices/models.LICENSE: {{ upstream: eng, member: package/LICENSE, {pin} }}\n      ./native/engine.node: {{ upstream: engine, member: build/engine.node, {pin} }}\n{sources_extra}"
+            "kind: Telo.Library\nmetadata: {{ name: Lib, version: 1.0.0 }}\nassets: [./models/]\nnative:\n  - {{ name: engine, format: napi, os: linux, arch: amd64, path: ./native/engine.node }}\nsources:\n  models:\n    version: 1.0.0\n    purl: pkg:npm/%40acme/models\n    url: https://example.com/{{upstream}}-{{version}}.tgz\n    archive: tar.gz\n    notices: [./notices/models.LICENSE]\n    entries:\n      ./models/eng.bin: {{ upstream: eng, member: package/eng.bin, {pin} }}\n      ./notices/models.LICENSE: {{ upstream: eng, member: package/LICENSE, {pin} }}\n      ./native/engine.node: {{ upstream: engine, member: build/engine.node, {pin} }}\n{sources_extra}"
         );
         for (i, path) in paths.iter().enumerate() {
-            text.push_str(&format!("---\nkind: Http.Static\nmetadata: {{ name: site{i} }}\nroot: !module-path {path}\n"));
+            text.push_str(&format!("---\nkind: Acme.Static\nmetadata: {{ name: site{i} }}\nroot: !module-path {path}\n"));
         }
         text
     }
@@ -587,11 +587,11 @@ mod tests {
 
     #[test]
     fn counts_what_a_sources_block_stages_as_present() {
-        assert!(not_found(&["./tessdata/eng.traineddata.gz"], "").is_empty());
+        assert!(not_found(&["./models/eng.bin"], "").is_empty());
         assert!(not_found(&["./notices/models.LICENSE"], "").is_empty());
-        assert!(not_found(&["./tessdata"], "").is_empty());
-        assert_eq!(not_found(&["./tessdata/deu.traineddata.gz", "./tess", "./native/engine.node"], ""), ["site0", "site1", "site2"]);
-        assert_eq!(not_found(&["./tessdata/eng.traineddata.gz"], "  Broken: { version: 1.0.0 }\n"), ["site0"]);
+        assert!(not_found(&["./models"], "").is_empty());
+        assert_eq!(not_found(&["./models/deu.bin", "./mod", "./native/engine.node"], ""), ["site0", "site1", "site2"]);
+        assert_eq!(not_found(&["./models/eng.bin"], "  Broken: { version: 1.0.0 }\n"), ["site0"]);
     }
 
     fn importing(source: &str) -> String {
@@ -599,7 +599,7 @@ mod tests {
     }
 
     fn with_prompt(path: &str) -> String {
-        format!("kind: Telo.Library\nmetadata: {{ name: Chat, version: 1.0.0 }}\n---\nkind: Ai.Agent\nmetadata: {{ name: author }}\nsystem: !include-text {path}\n")
+        format!("kind: Telo.Library\nmetadata: {{ name: Chat, version: 1.0.0 }}\n---\nkind: Acme.Agent\nmetadata: {{ name: author }}\nsystem: !include-text {path}\n")
     }
 
     #[test]
@@ -626,7 +626,7 @@ mod tests {
 
     #[test]
     fn locates_a_claim_its_source_could_not_answer_for() {
-        let embed = "kind: Telo.Application\nmetadata: { name: App }\n---\nkind: Ai.Agent\nmetadata: { name: author }\nsystem: !include-text ./primer.md\n";
+        let embed = "kind: Telo.Application\nmetadata: { name: App }\n---\nkind: Acme.Agent\nmetadata: { name: author }\nsystem: !include-text ./primer.md\n";
         let mut disk = Disk::new(&[("/app/telo.yaml", embed)], &[]);
         disk.failing.insert("/app/primer.md".to_string());
         let graph = graph_of(disk, "/app/telo.yaml");
@@ -634,12 +634,12 @@ mod tests {
         assert_eq!(d.code.as_deref(), Some("MODULE_FILE_UNREADABLE"));
         assert_eq!(
             d.message,
-            "Ai.Agent/author: `!include-text ./primer.md` names 'primer.md', and checking it failed (/app/primer.md): EACCES: permission denied, stat '/app/primer.md'"
+            "Acme.Agent/author: `!include-text ./primer.md` names 'primer.md', and checking it failed (/app/primer.md): EACCES: permission denied, stat '/app/primer.md'"
         );
     }
 
     fn report(listing: Option<HashMap<String, Vec<String>>>) -> (String, Option<String>, Option<DiagnosticSeverity>) {
-        let embed = "kind: Telo.Application\nmetadata: { name: App, version: 1.0.0 }\n---\nkind: Ai.Agent\nmetadata: { name: author }\nsystem: !include-text ./prompts/primer.md\n";
+        let embed = "kind: Telo.Application\nmetadata: { name: App, version: 1.0.0 }\n---\nkind: Acme.Agent\nmetadata: { name: author }\nsystem: !include-text ./prompts/primer.md\n";
         let mut disk = Disk::new(&[("/app/telo.yaml", embed)], &[]);
         disk.listing = listing;
         let graph = graph_of(disk, "/app/telo.yaml");
@@ -656,7 +656,7 @@ mod tests {
         let (message, fix, severity) = report(dirs(&[]));
         assert_eq!(
             message,
-            "Ai.Agent/author: `!include-text ./prompts/primer.md` names 'prompts/primer.md', and there is nothing there (/app/prompts/primer.md). The path is relative to the module root — the directory holding telo.yaml. Create it or correct the path; if it exists in your checkout, whatever copied the module here left it out (an ignore file, a COPY step)."
+            "Acme.Agent/author: `!include-text ./prompts/primer.md` names 'prompts/primer.md', and there is nothing there (/app/prompts/primer.md). The path is relative to the module root — the directory holding telo.yaml. Create it or correct the path; if it exists in your checkout, whatever copied the module here left it out (an ignore file, a COPY step)."
         );
         assert_eq!((fix, severity), (None, Some(DiagnosticSeverity::Error)));
         let (message, fix, _) = report(dirs(&["primr.md", "system.md"]));
