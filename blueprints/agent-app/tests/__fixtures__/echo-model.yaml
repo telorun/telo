@@ -8,8 +8,8 @@ metadata:
     without a provider or a key. A user message mentioning an order is answered
     with a call to the first tool offered instead.
 imports:
-  Ai: ../../../../modules/ai
-  Run: ../../../../modules/run
+  Ai: oci://ghcr.io/telorun/ai@0.38.1#sha256-DRY3DZaG54aKXWMXJL_aUigh8SDbcerQRGrfS68Ixu0
+  Run: oci://ghcr.io/telorun/run@0.35.1#sha256-m6oA-tLMj4v0JvzkvRt17CBuWzXSYpumtxyNRb3qVz8
 exports:
   kinds: [Model]
 ---

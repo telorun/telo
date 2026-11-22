@@ -13,7 +13,7 @@ metadata:
 requires: { telo: ">=0.128.0" }
 imports:
   ScheduledJobs: ..
-  Console: ../../../modules/console
+  Console: oci://ghcr.io/telorun/console@0.19.5#sha256-aWnhpC9EodktO29y8zxc5YeFvgMwYD1bP0NkRsK2lic
 targets:
   - !ref jobs
 ---

@@ -11,7 +11,7 @@ metadata:
 # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
 requires: { telo: ">=0.128.0" }
 imports:
-  Console: ../../modules/console
+  Console: oci://ghcr.io/telorun/console@0.19.5#sha256-aWnhpC9EodktO29y8zxc5YeFvgMwYD1bP0NkRsK2lic
 targets:
   - invoke: !ref Console.writeLine
     inputs: { output: "Hello from Telo!" }

@@ -20,11 +20,11 @@ metadata:
     The modules of this workspace are imported by relative path; a release tag
     pins them to `oci://` refs.
 imports:
-  Ai: ../../modules/ai
-  OpenAI: ../../modules/openai
-  Http: ../../modules/http-client
-  Fs: ../../modules/fs
-  Console: ../../modules/console
+  Ai: oci://ghcr.io/telorun/ai@0.38.1#sha256-DRY3DZaG54aKXWMXJL_aUigh8SDbcerQRGrfS68Ixu0
+  OpenAI: oci://ghcr.io/telorun/openai@0.24.1#sha256-4zkQzzdsZdN3DFxNPAfoBGF6zbJ0cgOXJWNMDKqNpTI
+  Http: oci://ghcr.io/telorun/http-client@0.25.1#sha256-yODGL4HqbynR4aaPrcN1I2RIsmNBDn3ciL1uobA8nqA
+  Fs: oci://ghcr.io/telorun/fs@0.16.1#sha256-6nwm53u7kJHB3XW52O32h2HBoObzfVP4Wh4qswG6tZ8
+  Console: oci://ghcr.io/telorun/console@0.19.5#sha256-aWnhpC9EodktO29y8zxc5YeFvgMwYD1bP0NkRsK2lic
 secrets: { openaiApiKey: { env: OPENAI_API_KEY, type: string } }
 targets:
   - name: ask

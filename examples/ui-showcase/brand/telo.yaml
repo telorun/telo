@@ -10,10 +10,10 @@ metadata:
 # A library rather than a theme written inline at the application, so the
 # example's tests can check the very theme the `/brand` mount draws with.
 imports:
-  Ui: ../../../modules/ui
-  UiReact: ../../../modules/ui-react
-  Radix: ../../../modules/ui-react-radix
-  Font: ../../../modules/font
+  Ui: oci://ghcr.io/telorun/ui@0.15.0#sha256-Hpbmf228r4fDNHiDA7v1v4p-lHGYIJVp-LJL8lpFTQU
+  UiReact: oci://ghcr.io/telorun/ui-react@0.16.0#sha256-F7x6SY4oGQ9AIp8bjQyv6-33AtZPbJjdMOytteYb7OQ
+  Radix: oci://ghcr.io/telorun/ui-react-radix@0.12.0#sha256-nHK6kvR4JtE_jb9EVGDMEo_rEAkh2r-eppOn5bCK0kE
+  Font: oci://ghcr.io/telorun/font@0.3.2#sha256-YKPTjW2lXYSBSwIlfv284l24CxtulpcA-Ui-D_zykZM
 exports: { resources: [theme] }
 ---
 # Radix's thirteen controls under this library's own stylesheet and token values.

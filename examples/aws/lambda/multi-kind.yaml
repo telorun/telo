@@ -20,8 +20,8 @@ metadata:
     `examples/aws/lambda/README.md` for the full packaging + deploy walkthrough.
 imports:
   Lambda: oci://ghcr.io/telorun/aws/lambda@0.12.0#sha256-m6AEJNfJguLIFgbZuNmO06pdUathLclu3dMHpgqXreQ
-  JS: ../../../modules/javascript
-  Run: ../../../modules/run
+  JS: oci://ghcr.io/telorun/javascript@0.14.2#sha256-DDkoguHieiZwCQOEc3F8fTBv-Ouw5CDC8qM_WKs0ERQ
+  Run: oci://ghcr.io/telorun/run@0.35.1#sha256-m6oA-tLMj4v0JvzkvRt17CBuWzXSYpumtxyNRb3qVz8
 targets:
   - !ref main
 ---

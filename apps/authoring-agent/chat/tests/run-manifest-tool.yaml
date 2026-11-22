@@ -15,7 +15,7 @@ metadata:
     precedent — it also drops a dependency on which interpreter CI happens to
     run).
 imports:
-  Mcp: ../../../../modules/mcp-client
+  Mcp: oci://ghcr.io/telorun/mcp-client@0.18.2#sha256-jTbLVRRIY0HeV3sBFW2lW9TEpXNkjJtAB7KX5MX2EGM
   ChatOff:
     source: ../
     resources:
@@ -40,7 +40,7 @@ imports:
       workspaceDir: !cel "variables.scratch.joinPath('workspace')"
       teloProgram: [echo]
       allowManifestRuns: true
-  Assert: ../../../../modules/assert
+  Assert: oci://ghcr.io/telorun/assert@0.22.2#sha256-Rh9B2qPXTZKRjB9hbsGaFJKk25OmsxL2YfBSit177Lw
 variables:
   # Where this case's workspace and agent state live — the library takes both
   # as host paths, and neither is ever read here beyond the spawned program's cwd.
