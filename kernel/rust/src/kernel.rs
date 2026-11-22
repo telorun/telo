@@ -16,7 +16,7 @@ use std::rc::Rc;
 use serde_json::{json, Value};
 use telo_analyzer::sources::oci_ref::is_oci_ref;
 use telo_analyzer::{
-    analyze, as_resolved_ref, load_graph, load_refusal, AnalysisDiagnostic, AnalysisOptions, ImportTargetPort, LoadError,
+    analysis, as_resolved_ref, load_graph, load_refusal, Analysis, AnalysisOptions, ImportTargetPort, LoadError,
     LoadRefusalHost, LoadedFile, LoadedGraph, LoadedModule as TargetModule, ManifestLoader, ManifestSource,
 };
 
@@ -242,8 +242,8 @@ impl LoadRefusalHost for StaticPreflight<'_> {
         self.loader.build_module_artifacts(self.graph)
     }
 
-    fn analyze(&mut self) -> Vec<AnalysisDiagnostic> {
-        analyze(self.graph, &AnalysisOptions { accepts_value: &value_branch_accepts })
+    fn analyze(&mut self) -> Analysis {
+        analysis(self.graph, &AnalysisOptions { accepts_value: &value_branch_accepts })
     }
 }
 

@@ -12,7 +12,9 @@
 //! Rust loader does not write — a file on disk is named in a message by its `file://` URL, the
 //! canonical location Node's file sources stamp; and a module document declaring no `metadata.name` is not judged,
 //! since the diagnostic Node writes for it names no resource, which this crate's diagnostic
-//! cannot say — an under-report, never a finding Node does not make.
+//! cannot say — an under-report, never a finding Node does not make. A module whose `telo`
+//! bound is met while its load range holds a host bound no supplied host version judges is
+//! undecided ([`UndecidedModule`]): it gets no gate finding, and `requires_gate` covers its files.
 
 use std::collections::HashSet;
 use std::path::Path;
@@ -20,8 +22,8 @@ use std::path::Path;
 use crate::requires_block::{HostVersions, RequiresIssue};
 use crate::restrictions::restriction_covers;
 use crate::runtime_range::{
-    evaluate_range, floor_of, load_range, range_of, ranges_overlap, read_module_requirements, requirement_keys, Direction,
-    ModuleRequirements, RangeRefusal, RequirementKey, RequirementSource,
+    evaluate_range, floor_of, load_range, range_of, ranges_overlap, read_module_requirements, requirement_keys,
+    unjudged_host_constraint, Direction, ModuleRequirements, RangeRefusal, RequirementKey, RequirementSource,
 };
 use crate::sources::source_failure::file_url;
 use crate::system_kinds::is_module_document;
@@ -56,8 +58,33 @@ pub struct ValidateRequiresOptions<'a> {
     pub entry_modules: Option<&'a HashSet<String>>,
 }
 
+/// A module the gate cannot decide: its `telo` bound is met, but its enforced load range still
+/// holds a host bound no supplied host version judges — `path` and `bound` the first such one, as
+/// written.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UndecidedModule {
+    pub kind: String,
+    pub name: String,
+    pub file: String,
+    pub path: String,
+    pub bound: String,
+}
+
+/// What the gate concluded of a set of documents: its findings and the modules it left undecided.
+#[derive(Debug, Clone, Default)]
+pub struct RequiresJudgement {
+    pub diagnostics: Vec<AnalysisDiagnostic>,
+    pub undecided: Vec<UndecidedModule>,
+}
+
 pub fn validate_requires(documents: &[SourcedDocument], options: &ValidateRequiresOptions) -> Vec<AnalysisDiagnostic> {
+    judge_requires(documents, options).diagnostics
+}
+
+/// [`validate_requires`]'s findings, with the modules the gate left undecided.
+pub fn judge_requires(documents: &[SourcedDocument], options: &ValidateRequiresOptions) -> RequiresJudgement {
     let mut out = Vec::new();
+    let mut undecided = Vec::new();
     for document in documents {
         let Some(kind) = kind_of(document.manifest).filter(|kind| is_module_document(kind)) else { continue };
         let module = read_module_requirements(document.manifest, None);
@@ -83,8 +110,19 @@ pub fn validate_requires(documents: &[SourcedDocument], options: &ValidateRequir
         let mut enforced = module.clone();
         enforced.restrictions.entries.retain(|entry| !unusable.iter().any(|(index, _)| *index == entry.index));
 
-        let verdict =
-            evaluate_range(&load_range(&enforced, own_ceiling), Some(TELO_RUNNING_SURFACE.as_str()), &options.host_versions);
+        let range = load_range(&enforced, own_ceiling);
+        let verdict = evaluate_range(&range, Some(TELO_RUNNING_SURFACE.as_str()), &options.host_versions);
+        if verdict.is_ok() {
+            if let Some(unjudged) = unjudged_host_constraint(&range, &options.host_versions) {
+                undecided.push(UndecidedModule {
+                    kind: kind.to_string(),
+                    name: name.to_string(),
+                    file: file_path.to_string(),
+                    path: constraint_path(&unjudged.source, unjudged.key),
+                    bound: unjudged.range.raw.clone(),
+                });
+            }
+        }
         if let Err(refusal) = &verdict {
             let code = match refusal.direction {
                 Direction::Newer => RUNTIME_GATE_CODES[0],
@@ -135,7 +173,7 @@ pub fn validate_requires(documents: &[SourcedDocument], options: &ValidateRequir
             );
         }
     }
-    out
+    RequiresJudgement { diagnostics: out, undecided }
 }
 
 /// The entries covering the declaring version that leave it usable by no runtime, each judged
@@ -242,9 +280,13 @@ fn gate_message(refusal: &RangeRefusal, name: &str, source: &str) -> String {
 }
 
 fn source_path(refusal: &RangeRefusal) -> String {
-    match &refusal.source {
-        RequirementSource::Restriction { index, .. } => key_path(&format!("restrictions[{index}].requires"), refusal.key),
-        RequirementSource::Requires => key_path("requires", refusal.key),
+    constraint_path(&refusal.source, refusal.key)
+}
+
+fn constraint_path(source: &RequirementSource, key: RequirementKey) -> String {
+    match source {
+        RequirementSource::Restriction { index, .. } => key_path(&format!("restrictions[{index}].requires"), key),
+        RequirementSource::Requires => key_path("requires", key),
     }
 }
 

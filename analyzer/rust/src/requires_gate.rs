@@ -15,6 +15,14 @@
 //! import edges reach it, so Node's fallback for a producer that did not read the edges has no
 //! twin. A library sharing the entry's module name would have Node cover its forwarded
 //! documents' files too, where this analysis reports no finding the cover could drop.
+//!
+//! An undecided module ([`UndecidedModule`]) has no Node twin. Node supplies its own version to
+//! every `host.node` bound, so a module whose `telo` bound is met is either refused by the gate
+//! alone or reported in full, and which depends on the Node that runs it; the Rust hosts supply no
+//! host version, so this crate can say neither. Such a module gets no gate finding, and its files
+//! are covered as a failed gate's are, by the same attribution and the same cover
+//! ([`hold_undecided`]): what Node reports of it is never contradicted, only left unsaid. The
+//! errors the cover held are handed back, so the kernel refuses a load they would refuse.
 
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -22,23 +30,35 @@ use std::rc::Rc;
 use crate::finishing_pipeline::file_cover_key;
 use crate::loaded_types::LoadedGraph;
 use crate::module_origin::reached_module_sources;
-use crate::placement::CarriedCover;
+use crate::placement::{CarriedCover, PlacedDiagnostic};
 use crate::system_kinds::is_module_document;
-use crate::types::{kind_of, name_of, AnalysisDiagnostic};
-use crate::validate_requires::{is_runtime_gate, SourcedDocument};
+use crate::types::{kind_of, name_of, AnalysisDiagnostic, DiagnosticSeverity};
+use crate::validate_requires::{is_runtime_gate, SourcedDocument, UndecidedModule};
 
 /// Files belonging to a module this runtime declared itself unable to read.
 pub fn files_of_unreadable_modules(manifests: &[SourcedDocument], requires_diagnostics: &[AnalysisDiagnostic]) -> HashSet<String> {
+    let gated = requires_diagnostics.iter().filter(|d| is_runtime_gate(d)).map(|d| {
+        let data = d.data.as_ref();
+        (data.and_then(|data| data.file_path.as_deref()), data.and_then(|data| data.resource.as_ref()).map(|r| r.name.as_str()))
+    });
+    files_of_modules(manifests, gated)
+}
+
+/// The files of the modules `gated` names, each by the file its module document was declared in
+/// and its name, attributed as [`files_of_unreadable_modules`] attributes a gate finding's.
+fn files_of_modules<'n>(
+    manifests: &[SourcedDocument],
+    gated: impl Iterator<Item = (Option<&'n str>, Option<&'n str>)>,
+) -> HashSet<String> {
     let mut files = HashSet::new();
     let mut gated_names = HashSet::new();
-    for d in requires_diagnostics.iter().filter(|d| is_runtime_gate(d)) {
-        let data = d.data.as_ref();
+    for (file, name) in gated {
         // The gated document itself, addressed by the file it was declared in.
-        if let Some(file) = data.and_then(|data| data.file_path.as_deref()).filter(|file| !file.is_empty()) {
+        if let Some(file) = file.filter(|file| !file.is_empty()) {
             files.insert(file.to_string());
         }
-        if let Some(resource) = data.and_then(|data| data.resource.as_ref()) {
-            gated_names.insert(resource.name.as_str());
+        if let Some(name) = name {
+            gated_names.insert(name);
         }
     }
     if files.is_empty() && gated_names.is_empty() {
@@ -124,6 +144,47 @@ pub fn gate_refusals<'m>(
     }
 }
 
+/// An undecided module and the errors the cover over its files held.
+#[derive(Debug, Clone)]
+pub struct UndecidedHold {
+    pub module: UndecidedModule,
+    pub hidden_errors: Vec<AnalysisDiagnostic>,
+}
+
+/// `placed` without every finding the cover over an undecided module's files covers, and, per
+/// undecided module, the errors it held.
+pub fn hold_undecided(
+    placed: Vec<PlacedDiagnostic>,
+    manifests: &[SourcedDocument],
+    undecided: Vec<UndecidedModule>,
+) -> (Vec<PlacedDiagnostic>, Vec<UndecidedHold>) {
+    let covers: Vec<(UndecidedModule, CarriedCover)> = undecided
+        .into_iter()
+        .map(|module| {
+            let files = files_of_modules(manifests, std::iter::once((Some(module.file.as_str()), Some(module.name.as_str()))));
+            (module, cover_of_files(files))
+        })
+        .collect();
+    let mut holds: Vec<UndecidedHold> =
+        covers.iter().map(|(module, _)| UndecidedHold { module: module.clone(), hidden_errors: Vec::new() }).collect();
+    let mut kept = Vec::new();
+    for finding in placed {
+        let mut covered = false;
+        for (hold, (_, cover)) in holds.iter_mut().zip(&covers) {
+            if (cover.covers)(&finding.diagnostic, &finding.provenance) {
+                covered = true;
+                if finding.diagnostic.severity == Some(DiagnosticSeverity::Error) {
+                    hold.hidden_errors.push(finding.diagnostic.clone());
+                }
+            }
+        }
+        if !covered {
+            kept.push(finding);
+        }
+    }
+    (kept, holds)
+}
+
 fn cover_of_files(files: HashSet<String>) -> CarriedCover {
     let mut keys: Vec<String> = files.iter().map(|file| file_cover_key(Some(file))).collect();
     keys.sort();
@@ -191,6 +252,95 @@ mod tests {
         ]);
         let codes: Vec<String> = finish_findings(placed).into_iter().map(|d| d.code.unwrap()).collect();
         assert_eq!(codes, ["MODULE_REQUIRES_NEWER_RUNTIME", "CAPABILITY_UNKNOWN", "NO_FILE"]);
+    }
+
+    /// One file, read as the entry `/app/telo.yaml`.
+    struct Entry(String);
+
+    impl crate::types::ManifestSource for Entry {
+        fn supports(&self, _: &str) -> bool {
+            true
+        }
+
+        fn read(&self, path: &str) -> Result<crate::types::ReadManifest, crate::types::LoadError> {
+            Ok(crate::types::ReadManifest { text: self.0.clone(), source: path.to_string() })
+        }
+    }
+
+    struct Preflight<'g>(&'g LoadedGraph);
+
+    impl crate::load_refusal::LoadRefusalHost for Preflight<'_> {
+        type Error = ();
+
+        fn build_module_artifacts(&mut self) -> Result<(), ()> {
+            Ok(())
+        }
+
+        fn analyze(&mut self) -> crate::analyzer::Analysis {
+            crate::analyzer::analysis(self.0, &crate::analyzer::AnalysisOptions { accepts_value: &|_, _, _| false })
+        }
+    }
+
+    fn app(requires: &str, rest: &str) -> LoadedGraph {
+        let text = format!("kind: Telo.Application\nmetadata: {{ name: App }}\nrequires: {requires}\n{rest}");
+        crate::load_graph(&crate::ManifestLoader::new(vec![Box::new(Entry(text))]), "/app/telo.yaml").expect("graph loads")
+    }
+
+    fn checked(graph: &LoadedGraph) -> (Vec<String>, Vec<UndecidedHold>) {
+        let mut preflight = Preflight(graph);
+        let analysis = crate::load_refusal::LoadRefusalHost::analyze(&mut preflight);
+        (analysis.diagnostics.into_iter().map(|d| d.code.unwrap_or_default()).collect(), analysis.undecided)
+    }
+
+    fn run(graph: &LoadedGraph) -> Option<crate::load_refusal::LoadRefusal> {
+        crate::load_refusal::load_refusal(graph, "/app/telo.yaml", &mut Preflight(graph)).expect("the rule decides")
+    }
+
+    const INVOKABLE: &str = "---\nkind: Telo.Definition\nmetadata: { name: Broken }\ncapability: Telo.Invokable\n";
+
+    #[test]
+    fn reports_nothing_of_a_module_whose_unjudged_node_bound_leaves_it_undecided() {
+        let (codes, undecided) = checked(&app("{ host: { node: \">=99.0.0\", bun: \">=1.0.0\" } }", ""));
+        assert!(codes.is_empty(), "{codes:?}");
+        assert_eq!(undecided.len(), 1);
+        assert_eq!((undecided[0].module.path.as_str(), undecided[0].module.bound.as_str()), ("requires.host.node", ">=99.0.0"));
+    }
+
+    #[test]
+    fn refuses_to_run_an_undecided_module_whose_cover_held_an_error() {
+        let graph = app("{ host: { node: \">=99.0.0\" } }", INVOKABLE);
+        let (codes, undecided) = checked(&graph);
+        assert!(codes.is_empty(), "{codes:?}");
+        let held: Vec<_> = undecided[0].hidden_errors.iter().map(|d| d.code.as_deref().unwrap_or_default()).collect();
+        assert_eq!(held, ["CAPABILITY_UNKNOWN"]);
+        let refusal = run(&graph).expect("refused");
+        assert_eq!(refusal.code, "ERR_UNSUPPORTED_MANIFEST_FEATURE");
+        assert_eq!(
+            refusal.message,
+            "Telo.Application/App: requires.host.node '>=99.0.0' cannot be judged by this kernel, which knows no Node.js version, and the module holds errors that apply only where the bound is met. Check it with a Node.js build of telo, which judges the bound and reports them."
+        );
+        assert!(refusal.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn runs_an_undecided_module_holding_no_error() {
+        let graph = app("{ host: { node: \">=18.0.0\" } }", "");
+        assert!(checked(&graph).0.is_empty());
+        assert!(run(&graph).is_none());
+    }
+
+    #[test]
+    fn gates_a_telo_floor_beside_a_node_bound() {
+        let (codes, undecided) = checked(&app("{ telo: \">=999.0.0\", host: { node: \">=18.0.0\" } }", INVOKABLE));
+        assert_eq!(codes, ["MODULE_REQUIRES_NEWER_RUNTIME"]);
+        assert!(undecided.is_empty());
+    }
+
+    #[test]
+    fn refuses_a_malformed_node_bound_without_leaving_the_module_undecided() {
+        let (codes, undecided) = checked(&app("{ host: { node: \"^20.0.0\" } }", ""));
+        assert_eq!(codes, ["REQUIRES_INVALID"]);
+        assert!(undecided.is_empty());
     }
 
     #[test]

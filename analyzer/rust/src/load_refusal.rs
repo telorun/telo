@@ -7,15 +7,20 @@
 //! `ERR_UNSUPPORTED_MANIFEST_FEATURE` ([`host_refusals`]); and the groups whose findings this
 //! analyzer does not make yet — a failed library migration (this build refuses the import
 //! reaching one instead), a nested declaration's stamp and the need table (this kernel refuses
-//! `needs:`) — have nothing to refuse here, so their steps are absent.
+//! `needs:`) — have nothing to refuse here, so their steps are absent. At the aggregate's
+//! position a module the requires gate left undecided whose cover held an error is refused as
+//! `ERR_UNSUPPORTED_MANIFEST_FEATURE` naming the bound: Node refuses that load whether the bound
+//! holds or not, under findings this kernel cannot know.
 //! Node's registration step has no counterpart: this analyzer has no registry.
 
+use crate::analyzer::Analysis;
 use crate::entry_diagnostics::host_refusals;
 use crate::finding_order::FindingOrder;
 use crate::import_resolution_diagnostics::{import_failure_code, import_failure_diagnostics};
 use crate::load_refusal_code::runtime_code_of;
 use crate::loaded_types::LoadedGraph;
 use crate::metadata_stamps::METADATA_RESERVED_FIELD;
+use crate::requires_gate::UndecidedHold;
 use crate::system_kinds::LIBRARY;
 use crate::types::{kind_of, AnalysisDiagnostic, DiagnosticSeverity};
 
@@ -38,14 +43,15 @@ pub trait LoadRefusalHost {
     /// Between the parse group and the version conflicts: the module artifacts.
     fn build_module_artifacts(&mut self) -> Result<(), Self::Error>;
     /// After the root-module group: the analysis of the graph.
-    fn analyze(&mut self) -> Vec<AnalysisDiagnostic>;
+    fn analyze(&mut self) -> Analysis;
 }
 
 /// The refusal of a load of `graph` from `entry_url`, or `None` when it loads, by the first
 /// group that refuses, in Node's order: (1) the import failures; (2) the parse and coded loader
 /// findings; the module artifacts are built; (3) the version conflicts; (4) the module-file
 /// findings; (5) an entry that is a library; the analysis runs; (6) the metadata stamps, beside every other error the analysis
-/// found; (8) the analysis's errors. A construct this build cannot read is refused before all.
+/// found; (8) a module the requires gate left undecided holding errors, then the analysis's
+/// errors. A construct this build cannot read is refused before all.
 pub fn load_refusal<H: LoadRefusalHost>(
     graph: &LoadedGraph,
     entry_url: &str,
@@ -98,8 +104,9 @@ pub fn load_refusal<H: LoadRefusalHost>(
             diagnostics: Vec::new(),
         }));
     }
+    let analysis = host.analyze();
     let errors: Vec<AnalysisDiagnostic> =
-        host.analyze().into_iter().filter(|d| d.severity == Some(DiagnosticSeverity::Error)).collect();
+        analysis.diagnostics.into_iter().filter(|d| d.severity == Some(DiagnosticSeverity::Error)).collect();
     let is_stamp = |d: &AnalysisDiagnostic| d.code.as_deref() == Some(METADATA_RESERVED_FIELD);
     let mut stamps = graph.metadata_diagnostics.clone();
     stamps.extend(errors.iter().filter(|d| is_stamp(d)).cloned());
@@ -116,6 +123,15 @@ pub fn load_refusal<H: LoadRefusalHost>(
         diagnostics.extend(errors.into_iter().filter(|d| !is_stamp(d)));
         return Ok(Some(LoadRefusal { code: runtime_code_of(METADATA_RESERVED_FIELD), message, diagnostics }));
     }
+    let undecided: Vec<String> =
+        analysis.undecided.iter().filter(|hold| !hold.hidden_errors.is_empty()).map(undecided_message).collect();
+    if !undecided.is_empty() {
+        return Ok(Some(LoadRefusal {
+            code: UNSUPPORTED_MANIFEST_FEATURE.to_string(),
+            message: undecided.join("\n"),
+            diagnostics: Vec::new(),
+        }));
+    }
     if !errors.is_empty() {
         return Ok(Some(LoadRefusal {
             code: MANIFEST_VALIDATION_FAILED.to_string(),
@@ -124,6 +140,16 @@ pub fn load_refusal<H: LoadRefusalHost>(
         }));
     }
     Ok(None)
+}
+
+/// Why a module the gate left undecided is refused: the bound this kernel cannot judge, never
+/// the errors it held.
+fn undecided_message(hold: &UndecidedHold) -> String {
+    let module = &hold.module;
+    format!(
+        "{}/{}: {} '{}' cannot be judged by this kernel, which knows no Node.js version, and the module holds errors that apply only where the bound is met. Check it with a Node.js build of telo, which judges the bound and reports them.",
+        module.kind, module.name, module.path, module.bound
+    )
 }
 
 /// Findings that each name their file, refused as one validation failure.

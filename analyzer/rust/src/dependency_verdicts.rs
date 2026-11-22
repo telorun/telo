@@ -8,13 +8,14 @@
 //! closure and the running surface (`TELO_RUNNING_SURFACE`), in process
 //! ([`DependencyVerdictMemo`]) and through a host-supplied store ([`DependencyVerdictStore`]), in
 //! Node's format and keyed by Node's key function over what this build reads — no host
-//! versions, stamps or children. It touches no filesystem.
+//! versions or children. It touches no filesystem.
 
 use std::sync::{Arc, Mutex};
 
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
+use telo_templating::is_tagged_sentinel;
 
 use crate::analyzer::{analyze, AnalysisOptions};
 use crate::dependency_configurations::library_document_of;
@@ -22,11 +23,13 @@ use crate::diagnostic_identity::{defect_identity, written_place_of};
 use crate::entry_diagnostics::assemble_entry_diagnostics;
 use crate::loaded_types::LoadedGraph;
 use crate::metadata_stamp_refusals::metadata_stamp_diagnostics;
+use crate::module_file_existence::{found_entry_of, FOUND_HEAD};
 use crate::module_origin::{module_origins, reached_module_sources, ModuleOrigin};
 use crate::reaching_import::{import_anchored_diagnostic, import_reach, ReachingImport};
+use crate::requires_block::object_keys;
 use crate::sources::integrity::sha256_base64url;
 use crate::telo_version::TELO_RUNNING_SURFACE;
-use crate::types::{name_of, AnalysisDiagnostic, DiagnosticSeverity};
+use crate::types::{name_of, AnalysisDiagnostic, DiagnosticSeverity, HostEntryKind};
 
 /// Bumped whenever what a verdict holds changes; Node's, so a store holds one format.
 pub const VERDICT_FORMAT: u32 = 3;
@@ -288,26 +291,56 @@ pub fn without_covered_artifact_warnings(
 }
 
 /// The verdict key of the library at `library_source`: a digest of every file its closure
-/// holds (by source and text) and how each of its imports resolved, under the verdict format
-/// and the running surface. Node's text, so one closure has one key: this build reads no host
-/// version, stamps nothing on a file claim and runs no child application, so those three
-/// members are empty.
+/// holds (by source and text), what the loader stamped on each file claim and how each of its
+/// imports resolved, under the verdict format and the running surface. Node's text, so one
+/// closure has one key: this build reads no host version and runs no child application, so
+/// those two members are empty.
 pub fn dependency_verdict_key(graph: &LoadedGraph, library_source: &str) -> String {
     let mut closure: Vec<String> = reached_module_sources(graph, library_source).into_iter().collect();
     // JavaScript's default sort: by UTF-16 code unit.
     closure.sort_by(|a, b| a.encode_utf16().cmp(b.encode_utf16()));
     let mut files = Vec::new();
     let mut edges = Vec::new();
+    let mut stamps = Vec::new();
     for source in &closure {
         for file in graph.modules[source.as_str()].files() {
             files.push(json!([file.source, file.text]));
+            for manifest in file.manifests.iter().flatten() {
+                collect_found_stamps(manifest, &file.source, "", &mut stamps);
+            }
             for (alias, edge) in graph.import_edges.get(&file.source).into_iter().flatten() {
                 edges.push(json!([file.source, alias, edge.target_source]));
             }
         }
     }
-    let text = json!([VERDICT_FORMAT, *TELO_RUNNING_SURFACE, [], files, edges, [], []]).to_string();
+    let text = json!([VERDICT_FORMAT, *TELO_RUNNING_SURFACE, [], files, edges, stamps, []]).to_string();
     sha256_base64url(text.as_bytes())
+}
+
+/// What the loader stamped on each tagged value of `value`, by path: the entry its file claim
+/// names and the head it read there. A map's members in `Object.entries` order, as Node walks it.
+fn collect_found_stamps(value: &Value, file: &str, path: &str, out: &mut Vec<Value>) {
+    if is_tagged_sentinel(value) {
+        let entry = found_entry_of(value);
+        let head = value.get(FOUND_HEAD).and_then(Value::as_str);
+        if entry.is_some() || head.is_some() {
+            out.push(json!([file, path, entry.map_or("", HostEntryKind::as_str), head.unwrap_or("")]));
+        }
+        return;
+    }
+    match value {
+        Value::Array(items) => {
+            for (i, item) in items.iter().enumerate() {
+                collect_found_stamps(item, file, &format!("{path}[{i}]"), out);
+            }
+        }
+        Value::Object(map) => {
+            for key in object_keys(map) {
+                collect_found_stamps(&map[key], file, &format!("{path}.{key}"), out);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// `graph` re-rooted at the library at `library_source`, holding only the library's closure —
@@ -548,6 +581,64 @@ mod tests {
         ]))
         .unwrap();
         assert_eq!(dependency_verdict_key(&graph, "/app/telo.yaml"), sha256_base64url(text.as_bytes()));
+    }
+
+    /// [`Files`] answering file claims: what is at each location and the head of each file.
+    struct Stamping(Files);
+
+    impl Stamping {
+        fn at(base: &str, relative: &str) -> String {
+            format!("{}{}", &base[..base.rfind('/').unwrap() + 1], relative.trim_start_matches("./"))
+        }
+    }
+
+    impl ManifestSource for Stamping {
+        fn supports(&self, _: &str) -> bool {
+            true
+        }
+
+        fn read(&self, path: &str) -> Result<ReadManifest, LoadError> {
+            self.0.read(path)
+        }
+
+        fn entry_at(&self, base: &str, relative: &str) -> Option<Result<Option<HostEntryKind>, LoadError>> {
+            Some(Ok(match Stamping::at(base, relative).as_str() {
+                "/app/lib/public" => Some(HostEntryKind::Directory),
+                "/app/lib/logo.png" | "/app/lib/a.txt" => Some(HostEntryKind::File),
+                _ => None,
+            }))
+        }
+
+        fn read_head(&self, base: &str, relative: &str, length: usize) -> Option<Result<Option<Vec<u8>>, LoadError>> {
+            let head: Option<&[u8]> = match Stamping::at(base, relative).as_str() {
+                "/app/lib/logo.png" => Some(&[0x89, 0x50, 0x4e, 0x47]),
+                "/app/lib/a.txt" => Some(b"hi"),
+                _ => None,
+            };
+            Some(Ok(head.map(|bytes| bytes[..bytes.len().min(length)].to_vec())))
+        }
+    }
+
+    /// The stamp list is the text Node's `dependencyVerdictKey` hashes for the same closure,
+    /// integer-like keys first as `Object.entries` walks them.
+    #[test]
+    fn keys_a_closure_by_what_the_loader_stamped_on_each_file_claim() {
+        let lib = "kind: Telo.Library\nmetadata: { name: Lib }\n---\nkind: Self.Site\nmetadata: { name: site }\n\"10\": !module-path ./public\n\"2\": { logo: !module-path ./logo.png }\nitems: [!include-text ./a.txt]\nmissing: !include-text ./gone.txt\n";
+        let files = Files(
+            [("/app/telo.yaml", app("./lib")), ("/app/lib/telo.yaml", lib.to_string())]
+                .into_iter()
+                .map(|(path, text)| (path.to_string(), text))
+                .collect(),
+        );
+        let graph = load_graph(&ManifestLoader::new(vec![Box::new(Stamping(files))]), "/app/telo.yaml").expect("graph loads");
+        let stamps = json!([
+            ["/app/lib/telo.yaml", ".2.logo", "file", "89504e47"],
+            ["/app/lib/telo.yaml", ".10", "directory", ""],
+            ["/app/lib/telo.yaml", ".items[0]", "file", "6869"]
+        ]);
+        let surface = TELO_RUNNING_SURFACE.as_str();
+        let text = serde_json::to_string(&json!([3, surface, [], [["/app/lib/telo.yaml", lib]], [], stamps, []])).unwrap();
+        assert_eq!(dependency_verdict_key(&graph, "/app/lib/telo.yaml"), sha256_base64url(text.as_bytes()));
     }
 
     /// Tripwire: Node keeps a dependency's finding carrying `data.configurations` only where an

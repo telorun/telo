@@ -116,7 +116,9 @@ pub mod vcs_url_format;
 pub mod version_range;
 pub mod yaml_ast;
 
-pub use analyzer::{analyze, AnalysisOptions};
+pub use analyzer::{analysis, analyze, Analysis, AnalysisOptions};
+pub use requires_gate::UndecidedHold;
+pub use validate_requires::UndecidedModule;
 pub use dependency_verdicts::{
     analyze_dependencies, dependency_verdict_key, library_graph, DependencyAnalysis, DependencyAnalysisOptions,
     DependencyVerdict, DependencyVerdictMemo, DependencyVerdictRecord, DependencyVerdictStore, VERDICT_FORMAT,
