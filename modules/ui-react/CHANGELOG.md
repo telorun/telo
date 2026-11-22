@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.16.1 - 2026-11-22
+### Fixed
+* The bill of materials records the version of @telorun/message-format the renderer inlines, so it names the release that ships it.
+
 ## 0.16.0 - 2026-11-22
 ### Added
 * The renderer draws the query node in place of the data node, which it no longer knows: every query node naming the same Ui.Query and resolving to the same request — in a page, a layout region or a page opened over it — draws from one read, one request and one state, each node with its own content, loading and failure lists; a read is aborted once no mounted node holds it. A query with input sends its body as JSON by QUERY or POST, built from the page's query parameters and path variables (a chain holding nothing leaves its member out, a literal is sent as written), and is read again when the body changes; a refreshed path re-reads it whatever its method. Conditions, page query parameters and form values honour format date and date-time, so ?to=oops under a date parameter reads as absent. The data part is renamed query (data-state and data-fill with it): a theme styling data styles query instead.
