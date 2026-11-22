@@ -1,0 +1,12 @@
+kind: Telo.Application
+metadata: { name: RestrictedApp, version: 1.0.0 }
+requires: { telo: ">=0.5.0" }
+restrictions:
+  - versions: ">=0.9.0 <2.0.0"
+    requires: { telo: "<0.6.0" }
+    reason: Reaches past this version
+  - { requires: {}, reason: "" }
+  - { requires: { telo: "<0.4.0" }, reason: Lookup never returns }
+  - requires: { telo: "<999.0.0" }
+    reason: A key this entry does not hold
+    since: 0.1.0

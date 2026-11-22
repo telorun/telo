@@ -6,10 +6,9 @@
 //! reference for what this grows into, not a library's conventions. A refusal carries the
 //! reason in the words yargs gives it, so the two CLIs answer a wrong command line alike.
 
-use telo_analyzer::builtin_vocabulary::builtin_vocabulary_version;
+use telo_analyzer::builtin_vocabulary::{builtin_vocabulary_version, BUILTIN_VOCABULARY_ARCHIVE};
 
 use crate::commands;
-use crate::commands::builtins::BUILTIN_VOCABULARY_ARCHIVE;
 use crate::commands::check::CheckArgs;
 use crate::exit_status::EXIT_FAILED;
 use crate::output::{self, Output, OutputFormat, OUTPUT_FORMATS};

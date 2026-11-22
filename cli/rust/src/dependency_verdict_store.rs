@@ -7,10 +7,8 @@ use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 
 use serde_json::Value;
-use telo_analyzer::builtin_vocabulary::builtin_vocabulary_version;
 use telo_analyzer::{AnalysisDiagnostic, DependencyVerdict, DependencyVerdictStore, VERDICT_FORMAT};
 
-use crate::commands::builtins::BUILTIN_VOCABULARY_ARCHIVE;
 use crate::logger::Logger;
 use crate::manifest_input::ManifestInput;
 
@@ -122,15 +120,6 @@ pub fn verdict_store_for<'a>(
         warned: Cell::new(false),
         unwritten: RefCell::new(None),
     })
-}
-
-/// The surface this build implements as a `requires:` gate compares it, Node's
-/// `TELO_RUNNING_SURFACE`: the release triple of the embedded vocabulary's release, marked
-/// `+unreleased` when that release is.
-pub fn running_surface() -> Result<String, String> {
-    let identity = builtin_vocabulary_version(BUILTIN_VOCABULARY_ARCHIVE)?;
-    let triple = identity.split(['-', '+']).next().unwrap_or_default();
-    Ok(if identity.contains("+unreleased") { format!("{triple}+unreleased") } else { triple.to_string() })
 }
 
 #[cfg(test)]

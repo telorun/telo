@@ -1,0 +1,29 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "MODULE_REQUIRES_NEWER_RUNTIME",
+      "source": "telo-analyzer",
+      "message": "NewerApp requires telo '>=999.0.0'; this runtime reports <running-surface>. Upgrade telo.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "NewerApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "requires.telo"
+      },
+      "range": {
+        "start": {
+          "line": 2,
+          "character": 18
+        },
+        "end": {
+          "line": 2,
+          "character": 29
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] Manifest validation failed\n  [MODULE_REQUIRES_NEWER_RUNTIME] NewerApp requires telo '>=999.0.0'; this runtime reports <running-surface>. Upgrade telo."
+}

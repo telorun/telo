@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata: { name: NewerApp }
+requires: { telo: ">=999.0.0" }
+---
+kind: Telo.Definition
+metadata: { name: Greeter }
+capability: Telo.Invokable
