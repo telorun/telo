@@ -3,7 +3,8 @@ description: >-
   Builds an image once per platform, scans each build with Trivy, and pushes it with SBOM
   and provenance attestations only when no fixable Critical or High finding is left. The
   calling job sets up buildx (and QEMU for a foreign platform), logs in to the registry and
-  holds `security-events: write`.
+  holds `security-events: write`. With `push: "false"` it only builds and refuses, uploads
+  and pushes nothing — the release PR's check of what Publish will push.
 
 inputs:
   context:
@@ -22,8 +23,11 @@ inputs:
     description: Comma-separated platforms, from `linux/amd64` and `linux/arm64`.
     default: linux/amd64
   tags:
-    description: Newline-separated tags to push.
-    required: true
+    description: Newline-separated tags to push; ignored without a push.
+    default: ""
+  push:
+    description: '"false" builds and scans only: no findings are uploaded and nothing is pushed.'
+    default: "true"
   repository:
     description: The image repository (`telorun/node`), the first part of the code-scanning category.
     required: true
@@ -39,7 +43,12 @@ runs:
       shell: bash
       env:
         PLATFORMS: ${{ inputs.platforms }}
+        PUSH: ${{ inputs.push }}
+        TAGS: ${{ inputs.tags }}
       run: |
+        if [ "$PUSH" != "false" ] && [ -z "${TAGS//[[:space:]]/}" ]; then
+          echo "::error::a push needs tags."; exit 1
+        fi
         IFS=',' read -ra requested <<< "$PLATFORMS"
         [ "${#requested[@]}" -gt 0 ] || { echo "::error::platforms is empty."; exit 1; }
         for platform in "${requested[@]}"; do
@@ -75,7 +84,7 @@ runs:
 
     # Every severity and every unfixed finding is recorded, under one category per image.
     - name: Record the linux/amd64 findings
-      if: contains(inputs.platforms, 'linux/amd64')
+      if: contains(inputs.platforms, 'linux/amd64') && inputs.push != 'false'
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
       with:
         input: ${{ runner.temp }}/scan-amd64.tar
@@ -87,7 +96,7 @@ runs:
         cache: "false"
 
     - name: Upload the findings
-      if: contains(inputs.platforms, 'linux/amd64')
+      if: contains(inputs.platforms, 'linux/amd64') && inputs.push != 'false'
       uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
       with:
         sarif_file: ${{ runner.temp }}/trivy-amd64.sarif
@@ -146,6 +155,7 @@ runs:
       run: rm -f "$RUNNER_TEMP/scan-arm64.tar"
 
     - name: Push with SBOM and provenance
+      if: inputs.push != 'false'
       uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
       with:
         context: ${{ inputs.context }}

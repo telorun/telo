@@ -25,7 +25,7 @@
 
 ARG RUST_VERSION=1.95.0
 
-FROM node:24-trixie-slim AS build
+FROM node:24-trixie-slim@sha256:af02d57b57719b9657a45199a79264a9437940cd55b3c7b3fc99615654f124a0 AS build
 
 WORKDIR /build
 ENV CI=true
@@ -42,15 +42,55 @@ RUN pnpm --filter=@telorun/cli --prod deploy --legacy /deploy
 # on-demand inspect UI. Rewrite it to the concrete built version (what publish
 # does) so `resolveUiBundle` fetches + caches the bundle from the CDN on first use.
 RUN node -e "const fs=require('fs');const v=JSON.parse(fs.readFileSync('/build/packages/debug-ui/package.json','utf8')).version;const p='/deploy/package.json';const pkg=JSON.parse(fs.readFileSync(p,'utf8'));(pkg.devDependencies||(pkg.devDependencies={}))['@telorun/debug-ui']=v;fs.writeFileSync(p,JSON.stringify(pkg,null,2)+'\n');"
+RUN set -eu; \
+    set -- /deploy/node_modules/.pnpm/esbuild@*/node_modules/esbuild/package.json; \
+    test "$#" -eq 1 && test -f "$1"; \
+    node -p "require(process.argv[1]).version" "$1" > /build/esbuild-version
 
-FROM node:24-trixie AS lean
+# esbuild's published binary is built with a Go release older than the standard library's security
+# fixes. The same esbuild release, fetched through the checksum-verified module proxy and built with a
+# current Go, replaces it in the deployed tree, so the bundles it writes are unchanged.
+FROM --platform=$BUILDPLATFORM golang:1.27-trixie@sha256:f18c3d73a184fb0582828510722e723b63a93f7188d11dd223d9be6f6880e65d AS esbuild
+ARG TARGETOS
+ARG TARGETARCH
+COPY --from=build /build/esbuild-version /esbuild-version
+WORKDIR /module
+RUN version="$(cat /esbuild-version)" \
+ && go mod init esbuild-binary \
+ && go get "github.com/evanw/esbuild/cmd/esbuild@v${version}" \
+ && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
+    go build -trimpath -ldflags=-s -o /out/esbuild github.com/evanw/esbuild/cmd/esbuild
 
-# The full base ships hundreds of Debian packages and is rebuilt upstream less often
-# than Debian publishes fixes, so the release scan would refuse it between rebuilds.
+FROM node:24-trixie-slim@sha256:af02d57b57719b9657a45199a79264a9437940cd55b3c7b3fc99615654f124a0 AS deploy
+COPY --from=build /deploy/ /opt/telo/
+COPY --from=esbuild /out/esbuild /tmp/esbuild
+COPY --from=build /build/esbuild-version /tmp/esbuild-version
+RUN set -eu; \
+    expected="$(cat /tmp/esbuild-version)"; \
+    replaced=0; \
+    for binary in /opt/telo/node_modules/.pnpm/@esbuild+*/node_modules/@esbuild/*/bin/esbuild; do \
+      install -m 0755 /tmp/esbuild "$binary"; \
+      test "$("$binary" --version)" = "$expected"; \
+      replaced=$((replaced + 1)); \
+    done; \
+    test "$replaced" -eq 1; \
+    for copy in /opt/telo/node_modules/.pnpm/esbuild@*/node_modules/esbuild/bin/esbuild; do \
+      if [ "$(head -c 4 "$copy" | od -An -c | tr -d ' ')" = '177ELF' ]; then \
+        install -m 0755 /tmp/esbuild "$copy"; \
+      fi; \
+    done; \
+    rm /tmp/esbuild /tmp/esbuild-version
+
+FROM node:24-trixie@sha256:6e5d4c38403930b420404f190be8563396dca2bd156a6cb4722707b0efcf6fc1 AS lean
+
+# The bases are rebuilt upstream less often than Debian publishes fixes, so the release
+# scan would refuse them between rebuilds.
 RUN apt-get update \
  && apt-get upgrade -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/*
-COPY --from=build /deploy/ /opt/telo/
+# The base image's npm bundles dependencies fixed only in a later npm 11 release.
+RUN npm install -g npm@^11.21.3 && npm cache clean --force
+COPY --from=deploy /opt/telo/ /opt/telo/
 COPY cli/LICENSE /opt/telo/LICENSE
 COPY cli/nodejs/docker-entrypoint.sh /usr/local/bin/telo-entrypoint.sh
 RUN ln -s /opt/telo/bin/telo.mjs /usr/local/bin/telo \
@@ -65,9 +105,13 @@ USER node
 ENTRYPOINT ["telo-entrypoint.sh"]
 CMD ["telo"]
 
-FROM node:24-trixie-slim AS lean-slim
+FROM node:24-trixie-slim@sha256:af02d57b57719b9657a45199a79264a9437940cd55b3c7b3fc99615654f124a0 AS lean-slim
 
-COPY --from=build /deploy/ /opt/telo/
+RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
+ && rm -rf /var/lib/apt/lists/*
+RUN npm install -g npm@^11.21.3 && npm cache clean --force
+COPY --from=deploy /opt/telo/ /opt/telo/
 COPY cli/LICENSE /opt/telo/LICENSE
 COPY cli/nodejs/docker-entrypoint.sh /usr/local/bin/telo-entrypoint.sh
 RUN ln -s /opt/telo/bin/telo.mjs /usr/local/bin/telo \
