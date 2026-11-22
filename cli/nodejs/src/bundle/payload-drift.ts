@@ -4,6 +4,7 @@ import {
   parseLayerIndex,
   selectorKey,
   sha256Base64Url,
+  sourceFailureOf,
   type ArtifactLayer,
   type ArtifactSelector,
   type LayerDigests,
@@ -51,8 +52,14 @@ function describeKey(role: string, selector?: ArtifactSelector): string {
 
 /** A published version genuinely absent from the registry — the normal case on
  *  every release, and the ONLY reason this gate is allowed to pass without
- *  comparing anything. */
+ *  comparing anything. A source says so with a `not-found` failure; the pattern
+ *  covers a transport that throws its own error. */
 const NOT_FOUND = /\b404\b|not found|MANIFEST_UNKNOWN|NAME_UNKNOWN/i;
+
+function isNotFound(err: unknown, message: string): boolean {
+  const failure = sourceFailureOf(err);
+  return failure ? failure.sourceFailure === "not-found" : NOT_FOUND.test(message);
+}
 
 /**
  * The `telo.yaml` published at `ref`, read from the registry itself (never a
@@ -74,7 +81,7 @@ async function readPublishedManifest(ref: string): Promise<string | null> {
     return (await transport.source.read(ref)).text;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    if (NOT_FOUND.test(message)) return null;
+    if (isNotFound(err, message)) return null;
     throw new Error(
       `Cannot verify whether '${ref}' is already published with a different pin: ${message}. ` +
         `Publishing without that answer could move the pin of a published version — ` +

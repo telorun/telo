@@ -1,3 +1,4 @@
+import { ManifestSourceFailure } from "@telorun/analyzer";
 import { computeFilesIntegrity, defaultTransportRegistry, type Transport } from "@telorun/kernel";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BuiltLayer } from "../src/bundle/built-layers.js";
@@ -37,6 +38,24 @@ describe("checkPublishedPin", () => {
     expect(await checkPublishedPin(DESTINATION, "0.1.0", MANIFEST, [])).toEqual({
       status: "unpublished",
     });
+  });
+
+  it("passes a version the source reports as not found", async () => {
+    publishedAs(async () => {
+      throw new ManifestSourceFailure("not-found", `${DESTINATION}@0.1.0`);
+    });
+    expect(await checkPublishedPin(DESTINATION, "0.1.0", MANIFEST, [])).toEqual({
+      status: "unpublished",
+    });
+  });
+
+  it("fails on any other source failure, whatever its wording", async () => {
+    publishedAs(async () => {
+      throw new ManifestSourceFailure("refused", `${DESTINATION}@0.1.0`, { status: 404 });
+    });
+    await expect(checkPublishedPin(DESTINATION, "0.1.0", MANIFEST, [])).rejects.toThrow(
+      /Cannot verify whether/,
+    );
   });
 
   it("passes identical bytes, so a re-push keeps its pin", async () => {
