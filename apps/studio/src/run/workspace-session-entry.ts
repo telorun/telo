@@ -103,6 +103,7 @@ export function forgetIdentitySessions(): void {
 }
 
 export function saveWorkspaceSessionEntry(workspaceKey: string, entry: WorkspaceSessionEntry): void {
+  // codeql[js/clear-text-storage-of-sensitive-data] the web build keeps the runner resume secret in localStorage by design, the browser has no safer store reachable by page code; the desktop build uses the OS credential store
   window.localStorage.setItem(keyOf(workspaceKey), JSON.stringify(entry));
 }
 

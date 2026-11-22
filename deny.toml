@@ -1,10 +1,17 @@
 # cargo-deny: advisories, bans and sources only; licenses are checked by `pnpm run check:licenses`.
 # Run per workspace with --config pointing here (root workspace and apps/studio/src-tauri).
 
+# The non-default `gui` feature of telo-desktop-host is what release binaries are built with.
+[graph]
+all-features = true
+
 [advisories]
 version = 2
 yanked = "deny"
 unmaintained = "all"
+unsound = "all"
+# One config serves two workspaces, so an ignore one never encounters is expected; staleness is governed by the expiry in osv-scanner.toml.
+unused-ignored-advisory = "allow"
 # Mirrors the Rust entries of osv-scanner.toml, one advisory per entry; expiry lives there.
 ignore = [
   { id = "RUSTSEC-2024-0429", reason = "Fix only in a major: glib 0.18.5's unsound VariantStrIter is fixed in glib 0.20, a breaking release, and glib 0.18 is held by the gtk-rs 0.18 line that tauri, tao and wry use on Linux (alias GHSA-wrw7-89jp-8q8g). Vulnerable code not reached: nothing in Telo iterates a glib Variant of strings. Ends when tauri / wry / tao move to gtk-rs 0.20 or later." },
@@ -16,11 +23,10 @@ ignore = [
 ]
 
 [bans]
-# Duplicate versions are inherent to the Tauri / GTK graph; flagged, not denied.
-multiple-versions = "warn"
+# Duplicate versions are not checked: they come from the Tauri / GTK graph, and removing them would need major upgrades upstream.
+multiple-versions = "allow"
 wildcards = "deny"
 allow-wildcard-paths = true
-highlight = "all"
 
 [sources]
 unknown-registry = "deny"

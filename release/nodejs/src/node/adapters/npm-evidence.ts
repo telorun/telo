@@ -24,6 +24,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { UnitKey } from "../../fragment.js";
 import { PACKAGE_JSON } from "../../adapters/npm.js";
+import { trimTrailingSlashes } from "../../trailing-slash.js";
 import { documentScalar, spliceScalar } from "../../version-files.js";
 import type { AnchorRef, EvidenceAdapter, EvidenceSession, ReadBack } from "../evidence.js";
 import { digestFileSet, withoutBookkeeping, type FileSetEntry } from "../files-digest.js";
@@ -97,12 +98,14 @@ export const npmEvidence: EvidenceAdapter = {
     };
 
     const registryOf = (ref: AnchorRef): string =>
-      (manifestOf(ref).publishConfig?.registry ??
-        process.env.npm_config_registry ??
-        process.env.NPM_CONFIG_REGISTRY ??
-        DEFAULT_REGISTRY).replace(/\/+$/, "");
+      trimTrailingSlashes(
+        manifestOf(ref).publishConfig?.registry ??
+          process.env.npm_config_registry ??
+          process.env.NPM_CONFIG_REGISTRY ??
+          DEFAULT_REGISTRY,
+      );
     const documentUrl = (ref: AnchorRef) =>
-      `${registryOf(ref)}/${manifestOf(ref).name!.replace("/", "%2f")}`;
+      `${registryOf(ref)}/${manifestOf(ref).name!.replaceAll("/", "%2f")}`;
 
     return {
       async collect(ref) {

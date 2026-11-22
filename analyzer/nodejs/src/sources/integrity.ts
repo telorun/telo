@@ -101,7 +101,9 @@ function toBase64Url(bytes: Uint8Array): string {
 /** Normalize an encoded digest to unpadded base64url so a standard-base64 or
  *  padded input still compares equal to our canonical form. */
 function normalizeDigest(value: string): string {
-  return value.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  let end = value.length;
+  while (end > 0 && value[end - 1] === "=") end--;
+  return value.slice(0, end).replace(/\+/g, "-").replace(/\//g, "_");
 }
 
 /** SHA-256 of `bytes` as unpadded base64url — the canonical inline-hash form. */

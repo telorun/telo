@@ -81,9 +81,8 @@ function seriesTags({ cwd, branch, kind, candidate, contains }) {
   const match = RELEASE_BRANCH.exec(branch ?? "");
   if (!match) throw new Error(`${branch} is not a release/<major>.<minor> branch.`);
   const prefix = `${kind}-${match[1]}-${candidate ? "rc." : ""}`;
-  const own = new RegExp(`^${prefix.replace(/\./g, "\\.")}\\d+$`);
   const listed = git(cwd, "tag", ...(contains ? ["--contains", contains] : []), "--list", `${prefix}*`);
-  return { prefix, tags: listed.split("\n").filter((tag) => own.test(tag)) };
+  return { prefix, tags: listed.split("\n").filter((tag) => tag.startsWith(prefix) && /^\d+$/.test(tag.slice(prefix.length))) };
 }
 
 /** Number of the branch's next `modules-` or `packages-` release tag — a candidate's

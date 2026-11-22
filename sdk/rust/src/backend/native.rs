@@ -48,6 +48,9 @@ impl NativeResourceContext {
 
     /// Ask the kernel for the JSON Schema behind a named `Telo.Type`.
     fn resolve_named_type(&self, name: &str) -> Result<Value> {
+        if self.host.is_null() {
+            return Err(ControllerError::new("ERR_NO_HOST", "the controller was created with no host to resolve types through"));
+        }
         let host = unsafe { &*self.host };
         let mut out = TeloBuf::empty();
         let status = unsafe {
@@ -170,8 +173,11 @@ pub unsafe extern "C" fn create<C: Controller>(
     out_err: *mut TeloBuf,
 ) -> *mut c_void {
     let result = guard(|| {
-        let bytes = unsafe { std::slice::from_raw_parts(manifest, manifest_len) };
+        let bytes = unsafe { input_bytes(manifest, manifest_len, "manifest") }?;
         let value: Value = serde_json::from_slice(bytes)?;
+        if host.is_null() {
+            return Err(ControllerError::new("ERR_NO_HOST", "create was called with no host table"));
+        }
         let ctx = unsafe { NativeResourceContext::new(host) };
         C::create(value, &ctx)
     });
@@ -195,8 +201,8 @@ pub unsafe extern "C" fn invoke<C: Controller>(
     out: *mut TeloBuf,
 ) -> i32 {
     let result = guard(|| {
-        let instance = unsafe { &*(handle as *const C) };
-        let bytes = unsafe { std::slice::from_raw_parts(input, input_len) };
+        let instance = unsafe { instance_ref::<C>(handle) }?;
+        let bytes = unsafe { input_bytes(input, input_len, "input") }?;
         let value: Value = serde_json::from_slice(bytes)?;
         let ctx = unsafe { invoke_context(host) };
         instance.invoke(value, &ctx)
@@ -208,7 +214,7 @@ pub unsafe extern "C" fn invoke<C: Controller>(
 /// `handle` must be a live instance produced by [`create`] for the same `C`.
 pub unsafe extern "C" fn snapshot<C: Controller>(handle: *mut c_void, out: *mut TeloBuf) -> i32 {
     let result = guard(|| {
-        let instance = unsafe { &*(handle as *const C) };
+        let instance = unsafe { instance_ref::<C>(handle) }?;
         Ok(instance.snapshot())
     });
     unsafe { write_result(out, result) }
@@ -277,7 +283,7 @@ pub unsafe extern "C" fn function_create<F: Function>(
     out_err: *mut TeloBuf,
 ) -> *mut c_void {
     let result = guard(|| {
-        let bytes = unsafe { std::slice::from_raw_parts(config, config_len) };
+        let bytes = unsafe { input_bytes(config, config_len, "config") }?;
         let config = function_wire::config::<F>(bytes)?;
         F::create(config, &NativeFunctionContext { host })
     });
@@ -301,8 +307,8 @@ pub unsafe extern "C" fn function_call<F: Function>(
     out: *mut TeloBuf,
 ) -> i32 {
     let result = guard(|| {
-        let instance = unsafe { &*(handle as *const F) };
-        let bytes = unsafe { std::slice::from_raw_parts(args, args_len) };
+        let instance = unsafe { instance_ref::<F>(handle) }?;
+        let bytes = unsafe { input_bytes(args, args_len, "arguments") }?;
         function_wire::call(instance, bytes)
     });
     match result {
@@ -336,6 +342,38 @@ pub unsafe extern "C" fn function_destroy<F: Function>(handle: *mut c_void, out_
             TELO_ERR
         }
     }
+}
+
+/// The bytes the host handed over. An empty buffer may arrive as a null pointer,
+/// which `from_slice` must not see; a null pointer with a length is refused.
+///
+/// # Safety
+/// A non-null `ptr` must point at `len` initialised bytes that outlive the call.
+unsafe fn input_bytes<'a>(ptr: *const u8, len: usize, what: &str) -> Result<&'a [u8]> {
+    if len == 0 {
+        return Ok(&[]);
+    }
+    if ptr.is_null() {
+        return Err(ControllerError::new(
+            "ERR_NULL_POINTER",
+            format!("the host passed a null {what} buffer of length {len}"),
+        ));
+    }
+    Ok(std::slice::from_raw_parts(ptr, len))
+}
+
+/// The live instance behind a handle; a null or misaligned handle is refused.
+///
+/// # Safety
+/// A non-null, aligned `handle` must be a live `T` produced by this crate's `create`.
+unsafe fn instance_ref<'a, T>(handle: *mut c_void) -> Result<&'a T> {
+    if handle.is_null() || !(handle as *const T).is_aligned() {
+        return Err(ControllerError::new(
+            "ERR_INVALID_HANDLE",
+            "the host passed a null or misaligned instance handle",
+        ));
+    }
+    Ok(&*(handle as *const T))
 }
 
 /// Wire the host's cancellation poll into an [`InvokeContext`]. A null host

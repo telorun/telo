@@ -22,6 +22,7 @@ import {
 } from "../../bundle/files-integrity.js";
 import { readOwnerManifest } from "../../bundle/module-manifest.js";
 import { makeTarGz, readTarGz, toPayloadFiles } from "../../bundle/tar.js";
+import { trimTrailingSlashes } from "../../trailing-slash.js";
 import type {
   CachedModuleView,
   PayloadLayer,
@@ -669,7 +670,7 @@ export class OciTransport implements Transport {
     // so the repo is never derived from `metadata.namespace`/`name` — a
     // metadata-derived path is wrong whenever the repo differs from the name,
     // and would silently push to a namespace the publisher may not own.
-    const afterScheme = destination.replace(/^oci:\/\//, "").replace(/\/+$/, "");
+    const afterScheme = trimTrailingSlashes(destination.replace(/^oci:\/\//, ""));
     const slash = afterScheme.indexOf("/");
     const host = slash > 0 ? afterScheme.slice(0, slash) : afterScheme;
     const repo = slash > 0 ? afterScheme.slice(slash + 1) : "";

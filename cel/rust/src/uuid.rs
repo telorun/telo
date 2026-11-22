@@ -531,6 +531,7 @@ mod tests {
                     for _ in 0..20_000 {
                         made.push(uuid_v1().expect("the source answers"));
                         let v7 = uuid_v7().expect("the source answers");
+                        // codeql[rust/cleartext-logging] a generated UUID is not sensitive; the message is the test failure output
                         assert!(v7 > last_v7, "{v7} after {last_v7}");
                         last_v7.clone_from(&v7);
                         made.push(v7);

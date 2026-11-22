@@ -232,7 +232,7 @@ export function stampPathDependencyRequirements(
       continue;
     }
     if (!DEPENDENCY_TABLES.has(section[section.length - 1] ?? "")) continue;
-    const inline = /^[ \t]*[^=#]+=[ \t]*\{(.*)\}/.exec(line);
+    const inline = /^[^=#]+=[ \t]*\{(.*)\}/.exec(line);
     if (!inline) continue;
     const bodyStart = line.indexOf("{") + 1;
     const body = inline[1]!;

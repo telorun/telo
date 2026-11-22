@@ -74,6 +74,7 @@ export const meta: Route.MetaFunction = ({ error }) =>
  *  chosen none. Runs before first paint, so the server markup never has to
  *  guess. Storage that cannot be read (a browser that blocks it) is the same as
  *  no choice made. */
+// codeql[js/bad-code-sanitization] THEME_KEY is a constant of this app, written through JSON.stringify; no user input reaches the script
 const COLOUR_SCHEME = `(function(){var t=null;try{t=localStorage.getItem(${JSON.stringify(THEME_KEY)})}catch(e){}if(t==="dark"||(t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches))document.documentElement.classList.add("dark")})()`;
 
 const ANALYTICS_INIT = `window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};plausible.init()`;

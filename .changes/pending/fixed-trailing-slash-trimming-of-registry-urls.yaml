@@ -1,0 +1,5 @@
+units:
+  release: Fixed
+body: Trailing-slash trimming of registry URLs and unit keys, and the tag stripping of a
+  PyPI index page, no longer use regular expressions that can run slowly on adversarial
+  input; behaviour is unchanged.

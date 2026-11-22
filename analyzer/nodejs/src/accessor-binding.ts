@@ -30,6 +30,7 @@ import {
 } from "@telorun/templating";
 import { accessChains } from "./cel-access-chains.js";
 import { buildCelEnvironment } from "./cel-environment.js";
+import { setOwnProperty } from "./own-property.js";
 import {
   accessorBindingNamesAt,
   accessorFieldAt,
@@ -331,14 +332,14 @@ export function withAccessorBindings<T extends Record<string, unknown>>(
       unknown
     >;
     copied.add(fresh);
-    holder[key] = fresh;
+    setOwnProperty(holder, key, fresh);
     return fresh;
   };
   const root = { ...resource } as Record<string | number, unknown>;
   for (const { keys, value, site } of fields) {
     let holder = root;
     for (const key of keys.slice(0, -1)) holder = copy(holder, key);
-    holder[keys[keys.length - 1]!] = accessorBindingOf(value, resolvedEarlier, site.template === true);
+    setOwnProperty(holder, keys[keys.length - 1]!, accessorBindingOf(value, resolvedEarlier, site.template === true));
   }
   return root as T;
 }

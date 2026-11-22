@@ -18,6 +18,7 @@ pub struct Probe {
 }
 
 #[controller]
+// codeql[rust/access-invalid-pointer] napi-derive's generated unwrap starts from null_mut() and napi_unwrap fills it through an out-parameter, which this query cannot see
 impl Controller for Probe {
     fn create(manifest: Value, ctx: &dyn ResourceContext) -> Result<Self> {
         if manifest.get("failCreate") == Some(&Value::Bool(true)) {

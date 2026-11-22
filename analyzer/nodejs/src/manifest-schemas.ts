@@ -34,6 +34,7 @@
 import { BUILTIN_DOCUMENT_FILES, BUILTIN_FRAGMENT_FILES } from "./builtin-entries/index.js";
 import { refuseRosterMarkers } from "./builtin-entry-markers.js";
 import { SCHEMA_REGION_KEYS } from "./schema-region.js";
+import { setOwnProperty } from "./own-property.js";
 
 export const MANIFEST_SCHEMA_URI = "telo://manifest";
 
@@ -123,7 +124,7 @@ export function liftFragmentDefs<T extends Record<string, unknown>>(composed: T)
       const kept: Record<string, unknown> = {};
       for (const [key, body] of Object.entries(own)) {
         if (isHoistedFragmentDefKey(key)) lifted[key] ??= body;
-        else kept[key] = body;
+        else setOwnProperty(kept, key, body);
       }
       out = { ...node };
       if (Object.keys(kept).length > 0) out.$defs = kept;
@@ -132,7 +133,7 @@ export function liftFragmentDefs<T extends Record<string, unknown>>(composed: T)
     const replace = (key: string, value: unknown) => {
       if (value === out[key]) return;
       if (out === node) out = { ...node };
-      out[key] = value;
+      setOwnProperty(out, key, value);
     };
     for (const key of LIFT_SINGLE) {
       if (isPlainObject(out[key])) replace(key, visit(out[key], false));

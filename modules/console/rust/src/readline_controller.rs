@@ -19,6 +19,7 @@ use crate::markup::render;
 pub struct ReadLine;
 
 #[controller(entry = "readline_controller")]
+// codeql[rust/access-invalid-pointer] napi-derive's generated unwrap starts from null_mut() and napi_unwrap fills it through an out-parameter, which this query cannot see
 impl Controller for ReadLine {
     fn create(_manifest: Value, _ctx: &dyn ResourceContext) -> Result<Self> {
         Ok(Self)

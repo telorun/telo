@@ -14,6 +14,7 @@
 import { GLOB_PRUNE_DIRS, selectByPatterns } from "@telorun/glob";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { trimTrailingSlashes } from "../../trailing-slash.js";
 import { DOCKERFILE } from "../../adapters/docker.js";
 import type { AnchorRef, EvidenceAdapter, EvidenceSession } from "../evidence.js";
 import { digestFileSet, isBookkeeping, listFiles, readFileSetEntry, type FileSetEntry } from "../files-digest.js";
@@ -32,7 +33,7 @@ export function dockerDestination(ref: AnchorRef): string | undefined {
   const name = typeof ref.anchor.settings.name === "string"
     ? ref.anchor.settings.name
     : path.posix.basename(ref.anchor.dir || ".") === "." ? undefined : path.posix.basename(ref.anchor.dir);
-  return name === undefined ? undefined : `${registry.replace(/\/+$/, "")}/${name}`;
+  return name === undefined ? undefined : `${trimTrailingSlashes(registry)}/${name}`;
 }
 
 /** The image's file set: context-relative names, workspace-relative sources. */

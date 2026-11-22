@@ -1,0 +1,6 @@
+units:
+  analyzer: Security
+  apps/studio: Security
+  cli: Security
+body: "Updated the url crate to 2.5.9, which fixes a stack overflow in Url::origin() on
+  deeply nested blob: URLs (RUSTSEC-2026-0592)."

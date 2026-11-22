@@ -22,7 +22,7 @@ telorun-cel-value = { path = "../../cel/rust/value" }
 telorun-sdk-core = { path = "../../sdk/rust/core" }
 thiserror = "1"
 # The WHATWG URL parser: whether an http(s) import source is a URL at all.
-url = "=2.5.8"
+url = "=2.5.9"
 
 [dev-dependencies]
 telorun-glob = { path = "../../packages/glob/rust" }

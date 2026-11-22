@@ -11,6 +11,7 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { trimTrailingSlashes } from "../../trailing-slash.js";
 import type { AnchorRef, EvidenceAdapter, EvidenceSession, ReadBack } from "../evidence.js";
 import { digestFileSet, withoutBookkeeping, type FileSetEntry } from "../files-digest.js";
 import { readTarGz, stripPrefix } from "../tar.js";
@@ -45,7 +46,7 @@ export const helmEvidence: EvidenceAdapter = {
     const destination = (ref: AnchorRef): string | undefined => {
       const registry = ref.anchor.settings.registry;
       return typeof registry === "string" && ref.anchor.package.name
-        ? `${registry.replace(/\/+$/, "")}/${ref.anchor.package.name}`
+        ? `${trimTrailingSlashes(registry)}/${ref.anchor.package.name}`
         : undefined;
     };
     return {

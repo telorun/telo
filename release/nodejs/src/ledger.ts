@@ -162,7 +162,7 @@ function readCandidate(raw: unknown, at: string): CandidateRecord {
 
 function readLayers(raw: unknown, at: string): UnitLayers {
   if (raw === undefined || raw === null) return EMPTY_LAYERS;
-  const ecosystems: Record<string, Record<string, AnchorDigest>> = {};
+  const ecosystems = dataMap<Record<string, AnchorDigest>>();
   let payload: string | undefined;
   for (const [ecosystem, anchors] of mappingEntries(raw, `${at}: 'layers'`)) {
     if (ecosystem === PAYLOAD_LAYER) {
@@ -172,24 +172,24 @@ function readLayers(raw: unknown, at: string): UnitLayers {
       payload = anchors;
       continue;
     }
-    const byAnchor: Record<string, AnchorDigest> = {};
+    const byAnchor = dataMap<AnchorDigest>();
     for (const [anchor, digest] of mappingEntries(anchors, `${at}: layer '${ecosystem}'`)) {
       if (typeof digest === "string") {
-        byAnchor[anchor] = digest;
+        putData(byAnchor, anchor, digest);
         continue;
       }
-      const keyed: Record<string, string> = {};
+      const keyed = dataMap<string>();
       for (const [layer, value] of mappingEntries(digest, `${at}: layer '${ecosystem}' '${anchor}'`)) {
         if (typeof value !== "string") {
           throw new LedgerError(
             `${at}: layer '${ecosystem}' '${anchor}' '${layer}' is not a digest string.`,
           );
         }
-        keyed[layer] = value;
+        putData(keyed, layer, value);
       }
-      byAnchor[anchor] = keyed;
+      putData(byAnchor, anchor, keyed);
     }
-    ecosystems[ecosystem] = byAnchor;
+    putData(ecosystems, ecosystem, byAnchor);
   }
   return { ecosystems, ...(payload !== undefined ? { payload } : {}) };
 }
@@ -237,13 +237,13 @@ function parseLegacy(
           `was taken at; without it the digest says nothing.`,
       );
     }
-    const flat: Record<string, string> = {};
+    const flat = dataMap<string>();
     if (entry.layers !== undefined && entry.layers !== null) {
       for (const [layer, digest] of mappingEntries(entry.layers, `${at}: 'layers'`)) {
         if (typeof digest !== "string") {
           throw new LedgerError(`${at} layer '${layer}' is not a digest string.`);
         }
-        flat[layer] = digest;
+        putData(flat, layer, digest);
       }
     }
     const unit = normalizeUnitKey(key);
@@ -264,6 +264,15 @@ function asMapping(raw: unknown, at: string): Record<string, unknown> {
   return raw as Record<string, unknown>;
 }
 
+/** A prototype-free map, so every key — `__proto__` included — is plain data. */
+function dataMap<T>(): Record<string, T> {
+  return Object.create(null) as Record<string, T>;
+}
+
+function putData<T>(map: Record<string, T>, key: string, value: T): void {
+  Object.defineProperty(map, key, { value, enumerable: true, writable: true, configurable: true });
+}
+
 function mappingEntries(raw: unknown, at: string): [string, unknown][] {
   return Object.entries(asMapping(raw, at));
 }
@@ -273,10 +282,10 @@ function mappingEntries(raw: unknown, at: string): [string, unknown][] {
  * only the units that moved.
  */
 export function serializeLedger(ledger: Ledger): string {
-  const units: Record<string, unknown> = {};
+  const units = dataMap<unknown>();
   for (const key of [...ledger.units.keys()].sort()) {
     const entry = ledger.units.get(key)!;
-    units[key] = {
+    putData(units, key, {
       ...(entry.version !== undefined ? { version: entry.version } : {}),
       ...(entry.registry ? { registry: entry.registry } : {}),
       ...(entry.version !== undefined ? { layers: renderLayers(entry.layers) } : {}),
@@ -288,7 +297,7 @@ export function serializeLedger(ledger: Ledger): string {
             },
           }
         : {}),
-    };
+    });
   }
   const doc = new Document({ units });
   return (
@@ -300,23 +309,23 @@ export function serializeLedger(ledger: Ledger): string {
 }
 
 function renderLayers(layers: UnitLayers): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
+  const out = dataMap<unknown>();
   for (const ecosystem of Object.keys(layers.ecosystems).sort()) {
     const anchors = layers.ecosystems[ecosystem]!;
-    const byAnchor: Record<string, unknown> = {};
+    const byAnchor = dataMap<unknown>();
     for (const anchor of Object.keys(anchors).sort()) {
       const digest = anchors[anchor]!;
       if (typeof digest === "string") {
-        byAnchor[anchor] = digest;
+        putData(byAnchor, anchor, digest);
         continue;
       }
-      const keyed: Record<string, string> = {};
-      for (const layer of Object.keys(digest).sort()) keyed[layer] = digest[layer]!;
-      byAnchor[anchor] = keyed;
+      const keyed = dataMap<string>();
+      for (const layer of Object.keys(digest).sort()) putData(keyed, layer, digest[layer]!);
+      putData(byAnchor, anchor, keyed);
     }
-    out[ecosystem] = byAnchor;
+    putData(out, ecosystem, byAnchor);
   }
-  if (layers.payload !== undefined) out[PAYLOAD_LAYER] = layers.payload;
+  if (layers.payload !== undefined) putData(out, PAYLOAD_LAYER, layers.payload);
   return out;
 }
 

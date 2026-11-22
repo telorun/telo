@@ -188,14 +188,14 @@ export async function unitEvidence(
   unit: ResolvedUnit,
   ownFilesChanged: boolean,
 ): Promise<UnitEvidence> {
-  const ecosystems: Record<string, Record<string, AnchorDigest>> = {};
+  const ecosystems: Record<string, Record<string, AnchorDigest>> = Object.create(null);
   const payloadFiles = new Set<string>();
   const imports = new Set<UnitKey>();
   const inlines = new Map<UnitKey, Set<string>>();
   let registry: string | undefined;
   for (const anchor of unit.anchors) {
     const found = await sessionOf(sessions, anchor.ecosystem).collect({ unit, anchor });
-    if (found.layer !== undefined) (ecosystems[anchor.ecosystem] ??= {})[anchor.anchor] = found.layer;
+    if (found.layer !== undefined) (ecosystems[anchor.ecosystem] ??= Object.create(null))[anchor.anchor] = found.layer;
     for (const file of found.files ?? []) payloadFiles.add(file);
     for (const key of found.imports ?? []) if (key !== unit.key) imports.add(key);
     for (const [key, files] of found.inlines ?? []) addInlines(inlines, key, files);

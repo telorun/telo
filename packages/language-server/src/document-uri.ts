@@ -9,7 +9,7 @@
  */
 
 const REMOTE = /^(oci|https?):\/\//;
-const SCHEME = /^([a-zA-Z][a-zA-Z0-9+.-]*):\/\/([^/]*)(.*)$/;
+const SCHEME = /^([a-zA-Z][a-zA-Z0-9+.-]*):\/\/([^/]*)((?:\/.*)?)$/;
 
 /** True for a module read from a registry or the web, as opposed to a document
  *  in the workspace the host serves. */
@@ -87,7 +87,7 @@ function splitSource(source: string): { prefix: string; path: string } {
   if (match) return { prefix: `${match[1]}://${match[2]}`, path: match[3] || "/" };
   // A UNC share's `//host` and a Windows drive's `/c:` are roots, not path
   // segments to normalize away or walk above.
-  const root = /^(\/\/[^/]+|\/[A-Za-z]:(?=\/|$))(.*)$/.exec(source);
+  const root = /^(\/\/[^/]+|\/[A-Za-z]:(?=\/|$))((?:\/.*)?)$/.exec(source);
   if (root) return { prefix: root[1]!, path: root[2] || "/" };
   return { prefix: "", path: source };
 }

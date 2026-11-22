@@ -1,3 +1,5 @@
+import { trimTrailingSlashes } from "../../trailing-slash.js";
+
 /**
  * A Docker ignore file read as Telo glob exclude patterns.
  *
@@ -18,7 +20,7 @@ export function dockerignorePatterns(text: string, file: string): string[] {
       );
     }
     const negated = line.startsWith("!");
-    const body = (negated ? line.slice(1) : line).replace(/^\/+/, "").replace(/\/+$/, "");
+    const body = trimTrailingSlashes((negated ? line.slice(1) : line).replace(/^\/+/, ""));
     const prefix = negated ? "!/" : "/";
     patterns.push(prefix + body, prefix + body + "/");
   });

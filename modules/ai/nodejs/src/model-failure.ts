@@ -216,7 +216,7 @@ export function retryAfterSeconds(text: string | undefined | null): number | und
   if (typeof text !== "string") return undefined;
   const value = text.trim();
   if (value === "") return undefined;
-  if (/^[+-]?(\d+\.?\d*|\.\d+)$/.test(value)) {
+  if (/^[+-]?(\d+(?:\.\d*)?|\.\d+)$/.test(value)) {
     const seconds = Number(value);
     return Number.isFinite(seconds) && seconds >= 0 ? Math.ceil(seconds) : undefined;
   }

@@ -13,6 +13,7 @@
 import type { EcosystemAdapter, RecognizedPackage } from "../adapter.js";
 import { isUnitVersion } from "../bump-level.js";
 import type { UnitKey } from "../fragment.js";
+import { trimTrailingSlashes } from "../trailing-slash.js";
 import { VersionFileError, pyprojectTomlHandler, spliceText, tomlString } from "../version-files.js";
 import {
   TomlError,
@@ -741,12 +742,123 @@ export function simpleIndexFiles(body: string, json: boolean, where: string): In
     });
   }
   const found: IndexFile[] = [];
-  const anchor = /<a\s[^>]*?href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))[^>]*>([\s\S]*?)<\/a\s*>/gi;
-  for (let m = anchor.exec(body); m; m = anchor.exec(body)) {
-    const link = withoutFragment(decodeEntities(m[1] ?? m[2] ?? m[3]!));
-    found.push({ filename: decodeEntities(m[4]!.replace(/<[^>]*>/g, "").trim()), ...link });
+  const scan = new AnchorScan(body);
+  for (let at = scan.nextOpen(0); at !== -1; ) {
+    const match = scan.matchAt(at);
+    if (!match) {
+      at = scan.nextOpen(at + 1);
+      continue;
+    }
+    const link = withoutFragment(decodeEntities(match.href));
+    found.push({ filename: decodeEntities(withoutTags(match.text).trim()), ...link });
+    at = scan.nextOpen(match.end);
   }
   return found;
+}
+
+const WHITESPACE = /\s/;
+const HREF_AT = /href\s*=\s*/y;
+
+/**
+ * A linear scan for `<a ... href=... >text</a>` as a case-insensitive regex
+ * would match it, with every search remembering its last answer so a page that
+ * lacks a needle is searched for it once.
+ */
+class AnchorScan {
+  private readonly lower: string;
+  private readonly seen = new Map<string, { from: number; at: number }>();
+  private lastHead: { from: number; head: { at: number; value: number } | undefined } | undefined;
+  private noCloseFrom: number | undefined;
+
+  constructor(private readonly body: string) {
+    this.lower = body.replace(/[A-Z]/g, (c) => c.toLowerCase());
+  }
+
+  private find(needle: string, from: number, text: string): number {
+    const key = text === this.body ? `b${needle}` : `l${needle}`;
+    const last = this.seen.get(key);
+    if (last && last.from <= from && (last.at === -1 || from <= last.at)) return last.at;
+    const at = text.indexOf(needle, from);
+    this.seen.set(key, { from, at });
+    return at;
+  }
+
+  /** The next `<a` followed by whitespace at or after `from`, else -1. */
+  nextOpen(from: number): number {
+    for (let at = this.find("<a", from, this.lower); at !== -1; at = this.find("<a", at + 1, this.lower)) {
+      if (WHITESPACE.test(this.lower.charAt(at + 2))) return at;
+    }
+    return -1;
+  }
+
+  /** The first `href\s*=\s*` at or after `from`, with where its value starts. */
+  private nextHead(from: number): { at: number; value: number } | undefined {
+    const last = this.lastHead;
+    if (last && last.from <= from && (!last.head || from <= last.head.at)) return last.head;
+    let head: { at: number; value: number } | undefined;
+    for (let at = this.find("href", from, this.lower); at !== -1; at = this.find("href", at + 1, this.lower)) {
+      HREF_AT.lastIndex = at;
+      const m = HREF_AT.exec(this.lower);
+      if (m) {
+        head = { at, value: at + m[0].length };
+        break;
+      }
+    }
+    this.lastHead = { from, head };
+    return head;
+  }
+
+  /** The link whose anchor opens at `open`, with the text up to the first `</a\s*>` and where that ends. */
+  matchAt(open: number): { href: string; text: string; end: number } | undefined {
+    const limit = this.find(">", open + 3, this.body);
+    // every value ends at or after the first `>`, so no close past it means none for this tag
+    if (limit === -1 || (this.noCloseFrom !== undefined && limit + 1 >= this.noCloseFrom)) return undefined;
+    for (let head = this.nextHead(open + 3); head && head.at < limit; head = this.nextHead(head.at + 1)) {
+      const v = head.value;
+      const quote = this.body.charAt(v);
+      const values: { href: string; end: number }[] = [];
+      if (quote === '"' || quote === "'") {
+        const q = this.find(quote, v + 1, this.body);
+        if (q !== -1) values.push({ href: this.body.slice(v + 1, q), end: q + 1 });
+      }
+      let end = v;
+      while (end < this.body.length && !WHITESPACE.test(this.body.charAt(end)) && this.body.charAt(end) !== ">") end++;
+      if (end > v) values.push({ href: this.body.slice(v, end), end });
+      for (const value of values) {
+        const gt = this.find(">", value.end, this.body);
+        if (gt === -1) continue;
+        const close = this.closeFrom(gt + 1);
+        if (close) return { href: value.href, text: this.body.slice(gt + 1, close.start), end: close.end };
+      }
+    }
+    return undefined;
+  }
+
+  /** The first `</a`, optional whitespace, `>` at or after `from`. */
+  private closeFrom(from: number): { start: number; end: number } | undefined {
+    if (this.noCloseFrom !== undefined && from >= this.noCloseFrom) return undefined;
+    for (let at = this.find("</a", from, this.lower); at !== -1; at = this.find("</a", at + 1, this.lower)) {
+      let end = at + 3;
+      while (end < this.lower.length && WHITESPACE.test(this.lower.charAt(end))) end++;
+      if (this.lower.charAt(end) === ">") return { start: at, end: end + 1 };
+    }
+    this.noCloseFrom = Math.min(this.noCloseFrom ?? from, from);
+    return undefined;
+  }
+}
+
+/** `html` less its `<...>` tags; a `<` with no closing `>` stays text. */
+function withoutTags(html: string): string {
+  let text = "";
+  let at = 0;
+  for (;;) {
+    const open = html.indexOf("<", at);
+    if (open === -1) return text + html.slice(at);
+    const close = html.indexOf(">", open);
+    if (close === -1) return text + html.slice(at);
+    text += html.slice(at, open);
+    at = close + 1;
+  }
 }
 
 /** `name-version` of a distribution file, as its filename spells them. */
@@ -791,5 +903,5 @@ export function versionsInIndex(files: readonly IndexFile[], name: string): stri
 
 /** Where a distribution publishes: `<registry>/<normalized name>`. */
 export function pypiDestination(registry: string, name: string): string {
-  return `${registry.replace(/\/+$/, "")}/${normalizePypiName(name)}`;
+  return `${trimTrailingSlashes(registry)}/${normalizePypiName(name)}`;
 }

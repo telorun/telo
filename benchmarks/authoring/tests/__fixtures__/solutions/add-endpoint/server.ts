@@ -66,6 +66,7 @@ for (const [level, derive] of levels) {
 }
 
 const PLANS = ["free", "trial", "starter", "growth", "enterprise"];
+// codeql[js/missing-rate-limiting] benchmark fixture solution, never served to a client
 app.get("/stats", () => {
   const byPlan: Record<string, number> = Object.fromEntries(PLANS.map((plan) => [plan, 0]));
   const rows = db.prepare("SELECT json_extract(body, '$.lead.plan') AS plan, count(*) AS n FROM leads GROUP BY plan").all() as Array<{ plan: string; n: number }>;

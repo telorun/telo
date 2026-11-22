@@ -67,7 +67,7 @@ export async function buildFailureManifest(
   const kindMatch = /^\s*kind:\s*Telo\.(Library|Application)\b/m.exec(rawYaml);
   const kind: ModuleKind = kindMatch?.[1] === "Library" ? "Library" : "Application";
 
-  const nameMatch = /metadata:\s*\n(?:\s+[^\n]*\n)*?\s+name:\s*["']?([^"'\n]+)["']?/m.exec(rawYaml);
+  const nameMatch = /metadata:[^\S\n]*\n(?:(?:(?:[^\S\n]*\n)+[^\S\n]*|[^\S\n]+)\S[^\n]*\n)*?(?:(?:[^\S\n]*\n)+[^\S\n]*|[^\S\n]+)name:\s*["']?([^"'\n]+)["']?/m.exec(rawYaml);
   const fallbackName = filePath.split("/").slice(-2, -1)[0] ?? "module";
 
   const base = {

@@ -482,7 +482,7 @@ function indentPath(text: string, at: number): string[] {
     if (line.trim() === "" || line.trimStart().startsWith("#")) continue;
     const indent = indentOf(line);
     if (indent >= want) continue;
-    const key = /^\s*-?\s*([A-Za-z][A-Za-z0-9_]*):/.exec(line);
+    const key = /^\s*(?:-\s*)?([A-Za-z][A-Za-z0-9_]*):/.exec(line);
     if (key) path.unshift(key[1]!);
     want = indent;
     if (indent === 0) break;

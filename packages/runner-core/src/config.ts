@@ -11,6 +11,7 @@ import {
 } from "@telorun/secret-seed";
 
 import type { PullPolicy, RunnerTerms } from "./contract.js";
+import { trimTrailingSlashes } from "./trailing-slash.js";
 
 /**
  * Backend-neutral runner configuration. Concrete runners (docker, k8s) extend
@@ -797,7 +798,7 @@ export function sessionContainersConfig(
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new RunnerConfigError(`RUNNER_INTERNAL_URL must be an http(s) URL, got '${raw}'.`);
   }
-  return { enabled, max, internalUrl: raw.replace(/\/+$/, "") };
+  return { enabled, max, internalUrl: trimTrailingSlashes(raw) };
 }
 
 /** `RUNNER_IDENTITY_AUDIENCE` and `RUNNER_IDENTITY_ISSUERS`, set together or

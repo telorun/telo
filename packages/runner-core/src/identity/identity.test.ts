@@ -345,9 +345,12 @@ describe("refusing an identity", () => {
     const res = await b.server.app.inject({ method: "POST", url: "/v1/sessions", headers, payload: { workspace: "w", apps: [] } });
     expect([res.statusCode, res.json().error]).toEqual([401, code]);
     expect(res.json().message).toMatch(reason);
-    expect(res.headers["www-authenticate"]).toMatch(
-      new RegExp(`^DPoP error="${code}", error_description="[^"]+", algs="ES256 EdDSA", resource_metadata="${METADATA_URL}"$`),
-    );
+    const challenge = String(res.headers["www-authenticate"]);
+    const opening = `DPoP error="${code}", error_description="`;
+    const closing = `", algs="ES256 EdDSA", resource_metadata="${METADATA_URL}"`;
+    expect(challenge.slice(0, opening.length)).toBe(opening);
+    expect(challenge.slice(-closing.length)).toBe(closing);
+    expect(challenge.slice(opening.length, -closing.length)).toMatch(/^[^"]+$/);
   });
 
   it("refuses a token signed with a symmetric algorithm", async () => {

@@ -51,6 +51,7 @@ describe("sign-in", () => {
     assert.equal(res.headers.get("cache-control"), "public, max-age=60, stale-if-error=86400");
     assert.equal(res.headers.get("set-cookie"), null);
     const body = await res.text();
+    // codeql[js/incomplete-url-substring-sanitization] a test asserting the markup carries the configured origin; nothing is sanitized or allow-listed
     assert.ok(body.includes(ISSUER));
     assert.ok(body.includes(CLIENT_ID));
     // Who is signed in is never in the markup.

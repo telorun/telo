@@ -596,9 +596,7 @@ describe("verdictForModule", () => {
     );
 
     expect(verdict.kind).toBe("pinned");
-    expect(verdict.kind === "pinned" && verdict.pin).toMatch(
-      new RegExp(`^${ref("telorun/run", "0.2.7").replace(/[.]/g, "\\.")}#sha256-`),
-    );
+    expect(verdict.kind === "pinned" && verdict.pin.startsWith(`${ref("telorun/run", "0.2.7")}#sha256-`)).toBe(true);
   });
 
   it("reports a registry failure instead of guessing", async () => {

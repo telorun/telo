@@ -45,7 +45,7 @@ export function headCarriesFinal({ cwd = ROOT, branch }) {
 export function branchRecordsFinal({ cwd = ROOT, branch }) {
   const [, major, minor] = RELEASE_BRANCH.exec(branch);
   const version = ledgerVersionsAt(cwd, `refs/remotes/origin/${branch}`).get(LINE_UNIT)?.version;
-  return version !== undefined && new RegExp(`^${major}\\.${minor}\\.\\d+$`).test(version);
+  return version !== undefined && version.startsWith(`${major}.${minor}.`) && /^\d+$/.test(version.slice(`${major}.${minor}.`.length));
 }
 
 /**
