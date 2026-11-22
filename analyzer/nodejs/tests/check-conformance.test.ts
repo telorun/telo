@@ -104,16 +104,25 @@ function locate(base: string, relative: string): string {
   return resolve(dirname(resolve(base.startsWith("file://") ? fileURLToPath(base) : base)), relative);
 }
 
-/** Every string with the row directory's prefix removed, so a file reads relative to it,
- *  then this build's running surface written as `<running-surface>`. */
-function relativize(value: unknown, prefixes: string[]): unknown {
+/** `text` with the row directory's prefix removed, so a file reads relative to it with `/`
+ *  separators on every platform. */
+function relativeToRow(text: string, dir: string): string {
+  const parts = text.split(`${pathToFileURL(dir).href}/`).join("").split(`${dir}${sep}`);
+  if (sep === "/") return parts.join("");
+  return parts
+    .map((part, i) => (i === 0 ? part : part.replace(/^[^\s()'"`]*/, (path) => path.split(sep).join("/"))))
+    .join("");
+}
+
+/** Every string relative to the row directory, then this build's running surface written
+ *  as `<running-surface>`. */
+function relativize(value: unknown, dir: string): unknown {
   if (typeof value === "string") {
-    const relative = prefixes.reduce((text, prefix) => text.split(prefix).join(""), value);
-    return relative.split(TELO_RUNNING_SURFACE).join("<running-surface>");
+    return relativeToRow(value, dir).split(TELO_RUNNING_SURFACE).join("<running-surface>");
   }
-  if (Array.isArray(value)) return value.map((item) => relativize(item, prefixes));
+  if (Array.isArray(value)) return value.map((item) => relativize(item, dir));
   if (value !== null && typeof value === "object") {
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, relativize(item, prefixes)]));
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, relativize(item, dir)]));
   }
   return value;
 }
@@ -145,13 +154,12 @@ describe("check conformance", () => {
         hostVersions: { node: process.versions.node },
         memo: new DependencyVerdictMemo(),
       });
-      const prefixes = [`${pathToFileURL(dir).href}/`, `${dir}${sep}`];
       const diagnostics = reported.map((d) => {
         const located = locateDiagnostic(graph, d);
         const shown = JSON.parse(JSON.stringify(d));
         delete shown.range;
         if (located) shown.range = located.range;
-        return relativize(shown, prefixes);
+        return relativize(shown, dir);
       });
       expect(sorted(diagnostics)).toEqual(sorted(expected.diagnostics));
     });
