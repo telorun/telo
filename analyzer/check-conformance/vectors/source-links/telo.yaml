@@ -1,0 +1,33 @@
+kind: Telo.Application
+metadata: { name: SourceLinksApp }
+native:
+  - { name: lib, format: napi, os: linux, arch: amd64, path: ./native/linux/libx.so.1 }
+  - { name: link, format: napi, os: darwin, arch: arm64, path: ./native/darwin/libx.so }
+sources:
+  cross:
+    version: 1.0.0
+    purl: pkg:generic/cross
+    url: https://example.test/{version}/{upstream}.tar.gz
+    archive: tar.gz
+    notices: [./LICENSE]
+    entries:
+      native/linux/libx.so.1:
+        {
+          upstream: linux,
+          member: libx.so.1,
+          sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,
+          executable: false,
+        }
+      native/darwin/libx.so: { target: ../linux/libx.so.1 }
+  loops:
+    version: 1.0.0
+    purl: pkg:generic/loops
+    url: https://example.test/{version}/{upstream}.tar.gz
+    archive: tar.gz
+    notices: [./LICENSE]
+    entries:
+      native/loop/a: { target: b }
+      native/loop/b: { target: a }
+      native/loop/self: { target: self }
+      native/loop/missing: { target: nowhere }
+      native/loop/outside: { target: ../../../x }

@@ -1,0 +1,25 @@
+kind: Telo.Application
+metadata: { name: SourceEntriesInvalidApp }
+sources:
+  addon:
+    version: 1.0.0
+    purl: pkg:generic/addon
+    url: https://example.test/{version}/{upstream}.tar.gz
+    archive: tar.gz
+    notices: [./LICENSE]
+    entries:
+      ../elsewhere/a.node: { upstream: linux, member: a.node }
+      native/a.node: { upstream: linux, member: a.node }
+      ./native/a.node: { upstream: darwin, member: a.node }
+      native/a.node/inner: { upstream: linux, member: inner }
+      native/b.node: { upstream: linux, member: " " }
+      native/c.node: { upstream: linux, member: c.node, sha256: ABC, executable: false }
+      native/d.node: { upstream: linux, member: d.node, executable: false }
+      native/e.node: { target: other, upstream: linux }
+  second:
+    version: 1.0.0
+    purl: pkg:generic/second
+    url: https://example.test/{version}/{upstream}.tar.gz
+    archive: tar.gz
+    notices: [./LICENSE]
+    entries: { native/a.node: { upstream: linux, member: a.node } }

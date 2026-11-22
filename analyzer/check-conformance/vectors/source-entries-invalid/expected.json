@@ -1,0 +1,197 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "SOURCE_ENTRY_DUPLICATE",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/SourceEntriesInvalidApp: source 'addon' entry './native/a.node': path 'native/a.node' is also produced by entry 'native/a.node'.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "SourceEntriesInvalidApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "sources.addon.entries../native/a.node"
+      },
+      "range": {
+        "start": {
+          "line": 12,
+          "character": 23
+        },
+        "end": {
+          "line": 12,
+          "character": 59
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "SOURCE_ENTRY_DUPLICATE",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/SourceEntriesInvalidApp: source 'second' entry 'native/a.node': path 'native/a.node' is also produced by source 'addon'. Each staged file has exactly one source.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "SourceEntriesInvalidApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "sources.second.entries.native/a.node"
+      },
+      "range": {
+        "start": {
+          "line": 24,
+          "character": 30
+        },
+        "end": {
+          "line": 24,
+          "character": 65
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "SOURCE_ENTRY_INVALID",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/SourceEntriesInvalidApp: source 'addon' entry '../elsewhere/a.node': path '../elsewhere/a.node' points above the module root. A native file must ship inside the module directory.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "SourceEntriesInvalidApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "sources.addon.entries.../elsewhere/a.node"
+      },
+      "range": {
+        "start": {
+          "line": 10,
+          "character": 27
+        },
+        "end": {
+          "line": 10,
+          "character": 62
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "SOURCE_ENTRY_INVALID",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/SourceEntriesInvalidApp: source 'addon' entry 'native/b.node': 'member' must not be empty.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "SourceEntriesInvalidApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "sources.addon.entries.native/b.node.member"
+      },
+      "range": {
+        "start": {
+          "line": 14,
+          "character": 48
+        },
+        "end": {
+          "line": 14,
+          "character": 51
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "SOURCE_ENTRY_INVALID",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/SourceEntriesInvalidApp: source 'addon' entry 'native/c.node': sha256 must be 64 lowercase hex characters — run `telo release stage --pin` to write it.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "SourceEntriesInvalidApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "sources.addon.entries.native/c.node.sha256"
+      },
+      "range": {
+        "start": {
+          "line": 15,
+          "character": 64
+        },
+        "end": {
+          "line": 15,
+          "character": 67
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "SOURCE_ENTRY_INVALID",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/SourceEntriesInvalidApp: source 'addon' entry 'native/d.node': a pin is sha256 and executable together — run `telo release stage --pin` to write both.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "SourceEntriesInvalidApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "sources.addon.entries.native/d.node"
+      },
+      "range": {
+        "start": {
+          "line": 16,
+          "character": 21
+        },
+        "end": {
+          "line": 16,
+          "character": 75
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "SOURCE_ENTRY_INVALID",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/SourceEntriesInvalidApp: source 'addon' entry 'native/e.node': an entry is either a link (target) or a file (upstream, member, sha256, executable) — remove 'upstream' or 'target'.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "SourceEntriesInvalidApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "sources.addon.entries.native/e.node"
+      },
+      "range": {
+        "start": {
+          "line": 17,
+          "character": 21
+        },
+        "end": {
+          "line": 17,
+          "character": 55
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "SOURCE_ENTRY_NESTED",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/SourceEntriesInvalidApp: source 'addon' entry 'native/a.node/inner': path 'native/a.node/inner' runs through 'native/a.node' as a directory, and source 'addon' entry 'native/a.node' produces 'native/a.node'. A staged path cannot be both a file and a directory — give each entry its own path.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "SourceEntriesInvalidApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "sources.addon.entries.native/a.node/inner"
+      },
+      "range": {
+        "start": {
+          "line": 13,
+          "character": 27
+        },
+        "end": {
+          "line": 13,
+          "character": 61
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] Manifest validation failed\n  [SOURCE_ENTRY_INVALID] Telo.Application/SourceEntriesInvalidApp: source 'addon' entry '../elsewhere/a.node': path '../elsewhere/a.node' points above the module root. A native file must ship inside the module directory.\n  [SOURCE_ENTRY_DUPLICATE] Telo.Application/SourceEntriesInvalidApp: source 'addon' entry './native/a.node': path 'native/a.node' is also produced by entry 'native/a.node'.\n  [SOURCE_ENTRY_NESTED] Telo.Application/SourceEntriesInvalidApp: source 'addon' entry 'native/a.node/inner': path 'native/a.node/inner' runs through 'native/a.node' as a directory, and source 'addon' entry 'native/a.node' produces 'native/a.node'. A staged path cannot be both a file and a directory — give each entry its own path.\n  [SOURCE_ENTRY_INVALID] Telo.Application/SourceEntriesInvalidApp: source 'addon' entry 'native/b.node': 'member' must not be empty.\n  [SOURCE_ENTRY_INVALID] Telo.Application/SourceEntriesInvalidApp: source 'addon' entry 'native/c.node': sha256 must be 64 lowercase hex characters — run `telo release stage --pin` to write it.\n  [SOURCE_ENTRY_INVALID] Telo.Application/SourceEntriesInvalidApp: source 'addon' entry 'native/d.node': a pin is sha256 and executable together — run `telo release stage --pin` to write both.\n  [SOURCE_ENTRY_INVALID] Telo.Application/SourceEntriesInvalidApp: source 'addon' entry 'native/e.node': an entry is either a link (target) or a file (upstream, member, sha256, executable) — remove 'upstream' or 'target'.\n  [SOURCE_ENTRY_DUPLICATE] Telo.Application/SourceEntriesInvalidApp: source 'second' entry 'native/a.node': path 'native/a.node' is also produced by source 'addon'. Each staged file has exactly one source."
+}

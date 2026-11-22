@@ -1,0 +1,16 @@
+kind: Telo.Library
+metadata: { name: NativeClaimedLib }
+native:
+  - { name: addon, format: napi, os: linux, arch: amd64, path: ./native/linux/addon.node }
+  - { name: other, format: napi, os: darwin, arch: arm64, path: ./native/darwin/other.node }
+---
+kind: Telo.Definition
+metadata: { name: Thing }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/napi?path=./native/linux/addon.node&os=linux&arch=amd64#Thing]
+---
+kind: Telo.Definition
+metadata: { name: Blob }
+capability: Telo.Invocable
+schema: { type: object, properties: { data: { type: string } } }
+controllers: [pkg:telo/local/js?path=./nodejs/blob.mjs#Blob]

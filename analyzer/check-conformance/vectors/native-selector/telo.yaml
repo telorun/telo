@@ -1,0 +1,6 @@
+kind: Telo.Application
+metadata: { name: NativeSelectorApp }
+native:
+  - { name: addon, format: node, os: linux, arch: amd64, path: ./native/linux/addon.node }
+  - { name: napi, format: napi, os: darwin, arch: arm64, abi: node-137, path: ./native/darwin/napi.node }
+  - { name: libc, format: napi, os: darwin, arch: arm64, libc: gnu, path: ./native/darwin/libc.node }

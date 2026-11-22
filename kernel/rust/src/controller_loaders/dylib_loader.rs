@@ -29,7 +29,7 @@ use crate::bundle::module_artifact::{host_platform_target, ModuleFiles};
 use crate::bundle::source_staging::{ensure_staged_entry, EnsuredEntryState, StagingError};
 use crate::controller_loaders::cargo_loader::{manifest_dir, EnvMissing, ResolveError};
 use crate::controller_loaders::native_abi::LoadedController;
-use crate::controller_loaders::purl::Purl;
+use telo_analyzer::purl::Purl;
 use crate::error::KernelError;
 use crate::lexical_path;
 

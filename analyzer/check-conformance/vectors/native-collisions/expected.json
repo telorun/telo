@@ -1,0 +1,77 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "NATIVE_ENTRY_DUPLICATE",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/NativeCollisionsApp: native[1] ('addon'): native[0] ('addon') already declares 'addon' for napi (linux/amd64). A name has one entry per platform tuple, or a lookup by name could resolve to either file.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "NativeCollisionsApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "native[1]"
+      },
+      "range": {
+        "start": {
+          "line": 4,
+          "character": 4
+        },
+        "end": {
+          "line": 4,
+          "character": 84
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "NATIVE_PATH_NESTED",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/NativeCollisionsApp: native[3] ('inner'): path 'native/addon.node/inner.node' runs through 'native/addon.node' as a directory, and native[0] ('addon') declares 'native/addon.node'. Every layer of a module extracts into one directory, so a path cannot be both a file and a directory — give each entry its own path.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "NativeCollisionsApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "native[3].path"
+      },
+      "range": {
+        "start": {
+          "line": 6,
+          "character": 63
+        },
+        "end": {
+          "line": 6,
+          "character": 93
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "NATIVE_PATH_SHARED",
+      "source": "telo-analyzer",
+      "message": "Telo.Application/NativeCollisionsApp: native[2] ('addon'): path 'native/addon.node' is also declared by native[0] ('addon') for napi (linux/amd64). Every layer of a module extracts into one directory, so each platform tuple needs its own path — e.g. 'native/<os>-<arch>/…'.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "NativeCollisionsApp"
+        },
+        "filePath": "telo.yaml",
+        "path": "native[2].path"
+      },
+      "range": {
+        "start": {
+          "line": 5,
+          "character": 64
+        },
+        "end": {
+          "line": 5,
+          "character": 83
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] Manifest validation failed\n  [NATIVE_ENTRY_DUPLICATE] Telo.Application/NativeCollisionsApp: native[1] ('addon'): native[0] ('addon') already declares 'addon' for napi (linux/amd64). A name has one entry per platform tuple, or a lookup by name could resolve to either file.\n  [NATIVE_PATH_SHARED] Telo.Application/NativeCollisionsApp: native[2] ('addon'): path 'native/addon.node' is also declared by native[0] ('addon') for napi (linux/amd64). Every layer of a module extracts into one directory, so each platform tuple needs its own path — e.g. 'native/<os>-<arch>/…'.\n  [NATIVE_PATH_NESTED] Telo.Application/NativeCollisionsApp: native[3] ('inner'): path 'native/addon.node/inner.node' runs through 'native/addon.node' as a directory, and native[0] ('addon') declares 'native/addon.node'. Every layer of a module extracts into one directory, so a path cannot be both a file and a directory — give each entry its own path."
+}

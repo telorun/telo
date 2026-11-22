@@ -1,0 +1,29 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "NATIVE_PATH_CLAIMED",
+      "source": "telo-analyzer",
+      "message": "Telo.Library/NativeClaimedLib: native[0] ('addon'): path 'native/linux/addon.node' is also named by the controller candidate pkg:telo/local/napi?path=./native/linux/addon.node&os=linux&arch=amd64#Thing on Telo.Definition/Thing. A native file ships only in its platform's native layer and a file extracts from exactly one layer, so publish refuses it — give the native entry its own file, or drop the other declaration.",
+      "data": {
+        "resource": {
+          "kind": "Telo.Library",
+          "name": "NativeClaimedLib"
+        },
+        "filePath": "lib/telo.yaml",
+        "path": "native[0].path"
+      },
+      "range": {
+        "start": {
+          "line": 3,
+          "character": 63
+        },
+        "end": {
+          "line": 3,
+          "character": 88
+        }
+      }
+    }
+  ],
+  "runFails": null
+}

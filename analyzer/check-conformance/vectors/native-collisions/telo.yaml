@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata: { name: NativeCollisionsApp }
+native:
+  - { name: addon, format: napi, os: linux, arch: amd64, path: ./native/addon.node }
+  - { name: addon, format: napi, os: linux, arch: amd64, path: ./native/other.node }
+  - { name: addon, format: napi, os: darwin, arch: arm64, path: ./native/addon.node }
+  - { name: inner, format: napi, os: linux, arch: arm64, path: ./native/addon.node/inner.node }
