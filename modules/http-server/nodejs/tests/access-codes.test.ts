@@ -16,6 +16,7 @@ describe("the access refusals Http.Api restates", () => {
     const api = codesOf("Api");
     const raised = [
       "ERR_HTTP_UNAUTHENTICATED",
+      "ERR_HTTP_AUTHENTICATION_THROTTLED",
       "ERR_HTTP_FORBIDDEN",
       "ERR_HTTP_CROSS_ORIGIN_REFUSED",
       "ERR_HTTP_ACCESS_CHECK_UNAVAILABLE",

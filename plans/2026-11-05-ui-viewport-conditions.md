@@ -19,7 +19,7 @@ None.
 
 ## Solution
 
-**A `viewport` root, bound once.** `viewport` is declared a single time, as an accessor-only binding in a region on the `Ui.Condition` shape itself — the shape every `shown`, and `Ui.Enablement` (`enabled` on an action or row action), reaches by `$ref`. Regions inside named shapes are reached by the one walk that collects every region, so `viewport` is in scope wherever a condition is written: on a page's own children, inside a `Ui.Data` content, on a field, inside a composite declared as its own resource, on an `enabled`. It is the one root bound by the condition rather than by the resource holding it — a deliberate widening of "a root is in scope only where the resource binds it", recorded in `conditions.md` and `modules/CLAUDE.md`, because the viewport belongs to no resource.
+**A `viewport` root, bound once.** `viewport` is declared a single time, as an accessor-only binding in a region on the `Ui.Condition` shape itself — the shape every `shown`, and `Ui.Enablement` (`enabled` on an action or row action), reaches by `$ref`. Regions inside named shapes are reached by the one walk that collects every region, so `viewport` is in scope wherever a condition is written: on a page's own children, inside a `query` node's `content`, on a field, inside a composite declared as its own resource, on an `enabled`. It is the one root bound by the condition rather than by the resource holding it — a deliberate widening of "a root is in scope only where the resource binds it", recorded in `conditions.md` and `modules/CLAUDE.md`, because the viewport belongs to no resource.
 
 Its members, typed by a closed `Ui.Viewport` shape and each defined as a fact a renderer of any kind maps to its platform's own:
 
@@ -52,7 +52,7 @@ Bookkeeping: docs (`conditions.md` with the root and the widened scope rule, `no
 
 ## Verify
 
-- `viewport.compact` read by a condition on a page's own child, inside a `Ui.Data` content, inside a composite declared as its own resource, and in an action's `enabled` type-checks in all four.
+- `viewport.compact` read by a condition on a page's own child, inside a `query` node's `content`, inside a composite declared as its own resource, and in an action's `enabled` type-checks in all four.
 - Two nodes conditioned on `viewport.compact` swap when the window crosses `compactBelow`, without a request and without unmounting either; a cold load at phone width paints the phone branch first.
 - An `image` shown under `viewport.scheme` `dark` appears when the system scheme turns dark.
 - `viewport.widht` is `CEL_UNKNOWN_FIELD`; a `const: dim` match on `scheme` is `MATCH_UNSATISFIABLE`; `viewport` in a `when` is `CEL_UNKNOWN_IDENTIFIER` — each refused before the app runs.

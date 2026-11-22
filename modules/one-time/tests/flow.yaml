@@ -1,0 +1,332 @@
+kind: Telo.Application
+metadata:
+  name: OneTimeFlowTest
+  version: 1.0.0
+  description: |
+    Links and codes over a SQL-backed store: a link opens once and a wrong holder
+    does not consume it; a code answers mismatch until its last attempt, then
+    exhausted, then unknown; a second issue inside the waiting period is refused and
+    leaves the live token; reissue and expiry void the earlier token; revoking and
+    redeeming free the subject; two replicas of one store see one token once.
+imports:
+  OneTime: ../
+  KvStoreSql: ../../kv-store-sql
+  SQLite: ../../sqlite
+  Sql: ../../sql
+  Timer: ../../timer
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: KvStoreSql.Store
+metadata: { name: store }
+connection: !ref db
+table: one_time
+---
+kind: KvStoreSql.Store
+metadata: { name: otherReplicaStore }
+connection: !ref db
+table: one_time
+---
+kind: OneTime.Links
+metadata: { name: links }
+name: reset
+store: !ref store
+expiresIn: 30m
+reissueAfter: 2m
+dataType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [returnTo]
+    additionalProperties: false
+    properties: { returnTo: { type: string } }
+---
+kind: OneTime.Links
+metadata: { name: otherReplicaLinks }
+name: reset
+store: !ref otherReplicaStore
+expiresIn: 30m
+reissueAfter: 2m
+dataType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [returnTo]
+    additionalProperties: false
+    properties: { returnTo: { type: string } }
+---
+kind: OneTime.Links
+metadata: { name: replaceableLinks }
+name: replaceable
+store: !ref store
+expiresIn: 30m
+reissueAfter: 1s
+---
+kind: OneTime.Links
+metadata: { name: shortLivedLinks }
+name: short-lived
+store: !ref store
+expiresIn: 1s
+reissueAfter: 0s
+---
+kind: OneTime.Codes
+metadata: { name: codes }
+name: sign-in
+store: !ref store
+expiresIn: 10m
+digits: 10
+maxAttempts: 5
+---
+kind: OneTime.Issue
+metadata: { name: issueLink }
+tokens: !ref links
+---
+kind: OneTime.RedeemLink
+metadata: { name: redeemLink }
+tokens: !ref links
+---
+kind: OneTime.Revoke
+metadata: { name: revokeLink }
+tokens: !ref links
+---
+kind: OneTime.RedeemLink
+metadata: { name: redeemOnOtherReplica }
+tokens: !ref otherReplicaLinks
+---
+kind: OneTime.Issue
+metadata: { name: issueReplaceable }
+tokens: !ref replaceableLinks
+---
+kind: OneTime.RedeemLink
+metadata: { name: redeemReplaceable }
+tokens: !ref replaceableLinks
+---
+kind: OneTime.Issue
+metadata: { name: issueShortLived }
+tokens: !ref shortLivedLinks
+---
+kind: OneTime.RedeemLink
+metadata: { name: redeemShortLived }
+tokens: !ref shortLivedLinks
+---
+kind: OneTime.Issue
+metadata: { name: issueCode }
+tokens: !ref codes
+---
+kind: OneTime.RedeemCode
+metadata: { name: redeemCode }
+tokens: !ref codes
+---
+kind: Sql.Query
+metadata: { name: query }
+connection: !ref db
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  # A link: reissue refused, wrong holder, redeem once, free again.
+  - name: issued
+    invoke: !ref issueLink
+    inputs: { subject: ann@acme.test, holder: browser-holder-secret, data: { returnTo: /settings } }
+  - name: reissued
+    invoke: !ref issueLink
+    inputs: { subject: ann@acme.test, holder: browser-holder-secret, data: { returnTo: /other } }
+  - name: otherHolder
+    invoke: !ref redeemLink
+    inputs: { token: !cel "steps.issued.result.token", holder: someone-else }
+  - name: noHolder
+    invoke: !ref redeemLink
+    inputs: { token: !cel "steps.issued.result.token" }
+  - name: guess
+    invoke: !ref redeemLink
+    inputs: { token: not-a-token, holder: browser-holder-secret }
+  - name: rows
+    invoke: !ref query
+    inputs: { sql: "SELECT store_key, value FROM one_time", bindings: [] }
+  - name: onOtherReplica
+    invoke: !ref redeemOnOtherReplica
+    inputs: { token: !cel "steps.issued.result.token", holder: browser-holder-secret }
+  - name: redeemed
+    invoke: !ref redeemLink
+    inputs: { token: !cel "steps.issued.result.token", holder: browser-holder-secret }
+  - name: again
+    invoke: !ref redeemLink
+    inputs: { token: !cel "steps.issued.result.token", holder: browser-holder-secret }
+  - name: afterRedeem
+    invoke: !ref issueLink
+    inputs: { subject: ann@acme.test, data: { returnTo: /again } }
+  - name: revoked
+    invoke: !ref revokeLink
+    inputs: { subject: ann@acme.test }
+  - name: revokedLinkOpens
+    invoke: !ref redeemLink
+    inputs: { token: !cel "steps.afterRedeem.result.token" }
+  - name: revokedTwice
+    invoke: !ref revokeLink
+    inputs: { subject: ann@acme.test }
+  - name: afterRevoke
+    invoke: !ref issueLink
+    inputs: { subject: ann@acme.test, data: { returnTo: /third } }
+
+  # A set with a dataType refuses an issue without data before writing; the next issue with it is not held back.
+  - name: dataMissing
+    try:
+      - name: dataMissingTry
+        invoke: !ref issueLink
+        inputs: { subject: eve@acme.test }
+      - { name: dataMissingOutcome, value: issued }
+    catch:
+      - { name: dataMissingOutcome, value: !cel "error.code" }
+  - name: dataGiven
+    invoke: !ref issueLink
+    inputs: { subject: eve@acme.test, data: { returnTo: /eve } }
+
+  # Reissue after the waiting period voids the first token; expiry voids a token.
+  - name: first
+    invoke: !ref issueReplaceable
+    inputs: { subject: bob@acme.test }
+  - name: shortLived
+    invoke: !ref issueShortLived
+    inputs: { subject: bob@acme.test }
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 1200ms } }
+  - name: second
+    invoke: !ref issueReplaceable
+    inputs: { subject: bob@acme.test }
+  - name: firstAfterReissue
+    invoke: !ref redeemReplaceable
+    inputs: { token: !cel "steps.first.result.token" }
+  - name: secondRedeems
+    invoke: !ref redeemReplaceable
+    inputs: { token: !cel "steps.second.result.token" }
+  - name: expired
+    invoke: !ref redeemShortLived
+    inputs: { token: !cel "steps.shortLived.result.token" }
+
+  # A code: holder first, attempts, exhaustion, and the wait that follows.
+  - name: code
+    invoke: !ref issueCode
+    inputs: { subject: ann@acme.test, holder: browser-holder-secret }
+  - name: wrongCode
+    value: !cel "steps.code.result.token == '0000000000' ? '1111111111' : '0000000000'"
+  - name: codeOtherHolderRight
+    invoke: !ref redeemCode
+    inputs: { subject: ann@acme.test, token: !cel "steps.code.result.token", holder: someone-else }
+  - name: codeOtherHolderWrong
+    invoke: !ref redeemCode
+    inputs: { subject: ann@acme.test, token: !cel "steps.wrongCode.result", holder: someone-else }
+  - name: wrong1
+    invoke: !ref redeemCode
+    inputs: { subject: ann@acme.test, token: !cel "steps.wrongCode.result", holder: browser-holder-secret }
+  - name: wrong2
+    invoke: !ref redeemCode
+    inputs: { subject: ann@acme.test, token: !cel "steps.wrongCode.result", holder: browser-holder-secret }
+  - name: wrong3
+    invoke: !ref redeemCode
+    inputs: { subject: ann@acme.test, token: !cel "steps.wrongCode.result", holder: browser-holder-secret }
+  - name: wrong4
+    invoke: !ref redeemCode
+    inputs: { subject: ann@acme.test, token: !cel "steps.wrongCode.result", holder: browser-holder-secret }
+  - name: wrong5
+    invoke: !ref redeemCode
+    inputs: { subject: ann@acme.test, token: !cel "steps.wrongCode.result", holder: browser-holder-secret }
+  - name: rightAfterExhausted
+    invoke: !ref redeemCode
+    inputs: { subject: ann@acme.test, token: !cel "steps.code.result.token", holder: browser-holder-secret }
+  - name: issueAfterExhausted
+    invoke: !ref issueCode
+    inputs: { subject: ann@acme.test }
+  - name: bobCode
+    invoke: !ref issueCode
+    inputs: { subject: carol@acme.test }
+  - name: bobWrongCode
+    value: !cel "steps.bobCode.result.token == '0000000000' ? '1111111111' : '0000000000'"
+  - name: bobWrong
+    invoke: !ref redeemCode
+    inputs: { subject: carol@acme.test, token: !cel "steps.bobWrongCode.result" }
+  - name: bobRight
+    invoke: !ref redeemCode
+    inputs: { subject: carol@acme.test, token: !cel "steps.bobCode.result.token" }
+  - name: unknownSubject
+    invoke: !ref redeemCode
+    inputs: { subject: nobody@acme.test, token: "0000000000" }
+
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        issued: { issued: !cel "steps.issued.result.issued", tokenLength: !cel "size(steps.issued.result.token)" }
+        reissued: { issued: !cel "steps.reissued.result.issued", waits: !cel "steps.reissued.result.retryAfter >= 100 && steps.reissued.result.retryAfter <= 120" }
+        otherHolder: !cel "steps.otherHolder.result"
+        noHolder: !cel "steps.noHolder.result"
+        guess: !cel "steps.guess.result"
+        rowsHoldNoSecret: !cel "!steps.rows.result.rows.exists(r, r.value.contains(steps.issued.result.token) || r.value.contains('browser-holder-secret') || r.store_key.contains(steps.issued.result.token))"
+        rowCount: !cel "size(steps.rows.result.rows)"
+        onOtherReplica: !cel "steps.onOtherReplica.result"
+        redeemed: !cel "steps.redeemed.result"
+        again: !cel "steps.again.result"
+        afterRedeem: !cel "steps.afterRedeem.result.issued"
+        revoked: !cel "steps.revoked.result"
+        revokedLinkOpens: !cel "steps.revokedLinkOpens.result"
+        revokedTwice: !cel "steps.revokedTwice.result"
+        afterRevoke: !cel "steps.afterRevoke.result.issued"
+        second: !cel "steps.second.result.issued"
+        firstAfterReissue: !cel "steps.firstAfterReissue.result"
+        secondRedeems: !cel "steps.secondRedeems.result"
+        expired: !cel "steps.expired.result"
+        dataMissing: !cel "steps.dataMissingOutcome.result"
+        dataGiven: !cel "steps.dataGiven.result.issued"
+        code: { issued: !cel "steps.code.result.issued", digits: !cel "steps.code.result.token.matches('^[0-9]{10}$')" }
+        codeOtherHolderRight: !cel "steps.codeOtherHolderRight.result"
+        codeOtherHolderWrong: !cel "steps.codeOtherHolderWrong.result"
+        attempts:
+          - !cel "steps.wrong1.result"
+          - !cel "steps.wrong2.result"
+          - !cel "steps.wrong3.result"
+          - !cel "steps.wrong4.result"
+          - !cel "steps.wrong5.result"
+        rightAfterExhausted: !cel "steps.rightAfterExhausted.result"
+        issueAfterExhausted: !cel "steps.issueAfterExhausted.result.issued"
+        bobWrong: !cel "steps.bobWrong.result"
+        bobRight: !cel "steps.bobRight.result"
+        unknownSubject: !cel "steps.unknownSubject.result"
+      expected:
+        issued: { issued: true, tokenLength: 43 }
+        reissued: { issued: false, waits: true }
+        otherHolder: { redeemed: false, reason: holderMismatch }
+        noHolder: { redeemed: false, reason: holderMismatch }
+        guess: { redeemed: false, reason: unknown }
+        rowsHoldNoSecret: true
+        rowCount: 2
+        onOtherReplica: { redeemed: true, subject: ann@acme.test, data: { returnTo: /settings } }
+        redeemed: { redeemed: false, reason: unknown }
+        again: { redeemed: false, reason: unknown }
+        afterRedeem: true
+        revoked: { revoked: true }
+        revokedLinkOpens: { redeemed: false, reason: unknown }
+        revokedTwice: { revoked: false }
+        afterRevoke: true
+        second: true
+        firstAfterReissue: { redeemed: false, reason: unknown }
+        secondRedeems: { redeemed: true, subject: bob@acme.test, data: null }
+        expired: { redeemed: false, reason: unknown }
+        dataMissing: ERR_INPUT_INVALID
+        dataGiven: true
+        code: { issued: true, digits: true }
+        codeOtherHolderRight: { redeemed: false, reason: holderMismatch }
+        codeOtherHolderWrong: { redeemed: false, reason: holderMismatch }
+        attempts:
+          - { redeemed: false, reason: mismatch }
+          - { redeemed: false, reason: mismatch }
+          - { redeemed: false, reason: mismatch }
+          - { redeemed: false, reason: mismatch }
+          - { redeemed: false, reason: exhausted }
+        rightAfterExhausted: { redeemed: false, reason: unknown }
+        issueAfterExhausted: false
+        bobWrong: { redeemed: false, reason: mismatch }
+        bobRight: { redeemed: true, subject: carol@acme.test, data: null }
+        unknownSubject: { redeemed: false, reason: unknown }

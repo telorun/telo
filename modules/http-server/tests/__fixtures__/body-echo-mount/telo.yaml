@@ -1,0 +1,14 @@
+# A mount of another module that parses its own content type, reached by the
+# body the server's access stage already read.
+kind: Telo.Library
+metadata:
+  name: BodyEchoMount
+  version: 1.0.0
+  description: Test fixture of a mount kind that registers its own content-type parser and answers the bytes it parsed.
+exports: { kinds: [Echo] }
+---
+kind: Telo.Definition
+metadata: { name: Echo, description: "Answers `POST <prefix>/echo` of `application/x-echo` with the body it parsed, as text." }
+capability: Telo.Mount
+controllers: [pkg:telo/local/js?path=./nodejs/body-echo-mount.mjs&local_path=./nodejs/src/index.ts#EchoController]
+schema: { type: object, additionalProperties: false, properties: {} }

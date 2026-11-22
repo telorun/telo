@@ -3117,7 +3117,7 @@ second record.
 Authentication, an origin allowlist or a tenant check is declared ONCE per
 mount, never repeated in every route's `inputs:`: an `Http.Server` mount entry
 takes a `guard: { invoke, inputs, catches }`. The guard runs for every request
-matching a route of THAT mount, after CORS and before the body is read. A
+matching a route of THAT mount, after CORS and before the body is parsed. A
 normal return lets the request through (the value is discarded); a throw
 refuses it, rendered by `guard.catches` and then the server's `catches:`, and a
 throw nothing claims is a 500 — a failing guard never lets a request in. Its
@@ -3175,16 +3175,23 @@ Prefer this over a hand-written guard. A mount entry of `Http.Server` takes
 `authentication: { verifiers: [{ verifier: !ref v, from: <source> }], anonymous: deny | allow }`
 and `authorization: { policy: !ref p, action: !cel "request.method + ' ' + request.path" }`;
 it covers every mount kind (`Http.Api`, `Http.Static`, `Mcp.HttpEndpoint`) and runs
-before the body is read. A route of an `Http.Api` may override either key.
+before the body is parsed. A route of an `Http.Api` may override either key.
 
 - **Sources read, verifiers judge.** A source is written inline in `from:` and names
   where the credential is: `Http.FromAuthorization { schemes }`, `FromBasic`,
   `FromHeader { header, scheme }`, `FromQuery`, `FromCookie { cookie, scheme }`,
-  `FromClientCertificate`, `FromForwardedIdentity` (a trusted proxy; server mounts only).
+  `FromClientCertificate`, `FromForwardedIdentity` (a trusted proxy; server mounts only),
+  and two for signed requests, `FromBodySignature { signature, timestamp?, base, scheme }`
+  (webhooks: an HMAC in a header over the body) and `FromMessageSignature { label?,
+  components, scheme }` (RFC 9421). A source that needs the body publishes `readsBody`:
+  the server then buffers every request's body (bounded by `maxBodyBytes`) before the
+  sources run, and every parser reads the verified bytes.
   A verifier (`Auth.Verifier`) turns the presentation into an `Auth.Principal` or a
   refusal: `AuthBearer.Jwt` (keys from `Jose.KeySet` / `Jose.RemoteKeySet`, `algorithms`
   and `audience: !cel "[resource]"` required), `AuthBearer.Introspection`,
-  `ApiKey.Verifier`, `Session.Verifier`, `AuthBasic.Verifier`, `Auth.TrustedHeader`.
+  `ApiKey.Verifier`, `Session.Verifier`, `AuthBasic.Verifier`, `Auth.TrustedHeader`,
+  `AuthSignature.Verifier` (the signature sources only: `keys` of `{ id?, subject,
+  algorithm: hmac-sha256 | ed25519, secret | jwk }`, optional `maxSignatureAge`).
   The first credential presented decides: a refused one is a 401 and never falls
   through or becomes anonymous. A source the verifier cannot take is
   `CONTRACT_INPUTS_MISMATCH`.
@@ -3198,7 +3205,7 @@ before the body is read. A route of an `Http.Api` may override either key.
   `principal`, `action`, `resource`, `context`) answers `{ allow, reason?,
   requiredScopes? }`; a denial is a 403 and naming `requiredScopes` makes it an RFC 6750
   `insufficient_scope` challenge. Refusals (`ERR_HTTP_UNAUTHENTICATED`,
-  `ERR_HTTP_FORBIDDEN`, `ERR_HTTP_CROSS_ORIGIN_REFUSED`, `ERR_HTTP_ACCESS_CHECK_UNAVAILABLE`)
+  `ERR_HTTP_AUTHENTICATION_THROTTLED`, `ERR_HTTP_FORBIDDEN`, `ERR_HTTP_CROSS_ORIGIN_REFUSED`, `ERR_HTTP_ACCESS_CHECK_UNAVAILABLE`)
   go through the route, router and server `catches:`; a verifier, source or policy that
   throws a coded error is a 503, never an allow.
 - **MCP and discovery.** A mount with `protectedResource: { scopesSupported, resourceName }`
@@ -3224,6 +3231,25 @@ before the body is read. A route of an `Http.Api` may override either key.
   `Identity.DeclaredUsers` (`Crypto.PasswordHash` hashes from `secrets:`), wrapped by
   `Protection.PasswordThrottle` on a `RateLimit.Budget` to answer `throttled` after
   repeated failures.
+- **Throttling per client.** `authentication: { throttle: { budget, key? } }` (a
+  `RateLimit.Budget`; `key` defaults to `request.ip`) reserves one attempt before a
+  verifier runs or a body is read and settles it back on success, so it counts refused
+  guesses per client across every verifier: the 429 is `ERR_HTTP_AUTHENTICATION_THROTTLED`
+  with `Retry-After`. `Protection.PasswordThrottle` stays the per-account half.
+- **Webhooks.** Verify with `Http.FromBodySignature` + `AuthSignature.Verifier` on the
+  mount, then make the route handler an `Idempotency.Once` keyed on the provider's
+  delivery id: providers redeliver signed requests, and the verifier does not refuse
+  repeats. A route that catches everything must name `ERR_HTTP_UNAUTHENTICATED` first,
+  or the catch-all renders the refusal as a 500.
+- **Single-use links and codes** (password reset, email verification, magic link,
+  invitation, typed code) are `OneTime.Links` / `OneTime.Codes` over a `KvStore.Store`
+  (durable `name`, `expiresIn`, `reissueAfter`, optional `dataType`) with the operations
+  `OneTime.Issue` / `RedeemLink` / `RedeemCode` / `Revoke`, each naming its set in
+  `tokens`. Outcomes are closed unions read with `.?member.orValue(…)`: `{ issued,
+  token, expiresAt }` or `{ issued: false, retryAfter }`; `{ redeemed: true, subject,
+  data }` or `{ redeemed: false, reason }` (`unknown`, `holderMismatch`, `mismatch`,
+  `exhausted`). An app that hides whether an account exists calls `OneTime.Issue` for
+  every subject it is asked about, mails only real accounts, and answers the same either way.
 - A revoked token is `AuthBearer.Revoke { jti, until }` into the verifier's
   `revocation` store; run the JWKS the tests need from an `Http.Server` and sign with
   `Jose.Sign`.

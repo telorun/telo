@@ -1,0 +1,255 @@
+kind: Telo.Application
+metadata:
+  name: AuthSignatureVerifierTest
+  version: 1.0.0
+  description: |
+    AuthSignature.Verifier accepts an HMAC signature under the key it selects and answers the key's
+    subject; refuses one changed byte, an algorithm claim that is not the key's, an unknown key id,
+    and (with maxSignatureAge written) a signature with no or an old `created`; refuses a passed
+    `expires`; tries each id-less key in turn for a rotation; and accepts the RFC 9421 Ed25519 vector.
+imports: { AuthSignature: ../, Crypto: ../../crypto, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: AuthSignature.Verifier
+metadata: { name: plain }
+keys:
+  - { id: partner, subject: partner, algorithm: hmac-sha256, secret: s3cret }
+  - { subject: legacy, algorithm: hmac-sha256, secret: old-secret }
+  - { subject: current, algorithm: hmac-sha256, secret: new-secret }
+---
+kind: AuthSignature.Verifier
+metadata: { name: fresh }
+maxSignatureAge: 5m
+keys:
+  - { subject: stripe, algorithm: hmac-sha256, secret: whsec }
+---
+kind: AuthSignature.Verifier
+metadata: { name: ed }
+keys:
+  - id: test-key-ed25519
+    subject: rfc
+    algorithm: ed25519
+    jwk: { kty: OKP, crv: Ed25519, x: JrQLj5P_89iXES9-vFgrIy29clF9CC_oPPsw3c5D0bs }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: partnerMac
+    invoke: { kind: Crypto.Hmac }
+    inputs: { op: sign, key: s3cret, input: payload, encoding: base64 }
+  - name: legacyMac
+    invoke: { kind: Crypto.Hmac }
+    inputs: { op: sign, key: old-secret, input: payload, encoding: base64 }
+  - name: currentMac
+    invoke: { kind: Crypto.Hmac }
+    inputs: { op: sign, key: new-secret, input: payload, encoding: base64 }
+  - name: stripeMac
+    invoke: { kind: Crypto.Hmac }
+    inputs: { op: sign, key: whsec, input: payload, encoding: base64 }
+
+  - name: accepted
+    invoke: !ref plain
+    inputs:
+      presentation:
+        type: signature
+        base: !cel "bytes('payload')"
+        signatures: [!cel "bytesFromBase64(steps.partnerMac.result.value)"]
+        keyId: partner
+        algorithm: hmac-sha256
+      confirmation: {}
+      resource: null
+  - name: changedByte
+    invoke: !ref plain
+    inputs:
+      presentation:
+        type: signature
+        base: !cel "bytes('payloae')"
+        signatures: [!cel "bytesFromBase64(steps.partnerMac.result.value)"]
+        keyId: partner
+      confirmation: {}
+      resource: null
+  - name: algorithmClaim
+    invoke: !ref plain
+    inputs:
+      presentation:
+        type: signature
+        base: !cel "bytes('payload')"
+        signatures: [!cel "bytesFromBase64(steps.partnerMac.result.value)"]
+        keyId: partner
+        algorithm: ed25519
+      confirmation: {}
+      resource: null
+  - name: unknownKey
+    invoke: !ref plain
+    inputs:
+      presentation:
+        type: signature
+        base: !cel "bytes('payload')"
+        signatures: [!cel "bytesFromBase64(steps.partnerMac.result.value)"]
+        keyId: nobody
+      confirmation: {}
+      resource: null
+  # A signature naming no key is tried against the keys without an id only; `partner` has one.
+  - name: idlessSkipsKeyedKey
+    invoke: !ref plain
+    inputs:
+      presentation:
+        type: signature
+        base: !cel "bytes('payload')"
+        signatures: [!cel "bytesFromBase64(steps.partnerMac.result.value)"]
+      confirmation: {}
+      resource: null
+  - name: rotatedOld
+    invoke: !ref plain
+    inputs:
+      presentation:
+        type: signature
+        base: !cel "bytes('payload')"
+        signatures: [!cel "bytesFromBase64(steps.legacyMac.result.value)"]
+      confirmation: {}
+      resource: null
+  - name: rotatedNew
+    invoke: !ref plain
+    inputs:
+      presentation:
+        type: signature
+        base: !cel "bytes('payload')"
+        signatures: [!cel "bytes('not a signature')", !cel "bytesFromBase64(steps.currentMac.result.value)"]
+      confirmation: {}
+      resource: null
+
+  - name: noCreated
+    invoke: !ref fresh
+    inputs:
+      presentation:
+        type: signature
+        base: !cel "bytes('payload')"
+        signatures: [!cel "bytesFromBase64(steps.stripeMac.result.value)"]
+      confirmation: {}
+      resource: null
+  - name: tooOld
+    invoke: !ref fresh
+    inputs:
+      presentation:
+        type: signature
+        base: !cel "bytes('payload')"
+        signatures: [!cel "bytesFromBase64(steps.stripeMac.result.value)"]
+        created: !cel "now() - duration('600s')"
+      confirmation: {}
+      resource: null
+  # 320s is past the 5m age by 20s, inside the 30s tolerance.
+  - name: withinTolerance
+    invoke: !ref fresh
+    inputs:
+      presentation:
+        type: signature
+        base: !cel "bytes('payload')"
+        signatures: [!cel "bytesFromBase64(steps.stripeMac.result.value)"]
+        created: !cel "now() - duration('320s')"
+      confirmation: {}
+      resource: null
+  - name: justCreated
+    invoke: !ref fresh
+    inputs:
+      presentation:
+        type: signature
+        base: !cel "bytes('payload')"
+        signatures: [!cel "bytesFromBase64(steps.stripeMac.result.value)"]
+        created: !cel "now()"
+      confirmation: {}
+      resource: null
+  - name: expired
+    invoke: !ref plain
+    inputs:
+      presentation:
+        type: signature
+        base: !cel "bytes('payload')"
+        signatures: [!cel "bytesFromBase64(steps.legacyMac.result.value)"]
+        expires: !cel "now() - duration('120s')"
+      confirmation: {}
+      resource: null
+  - name: notYetExpired
+    invoke: !ref plain
+    inputs:
+      presentation:
+        type: signature
+        base: !cel "bytes('payload')"
+        signatures: [!cel "bytesFromBase64(steps.legacyMac.result.value)"]
+        expires: !cel "now() + duration('120s')"
+      confirmation: {}
+      resource: null
+
+  # RFC 9421 Appendix B.2.6, signed with the B.1.4 key.
+  - name: rfcEd25519
+    invoke: !ref ed
+    inputs:
+      presentation:
+        type: signature
+        base: !cel "bytesFromBase64('ImRhdGUiOiBUdWUsIDIwIEFwciAyMDIxIDAyOjA3OjU1IEdNVAoiQG1ldGhvZCI6IFBPU1QKIkBwYXRoIjogL2ZvbwoiQGF1dGhvcml0eSI6IGV4YW1wbGUuY29tCiJjb250ZW50LXR5cGUiOiBhcHBsaWNhdGlvbi9qc29uCiJjb250ZW50LWxlbmd0aCI6IDE4CiJAc2lnbmF0dXJlLXBhcmFtcyI6ICgiZGF0ZSIgIkBtZXRob2QiICJAcGF0aCIgIkBhdXRob3JpdHkiICJjb250ZW50LXR5cGUiICJjb250ZW50LWxlbmd0aCIpO2NyZWF0ZWQ9MTYxODg4NDQ3MztrZXlpZD0idGVzdC1rZXktZWQyNTUxOSI=')"
+        signatures: [!cel "bytesFromBase64('wqcAqbmYJ2ji2glfAMaRy4gruYYnx2nEFN2HN6jrnDnQCK1u02Gb04v9EDgwUPiu4A0w6vuQv5lIp5WPpBKRCw==')"]
+        keyId: test-key-ed25519
+        algorithm: ed25519
+        created: "2021-04-20T02:07:53Z"
+      confirmation: {}
+      resource: null
+  - name: rfcWithoutClaims
+    invoke: !ref ed
+    inputs:
+      presentation:
+        type: signature
+        base: !cel "bytesFromBase64('ImRhdGUiOiBUdWUsIDIwIEFwciAyMDIxIDAyOjA3OjU1IEdNVAoiQG1ldGhvZCI6IFBPU1QKIkBwYXRoIjogL2ZvbwoiQGF1dGhvcml0eSI6IGV4YW1wbGUuY29tCiJjb250ZW50LXR5cGUiOiBhcHBsaWNhdGlvbi9qc29uCiJjb250ZW50LWxlbmd0aCI6IDE4CiJAc2lnbmF0dXJlLXBhcmFtcyI6ICgiZGF0ZSIgIkBtZXRob2QiICJAcGF0aCIgIkBhdXRob3JpdHkiICJjb250ZW50LXR5cGUiICJjb250ZW50LWxlbmd0aCIpO2NyZWF0ZWQ9MTYxODg4NDQ3MztrZXlpZD0idGVzdC1rZXktZWQyNTUxOSI=')"
+        signatures: [!cel "bytesFromBase64('wqcAqbmYJ2ji2glfAMaRy4gruYYnx2nEFN2HN6jrnDnQCK1u02Gb04v9EDgwUPiu4A0w6vuQv5lIp5WPpBKRCw==')"]
+        keyId: test-key-ed25519
+      confirmation: {}
+      resource: null
+  - name: verdicts
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        accepted: !cel "steps.accepted.result.principal"
+        changedByte: !cel "steps.changedByte.result"
+        algorithmClaim: !cel "steps.algorithmClaim.result"
+        unknownKey: !cel "steps.unknownKey.result"
+        idlessSkipsKeyedKey: !cel "steps.idlessSkipsKeyedKey.result"
+        rotatedOld: !cel "steps.rotatedOld.result.principal.subject"
+        rotatedNew: !cel "steps.rotatedNew.result.principal.subject"
+        noCreated: !cel "steps.noCreated.result"
+        tooOld: !cel "steps.tooOld.result"
+        withinTolerance: !cel "steps.withinTolerance.result.principal.subject"
+        justCreated: !cel "steps.justCreated.result.principal.subject"
+        expired: !cel "steps.expired.result"
+        notYetExpired: !cel "steps.notYetExpired.result.principal.subject"
+        rfcEd25519: !cel "steps.rfcEd25519.result.principal.subject"
+        rfcWithoutClaims: !cel "steps.rfcWithoutClaims.result.principal.subject"
+        challenges: !cel "resources.plain.challenges"
+      expected:
+        accepted:
+          subject: partner
+          issuer: null
+          kind: service
+          claims: {}
+          scopes: []
+          roles: []
+          permissions: []
+          org: null
+          amr: []
+          acr: null
+          sessionId: null
+          authenticatedAt: null
+          via: plain
+        changedByte: { refused: true, reason: signature, challenge: null }
+        algorithmClaim: { refused: true, reason: algorithm, challenge: null }
+        unknownKey: { refused: true, reason: unknownKey, challenge: null }
+        idlessSkipsKeyedKey: { refused: true, reason: signature, challenge: null }
+        rotatedOld: legacy
+        rotatedNew: current
+        noCreated: { refused: true, reason: stale, challenge: null }
+        tooOld: { refused: true, reason: stale, challenge: null }
+        withinTolerance: stripe
+        justCreated: stripe
+        expired: { refused: true, reason: expired, challenge: null }
+        notYetExpired: legacy
+        rfcEd25519: rfc
+        rfcWithoutClaims: rfc
+        challenges: []

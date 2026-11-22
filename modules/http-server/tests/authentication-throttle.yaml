@@ -1,0 +1,489 @@
+kind: Telo.Application
+metadata:
+  name: AuthenticationThrottleTest
+  version: 1.0.0
+  description: |
+    A mount's `authentication.throttle` counts refused credentials per client
+    address: concurrent wrong keys reach the verifier at most `limit` times, the
+    next is a 429 with `Retry-After` and no verifier call, a request with no
+    credential or a valid one spends nothing, and another address is unaffected.
+    A failing verifier store spends nothing and a failing budget store is a 503
+    that never reaches the verifier. A route's throttle replaces the mount's,
+    a budget used by two mounts is one counter, a route's `catches:` renders the 429, and
+    behind a body-reading source the budget is reserved before the body is read.
+include: [./__fixtures__/authentication/keys.yaml]
+imports:
+  Http: ../
+  HttpClient: ../../http-client
+  Assert: ../../assert
+  Run: ../../run
+  AuthBearer: ../../auth-bearer
+  AuthSignature: ../../auth-signature
+  Jose: ../../jose
+  RateLimit: ../../rate-limit
+  CacheMemory: ../../cache-memory
+  CacheRedis: ../../cache-redis
+targets:
+  - !ref test
+  - !ref expectEvents
+---
+kind: CacheMemory.Store
+metadata: { name: counters }
+---
+kind: CacheRedis.Store
+metadata: { name: downStore }
+url: "redis://127.0.0.1:6391"
+connectTimeout: "300ms"
+---
+kind: RateLimit.Budget
+metadata: { name: guessBudget }
+store: !ref counters
+limit: 5
+window: 60s
+---
+kind: RateLimit.Budget
+metadata: { name: noCredBudget }
+store: !ref counters
+limit: 1
+window: 60s
+---
+kind: RateLimit.Budget
+metadata: { name: downBudget }
+store: !ref counters
+limit: 1
+window: 60s
+---
+kind: RateLimit.Budget
+metadata: { name: storeDownBudget }
+store: !ref downStore
+limit: 5
+window: 60s
+---
+kind: RateLimit.Budget
+metadata: { name: mountBudget }
+store: !ref counters
+limit: 2
+window: 60s
+---
+kind: RateLimit.Budget
+metadata: { name: routeBudget }
+store: !ref counters
+limit: 3
+window: 60s
+---
+kind: RateLimit.Budget
+metadata: { name: caughtBudget }
+store: !ref counters
+limit: 1
+window: 60s
+---
+# One budget referenced from two mounts is one counter.
+kind: RateLimit.Budget
+metadata: { name: sharedBudget }
+store: !ref counters
+limit: 5
+window: 60s
+---
+kind: RateLimit.Budget
+metadata: { name: hookBudget }
+store: !ref counters
+limit: 2
+window: 60s
+---
+kind: AuthBearer.Jwt
+metadata: { name: guessVerifier }
+keys: !ref issuerKeys
+issuer: https://login.test
+algorithms: [ES256]
+audience: !cel "[resource]"
+---
+kind: AuthBearer.Jwt
+metadata: { name: noCredVerifier }
+keys: !ref issuerKeys
+issuer: https://login.test
+algorithms: [ES256]
+audience: !cel "[resource]"
+---
+kind: AuthBearer.Jwt
+metadata: { name: downVerifier }
+keys: { kind: Jose.RemoteKeySet, url: "http://127.0.0.1:9486/jwks.json", timeout: 500ms }
+issuer: https://login.test
+algorithms: [ES256]
+audience: !cel "[resource]"
+---
+kind: AuthBearer.Jwt
+metadata: { name: storeDownVerifier }
+keys: !ref issuerKeys
+issuer: https://login.test
+algorithms: [ES256]
+audience: !cel "[resource]"
+---
+kind: AuthBearer.Jwt
+metadata: { name: sharedVerifier }
+keys: !ref issuerKeys
+issuer: https://login.test
+algorithms: [ES256]
+audience: !cel "[resource]"
+---
+kind: Http.FromAuthorization
+metadata: { name: bearer }
+schemes: [Bearer]
+---
+kind: Http.FromBodySignature
+metadata: { name: hookSource }
+scheme: GitHub
+signature: { header: X-Hub-Signature-256, pattern: "^sha256=([0-9a-f]+)$", encoding: hex }
+base: [{ type: body }]
+---
+kind: AuthSignature.Verifier
+metadata: { name: hookVerifier }
+keys: [{ subject: github, algorithm: hmac-sha256, secret: github-secret }]
+---
+kind: Jose.Sign
+metadata: { name: issue }
+keys: !ref issuerKeys
+type: at+jwt
+issuer: https://login.test
+audience: http://127.0.0.1:28546/guess
+---
+kind: Http.Api
+metadata: { name: meApi }
+routes:
+  - request: { path: /me, method: GET }
+    returns:
+      - { status: 200, content: { application/json: { body: { ok: true } } } }
+---
+kind: Http.Api
+metadata: { name: overrideApi }
+routes:
+  - request: { path: /inherits, method: GET }
+    returns: [{ status: 204 }]
+  - request: { path: /own, method: GET }
+    authentication:
+      throttle:
+        budget: !ref routeBudget
+        key: !interpolate "${{ request.ip }}/own"
+    returns: [{ status: 204 }]
+---
+kind: Http.Api
+metadata: { name: caughtApi }
+routes:
+  - request: { path: /me, method: GET }
+    returns: [{ status: 204 }]
+    catches:
+      - when: !cel "error.code == 'ERR_HTTP_AUTHENTICATION_THROTTLED'"
+        status: 429
+        content: { application/json: { body: { slowDown: true, wait: !cel "error.data.retryAfter > 0" } } }
+---
+kind: Http.Api
+metadata: { name: hookApi }
+routes:
+  - request: { path: /in, method: POST }
+    maxBodyBytes: 64
+    returns: [{ status: 204 }]
+---
+kind: HttpClient.Client
+metadata: { name: client }
+baseUrl: http://127.0.0.1:28546
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref client
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 28546 }
+    trustProxy: true
+    mounts:
+      - path: /guess
+        mount: !ref meApi
+        authentication:
+          throttle: { budget: !ref guessBudget }
+          verifiers: [{ verifier: !ref guessVerifier, from: !ref bearer }]
+      - path: /nocred
+        mount: !ref meApi
+        authentication:
+          throttle: { budget: !ref noCredBudget }
+          verifiers: [{ verifier: !ref noCredVerifier, from: !ref bearer }]
+      - path: /down
+        mount: !ref meApi
+        authentication:
+          throttle: { budget: !ref downBudget }
+          verifiers: [{ verifier: !ref downVerifier, from: !ref bearer }]
+      - path: /storedown
+        mount: !ref meApi
+        authentication:
+          throttle: { budget: !ref storeDownBudget }
+          verifiers: [{ verifier: !ref storeDownVerifier, from: !ref bearer }]
+      - path: /override
+        mount: !ref overrideApi
+        authentication:
+          throttle: { budget: !ref mountBudget }
+          verifiers: [{ verifier: !ref sharedVerifier, from: !ref bearer }]
+      - path: /caught
+        mount: !ref caughtApi
+        authentication:
+          throttle: { budget: !ref caughtBudget }
+          verifiers: [{ verifier: !ref sharedVerifier, from: !ref bearer }]
+      - path: /a
+        mount: !ref meApi
+        authentication:
+          throttle: { budget: !ref sharedBudget }
+          verifiers: [{ verifier: !ref sharedVerifier, from: !ref bearer }]
+      - path: /b
+        mount: !ref meApi
+        authentication:
+          throttle: { budget: !ref sharedBudget }
+          verifiers: [{ verifier: !ref sharedVerifier, from: !ref bearer }]
+      - path: /hook
+        mount: !ref hookApi
+        authentication:
+          throttle: { budget: !ref hookBudget }
+          verifiers: [{ verifier: !ref hookVerifier, from: !ref hookSource }]
+targets:
+  - !ref server
+steps:
+  - name: token
+    invoke: !ref issue
+    inputs: { subject: alice }
+
+  # 50 concurrent wrong keys from one address: exactly `limit` reach the verifier.
+  - name: burst
+    invoke:
+      kind: Run.Projection
+      collection: !cel "range(50)"
+      concurrency: 50
+      steps:
+        - name: wrong
+          invoke: !ref call
+          inputs: { url: /guess/me, headers: { x-forwarded-for: 10.0.0.1, authorization: Bearer wrong } }
+      outputs: { status: !cel "steps.wrong.result.status" }
+  - name: burstNext
+    invoke: !ref call
+    inputs: { url: /guess/me, headers: { x-forwarded-for: 10.0.0.1, authorization: Bearer wrong } }
+  # Another address is unaffected, for a wrong key and for a right one.
+  - name: otherWrong
+    invoke: !ref call
+    inputs: { url: /guess/me, headers: { x-forwarded-for: 10.0.0.2, authorization: Bearer wrong } }
+  - name: otherRight
+    invoke: !ref call
+    inputs: { url: /guess/me, headers: { x-forwarded-for: 10.0.0.2, authorization: !interpolate "Bearer ${{ steps.token.result.token }}" } }
+  # Ten right keys then five wrong ones: successes spent nothing, so the five wrong are all 401 and the sixth is 429.
+  - name: successes
+    invoke:
+      kind: Run.Projection
+      collection: !cel "range(10)"
+      inputType: { kind: Telo.JsonSchema, schema: { type: object, required: [token], properties: { token: { type: string } } } }
+      steps:
+        - name: right
+          invoke: !ref call
+          inputs: { url: /guess/me, headers: { x-forwarded-for: 10.0.0.3, authorization: !interpolate "Bearer ${{ inputs.token }}" } }
+      outputs: { status: !cel "steps.right.result.status" }
+    inputs: { token: !cel "steps.token.result.token" }
+  - name: thenWrong
+    invoke:
+      kind: Run.Projection
+      collection: !cel "range(6)"
+      steps:
+        - name: wrong
+          invoke: !ref call
+          inputs: { url: /guess/me, headers: { x-forwarded-for: 10.0.0.3, authorization: Bearer wrong } }
+      outputs: { status: !cel "steps.wrong.result.status" }
+
+  # No credential spends nothing: 50 challenged requests, then a wrong key is still a 401.
+  - name: nobody
+    invoke:
+      kind: Run.Projection
+      collection: !cel "range(50)"
+      steps:
+        - name: bare
+          invoke: !ref call
+          inputs: { url: /nocred/me, headers: { x-forwarded-for: 10.0.0.4 } }
+      outputs: { status: !cel "steps.bare.result.status" }
+  - name: nobodyThenWrong
+    invoke: !ref call
+    inputs: { url: /nocred/me, headers: { x-forwarded-for: 10.0.0.4, authorization: Bearer wrong } }
+
+  # A verifier that cannot reach its keys is a 503 and spends nothing (limit 1, so a spent budget would be a 429).
+  - name: down1
+    invoke: !ref call
+    inputs: { url: /down/me, headers: { x-forwarded-for: 10.0.0.5, authorization: !interpolate "Bearer ${{ steps.token.result.token }}" } }
+  - name: down2
+    invoke: !ref call
+    inputs: { url: /down/me, headers: { x-forwarded-for: 10.0.0.5, authorization: !interpolate "Bearer ${{ steps.token.result.token }}" } }
+  # A budget store that cannot be reached is a 503 and the verifier is not called.
+  - name: storeDown
+    invoke: !ref call
+    inputs: { url: /storedown/me, headers: { x-forwarded-for: 10.0.0.6, authorization: Bearer wrong } }
+
+  # A route's throttle replaces the mount's: its own budget, its own suffixed key.
+  - name: override
+    invoke:
+      kind: Run.Projection
+      collection: !cel "['/override/inherits', '/override/inherits', '/override/inherits', '/override/own', '/override/own', '/override/own', '/override/own']"
+      steps:
+        - name: wrong
+          invoke: !ref call
+          inputs: { url: !cel "item", headers: { x-forwarded-for: 10.0.0.7, authorization: Bearer wrong } }
+      outputs: { status: !cel "steps.wrong.result.status" }
+
+  # The 429 is rendered by the route's own catch entry.
+  - name: caught
+    invoke:
+      kind: Run.Projection
+      collection: !cel "range(2)"
+      steps:
+        - name: wrong
+          invoke: !ref call
+          inputs: { url: /caught/me, headers: { x-forwarded-for: 10.0.0.8, authorization: Bearer wrong } }
+      outputs: { status: !cel "steps.wrong.result.status", body: !cel "steps.wrong.result.body" }
+
+  # One budget behind two mounts: 3 failures on /a plus 2 on /b make the next a 429 on either.
+  - name: shared
+    invoke:
+      kind: Run.Projection
+      collection: !cel "['/a/me', '/a/me', '/a/me', '/b/me', '/b/me', '/a/me', '/b/me']"
+      steps:
+        - name: wrong
+          invoke: !ref call
+          inputs: { url: !cel "item", headers: { x-forwarded-for: 10.0.0.9, authorization: Bearer wrong } }
+      outputs: { status: !cel "steps.wrong.result.status" }
+
+  # Behind a body-reading source the budget is reserved before the body is read.
+  - name: hookBadSignature
+    invoke:
+      kind: Run.Projection
+      collection: !cel "range(3)"
+      steps:
+        - name: wrong
+          invoke: !ref call
+          inputs:
+            url: /hook/in
+            method: POST
+            headers: { x-forwarded-for: 10.0.1.1, content-type: application/json, x-hub-signature-256: "sha256=00" }
+            body: '{"action":"opened","number":1}'
+      outputs: { status: !cel "steps.wrong.result.status" }
+  - name: hookGoodSignatureWhileSpent
+    invoke: !ref call
+    inputs:
+      url: /hook/in
+      method: POST
+      headers: { x-forwarded-for: 10.0.1.1, content-type: application/json, x-hub-signature-256: "sha256=c57f9fc233596066ac310447db453813c2856df0026fd45c64221eae38ebfad1" }
+      body: '{"action":"opened","number":1}'
+  - name: hookGood
+    invoke:
+      kind: Run.Projection
+      collection: !cel "range(3)"
+      steps:
+        - name: right
+          invoke: !ref call
+          inputs:
+            url: /hook/in
+            method: POST
+            headers: { x-forwarded-for: 10.0.1.2, content-type: application/json, x-hub-signature-256: "sha256=c57f9fc233596066ac310447db453813c2856df0026fd45c64221eae38ebfad1" }
+            body: '{"action":"opened","number":1}'
+      outputs: { status: !cel "steps.right.result.status" }
+  - name: hookOverBound
+    invoke:
+      kind: Run.Projection
+      collection: !cel "range(3)"
+      steps:
+        - name: large
+          invoke: !ref call
+          inputs:
+            url: /hook/in
+            method: POST
+            headers: { x-forwarded-for: 10.0.1.3, content-type: application/json }
+            body: '{"padding":"well over the sixty-four bytes this route accepts, for sure"}'
+      outputs: { status: !cel "steps.large.result.status" }
+  - name: hookNoSignature
+    invoke:
+      kind: Run.Projection
+      collection: !cel "range(3)"
+      steps:
+        - name: bare
+          invoke: !ref call
+          inputs:
+            url: /hook/in
+            method: POST
+            headers: { x-forwarded-for: 10.0.1.4, content-type: application/json }
+            body: '{"action":"opened","number":1}'
+      outputs: { status: !cel "steps.bare.result.status" }
+  - name: hookGoodAfterBare
+    invoke: !ref call
+    inputs:
+      url: /hook/in
+      method: POST
+      headers: { x-forwarded-for: 10.0.1.4, content-type: application/json, x-hub-signature-256: "sha256=c57f9fc233596066ac310447db453813c2856df0026fd45c64221eae38ebfad1" }
+      body: '{"action":"opened","number":1}'
+
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        burst: !cel "{'unauthorized': steps.burst.result.filter(r, r.status == 401).size(), 'throttled': steps.burst.result.filter(r, r.status == 429).size()}"
+        burstNext:
+          status: !cel "steps.burstNext.result.status"
+          code: !cel "steps.burstNext.result.body.code"
+          retryAfterIsData: !cel "steps.burstNext.result.headers['retry-after'] == string(steps.burstNext.result.body.data.retryAfter)"
+          retryAfterPositive: !cel "steps.burstNext.result.body.data.retryAfter > 0"
+        otherWrong: !cel "steps.otherWrong.result.status"
+        otherRight: !cel "steps.otherRight.result.status"
+        successes: !cel "steps.successes.result.map(r, r.status)"
+        thenWrong: !cel "steps.thenWrong.result.map(r, r.status)"
+        nobody: !cel "steps.nobody.result.filter(r, r.status == 401).size()"
+        nobodyThenWrong: !cel "steps.nobodyThenWrong.result.status"
+        down: !cel "[steps.down1.result, steps.down2.result].map(r, {'status': r.status, 'stage': r.body.data.stage})"
+        storeDown: !cel "{'status': steps.storeDown.result.status, 'code': steps.storeDown.result.body.code, 'stage': steps.storeDown.result.body.data.stage}"
+        override: !cel "steps.override.result.map(r, r.status)"
+        caught: !cel "steps.caught.result"
+        shared: !cel "steps.shared.result.map(r, r.status)"
+        hookBadSignature: !cel "steps.hookBadSignature.result.map(r, r.status)"
+        hookGoodSignatureWhileSpent: !cel "steps.hookGoodSignatureWhileSpent.result.status"
+        hookGood: !cel "steps.hookGood.result.map(r, r.status)"
+        hookOverBound: !cel "steps.hookOverBound.result.map(r, r.status)"
+        hookNoSignature: !cel "steps.hookNoSignature.result.map(r, r.status)"
+        hookGoodAfterBare: !cel "steps.hookGoodAfterBare.result.status"
+      expected:
+        burst: { unauthorized: 5, throttled: 45 }
+        burstNext: { status: 429, code: ERR_HTTP_AUTHENTICATION_THROTTLED, retryAfterIsData: true, retryAfterPositive: true }
+        otherWrong: 401
+        otherRight: 200
+        successes: [200, 200, 200, 200, 200, 200, 200, 200, 200, 200]
+        thenWrong: [401, 401, 401, 401, 401, 429]
+        nobody: 50
+        nobodyThenWrong: 401
+        down:
+          - { status: 503, stage: verifier }
+          - { status: 503, stage: verifier }
+        storeDown: { status: 503, code: ERR_HTTP_ACCESS_CHECK_UNAVAILABLE, stage: throttle }
+        override: [401, 401, 429, 401, 401, 401, 429]
+        caught:
+          - { status: 401, body: { type: about:blank, title: Unauthorized, status: 401, detail: Authentication is required to access this resource., code: ERR_HTTP_UNAUTHENTICATED, data: { reason: refused } } }
+          - { status: 429, body: { slowDown: true, wait: true } }
+        shared: [401, 401, 401, 401, 401, 429, 429]
+        hookBadSignature: [401, 401, 429]
+        hookGoodSignatureWhileSpent: 429
+        hookGood: [204, 204, 204]
+        hookOverBound: [413, 413, 429]
+        hookNoSignature: [401, 401, 401]
+        hookGoodAfterBare: 204
+---
+# A throttled request reaches no verifier, a request with no credential no budget,
+# and an unreachable budget store no verifier.
+kind: Assert.Events
+metadata: { name: expectEvents }
+filter:
+  - { type: "*.Invoked" }
+  - { type: "*.InvokeRejected" }
+expect:
+  - { event: guessVerifier.Invoked, times: 22 }
+  - { event: noCredVerifier.Invoked, times: 1 }
+  - { event: noCredBudget.Invoked, times: 1 }
+  - { event: downVerifier.InvokeRejected, times: 2 }
+  - { event: storeDownVerifier.Invoked, times: 0 }
+  - { event: hookVerifier.Invoked, times: 6 }

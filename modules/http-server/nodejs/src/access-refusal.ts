@@ -10,6 +10,7 @@ export const ERR_HTTP_UNAUTHENTICATED = "ERR_HTTP_UNAUTHENTICATED";
 export const ERR_HTTP_FORBIDDEN = "ERR_HTTP_FORBIDDEN";
 export const ERR_HTTP_CROSS_ORIGIN_REFUSED = "ERR_HTTP_CROSS_ORIGIN_REFUSED";
 export const ERR_HTTP_ACCESS_CHECK_UNAVAILABLE = "ERR_HTTP_ACCESS_CHECK_UNAVAILABLE";
+export const ERR_HTTP_AUTHENTICATION_THROTTLED = "ERR_HTTP_AUTHENTICATION_THROTTLED";
 
 /** The status each access refusal is answered with when no catch entry claims it. */
 const STATUSES: Readonly<Record<string, number>> = {
@@ -17,17 +18,20 @@ const STATUSES: Readonly<Record<string, number>> = {
   [ERR_HTTP_FORBIDDEN]: 403,
   [ERR_HTTP_CROSS_ORIGIN_REFUSED]: 403,
   [ERR_HTTP_ACCESS_CHECK_UNAVAILABLE]: 503,
+  [ERR_HTTP_AUTHENTICATION_THROTTLED]: 429,
 };
 
 /** A refusal the server raised itself, with the `WWW-Authenticate` value it answers with. */
 interface AccessRefusal {
   readonly status: number;
   readonly wwwAuthenticate?: string;
+  /** Seconds, for a throttled client. */
+  readonly retryAfter?: number;
 }
 
 const refusals = new WeakMap<InvokeError, AccessRefusal>();
 
-/** Creates one of the four refusals; `displayMessage` is the server's declared text. */
+/** Creates one of the five refusals; `displayMessage` is the server's declared text. */
 export function accessRefusal(
   code: string,
   message: string,
@@ -36,6 +40,7 @@ export function accessRefusal(
     displayMessage?: TextRecord;
     cause?: unknown;
     challenges?: readonly Challenge[];
+    retryAfter?: number;
   } = {},
 ): InvokeError {
   const error = new InvokeError(code, message, options.data, {
@@ -43,7 +48,11 @@ export function accessRefusal(
     ...("cause" in options ? { cause: options.cause } : {}),
   });
   const header = options.challenges && options.challenges.length > 0 ? challengeHeader(options.challenges) : undefined;
-  refusals.set(error, { status: STATUSES[code]!, ...(header ? { wwwAuthenticate: header } : {}) });
+  refusals.set(error, {
+    status: STATUSES[code]!,
+    ...(header ? { wwwAuthenticate: header } : {}),
+    ...(options.retryAfter !== undefined ? { retryAfter: options.retryAfter } : {}),
+  });
   return error;
 }
 

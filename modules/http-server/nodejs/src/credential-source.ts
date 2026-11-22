@@ -1,9 +1,12 @@
 import { InvokeError } from "@telorun/sdk";
 
-/** What a credential source reads: the request before its body (`Http.CredentialRequest`). */
+/** What a credential source reads (`Http.CredentialRequest`); `body` only for a source publishing `readsBody`. */
 export interface CredentialRequest {
   readonly method: string;
   readonly path: string;
+  /** The absolute target URI, the query as received. */
+  readonly targetUri: string;
+  readonly body?: Uint8Array;
   readonly host: string;
   /** Values by lower-case header name, a repeated header as a list. */
   readonly headers: Readonly<Record<string, unknown>>;

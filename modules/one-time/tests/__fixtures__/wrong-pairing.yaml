@@ -1,0 +1,202 @@
+kind: Telo.Application
+metadata: { name: PasswordReset }
+imports:
+  Http: ../../../http-server
+  OneTime: ../../../one-time
+  KvStore: ../../../kv-store-memory
+  Console: ../../../console
+targets: [!ref server]
+ports: { http: { env: PORT, protocol: tcp, default: 8080 } }
+---
+kind: KvStore.Store
+metadata: { name: tokenStore }
+---
+kind: OneTime.Links
+metadata: { name: resetLinks }
+name: password-reset
+store: !ref tokenStore
+bytes: 32
+expiresIn: 30m
+reissueAfter: 2m
+dataType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [returnTo]
+    additionalProperties: false
+    properties: { returnTo: { type: string } }
+---
+kind: OneTime.Codes
+metadata: { name: signInCodes }
+name: sign-in-code
+store: !ref tokenStore
+expiresIn: 10m
+digits: 6
+maxAttempts: 5
+---
+kind: Http.Api
+metadata: { name: resetRoutes }
+routes:
+  - request:
+      path: /resets
+      method: POST
+      schema:
+        headers:
+          type: object
+          required: [x-browser-id]
+          properties: { x-browser-id: { type: string } }
+        body:
+          type: object
+          required: [email, returnTo]
+          properties: { email: { type: string }, returnTo: { type: string } }
+    handler:
+      kind: Telo.Sequence
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [email, returnTo, browserId]
+          properties: { email: { type: string }, returnTo: { type: string }, browserId: { type: string } }
+      steps:
+        - name: issue
+          invoke: { kind: OneTime.Issue, tokens: !ref resetLinks }
+          inputs:
+            subject: !cel "inputs.email"
+            holder: !cel "inputs.browserId"
+            data: { returnTo: !cel "inputs.returnTo" }
+        - name: send
+          if: !cel "steps.issue.result.issued"
+          then:
+            - name: mail
+              invoke: !ref Console.writeLine
+              inputs:
+                output: !interpolate "reset link for ${{ inputs.email }}: /reset/${{ steps.issue.result.?token.orValue('') }}"
+    inputs:
+      email: !cel "request.body.email"
+      returnTo: !cel "request.body.returnTo"
+      browserId: !cel "request.headers['x-browser-id']"
+    returns:
+      - when: !cel "result.issue.result.issued"
+        status: 202
+        content: { application/json: { body: { sent: true } } }
+      - when: !cel "!result.issue.result.issued"
+        status: 429
+        headers: { Retry-After: !cel "string(result.issue.result.?retryAfter.orValue(1))" }
+        content: { application/json: { body: { retryAfter: !cel "result.issue.result.?retryAfter.orValue(1)" } } }
+    catches:
+      - when: !cel "error.code == 'ERR_ONE_TIME_STORE_UNAVAILABLE' || error.code == 'ERR_ONE_TIME_CONTENDED'"
+        status: 503
+        headers: { Retry-After: "2" }
+        content: { application/json: { body: { error: try_again } } }
+  - request:
+      path: /resets/redeem
+      method: POST
+      schema:
+        headers:
+          type: object
+          required: [x-browser-id]
+          properties: { x-browser-id: { type: string } }
+        body: { type: object, required: [token], properties: { token: { type: string } } }
+    handler: { kind: OneTime.RedeemLink, tokens: !ref resetLinks }
+    inputs:
+      token: !cel "request.body.token"
+      holder: !cel "request.headers['x-browser-id']"
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+    catches:
+      - when: !cel "error.code == 'ERR_ONE_TIME_STORE_UNAVAILABLE' || error.code == 'ERR_ONE_TIME_CONTENDED'"
+        status: 503
+        headers: { Retry-After: "2" }
+        content: { application/json: { body: { error: try_again } } }
+  - request:
+      path: /resets/cancel
+      method: POST
+      schema:
+        body: { type: object, required: [email], properties: { email: { type: string } } }
+    handler: { kind: OneTime.Revoke, tokens: !ref resetLinks }
+    inputs: { subject: !cel "request.body.email" }
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+    catches:
+      - when: !cel "error.code == 'ERR_ONE_TIME_STORE_UNAVAILABLE' || error.code == 'ERR_ONE_TIME_CONTENDED'"
+        status: 503
+        headers: { Retry-After: "2" }
+        content: { application/json: { body: { error: try_again } } }
+  - request:
+      path: /codes
+      method: POST
+      schema:
+        headers:
+          type: object
+          required: [x-browser-id]
+          properties: { x-browser-id: { type: string } }
+        body: { type: object, required: [email], properties: { email: { type: string } } }
+    handler:
+      kind: Telo.Sequence
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [email, browserId]
+          properties: { email: { type: string }, browserId: { type: string } }
+      steps:
+        # Issued for every email, existing or not, so no answer reveals which accounts exist.
+        - name: issue
+          invoke: { kind: OneTime.Issue, tokens: !ref signInCodes }
+          inputs: { subject: !cel "inputs.email", holder: !cel "inputs.browserId" }
+        - name: send
+          if: !cel "steps.issue.result.issued"
+          then:
+            - name: mail
+              invoke: !ref Console.writeLine
+              inputs:
+                output: !interpolate "sign-in code for ${{ inputs.email }}: ${{ steps.issue.result.?token.orValue('') }}"
+    inputs:
+      email: !cel "request.body.email"
+      browserId: !cel "request.headers['x-browser-id']"
+    returns:
+      - when: !cel "result.issue.result.issued"
+        status: 202
+        content: { application/json: { body: { sent: true } } }
+      - when: !cel "!result.issue.result.issued"
+        status: 429
+        headers: { Retry-After: !cel "string(result.issue.result.?retryAfter.orValue(1))" }
+        content: { application/json: { body: { retryAfter: !cel "result.issue.result.?retryAfter.orValue(1)" } } }
+    catches:
+      - when: !cel "error.code == 'ERR_ONE_TIME_STORE_UNAVAILABLE' || error.code == 'ERR_ONE_TIME_CONTENDED'"
+        status: 503
+        headers: { Retry-After: "2" }
+        content: { application/json: { body: { error: try_again } } }
+  - request:
+      path: /codes/redeem
+      method: POST
+      schema:
+        headers:
+          type: object
+          required: [x-browser-id]
+          properties: { x-browser-id: { type: string } }
+        body:
+          type: object
+          required: [email, code]
+          properties: { email: { type: string }, code: { type: string } }
+    handler: { kind: OneTime.RedeemCode, tokens: !ref resetLinks }
+    inputs:
+      subject: !cel "request.body.email"
+      token: !cel "request.body.code"
+      holder: !cel "request.headers['x-browser-id']"
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+    catches:
+      - when: !cel "error.code == 'ERR_ONE_TIME_STORE_UNAVAILABLE' || error.code == 'ERR_ONE_TIME_CONTENDED'"
+        status: 503
+        headers: { Retry-After: "2" }
+        content: { application/json: { body: { error: try_again } } }
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { port: !cel "ports.http" }
+mounts:
+  - { path: /auth, mount: !ref resetRoutes }

@@ -1,0 +1,322 @@
+kind: Telo.Library
+metadata:
+  name: OneTime
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Security]
+  description: >-
+    Single-use links and typed codes for password resets, email verification,
+    magic links, invitations and one-time sign-in codes. Each token works once,
+    expires, can be bound to the browser that asked for it, and a code stops
+    redeeming after a few wrong guesses. Issuing again replaces the previous
+    token, at most once per waiting period.
+requires: { telo: ">=0.129.0" }
+imports: { KvStore: ../kv-store }
+exports: { kinds: [Tokens, Links, Codes, Issue, RedeemLink, RedeemCode, Revoke] }
+---
+# Normative: docs/*.md.
+kind: Telo.Abstract
+metadata:
+  name: Tokens
+  description: >-
+    A set of single-use tokens kept in durable key/value storage under a stable
+    name. A set holds at most one live token per subject; each expires, and a
+    new one for the same subject is refused until a waiting period has passed.
+capability: Telo.Provider
+schema:
+  type: object
+  required: [store, name, expiresIn]
+  properties:
+    store:
+      title: Store
+      description: >-
+        The durable storage the tokens live in. Share it between replicas so a token works once
+        across all of them; an in-process store forgets every token at a restart.
+      x-telo-ref: { kind: KvStore.Store, use: dependency }
+    name:
+      title: Name
+      description: >-
+        The durable identity of this set: part of every key it writes, so renaming the resource
+        keeps its tokens while a changed name voids them. Two sets claiming one name on one store are refused.
+      type: string
+      pattern: "^[A-Za-z0-9_.-]{1,64}$"
+    expiresIn:
+      title: Expires in
+      description: How long a token stays redeemable after it is issued.
+      x-telo-type: { name: Telo.Duration, exclusiveMinimum: 0s }
+    reissueAfter:
+      title: Reissue after
+      description: >-
+        How long after a token is issued the same subject may be issued another; an earlier request is
+        answered `issued: false` and the live token stays. `60s` when omitted, `0s` for no wait.
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
+      default: 60s
+    dataType:
+      title: Data type
+      description: >-
+        The shape of the `data` each token carries from `OneTime.Issue` to its redemption, inline or a
+        `!ref` to a named type. It is stored as plain JSON, so a live value is refused anywhere in it.
+        Omitted, a token carries no data.
+      x-telo-ref: { kind: Telo.Type, use: schema }
+      x-telo-serializable: true
+  x-telo-resource-rules:
+    - coReferrers: /store
+      condition: !cel "!coReferrers.exists(o, o.name == self.name)"
+      code: ONE_TIME_NAME_DUPLICATE
+      message: >-
+        claims a name another token set on this store already claims. Their records would collide
+        and a token of one would be redeemable on the other — give each set a name of its own.
+---
+kind: Telo.Definition
+metadata:
+  name: Links
+  description: >-
+    A set of single-use links: a random URL-safe secret sent to a person, who
+    opens it once. Only a digest of the secret is stored, so a copy of the
+    storage yields no usable link.
+capability: Telo.Provider
+extends: Self.Tokens
+controllers: [pkg:telo/local/js?path=./nodejs/one-time.mjs&local_path=./nodejs/src/index.ts#LinksController]
+schema:
+  type: object
+  properties:
+    bytes:
+      title: Bytes
+      description: How many random bytes the secret holds before base64url encoding, 32 when omitted.
+      type: integer
+      minimum: 16
+      maximum: 256
+      default: 32
+---
+kind: Telo.Definition
+metadata:
+  name: Codes
+  description: >-
+    A set of single-use typed codes: a short number a person reads from a
+    message and types in. A code is bound to its subject, stops redeeming after
+    a bounded number of wrong guesses, and expires in minutes.
+capability: Telo.Provider
+extends: Self.Tokens
+controllers: [pkg:telo/local/js?path=./nodejs/one-time.mjs&local_path=./nodejs/src/index.ts#CodesController]
+schema:
+  type: object
+  properties:
+    digits:
+      title: Digits
+      description: How many decimal digits a code has, 6 when omitted.
+      type: integer
+      minimum: 6
+      maximum: 10
+      default: 6
+    maxAttempts:
+      title: Max attempts
+      description: How many wrong guesses a code takes before it stops redeeming, 5 when omitted. The last one answers `exhausted`.
+      type: integer
+      minimum: 1
+      maximum: 100
+      default: 5
+---
+kind: Telo.JsonSchema
+metadata:
+  name: IssueOutput
+  description: >-
+    The answer to an issue: the token with its expiry, or how many seconds
+    until the subject may be issued another.
+schema:
+  anyOf:
+    - type: object
+      additionalProperties: false
+      required: [issued, token, expiresAt]
+      properties:
+        issued: { const: true }
+        token: { description: "The link secret or the code. It is not stored and cannot be read again.", type: string, x-telo-sensitive: true }
+        expiresAt: { x-telo-type: Telo.Timestamp }
+    - type: object
+      additionalProperties: false
+      required: [issued, retryAfter]
+      properties:
+        issued: { const: false }
+        retryAfter: { description: "Whole seconds, at least 1, until another token may be issued for the subject.", type: integer, minimum: 1 }
+---
+kind: Telo.Definition
+metadata:
+  name: Issue
+  description: >-
+    Issues a single-use link or code for a subject, replacing the subject's
+    previous token. Answers the token once with its expiry, or, when the subject
+    was issued one too recently, how many seconds to wait while the previous token
+    stays live. The token can be bound to a holder the redeemer must present again.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/one-time.mjs&local_path=./nodejs/src/index.ts#IssueController]
+throws:
+  codes:
+    ERR_ONE_TIME_CONTENDED: { description: "Writes to the subject's token kept losing races. Repeat the call." }
+    ERR_ONE_TIME_STORE_UNAVAILABLE: { description: "The token store could not be reached or failed. Repeating is safe; a failed attempt may leave a token nobody was told." }
+schema:
+  type: object
+  additionalProperties: false
+  required: [tokens]
+  properties:
+    tokens:
+      title: Tokens
+      description: The set the token is issued in, links or codes.
+      x-telo-ref: { kind: Self.Tokens, use: dependency }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [subject]
+    properties:
+      subject: { description: "Who or what the token is for: an email, a user id, an invitation. The set holds one live token per subject.", type: string, minLength: 1 }
+      data: { description: "What the token carries to its redemption; it must have the set's `dataType`.", x-telo-value-schema-from: /tokens/dataType }
+      holder: { description: "A value the redeemer must present again, such as an identifier set in the browser that asked. Only its digest is stored.", type: string, minLength: 1, x-telo-sensitive: true }
+outputType: !ref IssueOutput
+---
+kind: Telo.JsonSchema
+metadata:
+  name: RedemptionRefusal
+  description: A redemption that did not open the token, with why.
+schema:
+  type: object
+  additionalProperties: false
+  required: [redeemed, reason]
+  properties:
+    redeemed: { const: false }
+    reason:
+      description: >-
+        `unknown`: never issued, already used, replaced, revoked or expired. `holderMismatch`: another holder presented it; nothing is consumed.
+        `mismatch`: a wrong code, one attempt used. `exhausted`: the attempt that used the last one.
+      type: string
+      enum: [unknown, holderMismatch, mismatch, exhausted]
+---
+kind: Telo.Definition
+metadata:
+  name: RedeemLink
+  description: >-
+    Opens a single-use link: answers the subject and data it was issued with and
+    consumes it, so it works exactly once across every replica sharing the store.
+    A link that is unknown, used, replaced, revoked or expired, or presented by a
+    different holder, answers a refusal naming which, and a wrong holder does not consume it.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/one-time.mjs&local_path=./nodejs/src/index.ts#RedeemLinkController]
+throws:
+  codes:
+    ERR_ONE_TIME_CONTENDED: { description: "Writes to the subject's token kept losing races. Repeat the call." }
+    ERR_ONE_TIME_STORE_UNAVAILABLE: { description: The token store could not be reached or failed. Repeating the call is safe. }
+schema:
+  type: object
+  additionalProperties: false
+  required: [tokens]
+  properties:
+    tokens:
+      title: Tokens
+      description: The set of links the token was issued in.
+      x-telo-ref: { kind: Self.Links, use: dependency }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [token]
+    properties:
+      token: { description: The link secret as it was issued., type: string, minLength: 1, x-telo-sensitive: true }
+      holder: { description: "The holder the token was issued for; omit when it was issued with none.", type: string, minLength: 1, x-telo-sensitive: true }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    anyOf:
+      - type: object
+        additionalProperties: false
+        required: [redeemed, subject, data]
+        properties:
+          redeemed: { const: true }
+          subject: { type: string }
+          data: { description: "What the token was issued with; null when it carried none.", x-telo-value-schema-from: /tokens/dataType }
+      - !ref RedemptionRefusal
+---
+kind: Telo.Definition
+metadata:
+  name: RedeemCode
+  description: >-
+    Checks a typed code for a subject: on a match answers the subject and data and
+    consumes the code. A wrong code uses one attempt and the last attempt answers
+    exhausted, after which the code no longer redeems; a different holder is
+    refused without costing an attempt.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/one-time.mjs&local_path=./nodejs/src/index.ts#RedeemCodeController]
+throws:
+  codes:
+    ERR_ONE_TIME_CONTENDED: { description: "Writes to the subject's token kept losing races. Repeat the call." }
+    ERR_ONE_TIME_STORE_UNAVAILABLE: { description: The token store could not be reached or failed. Repeating the call is safe. }
+schema:
+  type: object
+  additionalProperties: false
+  required: [tokens]
+  properties:
+    tokens:
+      title: Tokens
+      description: The set of codes the code was issued in.
+      x-telo-ref: { kind: Self.Codes, use: dependency }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [subject, token]
+    properties:
+      subject: { description: The subject the code was issued for., type: string, minLength: 1 }
+      token: { description: The code as the person typed it., type: string, x-telo-sensitive: true }
+      holder: { description: "The holder the code was issued for; omit when it was issued with none.", type: string, minLength: 1, x-telo-sensitive: true }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    anyOf:
+      - type: object
+        additionalProperties: false
+        required: [redeemed, subject, data]
+        properties:
+          redeemed: { const: true }
+          subject: { type: string }
+          data: { description: "What the code was issued with; null when it carried none.", x-telo-value-schema-from: /tokens/dataType }
+      - !ref RedemptionRefusal
+---
+kind: Telo.Definition
+metadata:
+  name: Revoke
+  description: >-
+    Withdraws the live token of a subject so it can no longer be redeemed, and
+    lets the subject be issued another at once. Answers whether a live token
+    existed. A code that used up its attempts is not withdrawn: its waiting period still applies.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/one-time.mjs&local_path=./nodejs/src/index.ts#RevokeController]
+throws:
+  codes:
+    ERR_ONE_TIME_CONTENDED: { description: "Writes to the subject's token kept losing races. Repeat the call." }
+    ERR_ONE_TIME_STORE_UNAVAILABLE: { description: The token store could not be reached or failed. Repeating the call is safe. }
+schema:
+  type: object
+  additionalProperties: false
+  required: [tokens]
+  properties:
+    tokens:
+      title: Tokens
+      description: The set the token lives in, links or codes.
+      x-telo-ref: { kind: Self.Tokens, use: dependency }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [subject]
+    properties:
+      subject: { description: The subject whose token is withdrawn., type: string, minLength: 1 }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [revoked]
+    properties:
+      revoked: { description: False when the subject held no live token., type: boolean }

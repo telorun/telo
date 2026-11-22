@@ -1,0 +1,6 @@
+units:
+  modules/auth-signature: Added
+body: "New module AuthSignature with AuthSignature.Verifier: verifies HMAC-SHA-256 and
+  Ed25519 signatures over signed bytes against keys that each state their algorithm,
+  with secret rotation, maxSignatureAge and clockTolerance freshness, and expiry. Replay
+  is left to the receiver's idempotency."

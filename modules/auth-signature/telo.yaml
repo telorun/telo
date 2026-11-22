@@ -1,0 +1,99 @@
+kind: Telo.Library
+metadata:
+  name: AuthSignature
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Security]
+  description: >-
+    Verifies signed requests such as webhook deliveries and HTTP message
+    signatures: checks an HMAC-SHA-256 or Ed25519 signature over the signed bytes
+    against configured keys, supports secret rotation, rejects signatures that
+    are too old or have expired, and answers with the sending service or a
+    refusal. Replays are left to the receiver's idempotency.
+requires: { telo: ">=0.129.0" }
+imports: { Auth: ../auth }
+exports: { kinds: [Verifier] }
+---
+# Normative: docs/verifier.md.
+kind: Telo.Definition
+metadata:
+  name: Verifier
+  description: >-
+    Authenticates a request that carries a signature: checks it over the signed
+    bytes against the configured keys, each key with its own algorithm, so the
+    request never chooses one. A signature older than the allowed age, or past
+    its expiry, is refused. Answers with the service the matching key belongs to,
+    or a refusal naming why. Any other kind of credential is a contract error.
+capability: Telo.Invocable
+extends: Auth.Verifier
+controllers: [pkg:telo/local/js?path=./nodejs/auth-signature.mjs&local_path=./nodejs/src/index.ts#VerifierController]
+schema:
+  type: object
+  additionalProperties: false
+  required: [keys]
+  properties:
+    keys:
+      title: Keys
+      description: >-
+        The keys a signature may verify under, each stating its own algorithm. A signature naming a
+        `keyId` is checked against the keys with that `id`; one naming none is tried against every
+        key without an `id`, which covers a secret rotation.
+      type: array
+      minItems: 1
+      items:
+        oneOf:
+          - type: object
+            additionalProperties: false
+            required: [subject, algorithm, secret]
+            properties:
+              id: { title: Id, description: The `keyid` a signature names to select this key; none when omitted., type: string, minLength: 1 }
+              subject: { title: Subject, description: The principal's subject when this key verifies., type: string, minLength: 1 }
+              algorithm: { title: Algorithm, type: string, const: hmac-sha256 }
+              secret:
+                title: Secret
+                description: The shared secret, a string used as its UTF-8 bytes or raw bytes (`!cel "bytesFromBase64(…)"`).
+                x-telo-eval: compile
+                anyOf: [{ type: string, minLength: 1 }, { x-telo-type: Telo.Bytes }]
+          - type: object
+            additionalProperties: false
+            required: [subject, algorithm, jwk]
+            properties:
+              id: { title: Id, description: The `keyid` a signature names to select this key; none when omitted., type: string, minLength: 1 }
+              subject: { title: Subject, description: The principal's subject when this key verifies., type: string, minLength: 1 }
+              algorithm: { title: Algorithm, type: string, const: ed25519 }
+              jwk:
+                title: Public key
+                description: The signer's Ed25519 public key as a JWK. A private key (`d`) is refused.
+                x-telo-eval: compile
+                type: object
+                additionalProperties: false
+                required: [kty, crv, x]
+                properties:
+                  kty: { type: string, const: OKP }
+                  crv: { type: string, const: Ed25519 }
+                  x: { type: string, pattern: '^[A-Za-z0-9_-]{43}$' }
+                  kid: { type: string }
+    maxSignatureAge:
+      title: Max signature age
+      description: >-
+        The oldest `created` accepted. When written, a signature with no `created`, one older than this
+        or one dated in the future beyond `clockTolerance` is refused as stale, whichever source fed it;
+        no freshness is judged when omitted.
+      x-telo-eval: compile
+      x-telo-type: { name: Telo.Duration, exclusiveMinimum: 0s }
+    clockTolerance:
+      title: Clock tolerance
+      description: Leeway for `created` and `expires` against this host's clock; 30s when omitted.
+      x-telo-eval: compile
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [presentation, confirmation, resource]
+    properties:
+      presentation: !ref Auth.SignaturePresentation
+      confirmation: !ref Auth.Confirmation
+      resource: { type: [string, "null"] }

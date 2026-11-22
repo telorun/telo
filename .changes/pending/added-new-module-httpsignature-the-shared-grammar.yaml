@@ -1,0 +1,6 @@
+units:
+  modules/http-signature: Added
+body: "New module HttpSignature: the shared grammar of signed HTTP requests (RFC 9421
+  signature base, Signature-Input and Signature fields, Content-Digest, webhook base
+  parts) as code a transport calls with a plain request description, and the
+  HttpSignature.BasePart shape."

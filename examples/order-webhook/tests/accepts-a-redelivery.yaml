@@ -3,13 +3,14 @@ metadata:
   name: OrderWebhookExampleTest
   version: 1.0.0
   description: >-
-    Runs `examples/order-webhook` and redelivers the same webhook twice, which is
-    what the example exists to make safe: the first delivery is fresh, the second is
-    replayed and writes nothing. An unauthorized call is asserted too, since the
-    shared-secret check is the other half of the contract.
+    Runs `examples/order-webhook` and sends signed deliveries: the first is fresh,
+    a redelivery of it is replayed and writes nothing, and a delivery with a wrong
+    signature is refused with 401, since the signature check is the other half of
+    the contract.
 imports:
   App: ../../../modules/app
   HttpClient: ../../../modules/http-client
+  Crypto: ../../../modules/crypto
   Assert: ../../../modules/assert
 targets:
   - !ref test
@@ -26,25 +27,32 @@ targets:
 steps:
   # The example keeps its claims in a database file that outlives the test, so
   # the delivery is identified freshly on every run: a fixed id would be
-  # "replayed" the second time this test is run on the same machine, and the
-  # first assertion would fail for a reason that has nothing to do with the code.
+  # "replayed" the second time this test is run on the same machine.
   - name: delivery
     value:
       id: !cel "'delivery-' + uuidv4()"
       orderId: !cel "'order-' + uuidv4()"
+  # The signature covers the exact bytes sent, so the body is a string.
+  - name: payload
+    value:
+      body: !interpolate '{"deliveryId":"${{ steps.delivery.result.id }}","orderId":"${{ steps.delivery.result.orderId }}","amountCents":2500,"currency":"EUR"}'
+  - name: signature
+    invoke: { kind: Crypto.Hmac }
+    inputs:
+      op: sign
+      key: local-dev-secret
+      input: !cel "steps.payload.result.body"
 
   - name: first
     invoke:
       kind: HttpClient.Request
       url: http://127.0.0.1:8099/webhooks/orders
       method: POST
-      headers: { authorization: Bearer local-dev-token }
     inputs:
-      body:
-        deliveryId: !cel "steps.delivery.result.id"
-        orderId: !cel "steps.delivery.result.orderId"
-        amountCents: 2500
-        currency: EUR
+      headers:
+        content-type: application/json
+        x-signature: !interpolate "sha256=${{ steps.signature.result.value }}"
+      body: !cel "steps.payload.result.body"
   - name: verifyFresh
     invoke: { kind: Assert.Equals }
     inputs:
@@ -62,13 +70,11 @@ steps:
       kind: HttpClient.Request
       url: http://127.0.0.1:8099/webhooks/orders
       method: POST
-      headers: { authorization: Bearer local-dev-token }
     inputs:
-      body:
-        deliveryId: !cel "steps.delivery.result.id"
-        orderId: !cel "steps.delivery.result.orderId"
-        amountCents: 2500
-        currency: EUR
+      headers:
+        content-type: application/json
+        x-signature: !interpolate "sha256=${{ steps.signature.result.value }}"
+      body: !cel "steps.payload.result.body"
   - name: verifyReplayed
     invoke: { kind: Assert.Equals }
     inputs:
@@ -81,20 +87,17 @@ steps:
           orderId: !cel "steps.delivery.result.orderId"
           state: replayed
 
-  - name: unauthorized
+  - name: forged
     invoke:
       kind: HttpClient.Request
       url: http://127.0.0.1:8099/webhooks/orders
       method: POST
-      headers: { authorization: Bearer wrong-token }
+      throwOnHttpError: false
     inputs:
-      body:
-        deliveryId: !cel "'delivery-' + uuidv4()"
-        orderId: !cel "'order-' + uuidv4()"
-        amountCents: 100
-        currency: EUR
-  - name: verifyUnauthorized
+      headers: { content-type: application/json, x-signature: sha256=00 }
+      body: !cel "steps.payload.result.body"
+  - name: verifyForged
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.unauthorized.result.status"
+      actual: !cel "steps.forged.result.status"
       expected: 401

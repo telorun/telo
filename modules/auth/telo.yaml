@@ -15,7 +15,7 @@ metadata:
 requires: { telo: ">=0.117.0" }
 exports:
   kinds: [Verifier, PasswordVerifier, Policy, TrustedHeader]
-  resources: [Principal, Presentation, TokenPresentation, BasicPresentation, CertificatePresentation, AssertedPresentation, Confirmation, VerifierOutput, PasswordOutput, PolicyDecision, Issuer]
+  resources: [Principal, Presentation, TokenPresentation, BasicPresentation, CertificatePresentation, AssertedPresentation, SignaturePresentation, Confirmation, VerifierOutput, PasswordOutput, PolicyDecision, Issuer]
 ---
 # The authenticated caller. Every member is present: a verifier fills what it
 # does not know with an empty list or null, so a policy or handler reads any
@@ -120,18 +120,40 @@ schema:
 ---
 kind: Telo.JsonSchema
 metadata:
+  name: SignaturePresentation
+  description: >-
+    A signature over bytes the transport assembled: the exact bytes that were
+    signed, the signatures presented (several while a secret rotates), and what
+    the request claimed about them, the key id, the algorithm and when it was
+    signed or stops being valid. The verifier never sees the request.
+schema:
+  type: object
+  additionalProperties: false
+  required: [type, base, signatures]
+  properties:
+    type: { const: signature }
+    base: { description: The exact bytes that were signed., x-telo-type: Telo.Bytes, x-telo-sensitive: true }
+    signatures: { description: The signatures presented., type: array, items: { x-telo-type: Telo.Bytes }, x-telo-sensitive: true }
+    keyId: { description: The key the request names; null when it names none., type: [string, "null"] }
+    algorithm: { description: "The algorithm the request claims; a claim to check, never a choice. Null when it states none.", type: [string, "null"] }
+    created: { description: When the request says it was signed; null when it does not say., anyOf: [{ x-telo-type: Telo.Timestamp }, { type: "null" }] }
+    expires: { description: When the request says the signature stops being valid; null when it does not say., anyOf: [{ x-telo-type: Telo.Timestamp }, { type: "null" }] }
+---
+kind: Telo.JsonSchema
+metadata:
   name: Presentation
   description: >-
     The credential material a request carried, by what it is and never by where
     it was found: an opaque token, a user and password, a client certificate or
-    an identity asserted by a trusted proxy, told apart by `type`. Every secret
-    member is kept out of traces and logs.
+    an identity asserted by a trusted proxy or a signature over assembled bytes,
+    told apart by `type`. Every secret member is kept out of traces and logs.
 schema:
   anyOf:
     - !ref TokenPresentation
     - !ref BasicPresentation
     - !ref CertificatePresentation
     - !ref AssertedPresentation
+    - !ref SignaturePresentation
 ---
 kind: Telo.JsonSchema
 metadata:

@@ -1,0 +1,434 @@
+kind: Telo.Application
+metadata:
+  name: BodySignatureTest
+  version: 1.0.0
+  description: |
+    `Http.FromBodySignature` verifies Stripe-, GitHub-, Slack-, Shopify- and
+    Standard-Webhooks-shaped deliveries signed in the test through
+    `AuthSignature.Verifier`; a changed body byte, a stale timestamp and a
+    Stripe header without `t=` are 401s challenged with the source's scheme.
+    Behind it a parsed route, a streamed route, `Mcp.HttpEndpoint` and a mount
+    parsing its own content type receive exactly the verified bytes; a body over
+    the route's bound is a 413 before any source or verifier runs, while a
+    header-only mount still refuses a missing or refused credential before the
+    body. The source's traced inputs and the verifier's carry no body bytes.
+imports:
+  Http: ../
+  HttpClient: ../../http-client
+  AuthSignature: ../../auth-signature
+  Crypto: ../../crypto
+  Octet: ../../octet-codec
+  Mcp: ../../mcp-server
+  BodyEcho: ./__fixtures__/body-echo-mount
+  ThirdParty: ./__fixtures__/third-party-verifier
+  Assert: ../../assert
+targets:
+  - !ref test
+  - !ref expectEvents
+---
+kind: Http.FromBodySignature
+metadata: { name: githubSource }
+scheme: GitHub
+signature: { header: X-Hub-Signature-256, pattern: "^sha256=([0-9a-f]+)$", encoding: hex }
+base: [{ type: body }]
+---
+kind: AuthSignature.Verifier
+metadata: { name: githubVerifier }
+keys: [{ subject: github, algorithm: hmac-sha256, secret: github-secret }]
+---
+kind: Http.FromBodySignature
+metadata: { name: smallSource }
+scheme: GitHub
+signature: { header: X-Hub-Signature-256, pattern: "^sha256=([0-9a-f]+)$", encoding: hex }
+base: [{ type: body }]
+---
+kind: AuthSignature.Verifier
+metadata: { name: smallVerifier }
+keys: [{ subject: github, algorithm: hmac-sha256, secret: github-secret }]
+---
+kind: Http.Api
+metadata: { name: hooks }
+routes:
+  - request: { path: /github, method: POST, schema: { body: { type: object } } }
+    returns:
+      - status: 200
+        content: { application/json: { body: { subject: !cel "request.principal.subject", received: !cel "request.body" } } }
+  - request: { path: /streamed, method: POST, schema: { body: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } } } }
+    handler: { kind: Octet.Decoder }
+    inputs: { input: !cel "request.body" }
+    returns:
+      - status: 200
+        content: { application/json: { body: { text: !cel "string(result.bytes)" } } }
+  - request: { path: /small, method: POST }
+    maxBodyBytes: 16
+    authentication:
+      verifiers: [{ verifier: !ref smallVerifier, from: !ref smallSource }]
+    returns:
+      - { status: 204 }
+  - request: { path: /stripe, method: POST, schema: { body: { type: object } } }
+    authentication:
+      verifiers:
+        - verifier:
+            kind: AuthSignature.Verifier
+            maxSignatureAge: 5m
+            keys: [{ subject: stripe, algorithm: hmac-sha256, secret: whsec_stripe }]
+          from:
+            kind: Http.FromBodySignature
+            scheme: Stripe
+            signature: { header: Stripe-Signature, pattern: "(?:^|,)v1=([0-9a-f]+)", encoding: hex }
+            timestamp: { header: Stripe-Signature, pattern: "(?:^|,)t=(\\d+)", unit: seconds }
+            base:
+              - { type: header, header: Stripe-Signature, pattern: "(?:^|,)t=(\\d+)" }
+              - { type: literal, value: . }
+              - { type: body }
+    returns:
+      - status: 200
+        content: { application/json: { body: { subject: !cel "request.principal.subject", received: !cel "request.body" } } }
+  - request: { path: /slack, method: POST, schema: { body: { type: object } } }
+    authentication:
+      verifiers:
+        - verifier:
+            kind: AuthSignature.Verifier
+            maxSignatureAge: 5m
+            keys: [{ subject: slack, algorithm: hmac-sha256, secret: slack-secret }]
+          from:
+            kind: Http.FromBodySignature
+            scheme: Slack
+            signature: { header: X-Slack-Signature, pattern: "^v0=([0-9a-f]+)$", encoding: hex }
+            timestamp: { header: X-Slack-Request-Timestamp, unit: seconds }
+            base:
+              - { type: literal, value: "v0:" }
+              - { type: header, header: X-Slack-Request-Timestamp }
+              - { type: literal, value: ":" }
+              - { type: body }
+    returns:
+      - status: 200
+        content: { application/json: { body: { subject: !cel "request.principal.subject", received: !cel "request.body" } } }
+  - request: { path: /shopify, method: POST, schema: { body: { type: object } } }
+    authentication:
+      verifiers:
+        - verifier:
+            kind: AuthSignature.Verifier
+            keys: [{ subject: shopify, algorithm: hmac-sha256, secret: shopify-secret }]
+          from:
+            kind: Http.FromBodySignature
+            scheme: Shopify
+            signature: { header: X-Shopify-Hmac-Sha256, encoding: base64 }
+            base: [{ type: body }]
+    returns:
+      - status: 200
+        content: { application/json: { body: { subject: !cel "request.principal.subject", received: !cel "request.body" } } }
+  - request: { path: /standard, method: POST, schema: { body: { type: object } } }
+    authentication:
+      verifiers:
+        - verifier:
+            kind: AuthSignature.Verifier
+            maxSignatureAge: 5m
+            keys:
+              - subject: standard
+                algorithm: hmac-sha256
+                secret: !cel "bytesFromBase64('MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw')"
+          from:
+            kind: Http.FromBodySignature
+            scheme: StandardWebhooks
+            signature: { header: webhook-signature, pattern: "(?:^| )v1,([A-Za-z0-9+/]+=*)", encoding: base64 }
+            timestamp: { header: webhook-timestamp, unit: seconds }
+            base:
+              - { type: header, header: webhook-id }
+              - { type: literal, value: . }
+              - { type: header, header: webhook-timestamp }
+              - { type: literal, value: . }
+              - { type: body }
+    returns:
+      - status: 200
+        content: { application/json: { body: { subject: !cel "request.principal.subject", received: !cel "request.body" } } }
+---
+kind: Http.Api
+metadata: { name: plain }
+routes:
+  - request: { path: /upload, method: POST }
+    maxBodyBytes: 16
+    returns:
+      - { status: 204 }
+---
+kind: Mcp.HttpEndpoint
+metadata: { name: mcpEndpoint }
+serverInfo: { name: signed-mcp, version: 1.0.0 }
+---
+kind: HttpClient.Client
+metadata: { name: client }
+baseUrl: http://127.0.0.1:28544
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref client
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 28544 }
+    contentTypeParsers:
+      - { contentType: application/octet-stream, stream: true }
+    mounts:
+      - path: /hooks
+        mount: !ref hooks
+        authentication:
+          verifiers: [{ verifier: !ref githubVerifier, from: !ref githubSource }]
+      - path: /mcp
+        mount: !ref mcpEndpoint
+        authentication:
+          anonymous: allow
+          verifiers: [{ verifier: !ref githubVerifier, from: !ref githubSource }]
+      - path: /parsers
+        mount: { kind: BodyEcho.Echo }
+        authentication:
+          verifiers: [{ verifier: !ref githubVerifier, from: !ref githubSource }]
+      - path: /plain
+        mount: !ref plain
+        authentication:
+          verifiers:
+            - verifier: { kind: ThirdParty.Verifier, issuer: https://login.test }
+              from: { kind: Http.FromHeader, header: x-api-key, scheme: ApiKey }
+targets:
+  - !ref server
+steps:
+  - name: bodies
+    value:
+      github: '{"action":"opened","number":1}'
+      stripe: '{"id":"evt_1","type":"charge.succeeded"}'
+      slack: '{"type":"event_callback","event_id":"Ev1"}'
+      shopify: '{"id":820982911946154500}'
+      standard: '{"type":"invoice.paid","id":"msg_1"}'
+      streamed: raw bytes, kept as sent
+      echo: "parsed by the mount"
+      mcp: '{"jsonrpc":"2.0","id":"signed-1","method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}'
+      large: '{"padding":"well over sixteen bytes"}'
+  - name: clock
+    value:
+      now: !cel "string(int(now()))"
+      stale: !cel "string(int(now() - duration('360s')))"
+  - name: githubMac
+    invoke: { kind: Crypto.Hmac }
+    inputs: { op: sign, key: github-secret, input: !cel "steps.bodies.result.github", encoding: hex }
+  - name: streamedMac
+    invoke: { kind: Crypto.Hmac }
+    inputs: { op: sign, key: github-secret, input: !cel "steps.bodies.result.streamed", encoding: hex }
+  - name: echoMac
+    invoke: { kind: Crypto.Hmac }
+    inputs: { op: sign, key: github-secret, input: !cel "steps.bodies.result.echo", encoding: hex }
+  - name: mcpMac
+    invoke: { kind: Crypto.Hmac }
+    inputs: { op: sign, key: github-secret, input: !cel "steps.bodies.result.mcp", encoding: hex }
+  - name: largeMac
+    invoke: { kind: Crypto.Hmac }
+    inputs: { op: sign, key: github-secret, input: !cel "steps.bodies.result.large", encoding: hex }
+  - name: stripeMac
+    invoke: { kind: Crypto.Hmac }
+    inputs: { op: sign, key: whsec_stripe, input: !cel "steps.clock.result.now + '.' + steps.bodies.result.stripe", encoding: hex }
+  - name: staleStripeMac
+    invoke: { kind: Crypto.Hmac }
+    inputs: { op: sign, key: whsec_stripe, input: !cel "steps.clock.result.stale + '.' + steps.bodies.result.stripe", encoding: hex }
+  - name: slackMac
+    invoke: { kind: Crypto.Hmac }
+    inputs: { op: sign, key: slack-secret, input: !cel "'v0:' + steps.clock.result.now + ':' + steps.bodies.result.slack", encoding: hex }
+  - name: shopifyMac
+    invoke: { kind: Crypto.Hmac }
+    inputs: { op: sign, key: shopify-secret, input: !cel "steps.bodies.result.shopify", encoding: base64 }
+  - name: standardMac
+    invoke: { kind: Crypto.Hmac }
+    inputs:
+      op: sign
+      key: !cel "bytesFromBase64('MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw')"
+      input: !cel "'msg_1.' + steps.clock.result.now + '.' + steps.bodies.result.standard"
+      encoding: base64
+
+  - name: github
+    invoke: !ref call
+    inputs:
+      url: /hooks/github
+      method: POST
+      headers: { content-type: application/json, x-hub-signature-256: !interpolate "sha256=${{ steps.githubMac.result.value }}" }
+      body: !cel "steps.bodies.result.github"
+  - name: stripe
+    invoke: !ref call
+    inputs:
+      url: /hooks/stripe
+      method: POST
+      headers:
+        content-type: application/json
+        stripe-signature: !interpolate "t=${{ steps.clock.result.now }},v1=${{ steps.stripeMac.result.value }}"
+      body: !cel "steps.bodies.result.stripe"
+  - name: slack
+    invoke: !ref call
+    inputs:
+      url: /hooks/slack
+      method: POST
+      headers:
+        content-type: application/json
+        x-slack-request-timestamp: !cel "steps.clock.result.now"
+        x-slack-signature: !interpolate "v0=${{ steps.slackMac.result.value }}"
+      body: !cel "steps.bodies.result.slack"
+  - name: shopify
+    invoke: !ref call
+    inputs:
+      url: /hooks/shopify
+      method: POST
+      headers: { content-type: application/json, x-shopify-hmac-sha256: !cel "steps.shopifyMac.result.value" }
+      body: !cel "steps.bodies.result.shopify"
+  - name: standard
+    invoke: !ref call
+    inputs:
+      url: /hooks/standard
+      method: POST
+      headers:
+        content-type: application/json
+        webhook-id: msg_1
+        webhook-timestamp: !cel "steps.clock.result.now"
+        webhook-signature: !interpolate "v1,c2lnbmF0dXJlLW9mLWFuLW9sZC1zZWNyZXQ= v1,${{ steps.standardMac.result.value }}"
+      body: !cel "steps.bodies.result.standard"
+  - name: changedByte
+    invoke: !ref call
+    inputs:
+      url: /hooks/stripe
+      method: POST
+      headers:
+        content-type: application/json
+        stripe-signature: !interpolate "t=${{ steps.clock.result.now }},v1=${{ steps.stripeMac.result.value }}"
+      body: '{"id":"evt_2","type":"charge.succeeded"}'
+  - name: stale
+    invoke: !ref call
+    inputs:
+      url: /hooks/stripe
+      method: POST
+      headers:
+        content-type: application/json
+        stripe-signature: !interpolate "t=${{ steps.clock.result.stale }},v1=${{ steps.staleStripeMac.result.value }}"
+      body: !cel "steps.bodies.result.stripe"
+  - name: noTimestamp
+    invoke: !ref call
+    inputs:
+      url: /hooks/stripe
+      method: POST
+      headers: { content-type: application/json, stripe-signature: !interpolate "v1=${{ steps.stripeMac.result.value }}" }
+      body: !cel "steps.bodies.result.stripe"
+
+  - name: streamed
+    invoke: !ref call
+    inputs:
+      url: /hooks/streamed
+      method: POST
+      headers: { content-type: application/octet-stream, x-hub-signature-256: !interpolate "sha256=${{ steps.streamedMac.result.value }}" }
+      body: !cel "steps.bodies.result.streamed"
+  - name: echo
+    invoke: !ref call
+    inputs:
+      url: /parsers/echo
+      method: POST
+      responseType: text
+      headers: { content-type: application/x-echo, x-hub-signature-256: !interpolate "sha256=${{ steps.echoMac.result.value }}" }
+      body: !cel "steps.bodies.result.echo"
+  - name: mcp
+    invoke: !ref call
+    inputs:
+      url: /mcp
+      method: POST
+      responseType: text
+      headers:
+        content-type: application/json
+        accept: application/json, text/event-stream
+        x-hub-signature-256: !interpolate "sha256=${{ steps.mcpMac.result.value }}"
+      body: !cel "steps.bodies.result.mcp"
+  - name: mcpTampered
+    invoke: !ref call
+    inputs:
+      url: /mcp
+      method: POST
+      headers:
+        content-type: application/json
+        accept: application/json, text/event-stream
+        x-hub-signature-256: !interpolate "sha256=${{ steps.mcpMac.result.value }}"
+      body: !cel "replace(steps.bodies.result.mcp, 'signed-1', 'signed-2')"
+  - name: overBound
+    invoke: !ref call
+    inputs:
+      url: /hooks/small
+      method: POST
+      headers: { content-type: application/json, x-hub-signature-256: !interpolate "sha256=${{ steps.largeMac.result.value }}" }
+      body: !cel "steps.bodies.result.large"
+  - name: overBoundUnsigned
+    invoke: !ref call
+    inputs: { url: /hooks/small, method: POST, headers: { content-type: application/json }, body: !cel "steps.bodies.result.large" }
+  - name: headerOnlyAbsent
+    invoke: !ref call
+    inputs: { url: /plain/upload, method: POST, headers: { content-type: application/json }, body: !cel "steps.bodies.result.large" }
+  - name: headerOnlyRefused
+    invoke: !ref call
+    inputs:
+      url: /plain/upload
+      method: POST
+      headers: { content-type: application/json, x-api-key: k-1 }
+      body: !cel "steps.bodies.result.large"
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        github: { status: !cel "steps.github.result.status", body: !cel "steps.github.result.body" }
+        stripe: { status: !cel "steps.stripe.result.status", body: !cel "steps.stripe.result.body" }
+        slack: { status: !cel "steps.slack.result.status", body: !cel "steps.slack.result.body" }
+        shopify: { status: !cel "steps.shopify.result.status", body: !cel "steps.shopify.result.body" }
+        standard: { status: !cel "steps.standard.result.status", body: !cel "steps.standard.result.body" }
+        changedByte:
+          status: !cel "steps.changedByte.result.status"
+          challenge: !cel "steps.changedByte.result.headers['www-authenticate']"
+          reason: !cel "steps.changedByte.result.body.data.reason"
+        stale:
+          status: !cel "steps.stale.result.status"
+          challenge: !cel "steps.stale.result.headers['www-authenticate']"
+          reason: !cel "steps.stale.result.body.data.reason"
+        noTimestamp:
+          status: !cel "steps.noTimestamp.result.status"
+          challenge: !cel "steps.noTimestamp.result.headers['www-authenticate']"
+          reason: !cel "steps.noTimestamp.result.body.data.reason"
+        streamed: { status: !cel "steps.streamed.result.status", body: !cel "steps.streamed.result.body" }
+        echo: { status: !cel "steps.echo.result.status", body: !cel "steps.echo.result.body" }
+        mcp:
+          status: !cel "steps.mcp.result.status"
+          answered: !cel "steps.mcp.result.body.contains('\"id\":\"signed-1\"') && steps.mcp.result.body.contains('signed-mcp')"
+        mcpTampered: { status: !cel "steps.mcpTampered.result.status", reason: !cel "steps.mcpTampered.result.body.data.reason" }
+        overBound: { status: !cel "steps.overBound.result.status", code: !cel "steps.overBound.result.body.code" }
+        overBoundUnsigned: !cel "steps.overBoundUnsigned.result.status"
+        headerOnlyAbsent: { status: !cel "steps.headerOnlyAbsent.result.status", reason: !cel "steps.headerOnlyAbsent.result.body.data.reason" }
+        headerOnlyRefused: { status: !cel "steps.headerOnlyRefused.result.status", reason: !cel "steps.headerOnlyRefused.result.body.data.reason" }
+      expected:
+        github: { status: 200, body: { subject: github, received: { action: opened, number: 1 } } }
+        stripe: { status: 200, body: { subject: stripe, received: { id: evt_1, type: charge.succeeded } } }
+        slack: { status: 200, body: { subject: slack, received: { type: event_callback, event_id: Ev1 } } }
+        shopify: { status: 200, body: { subject: shopify, received: { id: 820982911946154500 } } }
+        standard: { status: 200, body: { subject: standard, received: { type: invoice.paid, id: msg_1 } } }
+        changedByte: { status: 401, challenge: Stripe, reason: refused }
+        stale: { status: 401, challenge: Stripe, reason: refused }
+        noTimestamp: { status: 401, challenge: Stripe, reason: malformed }
+        streamed: { status: 200, body: { text: "raw bytes, kept as sent" } }
+        echo: { status: 200, body: parsed by the mount }
+        mcp: { status: 200, answered: true }
+        mcpTampered: { status: 401, reason: refused }
+        overBound: { status: 413, code: ERR_REQUEST_BODY_TOO_LARGE }
+        overBoundUnsigned: 413
+        headerOnlyAbsent: { status: 401, reason: absent }
+        headerOnlyRefused: { status: 401, reason: refused }
+---
+# The bytes reach a source and its verifier only as redacted values, and a body
+# over the bound reaches neither.
+kind: Assert.Events
+metadata: { name: expectEvents }
+filter:
+  - { type: "*.Invoked" }
+expect:
+  - { event: githubSource.Invoked, payload: { inputs: { body: "[redacted]" } } }
+  - event: githubVerifier.Invoked
+    payload: { inputs: { presentation: { type: signature, base: "[redacted]", signatures: "[redacted]" } } }
+  - { event: smallSource.Invoked, times: 0 }
+  - { event: smallVerifier.Invoked, times: 0 }

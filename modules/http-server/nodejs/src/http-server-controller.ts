@@ -45,6 +45,7 @@ import Fastify, {
 } from "fastify";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Socket } from "node:net";
+import { Readable } from "node:stream";
 import { resolveHttpsOptions, type ServerTlsSettings } from "./tls-material.js";
 import { ConnectionListener } from "./connection-listener.js";
 import { localUrlOf } from "./local-url.js";
@@ -81,8 +82,10 @@ import { metadataPath, protectedResourceDocument, type ProtectedResourceSetting 
 import {
   mountAccessHook,
   liveEntries,
+  liveThrottle,
   protectedResourceReadings,
   readingOf,
+  requestOrigin,
   resourceOf,
   ROUTE_ACCESS,
   type AccessEntry,
@@ -146,6 +149,7 @@ type ResolvedGuard = {
 type MountAuthentication = {
   verifiers?: Array<{ verifier: unknown; from: unknown }>;
   anonymous?: "allow" | "deny";
+  throttle?: { budget: unknown; key?: unknown };
 };
 type MountAuthorization = { policy: unknown; action: unknown; resource?: unknown };
 
@@ -153,6 +157,7 @@ type MountAuthorization = { policy: unknown; action: unknown; resource?: unknown
 type AccessRefs = {
   verifiers: Array<{ verifier: { kind: string; name: string }; from: { kind: string; name: string } }>;
   policy?: { kind: string; name: string };
+  throttle?: { kind: string; name: string };
 };
 
 type HttpMount = {
@@ -261,6 +266,8 @@ class HttpServer implements ResourceInstance {
     RequestTrace & { principal: Readonly<Record<string, unknown>> | null }
   >();
   private readonly requestIntakes = new WeakMap<FastifyRequest, RequestIntake>();
+  /** Bodies the access stage read for a source that reads the body; each is its request's payload. */
+  private readonly bufferedBodies = new WeakMap<FastifyRequest, Buffer>();
   private readonly requestConnections = new WeakMap<FastifyRequest, RequestConnection>();
   private readonly requestScope: RequestScope<FastifyRequest> = {
     forRequest: (request) => {
@@ -913,9 +920,11 @@ class HttpServer implements ResourceInstance {
       return;
     }
     const intake = this.intakeOf(request);
+    // A body the access stage already read is replayed whole; only the wire is counted.
+    const source = this.bufferedBodies.has(request) ? payload : unreadRequestBody(payload, intake);
     done(
       null,
-      boundedRequestBody(unreadRequestBody(payload, intake), maxBodyBytes, () => {
+      boundedRequestBody(source, maxBodyBytes, () => {
         this.refuseStreamedBody(intake, requestBodyTooLarge(maxBodyBytes, contentLength));
         return requestBodyCancellation();
       }),
@@ -992,6 +1001,40 @@ class HttpServer implements ResourceInstance {
     });
   }
 
+  /**
+   * The whole body, read for a source that reads it: within the route's body
+   * limit, a declared length over it refused before anything is read. A body
+   * over the limit is the server's own 413, raised before any source runs.
+   */
+  private async readBody(request: FastifyRequest): Promise<Uint8Array> {
+    const held = this.bufferedBodies.get(request);
+    if (held) return held;
+    const maxBodyBytes = request.routeOptions.bodyLimit;
+    const contentLength = declaredContentLength(request.headers["content-length"]);
+    if (contentLength !== undefined && contentLength > maxBodyBytes) throw new RequestBodyOverLimit();
+    const chunks: Uint8Array[] = [];
+    let length = 0;
+    for await (const chunk of unreadRequestBody(request.raw, this.intakeOf(request))) {
+      length += chunk.byteLength;
+      if (length > maxBodyBytes) throw new RequestBodyOverLimit();
+      chunks.push(chunk);
+    }
+    const body = Buffer.concat(chunks, length);
+    this.bufferedBodies.set(request, body);
+    return body;
+  }
+
+  /** Every parser, a mount's included, and the streamed intake read a body the access stage read. */
+  private installBufferedPayload(): void {
+    this.app.addHook("preParsing", (request, _reply, payload, done) => {
+      const body = this.bufferedBodies.get(request);
+      if (!body) return done(null, payload);
+      const replay = Readable.from([body], { objectMode: false }) as Readable & { receivedEncodedLength?: number };
+      replay.receivedEncodedLength = body.byteLength;
+      done(null, replay);
+    });
+  }
+
   private bodyArrived(request: FastifyRequest): boolean {
     return requestBodyArrived(request.raw, this.requestIntakes.get(request)?.bodyPulled ?? 0);
   }
@@ -1002,6 +1045,7 @@ class HttpServer implements ResourceInstance {
     this.installRequestSpan();
     this.installUnknownHostRefusal();
     this.installUnreadBodyClose();
+    this.installBufferedPayload();
     publishRequestHost(this.app, this.requestHost);
     publishHostRoutes(this.app, this.hostRoutes);
     // A JSON body's reader is not Telo, so a CEL value in it is written as its
@@ -1399,6 +1443,13 @@ class HttpServer implements ResourceInstance {
             ? { verifiers: liveEntries(mount.authentication.verifiers, refs!.verifiers, `${at}/authentication/verifiers`) }
             : {}),
           ...(mount.authentication.anonymous ? { anonymous: mount.authentication.anonymous } : {}),
+          ...(mount.authentication.throttle
+            ? {
+                throttle: liveThrottle(mount.authentication.throttle, refs!.throttle!, at, (key, request) =>
+                  (this.ctx.moduleContext.expandWith({ key }, { request }) as { key: unknown }).key,
+                ),
+              }
+            : {}),
         }
       : undefined;
     for (const entry of authentication?.verifiers ?? []) {
@@ -1431,6 +1482,7 @@ class HttpServer implements ResourceInstance {
       protectedResource: mount.protectedResource !== undefined,
       trace: (request) => this.requestTraces.get(request)!,
       credentialRequest: (request) => this.credentialRequest(request),
+      readBody: (request) => this.readBody(request),
       declaredDisplayMessage: (code, data) => this.ctx.declaredDisplayMessage(code, data),
     });
   }
@@ -1455,12 +1507,13 @@ class HttpServer implements ResourceInstance {
     }
   }
 
-  /** What a credential source reads: the request before its body. */
+  /** What a credential source reads; the body is added for a source that reads it. */
   private credentialRequest(request: FastifyRequest): CredentialRequest {
     const connection = this.connectionOf(request);
     return {
       method: request.method,
       path: request.url,
+      targetUri: `${requestOrigin(request)}${request.url}`,
       host: this.requestHost(request.raw),
       headers: normalizeHeaders(request.headers),
       query: requestBag(request.query),
@@ -1728,6 +1781,7 @@ export async function create(
   for (const mount of mounts) {
     if (!mount.authentication && !mount.authorization) continue;
     accessRefs.set(mount, {
+      ...(mount.authentication?.throttle ? { throttle: ctx.ensureKindRef(mount.authentication.throttle.budget) } : {}),
       verifiers: (mount.authentication?.verifiers ?? []).map((entry) => ({
         verifier: ctx.ensureKindRef(entry.verifier),
         from: ctx.ensureKindRef(entry.from),

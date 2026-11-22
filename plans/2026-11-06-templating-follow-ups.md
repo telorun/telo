@@ -22,6 +22,10 @@ rules, references, the call graph and the passes over it, the need table, texts,
 document-level stages, and every read of a named shape (a `Telo.JsonSchema` / `Telo.Type`
 declaration, which may itself be declared under a choice or hold one). What remains:
 
+- **Cost grows superlinearly in the number of declarations.** A templated kind's
+  `!for-each` over 1,000 items checks 2.9× slower than before the analysis over all
+  configurations landed, and 1,000 choice sites over two dimensions run 1.9× slower.
+
 - **A chain of named shapes multiplies.** A check that reaches a named shape reads it and
   every shape it references onward, whole, so its cost is the product of the classes along
   the chain: on a resource writing values through k varying shapes the counters below
@@ -85,9 +89,33 @@ None.
   inline `Telo.Value` at every `x` down the chain. Today, at k = 1/2/3/4: 2/4/8/16
   normalizations of the resource, 7/15/31/63 schema-door evaluations, 6/15/35/79
   relation-door evaluations; k = 8 runs out of memory.
+- **The feature-cost sweep** (`benchmarks/feature-cost/`, nightly on `main`) — the
+  baseline is the last nightly before the analysis over all configurations landed,
+  `96e82c70`, on the Intel Xeon 6975P host, warm, median: `forEachIterations` `telo check`
+  2392 ms at N = 100 and 5127 ms at N = 1000; `choiceCount` `telo run` 1081 ms at N = 100
+  and 2394 ms at N = 1000. A comparison is made only between runs on the same host model.
 
 Every part keeps the differential green and the corpus dump byte-identical apart from what
 it lists, each listed change with a fragment line.
+
+## 0. Cost grows linearly in the number of declarations
+
+- **Before:** since the analysis over all configurations landed, two sweep features grow
+  superlinearly in N. `forEachIterations` (one templated kind whose body is a `!for-each`
+  over N items, no choices) checks in 14695 ms at N = 1000, 2.9× the baseline, and only 6%
+  over it at N = 100. `choiceCount` (N resources under `!if` / `!switch` over two
+  dimensions) runs in 4603 ms at N = 1000, 1.9× the baseline, while its `telo check`
+  became 25% faster. Deleting the configuration loops cannot recover either: the added
+  cost exceeds the whole analysis time before the change. Regression issues #854 and #855.
+- **After:** the stage that grows superlinearly in the number of `!for-each` items, and the
+  one that grows superlinearly in the number of choice sites over fixed dimensions on the
+  load a run performs, are found by a profile at N = 1000 and made linear.
+- **Verify:**
+  - On the sweep, against the baseline on the same host model: `forEachIterations`
+    `telo check` and `choiceCount` `telo run` each with t(1000)/t(100) ≤ the baseline's
+    ratio (2.14 and 2.21), and each at N = 1000 ≤ its baseline time.
+  - `choiceCount` `telo check` stays at or below its time before this part.
+  - The profile's per-stage table at N = 100 and N = 1000 recorded in the change's report.
 
 ## 1. Named shapes are read one hop at a time
 
@@ -368,6 +396,7 @@ turns the differential red.
     whichever is larger. A seeded per-configuration cost (one plain pass per configuration
     put back) fails the slope row.
   - N definitions each holding `!if variables.flagK` in their body: t(16)/t(8) ≤ 2.5.
+  - Part 0's sweep rows still hold.
   - `within` at the first full configuration ≤ the whole analysis at N = 1/4/8/16.
   - Expectations byte-identical; differential green.
 
@@ -446,8 +475,8 @@ released tree unless stated.
 
 ## Order
 
-1a → 1b → 1c → 1d → 1e → 1f → 1g → 2a → 2b → 2c → 2d → 2e → 3. Part 4 is independent of
-the rest.
+0 → 1a → 1b → 1c → 1d → 1e → 1f → 1g → 2a → 2b → 2c → 2d → 2e → 3. Part 4 is independent
+of the rest.
 
 ## Release
 

@@ -1,0 +1,22 @@
+kind: Telo.Application
+metadata: { name: SignatureIntoJwt, version: 1.0.0 }
+imports: { AuthBearer: ../../../auth-bearer, Jose: ../../../jose }
+targets:
+  - !ref test
+---
+kind: AuthBearer.Jwt
+metadata: { name: verifier }
+keys: { kind: Jose.RemoteKeySet, url: "http://127.0.0.1:9482/jwks.json" }
+issuer: https://login.test
+algorithms: [ES256]
+audience: https://api.test/
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: judge
+    invoke: !ref verifier
+    inputs:
+      presentation: { type: signature, base: !cel "bytes('payload')", signatures: [!cel "bytes('sig')"] }
+      confirmation: {}
+      resource: null

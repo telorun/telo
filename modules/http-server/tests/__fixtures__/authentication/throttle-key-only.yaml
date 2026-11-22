@@ -1,0 +1,31 @@
+kind: Telo.Application
+metadata:
+  name: ThrottleKeyOnly
+  version: 1.0.0
+  description: A route's `throttle` replaces the mount's whole, so one naming only `key` has no budget and is refused.
+imports: { Http: ../../../, AuthBearer: ../../../../auth-bearer, Jose: ../../../../jose }
+---
+kind: Jose.KeySet
+metadata: { name: keys }
+algorithm: ES256
+keys:
+  - { kty: EC, x: J0k_d62PT7Wrl6emr3vrA1nHnWablWaHx2SIXDPK148, y: I44mAUi1zEMRdhTxiNNckPyaLTWoCb5_hyLFno2Dl7I, crv: P-256, d: 1Lj0H3tsR83jEeDaIbYTW3LrXjpOBxw-Uit_-j0Ai9k, kid: es1 }
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /ping, method: GET }
+    authentication:
+      throttle: { key: !cel "request.ip" }
+    returns: [{ status: 204 }]
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { port: 8974 }
+mounts:
+  - path: /
+    mount: !ref api
+    authentication:
+      verifiers:
+        - verifier: { kind: AuthBearer.Jwt, keys: !ref keys, issuer: "https://login.test", algorithms: [ES256], audience: !cel "[resource]" }
+          from: { kind: Http.FromAuthorization, schemes: [Bearer] }

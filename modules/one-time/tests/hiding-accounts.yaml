@@ -1,0 +1,95 @@
+kind: Telo.Application
+metadata:
+  name: OneTimeHidingAccountsTest
+  version: 1.0.0
+  description: >-
+    An application that calls OneTime.Issue for every subject it is asked about, real account or
+    not, answers the same for both: the issue, the refused reissue, and every redemption outcome
+    for a made-up holder, for the requester's own holder with a wrong code, and after exhaustion.
+imports: { OneTime: ../, KvStoreMemory: ../../kv-store-memory, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: KvStoreMemory.Store
+metadata: { name: store }
+---
+kind: OneTime.Codes
+metadata: { name: codes }
+name: sign-in
+store: !ref store
+expiresIn: 10m
+maxAttempts: 3
+---
+kind: OneTime.Issue
+metadata: { name: issue }
+tokens: !ref codes
+---
+kind: OneTime.RedeemCode
+metadata: { name: redeem }
+tokens: !ref codes
+---
+kind: Telo.Sequence
+metadata: { name: probe }
+inputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [email], properties: { email: { type: string } } }
+steps:
+  - name: issued
+    invoke: !ref issue
+    inputs: { subject: !cel "inputs.email", holder: requesters-browser }
+  - name: wrongCode
+    value: !cel "steps.issued.result.token == '000000' ? '111111' : '000000'"
+  - name: reissued
+    invoke: !ref issue
+    inputs: { subject: !cel "inputs.email", holder: requesters-browser }
+  - name: madeUpHolder
+    invoke: !ref redeem
+    inputs: { subject: !cel "inputs.email", token: !cel "steps.issued.result.token", holder: made-up-browser }
+  - name: ownHolderWrong1
+    invoke: !ref redeem
+    inputs: { subject: !cel "inputs.email", token: !cel "steps.wrongCode.result", holder: requesters-browser }
+  - name: ownHolderWrong2
+    invoke: !ref redeem
+    inputs: { subject: !cel "inputs.email", token: !cel "steps.wrongCode.result", holder: requesters-browser }
+  - name: ownHolderWrong3
+    invoke: !ref redeem
+    inputs: { subject: !cel "inputs.email", token: !cel "steps.wrongCode.result", holder: requesters-browser }
+  - name: afterExhaustion
+    invoke: !ref redeem
+    inputs: { subject: !cel "inputs.email", token: !cel "steps.issued.result.token", holder: requesters-browser }
+outputs:
+  issued: !cel "steps.issued.result.issued"
+  reissued: !cel "steps.reissued.result.issued"
+  madeUpHolder: !cel "steps.madeUpHolder.result"
+  attempts:
+    - !cel "steps.ownHolderWrong1.result"
+    - !cel "steps.ownHolderWrong2.result"
+    - !cel "steps.ownHolderWrong3.result"
+  afterExhaustion: !cel "steps.afterExhaustion.result"
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: known
+    invoke: !ref probe
+    inputs: { email: ann@acme.test }
+  - name: unknown
+    invoke: !ref probe
+    inputs: { email: nobody@acme.test }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        known: !cel "steps.known.result"
+        sameForUnknown: !cel "steps.known.result == steps.unknown.result"
+      expected:
+        known:
+          issued: true
+          reissued: false
+          madeUpHolder: { redeemed: false, reason: holderMismatch }
+          attempts:
+            - { redeemed: false, reason: mismatch }
+            - { redeemed: false, reason: mismatch }
+            - { redeemed: false, reason: exhausted }
+          afterExhaustion: { redeemed: false, reason: unknown }
+        sameForUnknown: true

@@ -7,7 +7,7 @@ The shared vocabulary of inbound authentication and authorization. It declares n
 | Name | What it is |
 | --- | --- |
 | `Auth.Principal` | The authenticated caller. See [principal](./docs/principal.md). |
-| `Auth.Presentation` | The credential material, by what it is: `token`, `basic`, `certificate` or `asserted`. Variants are exported separately as `Auth.TokenPresentation`, `Auth.BasicPresentation`, `Auth.CertificatePresentation` and `Auth.AssertedPresentation`. See [presentations](./docs/presentations.md). |
+| `Auth.Presentation` | The credential material, by what it is: `token`, `basic`, `certificate`, `asserted` or `signature`. Variants are exported separately as `Auth.TokenPresentation`, `Auth.BasicPresentation`, `Auth.CertificatePresentation`, `Auth.AssertedPresentation` and `Auth.SignaturePresentation`. See [presentations](./docs/presentations.md). |
 | `Auth.Confirmation` | Proof of possession the transport builds: a client-certificate thumbprint and a DPoP proof. |
 | `Auth.VerifierOutput` | A verifier's answer: `{ principal }` or `{ refused, reason, challenge }`. |
 | `Auth.Verifier` | Abstract. `{ presentation, confirmation, resource }` → `Auth.VerifierOutput`. Its reading publishes `challenges`, and `issuer` when the kind declares one. See [verifiers](./docs/verifiers.md). |

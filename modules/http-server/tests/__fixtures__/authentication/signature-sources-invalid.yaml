@@ -1,0 +1,51 @@
+kind: Telo.Application
+metadata:
+  name: SignatureSourcesInvalid
+  version: 1.0.0
+  description: A signature pattern that is not RE2 or captures nothing, signed bytes without the body and a component carrying a parameter are refused.
+imports: { Http: ../../../, AuthSignature: ../../../../auth-signature }
+---
+kind: AuthSignature.Verifier
+metadata: { name: webhooks }
+keys: [{ subject: sender, algorithm: hmac-sha256, secret: s3cret }]
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /ping, method: POST }
+    returns: [{ status: 204 }]
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { port: 8973 }
+mounts:
+  - path: /
+    mount: !ref api
+    authentication:
+      verifiers:
+        - verifier: !ref webhooks
+          from:
+            kind: Http.FromBodySignature
+            scheme: Stripe
+            signature: { header: Stripe-Signature, pattern: "v1=(", encoding: hex }
+            base: [{ type: body }]
+        - verifier: !ref webhooks
+          from:
+            kind: Http.FromBodySignature
+            scheme: Slack
+            signature: { header: X-Slack-Signature, pattern: "^v0=([0-9a-f]+)$", encoding: hex }
+            base: [{ type: literal, value: "v0:" }, { type: header, header: X-Slack-Request-Timestamp }]
+        - verifier: !ref webhooks
+          from: { kind: Http.FromMessageSignature, scheme: Signature, components: ["@method", "content-digest;sf"] }
+        - verifier: !ref webhooks
+          from:
+            kind: Http.FromBodySignature
+            scheme: GitHub
+            signature: { header: X-Hub-Signature-256, pattern: "sha256=[0-9a-f]+", encoding: hex }
+            base: [{ type: body }]
+        - verifier: !ref webhooks
+          from:
+            kind: Http.FromBodySignature
+            scheme: Stripe
+            signature: { header: Stripe-Signature, pattern: "v1=([0-9a-f]+)", encoding: hex }
+            base: [{ type: header, header: Stripe-Signature, pattern: "t=[0-9]+" }, { type: body }]

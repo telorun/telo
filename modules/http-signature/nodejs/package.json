@@ -1,0 +1,29 @@
+{
+  "name": "@telorun/http-signature",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "description": "Telo http-signature module — the HTTP signature grammar shared by transports: the RFC 9421 signature base, Signature-Input / Signature structured fields (RFC 9651), Content-Digest (RFC 9530) and webhook base parts. Never published: the code ships inside the module artifact as a pkg:telo/local/js bundle and a transport reaches it through the module's exports.code specifier.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "re2js": "2.8.3"
+  },
+  "devDependencies": {
+    "@telorun/sdk": "workspace:*",
+    "@types/node": "^20.0.0",
+    "esbuild": "catalog:",
+    "typescript": "^5.0.0",
+    "vitest": "^2.1.8"
+  }
+}

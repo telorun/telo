@@ -12,3 +12,5 @@ export * as FromQueryController from "./from-query-controller.js";
 export * as FromCookieController from "./from-cookie-controller.js";
 export * as FromClientCertificateController from "./from-client-certificate-controller.js";
 export * as FromForwardedIdentityController from "./from-forwarded-identity-controller.js";
+export * as FromMessageSignatureController from "./from-message-signature-controller.js";
+export * as FromBodySignatureController from "./from-body-signature-controller.js";

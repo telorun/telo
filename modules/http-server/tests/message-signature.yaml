@@ -1,0 +1,154 @@
+kind: Telo.Application
+metadata:
+  name: MessageSignatureTest
+  version: 1.0.0
+  description: |
+    `Http.FromMessageSignature` verifies the RFC 9421 Appendix B.2.5
+    (hmac-sha256) and B.2.6 (ed25519) requests through `AuthSignature.Verifier`,
+    their authority read from the forwarded host under `trustProxy`. A signature
+    covering `content-digest` verifies with the body's digest and is a 401 when
+    the digest does not hold for the body; a request carrying no signature is
+    challenged with the source's scheme.
+imports:
+  Http: ../
+  HttpClient: ../../http-client
+  AuthSignature: ../../auth-signature
+  Crypto: ../../crypto
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Http.Api
+metadata: { name: rfc }
+routes:
+  - request: { path: /foo, method: POST, schema: { body: { type: object } } }
+    returns:
+      - status: 200
+        content: { application/json: { body: { subject: !cel "request.principal.subject", received: !cel "request.body" } } }
+---
+kind: HttpClient.Client
+metadata: { name: client }
+baseUrl: http://127.0.0.1:28545
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref client
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 28545 }
+    trustProxy: true
+    mounts:
+      - path: /
+        mount: !ref rfc
+        authentication:
+          verifiers:
+            - verifier:
+                kind: AuthSignature.Verifier
+                keys:
+                  - id: test-shared-secret
+                    subject: rfc-hmac
+                    algorithm: hmac-sha256
+                    secret: !cel "bytesFromBase64('uzvJfB4u3N0Jy4T7NZ75MDVcr8zSTInedJtkgcu46YW4XByzNJjxBdtjUkdJPBtbmHhIDi6pcl8jsasjlTMtDQ==')"
+              from: { kind: Http.FromMessageSignature, scheme: Signature, label: sig-b25, components: ["@authority", date, content-type] }
+            - verifier:
+                kind: AuthSignature.Verifier
+                keys:
+                  - id: test-key-ed25519
+                    subject: rfc-ed25519
+                    algorithm: ed25519
+                    jwk: { kty: OKP, crv: Ed25519, x: JrQLj5P_89iXES9-vFgrIy29clF9CC_oPPsw3c5D0bs }
+              from: { kind: Http.FromMessageSignature, scheme: Signature, label: sig-b26, components: ["@method", "@path", "@authority"] }
+            - verifier:
+                kind: AuthSignature.Verifier
+                keys: [{ id: digest-key, subject: digest, algorithm: hmac-sha256, secret: digest-secret }]
+              from: { kind: Http.FromMessageSignature, scheme: Signature, label: sig-digest, components: [content-digest, "@method"] }
+targets:
+  - !ref server
+steps:
+  - name: digestMac
+    invoke: { kind: Crypto.Hmac }
+    inputs:
+      op: sign
+      key: digest-secret
+      encoding: base64
+      input: |-
+        "content-digest": sha-256=:X48E9qOokqqrvdts8nOJRJN3OWDUoyWxBf7kbu9DBPE=:
+        "@method": POST
+        "@signature-params": ("content-digest" "@method");created=1618884473;keyid="digest-key"
+  - name: hmac
+    invoke: !ref call
+    inputs:
+      url: /foo?param=Value&Pet=dog
+      method: POST
+      headers:
+        x-forwarded-host: example.com
+        x-forwarded-proto: https
+        date: Tue, 20 Apr 2021 02:07:55 GMT
+        content-type: application/json
+        signature-input: sig-b25=("date" "@authority" "content-type");created=1618884473;keyid="test-shared-secret"
+        signature: "sig-b25=:pxcQw6G3AjtMBQjwo8XzkZf/bws5LelbaMk5rGIGtE8=:"
+      body: '{"hello": "world"}'
+  - name: ed25519
+    invoke: !ref call
+    inputs:
+      url: /foo?param=Value&Pet=dog
+      method: POST
+      headers:
+        x-forwarded-host: example.com
+        x-forwarded-proto: https
+        date: Tue, 20 Apr 2021 02:07:55 GMT
+        content-type: application/json
+        signature-input: sig-b26=("date" "@method" "@path" "@authority" "content-type" "content-length");created=1618884473;keyid="test-key-ed25519"
+        signature: "sig-b26=:wqcAqbmYJ2ji2glfAMaRy4gruYYnx2nEFN2HN6jrnDnQCK1u02Gb04v9EDgwUPiu4A0w6vuQv5lIp5WPpBKRCw==:"
+      body: '{"hello": "world"}'
+  - name: digest
+    invoke: !ref call
+    inputs:
+      url: /foo
+      method: POST
+      headers:
+        content-type: application/json
+        content-digest: "sha-256=:X48E9qOokqqrvdts8nOJRJN3OWDUoyWxBf7kbu9DBPE=:"
+        signature-input: sig-digest=("content-digest" "@method");created=1618884473;keyid="digest-key"
+        signature: !interpolate "sig-digest=:${{ steps.digestMac.result.value }}:"
+      body: '{"hello": "world"}'
+  - name: digestMismatch
+    invoke: !ref call
+    inputs:
+      url: /foo
+      method: POST
+      headers:
+        content-type: application/json
+        content-digest: "sha-256=:X48E9qOokqqrvdts8nOJRJN3OWDUoyWxBf7kbu9DBPE=:"
+        signature-input: sig-digest=("content-digest" "@method");created=1618884473;keyid="digest-key"
+        signature: !interpolate "sig-digest=:${{ steps.digestMac.result.value }}:"
+      body: '{"hello": "World"}'
+  - name: unsigned
+    invoke: !ref call
+    inputs: { url: /foo, method: POST, headers: { content-type: application/json }, body: '{"hello": "world"}' }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        hmac: { status: !cel "steps.hmac.result.status", body: !cel "steps.hmac.result.body" }
+        ed25519: { status: !cel "steps.ed25519.result.status", body: !cel "steps.ed25519.result.body" }
+        digest: { status: !cel "steps.digest.result.status", body: !cel "steps.digest.result.body" }
+        digestMismatch:
+          status: !cel "steps.digestMismatch.result.status"
+          challenge: !cel "steps.digestMismatch.result.headers['www-authenticate']"
+          reason: !cel "steps.digestMismatch.result.body.data.reason"
+        unsigned:
+          status: !cel "steps.unsigned.result.status"
+          challenge: !cel "steps.unsigned.result.headers['www-authenticate']"
+          reason: !cel "steps.unsigned.result.body.data.reason"
+      expected:
+        hmac: { status: 200, body: { subject: rfc-hmac, received: { hello: world } } }
+        ed25519: { status: 200, body: { subject: rfc-ed25519, received: { hello: world } } }
+        digest: { status: 200, body: { subject: digest, received: { hello: world } } }
+        digestMismatch: { status: 401, challenge: Signature, reason: malformed }
+        unsigned: { status: 401, challenge: Signature, reason: absent }
