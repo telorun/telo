@@ -1,4 +1,7 @@
 # Suppressions for Trivy. One entry names ONE advisory id: `id`, `statement` (why, and what ends it)
 # and `expired_at` (at most 90 days ahead). No package-wide ignores. `pnpm run check:suppressions`
 # enforces it.
-vulnerabilities: []
+vulnerabilities:
+  - id: CVE-2026-116795
+    statement: "Vulnerable code not reached: the quadratic matching is in re2js's opt-in LOOKBEHINDS mode, which Telo never enables (a lookbehind pattern is refused by Telo's RE2 profile at parse time). This is GHSA-gg6h-894w-4m9c of osv-scanner.toml. The 2.8.7 fix is a patch but re2js is pinned exactly in cel and templating because the cross-engine conformance vectors pin its answers and the Rust twin tracks 2.8.3. Ends when the pin is moved deliberately with the vectors re-run."
+    expired_at: 2027-02-17
