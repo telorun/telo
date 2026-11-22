@@ -1,0 +1,15 @@
+kind: Telo.Application
+metadata: { name: JwkWithPrivateKey, version: 1.0.0 }
+imports: { AuthSignature: ../../ }
+---
+kind: AuthSignature.Verifier
+metadata: { name: verifier }
+keys:
+  - id: partner
+    subject: partner
+    algorithm: ed25519
+    jwk:
+      kty: OKP
+      crv: Ed25519
+      x: JrQLj5P_89iXES9-vFgrIy29clF9CC_oPPsw3c5D0bs
+      d: nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A

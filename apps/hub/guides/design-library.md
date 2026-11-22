@@ -430,24 +430,19 @@ throws:
   each slot to that engine's kinds. The store's table is a kind the author
   declares and lists in the engine's schema resource, which creates and
   migrates it; the module issues no DDL.
-- Such a table kind must `extends` the ENGINE's table kind with `base:` to be
-  accepted by that engine's schema, and a kind has one parent, so there is no
-  engine-neutral table kind to hold a rule. A rule about the stores sharing one
-  table (two claiming one `name`) is a referrer rule declared on EACH engine's
-  table kind, with `coReferrers:` binding the other stores that reach the same
-  table through their `table` slot.
-- When the shared resource is another module's (a key/value store every
-  consumer names), its kind must not name its consumers, so the claimant states
-  the check on itself: a RESOURCE rule with `coReferrers: /store` binds the
-  other resources of its kind whose `store` names the same declaration
-  (`!coReferrers.exists(o, o.name == self.name)`); its controller keeps the
-  runtime twin.
+- Such a table kind `extends` the ENGINE's table kind with `base:` (its schema
+  accepts nothing else) and has one parent, so a rule about stores sharing one
+  table (two claiming one `name`) is a referrer rule on EACH engine's table kind,
+  `coReferrers:` binding the other stores reaching it through `table`.
+- When the shared resource is another module's (a key/value store), the
+  claimant checks itself: a RESOURCE rule with `coReferrers: /store` binds the
+  others of its kind naming the same store
+  (`!coReferrers.exists(o, o.name == self.name)`), twinned in its controller.
 - A rule's binding is read narrowly: an unread member can't fail it.
-- A mount kind of your own that refuses callers itself (a login wall) declares
-  the codes it raises: `x-telo-raises: [<CODE>…]` on the field whose presence
-  raises them, `x-telo-catches-for: { slot, raises: [<CODE>…] }` on each catch
-  list that renders them, each code in the kind's `throws.codes`. A catch-all
-  there is then typed by them, and no handler owes their coverage.
+- A mount kind that refuses callers itself (a login wall) declares its codes:
+  `x-telo-raises: [<CODE>…]` on the field raising them, `x-telo-catches-for:
+  { slot, raises: [<CODE>…] }` on each catch list rendering them, each in
+  `throws.codes`. A catch-all there is typed by them; no handler owes coverage.
 - A referenced kind types a binding or member from each referrer:
   `x-telo-context-from-referrer: <binding>[/<member>]`, with
   `x-telo-context-withheld: <reason>` beside it to refuse a read no referrer
@@ -464,7 +459,11 @@ throws:
   (`$ref: "telo://Self/Bound#/properties/inputs"`); never copy annotations.
 - A verifier backed by an authorization server declares `issuer`, typed from
   `Auth.Issuer`. The key is reserved: a transport reads it from the reading to
-  derive discovery metadata, so write it once, never on the transport.
+  derive discovery metadata, so write it there alone.
+- A credential source needing the body publishes `readsBody`, and the transport
+  buffers it first. Single-use links and codes are `one-time`'s; a library hiding
+  whether an account exists issues for every subject. Per-client guessing limits
+  are the mount's `authentication.throttle`: a verifier never sees the client.
 
 ## The importer contract
 

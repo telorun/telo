@@ -1,0 +1,49 @@
+kind: Telo.Library
+metadata:
+  name: HttpSignature
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Security, Transport]
+  description: >-
+    The grammar of signed HTTP requests, shared by whatever receives or sends
+    them: RFC 9421 message signatures (the signature base and the
+    Signature-Input and Signature structured fields), Content-Digest body
+    digests, and the signed bytes of webhook schemes that sign a timestamp and
+    the body. Turns a plain request description into the bytes that were signed.
+exports:
+  resources: [BasePart]
+  # The readers a transport calls with a plain request description.
+  code:
+    - specifier: "@telorun/http-signature"
+      format: js
+      path: ./nodejs/http-signature.mjs
+      source: ./nodejs/src/index.ts
+---
+# Normative: docs/webhook-signatures.md.
+kind: Telo.JsonSchema
+metadata:
+  name: BasePart
+  description: >-
+    One part of the bytes a webhook provider signs: a literal text, a request
+    header (optionally narrowed to the first group of a pattern) or the body.
+    The parts of a list are joined with nothing between them.
+schema:
+  oneOf:
+    - type: object
+      additionalProperties: false
+      required: [type, value]
+      properties:
+        type: { const: literal }
+        value: { description: "The text, as written.", type: string }
+    - type: object
+      additionalProperties: false
+      required: [type, header]
+      properties:
+        type: { const: header }
+        header: { description: The request header whose value is used., type: string, minLength: 1 }
+        pattern: { description: An RE2 pattern; the first group of its first match is used instead of the whole value., type: string, format: re2-pattern, pattern: "^([^\\\\\\[(]|\\\\.|\\[([^\\\\\\]]|\\\\.)*\\]|\\(\\?)*\\([^?]" }
+    - type: object
+      additionalProperties: false
+      required: [type]
+      properties: { type: { const: body } }

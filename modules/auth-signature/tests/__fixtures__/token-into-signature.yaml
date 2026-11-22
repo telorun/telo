@@ -1,0 +1,17 @@
+kind: Telo.Application
+metadata: { name: TokenIntoSignature, version: 1.0.0 }
+imports: { AuthSignature: ../../ }
+targets:
+  - !ref test
+---
+kind: AuthSignature.Verifier
+metadata: { name: verifier }
+keys:
+  - { subject: partner, algorithm: hmac-sha256, secret: s3cret }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: judge
+    invoke: !ref verifier
+    inputs: { presentation: { type: token, token: abc }, confirmation: {}, resource: null }

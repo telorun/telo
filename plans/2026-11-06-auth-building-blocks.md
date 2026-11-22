@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 priority: medium
 depends-on: []
 packages: [modules/one-time, modules/auth, modules/auth-signature, modules/http-signature, modules/http-server, modules/protection, modules/queue, examples/order-webhook, apps/authoring-agent, apps/hub, docs]

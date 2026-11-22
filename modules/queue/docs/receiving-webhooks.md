@@ -70,5 +70,27 @@ dead-lettering — see [delivery semantics](delivery.md).
       status: 204
   ```
 
-- **Verify the signature first.** Check the provider's signature on the route
-  before enqueueing, so an unsigned request stores nothing.
+- **Verify the signature first.** Check the provider's signature on the mount
+  before enqueueing, so an unsigned request stores nothing. `Http.FromBodySignature`
+  reads the provider's signature header and `AuthSignature.Verifier` checks it over
+  the exact body bytes, before the body is parsed:
+
+  ```yaml
+  authentication:
+    verifiers:
+      - verifier:
+          kind: AuthSignature.Verifier
+          keys:
+            - { subject: payments, algorithm: hmac-sha256, secret: !cel "secrets.webhookSecret" }
+        from:
+          kind: Http.FromBodySignature
+          scheme: Signature
+          signature: { header: x-signature, pattern: "sha256=([0-9a-f]+)", encoding: hex }
+          base: [{ type: body }]
+  ```
+
+  A signature does not stop a replay: providers redeliver the same signed request
+  on a 5xx, and the verifier accepts each one. Dedupe on the delivery id, either
+  with the queue as above or, for a handler that does work inline, with
+  `Idempotency.Once` keyed on it (see `examples/order-webhook`). Each vendor's
+  header and base are in `auth-signature`'s recipes.

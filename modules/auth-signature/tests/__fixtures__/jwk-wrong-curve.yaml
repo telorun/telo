@@ -1,0 +1,11 @@
+kind: Telo.Application
+metadata: { name: JwkWrongCurve, version: 1.0.0 }
+imports: { AuthSignature: ../../ }
+---
+kind: AuthSignature.Verifier
+metadata: { name: verifier }
+keys:
+  - id: partner
+    subject: partner
+    algorithm: ed25519
+    jwk: { kty: OKP, crv: P-256, x: JrQLj5P_89iXES9-vFgrIy29clF9CC_oPPsw3c5D0bs }

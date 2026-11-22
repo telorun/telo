@@ -22,6 +22,12 @@ targets:
   - !ref forwardedOnRouteAtRuntime
   - !ref principalTyping
   - !ref basicIntoJwt
+  - !ref bodySignatureIntoJwt
+  - !ref signatureSourcesInvalid
+  - !ref throttleKeyOnly
+  - !ref passwordThrottle
+  - !ref throttleKeyValid
+  - !ref throttleKeyBody
   - !ref trustedOriginInvalid
   - !ref thirdPartyMount
   - !ref catchAllAuthenticated
@@ -127,6 +133,51 @@ source: ./__fixtures__/authentication/basic-into-jwt.yaml
 expect:
   errors:
     - { code: CONTRACT_INPUTS_MISMATCH, message: "the inline Http.FromBasic produces what the inline AuthBearer.Jwt" }
+---
+kind: Assert.Manifest
+metadata: { name: bodySignatureIntoJwt }
+source: ./__fixtures__/authentication/body-signature-into-jwt.yaml
+expect:
+  errors:
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "the inline Http.FromBodySignature produces what the inline AuthBearer.Jwt" }
+---
+kind: Assert.Manifest
+metadata: { name: signatureSourcesInvalid }
+source: ./__fixtures__/authentication/signature-sources-invalid.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "/verifiers/0/from/signature/pattern must be a re2-pattern" }
+    - { code: SCHEMA_VIOLATION, message: "/verifiers/1/from/base must contain at least 1 valid item(s)" }
+    - { code: SCHEMA_VIOLATION, message: "/verifiers/2/from/components/1 must match pattern" }
+    - { code: SCHEMA_VIOLATION, message: "/verifiers/3/from/signature/pattern must match pattern" }
+    - { code: SCHEMA_VIOLATION, message: "/verifiers/4/from/base/0/pattern must match pattern" }
+---
+kind: Assert.Manifest
+metadata: { name: throttleKeyOnly }
+source: ./__fixtures__/authentication/throttle-key-only.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "/routes/0/authentication/throttle is missing required property 'budget'" }
+---
+# Per-address and per-account throttling of one sign-in, as the docs write it.
+kind: Assert.Manifest
+metadata: { name: passwordThrottle }
+source: ./__fixtures__/authentication/password-throttle.yaml
+expect: { errors: [] }
+---
+# A throttle key reads the request before any body exists, so `request.ip` and
+# `request.headers` are valid keys and `request.body` is not.
+kind: Assert.Manifest
+metadata: { name: throttleKeyValid }
+source: ./__fixtures__/authentication/throttle-key-valid.yaml
+expect: { errors: [] }
+---
+kind: Assert.Manifest
+metadata: { name: throttleKeyBody }
+source: ./__fixtures__/authentication/throttle-key-body.yaml
+expect:
+  errors:
+    - { code: CEL_UNKNOWN_FIELD, message: "body" }
 ---
 kind: Assert.Manifest
 metadata: { name: trustedOriginInvalid }

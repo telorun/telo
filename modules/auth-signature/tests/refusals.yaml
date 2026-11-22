@@ -1,0 +1,43 @@
+kind: Telo.Application
+metadata:
+  name: AuthSignatureRefusalsTest
+  version: 1.0.0
+  description: |
+    A verifier key whose `jwk` carries a private `d` or names another curve, a token presented to the
+    signature verifier and a signature presented to AuthBearer.Jwt are refused before the app runs.
+imports: { Assert: ../../assert }
+targets:
+  - !ref privateKey
+  - !ref wrongCurve
+  - !ref tokenIntoSignature
+  - !ref signatureIntoJwt
+---
+kind: Assert.Manifest
+metadata: { name: privateKey }
+source: ./__fixtures__/jwk-with-private-key.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "/keys/0/jwk must NOT have additional properties ('d' is not allowed)" }
+---
+kind: Assert.Manifest
+metadata: { name: wrongCurve }
+source: ./__fixtures__/jwk-wrong-curve.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "/keys/0/jwk/crv must be equal to constant" }
+---
+kind: Assert.Manifest
+metadata: { name: tokenIntoSignature }
+source: ./__fixtures__/token-into-signature.yaml
+expect:
+  errors:
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "/presentation/type must be equal to constant" }
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "('token' is not allowed)" }
+---
+kind: Assert.Manifest
+metadata: { name: signatureIntoJwt }
+source: ./__fixtures__/signature-into-jwt.yaml
+expect:
+  errors:
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "/presentation/type must be equal to constant" }
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "('base' is not allowed)" }

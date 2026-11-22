@@ -49,6 +49,10 @@ A route declaring a stream body for a content type that arrives parsed fails wit
 
 A multipart body needs no entry: the server hands it over as raw bytes, which is what a multipart decoder reads. An entry naming an exact multipart type still takes precedence for that type alone.
 
+## A body read before authentication
+
+A mount or route whose `authentication` lists a source that reads the body (a signature over it) has its whole body read before any source runs, held to the limit below, and then replayed: every way above — a parser of the server's, of yours or of the mount's, and a stream — reads those same bytes, so the handler gets exactly what was verified. A mount reads the body only through the server, never from the raw socket. See [signed requests](authentication.md#signed-requests).
+
 ## The body limit
 
 No more than `maxBodyBytes` of a request body is ever buffered or handed to a handler, and a body is handed on only as far as something asks for it: when the response is finished before the body has arrived in full, the connection is closed instead of drained, and whatever the host still takes off the socket while it closes is discarded.

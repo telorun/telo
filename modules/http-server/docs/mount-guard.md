@@ -2,7 +2,7 @@
 
 > Examples below assume the `http-server` module is imported under alias `Http`, and `run` under `Run`.
 
-A mount entry on `Http.Server` may carry a `guard:` — an invocable run for every request that matches one of **that mount's** routes, before the request body is read. It is where an origin allowlist, a tenant check or any other per-mount check lives, declared once per mount instead of repeated in every route's `inputs:`.
+A mount entry on `Http.Server` may carry a `guard:` — an invocable run for every request that matches one of **that mount's** routes, before the request body is parsed. It is where an origin allowlist, a tenant check or any other per-mount check lives, declared once per mount instead of repeated in every route's `inputs:`.
 
 Who the caller is belongs to the mount's `authentication:` instead ([Authentication and authorization](authentication.md)): it turns a credential into `request.principal`, and `telo check` can tell an authenticated mount from an open one. The guard runs after authentication and authorization, and reads the caller as `request.principal`.
 

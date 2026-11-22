@@ -36,7 +36,7 @@ import { requestBodyRefused } from "./request-body-limit.js";
 import { requestHostOf } from "./request-host.js";
 import { withConnection } from "./request-connection.js";
 import { withLang } from "./request-language.js";
-import { liveEntries, readingOf, ROUTE_ACCESS, type AuthorizationSetting, type RouteAccess } from "./mount-access.js";
+import { liveEntries, liveThrottle, readingOf, ROUTE_ACCESS, type AuthorizationSetting, type RouteAccess } from "./mount-access.js";
 import {
   plainEncodedIssues,
   textPartValidator,
@@ -87,6 +87,7 @@ type HandlerRef = { kind: string; name: string };
 type RouteAccessRefs = {
   verifiers: Array<{ verifier: HandlerRef; from: HandlerRef }>;
   policy?: HandlerRef;
+  throttle?: HandlerRef;
 };
 
 export class HttpServerApi implements ResourceInstance {
@@ -145,7 +146,7 @@ export class HttpServerApi implements ResourceInstance {
     const refs = this.accessRefs.get(route as unknown as object);
     const at = `/routes/${routeIndex}`;
     const written = route.authentication as
-      | { verifiers?: Array<{ verifier: unknown; from: unknown }>; anonymous?: "allow" | "deny" }
+      | { verifiers?: Array<{ verifier: unknown; from: unknown }>; anonymous?: "allow" | "deny"; throttle?: { budget: unknown; key?: unknown } }
       | undefined;
     const policy = route.authorization as { policy: unknown; action: unknown; resource?: unknown } | undefined;
     const authorization: AuthorizationSetting | undefined = policy
@@ -166,6 +167,13 @@ export class HttpServerApi implements ResourceInstance {
                 ? { verifiers: liveEntries(written.verifiers, refs!.verifiers, `${at}/authentication/verifiers`) }
                 : {}),
               ...(written.anonymous ? { anonymous: written.anonymous } : {}),
+              ...(written.throttle
+                ? {
+                    throttle: liveThrottle(written.throttle, refs!.throttle!, at, (key, request) =>
+                      (this.ctx.moduleContext.expandWith({ key }, { request }) as { key: unknown }).key,
+                    ),
+                  }
+                : {}),
             },
           }
         : {}),
@@ -492,6 +500,7 @@ export async function create(resource: any, ctx: ResourceContext): Promise<HttpS
           from: ctx.ensureKindRef(entry.from),
         })),
         ...(route.authorization ? { policy: ctx.ensureKindRef(route.authorization.policy) } : {}),
+        ...(route.authentication?.throttle ? { throttle: ctx.ensureKindRef(route.authentication.throttle.budget) } : {}),
       });
     }
   }

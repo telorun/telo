@@ -1,0 +1,21 @@
+# A link set and a code set claiming one name on one store: refused by `telo check`
+# at both resources, and by the controller when the second is created.
+kind: Telo.Library
+metadata: { name: NameDuplicate }
+imports: { OneTime: ../../.., KvStoreMemory: ../../../../kv-store-memory }
+exports: { resources: [links, codes] }
+---
+kind: KvStoreMemory.Store
+metadata: { name: store }
+---
+kind: OneTime.Links
+metadata: { name: links }
+name: main
+store: !ref store
+expiresIn: 30m
+---
+kind: OneTime.Codes
+metadata: { name: codes }
+name: main
+store: !ref store
+expiresIn: 10m

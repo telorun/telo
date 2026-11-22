@@ -3,6 +3,7 @@ import {
   deriveContext,
   isCancellationError,
   isInvokeError,
+  integerInput,
   isSuspension,
   toPlainJson,
   type ResourceContext,
@@ -15,6 +16,7 @@ import {
   accessRefusalOf,
   distinctChallenges,
   ERR_HTTP_ACCESS_CHECK_UNAVAILABLE,
+  ERR_HTTP_AUTHENTICATION_THROTTLED,
   ERR_HTTP_CROSS_ORIGIN_REFUSED,
   ERR_HTTP_FORBIDDEN,
   ERR_HTTP_UNAUTHENTICATED,
@@ -37,9 +39,17 @@ export interface AccessEntry {
   readonly from: Dispatched;
 }
 
+/** `authentication.throttle`: the budget refused credentials are counted on, and who is counted. */
+export interface ThrottleSetting {
+  readonly budget: Dispatched;
+  /** The client's key for `request`, evaluated before any body is read. */
+  key(request: CredentialRequest): unknown;
+}
+
 export interface AuthenticationSetting {
   readonly verifiers?: readonly AccessEntry[];
   readonly anonymous?: "allow" | "deny";
+  readonly throttle?: ThrottleSetting;
 }
 
 export interface AuthorizationSetting {
@@ -71,6 +81,7 @@ interface SourceReading {
   originCheck?: { trustedOrigins?: unknown };
   bearerMethod?: unknown;
   requiresTrustedProxy?: unknown;
+  readsBody?: unknown;
 }
 
 const readings = new WeakMap<ResourceInstance, Promise<Record<string, unknown>>>();
@@ -119,6 +130,8 @@ export interface MountAccessOptions {
   readonly protectedResource?: boolean;
   readonly trace: (request: FastifyRequest) => RequestTrace & { principal: Readonly<Record<string, unknown>> | null };
   readonly credentialRequest: (request: FastifyRequest) => CredentialRequest;
+  /** The request's whole body, read once within the route's body limit; it becomes the request's payload. */
+  readonly readBody: (request: FastifyRequest) => Promise<Uint8Array>;
   readonly declaredDisplayMessage: (code: string, data?: unknown) => TextRecord | undefined;
 }
 
@@ -150,6 +163,7 @@ export function mountAccessHook(options: MountAccessOptions) {
       const authenticated = await authenticate(options, request, trace, {
         verifiers: routeAuthentication?.verifiers ?? mountAuthentication?.verifiers ?? [],
         anonymous: routeAuthentication?.anonymous ?? mountAuthentication?.anonymous ?? (mountAuthentication || routeAuthentication ? "deny" : "allow"),
+        throttle: routeAuthentication?.throttle ?? mountAuthentication?.throttle,
       });
       trace.principal = authenticated.principal;
       if (authenticated.entry) await checkOrigin(options, request, authenticated.entry);
@@ -158,6 +172,8 @@ export function mountAccessHook(options: MountAccessOptions) {
       if (!isInvokeError(error)) throw error;
       const challenge = accessRefusalOf(error)?.wwwAuthenticate;
       if (challenge) reply.header("WWW-Authenticate", challenge);
+      const retryAfter = accessRefusalOf(error)?.retryAfter;
+      if (retryAfter !== undefined) reply.header("Retry-After", String(retryAfter));
       trace.reject(error);
       if (route && (await route.render(error, request, reply))) return reply;
       throw error;
@@ -169,7 +185,7 @@ async function authenticate(
   options: MountAccessOptions,
   request: FastifyRequest,
   trace: RequestTrace,
-  setting: { verifiers: readonly AccessEntry[]; anonymous: "allow" | "deny" },
+  setting: { verifiers: readonly AccessEntry[]; anonymous: "allow" | "deny"; throttle?: ThrottleSetting | undefined },
 ): Promise<Authenticated> {
   const view = options.credentialRequest(request);
   const challenges = async (refused?: { index: number; challenge: Challenge | null }) => {
@@ -201,11 +217,68 @@ async function authenticate(
     });
   };
 
+  // A source reading the body has it read before any source runs, so a body over the
+  // limit is refused before any verifier is reached.
+  const readsBody: boolean[] = [];
+  for (const entry of setting.verifiers) {
+    readsBody.push(((await readingOf(entry.from.instance)) as SourceReading).readsBody === true);
+  }
+  // The throttle reserves one unit before any cost: the body read, or a verifier.
+  const throttle = setting.throttle;
+  let reservation: { key: string; reserved: number } | undefined;
+  const reserve = async () => {
+    if (!throttle || reservation) return;
+    const key = String(throttle.key(view));
+    let answer: Record<string, unknown>;
+    try {
+      answer = (await dispatch(options, trace, throttle.budget, { op: "reserve", key, amount: 1 })) as Record<string, unknown>;
+    } catch (error) {
+      throw unavailable(options, "throttle", throttle.budget, error);
+    }
+    if (answer.allowed !== true) {
+      const retryAfter = integerInput(answer.retryAfter) ?? 0;
+      const data = { retryAfter };
+      throw accessRefusal(ERR_HTTP_AUTHENTICATION_THROTTLED, `${options.label}: the client's authentication budget is spent`, {
+        data,
+        displayMessage: options.declaredDisplayMessage(ERR_HTTP_AUTHENTICATION_THROTTLED, data),
+        retryAfter,
+      });
+    }
+    reservation = { key, reserved: integerInput(answer.reserved) ?? 1 };
+  };
+  // Settles the reservation to nothing; a store failure is returned, not thrown.
+  const settle = async (): Promise<{ error: unknown } | undefined> => {
+    if (!throttle || !reservation) return undefined;
+    try {
+      await dispatch(options, trace, throttle.budget, {
+        op: "settle",
+        key: reservation.key,
+        amount: 0,
+        reserved: reservation.reserved,
+      });
+      return undefined;
+    } catch (error) {
+      return { error };
+    }
+  };
+  const settledOrUnavailable = async () => {
+    const failed = await settle();
+    if (failed) throw unavailable(options, "throttle", throttle!.budget, failed.error);
+  };
+
+  // A source reading the body has it read before any source runs, so a body over the
+  // limit is refused before any verifier is reached.
+  let body: Uint8Array | undefined;
+  if (readsBody.includes(true)) {
+    await reserve();
+    body = await options.readBody(request);
+  }
+
   let confirmation: Record<string, unknown> | undefined;
   for (const [index, entry] of setting.verifiers.entries()) {
     let presentation: unknown;
     try {
-      presentation = await dispatch(options, trace, entry.from, view);
+      presentation = await dispatch(options, trace, entry.from, readsBody[index] ? { ...view, body } : view);
     } catch (error) {
       if (isInvokeError(error) && error.code === ERR_HTTP_CREDENTIAL_MALFORMED) {
         throw await unauthenticated("malformed", error.message);
@@ -213,6 +286,7 @@ async function authenticate(
       throw unavailable(options, "source", entry.from, error);
     }
     if (presentation === null || presentation === undefined) continue;
+    await reserve();
     confirmation ??= confirmationOf(request, view);
     let output: Record<string, unknown>;
     try {
@@ -222,9 +296,13 @@ async function authenticate(
         resource: resourceOf(options, request),
       })) as Record<string, unknown>;
     } catch (error) {
-      throw unavailable(options, "verifier", entry.verifier, error);
+      // A verifier that threw gave no verdict on the credential, so the guess is not counted,
+      // coded or not; a cancellation or a durable suspension is no verdict either and stays spent.
+      const settleFailed = isCancellationError(error) || isSuspension(error) ? undefined : await settle();
+      throw unavailable(options, "verifier", entry.verifier, error, settleFailed);
     }
     if (output && output.principal && typeof output.principal === "object") {
+      await settledOrUnavailable();
       return {
         principal: output.principal as Record<string, unknown>,
         entry,
@@ -238,6 +316,8 @@ async function authenticate(
       { index, challenge: refusedChallenge },
     );
   }
+  // Every source answered with no credential: nothing was guessed.
+  await settledOrUnavailable();
   if (setting.anonymous === "allow") return { principal: null };
   throw await unauthenticated("absent", "the request presents no credential, and anonymous callers are denied");
 }
@@ -335,26 +415,37 @@ async function presentedScheme(authenticated: Authenticated): Promise<string | u
 
 function unavailable(
   options: MountAccessOptions,
-  stage: "source" | "verifier" | "policy",
+  stage: "source" | "verifier" | "policy" | "throttle",
   dispatched: Dispatched,
   error: unknown,
+  settleFailed?: { error: unknown },
 ): unknown {
-  // A cancellation, a suspension and an uncoded failure are not an answer.
-  if (isCancellationError(error) || isSuspension(error) || !isInvokeError(error)) return error;
+  // A cancellation and a suspension are not an answer; nor is an uncoded failure, except a
+  // budget store's, since a throttle that cannot count must refuse rather than fail open.
+  if (isCancellationError(error) || isSuspension(error)) return error;
+  if (!isInvokeError(error) && stage !== "throttle") return error;
+  const code = isInvokeError(error) ? error.code : error instanceof Error ? error.name : "ERR_UNKNOWN";
+  const message = error instanceof Error ? error.message : String(error);
   options.ctx.log.warn(
     "Access check unavailable",
     {
       "httpserver.access.stage": stage,
       "httpserver.access.resource": `${dispatched.kind}/${dispatched.name}`,
-      "error.type": error.code,
-      "error.message": error.message,
+      "error.type": code,
+      "error.message": message,
+      ...(settleFailed
+        ? {
+            "httpserver.access.throttle.settle_failed": true,
+            "httpserver.access.throttle.settle_error": settleFailed.error instanceof Error ? settleFailed.error.message : String(settleFailed.error),
+          }
+        : {}),
     },
     { eventName: "http.server.access_check.unavailable" },
   );
   const data = { stage };
   return accessRefusal(
     ERR_HTTP_ACCESS_CHECK_UNAVAILABLE,
-    `${options.label}: the ${stage} '${dispatched.name}' could not decide: [${error.code}] ${error.message}`,
+    `${options.label}: the ${stage} '${dispatched.name}' could not decide: [${code}] ${message}`,
     { data, displayMessage: options.declaredDisplayMessage(ERR_HTTP_ACCESS_CHECK_UNAVAILABLE, data), cause: error },
   );
 }
@@ -394,7 +485,7 @@ function mountOrigin(options: Pick<MountAccessOptions, "publicOrigin">, request:
 }
 
 /** The origin the client used, under the server's proxy trust. */
-function requestOrigin(request: FastifyRequest): string {
+export function requestOrigin(request: FastifyRequest): string {
   return `${request.protocol}://${request.host}`;
 }
 
@@ -416,4 +507,17 @@ export function liveEntries(
     },
     from: { ...refs[index]!.from, instance: entry.from as ResourceInstance, calledAt: `${at}/${index}/from` },
   }));
+}
+
+/** A written `authentication.throttle` as the seam runs it; `key` is evaluated over the credential request with a null `body`. */
+export function liveThrottle(
+  written: { budget: unknown; key?: unknown },
+  ref: { kind: string; name: string },
+  at: string,
+  evaluate: (key: unknown, request: Record<string, unknown>) => unknown,
+): ThrottleSetting {
+  return {
+    budget: { ...ref, instance: written.budget as ResourceInstance, calledAt: `${at}/authentication/throttle/budget` },
+    key: (view) => (written.key === undefined ? view.ip : evaluate(written.key, { ...view, body: null })),
+  };
 }

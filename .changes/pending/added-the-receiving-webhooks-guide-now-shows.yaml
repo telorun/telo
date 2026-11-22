@@ -1,0 +1,5 @@
+units:
+  modules/queue: Added
+body: The receiving-webhooks guide now shows how to verify a provider's signature with
+  Http.FromBodySignature and AuthSignature.Verifier, and pairs it with Idempotency.Once
+  keyed on the delivery id.

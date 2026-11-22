@@ -9,7 +9,7 @@ packages: [modules/ui, modules/ui-react, examples/ui-showcase, apps/hub, apps/au
 
 ## Problem
 
-A screen cannot tailor itself to the signed-in person. A node's `when`, a navigation entry's `when` and a token set's `when` run per request, but their `request` holds only `headers`, `ip` and `lang`. An admin-only menu entry, a page only managers may open, or a "My tasks" view today means a `Ui.Data` reader over a session route plus a browser-side condition — which hides content without withholding it: the node is still delivered, and the page is reachable by its path. The showcase's sign-in gate is exactly this.
+A screen cannot tailor itself to the signed-in person. A node's `when`, a navigation entry's `when` and a token set's `when` run per request, but their `request` holds only `headers`, `ip` and `lang`. An admin-only menu entry, a page only managers may open, or a "My tasks" view today means a `Ui.Query` over a session route plus a browser-side condition — which hides content without withholding it: the node is still delivered, and the page is reachable by its path. The showcase's sign-in gate is exactly this.
 
 Home Assistant gates a card with a `user` condition. In Telo inbound authentication delivers `authentication:` on `Http.Server.mounts[]` and a typed `request.principal` (`Auth.Principal`) in route contexts; screens do not yet read it.
 
@@ -50,7 +50,7 @@ None.
 - **A withheld page is not-found, not forbidden.** A 403 confirms the page exists; not-found is what a page the application does not serve already answers. The API routes the page calls are protected by the routes' own `authorization:`, never by the page's `when`.
 - **The principal is the identity plan's, unchanged.** `ui-react` reads the `request.principal` the mount produced and imports `auth` (MIT, like `ui-react`) for its type only; the screens define no user, session or role vocabulary of their own.
 - **Withholding a page drops its navigation entries automatically.** One condition per page; repeating it on every entry is how menus and pages drift apart.
-- **No `request.principal` inside composites.** A composite is resolved once at creation and shared by every request; a per-person composite is a page node with `when`, or a `Ui.Data` over a route that answers per person.
+- **No `request.principal` inside composites.** A composite is resolved once at creation and shared by every request; a per-person composite is a page node with `when`, or a `Ui.Query` over a route that answers per person.
 
 Bookkeeping: docs (`ui` `page.md`, `nodes.md`, `conditions.md` — `request.principal` beside `headers` / `ip` / `lang`; `ui-react` `app.md` § Authentication and the caching rule); the showcase's session gate rebuilt on `request.principal` once the identity modules exist, with tests under its `tests/`; the hub `build-ui` guide (within its 32768-byte bound), the primer, `modules/CLAUDE.md`; a ledger entry under Standard library, "Screens and menus per signed-in person"; `Added` fragments for `ui` and `ui-react`. `ui` and `ui-react` add vocabulary to their own kinds' schemas only, so they need no floor of their own; an application writing a page `when` declares its floor, per the grammar rule, verified by execution.
 

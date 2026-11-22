@@ -15,5 +15,5 @@ The answer of `passwords` is returned unchanged.
 - A throttled identifier is released when the window passes (`RateLimit.Budget` is a windowed budget); the retry time is not reported to the caller.
 - Only failures are counted. A call in which `passwords` throws (an unreachable directory) leaves its reservation spent.
 - Reservation and settlement are two calls on the budget, so simultaneous attempts on one identifier each hold a unit until they settle; the reservation is atomic, so no more than `limit` guesses are in flight or failed at once.
-- Per-client-address throttling is a transport concern and stays there (the server's rate limit on the route); this kind bounds guessing of one account from many addresses. An attacker can still lock a known identifier out by failing on it on purpose: pair the throttle with transport limits and alerting.
+- Per-client-address throttling is the transport's: `Http.Server`'s `authentication.throttle` bounds refused credentials per address before any verifier runs, while this kind bounds guessing of one account from many addresses. An attacker can still lock a known identifier out by failing on it on purpose: pair the throttle with the mount's `throttle` and alerting.
 - A budget in a store shared by replicas (`Cache.Store`) bounds failures across them; an in-memory store bounds them per replica.

@@ -1,0 +1,51 @@
+kind: Telo.Application
+metadata:
+  name: OneTimeRefusalsTest
+  version: 1.0.0
+  description: >-
+    The password-reset example checks clean; a code redemption naming a link set, an issue whose
+    data misses a required member, and two sets claiming one name on one store are refused
+    before the app runs, and the name clash is refused at start too.
+imports: { Assert: ../../assert }
+targets:
+  - !ref exampleChecks
+  - !ref wrongPairing
+  - !ref dataMissing
+  - !ref nameDuplicate
+  - !ref nameDuplicateAtStart
+---
+kind: Assert.Manifest
+metadata: { name: exampleChecks }
+source: ./__fixtures__/password-reset.yaml
+expect: { errors: [] }
+---
+kind: Assert.Manifest
+metadata: { name: wrongPairing }
+source: ./__fixtures__/wrong-pairing.yaml
+expect:
+  errors:
+    - { code: REFERENCE_KIND_MISMATCH, message: "Http.Api/resetRoutes: reference at 'routes[4].handler.tokens' → 'OneTime.Links' (resolved: 'OneTime.Links') does not match required 'OneTime.Codes'" }
+---
+kind: Assert.Manifest
+metadata: { name: dataMissing }
+source: ./__fixtures__/data-missing.yaml
+expect:
+  errors:
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "Http.Api/resetRoutes: inputs at 'routes[0].handler.steps[0].inputs.data' do not satisfy the inline OneTime.Issue's declared inputType: /data is missing required property 'returnTo'" }
+---
+kind: Assert.Manifest
+metadata: { name: nameDuplicate }
+source: ./__fixtures__/name-duplicate.yaml
+expect:
+  errors:
+    - { code: RESOURCE_RULE_VIOLATED, message: "OneTime.Links/resetLinks: claims a name another token set on this store already claims. Their records would collide and a token of one would be redeemable on the other — give each set a name of its own." }
+    - { code: RESOURCE_RULE_VIOLATED, message: "OneTime.Codes/signInCodes: claims a name another token set on this store already claims. Their records would collide and a token of one would be redeemable on the other — give each set a name of its own." }
+---
+kind: Assert.Manifest
+metadata: { name: nameDuplicateAtStart }
+source: ./__fixtures__/name-duplicate-app.yaml
+expect:
+  errors:
+    - { code: RESOURCE_RULE_VIOLATED, message: "OneTime.Links/links: claims a name another token set on this store already claims. Their records would collide and a token of one would be redeemable on the other — give each set a name of its own." }
+    - { code: RESOURCE_RULE_VIOLATED, message: "OneTime.Codes/codes: claims a name another token set on this store already claims. Their records would collide and a token of one would be redeemable on the other — give each set a name of its own." }
+  runFails: "OneTime.Codes \"codes\" claims the name 'main' on its store, which OneTime.Links \"links\" already claims. Their records would collide and a token of one would be redeemable on the other — give each set a name of its own. [ERR_ONE_TIME_NAME_DUPLICATE]"

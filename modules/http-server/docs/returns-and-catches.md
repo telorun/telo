@@ -230,9 +230,10 @@ routes:
 ### The server's access refusals
 
 A mount's [authentication and authorization](authentication.md) refuse a request
-with one of four codes, which the server raises into the route's, the router's
+with one of five codes, which the server raises into the route's, the router's
 and its own `catches:` (`x-telo-catches-for: { slot, raises }`):
-`ERR_HTTP_UNAUTHENTICATED` (401, `data: { reason }`), `ERR_HTTP_FORBIDDEN` (403,
+`ERR_HTTP_UNAUTHENTICATED` (401, `data: { reason }`),
+`ERR_HTTP_AUTHENTICATION_THROTTLED` (429, `data: { retryAfter }`, answered with `Retry-After`), `ERR_HTTP_FORBIDDEN` (403,
 `data: { requiredScopes? }`), `ERR_HTTP_CROSS_ORIGIN_REFUSED` (403) and
 `ERR_HTTP_ACCESS_CHECK_UNAVAILABLE` (503, `data: { stage }`).
 
@@ -244,7 +245,7 @@ and its own `catches:` (`x-telo-catches-for: { slot, raises }`):
   of an exported router. Elsewhere it keeps the typing of what the handler throws.
 - **No route owes their coverage**: a code no entry claims is answered with its
   own status and problem, not with the 500.
-- **They are rendered before the body is read**, so `request.body` is null in an
+- **They are rendered before the body is parsed**, so `request.body` is null in an
   entry rendering one, and `request.principal` is null for a 401. In every
   `catches:` list `request.principal` is nullable.
 
@@ -283,8 +284,8 @@ trace. Members appear in this order.
 
 **When the server answers with a problem:**
 
-- **An access refusal no rung claims** — `401`, `403` or `503`, code `ERR_HTTP_UNAUTHENTICATED`,
-  `ERR_HTTP_FORBIDDEN`, `ERR_HTTP_CROSS_ORIGIN_REFUSED` or `ERR_HTTP_ACCESS_CHECK_UNAVAILABLE`
+- **An access refusal no rung claims** — `401`, `403`, `429` or `503`, code `ERR_HTTP_UNAUTHENTICATED`,
+  `ERR_HTTP_AUTHENTICATION_THROTTLED`, `ERR_HTTP_FORBIDDEN`, `ERR_HTTP_CROSS_ORIGIN_REFUSED` or `ERR_HTTP_ACCESS_CHECK_UNAVAILABLE`
   ([Authentication and authorization](authentication.md#refusals)).
 - **A throw no rung claims** — `500`, all six members the error has.
 - **A `catches:` entry with no `body:`** — the entry's status, the error's problem.

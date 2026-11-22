@@ -7,10 +7,11 @@ metadata:
   categories: [Transport]
   description: >-
     Serve HTTP on a port with CORS, per-mount authentication (bearer tokens, API
-    keys, cookies, client certificates), authorization, request guards and a
-    generated OpenAPI document. Routes validate requests against a schema, map them
-    into handlers with CEL and render typed responses, buffered or streamed. Also
-    serves a browsable API reference and static files with SPA fallback.
+    keys, cookies, client certificates, webhook and HTTP message signatures),
+    authorization, request guards and a generated OpenAPI document. Routes
+    validate requests against a schema, map them into handlers with CEL and render
+    typed responses, buffered or streamed. Also serves a browsable API reference
+    and static files with SPA fallback.
 requires:
   # Measured floor; what raised it is in docs/design-notes.md.
   telo: ">=0.133.0"
@@ -27,8 +28,12 @@ imports:
   Codec: ../codec
   # The caller, credential and verifier contracts mount authentication speaks.
   Auth: ../auth
+  # The signature grammar the two signature sources read requests with.
+  HttpSignature: ../http-signature
+  # The budget `authentication.throttle` counts refused credentials on.
+  RateLimit: ../rate-limit
 exports:
-  kinds: [Server, Api, Reference, Static, CredentialSource, FromAuthorization, FromBasic, FromHeader, FromQuery, FromCookie, FromClientCertificate, FromForwardedIdentity]
+  kinds: [Server, Api, Reference, Static, CredentialSource, FromAuthorization, FromBasic, FromHeader, FromQuery, FromCookie, FromClientCertificate, FromForwardedIdentity, FromMessageSignature, FromBodySignature]
   resources: [Authentication, Authorization, AuthScheme, CredentialRequest]
 # Scalar's browser bundle, fetched lazily; its version is tied to the pins in
 # nodejs/package.json (docs/design-notes.md).
@@ -96,6 +101,17 @@ throws:
         required: [reason]
         properties:
           reason: { type: string, enum: [absent, malformed, refused], description: Why the request is not authenticated. }
+    ERR_HTTP_AUTHENTICATION_THROTTLED:
+      description: >-
+        The client's `authentication.throttle` budget is spent, so no body was read
+        and no verifier ran. Answered 429 with `Retry-After`.
+      displayMessage: "Too many sign-in attempts. Try again in {$retryAfter} seconds."
+      data:
+        type: object
+        additionalProperties: false
+        required: [retryAfter]
+        properties:
+          retryAfter: { type: integer, description: Seconds until the budget's window frees. }
     ERR_HTTP_FORBIDDEN:
       description: >-
         The authorization policy denied the action. Answered 403, with
@@ -114,8 +130,8 @@ throws:
       displayMessage: "This request came from another site and was refused."
     ERR_HTTP_ACCESS_CHECK_UNAVAILABLE:
       description: >-
-        A credential source, verifier or policy could not decide — its keys or
-        endpoint unreachable. Answered 503; the failure is the cause in the trace
+        A credential source, verifier, policy or authentication throttle could not
+        decide — its keys, endpoint or budget store unreachable. Answered 503; the failure is the cause in the trace
         and the log, never in the response.
       displayMessage: "The access check could not be completed. Try again later."
       data:
@@ -123,7 +139,7 @@ throws:
         additionalProperties: false
         required: [stage]
         properties:
-          stage: { type: string, enum: [source, verifier, policy], description: The step that failed. }
+          stage: { type: string, enum: [source, verifier, policy, throttle], description: The step that failed. }
 schema:
   type: "object"
   properties:
@@ -426,7 +442,7 @@ schema:
               a request presenting no credential is served anonymously. A presented
               credential that fails is a 401, never falling through.
             $ref: "telo://Self/Authentication"
-            x-telo-raises: [ERR_HTTP_UNAUTHENTICATED, ERR_HTTP_CROSS_ORIGIN_REFUSED, ERR_HTTP_ACCESS_CHECK_UNAVAILABLE]
+            x-telo-raises: [ERR_HTTP_UNAUTHENTICATED, ERR_HTTP_AUTHENTICATION_THROTTLED, ERR_HTTP_CROSS_ORIGIN_REFUSED, ERR_HTTP_ACCESS_CHECK_UNAVAILABLE]
           authorization:
             title: Authorization
             description: >-
@@ -481,7 +497,7 @@ schema:
             title: Guard
             description: >-
               An invocable run for every request matching a route of this mount, after
-              authentication and authorization and before the body is read; a throw refuses the
+              authentication and authorization and before the body is parsed; a throw refuses the
               request through `guard.catches`, then the server's. See docs/mount-guard.md.
             type: object
             additionalProperties: false
@@ -629,7 +645,7 @@ schema:
       # The empty pointer: this list covers everything the server drives.
       x-telo-catches-for:
         slot: ""
-        raises: [ERR_HTTP_UNAUTHENTICATED, ERR_HTTP_FORBIDDEN, ERR_HTTP_CROSS_ORIGIN_REFUSED, ERR_HTTP_ACCESS_CHECK_UNAVAILABLE]
+        raises: [ERR_HTTP_UNAUTHENTICATED, ERR_HTTP_AUTHENTICATION_THROTTLED, ERR_HTTP_FORBIDDEN, ERR_HTTP_CROSS_ORIGIN_REFUSED, ERR_HTTP_ACCESS_CHECK_UNAVAILABLE]
       x-telo-schema-from: "HttpDispatch.Outcomes/$defs/Catches"
       x-telo-context:
         type: object
@@ -1084,6 +1100,17 @@ throws:
         required: [reason]
         properties:
           reason: { type: string, enum: [absent, malformed, refused], description: Why the request is not authenticated. }
+    ERR_HTTP_AUTHENTICATION_THROTTLED:
+      description: >-
+        The client's `authentication.throttle` budget is spent, so no body was read
+        and no verifier ran. Answered 429 with `Retry-After`.
+      displayMessage: "Too many sign-in attempts. Try again in {$retryAfter} seconds."
+      data:
+        type: object
+        additionalProperties: false
+        required: [retryAfter]
+        properties:
+          retryAfter: { type: integer, description: Seconds until the budget's window frees. }
     ERR_HTTP_FORBIDDEN:
       description: >-
         The authorization policy denied the action. Answered 403, with
@@ -1102,8 +1129,8 @@ throws:
       displayMessage: "This request came from another site and was refused."
     ERR_HTTP_ACCESS_CHECK_UNAVAILABLE:
       description: >-
-        A credential source, verifier or policy could not decide — its keys or
-        endpoint unreachable. Answered 503; the failure is the cause in the trace
+        A credential source, verifier, policy or authentication throttle could not
+        decide — its keys, endpoint or budget store unreachable. Answered 503; the failure is the cause in the trace
         and the log, never in the response.
       displayMessage: "The access check could not be completed. Try again later."
       data:
@@ -1111,7 +1138,7 @@ throws:
         additionalProperties: false
         required: [stage]
         properties:
-          stage: { type: string, enum: [source, verifier, policy], description: The step that failed. }
+          stage: { type: string, enum: [source, verifier, policy, throttle], description: The step that failed. }
 schema:
   type: "object"
   properties:
@@ -1127,7 +1154,7 @@ schema:
       # The empty pointer: this list covers every route of this router.
       x-telo-catches-for:
         slot: ""
-        raises: [ERR_HTTP_UNAUTHENTICATED, ERR_HTTP_FORBIDDEN, ERR_HTTP_CROSS_ORIGIN_REFUSED, ERR_HTTP_ACCESS_CHECK_UNAVAILABLE]
+        raises: [ERR_HTTP_UNAUTHENTICATED, ERR_HTTP_AUTHENTICATION_THROTTLED, ERR_HTTP_FORBIDDEN, ERR_HTTP_CROSS_ORIGIN_REFUSED, ERR_HTTP_ACCESS_CHECK_UNAVAILABLE]
       x-telo-schema-from: "HttpDispatch.Outcomes/$defs/Catches"
       x-telo-context:
         type: object
@@ -1229,7 +1256,7 @@ schema:
               absent key is inherited. `{ anonymous: allow }` makes one route
               optional through the mount's verifiers.
             $ref: "telo://Self/Authentication"
-            x-telo-raises: [ERR_HTTP_UNAUTHENTICATED, ERR_HTTP_CROSS_ORIGIN_REFUSED, ERR_HTTP_ACCESS_CHECK_UNAVAILABLE]
+            x-telo-raises: [ERR_HTTP_UNAUTHENTICATED, ERR_HTTP_AUTHENTICATION_THROTTLED, ERR_HTTP_CROSS_ORIGIN_REFUSED, ERR_HTTP_ACCESS_CHECK_UNAVAILABLE]
           authorization:
             title: Authorization
             description: This route's authorization, replacing the mount's.
@@ -1378,7 +1405,7 @@ schema:
             x-telo-outcome-list: catches
             x-telo-catches-for:
               slot: handler
-              raises: [ERR_HTTP_UNAUTHENTICATED, ERR_HTTP_FORBIDDEN, ERR_HTTP_CROSS_ORIGIN_REFUSED, ERR_HTTP_ACCESS_CHECK_UNAVAILABLE]
+              raises: [ERR_HTTP_UNAUTHENTICATED, ERR_HTTP_AUTHENTICATION_THROTTLED, ERR_HTTP_FORBIDDEN, ERR_HTTP_CROSS_ORIGIN_REFUSED, ERR_HTTP_ACCESS_CHECK_UNAVAILABLE]
             x-telo-context:
               type: object
               additionalProperties: false
@@ -1681,6 +1708,44 @@ schema:
       enum: [allow, deny]
       default: deny
       x-telo-eval: compile
+    throttle:
+      title: Throttle
+      description: >-
+        Bounds credential guesses per client: a credential is reserved against `budget`
+        under `key` before its verifier runs (or, behind a body-reading source, before the
+        body is read), and settled back when it is accepted. A spent budget is a 429.
+        A route's `throttle` replaces the mount's.
+      type: object
+      additionalProperties: false
+      required: [budget]
+      properties:
+        budget:
+          title: Budget
+          description: The budget refused credentials are counted on; its `limit` is the guesses allowed per `window`.
+          x-telo-ref: { kind: RateLimit.Budget, use: call }
+        key:
+          title: Key
+          description: >-
+            Who is counted, evaluated per request before any body is read, so `request` has no
+            `body`. Defaults to `request.ip`.
+          type: string
+          x-telo-context:
+            type: object
+            properties:
+              request:
+                type: object
+                required: [method, path, host, headers, query, cookies, ip, tls, clientCertificate]
+                properties:
+                  method: { type: string }
+                  path: { type: string }
+                  targetUri: { type: string }
+                  host: { type: string }
+                  headers: { type: object, additionalProperties: true, x-telo-sensitive: true }
+                  query: { type: object, additionalProperties: true, x-telo-sensitive: true }
+                  cookies: { type: object, additionalProperties: { type: string }, x-telo-sensitive: true }
+                  ip: { type: string }
+                  tls: { type: [object, "null"], properties: { protocol: { type: string } } }
+                  clientCertificate: { type: [object, "null"], x-telo-sensitive: true }
 ---
 kind: Telo.JsonSchema
 metadata:
@@ -1711,15 +1776,24 @@ kind: Telo.JsonSchema
 metadata:
   name: CredentialRequest
   description: >-
-    What a credential source reads from an HTTP request before its body: method,
-    path, host, headers, query, cookies, client address, TLS session and client
-    certificate.
+    What a credential source reads from an HTTP request: method, path, host, the
+    absolute target URI, headers, query, cookies, client address, TLS session and
+    client certificate, and the body for a source that reads it.
 schema:
   type: object
   required: [method, path, host, headers, query, cookies, ip, tls, clientCertificate]
   properties:
     method: { type: string }
     path: { type: string }
+    targetUri:
+      description: >-
+        The absolute target URI, the query exactly as received, its scheme and authority read under the
+        server's `trustProxy`; the path includes the mount's prefix.
+      type: string
+    body:
+      description: The body's bytes, set only for a source whose reading publishes `readsBody`.
+      x-telo-type: Telo.Bytes
+      x-telo-sensitive: true
     host: { type: string }
     headers: { type: object, additionalProperties: true, description: Header values by lower-case name., x-telo-sensitive: true }
     query: { type: object, additionalProperties: true, x-telo-sensitive: true }
@@ -1732,7 +1806,7 @@ schema:
       x-telo-sensitive: true
 ---
 # A source's reading publishes `schemes`, and may publish `originCheck`,
-# `requiresTrustedProxy` and `bearerMethod`. Normative: docs/authentication.md.
+# `requiresTrustedProxy`, `bearerMethod` and `readsBody`. Normative: docs/authentication.md.
 kind: Telo.Abstract
 metadata:
   name: CredentialSource
@@ -1943,3 +2017,116 @@ schema:
       message: >-
         reads a forwarded identity in a route's `authentication`. Only a mount's can: whether the
         proxy is trusted is the server's. Move the entry to the mount.
+---
+# Normative: docs/authentication.md and http-signature's docs/message-signatures.md.
+kind: Telo.Definition
+metadata:
+  name: FromMessageSignature
+  description: >-
+    Reads an RFC 9421 HTTP message signature from the `Signature-Input` and
+    `Signature` headers, requires it to cover the listed request components and
+    presents the signed bytes for a verifier to check. Covering `content-digest`
+    also authenticates the body, whose digest is checked. A signature that cannot
+    be read or covers less is refused as malformed.
+capability: Telo.Invocable
+extends: Self.CredentialSource
+controllers: [pkg:telo/local/js?path=./nodejs/http-server.mjs&local_path=./nodejs/src/index.ts#FromMessageSignatureController]
+outputType:
+  kind: Telo.JsonSchema
+  schema: { anyOf: [!ref Auth.SignaturePresentation, { type: "null" }] }
+schema:
+  type: object
+  additionalProperties: false
+  required: [components, scheme]
+  properties:
+    label:
+      title: Label
+      description: The signature to read; without one the request must carry exactly one signature.
+      type: string
+      pattern: "^[a-z*][a-z0-9_.*-]*$"
+      x-telo-eval: compile
+    components:
+      title: Components
+      description: >-
+        What the signature must cover, and so what it authenticates: derived components (`@method`,
+        `@target-uri`, `@authority`, `@scheme`, `@request-target`, `@path`, `@query`,
+        `@query-param;name="x"`) and lower-case header field names. Without `content-digest` the
+        body is not authenticated.
+      type: array
+      minItems: 1
+      x-telo-eval: compile
+      items:
+        type: string
+        pattern: "^(@method|@target-uri|@authority|@scheme|@request-target|@path|@query|@query-param;name=\"([^\"\\\\]|\\\\[\"\\\\])*\"|[a-z0-9!#$%&'*+.^_`|~-]+)$"
+    scheme:
+      title: Scheme
+      description: The scheme a request lacking the signature, or carrying a refused one, is challenged with.
+      $ref: "telo://Self/AuthScheme"
+      x-telo-eval: compile
+---
+# Normative: docs/authentication.md and http-signature's docs/webhook-signatures.md.
+kind: Telo.Definition
+metadata:
+  name: FromBodySignature
+  description: >-
+    Reads a webhook signature over the request body, the way providers sign
+    their deliveries: the signature from a header, an optional timestamp, and
+    the signed bytes assembled from literal text, header values and the body.
+    Presents them for a verifier to check. A signature header that cannot be
+    read is refused as malformed.
+capability: Telo.Invocable
+extends: Self.CredentialSource
+controllers: [pkg:telo/local/js?path=./nodejs/http-server.mjs&local_path=./nodejs/src/index.ts#FromBodySignatureController]
+outputType:
+  kind: Telo.JsonSchema
+  schema: { anyOf: [!ref Auth.SignaturePresentation, { type: "null" }] }
+schema:
+  type: object
+  additionalProperties: false
+  required: [signature, base, scheme]
+  properties:
+    signature:
+      title: Signature
+      description: Where the signature is read and how it is encoded.
+      type: object
+      additionalProperties: false
+      required: [header, encoding]
+      x-telo-eval: compile
+      properties:
+        header: { title: Header, description: The header holding the signature; a request without it carries no credential., type: string, minLength: 1 }
+        pattern:
+          title: Pattern
+          description: An RE2 pattern whose first group captures each signature, every match taken; without one the whole header is the signature.
+          type: string
+          format: re2-pattern
+          pattern: "^([^\\\\\\[(]|\\\\.|\\[([^\\\\\\]]|\\\\.)*\\]|\\(\\?)*\\([^?]"
+        encoding: { title: Encoding, description: How each signature is encoded., type: string, enum: [hex, base64, base64url] }
+    timestamp:
+      title: Timestamp
+      description: Where the signing time is read; once declared, a request without a readable one is malformed.
+      type: object
+      additionalProperties: false
+      required: [header, unit]
+      x-telo-eval: compile
+      properties:
+        header: { title: Header, description: The header holding the timestamp., type: string, minLength: 1 }
+        pattern:
+          title: Pattern
+          description: An RE2 pattern whose first group captures the timestamp; without one the whole header is.
+          type: string
+          format: re2-pattern
+          pattern: "^([^\\\\\\[(]|\\\\.|\\[([^\\\\\\]]|\\\\.)*\\]|\\(\\?)*\\([^?]"
+        unit: { title: Unit, description: The unit of the integer timestamp., type: string, enum: [seconds, milliseconds] }
+    base:
+      title: Base
+      description: The signed bytes, as parts joined with nothing between them; one part must be the body.
+      type: array
+      minItems: 1
+      x-telo-eval: compile
+      items: { $ref: "telo://HttpSignature/BasePart" }
+      contains: { type: object, required: [type], properties: { type: { const: body } } }
+    scheme:
+      title: Scheme
+      description: The scheme a request lacking the signature, or carrying a refused one, is challenged with.
+      $ref: "telo://Self/AuthScheme"
+      x-telo-eval: compile
