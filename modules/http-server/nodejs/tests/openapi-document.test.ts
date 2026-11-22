@@ -10,7 +10,6 @@ import addFormats from "ajv-formats";
 import { readFileSync } from "node:fs";
 import http from "node:http";
 import net, { type AddressInfo } from "node:net";
-import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { create as createApi } from "../src/http-api-controller.js";
 import { create as createReference } from "../src/http-reference-controller.js";
@@ -75,7 +74,7 @@ function context(hosts: Record<string, string>, listenPort: number) {
     openSpan: async (base: InvokeContext) => ({ context: base, settle: async () => {} }),
     invoke: async () => ({}),
     invokeResolved: async () => ({}),
-    resolveControllerFile: async () => pathToFileURL(new URL("./__fixtures__/openapi-3.2-schema-2025-09-17.json", import.meta.url).pathname).href,
+    resolveControllerFile: async () => new URL("./__fixtures__/openapi-3.2-schema-2025-09-17.json", import.meta.url).href,
     resolveNeed: (pointer: string) => ({
       target: { id: pointer, ref: { kind: "Telo.PublicUrl", name: pointer } } as never,
       fields: { url: { host: hosts[pointer] } },
