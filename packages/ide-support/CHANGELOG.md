@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.139.0 - 2026-11-22
+### Added
+* CEL message construction (Name{field: value}) is read by the tag engines, the analyzer and the editor: a construction in a manifest is type-checked like any expression, and its field values are walked for reads. CEL_UNKNOWN_TYPE, CEL_TYPE_NOT_CONSTRUCTIBLE and CEL_MISSING_FIELD are reported through the templating layer.
+
 ## 0.138.0 - 2026-11-19
 ### Added
 * Released under the MIT license instead of the Sustainable Use License: the published artifact declares MIT and carries the MIT license text. Earlier releases keep the license they were published under.

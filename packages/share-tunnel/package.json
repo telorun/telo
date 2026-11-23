@@ -1,6 +1,6 @@
 {
   "name": "@telorun/share-tunnel",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The Telo share tunnel: the protocol a shared local run speaks to a runner's relay, its vectors, and the client engine that forwards visitor requests to local ports.",
   "keywords": [
     "telo",

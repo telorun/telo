@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.4 - 2026-11-22
+### Security
+* Refreshed locked dependency versions within their declared ranges, as part of a workspace-wide refresh that clears known security advisories.
+
 ## 0.4.3 - 2026-11-09
 ### Fixed
 * The telo requirement that static checking cannot see is now a `restrictions:` entry carrying its reason, and `requires.telo` holds the measured floor.

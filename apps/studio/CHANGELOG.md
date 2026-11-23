@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.40.0 - 2026-11-22
+### Added
+* Studio reads the runner /v1 contract from @telorun/runner-protocol and no longer keeps a mirrored copy of its types.
+### Security
+* Updated dompurify beneath monaco-editor to 3.4.18, fixing the sanitizer bypass advisories reported against 3.2.7 (for example GHSA-v2wj-7wpq-c8vv, GHSA-h8r8-wccr-v5f2).
+
 ## 0.39.0 - 2026-11-19
 ### Added
 * The desktop build ships one sidecar, telo-host-runner-<triple>, instead of telo-<triple>, and supervises it as its local runner. The local adapter is named Local (host runner) and its field Host runner executable, where empty means the host runner bundled with Studio; a path saved there by an earlier Studio named a telo executable and must now name a host runner, or be cleared to use the bundled one. The docker runner's container is now telo-docker-runner and its volume telo-docker-runner-bundles; starting it stops and removes a telo-local-runner container left by an earlier Studio, and the old volume is left alone.

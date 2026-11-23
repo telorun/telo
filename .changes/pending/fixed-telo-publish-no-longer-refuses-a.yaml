@@ -1,5 +1,0 @@
-units:
-  cli: Fixed
-body: telo publish no longer refuses a version that has never been published when the
-  registry reports it as not found in Telo's own words; any other registry failure still
-  fails the publish.

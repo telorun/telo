@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.23.0 - 2026-11-22
+### Security
+* Updated @modelcontextprotocol/sdk to 1.32 or later, which fixes OAuth credentials being sent to the wrong server (GHSA-6qxp-vccf-f47h), the unbounded request size (GHSA-f897-62hf-6gxq) and the transitive hono and proxy-addr advisories (GHSA-jqcg-44mw-7w3h).
+
 ## 0.22.2 - 2026-11-11
 ### Fixed
 * The restriction's lower bound named telo 0.130.0, which was never published; it now names 0.131.0, the first published release at or above it.

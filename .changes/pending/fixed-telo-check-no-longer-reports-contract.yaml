@@ -1,6 +1,0 @@
-units:
-  analyzer: Fixed
-body: "`telo check` no longer reports `CONTRACT_INPUTS_AT_RUN_SITE` for a run whose
-  input contract a `default:` completes at a field whose value type is held as an
-  instance (`Telo.Url`, `Telo.Duration`, `Telo.Timestamp`): the default is read as the
-  same literal written there, as the kernel binds it."

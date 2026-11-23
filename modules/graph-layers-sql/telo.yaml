@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: GraphLayersSql
-  version: 0.5.4
+  version: 0.5.5
   repository: https://github.com/telorun/telo
   license: MIT
   categories: [Storage, Data]

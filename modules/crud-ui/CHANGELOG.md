@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.0 - 2026-11-22
+### Added
+* The admin docs draw reads with the `query` node over a `Ui.Query`, and the module requires the telo release the `ui` module it imports needs.
+
 ## 0.8.0 - 2026-11-19
 ### Added
 * `CrudUi.Admin.press` says what pressing a record does — `{ to, label }`, the `ui` module's press — and is handed to the admin's listing whole, its `row` one record of the collection's list shape as a layout's is. With `press` written, editing a record is its edit button; without it, pressing a record opens the edit form as before. Related records' `relations` entries take `to` where they took `href`.

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.139.0 - 2026-11-22
+### Added
+* Checking a manifest with `!if` / `!switch` choices reports each finding once, with the configurations it holds in (`(when variables.flag is true and self.mode is a)`), and a finding found only in a branch no configuration takes ends with `(in a branch no configuration takes)`.
+* Findings are reported in source order — by file, then where each is written, then path, code and message — by `telo check`, `telo run`'s refusals, the editor and `ctx.runtime.check`, never by which check found them; the first failure of a referrer rule on a resource and the earlier of two declarations of one name are read in that order.
+
 ## 0.138.0 - 2026-11-19
 ### Added
 * Released under the MIT license instead of the Sustainable Use License: the published artifact declares MIT and carries the MIT license text. Earlier releases keep the license they were published under.

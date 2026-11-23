@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.1 - 2026-11-22
+### Security
+* Refreshed locked dependency versions within their declared ranges, as part of a workspace-wide refresh that clears known security advisories.
+
 ## 0.13.0 - 2026-11-19
 ### Added
 * The module declares the rename of `beforeMigrations:` to `prepare:` itself (`SQL_BEFORE_MIGRATIONS_RENAMED`), so a manifest using the old key is migrated under any import alias, reported at its own line, and rewritten by `telo migrate`; it requires a telo release that reads library `migrations:`.

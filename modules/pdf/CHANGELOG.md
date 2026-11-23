@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.0 - 2026-11-22
+### Added
+* Each staged source declares the package its files are a release of (`purl` in `sources:`), the identity a software bill of materials lists.
+### Fixed
+* Pinned @napi-rs/canvas exactly to 1.0.10 and pdfjs-dist to 6.0.227, the versions of the staged native addon and pdf.js worker, so a lockfile refresh can no longer move either wrapper away from the files it loads.
+
 ## 0.11.5 - 2026-11-12
 ### Fixed
 * A failure to load the canvas, pdf.js or its assets no longer makes every later call in the process fail with it; the next call tries again.

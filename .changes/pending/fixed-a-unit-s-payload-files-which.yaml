@@ -1,5 +1,0 @@
-units:
-  release: Fixed
-body: "A unit's payload files, which the version-location rule reads, are the workspace
-  files its payload is derived from: those it holds and those an adapter reports it
-  reads into itself."

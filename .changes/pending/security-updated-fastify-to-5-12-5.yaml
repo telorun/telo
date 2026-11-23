@@ -1,6 +1,0 @@
-units:
-  packages/runner-core: Security
-  apps/docker-runner: Security
-  apps/k8s-runner: Security
-body: Updated fastify to 5.12.5 or later, fixing the authentication bypass
-  (GHSA-p68q-wchp-6fh7) and request validation bypass (GHSA-hwr6-493r-vm6h) advisories.

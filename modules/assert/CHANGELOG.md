@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.22.2 - 2026-11-22
+### Security
+* Refreshed locked dependency versions within their declared ranges, as part of a workspace-wide refresh that clears known security advisories.
+
 ## 0.22.1 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

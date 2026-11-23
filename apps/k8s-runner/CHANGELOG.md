@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.28.0 - 2026-11-22
+### Added
+* Every Run of a session's application receives its own TELO_HOST_STATE_DIR (apps/<app name> of the session's claim, mounted once into the apps container at /var/lib/telo-apps, so the pod does not depend on the app set) and its own TELO_HOST_SECRET_SEED, derived from the runner's root seed, the session id and the application's name, over any value the client sent. The root seed is RUNNER_SECRET_SEED when set, else a secret-seed file the runner keeps in its state claim beside the session store. The chart takes it from a Secret reference, secretSeed.existingSecret with key secretSeed.existingSecretKey (default seed); with the PostgreSQL store and no Secret no seed is delivered and the runner logs a startup warning.
+* Shares: with `shares.enabled` the chart renders a relay Deployment (one replica, `Recreate`) and Service and one wildcard route `*.<sessionRouting.baseDomain>` to it for the ingress or gateway layer, and the backend routes shares (`RUNNER_ROLE=relay` starts the relay). Shares are refused with a SQLite store, without identity, under routing mode `auto` or `none`, and without a base domain.
+### Security
+* Updated fastify to 5.12.5 or later, fixing the authentication bypass (GHSA-p68q-wchp-6fh7) and request validation bypass (GHSA-hwr6-493r-vm6h) advisories.
+* Updated form-data to a release that fixes CRLF injection (GHSA-hmw2-7cc7-3qxx) and ip-address to a release carrying the address-classification fixes (GHSA-mwp4-54f8-5fhr).
+
 ## 0.26.0 - 2026-11-15
 ### Fixed
 * The image is built from only the files it uses: a `Dockerfile.dockerignore` beside the Dockerfile admits the workspace packages it installs and the inputs of the root `prepare`, and the install is filtered to this image's packages.
