@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2 - 2026-11-23
+### Fixed
+* A unit's payload files, which the version-location rule reads, are the workspace files its payload is derived from: those it holds and those an adapter reports it reads into itself.
+
 ## 0.3.1 - 2026-11-22
 ### Security
 * Refreshed locked dependency versions within their declared ranges, as part of a workspace-wide refresh that clears known security advisories.

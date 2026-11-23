@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.139.2 - 2026-11-23
+### Fixed
+* Release planning bumps a Telo module whenever a workspace package whose version the module's bill of materials records is released, so a release moving such a package no longer leaves the module stale and refused by the release PR's import gate.
+* The telorun/node images are built from base images pinned by digest, so a release builds and scans the same base its release PR scanned.
+### Security
+* The `telorun/node` images carry npm 11's latest release, whose bundled `undici` and `brace-expansion` are fixed, and an esbuild binary built from the same esbuild release with a current Go, so the Go standard-library advisories of the published binary are gone and bundles are unchanged.
+
 ## 0.139.1 - 2026-11-22
 ### Fixed
 * telo publish no longer refuses a version that has never been published when the registry reports it as not found in Telo's own words; any other registry failure still fails the publish.

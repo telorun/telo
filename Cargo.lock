@@ -3137,7 +3137,7 @@ checksum = "61c41af27dd6d1e27b1b16b489db798443478cef1f06a660c96db617ba5de3b1"
 
 [[package]]
 name = "telo-analyzer"
-version = "0.139.1"
+version = "0.139.2"
 dependencies = [
  "indexmap",
  "serde",
@@ -3154,7 +3154,7 @@ dependencies = [
 
 [[package]]
 name = "telo-cli"
-version = "0.139.1"
+version = "0.139.2"
 dependencies = [
  "flate2",
  "indexmap",
@@ -3168,7 +3168,7 @@ dependencies = [
 
 [[package]]
 name = "telo-desktop-host"
-version = "0.139.1"
+version = "0.139.2"
 dependencies = [
  "png",
  "serde_json",
@@ -3181,7 +3181,7 @@ dependencies = [
 
 [[package]]
 name = "telo-kernel"
-version = "0.139.1"
+version = "0.139.2"
 dependencies = [
  "flate2",
  "jsonschema",
@@ -3214,7 +3214,7 @@ dependencies = [
 
 [[package]]
 name = "telo-templating"
-version = "0.139.1"
+version = "0.139.2"
 dependencies = [
  "serde_json",
  "telorun-cel",
@@ -3228,7 +3228,7 @@ version = "0.0.0"
 
 [[package]]
 name = "telorun-cel"
-version = "0.139.1"
+version = "0.139.2"
 dependencies = [
  "getrandom 0.4.3",
  "jiff-tzdb",
@@ -3238,7 +3238,7 @@ dependencies = [
 
 [[package]]
 name = "telorun-cel-value"
-version = "0.139.1"
+version = "0.139.2"
 
 [[package]]
 name = "telorun-console"
@@ -3257,11 +3257,11 @@ dependencies = [
 
 [[package]]
 name = "telorun-message-format"
-version = "0.139.1"
+version = "0.139.2"
 
 [[package]]
 name = "telorun-release"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "base64 0.22.1",
  "flate2",
@@ -3277,7 +3277,7 @@ dependencies = [
 
 [[package]]
 name = "telorun-sdk"
-version = "0.139.1"
+version = "0.139.2"
 dependencies = [
  "jsonschema",
  "libloading 0.8.9",
@@ -3291,7 +3291,7 @@ dependencies = [
 
 [[package]]
 name = "telorun-sdk-core"
-version = "0.139.1"
+version = "0.139.2"
 dependencies = [
  "jsonschema",
  "serde",
@@ -3302,7 +3302,7 @@ dependencies = [
 
 [[package]]
 name = "telorun-sdk-macros"
-version = "0.139.1"
+version = "0.139.2"
 dependencies = [
  "proc-macro2",
  "quote",
