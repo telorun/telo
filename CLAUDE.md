@@ -24,7 +24,6 @@ Follow this strictly:
 - never `pkill -f` a pattern your own command line contains — it matches the shell running it and kills it (exit 144); stop a background task with `TaskStop`, or kill the PID an earlier `pgrep` printed
 - when the session has no `Grep` / `Glob` tool (the main session usually has none), search with `grep` / `find` through Bash instead of calling them
 - never add underscores to unused function arguments
-- never look at commit history
 - never use git stash
 - work in the current tree: create a separate git worktree only when the user asks for one or a skill requires it — "create a branch" or "do it here" means a branch in this tree
 - never fix linting problems, and never mention it

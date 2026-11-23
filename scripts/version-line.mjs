@@ -22,7 +22,8 @@ import { fileURLToPath } from "node:url";
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 /** The unit whose recorded version is the line's. */
-const LINE_MANIFEST = join(ROOT, "analyzer", "nodejs", "package.json");
+/** The manifest the line's recorded version is read from. */
+export const LINE_MANIFEST = join(ROOT, "analyzer", "nodejs", "package.json");
 
 /** Every workspace package as `name -> { dir, version }`. `pnpm-workspace.yaml`'s
  *  patterns are literal segments and `*`, expanded by hand so this costs no

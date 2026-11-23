@@ -2,7 +2,7 @@ import esbuild from "esbuild";
 import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import { publishedVersionPlugin } from "../../scripts/generate-telo-version.mjs";
+import { publishedVersionPlugin, withVersionSource } from "../../scripts/generate-telo-version.mjs";
 
 const watch = process.argv.includes("--watch");
 // The release staging (`scripts/stage-vsix.mjs`) puts the published engine there itself.
@@ -44,5 +44,6 @@ if (watch) {
   await ctx.watch();
 } else {
   const { metafile } = await esbuild.build(options);
-  writeFileSync("dist/extension.meta.json", JSON.stringify(metafile, null, 2) + "\n");
+  const meta = published ? withVersionSource(metafile, process.cwd()) : metafile;
+  writeFileSync("dist/extension.meta.json", JSON.stringify(meta, null, 2) + "\n");
 }

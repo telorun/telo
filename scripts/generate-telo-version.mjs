@@ -38,9 +38,9 @@
 // Usage: node scripts/generate-telo-version.mjs [--published]
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join, relative, sep } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import { ROOT, teloGeneration } from "./version-line.mjs";
+import { LINE_MANIFEST, ROOT, teloGeneration } from "./version-line.mjs";
 
 /** Each generated module: its package directory and its file inside it. */
 export const VERSION_MODULES = {
@@ -95,6 +95,20 @@ export const ENGINE_VERSION = ${JSON.stringify(identity)};
 export const TELO_RUNTIME_VERSION = ${JSON.stringify(identity)};
 `,
   };
+}
+
+/**
+ * A published bundle's metafile with the line's manifest added as an input when
+ * the bundle holds a version module: the plugin reads the version from it, which
+ * esbuild never sees, and a release planner reading the metafile must, since the
+ * bundle holds that file's version. `absWorkingDir` is the build's own.
+ */
+export function withVersionSource(metafile, absWorkingDir) {
+  const versionModules = new Set(Object.values(VERSION_MODULES).map(({ pkg, file }) => join(pkg, file)));
+  const holdsVersion = Object.keys(metafile.inputs).some((input) => versionModules.has(resolve(absWorkingDir, input)));
+  if (!holdsVersion) return metafile;
+  const input = relative(absWorkingDir, LINE_MANIFEST).split(sep).join("/");
+  return { ...metafile, inputs: { ...metafile.inputs, [input]: { bytes: 0, imports: [] } } };
 }
 
 /** An esbuild plugin answering every version module, read from its source tree,

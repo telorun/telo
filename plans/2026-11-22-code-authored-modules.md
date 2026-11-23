@@ -21,13 +21,15 @@ What a working solution must not lose is what YAML gives today: `telo check` jud
 - no partials in scope, module is a whole, either code or manifest, not both
 - code modules follow same rules that they read variables not process.env directly
 - ts files should be handled normally via vscode via typescript extension not telo, studio should show code modules readonly
+- whole module must be able to be created via a single TS file or multiple files.
+- whole module must not look like imperative builder for a YAML manifest.
 
 ## Surface
 
 **Added**
 
 - `telo.ts`, `telo.mts`, `telo.js`, `telo.mjs` — a module entry at the module root, run by the `node` runner
-- `telo.rs` — a module entry at the module root, the crate's `[[bin]] name = "telo"`, run by the `rust` runner
+- `telo.rs` — a module entry at the module root, the crate's library root (`[lib] path = "telo.rs"`), run by the `rust` runner
 - `telo.locations.json` — the program's optional location table (`format: 1`), written beside the synthesized `telo.yaml` in the program's output directory
 - `imports/<Alias>.ts` / `imports/<alias>.rs` + `imports/mod.rs` — committed typed binding of one import, recording its source, pin and the exports its types were generated from
 - `<cache root>/synthesis/<key>/` — cached synthesized output
@@ -41,6 +43,7 @@ What a working solution must not lose is what YAML gives today: `telo check` jud
 - `MODULE_PROGRAM_FAILED` / `ERR_MODULE_PROGRAM_FAILED` — the program's build or run failed (bounded stderr)
 - `MODULE_PROGRAM_OUTPUT_INVALID` / `ERR_MODULE_PROGRAM_OUTPUT_INVALID` — the output breaks the run contract
 - `MODULE_PROGRAM_NONDETERMINISTIC` / `ERR_MODULE_PROGRAM_NONDETERMINISTIC` — two runs at publish, package or release planning differ
+- `CONTROLLER_NOT_EXPORTED` / `ERR_CONTROLLER_NOT_EXPORTED` — a kind names a controller that is not a named export of the module entry
 - `telo/read` response members `program: { locations }` and `refusal: { code, message }`
 - `GET /v1/sessions/:id/workspace/synthesis?path=` — `200 { path, text, locations, inputs }` or `200 { path, refusal }`; `404 module_not_found` (new error code)
 - `features.synthesis` — runner capability advertising the route
@@ -57,15 +60,15 @@ None.
 
 ## Solution
 
-**A code module is a directory whose entry is a program.** The entry is `telo.<ext>` at the module root and its extension picks the runner (the Gradle `build.gradle` / `build.gradle.kts` pattern). The entry's URL is the module's canonical source, so the module root, relative imports, `!module-path` and `!include-*` resolve exactly as for `telo.yaml`. A directory holding two entries is refused. The set of runners is a data table both host halves read; adding a language adds a row and its runner, and changes no kernel, analyzer, CLI or editor code.
+**A code module is a directory whose entry is a library the runner imports.** The entry is `telo.<ext>` at the module root and its extension picks the runner (the Gradle `build.gradle` / `build.gradle.kts` pattern). The entry's URL is the module's canonical source, so the module root, relative imports, `!module-path` and `!include-*` resolve exactly as for `telo.yaml`. A directory holding two entries is refused. The set of runners is a data table both host halves read; adding a language adds a row and its runner, and changes no kernel, analyzer, CLI or editor code.
 
-**Synthesis, not execution.** A host runs the program to produce the module's documents — the CDK / cdk8s pattern — and every consumer reads those documents. The program writes, into an empty output directory, `telo.yaml` in Telo's own grammar (tags included) and optionally `telo.locations.json`, keyed by document index and JSON Pointer, mapping each node to a file and range of the program's source. Both analyzers read the text as they read any `telo.yaml`; the location table rides the source's read result, so a finding is placed by lookup. At `telo publish` / `telo package` the synthesized text is the artifact's `telo.yaml`, with the measured `requires:` floor written beside `layers:` (a program never writes `requires:` or `include:`); consumers, pins and the hub see an ordinary module. The run contract is normative in `packages/module-synthesis/README.md`, with vectors in `packages/module-synthesis/conformance/` that both halves of the package and both analyzers run.
+**Synthesis, not execution.** A host runs the program to produce the module's documents — the CDK / cdk8s pattern — and every consumer reads those documents. The entry exports the module as a value (the default export in Node, registered by the builder's module macro in Rust) and importing it does nothing; the runner's own driver imports the entry and writes, into an empty output directory, `telo.yaml` in Telo's own grammar (tags included) and optionally `telo.locations.json`, keyed by document index and JSON Pointer, mapping each node to a file and range of the program's source. Both analyzers read the text as they read any `telo.yaml`; the location table rides the source's read result, so a finding is placed by lookup. At `telo publish` / `telo package` the synthesized text is the artifact's `telo.yaml`, with the measured `requires:` floor written beside `layers:` (a program never writes `requires:` or `include:`); consumers, pins and the hub see an ordinary module. The run contract is normative in `packages/module-synthesis/README.md`, with vectors in `packages/module-synthesis/conformance/` that both halves of the package and both analyzers run.
 
-**The run contract is hermetic.** The program runs with an environment carrying nothing of the host's, stdin closed, no arguments, its working directory the empty output directory. Everything it uses arrives at build time (bundled imports in Node, `include_str!` in Rust). The Node runner bundles the entry with esbuild and runs the bundle on Node under the permission model (read its bundle, write the output directory, no child processes, workers or addons); the Rust runner builds the `telo` binary with cargo into the cache and executes it directly, refusing one whose dep-info records an environment dependency other than Cargo's own. Variables reach a module only as declared `variables:` read at run time by the kernel, never through the program. `telo publish`, `telo package` and release planning run the program twice and refuse differing output.
+**The run contract is hermetic.** The driver runs with an environment carrying nothing of the host's, stdin closed, no arguments, its working directory the empty output directory. Everything the entry uses arrives at build time (bundled imports in Node, `include_str!` in Rust). The Node runner bundles its driver and the entry with esbuild — the controller bundle's conditions and loaders, so synthesis imports the code the controller realm runs — and runs it on Node under the permission model (read its bundle, write the output directory, no child processes, workers or addons). The Rust runner generates a driver crate in the cache, seeded with the module's `Cargo.lock` and depending on the module crate by path, builds it with cargo and executes it directly, refusing a build whose dep-info records an environment dependency other than Cargo's own. Importing the entry is part of the run, so a controller dependency that loads a native addon or reads files at import fails it with `MODULE_PROGRAM_FAILED`, whose message says the failure came while importing the entry and that such a dependency is loaded inside the controller's `create()`. Variables reach a module only as declared `variables:` read at run time by the kernel, never through the program. `telo publish`, `telo package` and release planning run the program twice and refuse differing output.
 
 **One synthesizer for every host.** `@telorun/module-synthesis` (and its Rust twin) is composed into both kernels' local sources, the CLIs and the VS Code extension host; its browser-safe half (entry table, location table schema, nearest-ancestor resolution) is what the analyzers depend on, and the analyzer never runs a program. Output is cached under `<cache root>/synthesis/<key>/`, keyed by every input the build reported, the build options, the runner and the format, so an unchanged module never runs its program again and an edit to any input is a new key. `--watch` watches the recorded inputs. Both kernels host both runners from the start; a host whose toolchain lacks one refuses with `MODULE_PROGRAM_UNSUPPORTED`.
 
-**Controllers live beside the program, not in it.** A Node code module keeps its controllers in a separate entry of the same package (`controllers.ts`), referenced from the program through a typed handle built from a type-only import, so the path and export name are checked by the compiler and the synthesized candidate is `pkg:telo/local/js?…&local_path=<entry>#<Export>`. A Rust code module is one crate: the lib target holds the controllers (`pkg:cargo/<crate>?local_path=.#<entry>`), the `telo` bin target synthesizes, referencing a controller by type; the Rust SDK exposes a controller's entry name to the builder. The controller bundle never contains the builder, and synthesis never loads controller code.
+**One file holds the module and its controllers.** Controllers are exports of the entry — defined there, or re-exported from another file of the module, which is the only way a second file takes part. In Node a kind names its controller by value, and the driver finds its export name by identity among the entry's named exports (the lexicographically first name when two hold the same value); a value that is no named export is `CONTROLLER_NOT_EXPORTED`, reported at the kind's line. The candidate is always `pkg:telo/local/js?path=…&local_path=./telo.ts#<Export>`, and the kernel bundles the entry as written: the module value and the builder ride in the controller bundle, which is sound because the builder has no import-time effect and declares `sideEffects: false`, so loading a controller writes nothing. In Rust `telo.rs` is the crate's library root (built as an `rlib`, so the driver can link it), holding the module and the controllers; a kind names its controller by type, the candidate is `pkg:cargo/<crate>?local_path=.#<entry>`, and the Rust SDK exposes a controller's entry name to the builder.
 
 **Typed bindings make the compiler the author's feedback loop.** Since Telo publishes no diagnostics into `.ts` files, the TypeScript or Rust compiler is what catches a misspelled field. `telo add <source>` resolves and pins the source and writes a committed binding file per alias under `imports/` (generated by the module's own builder version, so the binding matches the builder it compiles against); `telo upgrade` moves the pin and regenerates the types together; `telo install` only warms the cache, as today. A module's own kinds need no generation: TypeScript types are inferred from the schema builders (the TypeBox pattern), Rust schemas derived from the config types (the schemars pattern). Built-in `Telo.*` kinds ship in the builder. CEL is written through `cel(…)` / `interpolate(…)` helpers and is expected only at the edges — a port, a request mapped into a handler's inputs.
 
@@ -75,7 +78,7 @@ None.
 
 **Applications too.** `variables:`, `secrets:`, `ports:` with `env:` / `arg:`, `targets:`, `logging:`, `tracing:`, `translations:`, `needs:` and `lang:` are documents the program emits; `telo run <dir> [arguments]` reads arguments against the synthesized bindings (the program receives none), and runners learn an application's `ports:` from the synthesized documents.
 
-**Everything else follows.** Docs: a code-modules guide under `docs/extend/`, the CLI reference for `telo synth` / `telo add`, the benefits-ledger entry. The authoring-agent primer and the hub's library-design guide learn code modules. `tests/check-run-agreement.yaml` gains a row for every `MODULE_*` refusal except the publish-only one; both analyzers' check-conformance pin `MODULE_ENTRY_AMBIGUOUS`. `module-builder/` and `packages/module-synthesis/` join the MIT list and `pnpm run check:licenses`; `module-builder` joins `release.groups.telo`. `cli/rust` gains `telo synth`; `telo add` is Node-CLI only, like `telo upgrade`.
+**Everything else follows.** Docs: a code-modules guide under `docs/extend/`, the CLI reference for `telo synth` / `telo add`, the benefits-ledger entry. The authoring-agent primer and the hub's library-design guide learn code modules. `tests/check-run-agreement.yaml` gains a row for every `MODULE_*` refusal except the publish-only one and for `CONTROLLER_NOT_EXPORTED`; both analyzers' check-conformance pin `MODULE_ENTRY_AMBIGUOUS` and `CONTROLLER_NOT_EXPORTED`. The code-modules guide and the primer state that importing the entry performs no I/O and that heavy or native dependencies are loaded in `create()`. `module-builder/` and `packages/module-synthesis/` join the MIT list and `pnpm run check:licenses`; `module-builder` joins `release.groups.telo`. `cli/rust` gains `telo synth`; `telo add` is Node-CLI only, like `telo upgrade`.
 
 ## Decisions
 
@@ -84,7 +87,10 @@ None.
 - **Program emits Telo's YAML grammar, not a JSON encoding of tags** — one grammar both analyzers already read and the published artifact already is; a second spelling of every tag would be twinned forever.
 - **Location table keyed by document + JSON Pointer, not a text source map** — the loader's own position key, so mapping is a lookup with no second parser.
 - **Determinism enforced by an empty environment and a sandbox; two runs only where output becomes durable** — the environment rule then holds in every language by construction, without doubling every cold load.
-- **Controllers in a separate entry of the same package/crate** — a program and a controller realm in one bundle would make the kernel execute the program and inline the builder; a function value carries no export name once bundled.
+- **The entry is a library the runner's driver imports, never a main** (Vite / ESLint config files, `go test`'s generated harness) — so one file can hold the module and its controllers: importing it is effect-free in the controller realm and in the sandbox alike, and one driver contract serves every language. A top-level `synth()` call would make loading a controller write output.
+- **Controllers are exports of the entry, named by identity** — a bundled function value carries no export name, and the namespace lookup recovers it; a separate controller entry as a second rule would give one concept two PURL shapes.
+- **The builder stays in the controller bundle rather than being tree-shaken out** — correctness would otherwise rest on esbuild proving the builder's calls pure, for a negligible size saving.
+- **An import-time native or file read fails synthesis rather than being stubbed** — a stubbed dependency would silently change what the program emits, and widening the sandbox would let reads escape the cache key.
 - **Committed bindings under `imports/`, written by a new `telo add`** — the only committed place for a pin in a module with no manifest; gitignored bindings would leave a fresh clone untyped; `telo install` stays a cache-warming command that never writes the author's tree.
 - **Findings re-anchored at the consumer's import in editors** — keeps the author's errors as errors without publishing into `.ts`.
 - **Browser Studio reads through a runner route, not `workspace/file`** — the cache is outside the workspace, and a flag switching one route between two answer shapes is two routes in one.
@@ -92,48 +98,64 @@ None.
 
 ## Complete example after the change
 
-A Node library, `quotes/`:
+A Node library, `quotes/` — the whole module, its kind and its controller in one file:
 
 ```
 quotes/
   package.json      # @telorun/module-builder, @telorun/sdk
-  telo.ts           # the module program
-  controllers.ts    # the controller entry
+  telo.ts           # the module
 ```
 
 ```ts
 // quotes/telo.ts
-import { library, kind, t, Telo, controllerEntry } from "@telorun/module-builder";
-import type * as Controllers from "./controllers.js";
+import { InvokeError, integerInput } from "@telorun/sdk";
+import { library, kind, t, Telo, type Static } from "@telorun/module-builder";
 
-const code = controllerEntry<typeof Controllers>("./controllers.ts");
+const QuoteRequest = t.object({ sku: t.string(), quantity: t.integer({ minimum: 1 }) });
+const Quote = t.object({ sku: t.string(), quantity: t.integer(), total: t.number() });
+const PriceList = t.object({
+  prices: t.record(t.number({ minimum: 0 })),
+  bulkThreshold: t.integer({ default: 10 }),
+  bulkDiscount: t.number({ minimum: 0, maximum: 1, default: 0 }),
+});
 
-export const QuoteRequest = t.object({ sku: t.string(), quantity: t.integer({ minimum: 1 }) });
-export const Quote = t.object({ sku: t.string(), quantity: t.integer(), total: t.number() });
+// The controller: an export of the entry, so the kernel loads it as telo.ts#PriceQuoteController.
+export const PriceQuoteController = {
+  async create(config: Static<typeof PriceList>) {
+    return {
+      async invoke(inputs: Static<typeof QuoteRequest>): Promise<Static<typeof Quote>> {
+        const price = config.prices[inputs.sku];
+        if (price === undefined) {
+          throw new InvokeError("QUOTE_UNKNOWN_SKU", `no price for ${inputs.sku}`, { sku: inputs.sku });
+        }
+        const quantity = integerInput(inputs.quantity)!;
+        const discount = quantity >= integerInput(config.bulkThreshold)! ? config.bulkDiscount : 0;
+        return { sku: inputs.sku, quantity, total: price * quantity * (1 - discount) };
+      },
+    };
+  },
+};
 
-export const PriceQuote = kind("PriceQuote", {
+const priceQuote = kind("PriceQuote", {
   capability: Telo.Invocable,
   description:
     "Prices a quantity of one product from a price list, with a bulk discount above a threshold. " +
     "Returns the line total; a product missing from the list fails with QUOTE_UNKNOWN_SKU.",
-  schema: t.object({
-    prices: t.record(t.number({ minimum: 0 })),
-    bulkThreshold: t.integer({ default: 10 }),
-    bulkDiscount: t.number({ minimum: 0, maximum: 1, default: 0 }),
-  }),
+  schema: PriceList,
   inputType: QuoteRequest,
   outputType: Quote,
   throws: {
     QUOTE_UNKNOWN_SKU: { data: t.object({ sku: t.string() }), displayMessage: "No price is listed for {$sku}." },
   },
-  controller: code.PriceQuote,
+  controller: PriceQuoteController,
 });
 
-const standardPricing = PriceQuote.resource("standardPricing", {
+const standardPricing = priceQuote.resource("standardPricing", {
   prices: { "SKU-1": 12.5, "SKU-2": 40 },
   bulkDiscount: 0.1,
 });
 
+// The module: the default export, which the runner's driver reads.
 export default library({
   name: "Quotes",
   version: "1.0.0",
@@ -142,35 +164,8 @@ export default library({
   description:
     "Price quotes for order lines: a price list per product, bulk discounts above a quantity " +
     "threshold, and a ready-made standard price list.",
-  exports: { kinds: [PriceQuote], resources: [standardPricing] },
+  exports: { kinds: [priceQuote], resources: [standardPricing] },
 });
-```
-
-```ts
-// quotes/controllers.ts
-import { InvokeError, integerInput, type ResourceContext } from "@telorun/sdk";
-import type { ConfigOf, InputOf, OutputOf } from "@telorun/module-builder";
-import type { PriceQuote as Kind } from "./telo.js";
-
-class PriceQuoteResource {
-  constructor(private readonly config: ConfigOf<typeof Kind>) {}
-
-  async invoke(inputs: InputOf<typeof Kind>): Promise<OutputOf<typeof Kind>> {
-    const price = this.config.prices[inputs.sku];
-    if (price === undefined) {
-      throw new InvokeError("QUOTE_UNKNOWN_SKU", `no price for ${inputs.sku}`, { sku: inputs.sku });
-    }
-    const quantity = integerInput(inputs.quantity)!;
-    const discount = quantity >= integerInput(this.config.bulkThreshold)! ? this.config.bulkDiscount : 0;
-    return { sku: inputs.sku, quantity, total: price * quantity * (1 - discount) };
-  }
-}
-
-export const PriceQuote = {
-  async create(resource: ConfigOf<typeof Kind>, ctx: ResourceContext) {
-    return new PriceQuoteResource(resource);
-  },
-};
 ```
 
 `telo synth ./quotes` prints what is published as the artifact's `telo.yaml` (trimmed):
@@ -184,7 +179,7 @@ exports: { kinds: [PriceQuote], resources: [standardPricing] }
 kind: Telo.Definition
 metadata: { name: PriceQuote, description: Prices a quantity of one product … }
 capability: Telo.Invocable
-controllers: [pkg:telo/local/js?path=./controllers.mjs&local_path=./controllers.ts#PriceQuote]
+controllers: [pkg:telo/local/js?path=./telo.mjs&local_path=./telo.ts#PriceQuoteController]
 schema: { … }
 inputType: { kind: Telo.JsonSchema, schema: { … } }
 outputType: { kind: Telo.JsonSchema, schema: { … } }
@@ -268,7 +263,7 @@ kind: Console.WriteLine
 metadata: { name: print }
 ```
 
-The same library in Rust, `quotes-rs/` — one crate, the controllers in the lib target and the program in the `telo` bin target:
+The same library in Rust, `quotes-rs/` — one crate whose library root `telo.rs` holds the module and its controller:
 
 ```toml
 # quotes-rs/Cargo.toml
@@ -278,10 +273,6 @@ version = "1.0.0"
 edition = "2021"
 
 [lib]
-path = "src/lib.rs"
-
-[[bin]]
-name = "telo"
 path = "telo.rs"
 
 [dependencies]
@@ -292,15 +283,16 @@ serde = { version = "1", features = ["derive"] }
 ```
 
 ```rust
-// quotes-rs/src/lib.rs
+// quotes-rs/telo.rs
 use std::collections::BTreeMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use telorun_module_builder::{kind, library, module, Library, Telo};
 use telorun_sdk::{controller, Controller, ControllerError, InvokeContext, ResourceContext, Result, Value};
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct PriceQuoteConfig {
+pub struct PriceList {
     pub prices: BTreeMap<String, f64>,
     #[serde(default = "ten")]
     pub bulk_threshold: i64,
@@ -315,7 +307,7 @@ pub struct QuoteRequest { pub sku: String, #[schemars(range(min = 1))] pub quant
 #[derive(Serialize, JsonSchema)]
 pub struct Quote { pub sku: String, pub quantity: i64, pub total: f64 }
 
-pub struct PriceQuote { config: PriceQuoteConfig }
+pub struct PriceQuote { config: PriceList }
 
 #[controller(entry = "price_quote")]
 impl Controller for PriceQuote {
@@ -333,36 +325,29 @@ impl Controller for PriceQuote {
         telorun_sdk::to_value(Quote { sku: request.sku, quantity: request.quantity, total })
     }
 }
-```
 
-```rust
-// quotes-rs/telo.rs
-use std::collections::BTreeMap;
-use acme_quotes::{PriceQuote, PriceQuoteConfig, Quote, QuoteRequest};
-use telorun_module_builder::{kind, library, synth, Telo};
-
-fn main() {
+// The module, registered for the runner's generated driver; importing the crate does nothing.
+#[module]
+fn quotes() -> Library {
     let price_quote = kind("PriceQuote")
         .capability(Telo::Invocable)
         .description("Prices a quantity of one product from a price list, with a bulk discount above a threshold. …")
-        .schema::<PriceQuoteConfig>()
+        .schema::<PriceList>()
         .input_type::<QuoteRequest>()
         .output_type::<Quote>()
         .throws("QUOTE_UNKNOWN_SKU", "No price is listed for {$sku}.")
         .controller::<PriceQuote>();
 
-    let standard_pricing = price_quote.resource("standardPricing", PriceQuoteConfig {
+    let standard_pricing = price_quote.resource("standardPricing", PriceList {
         prices: BTreeMap::from([("SKU-1".into(), 12.5), ("SKU-2".into(), 40.0)]),
         bulk_threshold: 10,
         bulk_discount: 0.1,
     });
 
-    synth(
-        library("Quotes").version("1.0.0").license("MIT").lang("en")
-            .description("Price quotes for order lines: …")
-            .export_kind(&price_quote)
-            .export_resource(&standard_pricing),
-    );
+    library("Quotes").version("1.0.0").license("MIT").lang("en")
+        .description("Price quotes for order lines: …")
+        .export_kind(&price_quote)
+        .export_resource(&standard_pricing)
 }
 ```
 
@@ -374,6 +359,8 @@ fn main() {
 - A directory holding `telo.yaml` and `telo.ts` is refused by `telo check` and `telo run` with `MODULE_ENTRY_AMBIGUOUS`, naming both.
 - A program printing `process.env.HOME` into a description emits nothing for it; one embedding the time fails `telo publish` with `MODULE_PROGRAM_NONDETERMINISTIC`.
 - Editing a file `telo.ts` imports re-synthesizes on the next `telo run`; an unchanged module never runs its program again.
-- The built controller bundle of `quotes/` contains no `@telorun/module-builder` code.
+- `quotes/telo.ts` is the whole module: its controller loads as `local_path=./telo.ts#PriceQuoteController`, and loading it writes no file.
+- A kind given a controller that is not a named export is `CONTROLLER_NOT_EXPORTED` at the kind's line in `telo.ts`.
+- A controller importing a native-addon package at the top of `telo.ts` fails synthesis with `MODULE_PROGRAM_FAILED` naming the import; moved into `create()`, it synthesizes and runs.
 - `telo upgrade` in `shop/` changes only `imports/*` files.
 - Studio shows `quotes/` read-only, in the desktop build and in the browser build over a runner advertising `features.synthesis`.

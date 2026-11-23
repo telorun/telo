@@ -7,7 +7,7 @@ import { githubClient, run } from "../alert.mjs";
 
 const spread = (median) => ({ median, min: median, max: median, cv: 0 });
 
-function comparisonRun(index, { teloCpu = 1, teloP99 = 10 } = {}) {
+function comparisonRun(index, { teloCpu = 1, teloP99 = 10, model = "test cpu" } = {}) {
   const result = (subject, cpu, p99) => ({
     workload: "leads",
     subject,
@@ -17,16 +17,17 @@ function comparisonRun(index, { teloCpu = 1, teloP99 = 10 } = {}) {
   return {
     commit: `c${index}`,
     teloVersion: "0.1.0",
-    host: { model: "test cpu" },
+    host: { model },
     workloadResults: [result("telo", teloCpu * (1 + (index % 3) / 100), teloP99), result("node", 0.5, 5)],
   };
 }
 
-function featureRun(index, { limit, sizes = [1, 2, 4, 8] } = {}) {
+function featureRun(index, { limit, sizes = [1, 2, 4, 8], runMs = 100, model = "test cpu" } = {}) {
   return {
     commit: `c${index}`,
+    host: { model },
     feature: "forEachIterations",
-    sizes: sizes.map((n) => ({ n, runWarmMs: spread(100 + n), checkWarmMs: spread(50 + n) })),
+    sizes: sizes.map((n) => ({ n, runWarmMs: spread(runMs + n), checkWarmMs: spread(50 + n) })),
     ...(limit ? { firstFailure: { n: limit, code: "ERR_BENCHMARK_BOOT_FAILED", message: "hung" } } : {}),
   };
 }
@@ -100,6 +101,40 @@ test("a feature whose limit falls from 16 to 8 opens an issue", async () => {
 
 test("fewer than 10 earlier runs opens nothing", async () => {
   const result = await check({ "comparison.jsonl": [...steady(9), comparisonRun(9, { teloCpu: 2 })] });
+  assert.equal(result.client.issues.length, 0);
+});
+
+test("a run slower only than runs on another CPU model opens nothing", async () => {
+  const records = [...steady(10), comparisonRun(10, { teloCpu: 1.5, model: "slow cpu" })];
+  const result = await check({ "comparison.jsonl": records });
+  assert.equal(result.client.issues.length, 0);
+});
+
+test("runs on other CPU models do not count towards the window", async () => {
+  const fast = steady(10);
+  const slow = Array.from({ length: 9 }, (_, i) => comparisonRun(i, { teloCpu: 1.5, model: "slow cpu" }));
+  const records = [...fast.slice(0, 5), ...slow, ...fast.slice(5), comparisonRun(10, { teloCpu: 2, model: "slow cpu" })];
+  const result = await check({ "comparison.jsonl": records });
+  assert.equal(result.client.issues.length, 0);
+});
+
+test("a regression on one CPU model is judged against that model's runs alone", async () => {
+  const interleaved = Array.from({ length: 10 }, (_, i) => [
+    comparisonRun(i),
+    comparisonRun(i, { teloCpu: 0.5, model: "fast cpu" }),
+  ]).flat();
+  const records = [...interleaved, comparisonRun(10, { teloCpu: 1.15 })];
+  const result = await check({ "comparison.jsonl": records });
+  assert.deepEqual(result.alerts.map((a) => a.key), ["comparison/leads/cpu-per-request"]);
+  assert.match(result.alerts[0].detail, /previous 10 runs on test cpu/);
+});
+
+test("a feature slower only than runs on another CPU model opens nothing", async () => {
+  const records = [
+    ...Array.from({ length: 10 }, (_, i) => featureRun(i)),
+    featureRun(10, { runMs: 200, model: "slow cpu" }),
+  ];
+  const result = await check({ "feature-cost.jsonl": records });
   assert.equal(result.client.issues.length, 0);
 });
 

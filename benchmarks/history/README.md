@@ -26,7 +26,7 @@ The [nightly workflow](../../.github/workflows/benchmarks.yml) measures in one j
 $ GITHUB_TOKEN=… node benchmarks/history/alert.mjs --history <directory holding the .jsonl files>
 ```
 
-`alert.mjs` reads the history files from a directory (the workflow exports them from `benchmark-results` after appending) and compares the newest run of each figure with the 10 runs before it. A figure alerts when the newest run is worse than the median of those 10 by more than its threshold **and** worse than every one of them; with fewer than 10 earlier runs nothing alerts.
+`alert.mjs` reads the history files from a directory (the workflow exports them from `benchmark-results` after appending) and compares the newest run of each figure with the 10 runs before it on the same CPU model (the record's `host.model`). A figure alerts when the newest run is worse than the median of those 10 by more than its threshold **and** worse than every one of them; with fewer than 10 earlier runs on that model nothing alerts. Hosted runners draw from several CPU models and the `telo` ÷ `node` ratio itself moves with the model (2.7 on one, 4.1 on another in the same week), so a run judged against other models' runs would alert on the hardware rather than the code.
 
 | Figure | Threshold |
 | --- | --- |
