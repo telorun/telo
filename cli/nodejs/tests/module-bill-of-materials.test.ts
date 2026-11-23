@@ -124,6 +124,11 @@ describe("the bill of materials of a bundle", () => {
     expect(incomplete(record)).toEqual([]);
     expect(payload.layers.at(-1)!.role).toBe("sbom");
     assertOccurrencesNameIndexedLayers(payload);
+    const real = fs.realpathSync.native(mod);
+    expect(payload.recordedVersionFiles).toEqual([
+      path.join(real, "node_modules/@scope/kit/package.json"),
+      path.join(real, "node_modules/left-pad/package.json"),
+    ]);
   });
 
   it("gives identical record bytes when built twice from one tree", async () => {

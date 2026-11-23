@@ -51,6 +51,9 @@ export interface ModuleBillOfMaterials {
   readonly record: BillOfMaterials;
   /** Bundle inputs no package claims; each makes its layer incomplete. */
   readonly unattributed: readonly UnattributedInput[];
+  /** Real, absolute paths of the `package.json` files whose version the record
+   *  holds: inputs of the payload, so a release that moves one moves it. */
+  readonly versionInputs: readonly string[];
 }
 
 /** One built bundle: the payload file it produced and the inputs that put
@@ -128,6 +131,7 @@ export async function assembleModuleRecord(options: {
   const contains: ContainsEdge[] = [];
   const incomplete = new Set<string>();
   const unattributed: UnattributedInput[] = [];
+  const versionInputs = new Set<string>();
 
   const built = new Set<string>();
   // Inputs arrive by real path; a root under a symlink (macOS /var) must be read the same way.
@@ -137,6 +141,7 @@ export async function assembleModuleRecord(options: {
     const attribution = await attributeBundleInputs(bundle.contributors, options.publishRoot);
     for (const layer of occurrencesOf(bundle.path)) {
       for (const pkg of attribution.packages) {
+        versionInputs.add(pkg.manifest);
         components.push({
           purl: npmPackageUrl(pkg.name),
           version: pkg.version,
@@ -218,6 +223,7 @@ export async function assembleModuleRecord(options: {
         return true;
       })
       .sort((a, b) => (a.layer === b.layer ? (a.input < b.input ? -1 : 1) : a.layer < b.layer ? -1 : 1)),
+    versionInputs: [...versionInputs].sort(),
   };
 }
 
