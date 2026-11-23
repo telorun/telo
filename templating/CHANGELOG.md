@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.139.0 - 2026-11-22
+### Added
+* CEL message construction (Name{field: value}) is read by the tag engines, the analyzer and the editor: a construction in a manifest is type-checked like any expression, and its field values are walked for reads. CEL_UNKNOWN_TYPE, CEL_TYPE_NOT_CONSTRUCTIBLE and CEL_MISSING_FIELD are reported through the templating layer.
+* `extractReadChains` records a presence test `has(a.b)` as a read of `a.b` (`["a", "b", PRESENCE_SEGMENT]`, where it was `["a", PRESENCE_SEGMENT]`) and follows a `cel.bind` name to the value it binds.
+
 ## 0.137.0 - 2026-11-15
 ### Added
 * The Rust tag reader reads `!cel`, `!interpolate`, `!sql` and `!literal` as the same sentinels the Node reader builds, pinned by rows in `templating/tag-conformance/sentinels.json`, instead of refusing every file that holds one.

@@ -1,5 +1,0 @@
-units:
-  cli: Fixed
-body: The telorun/node image (the full variant) upgrades its Debian packages at build,
-  so Debian security fixes published since the upstream Node image was last rebuilt are
-  included.

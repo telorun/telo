@@ -1,7 +1,0 @@
-units:
-  ide/vscode: Fixed
-body: "The extension reports exactly its telo version instead of a development build
-  identity (`0.138.0+unreleased`), and a release that moves the telo line no longer
-  leaves a needless extension patch behind it: the shipped extension is built from
-  sources at the version the release records, not from a build made before the version
-  moved."

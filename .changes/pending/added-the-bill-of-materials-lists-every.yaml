@@ -1,8 +1,0 @@
-units:
-  modules/tesseract: Added
-body: The bill of materials lists every library tesseract.js-core 7.0.0 builds —
-  tesseract (from the Balearica fork), leptonica, giflib, libjpeg, libpng, libtiff,
-  libwebp, openlibm and zlib — each at the newest release its submodule pin's commit
-  contains (libpng 1.6.37 though its source names the snapshot 1.6.38.git, openlibm
-  0.8.1), its CPE where the NVD names one, and the repository and commit of that pin, so
-  telo audit checks them by commit.

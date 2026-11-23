@@ -1,8 +1,0 @@
-units:
-  sdk: Added
-body: "A sources: entry and each of its contains items may declare vcs: { url, revision
-  } — the git repository and the full commit the component is built from — and a
-  sources: entry its own cpe. The new Telo formats vcs-url
-  (git+https://<host>[:<port>]/<path>, no user name, @, query or fragment) and
-  vcs-revision (a full 40- or 64-digit lower-case commit id; a tag or a short id is
-  refused) check them, each with its conformance set."

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.25.1 - 2026-11-22
+### Security
+* Refreshed locked dependency versions within their declared ranges, as part of a workspace-wide refresh that clears known security advisories.
+
 ## 0.25.0 - 2026-11-04
 ### Added
 * Http.BasicAuth: a static credential rendering Authorization: Basic base64(username:password) as UTF-8 (RFC 7617); an empty username or one containing ":" is refused by telo check and at creation (SCHEMA_VIOLATION), and a computed one when the credential is created.

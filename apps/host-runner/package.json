@@ -1,6 +1,6 @@
 {
   "name": "@telorun/host-runner",
-  "version": "0.2.0",
+  "version": "0.3.2",
   "description": "Telo Host Runner - serves the /v1 runner API over local processes, so an editor (or any client) can run applications on this machine. Bundles the telo it runs on.",
   "keywords": [
     "telo",

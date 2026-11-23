@@ -1,5 +1,0 @@
-units:
-  templating: Added
-body: '`extractReadChains` records a presence test `has(a.b)` as a read of `a.b` (`["a",
-  "b", PRESENCE_SEGMENT]`, where it was `["a", PRESENCE_SEGMENT]`) and follows a
-  `cel.bind` name to the value it binds.'

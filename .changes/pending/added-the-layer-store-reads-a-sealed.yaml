@@ -1,8 +1,0 @@
-units:
-  kernel: Added
-body: "The layer store reads a sealed root without ever removing or writing it
-  (`removeStale: false`, `sealedRoot`), fetching a missing or no-longer-verifying layer
-  into the working cache root instead, and both kernels refuse to extract an
-  artifact-describing layer such as `sbom` into a module directory. The module-artifact
-  and packaged-application specifications describe a packaged local module's record, its
-  index entry and how it is read."

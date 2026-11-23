@@ -1,4 +1,0 @@
-units:
-  apps/studio: Added
-body: Studio reads the runner /v1 contract from @telorun/runner-protocol and no longer
-  keeps a mirrored copy of its types.

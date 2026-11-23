@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.16.0 - 2026-11-22
+### Added
+* Each staged source declares the package its files are a release of (`purl` in `sources:`), the identity a software bill of materials lists.
+* The better-sqlite3 source declares the SQLite it links (`contains`, with its CPE), so the embedded code is named.
+* The SQLite that better-sqlite3 embeds is declared with the commit of its tag version-3.51.3 in github.com/sqlite/sqlite, so telo audit and the hub check it against OSV by commit.
+### Security
+* Refreshed locked dependency versions within their declared ranges, as part of a workspace-wide refresh that clears known security advisories.
+
 ## 0.15.0 - 2026-11-19
 ### Added
 * The module declares the rename of `beforeMigrations:` to `prepare:` itself (`SQL_BEFORE_MIGRATIONS_RENAMED`), so a manifest using the old key is migrated under any import alias, reported at its own line, and rewritten by `telo migrate`; it requires a telo release that reads library `migrations:`.

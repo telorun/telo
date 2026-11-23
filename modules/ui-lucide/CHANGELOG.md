@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.0 - 2026-11-22
+### Added
+* Each staged source declares the package its files are a release of (`purl` in `sources:`), the identity a software bill of materials lists.
+* Requires the telo release the `ui` module it imports needs.
+
 ## 0.11.0 - 2026-11-19
 ### Added
 * Requires the telo release that reads `x-telo-context-withheld` beside `x-telo-context-from-referrer`, since the `ui` module it imports declares its destinations' roots that way.

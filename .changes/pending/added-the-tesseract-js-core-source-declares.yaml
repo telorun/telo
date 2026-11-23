@@ -1,5 +1,0 @@
-units:
-  modules/tesseract: Added
-body: The `tesseract.js-core` source declares the Tesseract (5.3.0) and Leptonica
-  (1.82.0) libraries compiled into its WebAssembly builds (`contains` in `sources:`), so
-  a software bill of materials lists them.

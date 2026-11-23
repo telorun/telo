@@ -1,7 +1,0 @@
-units:
-  analyzer: Added
-  cli: Added
-body: A misplaced `x-telo-text-keys` inside a template definition's body is reported
-  once, at the definition and labelled by the choice that reaches it; before, only an
-  instance's expansion reported it, at the instance, and a definition no instance used
-  reported nothing.

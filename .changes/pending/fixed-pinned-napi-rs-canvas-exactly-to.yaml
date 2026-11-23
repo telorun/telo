@@ -1,4 +1,0 @@
-units:
-  modules/image: Fixed
-body: Pinned @napi-rs/canvas exactly to 1.0.10, the version of the staged native addon,
-  so a lockfile refresh can no longer move the wrapper away from the addon it loads.

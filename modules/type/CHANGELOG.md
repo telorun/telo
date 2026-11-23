@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.4 - 2026-11-22
+### Security
+* Refreshed locked dependency versions within their declared ranges, as part of a workspace-wide refresh that clears known security advisories.
+
 ## 0.13.3 - 2026-11-12
 ### Fixed
 * The usage notes no longer mention a scripting kind that is not part of the standard library.

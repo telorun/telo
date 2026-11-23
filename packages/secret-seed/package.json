@@ -1,6 +1,6 @@
 {
   "name": "@telorun/secret-seed",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The Telo secret seed: its unpadded base64url encoding and refusals, the secret-seed file read-or-create, and the derivation of a child seed from a seed and a label.",
   "keywords": [
     "telo",

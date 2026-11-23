@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.40.0 - 2026-11-22
+### Added
+* The authoring agent reads the hub's # Advisories: line and advisoriesComplete when choosing a version: it never copies the line into a manifest, picks the newest version with no advisories and complete coverage, names the advisories when every version has some, and tells the user when a module's embedded code is unchecked.
+* The primer covers the vcs: key of a sources: entry and its contains items, and the SOURCE_REVISION_UNREACHABLE and SOURCE_REPOSITORY_UNREADABLE refusals.
+* The primer says the loader's own metadata stamps (metadata.module, metadata.source and the rest) are refused when an author writes one, so the agent never writes them.
+
 ## 0.39.0 - 2026-11-19
 ### Added
 * The authoring primer teaches destinations and presses: `to` holding a `Ui.Navigate` (`href`) or a `Ui.OpenPage` (`page`, `pathParams`, `queryParams`, `surface`, kept in the address as `_telo.page.<name>`) wherever a link, value, column, relation, option source, navigation `link` entry or `onSuccess` goes somewhere, in place of `href` and `onSuccess.navigate`; `press: { to, label }` on the `box`, `stack` and `columns` nodes, `Ui.Listing` and `CrudUi.Admin`; a destination reading only the roots bound where it is written; and component layouts built for `ui_react_layouts-2`.

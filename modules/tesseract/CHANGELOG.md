@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0 - 2026-11-22
+### Added
+* Each staged source declares the package its files are a release of (`purl` in `sources:`), and the `tessdata` source is split into `tessdata-eng` and `tessdata-osd`, one package each.
+* The bill of materials lists every library tesseract.js-core 7.0.0 builds — tesseract (from the Balearica fork), leptonica, giflib, libjpeg, libpng, libtiff, libwebp, openlibm and zlib — each at the newest release its submodule pin's commit contains (libpng 1.6.37 though its source names the snapshot 1.6.38.git, openlibm 0.8.1), its CPE where the NVD names one, and the repository and commit of that pin, so telo audit checks them by commit.
+* The `tesseract.js-core` source declares the Tesseract (5.3.0) and Leptonica (1.82.0) libraries compiled into its WebAssembly builds (`contains` in `sources:`), so a software bill of materials lists them.
+
 ## 0.4.2 - 2026-11-09
 ### Fixed
 * The telo requirement that static checking cannot see is now a `restrictions:` entry carrying its reason, and `requires.telo` holds the measured floor.

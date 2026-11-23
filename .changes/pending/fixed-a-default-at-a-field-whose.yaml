@@ -1,9 +1,0 @@
-units:
-  kernel: Fixed
-body: "A `default:` at a field whose value type is held as an instance (`Telo.Url`,
-  `Telo.Duration`, `Telo.Timestamp`) is read as the same literal written there: a
-  resource that leaves such a field out now boots instead of being refused (a URL
-  default under type arguments was `ERR_URL_INVALID`), a call that leaves such an input
-  of its contract out receives the decoded value, and a template body reads it decoded
-  through `self`. A default the slot's type arguments refuse is refused under the type's
-  own code, as the literal would be."

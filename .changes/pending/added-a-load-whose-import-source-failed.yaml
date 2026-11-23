@@ -1,9 +1,0 @@
-units:
-  kernel: Added
-body: "A load whose import source failed is refused as ERR_IMPORT_UNRESOLVED in Telo's
-  words: the local file source, the manifest cache and the OCI transport translate their
-  own failures, so an unreachable registry is no longer ERR_NETWORK_UNREACHABLE and a
-  missing path no longer quotes the operating system. A module file declaring no module,
-  or several, and an include: entry naming a module-only kind, a glob the source cannot
-  expand or a partial that cannot be read are refused at load with the analyzer's
-  codes."

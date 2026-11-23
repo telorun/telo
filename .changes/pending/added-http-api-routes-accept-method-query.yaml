@@ -1,8 +1,0 @@
-units:
-  modules/http-server: Added
-body: Http.Api routes accept method QUERY, the safe method that carries a body,
-  validated as a POST body is and answered by a 400 with issues at /body/… when refused.
-  The cookie origin check treats QUERY as a POST, and a cross-origin QUERY needs
-  cors.methods to list it. The generated OpenAPI document is now 3.2.0 for every server
-  declaring openapi:, listing a QUERY route under its path item query key, so a reader
-  limited to 3.1 or earlier no longer reads it.

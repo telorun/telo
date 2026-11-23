@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.20.0 - 2026-11-22
+### Added
+* The shared request matcher accepts QUERY as a method, taking a body like POST; a transport that cannot carry it narrows method in its own schema.
+### Security
+* Refreshed locked dependency versions within their declared ranges, as part of a workspace-wide refresh that clears known security advisories.
+
 ## 0.19.2 - 2026-11-09
 ### Fixed
 * `requires.telo` now holds the measured floor: the lowest published telo that reads this module.

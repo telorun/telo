@@ -1,7 +1,0 @@
-units:
-  modules/http-server: Security
-body: Updated @fastify/static to 10.x, which fixes the path traversal that bypassed
-  route guards for Http.Static (GHSA-83w8-p2f5-377r, GHSA-x428-ghpx-8j92,
-  GHSA-8pvw-jcv7-9cmj, GHSA-pr96-94w5-mx2h), fastify to 5.12.5 or later
-  (GHSA-p68q-wchp-6fh7, GHSA-hwr6-493r-vm6h) and ajv's fast-uri to a patched release
-  (GHSA-v2hh-gcrm-f6hx).
