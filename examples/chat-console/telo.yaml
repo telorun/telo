@@ -16,14 +16,14 @@ requires:
   # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
   telo: ">=0.128.0"
 imports:
-  OpenAI: ../../modules/openai
-  Http: ../../modules/http-client
-  Ai: ../../modules/ai
-  RecordStream: ../../modules/record-stream
-  PlainText: ../../modules/plain-text-codec
-  Console: ../../modules/console
-  Sql: ../../modules/sql
-  SQLite: ../../modules/sqlite
+  OpenAI: oci://ghcr.io/telorun/openai@0.24.1#sha256-4zkQzzdsZdN3DFxNPAfoBGF6zbJ0cgOXJWNMDKqNpTI
+  Http: oci://ghcr.io/telorun/http-client@0.25.1#sha256-yODGL4HqbynR4aaPrcN1I2RIsmNBDn3ciL1uobA8nqA
+  Ai: oci://ghcr.io/telorun/ai@0.38.1#sha256-DRY3DZaG54aKXWMXJL_aUigh8SDbcerQRGrfS68Ixu0
+  RecordStream: oci://ghcr.io/telorun/record-stream@0.21.2#sha256-CEsxDXJR73GNShmObWct92cbExnt_9MjnDrHBLAABlM
+  PlainText: oci://ghcr.io/telorun/plain-text-codec@0.11.2#sha256-pyfbCDOILWCgCUznQGl6KY9XnmEdh9K8G1UcbrJWKJM
+  Console: oci://ghcr.io/telorun/console@0.19.5#sha256-aWnhpC9EodktO29y8zxc5YeFvgMwYD1bP0NkRsK2lic
+  Sql: oci://ghcr.io/telorun/sql@0.31.5#sha256-RQrmaix7-he4wzjCTZbaqeULSf7LQFcWwJaRadTIdYU
+  SQLite: oci://ghcr.io/telorun/sqlite@0.16.0#sha256-5VSa5D5dIm88NoMDGqqytSk7mk_GsdfBSxejnNTuYHI
 targets:
   - !ref initSchema
   - !ref chatLoop

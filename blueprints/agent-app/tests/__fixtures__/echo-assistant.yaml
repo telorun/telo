@@ -8,7 +8,7 @@ metadata:
 imports:
   AgentApp: ../..
   Echo: ./echo-model.yaml
-  Run: ../../../../modules/run
+  Run: oci://ghcr.io/telorun/run@0.35.1#sha256-m6oA-tLMj4v0JvzkvRt17CBuWzXSYpumtxyNRb3qVz8
 targets:
   - !ref assistant
 ports:

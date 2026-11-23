@@ -49,14 +49,14 @@ requires:
   # 0.133.0: `Telo.OpenUrl`.
   telo: ">=0.133.0"
 imports:
-  Durable: ../../modules/durable
-  Local: ../../modules/durable-local
-  Journal: ../../modules/durable-journal-file
-  Http: ../../modules/http-server
-  Ui: ../../modules/ui
-  UiReact: ../../modules/ui-react
-  Console: ../../modules/console
-  Timer: ../../modules/timer
+  Durable: oci://ghcr.io/telorun/durable@0.4.5#sha256-tAxE41lXkXYQavVUFebsHfllPXVmon-G9OI2QmNgbQY
+  Local: oci://ghcr.io/telorun/durable-local@0.7.3#sha256-cozgvwT3x_UWSuOM7DRULsDwZvc9IfQ6DSxRVHiYVzY
+  Journal: oci://ghcr.io/telorun/durable-journal-file@0.9.5#sha256-QcaYJ28xlhx2t64-hphB3zVfq0jFMeiua8mQbPqLno8
+  Http: oci://ghcr.io/telorun/http-server@0.45.0#sha256-U4OB7744bjifdIJjxKDn7t0vMfpVSOqSSyIB7S3rrlE
+  Ui: oci://ghcr.io/telorun/ui@0.15.0#sha256-Hpbmf228r4fDNHiDA7v1v4p-lHGYIJVp-LJL8lpFTQU
+  UiReact: oci://ghcr.io/telorun/ui-react@0.16.2#sha256-AA405BKFJXzpdjWojoCLvVY9l9Nsd6MzC9NW-btVi3A
+  Console: oci://ghcr.io/telorun/console@0.19.5#sha256-aWnhpC9EodktO29y8zxc5YeFvgMwYD1bP0NkRsK2lic
+  Timer: oci://ghcr.io/telorun/timer@0.10.1#sha256-opDPeuQO4FRSGss3jWJGPUW7b3a81z5V6z-67dQzIP8
 targets:
   - !ref server
   - { name: openUi, invoke: !ref openUi, inputs: { url: !cel "resources.server.status.localUrl" } }

@@ -9,9 +9,9 @@ metadata:
     head and heading; the slashless path redirects to the canonical one keeping
     the query; an unknown ref and an unknown `?version=` are 404s.
 imports:
-  HttpClient: ../../../../modules/http-client
-  Html: ../../../../modules/html
-  Assert: ../../../../modules/assert
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.1#sha256-yODGL4HqbynR4aaPrcN1I2RIsmNBDn3ciL1uobA8nqA
+  Html: oci://ghcr.io/telorun/html@0.3.3#sha256-JtrLk38bb1-DHNwCIgqRvVYo8r4586aD6h8DXWl1kcY
+  Assert: oci://ghcr.io/telorun/assert@0.22.2#sha256-Rh9B2qPXTZKRjB9hbsGaFJKk25OmsxL2YfBSit177Lw
 targets:
   - !ref modulePage_RendersSeededModule
   - !ref modulePage_SlashlessRedirectsKeepingQuery

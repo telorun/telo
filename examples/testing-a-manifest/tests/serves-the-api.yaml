@@ -10,9 +10,9 @@ metadata:
     exits on its own instead of hanging on a listening socket.
 imports:
   Api: ../api
-  Http: ../../../modules/http-server
-  HttpClient: ../../../modules/http-client
-  Assert: ../../../modules/assert
+  Http: oci://ghcr.io/telorun/http-server@0.45.0#sha256-U4OB7744bjifdIJjxKDn7t0vMfpVSOqSSyIB7S3rrlE
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.1#sha256-yODGL4HqbynR4aaPrcN1I2RIsmNBDn3ciL1uobA8nqA
+  Assert: oci://ghcr.io/telorun/assert@0.22.2#sha256-Rh9B2qPXTZKRjB9hbsGaFJKk25OmsxL2YfBSit177Lw
 targets:
   - !ref test
 ---
