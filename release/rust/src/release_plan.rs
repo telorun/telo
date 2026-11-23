@@ -42,7 +42,7 @@ pub struct UnitEvidence {
     pub imports: Vec<UnitKey>,
     /// Files of other units this unit's build inlined, by owner.
     pub inlines: IndexMap<UnitKey, Vec<String>>,
-    /// Workspace-relative files of this unit's payload.
+    /// Workspace-relative files this unit's payload is derived from: held, or read into it.
     pub payload_files: Vec<String>,
     /// Workspace-relative files carrying this unit's version.
     pub version_files: Vec<String>,

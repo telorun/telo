@@ -22,6 +22,7 @@ function payloadWithPins(pins: ModulePayload["authoredPins"]): ModulePayload {
     layers: [],
     partition: { layers: [], unmatchedAssets: [], unmatchedSiblings: [] },
     buildInputs: [],
+    recordedVersionFiles: [],
     relativeImports: [],
     authoredPins: pins,
   };

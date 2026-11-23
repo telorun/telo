@@ -118,6 +118,12 @@ export interface ModulePayload {
    */
   readonly buildInputs: readonly string[];
   /**
+   * Real, absolute paths of the `package.json` files whose version the `sbom`
+   * records of this artifact hold, nested libraries' included. They are inputs
+   * the payload is derived from: moving one's version moves the payload.
+   */
+  readonly recordedVersionFiles: readonly string[];
+  /**
    * In-repo siblings this module imports relatively: the sibling's absolute
    * manifest path (the release edge), the ref the import canonicalized to and
    * the pin derived from the sibling's locally built manifest — which publish
@@ -564,7 +570,9 @@ export class ModulePayloadBuilder {
     const relativeImports = [...root.relativeImports];
     const authoredPins = [...root.authoredPins];
     const buildInputs = new Set(root.buildInputs);
+    const recordedVersionFiles = new Set(root.recordedVersionFiles);
     for (const { payload } of nested) {
+      for (const file of payload.recordedVersionFiles) recordedVersionFiles.add(file);
       for (const entry of payload.relativeImports) {
         if (!relativeImports.some((known) => known.manifestPath === entry.manifestPath)) {
           relativeImports.push(entry);
@@ -582,6 +590,7 @@ export class ModulePayloadBuilder {
       relativeImports,
       authoredPins,
       buildInputs: [...buildInputs],
+      recordedVersionFiles: [...recordedVersionFiles].sort(),
       nested: nested
         .map(({ manifestPath: nestedManifest, payload }) => ({
           path: nestedArtifactPath(build.scope, nestedManifest),
@@ -866,6 +875,7 @@ export class ModulePayloadBuilder {
       partition,
       billOfMaterials,
       buildInputs: [...buildInputs],
+      recordedVersionFiles: billOfMaterials.versionInputs,
       relativeImports,
       nested: [],
       authoredPins,
