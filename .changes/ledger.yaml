@@ -134,9 +134,9 @@ units:
       npm:
         nodejs: sha256-wnB5PIVuDDB8Wppc7zjxi9r7SpIcOGCRf51XARTY8OE
   ide/vscode:
-    version: 0.9.1
+    version: 0.9.2
     layers:
-      payload: sha256-jMjZWqJE9muSAWBPMeT95R08k7BjlkFHdT2V3KJoFts
+      payload: sha256-rOAqjKwyS5oNHiF_AKgMIZMNGQF3-2IeVy2umv2OgY8
   kernel:
     version: 0.139.2
     layers:
