@@ -48,6 +48,9 @@ RUN pnpm deploy --legacy --filter=@telorun/docker-runner --prod /out
 
 FROM node:24-slim AS production
 
+# The base image's npm bundles dependencies fixed only in a later npm 11 release.
+RUN npm install -g npm@^11.21.3 && npm cache clean --force
+
 WORKDIR /app
 COPY --from=build /out ./
 COPY --from=supervisor /out/supervisor /opt/telo-runner/supervisor

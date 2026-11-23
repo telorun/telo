@@ -18,7 +18,13 @@ ENV VITE_TELO_STARTERS_URL=${VITE_TELO_STARTERS_URL}
 RUN pnpm --filter "@telorun/studio..." build
 
 # Unprivileged: listens on 8080 and runs as a non-root user out of the box.
-FROM nginxinc/nginx-unprivileged:stable-alpine AS production
+# Mainline: the stable image pins an nginx release older than its security fixes.
+FROM nginxinc/nginx-unprivileged:mainline-alpine AS production
+
+# The base is rebuilt upstream less often than Alpine publishes fixes.
+USER root
+RUN apk upgrade --no-cache
+USER 101
 
 # The entrypoint renders /etc/nginx/templates/*.template into /etc/nginx/conf.d
 # at start (which must therefore be writable). Only `ACCOUNTS_URL` is

@@ -24,7 +24,7 @@ import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { builtinModules } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { publishedVersionPlugin } from "../../../scripts/generate-telo-version.mjs";
+import { publishedVersionPlugin, withVersionSource } from "../../../scripts/generate-telo-version.mjs";
 import { bundleEscapes } from "./bundle-guard.mjs";
 
 const PACKAGE = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -63,7 +63,8 @@ export async function bundleEngine(outfile, { published = false } = {}) {
     absWorkingDir: PACKAGE,
     plugins: published ? [publishedVersionPlugin()] : [],
   });
-  writeFileSync(outfile.replace(/\.mjs$/, ".meta.json"), JSON.stringify(metafile, null, 2) + "\n");
+  const meta = published ? withVersionSource(metafile, PACKAGE) : metafile;
+  writeFileSync(outfile.replace(/\.mjs$/, ".meta.json"), JSON.stringify(meta, null, 2) + "\n");
   const escapes = bundleEscapes(readFileSync(outfile, "utf8"));
   if (escapes.length > 0) {
     rmSync(outfile, { force: true });

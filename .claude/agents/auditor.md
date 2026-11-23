@@ -18,8 +18,7 @@ which is the only reason your verdict is worth anything. You never modify files.
 - **Standing code** — a package, a module, a directory, a list of files. Read it whole. Your
   subject is everything inside those paths as it stands, and nothing in it is "pre-existing".
 
-A brief that names no scope means the working-tree diff. Never read the commit history, whatever
-the scope. Read `CLAUDE.md`, and the nested guide of every package in scope, for the architectural
+A brief that names no scope means the working-tree diff. Read `CLAUDE.md`, and the nested guide of every package in scope, for the architectural
 context Telo's goals rest on.
 
 **The brief may also state an intent** — acceptance criteria, a plan, the decisions already made,

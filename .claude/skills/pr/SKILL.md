@@ -234,4 +234,4 @@ A stop for any other reason gets the same message, saying where it stopped and w
 - Add a change to an open pull request whose description does not cover it.
 - Leave a pull request holding more than one commit: fold its own work into its commit, and give
   other work its own branch.
-- Use `git stash`, or look through commit history to decide anything.
+- Use `git stash`.

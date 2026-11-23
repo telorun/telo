@@ -278,7 +278,8 @@ export function planRelease(evidence: ReleaseEvidence, options: PlanOptions = {}
 }
 
 /** Import edges from the adapters, inline edges from a metafile, and the
- *  generic rule: another unit's version location inside this unit's payload. */
+ *  generic rule: another unit's version location among the files this unit's
+ *  payload is derived from — the files it holds and the files it inlines. */
 function edgesOf(units: readonly UnitEvidence[]): Map<UnitKey, Edge[]> {
   const edges = new Map<UnitKey, Edge[]>();
   const owners = new Map<string, UnitKey>();
@@ -292,8 +293,11 @@ function edgesOf(units: readonly UnitEvidence[]): Map<UnitKey, Edge[]> {
     for (const [to, files] of unit.inlines) {
       if (to !== unit.key) list.push({ to, reason: { kind: "inlines", unit: to, files }, explainsDriftOnly: true });
     }
+    // An inlined file is read into the payload: one that is another unit's version
+    // file puts that version in the bundle, which moving it moves.
+    const derivedFrom = new Set([...(unit.payloadFiles ?? []), ...[...unit.inlines.values()].flat()]);
     const located = new Map<UnitKey, string[]>();
-    for (const file of unit.payloadFiles ?? []) {
+    for (const file of derivedFrom) {
       const owner = owners.get(file);
       if (owner === undefined || owner === unit.key) continue;
       const files = located.get(owner);

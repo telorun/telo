@@ -10,9 +10,10 @@ import { parseArgs } from "node:util";
 const HELP = `Usage: node benchmarks/history/alert.mjs --history <dir> [options]
 
 Reads comparison.jsonl and feature-cost.jsonl from <dir> (the benchmark-results branch, checked
-out or exported) and, for each figure below, compares the newest run with the 10 runs before it.
-A figure alerts when the newest run is worse than the median of those 10 by more than its
-threshold AND worse than every one of them. Fewer than 10 earlier runs means no alert.
+out or exported) and, for each figure below, compares the newest run with the 10 runs before it
+on the same CPU model (host.model). A figure alerts when the newest run is worse than the median
+of those 10 by more than its threshold AND worse than every one of them. Fewer than 10 earlier
+runs on that model means no alert.
 
   per workload  telo / node of the median CPU time per request    threshold 10%
   per workload  telo / node of the median p99 at the fixed rate   threshold 10%
@@ -63,6 +64,21 @@ export function readHistory(file) {
     });
 }
 
+// Hosted runners draw from several CPU models, and even the telo / node ratio moves with the model.
+const modelOf = (record) => record.host?.model ?? null;
+
+/** The records measured on the same CPU model as the newest one, in order. */
+export function sameModel(records) {
+  if (records.length === 0) return [];
+  const model = modelOf(records[records.length - 1]);
+  return records.filter((record) => modelOf(record) === model);
+}
+
+const onModel = (record) => {
+  const model = modelOf(record);
+  return model === null ? "on a host with no recorded CPU model" : `on ${model}`;
+};
+
 const positive = (value) => typeof value === "number" && Number.isFinite(value) && value > 0;
 
 /** A rise-is-worse series: the newest value against the WINDOW values before it. */
@@ -95,9 +111,11 @@ const METRICS = [
   { metric: "p99Ms", name: "p99", title: "p99 latency at the fixed rate" },
 ];
 
-export function comparisonAlerts(records, { subject = "telo", baseline = "node" } = {}) {
+export function comparisonAlerts(allRecords, { subject = "telo", baseline = "node" } = {}) {
+  const records = sameModel(allRecords);
   if (records.length === 0) return [];
-  const workloads = [...new Set((records[records.length - 1].workloadResults ?? []).map((r) => r.workload))];
+  const newest = records[records.length - 1];
+  const workloads = [...new Set((newest.workloadResults ?? []).map((r) => r.workload))];
   const alerts = [];
   for (const workload of workloads) {
     for (const { metric, name, title } of METRICS) {
@@ -109,8 +127,8 @@ export function comparisonAlerts(records, { subject = "telo", baseline = "node" 
         detail:
           `The ${subject} / ${baseline} ratio of the median ${title.toLowerCase()} on the \`${workload}\` workload is ` +
           `${verdict.newest.toFixed(3)}, ${(verdict.change * 100).toFixed(1)}% above the median of the previous ${WINDOW} runs ` +
-          `(${verdict.baseline.toFixed(3)}) and above every one of them (threshold ${RATIO_THRESHOLD * 100}%).`,
-        record: records[records.length - 1],
+          `${onModel(newest)} (${verdict.baseline.toFixed(3)}) and above every one of them (threshold ${RATIO_THRESHOLD * 100}%).`,
+        record: newest,
       });
     }
   }
@@ -130,7 +148,8 @@ export function featureCostAlerts(records) {
     byFeature.get(record.feature).push(record);
   }
   const alerts = [];
-  for (const [feature, runs] of byFeature) {
+  for (const [feature, allRuns] of byFeature) {
+    const runs = sameModel(allRuns);
     if (runs.length < WINDOW + 1) continue;
     const window = runs.slice(-(WINDOW + 1));
     const newest = window[WINDOW];
@@ -150,7 +169,7 @@ export function featureCostAlerts(records) {
           detail:
             `The median ${title} of \`${feature}\` at N = ${n} (the largest size every run in the window completed) is ` +
             `${verdict.newest.toFixed(1)} ms, ${(verdict.change * 100).toFixed(1)}% above the median of the previous ${WINDOW} runs ` +
-            `(${verdict.baseline.toFixed(1)} ms) and above every one of them (threshold ${FEATURE_THRESHOLD * 100}%).`,
+            `${onModel(newest)} (${verdict.baseline.toFixed(1)} ms) and above every one of them (threshold ${FEATURE_THRESHOLD * 100}%).`,
           record: newest,
         });
       }
@@ -164,6 +183,7 @@ export function featureCostAlerts(records) {
         title: `Benchmark regression: ${feature} stops at a smaller size`,
         detail:
           `\`${feature}\` first fails at N = ${newest.firstFailure.n} (${newest.firstFailure.code}), where the previous ${WINDOW} runs ` +
+          `${onModel(newest)} ` +
           `reached ${Math.min(...earlier) === Infinity ? "every size" : `at least N = ${Math.min(...earlier)}`}.`,
         record: newest,
       });

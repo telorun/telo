@@ -43,6 +43,9 @@ RUN pnpm deploy --legacy --filter=@telorun/k8s-runner --prod /out
 
 FROM node:24-slim AS production
 
+# The base image's npm bundles dependencies fixed only in a later npm 11 release.
+RUN npm install -g npm@^11.21.3 && npm cache clean --force
+
 WORKDIR /app
 COPY --from=build /out ./
 # Copied into every session pod by its `supervisor` init container, which runs

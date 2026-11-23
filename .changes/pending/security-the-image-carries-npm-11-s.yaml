@@ -1,0 +1,6 @@
+units:
+  apps/docker-runner: Security
+  apps/hub-web: Security
+  apps/k8s-runner: Security
+body: The image carries npm 11's latest release, whose bundled undici and
+  brace-expansion are fixed.

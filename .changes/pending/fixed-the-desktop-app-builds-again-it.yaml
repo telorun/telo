@@ -1,0 +1,5 @@
+units:
+  apps/studio: Fixed
+body: "The desktop app builds again: it moves to Tauri 2.12, the release its locked
+  Tauri crates belong to. The web image runs nginx mainline with Alpine's security fixes
+  applied, since the stable image pinned an nginx release older than its fixes."

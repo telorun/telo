@@ -148,10 +148,15 @@ Never: merge, approve, close a PR, push any other branch, push `--force` without
 delete a remote branch, stash, rewrite a commit that is not on your own branch, or edit
 anything in the main checkout outside the state directory.
 
-**A refused tool call blocks the tick.** Ticks run in auto mode, so a classifier refusal or a
-hook denial is a call that simply fails. Never retry it with other wording, another tool or a
-subagent. Write the refused action and its stated reason under *Blocked on*, label the open PR
-`needs-human` if there is one, set `blocked`, notify, and end the tick.
+**A refused tool call is retried three times, then blocks the tick.** Ticks run in auto mode, so
+a classifier refusal or a hook denial is a call that simply fails. Retry the identical call — same
+tool, same command, same arguments — up to three times. Never reword it, split it, or route it
+through another tool or a subagent. Before each retry, judge whether it is harmless: a call that
+could destroy data — delete, overwrite or discard a file, a branch, a commit or work you did not
+write — is never retried, and blocks at its first refusal. Still refused after the third retry, or
+not retried because it could destroy data: write the refused action, its stated reason, each
+refusal and why you did or did not retry under *Blocked on*, label the open PR `needs-human` if
+there is one, set `blocked`, notify, and end the tick.
 
 **You act as `telorun-agent[bot]`**, the GitHub App the campaign skills share
 (`<main>/.claude/agent-identity/README.md`), never as the user. Every `gh` command runs as
@@ -316,7 +321,7 @@ Run `implement`'s steps 1–4 on the slice, with these differences:
   full sweep: no regressions.
 - **Blockers.** A builder that stops on a question gets `decider`'s answer — major or not — in
   a fresh builder for that part, and the build carries on. Only a stop that no decision answers
-  (a refused call, a tool or environment failure, the same part stopping a second time after
+  (a call still refused after its three retries, a tool or environment failure, the same part stopping a second time after
   `decider` answered) leaves the part `unbuilt`; its later parts are not started, and what
   stopped it is recorded in the slice file for the PR.
 - **Headless.** A tick is a print-mode process. Spawn every subagent in the foreground. When a
@@ -361,7 +366,10 @@ Read the PR: `gh pr view <n> --json state,mergedAt,mergeable,mergeStateStatus,he
 the review comments through `gh api`, and `gh pr checks <n>`. Then take the first case that
 holds:
 
-1. **Merged.** Record it in *History*, mark the ledger entry `merged` (or the build-order step
+1. **Merged.** Confirm it from the PR's own data alone — `mergedAt` and the `headRefOid` it
+   merged at, compared with *Head pushed*. A head that differs
+   means a later push did not land; say so in *History*, and the next sweep re-measures what it
+   held. Record it in *History*, mark the ledger entry `merged` (or the build-order step
    `done`, when this was its last slice), set `pick`, and continue into `pick`.
 2. **Closed without merging.** The user rejected it. Read their last comments for the reason,
    write it under *For the user*, mark the entry `rejected`, set `pick`, and continue.

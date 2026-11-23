@@ -642,7 +642,7 @@ fn the_release_vectors_answer_as_recorded() {
     let expected: IndexMap<String, usize> = [
         ("markers", 24),
         ("pypi markers", 8),
-        ("plans", 19),
+        ("plans", 20),
         ("pypi plans", 2),
         ("digests", 7),
         ("yaml", 38),

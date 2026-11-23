@@ -23,7 +23,7 @@ tauri-build = { version = "2.0", features = [] }
 # refuses to build when a crate's major.minor differs from its `@tauri-apps/*`
 # package, and a caret range on either side lets one drift alone on the next
 # lockfile refresh. Upgrading means editing both files in the same change.
-tauri = { version = "~2.11", features = [] }        # @tauri-apps/api
+tauri = { version = "~2.12", features = [] }        # @tauri-apps/api
 tauri-plugin-dialog = "~2.7"                        # @tauri-apps/plugin-dialog
 tauri-plugin-fs = "~2.5"                            # @tauri-apps/plugin-fs
 tauri-plugin-opener = "~2.5"                        # @tauri-apps/plugin-opener

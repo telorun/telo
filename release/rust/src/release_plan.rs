@@ -14,7 +14,7 @@
 
 use std::collections::{BTreeSet, HashSet};
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 
 use crate::bump_level::{
     apply_bump, candidate_version, compare_versions, is_release_version, level_exceeds, max_level, parse_candidate_version, BumpLevel,
@@ -338,13 +338,19 @@ fn edges_of(units: &[UnitEvidence]) -> IndexMap<UnitKey, Vec<Edge>> {
                 });
             }
         }
+        // An inlined file is read into the payload: one that is another unit's version
+        // file puts that version in the bundle, which moving it moves.
+        let mut derived_from: IndexSet<&str> = IndexSet::new();
+        for file in unit.payload_files.iter().chain(unit.inlines.values().flatten()) {
+            derived_from.insert(file.as_str());
+        }
         let mut located: IndexMap<&str, Vec<String>> = IndexMap::new();
-        for file in &unit.payload_files {
-            let Some(owner) = owners.get(file.as_str()).copied() else { continue };
+        for file in derived_from {
+            let Some(owner) = owners.get(file).copied() else { continue };
             if owner == unit.key {
                 continue;
             }
-            located.entry(owner).or_default().push(file.clone());
+            located.entry(owner).or_default().push(file.to_string());
         }
         for (to, mut files) in located {
             files.sort();

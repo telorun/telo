@@ -37,17 +37,17 @@ Each feature of Telo's own (`!if` / `!switch` across independent dimensions, `!f
 
 ## Regression alerts
 
-After every nightly append, a script compares the newest run with the 10 runs before it. A figure alerts when the newest run is worse than the median of those 10 by more than its threshold and worse than every one of them:
+After every nightly append, a script compares the newest run with the 10 runs before it on the same CPU model, because hosted runners vary in hardware and even the ratios move with it. A figure alerts when the newest run is worse than the median of those 10 by more than its threshold and worse than every one of them:
 
 - per comparison workload, the two headline ratios, with a 10% threshold;
 - per feature, the run time and the check time at the largest size every run in the window completed, with a 15% threshold;
 - per feature, the first failing size moving to a smaller one.
 
-Fewer than 10 earlier runs means no alert. An alert opens a GitHub issue labelled `benchmark-regression`; while an issue for the same figure is open, a repeat comments on it instead. A regression does not fail any build: there are no time budgets until the history shows what the stable values are.
+Fewer than 10 earlier runs on that model means no alert. An alert opens a GitHub issue labelled `benchmark-regression`; while an issue for the same figure is open, a repeat comments on it instead. A regression does not fail any build: there are no time budgets until the history shows what the stable values are.
 
 ## Latest results
 
-The tables and charts below are read in your browser, so they always show the newest nightly run. The numbers carry the specs of the machine that produced them, a GitHub-hosted runner; compare ratios, not absolute values. The history is two files, `comparison.jsonl` and `feature-cost.jsonl`, described in the [benchmark history notes](../../benchmarks/history/README.md).
+The tables and charts below are read in your browser, so they always show the newest nightly run. The numbers carry the specs of the machine that produced them, a GitHub-hosted runner; compare ratios rather than absolute values, and only between runs on the same CPU model. The history is two files, `comparison.jsonl` and `feature-cost.jsonl`, described in the [benchmark history notes](../../benchmarks/history/README.md).
 
 ```benchmark-results
 Results are drawn on the documentation site from the newest nightly run's comparison.jsonl and feature-cost.jsonl.
