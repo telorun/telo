@@ -1,6 +1,0 @@
-units:
-  kernel: Fixed
-  cli: Fixed
-body: Release planning bumps a Telo module whenever a workspace package whose version
-  the module's bill of materials records is released, so a release moving such a package
-  no longer leaves the module stale and refused by the release PR's import gate.

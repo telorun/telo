@@ -7,8 +7,8 @@ type: application
 # same unit, so a second number to move would only ever be a way for the two to
 # disagree — and a chart-only edit releases the unit, because its digest covers
 # the chart.
-version: 0.28.1
-appVersion: "0.28.1"
+version: 0.28.2
+appVersion: "0.28.2"
 keywords:
   - telo
   - kubernetes

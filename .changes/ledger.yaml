@@ -3,12 +3,12 @@
 # `release verify` reconciles it against the registries.
 units:
   analyzer:
-    version: 0.139.1
+    version: 0.139.2
     layers:
       cargo:
-        rust: sha256-NzyNIuuk5NsBvfJxK2zN4cEtRAC0m332fPeRsf3PiCs
+        rust: sha256-jy0g0wB0OXHIeC1iNkb6Gn_MO31gq789SD-1vyLaOpk
       npm:
-        nodejs: sha256-p_3MsMfvJhSK06wuthm546iP2MQP5fApssvgFM1hGbk
+        nodejs: sha256-6aH-8Htl_eiy_z2wjzcj4IZ6X94-cXNt9M3EdItxGRk
   apps/authoring-agent:
     version: 0.40.0
     registry: oci://ghcr.io/telorun
@@ -23,15 +23,15 @@ units:
           manifest: sha256-aojo_249EY6WZCI2ZdVDwikiZT-46rQYdNLhJalsQHQ
           sbom: sha256-f75LpMaH1MBo_g8Vb9xwjn0glY60R83bKqRhIbI1PME
   apps/docker-runner:
-    version: 0.19.1
+    version: 0.19.2
     layers:
       docker:
-        .: sha256-Rh7-0NXcH1QAkGhLbjKUbDrqAvsW4zh0cudQnGeHU8k
+        .: sha256-vRQQxOKtDFXNfzCAWW1mnfcm9uvcIDVNbkCqqa0kJhU
   apps/host-runner:
-    version: 0.3.1
+    version: 0.3.2
     layers:
       npm:
-        .: sha256-FKKkcc039rT_FbtsW46TJE-se6quafDVvLLEpec805w
+        .: sha256-8XSHze0b0MGposdXD0gVUnzFwAFgEoQxdnBUTZa_7Dk
   apps/hub:
     version: 0.30.0
     registry: oci://ghcr.io/telorun
@@ -66,21 +66,21 @@ units:
       docker:
         .: sha256-k104EK-zoLdE2wblIUf-AVXw6YppG0SaqslrUylzyfY
   apps/k8s-runner:
-    version: 0.28.1
+    version: 0.28.2
     layers:
       docker:
-        .: sha256-K_6dOnD9INPr6_UHrkKKO8xmkWmDsgCZAsl6igJp3xw
+        .: sha256-bu_DFY2smIDvJwxYLuirzCb3if4X67udb6OaA034B2M
       helm:
-        chart: sha256-a7PIzX_dYCS2RfYo3n-UsR17JNJrBTroOd3nOvzhLBk
+        chart: sha256-CDIvDhGHqiWV8rI8Khka9BD_EMMX2m3qsIdp0H6Y0SA
       npm:
-        .: sha256-6Q8bzqm8nRtQitcBYC6rfKG-ahpK_QU4xbYQAF7OpSk
+        .: sha256-xJgGnjul1Cf2XN9cURn3PQjRCUnUjDJPofGkmub8Q1c
   apps/studio:
-    version: 0.40.1
+    version: 0.40.2
     layers:
       docker:
-        .: sha256-HB_7nnCIcKp9fj_rRFdp2aj-rDZiYWGWAJ0nxI-_R1I
+        .: sha256--4_HKC34GI1fxwbFHs8iO0HwovDl9fQ6nK6W0lfBCAw
       helm:
-        chart: sha256-tRqDW0qSN5DMinJl1zAEw-ikkc-GwRGfe5FmLKEMrco
+        chart: sha256-gzoSVPgbDFqFPia8LL7vjwoaYEnr5uwUJpU9LL5ojuw
   blueprints/agent-app:
     version: 0.10.0
     registry: oci://ghcr.io/telorun/blueprints
@@ -118,39 +118,39 @@ units:
           manifest: sha256-yrq6um3Exxjt12C4B2aHpCBiDMfZ8k4UxQkIuQeFqBQ
           sbom: sha256-n7eMagI50EIxAza5seaJDvACyfVipuUWVRyCoup0pNg
   cel:
-    version: 0.139.1
+    version: 0.139.2
     layers:
       cargo:
-        rust: sha256-OcVTfEAFApHF03kN3Swk7V5wwFGFaRqRkRiUNAG04LY
-        rust/value: sha256-RyF3sDWhoDm0zCjANkYcprFW-7iePqth90zCKPypRR4
+        rust: sha256-V1vGZb2ppzD_MoZWl4VR8C1Ocld5AuJr0Vaa7ZTGqdw
+        rust/value: sha256-LvJp10f1N_y-itKGa1IzaTdpClHHFOerP3MQXy-XRBc
       npm:
-        nodejs: sha256-JE_9nOAdXrjXWbjg4z4iyaDlrCoZ90AQaliuZvamVK8
+        nodejs: sha256-gjTWBKZeSYWvNKPn5SvceQOSEfbU0AadtTd4khR_Tx4
   cli:
-    version: 0.139.1
+    version: 0.139.2
     layers:
       cargo:
-        rust: sha256-eOgApEywW2N5YXpzo70l3CCDOWtq4_vUf4QPa3t0yj0
-        rust/desktop-host: sha256-mkbYLtbxjr4rAP3-lPvdt1qyCUpyfDZCe-yhasvjaCw
+        rust: sha256-4mp1SdOCxEpfjeR3_Ruk7324KRCjM72cuyC_Lrvxqyg
+        rust/desktop-host: sha256-vFGFMd0_OQfcRTPOUSJ76MFkawo_nZiouIsrYIm7gaE
       npm:
-        nodejs: sha256-8vWGgV-qkHHFo1Fk_mimvMs2HCfdjeVE0oyVrbkVN2c
+        nodejs: sha256-wnB5PIVuDDB8Wppc7zjxi9r7SpIcOGCRf51XARTY8OE
   ide/vscode:
     version: 0.9.1
     layers:
       payload: sha256-jMjZWqJE9muSAWBPMeT95R08k7BjlkFHdT2V3KJoFts
   kernel:
-    version: 0.139.1
+    version: 0.139.2
     layers:
       cargo:
-        rust: sha256--LuVBSsHIvj_JToq92ncnqdvb7ceg-db4sulNp_fI98
+        rust: sha256-4PeirMDZWZu3_HFGoFOvqHVsae7JV7sc-CXaQGBjsE0
       npm:
-        nodejs: sha256-6epFw0eTD2W0o94DKGYG65Hmmw8pVx750tkt7KublYM
+        nodejs: sha256-v67uRveRYJVb_MOFyGhdIrVIWLVehzlV5ZqmDARvbhA
   message-format:
-    version: 0.139.1
+    version: 0.139.2
     layers:
       cargo:
-        rust: sha256-0IJfl1K7m9XqaBw0IN_a5BuSLy8kH192r9RjVo1Beu8
+        rust: sha256-AfUtmpm27jptxvydssqdN4aE39_jp3-dNTqaf9_xY6I
       npm:
-        nodejs: sha256-BVTao14DwxE6rkywsLW-9stAAmAEOSZz28zo3TixgFw
+        nodejs: sha256-tP5EqAcobG1h2BiCrl-qOWhBXKK55n7--4jSX2dT1aw
   modules/ai:
     version: 0.38.1
     registry: oci://ghcr.io/telorun
@@ -2695,7 +2695,7 @@ units:
           manifest: sha256-Lnn8xts9IDfmsdeF5THGkT81LOGycUVbaRQPJirQQHc
           sbom: sha256-54NzoufaWe_gYap36hdzmVJm0U8LG20pOYWTFUKJgOg
   modules/ui-react:
-    version: 0.16.1
+    version: 0.16.2
     registry: oci://ghcr.io/telorun
     layers:
       telo:
@@ -2705,20 +2705,20 @@ units:
           common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
           controller/js: sha256-VgfZJM0T06ujoxFFYSJ1QKggjTWvEDtdCnUe7qMLnHI
           library/js: sha256-j6ppqNgTT1x7ytCtGWugGXW7iWEbTUpodK_NkzgLB2k
-          manifest: sha256-dJfAY2sTdZ3V1I7IDUf43-vOhklnytqEKVGst-sPmNM
-          sbom: sha256-nLcsp8iMhrWt6rQ2U9TQlKb07DYLA7ifzAT2W4saEOs
+          manifest: sha256-RRNeh2yfl6-UTHEB-zU_kQLgHd_slCIWhia2kV1NhUs
+          sbom: sha256-vTkVZCjVgAUCJU63Z2B9V2zs1lVihhuyIGm2i5IBOIk
   modules/ui-react-conformance:
-    version: 0.12.1
+    version: 0.12.2
     registry: oci://ghcr.io/telorun
     layers:
       telo:
         .:
           common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
           controller/js: sha256-p2jEPXUlGCsOzlUhSs33oQwuWpZD9xC37snLnELNW0s
-          manifest: sha256-IOoT0pYj-kP17GQnSRwhMU9dHax9WNPsPajRkNEqg-E
-          sbom: sha256-RBCheHpY8zU4xFSvF0LtEXVGhjOV6NxZHPO2EBrorog
+          manifest: sha256-nfnAsBVVIrChN5BvHC5Zr81zxrg3qlWtLOmJ6R8Z1FU
+          sbom: sha256-6Yxd10HAHFleG8h14Z5-e6LR4X0085x_el3HqWWtQ3k
   modules/ui-react-radix:
-    version: 0.12.1
+    version: 0.12.2
     registry: oci://ghcr.io/telorun
     layers:
       telo:
@@ -2726,8 +2726,8 @@ units:
           assets: sha256-nywWYpVaIyDjUUVjT9jTyn_NNuD7qad2fjnxlsl9wc8
           browser/esm+ui_react_controls-4: sha256-_JcDDzpkFwOb40-roQh8h_u3eWXLUrLL2LLNfRWrN0Y
           common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-          manifest: sha256-0xoYbzl5MFIul5AULpPxGzNRVXHdgFL8UVk4k2illis
-          sbom: sha256-IGA1ShSpsbE50PDOcdDj4SYTN26C8xKfMDWXBkHTJwY
+          manifest: sha256-K_9d56ObSLhi09OBOOqJeYLTbAJYSj4KjRrK-ecXJ3Y
+          sbom: sha256-9mnJyy9wRM5B_wAXWqZECSS76Nvp8J1lHhwf-m6HFpg
   modules/vector-store:
     version: 0.11.3
     registry: oci://ghcr.io/telorun
@@ -2810,20 +2810,20 @@ units:
       npm:
         nodejs: sha256-4haMUovMiz4PYrSiTO6rto_gt0l8HuLDhl0Y7FWBVz8
   packages/ide-support:
-    version: 0.139.1
+    version: 0.139.2
     layers:
       npm:
-        .: sha256-Opj_Ojv4VXsZj9k8IOH_VgdcGaHAkAezWsjUnEBmSNM
+        .: sha256-SU-QmeI9pAKfOhD6uDrJQkPVlCGwNg8qFjSLhInlvpc
   packages/language-host:
     version: 0.5.0
     layers:
       npm:
         .: sha256-VIyMxDusOVt59O1JgTAALJoyrMazdxrcSueXGipEw4c
   packages/language-server:
-    version: 0.139.1
+    version: 0.139.2
     layers:
       npm:
-        .: sha256-8yROovjmr8e2GQouEY2IZsWRTWiqP9VKTH7LT1Fz0p8
+        .: sha256-M7Z6HGdDlBKFp6cZwDXBqQtnY6ryDqriHDpL7cl3zeE
   packages/osv:
     version: 0.2.0
     layers:
@@ -2850,26 +2850,26 @@ units:
       npm:
         .: sha256-2ZIcIKA_yV6InyVEZaZh8D13GcVrcUG4i_ulCyn0YT4
   release:
-    version: 0.3.1
+    version: 0.3.2
     layers:
       cargo:
-        rust: sha256-m6aDZ9C5Wn8rySFJ7UQmJw29DyVSM4oJW1D3CJxnzNA
+        rust: sha256-Bmucj1Ea-U3xlVGalRiyoartinSvyPO_nipjvO5PXv4
       npm:
-        nodejs: sha256-e82CYJlTRWmDarV7LCmZTecoFsinKzxROyMxTmlwlqc
+        nodejs: sha256-x3kGNWEVMgH4IL9D5N7sR6t_ttUlPHMMbpnSsdxvhlg
   sdk:
-    version: 0.139.1
+    version: 0.139.2
     layers:
       cargo:
-        rust: sha256-IpkBO-BHSpwCA6dOAAARzu5e3nafbr5JOnWxzsE3gqU
-        rust/core: sha256-Bi9uSosekpFs3Amcbub9h0nuwbopeWxon3XlvQ1QlUk
-        rust/macros: sha256-sUum6cIydnAJRdSaUcuaQN9Lnm--Mwi-XFdm67BwSUI
+        rust: sha256-0IXeLwm2F8pFoxzHvjEQylI3P5A27ua5UC_xi_z8RNE
+        rust/core: sha256-PUVbhlkEfH4pfi8Deq6I-FC73wl2y5vCoYG1KihyFnA
+        rust/macros: sha256-YC6SNvIjOI1344zRuuPecIPugqKI19Ra-SIQzqNdm7c
       npm:
-        nodejs: sha256-O_RjjlADvwrgwwApphbwgdcskFBJnZOqI0iszU19tjI
+        nodejs: sha256-0jwE94TY4u5wrEmCptGJ1XwMpNEGSUk8tQw0ffG2D_g
       payload: sha256--t4KFp1g0aOo7O-ZMmAuWnw9ynGVog0qWBHEzeGv_iQ
   templating:
-    version: 0.139.1
+    version: 0.139.2
     layers:
       cargo:
-        rust: sha256-AMIuvl-ul3yKkKWIvAR7QKJfwiI3DV8sCUcIrie3Vc0
+        rust: sha256-aQaEOqpzfR64LaeoMvlXD8Jn_xVSHWhC0CNYunNSX1M
       npm:
-        nodejs: sha256-6d5KvN6E-m6cLfa2SVNhcOIQ3sGvmFCdopZR1VFXXWU
+        nodejs: sha256-r_ZFUC1Pl8j6MUt61Kfbe2_QoQ5T82Hac7O2w68YIGQ

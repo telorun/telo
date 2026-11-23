@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.139.2 - 2026-11-23
+### Fixed
+* Release planning bumps a Telo module whenever a workspace package whose version the module's bill of materials records is released, so a release moving such a package no longer leaves the module stale and refused by the release PR's import gate.
+
 ## 0.139.0 - 2026-11-22
 ### Added
 * A diagnostic a load refusal carries for a finding re-reported at an import now says where its defect is written: `origin.writtenAt` (`filePath`, `path`, `resource`), the place the module writing it reports it at in its own `telo check`. It is absent for a finding that is the reporting module's own.
