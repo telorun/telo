@@ -39,6 +39,9 @@ export interface BundledPackage {
   readonly name: string;
   readonly version: string;
   readonly license?: string;
+  /** The real, absolute path of the `package.json` the name and version were read
+   *  from — an input of the record, so of the payload holding it. */
+  readonly manifest: string;
 }
 
 export interface BundleAttribution {
@@ -162,6 +165,7 @@ export async function attributeBundleInputs(
             name: manifest.name,
             version: manifest.version,
             ...(manifest.license ? { license: manifest.license } : {}),
+            manifest: path.join(dir, "package.json"),
           };
         }
         break;

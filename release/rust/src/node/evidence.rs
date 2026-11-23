@@ -45,7 +45,7 @@ pub struct AnchorRef<'a> {
 pub struct AnchorEvidence {
     /// The anchor's layer; absent when it contributes none.
     pub layer: Option<AnchorDigest>,
-    /// Workspace-relative files the layer holds.
+    /// Workspace-relative files the layer is derived from: held, or read into it.
     pub files: Vec<String>,
     /// Units whose version this anchor's payload names.
     pub imports: Vec<UnitKey>,

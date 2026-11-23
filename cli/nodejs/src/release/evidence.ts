@@ -72,6 +72,17 @@ function only(layers: LayerDigests, keep: (layer: string) => boolean): LayerDige
   return Object.fromEntries(Object.entries(layers).filter(([layer]) => keep(layer)));
 }
 
+/** The workspace-relative `package.json` files a payload's `sbom` records the
+ *  version of. A versioned unit's own file there makes the payload hold that
+ *  unit's version; one outside the workspace or under `node_modules` never can. */
+async function recordedVersionFilesIn(root: string, files: readonly string[]): Promise<string[]> {
+  const realRoot = await fs.promises.realpath(root);
+  return files
+    .map((file) => path.relative(realRoot, file).split(path.sep).join("/"))
+    .filter((relative) => !relative.startsWith("..") && !path.isAbsolute(relative))
+    .filter((relative) => !relative.split("/").includes("node_modules"));
+}
+
 /** The `telo` evidence half, its registry rungs read from the command's options. */
 export function teloEvidence(rungsOf: (argv: Readonly<Record<string, unknown>>) => RegistryRungs): EvidenceAdapter {
   return {
@@ -109,7 +120,10 @@ export function teloEvidence(rungsOf: (argv: Readonly<Record<string, unknown>>) 
           const dir = path.relative(workspace.root, module.dir).split(path.sep).join("/");
           return {
             layer: await digestPayload(payload),
-            files: payload.layers.flatMap((layer) => layer.files.map((file) => (dir ? `${dir}/${file.name}` : file.name))),
+            files: [
+              ...payload.layers.flatMap((layer) => layer.files.map((file) => (dir ? `${dir}/${file.name}` : file.name))),
+              ...(await recordedVersionFilesIn(workspace.root, payload.recordedVersionFiles)),
+            ],
             imports: graph.imports.get(unit.key) ?? [],
             inlines,
             registry: target.registry,

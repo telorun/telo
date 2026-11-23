@@ -52,8 +52,8 @@ export interface UnitEvidence {
   /** Files of other units this unit's build inlined, grouped by owner — from a
    *  bundler metafile. */
   readonly inlines: ReadonlyMap<UnitKey, readonly string[]>;
-  /** Workspace-relative files of this unit's payload, for the version-location
-   *  edge rule. */
+  /** Workspace-relative files this unit's payload is derived from — held, or
+   *  read into it — for the version-location edge rule. */
   readonly payloadFiles?: readonly string[];
   /** Workspace-relative files carrying this unit's version. */
   readonly versionFiles?: readonly string[];

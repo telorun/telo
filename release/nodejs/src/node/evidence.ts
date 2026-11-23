@@ -35,7 +35,8 @@ export interface AnchorRef {
 export interface AnchorEvidence {
   /** The anchor's layer; absent when it contributes none (a private package). */
   readonly layer?: AnchorDigest;
-  /** Workspace-relative files the layer holds, for the version-location edge. */
+  /** Workspace-relative files the layer is derived from — held, or read into it
+   *  (a recorded version's `package.json`) — for the version-location edge. */
   readonly files?: readonly string[];
   /** Units whose version this anchor's payload names. */
   readonly imports?: readonly UnitKey[];
