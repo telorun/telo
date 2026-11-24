@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.140.0 - 2026-11-24
+### Fixed
+* Regular expressions that could take polynomial or exponential time on crafted input now run in linear time with the same results.
+
 ## 0.139.0 - 2026-11-22
 ### Added
 * CEL message construction (Name{field: value}) is read by the tag engines, the analyzer and the editor: a construction in a manifest is type-checked like any expression, and its field values are walked for reads. CEL_UNKNOWN_TYPE, CEL_TYPE_NOT_CONSTRUCTIBLE and CEL_MISSING_FIELD are reported through the templating layer.

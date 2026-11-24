@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.46.0 - 2026-11-24
+### Added
+* Http.Server parses every request body whose media type has the +json suffix (application/merge-patch+json, application/problem+json, a vendor type, under any top-level type, parameters ignored) exactly as application/json: same charset handling, maxBodyBytes accounting, 400 for malformed JSON and validation against the route body schema. A contentTypeParsers entry naming one exact +json type replaces the built-in parse for that type; a stream body for a +json type still needs a { contentType, stream: true } entry. Before, such a body was refused with 415.
+* Mounts can verify signed requests. `Http.FromBodySignature` reads a webhook provider's signature over the body (Stripe, GitHub, Slack, Shopify and Standard Webhooks are recipes of its `signature`, `timestamp` and `base` fields) and `Http.FromMessageSignature` reads an RFC 9421 message signature (`label`, `components`), each handing `AuthSignature.Verifier` the signed bytes. A mount or route listing a source that reads the body has the whole body read first, within the route's `maxBodyBytes` (a longer one is the usual 413 before any verifier runs), and every parser, stream and mount then receives exactly the verified bytes. `Http.CredentialRequest` gains `targetUri` and, for such a source, the sensitive `body`; a source's reading may publish `readsBody`. A mount reads the body only through the server. `authentication` on a mount and a route also gains `throttle: { budget, key? }`, which bounds refused credentials per client (the key defaults to `request.ip`) before any verifier runs or body is read: a spent `RateLimit.Budget` answers 429 with `Retry-After` and the new `ERR_HTTP_AUTHENTICATION_THROTTLED`, accepted credentials and requests with none spend nothing, and a budget store that fails is a 503 with `stage: throttle`. `http-server` now imports `rate-limit`.
+
 ## 0.45.0 - 2026-11-22
 ### Added
 * Each staged source declares the package its files are a release of (`purl` in `sources:`), the identity a software bill of materials lists.

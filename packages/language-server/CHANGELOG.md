@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.140.0 - 2026-11-24
+### Fixed
+* Regular expressions that could take polynomial or exponential time on crafted input now run in linear time with the same results.
+
 ## 0.139.0 - 2026-11-22
 ### Added
 * Checking a manifest with `!if` / `!switch` choices reports each finding once, with the configurations it holds in (`(when variables.flag is true and self.mode is a)`), and a finding found only in a branch no configuration takes ends with `(in a branch no configuration takes)`.

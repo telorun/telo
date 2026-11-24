@@ -1,5 +1,0 @@
-units:
-  kernel: Added
-body: The Rust kernel refuses a load whose module documents carry a native-entry,
-  source-entry or file-embed-placement defect, as the Node kernel does, and reads a
-  controller's package URL through the one parser the analyzer now owns.

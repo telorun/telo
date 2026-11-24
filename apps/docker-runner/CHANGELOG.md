@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.20.0 - 2026-11-24
+### Security
+* The image carries npm 11's latest release, whose bundled undici and brace-expansion are fixed.
+
 ## 0.19.0 - 2026-11-22
 ### Added
 * Every Run of a session's application receives its own TELO_HOST_STATE_DIR (apps/<app name>/ of the session's storage, owned by the session user, kept by suspend and removed with the session) and its own TELO_HOST_SECRET_SEED, derived from the runner's root seed, the session id and the application's name, over any value the client sent. The root seed is RUNNER_SECRET_SEED when set, else a secret-seed file the runner keeps in its state directory beside the session store; a value or file that is not 32 bytes of unpadded base64url refuses to boot, naming it. With the PostgreSQL session store and no RUNNER_SECRET_SEED no seed is delivered and the runner logs a startup warning. The local runner strips RUNNER_SECRET_SEED from every process it spawns.

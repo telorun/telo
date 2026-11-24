@@ -1,7 +1,0 @@
-units:
-  apps/authoring-agent: Added
-body: "The agent's primer teaches that a record's screens are pages: an edit page is a
-  query node at the item's address holding a Ui.Form with record { presentation, key }
-  and initialValues, a create page the same form with no key, the listing's create and
-  edit are presses to a Ui.OpenPage in any surface, and CrudUi.Admin's create and edit
-  point at those pages."

@@ -1,6 +1,6 @@
 [package]
 name = "telorun-sdk-macros"
-version = "0.139.2"
+version = "0.140.0"
 license = "MIT"
 edition = "2021"
 publish = false

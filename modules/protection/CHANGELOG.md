@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0 - 2026-11-24
+### Added
+* The password throttle's docs now point at `Http.Server`'s `authentication.throttle` for per-client-address limiting, which bounds refused credentials per address before any verifier runs, beside this kind's per-account bound.
+
 ## 0.2.2 - 2026-11-09
 ### Fixed
 * `requires.telo` now holds the measured floor, raised to the highest floor among the workspace modules this module imports.

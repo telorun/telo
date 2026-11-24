@@ -1,6 +1,0 @@
-units:
-  analyzer: Security
-body: A manifest key written `__proto__` is kept as an ordinary data property when the
-  analyzer fills accessor bindings, applies a library migration record, assigns a
-  concrete manifest path, lifts shared fragment definitions and resolves contract value
-  schemas, instead of being assigned through the prototype setter.

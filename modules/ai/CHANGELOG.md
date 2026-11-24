@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.38.2 - 2026-11-24
+### Fixed
+* Regular expressions that could take polynomial or exponential time on crafted input now run in linear time with the same results.
+
 ## 0.36.0 - 2026-11-12
 ### Added
 * Adds telo check refusals for an agent's textTools: an argument a static tool's parameters refuse (AI_TEXT_TOOL_ARGUMENT_UNKNOWN) and a required parameter left unmapped (AI_TEXT_TOOL_ARGUMENT_MISSING), on Ai.Agent and Ai.AgentStream; the runtime twins stay for tools a provider only discovers at run time.

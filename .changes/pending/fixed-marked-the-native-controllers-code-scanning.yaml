@@ -1,4 +1,0 @@
-units:
-  modules/console: Fixed
-body: Marked the native controllers' code-scanning false positive in napi-derive's
-  generated bindings; no behaviour changes.

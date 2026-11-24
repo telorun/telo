@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.31.0 - 2026-11-24
+### Added
+* The build_ui guide teaches that a record's screens are pages: a Ui.Form with record { presentation, key? } and initialValues on a create page and on an edit page reading its record in a query node, the listing's create and edit as presses to a Ui.OpenPage, and any Ui.Surface for the opened page.
+
 ## 0.30.0 - 2026-11-22
 ### Added
 * The hub reports the known vulnerabilities of each tracked version and of every module it pins. Ingest stores each version's third-party components, a scheduled pass checks every distinct component against OSV, and get_module, list_module_versions and their HTTP routes serve advisories and advisoriesComplete (an empty list is clean only beside true); get_kinds states them on an # Advisories: line after the import line, never on it. INGEST_REV defaults to 12, so the deploy re-ingests every tracked version once.
