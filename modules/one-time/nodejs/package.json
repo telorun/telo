@@ -1,6 +1,6 @@
 {
   "name": "@telorun/one-time",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "private": true,
   "description": "Telo one-time module — single-use links and typed codes over KvStore.Store. Never published: the controllers ship inside the module artifact as a pkg:telo/local/js bundle.",

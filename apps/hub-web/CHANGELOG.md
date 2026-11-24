@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.4 - 2026-11-24
+### Security
+* The image carries npm 11's latest release, whose bundled undici and brace-expansion are fixed.
+
 ## 0.1.3 - 2026-11-22
 ### Security
 * Refreshed locked dependency versions within their declared ranges, as part of a workspace-wide refresh that clears known security advisories.

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.3 - 2026-11-24
+### Fixed
+* A bundle whose inlined files include another unit's version file is planned whenever that unit moves, as a payload holding its version, so a bundle embedding a sibling's version is released with it instead of in a follow-up release.
+* The pypi simple-index page scan runs in linear time, so a registry page of unclosed anchors can no longer stall a release.
+* Trailing-slash trimming of registry URLs and unit keys, and the tag stripping of a PyPI index page, no longer use regular expressions that can run slowly on adversarial input; behaviour is unchanged.
+### Security
+* The ledger evidence the planner collects per ecosystem and anchor, and the ledger file it reads and writes, are held in prototype-less containers, so an anchor named `__proto__` is plain data and round-trips through the ledger.
+
 ## 0.3.2 - 2026-11-23
 ### Fixed
 * A unit's payload files, which the version-location rule reads, are the workspace files its payload is derived from: those it holds and those an adapter reports it reads into itself.

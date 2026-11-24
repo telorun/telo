@@ -1,6 +1,6 @@
 {
   "name": "@telorun/auth-signature",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "private": true,
   "description": "Telo auth-signature module — the verifier of signature presentations (HMAC-SHA-256 secrets and Ed25519 public keys). Never published: the controllers ship inside the module artifact as a pkg:telo/local/js bundle.",

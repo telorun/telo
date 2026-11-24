@@ -1,8 +1,0 @@
-units:
-  kernel: Added
-body: "The kernel reads an absolute `member` of `x-telo-value-schema-from` (`member:
-  /key`) through the analyzer's reader: it refuses a kind whose pointer names no string
-  in the schema of the declaration holding the reached type with
-  `ERR_VALUE_SCHEMA_FROM_INVALID` when the definition registers, refuses a literal of
-  the wrong type when the resource is created, and binds a contract node to the property
-  the declaration names."

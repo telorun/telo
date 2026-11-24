@@ -1,5 +1,0 @@
-units:
-  modules/auth: Added
-body: "Auth.Presentation gains a fifth variant, Auth.SignaturePresentation (type
-  signature): the exact signed bytes, the signatures presented, and the key id,
-  algorithm, created and expires the request claimed."

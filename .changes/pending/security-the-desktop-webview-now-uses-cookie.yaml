@@ -1,5 +1,0 @@
-units:
-  cli: Security
-  apps/studio: Security
-body: The desktop webview now uses cookie 0.18.3, which fixes RUSTSEC-2026-0594 (private
-  cookie nonces could repeat in a process that forks).

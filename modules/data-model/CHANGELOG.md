@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0 - 2026-11-24
+### Added
+* DataModel.Collection declares the bodies its writes accept as schemas: { create, update }, each a Telo.Type, published beside the model; a write left out is one the collection does not accept. The collection contract now updates by PATCH <basePath>/<key value>, a JSON Merge Patch (application/merge-patch+json) answering 200 with the stored record, and PUT leaves the contract. A collection may send a strong ETag on read-one and on every write answer and honour If-Match on PATCH and DELETE, answering a stale validator with 412.
+
 ## 0.3.0 - 2026-11-09
 ### Added
 * A collection can declare `query.search: { properties }`, a list of at least one string property: one text matches a record when any of them contains it, ignoring case, and a request carries it as `search=<text>`. `search` is now a reserved query name, so a filter on a property called `search` is refused (`DATA_MODEL_FILTER_RESERVED_NAME`), and a search over an undeclared property or one that is not a string is refused (`DATA_MODEL_SEARCH_UNKNOWN_PROPERTY`, `DATA_MODEL_SEARCH_UNSUPPORTED`).

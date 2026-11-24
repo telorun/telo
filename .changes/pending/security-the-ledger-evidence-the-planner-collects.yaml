@@ -1,5 +1,0 @@
-units:
-  release: Security
-body: The ledger evidence the planner collects per ecosystem and anchor, and the ledger
-  file it reads and writes, are held in prototype-less containers, so an anchor named
-  `__proto__` is plain data and round-trips through the ledger.

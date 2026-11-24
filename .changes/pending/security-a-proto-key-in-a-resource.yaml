@@ -1,4 +1,0 @@
-units:
-  kernel: Security
-body: A `__proto__` key in a resource declaration is carried into a controller's copy as
-  an own data property, instead of replacing the copy's prototype.

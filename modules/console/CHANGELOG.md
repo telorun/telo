@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.19.6 - 2026-11-24
+### Fixed
+* Marked the native controllers' code-scanning false positive in napi-derive's generated bindings; no behaviour changes.
+
 ## 0.19.4 - 2026-11-12
 ### Fixed
 * The Rust runtime guide lists every runtime: form itself instead of linking to another module's page.

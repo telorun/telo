@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.41.0 - 2026-11-24
+### Fixed
+* Regular expressions that could take polynomial or exponential time on crafted input now run in linear time with the same results.
+* The desktop app builds again: it moves to Tauri 2.12, the release its locked Tauri crates belong to. The web image runs nginx mainline with Alpine's security fixes applied, since the stable image pinned an nginx release older than its fixes.
+### Security
+* The desktop webview now uses cookie 0.18.3, which fixes RUSTSEC-2026-0594 (private cookie nonces could repeat in a process that forks).
+* Updated the url crate to 2.5.9, which fixes a stack overflow in Url::origin() on deeply nested blob: URLs (RUSTSEC-2026-0592).
+
 ## 0.40.0 - 2026-11-22
 ### Added
 * Studio reads the runner /v1 contract from @telorun/runner-protocol and no longer keeps a mirrored copy of its types.
