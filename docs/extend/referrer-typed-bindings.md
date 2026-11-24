@@ -1,7 +1,7 @@
 ---
 sidebar_label: Referrer-Typed Bindings
 slug: /extend/referrer-typed-bindings
-description: "Type a CEL binding from whoever references the resource, say where it may be null, or withhold it, so telo check refuses a read some referrer makes unsafe."
+description: "Type a CEL binding from whoever references the resource, say where it may be null, make it some members of a record, or withhold it, so telo check refuses a read some referrer makes unsafe."
 ---
 
 # Referrer-typed bindings
@@ -10,16 +10,18 @@ Some values in a kind's CEL context are decided by the resource that
 **references** it, not by the kind. A field kind does not know which form lists
 it, but its `values` binding is that form's record. A router does not know which
 server mounts it, but its `request.principal` is whatever that mount
-authenticated. Three annotations on an `x-telo-context` express this:
+authenticated. Four annotations on an `x-telo-context` express this:
 
 - `x-telo-context-from-referrer` types a node from the scope of each resource
   that references this one;
 - `x-telo-context-nullable-when` says where a node may be null, based on a value
   the resource holds;
+- `x-telo-context-partial` says a node holds only some members of the record it
+  is typed as;
 - `x-telo-context-withheld` says a node is named at a site but holds no value
   there, and why.
 
-All three are read only by the analyzer. Each referrer is judged on its own, so
+All four are read only by the analyzer. Each referrer is judged on its own, so
 a finding that only some referrers cause names them.
 
 ## `x-telo-context-from-referrer: "<binding>[/<member>…]"`
@@ -169,6 +171,55 @@ modules, in these cases:
 - the pointer names a member the schema does not declare on its path;
 - an `equals` literal is one the target's schema refuses.
 
+## `x-telo-context-partial: true`
+
+This annotation also goes on a binding or a member beneath one. It says the node
+holds **some** of a record's members: of the object type the node resolves to —
+through its typing annotation (`x-telo-context-from`, `x-telo-context-from-root`,
+`x-telo-context-from-referrer`, …) or the `properties` it declares itself —
+every member becomes optional and nullable, and `required` is dropped. A member
+the record does not declare is still `CEL_UNKNOWN_FIELD`, and a read beneath a
+member is `CEL_NULLABLE_ACCESS` until a guard proves the member present. Only
+the node's own members change; a member's members keep their type.
+
+```yaml
+# a listing's create press: `values` is what a layout proposes for a new record
+create:
+  x-telo-ref: { kind: Self.Destination, use: call }
+  x-telo-context:
+    type: object
+    properties:
+      values:
+        x-telo-context-from: model
+        x-telo-context-partial: true
+        x-telo-context-eval: accessor
+        type: object
+        properties: {}
+        additionalProperties: false
+```
+
+With `model` naming a task record of `title` and `owner`, `values.title` reads
+`string` or null, `values.owner.name` is refused unguarded, and `values.nope` is
+an unknown field.
+
+It is a modifier, not a typing: it is applied after whatever typed the node, so
+it composes with `x-telo-context-from-referrer`. A destination typing its own
+`values` from that press receives the partial type already, and marking it
+partial again changes nothing. Where the node resolves to no object (a referrer
+whose scope lacks the path, beside `x-telo-context-withheld`), it changes
+nothing either.
+
+**Misuse.** A value other than `true` is `SCHEMA_VIOLATION`. The error
+`CONTEXT_PARTIAL_INVALID` is reported at the kind, for the entry's own modules,
+in these cases:
+
+- the annotation sits outside a binding's subtree;
+- nothing gives the node an object type: no typing annotation beside it and no
+  `properties` of its own (a bare `$ref` is not followed here — type the node by
+  an annotation, or declare its `properties`);
+- the node declares a `type` that is not `object`;
+- `x-telo-context-collection-from` types it, which yields a collection.
+
 ## `x-telo-context-withheld: "<reason>"`
 
 This annotation goes on a binding, or on a member beneath one. It says the node
@@ -216,7 +267,8 @@ in a named shape the bindings point at.
 **Beside `x-telo-context-from-referrer`.** Written on the same node, the mark is
 the node's own reading: the node is typed where a referrer's scope holds the
 path, and withheld where a referrer's scope lacks it or nothing references the
-resource. Where a referrer lacks the path, the message names that referrer:
+resource. `x-telo-context-partial` may stand beside the two. Where a referrer
+lacks the path, the message names that referrer:
 
 ```yaml
 # a destination: `row` is the row of the listing pressing it, and nothing elsewhere
@@ -257,7 +309,8 @@ The editor offers no withheld name, and hovering one shows the reason.
 
 **Misuse.** Written outside a binding's subtree (other than a `$defs` entry a
 binding may name), or beside anything but `x-telo-context-eval`,
-`x-telo-context-from-referrer`, `title` and `description` — a type keyword, or
+`x-telo-context-from-referrer`, `x-telo-context-partial`, `title` and
+`description` — a type keyword, or
 another typing annotation — the annotation is `CONTEXT_WITHHELD_INVALID`,
 reported at the kind. A value that is not a non-empty string is
 `SCHEMA_VIOLATION`.

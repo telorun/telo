@@ -1,0 +1,11 @@
+# Declares the kind whose absolute member, read past a reference slot, names
+# nothing. This consumer's entry-scoped check is silent about the library's
+# definition, so the kernel refuses it when it registers the kind.
+kind: Telo.Application
+metadata: { name: App, version: 1.0.0 }
+imports: { Lib: ./lib }
+targets:
+  - invoke: !ref caller
+---
+kind: Lib.Caller
+metadata: { name: caller }

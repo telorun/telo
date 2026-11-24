@@ -1,4 +1,4 @@
-import { createContext, useContext, type ComponentPropsWithoutRef, type MouseEvent, type ReactNode } from "react";
+import { createContext, useContext, type ComponentPropsWithoutRef, type MouseEvent, type ReactNode, type Ref } from "react";
 import { addressReads, resolveAddress, type AddressWire } from "./address-wire.js";
 import { CurrentAnchor, type Lead } from "./current-location.js";
 import { useHostStore, type HostStore } from "./host.js";
@@ -36,6 +36,15 @@ export const leadOf = (destination: ResolvedDestination): Lead => ({ type: desti
 /** Whether a destination's address reads the named root. */
 export const destinationReads = (to: DestinationWire | undefined, root: string): boolean => to !== undefined && addressReads(to.href, root);
 
+/** The place a listing keeps under one of its records for an inline surface. */
+export interface DetailSlot {
+  /** Make the place exist and tell where it is, `null` while it is not drawn; the returned function gives it up. */
+  show(report: (element: HTMLElement | null) => void): () => void;
+}
+
+/** What a listing hands what is pressed inside its records: the place under the record a row is. */
+export const DetailContext = createContext<((row: Record<string, unknown>) => DetailSlot | undefined) | null>(null);
+
 /** A page to open in a surface, as a press, a link, an entry or a success asks for it. */
 export interface PageOpening {
   to: OpenPageWire;
@@ -45,6 +54,8 @@ export interface PageOpening {
   naming: string;
   /** The element that opened it, which the focus returns to when it closes. */
   opener: HTMLElement | null;
+  /** Where an inline surface is drawn under the record that opened it, where a listing's record did. */
+  detail?: DetailSlot;
 }
 
 /** What hosts the opened page: the application shell, told whether the opening is pressed inside the page it holds. */
@@ -74,6 +85,8 @@ export interface DestinationOrigin {
   naming: string;
   /** The element pressed: the element with the focus when not given. */
   opener?: HTMLElement | null;
+  /** The place under the record, where what is pressed is one. */
+  detail?: DetailSlot;
 }
 
 /** What every destination pressed here is gone to from, less its address. */
@@ -123,7 +136,7 @@ export function openDestination(to: DestinationWire, context: DestinationContext
       return followAddress(context);
     case "openPage":
       if (context.pageHost === null) throw new Error("The renderer opened a page outside an application.");
-      return context.pageHost.open({ to, address: context.address, naming: origin.naming, opener: origin.opener ?? focused() });
+      return context.pageHost.open({ to, address: context.address, naming: origin.naming, opener: origin.opener ?? focused(), detail: origin.detail });
   }
 }
 
@@ -148,7 +161,7 @@ function leftToBrowser(event: MouseEvent<HTMLAnchorElement>): boolean {
   return anchor.getAttribute("target") !== null || anchor.hasAttribute("download");
 }
 
-type AnchorProps = Omit<ComponentPropsWithoutRef<"a">, "href">;
+type AnchorProps = Omit<ComponentPropsWithoutRef<"a">, "href"> & { ref?: Ref<HTMLAnchorElement> };
 
 /**
  * A destination drawn as a real link to its address — `href` that address as
@@ -157,14 +170,21 @@ type AnchorProps = Omit<ComponentPropsWithoutRef<"a">, "href">;
  * destination is a load of its address, is the browser's. `naming` is the
  * text naming it, an opened page's title when the page has none.
  */
-export function DestinationAnchor({ destination, href, naming, onClick, ...rest }: { destination: ResolvedDestination; href: string; naming: string } & AnchorProps): ReactNode {
+export function DestinationAnchor({
+  destination,
+  href,
+  naming,
+  detail,
+  onClick,
+  ...rest
+}: { destination: ResolvedDestination; href: string; naming: string; detail?: DetailSlot } & AnchorProps): ReactNode {
   const context = useDestinationContext();
   const follow = (event: MouseEvent<HTMLAnchorElement>) => {
     onClick?.(event);
     const at = { ...context, address: destination.address };
     if (leftToBrowser(event) || destinationLoads(destination.to, at)) return;
     event.preventDefault();
-    openDestination(destination.to, at, { naming, opener: event.currentTarget });
+    openDestination(destination.to, at, { naming, opener: event.currentTarget, detail });
   };
   return <CurrentAnchor {...rest} lead={leadOf(destination)} href={href} onClick={follow} />;
 }

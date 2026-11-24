@@ -3,7 +3,7 @@ import type { LayoutGroup, LayoutLevel, LayoutProps, LayoutRecord } from "../../
 import { readBinding, type Binding } from "../bindings.js";
 import { LoadedComponent } from "../component.js";
 import { useViewer } from "../current-location.js";
-import { leadOf, openDestination, resolveDestination, useDestinationContext } from "../destination.js";
+import { DetailContext, leadOf, openDestination, resolveDestination, useDestinationContext } from "../destination.js";
 import type { LayoutProps as DrawnLayout } from "../listing.js";
 import type { ListedRecord, ReadView } from "../listing-engine.js";
 import { Node, type SpecNode } from "../nodes.js";
@@ -54,6 +54,7 @@ export function ContractLayout({ spec, node, drawing }: DrawnLayout): ReactNode 
   const roots = useContext(RootsContext);
   const viewer = useViewer();
   const destinations = useDestinationContext();
+  const detailOf = useContext(DetailContext);
   const { lang } = useContext(RendererContext);
   const say = useSay();
   const text = useText();
@@ -191,7 +192,7 @@ export function ContractLayout({ spec, node, drawing }: DrawnLayout): ReactNode 
     },
     paging: node.paging === "scroll" ? "scroll" : "more",
     empty: drawing.empty,
-    can: { open: press !== null || drawing.open !== undefined, create: drawing.create !== undefined, move: spec.move !== undefined },
+    can: { open: press !== null, create: drawing.create !== undefined, move: spec.move !== undefined },
     words: { loadMore: say("loadMore"), moveTo: say("moveTo"), none: say("none"), newRecord: say("newRecord") },
     lang,
     onEndReached: (at) => {
@@ -205,11 +206,14 @@ export function ContractLayout({ spec, node, drawing }: DrawnLayout): ReactNode 
     onPeriodChange: (period) => drawing.showPeriod(period),
     onExpand: (key, open) => drawing.expand(key, open),
     onOpen: (key) => {
-      if (press === null) return drawing.open?.(key);
+      if (press === null) return;
       const held = drawing.reads.flatMap((read) => read.records).find((each) => each.key === key);
       const destination = held && pressed(held.row);
       if (held === undefined || destination === undefined) return;
-      openDestination(destination.to, { ...destinations, address: destination.address }, { naming: text(press.label, undefined, { ...roots, row: held.row }) });
+      openDestination(destination.to, { ...destinations, address: destination.address }, {
+        naming: text(press.label, undefined, { ...roots, row: held.row }),
+        detail: detailOf?.(held.row),
+      });
     },
     onSortChange: (sort) => drawing.sort.set(sort),
     onMove: (key, to) => {

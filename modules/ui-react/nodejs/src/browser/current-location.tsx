@@ -1,4 +1,4 @@
-import { createContext, useContext, type ComponentPropsWithoutRef, type ReactNode } from "react";
+import { createContext, useContext, type ComponentPropsWithoutRef, type ReactNode, type Ref } from "react";
 import { isCurrentAddress, type CurrentLocation } from "./address-wire.js";
 import { useHost } from "./host.js";
 
@@ -41,7 +41,7 @@ export function useLeadsHere(): (lead: Lead | undefined) => boolean {
 }
 
 /** A link the renderer draws: `aria-current="page"` while `lead` leads to where the viewer is. */
-export function CurrentAnchor({ lead, ...rest }: { lead: Lead | undefined } & ComponentPropsWithoutRef<"a">): ReactNode {
+export function CurrentAnchor({ lead, ...rest }: { lead: Lead | undefined; ref?: Ref<HTMLAnchorElement> } & ComponentPropsWithoutRef<"a">): ReactNode {
   const current = useLeadsHere()(lead);
   return <a {...rest} aria-current={current ? "page" : undefined} />;
 }

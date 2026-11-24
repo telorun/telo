@@ -3,7 +3,6 @@ import {
   dialogSpec,
   drawerSpec,
   inlineSpec,
-  pageSpec,
   panelSpec,
   popoverSpec,
   surfaceSpec,
@@ -25,4 +24,3 @@ export const DrawerController = controller("Ui.Drawer", drawerSpec);
 export const PopoverController = controller("Ui.Popover", popoverSpec);
 export const InlineSurfaceController = controller("Ui.InlineSurface", inlineSpec);
 export const PanelController = controller("Ui.Panel", panelSpec);
-export const PageSurfaceController = controller("Ui.PageSurface", pageSpec);

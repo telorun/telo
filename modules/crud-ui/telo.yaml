@@ -8,10 +8,10 @@ metadata:
   description: >-
     A ready admin screen over a database-backed REST collection from one
     declaration: a filter bar, a paged listing drawn as a table, cards, a board
-    or any other layout, create and edit forms and a confirmed delete. Related
-    records are shown by name and picked from a list, all derived from the data
-    model.
-requires: { telo: ">=0.139.0" }
+    or any other layout, create and edit buttons opening pages you declare, and a
+    confirmed delete. Related records are shown by name, all derived from the
+    data model.
+requires: { telo: ">=unreleased" }
 restrictions:
   - requires: { telo: ">=0.126.0" }
     reason: "0.125.1 checks this module clean and fails at boot: its forward past a source reads the instance, so the body's forms and listing get no `model` (ERR_RESOURCE_SCHEMA_VALIDATION_FAILED)."
@@ -45,10 +45,10 @@ metadata:
   name: Admin
   description: >-
     A ready admin screen over a REST collection: a filter bar, a sortable paged
-    listing, a form to create a record and one to edit it, and a confirmed
-    delete on every record. Columns, fields, filters, related-record labels and
-    pickers are derived from the data model, so a property added to it appears
-    without an edit.
+    listing, create and edit buttons that open pages you declare, and a
+    confirmed delete on every record. Columns, filters and related-record labels
+    are derived from the data model, so a property added to it appears without
+    an edit.
 capability: Telo.Provider
 extends: UiKit.Composite
 schema:
@@ -82,46 +82,37 @@ schema:
     create:
       title: Create
       description: >-
-        Where the form that adds a record opens, what it does once the record
-        is saved and what happens to unsaved input.
+        The create button: where it goes, usually an opened page of a new
+        record, and its name. Omitted, no button. Over `values`, the property
+        values a layout's create gesture proposes, `{}` from the button.
       type: object
       additionalProperties: false
+      required: [to]
       properties:
-        surface:
-          title: Surface
-          description: Where the form appears.
-          x-telo-ref: { kind: UiKit.Surface, use: dependency }
-        afterSubmit:
-          title: After submit
-          description: >-
-            What the form does once the record is saved: `close`, `again` — stay
-            open, back at the values a new record starts from — or `keep` its
-            values.
-          $ref: "telo://UiKit/AfterCreate"
-        unsaved:
-          title: Unsaved input
-          description: Whether leaving the form with unsaved input asks first (`confirm`) or drops it (`discard`).
-          $ref: "telo://UiKit/UnsavedInput"
+        to: { $ref: "telo://UiKit/Press#/properties/to" }
+        label: { $ref: "telo://UiKit/Press#/properties/label" }
+      x-telo-context:
+        type: object
+        properties:
+          values: { x-telo-context-ref-from: source/collection/schemas/list, x-telo-context-partial: true, x-telo-context-eval: accessor }
+          query: { x-telo-context-eval: accessor, type: object, properties: {}, additionalProperties: false }
     edit:
       title: Edit
       description: >-
-        Where the form that changes a record opens, what it does once the
-        record is saved and what happens to unsaved input.
+        Drawn among each record's actions: where it goes over `row`, usually an
+        opened page of that record, and its name. Without `press`, pressing a
+        record does the same.
       type: object
       additionalProperties: false
+      required: [to]
       properties:
-        surface:
-          title: Surface
-          description: Where the form appears.
-          x-telo-ref: { kind: UiKit.Surface, use: dependency }
-        afterSubmit:
-          title: After submit
-          description: "What the form does once the record is saved: `close`, or `keep` it open."
-          $ref: "telo://UiKit/AfterEdit"
-        unsaved:
-          title: Unsaved input
-          description: Whether leaving the form with unsaved input asks first (`confirm`) or drops it (`discard`).
-          $ref: "telo://UiKit/UnsavedInput"
+        to: { $ref: "telo://UiKit/Press#/properties/to" }
+        label: { $ref: "telo://UiKit/Press#/properties/label" }
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-ref-from: source/collection/schemas/list, x-telo-context-eval: accessor }
+          query: { x-telo-context-eval: accessor, type: object, properties: {}, additionalProperties: false }
     paging:
       title: Paging
       description: >-
@@ -156,7 +147,7 @@ schema:
       description: >-
         What pressing a record does, and its name, over `row`, one record of the
         list. Written, editing is the record's edit button; omitted, pressing a
-        record opens the edit form.
+        record does what `edit` does.
       $ref: "telo://UiKit/Press"
       x-telo-context:
         type: object
@@ -168,29 +159,13 @@ resources:
     metadata: { name: presentation }
     source: !cel "self.source"
     relations: !cel "self.relations"
-  - kind: UiKit.Form
-    metadata: { name: createForm }
-    model: !cel "self.source.collection.schemas.create"
-    presentation: !ref presentation
-  - kind: UiKit.Form
-    metadata: { name: editForm }
-    model: !cel "self.source.collection.schemas.update"
-    presentation: !ref presentation
   - kind: UiKit.Listing
     metadata: { name: listing }
     presentation: !ref presentation
     model: !cel "self.source.collection.schemas.list"
     paging: !cel "self.paging"
-    create:
-      form: !ref createForm
-      surface: !cel "self.create.surface"
-      afterSubmit: !cel "self.create.afterSubmit"
-      unsaved: !cel "self.create.unsaved"
-    edit:
-      form: !ref editForm
-      surface: !cel "self.edit.surface"
-      afterSubmit: !cel "self.edit.afterSubmit"
-      unsaved: !cel "self.edit.unsaved"
+    create: !cel "self.create"
+    edit: !cel "self.edit"
     delete: true
     layout: !cel "self.layout"
     compact: !cel "self.compact"

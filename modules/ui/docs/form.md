@@ -1,14 +1,28 @@
 # Ui.Form
 
-A form over a data model.
+A form over a data model, written to a collection. It lives on a
+[page](page.md), placed among its nodes like any composite: the page reached by
+its own address is a full page, and opened from a [press](presses.md) it is
+drawn in the press's [surface](surfaces.md).
 
 | Field | | |
 | --- | --- | --- |
 | `model` | required | the shape of the record the form sends |
-| `presentation` | required | the [`Ui.CollectionPresentation`](collection-presentation.md) written to: its source's `basePath` is where, its relations how related records are offered |
+| `record` | required | the record the form writes: [`{ presentation, key? }`](#what-it-edits) |
+| `initialValues` | the address and store, then the model's defaults | the record the form [starts from](#what-it-starts-from): a plain chain over the roots where the form is placed |
+| `unsaved` | `confirm` | [whether leaving with unsaved input asks first](#the-form-owns-its-lifecycle): `confirm` or `discard` |
+| `afterSubmit` | `close` | [what the form does once the record is saved](#the-form-owns-its-lifecycle): `close`, `keep` or `again` |
 | `fields` | every enterable property | the fields, top to bottom: a property name, or a [field kind](field-kinds.md) |
 | `groups` | none | labelled sections the fields name by `group` ([field kinds](field-kinds.md#groups)) |
 | `state` | not kept | where the values entered are kept between visits ([kept values](field-kinds.md#kept-values)) |
+
+```yaml
+kind: Ui.Form
+metadata: { name: taskForm }
+model: !ref TaskInput
+record: { presentation: !ref tasksPresentation, key: !cel "data.id" }
+initialValues: !cel "data"
+```
 
 A property name is exactly `{ kind: Ui.InputField, property: <name> }`: the
 page document is the same for both spellings. A field's label is the
@@ -56,28 +70,102 @@ may enter one anyway — a [date range](field-kinds.md#uidaterangefield) enters
 an object. [`Ui.Action`](action.md) reads the same definition, and an input
 field's `auto` control fits exactly what a property name can enter.
 
-## Where it writes
+## What it edits
 
-| Placed as | Request |
+`record.presentation` names the collection written to — its source's `basePath`
+is where, its relations how related records are offered. `record.key` says
+which stored record the form edits: a plain chain to that record's key value,
+over the roots where the form is placed — `data.id` inside a query node,
+`params.id` on a page whose path variable is the key. Its type is held to the
+collection's key property: `params.id` is a string, so over a collection keyed
+by an integer it is `CEL_TYPE_ERROR`, and a literal of another type is
+`SCHEMA_VIOLATION`. The roots are the ones a destination reads
+(`row`, `data`, `query`, `params`, `values`, `result`, `input`), each in scope
+only where the place binds it: one that is not is `CEL_UNKNOWN_IDENTIFIER`.
+
+| `record.key` | Request |
 | --- | --- |
-| a node on a page, or a listing's `create` | `POST <basePath>` |
-| a listing's `edit` | `PUT <basePath>/<key value>`, prefilled from the record read at `GET <basePath>/<key value>`, the key being the collection's `key` |
+| written | `PATCH <basePath>/<key value>` with `content-type: application/merge-patch+json` |
+| omitted | `POST <basePath>` |
 
-`basePath` is the presentation's source's.
+Either write announces `<basePath>` and `<basePath>/<key value>`, so the
+listing and the reads of that record read again. The key is explicit: a form
+that inferred "the record I was started from" would write wherever its query
+happened to read.
+
+**The collection's write shapes.** A form is checked against the shape its
+write is held to — `schemas.create` without `record.key`, `schemas.update` with
+it:
+
+| Rule (`RESOURCE_RULE_VIOLATED`, `REFERRER_RULE_VIOLATED` for the update shape, in `data.rule`) | When |
+| --- | --- |
+| `UI_WRITE_UNDECLARED` | the collection declares no shape for the write the form makes |
+| `UI_WRITE_SHAPE_MISMATCH` | a property of `model` the shape does not declare, or declares with another type |
+
+Both are refused again when the form is first read (`ERR_UI_WRITE_UNDECLARED`,
+`ERR_UI_WRITE_SHAPE_MISMATCH`), for a manifest that never passed `telo check`.
+
+## What it starts from
+
+An edit page reads the record with a [`query`](query.md) node at the item's
+address and places the form among its children with `initialValues` over
+`data`; the query's `ETag` is the validator the form's `PATCH` carries.
+
+```yaml
+children:
+  - type: query
+    query: { kind: Ui.Query, model: !ref Task, url: { path: "/api/tasks/{id}", pathParams: { id: !cel "params.id" } } }
+    content:
+      - type: composite
+        ref:
+          kind: Ui.Form
+          model: !ref TaskInput
+          record: { presentation: !ref tasksPresentation, key: !cel "data.id" }
+          initialValues: !cel "data"
+```
+
+A form starts from `initialValues` when it is drawn, and the address and its
+`state` store are read only where `initialValues` is absent. It starts again,
+the unsaved-input question asked first, when the resolved address of the query
+its `initialValues` reads changes; a re-read at the same address keeps the form
+and what was typed. `initialValues` is held to fit `model`.
+
+## The form owns its lifecycle
+
+`unsaved` and `afterSubmit` are the form's, so the same form behaves alike in a
+surface and on a page of its own.
+
+- `unsaved: confirm` asks before unsaved input is dropped by anything that
+  closes the form — its surface closing, a move to another page, another record
+  opening in the same surface — and `discard` drops it
+  ([the guard](surfaces.md#after-a-submit-and-unsaved-input)).
+- `afterSubmit: close` closes the surface the form's page is open in, and on a page of its own the
+  form stays, saved. `keep` leaves it open with its values; `again` returns it
+  to the values it started from — on a create page a fresh record, on an edit
+  page the saved one.
+
+The listing reloads after every submit.
 
 ## What it sends
 
-- **Creating**, the record holds each field that has a value. A field left
+- **Creating** (no `record.key`), the record holds each field that has a value. A field left
   empty is left out of it.
-- **Editing**, the form first reads the record by its key, because a row of
-  the list may hold less than the record does. What it sends is every property
-  of the form's model the record held a value for — whether or not the form
-  shows it — with each field's entered value over it, because `PUT` replaces
-  ([the collection contract](https://hub.telo.run/module/oci/ghcr.io/telorun/data-model/)). A field left
-  empty is left out, which clears that property. A property the record held as
-  `null` is left out, and so is anything in the record the model does not
-  declare — so a form over a narrower model than the record sends only what
-  that model names.
+- **Editing** (`record.key`), the form starts from `initialValues`. What it sends is the merge
+  patch (RFC 7396) of the shown properties whose value differs from that
+  record: the entered value for one that changed, `null` for one emptied, and
+  for an object only the members that changed (a removed one as `null`); a list
+  is sent whole. A property the form does not show, or did not change, is not named, so a form
+  over a narrower model than the record leaves every other column as it is, and
+  a form that changed nothing sends `{}`, which the collection answers with the
+  stored record. The patch and the `If-Match` it carries are pinned by
+  `conformance/merge-patch.json`.
+- The `ETag` of the last read or write at the item's path, when the server sent
+  one, is sent back as `If-Match`
+  ([preconditions](action-contract.md#preconditions)). When another save came
+  first the collection answers `412`: the form shows the problem's `code`
+  (`ERR_UI_PRECONDITION_FAILED` without one), keeps every value entered, reads
+  the record again for its new validator, and pressing save again sends the
+  same changes against the current record.
 - A checkbox always has a value: `true` or `false`.
 - A list with nothing chosen or typed is left out, like an empty field.
 - A required field left empty is refused in the page, on the field, and
@@ -139,6 +227,7 @@ form as its path and that text; a 400 with no issues shows its `detail`.
 | `UI_FIELD_GROUP_SPLIT` | a group's fields are not listed one after another |
 | `UI_FIELD_GROUP_DUPLICATE` | two groups share a name |
 | `UI_STATE_FIELD_UNKNOWN` | `state.fields` names a property no field shows |
+| `UI_WRITE_UNDECLARED`, `UI_WRITE_SHAPE_MISMATCH` | [the collection's write shapes](#what-it-edits) |
 
 What a field kind refuses of its own fit is its kind's rule, reported at the
 field's place in `fields` ([field kinds](field-kinds.md#refused)). The form

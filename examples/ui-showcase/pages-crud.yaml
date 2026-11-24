@@ -32,8 +32,13 @@ content:
         filters:
           placement: { kind: Ui.AsidePlacement, side: end, show: chosen, controls: chips, summary: chips }
           state: { key: aside, store: { kind: Ui.LocalStore } }
-        create: { surface: { kind: Ui.Drawer, side: end }, afterSubmit: again }
-        edit: { surface: { kind: Ui.Panel, address: { name: crudTask } }, unsaved: confirm }
+        create: { to: { kind: Ui.OpenPage, page: !ref newTaskPage, surface: { kind: Ui.Drawer, side: end } } }
+        edit:
+          to:
+            kind: Ui.OpenPage
+            page: !ref taskPage
+            pathParams: { id: !cel "row.id" }
+            surface: { kind: Ui.Panel, address: { name: crudTask } }
 ---
 # The page every application lists at /crud, placing the view.
 kind: Ui.Page

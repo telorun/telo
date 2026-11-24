@@ -51,8 +51,8 @@ function newRecord(entry: EntrySpec): Record<string, unknown> {
  * The record a form starts from: the one it edits, else what the address
  * keeps, else what the store keeps, else a new record.
  */
-function startRecord(entry: EntrySpec, initial: Record<string, unknown> | undefined, search: string, storedAt: string | undefined): Record<string, unknown> {
-  if (initial) return initial;
+function startRecord(entry: EntrySpec, initial: Record<string, unknown> | undefined, search: string, storedAt: string | undefined, fresh: boolean): Record<string, unknown> {
+  if (initial) return fresh ? { ...newRecord(entry), ...initial } : initial;
   const storage = valueStorage(entry.state);
   const kept =
     readValueAddress(search, entry.schema, entry.state) ??
@@ -75,7 +75,7 @@ const keptText = (value: unknown): string => JSON.stringify(value) ?? "";
  * hold each kept property as one value: a change one makes is followed by
  * every other mounted, except one editing a record, which starts from that record.
  */
-export function useRecordEntry(entry: EntrySpec, initial?: Record<string, unknown>) {
+export function useRecordEntry(entry: EntrySpec, initial?: Record<string, unknown>, fresh = false) {
   const host = useHost();
   const store = useHostStore();
   const { prefix } = useContext(RendererContext);
@@ -84,7 +84,7 @@ export function useRecordEntry(entry: EntrySpec, initial?: Record<string, unknow
   const text = useText();
   const { schema, fields, groups, state } = entry;
   const storedAt = state.key === undefined ? undefined : valueStorageKey(prefix, state.key);
-  const started = useMemo(() => enteredValues(schema, fields, startRecord(entry, initial, host.location.search, storedAt)), []);
+  const started = useMemo(() => enteredValues(schema, fields, startRecord(entry, initial, host.location.search, storedAt, fresh)), []);
   const [values, setValues] = useState<EnteredValues>(started);
   const [touched, setTouched] = useState<ReadonlySet<string>>(new Set());
   const [served, setServed] = useState<Record<string, string>>({});
@@ -194,9 +194,9 @@ export function useRecordEntry(entry: EntrySpec, initial?: Record<string, unknow
       setFormError(other.length > 0 ? other.join(" ") : undefined);
     },
     /** The values the form starts from with neither the address nor the store:
-     *  the record it edits, else a new record. */
-    restarted(): EnteredValues {
-      return enteredValues(schema, fields, initial ?? newRecord(entry));
+     *  the record given, else the one it edits, else a new record. */
+    restarted(record?: Record<string, unknown>): EnteredValues {
+      return enteredValues(schema, fields, record ?? (initial ? (fresh ? { ...newRecord(entry), ...initial } : initial) : newRecord(entry)));
     },
     /** Start again from these values, nothing touched. */
     reset(next: EnteredValues) {

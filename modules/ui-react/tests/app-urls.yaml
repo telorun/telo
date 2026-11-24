@@ -204,7 +204,7 @@ steps:
           specVersion: 1
           title: { lang: en, message: [Fixture Admin] }
           lang: en
-          pages: [/, /done, /all, /variants, /new, /components, /layouts, /gallery]
+          pages: [/, /done, /all, /variants, /new, /components, /layouts, /gallery, /todos/new, "/todos/{id}"]
           stylesheets: [renderer.css, default-theme.css, tokens.css, ui.css]
           controlStylesheets:
             [

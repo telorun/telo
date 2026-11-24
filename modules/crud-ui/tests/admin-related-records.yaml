@@ -6,8 +6,7 @@ metadata:
     An admin over posts whose `authorId` points at authors, over SQLite with
     the matching foreign key, written with nothing beyond its source and how a
     related author is labelled: the listing's author column shows the author's
-    name, the filter bar's author filter offers authors by name, and the
-    create and edit forms enter the author with a picker of authors, all read
+    name and the filter bar's author filter offers authors by name, both read
     from the one authors source. The same admin drawn as a board by `status`
     reads one column per value of the status enum, and a record is moved by an
     action the application declares over the record as read and as the move
@@ -144,9 +143,7 @@ steps:
         cel.bind(bar, steps.admin.result.node, cel.bind(l, bar.content, {
           'column': l.layout.columns.filter(c, c.value.path[0] == 'authorId').map(c, {'relation': c.relation}),
           'relation': l.relations.authorId,
-          'filter': bar.fields.filter(f, f.property == 'authorId').map(f, {'operator': f.operator, 'options': f.options == l.relations.authorId}),
-          'create': l.create.form.fields.filter(f, f.property == 'authorId').map(f, {'type': f.type, 'options': f.options == l.relations.authorId}),
-          'edit': l.edit.form.fields.filter(f, f.property == 'authorId').map(f, {'type': f.type, 'options': f.options == l.relations.authorId})
+          'filter': bar.fields.filter(f, f.property == 'authorId').map(f, {'operator': f.operator, 'options': f.options == l.relations.authorId})
         }))
       expected:
         column: [{ relation: authorId }]
@@ -160,8 +157,6 @@ steps:
           search: { property: name, operator: contains }
           pageSize: 25
         filter: [{ operator: eq, options: true }]
-        create: [{ type: picker, options: true }]
-        edit: [{ type: picker, options: true }]
   - name: checkBoard
     invoke: { kind: Assert.Equals }
     inputs:

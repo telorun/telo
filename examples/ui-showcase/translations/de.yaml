@@ -277,7 +277,15 @@ texts:
   - { text: Panels, translation: Panels }
   - { text: "Create in a small panel at the start edge, which Escape does not close. Edit in a large panel at the end edge, part of the address, with the rows still usable beside it; below the breakpoint it becomes a sheet from the bottom.", translation: "Anlegen in einem kleinen Panel am Anfangsrand, das Escape nicht schließt. Bearbeiten in einem großen Panel am Endrand, das Teil der Adresse ist, mit weiterhin nutzbaren Zeilen daneben; unterhalb des Breakpoints wird es zu einem Blatt von unten." }
   - { text: A page of its own, translation: Eine eigene Seite }
-  - { text: "Create and edit replace the page's content under one address name, so the address says either a new task or the task with this key, and Back closes the form. The surface is declared once and named by both.", translation: "Anlegen und Bearbeiten ersetzen den Inhalt der Seite unter einem Adressnamen, sodass die Adresse entweder eine neue Aufgabe oder die Aufgabe mit diesem Schlüssel nennt, und Zurück schließt das Formular. Die Oberfläche wird einmal deklariert und von beiden benannt." }
+  - { text: "Create and edit navigate to the pages themselves, a new task's and the task's own, and Back returns to the table. The same two pages open over the table in every surface above.", translation: "Anlegen und Bearbeiten wechseln zu den Seiten selbst, der einer neuen Aufgabe und der der Aufgabe, und Zurück führt zur Tabelle. Dieselben zwei Seiten öffnen sich über der Tabelle in jeder der obigen Oberflächen." }
+  - { text: "New task", translation: "Neue Aufgabe" }
+  - { text: "Create task", translation: "Aufgabe anlegen" }
+  - { text: "Quick edit", translation: "Schnell bearbeiten" }
+  - { text: "New post", translation: "Neuer Beitrag" }
+  - { text: "Edit post", translation: "Beitrag bearbeiten" }
+  - { text: "New person", translation: "Neue Person" }
+  - { text: "Person", translation: "Person" }
+  - { text: "A column's create button opens the new-post page with that column's status filled in, and the board's own button starts an empty form.", translation: "Die Anlegen-Schaltfläche einer Spalte öffnet die Seite für einen neuen Beitrag mit dem Status der Spalte, die eigene Schaltfläche der Tafel startet ein leeres Formular." }
 
   # Filters.
   - { text: Every filter the collection accepts, translation: "Jeder Filter, den die Sammlung akzeptiert" }

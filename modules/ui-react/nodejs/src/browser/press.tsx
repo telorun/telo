@@ -1,5 +1,5 @@
 import { useContext, type ReactNode } from "react";
-import { DestinationAnchor, resolveDestination, type DestinationWire } from "./destination.js";
+import { DestinationAnchor, DetailContext, resolveDestination, type DestinationWire } from "./destination.js";
 import { useHostStore } from "./host.js";
 import { linkAddress } from "./link-address.js";
 import { RootsContext } from "./renderer-context.js";
@@ -22,10 +22,13 @@ export function Press({ press, roots }: { press: PressSpec; roots?: Readonly<Rec
   const store = useHostStore();
   const scope = useContext(RootsContext);
   const text = useText();
+  const detailOf = useContext(DetailContext);
   const over = roots ?? scope;
   const destination = resolveDestination(press.to, over, "'press' to");
   const href = destination === undefined ? undefined : linkAddress(store, destination.address);
   if (destination === undefined || href === undefined) return null;
   const label = text(press.label, undefined, over);
-  return <DestinationAnchor destination={destination} href={href} naming={label} data-telo-part="press" aria-label={label} />;
+  const row = over.row;
+  const detail = detailOf !== null && row !== null && typeof row === "object" ? detailOf(row as Record<string, unknown>) : undefined;
+  return <DestinationAnchor destination={destination} href={href} naming={label} detail={detail} data-telo-part="press" aria-label={label} />;
 }

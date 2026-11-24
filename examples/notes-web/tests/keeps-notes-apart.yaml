@@ -88,9 +88,16 @@ steps:
     invoke: !ref visit
     inputs:
       url: !cel "'http://127.0.0.1:8867/api/notes/' + steps.id.result"
-      method: PUT
+      method: PATCH
       headers: { cookie: !cel "steps.alice.result.cookie", origin: http://127.0.0.1:8867 }
       body: { text: !cel "'buy oat milk ' + steps.tag.result" }
+  - name: clears
+    invoke: !ref visit
+    inputs:
+      url: !cel "'http://127.0.0.1:8867/api/notes/' + steps.id.result"
+      method: PATCH
+      headers: { cookie: !cel "steps.alice.result.cookie", origin: http://127.0.0.1:8867 }
+      body: { text: null }
   - name: bobReads
     invoke: !ref visit
     inputs:
@@ -100,7 +107,7 @@ steps:
     invoke: !ref visit
     inputs:
       url: !cel "'http://127.0.0.1:8869/api/notes/' + steps.id.result"
-      method: PUT
+      method: PATCH
       headers: { cookie: !cel "steps.bob.result.cookie", origin: http://127.0.0.1:8869 }
       body: { text: mine now }
   - name: bobDeletes
@@ -140,6 +147,7 @@ steps:
         created: { status: !cel "steps.created.result.status", owner: !cel "steps.created.result.body.owner" }
         alicesList: { total: !cel "steps.alicesList.result.body.total", text: !cel "steps.alicesList.result.body.rows[0].text.split(' ')[1]" }
         edited: { status: !cel "steps.edited.result.status", text: !cel "steps.edited.result.body.text.split(' ')[1]" }
+        clears: { status: !cel "steps.clears.result.status", issues: !cel "steps.clears.result.body.data.issues" }
         bob: { reads: !cel "steps.bobReads.result.status", edits: !cel "steps.bobEdits.result.status", deletes: !cel "steps.bobDeletes.result.status", lists: !cel "steps.bobsList.result.body.total" }
         anonymous: !cel "steps.anonymous.result.status"
         aliceReads: { status: !cel "steps.aliceReads.result.status", text: !cel "steps.aliceReads.result.body.text.split(' ')[1]" }
@@ -149,6 +157,7 @@ steps:
         created: { status: 201, owner: alice }
         alicesList: { total: 1, text: milk }
         edited: { status: 200, text: oat }
+        clears: { status: 400, issues: [{ pointer: /body/text, keyword: required, params: { missingProperty: text } }] }
         bob: { reads: 404, edits: 404, deletes: 404, lists: 0 }
         anonymous: 401
         aliceReads: { status: 200, text: oat }

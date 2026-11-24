@@ -34,8 +34,8 @@ metadata:
   name: Collection
   description: >-
     One list endpoint of records: the shape of a record, the property
-    identifying it, the filters (property and operator), sort orders and facets
-    the endpoint accepts, an optional text search over string properties, and
+    identifying it, the bodies a create and a merge-patch update accept, the
+    filters (property and operator), sort orders and facets the endpoint accepts, an optional text search over string properties, and
     relations from a property to another collection's records. Publishes what
     it declares; refuses a filter, sort, facet, search or relation that
     contradicts the record shape.
@@ -46,6 +46,7 @@ schema:
   required: [model, query]
   examples:
     - model: !ref Post
+      schemas: { create: !ref PostDraft, update: !ref PostDraft }
       query:
         filters:
           - { property: title, operator: contains }
@@ -117,6 +118,25 @@ schema:
             additionalProperties: false
             required: [property]
             properties: { property: { type: string } }
+    schemas:
+      title: Schemas
+      description: >-
+        The body each write accepts, as `Telo.Type` shapes: `create` for `POST
+        <basePath>` and `update` for `PATCH <basePath>/<key>`. A write left out
+        is one the collection does not accept.
+      type: object
+      additionalProperties: false
+      properties:
+        create:
+          title: Create
+          description: The body that creates a record, without the key.
+          x-telo-ref: { kind: Telo.Type, use: schema }
+        update:
+          title: Update
+          description: >-
+            The shape a record must hold once a merge patch is applied to it,
+            without the key; a property it requires cannot be cleared.
+          x-telo-ref: { kind: Telo.Type, use: schema }
     relations:
       title: Relations
       description: >-

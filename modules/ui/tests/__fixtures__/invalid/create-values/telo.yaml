@@ -1,0 +1,32 @@
+# What a listing's `create` press reads of the values a layout proposes.
+kind: Telo.Application
+metadata: { name: UiInvalidCreateValuesApp, version: 1.0.0 }
+imports: { Ui: ../../../../, DataModel: ../../../../../data-model }
+---
+kind: Telo.JsonSchema
+metadata: { name: Task }
+schema: { type: object, required: [id, title], properties: { id: { type: string }, title: { type: string }, status: { type: string } } }
+---
+kind: Ui.Page
+metadata: { name: newTaskPage }
+path: /tasks/new
+title: New task
+children:
+  # CEL_UNKNOWN_IDENTIFIER — `values` is bound by a `create` press alone.
+  - { type: link, text: Elsewhere, to: { kind: Ui.Navigate, href: { path: /tasks/new, queryParams: { status: !cel "values.status" } } } }
+---
+kind: Ui.Listing
+metadata: { name: tasks }
+presentation:
+  kind: Ui.CollectionPresentation
+  source:
+    kind: Ui.CollectionSource
+    basePath: /api/tasks
+    collection: { kind: DataModel.Collection, model: !ref Task, query: { filters: [], sort: [] } }
+model: !ref Task
+create:
+  to:
+    kind: Ui.OpenPage
+    page: !ref newTaskPage
+    # `status` is a member of the model, read as one that may be missing: fine. `nope` is no member of it.
+    queryParams: { status: !cel "values.status", other: !cel "values.nope" }

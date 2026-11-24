@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata:
+  name: UiCreateValuesTest
+  version: 1.0.0
+  description: |
+    The values a layout proposes for a new record are read by the listing's
+    `create` press as `values`, typed as the listing's model with every member
+    optional: a member the model has is read, one it has not is refused, and
+    no other place binds the root.
+imports: { Assert: ../../assert }
+targets:
+  - !ref refused
+---
+kind: Assert.Manifest
+metadata: { name: refused }
+source: ./__fixtures__/invalid/create-values/telo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "Ui.Page/newTaskPage: !cel: 'values' is not available here — Ui.Page/newTaskPage withholds it: a destination reads only the roots bound where it is written"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Listing/tasks: !cel: 'values.nope' is not defined (available: id, title, status)"
+  runFails: "'values.nope' is not defined"

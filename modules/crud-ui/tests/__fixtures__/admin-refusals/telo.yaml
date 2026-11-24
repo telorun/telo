@@ -1,11 +1,8 @@
 # An application that writes each of `CrudUi.Admin`'s presentation keys
 # wrongly, one mistake per resource: a key none of them has, a value outside
-# the set an opener or the listing takes, and a resource at `surface` that is
-# no surface.
+# the set the listing takes, and a destination that is no destination.
 kind: Telo.Application
-metadata:
-  name: CrudUiAdminRefusalsApp
-  version: 1.0.0
+metadata: { name: CrudUiAdminRefusalsApp, version: 1.0.0 }
 imports:
   CrudUi: ../../../
   Crud: ../../../../crud
@@ -25,17 +22,12 @@ schema:
   type: object
   required: [title]
   additionalProperties: false
-  properties:
-    title: { type: string }
+  properties: { title: { type: string } }
 ---
 kind: Telo.JsonSchema
 metadata: { name: TaskRecord }
 extends: Task
-schema:
-  type: object
-  required: [id]
-  properties:
-    id: { type: integer }
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
 ---
 kind: Crud.Collection
 metadata: { name: tasks }
@@ -57,29 +49,22 @@ filters: { sumary: chips }
 kind: CrudUi.Admin
 metadata: { name: createKey }
 source: !ref tasksSource
-create: { afterSubmitt: again }
+create: { to: { kind: Ui.Navigate, href: /new }, labell: New }
 ---
 kind: CrudUi.Admin
 metadata: { name: editKey }
 source: !ref tasksSource
-edit: { unsavd: confirm }
+edit: { to: { kind: Ui.Navigate, href: /edit }, labell: Change }
 ---
 kind: CrudUi.Admin
-metadata: { name: createAfter }
+metadata: { name: createDestination }
 source: !ref tasksSource
-create: { afterSubmit: later }
----
-# `again` is a create's: an edit has no next record to start.
-kind: CrudUi.Admin
-metadata: { name: editAfter }
-source: !ref tasksSource
-edit: { afterSubmit: again }
+create: { to: { kind: Ui.LocalStore } }
 ---
 kind: CrudUi.Admin
-metadata: { name: createSurface }
+metadata: { name: editNoDestination }
 source: !ref tasksSource
-create:
-  surface: { kind: Ui.LocalStore }
+edit: { label: Change }
 ---
 kind: CrudUi.Admin
 metadata: { name: pagingValue }

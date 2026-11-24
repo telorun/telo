@@ -45,6 +45,10 @@ steps:
     invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/records" }
   - name: nodes
     value: !cel "steps.page.result.body.children[0].children"
+  - name: newPost
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/records/posts/new" }
+  - name: newEmployee
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/records/employees/new" }
 
   # Every way the page draws posts names the author through one relation: the
   # table's author column, the bar's author field and the form's picker read
@@ -58,11 +62,11 @@ steps:
         relation: !cel "steps.nodes.result[2].content.relations.authorId"
         column: !cel "steps.nodes.result[2].content.layout.columns.filter(c, c.value.path[0] == 'authorId').map(c, c.relation)"
         barField: !cel "steps.nodes.result[2].fields.filter(f, f.property == 'authorId').map(f, [f.operator, f.values, f.options == steps.nodes.result[2].content.relations.authorId])"
-        picker: !cel "steps.nodes.result[2].content.create.form.fields.filter(f, f.property == 'authorId').map(f, [f.type, f.options == steps.nodes.result[2].content.relations.authorId])"
-        layouts: !cel "[2, 5, 8, 11, 17].map(i, cel.bind(l, i == 2 || i == 5 ? steps.nodes.result[i].content : steps.nodes.result[i], [l.basePath, l.layout.type]))"
+        picker: !cel "steps.newPost.result.body.children[0].fields.filter(f, f.property == 'authorId').map(f, [f.type, f.options == steps.nodes.result[2].content.relations.authorId])"
+        layouts: !cel "[2, 5, 9, 12, 18].map(i, cel.bind(l, i == 2 || i == 5 ? steps.nodes.result[i].content : steps.nodes.result[i], [l.basePath, l.layout.type]))"
       expected:
         title: { lang: en, message: [Related records] }
-        kinds: [text, text, filters, text, text, filters, text, text, listing, text, text, listing, text, text, filters, text, text, listing, text, text, menu, listing]
+        kinds: [text, text, filters, text, text, filters, text, text, text, listing, text, text, listing, text, text, filters, text, text, listing, text, text, menu, listing]
         relation:
           type: collection
           schema:
@@ -99,10 +103,10 @@ steps:
       actual:
         present: !cel "steps.nodes.result[5].fields.map(f, [f.property, f.values])"
         cards: !cel "cel.bind(l, steps.nodes.result[5].content, [l.paging, l.layout.size, l.compact.type, l.layout.reads])"
-        board: !cel "cel.bind(l, steps.nodes.result[8].layout, [l.reads.groups.property, l.reads.groups.values, l.reads.groups.enum, l.move.action.request.target.path.value, l.move.inputs])"
-        calendar: !cel "cel.bind(l, steps.nodes.result[11].layout, [l.period, l.reads.span])"
-        authors: !cel "[steps.nodes.result[14].content.basePath, steps.nodes.result[14].content.layout.type]"
-        tree: !cel "cel.bind(l, steps.nodes.result[17], [l.layout.reads.parent, l.relations.managerId.basePath, l.create.form.fields.filter(f, f.property == 'managerId').map(f, f.type)])"
+        board: !cel "cel.bind(l, steps.nodes.result[9].layout, [l.reads.groups.property, l.reads.groups.values, l.reads.groups.enum, l.move.action.request.target.path.value, l.move.inputs])"
+        calendar: !cel "cel.bind(l, steps.nodes.result[12].layout, [l.period, l.reads.span])"
+        authors: !cel "[steps.nodes.result[15].content.basePath, steps.nodes.result[15].content.layout.type]"
+        tree: !cel "cel.bind(l, steps.nodes.result[18], [l.layout.reads.parent, l.relations.managerId.basePath, steps.newEmployee.result.body.children[0].fields.filter(f, f.property == 'managerId').map(f, f.type)])"
       expected:
         present: [[authorId, present], [status, present]]
         cards: [scroll, small, list, {}]

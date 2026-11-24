@@ -19,7 +19,7 @@ type Mark = (node: SpecNode) => SpecNode;
  * with `fill: true` or holds a filling node in the room it passes down — its
  * children, a bar's regions, a tab's children, a split view's aside and content,
  * a query's lists, a filter bar's content. A tree drawn in a box of its own — a
- * surface's form, a listing's empty tree, an action's answers, a row action's
+ * listing's empty tree, an action's answers, a row action's
  * action, a menu's items, a split view's actions, a chat's header — is decided
  * inside that box and fills nothing around it, and so is a navigation bar's.
  * Linear in the size of the tree.
@@ -62,10 +62,6 @@ export function filledNode(node: SpecNode): SpecNode {
   }
   for (const key of ["empty", "result", "failure"]) {
     if (!(PASSING_TREES[node.type] ?? []).includes(key) && isNode(node[key])) out[key] = own(node[key]);
-  }
-  for (const key of ["create", "edit"]) {
-    const opener = node[key] as { form?: unknown } | null | undefined;
-    if (node.type === "listing" && opener && isNode(opener.form)) out[key] = { ...opener, form: own(opener.form) };
   }
   if (Array.isArray(node.rowActions)) {
     out.rowActions = (node.rowActions as Record<string, unknown>[]).map((entry) => (isNode(entry.action) ? { ...entry, action: own(entry.action) } : entry));

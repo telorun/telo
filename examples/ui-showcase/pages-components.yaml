@@ -52,7 +52,7 @@ content:
                   priority: !cel "row.priority"
                   blocked: !cel "row.blocked"
             - value: !cel "row.assigneeEmail"
-        edit: { form: !ref taskForm }
+        edit: { to: { kind: Ui.OpenPage, page: !ref taskPage, pathParams: { id: !cel "row.id" } } }
         delete: true
 
     # ---- Its stylesheet ----

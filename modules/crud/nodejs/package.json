@@ -11,7 +11,9 @@
   },
   "dependencies": {
     "@telorun/data-model": "workspace:*",
-    "@telorun/sql": "workspace:*"
+    "@telorun/sql": "workspace:*",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1"
   },
   "devDependencies": {
     "@telorun/sdk": "workspace:*",

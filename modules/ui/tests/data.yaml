@@ -83,15 +83,17 @@ model:
   schema:
     type: object
     properties: { title: { type: string }, detail: { type: string } }
-presentation:
-  kind: Ui.CollectionPresentation
-  source:
-    kind: Ui.CollectionSource
-    basePath: /api/notes
-    collection:
-      kind: DataModel.Collection
-      model: { kind: Telo.JsonSchema, schema: { type: object, required: [id], properties: { id: { type: string } } } }
-      query: { filters: [], sort: [] }
+record:
+  presentation:
+    kind: Ui.CollectionPresentation
+    source:
+      kind: Ui.CollectionSource
+      basePath: /api/notes
+      collection:
+        kind: DataModel.Collection
+        schemas: { create: { kind: Telo.JsonSchema, schema: { type: object } } }
+        model: { kind: Telo.JsonSchema, schema: { type: object, required: [id], properties: { id: { type: string } } } }
+        query: { filters: [], sort: [] }
 fields:
   - title
   - kind: Ui.InputField

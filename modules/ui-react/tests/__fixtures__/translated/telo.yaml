@@ -53,12 +53,13 @@ texts:
 kind: Ui.Form
 metadata: { name: invoiceForm }
 model: !ref Invoice
-presentation:
-  kind: Ui.CollectionPresentation
-  source:
-    kind: Ui.CollectionSource
-    basePath: /api/invoices
-    collection: { kind: DataModel.Collection, model: !ref Invoice, key: number, query: { filters: [], sort: [] } }
+record:
+  presentation:
+    kind: Ui.CollectionPresentation
+    source:
+      kind: Ui.CollectionSource
+      basePath: /api/invoices
+      collection: { kind: DataModel.Collection, model: !ref Invoice, key: number, schemas: { create: !ref Invoice }, query: { filters: [], sort: [] } }
 ---
 kind: Ui.View
 metadata: { name: helpLink }

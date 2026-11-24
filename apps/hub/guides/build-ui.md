@@ -9,15 +9,13 @@ Rules:
 - **No frontend code, and no `JS.Script`.** Everything a screen does is a
   declared kind; a component of your own is a library's browser entry.
 - **Exact schemas and `imports:` lines** of `ui`, `ui-react`, `http-server`,
-  `data-model` and, for an admin screen, `crud` and `crud-ui` are on the
-  [hub](https://hub.telo.run) (`get_kinds`).
-- **The API comes first.** A screen calls routes, never a database or an
-  invocable: declare the routes, then the screen.
+  `data-model` and (admin screens) `crud` / `crud-ui`: the [hub](https://hub.telo.run) (`get_kinds`).
+- **The API comes first.** A screen calls routes, never a database: declare the routes, then the screen.
 
 ## When a screen is the answer
 
 Reach for `ui` when a person browses, filters, creates, edits or deletes
-records, or runs an operation. A static page is a template module.
+records, or runs an operation.
 
 The **application** imports `ui`, `ui-react` and `http-server`, mounts the
 renderer on its server and owns the pages. A **library** describing its own
@@ -166,9 +164,9 @@ parameter may read a nullable value: null leaves the address unresolved.
 
 **Where a press goes.** `to` holds a destination: `{ kind: Ui.Navigate, href }`
 moves to an address; `{ kind: Ui.OpenPage, page: !ref <page>, pathParams?,
-queryParams?, surface? }` opens a listed page over this one in a `Ui.Dialog` or
-`Ui.Drawer` (`surface` omitted: the one it is pressed in, else a dialog;
-`address: { name: post }` keeps it as `_telo.page.post`). `to` sits on
+queryParams?, surface? }` opens a listed page over this one in any
+`Ui.Surface` (`Ui.Dialog` when omitted; `address: { name: post }` keeps it as
+`_telo.open.post`). `to` sits on
 `link`, menu items, `value`, `list` and table columns, relations,
 `Ui.CollectionOptions`, navigation `link` entries and `onSuccess`. A region —
 `box`, `stack`, `columns`, a listing's records, `CrudUi.Admin`'s rows — takes
@@ -176,10 +174,9 @@ queryParams?, surface? }` opens a listed page over this one in a `Ui.Dialog` or
 values: { title: !cel "row.title" } }`). A destination reads only the roots
 bound where it is written.
 
-**Per request.** In a page's `children` and a layout's regions, `when` and leaf values
-(`text`, `src`, `alt`, `markup`, `style`; never a `to`) may be `!cel`
-over `request.headers` (lower-case names; test with `in` first) and
-`request.ip`. Structure and every `ref` stay literal.
+**Per request.** In a page's `children` and a layout's regions, `when` and leaf
+values (`text`, `src`, `alt`, `markup`, `style`; never a `to`) may be `!cel` over
+`request.headers` (lower-case; test with `in`) and `request.ip`.
 
 ## Shapes first
 
@@ -198,7 +195,7 @@ schema:
   properties: { text: { type: string, title: Task, minLength: 1 }, status: { title: Status, enum: [open, blocked, done] }, dueOn: { type: string, title: Due, format: date } }
 ```
 
-`Task` is `NewTask` (`extends:`) plus a required integer `id`.
+`Task` is `NewTask` (`extends:`) plus a required `id`.
 
 ## Collections and listings
 
@@ -232,12 +229,11 @@ pageSize? } }` — `label`, `hint` and `to` read `row`, the related record. A
 presentation holds no keys: a related value is always the target's `key`.
 
 A `Ui.Listing` draws records: `presentation`, `model` (row shape), `filters`
-(fixed equalities), `query`, `pageSize`, `paging`, `rowStyle`, `create` / `edit`, `delete`, `rowActions`, `empty`,
-`layout` (a kind under `Ui.ListingLayout`; default `Ui.TableLayout`, a column
+(fixed equalities), `query`, `pageSize`, `paging`, `rowStyle`, `create` / `edit` (presses), `delete`, `rowActions`, `empty`, `layout` (a kind under `Ui.ListingLayout`; default `Ui.TableLayout`, a column
 per model property but the key) and `compact` (the layout below `compactBelow`). Also `sort: { by?: { property,
 direction }, choosable }` (`choosable: false` fixes the order), `show: { count }` and
 `rowActionsDisplay`. `press` says what pressing a
-record does (editing then stays on its edit button).
+record does (left out, it does what `edit` does).
 
 - Layouts: `Ui.TableLayout` (`columns`), `Ui.ListLayout`, `Ui.CardLayout`
   (`content`, `size`), `Ui.BoardLayout` (`groups`), `Ui.CalendarLayout` and
@@ -248,8 +244,7 @@ record does (editing then stays on its edit button).
   filters. `telo check` refuses a layout the collection cannot serve (an
   unknown property, a missing `eq`, range or `parent` filter, `present` off
   `facets`). `Ui.ListLayout` takes `frame` (`framed` | `flush`).
-- `move` is a bound action over `row` and `to`: dragging a card, rescheduling
-  an event or reparenting a tree item runs it.
+- `move` is a bound action over `row` and `to`: dragging a card or event runs it.
 - `row.<property>` in a `value`, a style rule's `by` or a `props` entry is an
   accessor: a plain chain or a literal. A data-dependent style is a rule
   `{ by, cases, default? }`.
@@ -262,10 +257,10 @@ record does (editing then stays on its edit button).
   `<property>.absent=true|false`, answering `{ rows, total, next }` (`next`
   null on the last page). `?facet=<property>` plus filters answers
   `{ values: [{ value, count }], next }`.
-- `POST <basePath>` creates; `GET`, `PUT` and `DELETE <basePath>/<key>` read,
-  replace (the whole record) and delete one record.
-- A write body holds only properties with a value; a `null` or wrong JSON type
-  is a 400 naming it. A row read is valid against the model.
+- `POST <basePath>` creates; `GET`, `PATCH` (merge patch; `null` clears) and
+  `DELETE <basePath>/<key>` read, edit and delete one record; an `ETag` is
+  sent back as `If-Match`, a 412 keeps the form's input.
+- A create body holds only properties with a value; a wrong JSON type is a 400.
 - Errors are `application/problem+json`; a 400's `data.issues` are `{ pointer,
   keyword, params }`, one at `/body/<property>` marks that field.
 - Query keys `limit`, `cursor`, `sort`, `facet`, `search` and `_telo…` are reserved.
@@ -321,19 +316,16 @@ content: { type: composite, ref: !ref taskList }
 
 ## Forms and where they open — `Ui.Form` and surfaces
 
-A `Ui.Form` names a `model` (write shape) and the `presentation` whose source
-it writes to; `fields` left out is one field per enterable property (a
+A `Ui.Form` names a `model` (write shape) and `record: { presentation, key? }`,
+the presentation whose source it writes to and, to edit, a chain to the stored
+record's key; `fields` left out is one field per enterable property (a
 scalar, or a list of scalars). An entry is a property name (control derived
 from the model) or a **field kind**: `Ui.InputField` (`control: select | options |
 toggle | slider | tags`), `Ui.ChoiceField` / `Ui.PickerField` over an option
-source, `Ui.DateRangeField` (`presets`, `initialPreset`). Each judges its own
-fit, so `telo check` refuses a control the property cannot take.
+source, `Ui.DateRangeField` (`presets`, `initialPreset`). `telo check` refuses a control the property cannot take.
 
 ```yaml
-fields:
-  - title
-  - { kind: Ui.PickerField, property: ownerId, options: !ref people, group: who }
-  - { kind: Ui.DateRangeField, property: period }
+fields: [title, { kind: Ui.PickerField, property: ownerId, options: !ref people, group: who }, { kind: Ui.DateRangeField, property: period }]
 groups: [{ name: who, label: People }]
 ---
 kind: Ui.CollectionOptions
@@ -346,36 +338,45 @@ filters: { team: !cel "values.team" }
 search: { property: name, operator: contains }
 ```
 
-`value` is a property the collection filters with `in`; `filters` may read the
-form's `values`. A relation property is entered with a picker unless you write
+`value` is a property the collection filters with `in`; `filters` may read `values`. A relation property is entered with a picker unless you write
 the field. `groups` keep fields together; `state: { key, address? }` keeps
 values in the address or a store.
 
-A listing opens a form through `create` and `edit`, each an object:
+A record's screens are **pages**. The edit page reads the record in a `query`
+node and holds the form; the listing's `create` / `edit` open the pages:
 
 ```yaml
+kind: Ui.Page
+metadata: { name: taskPage }
+path: /tasks/{id}
+children:
+  - type: query
+    query: { kind: Ui.Query, model: !ref Task, url: { path: "/api/tasks/{id}", pathParams: { id: !cel "params.id" } } }
+    content:
+      - type: composite
+        ref: { kind: Ui.Form, model: !ref NewTask, record: { presentation: !ref tasksPresentation, key: !cel "data.id" }, initialValues: !cel "data" }
+---
 kind: Ui.Listing
 metadata: { name: taskTable }
 presentation: !ref tasksPresentation
 model: !ref Task
-create:
-  form: { kind: Ui.Form, model: !ref NewTask, presentation: !ref tasksPresentation }
-  surface: { kind: Ui.Drawer, side: end, compact: { kind: Ui.Dialog, size: full } }
-  afterSubmit: again
-edit: { form: { kind: Ui.Form, model: !ref NewTask, presentation: !ref tasksPresentation }, surface: { kind: Ui.Panel, address: { name: task } } }
-delete: true
+create: { to: { kind: Ui.OpenPage, page: !ref newTaskPage, queryParams: { status: !cel "values.status" } } }
+edit: { to: { kind: Ui.OpenPage, page: !ref taskPage, pathParams: { id: !cel "row.id" }, surface: { kind: Ui.Panel, address: { name: task } } } }
 ```
 
-- `surface` is a **kind**: `Ui.Dialog`, `Ui.Drawer`, `Ui.Popover` (the
-  overlays), `Ui.InlineSurface`, `Ui.Panel` or `Ui.PageSurface`; an
-  inapplicable key is a `SCHEMA_VIOLATION`. `address: { name }` puts the open
-  form in the page address; give a listing's `create` and `edit` the **same**
-  name, so one query key (`_telo.open.<name>`) holds whichever form is open
-  (empty for create, the row's key for edit). `compact` is the overlay used
-  below `compactBelow`.
-- `afterSubmit` is `close`, `keep`, and on `create` also `again`; `unsaved`
-  is `confirm` or `discard`.
-- Entries sharing a `state` key hold each kept property as one value.
+- The create page holds the same form with `record: { presentation }` (no
+  `key`: it `POST`s), `afterSubmit: again` and `initialValues: !cel "query"`;
+  its `query: { title: { type: string }, … }` declares every property the
+  model requires. `create` binds `values` (what a board column proposes, `{}`
+  from the listing's button) for `queryParams`.
+- `key` is held to the collection's key type and makes the form `PATCH` the
+  changed properties; the form is held to the collection's `schemas.update` /
+  `schemas.create` (`UI_WRITE_*`) and owns `afterSubmit` (`close`, `keep`,
+  `again`) and `unsaved` (`confirm`, `discard`).
+- `surface` is a **kind**: `Ui.Dialog` (default), `Ui.Drawer`, `Ui.Popover`,
+  `Ui.InlineSurface`, `Ui.Panel`; `address: { name }` reopens it after a
+  reload, `compact` is the overlay below `compactBelow`.
+- Entries sharing a `state` key hold a kept property as one value.
 - **`ui` owns every default.** Leave a key out; never restate a default.
 
 ## Actions — a button that runs an operation
@@ -385,15 +386,10 @@ trees drawn from what the route answered. It is reached by URL only:
 `request: { method, target }`, `method` `POST` (default), `PUT`, `PATCH` or
 `DELETE` — no `!ref` to a handler.
 
-Give the route and the action the **same two shapes** (`ReportAnswer` is
-`{ files: [{ name, url }] }`):
+Give the route and the action the **same two `Telo.JsonSchema` shapes**
+(`ReportRequest` is `{ month }`, `ReportAnswer` `{ files: [{ name, url }] }`):
 
 ```yaml
-kind: Telo.JsonSchema
-metadata: { name: ReportRequest }
-schema:
-  { type: object, required: [month], properties: { month: { type: string, title: Month, pattern: "^[0-9]{4}-[0-9]{2}$" } } }
----
 kind: Ui.Action
 metadata: { name: generate }
 inputModel: !ref ReportRequest
@@ -473,10 +469,8 @@ by a `query` node. A sign-in gate is an inline query plus conditions:
     url: { path: /api/auth, queryParams: { reason: !cel "query.signin" } }
     reloadOn: [focus, unauthorized]
   content:
-    - type: stack
-      children:
-        - { type: value, value: !cel "data.email", shown: { at: !cel "data.authorized", matches: { const: true } } }
-        - { type: text, text: Sign in., shown: { at: !cel "data.authorized", matches: { const: false } } }
+    - { type: value, value: !cel "data.email", shown: { at: !cel "data.authorized", matches: { const: true } } }
+    - { type: text, text: Sign in., shown: { at: !cel "data.authorized", matches: { const: false } } }
 ```
 
 - A named query (`metadata: { name: session }`) several nodes place (`query:
@@ -491,8 +485,7 @@ by a `query` node. A sign-in gate is an inline query plus conditions:
   focus, `[unauthorized]` on a 401 in the node's trees.
 - A condition is `{ at, matches }`: `at` a plain chain over the roots in
   scope, `matches` a schema in a closed profile (`type`, `const`, `enum`,
-  `not`, `allOf`, `anyOf`, `required`, `properties`, `items`, `minItems`,
-  `maxItems`, `uniqueItems`, `minLength`, `maxLength`, `pattern`, bounds). A missing value never matches, even under `not`; test absence on the
+  `not`, `allOf`, `anyOf`, `required`, `properties`, `items`, `minItems`, length and numeric bounds, `pattern`). A missing value never matches, even under `not`; test absence on the
   parent: `{ at: !cel "data", matches: { not: { required: [email] } } }`.
 - Roots: `data` (a query node's `content`), `error` (its `failure`), `query`,
   `params`, `values` (a form's or action's fields), `row` (a `list` column).
@@ -527,10 +520,9 @@ it plus `placeholder`, `starters`, `show`, `composer`, `buttons` and `header` (n
 
 ### Ui.SplitView
 
-A composite placing `aside` by `content`, `aside` the `Ui.Aside` a layout's is:
-`side`, `size`, `label` (required), `collapse` (with a kept `state`), `compact`
-(default a `Ui.Drawer` below `compactBelow`), `frame`, `toggle`, `actions?`,
-`content`.
+A composite placing `aside` by `content`; `aside` is the `Ui.Aside` a layout's
+is: `side`, `size`, `label` (required), `collapse` (with a kept `state`),
+`compact` (default a `Ui.Drawer`), `frame`, `toggle`, `actions?`, `content`.
 Trees hold no root: put `value` / `list` in a composite that declares one.
 
 ## An admin screen over one table — `crud` and `crud-ui`
@@ -543,14 +535,14 @@ halves from one declaration.
   holding `model` and `schemas: { list, create, update }`, all required: `model`
   and `list` declare a required `id`; `create` and `update` leave it out. A
   relation contradicting the table's foreign key is refused before the app runs.
-- `Crud.Api` mounts list / read / create / replace / delete over `collection:`
+- `Crud.Api` mounts list / read / create / patch / replace / delete over `collection:`
   (the whole collection contract; declare the table in your SQL backend).
 - `CrudUi.CollectionSource` is a `Ui.CollectionSource` over a `Crud.Collection`
   (`collection`, `basePath`).
 - `CrudUi.Admin` is the whole screen (filter bar, sortable paged listing,
-  create and edit forms, confirmed delete) from `source` and, optionally,
-  `relations`, `filters` (the bar's `policy`), `create` and `edit` (`{ surface?,
-  afterSubmit?, unsaved? }`), `press`, `paging`, `layout` and `compact`; a key left out
+  create and edit presses, confirmed delete) from `source` and, optionally,
+  `relations`, `filters` (the bar's `policy`), `create` and `edit` (presses to
+  your pages; no form is generated), `press`, `paging`, `layout` and `compact`; a key left out
   takes the listing's default.
 
 ```yaml
@@ -582,9 +574,9 @@ name a layout or surface.
 
 **When to hand-build instead.** `CrudUi.Admin` has no key for chosen columns,
 a row style, a page size, fewer filters, a filter's `pinned` / `control` /
-`default` / `values`, presets, form fields or row actions. Replace it with a
-`Ui.CollectionPresentation`, two `Ui.Form`s, a `Ui.Listing` over the `list`
-shape and a `Ui.Filters` holding it.
+`default` / `values`, presets or row actions. Replace it with a
+`Ui.CollectionPresentation`, the create and edit pages, a `Ui.Listing` over the
+`list` shape and a `Ui.Filters` holding it.
 
 ## Themes, styling and custom components
 
@@ -592,13 +584,11 @@ shape and a `Ui.Filters` holding it.
   optionally control sets): `!ref UiReact.defaultTheme`, another module's
   theme, or `{ kind: UiReact.Theme, stylesheets: [!module-path ./look.css] }`. `tokens:` is the brand over it: a
   `Ui.DesignTokens` of a closed set (`color.*`, `radius.*`, `space.*`,
-  `shadow.*`, `font.*`, `font-size.*`, `line-height.*`, `width.page`,
-  `space.page`), each a CSS value string, or a list of `{ tokens, when? }`.
+  `font.*`, `width.page`, …), each a CSS value string, or a list of `{ tokens, when? }`.
 - **Control sets.** A theme's `controls` lists `UiReact.Controls` sets, each
   declared by the library shipping its browser entry; no two implement one
   control. The fifteen inline controls may be replaced in any subset, the ten
-  layer controls (`Select`, `MultiSelect`, `Combobox`, `Dialog`, `Drawer`,
-  `Popover`, `Confirmation`, `Menu`, `Tooltip`, `Navigation`) only as one unit. `ui-react-radix` exports `theme`.
+  layer controls (selects, menus, dialogs, drawers, popovers, …) only as one unit. `ui-react-radix` exports `theme`.
 - **Stylesheets.** Everything drawn carries `data-telo-part`; your unlayered
   `stylesheets` win.
 - **Custom components.** A library ships a browser entry (`abi: ui_react-1`: a
@@ -635,8 +625,8 @@ and request its documents:
   `children` the resolved nodes — `listing`, `form`, `action`, `filters`,
   `component`, or `error` with a `code` where a node could not be produced.
 - Assert node types, a listing's layout and `rowActions`, an action's
-  `request`/`fields`; call the routes with the records the page would send,
-  a refused 400 too. Give each test its own port.
+  `request`/`fields`; call the routes with what the page would send, a refused
+  400 too. Give each test its own port.
 
 ## Before you finish
 

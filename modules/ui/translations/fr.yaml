@@ -10,6 +10,7 @@ messages:
   cancel: Annuler
   close: Fermer
   newRecord: Nouveau
+  create: Créer
   edit: Modifier
   delete: Supprimer
   deleteRowQuestion: Supprimer cette ligne ?
@@ -96,6 +97,7 @@ messages:
   keepEditing: Continuer la modification
   requestUnauthorized: Vous n'êtes pas connecté, ou votre session a expiré.
   requestForbidden: Vous n'êtes pas autorisé à effectuer cette action.
+  requestPreconditionFailed: L'enregistrement a été modifié par quelqu'un d'autre. Vérifiez-le et enregistrez à nouveau.
   requestFailedStatus: La requête a échoué avec le statut {$status}.
   requestFailed: "La requête a échoué : {$reason}"
   recordRefused: L'enregistrement a été refusé.

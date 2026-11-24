@@ -1,5 +1,5 @@
 import { RuntimeError, type ResourceContext, type RuntimeResource } from "@telorun/sdk";
-import type { AcceptedQuery, JsonSchema, RelationTarget } from "./collection-types.js";
+import type { AcceptedQuery, DeclaredSchemas, JsonSchema, RelationTarget } from "./collection-types.js";
 
 /** A collection as its resource declares it, its references read. */
 export interface CollectionDeclaration {
@@ -7,12 +7,14 @@ export interface CollectionDeclaration {
   key: string;
   query: AcceptedQuery;
   relations: Record<string, RelationTarget>;
+  schemas: DeclaredSchemas;
 }
 
 type CollectionResource = RuntimeResource & {
   model?: unknown;
   key?: string;
   query?: Partial<AcceptedQuery>;
+  schemas?: Partial<Record<keyof DeclaredSchemas, unknown>>;
   relations?: Record<string, { collection?: unknown }>;
 };
 
@@ -58,8 +60,8 @@ function target(entry: { collection?: unknown }, ctx: ResourceContext, owner: st
   };
 }
 
-/** Reads a collection's own model and query and every relation's target
- *  declaration — the inputs of `collectionProblems`. */
+/** Reads a collection's own model, query and write shapes and every relation's
+ *  target declaration — the inputs of `collectionProblems`. */
 export function readCollection(resource: CollectionResource, ctx: ResourceContext, owner: string): CollectionDeclaration {
   return {
     model: modelSchema(resource.model, ctx, owner, "model"),
@@ -72,6 +74,11 @@ export function readCollection(resource: CollectionResource, ctx: ResourceContex
     },
     relations: Object.fromEntries(
       Object.entries(resource.relations ?? {}).map(([property, entry]) => [property, target(entry, ctx, owner, property)]),
+    ),
+    schemas: Object.fromEntries(
+      (["create", "update"] as const)
+        .filter((write) => resource.schemas?.[write] !== undefined && resource.schemas[write] !== null)
+        .map((write) => [write, modelSchema(resource.schemas?.[write], ctx, owner, `schemas.${write}`)]),
     ),
   };
 }

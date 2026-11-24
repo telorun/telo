@@ -1,0 +1,6 @@
+units:
+  apps/hub: Added
+body: "The build_ui guide teaches that a record's screens are pages: a Ui.Form with
+  record { presentation, key? } and initialValues on a create page and on an edit page
+  reading its record in a query node, the listing's create and edit as presses to a
+  Ui.OpenPage, and any Ui.Surface for the opened page."

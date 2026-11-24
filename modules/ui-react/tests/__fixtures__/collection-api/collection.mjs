@@ -22,9 +22,11 @@ const bare = (status, title) => ({ status, body: { type: "about:blank", title, s
 
 const compare = (a, b) => (typeof a === "number" && typeof b === "number" ? a - b : String(a ?? "").localeCompare(String(b ?? "")));
 
-/** `{ handle({ method, path, query, body }) → { status, body } }` over `rows`,
- *  where `path` is what follows the base path and `query` a URLSearchParams. */
-export function createCollection(seed, required = []) {
+/** `{ handle({ method, path, query, body, ifMatch }) → { status, body, headers? } }` over `rows`,
+ *  where `path` is what follows the base path and `query` a URLSearchParams.
+ *  An `etags` collection answers each record with a strong `ETag` and refuses a
+ *  `PATCH`, `PUT` or `DELETE` whose `If-Match` is not the record's. */
+export function createCollection(seed, required = [], { etags = true } = {}) {
   let rows = seed.map((row) => ({ ...row }));
   let nextId = Math.max(0, ...rows.map((row) => Number(row.id) || 0)) + 1;
   const properties = () => new Set(rows.flatMap((row) => Object.keys(row)).concat(required, ["id"]));
@@ -94,10 +96,13 @@ export function createCollection(seed, required = []) {
     };
   };
 
+  const tag = (row) => `"${Buffer.from(JSON.stringify(row)).toString("base64url")}"`;
+  const record = (status, row) => ({ status, body: row, ...(etags ? { headers: { etag: tag(row) } } : {}) });
+
   const missing = (record) => required.find((name) => record?.[name] === undefined || record[name] === "");
 
   return {
-    handle({ method, path, query, body }) {
+    handle({ method, path, query, body, ifMatch }) {
       const key = decodeURIComponent(path.replace(/^\//, ""));
       if (key === "") {
         if (method === "GET") return list(query);
@@ -106,17 +111,31 @@ export function createCollection(seed, required = []) {
           if (absent) return invalid(`/body/${absent}`, "required", { missingProperty: absent });
           const row = { ...body, id: nextId++ };
           rows.push(row);
-          return { status: 201, body: row };
+          return record(201, row);
         }
       }
       const index = rows.findIndex((row) => String(row.id) === key);
       if (index === -1) return bare(404, "Not Found");
-      if (method === "GET") return { status: 200, body: rows[index] };
+      if (method === "GET") return record(200, rows[index]);
+      if (etags && ifMatch !== undefined && ifMatch !== tag(rows[index]) && ["PATCH", "PUT", "DELETE"].includes(method)) {
+        return { status: 412, body: { type: "about:blank", title: "Precondition Failed", status: 412, code: "ERR_CRUD_PRECONDITION_FAILED" } };
+      }
+      if (method === "PATCH") {
+        const merged = { ...rows[index] };
+        for (const [name, value] of Object.entries(body ?? {})) {
+          if (value === null) delete merged[name];
+          else merged[name] = value;
+        }
+        const absent = missing(merged);
+        if (absent) return invalid(`/body/${absent}`, "required", { missingProperty: absent });
+        rows[index] = { ...merged, id: rows[index].id };
+        return record(200, rows[index]);
+      }
       if (method === "PUT") {
         const absent = missing(body);
         if (absent) return invalid(`/body/${absent}`, "required", { missingProperty: absent });
         rows[index] = { ...body, id: rows[index].id };
-        return { status: 200, body: rows[index] };
+        return record(200, rows[index]);
       }
       if (method === "DELETE") {
         rows.splice(index, 1);
@@ -129,7 +148,7 @@ export function createCollection(seed, required = []) {
 
 export const Collection = {
   async create(resource) {
-    const collection = createCollection(resource.rows, resource.required ?? []);
+    const collection = createCollection(resource.rows, resource.required ?? [], { etags: resource.etags !== false });
     return {
       register(app, prefix) {
         const base = prefix.replace(/\/+$/, "");
@@ -140,13 +159,15 @@ export const Collection = {
             path: url.pathname.slice(base.length),
             query: url.searchParams,
             body: request.body,
+            ifMatch: request.headers["if-match"],
           });
           reply.code(answer.status);
+          for (const [name, value] of Object.entries(answer.headers ?? {})) reply.header(name, value);
           if (answer.status >= 400) reply.header("content-type", "application/problem+json; charset=utf-8");
           return answer.body === undefined ? reply.send() : reply.send(answer.body);
         };
         app.route({ method: ["GET", "POST"], url: base === "" ? "/" : base, handler: serve });
-        app.route({ method: ["GET", "PUT", "DELETE"], url: `${base}/:id`, handler: serve });
+        app.route({ method: ["GET", "PATCH", "PUT", "DELETE"], url: `${base}/:id`, handler: serve });
       },
     };
   },

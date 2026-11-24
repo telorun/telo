@@ -10,6 +10,7 @@ messages:
   cancel: キャンセル
   close: 閉じる
   newRecord: 新規
+  create: 作成
   edit: 編集
   delete: 削除
   deleteRowQuestion: この行を削除しますか？
@@ -71,6 +72,7 @@ messages:
   keepEditing: 編集を続ける
   requestUnauthorized: サインインしていないか、セッションが終了しています。
   requestForbidden: この操作を行う権限がありません。
+  requestPreconditionFailed: レコードは他のユーザーによって変更されました。内容を確認して、もう一度保存してください。
   requestFailedStatus: リクエストはステータス {$status} で失敗しました。
   requestFailed: "リクエストが失敗しました: {$reason}"
   recordRefused: レコードは拒否されました。

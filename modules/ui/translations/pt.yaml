@@ -10,6 +10,7 @@ messages:
   cancel: Cancelar
   close: Fechar
   newRecord: Novo
+  create: Criar
   edit: Editar
   delete: Excluir
   deleteRowQuestion: Excluir esta linha?
@@ -81,6 +82,7 @@ messages:
   keepEditing: Continuar editando
   requestUnauthorized: Você não está conectado ou sua sessão terminou.
   requestForbidden: Você não tem permissão para fazer isso.
+  requestPreconditionFailed: O registro foi alterado por outra pessoa. Revise-o e salve novamente.
   requestFailedStatus: A requisição falhou com o status {$status}.
   requestFailed: "A requisição falhou: {$reason}"
   recordRefused: O registro foi recusado.

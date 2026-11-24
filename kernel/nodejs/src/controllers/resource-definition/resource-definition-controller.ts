@@ -14,6 +14,7 @@ import {
   inheritedCapability,
   nearestName,
   templateTargetProblems,
+  slotKindResolverOf,
   valueSchemaFromProblems,
   type DefResolver,
   type NamedShapeLookup,
@@ -134,6 +135,13 @@ class ResourceDefinition implements ResourceInstance {
       declaredContractShape(
         ctx as unknown as ContractShapeHost,
         this.resource as unknown as Record<string, any>,
+      ),
+      slotKindResolverOf(
+        (kind, from) => resolveDef(kind, from as ResourceDefinitionManifest | undefined) as Record<string, any> | undefined,
+        (definition) =>
+          effectiveAuthorSchema(definition as unknown as ResourceDefinitionManifest, resolveDef) as
+            | Record<string, any>
+            | undefined,
       ),
     );
     if (valueSchemaProblem) {

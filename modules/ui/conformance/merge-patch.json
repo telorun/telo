@@ -1,0 +1,633 @@
+{
+  "description": "What a renderer sends to change a record: the merge patch of what a form changed, and the validator a write carries as If-Match.",
+  "rows": [
+    {
+      "name": "a form over fewer properties names only what changed",
+      "kind": "patch",
+      "properties": [
+        "title"
+      ],
+      "start": {
+        "id": 7,
+        "title": "Pay rent",
+        "notes": "before the 1st"
+      },
+      "entered": {
+        "title": "Pay the rent"
+      },
+      "patch": {
+        "title": "Pay the rent"
+      }
+    },
+    {
+      "name": "a form that changed nothing sends an empty patch",
+      "kind": "patch",
+      "properties": [
+        "title",
+        "notes"
+      ],
+      "start": {
+        "id": 7,
+        "title": "Pay rent",
+        "notes": "before the 1st"
+      },
+      "entered": {
+        "title": "Pay rent",
+        "notes": "before the 1st"
+      },
+      "patch": {}
+    },
+    {
+      "name": "an emptied field is null",
+      "kind": "patch",
+      "properties": [
+        "title",
+        "notes"
+      ],
+      "start": {
+        "id": 7,
+        "title": "Pay rent",
+        "notes": "before the 1st"
+      },
+      "entered": {
+        "title": "Pay rent"
+      },
+      "patch": {
+        "notes": null
+      }
+    },
+    {
+      "name": "an empty field the record never held is left out",
+      "kind": "patch",
+      "properties": [
+        "title",
+        "notes"
+      ],
+      "start": {
+        "id": 7,
+        "title": "Pay rent"
+      },
+      "entered": {
+        "title": "Pay rent"
+      },
+      "patch": {}
+    },
+    {
+      "name": "a null the record held is the same as nothing",
+      "kind": "patch",
+      "properties": [
+        "notes"
+      ],
+      "start": {
+        "id": 7,
+        "notes": null
+      },
+      "entered": {},
+      "patch": {}
+    },
+    {
+      "name": "a value entered where the record held none is set",
+      "kind": "patch",
+      "properties": [
+        "notes"
+      ],
+      "start": {
+        "id": 7
+      },
+      "entered": {
+        "notes": "soon"
+      },
+      "patch": {
+        "notes": "soon"
+      }
+    },
+    {
+      "name": "false and zero are values",
+      "kind": "patch",
+      "properties": [
+        "done",
+        "points"
+      ],
+      "start": {
+        "done": true,
+        "points": 3
+      },
+      "entered": {
+        "done": false,
+        "points": 0
+      },
+      "patch": {
+        "done": false,
+        "points": 0
+      }
+    },
+    {
+      "name": "a list is compared by its items, in order",
+      "kind": "patch",
+      "properties": [
+        "tags"
+      ],
+      "start": {
+        "tags": [
+          "a",
+          "b"
+        ]
+      },
+      "entered": {
+        "tags": [
+          "b",
+          "a"
+        ]
+      },
+      "patch": {
+        "tags": [
+          "b",
+          "a"
+        ]
+      }
+    },
+    {
+      "name": "an equal list is unchanged",
+      "kind": "patch",
+      "properties": [
+        "tags"
+      ],
+      "start": {
+        "tags": [
+          "a",
+          "b"
+        ]
+      },
+      "entered": {
+        "tags": [
+          "a",
+          "b"
+        ]
+      },
+      "patch": {}
+    },
+    {
+      "name": "an object is compared by its members, in any key order",
+      "kind": "patch",
+      "properties": [
+        "address"
+      ],
+      "start": {
+        "address": {
+          "city": "Oslo",
+          "zip": "0150"
+        }
+      },
+      "entered": {
+        "address": {
+          "zip": "0150",
+          "city": "Oslo"
+        }
+      },
+      "patch": {}
+    },
+    {
+      "name": "a changed object member is sent alone",
+      "kind": "patch",
+      "properties": [
+        "address"
+      ],
+      "start": {
+        "address": {
+          "city": "Oslo",
+          "zip": "0150"
+        }
+      },
+      "entered": {
+        "address": {
+          "city": "Bergen",
+          "zip": "0150"
+        }
+      },
+      "patch": {
+        "address": {
+          "city": "Bergen"
+        }
+      }
+    },
+    {
+      "name": "a removed object member is null",
+      "kind": "patch",
+      "properties": [
+        "address"
+      ],
+      "start": {
+        "address": {
+          "city": "Oslo",
+          "zip": "0150"
+        }
+      },
+      "entered": {
+        "address": {
+          "city": "Oslo"
+        }
+      },
+      "patch": {
+        "address": {
+          "zip": null
+        }
+      }
+    },
+    {
+      "name": "a nested object changes by its own members",
+      "kind": "patch",
+      "properties": [
+        "profile"
+      ],
+      "start": {
+        "profile": {
+          "name": "Ada",
+          "address": {
+            "city": "Oslo",
+            "zip": "0150"
+          }
+        }
+      },
+      "entered": {
+        "profile": {
+          "name": "Ada",
+          "address": {
+            "city": "Bergen",
+            "zip": "0150"
+          }
+        }
+      },
+      "patch": {
+        "profile": {
+          "address": {
+            "city": "Bergen"
+          }
+        }
+      }
+    },
+    {
+      "name": "an object entered where the record held none is sent with its members",
+      "kind": "patch",
+      "properties": [
+        "address"
+      ],
+      "start": {
+        "id": 7
+      },
+      "entered": {
+        "address": {
+          "city": "Oslo"
+        }
+      },
+      "patch": {
+        "address": {
+          "city": "Oslo"
+        }
+      }
+    },
+    {
+      "name": "a property outside the form's own is never named, whatever the entered record holds",
+      "kind": "patch",
+      "properties": [
+        "title"
+      ],
+      "start": {
+        "title": "a",
+        "notes": "x"
+      },
+      "entered": {
+        "title": "a",
+        "notes": "y"
+      },
+      "patch": {}
+    },
+    {
+      "name": "a write's answer is kept and the next write carries it",
+      "kind": "precondition",
+      "steps": [
+        {
+          "answered": {
+            "method": "GET",
+            "path": "/api/tasks/7",
+            "status": 200,
+            "etag": "\"aaa\""
+          }
+        },
+        {
+          "request": {
+            "method": "PATCH",
+            "path": "/api/tasks/7"
+          },
+          "ifMatch": "\"aaa\""
+        },
+        {
+          "answered": {
+            "method": "PATCH",
+            "path": "/api/tasks/7",
+            "status": 200,
+            "etag": "\"bbb\""
+          }
+        },
+        {
+          "request": {
+            "method": "PATCH",
+            "path": "/api/tasks/7"
+          },
+          "ifMatch": "\"bbb\""
+        }
+      ]
+    },
+    {
+      "name": "a PUT and a DELETE carry it too, a read does not",
+      "kind": "precondition",
+      "steps": [
+        {
+          "answered": {
+            "method": "GET",
+            "path": "/api/tasks/7",
+            "status": 200,
+            "etag": "\"aaa\""
+          }
+        },
+        {
+          "request": {
+            "method": "PUT",
+            "path": "/api/tasks/7"
+          },
+          "ifMatch": "\"aaa\""
+        },
+        {
+          "request": {
+            "method": "DELETE",
+            "path": "/api/tasks/7"
+          },
+          "ifMatch": "\"aaa\""
+        },
+        {
+          "request": {
+            "method": "GET",
+            "path": "/api/tasks/7"
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/api/tasks/7"
+          }
+        }
+      ]
+    },
+    {
+      "name": "a validator belongs to its own path",
+      "kind": "precondition",
+      "steps": [
+        {
+          "answered": {
+            "method": "GET",
+            "path": "/api/tasks/7",
+            "status": 200,
+            "etag": "\"aaa\""
+          }
+        },
+        {
+          "request": {
+            "method": "PATCH",
+            "path": "/api/tasks/8"
+          }
+        },
+        {
+          "request": {
+            "method": "PATCH",
+            "path": "/api/tasks"
+          }
+        }
+      ]
+    },
+    {
+      "name": "the query is not part of the path",
+      "kind": "precondition",
+      "steps": [
+        {
+          "answered": {
+            "method": "GET",
+            "path": "/api/tasks/7?expand=owner",
+            "status": 200,
+            "etag": "\"aaa\""
+          }
+        },
+        {
+          "request": {
+            "method": "PATCH",
+            "path": "/api/tasks/7"
+          },
+          "ifMatch": "\"aaa\""
+        },
+        {
+          "request": {
+            "method": "DELETE",
+            "path": "/api/tasks/7?force=1"
+          },
+          "ifMatch": "\"aaa\""
+        }
+      ]
+    },
+    {
+      "name": "a server sending no ETag gets no If-Match",
+      "kind": "precondition",
+      "steps": [
+        {
+          "answered": {
+            "method": "GET",
+            "path": "/api/tasks/7",
+            "status": 200
+          }
+        },
+        {
+          "request": {
+            "method": "PATCH",
+            "path": "/api/tasks/7"
+          }
+        },
+        {
+          "answered": {
+            "method": "PATCH",
+            "path": "/api/tasks/7",
+            "status": 200
+          }
+        },
+        {
+          "request": {
+            "method": "DELETE",
+            "path": "/api/tasks/7"
+          }
+        }
+      ]
+    },
+    {
+      "name": "a read without an ETag drops the one kept",
+      "kind": "precondition",
+      "steps": [
+        {
+          "answered": {
+            "method": "GET",
+            "path": "/api/tasks/7",
+            "status": 200,
+            "etag": "\"aaa\""
+          }
+        },
+        {
+          "answered": {
+            "method": "GET",
+            "path": "/api/tasks/7",
+            "status": 200
+          }
+        },
+        {
+          "request": {
+            "method": "PATCH",
+            "path": "/api/tasks/7"
+          }
+        }
+      ]
+    },
+    {
+      "name": "a weak ETag is not kept",
+      "kind": "precondition",
+      "steps": [
+        {
+          "answered": {
+            "method": "GET",
+            "path": "/api/tasks/7",
+            "status": 200,
+            "etag": "\"aaa\""
+          }
+        },
+        {
+          "answered": {
+            "method": "GET",
+            "path": "/api/tasks/7",
+            "status": 200,
+            "etag": "W/\"bbb\""
+          }
+        },
+        {
+          "request": {
+            "method": "PATCH",
+            "path": "/api/tasks/7"
+          }
+        }
+      ]
+    },
+    {
+      "name": "a refused precondition keeps the validator until a read replaces it",
+      "kind": "precondition",
+      "steps": [
+        {
+          "answered": {
+            "method": "GET",
+            "path": "/api/tasks/7",
+            "status": 200,
+            "etag": "\"aaa\""
+          }
+        },
+        {
+          "answered": {
+            "method": "PATCH",
+            "path": "/api/tasks/7",
+            "status": 412
+          }
+        },
+        {
+          "request": {
+            "method": "PATCH",
+            "path": "/api/tasks/7"
+          },
+          "ifMatch": "\"aaa\""
+        },
+        {
+          "answered": {
+            "method": "GET",
+            "path": "/api/tasks/7",
+            "status": 200,
+            "etag": "\"ccc\""
+          }
+        },
+        {
+          "request": {
+            "method": "PATCH",
+            "path": "/api/tasks/7"
+          },
+          "ifMatch": "\"ccc\""
+        }
+      ]
+    },
+    {
+      "name": "a creating POST's ETag is the new record's, not the collection's",
+      "kind": "precondition",
+      "steps": [
+        {
+          "answered": {
+            "method": "POST",
+            "path": "/api/tasks",
+            "status": 201,
+            "etag": "\"new\""
+          }
+        },
+        {
+          "request": {
+            "method": "PATCH",
+            "path": "/api/tasks"
+          }
+        }
+      ]
+    },
+    {
+      "name": "a delete or a missing record drops the validator",
+      "kind": "precondition",
+      "steps": [
+        {
+          "answered": {
+            "method": "GET",
+            "path": "/api/tasks/7",
+            "status": 200,
+            "etag": "\"aaa\""
+          }
+        },
+        {
+          "answered": {
+            "method": "DELETE",
+            "path": "/api/tasks/7",
+            "status": 204
+          }
+        },
+        {
+          "request": {
+            "method": "PATCH",
+            "path": "/api/tasks/7"
+          }
+        },
+        {
+          "answered": {
+            "method": "GET",
+            "path": "/api/tasks/8",
+            "status": 200,
+            "etag": "\"bbb\""
+          }
+        },
+        {
+          "answered": {
+            "method": "GET",
+            "path": "/api/tasks/8",
+            "status": 404
+          }
+        },
+        {
+          "request": {
+            "method": "PATCH",
+            "path": "/api/tasks/8"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import { anchorRef } from "./node-anchors.js";
 import { useContext, useId, useRef, useState, type FormEvent } from "react";
 import { conditionHolds, fillAttribute, styleAttribute } from "./bindings.js";
 import { useDestinationContext } from "./destination.js";
@@ -75,7 +76,7 @@ export function Action({ node }: { node: SpecNode }) {
   };
 
   return (
-    <div data-telo-part="action" data-state={state} data-fill={fillAttribute(node)} data-style={styleAttribute(node.style)}>
+    <div ref={anchorRef(node)} data-telo-part="action" data-state={state} data-fill={fillAttribute(node)} data-style={styleAttribute(node.style)}>
       <form data-telo-part="form" autoComplete="off" noValidate onSubmit={run}>
         <Fields
           id={id}

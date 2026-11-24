@@ -26,8 +26,13 @@ class Collection implements ResourceInstance {
   }
 
   snapshot(): Record<string, unknown> {
-    const { model, key, query } = this.read();
-    return { model: { schema: model }, key, query };
+    const { model, key, query, schemas } = this.read();
+    return {
+      model: { schema: model },
+      key,
+      query,
+      schemas: Object.fromEntries(Object.entries(schemas).map(([write, schema]) => [write, { schema }])),
+    };
   }
 }
 

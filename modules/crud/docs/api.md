@@ -31,10 +31,11 @@ Mounted at `<prefix>`:
 | `GET <prefix>` | one page of rows in the `list` shape, filtered and sorted only by what the collection's `query` declares; with `facet=<property>`, one page of that property's present values with counts — see [the list route](list-route.md) | `list<Plural>` |
 | `GET <prefix>/{<idParam>}` | one record in the `model` shape, whatever `query` declares; 404 when absent | `get<Singular>` |
 | `POST <prefix>` | creates a row from a body in the `create` shape; 201 with the stored record | `create<Singular>` |
-| `PUT <prefix>/{<idParam>}` | replaces what the `update` shape declares of the row; 200 with the stored record, 404 when absent | `update<Singular>` |
+| `PATCH <prefix>/{<idParam>}` | merges a JSON Merge Patch (RFC 7396) into the row; 200 with the stored record, 404 when absent — see [Updating a record](#updating-a-record) | `update<Singular>` |
+| `PUT <prefix>/{<idParam>}` | replaces what the `update` shape declares of the row; 200 with the stored record, 404 when absent. Outside the collection contract, which updates by merge | `replace<Singular>` |
 | `DELETE <prefix>/{<idParam>}` | deletes the row; 204, or 404 when absent | `delete<Singular>` |
 
-All five carry the `<plural>` OpenAPI tag. The generated document states each
+All six carry the `<plural>` OpenAPI tag. The generated document states each
 shape where it applies: the two request bodies, the record every write and
 read-one answers with, and the rows of the list. The `{<idParam>}` parameter
 takes the type `model` declares for `id`.
@@ -42,7 +43,7 @@ takes the type `model` declares for `id`.
 ## Validation
 
 A `POST` body is validated against the `create` shape and a `PUT` body against
-the `update` shape. Required properties must be present, and an unknown one is
+the `update` shape; a `PATCH` is validated as the record it leaves ([below](#updating-a-record)). Required properties must be present, and an unknown one is
 refused — both shapes are closed. The body is validated as the JSON it is,
 with no conversion: a string where the shape declares an integer, or a `null`
 at a typed property, is refused.
@@ -56,7 +57,7 @@ the property under `/body` (`/body/text`, `/body/address/street`), and no prose:
 
 ## What a write answers with
 
-`POST` and `PUT` answer with the record as it is now stored, in the `model`
+`POST`, `PATCH` and `PUT` answer with the record as it is now stored, in the `model`
 shape, taken from the write itself: the `id` the table assigned, a column the
 body left to its default, a value the table generated.
 
@@ -64,6 +65,53 @@ body left to its default, a value the table generated.
 POST /api/todos   { "text": "Buy milk" }
 201               { "id": 1, "text": "Buy milk", "isDone": false }
 ```
+
+## Updating a record
+
+`PATCH <prefix>/{<idParam>}` takes a JSON Merge Patch (RFC 7396) and answers
+200 with the stored record.
+
+- a member holding a value sets that property;
+- a member holding `null` clears it, after which it reads as absent (or as
+  `null` where the property admits `null`);
+- an object value merges into the stored one member by member (a `null` member
+  removes it), while a list or a scalar replaces the stored value whole;
+- a property the body does not name is unchanged, so a client with a narrower
+  model leaves the columns it never saw alone.
+
+The patch is merged over the stored record and the result is held to the
+`update` shape whole, so a refusal names what the merge would leave: clearing a
+required property is a 400 with a `required` issue at `/body/<property>`, a
+member the shape does not declare is `additionalProperties` at
+`/body/<member>`, and a value of the wrong type is that keyword's issue —
+all in the same `{ pointer, keyword, params }` problem a refused `POST` answers
+with (`code: ERR_INPUT_INVALID`). An empty patch writes nothing and answers the
+stored record; an id naming no row is a 404. Only the columns the patch names are
+written.
+
+```
+PATCH /api/todos/1   { "dueOn": null }
+200                  { "id": 1, "text": "Buy milk", "isDone": true }
+```
+
+The request's media type is `application/merge-patch+json`; the server reads it as JSON like `application/json`, with no `contentTypeParsers` entry. A body that is not a JSON object is a 400 naming `/body`.
+
+## Preconditions
+
+Every read of one record and every write answer carries a strong `ETag`: a
+digest of the stored record in the `model` shape, so it changes exactly when a
+property `model` declares changes. `PATCH`, `PUT` and `DELETE` honour an
+`If-Match` header holding that validator (a list of validators, or `*`, is
+accepted; a weak one never matches): while the row still has it the write goes
+ahead, and once it does not the write is a 412 problem
+(`application/problem+json`, `code: ERR_CRUD_PRECONDITION_FAILED`) and the row
+is left as it was. A request with no `If-Match` is not conditional. A server
+opts in by sending the `ETag`; there is nothing to configure.
+
+The check and the write are one transaction: the row is read under its write
+lock, so two writes carrying one validator cannot both succeed — the second
+reads the changed row and is refused. The lock is taken the same way on every
+engine, by an `UPDATE` that assigns the key to itself.
 
 ## Replacing a row
 
@@ -134,9 +182,8 @@ accepted and stored as `NULL`.
 
 ## Limits
 
-- The delete route builds its statement with `?` placeholders, which is
-  SQLite's spelling. Every other route is rendered through the connection's
-  dialect and runs on SQLite and PostgreSQL alike.
+- Every route is rendered through the connection's dialect and runs on SQLite
+  and PostgreSQL alike.
 - A write reads the stored record back with `RETURNING`, which the engine must
   support (SQLite 3.35 or later, PostgreSQL).
 - Paging and the `{<idParam>}` parameter take an `id` that is an integer or a

@@ -1,3 +1,4 @@
+import { anchorRef } from "../node-anchors.js";
 import { resolveRefresh, segment, type AddressWire } from "../address-wire.js";
 import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent } from "react";
 import { fillAttribute, styleAttribute, type Style } from "../bindings.js";
@@ -376,7 +377,7 @@ export function ChatNode({ node, embedded = false }: { node: ChatNodeSpec; embed
       <ButtonsContext.Provider value={node.buttons}>
       <BasePathContext.Provider value={node.basePath}>
       <ViewerContext.Provider value={setViewing}>
-      <section data-telo-part="chat" data-state={state} data-embedded={embedded ? "true" : undefined} data-fill={fillAttribute(node)} data-style={styleAttribute(node.style)}>
+      <section ref={anchorRef(node)} data-telo-part="chat" data-state={state} data-embedded={embedded ? "true" : undefined} data-fill={fillAttribute(node)} data-style={styleAttribute(node.style)}>
         <div data-telo-part="chat-main">
           {node.header.length > 0 && (
             <header data-telo-part="chat-header">

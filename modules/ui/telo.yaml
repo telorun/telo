@@ -14,7 +14,7 @@ metadata:
     back-office screen without frontend code.
 requires:
   # Measured by `telo release floor`: 0.137.0 refuses this file.
-  telo: ">=0.138.0"
+  telo: ">=unreleased"
 restrictions:
   - requires: { telo: ">=0.139.0" }
     reason: >-
@@ -26,7 +26,7 @@ lang: en
 # which control fits which property, what a listing's read plan requests, and how
 # text typed into a search box becomes filter values, and what a query's body
 # template resolves to.
-files: [conformance/match.json, conformance/control-fits.json, conformance/listing-reads.json, conformance/addresses.json, conformance/current-location.json, conformance/refreshes.json, conformance/filter-tokens.json, conformance/template-bindings.json]
+files: [conformance/match.json, conformance/control-fits.json, conformance/listing-reads.json, conformance/addresses.json, conformance/current-location.json, conformance/refreshes.json, conformance/filter-tokens.json, conformance/template-bindings.json, conformance/merge-patch.json]
 # ui's own texts translated, one `Self.Translations` per language.
 include: [./translations/de.yaml, ./translations/es.yaml, ./translations/fr.yaml, ./translations/hi.yaml, ./translations/it.yaml, ./translations/ja.yaml, ./translations/ko.yaml, ./translations/nl.yaml, ./translations/pl.yaml, ./translations/pt.yaml, ./translations/ru.yaml, ./translations/tr.yaml, ./translations/uk.yaml, ./translations/zh.yaml]
 imports: { Font: ../font, DataModel: ../data-model, Conversation: ../conversation }
@@ -58,8 +58,8 @@ migrations:
           /failure: /content/failure/0
         set: { kind: Self.View, content: { type: query, query: { kind: Self.Query } } }
 exports:
-  kinds: [Translations, Composite, Surface, Overlay, ViewportOverlay, Dialog, Drawer, Popover, InlineSurface, Panel, PageSurface, Destination, Navigate, OpenPage, FilterPlacement, FoldingFilterPlacement, AbovePlacement, AsidePlacement, CollapsiblePlacement, OverlayPlacement, SearchBoxPlacement, StateStore, LocalStore, SessionStore, NavigationPlacement, CompactNavigationPlacement, HeaderNavigation, OverlayNavigation, TabBarNavigation, Icon, FileIcon, ButtonDisplay, TextButton, IconButton, Page, PageLayout, Pane, NavigationPane, Navbar, NavigationColumn, View, CollectionSource, ConversationSource, CollectionPresentation, Chat, SplitView, Listing, ListingLayout, TableLayout, ListLayout, CardLayout, BoardLayout, CalendarLayout, TimelineLayout, TreeLayout, ComponentLayout, Form, Action, Filters, Component, ComponentExport, DesignTokens, Query, Field, InputField, ChoiceField, PickerField, DateRangeField, OptionSource, CollectionOptions]
-  resources: [chineseTranslations, dutchTranslations, frenchTranslations, germanTranslations, hindiTranslations, italianTranslations, japaneseTranslations, koreanTranslations, polishTranslations, portugueseTranslations, russianTranslations, spanishTranslations, turkishTranslations, ukrainianTranslations, BoundText, Match, Condition, Enablement, RequestError, AppRelativeReference, QueryParameters, Address, RequestTarget, RefreshTarget, Control, FieldGroup, StateRecord, FieldAnswer, OptionSourceSpec, Relations, ListingLayoutSpec, ListingLayoutAnswer, controlFits, BoundAction, Command, Press, Grouping, Span, Node, SpecNode, OverlaySpec, SurfaceSpec, DestinationSpec, QuerySpec, PressSpec, ButtonDisplaySpec, AfterCreate, AfterEdit, UnsavedInput, FilterPolicy, FilterDisplay, FilterPlacementSpec, StateStoreSpec, Navigation, NavigationItem, NavigationPlacementSpec, PageWidth, Frame, RowActionsDisplay, Aside, PageRoute]
+  kinds: [Translations, Composite, Surface, Overlay, ViewportOverlay, Dialog, Drawer, Popover, InlineSurface, Panel, Destination, Navigate, OpenPage, FilterPlacement, FoldingFilterPlacement, AbovePlacement, AsidePlacement, CollapsiblePlacement, OverlayPlacement, SearchBoxPlacement, StateStore, LocalStore, SessionStore, NavigationPlacement, CompactNavigationPlacement, HeaderNavigation, OverlayNavigation, TabBarNavigation, Icon, FileIcon, ButtonDisplay, TextButton, IconButton, Page, PageLayout, Pane, NavigationPane, Navbar, NavigationColumn, View, CollectionSource, ConversationSource, CollectionPresentation, Chat, SplitView, Listing, ListingLayout, TableLayout, ListLayout, CardLayout, BoardLayout, CalendarLayout, TimelineLayout, TreeLayout, ComponentLayout, Form, Action, Filters, Component, ComponentExport, DesignTokens, Query, Field, InputField, ChoiceField, PickerField, DateRangeField, OptionSource, CollectionOptions]
+  resources: [chineseTranslations, dutchTranslations, frenchTranslations, germanTranslations, hindiTranslations, italianTranslations, japaneseTranslations, koreanTranslations, polishTranslations, portugueseTranslations, russianTranslations, spanishTranslations, turkishTranslations, ukrainianTranslations, BoundText, Match, Condition, Enablement, RequestError, AppRelativeReference, QueryParameters, Address, RequestTarget, RefreshTarget, Control, FieldGroup, StateRecord, FieldAnswer, OptionSourceSpec, Relations, ListingLayoutSpec, ListingLayoutAnswer, controlFits, BoundAction, Command, Press, Grouping, Span, Node, SpecNode, OverlaySpec, SurfaceSpec, DestinationSpec, QuerySpec, PressSpec, ButtonDisplaySpec, AfterSubmit, UnsavedInput, FilterPolicy, FilterDisplay, FilterPlacementSpec, StateStoreSpec, Navigation, NavigationItem, NavigationPlacementSpec, PageWidth, Frame, RowActionsDisplay, Aside, PageRoute]
   # The entry point a renderer's controller bundle resolves `@telorun/ui` to:
   # how a built browser entry becomes the files a page loads, so a renderer
   # addresses its own entries exactly as a placed component's are addressed.
@@ -1391,7 +1391,7 @@ schema:
     # `compact` below the application's breakpoint, keeping the listing's
     # state). Everything but the drawing is the listing's, whatever the layout.
     - additionalProperties: false
-      required: [type, schema, basePath, key, query, pageSize, paging, sort, show, delete, rowActions, rowActionsDisplay, relations, empty, layout, press, fill]
+      required: [type, schema, basePath, key, query, pageSize, paging, sort, show, create, edit, delete, rowActions, rowActionsDisplay, relations, empty, layout, press, fill]
       properties:
         type: { const: listing }
         schema: { type: object }
@@ -1422,24 +1422,10 @@ schema:
           required: [count]
           properties: { count: { type: boolean } }
         rowStyle: { $ref: "#/$defs/StyleRule" }
-        create:
-          type: object
-          additionalProperties: false
-          required: [form, surface, afterSubmit, unsaved]
-          properties:
-            form: { $ref: "#" }
-            surface: { $ref: "telo:Ui/SurfaceSpec" }
-            afterSubmit: { enum: [close, again, keep] }
-            unsaved: { enum: [confirm, discard] }
-        edit:
-          type: object
-          additionalProperties: false
-          required: [form, surface, afterSubmit, unsaved]
-          properties:
-            form: { $ref: "#" }
-            surface: { $ref: "telo:Ui/SurfaceSpec" }
-            afterSubmit: { enum: [close, keep] }
-            unsaved: { enum: [confirm, discard] }
+        # The create button and the edit action of each record, or null when
+        # none is drawn.
+        create: { $ref: "#/$defs/Press" }
+        edit: { $ref: "#/$defs/Press" }
         delete: { type: boolean }
         # What each record offers beyond edit and delete, in order: an
         # operation run with values of the record.
@@ -1452,7 +1438,7 @@ schema:
         empty: { $ref: "#" }
         layout: { $ref: "telo:Ui/ListingLayoutSpec" }
         compact: { $ref: "telo:Ui/ListingLayoutSpec" }
-        # What pressing a record does, over `row`; null when pressing one opens `edit`.
+        # What pressing a record does, over `row`: `edit`'s press when none is written.
         press: { $ref: "#/$defs/Press" }
         # Present when the loaded records are read again on a timer: the interval in milliseconds.
         reloadEvery: { type: integer, minimum: 5000 }
@@ -1460,11 +1446,23 @@ schema:
         shown: { $ref: "#/$defs/Shown" }
         fill: { type: boolean }
     - additionalProperties: false
-      required: [type, schema, basePath, fields, groups, state, fill]
+      required: [type, schema, record, initialValues, unsaved, afterSubmit, fields, groups, state, fill]
       properties:
         type: { const: form }
         schema: { type: object }
-        basePath: { $ref: "#/$defs/BasePath" }
+        # The collection the record is written to and, when it edits a stored
+        # record, the binding of that record's key: `PATCH <basePath>/<key>`
+        # where one is given, else `POST <basePath>`.
+        record:
+          type: object
+          additionalProperties: false
+          required: [basePath, key]
+          properties:
+            basePath: { $ref: "#/$defs/BasePath" }
+            key: { anyOf: [{ type: "null" }, { $ref: "#/$defs/Binding" }] }
+        initialValues: { anyOf: [{ type: "null" }, { $ref: "#/$defs/Binding" }] }
+        unsaved: { enum: [confirm, discard] }
+        afterSubmit: { enum: [close, keep, again] }
         fields: { type: array, items: { $ref: "#/$defs/Field" } }
         groups: { type: array, items: { $ref: "#/$defs/Group" } }
         state: { $ref: "#/$defs/State" }
@@ -2285,11 +2283,6 @@ schema:
           properties: { escape: { type: boolean }, closeButton: { type: boolean } }
         address: { $ref: "telo:Ui/OverlaySpec#/$defs/Address" }
         compact: { $ref: "telo:Ui/OverlaySpec#/$defs/Compact" }
-    - additionalProperties: false
-      required: [type, address]
-      properties:
-        type: { const: page }
-        address: { $ref: "telo:Ui/OverlaySpec#/$defs/Address" }
 ---
 # Where a press goes, as a renderer receives it. Tagged on `type`, one branch
 # per kind of destination; `href` is the address it leads to, resolved in the
@@ -2309,10 +2302,7 @@ schema:
       properties:
         type: { const: openPage }
         href: { $ref: "telo:Ui/SpecNode#/$defs/Address" }
-        surface:
-          allOf:
-            - { $ref: "telo:Ui/OverlaySpec" }
-            - { properties: { type: { enum: [dialog, drawer] } } }
+        surface: { $ref: "telo:Ui/SurfaceSpec" }
         keepsSurface: { type: boolean }
 ---
 # What pressing a region or a record does, as a renderer receives it: where it
@@ -2327,15 +2317,10 @@ schema:
     to: { $ref: "telo:Ui/DestinationSpec" }
     label: { $ref: "telo:Ui/SpecNode#/$defs/NodeText" }
 ---
-# What a create form does once its record is saved.
+# What a form does once its record is saved.
 kind: Telo.JsonSchema
-metadata: { name: AfterCreate }
-schema: { enum: [close, again, keep], default: close }
----
-# What an edit form does once its record is saved.
-kind: Telo.JsonSchema
-metadata: { name: AfterEdit }
-schema: { enum: [close, keep], default: close }
+metadata: { name: AfterSubmit }
+schema: { enum: [close, keep, again], default: close }
 ---
 # What happens to input a form holds unsaved when something would close it.
 kind: Telo.JsonSchema
@@ -2643,15 +2628,15 @@ outputType:
             mediaType: { type: string }
 ---
 # Where a piece of interface appears and how it is dismissed. Whoever opens a
-# form names one; each way of appearing is a kind of its own.
+# page names one; each way of appearing is a kind of its own.
 kind: Telo.Abstract
 metadata:
   name: Surface
   description: >-
     Where a piece of interface appears when it is opened and how it is
     dismissed: floating over the page, in line with the content, in a side
-    panel beside it, or in place of the page. Provides the placement, size and
-    dismissal settings a renderer draws a create or edit form with.
+    panel beside it. Provides the placement, size and
+    dismissal settings a renderer draws an opened page with.
 capability: Telo.Provider
 outputType: !ref SurfaceSpec
 ---
@@ -2685,10 +2670,10 @@ kind: Telo.Definition
 metadata:
   name: Dialog
   description: >-
-    A centred window over the page for a create or edit form: a modal or
+    A centred window over the page for an opened page, such as a record form: a modal or
     non-modal dialog in one of four sizes, closed by Escape, a click outside or
     a close button, each of which can be switched off. Can be given an address
-    so an open form is linkable, and a replacement for narrow viewports.
+    so the open page is linkable, and a replacement for narrow viewports.
 capability: Telo.Provider
 extends: Self.ViewportOverlay
 controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#DialogController]
@@ -2755,10 +2740,10 @@ kind: Telo.Definition
 metadata:
   name: Drawer
   description: >-
-    A sheet sliding in from an edge of the viewport for a create or edit form:
+    A sheet sliding in from an edge of the viewport for an opened page:
     a side drawer or a top or bottom sheet in one of four sizes, modal or not,
     closed by Escape, a click outside or a close button. Can be given an
-    address so an open form is linkable, and a replacement for narrow
+    address so the open page is linkable, and a replacement for narrow
     viewports.
 capability: Telo.Provider
 extends: Self.ViewportOverlay
@@ -2831,9 +2816,9 @@ kind: Telo.Definition
 metadata:
   name: Popover
   description: >-
-    A small card anchored to the button that opened it, for a short create or
-    edit form: a popover placed above, below or beside its trigger and aligned
-    to it, closed by Escape or a click outside. Can name a replacement for
+    A small card anchored to the button that opened a page, for short content
+    such as a one-field form: a popover placed above, below or beside its
+    trigger and aligned to it, closed by Escape or a click outside. Can name a replacement for
     narrow viewports, where an anchored card does not fit.
 capability: Telo.Provider
 extends: Self.Overlay
@@ -2886,10 +2871,9 @@ kind: Telo.Definition
 metadata:
   name: InlineSurface
   description: >-
-    Opens a form in line with the content instead of over it: inline editing
-    in a data grid, with the create form drawn above the rows and the edit form
-    expanded under the row being changed. Can name a replacement for narrow
-    viewports.
+    Opens a page in line with the content instead of over it: inline editing
+    in a data grid, the page drawn after the pressed element, under its record
+    in a listing. Can name a replacement for narrow viewports.
 capability: Telo.Provider
 extends: Self.Surface
 controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#InlineSurfaceController]
@@ -2923,7 +2907,7 @@ kind: Telo.Definition
 metadata:
   name: Panel
   description: >-
-    A side panel beside the list for a create or edit form: master-detail
+    A side panel beside the nearest composite holding the pressed element for an opened page: master-detail
     editing where the rows stay visible and usable while a record is open.
     Sits at the start or end edge in one of three widths, closed by Escape or a
     close button, with an optional address and a replacement for narrow
@@ -2988,37 +2972,6 @@ schema:
       message: >-
         names a compact surface that declares a compact surface of its own.
         Only one level applies: remove `compact` from it.
----
-kind: Telo.Definition
-metadata:
-  name: PageSurface
-  description: >-
-    Opens a form as a page of its own: the create or edit form replaces the
-    page's content under its own address, so it can be linked to, reloaded and
-    left with the browser's back button, and the page returns when the form
-    closes.
-capability: Telo.Provider
-extends: Self.Surface
-controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#PageSurfaceController]
-schema:
-  type: object
-  additionalProperties: false
-  required: [address]
-  properties:
-    address:
-      title: Address
-      description: >-
-        Makes the open surface part of the page's address, so it can be linked
-        to, reloaded and left with the browser's back button.
-      type: object
-      additionalProperties: false
-      required: [name]
-      properties:
-        name:
-          title: Name
-          description: The name the open surface is addressed under, letters and digits.
-          type: string
-          pattern: "^[A-Za-z][A-Za-z0-9]*$"
 ---
 # Where a filter bar's controls sit relative to what they filter. Each way of
 # sitting is a kind of its own.
@@ -3523,7 +3476,8 @@ metadata:
   description: >-
     Where pressing a link, a menu item, a table cell or a navigation entry
     goes, or where an action leads on success: another address, or a page
-    opened over the current one in a dialog or drawer. Provides the address and how
+    opened over the current one in a dialog, drawer, popover, inline surface
+    or panel. Provides the address and how
     it opens, resolved in the browser from the values in scope.
 capability: Telo.Provider
 outputType: !ref DestinationSpec
@@ -3564,8 +3518,8 @@ kind: Telo.Definition
 metadata:
   name: OpenPage
   description: >-
-    Opens a page of the application over the current one, in a dialog or a
-    drawer, with its path variables and query parameters filled from the
+    Opens a page of the application over the current one, in a dialog, a
+    drawer, a popover, an inline surface or a side panel, with its path variables and query parameters filled from the
     record or page values in scope. The page keeps its own address, so it can
     also be opened in a new tab or reloaded.
 capability: Telo.Provider
@@ -3599,9 +3553,10 @@ schema:
     surface:
       title: Surface
       description: >-
-        Where the page opens: a dialog or a drawer. Omitted, the surface it is
-        pressed in — inside an opened page that page's, anywhere else a dialog.
-      x-telo-ref: { kind: Self.ViewportOverlay, use: dependency }
+        Where the page opens: any surface — a dialog, a drawer, a popover, an
+        inline surface or a panel. Omitted, the surface it is pressed in —
+        inside an opened page that page's, anywhere else a dialog.
+      x-telo-ref: { kind: Self.Surface, use: dependency }
 ---
 # One page of an application: its address, its title and its nodes. Its
 # composites are resolved once, when it is created; the application invokes it
@@ -4680,6 +4635,25 @@ schema:
         searches related records with a property and operator their collection
         does not accept. Declare the pair under that collection's
         `query.filters`, or change `search`.
+  x-telo-referrer-rules:
+    - referrer: Self.Form
+      resolve: [/model]
+      resolveSelf: [/source/collection, /source/collection/schemas/update]
+      condition: !cel >-
+        !has(referrer.record) || !has(referrer.record.key) || !has(referrer.model) || !has(self.source.collection.schemas.update)
+        || !has(self.source.collection.schemas.update.schema.properties)
+        || cel.bind(m, has(referrer.model.schema) ? referrer.model.schema : referrer.model,
+           cel.bind(wp, self.source.collection.schemas.update.schema.properties,
+             !has(m.properties) || m.properties.all(name, name in wp
+               && (!('type' in m.properties[name]) || !('type' in wp[name])
+                   || cel.bind(have, (type(m.properties[name].type) == list ? m.properties[name].type : [m.properties[name].type]).filter(t, t != 'null'),
+                      cel.bind(want, (type(wp[name].type) == list ? wp[name].type : [wp[name].type]).filter(t, t != 'null'),
+                        have.all(t, t in want || (t == 'integer' && 'number' in want))))))))
+      code: UI_WRITE_SHAPE_MISMATCH
+      message: >-
+        has a `model` property the collection's `schemas.update` does not
+        declare, or declares with another type. Use the shape's properties and
+        types, or declare the property in the shape.
 ---
 kind: Telo.Definition
 metadata:
@@ -4687,7 +4661,7 @@ metadata:
   description: >-
     Records of a REST collection read page by page with a cursor — a pager,
     "load more" or infinite scroll — sortable by the viewer, with related
-    records shown by name, create, edit and delete forms, row actions,
+    records shown by name, create and edit buttons, delete, row actions,
     conditional row styling, an empty state and reload on a timer. Drawn by a
     layout, a table unless another is chosen, with another below a breakpoint.
 capability: Telo.Provider
@@ -4819,59 +4793,41 @@ schema:
         default: { $ref: "#/$defs/Style" }
     create:
       title: Create
-      description: The form that adds a record, and where and how it opens.
+      description: >-
+        The create button: where it goes, usually an opened page of a new
+        record, and its name. Omitted, no button. Its label defaults to the
+        text `create`. Over `values`, the property values a layout's create
+        gesture proposes for the record, `{}` from the button.
       type: object
       additionalProperties: false
-      required: [form]
+      required: [to]
       properties:
-        form:
-          title: Form
-          description: The form opened.
-          x-telo-ref: { kind: Self.Form, use: dependency }
-        surface:
-          title: Surface
-          description: Where the form appears. Omitted, a dialog with its defaults.
-          x-telo-ref: { kind: Self.Surface, use: dependency }
-        afterSubmit:
-          title: After submit
-          description: >-
-            What the form does once the record is saved: `close`, `again` — stay
-            open, back at the values a new record starts from, for another — or
-            `keep` its values.
-          $ref: "telo://Self/AfterCreate"
-        unsaved:
-          title: Unsaved input
-          description: >-
-            Whether leaving the form with unsaved input asks first (`confirm`)
-            or drops it (`discard`).
-          $ref: "telo://Self/UnsavedInput"
+        to: { $ref: "telo://Self/Press#/properties/to" }
+        label: { $ref: "telo://Self/Press#/properties/label" }
+      x-telo-context:
+        type: object
+        properties:
+          values: { x-telo-context-eval: accessor, x-telo-context-from-root: model, x-telo-context-partial: true }
+          query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
+          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
     edit:
       title: Edit
-      description: The form that changes a record, prefilled from it, and where and how it opens.
+      description: >-
+        Drawn among each record's actions: where it goes over `row`, usually
+        an opened page of that record, and its name. Its label defaults to the
+        text `edit`. Without `press`, pressing a record does the same.
       type: object
       additionalProperties: false
-      required: [form]
+      required: [to]
       properties:
-        form:
-          title: Form
-          description: The form opened.
-          x-telo-ref: { kind: Self.Form, use: dependency }
-        surface:
-          title: Surface
-          description: Where the form appears. Omitted, a dialog with its defaults.
-          x-telo-ref: { kind: Self.Surface, use: dependency }
-        afterSubmit:
-          title: After submit
-          description: >-
-            What the form does once the record is saved: `close`, or `keep` it
-            open.
-          $ref: "telo://Self/AfterEdit"
-        unsaved:
-          title: Unsaved input
-          description: >-
-            Whether leaving the form with unsaved input asks first (`confirm`)
-            or drops it (`discard`).
-          $ref: "telo://Self/UnsavedInput"
+        to: { $ref: "telo://Self/Press#/properties/to" }
+        label: { $ref: "telo://Self/Press#/properties/label" }
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
+          query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
+          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
     delete:
       title: Delete
       description: Whether each record offers a confirmed delete.
@@ -4903,8 +4859,7 @@ schema:
       title: Press
       description: >-
         What pressing a record does, and its name, over `row`, `query` and
-        `params`. Written, editing is the record's edit button; omitted,
-        pressing a record opens `edit`.
+        `params`. Omitted, pressing a record does what `edit` does.
       $ref: "telo://Self/Press"
       x-telo-context:
         type: object
@@ -5600,7 +5555,7 @@ metadata:
     Draws records with a custom browser component — a map, a timeline of
     your own, a seat plan — given the records the declared reads return,
     grouped, by period or as a tree, with fixed or per-record properties. The
-    renderer runs paging, filters, labels, openers and moves.
+    renderer runs paging, filters, labels, create and edit and moves.
 capability: Telo.Invocable
 extends: Self.ListingLayout
 controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ComponentLayoutController]
@@ -5786,24 +5741,75 @@ metadata:
     and a searchable picker for a related record — validated in the browser
     against the model's own rules before anything is sent, with the server's
     field errors shown beside the fields they name. Creates a record, or edits
-    one a listing opens.
+    the stored one it names, starting from a record it is given; says what
+    happens to unsaved input and once the record is saved.
 capability: Telo.Provider
 extends: Self.Composite
 controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#FormController]
 schema:
   type: object
   additionalProperties: false
-  required: [model, presentation]
+  required: [model, record]
   properties:
     model:
       title: Model
       description: The shape of the record the form sends.
       x-telo-ref: { kind: Telo.Type, use: schema }
-    presentation:
-      title: Presentation
+    record:
+      title: Record
       description: >-
-        The collection written to, and how its related records are offered.
-      x-telo-ref: { kind: Self.CollectionPresentation, use: dependency }
+        The collection the record belongs to, and the stored record the form
+        edits. Without `key` the form creates a record, sent to the
+        collection's `schemas.create`; with it, the form changes that record, a
+        merge patch sent to `schemas.update`.
+      type: object
+      additionalProperties: false
+      required: [presentation]
+      properties:
+        presentation:
+          title: Presentation
+          description: The collection written to, and how its related records are offered.
+          x-telo-ref: { kind: Self.CollectionPresentation, use: dependency }
+        key:
+          title: Key
+          description: >-
+            The key value of the stored record, a chain over the roots where
+            the form is placed. Its type is the collection's key property's.
+          x-telo-eval: accessor
+          x-telo-value-schema-from: { from: /record/presentation/source/collection/model, member: /key }
+      x-telo-context: &placementRoots
+        type: object
+        properties:
+          row: { x-telo-context-eval: accessor, x-telo-context-from-referrer: row, x-telo-context-withheld: a form reads only the roots bound where it is placed }
+          data: { x-telo-context-eval: accessor, x-telo-context-from-referrer: data, x-telo-context-withheld: a form reads only the roots bound where it is placed }
+          query: { x-telo-context-eval: accessor, x-telo-context-from-referrer: query, x-telo-context-withheld: a form reads only the roots bound where it is placed }
+          params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, x-telo-context-withheld: a form reads only the roots bound where it is placed }
+          values: { x-telo-context-eval: accessor, x-telo-context-from-referrer: values, x-telo-context-withheld: a form reads only the roots bound where it is placed }
+          result: { x-telo-context-eval: accessor, x-telo-context-from-referrer: result, x-telo-context-withheld: a form reads only the roots bound where it is placed }
+          input: { x-telo-context-eval: accessor, x-telo-context-from-referrer: input, x-telo-context-withheld: a form reads only the roots bound where it is placed }
+    initialValues:
+      title: Initial values
+      description: >-
+        The record the form starts from, a chain over the roots where the form
+        is placed. It starts again, asking first, when the query it reads
+        resolves to another address. Omitted, the form starts from its address
+        and store, then the model's defaults.
+      x-telo-eval: accessor
+      x-telo-value-schema-from: /model
+      x-telo-context: *placementRoots
+    unsaved:
+      title: Unsaved input
+      description: >-
+        Whether leaving the form with unsaved input asks first (`confirm`) or
+        drops it (`discard`).
+      $ref: "telo://Self/UnsavedInput"
+    afterSubmit:
+      title: After submit
+      description: >-
+        What the form does once the record is saved: `close` the surface its
+        page is open in, `keep` its values, or start `again` from the values it
+        started with.
+      $ref: "telo://Self/AfterSubmit"
     fields:
       title: Fields
       description: >-
@@ -5845,6 +5851,37 @@ schema:
         not kept.
       $ref: "telo://Self/StateRecord"
   x-telo-resource-rules:
+    - resolve: [/record/presentation/source/collection]
+      condition: !cel >-
+        !has(self.record) || (has(self.record.presentation.source.collection.schemas)
+        && (has(self.record.key)
+            ? has(self.record.presentation.source.collection.schemas.update)
+            : has(self.record.presentation.source.collection.schemas.create)))
+      code: UI_WRITE_UNDECLARED
+      message: >-
+        names a collection that declares no `schemas.update` where `record.key`
+        is written, or no `schemas.create` where it is not: the shape the write
+        is held to. Declare it under the collection's `schemas`, or change
+        `record`.
+    # A form with `record.key` is judged against `schemas.update` by the
+    # collection presentation's referrer rule of the same code: one `resolve:`
+    # extends one path through the collection.
+    - resolve: [/model, /record/presentation/source/collection, /record/presentation/source/collection/schemas/create]
+      condition: !cel >-
+        !has(self.record) || !has(self.model) || has(self.record.key) || !has(self.record.presentation.source.collection.schemas.create)
+        || !has(self.record.presentation.source.collection.schemas.create.schema.properties)
+        || cel.bind(m, has(self.model.schema) ? self.model.schema : self.model,
+           cel.bind(wp, self.record.presentation.source.collection.schemas.create.schema.properties,
+             !has(m.properties) || m.properties.all(name, name in wp
+               && (!('type' in m.properties[name]) || !('type' in wp[name])
+                   || cel.bind(have, (type(m.properties[name].type) == list ? m.properties[name].type : [m.properties[name].type]).filter(t, t != 'null'),
+                      cel.bind(want, (type(wp[name].type) == list ? wp[name].type : [wp[name].type]).filter(t, t != 'null'),
+                        have.all(t, t in want || (t == 'integer' && 'number' in want))))))))
+      code: UI_WRITE_SHAPE_MISMATCH
+      message: >-
+        has a `model` property the collection's `schemas.create` does not
+        declare, or declares with another type. Use the shape's properties and
+        types, or declare the property in the shape.
     - resolve: [/model, /fields]
       in: /fields
       condition: !cel >-
@@ -7290,7 +7327,8 @@ keys:
   close: Close
   newRecord:
     message: New
-    description: The button opening the form that creates a record.
+    description: A layout's button proposing a new record for one of its groups or days.
+  create: Create
   edit: Edit
   delete: Delete
   deleteRowQuestion: { message: Delete this row?, description: Asks to confirm deleting a row. }
@@ -7438,6 +7476,9 @@ keys:
   requestForbidden:
     message: You are not allowed to do this.
     description: A request answered 403.
+  requestPreconditionFailed:
+    message: The record was changed by someone else. Review it and save again.
+    description: A write answered 412 because the record changed since it was read, with no problem naming a code.
   requestFailedStatus:
     message: The request failed with status {$status}.
     values: { status: { type: integer } }

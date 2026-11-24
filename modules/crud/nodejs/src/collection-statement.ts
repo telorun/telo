@@ -201,3 +201,23 @@ export function replaceStatement(
   const sql = `UPDATE ${table} SET ${set} WHERE ${key} = ${rendering.bind(id)}${returningClause(rendering, returning)}`;
   return { sql, params: rendering.params };
 }
+
+/**
+ * Takes the write lock of the row `id` names and reads it: an UPDATE that
+ * assigns nothing new. The row is locked until the transaction ends, on every
+ * engine, whether or not it has a `FOR UPDATE`.
+ */
+export function lockStatement(
+  dialect: SqlDialect,
+  table: string,
+  id: unknown,
+  returning: Iterable<ModelProperty>,
+): Statement {
+  return replaceStatement(dialect, table, [], id, {}, returning);
+}
+
+/** Deletes the row `id` names. */
+export function deleteStatement(dialect: SqlDialect, table: string, id: unknown): Statement {
+  const rendering = new Rendering(dialect);
+  return { sql: `DELETE FROM ${table} WHERE ${rendering.column(KEY)} = ${rendering.bind(id)}`, params: rendering.params };
+}

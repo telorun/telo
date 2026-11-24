@@ -327,6 +327,9 @@ is `CEL_UNKNOWN_FIELD`; with no template there, an open map of strings.
 nullable only where the resource's own value at the relative pointer `at` is one of
 `equals` (or, with `absent: true`, missing), so an unguarded read is
 `CEL_NULLABLE_ACCESS` exactly where it can be null.
+`x-telo-context-partial: true` beside a binding's typing annotation (or its own
+`properties`) makes it some members of that record: each optional and nullable,
+an unknown one still `CEL_UNKNOWN_FIELD`.
 `x-telo-ref: { …, outputTo: { slot, member } }` says the slot's target output (null
 removed) feeds input member `member` of the target in the sibling slot `slot`; one
 that cannot fit is `CONTRACT_INPUTS_MISMATCH` at the source.
@@ -2331,7 +2334,11 @@ nothing is reached the node stays as written. The object form
 `{ from: <location>, member: "0#" }` holds the value to the property of each
 reached type that its own map key names — a map of filters typed key by key by
 a model, refusing a key the model does not declare (one the kind's own schema
-fixes keeps its own type); on a configuration slot every expression there,
+fixes keeps its own type); `member: /key`, an absolute pointer, instead names the
+property through a field of the declaration holding each reached type (its
+kind's `default:` when the field is absent), so
+`{ from: /collection/model, member: /key }` holds a value to the collection's
+key property; on a configuration slot every expression there,
 accessors included, must fit that property's type (`CEL_TYPE_ERROR`). A location ending at
 `inputType` / `outputType` past a reference (`/invoke/outputType`) reads the
 called resource's contract as a contract resolves — its own, else its kind's
@@ -2631,21 +2638,30 @@ the mistake hides until a two-word property. Write `columns: { id: …, text: �
 is_done: … }` beside `isDone` in the model's shapes, and test the route
 (`GET`, then `POST`) before reporting the app done.
 
-**`PUT <prefix>/<id>` replaces the row.** Its body is a whole record validated
-against the model exactly as a `POST` body is — never a partial one. Every
-model column is written: the body's value, or NULL for a property it leaves
-out. So send the full record when changing one property
-(`{ text: "Buy milk", isDone: true }`, not `{ isDone: true }`); a body missing a
-required property is a 400 naming it. The body holds the properties that have a
-value: leave `id` out, and leave a property out to clear it — never send
-`null`, which is a 400 naming the property, as is a value of another JSON type
-(`"1"` for an integer). **A read returns a record valid against the model**,
+**An edit is `PATCH <prefix>/<id>`, a JSON merge patch** (`Content-Type:
+application/merge-patch+json`; `application/json` is read the same). The body
+holds only the properties to change: a member with a value sets it, `null`
+clears it (a 400 `required` issue at `/body/<property>` for a required one), a
+property left out is unchanged, an empty `{}` answers the stored record, and a
+member outside the update shape is a 400 `additionalProperties`. So a form over
+fewer properties than the table never clears the rest. `PUT <prefix>/<id>`
+still replaces the whole record (every model column, NULL for one left out) but
+is not part of the collection contract and no screen sends it. Writes of a
+record answer with an `ETag` (strong, quoted; also on read-one and `POST`), and
+`PATCH`, `PUT` and `DELETE` honour `If-Match`: a stale one is a 412
+`application/problem+json` (`code: ERR_CRUD_PRECONDITION_FAILED`), compared
+inside the write's own transaction. A screen needs nothing for this — the
+renderer keeps the `ETag` of what it read and sends it back; a hand-written
+collection that wants it sends an `ETag` and answers 412. A write body holds
+the properties that have a value; a value of another JSON type (`"1"` for an
+integer) is a 400 naming the property.
+**A read returns a record valid against the model**,
 on read-one and in every list row, so what was read (less `id`) can be sent
 back: a column holding NULL is `null` where the property admits it
 (`type: [string, "null"]`, or no `type`), LEFT OUT where the property is
 optional — in step CEL over a fetched row test `has(row.dueOn)`, never
 `row.dueOn == null` — and the type's empty value (`""`, `0`, `false`, `[]`,
-`{}`) where it is required. A refused `POST` or `PUT` body is the server's
+`{}`) where it is required. A refused `POST`, `PATCH` or `PUT` body is the server's
 400 validation problem (`code: ERR_INPUT_INVALID`), each finding in
 `data.issues` as `{ pointer, keyword, params }` — `pointer` into the request
 (`/body/text`, `/body/address/street`), no prose (`required` with
@@ -4902,8 +4918,8 @@ unaffected.)
 Where to start:
 
   - `ui` is the vocabulary of a screen, with no browser code in it:
-    `Ui.Listing` (the records of a collection, paged and sortable, with create,
-    edit and delete), `Ui.Form`, `Ui.Filters` (a filter bar over the listings
+    `Ui.Listing` (the records of a collection, paged and sortable, with create
+    and edit presses and delete), `Ui.Form`, `Ui.Filters` (a filter bar over the listings
     inside it), `Ui.Action` (a button sending a request to a route and drawing what it
     answered), `Ui.Query` (a declared read, drawn by `query` nodes) and `Ui.View` (a
     node tree placed wherever it is needed), each reading `Telo.JsonSchema`
@@ -4916,10 +4932,13 @@ Where to start:
     entry is refused by `telo check` (and by the kernel). Where a press GOES is
     a destination under `to`: `{ kind: Ui.Navigate, href: <address> }` moves to
     an address; `{ kind: Ui.OpenPage, page: !ref <page>, pathParams?,
-    queryParams?, surface? }` opens a listed page over the current one in a
-    `Ui.Dialog` or `Ui.Drawer` — `surface` omitted means the surface it is
-    pressed in, else a dialog; one page is open at a time, and a surface with
-    `address: { name: post }` keeps it in the address as `_telo.page.post`.
+    queryParams?, surface? }` opens a listed page over the current one in
+    any `Ui.Surface` — `Ui.Dialog` (default), `Ui.Drawer`, `Ui.Popover` (anchored
+    to what was pressed), `Ui.InlineSurface` (drawn after it) or `Ui.Panel`
+    (beside the list); one page is open at a time, and a surface with
+    `address: { name: post }` keeps it in the address as
+    `_telo.open.post=<app-relative address>`, so a reload reopens it.
+    "In place of the page" is `Ui.Navigate`.
     `to` sits on a `link` node, a menu item, a `value` node, `list` and
     `Ui.TableLayout` columns, a relation, `Ui.CollectionOptions`, a navigation
     `link` entry and `Ui.Action.onSuccess` (`{ to, refreshes }`); `href` at
@@ -4928,7 +4947,7 @@ Where to start:
     `CrudUi.Admin`'s rows — takes `press: { to, label }`, `label` a required
     text naming it (`{ text: "Open {$title}", values: { title: !cel
     "row.title" } }`); a pressed badge is a `box` with `press`, a pressed text
-    a `link`. A listing with `press` keeps editing on the record's edit button.
+    a `link`. A listing with no `press` opens its `edit` page when a record is pressed.
     A destination reads only the roots bound where its `to` is written (`row`
     on a page's own `link` is refused) and is never per-request CEL — two
     `link` nodes with `when` instead. Running an action is never a
@@ -5096,11 +5115,86 @@ Where to start:
     share it. The
     `UiReact.App` is listed under the same `Http.Server`'s `mounts` as the API
     it calls.
+  - **A record's screens are pages, never openers.** An edit screen is a
+    `Ui.Page` at the item's address holding a `query` node and, in its
+    `content`, a `Ui.Form` with `record: { presentation, key: !cel "data.id" }`
+    (`key` a plain chain over where the form sits, its type held to the
+    collection's key property: `params.id` is a string) and `initialValues:
+    !cel "data"`; a create screen is a page whose form has `record: {
+    presentation }` and no `key`. The form posts (no `key`) or sends the merge
+    `PATCH <basePath>/<key>` of the changed properties (with it), is held to
+    the collection's `schemas.create` / `schemas.update` (`UI_WRITE_UNDECLARED`,
+    `UI_WRITE_SHAPE_MISMATCH`), and owns `afterSubmit` (`close` default, `keep`,
+    `again`) and `unsaved` (`confirm` default, `discard`) wherever it is drawn.
+    A listing's `create` / `edit` are presses `{ to, label? }` to a
+    `Ui.OpenPage`; `edit` reads `row`, `create` reads `values` (the properties
+    a board column proposes, `{}` from the listing's own button), carried to the
+    create page by `queryParams` and read there as `initialValues: !cel
+    "query"` — so the page's `query` declares every property the model
+    requires. A `button`, a related record's label or an action's `onSuccess.to`
+    opens the same page the same way; an old `create: { form: … }` opener or
+    `Ui.PageSurface` is refused. Example:
+
+    ```yaml
+    kind: Ui.Page
+    metadata: { name: taskPage }
+    path: /tasks/{id}
+    title: Task
+    children:
+      - type: query
+        query:
+          kind: Ui.Query
+          model: !ref Task
+          url: { path: "/api/tasks/{id}", pathParams: { id: !cel "params.id" } }
+        content:
+          - type: composite
+            ref:
+              kind: Ui.Form
+              model: !ref NewTask
+              record: { presentation: !ref tasksPresentation, key: !cel "data.id" }
+              initialValues: !cel "data"
+    ---
+    kind: Ui.Page
+    metadata: { name: newTaskPage }
+    path: /tasks/new
+    title: New task
+    query:
+      title: { type: string, minLength: 1 }
+      status: { type: string, enum: [open, done] }
+    children:
+      - type: composite
+        ref:
+          kind: Ui.Form
+          model: !ref NewTask
+          record: { presentation: !ref tasksPresentation }
+          initialValues: !cel "query"
+          afterSubmit: again
+    ---
+    kind: Ui.Listing
+    metadata: { name: taskList }
+    presentation: !ref tasksPresentation
+    model: !ref Task
+    create:
+      to:
+        kind: Ui.OpenPage
+        page: !ref newTaskPage
+        queryParams: { status: !cel "values.status" }
+        surface: { kind: Ui.Dialog, size: small }
+    edit:
+      to:
+        kind: Ui.OpenPage
+        page: !ref taskPage
+        pathParams: { id: !cel "row.id" }
+        surface: { kind: Ui.Panel, address: { name: task }, compact: { kind: Ui.Drawer, side: bottom } }
+    delete: true
+    ```
+
   - A screen over one SQL table's records is `crud` plus `crud-ui`: one
     `Crud.Collection` shared by `Crud.Api` (the API, `collection:`) and a
     `CrudUi.CollectionSource` that `CrudUi.Admin` (the whole screen, with
-    optional `relations`, `layout`, `compact`, `paging`, and `press` — what
-    pressing a row does) reads. Hand-build from
+    optional `relations`, `layout`, `compact`, `paging`, `press` — what
+    pressing a row does — and `create` / `edit`, each a press to a page you
+    write; it generates no form) reads. Hand-build from
     the `ui` kinds when the screen is anything more.
 
 Before the first screen file, call the `guide_…` tool that covers user

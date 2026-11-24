@@ -1,10 +1,7 @@
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useId,
-  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
@@ -18,9 +15,9 @@ import { ErrorNode } from "./nodes.js";
 import type { ErrorSpec } from "./ui-error.js";
 import { useSay } from "./texts.js";
 
-/** Where a form appears and how it is dismissed, as the page document says it. */
+/** Where an opened page appears and how it is dismissed, as the page document says it. */
 export interface SurfaceSpec {
-  type: "dialog" | "drawer" | "popover" | "inline" | "panel" | "page";
+  type: "dialog" | "drawer" | "popover" | "inline" | "panel";
   side?: "start" | "end" | "top" | "bottom";
   size?: string;
   align?: "start" | "center" | "end";
@@ -30,16 +27,6 @@ export interface SurfaceSpec {
   /** The surface used instead on a narrow viewport. */
   compact?: SurfaceSpec;
 }
-
-/** Where a surface that replaces the page's content is drawn, and how it says
- *  that it does. */
-export interface PageSlot {
-  element: HTMLElement | null;
-  /** Take the page's place until the returned function is called. */
-  claim(): () => void;
-}
-
-export const PageSlotContext = createContext<PageSlot>({ element: null, claim: () => () => {} });
 
 interface SurfaceProps {
   spec: SurfaceSpec;
@@ -130,9 +117,9 @@ export function useHeldInside(): { mark: (event: SyntheticEvent) => void; inside
 }
 
 /**
- * A form's surface: a dialog, a drawer or a popover over the page, or a place
- * in it — in line, in a panel beside the list, or instead of the page's
- * content. Its header and the form's actions stay while its body scrolls.
+ * An opened page's surface: a dialog, a drawer or a popover over the page, or a
+ * place in it — in line, or in a panel beside a composite. Its header stays
+ * while its body scrolls.
  *
  * What it holds is mounted once, in an element of its own that whichever
  * surface is drawn takes into its body: it outlives a change of surface, with
@@ -214,12 +201,6 @@ export function Surface({ spec, title, anchor, container, onClose, children }: S
         {bodyPart}
       </Popover>
     );
-  } else if (spec.type === "page") {
-    drawn = (
-      <PageSurface spec={spec} title={title}>
-        {bodyPart}
-      </PageSurface>
-    );
   } else {
     const placed = (
       <InPage spec={spec} title={title} onClose={onClose}>
@@ -278,22 +259,6 @@ function InPage({ spec, title, onClose, children }: { spec: SurfaceSpec; title: 
       </Placed>
       {spec.dismiss?.closeButton && <CloseButton onClose={onClose} />}
     </section>
-  );
-}
-
-/** A surface in place of the page's content, which returns when it closes. */
-function PageSurface({ spec, title, children }: { spec: SurfaceSpec; title: string; children: ReactNode }) {
-  const id = useId();
-  const slot = useContext(PageSlotContext);
-  useLayoutEffect(() => slot.claim(), [slot.claim]);
-  if (!slot.element) return null;
-  return createPortal(
-    <section {...attributes(spec)} data-telo-part="surface" aria-labelledby={id}>
-      <Placed title={title} id={id}>
-        {children}
-      </Placed>
-    </section>,
-    slot.element,
   );
 }
 

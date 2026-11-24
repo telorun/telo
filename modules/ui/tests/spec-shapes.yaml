@@ -5,7 +5,7 @@ metadata:
   description: |
     A shape of the vocabulary that holds another checks it: a markdown node's value binding, a surface spec's
     compact surface, whether the surface floats or sits in the page, and the
-    surface of a listing node's opener, a filter placement's overlay and its
+    surface of the page a listing node's create press opens, a filter placement's overlay and its
     compact placement, and the placement and the store of a filters node. A
     wrong nested value is refused where it
     is written, and refused again by the contract of whatever provides it when
@@ -36,7 +36,11 @@ expect:
     - code: SCHEMA_VIOLATION
       message: "Echo.TypedNode/listingSurface: /node/sort must be object"
     - code: SCHEMA_VIOLATION
-      message: "Echo.TypedNode/listingSurface: /node/create/surface/size must be equal to one of the allowed values (small | medium | large | full)"
+      message: "Echo.TypedNode/listingSurface: /node/create/to/surface/size must be equal to one of the allowed values (small | medium | large | full)"
+    - code: SCHEMA_VIOLATION
+      message: "Echo.TypedNode/listingSurface: /node is missing required property 'edit'"
+    - code: SCHEMA_VIOLATION
+      message: "Echo.TypedNode/listingSurface: /node is missing required property 'press'"
     - code: SCHEMA_VIOLATION
       message: "Echo.TypedPlacement/placementSurface: /spec/surface/type must be equal to one of the allowed values (dialog | drawer | popover)"
     - code: SCHEMA_VIOLATION
@@ -117,10 +121,13 @@ steps:
               layout: { type: table, columns: [], reads: {} }
               delete: false
               create:
-                form: { type: form, fill: false, schema: {}, basePath: /api/todos, fields: [], groups: [], state: { address: false, store: { type: memory }, fields: [] } }
-                surface: { type: dialog, size: huge, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
-                afterSubmit: close
-                unsaved: confirm
+                to:
+                  type: openPage
+                  href: { path: { value: /todos/new }, pathParams: {}, queryParams: {} }
+                  surface: { type: dialog, size: huge, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+                  keepsSurface: false
+                label: { set: Ui.Translations, key: create }
+              edit: null
       - name: listingSurfaceAccepted
         throw: { code: ACCEPTED, message: the provider's contract accepted the value }
     catch:
@@ -214,4 +221,4 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual: !cel "[steps.overlayCompactRefusal.result, steps.panelCompactRefusal.result, steps.listingSurfaceRefusal.result, steps.placementSurfaceRefusal.result, steps.placementCompactRefusal.result, steps.filtersPlacementRefusal.result, steps.filtersStoreRefusal.result]"
-      expected: ["ERR_OUTPUT_INVALID Error: /compact must NOT have additional properties ('address' is not allowed)", "ERR_OUTPUT_INVALID Error: /type must be equal to one of the allowed values (dialog | drawer | popover); /compact/type must be equal to one of the allowed values (dialog | drawer)", "ERR_OUTPUT_INVALID Error: /node/create/surface/size must be equal to one of the allowed values (small | medium | large | full)", "ERR_OUTPUT_INVALID Error: /surface/type must be equal to one of the allowed values (dialog | drawer | popover)", "ERR_OUTPUT_INVALID Error: /compact/type must be equal to one of the allowed values (collapsible | overlay)", "ERR_OUTPUT_INVALID Error: /node/placement/type must be equal to one of the allowed values (above | aside | collapsible | overlay | searchBox)", "ERR_OUTPUT_INVALID Error: /node/state/store/type must be equal to one of the allowed values (memory | local | session)"]
+      expected: ["ERR_OUTPUT_INVALID Error: /compact must NOT have additional properties ('address' is not allowed)", "ERR_OUTPUT_INVALID Error: /type must be equal to one of the allowed values (dialog | drawer | popover); /compact/type must be equal to one of the allowed values (dialog | drawer)", "ERR_OUTPUT_INVALID Error: /node/create/to/surface/size must be equal to one of the allowed values (small | medium | large | full)", "ERR_OUTPUT_INVALID Error: /surface/type must be equal to one of the allowed values (dialog | drawer | popover)", "ERR_OUTPUT_INVALID Error: /compact/type must be equal to one of the allowed values (collapsible | overlay)", "ERR_OUTPUT_INVALID Error: /node/placement/type must be equal to one of the allowed values (above | aside | collapsible | overlay | searchBox)", "ERR_OUTPUT_INVALID Error: /node/state/store/type must be equal to one of the allowed values (memory | local | session)"]

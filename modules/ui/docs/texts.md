@@ -115,6 +115,7 @@ receive the messages of every served language.
 | `cancel` | Cancel |
 | `close` | Close |
 | `newRecord` | New |
+| `create` | Create |
 | `edit` | Edit |
 | `delete` | Delete |
 | `deleteRowQuestion` | Delete this row? |
@@ -173,6 +174,7 @@ receive the messages of every served language.
 | `keepEditing` | Keep editing |
 | `requestUnauthorized` | You are not signed in, or your session has ended. |
 | `requestForbidden` | You are not allowed to do this. |
+| `requestPreconditionFailed` | The record was changed by someone else. Review it and save again. |
 | `requestFailedStatus` | The request failed with status {$status}. |
 | `requestFailed` | The request failed: {$reason} |
 | `recordRefused` | The record was refused. |

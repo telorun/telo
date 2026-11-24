@@ -458,8 +458,9 @@ is drawn as an error node in place of its listing
 - A filter bar shows the filters on one property together: one label, and
   each control captioned by its operator — `from` and `to` for a range
   (`gte`, `lte`), `after` and `before` for `gt` and `lt`.
-- A listing's create and edit forms open in the [surface](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)
-  their opener names — a dialog when it names none — and a delete asks first
+- A listing's `create`, its record's `edit` and its `press` go where their
+  destination goes — usually a page opened in the [surface](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)
+  the destination names, a dialog when it names none — and a delete asks first
   in a confirmation. A modal dialog or drawer holds the keyboard focus and the
   page behind it does not scroll. Escape, a close button and a click outside
   close a surface where its `dismiss` leaves them on; Cancel always does, and
@@ -603,7 +604,7 @@ delete. A [`button` node](#buttons) and a markdown node's
   was typed, each item has a button that removes it, and Backspace in the
   empty box removes the last — and each item is sent as the type `items`
   declares: a number for `number` / `integer`, in a number box.
-- A list with nothing in it is left out of the record, and an edit form opens
+- A list with nothing in it is left out of the record, and an edit page opens
   with the record's list in the control.
 - In the page, a list is checked as a list and each item against the scalar
   keywords of `items`; the first item refused marks the field, and its
@@ -749,10 +750,25 @@ roots the list is drawn under.
   destination moving somewhere from inside it moves the application and closes
   it, and Escape or its close button closes it and gives the focus back to what
   opened it on the page beneath. Its address is kept under
-  [the page key](urls.md#the-page-key), and what its own nodes would write into
-  the address is kept in memory.
+  [the open key](urls.md#the-open-key), and what its own nodes would write into
+  the address is kept in memory. A popover is anchored to the pressed element,
+  an inline surface drawn in line after it (under the record in a listing), a
+  panel beside the nearest composite holding it; on a cold load the surface's
+  declaration stands in for what opened it (see [the open key](urls.md#the-open-key)),
+  and where none can, and on a narrow viewport, the surface's `compact` is
+  drawn, else a dialog.
+- **A form's lifecycle is its own.** `afterSubmit: close` closes the surface
+  its page is open in (on a page of its own the form stays, saved), `keep`
+  leaves it with its values and `again` returns it to the values it started
+  from — a fresh record on a create page, the saved one on an edit page. A
+  form starting from `initialValues` starts again, the question asked first,
+  when the resolved address of the query those values come from changes; a
+  read again at the same address keeps it and what was typed. The write is a
+  `POST` to the record's `basePath`, or with a `record.key` a merge `PATCH` of
+  what changed under `<basePath>/<key>`, carrying the validator the page last
+  read.
 - **Unsaved input.** Under `unsaved: confirm`, a form that holds unsaved input
-  asks before anything closes it: its own close button, Escape, a click
+  — wherever it is placed — asks before anything closes it: its own close button, Escape, a click
   outside or Cancel; the navigation, a link, or a component's `navigate` to
   another page; and the browser's back and forward buttons, whose step is
   undone while the question is open and replayed if the user leaves. Leaving

@@ -1,6 +1,7 @@
 import { declaredContractShape, type ContractShapeHost } from "./declared-contract-shape.js";
 import {
   effectiveAuthorSchema,
+  slotKindResolverOf,
   valueSchemaFromProblems,
   type DefResolver,
 } from "@telorun/analyzer";
@@ -98,6 +99,13 @@ class ResourceAbstract implements ResourceInstance {
       declaredContractShape(
         ctx as unknown as ContractShapeHost,
         this.resource as unknown as Record<string, any>,
+      ),
+      slotKindResolverOf(
+        (kind, from) => resolveDef(kind, from as ResourceDefinition | undefined) as Record<string, any> | undefined,
+        (definition) =>
+          effectiveAuthorSchema(definition as unknown as ResourceDefinition, resolveDef) as
+            | Record<string, any>
+            | undefined,
       ),
     );
     if (valueSchemaProblem) {

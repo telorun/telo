@@ -1,18 +1,17 @@
 import { segment } from "./address-wire.js";
 import { resolveBasePath, unresolvedFailure, type BasePath } from "./base-path.js";
-import { useContext, useEffect, useMemo, useRef, useState, type ComponentProps, type ComponentType, type ReactNode, type RefCallback } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode, type RefCallback } from "react";
 import { conditionHolds, fillAttribute, ruleStyle, styleAttribute, type Binding, type StyleRule } from "./bindings.js";
 import { boundFilters, send } from "./collection.js";
 import { useControl } from "./effective-controls.js";
-import { Form } from "./form.js";
-import { useHost, useHostStore, type HostLocation, type UnsavedGuard } from "./host.js";
+import { DetailContext, openDestination, resolveDestination, useDestinationContext, type DetailSlot, type DestinationWire } from "./destination.js";
+import { useHost, useHostStore } from "./host.js";
 import { IconButton } from "./icon-button.js";
 import { BUILT_IN_LAYOUTS, ContractLayout } from "./layouts/contract-layout.js";
 import { TableLayout } from "./layouts/table-layout.js";
 import { readMode, readPositions, useGroupValues, useListingReads, type GroupValues, type ListedRecord, type ReadView } from "./listing-engine.js";
 import type { ListingReads, ReadPlan, ReadPosition } from "./listing-reads.js";
-import { ErrorNode, Loading, Node, type SpecNode } from "./nodes.js";
-import { openValue } from "./open-address.js";
+import { ErrorNode, Node, type SpecNode } from "./nodes.js";
 import type { RowActionSpec } from "./operation.js";
 import type { OptionSourceSpec } from "./option-source.js";
 import { queryRoot } from "./query-root.js";
@@ -21,28 +20,20 @@ import { useEndReached } from "./record-window.js";
 import { FilterContext, RendererContext, RootsContext, underMount, VisibleContext } from "./renderer-context.js";
 import { useRowActions } from "./row-actions.js";
 import { useRowActionsDisplay, type ActionsDisplay, type ActionsSetting } from "./row-actions-display.js";
-import { Confirmation, Surface, type SurfaceSpec } from "./surface.js";
-import { useSay } from "./texts.js";
+import { anchorRef } from "./node-anchors.js";
+import { Confirmation } from "./surface.js";
+import { useSay, useText, type WireText } from "./texts.js";
 import { useReloadEvery } from "./timed-reload.js";
-import { errorSpec, type ErrorSpec } from "./ui-error.js";
+import { errorSpec, UiError, type ErrorSpec } from "./ui-error.js";
 import type { JsonSchema } from "./validation.js";
 
 type Row = Record<string, unknown>;
 
-/** How a form is opened: where it appears, and what a submit and unsaved
- *  input mean to it. */
-interface Opener {
-  form: SpecNode;
-  surface: SurfaceSpec;
-  afterSubmit: "close" | "again" | "keep";
-  unsaved: "confirm" | "discard";
+/** A press a listing draws — its create button, a record's edit — as the page document carries it: where it goes, and the text naming it. */
+interface PressSpec {
+  to: DestinationWire;
+  label: WireText;
 }
-
-/** The form that is open: the create form, or the edit form over a record's key. */
-type Open = { kind: "create" } | { kind: "edit"; key: string } | undefined;
-
-/** What a surface's form is given by whoever opened it. */
-type Opened = Pick<ComponentProps<typeof Form>, "afterSubmit" | "shownAt" | "onUnsaved" | "onBusy" | "onSaved" | "onDone" | "onCancel">;
 
 /** A layout spec as the page document carries it: its `type`, its own keys and its read plan. */
 export type LayoutSpec = { type: string; reads: ReadPlan } & Record<string, any>;
@@ -80,9 +71,7 @@ export interface ListingDrawing {
   actionsArea: { display: ActionsDisplay; ref: RefCallback<HTMLElement> };
   /** Where the record whose edit form opens in line draws it. */
   detail?: { key: string; ref: (element: HTMLElement | null) => void };
-  /** Open a record's edit form, where the listing edits. */
-  open?(key: string): void;
-  /** Open the create form holding these values, where the listing creates. */
+  /** Run the listing's create press with the property values the place proposes for the record, where it has one. */
   create?(values: Record<string, unknown>): void;
   /** Run the layout's move for a record, `to` the record as the gesture leaves it. */
   move(record: ListedRecord, to: Row): void;
@@ -104,46 +93,6 @@ export interface LayoutProps {
 /** What draws a layout of the spec's `type`: the table itself, every other this renderer draws through the layout contract. */
 const layoutOf = (type: string): ComponentType<LayoutProps> | undefined =>
   type === "table" ? TableLayout : type === "component" || Object.hasOwn(BUILT_IN_LAYOUTS, type) ? ContractLayout : undefined;
-
-/**
- * The edit form over one record, read from the collection when it opens: a
- * record shown may hold less than the record does, and an edit sends back
- * what the record held.
- */
-function ItemForm({ node, url, opened }: { node: SpecNode; url: string; opened: Opened }) {
-  const host = useHost();
-  const say = useSay();
-  const [item, setItem] = useState<Row>();
-  const [failure, setFailure] = useState<ErrorSpec>();
-
-  useEffect(() => {
-    let current = true;
-    send(host, url, { headers: { accept: "application/json" } })
-      .then((response) => response.json())
-      .then(
-        (read) => current && setItem(read as Row),
-        (error) => current && setFailure(errorSpec(error, "ERR_UI_REQUEST_FAILED")),
-      );
-    return () => {
-      current = false;
-    };
-  }, [url]);
-
-  if (failure) {
-    return (
-      <>
-        <ErrorNode error={failure} />
-        <div data-telo-part="form-actions">
-          <button data-telo-part="cancel" type="button" onClick={opened.onCancel}>
-            {say("cancel")}
-          </button>
-        </div>
-      </>
-    );
-  }
-  if (!item) return <Loading />;
-  return <Form node={node} target={{ method: "PUT", url }} initial={item} {...opened} />;
-}
 
 /** The control loading a read's next page: pressed, or under `scroll` when it comes into view. */
 export function LoadMore({ read, scroll }: { read: ReadView; scroll: boolean }) {
@@ -187,7 +136,6 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
   const unresolved = unresolvedFailure(base);
   // Only drawn once the path resolves: nothing below is reached with none.
   const collectionPath = basePath ?? "";
-  const collectionAt = underMount(prefix, collectionPath);
   const keyOf = (row: Row) => String(row[recordKey]);
 
   const sorting = node.sort as { sortable: string[]; initial: string | null };
@@ -243,13 +191,23 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
   }
   const labels = useRelatedLabels(relations, wanted, rowRoots);
 
-  // Open with no address: the surface declares none, or the record has no key to write.
-  const [inMemory, setInMemory] = useState<Open>();
+  const text = useText();
+  const destinations = useDestinationContext();
   const [removing, setRemoving] = useState<ListedRecord>();
-  const [unsaved, setUnsaved] = useState<UnsavedGuard>();
-  const [busy, setBusy] = useState(false);
-  const anchor = useRef<HTMLElement | null>(null);
-  const [detail, setDetail] = useState<HTMLElement | null>(null);
+  // The record an inline surface is drawn under, and who is told where its place is.
+  const [detailing, setDetailing] = useState<{ key: string; report: (element: HTMLElement | null) => void }>();
+  const reported = useRef(detailing);
+  reported.current = detailing;
+  const detailRef = useCallback((element: HTMLElement | null) => reported.current?.report(element), []);
+  const slotFor = useCallback(
+    (row: Row): DetailSlot => ({
+      show: (report) => {
+        setDetailing({ key: String(row[recordKey]), report });
+        return () => setDetailing(undefined);
+      },
+    }),
+    [recordKey],
+  );
   const [deleting, setDeleting] = useState(false);
   const [deleteFailure, setDeleteFailure] = useState<ErrorSpec>();
   // The delete in flight. Read on the press itself, which can arrive before
@@ -264,59 +222,23 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
   };
   // The layout's move, run as a row action over `row` and `to`.
   const moves = useRowActions(spec.move ? [spec.move as RowActionSpec] : [], rowRoots, succeeded);
-  // What a create opened from the layout starts with: a column's value, a day.
-  const [createValues, setCreateValues] = useState<Row>();
   const itemPath = (key: string) => `${collectionPath}/${segment(key)}`;
   const itemUrl = (key: string) => underMount(prefix, itemPath(key));
-  const creates = node.create as Opener | undefined;
-  const edits = node.edit as Opener | undefined;
+  const creates = (node.create ?? undefined) as PressSpec | undefined;
+  const edits = (node.edit ?? undefined) as PressSpec | undefined;
   const hasActions = (node.rowActions as RowActionSpec[]).length > 0 || edits !== undefined || node.delete === true;
   const shownActions = useRowActionsDisplay(
     node.rowActionsDisplay as ActionsSetting,
     `${records.map((record) => record.key).join("\u0000")}|${(node.rowActions as RowActionSpec[]).length}|${edits ? 1 : 0}|${node.delete ? 1 : 0}`,
   );
 
-  // The address says what is open: under a name, an empty value is the create
-  // form and any other the edit form over the record with that key.
-  const { path, search } = host.location;
-  const createName = creates?.surface.address?.name;
-  const editName = edits?.surface.address?.name;
-  const editKey = editName === undefined ? undefined : openValue(search, editName);
-  const addressed: Open =
-    editKey !== undefined && editKey !== ""
-      ? { kind: "edit", key: editKey }
-      : createName !== undefined && openValue(search, createName) === ""
-        ? { kind: "create" }
-        : undefined;
-  const open = addressed ?? inMemory;
-  const opener = open?.kind === "create" ? creates : open?.kind === "edit" ? edits : undefined;
-  const addressedName = addressed?.kind === "edit" ? editName : addressed ? createName : undefined;
-
-  const finish = () => {
-    if (addressedName !== undefined) store.close(addressedName);
-    else setInMemory(undefined);
+  /** Go where a press of the listing leads: over the roots in scope — and the record's, where it is one's. */
+  const press = (spec: PressSpec, roots: Readonly<Record<string, unknown>>, opener: HTMLElement | null, detail?: DetailSlot) => {
+    const destination = resolveDestination(spec.to, roots, "'press' to");
+    if (destination === undefined) return;
+    openDestination(destination.to, { ...destinations, address: destination.address }, { naming: text(spec.label, undefined, roots), opener, detail });
   };
-  /** Leave the open form — to close it, or for another — asking first when it
-   *  holds unsaved input, and not at all while it is being sent. */
-  const leave = (then: () => void) => {
-    if (busy) return;
-    if (unsaved) store.ask([unsaved], then);
-    else then();
-  };
-  const close = () => leave(finish);
-  const show = (next: Exclude<Open, undefined>, name: string | undefined, value: string, from: HTMLElement) =>
-    leave(() => {
-      anchor.current = from;
-      // A record with an empty key cannot be told from a new record in the address.
-      if (name === undefined || (next.kind === "edit" && value === "")) {
-        if (addressedName !== undefined) store.close(addressedName);
-        setInMemory(next);
-      } else {
-        setInMemory(undefined);
-        // One listing shows one form: either name already open gives way to this one.
-        store.open(name, value, [createName, editName]);
-      }
-    });
+  const edit = (record: ListedRecord, button: HTMLElement | null) => edits && press(edits, { ...rowRoots, row: record.row }, button, slotFor(record.row));
 
   const confirmDelete = (record?: ListedRecord) => {
     setDeleteFailure(undefined);
@@ -334,6 +256,8 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
       await send(host, itemUrl(record.key), { method: "DELETE" });
     } catch (error) {
       setDeleteFailure(errorSpec(error, "ERR_UI_REQUEST_FAILED"));
+      // A record changed since it was read: the listing reads it again.
+      if (error instanceof UiError && error.status === 412) host.notifyChanged(collectionPath);
       return;
     } finally {
       writing.current = false;
@@ -349,45 +273,6 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
   useEffect(() => {
     if (shownKeys !== undefined) rowActions.retain(new Set(shownKeys === "" ? [] : shownKeys.split("\u0000")));
   }, [shownKeys]);
-
-  // The address of an opening is the declared surface's, whichever is drawn.
-  const surface = open && opener ? (compact && opener.surface.compact ? opener.surface.compact : opener.surface) : undefined;
-  // An inline edit is drawn under its record; one whose record is not drawn,
-  // and an inline create, above the records.
-  const underRecord = surface?.type === "inline" && open?.kind === "edit" && records.some((record) => record.key === open.key) ? open.key : undefined;
-  const above = surface?.type === "inline" && underRecord === undefined;
-  let drawn: ReactNode = null;
-  if (open && opener && surface) {
-    const value = open.kind === "edit" ? open.key : "";
-    const name = open.kind === "edit" ? editName : createName;
-    const stillOpen = (target: HostLocation) => target.path === path && (!addressed || name === undefined || openValue(target.search, name) === value);
-    const opened: Opened = {
-      afterSubmit: opener.afterSubmit,
-      shownAt: opener.unsaved === "confirm" ? stillOpen : undefined,
-      onUnsaved: setUnsaved,
-      onBusy: setBusy,
-      onDone: finish,
-      onCancel: close,
-    };
-    // One surface wherever it is drawn, so what it holds outlives a change of
-    // it — and of the layout drawing the records.
-    drawn = (
-      <Surface
-        key="surface"
-        spec={surface}
-        title={say(open.kind === "create" ? "newRecord" : "edit")}
-        anchor={anchor}
-        container={underRecord === undefined ? undefined : detail}
-        onClose={close}
-      >
-        {open.kind === "create" ? (
-          <Form key={`create${JSON.stringify(createValues ?? {})}`} node={opener.form} target={{ method: "POST", url: collectionAt }} initial={createValues} {...opened} />
-        ) : (
-          <ItemForm key={open.key} node={opener.form} url={itemUrl(open.key)} opened={opened} />
-        )}
-      </Surface>
-    );
-  }
 
   const failure = reads.reads.find((read) => read.failure)?.failure;
   const answered = reads.reads.length > 0 && reads.reads.every((read) => read.answered);
@@ -415,9 +300,7 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
     actions: (record) =>
       shownActions.display === "menu" ? (
         rowActions.menuCell(record.row, record.key, deleting, [
-          ...(edits
-            ? [{ key: "edit", label: say("edit"), run: (button: HTMLElement) => show({ kind: "edit", key: record.key }, editName, record.key, button) }]
-            : []),
+          ...(edits ? [{ key: "edit", label: text(edits.label, undefined, { ...rowRoots, row: record.row }), run: (button: HTMLElement) => edit(record, button) }] : []),
           ...(node.delete
             ? [{ key: "delete", label: say("delete"), disabled: rowActions.busy(record.key), run: () => confirmDelete(record) }]
             : []),
@@ -425,7 +308,7 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
       ) : (
         <>
           {rowActions.cell(record.row, record.key, deleting)}
-          {edits && <IconButton part="row-edit" label={say("edit")} icon="edit" onClick={(button) => show({ kind: "edit", key: record.key }, editName, record.key, button)} />}
+          {edits && <IconButton part="row-edit" label={text(edits.label, undefined, { ...rowRoots, row: record.row })} icon="edit" onClick={(button) => edit(record, button)} />}
           {node.delete && (
             <IconButton
               part="row-delete"
@@ -437,16 +320,8 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
           )}
         </>
       ),
-    ...(underRecord !== undefined ? { detail: { key: underRecord, ref: setDetail } } : {}),
-    ...(edits ? { open: (key: string) => show({ kind: "edit", key }, editName, key, document.activeElement as HTMLElement) } : {}),
-    ...(creates
-      ? {
-          create: (values: Row) => {
-            setCreateValues(values);
-            show({ kind: "create" }, createName, "", document.activeElement as HTMLElement);
-          },
-        }
-      : {}),
+    ...(detailing !== undefined ? { detail: { key: detailing.key, ref: detailRef } } : {}),
+    ...(creates ? { create: (values: Row) => press(creates, { ...rowRoots, values }, null) } : {}),
     move: (record, to) => moves.press(0, record.row, record.key, { to }),
     movable: (record) => spec.move !== undefined && !moves.busy(record.key) && conditionHolds((spec.move as RowActionSpec).enabled, { ...rowRoots, row: record.row }),
     moveFailure: (record) => moves.failure(0, record.key),
@@ -458,7 +333,7 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
   const single = plan.groups === undefined && plan.span === undefined && plan.parent === undefined ? reads.reads[0] : undefined;
   if (unresolved) {
     return (
-      <div data-telo-part="listing" data-state="error" data-fill={fillAttribute(node)} data-style={styleAttribute(node.style)}>
+      <div ref={anchorRef(node)} data-telo-part="listing" data-state="error" data-fill={fillAttribute(node)} data-style={styleAttribute(node.style)}>
         <ErrorNode error={unresolved} />
       </div>
     );
@@ -467,23 +342,15 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
   const showCount = (node.show as { count: boolean }).count;
   const rows = single?.records.length ?? 0;
   return (
-    <div data-telo-part="listing" data-state={state} data-fill={fillAttribute(node)} data-style={styleAttribute(node.style)}>
+    <div ref={anchorRef(node)} data-telo-part="listing" data-state={state} data-fill={fillAttribute(node)} data-style={styleAttribute(node.style)}>
       {creates && (
         <div data-telo-part="listing-toolbar">
-          <button
-            data-telo-part="listing-create"
-            type="button"
-            onClick={(event) => {
-              setCreateValues(undefined);
-              show({ kind: "create" }, createName, "", event.currentTarget);
-            }}
-          >
+          <button data-telo-part="listing-create" type="button" onClick={(event) => press(creates, { ...rowRoots, values: {} }, event.currentTarget)}>
             <Icon name="add" />
-            {say("newRecord")}
+            {text(creates.label, undefined, { ...rowRoots, values: {} })}
           </button>
         </div>
       )}
-      {above && drawn}
       <div data-telo-part="listing-main" ref={shownActions.container}>
         {single?.failure && !single.kept ? (
           <ErrorNode error={single.failure} />
@@ -491,7 +358,9 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
           <ErrorNode error={{ type: "error", code: "ERR_UI_NODE_INVALID", message: `This renderer does not draw a '${spec.type}' layout.` }} />
         ) : (
           <RelatedContext.Provider value={{ relations, labels }}>
-            <Layout spec={spec} node={node} drawing={drawing} />
+            <DetailContext.Provider value={slotFor}>
+              <Layout spec={spec} node={node} drawing={drawing} />
+            </DetailContext.Provider>
           </RelatedContext.Provider>
         )}
         {single?.failure && single.kept && <ErrorNode error={single.failure} />}
@@ -521,7 +390,6 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
           </div>
         )}
       </div>
-      {!above && drawn}
       {rowActions.dialog}
       {moves.dialog}
       {removing && (

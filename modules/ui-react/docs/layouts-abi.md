@@ -15,7 +15,7 @@ controlled**: it fetches nothing and holds nothing the renderer holds.
 | | The renderer | The component |
 | --- | --- | --- |
 | Data | reading the plan's reads — every group, period and tree level, each paged; filters, the viewer's sort, reloads after a write, a move or a change announced for the collection; looking up related records' labels | draws `records`, `groups`, `children` and `span` |
-| Records | each record's press and whether it leads to where the viewer is, each record's actions — row actions, edit, delete — the inline edit form, the create and edit openers, running a move and drawing its answer | draws each record's `press` first in the element it covers, sets `data-selected` from `selected`, and draws `actions` and `detail` where the record is |
+| Records | each record's press and whether it leads to where the viewer is, each record's actions — row actions, edit, delete — the page opened in line under a record, the create and edit presses, running a move and drawing its answer | draws each record's `press` first in the element it covers, sets `data-selected` from `selected`, and draws `actions` and `detail` where the record is |
 | Intents | what each one does | reports `onEndReached`, `onPeriodChange`, `onExpand`, `onOpen`, `onSortChange`, `onMove`, `onCreate` |
 | Text | every word, finished, and `lang` | formats nothing it is not given but dates, in `lang` |
 
@@ -39,7 +39,7 @@ record and delivered on it as `record.props`, every other once, as `props`.
 | `sort` | the viewer's sort, `value` — the order the listing starts in until another is chosen — and each property it may be by with its title, `sortable`; none when the listing's order is fixed |
 | `paging` | `more` — `onEndReached` when the viewer asks — or `scroll` — once the end is in view |
 | `empty` | the listing's `empty` node, drawn where the records would be when the reads answer none |
-| `can` | which of `open` — the listing has a press or an `edit` opener — `create` and `move` does anything |
+| `can` | which of `open` — the listing has a press — `create` and `move` does anything |
 | `words` | the renderer's own texts a layout draws, finished: `loadMore`, `moveTo`, `none`, `newRecord` |
 | `lang` | the language the page is in |
 
@@ -53,7 +53,7 @@ A record:
 | `labels` | by property with a relation, the related record's label, once looked up |
 | `press` | the element the renderer draws for the listing's [press](#the-record-press), `null` without one: drawn as the first child of the element it covers |
 | `actions` | its row actions, edit, delete and a failed move's answer, drawn by the renderer — as buttons or one menu button, the wrapping element's `data-display` saying which; `null` when it offers none |
-| `detail` | present while its edit form is open in line: drawn under it |
+| `detail` | present while a page opened in line from it is open: drawn under it |
 | `style` | the style names `rowStyle` gives it, for its element's `data-style` |
 | `selected` | whether the record's press leads to where the viewer is (see [the current location](styling.md#state)) — and, for a built-in layout, a link its content draws; the component sets `data-selected` from it on the element its press covers |
 | `movable` | whether `onMove` may be reported for it now: the move's `enabled` holds and none of its presses is pending |
@@ -79,10 +79,10 @@ A group, beside everything a read holds:
 | `onEndReached` | `(at?)` — read the next page: of the outermost read with no `at`, of a group with `{ group }`, of a tree level with `{ parent }` |
 | `onPeriodChange` | `(period)` — show another period: what a `span` plan reads; sets `span` |
 | `onExpand` | `(key, open)` — read a record's children, or stop reading them |
-| `onOpen` | `(key)` — run the record's press, else open it as the listing's `edit` opener says; what `can.open` reports |
+| `onOpen` | `(key)` — run the record's press; what `can.open` reports |
 | `onSortChange` | `(sort)` — sort by a property, `-` before it for descending |
 | `onMove` | `(key, to)` — run the layout's `move` with `to`, the record as the gesture leaves it; a member it leaves out keeps the row's value |
-| `onCreate` | `(values)` — open the create form holding `values`; only the plan's own properties are kept |
+| `onCreate` | `(values)` — run the listing's create press with `values`, the property values the place proposes for the new record, as its `values` root; only the plan's own properties are kept |
 
 A move is never a replace through the edit form, which would lose one of two
 concurrent moves: the renderer runs the layout's `move` row action with the
@@ -114,8 +114,9 @@ What a component draws around it keeps that working:
   cover one part of the record when the rest must stay selectable, as the
   table covers its first cell.
 
-Without a press `record.press` is `null`, and a record is opened, where the
-listing edits, through `onOpen`, as before. A gallery drawing it:
+Without a press `record.press` is `null`, `can.open` is `false` and `onOpen`
+does nothing; a listing with an `edit` and no authored `press` is sent one equal
+to `edit`, which the renderer reads as it is. A gallery drawing it:
 
 ```yaml
 kind: Telo.Library
@@ -239,7 +240,7 @@ export interface LayoutRecord {
   press: ReactNode;
   /** The record's row actions, edit and delete, drawn by the renderer; `null` when it offers none. */
   actions: ReactNode;
-  /** Where its inline edit form opens: present while one is open on it, to be drawn under it. */
+  /** Where a page opened in line from it is drawn: present while one is open on it, to be drawn under it. */
   detail?: ReactNode;
   /** The style names `rowStyle` gives it, for its element's `data-style`. */
   style?: string;
@@ -307,7 +308,7 @@ export interface LayoutProps extends LayoutLevel {
   paging: "more" | "scroll";
   /** Drawn where the records would be when the reads answer none. */
   empty: ReactNode;
-  /** Which of `onOpen`, `onCreate` and `onMove` does anything: `open` while the listing has a press or an edit opener. */
+  /** Which of `onOpen`, `onCreate` and `onMove` does anything: `open` while the listing has a press. */
   can: { open: boolean; create: boolean; move: boolean };
   /** The renderer's words a layout draws, finished. */
   words: { loadMore: string; moveTo: string; none: string; newRecord: string };
@@ -319,13 +320,13 @@ export interface LayoutProps extends LayoutLevel {
   onPeriodChange(period: LayoutPeriod): void;
   /** Read, or stop reading, a record's children. */
   onExpand(key: string, open: boolean): void;
-  /** Run a record's press, else open it as its edit opener says. */
+  /** Run a record's press. */
   onOpen(key: string): void;
   /** Sort by a property, `-` before it for descending. */
   onSortChange(sort: string): void;
   /** Run the move: `to` is the record as the gesture leaves it; what it leaves out keeps the row's value. */
   onMove(key: string, to: Record<string, unknown>): void;
-  /** Open the create form with these values: only the plan's own properties are kept. */
+  /** Run the listing's create press with these values as its `values` root: only the plan's own properties are kept. */
   onCreate(values: Record<string, unknown>): void;
 }
 ```
@@ -352,7 +353,7 @@ built-ins meet every vector inside the renderer's own texts, in a happy-dom wind
   a new required behaviour;
 - `selected`, which reports the press for every layout, a component's included;
 - `onOpen`, which runs the press where the listing has one, and `can.open`,
-  which holds for a press or an `edit` opener;
+  which holds for a press;
 - one interpreter term, the `firstChild` of an expectation.
 
 For the life of `ui_react_layouts-2` a prop or a member is added only where a

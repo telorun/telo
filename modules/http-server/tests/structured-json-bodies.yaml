@@ -1,0 +1,156 @@
+kind: Telo.Application
+metadata:
+  name: HttpStructuredJsonBodiesTest
+  version: 1.0.0
+  description: |
+    A request body whose media type carries the `+json` suffix is read as
+    `application/json` is: parsed, validated against the route's body schema,
+    and refused with the same 400 when malformed — whatever the top-level type
+    and parameters. An entry naming one exact `+json` type replaces the native
+    parse for that type, and a stream entry for another `+json` type delivers
+    a stream while the rest still arrive parsed.
+imports:
+  Http: ../
+  HttpClient: ../../http-client
+  Octet: ../../octet-codec
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request:
+      path: /echo
+      method: POST
+      schema:
+        body:
+          type: object
+          required: [name]
+          additionalProperties: false
+          properties: { name: { type: string } }
+    handler: { kind: Telo.Value, value: !cel "inputs" }
+    inputs: { body: !cel "request.body" }
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+  # No body schema: what the handler reads is what the parser produced.
+  - request: { path: /raw, method: POST }
+    handler: { kind: Telo.Value, value: !cel "inputs" }
+    inputs: { body: !cel "request.body" }
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+  - request:
+      path: /stream
+      method: POST
+      schema: { body: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } } }
+    handler: { kind: Octet.Decoder }
+    inputs: { input: !cel "request.body" }
+    returns:
+      - status: 200
+        content: { application/json: { body: { text: !cel "string(result.bytes)" } } }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 8975 }
+    contentTypeParsers:
+      - { contentType: application/ld+json, stream: true }
+      - contentType: application/vnd.acme.override+json
+        parser:
+          kind: Telo.Value
+          inputType:
+            kind: Telo.JsonSchema
+            schema: { type: object, required: [body], properties: { body: { type: string } } }
+          value: !cel "'entry:' + inputs.body"
+    mounts:
+      - path: /
+        mount: !ref api
+targets:
+  - !ref server
+steps:
+  - name: merge
+    inputs:
+      headers: { content-type: application/merge-patch+json }
+      body: { name: patch }
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8975/echo", method: POST }
+  - name: problem
+    inputs: { headers: { content-type: application/problem+json }, body: { name: problem } }
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8975/echo", method: POST }
+  - name: vendor
+    inputs:
+      headers: { content-type: "application/vnd.acme.v1+json; charset=utf-8" }
+      body: { name: vendor }
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8975/echo", method: POST }
+  # The route's body schema judges each one.
+  - name: refused
+    inputs: { headers: { content-type: application/merge-patch+json }, body: { other: 1 } }
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8975/echo", method: POST }
+  - name: assertParsed
+    inputs:
+      actual:
+        merge: !cel "steps.merge.result.body"
+        problem: !cel "steps.problem.result.body"
+        vendor: !cel "steps.vendor.result.body"
+        refused: !cel "steps.refused.result.body.data.issues.map(i, i.keyword)"
+      expected:
+        merge: { body: { name: patch } }
+        problem: { body: { name: problem } }
+        vendor: { body: { name: vendor } }
+        refused: [required]
+    invoke: { kind: Assert.Equals }
+
+  # A malformed body is the refusal `application/json` gets.
+  - name: brokenJson
+    inputs: { headers: { content-type: application/json }, body: "{broken" }
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8975/echo", method: POST }
+  - name: brokenPatch
+    inputs: { headers: { content-type: application/merge-patch+json }, body: "{broken" }
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8975/echo", method: POST }
+  - name: brokenProblem
+    inputs: { headers: { content-type: application/problem+json }, body: "{broken" }
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8975/echo", method: POST }
+  - name: brokenVendor
+    inputs:
+      headers: { content-type: "application/vnd.acme.v1+json; charset=utf-8" }
+      body: "{broken"
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8975/echo", method: POST }
+  - name: assertBroken
+    inputs:
+      actual:
+        status: !cel "[steps.brokenJson.result.status, steps.brokenPatch.result.status, steps.brokenProblem.result.status, steps.brokenVendor.result.status]"
+        sameBody: !cel >-
+          [steps.brokenPatch.result.body, steps.brokenProblem.result.body, steps.brokenVendor.result.body]
+          .all(b, b == steps.brokenJson.result.body)
+      expected: { status: [400, 400, 400, 400], sameBody: true }
+    invoke: { kind: Assert.Equals }
+
+  # One type streamed by its own entry; merge-patch still arrives parsed.
+  - name: streamed
+    inputs: { headers: { content-type: application/ld+json }, body: '{"streamed":true}' }
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8975/stream", method: POST }
+  - name: parsedBesideStream
+    inputs:
+      headers: { content-type: application/merge-patch+json }
+      body: { name: still-parsed }
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8975/echo", method: POST }
+  # An entry for an exact type is given the body instead of the native parse.
+  - name: overridden
+    inputs:
+      headers: { content-type: application/vnd.acme.override+json }
+      body: '{"a":1}'
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8975/raw", method: POST }
+  - name: assertPrecedence
+    inputs:
+      actual:
+        streamed: !cel "steps.streamed.result.body"
+        parsed: !cel "steps.parsedBesideStream.result.body"
+        overridden: !cel "steps.overridden.result.body"
+      expected:
+        streamed: { text: '{"streamed":true}' }
+        parsed: { body: { name: still-parsed } }
+        overridden: { body: 'entry:{"a":1}' }
+    invoke: { kind: Assert.Equals }

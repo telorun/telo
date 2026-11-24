@@ -1,18 +1,19 @@
-import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactNode } from "react";
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactNode } from "react";
 import { isAppRelative, type CurrentLocation } from "./address-wire.js";
 import { readBinding } from "./bindings.js";
-import { PageHostContext, type PageHost, type PageOpening } from "./destination.js";
+import { PageHostContext, type DetailSlot, type PageHost, type PageOpening } from "./destination.js";
 import { HostContext, type HostLocation, type HostStore } from "./host.js";
 import { anchorMove } from "./link-address.js";
 import { ErrorNode, Loading, Nodes, type SpecNode } from "./nodes.js";
+import { anchorOf } from "./node-anchors.js";
 import { locationAt, OpenedPageStore } from "./opened-page-store.js";
 import { PressQueueContext, PressQueues } from "./operation.js";
 import { fetchDocument, fetchNotFound, type PageDocument } from "./page-documents.js";
 import { pageEntries, pageKey, sameSurface, surfaceDeclaring, type DeclaredSurface } from "./page-key.js";
 import { matchPage } from "./page-route.js";
 import { queryRoot } from "./query-root.js";
-import { RendererContext, RootsContext } from "./renderer-context.js";
-import { PageSlotContext, Surface, type PageSlot, type SurfaceSpec } from "./surface.js";
+import { OpenedPageContext, RendererContext, RootsContext } from "./renderer-context.js";
+import { Surface, type SurfaceSpec } from "./surface.js";
 import { formatText, TextsContext, useSay, type Texts, type TranslatedText, type WireText } from "./texts.js";
 import { errorSpec, type ErrorSpec } from "./ui-error.js";
 
@@ -30,6 +31,12 @@ export interface OpenedPage {
   opener: HTMLElement | null;
   /** The application path it was opened on: one held in memory closes when the application leaves it. */
   on: string;
+  /** The record of the listing that opened it, under which an inline surface is drawn. */
+  detail: DetailSlot | undefined;
+  /** Whether a form in it is being sent: nothing closes it or replaces it meanwhile. */
+  busy: { current: boolean };
+  /** Whether what opened it was on screen when it opened — or, cold, what stands in for it was — so a surface placed against it can be. Decided at open. */
+  placed: boolean;
   /** The page's own store, its addresses in memory. */
   store: OpenedPageStore;
   /** Which drawing of a surface it is in: a page swapped into the open surface keeps the drawing. */
@@ -63,13 +70,15 @@ export function useOpenedPage({
   location,
   documents,
   untitled,
+  texts,
 }: {
   store: HostStore;
   location: HostLocation;
   documents: readonly SearchedDocument[] | undefined;
   untitled: string;
+  /** The application's texts, which the shell is drawn above. */
+  texts: Texts;
 }): { opened: OpenedPage | undefined; outside: PageHost; inside: PageHost; close(): void } {
-  const texts = useContext(TextsContext);
   const [opened, setOpened] = useState<OpenedPage>();
   // What is open now, ahead of the render that draws it.
   const held = useRef<OpenedPage | undefined>(undefined);
@@ -100,6 +109,7 @@ export function useOpenedPage({
 
   const open = (opening: PageOpening, inside: boolean) => {
     const current = held.current;
+    if (current?.busy.current) return;
     const kept = inside && opening.to.keepsSurface && current !== undefined;
     const surface = kept ? current.surface : opening.to.surface;
     const swaps = current !== undefined && (kept || sameSurface(surface, current.surface));
@@ -115,6 +125,9 @@ export function useOpenedPage({
         name,
         naming: opening.naming,
         opener: inside && current !== undefined ? current.opener : opening.opener,
+        detail: inside && current !== undefined ? current.detail : opening.detail,
+        placed: inside && current !== undefined ? current.placed : (opening.opener?.isConnected ?? false) || opening.detail !== undefined,
+        busy: { current: false },
         on,
         store: pageStore(opening.address, name, on),
         frame: swaps ? current.frame : ++frames.current,
@@ -128,7 +141,7 @@ export function useOpenedPage({
 
   const close = () => {
     const current = held.current;
-    if (current === undefined) return;
+    if (current === undefined || current.busy.current) return;
     const perform = () => {
       store.closePage();
       change(undefined);
@@ -164,14 +177,20 @@ export function useOpenedPage({
     if (chosen === undefined) return;
     const current = held.current;
     if (current?.name === chosen.name && current.address === chosen.value) return;
-    const { surface, naming, document } = chosen.found;
+    const { surface, naming, document, anchors } = chosen.found;
     const named = naming === undefined ? undefined : boundText(texts, naming, documents[document].roots);
+    // The declaration stands in for what opened the page, where it is known from the documents and drawn now.
+    const standIn = surface.type === "panel" ? anchors.composite : surface.type === "popover" || surface.type === "inline" ? anchors.pressed : undefined;
+    const anchor = current?.opener ?? (standIn === undefined ? null : anchorOf(standIn));
     change({
       surface,
       address: chosen.value,
       name: chosen.name,
       naming: named ?? untitled,
-      opener: current?.opener ?? null,
+      opener: anchor,
+      detail: current?.detail,
+      placed: anchor !== null,
+      busy: { current: false },
       on: location.path,
       store: pageStore(chosen.value, chosen.name, location.path),
       frame: current !== undefined && sameSurface(current.surface, surface) ? current.frame : ++frames.current,
@@ -195,8 +214,17 @@ export function useOpenedPage({
 /** Where the viewer is, beside the application: the address of the page open over it. */
 export const openedLocation = (opened: OpenedPage | undefined): CurrentLocation | undefined => (opened === undefined ? undefined : locationAt(opened.address));
 
-/** The surface a narrow viewport uses: the compact one a surface names, else itself. */
-const shownSurface = (surface: SurfaceSpec, compact: boolean): SurfaceSpec => (compact && surface.compact ? surface.compact : surface);
+/** The surface a page falls back on where what opened it cannot place it: a dialog with its defaults. */
+const FALLBACK_DIALOG: SurfaceSpec = { type: "dialog", size: "medium", modal: true, dismiss: { escape: true, outside: true, closeButton: true } };
+
+/** The nodes a panel is drawn beside: the nearest of these that holds what was pressed. */
+const COMPOSITES = ["listing", "split", "form", "action", "filters", "chat"].map((part) => `[data-telo-part="${part}"]`).join(",");
+
+/** Whether a surface is placed against what opened it, rather than against the viewport. */
+const isPlaced = (surface: SurfaceSpec): boolean => surface.type === "popover" || surface.type === "inline" || surface.type === "panel";
+
+/** The element an inline surface is drawn after: what was pressed, or what a press covers. */
+const subjectOf = (opener: HTMLElement): HTMLElement | null => (opener.getAttribute("data-telo-part") === "press" ? opener.parentElement : opener);
 
 /** What an opened page's document came to. */
 type Drawing = { path: string; page: PageDocument } | { path: string; missing: SpecNode[] | undefined } | { path: string; failure: ErrorSpec };
@@ -229,6 +257,7 @@ export function OpenedPageSurface({
   const environment = useContext(RendererContext);
   const texts = useContext(TextsContext);
   const anchor = useRef<HTMLElement | null>(opened.opener);
+  anchor.current = opened.opener;
   const path = locationAt(opened.address).path;
   const matched = matchPage(
     pages.map((page) => page.path),
@@ -236,8 +265,21 @@ export function OpenedPageSurface({
   );
   const declared = matched && pages.find((page) => page.path === matched.path);
   const title = declared?.title ? formatText(texts, declared.title, {}) : opened.naming;
+
+  // What opened the page, where it is still drawn: a surface placed against it has nothing to be placed against otherwise.
+  const opener = opened.placed ? opened.opener : null;
+  const composite = opener?.closest<HTMLElement>(COMPOSITES) ?? null;
+  const placeable = (surface: SurfaceSpec) =>
+    surface.type === "popover" ? opener !== null : surface.type === "inline" ? opener !== null || opened.detail !== undefined : surface.type === "panel" ? composite !== null : true;
+  const narrow = environment.compact;
+  let surface = opened.surface;
+  if (surface.compact && (narrow || (isPlaced(surface) && !placeable(surface)))) surface = surface.compact;
+  else if (isPlaced(surface) && (narrow || !placeable(surface))) surface = FALLBACK_DIALOG;
+
+  const place = useInlinePlace(opened, surface.type === "inline", opener);
+  const container = surface.type === "inline" ? place : surface.type === "panel" ? composite : undefined;
   return (
-    <Surface key={opened.frame} spec={shownSurface(opened.surface, environment.compact)} title={title} anchor={anchor} onClose={onClose}>
+    <Surface key={opened.frame} spec={surface} title={title} anchor={anchor} container={container} onClose={onClose}>
       <OpenedPageContent
         key={opened.serial}
         opened={opened}
@@ -246,9 +288,39 @@ export function OpenedPageSurface({
         inside={inside}
         accept={accept}
         refreshes={refreshes}
+        onClose={onClose}
       />
     </Surface>
   );
+}
+
+/**
+ * Where an inline surface is drawn: under the record of the listing that opened
+ * it, else in line after what was pressed. `null` until that place is drawn.
+ */
+function useInlinePlace(opened: OpenedPage, inline: boolean, opener: HTMLElement | null): HTMLElement | null {
+  const [detail, setDetail] = useState<HTMLElement | null>(null);
+  const [after] = useState(() => {
+    const element = document.createElement("div");
+    element.style.display = "contents";
+    return element;
+  });
+  const slot = opened.detail;
+  useEffect(() => {
+    if (!inline || slot === undefined) return;
+    const release = slot.show(setDetail);
+    return () => {
+      release();
+      setDetail(null);
+    };
+  }, [inline, slot, opened.serial]);
+  useLayoutEffect(() => {
+    if (!inline || slot !== undefined || opener === null) return;
+    const subject = subjectOf(opener);
+    subject?.after(after);
+    return () => after.remove();
+  }, [inline, slot, opener, opened.serial]);
+  return !inline ? null : slot !== undefined ? detail : opener === null ? null : after;
 }
 
 function OpenedPageContent({
@@ -258,6 +330,7 @@ function OpenedPageContent({
   inside,
   accept,
   refreshes,
+  onClose,
 }: {
   opened: OpenedPage;
   declaredPath: string | undefined;
@@ -265,6 +338,7 @@ function OpenedPageContent({
   inside: PageHost;
   accept: <T extends { bundle: string }>(document: T) => T | undefined;
   refreshes: number;
+  onClose: () => void;
 }): ReactNode {
   const environment = useContext(RendererContext);
   const say = useSay();
@@ -272,18 +346,7 @@ function OpenedPageContent({
   const { path } = page.location;
   const [drawing, setDrawing] = useState<Drawing>();
   const held = useRef<PageDocument | undefined>(undefined);
-  const [slotElement, setSlotElement] = useState<HTMLElement | null>(null);
-  const [claims, setClaims] = useState(0);
-  const slot = useMemo<PageSlot>(
-    () => ({
-      element: slotElement,
-      claim: () => {
-        setClaims((count) => count + 1);
-        return () => setClaims((count) => count - 1);
-      },
-    }),
-    [slotElement],
-  );
+  const closing = useMemo(() => ({ close: onClose, busy: (busy: boolean) => void (opened.busy.current = busy) }), [onClose, opened]);
   const queues = useMemo(() => new PressQueues(), []);
   const url = `${environment.prefix}/_telo/ui/page?path=${encodeURIComponent(path)}`;
 
@@ -329,16 +392,13 @@ function OpenedPageContent({
   return (
     <HostContext.Provider value={opened.store}>
       <PageHostContext.Provider value={inside}>
-        <PageSlotContext.Provider value={slot}>
+        <OpenedPageContext.Provider value={closing}>
           <div style={{ display: "contents" }} onClick={follow}>
-            <div ref={setSlotElement} style={{ display: "contents" }} />
-            <div style={{ display: claims > 0 ? "none" : "contents" }}>
-              <PressQueueContext.Provider value={queues}>
-                <RootsContext.Provider value={roots}>{content}</RootsContext.Provider>
-              </PressQueueContext.Provider>
-            </div>
+            <PressQueueContext.Provider value={queues}>
+              <RootsContext.Provider value={roots}>{content}</RootsContext.Provider>
+            </PressQueueContext.Provider>
           </div>
-        </PageSlotContext.Provider>
+        </OpenedPageContext.Provider>
       </PageHostContext.Provider>
     </HostContext.Provider>
   );

@@ -1,0 +1,5 @@
+units:
+  apps/authoring-agent: Added
+body: "The agent's primer covers `x-telo-context-partial: true`, which types a binding
+  as some members of the record its typing annotation names, each optional and
+  nullable."

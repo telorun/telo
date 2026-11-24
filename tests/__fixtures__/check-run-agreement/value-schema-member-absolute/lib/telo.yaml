@@ -1,0 +1,21 @@
+# A kind naming a member by an absolute pointer to its own `model` field, which
+# holds a type reference rather than a string, so it never names a property.
+kind: Telo.Library
+metadata:
+  name: ValueSchemaMemberAbsoluteLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose kind names a member through an absolute pointer to a
+    field that is not a string.
+---
+kind: Telo.Definition
+metadata: { name: Caller }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    model: { x-telo-ref: { kind: Telo.Type, use: schema } }
+    recordKey: { type: string, x-telo-value-schema-from: { from: /model, member: /model } }
+resources:
+  - { kind: Telo.Value, metadata: { name: body }, value: { called: true } }
+invoke: !ref body

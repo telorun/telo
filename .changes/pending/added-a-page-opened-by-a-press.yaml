@@ -1,0 +1,13 @@
+units:
+  modules/ui-react: Added
+body: "A page opened by a press is drawn in any surface and placed against what opened
+  it: a popover anchored to the pressed element, an inline surface drawn after it, a
+  panel beside the nearest composite holding it, and on a cold load, a narrow viewport
+  or an opener not on screen the surface's compact, else a dialog, restored from the
+  page document or layout that declares it. The open key _telo.open.<name> now always
+  holds the opened page's app-relative address; its old record-key value and empty
+  create value are gone. The leave guard holds for every form with unsaved input
+  wherever it is placed, a form submits and closes by its own afterSubmit and unsaved,
+  starts from initialValues (again, asking first, when the address its query reads
+  changes), and a board column's create intent (onCreate(values)) runs the listing's
+  create press with the values it proposes, the create page reading them as its query."

@@ -4,8 +4,9 @@ metadata:
   version: 1.0.0
   description: |
     End-to-end: a templated Crud.Api mounted on an Http.Server exercises the
-    full REST lifecycle (create / list envelope / read / replace / delete / 404)
-    against a declared SQLite table. Validates the persistent-target template
+    full REST lifecycle (create / list envelope / read / merge patch / replace /
+    delete / 404) and its ETag and If-Match preconditions against a declared
+    SQLite table. Validates the persistent-target template
     controller, the `mount:` dispatch, and nested templated handlers resolving
     across imports.
 imports:
@@ -15,6 +16,7 @@ imports:
   Http: ../../http-server
   HttpClient: ../../http-client
   Assert: ../../assert
+  Run: ../../run
 targets:
   - !ref migrate
   - !ref test
@@ -105,12 +107,19 @@ steps:
       listOp: !cel "steps.spec.result.body.paths['/todos'].get.operationId"
       getOp: !cel "steps.spec.result.body.paths['/todos/{todoId}'].get.operationId"
       createOp: !cel "steps.spec.result.body.paths['/todos'].post.operationId"
+      updateOp: !cel "steps.spec.result.body.paths['/todos/{todoId}'].patch.operationId"
+      replaceOp: !cel "steps.spec.result.body.paths['/todos/{todoId}'].put.operationId"
     invoke:
       kind: Assert.Schema
       schema:
         type: object
-        properties: { listOp: { const: listTodos }, getOp: { const: getTodo }, createOp: { const: createTodo } }
-        required: [listOp, getOp, createOp]
+        properties:
+          listOp: { const: listTodos }
+          getOp: { const: getTodo }
+          createOp: { const: createTodo }
+          updateOp: { const: updateTodo }
+          replaceOp: { const: replaceTodo }
+        required: [listOp, getOp, createOp, updateOp, replaceOp]
 
   - name: create
     inputs: {}
@@ -288,8 +297,219 @@ steps:
         missing: 404
     invoke: { kind: Assert.Equals }
 
-  - name: delete
+  # A strong ETag rides on read-one and on every write answer; a record the
+  # patches below leave alone keeps the same one.
+  - name: readValidator
     inputs: {}
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8971/todos/1", method: GET }
+
+  # PATCH sets the members that hold a value and leaves the rest: `done` is
+  # not in the body and stays 1.
+  - name: patchSet
+    inputs:
+      headers:
+        content-type: application/merge-patch+json
+        if-match: !cel "steps.readValidator.result.headers.etag"
+      body: { text: "Buy oat milk", dueDate: "2026-08-01" }
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8971/todos/1", method: PATCH }
+  - name: assertPatchSet
+    inputs:
+      actual:
+        status: !cel "steps.patchSet.result.status"
+        body: !cel "steps.patchSet.result.body"
+        validatorMoved: !cel "steps.patchSet.result.headers.etag != steps.readValidator.result.headers.etag"
+      expected:
+        status: 200
+        body: { id: 1, text: "Buy oat milk", done: 1, dueDate: "2026-08-01" }
+        validatorMoved: true
+    invoke: { kind: Assert.Equals }
+
+  # A `null` clears an optional property, which then reads as absent.
+  - name: patchClear
+    inputs: {}
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8971/todos/1
+      method: PATCH
+      headers: { content-type: application/merge-patch+json }
+      body: { dueDate: null }
+  # An empty patch writes nothing and answers the stored record.
+  - name: patchEmpty
+    inputs: {}
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8971/todos/1
+      method: PATCH
+      headers: { content-type: application/merge-patch+json }
+      body: {}
+  - name: assertPatchClear
+    inputs:
+      actual:
+        clear: !cel "steps.patchClear.result.body"
+        empty:
+          status: !cel "steps.patchEmpty.result.status"
+          body: !cel "steps.patchEmpty.result.body"
+          sameValidator: !cel "steps.patchEmpty.result.headers.etag == steps.patchClear.result.headers.etag"
+      expected:
+        clear: { id: 1, text: "Buy oat milk", done: 1 }
+        empty:
+          status: 200
+          body: { id: 1, text: "Buy oat milk", done: 1 }
+          sameValidator: true
+    invoke: { kind: Assert.Equals }
+
+  # The merged record is held to the update shape whole: a required property
+  # cannot be cleared, and a member outside the shape is refused — the row is
+  # left as it was.
+  - name: patchRequiredCleared
+    inputs: {}
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8971/todos/1
+      method: PATCH
+      headers: { content-type: application/merge-patch+json }
+      body: { text: null }
+  - name: patchUnknownMember
+    inputs: {}
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8971/todos/1
+      method: PATCH
+      headers: { content-type: application/merge-patch+json }
+      body: { nope: 1 }
+  - name: patchWrongType
+    inputs: {}
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8971/todos/1
+      method: PATCH
+      headers: { content-type: application/merge-patch+json }
+      body: { done: 5 }
+  - name: patchMissing
+    inputs: {}
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8971/todos/99
+      method: PATCH
+      headers: { content-type: application/merge-patch+json }
+      body: { text: "Nobody" }
+  - name: readAfterRefusedPatches
+    inputs: {}
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8971/todos/1", method: GET }
+  - name: assertRefusedPatches
+    inputs:
+      actual:
+        required:
+          status: !cel "steps.patchRequiredCleared.result.status"
+          code: !cel "steps.patchRequiredCleared.result.body.code"
+          issues: !cel "steps.patchRequiredCleared.result.body.data.issues"
+        unknown: !cel "steps.patchUnknownMember.result.body.data.issues"
+        wrongType: !cel "steps.patchWrongType.result.body.data.issues"
+        missing: !cel "steps.patchMissing.result.status"
+        row: !cel "steps.readAfterRefusedPatches.result.body"
+      expected:
+        required:
+          status: 400
+          code: ERR_INPUT_INVALID
+          issues:
+            - { pointer: /body/text, keyword: required, params: { missingProperty: text } }
+        unknown:
+          - { pointer: /body/nope, keyword: additionalProperties, params: { additionalProperty: nope } }
+        wrongType:
+          - { pointer: /body/done, keyword: enum, params: { allowedValues: [0, 1] } }
+        missing: 404
+        row: { id: 1, text: "Buy oat milk", done: 1 }
+    invoke: { kind: Assert.Equals }
+
+  # The validator `patchSet` was made against is stale: every write naming it
+  # is refused with 412 and changes nothing.
+  - name: stalePatch
+    inputs:
+      headers:
+        content-type: application/merge-patch+json
+        if-match: !cel "steps.readValidator.result.headers.etag"
+      body: { text: "Stale" }
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8971/todos/1", method: PATCH }
+  - name: staleReplace
+    inputs:
+      headers: { if-match: !cel "steps.readValidator.result.headers.etag" }
+      body: { text: "Stale" }
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8971/todos/1", method: PUT }
+  - name: staleDelete
+    inputs:
+      headers: { if-match: !cel "steps.readValidator.result.headers.etag" }
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8971/todos/1", method: DELETE }
+  - name: readAfterStale
+    inputs: {}
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8971/todos/1", method: GET }
+  - name: assertStale
+    inputs:
+      actual:
+        patch:
+          status: !cel "steps.stalePatch.result.status"
+          code: !cel "steps.stalePatch.result.body.code"
+        replace: !cel "steps.staleReplace.result.status"
+        delete: !cel "steps.staleDelete.result.status"
+        row: !cel "steps.readAfterStale.result.body"
+      expected:
+        patch: { status: 412, code: ERR_CRUD_PRECONDITION_FAILED }
+        replace: 412
+        delete: 412
+        row: { id: 1, text: "Buy oat milk", done: 1 }
+    invoke: { kind: Assert.Equals }
+
+  # Two patches made against one validator: the first takes the row's write
+  # lock and wins, the second reads the changed row and is refused.
+  - name: raceStart
+    inputs: {}
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8971/todos/1", method: GET }
+  - name: race
+    inputs: { validator: !cel "steps.raceStart.result.headers.etag" }
+    invoke:
+      kind: Run.Projection
+      collection: [first, second]
+      concurrency: 2
+      steps:
+        - name: patchRacing
+          inputs:
+            headers:
+              content-type: application/merge-patch+json
+              if-match: !cel "inputs.validator"
+            body: { text: "Raced" }
+          invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8971/todos/1", method: PATCH }
+      outputs: { status: !cel "steps.patchRacing.result.status" }
+  - name: assertRace
+    inputs:
+      actual: !cel "sort(steps.race.result.map(r, r.status))"
+      expected: [200, 412]
+    invoke: { kind: Assert.Equals }
+
+  # A matching validator lets a replace and a delete through.
+  - name: readRaced
+    inputs: {}
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8971/todos/1", method: GET }
+  - name: replaceMatching
+    inputs:
+      headers: { if-match: !cel "steps.readRaced.result.headers.etag" }
+      body: { text: "Replaced", done: 1 }
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8971/todos/1", method: PUT }
+  - name: assertReplaceMatching
+    inputs:
+      actual:
+        status: !cel "steps.replaceMatching.result.status"
+        body: !cel "steps.replaceMatching.result.body"
+        validatorMoved: !cel "steps.replaceMatching.result.headers.etag != steps.readRaced.result.headers.etag"
+        raced: !cel "steps.readRaced.result.body"
+      expected:
+        status: 200
+        body: { id: 1, text: "Replaced", done: 1 }
+        validatorMoved: true
+        raced: { id: 1, text: "Raced", done: 1 }
+    invoke: { kind: Assert.Equals }
+
+  - name: delete
+    inputs:
+      headers: { if-match: !cel "steps.replaceMatching.result.headers.etag" }
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8971/todos/1", method: DELETE }
   - name: assertDeleted
     inputs:

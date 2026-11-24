@@ -1,5 +1,6 @@
 import { createContext, useContext, useMemo, useSyncExternalStore } from "react";
 import type { Host, HostLocation } from "../contract/ui-react.js";
+import { Validators } from "./validators.js";
 import { changeKey, refreshCovers, type Refresh } from "./address-wire.js";
 import { openKey, openValue, withFiltersOf, withOpen } from "./open-address.js";
 import { pageKey, withOnlyPage, withPage } from "./page-key.js";
@@ -35,6 +36,7 @@ interface Channels {
   kept: Set<(change: KeptChange) => void>;
   rereads: Map<string, Set<() => void>>;
   writes: Map<string, Set<(record: Record<string, unknown>) => void>>;
+  validators: Validators;
 }
 
 /** The history entry an opening added: the query key of what it opened, none
@@ -96,7 +98,7 @@ export class HostStore {
     readonly prefix: string,
     memory?: { at: HostLocation; shares: HostStore },
   ) {
-    this.channels = memory?.shares.channels ?? { changes: new Map(), kept: new Set(), rereads: new Map(), writes: new Map() };
+    this.channels = memory?.shares.channels ?? { changes: new Map(), kept: new Set(), rereads: new Map(), writes: new Map(), validators: new Validators() };
     this.queries = memory?.shares.queries ?? new QueryReads(this.fetch, this.onChanged);
     if (memory) {
       this.host = this.hostAt(memory.at);
@@ -425,10 +427,26 @@ export class HostStore {
     return this.prefix + target.path + target.search + target.hash;
   };
 
-  private readonly fetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  /** Requests go through the validators: a write carries the kept `If-Match`, an answer's `ETag` is kept, and a refused precondition tells the readers of its path. */
+  private readonly fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const address = input instanceof Request ? input.url : String(input);
-    const sameOrigin = new URL(address, window.location.href).origin === window.location.origin;
-    return sameOrigin ? globalThis.fetch(input, { credentials: "same-origin", ...init }) : globalThis.fetch(input, init);
+    const url = new URL(address, window.location.href);
+    const sameOrigin = url.origin === window.location.origin;
+    const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+    const path = sameOrigin ? changeKey(url.pathname.startsWith(this.prefix) ? url.pathname.slice(this.prefix.length) || "/" : url.pathname) : undefined;
+    let sent = init;
+    const kept = path === undefined || input instanceof Request ? undefined : this.channels.validators.ifMatch(method, path);
+    if (kept !== undefined) {
+      const headers = new Headers(init?.headers);
+      if (!headers.has("if-match")) headers.set("if-match", kept);
+      sent = { ...init, headers };
+    }
+    const response = await (sameOrigin ? globalThis.fetch(input, { credentials: "same-origin", ...sent }) : globalThis.fetch(input, sent));
+    if (path !== undefined) {
+      this.channels.validators.answered(method, path, response.status, response.headers.get("etag"));
+      if (response.status === 412) this.notifyChanged(path);
+    }
+    return response;
   };
 
   /** Readers and writers meet at the encoded app-relative path, the query left out. */

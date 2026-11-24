@@ -1,0 +1,49 @@
+kind: Telo.Application
+metadata:
+  name: DataModelWriteSchemasTest
+  version: 1.0.0
+  description: |
+    A collection publishes the body its create and its update accept, and
+    publishes only the ones it declares: a collection with no `schemas` accepts
+    neither write.
+imports: { Assert: ../../assert, DataModel: ../ }
+targets:
+  - !ref check
+---
+kind: Telo.JsonSchema
+metadata: { name: Post }
+schema:
+  type: object
+  required: [id, title]
+  properties: { id: { type: integer }, title: { type: string }, note: { type: string } }
+---
+kind: Telo.JsonSchema
+metadata: { name: PostDraft }
+schema:
+  type: object
+  required: [title]
+  additionalProperties: false
+  properties: { title: { type: string }, note: { type: string } }
+---
+kind: DataModel.Collection
+metadata: { name: writable }
+model: !ref Post
+schemas: { create: !ref PostDraft, update: !ref PostDraft }
+query: { filters: [], sort: [] }
+---
+kind: DataModel.Collection
+metadata: { name: readOnly }
+model: !ref Post
+query: { filters: [], sort: [] }
+---
+kind: Telo.Sequence
+metadata: { name: check }
+steps:
+  - name: published
+    inputs:
+      actual:
+        writable: !cel "keys(resources.writable.schemas)"
+        updateProperties: !cel "keys(resources.writable.schemas.update.schema.properties)"
+        readOnly: !cel "keys(resources.readOnly.schemas)"
+      expected: { writable: [create, update], updateProperties: [title, note], readOnly: [] }
+    invoke: { kind: Assert.Equals }

@@ -23,7 +23,7 @@ press goes. `ui` has two:
 | Kind | Goes |
 | --- | --- |
 | [`Ui.Navigate`](#uinavigate) | to an address |
-| [`Ui.OpenPage`](#uiopenpage) | to a page of the application, opened over the current one in a dialog or a drawer |
+| [`Ui.OpenPage`](#uiopenpage) | to a page of the application, opened over the current one in any surface |
 
 Every destination has an address, so a renderer draws every `to` as a link to
 it: it opens in a new tab like any link, and for a `Ui.OpenPage` that is the
@@ -46,7 +46,7 @@ resolve goes nowhere.
 | `page` | required: the [`Ui.Page`](page.md) opened, by `!ref` — one the application lists in its pages |
 | `pathParams` | the value of each `{name}` of the page's `path`, as an [address's](nodes.md#addresses) |
 | `queryParams` | the parameters appended to the page's address, as an address's |
-| `surface` | where it opens: a [`Ui.ViewportOverlay`](surfaces.md#the-abstracts) — a `Ui.Dialog`, a `Ui.Drawer` or a kind of your own extending it. Omitted, the surface it is pressed in |
+| `surface` | where it opens: any [`Ui.Surface`](surfaces.md#the-abstracts) — a `Ui.Dialog`, `Ui.Drawer`, `Ui.Popover`, `Ui.InlineSurface`, `Ui.Panel` or a kind of your own extending it. Omitted, the surface it is pressed in, else a dialog |
 
 The page is named, never held: two pages may open each other. Its variables
 are checked against its own `path` — a missing one is `PATH_PARAMETER_UNBOUND`,
@@ -73,7 +73,8 @@ unknown kind is.
 | a [navigation](navigation.md#entries--uinavigationitem) `link` entry | nothing: every value is fixed |
 | an action's [`onSuccess`](action.md#after-a-success) | `result` and `input` |
 | a [press](#presses) on a `box`, `stack` or `columns` node | the roots of the tree it is in |
-| a [`Ui.Listing`'s press](listing.md#pressing-a-record) | `row`, `query` and `params` |
+| a [`Ui.Listing`'s press](listing.md#pressing-a-record), `edit` | `row`, `query` and `params` |
+| a [`Ui.Listing`'s `create`](listing.md#create-and-edit) | `values`, `query` and `params` |
 
 ### The roots a destination reads
 
@@ -114,6 +115,10 @@ A press is a `Ui.Press`: what pressing a region does, and its accessible name.
 | --- | --- |
 | `to` | required: where pressing the region goes, a [destination](#destinations) |
 | `label` | required: a [`Ui.BoundText`](texts.md#a-text-over-data) naming the press |
+
+A listing's [`create` and `edit`](listing.md#create-and-edit) are presses whose
+`label` is optional — they are drawn as buttons named by `ui`'s own texts
+`create` and `edit` when it is left out — typed from `Ui.Press` itself.
 
 ```yaml
 - type: box
@@ -168,8 +173,8 @@ browser.
 }
 ```
 
-An `openPage` always carries its `surface` filled — a dialog's defaults when
-none was written — and `keepsSurface`, `true` exactly when `surface` was
+An `openPage` always carries its `surface` filled — any of the five surface
+specs; a dialog's defaults when none was written — and `keepsSurface`, `true` exactly when `surface` was
 omitted, so a renderer reads no default of its own. A `Ui.Dialog` written with
 no field of its own and an omitted `surface` give equal surfaces on the wire
 and different `keepsSurface`.
@@ -178,7 +183,9 @@ A press reaches a renderer as a `Ui.PressSpec`, `{ to, label }`: `to` its
 destination's spec and `label` the [text](texts.md#what-a-renderer-receives)
 as written — a text record, or with its `values` beside it as bindings. A
 `box`, `stack` and `columns` node carry it as `press`, and a `listing` node
-carries its record press as `press`; each is `null` when no press is written.
+carries `create`, `edit` and its record `press`; each is `null` when none is
+written (a listing's `press` is its `edit` when only that is written), and a
+listing's `label` is always filled.
 
 ```json
 {

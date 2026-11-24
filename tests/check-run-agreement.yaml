@@ -364,6 +364,10 @@ targets:
   - !ref valueSchemaMemberKeyInvalidAtRuntime
   - !ref valueSchemaMemberPointerInvalid
   - !ref valueSchemaMemberPointerInvalidAtRuntime
+  - !ref valueSchemaMemberAbsoluteInvalid
+  - !ref valueSchemaMemberAbsoluteInvalidAtRuntime
+  - !ref valueSchemaMemberAbsoluteCrossingInvalid
+  - !ref valueSchemaMemberAbsoluteCrossingInvalidAtRuntime
   - !ref valueSchemaMemberKeyComputed
   - !ref valueSchemaFromShape
   - !ref valueSchemaFromShapeAtRuntime
@@ -4062,6 +4066,42 @@ expect:
   errors:
     - { code: VALUE_SCHEMA_FROM_INVALID, message: "Telo.Definition 'Caller' at 'schema.properties.entry.properties.value.x-telo-value-schema-from': `member` names 'size', which is not declared a string, so it cannot name a property." }
   runFails: "[ERR_VALUE_SCHEMA_FROM_INVALID] RuntimeError: Telo.Definition 'Caller' at 'schema.properties.entry.properties.value.x-telo-value-schema-from': `member` names 'size'"
+---
+# An absolute member naming a field the declaration holds no string at names
+# nothing either.
+kind: Assert.Manifest
+metadata: { name: valueSchemaMemberAbsoluteInvalid }
+source: ./__fixtures__/check-run-agreement/value-schema-member-absolute/lib/telo.yaml
+expect:
+  errors:
+    - code: VALUE_SCHEMA_FROM_INVALID
+      message: "`member` names '/model', which is not declared a string"
+---
+kind: Assert.Manifest
+metadata: { name: valueSchemaMemberAbsoluteInvalidAtRuntime }
+source: ./__fixtures__/check-run-agreement/value-schema-member-absolute/telo.yaml
+expect:
+  errors:
+    - { code: VALUE_SCHEMA_FROM_INVALID, message: "Telo.Definition 'Caller' at 'schema.properties.recordKey.x-telo-value-schema-from': `member` names '/model', which is not declared a string in the kind's schema, so it cannot name a property." }
+  runFails: "[ERR_VALUE_SCHEMA_FROM_INVALID] RuntimeError: Telo.Definition 'Caller' at 'schema.properties.recordKey.x-telo-value-schema-from': `member` names '/model'"
+---
+# The same refusal where `from` crosses a reference slot: the member is read in
+# the schema of the kind the slot names.
+kind: Assert.Manifest
+metadata: { name: valueSchemaMemberAbsoluteCrossingInvalid }
+source: ./__fixtures__/check-run-agreement/value-schema-member-absolute-crossing/lib/telo.yaml
+expect:
+  errors:
+    - code: VALUE_SCHEMA_FROM_INVALID
+      message: "`member` names '/key', which is not declared a string"
+---
+kind: Assert.Manifest
+metadata: { name: valueSchemaMemberAbsoluteCrossingInvalidAtRuntime }
+source: ./__fixtures__/check-run-agreement/value-schema-member-absolute-crossing/telo.yaml
+expect:
+  errors:
+    - { code: VALUE_SCHEMA_FROM_INVALID, message: "Telo.Definition 'Caller' at 'schema.properties.recordKey.x-telo-value-schema-from': `member` names '/key', which is not declared a string in the schema of 'ValueSchemaMemberCrossingLib.Store', so it cannot name a property." }
+  runFails: "[ERR_VALUE_SCHEMA_FROM_INVALID] RuntimeError: Telo.Definition 'Caller' at 'schema.properties.recordKey.x-telo-value-schema-from': `member` names '/key'"
 ---
 # A map keyed by a type's properties refuses a key naming none: a computed map
 # has no key before dispatch, where the bound contract refuses it.

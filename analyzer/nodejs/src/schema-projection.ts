@@ -1241,6 +1241,9 @@ export interface DeclarationValue {
   /** The concrete path of the value inside its holder (`query`,
    *  `routes[0].request.schema`). */
   readonly at?: string;
+  /** The declaration the walk was reading when it found the value, where that
+   *  is not {@link holder} — a contract its kind declares for it. */
+  readonly declaration?: Record<string, any>;
 }
 
 /** Every value a location reaches, and whether a crossing on the way could not
@@ -1380,7 +1383,7 @@ function kindContractOf(
   const value = effectiveContractField(definition, resolve, direction);
   const declarer = contractDeclarer(definition, resolve, direction);
   if (value === undefined || value === null || !declarer) return undefined;
-  return { value, holder: declarer as unknown as Record<string, any>, atReference: true, at: direction };
+  return { value, holder: declarer as unknown as Record<string, any>, atReference: true, at: direction, declaration };
 }
 
 function referenceSlotsOf(

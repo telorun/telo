@@ -17,6 +17,7 @@ import type { ActionsSetting } from "./row-actions-display.js";
 import { ButtonNode, type ButtonNodeSpec } from "./button-node.js";
 import { MarkdownNode, type MarkdownNodeSpec } from "./markdown/markdown-node.js";
 import { MenuNode } from "./menu-node.js";
+import { anchorRef } from "./node-anchors.js";
 import { Press, type PressSpec } from "./press.js";
 import { QueryNode } from "./query-node.js";
 import { RelatedContext, RelatedValue } from "./related-labels.js";
@@ -157,7 +158,7 @@ function Drawn({ node, embedded }: { node: SpecNode; embedded: boolean }): React
     case "box":
     case "stack":
       return (
-        <div data-telo-part={node.type} data-fill={fill} data-style={style}>
+        <div ref={anchorRef(node)} data-telo-part={node.type} data-fill={fill} data-style={style}>
           {node.press != null && <Press press={node.press as PressSpec} />}
           <Nodes nodes={node.children} />
         </div>
@@ -176,7 +177,7 @@ function Drawn({ node, embedded }: { node: SpecNode; embedded: boolean }): React
       return <CommandNode node={node as unknown as Parameters<typeof CommandNode>[0]["node"]} />;
     case "columns":
       return (
-        <div data-telo-part="columns" data-fill={fill} data-style={style}>
+        <div ref={anchorRef(node)} data-telo-part="columns" data-fill={fill} data-style={style}>
           {node.press != null && <Press press={node.press as PressSpec} />}
           {(node.children as SpecNode[]).map((child, index) => (
             <div key={index} data-telo-part="column">
@@ -215,14 +216,14 @@ function Drawn({ node, embedded }: { node: SpecNode; embedded: boolean }): React
       const naming = text(node.text);
       if (button == null) {
         return (
-          <DestinationAnchor destination={destination} naming={naming} data-telo-part="link" data-record={ofRecord ? "true" : undefined} data-fill={fill} data-style={style} href={href}>
+          <DestinationAnchor ref={anchorRef(node)} destination={destination} naming={naming} data-telo-part="link" data-record={ofRecord ? "true" : undefined} data-fill={fill} data-style={style} href={href}>
             {naming}
           </DestinationAnchor>
         );
       }
       return (
         <Displayed display={button} text={naming} glyph="go">
-          <DestinationAnchor destination={destination} naming={naming} data-telo-part="link" data-record={ofRecord ? "true" : undefined} data-button={button.type} data-fill={fill} data-style={style} href={href} />
+          <DestinationAnchor ref={anchorRef(node)} destination={destination} naming={naming} data-telo-part="link" data-record={ofRecord ? "true" : undefined} data-button={button.type} data-fill={fill} data-style={style} href={href} />
         </Displayed>
       );
     }

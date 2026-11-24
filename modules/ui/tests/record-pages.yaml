@@ -1,0 +1,155 @@
+kind: Telo.Application
+metadata:
+  name: UiRecordPagesTest
+  version: 1.0.0
+  description: |
+    A form says which stored record it edits: `record.key` is a chain over the
+    roots where the form is placed — `data.id` inside a query node, `params.slug`
+    on a page — typed from the collection's key property, whose name is `id`
+    when the collection names none. The form starts from `initialValues` and
+    carries its lifecycle, every default filled. A key of another type than the
+    collection's, a key read where no root holds it and a literal of the wrong
+    type are refused, by `telo check` and again when the form is created.
+imports: { Ui: ../, DataModel: ../../data-model, Assert: ../../assert }
+targets:
+  - !ref main
+  - !ref keyTypes
+  - !ref keyLiteral
+---
+kind: Telo.JsonSchema
+metadata: { name: Task }
+schema:
+  type: object
+  required: [id]
+  properties: { id: { type: integer }, title: { type: string } }
+---
+kind: Telo.JsonSchema
+metadata: { name: TaskInput }
+schema: { type: object, properties: { title: { type: string } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Doc }
+schema:
+  type: object
+  required: [slug]
+  properties: { slug: { type: string }, title: { type: string } }
+---
+kind: DataModel.Collection
+metadata: { name: tasks }
+model: !ref Task
+schemas: { create: !ref TaskInput, update: !ref TaskInput }
+query: { filters: [], sort: [] }
+---
+kind: DataModel.Collection
+metadata: { name: docs }
+model: !ref Doc
+key: slug
+schemas: { create: !ref TaskInput, update: !ref TaskInput }
+query: { filters: [], sort: [] }
+---
+kind: Ui.CollectionPresentation
+metadata: { name: tasksPresentation }
+source: { kind: Ui.CollectionSource, collection: !ref tasks, basePath: /api/tasks }
+---
+kind: Ui.CollectionPresentation
+metadata: { name: docsPresentation }
+source: { kind: Ui.CollectionSource, collection: !ref docs, basePath: /api/docs }
+---
+kind: Ui.Page
+metadata: { name: taskPage }
+path: /tasks/{id}
+title: Task
+children:
+  - type: query
+    query:
+      kind: Ui.Query
+      model: !ref Task
+      url: { path: "/api/tasks/{id}", pathParams: { id: !cel "params.id" } }
+    content:
+      - type: composite
+        ref:
+          kind: Ui.Form
+          model: !ref TaskInput
+          record: { presentation: !ref tasksPresentation, key: !cel "data.id" }
+          initialValues: !cel "data"
+          unsaved: discard
+          afterSubmit: keep
+---
+kind: Ui.Page
+metadata: { name: docPage }
+path: /docs/{slug}
+title: Doc
+children:
+  - type: composite
+    ref:
+      kind: Ui.Form
+      model: !ref TaskInput
+      record: { presentation: !ref docsPresentation, key: !cel "params.slug" }
+      initialValues: !cel "params"
+---
+kind: Ui.Page
+metadata: { name: newTaskPage }
+path: /tasks/new
+title: New task
+children:
+  - type: composite
+    ref:
+      kind: Ui.Form
+      model: !ref TaskInput
+      record: { presentation: !ref tasksPresentation }
+      afterSubmit: again
+---
+kind: Telo.Sequence
+metadata: { name: main }
+steps:
+  - name: task
+    invoke: !ref taskPage
+    inputs: { request: { headers: {} } }
+  - name: doc
+    invoke: !ref docPage
+    inputs: { request: { headers: {} } }
+  - name: created
+    invoke: !ref newTaskPage
+    inputs: { request: { headers: {} } }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        task: !cel "{'record': steps.task.result.children[0].content[0].record, 'initialValues': steps.task.result.children[0].content[0].initialValues, 'unsaved': steps.task.result.children[0].content[0].unsaved, 'afterSubmit': steps.task.result.children[0].content[0].afterSubmit}"
+        doc: !cel "{'record': steps.doc.result.children[0].record, 'initialValues': steps.doc.result.children[0].initialValues, 'unsaved': steps.doc.result.children[0].unsaved, 'afterSubmit': steps.doc.result.children[0].afterSubmit}"
+        created: !cel "{'record': steps.created.result.children[0].record, 'initialValues': steps.created.result.children[0].initialValues, 'unsaved': steps.created.result.children[0].unsaved, 'afterSubmit': steps.created.result.children[0].afterSubmit}"
+      expected:
+        task:
+          record: { basePath: /api/tasks, key: { root: data, path: [id] } }
+          initialValues: { root: data, path: [] }
+          unsaved: discard
+          afterSubmit: keep
+        doc:
+          record: { basePath: /api/docs, key: { root: params, path: [slug] } }
+          initialValues: { root: params, path: [] }
+          unsaved: confirm
+          afterSubmit: close
+        created:
+          record: { basePath: /api/tasks, key: null }
+          initialValues: null
+          unsaved: confirm
+          afterSubmit: again
+---
+kind: Assert.Manifest
+metadata: { name: keyTypes }
+source: ./__fixtures__/invalid/record-key/telo.yaml
+expect:
+  errors:
+    - code: CEL_TYPE_ERROR
+      message: "Ui.Page/pathParameter: CEL at 'children[0].ref.record.key' reads 'params.id', whose declared shape does not fit what the field expects: /: type mismatch — source is 'string', target expects 'integer'."
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "Ui.Page/outsideQuery: !cel: 'data' is not available here — Ui.Page/outsideQuery withholds it: a form reads only the roots bound where it is placed"
+---
+kind: Assert.Manifest
+metadata: { name: keyLiteral }
+source: ./__fixtures__/invalid/record-key-literal/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Page/stringLiteral: `children[0].ref.record.key` does not satisfy the type declared at `children[0].ref.{ from: /record/presentation/source/collection/model, member: /key }`: / must be integer"
+  runFails: "must be integer"

@@ -1,0 +1,311 @@
+kind: Telo.Application
+metadata:
+  name: CrudUiAdminEject
+  version: 1.0.0
+  description: >-
+    Two UiReact apps over one collection: `/generated` holds pages with
+    `CrudUi.Admin`, `/written` the declarations `docs/admin.md` lists as its
+    expansion.
+imports:
+  CrudUi: ../../../
+  Crud: ../../../../crud
+  SQLite: ../../../../sqlite
+  Ui: ../../../../ui
+  UiReact: ../../../../ui-react
+  Http: ../../../../http-server
+targets:
+  - !ref server
+---
+kind: SQLite.Table
+metadata: { name: tasksTable }
+table: tasks
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  text: { type: text, nullable: false }
+  is_done: { type: integer }
+  priority: { type: integer }
+  status: { type: text }
+  due_on: { type: text }
+---
+kind: Telo.JsonSchema
+metadata: { name: Task }
+schema:
+  type: object
+  required: [text]
+  additionalProperties: false
+  properties:
+    text: { type: string, title: Task, minLength: 1 }
+    isDone: { type: boolean, title: Done }
+    priority: { type: integer, title: Priority }
+    status: { title: Status, enum: [open, blocked, done] }
+    dueOn: { type: string, title: Due, format: date }
+---
+# What is read back: everything a client writes, plus the key.
+kind: Telo.JsonSchema
+metadata: { name: TaskRecord }
+extends: Task
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
+---
+# A row of the list: no priority and no status.
+kind: Telo.JsonSchema
+metadata: { name: TaskRow }
+schema:
+  type: object
+  required: [id, text]
+  properties:
+    id: { type: integer }
+    text: { type: string, title: Task, minLength: 1 }
+    isDone: { type: boolean, title: Done }
+    dueOn: { type: string, title: Due, format: date }
+---
+kind: Crud.Collection
+metadata: { name: tasks }
+model: !ref TaskRecord
+table: !ref tasksTable
+schemas: { list: !ref TaskRow, create: !ref Task, update: !ref Task }
+query:
+  filters:
+    - { property: text, operator: contains }
+    - { property: isDone, operator: eq }
+    - { property: status, operator: in }
+    - { property: dueOn, operator: gte }
+  sort: [{ property: text }, { property: dueOn }]
+---
+kind: CrudUi.CollectionSource
+metadata: { name: tasksSource }
+collection: !ref tasks
+basePath: /api/tasks
+---
+# The hand-written half for a `CrudUi.Admin` with none of the optional keys —
+# the listing in `docs/admin.md` with no `create`, `edit` or `policy`.
+kind: Ui.CollectionPresentation
+metadata: { name: plainPresentation }
+source: !ref tasksSource
+---
+# A record's pages, which the openers below point at.
+kind: Ui.Page
+metadata: { name: newTaskPage }
+path: /tasks/new
+title: New task
+children:
+  - type: composite
+    ref:
+      kind: Ui.Form
+      model: !ref Task
+      record: { presentation: !ref plainPresentation }
+---
+kind: Ui.Page
+metadata: { name: taskPage }
+path: /tasks/{id}
+title: Task
+children:
+  - type: query
+    query:
+      kind: Ui.Query
+      model: !ref TaskRecord
+      url: { path: "/api/tasks/{id}", pathParams: { id: !cel "params.id" } }
+    content:
+      - type: composite
+        ref:
+          kind: Ui.Form
+          model: !ref Task
+          record: { presentation: !ref plainPresentation, key: !cel "data.id" }
+          initialValues: !cel "data"
+---
+kind: Ui.Listing
+metadata: { name: plainListing }
+presentation: !ref plainPresentation
+model: !ref TaskRow
+delete: true
+---
+kind: Ui.Filters
+metadata: { name: plainFilters }
+presentation: !ref plainPresentation
+content: { type: composite, ref: !ref plainListing }
+---
+# The listing in `docs/admin.md`, character for character: what the
+# `CrudUi.Admin` under its Presentation heading expands into.
+kind: Ui.CollectionPresentation
+metadata: { name: taskPresentation }
+source: !ref tasksSource
+---
+kind: Ui.Listing
+metadata: { name: taskListing }
+presentation: !ref taskPresentation
+model: !ref TaskRow
+paging: more
+create:
+  to: { kind: Ui.OpenPage, page: !ref newTaskPage, surface: { kind: Ui.Drawer, side: end } }
+edit:
+  to:
+    kind: Ui.OpenPage
+    page: !ref taskPage
+    pathParams: { id: !cel "row.id" }
+    surface: { kind: Ui.Panel, address: { name: task } }
+delete: true
+layout:
+  kind: Ui.TableLayout
+  columns:
+    - value: !cel "row.text"
+    - { header: Due, value: !cel "row.dueOn" }
+compact:
+  kind: Ui.CardLayout
+  size: small
+  content: { type: value, value: !cel "row.text" }
+---
+kind: Ui.Filters
+metadata: { name: taskFilters }
+presentation: !ref taskPresentation
+policy:
+  placement: { kind: Ui.AbovePlacement, show: chosen, summary: chips }
+  state: { key: tasks, address: true, store: { kind: Ui.LocalStore } }
+content: { type: composite, ref: !ref taskListing }
+---
+# One drawer for two openers: the generated create and the hand-written one.
+kind: Ui.Drawer
+metadata: { name: sharedDrawer }
+side: start
+size: large
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { address: 127.0.0.1, port: 19314 }
+mounts:
+  - path: /generated
+    mount:
+      kind: UiReact.App
+      title: Tasks
+      theme: !ref UiReact.defaultTheme
+      pages:
+        - !ref newTaskPage
+        - !ref taskPage
+        - kind: Ui.Page
+          path: /
+          title: Tasks
+          children:
+            - type: composite
+              ref: { kind: CrudUi.Admin, source: !ref tasksSource }
+        # The declaration under Presentation in `docs/admin.md`.
+        - kind: Ui.Page
+          path: /shown
+          title: Tasks
+          children:
+            - type: composite
+              ref:
+                kind: CrudUi.Admin
+                source: !ref tasksSource
+                filters:
+                  placement: { kind: Ui.AbovePlacement, show: chosen, summary: chips }
+                  state: { key: tasks, address: true, store: { kind: Ui.LocalStore } }
+                create:
+                  to: { kind: Ui.OpenPage, page: !ref newTaskPage, surface: { kind: Ui.Drawer, side: end } }
+                edit:
+                  to:
+                    kind: Ui.OpenPage
+                    page: !ref taskPage
+                    pathParams: { id: !cel "row.id" }
+                    surface: { kind: Ui.Panel, address: { name: task } }
+                paging: more
+                layout:
+                  kind: Ui.TableLayout
+                  columns:
+                    - value: !cel "row.text"
+                    - { header: Due, value: !cel "row.dueOn" }
+                compact:
+                  kind: Ui.CardLayout
+                  size: small
+                  content: { type: value, value: !cel "row.text" }
+        - kind: Ui.Page
+          path: /one
+          title: Tasks
+          children:
+            - type: composite
+              ref:
+                kind: CrudUi.Admin
+                source: !ref tasksSource
+                create: { to: { kind: Ui.OpenPage, page: !ref newTaskPage } }
+        - kind: Ui.Page
+          path: /all
+          title: Tasks
+          children:
+            - type: composite
+              ref:
+                kind: CrudUi.Admin
+                source: !ref tasksSource
+                filters:
+                  placement: { kind: Ui.CollapsiblePlacement, open: true, show: chosen, controls: chips, summary: chips }
+                  apply: button
+                  state: { key: tasks, address: true, store: { kind: Ui.LocalStore } }
+                create:
+                  to: { kind: Ui.OpenPage, page: !ref newTaskPage, surface: !ref sharedDrawer }
+                  label: New task
+                edit:
+                  to:
+                    kind: Ui.OpenPage
+                    page: !ref taskPage
+                    pathParams: { id: !cel "row.id" }
+                    surface: { kind: Ui.Panel, side: start, address: { name: task } }
+                  label: Open task
+  - path: /written
+    mount:
+      kind: UiReact.App
+      title: Tasks
+      theme: !ref UiReact.defaultTheme
+      pages:
+        - !ref newTaskPage
+        - !ref taskPage
+        - kind: Ui.Page
+          path: /
+          title: Tasks
+          children:
+            - { type: composite, ref: !ref plainFilters }
+        - kind: Ui.Page
+          path: /shown
+          title: Tasks
+          children:
+            - { type: composite, ref: !ref taskFilters }
+        - kind: Ui.Page
+          path: /one
+          title: Tasks
+          children:
+            - type: composite
+              ref:
+                kind: Ui.Filters
+                presentation: !ref plainPresentation
+                content:
+                  type: composite
+                  ref:
+                    kind: Ui.Listing
+                    presentation: !ref plainPresentation
+                    model: !ref TaskRow
+                    create: { to: { kind: Ui.OpenPage, page: !ref newTaskPage } }
+                    delete: true
+        - kind: Ui.Page
+          path: /all
+          title: Tasks
+          children:
+            - type: composite
+              ref:
+                kind: Ui.Filters
+                presentation: !ref plainPresentation
+                policy:
+                  placement: { kind: Ui.CollapsiblePlacement, open: true, show: chosen, controls: chips, summary: chips }
+                  apply: button
+                  state: { key: tasks, address: true, store: { kind: Ui.LocalStore } }
+                content:
+                  type: composite
+                  ref:
+                    kind: Ui.Listing
+                    presentation: !ref plainPresentation
+                    model: !ref TaskRow
+                    create:
+                      to: { kind: Ui.OpenPage, page: !ref newTaskPage, surface: !ref sharedDrawer }
+                      label: New task
+                    edit:
+                      to:
+                        kind: Ui.OpenPage
+                        page: !ref taskPage
+                        pathParams: { id: !cel "row.id" }
+                        surface: { kind: Ui.Panel, side: start, address: { name: task } }
+                      label: Open task
+                    delete: true

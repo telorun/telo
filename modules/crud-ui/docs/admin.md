@@ -1,16 +1,16 @@
 # CrudUi.Admin
 
 An admin screen over a CRUD collection from one declaration: a filter bar, a
-sortable paged listing, a form to create a record and one to edit it, and a
-confirmed delete on every record.
+sortable paged listing, create and edit buttons that open pages you declare, and
+a confirmed delete on every record.
 
 | Field | | |
 | --- | --- | --- |
 | `source` | required | a `CrudUi.CollectionSource`: the [`Crud.Collection`](https://hub.telo.run/module/oci/ghcr.io/telorun/crud/) and the `basePath` its [`Crud.Api`](https://hub.telo.run/module/oci/ghcr.io/telorun/crud/) is served at |
 | `relations` | optional | how each related record is read, labelled and searched, keyed by a property the collection relates: `{ source, label, hint?, to?, search?, pageSize? }`, as on a [collection presentation](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) |
 | `filters` | optional | how the filter bar behaves — a [filter policy](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/): `placement` (which carries `show`, `controls` and `summary`), `apply`, `state` |
-| `create` | optional | how the create form opens: `surface` (a [surface](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) kind), `afterSubmit` (`close` \| `again` \| `keep`), `unsaved` (`confirm` \| `discard`) |
-| `edit` | optional | how the edit form opens: the same three, with `afterSubmit` `close` \| `keep` |
+| `create` | optional | the create button — a [press](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/): `to`, usually an opened page of a new record, and `label` (defaults to `create`); over `values`, the property values a layout's create gesture proposes |
+| `edit` | optional | the edit button of each record — a press: `to`, usually an opened page of that record over `row`, and `label` (defaults to `edit`) |
 | `paging` | optional | how further pages are reached: `pages`, `more` or `scroll` ([the listing](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)) |
 | `layout` | optional | how the records are drawn — a [listing layout](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/): a table, a list, cards, a board, a calendar, a timeline, a tree or a component |
 | `compact` | optional | the layout drawn below the application's breakpoint |
@@ -20,8 +20,8 @@ confirmed delete on every record.
 
 `CrudUi.CollectionSource` is a `Ui.CollectionSource` whose collection is a
 `Crud.Collection`, so the admin reads each operation's shape from it: the list
-shape for the listing, the create and update shapes for the two forms, and the
-record shape for the filter bar. It is accepted wherever a `Ui.CollectionSource`
+shape for the listing and the record shape for the filter bar; the create and
+update shapes are the ones your pages' forms are checked against. It is accepted wherever a `Ui.CollectionSource`
 is, so the same source serves a hand-written listing, a picker or another
 admin's relation.
 
@@ -80,8 +80,7 @@ relations:
 ```
 
 The listing's author column shows the author's name, the filter bar's author
-filter offers authors by name, and both forms enter the author with a picker of
-authors, all read from `authorsSource`. Whether the filter offers every author
+filter offers authors by name, both read from `authorsSource`. Whether the filter offers every author
 or only those present with their counts is the bar's `values` setting, which
 needs an eject.
 
@@ -98,11 +97,13 @@ filters:
   placement: { kind: Ui.AbovePlacement, show: chosen, summary: chips }
   state: { key: tasks, address: true, store: { kind: Ui.LocalStore } }
 create:
-  surface: { kind: Ui.Drawer, side: end }
-  afterSubmit: again
+  to: { kind: Ui.OpenPage, page: !ref newTaskPage, surface: { kind: Ui.Drawer, side: end } }
 edit:
-  surface: { kind: Ui.Panel, address: { name: task } }
-  unsaved: confirm
+  to:
+    kind: Ui.OpenPage
+    page: !ref taskPage
+    pathParams: { id: !cel "row.id" }
+    surface: { kind: Ui.Panel, address: { name: task } }
 paging: more
 layout:
   kind: Ui.TableLayout
@@ -116,8 +117,9 @@ compact:
 ```
 
 - `filters` is the bar's whole policy, handed to it as written: `show`, `controls` and `summary` are written on its `placement`. Writing neither `fields` nor `search`, the bar searches when the collection declares `query.search`, with `state.fields` able to list `search`.
-- `create` and `edit` each name the surface their form opens in, what the form
-  does once its record is saved, and whether leaving unsaved input asks first.
+- `create` and `edit` are presses handed to the listing whole: the create
+  button and each record's edit button open the pages they name, in the surface
+  they name. See [Create and edit pages](#create-and-edit-pages).
 - `paging`, `layout` and `compact` are handed to the listing as written. A
   layout's `row` is one record of the collection's list shape, so a column or a
   card reads only what the list returns.
@@ -133,10 +135,10 @@ the `ui` module, chosen by `kind:` and written inline or as a `!ref`; import
 each key on as written (`paging` restating only the listing's three values, so
 an editor offers them), so a key left out means exactly what leaving it out of
 a `Ui.Listing` or a `Ui.Filters` means — a table with one column per list
-property but the key, paged with a pager, a dialog that closes after a save and
-asks before dropping unsaved input, and a bar above the listing that shows
-every filter and keeps its state in memory. `create: {}` is the same as no
-`create`. A misspelled key, a value outside a set, a resource of the wrong kind
+property but the key, paged with a pager,
+and a bar above the listing that shows every filter and keeps its state in
+memory. Without `create` the listing draws no create button, and without `edit`
+no edit button. A misspelled key, a value outside a set, a resource of the wrong kind
 and a layout the collection cannot read — a board grouped by a property it does
 not filter by equality — are reported by `telo check` at the `CrudUi.Admin`
 that wrote them.
@@ -145,13 +147,35 @@ that wrote them.
 like any other and drawn by whichever renderer the application mounts. This
 module depends on no renderer.
 
-## Opening a record
+## Create and edit pages
 
-Without `press`, pressing a record opens the edit form. `press` says what
-pressing it does instead — here, the task's own page opened over the list in a
-dialog — and the record's edit form stays on its edit button:
+`CrudUi.Admin` generates no forms: a composite cannot add routes to an
+application. A record's create and edit screens are `Ui.Page`s you declare,
+each holding a `Ui.Form` whose `record` names the collection; `create` and
+`edit` are the presses that open them. The form's `record.presentation` is a
+`Ui.CollectionPresentation` over the same source, `record.key` makes it send
+`PATCH <basePath>/<key>` instead of `POST <basePath>`, and the form is checked
+against the collection's `schemas.create` / `schemas.update`:
 
 ```yaml
+kind: Ui.CollectionPresentation
+metadata: { name: tasksPresentation }
+source: !ref tasksSource
+---
+kind: Ui.Page
+metadata: { name: newTaskPage }
+path: /tasks/new
+title: New task
+query: { text: { type: string } }
+children:
+  - type: composite
+    ref:
+      kind: Ui.Form
+      model: !ref Task
+      record: { presentation: !ref tasksPresentation }
+      initialValues: !cel "query"
+      afterSubmit: again
+---
 kind: Ui.Page
 metadata: { name: taskPage }
 path: /tasks/{id}
@@ -163,39 +187,77 @@ children:
       model: !ref TaskRecord
       url: { path: "/api/tasks/{id}", pathParams: { id: !cel "params.id" } }
     content:
-      - { type: value, value: !cel "data.text" }
+      - type: composite
+        ref:
+          kind: Ui.Form
+          model: !ref Task
+          record: { presentation: !ref tasksPresentation, key: !cel "data.id" }
+          initialValues: !cel "data"
 ---
 kind: CrudUi.Admin
 metadata: { name: taskScreen }
 source: !ref tasksSource
+create:
+  to:
+    kind: Ui.OpenPage
+    page: !ref newTaskPage
+    queryParams: { text: !cel "values.text" }
+edit:
+  to: { kind: Ui.OpenPage, page: !ref taskPage, pathParams: { id: !cel "row.id" } }
+```
+
+The application lists both pages in its `pages`. `create` is over `values`, the
+property values a layout's create gesture proposes — a board column's create
+proposes that column's value — typed as the list shape with every member
+optional, `{}` from the listing's own button; `edit` is over `row`, one record
+of the list shape. A destination or label naming a property the list does not
+return is reported by `telo check` at the admin. The same pages open from
+anywhere that goes somewhere, and are full pages at their own addresses.
+
+## Opening a record
+
+Without `press`, pressing a record does what `edit` says. `press` says what
+pressing it does instead — here, the task's own page opened over the list in a
+dialog — and the record's edit button stays:
+
+```yaml
+kind: CrudUi.Admin
+metadata: { name: taskScreen }
+source: !ref tasksSource
+edit:
+  to: { kind: Ui.OpenPage, page: !ref taskPage, pathParams: { id: !cel "row.id" } }
 press:
   to: { kind: Ui.OpenPage, page: !ref taskPage, pathParams: { id: !cel "row.id" } }
   label: { text: "Open {$text}", values: { text: !cel "row.text" } }
 ```
 
 `press` is handed to the listing whole. Its `row` is one record of the
-collection's list shape, as a layout's is, so a destination or a label naming a
-property the list does not return is reported by `telo check` at the admin.
-`label` is the press's accessible name; include the text the record shows. The
-application lists `taskPage` in its `pages`.
+collection's list shape, as a layout's is. `label` is the press's accessible
+name; include the text the record shows.
 
 ## What it does
 
-- The listing's columns come from the collection's `list` shape, the create
-  form's fields from `create` and the edit form's from `update`, one per
-  property, so a property added to a shape appears with no edit here. `id`
+- The listing's columns come from the collection's `list` shape, one per
+  property, so a property added to it appears with no edit here. `id`
   identifies a record and is not shown.
 - The filter bar shows one control per entry of the collection's
   `query.filters`, in that order and with that operator, drawn from the
   collection's `model`, preceded by a search over the properties its
   `query.search` lists, when it declares one. A column sorts where `query.sort` lists its property.
   So the screen offers exactly the queries the API accepts.
-- Create sends `POST <basePath>` and returns to the first page.
-- Edit reads the record from `GET <basePath>/<id>`, opens its form filled from
-  it, and sends `PUT <basePath>/<id>` with what the record held of the
-  `update` shape, each field's entered value over it. `PUT` replaces, so a
-  field emptied is a property cleared.
-- Delete asks first, sends `DELETE <basePath>/<id>`, and reloads.
+- Create, from your create page's form, sends `POST <basePath>`.
+- Edit, from your edit page's form, which a `query` node filled from
+  `GET <basePath>/<id>`, sends `PATCH <basePath>/<id>`: the merge patch of the
+  properties the person changed, an emptied field as `null`. A column of
+  `update` the form does not show is left as it is. The `ETag` the read carried goes back as
+  `If-Match`, so when someone else saved the record first the save answers
+  `412`, the form keeps what was typed and reads the record again, and
+  pressing save again sends it against the current record.
+- Delete asks first and sends `DELETE <basePath>/<id>`, carrying as `If-Match`
+  the `ETag` of the record's last read or write on the page when there was one
+  (a record never opened is deleted without a precondition), and reloads; a
+  record changed since that read answers `412`, the dialog says so and the
+  listing reads again.
 
 The list route's query and answers are in
 [the list route](https://hub.telo.run/module/oci/ghcr.io/telorun/crud/).
@@ -204,23 +266,12 @@ The list route's query and answers are in
 
 `CrudUi.Admin` holds nothing that cannot be written by hand. For the
 declaration under [Presentation](#presentation), over a collection whose
-`create` and `update` are `Task`, whose `model` is `TaskRecord` and whose
-`list` is `TaskRow`, it is exactly:
+`model` is `TaskRecord` and whose `list` is `TaskRow`, it is exactly:
 
 ```yaml
 kind: Ui.CollectionPresentation
 metadata: { name: taskPresentation }
 source: !ref tasksSource
----
-kind: Ui.Form
-metadata: { name: taskCreateForm }
-model: !ref Task
-presentation: !ref taskPresentation
----
-kind: Ui.Form
-metadata: { name: taskEditForm }
-model: !ref Task
-presentation: !ref taskPresentation
 ---
 kind: Ui.Listing
 metadata: { name: taskListing }
@@ -228,13 +279,13 @@ presentation: !ref taskPresentation
 model: !ref TaskRow
 paging: more
 create:
-  form: !ref taskCreateForm
-  surface: { kind: Ui.Drawer, side: end }
-  afterSubmit: again
+  to: { kind: Ui.OpenPage, page: !ref newTaskPage, surface: { kind: Ui.Drawer, side: end } }
 edit:
-  form: !ref taskEditForm
-  surface: { kind: Ui.Panel, address: { name: task } }
-  unsaved: confirm
+  to:
+    kind: Ui.OpenPage
+    page: !ref taskPage
+    pathParams: { id: !cel "row.id" }
+    surface: { kind: Ui.Panel, address: { name: task } }
 delete: true
 layout:
   kind: Ui.TableLayout
@@ -256,22 +307,20 @@ content: { type: composite, ref: !ref taskListing }
 ```
 
 placed as `{ type: composite, ref: !ref taskFilters }`. The presentation holds
-`relations` when the admin writes them; an opener holds `form` and whatever
-`create` / `edit` wrote beside it; the bar holds `policy` when `filters` is
+`relations` when the admin writes them; the listing holds `create` and `edit` as written; the bar holds `policy` when `filters` is
 written; the listing holds `paging`, `layout`, `compact` and `press` when they
-are written. The two produce the same page, node for node — every member is on the
+are written. The pages are yours either way. The two produce the same page, node for node — every member is on the
 wire either way, a default where nothing was written. The listing's `model` is
 the `list` shape and the bar reads the collection's `model`, so the bar can
 filter by a property no column shows.
 
 ## Ejecting
 
-How the bar behaves, how the forms open and how the records are drawn need no
+How the bar behaves, where the pages open and how the records are drawn need no
 eject — those are the keys above. When the screen needs something
 `CrudUi.Admin` has no field for — a row style, a page size, fixed filters, row
 actions, an empty state, fewer filters, a filter that is pinned, has a default
-or a control of its own, offers only the values present, presets, chosen form
-fields, a different form for editing — replace it with the listing above and
+or a control of its own, offers only the values present, presets — replace it with the listing above and
 edit that. A bar showing fewer filters lists them under `fields`, each a pair
 the collection declares, and that is where `pinned`, `control`, `values` and
 `default` are written; `presets` sit beside it. Import `ui` under an alias

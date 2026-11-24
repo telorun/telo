@@ -32,8 +32,8 @@ content:
             presentation: !ref postsPresentation
             model: !ref Post
             pageSize: 5
-            create: { form: !ref postForm }
-            edit: { form: !ref postForm }
+            create: { to: { kind: Ui.OpenPage, page: !ref newPostPage } }
+            edit: { to: { kind: Ui.OpenPage, page: !ref postEditPage, pathParams: { id: !cel "row.id" } } }
             delete: true
             layout:
               kind: Ui.TableLayout
@@ -83,13 +83,29 @@ content:
       text: >-
         One column per status, each read and counted on its own. Drag a card to another column, or move it
         from its menu, to change its status; every list of posts on the page reads again.
+
+    - type: text
+      style: muted
+      text: >-
+        A column's create button opens the new-post page with that column's status filled in, and the board's
+        own button starts an empty form.
     - type: composite
       ref:
         kind: Ui.Listing
         presentation: !ref postsPresentation
         model: !ref Post
         pageSize: 5
-        edit: { form: !ref postForm, surface: { kind: Ui.Drawer, side: end } }
+        create:
+          to:
+            kind: Ui.OpenPage
+            page: !ref newPostPage
+            queryParams: { status: !cel "values.status" }
+        edit:
+          to:
+            kind: Ui.OpenPage
+            page: !ref postEditPage
+            pathParams: { id: !cel "row.id" }
+            surface: { kind: Ui.Drawer, side: end }
         layout:
           kind: Ui.BoardLayout
           groups: { property: status }
@@ -114,7 +130,7 @@ content:
         kind: Ui.Listing
         presentation: !ref postsPresentation
         model: !ref Post
-        edit: { form: !ref postForm }
+        edit: { to: { kind: Ui.OpenPage, page: !ref postEditPage, pathParams: { id: !cel "row.id" } } }
         layout:
           kind: Ui.CalendarLayout
           span: { start: publishedOn }
@@ -143,8 +159,8 @@ content:
         kind: Ui.Listing
         presentation: !ref employeesPresentation
         model: !ref Employee
-        create: { form: !ref employeeForm }
-        edit: { form: !ref employeeForm }
+        create: { to: { kind: Ui.OpenPage, page: !ref newEmployeePage } }
+        edit: { to: { kind: Ui.OpenPage, page: !ref employeePage, pathParams: { id: !cel "row.id" } } }
         layout:
           kind: Ui.TreeLayout
           parent: managerId
@@ -196,12 +212,42 @@ content:
                 text: Full page
                 to: { kind: Ui.Navigate, href: { path: !ref postRecord, pathParams: { id: !cel "row.id" } } }
 ---
-# The form that writes a post, opened by every listing of posts: its author is
-# picked from the authors, as the presentation's relation says.
-kind: Ui.Form
-metadata: { name: postForm }
-model: !ref PostDraft
-presentation: !ref postsPresentation
+# The pages that write a post, opened by every listing of posts: the author is
+# picked from the authors, as the presentation's relation says. The create page
+# takes a `status` in its address, which the board's columns fill in.
+kind: Ui.Page
+metadata: { name: newPostPage }
+path: /records/posts/new
+title: New post
+query:
+  title: { type: string, minLength: 1 }
+  status: { type: string, enum: [draft, review, published] }
+children:
+  - type: composite
+    ref:
+      kind: Ui.Form
+      model: !ref PostDraft
+      record: { presentation: !ref postsPresentation }
+      initialValues: !cel "query"
+      afterSubmit: again
+---
+kind: Ui.Page
+metadata: { name: postEditPage }
+path: /records/posts/{id}
+title: Edit post
+children:
+  - type: query
+    query:
+      kind: Ui.Query
+      model: !ref Post
+      url: { path: "/api/posts/{id}", pathParams: { id: !cel "params.id" } }
+    content:
+      - type: composite
+        ref:
+          kind: Ui.Form
+          model: !ref PostDraft
+          record: { presentation: !ref postsPresentation, key: !cel "data.id" }
+          initialValues: !cel "data"
 ---
 # How the reporting lines are shown: a manager by name, with their title as a
 # hint, searched by name.
@@ -215,10 +261,34 @@ relations:
     hint: !cel "row.title"
     search: { property: name, operator: contains }
 ---
-kind: Ui.Form
-metadata: { name: employeeForm }
-model: !ref EmployeeDraft
-presentation: !ref employeesPresentation
+kind: Ui.Page
+metadata: { name: newEmployeePage }
+path: /records/employees/new
+title: New person
+children:
+  - type: composite
+    ref:
+      kind: Ui.Form
+      model: !ref EmployeeDraft
+      record: { presentation: !ref employeesPresentation }
+---
+kind: Ui.Page
+metadata: { name: employeePage }
+path: /records/employees/{id}
+title: Person
+children:
+  - type: query
+    query:
+      kind: Ui.Query
+      model: !ref Employee
+      url: { path: "/api/employees/{id}", pathParams: { id: !cel "params.id" } }
+    content:
+      - type: composite
+        ref:
+          kind: Ui.Form
+          model: !ref EmployeeDraft
+          record: { presentation: !ref employeesPresentation, key: !cel "data.id" }
+          initialValues: !cel "data"
 ---
 # The page every application lists at /records, placing the view.
 kind: Ui.Page

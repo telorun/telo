@@ -37,6 +37,7 @@ source:
   basePath: /api/todos
   collection:
     kind: DataModel.Collection
+    schemas: { create: { kind: Telo.JsonSchema, schema: { type: object } } }
     model: !ref Todo
     query: { filters: [{ property: text, operator: contains }], sort: [] }
 ---
@@ -61,7 +62,7 @@ sort: { by: { property: text } }
 kind: Ui.Form
 metadata: { name: formField }
 model: !ref Todo
-presentation: !ref todos
+record: { presentation: !ref todos }
 fields: [id, text, title]
 ---
 kind: Ui.Filters
@@ -104,6 +105,7 @@ source:
   basePath: /api/todos
   collection:
     kind: DataModel.Collection
+    schemas: { create: { kind: Telo.JsonSchema, schema: { type: object } } }
     model: !ref Todo
     query:
       filters:
@@ -138,6 +140,7 @@ kind: DataModel.Collection
 metadata: { name: todoValues }
 model: !ref Todo
 query: { filters: [{ property: text, operator: in }], sort: [] }
+schemas: { create: { kind: Telo.JsonSchema, schema: { type: object } } }
 ---
 kind: Ui.CollectionPresentation
 metadata: { name: searchable }
@@ -146,6 +149,7 @@ source:
   basePath: /api/todos
   collection:
     kind: DataModel.Collection
+    schemas: { create: { kind: Telo.JsonSchema, schema: { type: object } } }
     model: !ref Todo
     query: { search: { properties: [text] }, filters: [{ property: isDone, operator: eq }], sort: [] }
 ---
@@ -216,6 +220,7 @@ source:
   basePath: /api/reviews
   collection:
     kind: DataModel.Collection
+    schemas: { create: { kind: Telo.JsonSchema, schema: { type: object } } }
     model:
       kind: Telo.JsonSchema
       schema:
@@ -282,6 +287,7 @@ source:
   basePath: /api/loose
   collection:
     kind: DataModel.Collection
+    schemas: { create: { kind: Telo.JsonSchema, schema: { type: object } } }
     model: !ref Loose
     query:
       filters:
@@ -335,7 +341,7 @@ schema:
 kind: Ui.Form
 metadata: { name: formFieldUnsupported }
 model: !ref Report
-presentation: !ref todos
+record: { presentation: !ref todos }
 fields: [month, options, pages]
 ---
 # A list of scalars is a field a form can enter: nothing is reported.
@@ -344,7 +350,7 @@ metadata: { name: formFieldList }
 model:
   kind: Telo.JsonSchema
   schema: { type: object, properties: { tags: { type: array, items: { type: string } } } }
-presentation: !ref todos
+record: { presentation: !ref todos }
 fields: [tags]
 ---
 kind: Ui.Action

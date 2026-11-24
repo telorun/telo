@@ -13,7 +13,7 @@ import { fetchDocument, fetchNotFound, type PageDocument } from "./page-document
 import { LayoutFrame, type LayoutDocument } from "./layout.js";
 import { queryRoot } from "./query-root.js";
 import { RendererContext, RootsContext, type RendererEnvironment } from "./renderer-context.js";
-import { Confirmation, PageSlotContext, type PageSlot } from "./surface.js";
+import { Confirmation } from "./surface.js";
 import { errorSpec, type ErrorSpec } from "./ui-error.js";
 import { formatOwn, formatText, NO_TEXTS, TextsContext, type Texts, type TranslatedText } from "./texts.js";
 
@@ -109,19 +109,6 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
   const base = useEnvironment(loadModule, prefix, compact, app?.pages, app?.lang);
   // The controls the application draws with, once its theme's sets are loaded.
   const [controls, setControls] = useState<EffectiveControls>();
-  // A surface drawn in place of the page's content is drawn here, by whoever opened it.
-  const [slotElement, setSlotElement] = useState<HTMLElement | null>(null);
-  const [claims, setClaims] = useState(0);
-  const slot = useMemo<PageSlot>(
-    () => ({
-      element: slotElement,
-      claim: () => {
-        setClaims((count) => count + 1);
-        return () => setClaims((count) => count - 1);
-      },
-    }),
-    [slotElement],
-  );
   const [page, setPage] = useState<PageDocument>();
   const [failure, setFailure] = useState<ErrorSpec>();
   const [refreshes, setRefreshes] = useState(0);
@@ -282,8 +269,8 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
   // The last page delivered keeps its width while the next one loads; a path no
   // page declares has none, whichever page came before it.
   const width = declared ? (shown ?? held.current.page)?.width : undefined;
-  // A page fills while one of its own nodes does and no page surface stands in for it.
-  const fill = !failure && claims === 0 && shown?.children.some((child: SpecNode) => child.fill === true) ? "true" : undefined;
+  // A page fills while one of its own nodes does.
+  const fill = !failure && shown?.children.some((child: SpecNode) => child.fill === true) ? "true" : undefined;
   // What a page key's surface is looked for in, once the route's documents are in: the page's nodes, then its layout's regions.
   const layoutRoots = useMemo(() => ({ query: queryRoot(undefined, host.location.search), params: {} }), [host.location.search]);
   const routeNodes = !app || !arranged ? undefined : declared ? shown?.children : absent ? (absent.children ?? []) : undefined;
@@ -298,7 +285,7 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
     [routeNodes, layout, pageRoots, layoutRoots],
   );
   const untitled = app === undefined ? "" : formatText(app.texts, app.title, {});
-  const pages = useOpenedPage({ store, location: host.location, documents, untitled });
+  const pages = useOpenedPage({ store, location: host.location, documents, untitled, texts: app?.texts ?? NO_TEXTS });
   const opened = openedLocation(pages.opened);
   const viewer = useMemo<Viewer>(() => ({ location: host.location, ...(opened === undefined ? {} : { opened }) }), [host.location, opened?.path, opened?.search]);
   // A failure is drawn whatever the styles: it must never be a spinner forever.
@@ -333,18 +320,15 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
                   <Loading />
                 )
               ) : (
-                <PageSlotContext.Provider value={slot}>
-                  <div ref={setSlotElement} style={{ display: "contents" }} />
-                  <div style={{ display: claims > 0 ? "none" : "contents" }}>{shown ? (
-                    <PressQueueContext.Provider key={drawing} value={queues}>
-                      <RootsContext.Provider value={pageRoots}>
-                        <Nodes nodes={shown.children} />
-                      </RootsContext.Provider>
-                    </PressQueueContext.Provider>
-                  ) : (
-                    <Loading />
-                  )}</div>
-                </PageSlotContext.Provider>
+                shown ? (
+                  <PressQueueContext.Provider key={drawing} value={queues}>
+                    <RootsContext.Provider value={pageRoots}>
+                      <Nodes nodes={shown.children} />
+                    </RootsContext.Provider>
+                  </PressQueueContext.Provider>
+                ) : (
+                  <Loading />
+                )
               )}
             </div>
           </main>

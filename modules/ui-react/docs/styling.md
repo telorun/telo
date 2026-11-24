@@ -540,7 +540,7 @@ the [layout contract](layouts-abi.md) draws for a record.
 | --- | --- |
 | `listing` | a listing, with everything belonging to it |
 | `listing-toolbar` | the row above the records |
-| `listing-create` | the button opening the create form |
+| `listing-create` | the button running the listing's `create` press |
 | `listing-main` | the records and the pager together: what a panel sits beside |
 | `listing-empty` | where the records would be when the reads answer none: the listing's `empty` node |
 | `listing-loading` | where the records would be until the first page arrives |
@@ -556,7 +556,7 @@ the [layout contract](layouts-abi.md) draws for a record.
 | `pager-next` | the next-page button, an icon, under `paging: pages` |
 | `listing-sort` | the viewer's sort in a layout with no headers — list, cards, board, tree: a group of buttons |
 | `listing-sort-option` | one property it sorts by, a button showing its title and the sort glyph; `aria-pressed` while the sort is by it |
-| `listing-detail` | where a record's edit form opens in line, under the record, in a layout of the contract |
+| `listing-detail` | where a page opened in line from a record is drawn, under the record, in a layout of the contract |
 | `record-move` | a record's "Move to" button, opening the `menu` of the places it can be moved to: the keyboard path of every drag |
 | `record-create` | the button creating a record in a board's column or on a calendar's day, holding that place's value; an icon |
 
@@ -578,7 +578,7 @@ and a column, a lane, a day, a timeline's column and a tree item take a drop.
 | `table-header-cell` | one header cell |
 | `table-sort` | the button sorting by a column |
 | `table-cell` | one cell |
-| `table-detail` | the cell under a record that holds its edit form, opened in line |
+| `table-detail` | the cell under a record that holds a page opened in line from it |
 
 The listing's `listing-empty` and `listing-loading` are cells of the grid in a
 table, spanning every column.
@@ -841,19 +841,19 @@ holds still as it changes.
 
 ### Surface
 
-Where a form opens, where a filter bar's overlay and a filter chip's control
-open, and every confirmation. One family whatever the kind: `data-surface`
+Where an opened page appears, where a filter bar's overlay and a filter chip's
+control open, and every confirmation. One family whatever the kind: `data-surface`
 says which.
 
 | Part | Is |
 | --- | --- |
 | `surface-overlay` | what covers the page behind a modal dialog or drawer, and behind a confirmation |
-| `surface` | the surface itself: a dialog, a drawer, a popover, an inline form, a panel, a form in place of the page, or a confirmation |
+| `surface` | the surface itself: a dialog, a drawer, a popover, an inline page, a panel, or a confirmation |
 | `surface-header` | its title, and a confirmation's description |
-| `surface-title` | its title: `New` or `Edit` for a form, `Filters` for a filter bar's overlay, the question for a confirmation — or the label of a row's operation that was refused without one |
+| `surface-title` | its title: the page's title, else the label of what opened it (`Create`, `Edit`), `Filters` for a filter bar's overlay, the question for a confirmation — or the label of a row's operation that was refused without one |
 | `surface-description` | what a confirmation says under its title; absent from a row operation's confirmation |
-| `surface-body` | what holds the form; it scrolls while the header and the form's actions stay. What it holds is drawn inside two wrapper elements with `display: contents`, so select a form in it as a descendant, not as a child |
-| `surface-close` | the button closing a form's surface, an icon |
+| `surface-body` | what holds the opened page; it scrolls while the header and the form's actions stay. What it holds is drawn inside two wrapper elements with `display: contents`, so select a form in it as a descendant, not as a child |
+| `surface-close` | the button closing a page's surface, an icon |
 
 A form inside a surface fills its `surface-body`, so its `form-actions` stays
 at the surface's bottom edge — under a form shorter than the surface, and over
@@ -863,11 +863,16 @@ surface while its form is being sent.
 Where each sits:
 
 - `dialog`, `drawer`, `popover` and `confirmation` are at the end of `<body>`.
-- `inline` is in the `listing`: above `listing-main` for the create form, and
-  for an edit under its record — in a table layout, in a `table-detail` cell.
-- `panel` is in the `listing`, beside `listing-main`, on its `data-side`.
-- `page` is in the `page`, where its content was; the content is not drawn
-  until the surface closes.
+- `inline` is in line after what was pressed: under a record of a listing — in
+  a table layout, in a `table-detail` cell — and after the pressed element
+  elsewhere.
+- `panel` is a child of the nearest composite (`listing`, `split`, `form`,
+  `action`, `filters`, `chat`) holding what was pressed, beside its content on
+  its `data-side`; a listing's is beside `listing-main`.
+- On a cold load the declaration of the surface stands in for what opened the
+  page where one element is known; where what opened the page is not on screen,
+  and on a narrow viewport, a popover, an inline surface and a panel are drawn
+  as their `compact` surface, else a dialog.
 
 ### Media viewer
 
@@ -923,7 +928,7 @@ listed.
 | `data-invalid="…"` | `true`, while what it holds is refused; the control inside carries its own | `field`, `picker` |
 | `data-dirty="…"` | `true`, while it holds input that is not saved | `form` |
 | `data-compact="…"` | `true`, while the viewport is below the application's `compactBelow` | `app` |
-| `data-surface="…"` | `dialog`, `drawer`, `popover`, `inline`, `panel`, `page`, `confirmation` | `surface` |
+| `data-surface="…"` | `dialog`, `drawer`, `popover`, `inline`, `panel`, `confirmation` | `surface` |
 | `data-side="…"` | `start`, `end`, `top`, `bottom`: the edge a drawer or a panel sits at, the side of its control a popover opens on; `start` or `end` for the side of its content a filter bar's controls sit at, under `data-placement="aside"` only; `start` or `end` for the side of the page a layout's aside sits at, on `app` while it stands beside `main`; `start` or `end` for the side of its content a split view's aside sits at, and the side an aside is drawn at | `app`, `surface`, `filters`, `aside`, `split` |
 | `data-placement="…"` | `above`, `aside`, `collapsible`, `overlay`: where the bar's controls sit now — its compact placement's below the application's `compactBelow` | `filters` |
 | `data-active="…"` | `true`, while one of its filters holds a value | `filter`, `filter-chip` |

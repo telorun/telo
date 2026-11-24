@@ -715,7 +715,12 @@ export type {
 export { scopeOpenedByProblems, scopeSlotProblems } from "./validate-scope-slots.js";
 export { readScopeAnnotation, type ScopeAnnotation } from "./scope-annotation.js";
 export type { ScopeSlotProblem } from "./validate-scope-slots.js";
-export { namedContractShape, valueSchemaFromProblems } from "./validate-value-schema-location.js";
+export {
+  namedContractShape,
+  slotKindResolverOf,
+  valueSchemaFromProblems,
+  type SlotKindResolver,
+} from "./validate-value-schema-location.js";
 export type {
   NamedContractShape,
   ValueSchemaFromProblem,

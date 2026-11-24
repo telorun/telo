@@ -135,12 +135,23 @@ contributes nothing. An empty list, or an element that is itself no location
 (below), naming the element.
 
 **A member of the type.** The annotation's object form, `{ from: <location>,
-member: <relative pointer> }`, reads the location as above and holds the value
+member: <pointer> }`, reads the location as above and holds the value
 to ONE PROPERTY of each type it reaches rather than to the type: the property
-whose name `member` yields. `member` is a Relative JSON Pointer from the
+whose name `member` yields. `member` takes one of two spellings, told apart by
+its first character. A Relative JSON Pointer from the
 annotated node — a non-negative integer of levels out, then `#` (the key that
 node is reached by) or a JSON Pointer to the string naming the property; `0#` is
-a map value's own key, so a map typed by a model is held key by key. **A map's
+a map value's own key, so a map typed by a model is held key by key. Or an
+absolute JSON Pointer (`/key`), read from the root of the declaration holding the
+value the location reached — the bound declaration for a bare field or a pointer
+crossing no reference, and past references the last declaration crossed: the
+property's name is the string written at the pointer there, or, the field being
+absent, the `default:` the effective author schema of that declaration's kind
+declares at the pointer (inheritance resolved); anything else contributes
+nothing. Each type reached is paired with the member read from its own holder,
+so a `*` location pairs each item's type with that item's member and never mixes
+them. An absolute member is known wherever the type is, so it types a contract
+node as that property's schema. **A map's
 values keyed by their own key are typed on the map**: every key its annotated
 `additionalProperties` (or `patternProperties` entry) governs MUST name a
 property the type declares at its root, and its value MUST satisfy that
@@ -149,9 +160,9 @@ and as `ERR_INPUT_INVALID` for a computed map at dispatch. A key the kind's own
 schema fixes (the map's `properties`) keeps its own reading; at a fixed key the
 member is that property alone, and a name the type does not declare there
 contributes nothing; a type declaring no properties at its root types no key.
-Inside a contract the member is known only where it is the node's own key (`0#`):
-a property's name, or a map's key; a member any other pointer names is data and
-contributes nothing there.
+Inside a contract a relative member is known only where it is the node's own
+key (`0#`): a property's name, or a map's key; a member any other relative
+pointer names is data and contributes nothing there.
 
 **Crossing a reference.** When the value reached so far sits at one of the
 holding declaration's reference sites — the sites the runtime substitutes with a
@@ -211,7 +222,10 @@ with `ERR_VALUE_SCHEMA_FROM_INVALID`: an annotation that is not a non-empty
 string, the object form with a well-formed `member`, or a non-empty list of
 those, a pointer with an empty
 segment, a `member` that takes the key of a node reached by an index (or of the
-root), a `member` pointer naming a node the schema does not declare a string,
+root), a `member` pointer naming a node the schema does not declare a string —
+for an absolute member, the schema of the kind itself when the location crosses
+no reference slot, else of each kind the last crossed slot names, resolved in the
+declaring module's scope and not judged where it does not resolve —
 or a location whose segments — up to
 the first reference slot — name something the kind's own author schema (with
 inheritance resolved) does not declare. A segment is declared when it is a

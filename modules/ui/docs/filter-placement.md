@@ -68,8 +68,8 @@ toggle.
   opening it adds a history entry, the browser's back closes it, and a link to
   that address opens it. A surface's own `compact` is honoured too.
 
-  A name is one state on its page: an overlay that shares its name with a
-  listing's create opener opens and closes together with the create form. Give
+  A name is one state on its page: an overlay that shares its name with the
+  surface of an opened page opens and closes together with that page. Give
   the overlay a name of its own unless that is meant.
 
 ## On a narrow viewport

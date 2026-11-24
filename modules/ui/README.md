@@ -29,7 +29,7 @@ turns what it produces into a web application.
   labels once.
 - **One collection, any layout.** A listing's records are drawn as a table, a
   list, cards, a kanban board, a calendar, a timeline or a tree — another one
-  on narrow screens — with paging, sorting, labels, openers and row actions
+  on narrow screens — with paging, sorting, labels, create and edit buttons and row actions
   declared once. A layout grouping, spanning or nesting by something the API
   cannot filter by is refused by `telo check`, and another module adds a layout
   without changing this one.
@@ -65,10 +65,13 @@ turns what it produces into a web application.
   dropdowns, a column folding to a rail of icons in a sidebar, a menu button
   with a drawer or a bottom tab bar on a phone — and a page an entry names
   with no title, or with a variable in its path, is refused by `telo check`.
-- **How a form opens is declared, not built.** A listing names the surface its
-  create and edit forms appear in — a dialog, a drawer, a panel beside the
-  list, a page of its own — with an address to link to and a replacement for
-  narrow screens.
+- **A record's form is a page, opened like any other.** A form says which
+  collection and stored record it edits, what it starts from, what happens
+  after it saves and whether leaving with unsaved input asks first; a listing's
+  `create` and `edit` are presses opening those pages in a surface — a dialog,
+  a drawer, a popover, in line or a panel beside the list — with an address to
+  link to and a replacement for narrow screens, and a link to the same page
+  opens it as a page of its own.
 - **How a filter bar behaves is declared too.** A text search over the
   properties the collection declares, which filters are on show, where the
   controls sit, how each is entered, when a change applies, what it starts from
@@ -140,7 +143,7 @@ turns what it produces into a web application.
 | [`Ui.Navigate`, `Ui.OpenPage`](docs/presses.md) | Where a link, a menu item, a column, a related record, an option, a navigation entry or a success goes: to an address, or to a page opened over the current one in a dialog or a drawer. |
 | [`Ui.Destination`](docs/presses.md#destinations) | The contract every destination provides through, reading the values bound where it is written. |
 | [`Ui.Action`](docs/action.md) | A button that runs an operation: a form for its input, its answer and its failure drawn as node trees, a destination and refreshes after a success, serial or parallel presses, and a place on every record of a listing or a list or on a `button` node, its inputs bound from the data in scope. |
-| [`Ui.Dialog`, `Ui.Drawer`, `Ui.Popover`, `Ui.InlineSurface`, `Ui.Panel`, `Ui.PageSurface`](docs/surfaces.md) | Where a form or a page opens: over the page, in line, beside the list, or in place of the page. |
+| [`Ui.Dialog`, `Ui.Drawer`, `Ui.Popover`, `Ui.InlineSurface`, `Ui.Panel`](docs/surfaces.md) | Where an opened page appears: over the page, anchored to what was pressed, in line, or beside the nearest composite. |
 | [`Ui.Surface`, `Ui.Overlay`, `Ui.ViewportOverlay`](docs/surfaces.md#the-abstracts) | The contracts every surface, every floating one, and every one placed against the viewport — what a narrow viewport uses — provides through. |
 | [`Ui.Filters`](docs/filters.md) | A filter bar over the listings it contains. |
 | [`Ui.AbovePlacement`, `Ui.AsidePlacement`, `Ui.CollapsiblePlacement`, `Ui.OverlayPlacement`, `Ui.SearchBoxPlacement`](docs/filter-placement.md) | Where a filter bar's controls sit: above its content, beside it, folded behind a toggle, in an overlay, or gathered into one search box. |
@@ -200,6 +203,7 @@ schema:
 kind: DataModel.Collection
 metadata: { name: todoCollection }
 model: !ref Todo
+schemas: { create: !ref TodoInput, update: !ref TodoInput }
 query:
   filters:
     - { property: text, operator: contains }
@@ -219,6 +223,15 @@ rowStyle:
   by: !cel "row.isDone"
   cases: { "true": muted }
 create:
-  form: { kind: Ui.Form, model: !ref TodoInput, presentation: !ref todosPresentation }
+  to: { kind: Ui.OpenPage, page: !ref newTodoPage }
 delete: true
+---
+# The page `create` opens: a dialog over the list, or a page of its own at /todos/new.
+kind: Ui.Page
+metadata: { name: newTodoPage }
+path: /todos/new
+title: New task
+children:
+  - type: composite
+    ref: { kind: Ui.Form, model: !ref TodoInput, record: { presentation: !ref todosPresentation } }
 ```

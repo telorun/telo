@@ -15,3 +15,9 @@ export interface RelationTarget {
   key: string;
   query: Pick<AcceptedQuery, "filters">;
 }
+
+/** The body each write accepts; one left out is a write the collection does not take. */
+export interface DeclaredSchemas {
+  create?: JsonSchema;
+  update?: JsonSchema;
+}

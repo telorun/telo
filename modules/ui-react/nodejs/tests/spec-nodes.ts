@@ -39,19 +39,95 @@ export const navigateTo = (href: ReturnType<typeof address>) => ({ type: "naviga
 /** A destination opening a page over the current one, as `ui` provides a `Ui.OpenPage`: in a dialog that keeps the surface it is pressed in unless told. */
 export const openPageAt = (href: ReturnType<typeof address>, surface: Record<string, unknown> = dialogSurface, keepsSurface = true) => ({ type: "openPage", href, surface, keepsSurface });
 
-export const formNode = (basePath = "/api/todos"): SpecNode => ({
+/** The properties of the test model a form enters. */
+const todoProperties = ["text", "isDone", "priority", "status", "dueOn", "notes"];
+
+/**
+ * A form as `ui` provides it, every member present: by default one that creates
+ * a record in `basePath` from nothing, closing once it is saved. `overrides` replace members.
+ */
+export const formNode = (basePath = "/api/todos", overrides: Record<string, unknown> = {}): SpecNode => ({
   type: "form",
   schema: todoSchema,
-  basePath,
-  fields: ["text", "isDone", "priority", "status", "dueOn", "notes"].map((property) => ({
+  record: { basePath, key: null },
+  initialValues: null,
+  unsaved: "confirm",
+  afterSubmit: "close",
+  fields: todoProperties.map((property) => ({
     type: "input",
     property,
     label: (todoSchema.properties as Record<string, { title?: string }>)[property].title ?? property,
     control: "auto",
   })),
   groups: [],
-  state: memoryState(["text", "isDone", "priority", "status", "dueOn", "notes"]),
+  state: memoryState(todoProperties),
+  ...overrides,
 });
+
+/** The form that edits the record the page's query read: keyed by the page's `id` variable, starting from `data`. */
+export const editFormNode = (basePath = "/api/todos", overrides: Record<string, unknown> = {}): SpecNode =>
+  formNode(basePath, { record: { basePath, key: { root: "params", path: ["id"] } }, initialValues: { root: "data", path: [] }, ...overrides });
+
+/** The edit page's read of one record: `/api/todos/{id}` by the page's `id`, drawing `content`. */
+export const recordQuery = (content: SpecNode[], basePath = "/api/todos", schema: Record<string, unknown> = todoSchema): SpecNode => ({
+  type: "query",
+  query: {
+    id: "record",
+    schema,
+    method: "GET",
+    url: address(`${basePath}/{id}`, { id: { root: "params", path: ["id"] } }),
+    input: null,
+    query: {},
+    reloadOn: [],
+  },
+  content,
+  loading: [{ type: "text", text: "Loading…", style: "muted" }],
+  failure: [defaultFailure],
+  fill: false,
+});
+
+/** An edit page over `basePath`: the record read by the page's `id`, its form over `schema` with these members replaced. */
+export const recordEditPage = (basePath: string, schema: Record<string, unknown>, form: Record<string, unknown>): { title: string; children: SpecNode[] } => ({
+  title: "Record",
+  children: [
+    recordQuery(
+      [formNode(basePath, { schema, record: { basePath, key: { root: "params", path: ["id"] } }, initialValues: { root: "data", path: [] }, ...form })],
+      basePath,
+      schema,
+    ),
+  ],
+});
+
+/**
+ * The two pages a collection's records are written on: `/todos/new` holding a
+ * form that creates, `/todos/{id}` reading the record and holding a form that
+ * edits it. `create` and `edit` replace members of each form.
+ */
+export const recordPages = (create: Record<string, unknown> = {}, edit: Record<string, unknown> = {}): Record<string, { title?: string; query?: Record<string, unknown>; children: SpecNode[] }> => ({
+  "/todos/new": { children: [formNode("/api/todos", create)] },
+  "/todos/{id}": { children: [recordQuery([editFormNode("/api/todos", edit)])] },
+});
+
+/**
+ * `recordPages` whose create page declares the `status` and `dueOn` query parameters and starts its form from them,
+ * as a page does that a layout's create gesture proposes values to.
+ */
+export const prefilledPages = (create: Record<string, unknown> = {}): ReturnType<typeof recordPages> => {
+  const pages = recordPages({ initialValues: { root: "query", path: [] }, ...create });
+  return { ...pages, "/todos/new": { ...pages["/todos/new"], query: { status: { type: "string" }, dueOn: { type: "string" } } } };
+};
+
+/** A press whose destination opens a page in `surface`, named as `ui` names a listing's `create` and `edit`. */
+export const pressOpening = (kind: "create" | "edit", surface: Record<string, unknown> = dialogSurface, keepsSurface = false, queryParams: Record<string, unknown> = {}): Record<string, unknown> => ({
+  to: openPageAt(kind === "create" ? address("/todos/new", {}, queryParams) : address("/todos/{id}", { id: row("id") }, queryParams), surface, keepsSurface),
+  label: uiText(kind),
+});
+
+/** The `create` and `edit` of a listing that open `recordPages` in these surfaces; `press` follows `edit`, as `ui` fills it. */
+export const recordPresses = (surface: Record<string, unknown> = dialogSurface, editSurface: Record<string, unknown> = surface): Record<string, unknown> => {
+  const edit = pressOpening("edit", editSurface);
+  return { create: pressOpening("create", surface), edit, press: edit };
+};
 
 /** A record kept in memory: what a form or an action without `state` carries. */
 export const memoryState = (fields: string[]) => ({ address: false, store: { type: "memory" }, fields });
@@ -67,15 +143,6 @@ export const component = (name: string, props: Record<string, unknown> = {}): Sp
 });
 
 export const dialogSurface = { type: "dialog", size: "medium", modal: true, dismiss: { escape: true, outside: true, closeButton: true } };
-
-/** How a listing opens a form: a dialog with its defaults unless overridden. */
-export const opener = (overrides: Record<string, unknown> = {}) => ({
-  form: formNode(),
-  surface: dialogSurface,
-  afterSubmit: "close",
-  unsaved: "confirm",
-  ...overrides,
-});
 
 /** The columns of the test listing's table. */
 export const todoColumns = [
@@ -100,8 +167,8 @@ export const listingNode = ({ columns = todoColumns, layout, ...overrides }: Rec
   sort: { sortable: ["text", "priority", "dueOn"], initial: null },
   show: { count: true },
   rowStyle: { by: row("isDone"), cases: { true: "muted" } },
-  create: opener(),
-  edit: opener(),
+  create: pressOpening("create"),
+  edit: pressOpening("edit"),
   delete: true,
   rowActions: [],
   rowActionsDisplay: "auto",

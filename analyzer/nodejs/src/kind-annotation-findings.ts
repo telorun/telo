@@ -49,7 +49,7 @@ import { outputToProblems } from "./output-to-slot.js";
 import { schemaReferenceParts } from "./schema-reference.js";
 import { DiagnosticSeverity } from "./types.js";
 import { withQuotedPath } from "./quoted-place.js";
-import { namedContractShape, shapeValueSchemaFromProblems } from "./validate-value-schema-location.js";
+import { namedContractShape, shapeValueSchemaFromProblems, slotKindResolverOf } from "./validate-value-schema-location.js";
 import { valueSchemaAnnotations } from "./value-schema-slot.js";
 import {
   pathParamsAnnotationProblemOf,
@@ -381,6 +381,10 @@ export function kindAnnotationFindings(kinds: readonly ResourceManifest[], scope
       registeredDefinitionCopy(m, scope.aliases, scope.aliasesByModule)) as unknown as ResourceDefinition;
     const effective = defs.effectiveSchemaOf(own) as Schema | undefined;
     const shapeProblems: { path: string; message: string; held: Condition }[] = [];
+    const slotKinds = slotKindResolverOf(
+      (kind, from) => resolveDef(kind, from as ResourceDefinition | undefined) as Record<string, any> | undefined,
+      (definition) => defs.effectiveSchemaOf(definition as ResourceDefinition) as Record<string, any> | undefined,
+    );
     for (const field of ["inputType", "outputType"] as const) {
       const value = (own as unknown as Record<string, unknown>)[field];
       if (!namedContractShape(value)) continue;
@@ -390,7 +394,7 @@ export function kindAnnotationFindings(kinds: readonly ResourceManifest[], scope
       if (id === undefined || pointer !== "#" || !shapes.isShapeId(id)) continue;
       for (const shape of shapes.classes(id)) {
         const annotations = shapes.verdict("valueSchemaAnnotations", shape, () => valueSchemaAnnotations(shape.schema));
-        for (const problem of shapeValueSchemaFromProblems(name, field, { name: typeName(id), schema: shape.schema }, effective, annotations)) {
+        for (const problem of shapeValueSchemaFromProblems(name, field, { name: typeName(id), schema: shape.schema }, effective, annotations, slotKinds)) {
           shapeProblems.push({ path: problem.path, message: `${m.kind} ${problem.message}`, held: shape.condition });
         }
       }

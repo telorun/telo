@@ -49,10 +49,12 @@ node:
   layout: { type: table, columns: [], reads: {} }
   delete: false
   create:
-    form: { type: form, fill: false, schema: {}, basePath: /api/todos, fields: [], groups: [], state: { address: false, store: { type: memory }, fields: [] } }
-    surface: { type: dialog, size: huge, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
-    afterSubmit: close
-    unsaved: confirm
+    to:
+      type: openPage
+      href: { path: { value: /todos/new }, pathParams: {}, queryParams: {} }
+      surface: { type: dialog, size: huge, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+      keepsSurface: false
+    label: { set: Ui.Translations, key: create }
 ---
 kind: Echo.TypedPlacement
 metadata: { name: placementSurface }

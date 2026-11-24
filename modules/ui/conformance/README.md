@@ -2,7 +2,7 @@
 
 Data files a renderer's tests read, so every renderer answers what `ui`
 answers. Each is one JSON object, `{ description, rows }`, every row carrying a
-`name` and the case's inputs and expected outcome. All eight ship with the
+`name` and the case's inputs and expected outcome. All nine ship with the
 module through `files:`.
 
 | File | Pins |
@@ -15,6 +15,7 @@ module through `files:`.
 | `refreshes.json` | which readers a refresh entry, with its `*` / `**` segments, reads again |
 | `filter-tokens.json` | how text typed into a search-box filter bar becomes the bar's values |
 | `template-bindings.json` | the body a query's `input.body` template resolves to from the roots it reads |
+| `merge-patch.json` | the merge patch an edit form sends, and the `If-Match` a write carries |
 
 ## `listing-reads.json`
 
@@ -141,3 +142,36 @@ rows pin:
 
 `ui` resolves no body itself — it hands the template through in its wire form —
 so these rows bind the renderer, whose tests read them.
+
+## `merge-patch.json`
+
+Two kinds of row, told apart by `kind`.
+
+A `patch` row is one edit form: the `properties` it shows, the record it
+`start`ed from, the record `entered` (what its shown fields hold, a field with
+no value absent) and the `patch` sent. The rules the rows pin:
+
+- A shown property whose entered value differs from the starting one is
+  sent with the entered value; equal values are compared by content — a list
+  item by item in order, an object member by member in any key order.
+- A shown property with no entered value that the record held is sent as
+  `null`; one it never held (or held as `null`) is left out.
+- `false`, `0` and `""` are values.
+- A property the form does not show is never named.
+- A form that changed nothing sends `{}`.
+
+A `precondition` row is a sequence of `steps`, each an `answered` response
+(`method`, `path`, `status`, and `etag` where it carried one) or a `request` and
+the `ifMatch` it carries (absent: none). A path is the encoded app-relative
+request path, its query left out. The rules the rows pin:
+
+- A `PATCH`, `PUT` or `DELETE` carries the validator kept for its path; no other
+  method does, and a path with none kept sends none.
+- A `GET`, `PATCH` or `PUT` answer in the 2xx range replaces the kept
+  validator with its `ETag`, and drops it when it has none. A `POST` answer is
+  about another path and keeps nothing.
+- A 2xx `DELETE` answer and a 404 drop the validator; a 412 keeps it, so a press
+  made before the reader has read again is refused again.
+
+A renderer applies a 412 as the page's own failure, announcing the path as
+changed so its readers read again; that is exercised by the renderer's own tests.

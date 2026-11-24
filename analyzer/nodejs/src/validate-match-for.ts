@@ -29,6 +29,7 @@ import { followSchemaReferences, resolveSchemaReference } from "./schema-referen
 import { CONTEXT_EVAL, contextEvalValueProblem } from "./context-eval.js";
 import { CONTEXT_FROM_PATH_TEMPLATE, fromPathTemplateProblem } from "./context-from-path-template.js";
 import { CONTEXT_FROM_REFERRER, fromReferrerProblem } from "./context-from-referrer.js";
+import { CONTEXT_PARTIAL, partialProblem } from "./context-partial.js";
 import { CONTEXT_WITHHELD, withheldProblem, withheldReason } from "./context-withheld.js";
 import { ITEM_FILLS, itemFillsValueProblem } from "./context-fill-cycle.js";
 import { NULLABLE_WHEN, nullableWhenTarget, nullableWhenValueProblem, readNullableWhen } from "./context-nullable-when.js";
@@ -52,6 +53,7 @@ export interface AnnotationProblem {
     | "CONTEXT_FROM_PATH_TEMPLATE_INVALID"
     | "CONTEXT_NULLABLE_WHEN_INVALID"
     | "CONTEXT_WITHHELD_INVALID"
+    | "CONTEXT_PARTIAL_INVALID"
     | "CONTEXT_ITEM_FILLS_INVALID";
   readonly warning?: true;
   /** Where the annotation is written, from the document root. */
@@ -149,6 +151,12 @@ export function annotationDeclarationProblems(
     if (CONTEXT_FROM_REFERRER in node) {
       const where = renderValuePath([...path, CONTEXT_FROM_REFERRER]);
       const problem = fromReferrerProblem(node, where, binding !== undefined);
+      if (problem) problems.push({ code: problem.code, path: where, message: problem.message });
+    }
+
+    if (CONTEXT_PARTIAL in node) {
+      const where = renderValuePath([...path, CONTEXT_PARTIAL]);
+      const problem = partialProblem(node, where, binding !== undefined);
       if (problem) problems.push({ code: problem.code, path: where, message: problem.message });
     }
 

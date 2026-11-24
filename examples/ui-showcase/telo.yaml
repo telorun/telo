@@ -160,6 +160,14 @@ pages:
   - !ref crudScreen
   - !ref recordsScreen
   - !ref postRecord
+  - !ref newTaskPage
+  - !ref createTaskPage
+  - !ref taskPage
+  - !ref taskQuickPage
+  - !ref newPostPage
+  - !ref postEditPage
+  - !ref newEmployeePage
+  - !ref employeePage
   - !ref searchScreen
   - !ref searchBesideScreen
   - !ref searchReleasesScreen
@@ -392,6 +400,14 @@ pages:
   - !ref crudScreen
   - !ref recordsScreen
   - !ref postRecord
+  - !ref newTaskPage
+  - !ref createTaskPage
+  - !ref taskPage
+  - !ref taskQuickPage
+  - !ref newPostPage
+  - !ref postEditPage
+  - !ref newEmployeePage
+  - !ref employeePage
   - !ref searchScreen
   - !ref searchBesideScreen
   - !ref searchReleasesScreen
@@ -534,6 +550,14 @@ pages:
   - !ref crudScreen
   - !ref recordsScreen
   - !ref postRecord
+  - !ref newTaskPage
+  - !ref createTaskPage
+  - !ref taskPage
+  - !ref taskQuickPage
+  - !ref newPostPage
+  - !ref postEditPage
+  - !ref newEmployeePage
+  - !ref employeePage
   - !ref searchScreen
   - !ref searchBesideScreen
   - !ref searchReleasesScreen
@@ -675,6 +699,14 @@ pages:
   - !ref crudScreen
   - !ref recordsScreen
   - !ref postRecord
+  - !ref newTaskPage
+  - !ref createTaskPage
+  - !ref taskPage
+  - !ref taskQuickPage
+  - !ref newPostPage
+  - !ref postEditPage
+  - !ref newEmployeePage
+  - !ref employeePage
   - !ref searchScreen
   - !ref searchBesideScreen
   - !ref searchReleasesScreen

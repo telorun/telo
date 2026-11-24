@@ -87,27 +87,52 @@ the form.
 | Request | Does |
 | --- | --- |
 | `GET <basePath>/<key value>` | answers with that one record |
-| `POST <basePath>` | creates a row from the JSON body |
-| `PUT <basePath>/<key value>` | replaces that row with the JSON body |
+| `POST <basePath>` | creates a row from the JSON body, held to `schemas.create` |
+| `PATCH <basePath>/<key value>` | merges a JSON Merge Patch into that row, answering 200 with the stored record |
 | `DELETE <basePath>/<key value>` | deletes it |
 
 A record read by its key may hold more than its row of the list does. An edit
 form reads it before it opens, so what it sends back is what the record held
 and not what the list happened to show.
 
-`PUT` replaces; it does not merge. Its body is a record valid against the
-model of the form that sends it, and a property of that model absent from it
-is cleared. A body missing a required property is a 400 naming it.
+`PATCH` is a JSON Merge Patch (RFC 7396), sent as
+`Content-Type: application/merge-patch+json`. A member holding a value sets
+that property; a member holding `null` clears it, after which the record reads
+without it (or with `null`, where the model admits `null`); a property the body
+does not name is unchanged. An object value merges into the stored one member
+by member, a `null` member removing it, while a list or a scalar replaces the
+stored value whole. So a client sends the properties it changed and
+nothing else, and a form over a narrower model leaves every property it does not
+show alone. An empty patch changes nothing and answers the stored record.
+
+The merged record is held to `schemas.update` whole: clearing a property the
+shape requires is a 400 with a `required` issue at `/body/<property>`, a member
+outside the shape is a 400 `additionalProperties` at `/body/<member>`, and a
+value of another type is that keyword's issue — each in the problem
+[above](#refusals--400).
+
+`PUT` is not part of the contract: a collection may offer it as a replace, but
+no renderer sends it, because a body that must name every property is how a
+narrower model clears what it never saw.
 
 A write body holds the properties that have a value, in the JSON types the
-model declares. The row key is left out, a property with no value is left out
-rather than sent as `null`, and a `null` or a value of another JSON type at a
-typed property is a 400 naming the property.
+model declares. The row key is left out, and a value of another JSON type at a
+typed property is a 400 naming the property; a `null` is a patch's way to clear
+a property and is refused in a `POST` body at a property that does not admit it.
 
-So the renderer sends back what the record held: an edit form's body is the
-record's properties that the form's model declares, with each field's entered
-value over them, and a field left empty is a property left out. A collection that merged instead would keep the
-value the user just removed.
+## Validators and preconditions
+
+A collection may send an `ETag` — a strong validator of the record, changing
+whenever the record does — on `GET <basePath>/<key value>`, on a record
+contract `GET` and on every write answer. A client that read one holds it for
+that path, and sends it as `If-Match` on the `PATCH` or `DELETE` it makes next
+(a collection serving `PUT` honours it there too). The collection compares it
+with the record's current validator at the moment of the write, and one that no
+longer matches is a `412` problem (`application/problem+json`) with the record
+left as it was; two writes carrying one validator cannot both succeed. A request
+with no `If-Match` is not conditional, and a collection sending no `ETag` is
+never sent one: there is nothing to configure, the validator is the server's to
+offer.
 
 A 401 or 403 from any of these is shown where it happened; requests carry the
 page's same-origin credentials.

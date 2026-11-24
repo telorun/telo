@@ -415,11 +415,17 @@ export function valueSchemaSites(
   for (const slot of valueSchemaSlots(defSchema)) {
     const { scope, from } = slot;
     const label = describeValueSchemaLocation(from);
-    for (const { schema: type, member } of valueSchemaTypes(manifest, from, host)) {
+    for (const { schema: type, member, memberName } of valueSchemaTypes(manifest, from, host)) {
       const keyedMaps = new Set<string>();
+      // An absolute member names one property per reached type, read off its holder.
+      const absolute = member && "absolute" in member ? memberTypeOf(type, memberName!) : undefined;
       for (const { path, value } of resolveScopeValues(manifest, scope)) {
         if (!member) {
           out.push({ path, value, schema: type, from: label });
+          continue;
+        }
+        if ("absolute" in member) {
+          if (absolute) out.push({ path, value, schema: absolute, from: label });
           continue;
         }
         // A map keyed by the type's properties refuses a key naming none.

@@ -57,3 +57,14 @@ export function underMount(prefix: string, path: string): string {
 export function assetUrl(environment: RendererEnvironment, asset: { digest: string; name: string }): string {
   return `${environment.prefix}/_telo/ui/assets/${asset.digest}/${asset.name}`;
 }
+
+/** What a page opened in a surface gives the forms in it: closing the surface it is open in, and saying a form is being sent. Absent on a page of its own. */
+export interface OpenedPageHandle {
+  close(): void;
+  busy(busy: boolean): void;
+}
+
+export const OpenedPageContext = createContext<OpenedPageHandle | null>(null);
+
+/** The resolved address of the query drawn in, as its last answer was read: what a form starting from that answer starts again on. */
+export const QueryAddressContext = createContext<string | undefined>(undefined);

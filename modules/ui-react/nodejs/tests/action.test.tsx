@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import reportRequest from "../../tests/__fixtures__/action/report-request.json" with { type: "json" };
 import { HostStore } from "../src/browser/host.js";
 import { render, type Rendered } from "./harness.js";
-import { actionNode, reportSchema, address, navigateTo } from "./spec-nodes.js";
+import { actionNode, formNode, reportSchema, address, navigateTo } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => {
@@ -152,7 +152,7 @@ describe("an action", () => {
 
   it.each([
     ["an action", actionNode()],
-    ["a form", { type: "form", schema: reportSchema, basePath: "/api/reports", fields: actionNode().fields, groups: [], state: actionNode().state }],
+    ["a form", formNode("/api/reports", { schema: reportSchema, fields: actionNode().fields, state: actionNode().state, afterSubmit: "again" })],
   ])("marks the list controls of %s a 400 names, until a record is accepted", async (name, node) => {
     const issues = ["formats", "recipients"].map((property) => ({ pointer: `/body/${property}`, keyword: "minItems", params: { limit: 2 } }));
     let respond = () => json({ type: "about:blank", title: "Bad Request", status: 400, detail: "The request is not valid.", code: "ERR_INPUT_INVALID", data: { issues } }, 400);
