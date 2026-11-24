@@ -4,7 +4,7 @@ A listing's `layout` (and its `compact`) names how its records are drawn: a
 kind under the abstract `Ui.ListingLayout`. A layout declares only its own
 drawing and read keys — a key foreign to it is `SCHEMA_VIOLATION` — while
 everything else — what is read, paging, the viewer's sort, labels of related
-records, openers, row actions, delete — is [the listing's](listing.md), so it is
+records, create and edit, row actions, delete — is [the listing's](listing.md), so it is
 declared once whatever the layout.
 
 ```yaml
@@ -35,7 +35,7 @@ compact: { kind: Ui.CardLayout }
   [the row's first cell](#uitablelayout).
 - A **gallery** is `Ui.CardLayout` with an `image` node in its `content`; a
   **feed** is `Ui.ListLayout`; **master/detail** is any layout with an `edit`
-  opener on a [`Ui.Panel`](surfaces.md), the record opening beside the list.
+  press opening its page in a [`Ui.Panel`](surfaces.md), the record opening beside the list.
 - **A map and a chart are not built-ins.** A map needs a geographic value type
   and a `within` operator; until then a module ships one through
   `Ui.ComponentLayout` over paged reads. A chart shows totals, not records, so
@@ -106,7 +106,7 @@ layout:
       status: !cel "to.status"
 ```
 
-- It is never a replace through the edit form, which would lose one of two
+- It is never a replace through the edit page's form, which would lose one of two
   concurrent moves.
 - `inputs` is checked as a call site of the action, as a row action's is:
   `CONTRACT_INPUTS_MISMATCH`, `CEL_UNKNOWN_FIELD`, `CEL_TYPE_ERROR` and
@@ -274,7 +274,7 @@ layout:
 
 Records drawn by a browser component of your own — a map, a seat plan — over
 the reads its keys declare. The renderer still owns fetching, paging, filters,
-reloads, label lookups, openers, row actions, delete and running a move; the
+reloads, label lookups, create and edit, row actions, delete and running a move; the
 component receives the records and reports what the viewer asks for.
 
 | Field | | |

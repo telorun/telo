@@ -279,7 +279,15 @@ texts:
   - { text: Panels, translation: "Panneaux" }
   - { text: "Create in a small panel at the start edge, which Escape does not close. Edit in a large panel at the end edge, part of the address, with the rows still usable beside it; below the breakpoint it becomes a sheet from the bottom.", translation: "Création dans un petit panneau au bord de début, qu'Échap ne ferme pas. Modification dans un grand panneau au bord de fin, qui fait partie de l'adresse, avec les lignes toujours utilisables à côté ; sous le point de rupture, il devient une feuille depuis le bas." }
   - { text: A page of its own, translation: "Une page à part" }
-  - { text: "Create and edit replace the page's content under one address name, so the address says either a new task or the task with this key, and Back closes the form. The surface is declared once and named by both.", translation: "La création et la modification remplacent le contenu de la page sous un même nom d'adresse, donc l'adresse indique soit une nouvelle tâche, soit la tâche de cette clé, et Retour ferme le formulaire. La surface est déclarée une fois et nommée par les deux." }
+  - { text: "Create and edit navigate to the pages themselves, a new task's and the task's own, and Back returns to the table. The same two pages open over the table in every surface above.", translation: "Créer et modifier naviguent vers les pages elles-mêmes, celle d'une nouvelle tâche et celle de la tâche, et Retour revient au tableau. Les deux mêmes pages s'ouvrent au-dessus du tableau dans chacune des surfaces ci-dessus." }
+  - { text: "New task", translation: "Nouvelle tâche" }
+  - { text: "Create task", translation: "Créer une tâche" }
+  - { text: "Quick edit", translation: "Modification rapide" }
+  - { text: "New post", translation: "Nouvel article" }
+  - { text: "Edit post", translation: "Modifier l'article" }
+  - { text: "New person", translation: "Nouvelle personne" }
+  - { text: "Person", translation: "Personne" }
+  - { text: "A column's create button opens the new-post page with that column's status filled in, and the board's own button starts an empty form.", translation: "Le bouton de création d'une colonne ouvre la page de nouvel article avec le statut de la colonne déjà renseigné, et le bouton propre au tableau démarre un formulaire vide." }
 
   # Filters.
   - { text: Every filter the collection accepts, translation: "Chaque filtre qu'accepte la collection" }

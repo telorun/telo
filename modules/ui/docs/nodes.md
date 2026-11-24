@@ -596,18 +596,20 @@ chain, `{ value }` for a literal — which a renderer resolves by following the
 path; no expression engine runs in the browser.
 
 **A node carries every presentation member, declared or not.** A `listing` node's
-`create` and `edit` are each `{ form, surface, afterSubmit, unsaved }`, all four
-present: `form` the form node, `surface` a [`Ui.SurfaceSpec`](surfaces.md#what-a-renderer-receives)
-with every member its kind has, `afterSubmit` and `unsaved` as declared or
-defaulted. The defaults are this module's, filled before the node is provided,
-so two renderers cannot disagree about them and none carries a table of its
-own.
+`create`, `edit` and `press` are each a [`Ui.PressSpec`](presses.md#what-a-renderer-receives)
+or `null`, all three present: `create` and `edit` carry `label` filled — `ui`'s
+text `create` or `edit` when none was written — and `press` is `edit`'s press
+when only that is written. A `form` node carries `record` (`{ basePath, key }`,
+`key` a binding or `null`), `initialValues` (a binding or `null`), `unsaved` and
+`afterSubmit`, declared or defaulted. The defaults are this module's, filled
+before the node is provided, so two renderers cannot disagree about them and none
+carries a table of its own.
 
 A `listing` node always carries `query` (its declared parameters, empty when
 none), `rowActions` (an empty list when the listing declares none),
 `rowActionsDisplay`, `sort` (`{ sortable, initial }`), `show` (`{ count }`),
-`relations`, `empty`, its `layout` and `press` (its record press, `null` when
-none is written); a `list` node always carries
+`relations`, `empty`, its `layout`, `create`, `edit` and `press` (its record
+press); a `list` node always carries
 `rowActionsDisplay` and carries `rowActions` when it declares them, and
 `rowStyle` and a column's `style` — each `{ by, cases, default? }`, `by` a
 binding — when declared. A bound action is

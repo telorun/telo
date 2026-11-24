@@ -16,15 +16,16 @@
  * nothing references the resource.
  *
  * Written on a binding beside `x-telo-context-eval`, `x-telo-context-from-
- * referrer`, `title` and `description` only, or in a `$defs` entry a binding
- * names by `$ref` — read as if written on the binding (the context reader
- * follows that `$ref`). This file is the one reader of the value and its strict
- * half.
+ * referrer`, `x-telo-context-partial`, `title` and `description` only, or in
+ * a `$defs` entry a binding names by `$ref` — read as if written on the binding
+ * (the context reader follows that `$ref`). This file is the one reader of the
+ * value and its strict half.
  *
  * Browser-safe: no Node built-ins.
  */
 import { CONTEXT_EVAL } from "./context-eval.js";
 import { CONTEXT_FROM_REFERRER } from "./context-from-referrer.js";
+import { CONTEXT_PARTIAL } from "./context-partial.js";
 import { schemaReferenceParts } from "./schema-reference.js";
 
 export const CONTEXT_WITHHELD = "x-telo-context-withheld";
@@ -39,6 +40,7 @@ const BESIDE: ReadonlySet<string> = new Set([
   CONTEXT_WITHHELD,
   CONTEXT_EVAL,
   CONTEXT_FROM_REFERRER,
+  CONTEXT_PARTIAL,
   "title",
   "description",
 ]);
@@ -192,7 +194,7 @@ export function withheldProblem(node: Schema, where: string, placed: boolean): W
       code: "CONTEXT_WITHHELD_INVALID",
       message:
         `'${where}' says the node holds no value here, so '${beside}' beside it types nothing; keep only ` +
-        `'${CONTEXT_EVAL}', '${CONTEXT_FROM_REFERRER}', 'title' and 'description' beside it.`,
+        `'${CONTEXT_EVAL}', '${CONTEXT_FROM_REFERRER}', '${CONTEXT_PARTIAL}', 'title' and 'description' beside it.`,
     };
   }
   return undefined;

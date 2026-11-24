@@ -15,13 +15,18 @@
 import { parseCanonicalTypeSchemaId } from "@telorun/sdk";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
 import {
+  absoluteMemberProblem,
   describeValueSchemaLocation,
   readValueSchemaLocations,
   schemaReachesLocation,
   valueSchemaAnnotations,
   valueSchemaMemberProblem,
+  type SlotKindResolver,
   type ValueSchemaAnnotation,
+  type ValueSchemaMember,
 } from "./value-schema-slot.js";
+
+export type { SlotKindResolver } from "./value-schema-slot.js";
 import { isResolvedReference } from "./resolved-reference.js";
 
 export interface ValueSchemaFromProblem {
@@ -92,6 +97,9 @@ export function valueSchemaFromProblems(
   definition: Record<string, any>,
   schema: Record<string, any> | undefined,
   resolveShape?: (typeField: unknown) => NamedContractShape | undefined,
+  /** The kinds a crossed reference slot names, for an absolute `member`; a
+   *  location crossing one is not judged without it. */
+  resolveSlotKind?: SlotKindResolver,
 ): ValueSchemaFromProblem[] {
   const problems: ValueSchemaFromProblem[] = [];
   const kindName = String(definition.metadata?.name);
@@ -109,14 +117,17 @@ export function valueSchemaFromProblems(
         if (!schema || !schemaReachesLocation(schema, location.segments)) {
           problems.push({ path: at, message: unreachableLocation(kindName, raw, location.raw, `at '${at}'`) });
         }
-        const memberProblem =
-          location.member && writtenRoot ? valueSchemaMemberProblem(writtenRoot, annotation, location.member) : undefined;
+        const memberProblem = location.member
+          ? memberProblemOf(writtenRoot, schema, annotation, location.segments, location.member, resolveSlotKind)
+          : undefined;
         if (memberProblem) problems.push({ path: at, message: `'${kindName}' at '${at}': ${memberProblem}` });
       }
     }
     if (field === "schema") continue;
     const shape = resolveShape?.(written);
-    if (shape) problems.push(...shapeValueSchemaFromProblems(kindName, field, shape, schema));
+    if (shape) {
+      problems.push(...shapeValueSchemaFromProblems(kindName, field, shape, schema, undefined, resolveSlotKind));
+    }
   }
   return problems;
 }
@@ -133,6 +144,7 @@ export function shapeValueSchemaFromProblems(
   schema: Record<string, any> | undefined,
   /** The annotations the shape carries, when already read. */
   annotations: readonly ValueSchemaAnnotation[] = valueSchemaAnnotations(shape.schema),
+  resolveSlotKind?: SlotKindResolver,
 ): ValueSchemaFromProblem[] {
   const problems: ValueSchemaFromProblem[] = [];
   for (const annotation of annotations) {
@@ -147,11 +159,43 @@ export function shapeValueSchemaFromProblems(
       if (!schema || !schemaReachesLocation(schema, location.segments)) {
         problems.push({ path: field, message: unreachableLocation(kindName, raw, location.raw, where) });
       }
-      const memberProblem = location.member ? valueSchemaMemberProblem(shape.schema, annotation, location.member) : undefined;
+      const memberProblem = location.member
+        ? memberProblemOf(shape.schema, schema, annotation, location.segments, location.member, resolveSlotKind)
+        : undefined;
       if (memberProblem) problems.push({ path: field, message: `'${kindName}' ${where}: ${memberProblem}` });
     }
   }
   return problems;
+}
+
+/** A {@link SlotKindResolver} over a definition resolver — `from` the
+ *  definition a kind was read off, undefined for the kind being judged — and
+ *  the author schema it reads each resolved definition by. */
+export function slotKindResolverOf(
+  resolve: (kind: string, from?: Record<string, any>) => Record<string, any> | undefined,
+  schemaOf: (definition: Record<string, any>) => Record<string, any> | undefined,
+): SlotKindResolver {
+  return (kind, within) => {
+    const definition = resolve(kind, within);
+    return definition ? { definition, schema: schemaOf(definition) } : undefined;
+  };
+}
+
+/** Why a location's `member` names no property: a relative one judged in the
+ *  document the annotation is written in, an absolute one in the schema of the
+ *  declaration holding what the location reaches. */
+function memberProblemOf(
+  writtenRoot: Record<string, any> | undefined,
+  schema: Record<string, any> | undefined,
+  annotation: ValueSchemaAnnotation,
+  segments: readonly string[],
+  member: ValueSchemaMember,
+  resolveSlotKind: SlotKindResolver | undefined,
+): string | undefined {
+  if ("absolute" in member) {
+    return schema ? absoluteMemberProblem(schema, segments, member.absolute, resolveSlotKind) : undefined;
+  }
+  return writtenRoot ? valueSchemaMemberProblem(writtenRoot, annotation, member) : undefined;
 }
 
 /** The schema document a definition field's annotations sit in: the kind's

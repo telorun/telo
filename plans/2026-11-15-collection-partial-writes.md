@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 priority: high
 depends-on: []
 packages: [modules/data-model, modules/crud, modules/crud-ui, modules/ui, modules/ui-react, examples/ui-showcase, apps/hub, apps/authoring-agent, docs]
@@ -29,8 +29,6 @@ None.
 - `ETag` — response header a collection's `GET <basePath>/<key value>`, a record contract `GET` and every write answer may carry.
 - `If-Match` — request header on `PATCH`, `PUT` and `DELETE`; a validator that no longer matches answers `412` with a problem body.
 - `DataModel.Collection.schemas` — `{ create?, update? }`, each a `Telo.Type` reference: the body `POST` and `PATCH` accept. An absent one means the collection accepts no such write.
-- `UI_WRITE_UNDECLARED` (twin `ERR_UI_WRITE_UNDECLARED`) — a form's default write to a collection declaring no matching shape.
-- `UI_WRITE_SHAPE_MISMATCH` (twin `ERR_UI_WRITE_SHAPE_MISMATCH`) — a form model property the write shape does not declare, or declares with another type.
 - `ERR_UI_PRECONDITION_FAILED` — `error.code` of a `412` whose problem names no code.
 - `Crud.Api` route `PATCH <prefix>/{<idParam>}`, operationId `update<Singular>`; a strong `ETag` on read-one and on every write answer; `If-Match` honoured on `PATCH`, `PUT` and `DELETE`.
 - `modules/ui/conformance/merge-patch.json` — the vectors a renderer's patch and precondition handling runs.
@@ -40,6 +38,7 @@ None.
 - `PUT <basePath>/<key value>` — leaves the collection contract; no renderer sends it.
 - `Crud.Collection.schemas` — inherits `create` and `update` from `DataModel.Collection`, keeps `list` as its own key, still requires all three.
 - `Crud.Api` route `PUT <prefix>/{<idParam>}` — stays, as operationId `replace<Singular>`, outside the contract.
+- `Http.Server` request bodies — every `+json` media type (RFC 6839) is parsed as `application/json` is; a `contentTypeParsers` entry for an exact type overrides.
 - An edit form's request — `PATCH` of the changed properties, with `If-Match` when the record's read carried an `ETag`; no property outside the form's model is ever sent.
 
 **Removed**
@@ -50,7 +49,7 @@ None.
 
 **One update, and it merges.** A patch member holding a value sets that property; a member holding `null` clears it, after which it reads as absent (or as `null` where the model admits null); a property not in the body is unchanged. The merged record is held to the update shape whole: clearing a required property is a 400 with a `required` issue at `/body/<property>`, and a member outside the update shape is a 400 `additionalProperties`. `POST` is unchanged.
 
-**A collection declares its write shapes.** `schemas.create` and `schemas.update` sit on `DataModel.Collection`, beside the query it already declares, so every screen over any collection is checked against what the API takes. `Crud.Collection` inherits them and adds `list`. A form's default write names the collection through its presentation: one to a collection with no matching shape is `UI_WRITE_UNDECLARED`, and a form model that does not fall within the shape is `UI_WRITE_SHAPE_MISMATCH`. Both are judged where the default write is declared — a listing's `create` / `edit` opener today — and refused again when the resource is first read.
+**A collection declares its write shapes.** `schemas.create` and `schemas.update` sit on `DataModel.Collection`, beside the query it already declares, so what any collection accepts is declared, not only what `crud`'s does. `Crud.Collection` inherits them and adds `list`. The shapes are what a screen's writes are later checked against; this plan adds no screen check.
 
 **The precondition is the server's to offer.** A server opts in by sending an `ETag`; there is no manifest key. The renderer keeps, per resolved request path — the key invalidation already uses — the `ETag` of the last read or write answer at that path. A `PATCH`, `PUT` or `DELETE` to that path carries it as `If-Match`, and a write's answer replaces it. A server sending no `ETag` gets no `If-Match` and behaves as today.
 
@@ -77,10 +76,9 @@ None.
 - Two sessions read task 7; the first saves; the second save answers `412`, its reader reads again, its typed values stay, and a second press succeeds.
 - Against a server sending no `ETag`, no request carries `If-Match`.
 - Two concurrent `PATCH` requests carrying one validator through `Crud.Api`: exactly one answers 200.
-- A default write to a collection declaring no `schemas.update` is `UI_WRITE_UNDECLARED`, and a form model property outside it `UI_WRITE_SHAPE_MISMATCH` — each refused at the declaring library and failing a consumer's run with its twin.
 - A `DELETE` of a record changed since it was read answers `412` and the listing reads again.
 - `ui-react` passes every row of `merge-patch.json`.
 
 ## Bookkeeping
 
-Docs: `data-model` `collection-contract.md` and `collection.md`; `ui` `record-contract.md`, `action-contract.md`, `form.md`, `listing.md`; `crud` `api.md`, `collection.md` and its README; `ui-react` `urls.md` on invalidation and the kept validator; `crud-ui` `admin.md`. The CRUD and Declarative UI paragraphs of `modules/CLAUDE.md`, the authoring-agent primer, the hub `build-ui` guide. Each `UI_WRITE_*` rule pinned both ways in `modules/ui/tests/`. A ledger entry under Standard library, "Edits that never overwrite someone else's change". `Added` fragments describing the break for `data-model`, `crud`, `crud-ui`, `ui` and `ui-react`. `telo release floor` with the change.
+Docs: `data-model` `collection-contract.md` and `collection.md`; `ui` `record-contract.md`, `action-contract.md`, `form.md`, `listing.md`; `crud` `api.md`, `collection.md` and its README; `ui-react` `urls.md` on invalidation and the kept validator; `crud-ui` `admin.md`. The CRUD and Declarative UI paragraphs of `modules/CLAUDE.md`, the authoring-agent primer, the hub `build-ui` guide. A ledger entry under Standard library, "Edits that never overwrite someone else's change". `Added` fragments describing the break for `data-model`, `crud`, `crud-ui`, `ui` and `ui-react`. `telo release floor` with the change.

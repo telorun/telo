@@ -10,6 +10,7 @@ messages:
   cancel: Abbrechen
   close: Schließen
   newRecord: Neu
+  create: Erstellen
   edit: Bearbeiten
   delete: Löschen
   deleteRowQuestion: Diese Zeile löschen?
@@ -81,6 +82,7 @@ messages:
   keepEditing: Weiter bearbeiten
   requestUnauthorized: Sie sind nicht angemeldet, oder Ihre Sitzung ist abgelaufen.
   requestForbidden: Dazu sind Sie nicht berechtigt.
+  requestPreconditionFailed: Der Datensatz wurde von jemand anderem geändert. Prüfen Sie ihn und speichern Sie erneut.
   requestFailedStatus: Die Anfrage ist mit Status {$status} fehlgeschlagen.
   requestFailed: "Die Anfrage ist fehlgeschlagen: {$reason}"
   recordRefused: Der Datensatz wurde abgelehnt.

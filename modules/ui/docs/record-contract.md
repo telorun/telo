@@ -52,6 +52,11 @@ answers every error with) and `message` its `detail`; without a `detail`,
 `message` is `ui`'s own text for the status. Keywords of the model
 outside the profile are left to the API.
 
+A record answered with an `ETag` (a strong validator, quoted) is guarded: the
+renderer keeps it for the request path and sends it as `If-Match` with the next
+`PATCH`, `PUT` or `DELETE` to that path, as the [action contract](action-contract.md#preconditions)
+says. A read answered with none leaves nothing kept.
+
 A 401 or 403 to a request made *inside* the children of a query node — a listing's page, a form's
 save — is shown where it happened, not by the query; with `reloadOn:
 [unauthorized]`, a 401 there also makes the query read again.

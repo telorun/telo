@@ -3,17 +3,12 @@ metadata:
   name: UiSurfacesTest
   version: 1.0.0
   description: |
-    Each surface kind provides where a form appears with every member it takes
+    Each surface kind provides where an opened page appears with every member it takes
     filled: what is declared as written, the rest from the kind's defaults. An
     address is carried as declared, and a compact surface — by reference or
-    declared in place — as the dialog or drawer it provides. A listing hands its
-    openers' surfaces, and what each says about a submit and about unsaved
-    input, to the node it provides.
-imports:
-  Ui: ../
-  DataModel: ../../data-model
-  Probe: ./__fixtures__/probe
-  Assert: ../../assert
+    declared in place — as the dialog or drawer it provides. A page opened in
+    any of them carries the surface on its destination.
+imports: { Ui: ../, Probe: ./__fixtures__/probe, Assert: ../../assert }
 targets:
   - !ref main
 ---
@@ -47,37 +42,34 @@ size: small
 dismiss: { closeButton: false }
 address: { name: todo }
 ---
-kind: Ui.PageSurface
-metadata: { name: ownPage }
-address: { name: todo }
+kind: Ui.Page
+metadata: { name: todoPage }
+path: /todos/{id}
+title: Todo
+children: [{ type: text, text: Todo }]
 ---
-kind: Telo.JsonSchema
-metadata: { name: Todo }
-schema:
-  type: object
-  required: [id]
-  properties: { id: { type: integer }, text: { type: string } }
+kind: Ui.OpenPage
+metadata: { name: inPanel }
+page: !ref todoPage
+pathParams: { id: 7 }
+surface: !ref beside
 ---
-kind: Ui.CollectionPresentation
-metadata: { name: todos }
-source:
-  kind: Ui.CollectionSource
-  collection: { kind: DataModel.Collection, model: !ref Todo, query: { filters: [], sort: [] } }
-  basePath: /api/todos
+kind: Ui.OpenPage
+metadata: { name: inPopover }
+page: !ref todoPage
+pathParams: { id: 7 }
+surface: !ref bubble
 ---
-kind: Ui.Listing
-metadata: { name: table }
-model: !ref Todo
-presentation: !ref todos
-create:
-  form: { kind: Ui.Form, model: !ref Todo, presentation: !ref todos }
-  surface: !ref beside
-  afterSubmit: again
-  unsaved: discard
-edit:
-  form: { kind: Ui.Form, model: !ref Todo, presentation: !ref todos }
-  surface: { kind: Ui.Drawer, side: start }
-  afterSubmit: keep
+kind: Ui.OpenPage
+metadata: { name: inLine }
+page: !ref todoPage
+pathParams: { id: 7 }
+surface: !ref inRow
+---
+kind: Ui.OpenPage
+metadata: { name: inDefault }
+page: !ref todoPage
+pathParams: { id: 7 }
 ---
 kind: Telo.Sequence
 metadata: { name: main }
@@ -90,10 +82,14 @@ steps:
     invoke: { kind: Probe.Read, source: !ref inRow }
   - name: beside
     invoke: { kind: Probe.Read, source: !ref beside }
-  - name: ownPage
-    invoke: { kind: Probe.Read, source: !ref ownPage }
-  - name: table
-    invoke: { kind: Probe.Read, source: !ref table }
+  - name: inPanel
+    invoke: { kind: Probe.Read, source: !ref inPanel }
+  - name: inPopover
+    invoke: { kind: Probe.Read, source: !ref inPopover }
+  - name: inLine
+    invoke: { kind: Probe.Read, source: !ref inLine }
+  - name: inDefault
+    invoke: { kind: Probe.Read, source: !ref inDefault }
   - name: check
     invoke: { kind: Assert.Equals }
     inputs:
@@ -102,9 +98,7 @@ steps:
         bubble: !cel "steps.bubble.result"
         inRow: !cel "steps.inRow.result"
         beside: !cel "steps.beside.result"
-        ownPage: !cel "steps.ownPage.result"
-        create: !cel "{'surface': steps.table.result.node.create.surface, 'afterSubmit': steps.table.result.node.create.afterSubmit, 'unsaved': steps.table.result.node.create.unsaved}"
-        edit: !cel "{'surface': steps.table.result.node.edit.surface, 'afterSubmit': steps.table.result.node.edit.afterSubmit, 'unsaved': steps.table.result.node.edit.unsaved}"
+        opened: !cel "[steps.inPanel.result, steps.inPopover.result, steps.inLine.result, steps.inDefault.result].map(d, {'type': d.type, 'surface': d.surface, 'keepsSurface': d.keepsSurface})"
       expected:
         wide:
           type: dialog
@@ -135,22 +129,28 @@ steps:
           size: small
           dismiss: { escape: true, closeButton: false }
           address: { name: todo }
-        ownPage: { type: page, address: { name: todo } }
-        create:
-          surface:
-            type: panel
-            side: start
-            size: small
-            dismiss: { escape: true, closeButton: false }
-            address: { name: todo }
-          afterSubmit: again
-          unsaved: discard
-        edit:
-          surface:
-            type: drawer
-            side: start
-            size: medium
-            modal: true
-            dismiss: { escape: true, outside: true, closeButton: true }
-          afterSubmit: keep
-          unsaved: confirm
+        opened:
+          - type: openPage
+            surface:
+              type: panel
+              side: start
+              size: small
+              dismiss: { escape: true, closeButton: false }
+              address: { name: todo }
+            keepsSurface: false
+          - type: openPage
+            surface:
+              type: popover
+              side: top
+              align: end
+              dismiss: { escape: false, outside: true }
+              compact:
+                type: dialog
+                size: small
+                modal: true
+                dismiss: { escape: true, outside: true, closeButton: true }
+            keepsSurface: false
+          - { type: openPage, surface: { type: inline }, keepsSurface: false }
+          - type: openPage
+            surface: { type: dialog, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+            keepsSurface: true

@@ -59,6 +59,7 @@ import {
 import { bindingExistsAt, bindingsAbsentAt } from "./context-eval.js";
 import { pathTemplateParams, readFromPathTemplate, valueFromHolder } from "./context-from-path-template.js";
 import { fromReferrerOwnKeywords, readFromReferrer } from "./context-from-referrer.js";
+import { isPartial, partialObject } from "./context-partial.js";
 import {
   nullableWhenHolds,
   readNullableWhen,
@@ -725,6 +726,30 @@ function replacedAt(
   if (!node || typeof node !== "object" || Array.isArray(node)) return schema;
   const next = replacedAt(node, rest, replace);
   return next === node ? schema : { ...schema, properties: { ...properties, [step]: next } };
+}
+
+/** The locations, in the context, of every node the regions mark
+ *  `x-telo-context-partial` — each binding as the innermost region declaring
+ *  its name declares it — outermost first. */
+function partialLocations(
+  regions: ReadonlyArray<{ schema: Record<string, any> | undefined }>,
+): string[][] {
+  const owners = new Map<string, unknown>();
+  for (const region of regions) {
+    const properties = region.schema?.properties;
+    if (!properties || typeof properties !== "object") continue;
+    for (const [name, binding] of Object.entries(properties as Record<string, unknown>)) owners.set(name, binding);
+  }
+  const out: string[][] = [];
+  const visit = (node: unknown, location: string[]): void => {
+    if (!node || typeof node !== "object" || Array.isArray(node)) return;
+    if (isPartial(node)) out.push(location);
+    const properties = (node as { properties?: unknown }).properties;
+    if (!properties || typeof properties !== "object") return;
+    for (const [key, child] of Object.entries(properties as Record<string, unknown>)) visit(child, [...location, key]);
+  };
+  for (const [name, binding] of owners) visit(binding, [name]);
+  return out;
 }
 
 /** A concrete path (`mounts[0].auth`) as its steps. */
@@ -1444,25 +1469,34 @@ export class CelScopeResolver {
     // validators on the schema's identity.
     const expand = (schema: Record<string, any>) =>
       inlineNamedShapes(schema, this.inputs.shapes);
+    const regions = [...outer, { scope: site.matchedScope, schema: declaredInnermost }];
+    // A node marked `x-telo-context-partial` is some members of the object type
+    // that typed it, read once its named shapes are expanded.
+    const partial = (schema: Record<string, any>) => {
+      let out = schema;
+      for (const location of partialLocations(regions)) out = replacedAt(out, location, (node) => partialObject(node, withNull));
+      return out;
+    };
     // A node marked `x-telo-context-nullable-when` admits null wherever its
     // rule holds, on top of whatever typed it.
     const nullable = (schema: Record<string, any>) => {
       let out = schema;
-      const regions = [...outer, { scope: site.matchedScope, schema: declaredInnermost }];
       for (const location of this.nullableLocations(regions, localPath, rootManifest, body?.schema ?? this.authorSchema, localScopeOf)) {
         out = replacedAt(out, location, withNull);
       }
       return out;
     };
-    if (parameterScope) return nullable(expand(resolved));
+    if (parameterScope) return nullable(partial(expand(resolved)));
     return nullable(
-      expand(
-        mergeKernelGlobalsIntoContext(
-          resolved,
-          // Typed in the module that DECLARED this resource — for a manifest
-          // forwarded from an imported library, that is its `moduleGlobals` stamp,
-          // not the consuming application's block.
-          kernelGlobals.forResource(m, path),
+      partial(
+        expand(
+          mergeKernelGlobalsIntoContext(
+            resolved,
+            // Typed in the module that DECLARED this resource — for a manifest
+            // forwarded from an imported library, that is its `moduleGlobals` stamp,
+            // not the consuming application's block.
+            kernelGlobals.forResource(m, path),
+          ),
         ),
       ),
     );

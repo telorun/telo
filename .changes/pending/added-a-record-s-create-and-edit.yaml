@@ -1,0 +1,18 @@
+units:
+  modules/ui: Added
+body: "A record's create and edit screens are pages, and a form says what it writes and
+  starts from. Ui.Form takes record ({ presentation, key? }: POST without a key, a merge
+  PATCH of the changed properties to <basePath>/<key> with one, the key held to the
+  collection's key property), initialValues, unsaved (confirm or discard) and
+  afterSubmit (close, keep or again), each form's own wherever it is drawn; a form
+  saving into a collection that declares no write shape for it is UI_WRITE_UNDECLARED
+  and a model the shape does not hold UI_WRITE_SHAPE_MISMATCH, each refused again when
+  the form is first read. Ui.Listing's create and edit are presses { to, label? } to a
+  Ui.OpenPage, create binding a values root of the proposed properties for queryParams,
+  and a listing with an edit and no press opens the edit page when a record is pressed.
+  Ui.OpenPage.surface takes any Ui.Surface (a popover, an inline surface and a panel
+  included). Removed with no migration, since an opener has to become pages and routes:
+  a listing's create and edit as { form, surface, afterSubmit, unsaved },
+  Ui.Form.presentation and Ui.PageSurface (use Ui.Navigate, or a Ui.Dialog with size:
+  full). Rewrite each opener as a page holding the form, and the opener as a press to
+  it."

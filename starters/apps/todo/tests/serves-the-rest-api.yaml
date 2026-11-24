@@ -8,8 +8,8 @@ metadata:
     set. The collection IS the request contract in this starter, so the rejected
     create is what shows validation happening before the database is touched. It then asks the declared UI for its shell and its
     two pages, which is what shows the frontend is served from the same manifest
-    — and that the first page's filter policy and form surfaces, and the second
-    page's presets, pinned filter and plain openers, reach the browser as declared.
+    — and that the first page's filter policy and the surfaces its buttons open in, and the second
+    page's presets, pinned filter and plain presses, reach the browser as declared.
 imports:
   App: ../../../../modules/app
   HttpClient: ../../../../modules/http-client
@@ -230,12 +230,12 @@ steps:
         lang: en
         shellLang: true
 
-  # `/` is one `CrudUi.Admin`: what its three keys say is what the bar and the
-  # listing's two openers carry, and what they leave out is the default.
+  # `/` is one `CrudUi.Admin`: what its keys say is what the bar and the
+  # listing's two presses carry, and what they leave out is the default.
   - name: verifyGeneratedPage
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.page.result.body.children.filter(c, c.type == 'filters').map(c, {'bar': {'placement': c.placement, 'apply': c.apply, 'state': c.state, 'presets': c.presets}, 'create': {'surface': c.content.create.surface, 'afterSubmit': c.content.create.afterSubmit, 'unsaved': c.content.create.unsaved}, 'edit': {'surface': c.content.edit.surface, 'afterSubmit': c.content.edit.afterSubmit, 'unsaved': c.content.edit.unsaved}})"
+      actual: !cel "steps.page.result.body.children.filter(c, c.type == 'filters').map(c, {'bar': {'placement': c.placement, 'apply': c.apply, 'state': c.state, 'presets': c.presets}, 'create': {'to': c.content.create.to.type, 'surface': c.content.create.to.surface}, 'edit': {'to': c.content.edit.to.type, 'surface': c.content.edit.to.surface}})"
       expected:
         - bar:
             placement: { type: above, show: chosen, controls: direct, summary: chips }
@@ -243,6 +243,7 @@ steps:
             state: { key: todos, address: true, store: { type: local }, fields: [text, isDone, dueOn] }
             presets: []
           create:
+            to: openPage
             surface:
               type: drawer
               side: end
@@ -254,9 +255,8 @@ steps:
                 size: full
                 modal: true
                 dismiss: { escape: true, outside: true, closeButton: true }
-            afterSubmit: again
-            unsaved: confirm
           edit:
+            to: openPage
             surface:
               type: drawer
               side: end
@@ -264,19 +264,17 @@ steps:
               modal: true
               dismiss: { escape: true, outside: true, closeButton: true }
               address: { name: todo }
-            afterSubmit: close
-            unsaved: confirm
 
   # `/status` is written by hand: a bar folding a range of due days, a pinned
-  # search, a filter only the presets set, and openers
-  # that say nothing but their form.
+  # search, a filter only the presets set, and presses that say nothing but
+  # their page.
   - name: verifyWrittenPage
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
         title: !cel "steps.statusPage.result.body.title"
         nodes: !cel "steps.statusPage.result.body.children.map(c, c.type)"
-        screen: !cel "steps.statusPage.result.body.children.filter(c, c.type == 'filters').map(c, {'bar': {'placement': c.placement, 'apply': c.apply, 'state': c.state}, 'fields': c.fields.map(f, [f.property, f.operator, f.pinned, f.control]), 'presets': c.presets, 'create': {'fields': c.content.create.form.fields.map(f, f.property), 'surface': c.content.create.surface, 'afterSubmit': c.content.create.afterSubmit, 'unsaved': c.content.create.unsaved}, 'edit': {'fields': c.content.edit.form.fields.map(f, f.property), 'surface': c.content.edit.surface, 'afterSubmit': c.content.edit.afterSubmit, 'unsaved': c.content.edit.unsaved}})"
+        screen: !cel "steps.statusPage.result.body.children.filter(c, c.type == 'filters').map(c, {'bar': {'placement': c.placement, 'apply': c.apply, 'state': c.state}, 'fields': c.fields.map(f, [f.property, f.operator, f.pinned, f.control]), 'presets': c.presets, 'create': {'to': c.content.create.to.type, 'surface': c.content.create.to.surface}, 'edit': {'to': c.content.edit.to.type, 'surface': c.content.edit.to.surface}})"
       expected:
         title: { lang: en, message: [By status] }
         nodes: [text, filters]
@@ -296,16 +294,24 @@ steps:
               - { label: { lang: en, message: [Open] }, values: [{ property: isDone, operator: eq, value: [false] }] }
               - { label: { lang: en, message: [Done] }, values: [{ property: isDone, operator: eq, value: [true] }] }
             create:
-              fields: [text]
+              to: openPage
               surface: &dialog
                 type: dialog
                 size: medium
                 modal: true
                 dismiss: { escape: true, outside: true, closeButton: true }
-              afterSubmit: close
-              unsaved: confirm
             edit:
-              fields: [text, isDone, dueOn]
+              to: openPage
               surface: *dialog
-              afterSubmit: close
-              unsaved: confirm
+
+  # A todo's pages hold its forms: the new-todo form has the one field and
+  # starts again after a save, and the edit form's key is read from the record.
+  - name: newPage
+    invoke: { kind: HttpClient.Request, method: GET }
+    inputs: { url: http://127.0.0.1:8087/_telo/ui/page, query: { path: /todos/new } }
+  - name: verifyNewPage
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.newPage.result.body.children.map(c, {'type': c.type, 'fields': c.fields.map(f, f.property), 'afterSubmit': c.afterSubmit, 'basePath': c.record.basePath, 'key': c.record.key})"
+      expected:
+        - { type: form, fields: [text], afterSubmit: again, basePath: /api/todos, key: null }

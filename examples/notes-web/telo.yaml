@@ -301,6 +301,8 @@ schema:
 kind: DataModel.Collection
 metadata: { name: notes }
 model: !ref Note
+key: id
+schemas: { create: !ref NoteText, update: !ref NoteText }
 query:
   filters: [{ property: text, operator: contains }]
   sort: [{ property: updatedAt }]
@@ -314,10 +316,37 @@ kind: Ui.CollectionPresentation
 metadata: { name: notesPresentation }
 source: !ref notesSource
 ---
-kind: Ui.Form
-metadata: { name: noteForm }
-model: !ref NoteText
-presentation: !ref notesPresentation
+# A note's two pages: the listing opens them in a dialog, and each is reached
+# by its own address too.
+kind: Ui.Page
+metadata: { name: newNotePage }
+path: /notes/new
+title: New note
+children:
+  - type: composite
+    ref:
+      kind: Ui.Form
+      model: !ref NoteText
+      record: { presentation: !ref notesPresentation }
+      afterSubmit: again
+---
+kind: Ui.Page
+metadata: { name: notePage }
+path: /notes/{id}
+title: Note
+children:
+  - type: query
+    query:
+      kind: Ui.Query
+      model: !ref Note
+      url: { path: "/api/notes/{id}", pathParams: { id: !cel "params.id" } }
+    content:
+      - type: composite
+        ref:
+          kind: Ui.Form
+          model: !ref NoteText
+          record: { presentation: !ref notesPresentation, key: !cel "data.id" }
+          initialValues: !cel "data"
 ---
 # The signed-in user's notes, spoken in the collection contract the page's listing
 # reads. Every statement is held to the caller's own rows, so another user's note
@@ -340,6 +369,19 @@ catches:
   - when: !cel "problem.code == 'NOTE_NOT_FOUND'"
     status: 404
     content: { application/problem+json: {} }
+  # Clearing the text leaves a note without one, as a missing property would.
+  - when: !cel "problem.code == 'NOTE_TEXT_REQUIRED'"
+    status: 400
+    content:
+      application/problem+json:
+        body:
+          type: !cel "problem.type"
+          title: !cel "problem.title"
+          status: !cel "problem.status"
+          detail: !cel "problem.detail"
+          code: ERR_INPUT_INVALID
+          data:
+            issues: [{ pointer: /body/text, keyword: required, params: { missingProperty: text } }]
 routes:
   - request:
       method: GET
@@ -416,21 +458,30 @@ routes:
       - status: 201
         content: { application/json: { body: !cel "result" } }
   - request:
-      method: PUT
+      method: PATCH
       path: /{id}
       schema:
         params: { type: object, required: [id], properties: { id: { type: integer } } }
-        body: *noteBody
-    inputs: { id: !cel "request.params.id", text: !cel "request.body.text", owner: !cel "request.principal.subject" }
+        body: { type: object, additionalProperties: false, properties: { text: { type: [string, "null"], minLength: 1 } } }
+    inputs:
+      id: !cel "request.params.id"
+      text: !cel "has(request.body.text) ? request.body.text : null"
+      textCleared: !cel "has(request.body.text) && request.body.text == null"
+      owner: !cel "request.principal.subject"
     handler:
       kind: Telo.Sequence
       inputType: !ref OwnedNote
       outputType: !ref Note
       steps:
+        - name: cleared
+          if: !cel "inputs.textCleared"
+          then:
+            - name: textRequired
+              throw: { code: NOTE_TEXT_REQUIRED, displayMessage: A note needs its text. }
         - name: read
           invoke: { kind: Sql.Query, connection: !ref db }
           inputs:
-            sql: !sql "UPDATE notes SET text = ${{ inputs.text }}, updated_at = datetime('now') WHERE id = ${{ inputs.id }} AND owner = ${{ inputs.owner }} RETURNING id, owner, text, updated_at AS updatedAt"
+            sql: !sql "UPDATE notes SET text = COALESCE(${{ inputs.text }}, text), updated_at = CASE WHEN ${{ inputs.text }} IS NULL THEN updated_at ELSE datetime('now') END WHERE id = ${{ inputs.id }} AND owner = ${{ inputs.owner }} RETURNING id, owner, text, updated_at AS updatedAt"
         - *noteFound
       outputs: !cel "steps.read.result.rows[0]"
     returns:
@@ -471,8 +522,8 @@ kind: Telo.JsonSchema
 metadata: { name: OwnedNote }
 schema:
   type: object
-  required: [id, owner, text]
-  properties: { id: { type: integer }, owner: { type: string }, text: { type: string } }
+  required: [id, owner]
+  properties: { id: { type: integer }, owner: { type: string }, text: { type: [string, "null"] }, textCleared: { type: boolean } }
 ---
 kind: Telo.JsonSchema
 metadata: { name: Whoami }
@@ -516,10 +567,8 @@ children:
                       - value: !cel "row.text"
                       - value: !cel "row.updatedAt"
                   empty: { type: text, text: No notes yet., style: muted }
-                  create:
-                    form: !ref noteForm
-                  edit:
-                    form: !ref noteForm
+                  create: { to: { kind: Ui.OpenPage, page: !ref newNotePage } }
+                  edit: { to: { kind: Ui.OpenPage, page: !ref notePage, pathParams: { id: !cel "row.id" } } }
                   delete: true
           - type: stack
             shown:
@@ -561,7 +610,7 @@ kind: UiReact.App
 metadata: { name: ui }
 title: Notes
 theme: !ref UiReact.defaultTheme
-pages: [!ref notesPage]
+pages: [!ref notesPage, !ref newNotePage, !ref notePage]
 layout:
   kind: Ui.PageLayout
   header:

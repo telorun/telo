@@ -269,6 +269,13 @@
   [data-telo-part="listing"]:has(> [data-surface="panel"]) { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
   [data-telo-part="listing"]:has(> [data-surface="panel"][data-side="start"]) { grid-template-columns: auto minmax(0, 1fr); }
   [data-telo-part="listing"]:has(> [data-surface="panel"]) > [data-telo-part="listing-toolbar"] { grid-column: 1 / -1; order: -2; }
+  /* Beside any other composite, the panel takes a column of its own. */
+  [data-telo-part]:not([data-telo-part="listing"]):has(> [data-surface="panel"]) { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
+  [data-telo-part]:not([data-telo-part="listing"]):has(> [data-surface="panel"][data-side="start"]) { grid-template-columns: auto minmax(0, 1fr); }
+  [data-telo-part]:not([data-telo-part="listing"]):has(> [data-surface="panel"]) > :not([data-surface="panel"]) { grid-column: 1; }
+  [data-telo-part]:not([data-telo-part="listing"]):has(> [data-surface="panel"][data-side="start"]) > :not([data-surface="panel"]) { grid-column: 2; }
+  [data-telo-part]:not([data-telo-part="listing"]) > [data-surface="panel"] { grid-column: 2; grid-row: 1 / span 99; }
+  [data-telo-part]:not([data-telo-part="listing"]) > [data-surface="panel"][data-side="start"] { grid-column: 1; }
   [data-telo-part="surface"][data-surface="panel"] { width: 24rem; max-width: 100%; max-height: calc(100vh - 2rem); }
   [data-telo-part="surface"][data-surface="panel"][data-side="start"] { order: -1; }
   [data-telo-part="surface"][data-surface="panel"][data-size="small"] { width: 18rem; }

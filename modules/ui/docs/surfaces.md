@@ -1,10 +1,10 @@
 # Surfaces
 
-A surface is where a form or a page appears when it is opened, and how it is
-dismissed. Whoever opens it names it — a listing's `create` and `edit` each
-take one, and so does a [`Ui.OpenPage`](presses.md#uiopenpage) — and what is
-opened says nothing about it, so one form can open in a dialog from one listing
-and in a panel from another.
+A surface is where an opened page appears, and how it is dismissed. Whoever
+opens the page names it — a [`Ui.OpenPage`](presses.md#uiopenpage) takes one,
+wherever it is written: a listing's `create` and `edit`, a `button`, a link, an
+action's success — and the page says nothing about it, so one page can open in
+a dialog from one listing and in a panel from another.
 
 Each way of appearing is a kind. `kind:` is the only thing that tells them
 apart, and each kind takes only the keys that mean something for it: a key a
@@ -16,8 +16,7 @@ kind does not take is `SCHEMA_VIOLATION` on that resource.
 | [`Ui.Drawer`](#uidrawer) | a sheet sliding in from an edge of the viewport |
 | [`Ui.Popover`](#uipopover) | a card anchored to the control that opened it |
 | [`Ui.InlineSurface`](#uiinlinesurface) | in line with the content |
-| [`Ui.Panel`](#uipanel) | a panel beside the list |
-| [`Ui.PageSurface`](#uipagesurface) | in place of the page's content |
+| [`Ui.Panel`](#uipanel) | a panel beside the composite holding what was pressed |
 
 ```yaml
 kind: Ui.Listing
@@ -25,23 +24,27 @@ metadata: { name: todos }
 model: !ref Todo
 presentation: !ref todosPresentation
 create:
-  form: !ref todoForm
-  surface: { kind: Ui.Dialog, size: small }
+  to: { kind: Ui.OpenPage, page: !ref newTodoPage, surface: { kind: Ui.Dialog, size: small } }
 edit:
-  form: !ref todoForm
-  surface:
-    kind: Ui.Panel
-    address: { name: todo }
-    compact: { kind: Ui.Drawer, side: bottom }
+  to:
+    kind: Ui.OpenPage
+    page: !ref todoPage
+    pathParams: { id: !cel "row.id" }
+    surface:
+      kind: Ui.Panel
+      address: { name: todo }
+      compact: { kind: Ui.Drawer, side: bottom }
 ```
 
 A surface is written in place, as above, or declared once and named with
-`!ref` wherever it is used.
+`!ref` wherever it is used. To go to a page in place of the current one, use a
+[`Ui.Navigate`](presses.md#uinavigate); to keep the list beneath, a `Ui.Dialog`
+with `size: full`.
 
 ## The abstracts
 
 - **`Ui.Surface`** — any surface. A slot that takes a surface, such as a
-  listing's `create.surface`, is typed by it, so it accepts all six kinds and a
+  `Ui.OpenPage.surface`, is typed by it, so it accepts all five kinds and a
   kind of your own that extends it. It provides a `Ui.SurfaceSpec`.
 - **`Ui.Overlay`** — a surface floating over the page: `Ui.Dialog`,
   `Ui.Drawer` and `Ui.Popover` extend it, and it extends `Ui.Surface`. A slot
@@ -67,11 +70,10 @@ that names it.
 | `address` | | [`{ name }`](#address) |
 | `compact` | | [the surface used on a narrow viewport](#compact) |
 
-This is the surface a listing uses when an opener names none: leaving `surface`
-out and writing `surface: { kind: Ui.Dialog }` are the same thing. A
-`Ui.OpenPage` pressed outside an opened page opens in it too, but there the two
-differ: [an omitted surface](#a-page-opened-in-a-surface) keeps the one it is
-pressed in.
+This is the surface a `Ui.OpenPage` uses when it names none outside an opened
+page: its defaults are those of `surface: { kind: Ui.Dialog }`, but
+[an omitted surface](#a-page-opened-in-a-surface) keeps the one it is pressed
+in, which a written dialog does not.
 
 ## Ui.Drawer
 
@@ -106,50 +108,37 @@ an address opened cold has none.
 | --- | --- | --- |
 | `compact` | | [the surface used on a narrow viewport](#compact) |
 
-In a listing, the create form is drawn above the records and the edit form
-under the record it changes. It has no address.
+The page is drawn in line after what was pressed: under the record in a
+listing, after the node elsewhere. It has no address.
 
 ## Ui.Panel
 
 | Field | | |
 | --- | --- | --- |
-| `side` | `end` | the edge of the list it sits at: `start` or `end` |
+| `side` | `end` | the edge it sits at: `start` or `end` |
 | `size` | `medium` | `small`, `medium` or `large` |
 | `dismiss.escape` | `true` | the Escape key closes it |
 | `dismiss.closeButton` | `true` | it shows a close button |
 | `address` | | [`{ name }`](#address) |
 | `compact` | | [the surface used on a narrow viewport](#compact) |
 
-The list stays visible and usable beside it: another row can be opened while
-one is.
-
-## Ui.PageSurface
-
-| Field | | |
-| --- | --- | --- |
-| `address` | required | [`{ name }`](#address) |
-
-The form replaces the page's content, and the content returns when the form
-closes. It always has an address, since it is a place of its own.
+It is drawn beside the nearest composite holding what was pressed — a
+listing, a form, a split view — which stays visible and usable: another row can
+be opened while one is.
 
 ## Address
 
 `address: { name }` makes what is open part of the page's address, so an open
-form can be linked to, reloaded, and left with the browser's back button.
-`name` is letters and digits, starting with a letter.
+page can be linked to, reloaded, and left with the browser's back button.
+`name` is letters and digits, starting with a letter. The value under that name
+is always the opened page's app-relative address — `/tasks/7`,
+`/tasks/new` — and nothing else, so what is open is the page that address names.
 
-- **Give a listing's `create` and `edit` the same name.** That is the intended
-  spelling: under one name, the address says either "a new record" or "the
-  record with this key", and opening one closes the other.
-- **An empty value means a new record.** So under a name only an `edit` opener
-  declares, an address with an empty value opens nothing.
-- **A row whose key is the empty string cannot be addressed.** Its edit form
-  opens all the same, held in memory: nothing is written to the address, no
-  history entry is added, and it is never taken for the create form.
+- **Give the surfaces of one listing's `create` and `edit` the same name** to
+  let one open page replace the other.
 - Opening adds a history entry, and closing goes back to the one before. An
   address opened cold — from a link, or after a reload — closes in the same
-  entry, since there is none of this visit's to go back to. An edit opened
-  from an address reads its record by the key.
+  entry, since there is none of this visit's to go back to.
 
 How a renderer spells the address is its own: see the renderer's
 documentation.
@@ -157,12 +146,10 @@ documentation.
 ## A page opened in a surface
 
 A [`Ui.OpenPage`](presses.md#uiopenpage) opens a page of the application over
-the current one, in a `Ui.Dialog` or a `Ui.Drawer` (a popover has no address of
-its own, and an address opened cold has nothing to anchor it to). What is drawn
-is the page's own content, the one a navigation to its address shows, titled
-by the page's `title`, else by the text naming what opened it. A page no
-application lists draws the not-found page in the surface, as a link to it
-would.
+the current one, in any surface. What is drawn is the page's own content, the
+one a navigation to its address shows, titled by the page's `title`, else by
+the text naming what opened it. A page no application lists draws the not-found
+page in the surface, as a link to it would.
 
 ```yaml
 - type: link
@@ -174,8 +161,41 @@ would.
     surface: { kind: Ui.Drawer, side: end, address: { name: author } }
 ```
 
+**Placement against what opened it.**
+
+- A `Ui.Popover` is anchored to the pressed element.
+- A `Ui.InlineSurface` is drawn in line after it: under the record in a
+  listing, after the node elsewhere.
+- A `Ui.Panel` is drawn beside the nearest composite holding the pressed
+  element.
+- A `Ui.Dialog` and a `Ui.Drawer` are placed against the viewport.
+
+**A cold load.** The declaration the address lookup finds — the route's page
+document, then its layout, in tree order, the first equal surface — stands in
+for what opened the page, and the surface is placed where its own rule puts it
+relative to that declaration, whenever that place is one element known from the
+documents alone:
+
+- a panel is beside the nearest composite holding the declaring node, known
+  whenever that composite is outside every region that binds `row` — so a
+  reloaded master-detail panel sits beside its listing;
+- a popover or an inline surface is at the declaring node itself, known only
+  where that node is the pressed element (a `link` or `button` node, a pressed
+  `box`, `stack` or `columns`) outside every region binding `row`.
+
+A listing's `create`, `edit` and `press`, and every per-record opener, have no
+such place. Where the place is not on screen — a notification, a listing's
+opener on a cold load, a trigger since redrawn, an anchor not mounted when the
+page is first drawn (pending `query` content, a `shown` not holding, an
+unchosen tab) — and on a narrow viewport, the surface's `compact` is used, else
+a dialog. Placement is decided when the page is opened, with no wait for any
+read; afterwards only the breakpoint changes it.
+
 - **One opened page at a time.** Opening a page while one is open replaces
   it and takes its history entry, so Back never walks a chain of opened pages.
+- **A page opened in a panel or an inline surface is a context of its own,
+  exactly as one in a drawer is:** its own presses replace its content, and its
+  own address parameters stay in memory.
 - **An omitted `surface` keeps the one it is pressed in.** Inside an opened
   page it is that page's surface — its kind, its address name and its
   `compact` — and only the content changes; anywhere else it is a dialog with
@@ -192,9 +212,9 @@ would.
   and return focus to what opened it.
 - With `address: { name }` the opened page is part of the host page's address,
   so it reopens on reload and the back button closes it; without one it is held
-  in memory. What the opened page's own nodes keep in an address — an opened
-  form, a filter bar's values — is held in memory, so only the opened page's
-  address enters the host's. How a renderer spells it is its own.
+  in memory. What the opened page's own nodes keep in an address — a filter
+  bar's values — is held in memory, so only the opened page's address enters
+  the host's. How a renderer spells it is its own.
 
 ## Compact
 
@@ -225,27 +245,23 @@ its own to stand in for, so the same two rules apply to it.
 
 ## After a submit, and unsaved input
 
-Both belong to the opener, beside `surface`:
-
-| Field | | |
-| --- | --- | --- |
-| `afterSubmit` | `close` | `close` the surface; `keep` it open with its values; on `create` also `again` — keep it open for another record, back at the values a new record starts from: the model's defaults and each date range's initial preset, never the address or the store |
-| `unsaved` | `confirm` | `confirm` asks before unsaved input is dropped; `discard` drops it |
-
-The list reloads after every submit. `again` on `edit` is refused: an edit has
-no other record to go on to.
+Both belong to the form the opened page holds — a [`Ui.Form`](form.md#the-form-owns-its-lifecycle)
+says `afterSubmit` and `unsaved` itself — so a form reached by its own address
+behaves as one opened in a surface: `afterSubmit: close` closes the surface the
+form's page is open in, and on a page of its own the form stays, saved.
 
 **What `unsaved: confirm` asks about.** A form holds unsaved input from the
 first change until it is saved. While it does, anything that would **close the
 form** asks first, and happens only if the user chooses to leave:
 
-- closing the surface — its close button, Escape, a click outside, Cancel;
+- closing the surface the page is open in — its close button, Escape, a click
+  outside, Cancel;
 - moving to another page;
-- for an addressed surface, moving to an address of the same page that no
-  longer names this form — the key gone, or naming another record.
+- another record opening in the same surface.
 
 A move within the page that keeps the form open — a filter in the query, a
 fragment — asks nothing. Several forms holding unsaved input are one question.
+The guard holds for every form with unsaved input, wherever it is placed.
 
 **Back and forward.** A step through the browser's history that would close
 the form is undone before the question is asked: the address and the history
@@ -260,7 +276,7 @@ unsaved input and only then.
 ## What a renderer receives
 
 A surface provides a `Ui.SurfaceSpec`: its kind as `type` — `dialog`, `drawer`,
-`popover`, `inline`, `panel`, `page` — with **every member that kind has**,
+`popover`, `inline`, `panel` — with **every member that kind has**,
 declared or defaulted, plus `address` and `compact` when declared. A renderer
 reads no default of its own. `compact` is a `dialog` or `drawer` spec with
 neither `address` nor `compact`.

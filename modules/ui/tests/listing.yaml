@@ -9,10 +9,11 @@ metadata:
     property's type and format say — the same for a column written by hand — and
     labelled through its relation where the presentation presents one. A cell
     may be a component given values of the record, whose files the listing
-    lists. An opener carries its form with where and how it opens: a dialog
-    with its defaults, closing after a submit and asking before unsaved input
-    is dropped — the same node whether the dialog is left out or declared with
-    nothing set. A form enters a property with a presented relation with a
+    lists. The create and edit buttons are presses, each named by `ui`'s text
+    when no label is written, and pressing a record does what edit does unless
+    a press is written. A form says which collection it writes to, which
+    stored record it edits and what it starts from, and what happens after it
+    saves and when unsaved input would be dropped. A form enters a property with a presented relation with a
     picker of the related records, read from the same source a listing of
     those records reads. A listing declaring no row actions carries an empty
     list of them, and `ui`'s text for no records.
@@ -64,6 +65,7 @@ query: { filters: [{ property: id, operator: in }], sort: [] }
 kind: DataModel.Collection
 metadata: { name: todos }
 model: !ref Todo
+schemas: { create: !ref TodoInput, update: !ref TodoInput }
 query:
   filters: [{ property: isDone, operator: eq }]
   sort: [{ property: text }, { property: dueOn }]
@@ -97,8 +99,16 @@ model: !ref Todo
 kind: Ui.Form
 metadata: { name: todoForm }
 model: !ref TodoInput
-presentation: !ref todosPresentation
+record: { presentation: !ref todosPresentation }
 fields: [text, dueOn]
+---
+kind: Ui.Form
+metadata: { name: editForm }
+model: !ref TodoInput
+record: { presentation: !ref todosPresentation, key: 7 }
+initialValues: { text: Ada, isDone: false }
+unsaved: discard
+afterSubmit: again
 ---
 kind: Ui.Listing
 metadata: { name: written }
@@ -114,10 +124,10 @@ rowStyle:
   by: !cel "row.isDone"
   cases: { "true": muted }
   default: strong
-create: { form: !ref todoForm }
+create: { to: { kind: Ui.Navigate, href: /todos/new } }
 edit:
-  form: { kind: Ui.Form, model: !ref TodoInput, presentation: !ref todosPresentation }
-  surface: { kind: Ui.Dialog }
+  to: { kind: Ui.Navigate, href: { path: "/todos/{id}", pathParams: { id: !cel "row.id" } } }
+  label: Change
 delete: true
 empty: { type: text, text: Nothing to do }
 layout:
@@ -149,6 +159,10 @@ steps:
     invoke: { kind: Probe.Read, source: !ref written }
   - name: people
     invoke: { kind: Probe.Read, source: !ref peopleList }
+  - name: created
+    invoke: { kind: Probe.Read, source: !ref todoForm }
+  - name: edited
+    invoke: { kind: Probe.Read, source: !ref editForm }
   - name: checkDerived
     invoke: { kind: Assert.Equals }
     inputs:
@@ -163,6 +177,9 @@ steps:
             'sort': steps.derived.result.node.sort,
             'show': steps.derived.result.node.show,
             'rowActionsDisplay': steps.derived.result.node.rowActionsDisplay,
+            'create': steps.derived.result.node.create,
+            'edit': steps.derived.result.node.edit,
+            'press': steps.derived.result.node.press,
             'delete': steps.derived.result.node.delete,
             'rowActions': steps.derived.result.node.rowActions,
             'relations': steps.derived.result.node.relations,
@@ -194,6 +211,9 @@ steps:
           sort: { sortable: [text, dueOn], initial: null }
           show: { count: true }
           rowActionsDisplay: auto
+          create: null
+          edit: null
+          press: null
           delete: false
           rowActions: []
           relations:
@@ -210,6 +230,41 @@ steps:
           compact: false
           schemaRequired: [id, text]
           assets: []
+  - name: checkForms
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        create:
+          record: !cel "steps.created.result.node.record"
+          initialValues: !cel "steps.created.result.node.initialValues"
+          unsaved: !cel "steps.created.result.node.unsaved"
+          afterSubmit: !cel "steps.created.result.node.afterSubmit"
+          fields: !cel "steps.created.result.node.fields"
+          picker: !cel "steps.created.result.node.fields[0].type"
+        edit:
+          record: !cel "steps.edited.result.node.record"
+          initialValues: !cel "steps.edited.result.node.initialValues"
+          unsaved: !cel "steps.edited.result.node.unsaved"
+          afterSubmit: !cel "steps.edited.result.node.afterSubmit"
+          picker: !cel "steps.edited.result.node.fields[3].options == steps.written.result.node.relations.ownerId"
+          oneSource: !cel "steps.people.result.node.basePath == steps.edited.result.node.fields[3].options.basePath"
+      expected:
+        create:
+          record: { basePath: /api/todos, key: null }
+          initialValues: null
+          unsaved: confirm
+          afterSubmit: close
+          fields:
+            - { type: input, property: text, label: { text: Task, context: null, lang: und, computed: false }, description: null, labels: [], control: auto }
+            - { type: input, property: dueOn, label: { text: dueOn, context: null, lang: und, computed: false }, description: null, labels: [], control: auto }
+          picker: input
+        edit:
+          record: { basePath: /api/todos, key: { value: 7 } }
+          initialValues: { value: { text: Ada, isDone: false } }
+          unsaved: discard
+          afterSubmit: again
+          picker: true
+          oneSource: true
   - name: checkWritten
     invoke: { kind: Assert.Equals }
     inputs:
@@ -224,12 +279,9 @@ steps:
         rowActionsDisplay: !cel "steps.written.result.node.rowActionsDisplay"
         rowStyle: !cel "steps.written.result.node.rowStyle"
         empty: !cel "steps.written.result.node.empty"
-        create: !cel "steps.written.result.node.create.form.fields"
-        edit: !cel "steps.written.result.node.edit.form.fields.map(f, {'type': f.type, 'property': f.property})"
-        picker: !cel "steps.written.result.node.edit.form.fields[3].options == steps.written.result.node.relations.ownerId"
-        oneSource: !cel "steps.people.result.node.basePath == steps.written.result.node.edit.form.fields[3].options.basePath"
-        createOpens: !cel "{'surface': steps.written.result.node.create.surface, 'afterSubmit': steps.written.result.node.create.afterSubmit, 'unsaved': steps.written.result.node.create.unsaved}"
-        declaredDialogIsTheSame: !cel "steps.written.result.node.edit.surface == steps.written.result.node.create.surface"
+        create: !cel "steps.written.result.node.create"
+        edit: !cel "steps.written.result.node.edit"
+        pressIsEdit: !cel "steps.written.result.node.press == steps.written.result.node.edit"
         delete: !cel "steps.written.result.node.delete"
         assets: !cel "steps.written.result.assets.map(a, {'name': a.name, 'mediaType': a.mediaType, 'sameDigest': a.digest == steps.written.result.node.layout.columns[3].cell.module.digest})"
       expected:
@@ -265,20 +317,12 @@ steps:
         rowStyle: { by: { root: row, path: [isDone] }, cases: { "true": muted }, default: strong }
         empty: { type: text, fill: false, text: { text: Nothing to do, context: null, lang: und, computed: false } }
         create:
-          - { type: input, property: text, label: { text: Task, context: null, lang: und, computed: false }, description: null, labels: [], control: auto }
-          - { type: input, property: dueOn, label: { text: dueOn, context: null, lang: und, computed: false }, description: null, labels: [], control: auto }
+          to: { type: navigate, href: { path: { value: /todos/new }, pathParams: {}, queryParams: {} } }
+          label: { set: Ui.Translations, key: create }
         edit:
-          - { type: input, property: text }
-          - { type: input, property: isDone }
-          - { type: input, property: dueOn }
-          - { type: picker, property: ownerId }
-        picker: true
-        oneSource: true
-        createOpens:
-          surface: { type: dialog, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
-          afterSubmit: close
-          unsaved: confirm
-        declaredDialogIsTheSame: true
+          to: { type: navigate, href: { path: { value: "/todos/{id}" }, pathParams: { id: { root: row, path: [id] } }, queryParams: {} } }
+          label: { text: Change, context: null, lang: und, computed: false }
+        pressIsEdit: true
         delete: true
         assets:
           - { name: badges.js, mediaType: text/javascript, sameDigest: true }

@@ -4,14 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import archiveRequest from "../../tests/__fixtures__/action/archive-request.json" with { type: "json" };
 import { loadFixtureComponents, render, type Rendered } from "./harness.js";
 import { FakeIntersections } from "./intersections.js";
-import { filterField, filtersNode, memoryState, operation, listingNode, todos, address, navigateTo } from "./spec-nodes.js";
+import { filterField, filtersNode, memoryState, operation, listingNode, pressOpening, recordPages, todos, address, navigateTo } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
 
 const cells = (r: Rendered, column: number) => r.parts("table-row").map((row) => row.children[column].textContent);
 const show = (children: unknown[], rows: Record<string, unknown>[] = todos) =>
-  render({ path: "/", loadModule: loadFixtureComponents, required: ["text"], collections: { "/api/todos": rows }, pages: { "/": { title: "Todos", children: children as never } } });
+  render({ path: "/", loadModule: loadFixtureComponents, required: ["text"], collections: { "/api/todos": rows }, pages: { "/": { title: "Todos", children: children as never }, ...recordPages() } });
 
 const row = (...path: string[]) => ({ root: "row", path });
 const archiving = (overrides: Record<string, unknown> = {}) =>
@@ -28,7 +28,7 @@ const reject = {
 /** The values a row's failure tree draws: the error's code and message. */
 const failureOf = (r: Rendered, at = 0) => [...r.parts("row-failure")[at].querySelectorAll('[data-telo-part="value"]')].map((value) => value.textContent);
 /** A table whose rows offer two operations, and nothing else unless told. */
-const acting = (overrides: Record<string, unknown> = {}) => listingNode({ rowActions: [archive, rename], create: undefined, edit: undefined, delete: false, ...overrides });
+const acting = (overrides: Record<string, unknown> = {}) => listingNode({ rowActions: [archive, rename], create: null, edit: null, delete: false, ...overrides });
 /** A table whose one row holds an address, in an application of two pages. */
 const linked = (url: string, prefix: string) =>
   render({
@@ -164,7 +164,7 @@ describe("a table", () => {
     expect(rendered.requests.filter((request) => request.startsWith("POST"))).toEqual(["POST /api/todos"]);
   });
 
-  it("edits a row in place, prefilled, with a PUT to the row", async () => {
+  it("edits a row in place, prefilled, with a PATCH to the row", async () => {
     rendered = await show([listingNode()]);
     await rendered.click(rendered.parts("row-edit")[1]);
     const task = rendered.part("input") as HTMLInputElement;
@@ -172,8 +172,8 @@ describe("a table", () => {
     expect(rendered.part("select").textContent).toBe("open");
     await rendered.enter(task, "Review it twice");
     await rendered.click(rendered.part("submit"));
-    // The record is read before it is edited; the row of the list is not what is sent back.
-    expect(rendered.requests.filter((request) => request.endsWith("/api/todos/2"))).toEqual(["GET /api/todos/2", "PUT /api/todos/2"]);
+    // The edit page reads the record before it is edited, and again once it is written; the row of the list is not what is sent back.
+    expect(rendered.requests.filter((request) => request.endsWith("/api/todos/2"))).toEqual(["GET /api/todos/2", "PATCH /api/todos/2", "GET /api/todos/2"]);
     expect(cells(rendered, 0)).toEqual(["Write the plan", "Review it twice"]);
   });
 
@@ -191,8 +191,24 @@ describe("a table", () => {
     expect(rendered.part("pager-status").textContent).toBe("1–2 of 4");
   });
 
+  it("refuses a delete of a record changed since it was read, shows why, and reads the listing again", async () => {
+    rendered = await show([listingNode()]);
+    // Opening the record reads it, and its validator is kept for its path.
+    await rendered.click(rendered.parts("row-edit")[0]);
+    await rendered.click(rendered.part("cancel"));
+    await fetch("/api/todos/1", { method: "PATCH", body: JSON.stringify({ text: "Changed elsewhere" }) });
+    const lists = () => rendered!.requests.filter((request) => request.startsWith("GET /api/todos?")).length;
+    const before = lists();
+    await rendered.click(rendered.parts("row-delete")[0]);
+    await rendered.click(rendered.part("surface").querySelector('[data-telo-part="submit"]') as HTMLElement);
+    expect(rendered.requests).toContain("DELETE /api/todos/1");
+    expect(rendered.part("surface").querySelector('[data-telo-part="error-code"]')?.textContent).toBe("ERR_CRUD_PRECONDITION_FAILED");
+    expect(lists()).toBe(before + 1);
+    expect((await (await fetch("/api/todos/1")).json()).text).toBe("Changed elsewhere");
+  });
+
   it("lists, creates, edits and deletes under the mount, and reloads on the change it announces", async () => {
-    rendered = await render({ path: "/", prefix: "/admin", required: ["text"], collections: { "/api/todos": todos }, pages: { "/": { title: "Todos", children: [listingNode()] } } });
+    rendered = await render({ path: "/", prefix: "/admin", required: ["text"], collections: { "/api/todos": todos }, pages: { "/": { title: "Todos", children: [listingNode()] }, ...recordPages() } });
     await rendered.click(rendered.part("listing-create"));
     await rendered.enter(rendered.part("input"), "A new task");
     await rendered.click(rendered.part("submit"));
@@ -206,10 +222,13 @@ describe("a table", () => {
       "GET /admin/_telo/ui/page?path=%2F",
       "GET /admin/_telo/ui/layout?id=main",
       "GET /admin/api/todos?limit=2",
+      "GET /admin/_telo/ui/page?path=%2Ftodos%2Fnew",
       "POST /admin/api/todos",
       "GET /admin/api/todos?limit=2",
+      "GET /admin/_telo/ui/page?path=%2Ftodos%2F2",
       "GET /admin/api/todos/2",
-      "PUT /admin/api/todos/2",
+      "PATCH /admin/api/todos/2",
+      "GET /admin/api/todos/2",
       "GET /admin/api/todos?limit=2",
       "DELETE /admin/api/todos/1",
       "GET /admin/api/todos?limit=2",
@@ -650,8 +669,7 @@ describe("a listing", () => {
   });
 
   it("keeps an inline edit form's entered values across a reload another record's change causes", async () => {
-    const inline = { type: "inline" };
-    rendered = await show([listingNode({ rowActions: [archive], edit: { ...listingNode().edit, surface: inline } })]);
+    rendered = await show([listingNode({ rowActions: [archive], edit: pressOpening("edit", { type: "inline" }) })]);
     rendered.answer("/api/todos/archive", () => new Response(null, { status: 204 }));
     await rendered.click(rendered.parts("row-edit")[0]);
     await rendered.enter(rendered.part("input"), "Half typed");

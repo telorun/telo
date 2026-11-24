@@ -1,6 +1,6 @@
 # DataModel
 
-What a list endpoint of records is, independent of what serves it or what draws it: the shape of a record, the property that identifies it, the filters, sort orders and facets the endpoint accepts, and the properties that point at records of other collections.
+What a list endpoint of records is, independent of what serves it or what draws it: the shape of a record, the property that identifies it, the bodies a create and a merge-patch update accept, the filters, sort orders and facets the endpoint accepts, and the properties that point at records of other collections.
 
 ## Why use this
 
@@ -13,7 +13,7 @@ What a list endpoint of records is, independent of what serves it or what draws 
 
 | Kind | Purpose |
 | --- | --- |
-| `DataModel.Collection` | One list endpoint: `model`, `key`, `query` (`filters`, `sort`, `facets`) and `relations`. See [Collection](docs/collection.md). |
+| `DataModel.Collection` | One list endpoint: `model`, `key`, `schemas` (`create`, `update`), `query` (`filters`, `sort`, `facets`) and `relations`. See [Collection](docs/collection.md). |
 
 ## Example
 
@@ -21,6 +21,7 @@ What a list endpoint of records is, independent of what serves it or what draws 
 kind: DataModel.Collection
 metadata: { name: posts }
 model: !ref Post
+schemas: { create: !ref PostDraft, update: !ref PostDraft }
 query:
   filters:
     - { property: title, operator: contains }
@@ -35,6 +36,6 @@ relations:
 ## Documentation
 
 - [Collection](docs/collection.md) — the fields, operators, relations and the rules
-- [The collection contract](docs/collection-contract.md) — the requests and answers an endpoint speaks, including facets and `absent`
+- [The collection contract](docs/collection-contract.md) — the requests and answers an endpoint speaks, including facets, `absent`, merge-patch updates and `ETag` / `If-Match` preconditions
 
 The SQL-backed collection and its API are [`Crud.Collection`](https://hub.telo.run/module/oci/ghcr.io/telorun/crud/) and [`Crud.Api`](https://hub.telo.run/module/oci/ghcr.io/telorun/crud/).

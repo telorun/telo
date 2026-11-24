@@ -10,6 +10,7 @@ messages:
   cancel: 取消
   close: 关闭
   newRecord: 新建
+  create: 创建
   edit: 编辑
   delete: 删除
   deleteRowQuestion: 删除此行？
@@ -71,6 +72,7 @@ messages:
   keepEditing: 继续编辑
   requestUnauthorized: 你尚未登录，或会话已过期。
   requestForbidden: 你无权执行此操作。
+  requestPreconditionFailed: 该记录已被他人修改。请检查后重新保存。
   requestFailedStatus: 请求失败，状态码 {$status}。
   requestFailed: 请求失败：{$reason}
   recordRefused: 记录被拒绝。

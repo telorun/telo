@@ -8,7 +8,7 @@ How a request body reaches a handler — buffered, parsed by a resource of yours
 
 | Body | Arrives as | Declared by |
 | --- | --- | --- |
-| `application/json`, `text/plain` | The parsed value, read whole before the handler runs. | Nothing — built in. |
+| `application/json`, any `+json` type (`application/merge-patch+json`, `application/problem+json`, a vendor type), `text/plain` | The parsed value, read whole before the handler runs. | Nothing — built in. |
 | A content type you parse yourself | Whatever your parser returned, read whole first. | `contentTypeParsers: [{ contentType, parser }]` |
 | A content type you stream | A byte stream the handler pulls. Nothing is buffered and no schema validation runs. | `contentTypeParsers: [{ contentType, stream: true }]` |
 | `multipart/*` | A byte stream, as above. | Nothing — built in. |
@@ -46,6 +46,8 @@ routes:
 A route declaring a stream body for a content type that arrives parsed fails with `ERR_REQUEST_BODY_NOT_STREAMED`, which names the `contentTypeParsers` entry to add. A `contentTypeParsers` entry is either `parser` or `stream`, never both.
 
 `contentTypeParsers` is an ordered entry list, like `mounts`: each entry is identified by its `contentType` and dispatches to its `parser`, which is how an editor lists the server's parsers and labels each one.
+
+A `+json` type (RFC 6839: a subtype ending in `+json`, under any top-level type, parameters such as `charset` ignored) is parsed exactly as `application/json` is — the same charset handling, `maxBodyBytes` accounting, 400 for malformed JSON and validation against the route's body schema. An entry naming one exact `+json` type replaces the built-in parse for that type alone, and a route declaring a stream body for a `+json` type still needs a `{ contentType, stream: true }` entry.
 
 A multipart body needs no entry: the server hands it over as raw bytes, which is what a multipart decoder reads. An entry naming an exact multipart type still takes precedence for that type alone.
 

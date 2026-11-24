@@ -1,0 +1,11 @@
+units:
+  modules/ui-react: Added
+body: The renderer sends an edit form's changes as PATCH <basePath>/<key>
+  (application/merge-patch+json) instead of PUT, keeps per request path the ETag of the
+  last GET, PATCH or PUT answer and sends it as If-Match with every PATCH, PUT and
+  DELETE to that path (a server sending no ETag gets none), and on a 412 draws the
+  failure with the problem's code or ERR_UI_PRECONDITION_FAILED, announces the path as
+  changed so its readers read again, and keeps what was typed so a second press sends it
+  against the current record. A hand-written collection that serves the collection
+  contract must now answer PATCH as a merge patch. It passes every row of ui's
+  conformance/merge-patch.json.

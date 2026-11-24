@@ -8,6 +8,8 @@ and `telo check` refuses a declaration that contradicts the record shape.
 | --- | --- | --- |
 | `model` | required | the shape of one record as it is read (a `Telo.JsonSchema`) |
 | `key` | `id` | the property identifying a record; the model declares it and lists it as required |
+| `schemas.create` | none | the body `POST <basePath>` accepts (a `Telo.Type`); left out, the collection accepts no create |
+| `schemas.update` | none | the shape a record holds once a merge patch is applied, `PATCH <basePath>/<key value>` (a `Telo.Type`); left out, the collection accepts no update |
 | `query.filters` | required | the accepted filters: `{ property, operator }` each, no pair twice; `[]` for none |
 | `query.sort` | required | the properties a list may be sorted by: `{ property }` each; `[]` for none |
 | `query.facets` | none | properties whose present values, with counts, the endpoint answers: `{ property }` each |
@@ -33,6 +35,7 @@ schema:
 kind: DataModel.Collection
 metadata: { name: posts }
 model: !ref Post
+schemas: { create: !ref PostDraft, update: !ref PostDraft }
 query:
   filters:
     - { property: id, operator: in }
@@ -45,6 +48,18 @@ query:
 relations:
   authorId: { collection: !ref authors }
 ```
+
+## Write shapes
+
+`schemas` says what a write accepts, so a screen over any collection can be
+checked against what its API takes: `create` is the body of `POST <basePath>`
+and `update` the shape a record must hold once a `PATCH` is applied. A write
+left out is one the collection does not accept. Both are bodies, so they leave
+the key out; the update shape is what a merge patch is held to, so a property
+it requires cannot be cleared. The declaration adds no rule of its own — a kind
+that serves the collection checks the shapes against what it stores — and the
+published reading carries each declared one as `resources.<name>.schemas.create`
+and `.update`, beside `model`.
 
 ## Relations
 
@@ -111,4 +126,4 @@ above refuses, each as `{ code, message }`, to be raised as `ERR_<code>`.
 ## Reading it
 
 `resources.<name>.model.schema`, `resources.<name>.key` and
-`resources.<name>.query` are the declared blocks.
+`resources.<name>.query` are the declared blocks, and `resources.<name>.schemas` holds the write shapes declared.

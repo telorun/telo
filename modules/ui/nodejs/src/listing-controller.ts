@@ -1,25 +1,16 @@
 import { RuntimeError, type ResourceContext, type ResourceInstance, type RuntimeResource } from "@telorun/sdk";
-import { isComposite, mergeAssets, type AssetFile, type Provided, type SpecNode } from "./composite.js";
+import { mergeAssets, type AssetFile, type Provided, type SpecNode } from "./composite.js";
 import { presentationAt } from "./collection-presentation.js";
 import { modelSchema, type JsonSchema } from "./model-schema.js";
 import { resolveNode, type AuthoredNode } from "./node-resolution.js";
 import type { Binding, StyleRule } from "./row-binding.js";
 import { pendingBoundAction, providedBoundActions, type BoundActionConfig } from "./bound-actions.js";
 import { uiText } from "./spec-texts.js";
-import { dialogSpec, isSurface } from "./surface-spec.js";
 import { isLayout, type LayoutAnswer, type LayoutInputs } from "./listing-layout.js";
 import { tableLayout } from "./table-layout.js";
 import { filledProvided } from "./fill-marking.js";
 import { reloadEveryOf } from "./timed-reload.js";
-import { pressSpec, type PressConfig } from "./press.js";
-
-/** How a form is opened. A member holding nothing is one left out. */
-interface OpenerConfig {
-  form: unknown;
-  surface?: unknown;
-  afterSubmit?: string | null;
-  unsaved?: string | null;
-}
+import { defaultedPressSpec, pressSpec, type PressConfig } from "./press.js";
 
 type ListingResource = RuntimeResource & {
   presentation: unknown;
@@ -32,8 +23,8 @@ type ListingResource = RuntimeResource & {
   show?: { count?: boolean | null } | null;
   rowActionsDisplay?: string | null;
   rowStyle?: StyleRule | null;
-  create?: OpenerConfig | null;
-  edit?: OpenerConfig | null;
+  create?: { to: unknown; label?: unknown } | null;
+  edit?: { to: unknown; label?: unknown } | null;
   delete?: boolean | null;
   rowActions?: BoundActionConfig[] | null;
   press?: PressConfig | null;
@@ -109,27 +100,12 @@ class Listing implements ResourceInstance {
     const layout = (await this.layout("layout", inputs, owner))!;
     const compact = await this.layout("compact", inputs, owner);
     assets.push(layout.assets, compact?.assets ?? []);
-    const part = async (value: unknown, slot: string): Promise<SpecNode | undefined> => {
-      const provided = await this.ctx.resolveRef(value, isComposite, () => `'${slot}' of ${owner}`, "Ui.Composite").provide();
-      assets.push(provided.assets);
-      return provided.node;
-    };
-    const opener = async (config: OpenerConfig | null | undefined, slot: string) => {
-      if (config == null) return undefined;
-      const form = await part(config.form, `${slot}.form`);
-      if (!form) return undefined;
-      const surface =
-        config.surface == null
-          ? dialogSpec()
-          : await this.ctx.resolveRef(config.surface, isSurface, () => `'${slot}.surface' of ${owner}`, "Ui.Surface").provide();
-      return { form, surface, afterSubmit: config.afterSubmit ?? "close", unsaved: config.unsaved ?? "confirm" };
-    };
     const pending = (resource.rowActions ?? []).map((entry, index) => pendingBoundAction(entry, this.ctx, owner, `rowActions[${index}]`));
     const { entries: rowActions, assets: actionAssets } = await providedBoundActions(pending);
     assets.push(...actionAssets);
-    const create = await opener(resource.create, "create");
-    const edit = await opener(resource.edit, "edit");
-    const press = await pressSpec(resource.press, this.ctx, owner);
+    const create = await defaultedPressSpec(resource.create, "create", this.ctx, owner, "create");
+    const edit = await defaultedPressSpec(resource.edit, "edit", this.ctx, owner, "edit");
+    const press = (await pressSpec(resource.press, this.ctx, owner)) ?? edit;
     const written = resource.empty == null ? undefined : await resolveNode(resource.empty, this.ctx, `${owner} empty`);
     if (written) assets.push(written.assets);
     const node: SpecNode = {
@@ -147,8 +123,8 @@ class Listing implements ResourceInstance {
       },
       show: { count: resource.show?.count !== false },
       ...(resource.rowStyle ? { rowStyle: resource.rowStyle } : {}),
-      ...(create ? { create } : {}),
-      ...(edit ? { edit } : {}),
+      create,
+      edit,
       delete: resource.delete === true,
       rowActions,
       rowActionsDisplay: resource.rowActionsDisplay ?? "auto",

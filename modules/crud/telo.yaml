@@ -9,7 +9,9 @@ metadata:
     Serves a REST API over a database table from one declaration: paginated
     lists with cursor paging and a total count, filtering, sorting and
     per-value counts limited to what the data model declares, plus read one,
-    create, update and delete in parameterized SQL. The same lists run over a
+    create, merge-patch update, replace and delete in parameterized SQL, with
+    strong ETags and If-Match preconditions that refuse a write to a record
+    changed since it was read. The same lists run over a
     fixed SELECT with joined or computed columns, restricted by route-fixed
     values.
 requires:
@@ -58,6 +60,8 @@ schema:
         The table the records are stored in. A property is stored in the
         snake_case column of its name (`dueOn` in `due_on`).
       x-telo-ref: { kind: Sql.Table, use: dependency }
+    # Merging replaces a property whole, so the inherited `create` and `update`
+    # are restated here beside `list`.
     schemas:
       title: Schemas
       description: The record shape of each operation other than a read, which is `model`.
@@ -75,7 +79,10 @@ schema:
           x-telo-ref: { kind: Telo.Type, use: schema }
         update:
           title: Update
-          description: The body that updates a record, without `id`. The properties it declares are the ones an update replaces.
+          description: >-
+            The shape a record holds once a merge patch is applied, without
+            `id`. A property it requires cannot be cleared; one it declares
+            can be patched.
           x-telo-ref: { kind: Telo.Type, use: schema }
   x-telo-resource-rules:
     - resolve: [/schemas/list, /schemas/create, /schemas/update]
@@ -195,9 +202,11 @@ metadata:
     opaque cursor and answers rows, a total and the next cursor, filtering and
     sorting only by declared pairs, a declared text search across several string
     properties, and a facet request answers each present value of a property
-    with its count. Create and update validate bodies
-    against their shapes and answer with the stored record; read and delete
-    address one record by key.
+    with its count. Create validates its body against the create shape and
+    update merges a patch into the record, holding the result to the update shape; both
+    answer with the stored record. Read-one and every create, update and replace
+    answer carry a strong ETag, and an update, replace or delete naming a stale If-Match is refused
+    with 412. Read and delete address one record by key.
 capability: Telo.Mount
 schema:
   type: object
@@ -236,7 +245,7 @@ schema:
 mount: !ref api
 resources:
   # The crud-internal handlers below, each given its own operation's shape; the
-  # by-id reader accepts the key alone, and both writes answer with the record
+  # by-id reader accepts the key alone, and the writes answer with the record
   # as read.
   - kind: Self.Reader
     metadata: { name: lister }
@@ -244,14 +253,11 @@ resources:
     collection: !cel "self.collection"
     table: !cel "self.collection.table.table"
     row: !cel "self.collection.schemas.list"
-  - kind: Self.Reader
+  - kind: Self.RecordReader
     metadata: { name: reader }
     connection: !cel "self.connection"
     collection: !cel "self.collection"
     table: !cel "self.collection.table.table"
-    query:
-      filters: [{ property: id, operator: eq }]
-      sort: []
   - kind: Self.Creator
     metadata: { name: creator }
     connection: !cel "self.connection"
@@ -264,10 +270,17 @@ resources:
     table: !cel "self.collection.table.table"
     model: !cel "self.collection.schemas.update"
     record: !cel "self.collection.model"
+  - kind: Self.Patcher
+    metadata: { name: patcher }
+    connection: !cel "self.connection"
+    table: !cel "self.collection.table.table"
+    model: !cel "self.collection.schemas.update"
+    record: !cel "self.collection.model"
   - kind: Self.Deleter
     metadata: { name: deleter }
     connection: !cel "self.connection"
     table: !cel "self.collection.table.table"
+    record: !cel "self.collection.model"
 
   # The id path parameter's VALUE is read request-side as the sole path param
   # (`values(request.params)[0]`), since no expression may mix `self` with
@@ -289,6 +302,22 @@ resources:
               code: !cel "problem.code"
               data:
                 issues: !cel "problem.data == null ? [] : problem.data.issues.map(i, {'pointer': '/query' + i.pointer, 'keyword': i.keyword, 'params': i.params})"
+      # A patch that leaves an invalid record answers as a body the model refuses does.
+      - when: !cel "problem.code == 'ERR_CRUD_PATCH_INVALID'"
+        status: 400
+        content:
+          application/problem+json:
+            body:
+              type: !cel "problem.type"
+              title: !cel "problem.title"
+              status: !cel "problem.status"
+              detail: The request is not valid.
+              code: ERR_INPUT_INVALID
+              data: !cel "problem.data"
+      # The record changed since the caller read it.
+      - when: !cel "problem.code == 'ERR_CRUD_PRECONDITION_FAILED'"
+        status: 412
+        content: { application/problem+json: {} }
     routes:
       # One page of rows, or of a property's present values when `facet` names
       # it. Every other query key is a filter (`<property>` for equality); keys
@@ -357,7 +386,7 @@ resources:
                         properties: { value: {}, count: { type: integer } }
                     next: { type: [string, "null"], description: "The cursor of the following page; null on the last one." }
 
-      # Read one row by id.
+      # Read one row by id, answered with its strong validator.
       - operationId: !cel "'get' + self.singular.substring(0,1).upperAscii() + self.singular.substring(1)"
         summary: !cel "'Get a ' + self.singular"
         tags: !cel "[self.plural]"
@@ -372,16 +401,14 @@ resources:
               properties: !cel "{(('idParam' in self) ? self.idParam : self.singular + 'Id'): self.collection.model.schema.properties.id}"
         handler: !ref reader
         inputs:
-          filters:
-            - property: id
-              value: !cel "values(request.params)[0]"
-          limit: 1
+          id: !cel "values(request.params)[0]"
         returns:
           - status: 200
-            when: !cel "size(result.rows) > 0"
+            when: !cel "result.row != null"
+            headers: { ETag: !cel "result.etag" }
             content:
               application/json:
-                body: !cel "result.rows[0]"
+                body: !cel "result.row"
                 schema: !cel "self.collection.model.schema"
           - { status: 404, content: { application/json: { body: { error: not_found } } } }
 
@@ -400,14 +427,54 @@ resources:
           data: !cel "request.body"
         returns:
           - status: 201
+            headers: { ETag: !cel "result.etag" }
             content:
               application/json:
-                body: !cel "result"
+                body: !cel "result.row"
                 schema: !cel "self.collection.model.schema"
 
-      # Replace what the update shape declares: a property of it the body leaves
-      # out is cleared, every other column keeps its value.
+      # Merge the body into a row (RFC 7396): a member holding a value sets that
+      # property, null clears it, and a property the body leaves out is unchanged.
+      # The merged record is held to the update shape inside the handler, since a
+      # request schema cannot say "the update shape, every property clearable".
       - operationId: !cel "'update' + self.singular.substring(0,1).upperAscii() + self.singular.substring(1)"
+        summary: !cel "'Update a ' + self.singular"
+        tags: !cel "[self.plural]"
+        request:
+          method: PATCH
+          path: !cel "'/{' + (('idParam' in self) ? self.idParam : self.singular + 'Id') + '}'"
+          schema:
+            params:
+              type: object
+              required:
+                - !cel "('idParam' in self) ? self.idParam : self.singular + 'Id'"
+              properties: !cel "{(('idParam' in self) ? self.idParam : self.singular + 'Id'): self.collection.model.schema.properties.id}"
+            headers:
+              type: object
+              properties:
+                if-match: { type: string, description: "The ETag of the record as it was read; the update is refused with 412 once the record differs." }
+            body:
+              type: object
+              description: "A JSON Merge Patch over the update shape: a member sets a property, null clears it."
+        handler: !ref patcher
+        inputs:
+          id: !cel "values(request.params)[0]"
+          data: !cel "request.body"
+          ifMatch: !cel "'if-match' in request.headers ? request.headers['if-match'] : null"
+        returns:
+          - status: 200
+            when: !cel "result.rowCount > 0"
+            headers: { ETag: !cel "result.etag" }
+            content:
+              application/json:
+                body: !cel "result.row"
+                schema: !cel "self.collection.model.schema"
+          - { status: 404, content: { application/json: { body: { error: not_found } } } }
+
+      # Replace what the update shape declares: a property of it the body leaves
+      # out is cleared, every other column keeps its value. Outside the
+      # collection contract, which updates by merge.
+      - operationId: !cel "'replace' + self.singular.substring(0,1).upperAscii() + self.singular.substring(1)"
         summary: !cel "'Replace a ' + self.singular"
         tags: !cel "[self.plural]"
         request:
@@ -419,14 +486,20 @@ resources:
               required:
                 - !cel "('idParam' in self) ? self.idParam : self.singular + 'Id'"
               properties: !cel "{(('idParam' in self) ? self.idParam : self.singular + 'Id'): self.collection.model.schema.properties.id}"
+            headers:
+              type: object
+              properties:
+                if-match: { type: string, description: "The ETag of the record as it was read; the replace is refused with 412 once the record differs." }
             body: !cel "self.collection.schemas.update.schema"
         handler: !ref updater
         inputs:
           id: !cel "values(request.params)[0]"
           data: !cel "request.body"
+          ifMatch: !cel "'if-match' in request.headers ? request.headers['if-match'] : null"
         returns:
           - status: 200
             when: !cel "result.rowCount > 0"
+            headers: { ETag: !cel "result.etag" }
             content:
               application/json:
                 body: !cel "result.row"
@@ -446,10 +519,14 @@ resources:
               required:
                 - !cel "('idParam' in self) ? self.idParam : self.singular + 'Id'"
               properties: !cel "{(('idParam' in self) ? self.idParam : self.singular + 'Id'): self.collection.model.schema.properties.id}"
+            headers:
+              type: object
+              properties:
+                if-match: { type: string, description: "The ETag of the record as it was read; the delete is refused with 412 once the record differs." }
         handler: !ref deleter
         inputs:
-          filters:
-            id: !cel "values(request.params)[0]"
+          id: !cel "values(request.params)[0]"
+          ifMatch: !cel "'if-match' in request.headers ? request.headers['if-match'] : null"
         returns:
           - status: 204
             when: !cel "result.rowCount > 0"
@@ -530,6 +607,8 @@ inputType:
       search: { type: [string, "null"] }
       limit: { type: integer }
       cursor: { type: [string, "null"] }
+      # Answers each row's strong validator beside it.
+      etags: { type: boolean }
       # Equalities the caller fixes, which no client can send or widen: a client
       # filter on a scoped property is refused.
       scope:
@@ -621,12 +700,43 @@ schema:
 ---
 kind: Telo.Definition
 metadata:
+  name: RecordReader
+  description: >-
+    Internal handler behind the read-one route: reads one row by its key in the
+    collection's model shape and returns it with its strong validator, or
+    nothing when no row has the key.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/crud.mjs&local_path=./nodejs/src/index.ts#RecordReaderController]
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [id]
+    properties: { id: {} }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [row, etag]
+    properties: { row: { type: [object, "null"] }, etag: { type: [string, "null"] } }
+schema:
+  type: object
+  additionalProperties: false
+  required: [connection, collection, table]
+  properties:
+    connection: { x-telo-ref: { kind: Sql.Connection, use: dependency } }
+    collection: { x-telo-ref: { kind: DataModel.Collection, use: dependency } }
+    table: { type: string }
+---
+kind: Telo.Definition
+metadata:
   name: Creator
   description: >-
     Internal handler behind the create route: inserts one row from a validated
     record, naming only the columns its shape declares, in one parameterized
     INSERT. Returns the stored record, with its key and every value the table
-    filled in.
+    filled in, and its strong validator.
 capability: Telo.Invocable
 controllers: [pkg:telo/local/js?path=./nodejs/crud.mjs&local_path=./nodejs/src/index.ts#CreatorController]
 inputType:
@@ -638,7 +748,12 @@ inputType:
     properties:
       # The record, by property name.
       data: { type: object }
-outputType: { kind: Telo.JsonSchema, schema: { type: object } }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [row, etag]
+    properties: { row: { type: object }, etag: { type: string } }
 schema:
   type: object
   additionalProperties: false
@@ -655,13 +770,20 @@ kind: Telo.Definition
 metadata:
   name: Updater
   description: >-
-    Internal handler behind the update route: replaces what its shape declares
+    Internal handler behind the replace route: replaces what its shape declares
     of one row. Each of those columns is set, to the value the record holds or
     to NULL where it holds none, in one parameterized UPDATE filtered by the
-    item's id; no other column is touched. Returns the stored record and the
-    number of rows replaced, zero when the id names no row.
+    item's id; no other column is touched. Given an If-Match validator, the row
+    is read under its write lock and replaced only while it still has that
+    validator. Returns the stored record, its strong validator and the number of
+    rows replaced, zero when the id names no row.
 capability: Telo.Invocable
 controllers: [pkg:telo/local/js?path=./nodejs/crud.mjs&local_path=./nodejs/src/index.ts#UpdaterController]
+throws:
+  codes:
+    ERR_CRUD_PRECONDITION_FAILED:
+      description: The row no longer has the validator the request's If-Match names, so it was changed since the caller read it.
+      displayMessage: "The record was changed since it was read."
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -672,6 +794,8 @@ inputType:
       id: {}
       # The record, by property name.
       data: { type: object }
+      # The request's If-Match, absent for none.
+      ifMatch: { type: [string, "null"] }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -681,6 +805,7 @@ outputType:
       rowCount: { type: integer }
       # Absent when the id names no row.
       row: { type: object }
+      etag: { type: string }
 schema:
   type: object
   additionalProperties: false
@@ -695,22 +820,115 @@ schema:
 ---
 kind: Telo.Definition
 metadata:
-  name: Deleter
+  name: Patcher
   description: >-
-    Internal handler behind the delete route: runs a parameterized DELETE
-    filtered by the item's id.
+    Internal handler behind the update route: applies a JSON Merge Patch to one
+    row under its write lock. A member holding a value sets its property, null
+    clears it, and an absent member leaves it; the merged record is held to the
+    update shape whole, and only the columns the patch names are written. Given
+    an If-Match validator, the row is patched only while it still has that
+    validator. Returns the stored record, its strong validator and the number of
+    rows patched, zero when the id names no row.
 capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/crud.mjs&local_path=./nodejs/src/index.ts#PatcherController]
+throws:
+  codes:
+    ERR_CRUD_PRECONDITION_FAILED:
+      description: The row no longer has the validator the request's If-Match names, so it was changed since the caller read it.
+      displayMessage: "The record was changed since it was read."
+    ERR_CRUD_PATCH_INVALID:
+      description: >-
+        The record the patch would leave is not valid against the update shape:
+        a required property cleared, a member the shape does not declare, or a
+        value of the wrong type, or a body that is not a JSON object. Carries `issues`, one `{ pointer, keyword,
+        params }` per finding, its pointer naming the member under `/body`.
+      displayMessage: "The update is not valid."
+      data:
+        type: object
+        additionalProperties: false
+        required: [issues]
+        properties:
+          issues:
+            type: array
+            items:
+              type: object
+              additionalProperties: false
+              required: [pointer, keyword, params]
+              properties:
+                pointer: { type: string, description: "A JSON Pointer naming the refused member under `/body`." }
+                keyword: { type: string, description: "The issue keyword: a JSON Schema keyword, or `invalid`." }
+                params: { type: object, description: "The facts the keyword is worded from." }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [id, data]
+    properties:
+      id: {}
+      # The merge patch, by property name.
+      data: {}
+      # The request's If-Match, absent for none.
+      ifMatch: { type: [string, "null"] }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [rowCount]
+    properties:
+      rowCount: { type: integer }
+      # Absent when the id names no row.
+      row: { type: object }
+      etag: { type: string }
 schema:
   type: object
-  required: [connection, table]
+  additionalProperties: false
+  required: [connection, table, model, record]
   properties:
     connection: { x-telo-ref: { kind: Sql.Connection, use: dependency } }
     table: { type: string }
-resources:
-  - kind: Sql.Command
-    metadata: { name: exec }
-    connection: !cel "self.connection"
-invoke: !ref exec
-inputs:
-  sql: !cel "'DELETE FROM ' + self.table + ' WHERE ' + join(keys(inputs.filters).map(k, lower(regexReplace(k, '([A-Z])', '_$1')) + ' = ?'), ' AND ')"
-  bindings: !cel "keys(inputs.filters).map(k, inputs.filters[k])"
+    # The shape the merged record must hold; the columns a patch may name.
+    model: { x-telo-ref: { kind: Telo.Type, use: schema } }
+    # What the stored record is answered as.
+    record: { x-telo-ref: { kind: Telo.Type, use: schema } }
+---
+kind: Telo.Definition
+metadata:
+  name: Deleter
+  description: >-
+    Internal handler behind the delete route: runs a parameterized DELETE
+    filtered by the item's id. Given an If-Match validator, the row is read
+    under its write lock and deleted only while it still has that validator.
+    Returns the number of rows deleted.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/crud.mjs&local_path=./nodejs/src/index.ts#DeleterController]
+throws:
+  codes:
+    ERR_CRUD_PRECONDITION_FAILED:
+      description: The row no longer has the validator the request's If-Match names, so it was changed since the caller read it.
+      displayMessage: "The record was changed since it was read."
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [id]
+    properties:
+      id: {}
+      # The request's If-Match, absent for none.
+      ifMatch: { type: [string, "null"] }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [rowCount]
+    properties: { rowCount: { type: integer } }
+schema:
+  type: object
+  additionalProperties: false
+  required: [connection, table, record]
+  properties:
+    connection: { x-telo-ref: { kind: Sql.Connection, use: dependency } }
+    table: { type: string }
+    # The shape a row's validator is computed over.
+    record: { x-telo-ref: { kind: Telo.Type, use: schema } }

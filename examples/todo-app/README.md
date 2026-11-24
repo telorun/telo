@@ -6,7 +6,7 @@ hand-written frontend:
 - **API** — the whole REST surface is one `Crud.Api` over the `todos`
   collection, mounted at `/api/todos`. No handlers, no SQL, no route list.
 - **UI** — a `UiReact.App` mounted at `/`: a filterable, sortable, paged listing
-  with create and edit forms and delete. There is no HTML, JavaScript or CSS in
+  with create and edit pages and delete. There is no HTML, JavaScript or CSS in
   this example.
 - **Storage** — a SQLite file (`SQLite.Connection`), schema created on boot by
   `SQLite.Schema`.
@@ -20,9 +20,9 @@ operation: `NewTodo` is what creates one — its title alone — `TodoEdit` exte
 it with `isDone` and `dueOn` for an update, and `Todo`, the collection's
 `model`, extends that with the key and `createdAt`, which the table fills in.
 The listing's columns and the forms' fields are derived from those shapes, so
-adding a property adds it to the screen — and renaming one is a `telo check`
+adding a property adds it to the listing — and renaming one is a `telo check`
 error wherever the manifest still names the old one, not a page that silently
-breaks. The create form has one field and the edit form three; `createdAt` is
+breaks. The new-todo form has one field and the edit form three; `createdAt` is
 shown in the listing and in no form, and a request that sends it is refused.
 Every property of `Todo` needs its snake_case column in the table, and
 `telo check` says so when one is missing.
@@ -47,7 +47,9 @@ runs from a checkout; a release tag pins them to `oci://` refs.
 Http.Server (:8077)
 ├── /api/todos → Crud.Api ──► Crud.Collection ──► SQLite.Table
 └── /          → UiReact.App
-                 ├── /        CrudUi.Admin (filters, listing, forms, delete — derived)
+                 ├── /        CrudUi.Admin (filters, listing, delete — derived)
+                 ├── /todos/new  Ui.Page + Ui.Form (create)
+                 ├── /todos/{id} Ui.Page + Ui.Form (edit)
                  └── /status  Ui.Filters   (the same, written out by hand)
 ```
 
@@ -58,29 +60,32 @@ deployment.
 
 - **`/`** is one declaration: `CrudUi.Admin` over `todosSource`, a
   `CrudUi.CollectionSource` naming the collection and the path the API is
-  mounted at. Everything on the page comes from the collection. Three more keys say
-  how it behaves, not what it shows:
+  mounted at. Everything on the page comes from the collection. Four more keys say
+  how it behaves and where it goes, not what it shows:
   - `filters` — the bar shows only the filters you choose from its list,
     summarises the active ones as removable chips, and keeps them under the key
     `todos` in the page's address and in the browser's local storage, so a
     filtered list can be shared as a link and is still filtered on the next
     visit.
-  - `create` — a new todo is entered in a drawer at the end edge (a full-size
-    dialog on a narrow screen) that stays open, emptied, for the next one.
-  - `edit` — a todo is edited in a drawer at the end edge too. The drawer has an
-    address (`?_telo.open.todo=<id>`), so an open todo is a link too, and
+  - `create` — the create button opens the new-todo page (`/todos/new`) in a
+    drawer at the end edge (a full-size dialog on a narrow screen). Its form
+    stays open, emptied, for the next one.
+  - `edit` — each todo's edit button opens its page (`/todos/{id}`) in a drawer
+    at the end edge too. The drawer has an address
+    (`?_telo.open.todo=%2Ftodos%2F7`), so an open todo is a link too, and the
+    page is a full page at `/todos/7`. The form sends only what changed, and
     leaving it with unsaved input asks first.
 
   A key left out takes the default of the listing or the bar it reaches;
-  `CrudUi.Admin` adds none of its own.
+  `CrudUi.Admin` adds none of its own. The two pages are yours: `CrudUi.Admin`
+  generates no forms.
 - **`/status`** is what that one declaration stands for, written by hand, for
   what `CrudUi.Admin` has no key for. One `Ui.CollectionPresentation` over the
   same source is named by a `Ui.Filters` whose bar folds a range of due days
   behind a toggle, with the text search pinned outside the fold and an `isDone`
   filter that has no control and is set only by the presets **All** / **Open**
-  / **Done**; by a `Ui.Listing` whose two openers say nothing but their form —
-  so each opens as the listing decides, in a dialog that closes after a save;
-  and by both forms. Nothing `CrudUi.Admin` generates is out of reach — when a
+  / **Done**; by a `Ui.Listing` whose two presses say nothing but their page —
+  so each opens as the listing decides, in a dialog. Nothing `CrudUi.Admin` generates is out of reach — when a
   screen needs something of its own, replace the one declaration with the kinds
   it expands into (listed in
   [`CrudUi.Admin`'s doc](../../modules/crud-ui/docs/admin.md)) and edit those.

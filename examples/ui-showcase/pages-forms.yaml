@@ -29,7 +29,7 @@ content:
       ref:
         kind: Ui.Form
         model: !ref Request
-        presentation: !ref requestsPresentation
+        record: { presentation: !ref requestsPresentation }
         state: { key: request, address: true, store: { kind: Ui.LocalStore } }
 
     # ---- Each control chosen by hand ----
@@ -44,7 +44,7 @@ content:
       ref:
         kind: Ui.Form
         model: !ref Request
-        presentation: !ref requestsPresentation
+        record: { presentation: !ref requestsPresentation }
         fields:
           - { kind: Ui.InputField, property: title, control: auto }
           - { kind: Ui.InputField, property: kind, control: options }
@@ -95,12 +95,13 @@ content:
       ref:
         kind: Ui.Form
         model: !ref Booking
-        presentation:
-          kind: Ui.CollectionPresentation
-          source:
-            kind: Ui.CollectionSource
-            collection: { kind: DataModel.Collection, model: !ref StoredBooking, query: { filters: [], sort: [] } }
-            basePath: /api/bookings
+        record:
+          presentation:
+            kind: Ui.CollectionPresentation
+            source:
+              kind: Ui.CollectionSource
+              collection: { kind: DataModel.Collection, model: !ref StoredBooking, schemas: { create: !ref Booking }, query: { filters: [], sort: [] } }
+              basePath: /api/bookings
         groups:
           - { name: project, label: The project, description: "Which project, and who leads the work." }
           - name: people
@@ -215,7 +216,7 @@ kind: Ui.CollectionPresentation
 metadata: { name: requestsPresentation }
 source:
   kind: Ui.CollectionSource
-  collection: { kind: DataModel.Collection, model: !ref StoredRequest, query: { filters: [], sort: [] } }
+  collection: { kind: DataModel.Collection, model: !ref StoredRequest, schemas: { create: !ref Request }, query: { filters: [], sort: [] } }
   basePath: /api/requests
 ---
 # The page every application lists at /forms, placing the view.

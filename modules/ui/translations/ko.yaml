@@ -10,6 +10,7 @@ messages:
   cancel: 취소
   close: 닫기
   newRecord: 새로 만들기
+  create: 만들기
   edit: 편집
   delete: 삭제
   deleteRowQuestion: 이 행을 삭제할까요?
@@ -71,6 +72,7 @@ messages:
   keepEditing: 계속 편집
   requestUnauthorized: 로그인하지 않았거나 세션이 만료되었습니다.
   requestForbidden: 이 작업을 수행할 권한이 없습니다.
+  requestPreconditionFailed: 다른 사용자가 레코드를 변경했습니다. 내용을 확인한 뒤 다시 저장하세요.
   requestFailedStatus: 요청이 실패했습니다(상태 {$status}).
   requestFailed: "요청이 실패했습니다: {$reason}"
   recordRefused: 레코드가 거부되었습니다.

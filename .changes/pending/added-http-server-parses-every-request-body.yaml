@@ -1,0 +1,9 @@
+units:
+  modules/http-server: Added
+body: "Http.Server parses every request body whose media type has the +json suffix
+  (application/merge-patch+json, application/problem+json, a vendor type, under any
+  top-level type, parameters ignored) exactly as application/json: same charset
+  handling, maxBodyBytes accounting, 400 for malformed JSON and validation against the
+  route body schema. A contentTypeParsers entry naming one exact +json type replaces the
+  built-in parse for that type; a stream body for a +json type still needs a {
+  contentType, stream: true } entry. Before, such a body was refused with 415."

@@ -61,6 +61,8 @@ class FakeEventSource extends EventTarget {
 export interface Page {
   /** The document title and navigation text; no heading is drawn for it. */
   title?: string;
+  /** The query parameters the page declares, by name. */
+  query?: Record<string, unknown>;
   /** `contained` when not given. */
   width?: "contained" | "full";
   children: SpecNode[];
@@ -159,6 +161,8 @@ export async function render(options: {
   pages: Record<string, Page>;
   /** Collections by app-relative `basePath`, served under the mount. */
   collections?: Record<string, Record<string, unknown>[]>;
+  /** Whether the collections answer each record with an `ETag` and hold writes to `If-Match`; true unless false. */
+  etags?: boolean;
   required?: string[];
   loadModule?: (url: string) => Promise<Record<string, unknown>>;
   /** Responses fixed before the first request, by URL prefix. */
@@ -201,7 +205,7 @@ export async function render(options: {
   const layoutOf = (page: Page): string | undefined => (page.layout === false ? undefined : (page.layout ?? (options.layouts === false ? undefined : Object.keys(layouts)[0])));
   const versions: Record<string, number> = {};
   const collections = Object.fromEntries(
-    Object.entries(options.collections ?? {}).map(([basePath, rows]) => [basePath, createCollection(rows, options.required ?? [])]),
+    Object.entries(options.collections ?? {}).map(([basePath, rows]) => [basePath, createCollection(rows, options.required ?? [], { etags: options.etags !== false })]),
   );
   const answers: [string, Responder][] = Object.entries(options.answers ?? {});
   const requests: string[] = [];
@@ -270,7 +274,7 @@ export async function render(options: {
       const path = matched.path;
       const digest = `${path}#${versions[path] ?? 0}`;
       if (new Headers(init?.headers).get("if-none-match") === `"${digest}"`) return new Response(null, { status: 304 });
-      return json({ specVersion: 1, bundle, digest, path, ...(pages[path].title === undefined ? {} : { title: wireText(pages[path].title as string) }), lang: options.lang ?? "en", width: pages[path].width ?? "contained", children: wire(pages[path].children) });
+      return json({ specVersion: 1, bundle, digest, path, ...(pages[path].title === undefined ? {} : { title: wireText(pages[path].title as string) }), lang: options.lang ?? "en", query: pages[path].query ?? {}, width: pages[path].width ?? "contained", children: wire(pages[path].children) });
     }
     const base = Object.keys(collections).find((candidate) => url.pathname === prefix + candidate || url.pathname.startsWith(`${prefix}${candidate}/`));
     if (base) {
@@ -279,8 +283,11 @@ export async function render(options: {
         path: url.pathname.slice(prefix.length + base.length),
         query: url.searchParams,
         body: init?.body ? JSON.parse(String(init.body)) : undefined,
+        ifMatch: new Headers(init?.headers).get("if-match") ?? undefined,
       });
-      return json(answer.body, answer.status);
+      const response = json(answer.body, answer.status);
+      for (const [name, value] of Object.entries(answer.headers ?? {})) response.headers.set(name, value);
+      return response;
     }
     return json({ type: "about:blank", title: "Not Found", status: 404 }, 404);
   }) as typeof fetch;

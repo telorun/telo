@@ -139,15 +139,17 @@ label: Refresh
 kind: Ui.Form
 metadata: { name: requestForm }
 model: !ref ReportRequest
-presentation:
-  kind: Ui.CollectionPresentation
-  source:
-    kind: Ui.CollectionSource
-    basePath: /api/requests
-    collection:
-      kind: DataModel.Collection
-      model: { kind: Telo.JsonSchema, schema: { type: object, required: [id], properties: { id: { type: string } } } }
-      query: { filters: [], sort: [] }
+record:
+  presentation:
+    kind: Ui.CollectionPresentation
+    source:
+      kind: Ui.CollectionSource
+      basePath: /api/requests
+      collection:
+        kind: DataModel.Collection
+        schemas: { create: { kind: Telo.JsonSchema, schema: { type: object } } }
+        model: { kind: Telo.JsonSchema, schema: { type: object, required: [id], properties: { id: { type: string } } } }
+        query: { filters: [], sort: [] }
 ---
 kind: Ui.View
 metadata: { name: page }
@@ -190,6 +192,7 @@ presentation:
     basePath: /api/todos
     collection:
       kind: DataModel.Collection
+      schemas: { create: { kind: Telo.JsonSchema, schema: { type: object } } }
       model: !ref Todo
       query: { filters: [], sort: [] }
 query: { status: { type: string } }

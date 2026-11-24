@@ -22,6 +22,24 @@ The body is valid against the route's request schema, which is the input model
 minus the consumed properties; the route's path parameters are the consumed
 ones. Requests carry the page's same-origin credentials.
 
+## Preconditions
+
+A server opts in to conditional writes by answering a read or a write of a
+record with an `ETag`. The renderer keeps, per request path (its query left
+out), the `ETag` of the last `GET`, `PATCH` or `PUT` answer at that path, and a
+`PATCH`, `PUT` or `DELETE` to the path carries it as `If-Match`; a write's
+answer replaces it. A server sending no `ETag` is sent no `If-Match` and
+behaves as it always did. Nothing is declared in the manifest: the validator
+belongs to the path, so an action whose target is a record's path is guarded
+once that record has been read — by a [`Ui.Query`](query.md), a form's
+edit page — and one whose target nothing read is not.
+
+A refused precondition answers `412`. It draws the `failure` tree with the
+problem's own `code` (`ERR_UI_PRECONDITION_FAILED` when it names none), the
+inputs the person entered stay, and the path is announced as changed, so every
+reader of it reads again and takes the new validator. Pressing again sends the
+same inputs against the current record.
+
 ## The answer
 
 | Status | Means | Shown |
@@ -29,6 +47,7 @@ ones. Requests carry the page's same-origin credentials.
 | any 2xx | done | the `result` tree, drawn from the body |
 | 400 | the record was refused | on the fields, and the `failure` tree |
 | 401, 403 | not allowed | the `failure` tree |
+| 412 | the record changed since it was read ([below](#preconditions)) | the `failure` tree |
 | anything else, or no answer at all | failed | the `failure` tree |
 
 **A 2xx body** is a JSON object valid against `outputModel`. It is read only
@@ -42,7 +61,8 @@ failure with `code: ERR_UI_RESPONSE_INVALID`.
 — what an `Http.Api` answers every error with), whose `code` and `detail` the
 `failure` tree reads as `error.code` and `error.message` beside `error.status`.
 Without a `code`, `code` is `ERR_UI_UNAUTHORIZED` for a 401, `ERR_UI_FORBIDDEN`
-for a 403 and `ERR_UI_REQUEST_FAILED` otherwise; without a `detail`, `message`
+for a 403, `ERR_UI_PRECONDITION_FAILED` for a 412 and `ERR_UI_REQUEST_FAILED`
+otherwise; without a `detail`, `message`
 is `ui`'s own text for the status. With no answer at all `status` is
 absent and `code` is `ERR_UI_REQUEST_FAILED`.
 

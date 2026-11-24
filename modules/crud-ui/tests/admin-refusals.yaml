@@ -4,10 +4,9 @@ metadata:
   version: 1.0.0
   description: |
     `CrudUi.Admin`'s presentation keys are checked where the application writes
-    them: a key `filters`, `create` or `edit` does not have, an `afterSubmit`
-    outside what that opener takes — `again` on `edit` among them — a resource
-    at `surface` that is no surface, and a `paging` the listing does not take
-    are each reported against the application's own `CrudUi.Admin`.
+    them: a key `filters`, `create` or `edit` does not have, an opener with no
+    `to`, a `to` that is no destination, and a `paging` the listing does not
+    take are each reported against the application's own `CrudUi.Admin`.
 imports: { Assert: ../../assert }
 targets:
   - !ref refused
@@ -20,14 +19,12 @@ expect:
     - code: SCHEMA_VIOLATION
       message: "CrudUi.Admin/filtersKey: /filters must NOT have additional properties ('sumary' is not allowed)"
     - code: SCHEMA_VIOLATION
-      message: "CrudUi.Admin/createKey: /create must NOT have additional properties ('afterSubmitt' is not allowed)"
+      message: "CrudUi.Admin/createKey: /create must NOT have additional properties ('labell' is not allowed)"
     - code: SCHEMA_VIOLATION
-      message: "CrudUi.Admin/editKey: /edit must NOT have additional properties ('unsavd' is not allowed)"
-    - code: SCHEMA_VIOLATION
-      message: "CrudUi.Admin/createAfter: /create/afterSubmit must be equal to one of the allowed values (close | again | keep)"
-    - code: SCHEMA_VIOLATION
-      message: "CrudUi.Admin/editAfter: /edit/afterSubmit must be equal to one of the allowed values (close | keep)"
+      message: "CrudUi.Admin/editKey: /edit must NOT have additional properties ('labell' is not allowed)"
     - code: REFERENCE_KIND_MISMATCH
-      message: "CrudUi.Admin/createSurface: reference at 'create.surface' → 'Ui.LocalStore' does not implement 'Ui.Surface'"
+      message: "CrudUi.Admin/createDestination: reference at 'create.to' → 'Ui.LocalStore' does not implement 'Ui.Destination' (known implementations: Ui.Navigate, Ui.OpenPage)"
+    - code: SCHEMA_VIOLATION
+      message: "CrudUi.Admin/editNoDestination: /edit is missing required property 'to'"
     - code: SCHEMA_VIOLATION
       message: "CrudUi.Admin/pagingValue: /paging must be equal to one of the allowed values (pages | more | scroll)"

@@ -25,28 +25,58 @@ draws the same not-found page.
 
 A [surface](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) declared with
 `address: { name }` is addressed on its page by the query key
-`_telo.open.<name>`:
+`_telo.open.<name>`, which holds the **app-relative address of the page open in
+it**. A record's edit page, a create page and any other page a destination
+opens are addressed the same way:
 
 | Address | |
 | --- | --- |
 | `/todos` | nothing is open |
-| `/todos?_telo.open.todo=` | the create form, where a create opener declares the name |
-| `/todos?_telo.open.todo=42` | the edit form over the record whose key is `42` |
+| `/todos?_telo.open.todo=%2Ftodos%2F42` | the page `/todos/42` open in the surface named `todo` |
+| `/todos?_telo.open.todo=%2Ftodos%2Fnew` | the create page open in it |
+| `/posts/hello` | post `hello` as a page of its own |
 
-- Opening adds a history entry, unless a form of the same listing is already
-  open in the address: then it takes that form's entry, so closing never
-  returns to the form before. Closing removes only that surface's key — by
-  going back when the current entry is the one this visit's opening of it
-  added, the entry returned to being brought up to the address as it was less
-  the key; otherwise by replacing the current entry. Another surface open on
-  the page stays open. A surface closed while one opened after it is still
-  open remains named in the earlier entry, and stepping back to that entry
-  opens it again.
-- An address opened cold opens the surface, an edit over the record read from
-  `GET <basePath>/<key>`.
-- An empty value under a name only an edit opener declares opens nothing. A
-  row whose key is the empty string is opened in memory: no key is written and
-  no entry added.
+A filter overlay, a `tabs` node and a tab bar keep **their own values** under
+their own names in the same space: `_telo.open.filters=` is the open overlay,
+`_telo.open.section=details` the chosen tab. The renderer tells them apart by
+what the key holds — only an app-relative address is a page.
+
+- **Restoring.** An address opened cold looks for the surface in the current
+  route's page document, then in its layout's header, aside and footer, each
+  in tree order, and opens the page in the surface of the first destination
+  opening a page under that name — whatever page the value names. That
+  declaration stands in for what opened the page: a panel is drawn beside the
+  nearest composite holding it, a popover is anchored to it and an inline
+  surface drawn after it where it is itself the pressed element — each only
+  outside a listing's or a list's regions, which bind `row`, and only where that
+  element is drawn when the page first is. Otherwise (a listing's `create`,
+  `edit` or `press`, pending `query` content, an unchosen tab) the surface's
+  `compact` is drawn, else a dialog; so is one opened by a press whose element
+  has since been redrawn. Back and forward restore it the same way.
+- **Writing.** The key is written only where that search would restore a
+  surface equal, member for member, to the one the page opens in; otherwise —
+  a surface with no `address`, or a name declared only inside an opened page —
+  the opened page is held in memory, so a reload never opens the wrong surface
+  or nothing, and shows the page beneath alone.
+- **Dropping.** Of several keys holding an app-relative address the first, in
+  query order, that names a surface a destination declares opens its page;
+  every other such key is dropped by replacing the entry. A value that is no
+  address (a tab's, an overlay's) is never touched.
+- **History.** Opening a page while none is open adds a history entry when its
+  key is written. Opening one while one is open replaces it and takes its
+  entry, so back never walks a chain of opened pages. Closing drops the key —
+  by going back when the current entry is the one opening it added, otherwise
+  by replacing the current entry. Another key of the address stays.
+- **In memory.** Every address an opened page's own nodes write — `_telo.open.*`
+  of a tab or an overlay, `_telo.f.*`, `_telo.v.*`, a component's `navigate` to
+  the page's own path — is kept in memory with the page, so only the opened
+  page's address enters the application's. A page opened in a drawer, a panel
+  or an inline surface is a context of its own in this way.
+- **Unsaved input.** A form there holding unsaved input asks before the page
+  closes, is replaced by another record opening in the same surface, or the
+  application moves on. Every other form with unsaved input asks before the
+  application moves to another page, wherever it is placed; `unsaved: discard`
+  on the form asks nothing.
 - Every history entry the application writes carries its position in
   `history.state`, as `teloPosition`; the entry present when it starts is
   stamped too. That is what lets a step back from a form holding unsaved input
@@ -69,47 +99,6 @@ A [tab bar](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) whose `surface`
 `address: { name }` holds there the key of the tab whose sheet is open — a
 group's, or `~more` for More.
 
-## The page key
-
-A page a destination opens in a surface is addressed by the query key
-`_telo.page.<name>`, `<name>` the name of the surface's `address`, holding the
-app-relative address of the page open in it:
-
-| Address | |
-| --- | --- |
-| `/?_telo.page.post=%2Fposts%2Fhello` | the posts page, post `hello` open in the surface named `post` |
-| `/?_telo.page.post=%2Fauthors%2Fada%3Ffrom%3Dhello` | the same surface, now holding Ada's page |
-| `/posts/hello` | post `hello` as a page of its own |
-
-It is the shell's navigation state, apart from the [open key](#the-open-key)
-of a node — a listing's opener, a filter overlay, a `tabs` node — so a page and
-a listing may share a name.
-
-- **Restoring.** An address opened cold looks for the surface in the current
-  route's page document, then in its layout's header, aside and footer, each
-  in tree order, and opens the page in the surface of the first destination
-  opening a page under that name — whatever page the value names. Back and
-  forward restore it the same way.
-- **Writing.** The key is written only where that search would restore a
-  surface equal, member for member, to the one the page opens in; otherwise —
-  a surface with no `address`, or a name declared only inside an opened page —
-  the opened page is held in memory, so a reload never opens the wrong surface
-  or nothing, and shows the page beneath alone.
-- **Dropping.** A value that is not an app-relative address opens nothing, and
-  of several `_telo.page.*` keys the first, in query order, that opens a page
-  wins; every other is dropped by replacing the entry:
-  `/?_telo.page.x=https%3A%2F%2Fevil` becomes `/`.
-- **History.** Opening a page while none is open adds a history entry when its
-  key is written. Opening one while one is open replaces it and takes its
-  entry, so back never walks a chain of opened pages. Closing drops the key —
-  by going back when the current entry is the one opening it added, otherwise
-  by replacing the current entry.
-- **In memory.** Every address an opened page's own nodes write — `_telo.open.*`,
-  `_telo.f.*`, `_telo.v.*`, a component's `navigate` to the page's own path —
-  is kept in memory with the page, so only the opened page's address enters
-  the application's. A form there holding unsaved input asks before the page
-  closes, is replaced or the application moves on.
-
 ## Entry keys
 
 A navigation entry and a tab of a `tabs` node are named — in the address and
@@ -125,9 +114,8 @@ no letter or digit is keyed `entry` (a navigation entry) or `tab`. The
 application document carries each navigation entry's key as `key`, and a page
 document each tab's.
 
-A name is one state on its page: an overlay that shares its name with a
-listing's create opener opens and closes together with the create form. Give the
-overlay a name of its own unless that is meant.
+A name is one key on its page: give an overlay, a tab bar and a surface a name
+each, since two of them would write one value.
 
 ## Filter state
 
@@ -440,7 +428,7 @@ the result must be an address under the mount or an `https:`, `http:` or
 Readers and writers meet at one key: the resolved, percent-encoded,
 app-relative path, its query left out. After a 2xx the renderer announces an
 action's resolved target path, each resolved `refreshes` path and, inside a
-listing, its `basePath`; a listing's own edit (`PUT`) and delete also announce
+listing, its `basePath`; a listing's own edit (`PATCH`) and delete also announce
 the record's path (`<basePath>/<key>`). Announcing reloads, by exact equality:
 every query whose resolved `url` path is that path, whatever its method (a `refreshes`
 entry whose literal path holds a `*` / `**` segment instead reads again every
@@ -450,6 +438,20 @@ whose resolved `basePath` is (with its facet and relation label reads), and a `c
 whose open conversation path (`<basePath>/conversations/<id>`) is — read again
 unless a turn is running in it. A chat announces its own `refreshes` when a send
 is admitted and when a turn ends.
+
+**The kept validator.** The renderer keeps, per that same key, the `ETag` of the
+last `GET`, `PATCH` or `PUT` answer at the path — a `Ui.Query` read, a listing's
+edit read, a write's answer — and sends it as `If-Match` with every `PATCH`,
+`PUT` and `DELETE` to the path, whoever makes the request (a form, an action, a
+row action, a listing's delete). A write's answer replaces it, an answer with
+no `ETag` (or a weak one, `W/…`, which `If-Match` never matches) drops it, the
+least recently used of the 2,000 paths kept is dropped past that, a removed or missing record drops it, and a `POST` keeps
+nothing, its `ETag` being the new record's. A server that sends none is sent no
+`If-Match`. A `412` announces the path like a success does, so every reader of it
+reads again and takes the new validator, and the write's own failure is drawn
+with the problem's `code` (`ERR_UI_PRECONDITION_FAILED` when it names none); a
+form keeps its entered values and reads its record again at once. The rules are
+pinned by `modules/ui/conformance/merge-patch.json`.
 
 ## Queries
 

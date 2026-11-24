@@ -76,25 +76,26 @@ source:
   collection:
     kind: DataModel.Collection
     model: { kind: Telo.JsonSchema, schema: { type: object, required: [id], properties: { id: { type: string } } } }
+    schemas: { create: !ref Task }
     query: { filters: [], sort: [] }
 ---
 kind: Ui.Form
 metadata: { name: bare }
 model: !ref Task
-presentation: !ref tasks
+record: { presentation: !ref tasks }
 fields: [title]
 ---
 kind: Ui.Form
 metadata: { name: kinded }
 model: !ref Task
-presentation: !ref tasks
+record: { presentation: !ref tasks }
 fields:
   - { kind: Ui.InputField, property: title }
 ---
 kind: Ui.Form
 metadata: { name: full }
 model: !ref Task
-presentation: !ref tasks
+record: { presentation: !ref tasks }
 groups:
   - { name: who, label: Who, description: The people on it. }
   - name: when

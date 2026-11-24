@@ -1,3 +1,4 @@
+import { anchorRef } from "./node-anchors.js";
 import { TYPING_PAUSE } from "./typing-pause.js";
 import { Fragment, useContext, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useControl, useControls } from "./effective-controls.js";
@@ -464,6 +465,7 @@ export function Filters({ node }: { node: SpecNode }) {
   const PresetGroup = presets.length > 0 ? control("OptionGroup") : undefined;
   return (
     <div
+      ref={anchorRef(node)}
       data-telo-part="filters"
       data-state="idle"
       data-placement={placement.type}

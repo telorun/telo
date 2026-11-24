@@ -1,6 +1,6 @@
 # Tables: columns derived and written, sorting, style rules, members behind a
 # reference, the pager, filters from the address and fixed ones, and a table's
-# create and edit forms opening on every kind of surface. Every table but the
+# create and edit pages opening on every kind of surface. Every table but the
 # task board lists the tasks crud serves, so each write reloads them all.
 kind: Ui.View
 metadata: { name: tablesPage }
@@ -20,8 +20,8 @@ content:
         kind: Ui.Listing
         presentation: !ref tasksPresentation
         model: !ref Task
-        create: { form: !ref newTaskForm }
-        edit: { form: !ref taskForm }
+        create: { to: { kind: Ui.OpenPage, page: !ref newTaskPage } }
+        edit: { to: { kind: Ui.OpenPage, page: !ref taskPage, pathParams: { id: !cel "row.id" } } }
         delete: true
 
     # ---- Written columns, sorting and style rules ----
@@ -154,20 +154,18 @@ content:
             - value: !cel "row.title"
             - value: !cel "row.status"
             - value: !cel "row.dueOn"
-        create:
-          form: !ref newTaskForm
-          surface: { kind: Ui.Dialog, size: small }
-          afterSubmit: again
+        create: { to: { kind: Ui.OpenPage, page: !ref newTaskPage, surface: { kind: Ui.Dialog, size: small } } }
         edit:
-          form: !ref taskForm
-          surface:
-            kind: Ui.Dialog
-            size: large
-            modal: false
-            dismiss: { outside: false }
-            address: { name: taskDialog }
-          afterSubmit: keep
-          unsaved: discard
+          to:
+            kind: Ui.OpenPage
+            page: !ref taskQuickPage
+            pathParams: { id: !cel "row.id" }
+            surface:
+              kind: Ui.Dialog
+              size: large
+              modal: false
+              dismiss: { outside: false }
+              address: { name: taskDialog }
         delete: true
 
     - { type: text, text: Drawers, style: subheading }
@@ -183,16 +181,13 @@ content:
         model: !ref Task
         pageSize: 5
         layout: *surfaceLayout
-        create:
-          form: !ref newTaskForm
-          surface: { kind: Ui.Drawer, side: start, size: small }
-          afterSubmit: close
-          unsaved: confirm
+        create: { to: { kind: Ui.OpenPage, page: !ref createTaskPage, surface: { kind: Ui.Drawer, side: start, size: small } } }
         edit:
-          form: !ref taskForm
-          surface: { kind: Ui.Drawer, side: end, size: large, dismiss: { closeButton: false } }
-          afterSubmit: close
-          unsaved: confirm
+          to:
+            kind: Ui.OpenPage
+            page: !ref taskPage
+            pathParams: { id: !cel "row.id" }
+            surface: { kind: Ui.Drawer, side: end, size: large, dismiss: { closeButton: false } }
         delete: true
 
     - { type: text, text: Sheets, style: subheading }
@@ -208,12 +203,13 @@ content:
         model: !ref Task
         pageSize: 5
         layout: *surfaceLayout
-        create:
-          form: !ref newTaskForm
-          surface: { kind: Ui.Drawer, side: top, modal: false }
+        create: { to: { kind: Ui.OpenPage, page: !ref newTaskPage, surface: { kind: Ui.Drawer, side: top, modal: false } } }
         edit:
-          form: !ref taskForm
-          surface: { kind: Ui.Drawer, side: bottom, size: full, address: { name: taskSheet } }
+          to:
+            kind: Ui.OpenPage
+            page: !ref taskPage
+            pathParams: { id: !cel "row.id" }
+            surface: { kind: Ui.Drawer, side: bottom, size: full, address: { name: taskSheet } }
 
     - { type: text, text: Popovers, style: subheading }
     - type: text
@@ -230,16 +226,20 @@ content:
         pageSize: 5
         layout: *surfaceLayout
         create:
-          form: !ref newTaskForm
-          surface:
-            kind: Ui.Popover
-            side: end
-            align: center
-            compact: { kind: Ui.Dialog, size: full }
+          to:
+            kind: Ui.OpenPage
+            page: !ref newTaskPage
+            surface:
+              kind: Ui.Popover
+              side: end
+              align: center
+              compact: { kind: Ui.Dialog, size: full }
         edit:
-          form: !ref taskForm
-          surface: { kind: Ui.Popover, side: bottom, align: end, dismiss: { outside: false } }
-          afterSubmit: keep
+          to:
+            kind: Ui.OpenPage
+            page: !ref taskQuickPage
+            pathParams: { id: !cel "row.id" }
+            surface: { kind: Ui.Popover, side: bottom, align: end, dismiss: { outside: false } }
 
     - { type: text, text: In line, style: subheading }
     - type: text
@@ -255,11 +255,16 @@ content:
         pageSize: 5
         layout: *surfaceLayout
         create:
-          form: !ref newTaskForm
-          surface: { kind: Ui.InlineSurface, compact: { kind: Ui.Drawer, side: bottom } }
+          to:
+            kind: Ui.OpenPage
+            page: !ref newTaskPage
+            surface: { kind: Ui.InlineSurface, compact: { kind: Ui.Drawer, side: bottom } }
         edit:
-          form: !ref taskForm
-          surface: { kind: Ui.InlineSurface }
+          to:
+            kind: Ui.OpenPage
+            page: !ref taskPage
+            pathParams: { id: !cel "row.id" }
+            surface: { kind: Ui.InlineSurface }
         delete: true
 
     - { type: text, text: Panels, style: subheading }
@@ -277,24 +282,28 @@ content:
         pageSize: 5
         layout: *surfaceLayout
         create:
-          form: !ref newTaskForm
-          surface: { kind: Ui.Panel, side: start, size: small, dismiss: { escape: false } }
+          to:
+            kind: Ui.OpenPage
+            page: !ref newTaskPage
+            surface: { kind: Ui.Panel, side: start, size: small, dismiss: { escape: false } }
         edit:
-          form: !ref taskForm
-          surface:
-            kind: Ui.Panel
-            side: end
-            size: large
-            address: { name: taskPanel }
-            compact: { kind: Ui.Drawer, side: bottom }
+          to:
+            kind: Ui.OpenPage
+            page: !ref taskPage
+            pathParams: { id: !cel "row.id" }
+            surface:
+              kind: Ui.Panel
+              side: end
+              size: large
+              address: { name: taskPanel }
+              compact: { kind: Ui.Drawer, side: bottom }
 
     - { type: text, text: A page of its own, style: subheading }
     - type: text
       style: muted
       text: >-
-        Create and edit replace the page's content under one address name, so the address says either a new
-        task or the task with this key, and Back closes the form. The surface is declared once and named by
-        both.
+        Create and edit navigate to the pages themselves, a new task's and the task's own, and Back returns to
+        the table. The same two pages open over the table in every surface above.
     - type: composite
       ref:
         kind: Ui.Listing
@@ -302,27 +311,77 @@ content:
         model: !ref Task
         pageSize: 5
         layout: *surfaceLayout
-        create: { form: !ref newTaskForm, surface: !ref taskPage }
-        edit: { form: !ref taskForm, surface: !ref taskPage }
+        create: { to: { kind: Ui.Navigate, href: { path: !ref newTaskPage } } }
+        edit: { to: { kind: Ui.Navigate, href: { path: !ref taskPage, pathParams: { id: !cel "row.id" } } } }
 ---
-# The form that creates a task, opened by every listing's New button.
-kind: Ui.Form
-metadata: { name: newTaskForm }
-model: !ref TaskDraft
-presentation: !ref tasksPresentation
+# A task's pages. The listings above open them in every kind of surface, and
+# each is a full page at its own address. This one starts a fresh form after a
+# save; the posts board on /records opens a page like it with a status filled in.
+kind: Ui.Page
+metadata: { name: newTaskPage }
+path: /tasks/new
+title: New task
+children:
+  - type: composite
+    ref:
+      kind: Ui.Form
+      model: !ref TaskDraft
+      record: { presentation: !ref tasksPresentation }
+      afterSubmit: again
 ---
-# The form that replaces a task, opened by every listing's edit button over the
-# record read by its key.
-kind: Ui.Form
-metadata: { name: taskForm }
-model: !ref TaskEdit
-presentation: !ref tasksPresentation
+# The same form, closing the drawer it opens in after a save.
+kind: Ui.Page
+metadata: { name: createTaskPage }
+path: /tasks/create
+title: Create task
+children:
+  - type: composite
+    ref:
+      kind: Ui.Form
+      model: !ref TaskDraft
+      record: { presentation: !ref tasksPresentation }
 ---
-# One page surface, named by both openers of a listing: the address says either
-# a new task or the task with this key.
-kind: Ui.PageSurface
+# One task by the key in its address: the edit form starts from the record the
+# query reads, sends only what changed, and asks before unsaved input is dropped.
+kind: Ui.Page
 metadata: { name: taskPage }
-address: { name: task }
+path: /tasks/{id}
+title: Task
+children:
+  - type: query
+    query:
+      kind: Ui.Query
+      model: !ref Task
+      url: { path: "/api/tasks/{id}", pathParams: { id: !cel "params.id" } }
+    content:
+      - type: composite
+        ref:
+          kind: Ui.Form
+          model: !ref TaskEdit
+          record: { presentation: !ref tasksPresentation, key: !cel "data.id" }
+          initialValues: !cel "data"
+---
+# The same edit form for a surface that stays: it keeps its values after a
+# save and drops unsaved input without asking.
+kind: Ui.Page
+metadata: { name: taskQuickPage }
+path: /tasks/{id}/quick
+title: Quick edit
+children:
+  - type: query
+    query:
+      kind: Ui.Query
+      model: !ref Task
+      url: { path: "/api/tasks/{id}", pathParams: { id: !cel "params.id" } }
+    content:
+      - type: composite
+        ref:
+          kind: Ui.Form
+          model: !ref TaskEdit
+          record: { presentation: !ref tasksPresentation, key: !cel "data.id" }
+          initialValues: !cel "data"
+          afterSubmit: keep
+          unsaved: discard
 ---
 # The page every application lists at /tables, placing the view.
 kind: Ui.Page

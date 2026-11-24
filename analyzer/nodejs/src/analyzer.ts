@@ -262,7 +262,7 @@ import { declaredResultSchemaAt, isCallableKind, RETURNS_FROM_ANNOTATION } from 
 import type { CallableSlotContext } from "./callable-slot.js";
 import { schemaFromIsKindDecidable } from "./schema-from-sites.js";
 import { collectValueSchemaIssues, type ShapeAwareValidator } from "./validate-value-schema.js";
-import { valueSchemaFromProblems } from "./validate-value-schema-location.js";
+import { slotKindResolverOf, valueSchemaFromProblems } from "./validate-value-schema-location.js";
 import { annotationDeclarationProblems, matchPlaces, unsatisfiedMatch } from "./validate-match-for.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
 import type { StandIns } from "./stand-in-findings.js";
@@ -9476,6 +9476,11 @@ export class StaticAnalyzer {
       for (const problem of valueSchemaFromProblems(
         declarer as Record<string, any>,
         defs.effectiveSchemaOf(registered) as Record<string, any> | undefined,
+        undefined,
+        slotKindResolverOf(
+          (kind) => defs.resolve(kind) as Record<string, any> | undefined,
+          (definition) => defs.effectiveSchemaOf(definition as ResourceDefinition) as Record<string, any> | undefined,
+        ),
       )) {
         scopeSlotDiagnostics.push({
           severity: DiagnosticSeverity.Error,

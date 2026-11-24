@@ -4,10 +4,10 @@ metadata:
   version: 1.0.0
   description: |
     `CrudUi.Admin.press` is handed to the admin's listing whole: the listing
-    carries the press on the wire, its destination and label over `row`, and
-    keeps its edit form for the record's edit button. A press reading a
-    property the collection's list shape does not declare is refused at the
-    admin that wrote it.
+    carries the press on the wire, its destination and label over `row`, beside
+    the create and edit presses it is handed whole. A press reading a property
+    the collection's list shape does not declare — `values` of a create press
+    included — is refused at the admin that wrote it.
 imports:
   CrudUi: ../
   Crud: ../../crud
@@ -57,12 +57,24 @@ path: /tasks/{id}
 title: Task
 children: [{ type: text, text: Task }]
 ---
+kind: Ui.Page
+metadata: { name: newTaskPage }
+path: /tasks/new
+title: New task
+query: { title: { type: string } }
+children: [{ type: text, text: New task }]
+---
 kind: CrudUi.Admin
 metadata: { name: pressed }
 source: !ref tasksSource
 press:
   to: { kind: Ui.OpenPage, page: !ref taskPage, pathParams: { id: !cel "row.id" } }
   label: { text: "Open {$title}", values: { title: !cel "row.title" } }
+create:
+  to: { kind: Ui.OpenPage, page: !ref newTaskPage, queryParams: { title: !cel "values.title" } }
+edit:
+  to: { kind: Ui.OpenPage, page: !ref taskPage, pathParams: { id: !cel "row.id" } }
+  label: Change
 ---
 kind: Telo.Sequence
 metadata: { name: main }
@@ -74,7 +86,8 @@ steps:
     inputs:
       actual:
         press: !cel "steps.pressed.result.node.content.press"
-        edit: !cel "steps.pressed.result.node.content.edit.form.type"
+        create: !cel "steps.pressed.result.node.content.create.to.href.queryParams"
+        edit: !cel "steps.pressed.result.node.content.edit.to.href.path"
       expected:
         press:
           to:
@@ -85,12 +98,15 @@ steps:
           label:
             text: { text: "Open {$title}", context: null, lang: und, computed: false }
             values: { title: { root: row, path: [title] } }
-        edit: form
+        create: { title: { root: values, path: [title] } }
+        edit: { value: "/tasks/{id}" }
 ---
 kind: Assert.Manifest
 metadata: { name: misread }
 source: ./__fixtures__/press-refusals/telo.yaml
 expect:
   errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "CrudUi.Admin/misreadCreate: !cel: 'values.priority' is not defined (available: id, title)"
     - code: CEL_UNKNOWN_FIELD
       message: "CrudUi.Admin/misread: !cel: 'row.priority' is not defined (available: id, title)"

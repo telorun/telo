@@ -1,7 +1,8 @@
-import { useContext, type ReactNode } from "react";
+import { useContext, useRef, type ReactNode } from "react";
 import { styleAttribute, type Style } from "./bindings.js";
 import { Displayed, type ButtonSpec } from "./display-button.js";
 import type { RowActionSpec } from "./operation.js";
+import { anchorRef } from "./node-anchors.js";
 import { RootsContext } from "./renderer-context.js";
 import { useRowActions } from "./row-actions.js";
 
@@ -22,7 +23,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> => value !==
  */
 export function ButtonNode({ node }: { node: ButtonNodeSpec }): ReactNode {
   const roots = useContext(RootsContext);
-  const actions = useRowActions([node], roots, () => {});
+  const drawn = useRef<HTMLElement | null>(null);
+  const actions = useRowActions([node], roots, () => {}, () => drawn.current);
   // A button inside a record reads that record as `row`, as its other roots.
   const row = isRecord(roots.row) ? roots.row : {};
   return (
@@ -31,6 +33,10 @@ export function ButtonNode({ node }: { node: ButtonNodeSpec }): ReactNode {
         button: ({ label, disabled, submitting, press }) => (
           <Displayed display={node.button} text={label} glyph="go">
             <button
+              ref={(element) => {
+                drawn.current = element;
+                anchorRef(node)(element);
+              }}
               data-telo-part="button"
               data-button={node.button.type}
               data-state={submitting ? "submitting" : undefined}

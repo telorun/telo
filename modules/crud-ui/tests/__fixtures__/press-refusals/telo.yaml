@@ -56,6 +56,19 @@ path: /tasks/{id}
 title: Task
 children: [{ type: text, text: Task }]
 ---
+kind: Ui.Page
+metadata: { name: newTaskPage }
+path: /tasks/new
+title: New task
+query: { priority: { type: string } }
+children: [{ type: text, text: New task }]
+---
+kind: CrudUi.Admin
+metadata: { name: misreadCreate }
+source: !ref tasksSource
+create:
+  to: { kind: Ui.OpenPage, page: !ref newTaskPage, queryParams: { priority: !cel "values.priority" } }
+---
 kind: CrudUi.Admin
 metadata: { name: misread }
 source: !ref tasksSource

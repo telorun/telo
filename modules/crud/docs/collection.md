@@ -13,8 +13,8 @@ offers exactly what the API accepts.
 | `model` | required | one record as it is read, `id` included |
 | `table` | required | the `Sql.Table` the records are stored in (`SQLite.Table`, `Postgres.Table`) |
 | `schemas.list` | required | one row of the list, `id` included |
-| `schemas.create` | required | the body that creates a record, without `id` |
-| `schemas.update` | required | the body that updates a record, without `id` |
+| `schemas.create` | required | the body that creates a record, without `id`; declared by [`DataModel.Collection`](https://hub.telo.run/module/oci/ghcr.io/telorun/data-model/), required here |
+| `schemas.update` | required | the shape a record holds once a merge patch is applied, without `id`; declared by `DataModel.Collection`, required here |
 | `query.filters` | required | the filters a list accepts: `{ property, operator }` each; `[]` for none |
 | `query.sort` | required | the properties a list may be sorted by: `{ property }` each; `[]` for none |
 | `query.facets` | none | the properties whose present values, with counts, a facet request answers |
@@ -135,7 +135,7 @@ no shape.
 | `model` | `GET <prefix>/{id}`, the answer of `POST` and `PUT`, and the properties `query` and `relations` may name, with their types |
 | `schemas.list` | the properties of each row of `GET <prefix>` |
 | `schemas.create` | the `POST` body, and the columns an insert may name |
-| `schemas.update` | the `PUT` body, and the columns a replace sets — every other column keeps its value |
+| `schemas.update` | the record a `PATCH` leaves, and the `PUT` body: a patch may name only the properties it declares and cannot clear one it requires; a replace sets every column it declares — every other column keeps its value |
 
 ## Refused
 
@@ -157,7 +157,7 @@ same name prefixed `ERR_` when the collection is created.
 
 `CRUD_COLLECTION_PROPERTY_NOT_READABLE`, `_PROPERTY_TYPE_DIFFERS` and
 `_UPDATE_REQUIRES_OPTIONAL` are what make a record read sendable: `model`'s
-properties, restricted to those `update` declares, are a body `PUT` accepts.
+properties, restricted to those `update` declares, are a body `PUT` accepts, and a `PATCH` of any of them leaves a record the shape accepts.
 
 Both `telo check` and the collection, when it is created, compare the PHYSICAL
 tables — the `table` each table resource stores — reading every reference in

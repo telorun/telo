@@ -10,6 +10,7 @@ messages:
   cancel: İptal
   close: Kapat
   newRecord: Yeni
+  create: Oluştur
   edit: Düzenle
   delete: Sil
   deleteRowQuestion: Bu satır silinsin mi?
@@ -71,6 +72,7 @@ messages:
   keepEditing: Düzenlemeye devam et
   requestUnauthorized: Oturum açmadınız ya da oturumunuz sona erdi.
   requestForbidden: Bunu yapma izniniz yok.
+  requestPreconditionFailed: Kayıt başka biri tarafından değiştirildi. Kontrol edip yeniden kaydedin.
   requestFailedStatus: "İstek başarısız oldu, durum kodu: {$status}."
   requestFailed: "İstek başarısız oldu: {$reason}"
   recordRefused: Kayıt reddedildi.

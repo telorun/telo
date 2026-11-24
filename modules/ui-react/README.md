@@ -191,7 +191,18 @@ source:
   collection:
     kind: DataModel.Collection
     model: !ref Todo
+    key: id
+    schemas: { create: !ref TodoInput }
     query: { filters: [], sort: [{ property: text }] }
+---
+# A record's create screen is a page, opened over the list or reached by its own address.
+kind: Ui.Page
+metadata: { name: newTodo }
+path: /todos/new
+title: New todo
+children:
+  - type: composite
+    ref: { kind: Ui.Form, model: !ref TodoInput, record: { presentation: !ref todos } }
 ---
 kind: UiReact.App
 metadata: { name: admin }
@@ -203,6 +214,7 @@ layout:
   header:
     - { type: bar, start: [{ type: text, text: Todo Admin, style: title }] }
 pages:
+  - !ref newTodo
   - kind: Ui.Page
     path: /
     title: Todos
@@ -213,7 +225,7 @@ pages:
           presentation: !ref todos
           model: !ref Todo
           create:
-            form: { kind: Ui.Form, model: !ref TodoInput, presentation: !ref todos }
+            to: { kind: Ui.OpenPage, page: !ref newTodo }
           delete: true
 ---
 kind: Http.Server

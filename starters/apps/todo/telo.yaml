@@ -121,6 +121,40 @@ kind: Ui.CollectionPresentation
 metadata: { name: todosPresentation }
 source: !ref todosSource
 ---
+# A todo's screens are pages: the listing opens them in a drawer, and each is
+# reached by its own address too. The new-todo form starts empty again after a
+# save, so several can be added in a row.
+kind: Ui.Page
+metadata: { name: newTodoPage }
+path: /todos/new
+title: New todo
+children:
+  - type: composite
+    ref:
+      kind: Ui.Form
+      model: !ref NewTodo
+      record: { presentation: !ref todosPresentation }
+      afterSubmit: again
+---
+# The edit form starts from the todo the query reads and sends only what changed.
+kind: Ui.Page
+metadata: { name: todoPage }
+path: /todos/{id}
+title: Todo
+children:
+  - type: query
+    query:
+      kind: Ui.Query
+      model: !ref Todo
+      url: { path: "/api/todos/{id}", pathParams: { id: !cel "params.id" } }
+    content:
+      - type: composite
+        ref:
+          kind: Ui.Form
+          model: !ref TodoEdit
+          record: { presentation: !ref todosPresentation, key: !cel "data.id" }
+          initialValues: !cel "data"
+---
 kind: Ui.Page
 metadata: { name: todosPage }
 path: /
@@ -138,11 +172,16 @@ children:
         state: { key: todos, address: true, store: { kind: Ui.LocalStore } }
       create:
         # A drawer, and a full-size dialog on a narrow screen.
-        surface: { kind: Ui.Drawer, side: end, compact: { kind: Ui.Dialog, size: full } }
-        afterSubmit: again
+        to:
+          kind: Ui.OpenPage
+          page: !ref newTodoPage
+          surface: { kind: Ui.Drawer, side: end, compact: { kind: Ui.Dialog, size: full } }
       edit:
-        surface: { kind: Ui.Drawer, side: end, address: { name: todo } }
-        unsaved: confirm
+        to:
+          kind: Ui.OpenPage
+          page: !ref todoPage
+          pathParams: { id: !cel "row.id" }
+          surface: { kind: Ui.Drawer, side: end, address: { name: todo } }
 ---
 kind: Ui.Page
 metadata: { name: statusPage }
@@ -174,21 +213,20 @@ children:
           kind: Ui.Listing
           presentation: !ref todosPresentation
           model: !ref Todo
-          # An opener with nothing but its form opens as the listing
-          # decides: a dialog that closes after a save.
-          create: { form: { kind: Ui.Form, model: !ref NewTodo, presentation: !ref todosPresentation } }
-          edit: { form: { kind: Ui.Form, model: !ref TodoEdit, presentation: !ref todosPresentation } }
+          # A destination with nothing but its page opens it in a dialog.
+          create: { to: { kind: Ui.OpenPage, page: !ref newTodoPage } }
+          edit: { to: { kind: Ui.OpenPage, page: !ref todoPage, pathParams: { id: !cel "row.id" } } }
           delete: true
 ---
-# The whole frontend. `/` is one `CrudUi.Admin` — listing, filters, and the
-# create and edit forms all come from the collection — given three keys that
-# say how it behaves. `/status` is the same screen written out by hand.
+# The whole frontend. `/` is one `CrudUi.Admin` — listing and filters come
+# from the collection — given keys that say how it behaves and which pages its
+# buttons open. `/status` is the same screen written out by hand.
 kind: UiReact.App
 metadata: { name: ui }
 title: Todos
 theme: !ref UiReact.defaultTheme
 tokens: { kind: Ui.DesignTokens, color.accent: "#1f8fff", radius.md: 6px }
-pages: [!ref todosPage, !ref statusPage]
+pages: [!ref todosPage, !ref statusPage, !ref newTodoPage, !ref todoPage]
 layout:
   kind: Ui.PageLayout
   header:

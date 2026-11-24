@@ -1,0 +1,163 @@
+kind: Telo.Application
+metadata:
+  name: CrudPostgresWritesTest
+  version: 1.0.0
+  description: |
+    A Crud.Api over PostgreSQL: a PATCH that changes only a date column moves
+    the record's ETag, two concurrent PATCHes made against one validator end
+    as exactly one 200 and one 412, and a DELETE carrying the current validator
+    removes the record.
+
+    NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
+imports:
+  Pg:
+    source: ../../../postgres/tests/__fixtures__/container
+    variables: { engineUrl: !cel "variables.engineUrl" }
+    secrets: { engineToken: !cel "secrets.engineToken" }
+  Crud: ../../
+  Postgres: ../../../postgres
+  Http: ../../../http-server
+  HttpClient: ../../../http-client
+  Assert: ../../../assert
+  Run: ../../../run
+variables:
+  engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
+secrets:
+  engineToken: { env: TELO_HOST_CONTAINER_ENGINE_TOKEN, type: string, default: "" }
+targets:
+  - !ref migrate
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+access: !ref Pg.databaseAccess
+---
+kind: Postgres.Table
+metadata: { name: tasksTable }
+table: tasks
+columns:
+  id: { type: uuid, primaryKey: true, defaultExpression: "gen_random_uuid()" }
+  title: { type: text, nullable: false }
+  due_on: { type: date }
+---
+kind: Postgres.Schema
+metadata: { name: migrate }
+connection: !ref db
+version: !cel "module.version"
+tables: [!ref tasksTable]
+---
+kind: Telo.JsonSchema
+metadata: { name: TaskDraft }
+schema:
+  type: object
+  required: [title]
+  additionalProperties: false
+  properties: { title: { type: string, minLength: 1 }, # PostgreSQL hands a date back as a host date, which only an open schema admits.
+    dueOn: {} }
+---
+kind: Telo.JsonSchema
+metadata: { name: Task }
+extends: TaskDraft
+schema: { type: object, required: [id], properties: { id: { type: string } } }
+---
+kind: Crud.Collection
+metadata: { name: tasks }
+model: !ref Task
+table: !ref tasksTable
+schemas: { list: !ref Task, create: !ref TaskDraft, update: !ref TaskDraft }
+query: { filters: [], sort: [] }
+---
+kind: Crud.Api
+metadata: { name: tasksApi }
+connection: !ref db
+singular: task
+plural: tasks
+collection: !ref tasks
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 8973 }
+    mounts:
+      - { path: /tasks, mount: !ref tasksApi }
+targets:
+  - !ref server
+steps:
+  - name: create
+    inputs: { body: { title: Pay rent, dueOn: "2026-08-01" } }
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8973/tasks", method: POST }
+  - name: read
+    inputs:
+      url: !cel "'http://127.0.0.1:8973/tasks/' + steps.create.result.body.id"
+    invoke: { kind: HttpClient.Request, method: GET }
+
+  # Only the date changes, and the validator moves with it.
+  - name: moveDate
+    inputs:
+      url: !cel "'http://127.0.0.1:8973/tasks/' + steps.create.result.body.id"
+      headers:
+        content-type: application/merge-patch+json
+        if-match: !cel "steps.read.result.headers.etag"
+      body: { dueOn: "2030-01-01" }
+    invoke: { kind: HttpClient.Request, method: PATCH }
+  - name: assertDate
+    inputs:
+      actual:
+        status: !cel "steps.moveDate.result.status"
+        validatorMoved: !cel "steps.moveDate.result.headers.etag != steps.read.result.headers.etag"
+      expected: { status: 200, validatorMoved: true }
+    invoke: { kind: Assert.Equals }
+
+  # Two patches made against one validator: exactly one wins.
+  - name: raceStart
+    inputs:
+      url: !cel "'http://127.0.0.1:8973/tasks/' + steps.create.result.body.id"
+    invoke: { kind: HttpClient.Request, method: GET }
+  - name: race
+    inputs:
+      validator: !cel "steps.raceStart.result.headers.etag"
+      url: !cel "'http://127.0.0.1:8973/tasks/' + steps.create.result.body.id"
+    invoke:
+      kind: Run.Projection
+      collection: [first, second]
+      concurrency: 2
+      steps:
+        - name: patchRacing
+          inputs:
+            url: !cel "inputs.url"
+            headers:
+              content-type: application/merge-patch+json
+              if-match: !cel "inputs.validator"
+            body: { title: Raced }
+          invoke: { kind: HttpClient.Request, method: PATCH }
+      outputs: { status: !cel "steps.patchRacing.result.status" }
+  - name: assertRace
+    inputs:
+      actual: !cel "sort(steps.race.result.map(r, r.status))"
+      expected: [200, 412]
+    invoke: { kind: Assert.Equals }
+
+  # A DELETE carrying the current validator removes the record.
+  - name: readRaced
+    inputs:
+      url: !cel "'http://127.0.0.1:8973/tasks/' + steps.create.result.body.id"
+    invoke: { kind: HttpClient.Request, method: GET }
+  - name: delete
+    inputs:
+      url: !cel "'http://127.0.0.1:8973/tasks/' + steps.create.result.body.id"
+      headers: { if-match: !cel "steps.readRaced.result.headers.etag" }
+    invoke: { kind: HttpClient.Request, method: DELETE }
+  - name: readDeleted
+    inputs:
+      url: !cel "'http://127.0.0.1:8973/tasks/' + steps.create.result.body.id"
+    invoke: { kind: HttpClient.Request, method: GET }
+  - name: assertDeleted
+    inputs:
+      actual:
+        raced: !cel "steps.readRaced.result.body.title"
+        deleted: !cel "steps.delete.result.status"
+        gone: !cel "steps.readDeleted.result.status"
+      expected: { raced: Raced, deleted: 204, gone: 404 }
+    invoke: { kind: Assert.Equals }

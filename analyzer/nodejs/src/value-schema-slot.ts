@@ -10,7 +10,9 @@
  * reader, so no two of them disagree about what the annotation marks or where
  * its location leads.
  */
-import { isRefSlot } from "./ref-slot.js";
+import { isCompiledValue } from "@telorun/sdk";
+import { isTaggedSentinel } from "@telorun/templating";
+import { isRefSlot, readRefSlot } from "./ref-slot.js";
 import { setOwnProperty } from "./own-property.js";
 import { resolveSchemaPointer } from "./manifest-navigation.js";
 import { declarationValuesAt, type ProjectionScope } from "./schema-projection.js";
@@ -31,9 +33,13 @@ const VALUE_SCHEMA_ANNOTATION = "x-telo-value-schema-from";
 /**
  * Which member of each reached type the annotated node's value must satisfy: a
  * Relative JSON Pointer from the annotated node — `up` levels out, then its key
- * (`#`) or the string at `pointer` beneath it.
+ * (`#`) or the string at `pointer` beneath it — or an absolute JSON Pointer
+ * (`absolute`) read from the declaration holding each reached type.
  */
-export type ValueSchemaMember =
+export type ValueSchemaMember = RelativeValueSchemaMember | { readonly absolute: readonly string[] };
+
+/** A member named relative to the annotated node. */
+export type RelativeValueSchemaMember =
   | { readonly up: number; readonly key: true }
   | { readonly up: number; readonly pointer: readonly string[] };
 
@@ -44,10 +50,12 @@ export type ValueSchemaLocation =
 
 const decodeSegment = (segment: string) => segment.replace(/~1/g, "/").replace(/~0/g, "~");
 
-/** A Relative JSON Pointer naming a member, or undefined when it is none: a
- *  non-negative integer, then `#` or a non-empty JSON Pointer. */
+/** A member as written, or undefined when it is none: a Relative JSON Pointer
+ *  (a non-negative integer, then `#` or a non-empty JSON Pointer), or a
+ *  non-empty absolute JSON Pointer. */
 export function readValueSchemaMember(raw: unknown): ValueSchemaMember | undefined {
   if (typeof raw !== "string") return undefined;
+  if (/^(?:\/[^/]+)+$/.test(raw)) return { absolute: raw.slice(1).split("/").map(decodeSegment) };
   const parsed = /^(0|[1-9][0-9]*)(#|(?:\/[^/]+)+)$/.exec(raw);
   if (!parsed) return undefined;
   const up = Number(parsed[1]);
@@ -99,9 +107,10 @@ function readValueSchemaLocation(raw: unknown): ValueSchemaLocation {
       return {
         raw,
         invalid:
-          `\`member\` is a Relative JSON Pointer from the annotated node naming a property of the ` +
-          `type at \`from\`: a non-negative integer, then '#' (that node's own key) or a JSON ` +
-          `Pointer to the string naming it — '0#' for a map value's own key.`,
+          `\`member\` names a property of the type at \`from\`: a Relative JSON Pointer from the ` +
+          `annotated node — a non-negative integer, then '#' (that node's own key) or a JSON ` +
+          `Pointer to the string naming it, '0#' for a map value's own key — or a JSON Pointer ` +
+          `from the root of the declaration holding the type ('/key').`,
       };
     }
     return { raw, segments: location.segments, member: read };
@@ -144,11 +153,15 @@ export interface ValueSchemaHost {
 export interface ValueSchemaReach {
   readonly schema: Record<string, any>;
   readonly member?: ValueSchemaMember;
+  /** For an absolute member, the property name read from the declaration
+   *  holding this type. */
+  readonly memberName?: string;
 }
 
 /** Every type the locations `from` names reach from `declaration`, each with its
- *  location's member. A location that reaches nothing, a value naming no type,
- *  or a location that cannot be read contributes nothing. */
+ *  location's member — an absolute one read from that type's own holder. A
+ *  location that reaches nothing, a value naming no type, an absolute member
+ *  naming nothing, or a location that cannot be read contributes nothing. */
 export function valueSchemaTypes(
   declaration: Record<string, any>,
   from: unknown,
@@ -157,14 +170,62 @@ export function valueSchemaTypes(
   const reaches: ValueSchemaReach[] = [];
   for (const location of readValueSchemaLocations(from) ?? []) {
     if ("invalid" in location) continue;
-    for (const { value, holder } of declarationValuesAt(declaration, location.segments, host.scope)) {
-      const schema = host.typeSchemaOf(value, holder);
+    const { member } = location;
+    for (const found of declarationValuesAt(declaration, location.segments, host.scope)) {
+      const schema = host.typeSchemaOf(found.value, found.holder);
       if (!schema || typeof schema !== "object") continue;
-      if (reaches.some((r) => r.schema === schema && r.member === location.member)) continue;
-      reaches.push({ schema, member: location.member });
+      const memberName =
+        member && "absolute" in member
+          ? absoluteMemberName(found.declaration ?? found.holder, member.absolute, host.scope)
+          : undefined;
+      if (member && "absolute" in member && memberName === undefined) continue;
+      if (reaches.some((r) => r.schema === schema && r.member === member && r.memberName === memberName)) continue;
+      reaches.push({ schema, member, ...(memberName !== undefined ? { memberName } : {}) });
     }
   }
   return reaches;
+}
+
+/**
+ * The property name an absolute member names in `holder`: the string at
+ * `pointer` as written, else — the field absent — the `default:` the holder's
+ * kind declares there in its effective author schema. Undefined for anything
+ * else, a computed value included.
+ */
+function absoluteMemberName(
+  holder: Record<string, any>,
+  pointer: readonly string[],
+  scope: ProjectionScope,
+): string | undefined {
+  let node: unknown = holder;
+  for (const segment of pointer) {
+    if (!node || typeof node !== "object" || isTaggedSentinel(node) || isCompiledValue(node)) return undefined;
+    node = (node as Record<string, unknown>)[segment];
+  }
+  if (typeof node === "string") return node;
+  if (node !== undefined || typeof holder.kind !== "string") return undefined;
+  const definition = scope.resolveDefinition(holder.kind, holder);
+  if (!definition) return undefined;
+  const schema = (scope.effectiveKind?.(definition)?.schema ?? definition.schema) as Record<string, any> | undefined;
+  const declared = schema ? declaredNodeAt(schema, schema, pointer) : undefined;
+  return typeof declared?.default === "string" ? declared.default : undefined;
+}
+
+/** The schema node `pointer` names beneath `start` through `properties`, each
+ *  document-local `$ref` of `root` followed; undefined where none is declared. */
+function declaredNodeAt(
+  start: Record<string, any>,
+  root: Record<string, any>,
+  pointer: readonly string[],
+): Record<string, any> | undefined {
+  let node: Record<string, any> | undefined = start;
+  for (const segment of pointer) {
+    node = localTarget(node, root);
+    const next = (node?.properties as Record<string, unknown> | undefined)?.[segment];
+    node = next && typeof next === "object" ? (next as Record<string, any>) : undefined;
+    if (!node) return undefined;
+  }
+  return localTarget(node, root);
 }
 
 /** Keywords whose value is data, never a schema. */
@@ -287,15 +348,19 @@ export function resolveContractValueSchemas(
     $ref: `#/$defs/${pointerSegment(entryOf(type))}${pointer}`,
   });
   // What one reached type requires of the node: the type itself, or with a
-  // `member`, the property its key names — at a fixed key that property. A map's
+  // `member`, the property an absolute member read off the type's holder names,
+  // or the property its key names — at a fixed key that property. A map's
   // values are typed on the map (`mapConjuncts`); a member any other place names
   // is data, unknown to a contract, and contributes nothing.
   const conjunct = (
-    type: Record<string, any>,
-    member: ValueSchemaMember | undefined,
+    { schema: type, member, memberName }: ValueSchemaReach,
     key: string | undefined,
   ): Record<string, any> | undefined => {
     if (!member) return refTo(type);
+    if ("absolute" in member) {
+      const pointer = memberPointerOf(type, memberName!);
+      return pointer === undefined ? undefined : refTo(type, pointer);
+    }
     if (!("key" in member) || member.up !== 0 || key === undefined || key === MAP_VALUE) return undefined;
     const pointer = memberPointerOf(type, key);
     return pointer === undefined ? undefined : refTo(type, pointer);
@@ -332,7 +397,7 @@ export function resolveContractValueSchemas(
     }
     const conjuncts = [
       ...valueSchemaTypes(declaration, node[VALUE_SCHEMA_ANNOTATION], host)
-        .map(({ schema: type, member }) => conjunct(type, member, key))
+        .map((reach) => conjunct(reach, key))
         .filter((c): c is Record<string, any> => c !== undefined),
       ...mapConjuncts(node),
     ];
@@ -504,7 +569,7 @@ export function valueSchemaAnnotations(schema: unknown, path = ""): ValueSchemaA
 export function valueSchemaMemberProblem(
   root: Record<string, any>,
   annotation: ValueSchemaAnnotation,
-  member: ValueSchemaMember,
+  member: RelativeValueSchemaMember,
 ): string | undefined {
   const { levels } = annotation;
   if (member.up > levels.length) {
@@ -516,17 +581,119 @@ export function valueSchemaMemberProblem(
       ? undefined
       : `\`member\` takes the key of a node that is no map value or object member, so it has no key naming a property.`;
   }
-  let node: Record<string, any> | undefined = depth === 0 ? root : levels[depth - 1]!.node;
-  for (const segment of member.pointer) {
-    node = localTarget(node, root);
-    const next = (node?.properties as Record<string, unknown> | undefined)?.[segment];
-    node = next && typeof next === "object" ? (next as Record<string, any>) : undefined;
-    if (!node) return `\`member\` names '${member.pointer.join("/")}', which the schema does not declare there.`;
-  }
-  node = localTarget(node, root);
-  return node && holdsOnlyStrings(node)
+  return stringPointerProblem(depth === 0 ? root : levels[depth - 1]!.node, root, member.pointer, member.pointer.join("/"));
+}
+
+/** Why `pointer` beneath `start` names no string-typed node, or undefined;
+ *  `kind` names the schema judged when it is not the annotation's own. */
+function stringPointerProblem(
+  start: Record<string, any>,
+  root: Record<string, any>,
+  pointer: readonly string[],
+  written: string,
+  kind?: string,
+): string | undefined {
+  const node = declaredNodeAt(start, root, pointer);
+  if (!node) return `\`member\` names '${written}', which ${kind ?? "the schema"} does not declare there.`;
+  return holdsOnlyStrings(node)
     ? undefined
-    : `\`member\` names '${member.pointer.join("/")}', which is not declared a string, so it cannot name a property.`;
+    : `\`member\` names '${written}', which is not declared a string${kind ? ` in ${kind}` : ""}, so it cannot name a property.`;
+}
+
+/** The kind a reference slot names, and its author schema, inheritance
+ *  resolved — read in the scope of `within`, the definition whose schema holds
+ *  the slot (undefined for the kind being judged). */
+export type SlotKindResolver = (
+  kind: string,
+  within: Record<string, any> | undefined,
+) => { readonly definition: Record<string, any>; readonly schema: Record<string, any> | undefined } | undefined;
+
+/**
+ * Why an absolute `member` cannot name a property of the declaration holding
+ * what `segments` reaches, or undefined when it can: the pointer must name a
+ * string in the schema of the holder's kind — the kind's own `schema` when the
+ * location crosses no reference slot, else each kind the last crossed slot
+ * names. A kind `resolveSlotKind` does not resolve is not judged.
+ */
+export function absoluteMemberProblem(
+  schema: Record<string, any>,
+  segments: readonly string[],
+  pointer: readonly string[],
+  resolveSlotKind: SlotKindResolver | undefined,
+): string | undefined {
+  const written = `/${pointer.map(pointerSegment).join("/")}`;
+  for (const holder of locationHolderSchemas(schema, segments, resolveSlotKind)) {
+    if (!holder.schema) continue;
+    const where = holder.definition ? `the schema of '${kindNameOf(holder.definition)}'` : "the kind's schema";
+    const problem = stringPointerProblem(holder.schema, holder.schema, pointer, written, where);
+    if (problem) return problem;
+  }
+  return undefined;
+}
+
+const kindNameOf = (definition: Record<string, any>): string => {
+  const { module, name } = (definition.metadata ?? {}) as { module?: string; name?: string };
+  return module ? `${module}.${name}` : String(name);
+};
+
+/**
+ * The schemas of the declarations a location's values sit in: `schema` while no
+ * reference slot is crossed, and past one the schema of each kind the slot
+ * names, read on with the segments left. A branch the schema does not declare,
+ * a node typed from elsewhere, or a kind that does not resolve yields nothing.
+ */
+function locationHolderSchemas(
+  schema: Record<string, any>,
+  segments: readonly string[],
+  resolveSlotKind: SlotKindResolver | undefined,
+): Array<{ schema: Record<string, any> | undefined; definition?: Record<string, any> }> {
+  const out: Array<{ schema: Record<string, any> | undefined; definition?: Record<string, any> }> = [];
+  const crossed = new Set<object>();
+  const walk = (
+    raw: unknown,
+    root: Record<string, any>,
+    definition: Record<string, any> | undefined,
+    rest: readonly string[],
+    seen: readonly object[],
+  ): void => {
+    const node = localTarget(raw, root);
+    if (!node || seen.includes(node)) return;
+    if (rest.length === 0) {
+      if (!out.some((holder) => holder.schema === root)) out.push({ schema: root, ...(definition ? { definition } : {}) });
+      return;
+    }
+    if (isRefSlot(node)) {
+      if (!resolveSlotKind) return;
+      for (const kind of readRefSlot(node)?.kinds ?? []) {
+        const target = resolveSlotKind(kind, definition);
+        if (!target?.schema || crossed.has(target.schema)) continue;
+        crossed.add(target.schema);
+        walk(target.schema, target.schema, target.definition, rest, []);
+      }
+      return;
+    }
+    if (node["x-telo-schema-from"] !== undefined || typeof node.$ref === "string") return;
+    const here = [...seen, node];
+    const [segment, ...tail] = rest;
+    if (segment === "*") {
+      if (node.items && typeof node.items === "object") walk(node.items, root, definition, tail, []);
+    } else {
+      const property = (node.properties as Record<string, unknown> | undefined)?.[segment!];
+      if (property !== undefined) walk(property, root, definition, tail, []);
+      if (node.additionalProperties && typeof node.additionalProperties === "object") {
+        walk(node.additionalProperties, root, definition, tail, []);
+      }
+      for (const pattern of Object.values((node.patternProperties ?? {}) as Record<string, unknown>)) {
+        walk(pattern, root, definition, tail, []);
+      }
+    }
+    for (const key of ["allOf", "anyOf", "oneOf"] as const) {
+      const branches = node[key];
+      if (Array.isArray(branches)) for (const branch of branches) walk(branch, root, definition, rest, here);
+    }
+  };
+  walk(schema, schema, undefined, segments, []);
+  return out;
 }
 
 function holdsOnlyStrings(node: Record<string, any>): boolean {
@@ -753,7 +920,7 @@ function concreteSegments(path: string): string[] {
 export function memberNameAt(
   manifest: Record<string, any>,
   path: string,
-  member: ValueSchemaMember,
+  member: RelativeValueSchemaMember,
 ): string | undefined {
   const segments = concreteSegments(path);
   if (member.up > segments.length) return undefined;

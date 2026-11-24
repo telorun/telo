@@ -1,64 +1,44 @@
-# Every surface kind handed a key it does not take, a page surface with no
-# address, a surface slot and a compact slot naming the wrong kind, an edit
-# that asks for another record after its submit, and a form named where the
-# opener goes.
+# Every surface kind handed a key it does not take, the removed page surface, a
+# compact slot naming the wrong kind, a form named where a surface goes, and
+# the removed spellings of an opener and of a form's presentation.
 kind: Telo.Application
-metadata:
-  name: UiInvalidSurfacesApp
-  version: 1.0.0
-imports:
-  Ui: ../../../../
-  DataModel: ../../../../../data-model
+metadata: { name: UiInvalidSurfacesApp, version: 1.0.0 }
+imports: { Ui: ../../../../, DataModel: ../../../../../data-model }
 ---
 kind: Ui.Dialog
-metadata:
-  name: dialogSide
+metadata: { name: dialogSide }
 side: end
 ---
 kind: Ui.Drawer
-metadata:
-  name: drawerAlign
+metadata: { name: drawerAlign }
 align: start
 ---
 kind: Ui.Popover
-metadata:
-  name: popoverAddress
+metadata: { name: popoverAddress }
 address: { name: todo }
 ---
 kind: Ui.InlineSurface
-metadata:
-  name: inlineSize
+metadata: { name: inlineSize }
 size: small
 ---
 kind: Ui.Panel
-metadata:
-  name: panelModal
+metadata: { name: panelModal }
 modal: false
 ---
 kind: Ui.PageSurface
-metadata:
-  name: pageCompact
+metadata: { name: ownPage }
 address: { name: todo }
-compact: { kind: Ui.Dialog }
----
-kind: Ui.PageSurface
-metadata:
-  name: pageUnaddressed
 ---
 kind: Ui.Panel
-metadata:
-  name: compactPopover
+metadata: { name: compactPopover }
 compact: { kind: Ui.Popover }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Todo
+metadata: { name: Todo }
 schema:
   type: object
   required: [id]
-  properties:
-    id: { type: integer }
-    text: { type: string }
+  properties: { id: { type: integer }, text: { type: string } }
 ---
 kind: Ui.CollectionPresentation
 metadata: { name: todos }
@@ -67,36 +47,44 @@ source:
   basePath: /api/todos
   collection:
     kind: DataModel.Collection
+    schemas: { create: { kind: Telo.JsonSchema, schema: { type: object } } }
     model: !ref Todo
     query: { filters: [], sort: [] }
 ---
 kind: Ui.Form
-metadata:
-  name: todoForm
+metadata: { name: todoForm }
+model: !ref Todo
+record: { presentation: !ref todos }
+---
+kind: Ui.Page
+metadata: { name: todoPage }
+path: /todos/{id}
+title: Todo
+children: [{ type: text, text: Todo }]
+---
+kind: Ui.OpenPage
+metadata: { name: formAsSurface }
+page: !ref todoPage
+pathParams: { id: 7 }
+surface: !ref todoForm
+---
+kind: Ui.Form
+metadata: { name: legacyPresentation }
 model: !ref Todo
 presentation: !ref todos
 ---
 kind: Ui.Listing
-metadata:
-  name: surfaceIsForm
+metadata: { name: legacyCreate }
 model: !ref Todo
 presentation: !ref todos
 create:
   form: !ref todoForm
-  surface: !ref todoForm
+  surface: { kind: Ui.Dialog }
 ---
 kind: Ui.Listing
-metadata:
-  name: editAgain
+metadata: { name: legacyEdit }
 model: !ref Todo
 presentation: !ref todos
 edit:
   form: !ref todoForm
-  afterSubmit: again
----
-kind: Ui.Listing
-metadata:
-  name: bareCreate
-model: !ref Todo
-presentation: !ref todos
-create: !ref todoForm
+  afterSubmit: keep

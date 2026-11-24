@@ -1188,6 +1188,41 @@
         ]
       },
       {
+        "name": "creates on a day with the day as the record's start",
+        "props": {
+          "can": {
+            "open": false,
+            "create": true,
+            "move": true
+          }
+        },
+        "steps": [
+          {
+            "click": {
+              "part": "record-create",
+              "within": {
+                "part": "calendar-day",
+                "attributes": {
+                  "aria-label": "Oct 7"
+                }
+              }
+            }
+          },
+          {
+            "expect": {
+              "intents": [
+                [
+                  "onCreate",
+                  {
+                    "startsOn": "2026-10-07"
+                  }
+                ]
+              ]
+            }
+          }
+        ]
+      },
+      {
         "name": "draws each record's press as the first child of the record's element, which carries data-selected while the record is selected",
         "props": {
           "records": [

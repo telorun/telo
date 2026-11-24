@@ -20,7 +20,7 @@ export interface LayoutRecord {
   press: ReactNode;
   /** The record's row actions, edit and delete, drawn by the renderer; `null` when it offers none. */
   actions: ReactNode;
-  /** Where its inline edit form opens: present while one is open on it, to be drawn under it. */
+  /** Where a page opened in line from it is drawn: present while one is open on it, to be drawn under it. */
   detail?: ReactNode;
   /** The style names `rowStyle` gives it, for its element's `data-style`. */
   style?: string;
@@ -88,7 +88,7 @@ export interface LayoutProps extends LayoutLevel {
   paging: "more" | "scroll";
   /** Drawn where the records would be when the reads answer none. */
   empty: ReactNode;
-  /** Which of `onOpen`, `onCreate` and `onMove` does anything: `open` while the listing has a press or an edit opener. */
+  /** Which of `onOpen`, `onCreate` and `onMove` does anything: `open` while the listing has a press. */
   can: { open: boolean; create: boolean; move: boolean };
   /** The renderer's words a layout draws, finished. */
   words: { loadMore: string; moveTo: string; none: string; newRecord: string };
@@ -100,12 +100,12 @@ export interface LayoutProps extends LayoutLevel {
   onPeriodChange(period: LayoutPeriod): void;
   /** Read, or stop reading, a record's children. */
   onExpand(key: string, open: boolean): void;
-  /** Run a record's press, else open it as its edit opener says. */
+  /** Run a record's press. */
   onOpen(key: string): void;
   /** Sort by a property, `-` before it for descending. */
   onSortChange(sort: string): void;
   /** Run the move: `to` is the record as the gesture leaves it; what it leaves out keeps the row's value. */
   onMove(key: string, to: Record<string, unknown>): void;
-  /** Open the create form with these values: only the plan's own properties are kept. */
+  /** Run the listing's create press with these values as its `values` root: only the plan's own properties are kept. */
   onCreate(values: Record<string, unknown>): void;
 }

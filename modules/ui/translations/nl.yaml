@@ -10,6 +10,7 @@ messages:
   cancel: Annuleren
   close: Sluiten
   newRecord: Nieuw
+  create: Aanmaken
   edit: Bewerken
   delete: Verwijderen
   deleteRowQuestion: Deze rij verwijderen?
@@ -81,6 +82,7 @@ messages:
   keepEditing: Verder bewerken
   requestUnauthorized: Je bent niet ingelogd, of je sessie is beëindigd.
   requestForbidden: Je hebt geen toestemming om dit te doen.
+  requestPreconditionFailed: Het record is door iemand anders gewijzigd. Controleer het en sla opnieuw op.
   requestFailedStatus: Het verzoek is mislukt met status {$status}.
   requestFailed: "Het verzoek is mislukt: {$reason}"
   recordRefused: Het record is geweigerd.

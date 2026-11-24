@@ -543,6 +543,7 @@ routes:
 kind: DataModel.Collection
 metadata: { name: purchaseRequests }
 model: !ref PurchaseRequest
+schemas: { create: !ref NewRequest }
 query:
   filters: [{ property: status, operator: eq }]
   sort: []
@@ -551,6 +552,19 @@ query:
 kind: Ui.CollectionPresentation
 metadata: { name: requestsPresentation }
 source: { kind: Ui.CollectionSource, collection: !ref purchaseRequests, basePath: /api/requests }
+---
+# The form that submits another request, opened over the list.
+kind: Ui.Page
+metadata: { name: newRequestPage }
+path: /requests/new
+title: New request
+children:
+  - type: composite
+    ref:
+      kind: Ui.Form
+      model: !ref NewRequest
+      record: { presentation: !ref requestsPresentation }
+      afterSubmit: again
 ---
 kind: Ui.Page
 metadata: { name: requestsPage }
@@ -574,7 +588,7 @@ children:
           - value: !cel "row.costCenter"
           - value: !cel "row.submittedAt"
       create:
-        form: { kind: Ui.Form, model: !ref NewRequest, presentation: !ref requestsPresentation }
+        to: { kind: Ui.OpenPage, page: !ref newRequestPage }
       rowActions:
         - action:
             kind: Ui.Action
@@ -613,7 +627,7 @@ kind: UiReact.App
 metadata: { name: ui }
 title: Purchase requests
 theme: !ref UiReact.defaultTheme
-pages: [!ref requestsPage]
+pages: [!ref requestsPage, !ref newRequestPage]
 layout:
   kind: Ui.PageLayout
   header:

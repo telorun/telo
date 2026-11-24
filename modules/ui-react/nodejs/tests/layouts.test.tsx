@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadFixtureComponents, render, type Rendered } from "./harness.js";
 import { FakeIntersections } from "./intersections.js";
 import { wireText } from "./harness.js";
-import { address, dialogSurface, filterField, filtersNode, listingNode, opener, openPageAt, operation, todoColumns, todos } from "./spec-nodes.js";
+import { address, dialogSurface, filterField, filtersNode, listingNode, openPageAt, operation, prefilledPages, pressOpening, recordPages, todoColumns, todos } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => {
@@ -25,7 +25,7 @@ const row = (...path: string[]) => ({ root: "row", path });
 const content = { type: "value", value: row("text"), present: { type: "string" } };
 const inline = { type: "inline" };
 const listOf = (overrides: Record<string, unknown> = {}) =>
-  listingNode({ rowStyle: undefined, create: undefined, edit: undefined, delete: false, layout: { type: "list", content, reads: {} }, ...overrides });
+  listingNode({ rowStyle: undefined, create: null, edit: null, delete: false, layout: { type: "list", content, reads: {} }, ...overrides });
 const statuses = { property: "status", values: "all", enum: ["open", "blocked", "done"], labels: [] };
 /** The move setting a record's status, posted to an operation that rewrites the record. */
 const moveStatus = {
@@ -33,11 +33,11 @@ const moveStatus = {
   inputs: { id: row("id"), status: { root: "to", path: ["status"] } },
 };
 const board = (overrides: Record<string, unknown> = {}) =>
-  listingNode({ rowStyle: undefined, create: undefined, edit: undefined, delete: false, layout: { type: "board", content, move: moveStatus, reads: { groups: statuses } }, ...overrides });
+  listingNode({ rowStyle: undefined, create: null, edit: null, delete: false, layout: { type: "board", content, move: moveStatus, reads: { groups: statuses } }, ...overrides });
 const cardsOf = (overrides: Record<string, unknown> = {}) =>
-  listingNode({ rowStyle: undefined, create: undefined, edit: undefined, delete: false, layout: { type: "cards", content, size: "medium", reads: {} }, ...overrides });
+  listingNode({ rowStyle: undefined, create: null, edit: null, delete: false, layout: { type: "cards", content, size: "medium", reads: {} }, ...overrides });
 const show = (children: unknown[], rows: Record<string, unknown>[] = todos, more: Record<string, Record<string, unknown>[]> = {}) =>
-  render({ path: "/", loadModule: loadFixtureComponents, required: ["text"], collections: { "/api/todos": rows, ...more }, pages: { "/": { title: "Todos", children: children as never } } });
+  render({ path: "/", loadModule: loadFixtureComponents, required: ["text"], collections: { "/api/todos": rows, ...more }, pages: { "/": { title: "Todos", children: children as never }, ...recordPages() } });
 const lists = (r: Rendered) => r.requests.filter((request) => request.startsWith("GET /api/todos?"));
 const texts = (r: Rendered, part: string) => r.parts(part).map((each) => each.querySelector('[data-telo-part="value"]')?.textContent);
 
@@ -85,7 +85,7 @@ describe("a list layout", () => {
   });
 
   it("re-reads its three loaded pages on a write and keeps each record's element; a filter change returns it to its first page", async () => {
-    rendered = await show([filtersNode(listOf({ paging: "more", edit: opener() }))]);
+    rendered = await show([filtersNode(listOf({ paging: "more", edit: pressOpening("edit") }))]);
     await rendered.click(rendered.part("load-more"));
     await rendered.click(rendered.part("load-more"));
     const first = rendered.parts("list-item")[0];
@@ -102,7 +102,7 @@ describe("a list layout", () => {
 
   it("with twelve pages loaded reloads the first alone, in place, and draws the written record from the write's answer", async () => {
     const many = Array.from({ length: 13 }, (_, index) => ({ id: index + 1, text: `Task ${index + 1}` }));
-    rendered = await show([listOf({ paging: "more", pageSize: 1, edit: opener() })], many);
+    rendered = await show([listOf({ paging: "more", pageSize: 1, edit: pressOpening("edit") })], many);
     for (let page = 1; page < 12; page++) await rendered.click(rendered.part("load-more"));
     const first = rendered.parts("list-item")[0];
     const before = lists(rendered).length;
@@ -173,7 +173,7 @@ describe("a board layout", () => {
   });
 
   it("keeps an inline edit form's entered values across the reload a move of another record causes", async () => {
-    rendered = await show([board({ edit: opener({ surface: inline }) })]);
+    rendered = await show([board({ edit: pressOpening("edit", inline) })]);
     movesThrough(rendered);
     const cards = () => rendered!.parts("board-card");
     const writing = cards().find((each) => each.textContent?.includes("Write the docs")) as HTMLElement;
@@ -190,12 +190,28 @@ describe("a board layout", () => {
     expect((detail.querySelector('[data-telo-part="input"]') as HTMLInputElement).value).toBe("Half typed");
   });
 
-  it("opens the create form holding a column's value", async () => {
-    rendered = await show([board({ create: opener() })]);
+  it("runs the create press from a column's heading with the column's value, kept in the address; the listing's own button proposes nothing", async () => {
+    const status = { root: "values", path: ["status"] };
+    const create = pressOpening("create", { ...dialogSurface, address: { name: "todo" } }, false, { status });
+    const pages = { "/": { title: "Todos", children: [board({ create })] as never }, ...prefilledPages() };
+    const open = { path: "/", loadModule: loadFixtureComponents, required: ["text"], collections: { "/api/todos": todos }, pages };
+    rendered = await render(open);
     await rendered.click(rendered.parts("record-create")[1]);
+    expect(decodeURIComponent(window.location.search)).toBe("?_telo.open.todo=/todos/new?status=blocked");
+    expect(document.querySelector('[data-surface="dialog"] [data-telo-part="select"]')?.textContent).toBe("blocked");
     await rendered.enter(rendered.part("input"), "Unblock the release");
     await rendered.click(rendered.part("submit"));
     expect(rendered.sent.at(-1)).toMatchObject({ request: "POST /api/todos", body: { text: "Unblock the release", status: "blocked" } });
+    // Reloaded at the address, the page and what it was opened with are both there.
+    rendered.unmount();
+    window.history.replaceState(null, "", "/?_telo.open.todo=%2Ftodos%2Fnew%3Fstatus%3Dblocked");
+    rendered = await render({ ...open, path: "/?_telo.open.todo=%2Ftodos%2Fnew%3Fstatus%3Dblocked" });
+    expect(document.querySelector('[data-surface="dialog"] [data-telo-part="select"]')?.textContent).toBe("blocked");
+    rendered.unmount();
+    // The button of the listing itself has no column.
+    rendered = await render(open);
+    await rendered.click(rendered.part("listing-create"));
+    expect([window.location.search, document.querySelector('[data-surface="dialog"] [data-telo-part="select"]')?.textContent]).toEqual(["?_telo.open.todo=%2Ftodos%2Fnew", "Select…"]);
   });
 });
 
@@ -239,20 +255,39 @@ describe("a calendar layout", () => {
   });
 });
 
+describe("a calendar's create", () => {
+  it("starts the create page's form with the day it was asked on", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-20T12:00:00Z"));
+    const create = pressOpening("create", dialogSurface, false, { dueOn: { root: "values", path: ["dueOn"] } });
+    const layout = { type: "calendar", period: "month", content, reads: { span: { start: "dueOn", format: "date" } } };
+    rendered = await render({
+      path: "/",
+      loadModule: loadFixtureComponents,
+      required: ["text"],
+      collections: { "/api/todos": todos },
+      pages: { "/": { title: "Todos", children: [listOf({ layout, create })] as never }, ...prefilledPages() },
+    });
+    await rendered.click(rendered.parts("record-create")[0]);
+    const day = document.querySelector('[data-surface="dialog"] input[type="date"]') as HTMLInputElement;
+    expect(day.value).toMatch(/^2026-10-\d\d$/);
+  });
+});
+
 describe("a listing's record press", () => {
   /** Each todo opening its own page in a dialog, named by its text. */
-  const press = { to: openPageAt(address("/todos/{id}", { id: row("id") }), dialogSurface, false), label: { ...wireText("Open {$text}"), values: { text: row("text") } } };
+  const press = { to: openPageAt(address("/todo/{id}", { id: row("id") }), dialogSurface, false), label: { ...wireText("Open {$text}"), values: { text: row("text") } } };
   const todoPage = { title: "Todo", children: [{ type: "text", text: "The todo page" }] };
 
   it("is drawn by a table across the row's first cell alone; the row is selected while its page is open, and the edit stays on its button", async () => {
     rendered = await render({
       path: "/",
       collections: { "/api/todos": todos },
-      pages: { "/": { title: "Todos", children: [listingNode({ columns: todoColumns.slice(0, 2), press })] as never }, "/todos/{id}": todoPage as never },
+      pages: { "/": { title: "Todos", children: [listingNode({ columns: todoColumns.slice(0, 2), press })] as never }, "/todo/{id}": todoPage as never, ...recordPages() },
     });
     const rows = rendered.parts("table-row");
     const presses = rows.map((each) => [...each.querySelectorAll('[data-telo-part="press"]')].map((found) => [found.parentElement === each.children[0] && found === each.children[0].firstElementChild, found.getAttribute("href"), found.getAttribute("aria-label")]));
-    expect(presses).toEqual([[[true, "/todos/1", "Open Write the plan"]], [[true, "/todos/2", "Open Review the plan"]]]);
+    expect(presses).toEqual([[[true, "/todo/1", "Open Write the plan"]], [[true, "/todo/2", "Open Review the plan"]]]);
     await rendered.click(rendered.parts("press")[1]);
     expect([rendered.part("surface-title").textContent, rows.map((each) => each.getAttribute("data-selected"))]).toEqual(["Todo", [null, "true"]]);
     await rendered.escape();
@@ -260,30 +295,20 @@ describe("a listing's record press", () => {
     expect((rendered.part("input") as HTMLInputElement).value).toBe("Write the plan");
   });
 
-  it("is placed by a component layout, which reports onOpen to run it, and without a press opens the edit form", async () => {
+  it("is placed by a component layout, which reports onOpen to run it", async () => {
     const strip = { type: "component", module: { digest: "cc", name: "layouts.js" }, export: "RecordStrip", abi: "ui_react_layouts-2", external: ["react"], stylesheets: [], props: { title: { value: "Tasks" } }, reads: {} };
     const listing = (more: Record<string, unknown>) => listOf({ layout: strip, ...more });
     rendered = await render({
       path: "/",
       loadModule: async () => fixtureLayouts,
       collections: { "/api/todos": todos },
-      pages: { "/": { title: "Todos", children: [listing({ press })] as never }, "/todos/{id}": todoPage as never },
+      pages: { "/": { title: "Todos", children: [listing({ press })] as never }, "/todo/{id}": todoPage as never },
     });
     const chips = () => [...document.querySelectorAll('[data-fixture="chip"]')];
     const opens = () => [...document.querySelectorAll('[data-fixture="chip-open"]')];
     expect(chips().map((chip) => chip.firstElementChild?.getAttribute("data-telo-part"))).toEqual(["press", "press"]);
     await rendered.click(opens()[1]);
     expect([rendered.part("surface-title").textContent, chips().map((chip) => chip.getAttribute("data-selected"))]).toEqual(["Todo", [null, "true"]]);
-    rendered.unmount();
-    rendered = await render({
-      path: "/",
-      loadModule: async () => fixtureLayouts,
-      collections: { "/api/todos": todos },
-      pages: { "/": { title: "Todos", children: [listing({ edit: opener() })] as never } },
-    });
-    expect(rendered.parts("press")).toEqual([]);
-    await rendered.click(opens()[0]);
-    expect((rendered.part("input") as HTMLInputElement).value).toBe("Write the plan");
   });
 });
 

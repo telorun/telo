@@ -13,7 +13,7 @@ import { decodeRow, decodeValue, modelProperties, type JsonSchema, type ModelPro
 import { modelSchema } from "./model-schema.js";
 import { encodeCursor, encodeFacetCursor } from "./page-cursor.js";
 
-type ReaderResource = RuntimeResource & {
+export type ReaderResource = RuntimeResource & {
   connection: unknown;
   collection: unknown;
   table?: string;
@@ -68,7 +68,7 @@ export interface FacetPage {
  * `row`, the model unless overridden. The statement is rendered through the
  * connection's dialect, so it is the same request on every engine.
  */
-class Reader implements ResourceInstance {
+export class Reader implements ResourceInstance {
   private plan?: Plan;
 
   constructor(

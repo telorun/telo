@@ -705,7 +705,9 @@ schema:
               data: { type: [object, "null"], additionalProperties: true, x-telo-caught-member: data }
     contentTypeParsers:
       title: Content Type Parsers
-      description: Custom parsers for specific content types.
+      description: >-
+        Custom parsers for specific content types. An entry for an exact
+        `+json` type replaces the built-in JSON parse for that type.
       # A dispatch list like `mounts`: `contentType` selects an entry, `parser`
       # is what it dispatches to.
       x-telo-topology-role: entries

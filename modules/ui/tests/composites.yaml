@@ -49,6 +49,7 @@ query: { filters: [{ property: id, operator: in }], sort: [] }
 kind: DataModel.Collection
 metadata: { name: todos }
 model: !ref Todo
+schemas: { create: !ref Todo, update: !ref Todo }
 query:
   filters:
     - { property: status, operator: in }
@@ -94,7 +95,7 @@ content:
 kind: Ui.Form
 metadata: { name: form }
 model: !ref Todo
-presentation: !ref todosPresentation
+record: { presentation: !ref todosPresentation }
 ---
 kind: Font.Family
 metadata: { name: inter }

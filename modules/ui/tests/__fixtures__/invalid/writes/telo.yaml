@@ -1,0 +1,113 @@
+# Forms writing to a collection that declares no shape for the write, and forms
+# whose model the write shape does not hold. `telo check` reports every one
+# here; a consumer's own check sees none of them, so there each is refused when
+# it is first read.
+kind: Telo.Library
+metadata:
+  name: UiInvalidWrites
+  version: 1.0.0
+  description: >-
+    Test fixture exporting forms that break one rule of a collection's write
+    shapes each.
+imports: { Ui: ../../../../, DataModel: ../../../../../data-model }
+exports:
+  resources: [createUndeclared, updateUndeclared, shapeUnknown, shapeType, shapeUpdateUnknown, shapeUpdateType]
+---
+kind: Telo.JsonSchema
+metadata: { name: Task }
+schema:
+  type: object
+  properties: { title: { type: string }, count: { type: integer } }
+---
+kind: Telo.JsonSchema
+metadata: { name: TaskRead }
+schema:
+  type: object
+  required: [id]
+  properties: { id: { type: integer }, title: { type: string }, count: { type: integer } }
+---
+kind: Telo.JsonSchema
+metadata: { name: TaskTitle }
+schema: { type: object, properties: { title: { type: string } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: TaskCountText }
+schema: { type: object, properties: { title: { type: string }, count: { type: string } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: TaskTitle2 }
+schema: { type: object, properties: { title: { type: string } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: TaskCountText2 }
+schema: { type: object, properties: { title: { type: string }, count: { type: string } } }
+---
+kind: DataModel.Collection
+metadata: { name: updateOnly }
+model: !ref TaskRead
+schemas: { update: !ref Task }
+query: { filters: [], sort: [] }
+---
+kind: DataModel.Collection
+metadata: { name: createOnly }
+model: !ref TaskRead
+schemas: { create: !ref Task }
+query: { filters: [], sort: [] }
+---
+kind: DataModel.Collection
+metadata: { name: titleOnly }
+model: !ref TaskRead
+schemas: { create: !ref TaskTitle, update: !ref TaskTitle2 }
+query: { filters: [], sort: [] }
+---
+kind: DataModel.Collection
+metadata: { name: countText }
+model: !ref TaskRead
+schemas: { create: !ref TaskCountText, update: !ref TaskCountText2 }
+query: { filters: [], sort: [] }
+---
+kind: Ui.CollectionPresentation
+metadata: { name: updateOnlyPresentation }
+source: { kind: Ui.CollectionSource, collection: !ref updateOnly, basePath: /api/tasks }
+---
+kind: Ui.CollectionPresentation
+metadata: { name: createOnlyPresentation }
+source: { kind: Ui.CollectionSource, collection: !ref createOnly, basePath: /api/tasks }
+---
+kind: Ui.CollectionPresentation
+metadata: { name: titleOnlyPresentation }
+source: { kind: Ui.CollectionSource, collection: !ref titleOnly, basePath: /api/tasks }
+---
+kind: Ui.CollectionPresentation
+metadata: { name: countTextPresentation }
+source: { kind: Ui.CollectionSource, collection: !ref countText, basePath: /api/tasks }
+---
+kind: Ui.Form
+metadata: { name: createUndeclared }
+model: !ref Task
+record: { presentation: !ref updateOnlyPresentation }
+---
+kind: Ui.Form
+metadata: { name: updateUndeclared }
+model: !ref Task
+record: { presentation: !ref createOnlyPresentation, key: 7 }
+---
+kind: Ui.Form
+metadata: { name: shapeUnknown }
+model: !ref Task
+record: { presentation: !ref titleOnlyPresentation }
+---
+kind: Ui.Form
+metadata: { name: shapeType }
+model: !ref Task
+record: { presentation: !ref countTextPresentation }
+---
+kind: Ui.Form
+metadata: { name: shapeUpdateUnknown }
+model: !ref Task
+record: { presentation: !ref titleOnlyPresentation, key: 7 }
+---
+kind: Ui.Form
+metadata: { name: shapeUpdateType }
+model: !ref Task
+record: { presentation: !ref countTextPresentation, key: 7 }

@@ -1,6 +1,6 @@
 # CRUD
 
-A complete REST API over a SQL table as a single declarative resource. A `Crud.Collection` names the table the records are stored in, the record's shape for each operation, what the list may be filtered, sorted and faceted by, and which properties point at another collection's records. `Crud.Api` is a mount: give it a `Sql.Connection`, the `singular` / `plural` names and the collection, mount it on an `Http.Server`, and you get list / read / create / replace / delete routes with no handler wiring.
+A complete REST API over a SQL table as a single declarative resource. A `Crud.Collection` names the table the records are stored in, the record's shape for each operation, what the list may be filtered, sorted and faceted by, and which properties point at another collection's records. `Crud.Api` is a mount: give it a `Sql.Connection`, the `singular` / `plural` names and the collection, mount it on an `Http.Server`, and you get list / read / create / update / replace / delete routes with no handler wiring.
 
 ## Why use this
 
@@ -11,6 +11,7 @@ A complete REST API over a SQL table as a single declarative resource. A `Crud.C
 - **A shape per operation** — what a client creates, what it updates, what one record reads as and what a list row holds are four named shapes, so a server-set column is read-only and a list can leave a heavy one out.
 - **Checked against the table** — a property with no column, a key that is not the primary key, and a relation its foreign key contradicts are refused before the app runs and again at start.
 - **Writes answer with the stored record** — the key the table assigned and every value it filled in.
+- **Updates that change only what was sent, and never overwrite someone else's change** — `PATCH` merges a JSON Merge Patch, so a form over a narrower model leaves other columns alone, and a read of one record and every create, update and replace answer carry an `ETag` that an `If-Match` on `PATCH`, `PUT` and `DELETE` holds the write to.
 - **Values in their declared types** — a `boolean` property is `true` / `false` on every route and every engine.
 - **Named once, derived everywhere** — `singular` / `plural` name the `{…}` path parameter and the OpenAPI operations (`listTodos`, `getTodo`, …).
 
@@ -19,7 +20,7 @@ A complete REST API over a SQL table as a single declarative resource. A `Crud.C
 | Kind | Purpose |
 | --- | --- |
 | [`Crud.Collection`](docs/collection.md) | The table, the record's shape for each operation, the filters, sorts and facets the list accepts, and the relations to other collections. A `DataModel.Collection`. |
-| [`Crud.Api`](docs/api.md) | The five routes over one collection's table. |
+| [`Crud.Api`](docs/api.md) | The six routes over one collection's table. |
 | [`Crud.Reader`](docs/reader.md) | The list contract over a table or one fixed SELECT with joined or computed columns, with a `scope` the route fixes. |
 
 The list route's query, facets, response and refusals are in [The list route](docs/list-route.md).
@@ -33,7 +34,8 @@ Mounted at `<prefix>`, against the table's `id` primary key. `<idParam>` is the 
 | `GET <prefix>` | One page of rows: `{ rows, total, next }`; with `facet=<property>`, one page of its present values: `{ values, next }`. | `list<Plural>` |
 | `GET <prefix>/{<idParam>}` | Read one record (404 if absent). | `get<Singular>` |
 | `POST <prefix>` | Create a row from the JSON body; answers with the stored record. | `create<Singular>` |
-| `PUT <prefix>/{<idParam>}` | Replace what the update shape declares of the row — a property of it the body leaves out is cleared, every other column is kept; answers with the stored record (404 if absent). | `update<Singular>` |
+| `PATCH <prefix>/{<idParam>}` | Merge a JSON Merge Patch into the row — a value sets, `null` clears, an absent member is unchanged; the result must satisfy the update shape; answers with the stored record (404 if absent). | `update<Singular>` |
+| `PUT <prefix>/{<idParam>}` | Replace what the update shape declares of the row — a property of it the body leaves out is cleared, every other column is kept; answers with the stored record (404 if absent). Outside the collection contract. | `replace<Singular>` |
 | `DELETE <prefix>/{<idParam>}` | Delete a row (204, or 404 if absent). | `delete<Singular>` |
 
 ## Example
@@ -117,15 +119,15 @@ mounts:
   - { path: /api/todos, mount: !ref todosApi }
 ```
 
-`POST /api/todos` with `{"text":"Buy milk"}` inserts a row and answers with it, `id` included; `GET /api/todos?isDone=false&sort=-text&limit=10` lists a page of them; `GET /api/todos?facet=isDone&text.contains=milk` counts the done and open ones among those mentioning milk; `PUT /api/todos/1` with `{"text":"Buy milk","isDone":true}` replaces one; `DELETE /api/todos/1` removes it.
+`POST /api/todos` with `{"text":"Buy milk"}` inserts a row and answers with it, `id` included; `GET /api/todos?isDone=false&sort=-text&limit=10` lists a page of them; `GET /api/todos?facet=isDone&text.contains=milk` counts the done and open ones among those mentioning milk; `PATCH /api/todos/1` with `{"isDone":true}` changes only `isDone` and answers with the record and its `ETag` — sent back as `If-Match`, it makes a later write to a record changed in between a 412; `PUT /api/todos/1` with `{"text":"Buy milk","isDone":true}` replaces one; `DELETE /api/todos/1` removes it.
 
 ## Conventions & limits
 
 - The list accepts the filters, sorts and facets the collection's `query` declares and answers any other with a 400. The generated OpenAPI document types `limit`, `cursor`, `sort` and `facet`; it does not list the declared filter parameters.
 - The primary key column is `id`, declared in `model` and the `list` shape and surfaced as the `{<idParam>}` path parameter. `idParam` renames only the URL parameter.
 - Columns are the snake_case form of the shapes' camelCase properties. Neither kind creates or migrates the table — list the collection's table in your engine's `Schema`.
-- Every route but delete runs on SQLite and PostgreSQL; the delete route builds its statement with `?` placeholders, which is SQLite's spelling. A write reads the stored record back with `RETURNING`.
-- A `POST` body is validated against the collection's `create` shape and a `PUT` body against its `update` shape; a refused one is a 400 naming the property.
+- Every route runs on SQLite and PostgreSQL. A write reads the stored record back with `RETURNING`.
+- A `POST` body is validated against the collection's `create` shape, a `PUT` body and the record a `PATCH` leaves against its `update` shape; a refused one is a 400 naming the property.
 - A read returns a record valid against its shape, so it can be sent back: a column holding `NULL` is `null` where the property admits it, left out where the property is optional, and the type's empty value (`""`, `0`, `false`) where it is required. See [What a read returns](docs/api.md#what-a-read-returns).
 - Set `openapi:` on the `Http.Server` to emit the spec, which states each operation's shape: request bodies, the record read, and the rows of the list.
 - For joins or computed columns, list through a [`Crud.Reader`](docs/reader.md) over a fixed SELECT in an `Http.Api` route; for custom status logic write the route with `Sql.Query` handlers. `Crud.Api` covers the single-table case.

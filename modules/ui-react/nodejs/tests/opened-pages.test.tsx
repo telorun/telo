@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { SpecNode } from "../src/browser/nodes.js";
 import { HEADER_NAVIGATION, render, wireText, type Page, type Rendered } from "./harness.js";
-import { address, dialogSurface, filterField, filtersNode, listingNode, navigateTo, openPageAt, opener, todoColumns, todos } from "./spec-nodes.js";
+import { address, dialogSurface, filterField, filtersNode, listingNode, navigateTo, openPageAt, pressOpening, recordPages, todoColumns, todos } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
@@ -64,7 +64,7 @@ describe("an opened page", () => {
     const card = press("Open hello");
     await rendered.focus(card);
     await rendered.click(card);
-    expect(window.location.search).toBe("?_telo.page.post=%2Fposts%2Fhello");
+    expect(window.location.search).toBe("?_telo.open.post=%2Fposts%2Fhello");
     expect(window.history.length).toBe(entries + 1);
     expect(shown()).toEqual({ kind: "drawer", title: "Post", text: "The post page" });
     await rendered.escape();
@@ -74,7 +74,7 @@ describe("an opened page", () => {
   });
 
   it("is reopened from its key in the surface the first destination naming it declares", async () => {
-    rendered = await render({ path: "/?_telo.page.post=%2Fposts%2Fhello", pages });
+    rendered = await render({ path: "/?_telo.open.post=%2Fposts%2Fhello", pages });
     expect(shown()).toEqual({ kind: "drawer", title: "Post", text: "The post page" });
   });
 
@@ -86,7 +86,7 @@ describe("an opened page", () => {
     await rendered.click(link("About the author"));
     expect(surface()).toBe(drawer);
     expect(shown()).toEqual({ kind: "drawer", title: "Author", text: "The author page" });
-    expect(address_()).toBe("/?_telo.page.post=/authors/ada?from=hello");
+    expect(address_()).toBe("/?_telo.open.post=/authors/ada?from=hello");
     expect(window.history.length).toBe(entries);
   });
 
@@ -96,7 +96,7 @@ describe("an opened page", () => {
     const drawer = surface();
     await rendered.click(link("In the same drawer"));
     expect(surface()).toBe(drawer);
-    expect(address_()).toBe("/?_telo.page.post=/authors/ada");
+    expect(address_()).toBe("/?_telo.open.post=/authors/ada");
     await rendered.click(press("Open hello"));
     await rendered.click(link("In a dialog"));
     expect(shown()).toEqual({ kind: "dialog", title: "Author", text: "The author page" });
@@ -132,18 +132,18 @@ describe("an opened page", () => {
   });
 
   it("asks before it closes while a form inside it holds unsaved input, and stays open unless the input is dropped", async () => {
-    const inline = listingNode({ columns, edit: opener({ surface: { type: "inline", dismiss: {} } }) });
-    rendered = await render({ path: "/", pages: { ...pages, "/posts/{id}": { title: "Post", children: [inline] } }, collections: { "/api/todos": todos } });
-    await rendered.click(press("Open hello"));
-    await rendered.click(rendered.part("row-edit"));
-    await rendered.enter(document.querySelector('[data-surface="inline"] [data-telo-part="input"]') as Element, "Half written");
+    const drawer = { ...postDrawer, address: { name: "todo" } };
+    const listing = listingNode({ columns, edit: pressOpening("edit", drawer) });
+    rendered = await render({ path: "/", pages: { ...pages, ...recordPages(), "/": { title: "Todos", children: [listing] } }, collections: { "/api/todos": todos } });
+    await rendered.click(rendered.parts("row-edit")[0]);
+    await rendered.enter(rendered.part("input"), "Half written");
     const question = () => document.querySelector('[data-surface="confirmation"]');
     const answer = (part: "submit" | "cancel") => rendered!.click(question()!.querySelector(`[data-telo-part="${part}"]`)!);
     await rendered.escape();
     expect(question()).not.toBeNull();
     await answer("cancel");
-    expect(shown()).toMatchObject({ kind: "drawer", title: "Post" });
-    await rendered.focus(document.querySelector('[data-surface="inline"] [data-telo-part="input"]') as HTMLElement);
+    expect(shown()).toMatchObject({ kind: "drawer", title: "Edit" });
+    await rendered.focus(rendered.part("input"));
     await rendered.escape();
     await answer("submit");
     expect([question(), shown(), window.location.search]).toEqual([null, null, ""]);
@@ -154,39 +154,41 @@ describe("the page key", () => {
   it("is restored into the page's surface before the layout's when both declare the name", async () => {
     const layoutDrawer = { ...postDrawer, side: "start" };
     const entry = { type: "link", key: "post", to: openPageAt(hello, layoutDrawer, false), text: wireText("Hello") };
-    rendered = await render({ path: "/?_telo.page.post=%2Fposts%2Fhello", pages, navigation: { items: [entry], placement: HEADER_NAVIGATION } });
+    rendered = await render({ path: "/?_telo.open.post=%2Fposts%2Fhello", pages, navigation: { items: [entry], placement: HEADER_NAVIGATION } });
     expect(surface()?.getAttribute("data-side")).toBe("end");
   });
 
-  it("is dropped by replace when it holds no app-relative address, and so is every key after the one that opens", async () => {
-    rendered = await render({ path: "/?_telo.page.x=https%3A%2F%2Fevil&_telo.page.post=%2Fposts%2Fhello&_telo.page.other=%2Fposts%2Fother&keep=1", pages });
+  it("is dropped by replace when it names a surface no destination declares, and so is every key after the one that opens; a value that is no address is another's", async () => {
+    rendered = await render({ path: "/?_telo.open.x=https%3A%2F%2Fevil&_telo.open.post=%2Fposts%2Fhello&_telo.open.other=%2Fposts%2Fother&keep=1", pages });
     expect(shown()).toMatchObject({ title: "Post" });
-    expect(address_()).toBe("/?_telo.page.post=/posts/hello&keep=1");
+    expect(address_()).toBe("/?_telo.open.x=https://evil&_telo.open.post=/posts/hello&keep=1");
   });
 
-  it("is apart from the open key: a listing named like the surface keeps its own state", async () => {
-    const listing = listingNode({ columns, edit: opener({ surface: { ...dialogSurface, address: { name: "post" } } }) });
-    rendered = await render({ path: "/", pages: { ...pages, "/": { title: "Posts", children: [postCard("hello"), listing] } }, collections: { "/api/todos": todos } });
+  it("shares its space with a tab bar's values, told apart by what a key holds: a tab chosen under another name stays when the page closes", async () => {
+    const tabs = { type: "tabs", address: { name: "section" }, tabs: [{ key: "one", text: wireText("One"), children: [] }, { key: "two", text: wireText("Two"), children: [] }] };
+    rendered = await render({ path: "/?_telo.open.section=two", pages: { ...pages, "/": { title: "Posts", children: [tabs, postCard("hello")] } } });
     await rendered.click(press("Open hello"));
-    expect(new URLSearchParams(window.location.search).get("_telo.page.post")).toBe("/posts/hello");
-    expect(new URLSearchParams(window.location.search).get("_telo.open.post")).toBeNull();
+    expect(address_()).toBe("/?_telo.open.section=two&_telo.open.post=/posts/hello");
+    await rendered.escape();
+    expect(address_()).toBe("/?_telo.open.section=two");
   });
 
-  it("is the only address an opened page writes: its filter bar and its edit opener keep theirs in memory", async () => {
-    const filtered = filtersNode(listingNode({ columns, edit: opener({ surface: { ...dialogSurface, address: { name: "todo" } } }) }), {
+  it("is the only address an opened page writes: its filter bar keeps its value in memory, and the page a press opens replaces it", async () => {
+    const filtered = filtersNode(listingNode({ columns, edit: pressOpening("edit", { ...dialogSurface, address: { name: "todo" } }) }), {
       fields: [filterField("text", "contains")],
       state: { key: "todos", address: true, store: { type: "memory" }, fields: ["text"] },
     });
-    const withTodos = { ...pages, "/posts/{id}": { title: "Post", children: [filtered] } };
+    const withTodos = { ...pages, ...recordPages(), "/posts/{id}": { title: "Post", children: [filtered] } };
     rendered = await render({ path: "/", pages: withTodos, collections: { "/api/todos": todos } });
     await rendered.click(press("Open hello"));
     const input = rendered.part("filter-input");
     await rendered.enter(input, "plan");
     await rendered.commit(input, "enter");
     expect(rendered.requests.some((request) => request.startsWith("GET /api/todos?") && request.includes("plan"))).toBe(true);
-    await rendered.click(rendered.part("row-edit"));
+    await rendered.click(rendered.parts("row-edit")[0]);
     expect(rendered.parts("form")).toHaveLength(1);
-    expect(address_()).toBe("/?_telo.page.post=/posts/hello");
+    // The page the listing opens replaces the post in the one opened page there is; no document of the page beneath declares its name, so it is held in memory.
+    expect(address_()).toBe("/");
   });
 });
 
@@ -206,11 +208,11 @@ describe("a non-modal opened page", () => {
     await rendered.click(link("Same drawer"));
     expect(surface()).toBe(drawer);
     expect(shown()).toMatchObject({ title: "Post" });
-    expect(address_()).toBe("/?_telo.page.help=/posts/hello");
+    expect(address_()).toBe("/?_telo.open.help=/posts/hello");
     expect(window.history.length).toBe(entries);
     await rendered.click(link("Other drawer"));
     expect(document.querySelectorAll('[data-telo-part="surface"][data-state="open"]').length).toBe(1);
     expect(surface()?.getAttribute("data-modal")).toBe("true");
-    expect(address_()).toBe("/?_telo.page.post=/posts/hello");
+    expect(address_()).toBe("/?_telo.open.post=/posts/hello");
   });
 });

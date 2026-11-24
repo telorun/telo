@@ -77,6 +77,8 @@ root: !module-path ./public
 kind: DataModel.Collection
 metadata: { name: todoCollection }
 model: !ref Todo
+key: id
+schemas: { create: !ref TodoInput, update: !ref TodoInput }
 query:
   filters:
     - { property: text, operator: contains }
@@ -98,8 +100,35 @@ source: { kind: Ui.CollectionSource, collection: !ref todoCollection, basePath: 
 kind: Ui.Form
 metadata: { name: todoForm }
 model: !ref TodoInput
-presentation: !ref todoPresentation
+record: { presentation: !ref todoPresentation }
 fields: [text, isDone, priority, status, dueOn, notes]
+---
+# A record's pages: the listing opens them in a dialog and a drawer, and each is reached by its own address too.
+kind: Ui.Page
+metadata: { name: newTodoPage }
+path: /todos/new
+title: New todo
+children:
+  - { type: composite, ref: !ref todoForm }
+---
+kind: Ui.Page
+metadata: { name: todoPage }
+path: /todos/{id}
+title: Todo
+children:
+  - type: query
+    query:
+      kind: Ui.Query
+      model: !ref Todo
+      url: { path: "/api/todos/{id}", pathParams: { id: !cel "params.id" } }
+    content:
+      - type: composite
+        ref:
+          kind: Ui.Form
+          model: !ref TodoInput
+          record: { presentation: !ref todoPresentation, key: !cel "data.id" }
+          initialValues: !cel "data"
+          fields: [text, isDone, priority, status, dueOn, notes]
 ---
 kind: Ui.Listing
 metadata: { name: todos }
@@ -125,8 +154,14 @@ layout:
         model: !ref Todo
         props:
           done: !cel "row.isDone"
-create: { form: !ref todoForm }
-edit: { form: !ref todoForm }
+create:
+  to: { kind: Ui.OpenPage, page: !ref newTodoPage, surface: { kind: Ui.Dialog, size: small } }
+edit:
+  to:
+    kind: Ui.OpenPage
+    page: !ref todoPage
+    pathParams: { id: !cel "row.id" }
+    surface: { kind: Ui.Drawer, side: end }
 delete: true
 ---
 kind: Ui.Filters
@@ -311,6 +346,8 @@ pages:
           - { type: image, src: /files/logo.svg, alt: Logo }
           - { type: svg, markup: "<svg xmlns='http://www.w3.org/2000/svg' width='40' height='12'><rect width='40' height='12' fill='#1f8a4c'/></svg>", alt: A green bar }
           - { type: text, text: !cel "'unsafe'", style: !cel "'x-style' in request.headers ? request.headers['x-style'] : 'muted'" }
+  - !ref newTodoPage
+  - !ref todoPage
 ---
 # An application that sets nothing it does not have to.
 kind: UiReact.App

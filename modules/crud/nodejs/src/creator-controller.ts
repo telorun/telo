@@ -1,14 +1,19 @@
 import { RuntimeError, type InvokeContext, type ResourceContext, type ResourceInstance } from "@telorun/sdk";
 import { insertStatement } from "./collection-statement.js";
 import { decodeRow } from "./model-properties.js";
+import { etagOf } from "./record-precondition.js";
 import { Writer, type WriterResource } from "./writer.js";
 
 /**
  * Inserts one row. The statement names the columns its shape declares and no
- * other, binds every value, and answers with the row as it was stored.
+ * other, binds every value, and answers with the row as it was stored and its
+ * validator.
  */
 class Creator extends Writer implements ResourceInstance {
-  async invoke(inputs: { data: Record<string, unknown> }, invokeCtx?: InvokeContext): Promise<Record<string, unknown>> {
+  async invoke(
+    inputs: { data: Record<string, unknown> },
+    invokeCtx?: InvokeContext,
+  ): Promise<{ row: Record<string, unknown>; etag: string }> {
     const connection = this.connection();
     const statement = insertStatement(
       connection.dialect,
@@ -25,7 +30,8 @@ class Creator extends Writer implements ResourceInstance {
         `Crud.Creator '${this.resource.metadata.name}': the insert returned no row, so the created record cannot be answered. The connection must support INSERT … RETURNING.`,
       );
     }
-    return decodeRow(this.readable, stored);
+    const row = decodeRow(this.readable, stored);
+    return { row, etag: etagOf(row) };
   }
 }
 

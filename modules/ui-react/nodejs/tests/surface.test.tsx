@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import { Surface } from "../src/browser/surface.js";
 import { loadFixtureComponents, render, type Page, type Rendered } from "./harness.js";
-import { component, dialogSurface, opener, listingNode, todos } from "./spec-nodes.js";
+import { address, asideOf, component, decisionSchema, dialogSurface,operation, listingNode, navigateTo, openPageAt, querySpec, recordPages, recordPresses, todos } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
@@ -16,11 +16,13 @@ const popover = { type: "popover", side: "top", align: "end", dismiss: { escape:
 const panel = (side = "end") => ({ type: "panel", side, size: "small", dismiss: { escape: true, closeButton: true } });
 const named = (surface: Record<string, unknown>, name = "todo") => ({ ...surface, address: { name } });
 const probe = component("HostProbe", { basePath: { value: "/api/todos" } });
+/** The address a record's page is kept under. */
+const key = (path: string) => `_telo.open.todo=${encodeURIComponent(path)}`;
 
-/** A page holding a table whose two forms open in `surface`, beside whatever else it is given. */
+/** A page holding a table whose `create` and `edit` open their pages in `surface`, beside whatever else it is given; `forms` replaces members of both pages' forms. */
 const show = (
   surface: Record<string, unknown>,
-  options: { more?: Page["children"]; path?: string; narrow?: boolean; rows?: Record<string, unknown>[]; table?: Record<string, unknown>; opens?: Record<string, unknown> } = {},
+  options: { more?: Page["children"]; path?: string; narrow?: boolean; rows?: Record<string, unknown>[]; table?: Record<string, unknown>; forms?: Record<string, unknown> } = {},
 ) =>
   render({
     path: options.path ?? "/",
@@ -31,12 +33,10 @@ const show = (
     pages: {
       "/": {
         title: "Todos",
-        children: [
-          ...(options.more ?? []),
-          listingNode({ create: opener({ surface, ...options.opens }), edit: opener({ surface, ...options.opens }), ...options.table }),
-        ],
+        children: [...(options.more ?? []), listingNode({ ...recordPresses(surface), ...options.table })],
       },
       "/done": { title: "Done", children: [{ type: "text", text: "The done page" }] },
+      ...recordPages(options.forms, options.forms),
     },
   });
 
@@ -49,28 +49,13 @@ const sent = (r: Rendered, method: string) => r.requests.filter((request) => req
 const position = () => (window.history.state as { teloPosition: number }).teloPosition;
 const where = () => [window.location.search, position()];
 
-/** Two tables on one page, each opening its forms in a panel under a name of its own. */
-const twoPanels = () =>
-  render({
-    path: "/",
-    loadModule: loadFixtureComponents,
-    collections: { "/api/todos": todos },
-    pages: {
-      "/": {
-        title: "Todos",
-        children: ["a", "b"].map((name) => listingNode({ create: opener({ surface: named(panel(), name) }), edit: opener({ surface: named(panel(), name) }) })),
-      },
-    },
-  });
-const tasks = (r: Rendered) => r.parts("surface").map((part) => (part.querySelector('[data-telo-part="input"]') as HTMLInputElement).value);
-
 describe("a dialog", () => {
   it("is named by its title, holds the focus, and closes on Escape, its close button or Cancel with nothing sent", async () => {
     rendered = await show(dialogSurface);
     await rendered.click(rendered.part("listing-create"));
     const dialog = surface(rendered)!;
     expect(["data-surface", "data-size", "data-modal", "role"].map((name) => dialog.getAttribute(name))).toEqual(["dialog", "medium", "true", "dialog"]);
-    expect(document.getElementById(dialog.getAttribute("aria-labelledby") as string)?.textContent).toBe("New");
+    expect(document.getElementById(dialog.getAttribute("aria-labelledby") as string)?.textContent).toBe("Create");
     expect(dialog.contains(document.activeElement)).toBe(true);
     expect(rendered.parts("surface-overlay").length).toBe(1);
     await rendered.escape();
@@ -82,7 +67,7 @@ describe("a dialog", () => {
     await rendered.click(rendered.part("listing-create"));
     await rendered.click(within(rendered, "cancel"));
     expect(surface(rendered)).toBeUndefined();
-    expect([...sent(rendered, "POST"), ...sent(rendered, "PUT")]).toEqual([]);
+    expect([...sent(rendered, "POST"), ...sent(rendered, "PATCH")]).toEqual([]);
   });
 
   it("stays open through each way of dismissing that is switched off, and has no close button", async () => {
@@ -98,7 +83,7 @@ describe("a dialog", () => {
   });
 
   it("leaves the page uncovered when it is not modal, and closes on a press outside it", async () => {
-    rendered = await show({ ...dialogSurface, modal: false }, { opens: { unsaved: "discard" } });
+    rendered = await show({ ...dialogSurface, modal: false }, { forms: { unsaved: "discard" } });
     await rendered.click(rendered.part("listing-create"));
     expect(surface(rendered)!.getAttribute("data-modal")).toBe("false");
     expect(rendered.parts("surface-overlay")).toEqual([]);
@@ -154,7 +139,7 @@ describe("a popover", () => {
     await rendered.enter(task(rendered), "Review it twice");
     await rendered.click(within(rendered, "submit"));
     expect(surface(rendered)).toBeUndefined();
-    expect(sent(rendered, "PUT")).toEqual(["PUT /api/todos/2"]);
+    expect(sent(rendered, "PATCH")).toEqual(["PATCH /api/todos/2"]);
     await rendered.click(rendered.part("listing-create"));
     await rendered.escape();
     expect(surface(rendered)).toBeUndefined();
@@ -166,6 +151,16 @@ describe("a popover", () => {
     expect(surface(rendered)).toBeDefined();
     await rendered.click(within(rendered, "cancel"));
     expect(surface(rendered)).toBeUndefined();
+  });
+
+  it("is a dialog on a cold load when a listing's record opened it, and anchored to the node that declares it when that node is what is pressed", async () => {
+    rendered = await show(named(popover), { path: `/?${key("/todos/2")}` });
+    expect(surface(rendered)!.getAttribute("data-surface")).toBe("dialog");
+    expect(task(rendered).value).toBe("Review the plan");
+    rendered.unmount();
+    const link = { type: "link", text: "Open", to: openPageAt(address("/todos/{id}", { id: { value: "2" } }), named(popover), false) };
+    rendered = await show(named(popover), { path: `/?${key("/todos/2")}`, more: [link], table: { edit: null, press: null } });
+    expect(surface(rendered)!.getAttribute("data-surface")).toBe("popover");
   });
 });
 
@@ -209,13 +204,8 @@ describe("what a surface holds", () => {
 });
 
 describe("an inline surface", () => {
-  it("draws the create form above the grid and the edit form under its row", async () => {
-    rendered = await show({ type: "inline" });
-    await rendered.click(rendered.part("listing-create"));
-    expect(surface(rendered)!.getAttribute("data-surface")).toBe("inline");
-    expect(surface(rendered)!.nextElementSibling).toBe(rendered.part("listing-main"));
-    await rendered.click(within(rendered, "cancel"));
-    expect(surface(rendered)).toBeUndefined();
+  it("draws the page under its record in a listing, and after the control that opened it elsewhere", async () => {
+    rendered = await show({ type: "inline" }, { more: [{ type: "link", text: "New in line", to: openPageAt(address("/todos/new"), { type: "inline" }, false) }] });
     await rendered.click(rendered.parts("row-edit")[1]);
     const detail = rendered.part("table-detail");
     expect(detail.contains(surface(rendered)!)).toBe(true);
@@ -224,7 +214,26 @@ describe("an inline surface", () => {
     await rendered.enter(task(rendered), "Review it in place");
     await rendered.click(within(rendered, "submit"));
     expect(rendered.parts("table-detail")).toEqual([]);
-    expect(sent(rendered, "PUT")).toEqual(["PUT /api/todos/2"]);
+    expect(sent(rendered, "PATCH")).toEqual(["PATCH /api/todos/2"]);
+    // The create button is not a record: the page is drawn right after it.
+    await rendered.click(rendered.part("listing-create"));
+    expect(rendered.part("listing-create").nextElementSibling?.contains(surface(rendered)!)).toBe(true);
+    await rendered.click(within(rendered, "cancel"));
+    // So is a link outside any listing.
+    const button = rendered.parts("link").find((each) => each.textContent === "New in line") as HTMLElement;
+    await rendered.click(button);
+    expect(button.nextElementSibling?.contains(surface(rendered)!)).toBe(true);
+    expect(surface(rendered)!.getAttribute("data-surface")).toBe("inline");
+  });
+
+  it("is a dialog on a cold load when a listing's record opened it, and drawn after the link that declares it when that is what is pressed", async () => {
+    rendered = await show(named({ type: "inline" }), { path: `/?${key("/todos/2")}` });
+    expect(surface(rendered)!.getAttribute("data-surface")).toBe("dialog");
+    rendered.unmount();
+    const link = { type: "link", text: "Open", to: openPageAt(address("/todos/{id}", { id: { value: "2" } }), named({ type: "inline" }), false) };
+    rendered = await show(named({ type: "inline" }), { path: `/?${key("/todos/2")}`, more: [link], table: { edit: null, press: null } });
+    const opener = rendered.parts("link").find((each) => each.textContent === "Open") as HTMLElement;
+    expect([surface(rendered)!.getAttribute("data-surface"), opener.nextElementSibling?.contains(surface(rendered)!)]).toEqual(["inline", true]);
   });
 });
 
@@ -256,30 +265,76 @@ describe("a panel", () => {
     expect(surface(rendered)).toBeDefined();
     expect(rendered.parts("surface-close")).toEqual([]);
   });
+
+  it("is a dialog on a cold load when the composite declaring it is not drawn yet, a query still pending", async () => {
+    const declaring = { type: "query", query: { ...querySpec({ id: "pending", url: address("/api/todos/1") }) }, content: [listingNode({ ...recordPresses(named(panel())) })], loading: [], failure: [], fill: false };
+    rendered = await render({
+      path: `/?${key("/todos/2")}`,
+      loadModule: loadFixtureComponents,
+      required: ["text"],
+      collections: { "/api/todos": todos },
+      answers: { "/api/todos/1": () => new Promise<Response>(() => {}) },
+      pages: { "/": { title: "Todos", children: [declaring as never] }, ...recordPages() },
+    });
+    expect(surface(rendered)!.getAttribute("data-surface")).toBe("dialog");
+  });
+
+  it("is a dialog where no composite holds what was pressed", async () => {
+    const link = { type: "link", text: "Open", to: openPageAt(address("/todos/new"), panel(), false) };
+    rendered = await show(dialogSurface, { more: [link] });
+    await rendered.click(rendered.parts("link").find((each) => each.textContent === "Open") as HTMLElement);
+    expect(surface(rendered)!.getAttribute("data-surface")).toBe("dialog");
+  });
 });
 
-describe("a page surface", () => {
-  it("replaces the page's content under its address, and gives it back when it closes", async () => {
-    rendered = await show({ type: "page", address: { name: "todo" } }, { more: [{ type: "text", text: "Above the table" }] });
-    const content = rendered.part("text").parentElement as HTMLElement;
-    await rendered.click(rendered.part("listing-create"));
-    expect(window.location.search).toBe("?_telo.open.todo=");
-    expect(surface(rendered)!.getAttribute("data-surface")).toBe("page");
-    expect(rendered.part("page").contains(surface(rendered)!)).toBe(true);
-    expect(content.style.display).toBe("none");
-    expect(document.title).toBe("Todos · Test App");
-    await rendered.enter(task(rendered), "From a page");
+describe("a record's page", () => {
+  it("opens from a row's edit in a panel under the page's address, and again on a reload; below the breakpoint it is a bottom drawer under the same address", async () => {
+    const declared = named({ ...panel(), compact: drawer("bottom") }, "task");
+    rendered = await show(declared);
+    await rendered.click(rendered.parts("row-edit")[1]);
+    expect([window.location.search, surface(rendered)!.getAttribute("data-surface"), task(rendered).value]).toEqual(["?_telo.open.task=%2Ftodos%2F2", "panel", "Review the plan"]);
+    rendered.unmount();
+    rendered = await show(declared, { path: "/?_telo.open.task=%2Ftodos%2F2" });
+    // Cold, the listing declaring the surface stands in for what opened it: the panel sits beside it, and the record whose page is open is selected.
+    expect([task(rendered).value, surface(rendered)!.getAttribute("data-surface"), surface(rendered)!.parentElement === rendered.part("listing")]).toEqual(["Review the plan", "panel", true]);
+    expect(rendered.parts("table-row").map((row) => row.getAttribute("data-selected"))).toEqual([null, "true"]);
+    rendered.unmount();
+    rendered = await show(declared, { path: "/?_telo.open.task=%2Ftodos%2F2", narrow: true });
+    expect([surface(rendered)!.getAttribute("data-surface"), surface(rendered)!.getAttribute("data-side"), window.location.search]).toEqual(["drawer", "bottom", "?_telo.open.task=%2Ftodos%2F2"]);
+  });
+
+  it("saves only what changed against the validator it was read with, closes the panel and reloads the listing; reached by its own address it saves and stays", async () => {
+    const edits = [] as { body: unknown; ifMatch: string | null }[];
+    rendered = await show(panel());
+    const platform = globalThis.fetch;
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "PATCH") edits.push({ body: JSON.parse(String(init.body)), ifMatch: new Headers(init.headers).get("if-match") });
+      return platform(input, init);
+    }) as typeof fetch;
+    await rendered.click(rendered.parts("row-edit")[1]);
+    await rendered.enter(task(rendered), "Review it twice");
+    const lists = sent(rendered, "GET /api/todos?").length;
     await rendered.click(within(rendered, "submit"));
-    expect(surface(rendered)).toBeUndefined();
-    expect(content.style.display).toBe("contents");
-    expect(window.location.search).toBe("");
-    expect(rendered.part("pager-status").textContent).toBe("1–2 of 6");
+    expect(edits).toEqual([{ body: { text: "Review it twice" }, ifMatch: expect.stringMatching(/^"[A-Za-z0-9_-]+"$/) }]);
+    expect([surface(rendered), sent(rendered, "GET /api/todos?").length]).toEqual([undefined, lists + 1]);
+    rendered.unmount();
+    rendered = await render({ path: "/todos/2", required: ["text"], collections: { "/api/todos": todos }, pages: recordPages() });
+    await rendered.enter(rendered.part("input"), "Review it again");
+    await rendered.click(rendered.part("submit"));
+    expect(sent(rendered, "PATCH")).toEqual(["PATCH /api/todos/2"]);
+    expect([rendered.parts("form").length, rendered.part("form").getAttribute("data-dirty"), window.location.pathname]).toEqual([1, null, "/todos/2"]);
+  });
+
+  it("is opened by a press on a record when the listing has an edit and no other press", async () => {
+    rendered = await show(dialogSurface, { table: { press: recordPresses().edit, columns: undefined } });
+    await rendered.click(rendered.parts("press")[0]);
+    expect([rendered.part("surface-title").textContent, task(rendered).value]).toEqual(["Edit", "Write the plan"]);
   });
 });
 
 describe("what a form does once it is saved", () => {
-  it("stays open and empty for another record under `again`, the list reloaded", async () => {
-    rendered = await show(panel(), { opens: { afterSubmit: "again" } });
+  it("stays open and empty for another record under `again`, the list reloaded; pressing create twice makes two records", async () => {
+    rendered = await show(panel(), { forms: { afterSubmit: "again" } });
     await rendered.click(rendered.part("listing-create"));
     await rendered.enter(task(rendered), "The first of two");
     await rendered.click(within(rendered, "submit"));
@@ -289,10 +344,11 @@ describe("what a form does once it is saved", () => {
     await rendered.enter(task(rendered), "The second");
     await rendered.click(within(rendered, "submit"));
     expect(rendered.part("pager-status").textContent).toBe("1–2 of 7");
+    expect(sent(rendered, "POST")).toEqual(["POST /api/todos", "POST /api/todos"]);
   });
 
   it("stays open with its values under `keep`, holding nothing unsaved, the list reloaded", async () => {
-    rendered = await show(panel(), { opens: { afterSubmit: "keep" } });
+    rendered = await show(panel(), { forms: { afterSubmit: "keep" } });
     await rendered.click(rendered.parts("row-edit")[1]);
     await rendered.enter(task(rendered), "Review it and stay");
     expect(within(rendered, "form").getAttribute("data-dirty")).toBe("true");
@@ -303,6 +359,14 @@ describe("what a form does once it is saved", () => {
     // Nothing is unsaved, so leaving asks nothing.
     await rendered.click(rendered.part("surface-close"));
     expect(surface(rendered)).toBeUndefined();
+  });
+
+  it("returns an edit page to the record it saved under `again`", async () => {
+    rendered = await show(panel(), { forms: { afterSubmit: "again" } });
+    await rendered.click(rendered.parts("row-edit")[1]);
+    await rendered.enter(task(rendered), "Review it and again");
+    await rendered.click(within(rendered, "submit"));
+    expect([task(rendered).value, within(rendered, "form").getAttribute("data-dirty")]).toEqual(["Review it and again", null]);
   });
 });
 
@@ -345,9 +409,9 @@ describe("unsaved input", () => {
     await rendered.enter(task(rendered), "Half written");
     await rendered.traverse(-1);
     expect(question(rendered)).toBeDefined();
-    expect([window.location.search, position()]).toEqual(["?_telo.open.todo=", open]);
+    expect([window.location.search, position()]).toEqual([`?${key("/todos/new")}`, open]);
     await answer(rendered, "cancel");
-    expect([window.location.search, position()]).toEqual(["?_telo.open.todo=", open]);
+    expect([window.location.search, position()]).toEqual([`?${key("/todos/new")}`, open]);
     expect(task(rendered).value).toBe("Half written");
     // The forward entry is still there to go to.
     await rendered.traverse(1);
@@ -386,8 +450,21 @@ describe("unsaved input", () => {
     expect(sent(rendered, "POST")).toEqual([]);
   });
 
+  it("asks before another record opens in the same surface, and keeps the first if the user stays", async () => {
+    rendered = await show(panel());
+    await rendered.click(rendered.parts("row-edit")[0]);
+    await rendered.enter(task(rendered), "Half written");
+    await rendered.click(rendered.parts("row-edit")[1]);
+    expect(question(rendered)).toBeDefined();
+    await answer(rendered, "cancel");
+    expect(task(rendered).value).toBe("Half written");
+    await rendered.click(rendered.parts("row-edit")[1]);
+    await answer(rendered, "submit");
+    expect(task(rendered).value).toBe("Review the plan");
+  });
+
   it("is dropped without a question anywhere under `discard`", async () => {
-    rendered = await show(panel(), { more: [probe], opens: { unsaved: "discard" } });
+    rendered = await show(panel(), { more: [probe], forms: { unsaved: "discard" } });
     await rendered.click(rendered.part("listing-create"));
     await rendered.enter(task(rendered), "Half written");
     await rendered.click(rendered.part("surface-close"));
@@ -398,178 +475,125 @@ describe("unsaved input", () => {
     expect(window.location.pathname).toBe("/done");
     expect(question(rendered)).toBeUndefined();
   });
-});
 
-describe("an addressed surface", () => {
-  it("writes what is open into the address as a history entry, and goes back to close", async () => {
-    rendered = await show(named(panel()));
-    const start = position();
-    const entries = window.history.length;
-    await rendered.click(rendered.part("listing-create"));
-    expect([window.location.search, position()]).toEqual(["?_telo.open.todo=", start + 1]);
-    expect(rendered.part("surface-title").textContent).toBe("New");
-    await rendered.traverse(-1);
-    expect([window.location.search, position(), surface(rendered)]).toEqual(["", start, undefined]);
-    // One name for both forms: opening the edit form closes the create form.
-    await rendered.click(rendered.part("listing-create"));
-    await rendered.click(rendered.parts("row-edit")[1]);
-    expect([window.location.search, position()]).toEqual(["?_telo.open.todo=2", start + 1]);
-    expect(rendered.part("surface-title").textContent).toBe("Edit");
-    expect(rendered.parts("surface").length).toBe(1);
-    await rendered.click(rendered.part("surface-close"));
-    expect([window.location.search, position(), surface(rendered)]).toEqual(["", start, undefined]);
-    expect(window.history.length).toBe(entries + 1);
-  });
-
-  it("opens from a cold address over the record read by its key, and closes in the same history entry", async () => {
-    rendered = await show(named(dialogSurface), { path: "/?_telo.open.todo=4&c=1" });
-    const [start, entries] = [position(), window.history.length];
-    expect(rendered.part("surface-title").textContent).toBe("Edit");
-    expect(task(rendered).value).toBe("Write the docs");
-    expect(sent(rendered, "GET /api/todos/4")).toEqual(["GET /api/todos/4"]);
-    await rendered.click(rendered.part("surface-close"));
-    expect([window.location.search, position(), window.history.length, surface(rendered)]).toEqual(["?c=1", start, entries, undefined]);
-  });
-
-  it("takes the entry a cold address arrived in for another row, and closes in it", async () => {
-    rendered = await show(named(panel()), { path: "/?_telo.open.todo=1" });
-    const [start, entries] = [position(), window.history.length];
-    await rendered.click(rendered.parts("row-edit")[1]);
-    expect([...where(), task(rendered).value]).toEqual(["?_telo.open.todo=2", start, "Review the plan"]);
-    await rendered.click(rendered.part("surface-close"));
-    expect([...where(), window.history.length, surface(rendered)]).toEqual(["", start, entries, undefined]);
-  });
-
-  it("closes alone, leaving another surface open on the page as it is", async () => {
-    rendered = await twoPanels();
-    const edits = rendered.parts("row-edit");
-    await rendered.click(edits[0]);
-    expect(where()).toEqual(["?_telo.open.a=1", 1]);
-    await rendered.click(edits[3]);
-    expect([...where(), tasks(rendered)]).toEqual(["?_telo.open.a=1&_telo.open.b=2", 2, ["Write the plan", "Review the plan"]]);
-    await rendered.click(rendered.parts("surface-close")[1]);
-    expect([...where(), tasks(rendered)]).toEqual(["?_telo.open.a=1", 1, ["Write the plan"]]);
-    // The one opened first is not on top: it leaves the entry both are in.
-    await rendered.click(edits[3]);
-    expect(where()).toEqual(["?_telo.open.a=1&_telo.open.b=2", 2]);
-    await rendered.click(rendered.parts("surface-close")[0]);
-    expect([...where(), tasks(rendered)]).toEqual(["?_telo.open.b=2", 2, ["Review the plan"]]);
-  });
-
-  it("closes two surfaces asked to close in one step, the second while the first is stepping back", async () => {
-    rendered = await twoPanels();
-    const edits = rendered.parts("row-edit");
-    await rendered.click(edits[0]);
-    await rendered.click(edits[3]);
-    const [first, second] = rendered.parts("surface-close");
-    await act(async () => {
-      for (const button of [second, first]) button.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
-    });
-    await rendered.settle();
-    expect([...where(), rendered.parts("surface")]).toEqual(["", 1, []]);
-  });
-
-  it("keeps a form switched to another row under a later surface, with its input, when that surface closes", async () => {
-    rendered = await twoPanels();
-    const edits = rendered.parts("row-edit");
-    await rendered.click(edits[0]);
-    await rendered.click(edits[3]);
-    await rendered.click(edits[1]);
-    expect(where()).toEqual(["?_telo.open.b=2&_telo.open.a=2", 2]);
-    await rendered.enter(task(rendered), "Half written");
-    await rendered.click(rendered.parts("surface-close")[1]);
-    expect([...where(), tasks(rendered), question(rendered)]).toEqual(["?_telo.open.a=2", 1, ["Half written"], undefined]);
-  });
-
-  it("adds an entry on a page reached by replacing the entry of an open surface", async () => {
-    const table = listingNode({ create: opener({ surface: named(panel()) }) });
+  it("is held for a form on a page of its own, which the application leaves only once the user answers", async () => {
     rendered = await render({
-      path: "/",
-      loadModule: loadFixtureComponents,
+      path: "/todos/new",
       collections: { "/api/todos": todos },
-      pages: { "/": { title: "Todos", children: [probe, table] }, "/done": { title: "Done", children: [table] } },
+      pages: {
+        ...recordPages(),
+        "/todos/new": { children: [...recordPages()["/todos/new"].children, { type: "link", text: "Leave", to: navigateTo(address("/done")) }] },
+        "/done": { title: "Done", children: [{ type: "text", text: "The done page" }] },
+      },
+      layouts: false,
     });
-    await rendered.click(rendered.part("listing-create"));
-    expect([window.location.pathname, ...where()]).toEqual(["/", "?_telo.open.todo=", 1]);
-    await rendered.click(rendered.fixture("replace-page"));
-    expect([window.location.pathname, ...where(), surface(rendered)]).toEqual(["/done", "", 1, undefined]);
-    await rendered.click(rendered.part("listing-create"));
-    expect([window.location.pathname, ...where()]).toEqual(["/done", "?_telo.open.todo=", 2]);
-    await rendered.click(rendered.part("surface-close"));
-    expect([window.location.pathname, ...where(), surface(rendered)]).toEqual(["/done", "", 1, undefined]);
-  });
-
-  it("opens nothing for an empty value under a name only the edit form declares", async () => {
-    rendered = await show(dialogSurface, { path: "/?_telo.open.todo=", table: { edit: opener({ surface: named(dialogSurface) }) } });
-    expect(rendered.parts("surface")).toEqual([]);
-  });
-
-  it("keeps a row with an empty key open in memory, never as the create form", async () => {
-    rendered = await show(named(dialogSurface), { rows: [{ code: "", text: "Has no key" }], table: { key: "code" } });
-    const [start, entries] = [position(), window.history.length];
-    await rendered.click(rendered.part("row-edit"));
-    expect(rendered.part("surface-title").textContent).toBe("Edit");
-    expect([window.location.search, position(), window.history.length]).toEqual(["", start, entries]);
+    await rendered.enter(rendered.part("input"), "Half written");
+    await rendered.click(rendered.parts("link").find((each) => each.textContent === "Leave") as HTMLElement);
+    expect([window.location.pathname, question(rendered) === undefined]).toEqual(["/todos/new", false]);
+    await answer(rendered, "submit");
+    expect(window.location.pathname).toBe("/done");
   });
 });
 
-describe("a compact surface", () => {
-  it("stands in below the application's breakpoint, under the address of the surface it replaces", async () => {
-    const declared = named({ ...panel(), compact: drawer("bottom") });
-    rendered = await show(declared, { narrow: true });
-    expect(rendered.mediaQueries).toEqual(["(width < 40rem)"]);
-    expect(rendered.part("app").getAttribute("data-compact")).toBe("true");
-    await rendered.click(rendered.part("listing-create"));
-    expect([surface(rendered)!.getAttribute("data-surface"), surface(rendered)!.getAttribute("data-side")]).toEqual(["drawer", "bottom"]);
-    expect(window.location.search).toBe("?_telo.open.todo=");
-    rendered.unmount();
-    rendered = await show(declared);
-    expect(rendered.part("app").getAttribute("data-compact")).toBeNull();
-    await rendered.click(rendered.part("listing-create"));
-    expect(surface(rendered)!.getAttribute("data-surface")).toBe("panel");
+describe("a form restarting", () => {
+  /** A page whose query reads the record its `record` parameter names, with a form over `data` and a link to the other record. */
+  const bySection = () => {
+    const edit = recordPages()["/todos/{id}"].children[0] as unknown as { content: unknown[] };
+    const query = {
+      type: "query",
+      query: {
+        id: "section",
+        schema: { type: "object", properties: { id: { type: "integer" }, text: { type: "string" } } },
+        method: "GET",
+        url: address("/api/todos/{id}", { id: { root: "query", path: ["record"] } }),
+        input: null,
+        query: { record: { type: "string" } },
+        reloadOn: ["focus"],
+      },
+      content: [{ ...(edit.content[0] as object), record: { basePath: "/api/todos", key: { root: "data", path: ["id"] } } }],
+      loading: [],
+      failure: [],
+      fill: false,
+    };
+    return { "/": { title: "Todo", children: [{ type: "link", text: "Second", to: navigateTo(address("/", {}, { record: { value: "2" } })) }, query] } };
+  };
+  const typed = (r: Rendered) => (r.part("input") as HTMLInputElement).value;
+  const start = async () => {
+    rendered = await render({ path: "/?record=1", required: ["text"], collections: { "/api/todos": todos }, pages: bySection(), layouts: false });
+    await rendered.enter(rendered.part("input"), "Half written");
+    return rendered;
+  };
+
+  it("starts again from the record read at another address once the unsaved input is dropped", async () => {
+    const r = await start();
+    await r.click(r.part("link"));
+    expect([question(r) === undefined, typed(r)]).toEqual([false, "Half written"]);
+    await answer(r, "submit");
+    expect([typed(r), r.part("form").getAttribute("data-dirty")]).toEqual(["Review the plan", null]);
   });
+
+  it("keeps what was typed where the user stays", async () => {
+    const r = await start();
+    await r.click(r.part("link"));
+    await answer(r, "cancel");
+    expect([typed(r), r.part("form").getAttribute("data-dirty")]).toEqual(["Half written", "true"]);
+  });
+
+  it("keeps what was typed when its query reads the same address again", async () => {
+    const r = await start();
+    const reads = sent(r, "GET /api/todos/1").length;
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await r.settle();
+    expect([sent(r, "GET /api/todos/1").length, typed(r), question(r)]).toEqual([reads + 1, "Half written", undefined]);
+  });
+});
+
+describe("a surface opened by a button node", () => {
+  const json = (body: unknown, status = 201) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  const decide = (surfaceSpec: Record<string, unknown>) =>
+    operation("/api/plans/p7/decisions", "Approve", decisionSchema, { onSuccess: { refreshes: [], to: openPageAt(address("/todos/new"), surfaceSpec, false) } });
+  const button = (surfaceSpec: Record<string, unknown>) => ({
+    type: "button",
+    action: decide(surfaceSpec),
+    inputs: { id: { value: "p7" }, decision: { value: "approve" }, revision: { value: 3 } },
+    button: { type: "text" },
+  });
+  const showing = (children: unknown[], path = "/") => {
+    const pending = render({
+      path,
+      loadModule: loadFixtureComponents,
+      required: ["text"],
+      collections: { "/api/todos": todos },
+      pages: { "/": { title: "Plan", children: children as never }, ...recordPages() },
+    });
+    return pending.then((made) => {
+      made.answer("/api/plans/p7/decisions", () => json({ state: "approved" }));
+      return made;
+    });
+  };
+  const approve = (r: Rendered) => r.part("button");
+  const newKey = key("/todos/new");
 
   it.each([
-    ["panel", panel()],
-    ["inline", { type: "inline" }],
     ["popover", popover],
-  ])("gives way to the %s it stands in for as the viewport crosses the breakpoint, and takes its place again, with what was entered", async (type, declared) => {
-    rendered = await show({ ...declared, compact: dialogSurface }, { narrow: true });
-    await rendered.click(rendered.parts("row-edit")[1]);
-    const input = task(rendered);
-    await rendered.enter(input, "Half written");
-    await rendered.focus(input);
-    const drawn = () => [
-      surface(rendered!)!.getAttribute("data-surface"),
-      task(rendered!) === input,
-      input.value,
-      within(rendered!, "form").getAttribute("data-dirty"),
-      document.activeElement === input,
-      question(rendered!),
-      sent(rendered!, "GET /api/todos/2").length,
-    ];
-    expect(drawn()).toEqual(["dialog", true, "Half written", "true", true, undefined, 1]);
-    await rendered.setNarrow(false);
-    expect(drawn()).toEqual([type, true, "Half written", "true", true, undefined, 1]);
-    await rendered.enter(input, "Half written, then more");
-    await rendered.setNarrow(true);
-    expect(drawn()).toEqual(["dialog", true, "Half written, then more", "true", true, undefined, 1]);
-    // It is still unsaved input: closing asks.
-    await rendered.click(within(rendered, "cancel"));
-    expect(question(rendered)).toBeDefined();
+    ["inline", { type: "inline" }],
+  ])("anchors a %s to the button, opened warm and again on a reload", async (type, spec) => {
+    rendered = await showing([button(named(spec))]);
+    await rendered.click(approve(rendered));
+    expect(surface(rendered)!.getAttribute("data-surface")).toBe(type);
+    if (type === "inline") expect(approve(rendered).nextElementSibling?.contains(surface(rendered)!)).toBe(true);
+    rendered.unmount();
+    rendered = await showing([button(named(spec))], `/?${newKey}`);
+    expect(surface(rendered)!.getAttribute("data-surface")).toBe(type);
+    if (type === "inline") expect(approve(rendered).nextElementSibling?.contains(surface(rendered)!)).toBe(true);
   });
 
-  it("lets a form being sent finish across the swap, and do what follows its save", async () => {
-    rendered = await show({ ...panel(), compact: dialogSurface });
-    let respond: (response: Response) => void = () => {};
-    await rendered.click(rendered.part("listing-create"));
-    await rendered.enter(task(rendered), "A slow task");
-    rendered.answer("/api/todos", () => new Promise<Response>((resolve) => (respond = resolve)));
-    await rendered.click(within(rendered, "submit"));
-    await rendered.setNarrow(true);
-    expect([surface(rendered)!.getAttribute("data-surface"), within(rendered, "form").getAttribute("data-state")]).toEqual(["dialog", "submitting"]);
-    respond(new Response(JSON.stringify({ id: 9, text: "A slow task" }), { status: 201 }));
-    await rendered.settle();
-    expect([surface(rendered), sent(rendered, "POST")]).toEqual([undefined, ["POST /api/todos"]]);
+  it("sits a panel beside the composite holding the button, on a reload", async () => {
+    const split = { type: "split", aside: asideOf({ type: "text", text: "Aside" }), content: button(named(panel())) };
+    rendered = await showing([split], `/?${newKey}`);
+    expect(surface(rendered)!.getAttribute("data-surface")).toBe("panel");
+    expect(surface(rendered)!.parentElement).toBe(rendered.part("split"));
   });
 });

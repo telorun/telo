@@ -89,12 +89,14 @@ export interface RowActions {
  * drawn in place of its button, over `result`, `input` and `values` (the
  * record sent); a failure is drawn beside the button, or in the confirmation
  * when one is open. `roots` are the roots the rows are drawn under;
- * `succeeded` is told about each success, with what it answered and the row's key.
+ * `succeeded` is told about each success, with what it answered and the row's key, and about a refused precondition with nothing, so the listing reads again.
  */
 export function useRowActions(
   entries: RowActionSpec[],
   roots: Roots,
   succeeded: (result: Record<string, unknown> | undefined, key: string) => void,
+  /** The element a page the success opens is placed against, where the entries are drawn as one element. */
+  opener?: () => HTMLElement | null,
 ): RowActions {
   const host = useHost();
   const destinations = useDestinationContext();
@@ -135,10 +137,12 @@ export function useRowActions(
     if (outcome.ok) {
       setAsking(undefined);
       if (action.result !== undefined) answer(answerKey(index, key), outcome);
-      followSuccess(action, outcome, host, destinations, text(action.label));
+      followSuccess(action, outcome, host, destinations, text(action.label), [], opener?.());
       succeeded(outcome.result, key);
       return outcome;
     }
+    // A record changed since it was read: the listing reads it again.
+    if (outcome.error.status === 412) succeeded(undefined, key);
     if (!inDialog) {
       answer(answerKey(index, key), outcome);
       return outcome;

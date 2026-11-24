@@ -26,10 +26,10 @@ children:
   - { type: link, text: First author, to: { kind: Ui.OpenPage, page: !ref authorPage, pathParams: { id: !cel "row.id" } } }
   # REFERENCE_KIND_MISMATCH — `to` holds a Ui.Destination.
   - { type: link, text: Close, to: { kind: Ui.Dialog } }
-  # REFERENCE_KIND_MISMATCH — a page opens in a dialog or a drawer.
+  # REFERENCE_KIND_MISMATCH — a page opens in a surface.
   - type: link
-    text: Ada in a popover
-    to: { kind: Ui.OpenPage, page: !ref authorPage, pathParams: { id: ada }, surface: { kind: Ui.Popover, side: bottom } }
+    text: Ada in a destination
+    to: { kind: Ui.OpenPage, page: !ref authorPage, pathParams: { id: ada }, surface: { kind: Ui.Navigate, href: / } }
   # KIND_NOT_EXPORTED — closing is no destination.
   - { type: link, text: Done, to: { kind: Ui.Close } }
   # SCHEMA_VIOLATION — `href` is gone from `value`.

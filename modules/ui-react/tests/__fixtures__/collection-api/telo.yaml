@@ -5,10 +5,9 @@ metadata:
   description: >-
     Test fixture: a hand-written REST collection held in memory, speaking the
     collection contract a listing reads — limit, cursor, one-key sort,
-    filters with absent, facets, a total — with create, replace and delete on
-    its items.
-exports:
-  kinds: [Collection]
+    filters with absent, facets, a total — with create, merge-patch update, replace and
+    delete on its items, each record answered with an ETag unless `etags` is false.
+exports: { kinds: [Collection] }
 ---
 kind: Telo.Definition
 metadata:
@@ -18,16 +17,12 @@ metadata:
     collection with item routes, refusing a record that lacks a required
     property with the request-validation envelope.
 capability: Telo.Mount
-controllers:
-  - pkg:telo/local/js?path=./collection.mjs#Collection
+controllers: [pkg:telo/local/js?path=./collection.mjs#Collection]
 schema:
   type: object
   additionalProperties: false
   required: [rows]
   properties:
-    rows:
-      type: array
-      items: { type: object }
-    required:
-      type: array
-      items: { type: string }
+    rows: { type: array, items: { type: object } }
+    required: { type: array, items: { type: string } }
+    etags: { type: boolean }

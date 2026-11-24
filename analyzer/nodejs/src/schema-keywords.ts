@@ -38,6 +38,7 @@ const X_TELO_CONTEXT_FROM_PATH_TEMPLATE = "x-telo-context-from-path-template" as
 const X_TELO_CONTEXT_NULLABLE_WHEN = "x-telo-context-nullable-when" as const;
 const X_TELO_CONTEXT_ITEM_FILLS = "x-telo-context-item-fills" as const;
 const X_TELO_CONTEXT_WITHHELD = "x-telo-context-withheld" as const;
+const X_TELO_CONTEXT_PARTIAL = "x-telo-context-partial" as const;
 const X_TELO_CAUGHT_MEMBER = "x-telo-caught-member" as const;
 import { ANNOTATION_KEYWORDS } from "./value-type-keyword.js";
 import { TOPOLOGY_ROLES } from "./topology-role.js";
@@ -80,6 +81,7 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
       | typeof X_TELO_CONTEXT_EVAL
       | typeof X_TELO_CONTEXT_FROM_REFERRER
       | typeof X_TELO_CONTEXT_WITHHELD
+      | typeof X_TELO_CONTEXT_PARTIAL
       | typeof X_TELO_CONTEXT_FROM_PATH_TEMPLATE
       | typeof X_TELO_CONTEXT_NULLABLE_WHEN
       | typeof X_TELO_CONTEXT_ITEM_FILLS
@@ -393,9 +395,17 @@ const FROM_PATH_TEMPLATE_ENTRY = {
 const WITHHELD_ENTRY = {
   title: "Context withheld",
   description:
-    "This node is named here and holds no value: every expression reading it — a null test, `has()` and an accessor chain included — is refused with this reason, naming the referrer that withholds it when the mark arrived through `x-telo-context-from-referrer`. Beside `x-telo-context-from-referrer` it is the node's reading wherever no referrer types it. Written beside `x-telo-context-eval`, `x-telo-context-from-referrer`, `title` and `description` only.",
+    "This node is named here and holds no value: every expression reading it — a null test, `has()` and an accessor chain included — is refused with this reason, naming the referrer that withholds it when the mark arrived through `x-telo-context-from-referrer`. Beside `x-telo-context-from-referrer` it is the node's reading wherever no referrer types it. Written beside `x-telo-context-eval`, `x-telo-context-from-referrer`, `x-telo-context-partial`, `title` and `description` only.",
   type: "string",
   minLength: 1,
+};
+
+const PARTIAL_ENTRY = {
+  title: "Context partial",
+  description:
+    "This node is some of a record's members: the object type its typing annotation (`x-telo-context-from`, `-from-root`, `-from-referrer`, …) or its own `properties` give it, with every member optional and nullable — an unknown member is still refused, and a read beneath a member must be guarded. Takes only `true`.",
+  type: "boolean",
+  const: true,
 };
 
 const NULLABLE_WHEN_ENTRY = {
@@ -422,6 +432,7 @@ export const TELO_CONTEXT_BINDING_ANNOTATIONS: Record<
   | typeof X_TELO_CONTEXT_FROM_PATH_TEMPLATE
   | typeof X_TELO_CONTEXT_NULLABLE_WHEN
   | typeof X_TELO_CONTEXT_WITHHELD
+  | typeof X_TELO_CONTEXT_PARTIAL
   | typeof X_TELO_CONTEXT_ITEM_FILLS,
   Record<string, unknown>
 > = {
@@ -429,6 +440,7 @@ export const TELO_CONTEXT_BINDING_ANNOTATIONS: Record<
   [X_TELO_CONTEXT_FROM_PATH_TEMPLATE]: FROM_PATH_TEMPLATE_ENTRY,
   [X_TELO_CONTEXT_NULLABLE_WHEN]: NULLABLE_WHEN_ENTRY,
   [X_TELO_CONTEXT_WITHHELD]: WITHHELD_ENTRY,
+  [X_TELO_CONTEXT_PARTIAL]: PARTIAL_ENTRY,
   [X_TELO_CONTEXT_ITEM_FILLS]: {
     title: "Context item fills",
     description:
@@ -457,13 +469,15 @@ export const TELO_CONTEXT_MEMBER_ANNOTATIONS: Record<
   | typeof X_TELO_CONTEXT_FROM_REFERRER
   | typeof X_TELO_CONTEXT_FROM_PATH_TEMPLATE
   | typeof X_TELO_CONTEXT_NULLABLE_WHEN
-  | typeof X_TELO_CONTEXT_WITHHELD,
+  | typeof X_TELO_CONTEXT_WITHHELD
+  | typeof X_TELO_CONTEXT_PARTIAL,
   Record<string, unknown>
 > = {
   [X_TELO_CONTEXT_FROM_REFERRER]: FROM_REFERRER_ENTRY,
   [X_TELO_CONTEXT_FROM_PATH_TEMPLATE]: FROM_PATH_TEMPLATE_ENTRY,
   [X_TELO_CONTEXT_NULLABLE_WHEN]: NULLABLE_WHEN_ENTRY,
   [X_TELO_CONTEXT_WITHHELD]: WITHHELD_ENTRY,
+  [X_TELO_CONTEXT_PARTIAL]: PARTIAL_ENTRY,
   [X_TELO_CAUGHT_MEMBER]: {
     title: "Caught member",
     description:

@@ -6,11 +6,12 @@ import { modelSchema } from "./model-schema.js";
 export type WriterResource = RuntimeResource & {
   connection: unknown;
   table: string;
-  model: unknown;
+  /** The shape a body is written by; absent where nothing is written from a body. */
+  model?: unknown;
   record: unknown;
 };
 
-/** What both write routes share: the shape a body is written by, and the shape
+/** What the write routes share: the shape a body is written by, and the shape
  *  the written row is answered in. */
 export class Writer {
   private written?: Map<string, ModelProperty>;

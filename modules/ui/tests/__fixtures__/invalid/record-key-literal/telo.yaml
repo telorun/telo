@@ -1,0 +1,32 @@
+# A text literal as the key of a collection keyed by an integer.
+kind: Telo.Application
+metadata: { name: UiInvalidRecordKeyLiteralApp, version: 1.0.0 }
+imports: { Ui: ../../../../, DataModel: ../../../../../data-model }
+targets:
+  - invoke: !ref stringLiteral
+    inputs: { request: { headers: {} } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Task }
+schema:
+  type: object
+  required: [id]
+  properties: { id: { type: integer }, title: { type: string } }
+---
+kind: DataModel.Collection
+metadata: { name: tasks }
+model: !ref Task
+schemas: { create: !ref Task, update: !ref Task }
+query: { filters: [], sort: [] }
+---
+kind: Ui.CollectionPresentation
+metadata: { name: tasksPresentation }
+source: { kind: Ui.CollectionSource, collection: !ref tasks, basePath: /api/tasks }
+---
+kind: Ui.Page
+metadata: { name: stringLiteral }
+path: /seven
+title: Seven
+children:
+  - type: composite
+    ref: { kind: Ui.Form, model: !ref Task, record: { presentation: !ref tasksPresentation, key: "7" } }

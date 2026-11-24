@@ -2,8 +2,8 @@
 
 The records of a REST collection, read page by page and drawn by a layout.
 Everything that does not depend on how records are drawn is the listing's —
-what is read, paging, the viewer's sort, labels of related records, openers,
-row actions, delete and the empty state — so it is declared once whatever the
+what is read, paging, the viewer's sort, labels of related records, the
+create and edit buttons, row actions, delete and the empty state — so it is declared once whatever the
 layout. How records are drawn is [the layout's](listing-layouts.md).
 
 | Field | | |
@@ -18,8 +18,9 @@ layout. How records are drawn is [the layout's](listing-layouts.md).
 | `sort` | the collection's order, chosen by the viewer | [the order the records start in and whether the viewer may change it](#sorting): `{ by?: { property, direction? }, choosable? }` |
 | `show` | `{ count: true }` | [what is shown beside the records](#the-count): `{ count? }` |
 | `rowStyle` | | a [style rule](nodes.md#style-rules) for the record's element in every layout: a table row, a card, an event |
-| `create`, `edit` | | [how a form is opened](#opening-a-form): `{ form, surface?, afterSubmit?, unsaved? }` |
-| `press` | the `edit` opener | [what pressing a record does](#pressing-a-record): a [`Ui.Press`](presses.md#presses), `{ to, label }`, over `row`, `query` and `params` |
+| `create` | | [the create button](#create-and-edit): `{ to, label? }`, a [`Ui.Press`](presses.md#presses) with an optional `label`, over `values`, `query` and `params` |
+| `edit` | | [the edit action of each record](#create-and-edit): `{ to, label? }` over `row`, `query` and `params` |
+| `press` | what `edit`'s `to` says | [what pressing a record does](#pressing-a-record): a [`Ui.Press`](presses.md#presses), `{ to, label }`, over `row`, `query` and `params` |
 | `delete` | `false` | whether each record offers a confirmed delete |
 | `rowActions` | none | [operations each record offers](#row-actions): `{ action, inputs, confirm?, prompt?, enabled? }` each |
 | `rowActionsDisplay` | `auto` | [how the actions, edit and delete are drawn](#how-the-actions-are-drawn): `auto`, `inline` or `menu` |
@@ -38,8 +39,10 @@ metadata: { name: postsList }
 presentation: !ref postsPresentation
 model: !ref Post
 pageSize: 20
-create: { form: !ref postForm }
-edit: { form: !ref postForm, surface: { kind: Ui.Drawer } }
+create:
+  to: { kind: Ui.OpenPage, page: !ref newPostPage }
+edit:
+  to: { kind: Ui.OpenPage, page: !ref postPage, pathParams: { id: !cel "row.id" }, surface: { kind: Ui.Drawer } }
 delete: true
 ```
 
@@ -58,7 +61,7 @@ compact: { kind: Ui.CardLayout, size: small }
 ```
 
 Crossing the breakpoint swaps the layout and keeps the listing's state: the
-pages read, the viewer's sort, an open edit form and what it holds.
+pages read, the viewer's sort, an open page and what it holds.
 
 ## Paging
 
@@ -161,38 +164,58 @@ relation under `relations`, keyed by property, as the
 from: the keys of every page answered in one render turn are looked up with
 `in`, in batches of the relation's `pageSize`, skipping keys already labelled.
 
-## Opening a form
+## Create and edit
 
-`create` adds a record and `edit` changes one. Each is an object naming the
-form and, optionally, where and how it opens:
+A record's create screen and edit screen are [`Ui.Page`](page.md)s, and `create`
+and `edit` are presses whose destination is usually a
+[`Ui.OpenPage`](presses.md#uiopenpage) of that page: the page reached by its own
+address is a full page, and opened from a press it is drawn in the press's
+[surface](surfaces.md). `create` is drawn as the listing's create button; `edit`
+is drawn among each record's actions, and is the record's press when `press` is
+omitted.
 
 ```yaml
 create:
-  form: !ref todoForm
+  to: { kind: Ui.OpenPage, page: !ref newPostPage, surface: { kind: Ui.Dialog, size: small } }
 edit:
-  form: !ref todoForm
-  surface: { kind: Ui.Panel, address: { name: todo } }
-  afterSubmit: keep
-  unsaved: discard
+  to:
+    kind: Ui.OpenPage
+    page: !ref postPage
+    pathParams: { id: !cel "row.id" }
+    surface: { kind: Ui.Panel, address: { name: post }, compact: { kind: Ui.Drawer, side: bottom } }
+  label: Edit post
 ```
 
 | Field | | |
 | --- | --- | --- |
-| `form` | required | a [`Ui.Form`](form.md), `!ref` or inline |
-| `surface` | a `Ui.Dialog` with its defaults | [where the form appears](surfaces.md): any `Ui.Surface`, `!ref` or inline |
-| `afterSubmit` | `close` | what the form does once the record is saved: `close`, `keep`, and on `create` also `again` — back at the values a new record starts from |
-| `unsaved` | `confirm` | whether leaving the form with unsaved input asks first (`confirm`) or drops it (`discard`) |
+| `to` | required | where pressing goes, a [destination](presses.md#destinations); `edit`'s reads `row` |
+| `label` | `ui`'s text `create` / `edit` | the [`Ui.BoundText`](texts.md#a-text-over-data) naming the button |
 
-An edit opens over the record read by its key, not over the record shown.
-`afterSubmit` and `unsaved` are described with the surfaces, under
-[After a submit, and unsaved input](surfaces.md#after-a-submit-and-unsaved-input).
+**What a place proposes for the new record.** `create` reads `values`, the
+property values the place that asked proposes — a board's column its
+grouping value, a calendar day its start — typed as the listing's `model` with
+every member optional and nullable (`values.status` may hold nothing, a name
+the model lacks is `CEL_UNKNOWN_FIELD`), and `{}` from the listing's own button.
+It is an accessor root, so a destination reads it only in accessor fields such
+as `queryParams`; a parameter whose value holds nothing is left out of the
+address, and `values` outside a `create` is `CEL_UNKNOWN_IDENTIFIER`.
 
-The object is the only spelling: `create: !ref todoForm` is refused
-(`SCHEMA_VIOLATION`), as is `afterSubmit: again` on `edit`.
+```yaml
+create:
+  to:
+    kind: Ui.OpenPage
+    page: !ref newTaskPage                  # declares `query: { status }`, starts its form from it
+    queryParams: { status: !cel "values.status" }
+```
+
+Each key is typed from [`Ui.Press`](presses.md#presses), whose `label` is
+required where a press has no default. The old object spelling
+`{ form, surface, afterSubmit, unsaved }` is `SCHEMA_VIOLATION`: a form lives
+on a page, which says its own lifecycle ([the form](form.md)).
 
 ## Pressing a record
 
-Without `press`, pressing a record opens its `edit` form. `press` says what
+Without `press`, pressing a record does what `edit`'s `to` says. `press` says what
 pressing one does instead — a [destination](presses.md) and the label naming
 the press, both over the record's `row` and the listing's `query` and
 `params` — and editing is then the record's edit button:
@@ -205,7 +228,8 @@ press:
     pathParams: { id: !cel "row.id" }
     surface: { kind: Ui.Drawer, side: end, address: { name: post } }
   label: { text: "Open {$title}", values: { title: !cel "row.title" } }
-edit: { form: !ref postForm }
+edit:
+  to: { kind: Ui.OpenPage, page: !ref postPage, pathParams: { id: !cel "row.id" } }
 ```
 
 Every layout draws the press across the whole record — a list item, a card, a
@@ -324,6 +348,14 @@ resolved, encoded, app-relative path of its request equals an announced one;
 the query is not compared. A `Ui.Query.url` and a `Ui.CollectionSource.basePath`
 — a templated one as it resolves — are matched this way.
 
+**A refused precondition.** A `DELETE` or a row action answered `412` (the
+record changed since it was read, for a path whose read carried an `ETag`)
+announces the item path and the listing's own `basePath` as a success does, so
+the listing reads again and shows the record as it now is. A form's `PATCH` answered
+`412` announces the item path, so the record is read again. The form
+or dialog that was open shows the failure and keeps what was entered
+([preconditions](action-contract.md#preconditions)).
+
 One rule for every reload, whatever causes it:
 
 - A reload keeps what the viewer has scrolled to. It refetches the loaded pages
@@ -335,7 +367,7 @@ One rule for every reload, whatever causes it:
   itself answered with is replaced from that answer wherever it is drawn.
 - Records are matched by the collection's `key`. A record whose key remains
   keeps its element, so its focus, its open inline surface, its expanded tree
-  state and an edit form's entered values stay. A changed record is updated in
+  state and an open form's entered values stay. A changed record is updated in
   place, records that left the answer go, and new ones appear in order.
 - A reload that fails keeps what is drawn and shows the failure beside it.
 - A filter or sort change is not a reload: it returns each read to its first

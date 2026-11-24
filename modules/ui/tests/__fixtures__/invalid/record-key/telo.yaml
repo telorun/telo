@@ -1,0 +1,42 @@
+# A form's `record.key` over a collection whose key is an integer: a path
+# variable is a string, and a root the place does not bind holds nothing.
+kind: Telo.Library
+metadata:
+  name: UiInvalidRecordKey
+  version: 1.0.0
+  description: Test fixture exporting forms whose record key does not fit the collection's key.
+imports: { Ui: ../../../../, DataModel: ../../../../../data-model }
+exports: { resources: [pathParameter, outsideQuery] }
+---
+kind: Telo.JsonSchema
+metadata: { name: Task }
+schema:
+  type: object
+  required: [id]
+  properties: { id: { type: integer }, title: { type: string } }
+---
+kind: DataModel.Collection
+metadata: { name: tasks }
+model: !ref Task
+schemas: { create: !ref Task, update: !ref Task }
+query: { filters: [], sort: [] }
+---
+kind: Ui.CollectionPresentation
+metadata: { name: tasksPresentation }
+source: { kind: Ui.CollectionSource, collection: !ref tasks, basePath: /api/tasks }
+---
+kind: Ui.Page
+metadata: { name: pathParameter }
+path: /tasks/{id}
+title: Task
+children:
+  - type: composite
+    ref: { kind: Ui.Form, model: !ref Task, record: { presentation: !ref tasksPresentation, key: !cel "params.id" } }
+---
+kind: Ui.Page
+metadata: { name: outsideQuery }
+path: /tasks
+title: Tasks
+children:
+  - type: composite
+    ref: { kind: Ui.Form, model: !ref Task, record: { presentation: !ref tasksPresentation, key: !cel "data.id" } }

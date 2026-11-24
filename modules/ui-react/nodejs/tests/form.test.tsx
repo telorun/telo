@@ -3,32 +3,38 @@ import { afterEach, describe, expect, it } from "vitest";
 import { presetRange } from "../src/browser/date-range.js";
 import { controlFor } from "../src/browser/record-fields.js";
 import { render, type Rendered } from "./harness.js";
-import { formNode, memoryState, opener, listingNode, todos, todoSchema } from "./spec-nodes.js";
+import { editFormNode, formNode, memoryState, recordPages, recordQuery, todos, todoSchema } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
 
 const show = (answers?: Record<string, () => Response>) =>
-  render({ path: "/", required: ["text"], collections: { "/api/todos": todos }, answers, pages: { "/": { title: "New", children: [formNode()] } } });
+  render({ path: "/", required: ["text"], collections: { "/api/todos": todos }, answers, pages: { "/": { title: "New", children: [formNode("/api/todos", { afterSubmit: "again" })] } } });
 
-/** A table over one row, whose edit form shows `fields`; the bodies it PUTs are recorded. */
-async function edit(row: Record<string, unknown>, fields?: string[]) {
-  const form = formNode();
-  const shown = fields ? { ...form, fields: (form.fields as { property: string }[]).filter((field) => fields.includes(field.property)) } : form;
+/** The edit page of one record, reached by its own address; the bodies it PATCHes are recorded,
+ *  with the `If-Match` and content type each carried. */
+async function edit(row: Record<string, unknown>, fields?: string[], etags = true) {
+  const form = editFormNode();
+  const shown = fields ? { fields: (form.fields as { property: string }[]).filter((field) => fields.includes(field.property)) } : {};
   const opened = await render({
-    path: "/",
+    path: `/todos/${row.id}`,
     required: ["text"],
+    etags,
     collections: { "/api/todos": [row] },
-    pages: { "/": { title: "Todos", children: [listingNode({ columns: [], edit: opener({ form: shown }) })] } },
+    pages: recordPages({}, shown),
   });
   const bodies: unknown[] = [];
+  const sent: { ifMatch: string | null; contentType: string | null }[] = [];
   const platform = globalThis.fetch;
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
-    if (init?.method === "PUT") bodies.push(JSON.parse(String(init.body)));
+    if (init?.method === "PATCH") {
+      bodies.push(JSON.parse(String(init.body)));
+      const headers = new Headers(init.headers);
+      sent.push({ ifMatch: headers.get("if-match"), contentType: headers.get("content-type") });
+    }
     return platform(input, init);
   }) as typeof fetch;
-  await opened.click(opened.part("row-edit"));
-  return { opened, bodies };
+  return { opened, bodies, sent };
 }
 
 /** A model whose lists are one of each kind a form enters. */
@@ -41,14 +47,13 @@ const listSchema = {
     notes: { type: ["array", "null"], title: "Notes", items: { type: "string" } },
   },
 };
-const listForm = {
-  type: "form",
-  schema: listSchema,
-  basePath: "/api/lists",
-  fields: ["formats", "sizes", "notes"].map((property) => ({ type: "input", property, label: property, control: "auto" })),
-  groups: [],
-  state: memoryState(["formats", "sizes", "notes"]),
-};
+const listForm = (overrides: Record<string, unknown> = {}) =>
+  formNode("/api/lists", {
+    schema: listSchema,
+    fields: ["formats", "sizes", "notes"].map((property) => ({ type: "input", property, label: property, control: "auto" })),
+    state: memoryState(["formats", "sizes", "notes"]),
+    ...overrides,
+  });
 
 describe("a form", () => {
   it("turns the browser's autocomplete off, on itself and on every control typed into", async () => {
@@ -124,7 +129,7 @@ describe("a form", () => {
       },
     };
     const range = { type: "dateRange", property: "period", label: "Period", presets: [thisMonth], initialPreset: 0, weekStart: "monday" };
-    const form = { ...formNode(), schema, fields: [...formNode().fields.slice(0, 4), range], state: memoryState(["text", "isDone", "priority", "status", "period"]) };
+    const form = formNode("/api/todos", { schema, fields: [...(formNode().fields as unknown[]).slice(0, 4), range], state: memoryState(["text", "isDone", "priority", "status", "period"]), afterSubmit: "again" });
     rendered = await render({ path: "/", required: ["text"], collections: { "/api/todos": todos }, pages: { "/": { title: "New", children: [form] } } });
     const started = () => [
       (rendered!.parts("input")[1] as HTMLInputElement).value,
@@ -164,27 +169,67 @@ describe("a form", () => {
     expect(rendered.part("form").getAttribute("data-state")).toBe("error");
   });
 
-  it("sends an edited row without the property of a field that was emptied", async () => {
-    const { opened, bodies } = await edit({ id: 7, text: "Write the plan", isDone: true, priority: 2, status: "done", dueOn: "2026-10-01" });
+  it("sends a merge patch of what changed, an emptied field as null, and nothing it left alone", async () => {
+    const { opened, bodies, sent } = await edit({ id: 7, text: "Write the plan", isDone: true, priority: 2, status: "done", dueOn: "2026-10-01" });
     rendered = opened;
     await opened.enter(opened.parts("input")[1], "");
     await opened.choose(opened.part("select"), "None");
     await opened.click(opened.part("submit"));
-    const sent = { id: 7, text: "Write the plan", isDone: true, dueOn: "2026-10-01" };
-    expect(bodies).toEqual([sent]);
-    // The collection replaced the row, so the two properties are gone from it.
-    expect((await (await fetch("/api/todos")).json()).rows).toEqual([sent]);
+    expect(bodies).toEqual([{ priority: null, status: null }]);
+    expect(sent.map((each) => each.contentType)).toEqual(["application/merge-patch+json"]);
+    // The collection merged the patch, so only the two properties are gone from the row.
+    expect((await (await fetch("/api/todos")).json()).rows).toEqual([{ id: 7, text: "Write the plan", isDone: true, dueOn: "2026-10-01" }]);
   });
 
-  it("sends back what the row held for a model property it does not show, and nothing the model does not declare", async () => {
+  it("leaves a column the form's model does not show unchanged, naming only what was edited", async () => {
     const { opened, bodies } = await edit(
-      { id: 7, text: "Write the plan", isDone: true, priority: 2, status: null, dueOn: "2026-10-01", revision: 3 },
+      { id: 7, text: "Write the plan", isDone: true, priority: 2, dueOn: "2026-10-01", revision: 3 },
       ["text"],
     );
     rendered = opened;
     await opened.enter(opened.part("input"), "Rewrite the plan");
     await opened.click(opened.part("submit"));
-    expect(bodies).toEqual([{ id: 7, text: "Rewrite the plan", isDone: true, priority: 2, dueOn: "2026-10-01" }]);
+    expect(bodies).toEqual([{ text: "Rewrite the plan" }]);
+  });
+
+  it("sends an empty patch from a form that changed nothing", async () => {
+    const { opened, bodies } = await edit({ id: 7, text: "Write the plan", isDone: false });
+    rendered = opened;
+    await opened.click(opened.part("submit"));
+    expect(bodies).toEqual([{}]);
+  });
+
+  it("carries the validator of its read as If-Match, and none against a server sending no ETag", async () => {
+    const guarded = await edit({ id: 7, text: "Write the plan", isDone: false });
+    rendered = guarded.opened;
+    await guarded.opened.enter(guarded.opened.part("input"), "Rewrite the plan");
+    await guarded.opened.click(guarded.opened.part("submit"));
+    expect(guarded.sent.map((each) => each.ifMatch)).toEqual([expect.stringMatching(/^"[A-Za-z0-9_-]+"$/)]);
+    guarded.opened.unmount();
+    const open = await edit({ id: 7, text: "Write the plan", isDone: false }, undefined, false);
+    rendered = open.opened;
+    await open.opened.enter(open.opened.part("input"), "Rewrite the plan");
+    await open.opened.click(open.opened.part("submit"));
+    expect(open.sent.map((each) => each.ifMatch)).toEqual([null]);
+  });
+
+  it("keeps what was typed when another save came first, reads again, and succeeds on a second press", async () => {
+    const { opened, bodies, sent } = await edit({ id: 7, text: "Write the plan", isDone: false });
+    rendered = opened;
+    // Another session saves the record after this one read it.
+    await fetch("/api/todos/7", { method: "PATCH", body: JSON.stringify({ text: "Someone else's plan" }) });
+    await opened.enter(opened.part("input"), "My plan");
+    await opened.click(opened.part("submit"));
+    expect(opened.part("error-code").textContent).toBe("ERR_CRUD_PRECONDITION_FAILED");
+    expect((opened.part("input") as HTMLInputElement).value).toBe("My plan");
+    // The refusal tells the page's own read of the record, and the form reads it again for its validator.
+    expect(opened.requests.filter((request) => request.endsWith("/api/todos/7")).slice(-3)).toEqual(["PATCH /api/todos/7", "GET /api/todos/7", "GET /api/todos/7"]);
+    await opened.click(opened.part("submit"));
+    // The first write is the other session's, which the helper's recorder saw too.
+    expect(bodies.slice(1)).toEqual([{ text: "My plan" }, { text: "My plan" }]);
+    expect(sent[2].ifMatch).not.toBe(sent[1].ifMatch);
+    expect(opened.parts("error-code")).toEqual([]);
+    expect((await (await fetch("/api/todos/7")).json()).text).toBe("My plan");
   });
 
   it("refuses in the page an edit that empties a required field", async () => {
@@ -197,7 +242,7 @@ describe("a form", () => {
   });
 
   it("enters a list of listed values as a multi-choice and any other list as typed tags, and leaves an empty list out", async () => {
-    rendered = await render({ path: "/", collections: { "/api/lists": [] }, pages: { "/": { title: "New", children: [listForm] } } });
+    rendered = await render({ path: "/", collections: { "/api/lists": [] }, pages: { "/": { title: "New", children: [listForm()] } } });
     expect(controlFor(listSchema.properties.formats)).toBe("options");
     expect(controlFor(listSchema.properties.notes)).toBe("tags");
     const [pdf, , xml] = rendered.parts("option");
@@ -218,16 +263,17 @@ describe("a form", () => {
 
   it("opens an edit with the record's lists in their controls", async () => {
     const row = { id: 7, formats: ["csv"], sizes: [2, 4] };
+    const form = listForm({ record: { basePath: "/api/lists", key: { root: "params", path: ["id"] } }, initialValues: { root: "data", path: [] } });
     rendered = await render({
-      path: "/",
+      path: "/lists/7",
       collections: { "/api/lists": [row] },
-      pages: { "/": { title: "Lists", children: [listingNode({ basePath: "/api/lists", schema: listSchema, columns: [], rowStyle: undefined, edit: opener({ form: listForm }) })] } },
+      pages: { "/lists/{id}": { title: "List", children: [recordQuery([form], "/api/lists", listSchema)] } },
     });
-    await rendered.click(rendered.part("row-edit"));
     expect(rendered.parts("option").map((option) => option.getAttribute("data-state"))).toEqual(["off", "on", "off"]);
     expect(rendered.parts("tag").map((tag) => tag.textContent)).toEqual(["2", "4"]);
     expect(rendered.part("form").getAttribute("data-dirty")).toBeNull();
     await rendered.click(rendered.part("submit"));
-    expect(rendered.sent.map((each) => each.body)).toEqual([row]);
+    // Nothing changed, so the patch names nothing.
+    expect(rendered.sent.map((each) => each.body)).toEqual([{}]);
   });
 });

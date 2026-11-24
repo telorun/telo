@@ -10,6 +10,7 @@ messages:
   cancel: रद्द करें
   close: बंद करें
   newRecord: नया
+  create: बनाएँ
   edit: संपादित करें
   delete: हटाएँ
   deleteRowQuestion: यह पंक्ति हटाएँ?
@@ -81,6 +82,7 @@ messages:
   keepEditing: संपादन जारी रखें
   requestUnauthorized: आप साइन इन नहीं हैं, या आपका सेशन समाप्त हो गया है।
   requestForbidden: आपको ऐसा करने की अनुमति नहीं है।
+  requestPreconditionFailed: रिकॉर्ड किसी और ने बदल दिया है। उसे जाँचें और फिर से सहेजें।
   requestFailedStatus: अनुरोध स्टेटस {$status} के साथ विफल हुआ।
   requestFailed: "अनुरोध विफल हुआ: {$reason}"
   recordRefused: रिकॉर्ड अस्वीकार कर दिया गया।

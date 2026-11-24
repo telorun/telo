@@ -290,8 +290,8 @@ steps:
           - [toner approved policy]
         waiting: 0
 
-  # The page: served, and holding the two listings, the first with its form
-  # and its two decisions.
+  # The page: served, and holding the two listings, the first with its two
+  # decisions and a create press to the form's page.
   - name: shell
     invoke: { kind: HttpClient.Request }
     inputs: { url: "http://127.0.0.1:8112/", method: GET }
@@ -300,15 +300,20 @@ steps:
     inputs: { url: http://127.0.0.1:8112/_telo/ui/page, method: GET, query: { path: / } }
   - name: listings
     value: !cel "steps.page.result.body.children.filter(c, c.type == 'listing')"
+  - name: formPage
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: http://127.0.0.1:8112/_telo/ui/page, method: GET, query: { path: /requests/new } }
   - name: verifyPage
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
         shell: !cel "steps.shell.result.status"
         listings: !cel "steps.listings.result.map(l, [l.basePath, size(l.rowActions)])"
-        form: !cel "steps.listings.result[0].create.form.fields.map(f, f.label)"
+        create: !cel "steps.listings.result[0].create.to.href.path"
+        form: !cel "steps.formPage.result.body.children[0].fields.map(f, f.label)"
       expected:
         shell: 200
+        create: { value: /requests/new }
         listings:
           - [/api/requests, 2]
           - [/api/requests, 0]

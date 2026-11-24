@@ -114,7 +114,6 @@ export {
   DialogController,
   DrawerController,
   InlineSurfaceController,
-  PageSurfaceController,
   PanelController,
   PopoverController,
 } from "./surface-controllers.js";

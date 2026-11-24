@@ -187,6 +187,7 @@ export function followSuccess(
   context: Omit<DestinationContext, "address">,
   naming: string,
   also: readonly string[] = [],
+  opener?: HTMLElement | null,
 ): void {
   const roots = { result: outcome.result, input: outcome.input };
   for (const path of [outcome.target, ...also]) host.notifyChanged(path);
@@ -195,7 +196,7 @@ export function followSuccess(
     if (refresh !== undefined) context.store.notifyRefresh(refresh);
   }
   const destination = resolveDestination(action.onSuccess.to, roots, "action onSuccess to");
-  if (destination !== undefined) openDestination(destination.to, { ...context, address: destination.address }, { naming });
+  if (destination !== undefined) openDestination(destination.to, { ...context, address: destination.address }, { naming, opener });
 }
 
 /**

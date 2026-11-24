@@ -1,5 +1,6 @@
 import type { ResourceContext } from "@telorun/sdk";
 import { destinationAt, type DestinationSpec } from "./destination.js";
+import { uiText } from "./spec-texts.js";
 
 /** A `Ui.Press` as its author wrote it, its destination still a reference. */
 export interface PressConfig {
@@ -25,4 +26,17 @@ export function isPressable(type: string): boolean {
 export async function pressSpec(press: PressConfig | null | undefined, ctx: ResourceContext, owner: string): Promise<PressSpec | null> {
   if (press == null) return null;
   return { to: await destinationAt(press.to, ctx, () => `'press.to' of ${owner}`), label: press.label };
+}
+
+/** A press written as `{ to, label? }`, its omitted `label` the `ui` text `key`;
+ *  null when none is written. */
+export async function defaultedPressSpec(
+  press: { to: unknown; label?: unknown } | null | undefined,
+  key: string,
+  ctx: ResourceContext,
+  owner: string,
+  slot: string,
+): Promise<PressSpec | null> {
+  if (press == null) return null;
+  return { to: await destinationAt(press.to, ctx, () => `'${slot}.to' of ${owner}`), label: press.label ?? uiText(key) };
 }

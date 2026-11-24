@@ -2,7 +2,7 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadFixtureComponents, render, type Rendered } from "./harness.js";
-import { dialogSurface, display, filterField, filtersNode, opener, listingNode, todos, todoSchema } from "./spec-nodes.js";
+import { dialogSurface, display, filterField, filtersNode, listingNode, pressOpening, recordPages, todos, todoSchema } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 beforeEach(() => {
@@ -24,7 +24,7 @@ const show = (
     narrow: options.narrow,
     loadModule: loadFixtureComponents,
     collections: { "/api/todos": todos },
-    pages: { "/": { title: "Todos", children: Array.from({ length: options.bars ?? 1 }, () => filtersNode(listingNode(options.table), bar)) } },
+    pages: { "/": { title: "Todos", children: Array.from({ length: options.bars ?? 1 }, () => filtersNode(listingNode(options.table), bar)) }, ...recordPages() },
   });
 
 /** The query the list was last asked with, the page size aside. */
@@ -654,11 +654,11 @@ describe("a filter bar's state", () => {
   });
 
   it.each(["its close button", "a step back"])("keeps what was applied while a form was open in the address the form leaves by %s", async (how) => {
-    rendered = await show({ ...kept({ address: true }), fields: [done()] }, { table: { edit: opener({ surface: panel("todo") }) } });
+    rendered = await show({ ...kept({ address: true }), fields: [done()] }, { table: { edit: pressOpening("edit", panel("todo")) } });
     await rendered.click(rendered.parts("row-edit")[0]);
-    expect([window.location.search, position()]).toEqual(["?_telo.open.todo=1", 1]);
+    expect([window.location.search, position()]).toEqual(["?_telo.open.todo=%2Ftodos%2F1", 1]);
     await noDone(rendered);
-    expect(window.location.search).toBe("?_telo.open.todo=1&_telo.f.todos.isDone=false");
+    expect(window.location.search).toBe("?_telo.open.todo=%2Ftodos%2F1&_telo.f.todos.isDone=false");
     if (how === "a step back") await rendered.traverse(-1);
     else await rendered.click(rendered.part("surface-close"));
     expect([window.location.search, position(), rendered.parts("surface").length, asked(rendered)]).toEqual(["?_telo.f.todos.isDone=false", 0, 0, "isDone=false"]);
@@ -667,28 +667,28 @@ describe("a filter bar's state", () => {
   it("closes its overlay alone on Done: a form open beside it keeps its unsaved input, and nothing is asked", async () => {
     rendered = await show(
       { placement: overlay({ modal: false, address: { name: "filters" } }), fields: [done()] },
-      { table: { edit: opener({ surface: panel("todo") }) } },
+      { table: { edit: pressOpening("edit", panel("todo")) } },
     );
     await rendered.click(rendered.parts("row-edit")[0]);
     await rendered.enter(rendered.part("input"), "Half written");
     await rendered.click(rendered.part("filters-toggle"));
-    expect([window.location.search, position(), titles(rendered)]).toEqual(["?_telo.open.todo=1&_telo.open.filters=", 2, ["Edit", "Filters"]]);
+    expect([window.location.search, position(), titles(rendered)]).toEqual(["?_telo.open.todo=%2Ftodos%2F1&_telo.open.filters=", 2, ["Edit", "Filters"]]);
     await pick(rendered, "submit", "Done");
     expect([window.location.search, position(), titles(rendered), (rendered.part("input") as HTMLInputElement).value]).toEqual([
-      "?_telo.open.todo=1",
+      "?_telo.open.todo=%2Ftodos%2F1",
       1,
       ["Edit"],
       "Half written",
     ]);
   });
 
-  it("opens and closes together with a create form that shares its overlay's name", async () => {
+  it("keeps its overlay's value apart from the page a surface of the same name holds", async () => {
     rendered = await show(
       { placement: overlay({ modal: false, address: { name: "todo" } }), fields: [done()] },
-      { table: { create: opener({ surface: panel("todo") }) } },
+      { table: { create: pressOpening("create", panel("todo")) } },
     );
     await rendered.click(rendered.part("filters-toggle"));
-    expect([window.location.search, position(), titles(rendered)]).toEqual(["?_telo.open.todo=", 1, ["New", "Filters"]]);
+    expect([window.location.search, position(), titles(rendered)]).toEqual(["?_telo.open.todo=", 1, ["Filters"]]);
     await pick(rendered, "submit", "Done");
     expect([window.location.search, position(), titles(rendered)]).toEqual(["", 0, []]);
   });

@@ -60,8 +60,6 @@ export const panelSpec = (config: SurfaceConfig = {}): SurfaceSpec => ({
   dismiss: switches(config.dismiss, ["escape", "closeButton"]),
 });
 
-export const pageSpec = (): SurfaceSpec => ({ type: "page" });
-
 /** A surface's own members with its address and the surface standing in for it
  *  on a narrow viewport, which may declare neither of the two itself. */
 export async function surfaceSpec(

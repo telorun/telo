@@ -1,0 +1,33 @@
+# A kind naming a member by an absolute pointer past a reference slot: the
+# referenced kind holds an object at `/key`, so the member never names a property.
+kind: Telo.Library
+metadata:
+  name: ValueSchemaMemberCrossingLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose kind names a member, past a reference slot, through an
+    absolute pointer to a field of the referenced kind that is not a string.
+---
+kind: Telo.Definition
+metadata: { name: Store }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    model: { x-telo-ref: { kind: Telo.Type, use: schema } }
+    key: { type: object }
+resources:
+  - { kind: Telo.Value, metadata: { name: body }, value: { stored: true } }
+invoke: !ref body
+---
+kind: Telo.Definition
+metadata: { name: Caller }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    store: { x-telo-ref: { kind: Self.Store, use: schema } }
+    recordKey: { type: string, x-telo-value-schema-from: { from: /store/model, member: /key } }
+resources:
+  - { kind: Telo.Value, metadata: { name: body }, value: { called: true } }
+invoke: !ref body

@@ -2,7 +2,7 @@
 import { act } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { render, type Rendered } from "./harness.js";
-import { dialogSurface, memoryState, operation, opener, listingNode } from "./spec-nodes.js";
+import { dialogSurface, formNode, memoryState, operation, recordEditPage } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => {
@@ -101,20 +101,11 @@ describe("a picker", () => {
   });
 
   it("labels the values an edited record holds with one lookup, and shows each", async () => {
-    const form = {
-      type: "form",
-      schema: taskSchema,
-      basePath: "/api/tasks",
-      fields: [picker({ options: source({ pageSize: 25 }) })],
-      groups: [],
-      state: memoryState(["watchers"]),
-    };
     rendered = await render({
-      path: "/",
+      path: "/tasks/1",
       collections: { "/api/people": people, "/api/tasks": [{ id: 1, text: "Plan", watchers: ["p1", "p3", "p5"] }] },
-      pages: { "/": { title: "Tasks", children: [listingNode({ basePath: "/api/tasks", columns: [], edit: opener({ form }) })] } },
+      pages: { "/tasks/{id}": recordEditPage("/api/tasks", taskSchema, { fields: [picker({ options: source({ pageSize: 25 }) })], state: memoryState(["watchers"]) }) },
     });
-    await rendered.click(rendered.part("row-edit"));
     expect(peopleRequests()).toEqual(["GET /api/people?limit=25&id.in=p1&id.in=p3&id.in=p5"]);
     expect(rendered.parts("picker-chosen").map((chosen) => chosen.textContent)).toEqual(["Ada", "Grace", "Barbara"]);
   });
@@ -122,14 +113,12 @@ describe("a picker", () => {
 
 describe("an option source under a mount", () => {
   it("reads its pages and labels chosen values under the mount", async () => {
-    const form = { type: "form", schema: taskSchema, basePath: "/api/tasks", fields: [picker()], groups: [], state: memoryState(["watchers"]) };
     rendered = await render({
-      path: "/",
+      path: "/tasks/1",
       prefix: "/admin",
       collections: { "/api/people": people, "/api/tasks": [{ id: 1, text: "Plan", watchers: ["p5"] }] },
-      pages: { "/": { title: "Tasks", children: [listingNode({ basePath: "/api/tasks", columns: [], edit: opener({ form }) })] } },
+      pages: { "/tasks/{id}": recordEditPage("/api/tasks", taskSchema, { fields: [picker()], state: memoryState(["watchers"]) }) },
     });
-    await rendered.click(rendered.part("row-edit"));
     await rendered.click(rendered.part("picker-trigger"));
     expect(rendered.requests.filter((request) => request.includes("/api/people"))).toEqual(["GET /admin/api/people?limit=2&id.in=p5", "GET /admin/api/people?limit=2"]);
     expect(rendered.parts("picker-chosen").map((chosen) => chosen.textContent)).toEqual(["Barbara"]);
@@ -264,7 +253,7 @@ describe("a picker derived from a relation", () => {
     };
     // As `ui` derives it for a bare property name with a presented relation.
     const derived = { type: "picker", property: "authorId", label: "Author", description: null, labels: [], options: authorsSource, surface: dialogSurface };
-    const form = { type: "form", schema: postSchema, basePath: "/api/posts", fields: [input("title", "Title"), derived], groups: [], state: memoryState(["title", "authorId"]) };
+    const form = formNode("/api/posts", { schema: postSchema, fields: [input("title", "Title"), derived], state: memoryState(["title", "authorId"]) });
     rendered = await render({
       path: "/",
       collections: { "/api/posts": [], "/api/authors": [{ id: 1, name: "Ada" }, { id: 3, name: "Linus" }] },

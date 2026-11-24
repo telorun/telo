@@ -1,0 +1,151 @@
+kind: Telo.Application
+metadata:
+  name: UiWriteRefusalsTest
+  version: 1.0.0
+  description: |
+    What a form refuses of the collection it writes to — a collection declaring
+    no shape for the write the form makes (`schemas.create` without
+    `record.key`, `schemas.update` with it), and a model holding a property the
+    shape does not declare or declares with another type — where the form is
+    written, and again when the form is first read.
+imports: { Assert: ../../assert }
+targets:
+  - !ref writeRules
+  - !ref createUndeclaredAtRuntime
+  - !ref updateUndeclaredAtRuntime
+  - !ref shapeUnknownAtRuntime
+  - !ref shapeTypeAtRuntime
+  - !ref shapeUpdateUnknownAtRuntime
+  - !ref shapeUpdateTypeAtRuntime
+---
+kind: Assert.Manifest
+metadata: { name: writeRules }
+source: ./__fixtures__/invalid/writes/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/createUndeclared: names a collection that declares no `schemas.update` where `record.key` is written, or no `schemas.create` where it is not"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/updateUndeclared: names a collection that declares no `schemas.update` where `record.key` is written, or no `schemas.create` where it is not"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/shapeUnknown: has a `model` property the collection's `schemas.create` does not declare, or declares with another type"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/shapeType: has a `model` property the collection's `schemas.create` does not declare, or declares with another type"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Form/shapeUpdateUnknown at 'record.presentation': required by Ui.CollectionPresentation \u2014 has a `model` property the collection's `schemas.update` does not declare, or declares with another type"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Form/shapeUpdateType at 'record.presentation': required by Ui.CollectionPresentation \u2014 has a `model` property the collection's `schemas.update` does not declare, or declares with another type"
+---
+kind: Assert.Manifest
+metadata: { name: createUndeclaredAtRuntime }
+source: ./__fixtures__/invalid/write-undeclared-create/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/createUndeclared: names a collection that declares no `schemas.update` where `record.key` is written, or no `schemas.create` where it is not"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/updateUndeclared: names a collection that declares no `schemas.update` where `record.key` is written, or no `schemas.create` where it is not"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/shapeUnknown: has a `model` property the collection's `schemas.create` does not declare, or declares with another type"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/shapeType: has a `model` property the collection's `schemas.create` does not declare, or declares with another type"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Form/shapeUpdateUnknown at 'record.presentation': required by Ui.CollectionPresentation \u2014 has a `model` property the collection's `schemas.update` does not declare, or declares with another type"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Form/shapeUpdateType at 'record.presentation': required by Ui.CollectionPresentation \u2014 has a `model` property the collection's `schemas.update` does not declare, or declares with another type"
+  runFails: "Ui.Form 'createUndeclared': 'record' names a collection that declares no 'schemas.create'"
+---
+kind: Assert.Manifest
+metadata: { name: updateUndeclaredAtRuntime }
+source: ./__fixtures__/invalid/write-undeclared-update/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/createUndeclared: names a collection that declares no `schemas.update` where `record.key` is written, or no `schemas.create` where it is not"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/updateUndeclared: names a collection that declares no `schemas.update` where `record.key` is written, or no `schemas.create` where it is not"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/shapeUnknown: has a `model` property the collection's `schemas.create` does not declare, or declares with another type"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/shapeType: has a `model` property the collection's `schemas.create` does not declare, or declares with another type"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Form/shapeUpdateUnknown at 'record.presentation': required by Ui.CollectionPresentation \u2014 has a `model` property the collection's `schemas.update` does not declare, or declares with another type"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Form/shapeUpdateType at 'record.presentation': required by Ui.CollectionPresentation \u2014 has a `model` property the collection's `schemas.update` does not declare, or declares with another type"
+  runFails: "Ui.Form 'updateUndeclared': 'record' names a collection that declares no 'schemas.update'"
+---
+kind: Assert.Manifest
+metadata: { name: shapeUnknownAtRuntime }
+source: ./__fixtures__/invalid/write-shape-unknown/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/createUndeclared: names a collection that declares no `schemas.update` where `record.key` is written, or no `schemas.create` where it is not"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/updateUndeclared: names a collection that declares no `schemas.update` where `record.key` is written, or no `schemas.create` where it is not"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/shapeUnknown: has a `model` property the collection's `schemas.create` does not declare, or declares with another type"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/shapeType: has a `model` property the collection's `schemas.create` does not declare, or declares with another type"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Form/shapeUpdateUnknown at 'record.presentation': required by Ui.CollectionPresentation \u2014 has a `model` property the collection's `schemas.update` does not declare, or declares with another type"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Form/shapeUpdateType at 'record.presentation': required by Ui.CollectionPresentation \u2014 has a `model` property the collection's `schemas.update` does not declare, or declares with another type"
+  runFails: "Ui.Form 'shapeUnknown': 'model' declares 'count', which the collection's 'schemas.create' does not declare"
+---
+kind: Assert.Manifest
+metadata: { name: shapeTypeAtRuntime }
+source: ./__fixtures__/invalid/write-shape-type/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/createUndeclared: names a collection that declares no `schemas.update` where `record.key` is written, or no `schemas.create` where it is not"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/updateUndeclared: names a collection that declares no `schemas.update` where `record.key` is written, or no `schemas.create` where it is not"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/shapeUnknown: has a `model` property the collection's `schemas.create` does not declare, or declares with another type"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/shapeType: has a `model` property the collection's `schemas.create` does not declare, or declares with another type"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Form/shapeUpdateUnknown at 'record.presentation': required by Ui.CollectionPresentation \u2014 has a `model` property the collection's `schemas.update` does not declare, or declares with another type"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Form/shapeUpdateType at 'record.presentation': required by Ui.CollectionPresentation \u2014 has a `model` property the collection's `schemas.update` does not declare, or declares with another type"
+  runFails: "Ui.Form 'shapeType': 'model' declares 'count' as integer, which the collection's 'schemas.create' declares as string"
+---
+kind: Assert.Manifest
+metadata: { name: shapeUpdateUnknownAtRuntime }
+source: ./__fixtures__/invalid/write-shape-update-unknown/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/createUndeclared: names a collection that declares no `schemas.update` where `record.key` is written, or no `schemas.create` where it is not"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/updateUndeclared: names a collection that declares no `schemas.update` where `record.key` is written, or no `schemas.create` where it is not"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/shapeUnknown: has a `model` property the collection's `schemas.create` does not declare, or declares with another type"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/shapeType: has a `model` property the collection's `schemas.create` does not declare, or declares with another type"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Form/shapeUpdateUnknown at 'record.presentation': required by Ui.CollectionPresentation \u2014 has a `model` property the collection's `schemas.update` does not declare, or declares with another type"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Form/shapeUpdateType at 'record.presentation': required by Ui.CollectionPresentation \u2014 has a `model` property the collection's `schemas.update` does not declare, or declares with another type"
+  runFails: "Ui.Form 'shapeUpdateUnknown': 'model' declares 'count', which the collection's 'schemas.update' does not declare"
+---
+kind: Assert.Manifest
+metadata: { name: shapeUpdateTypeAtRuntime }
+source: ./__fixtures__/invalid/write-shape-update-type/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/createUndeclared: names a collection that declares no `schemas.update` where `record.key` is written, or no `schemas.create` where it is not"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/updateUndeclared: names a collection that declares no `schemas.update` where `record.key` is written, or no `schemas.create` where it is not"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/shapeUnknown: has a `model` property the collection's `schemas.create` does not declare, or declares with another type"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/shapeType: has a `model` property the collection's `schemas.create` does not declare, or declares with another type"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Form/shapeUpdateUnknown at 'record.presentation': required by Ui.CollectionPresentation \u2014 has a `model` property the collection's `schemas.update` does not declare, or declares with another type"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Form/shapeUpdateType at 'record.presentation': required by Ui.CollectionPresentation \u2014 has a `model` property the collection's `schemas.update` does not declare, or declares with another type"
+  runFails: "Ui.Form 'shapeUpdateType': 'model' declares 'count' as integer, which the collection's 'schemas.update' declares as string"

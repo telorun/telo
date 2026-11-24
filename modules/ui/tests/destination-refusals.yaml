@@ -5,7 +5,7 @@ metadata:
   description: |
     What a destination refuses where it is written, by `telo check` and again
     when the application loads: a page variable left unfilled, a `page` that is
-    no page, a `to` holding no destination, a popover to open a page in, the
+    no page, a `to` holding no destination, a destination to open a page in, the
     removed `href` and `onSuccess.navigate`, and a root its place does not
     bind. A destination reads the roots bound where it is written — `data` and
     `row` in a reader's list column, `row` in a listing's records, for a
@@ -39,7 +39,7 @@ expect:
     - code: REFERENCE_KIND_MISMATCH
       message: "Ui.Page/homePage: reference at 'children[1].to.page' → 'Telo.JsonSchema' (resolved: 'Telo.JsonSchema') does not match required 'Ui.Page'"
     - code: REFERENCE_KIND_MISMATCH
-      message: "Ui.Page/homePage: reference at 'children[4].to.surface' → 'Ui.Popover' does not implement 'Ui.ViewportOverlay'"
+      message: "Ui.Page/homePage: reference at 'children[4].to.surface' → 'Ui.Navigate' does not implement 'Ui.Surface'"
   runFails: "'row' is not available here — Ui.Page/homePage withholds it: a destination reads only the roots bound where it is written"
 ---
 kind: Assert.Manifest

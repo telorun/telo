@@ -3,7 +3,8 @@ metadata:
   name: UiSurfaceRefusalsTest
   version: 1.0.0
   description: |
-    What the node vocabulary, surfaces, navigation placements, conditions and
+    What the node vocabulary, surfaces (the removed page surface, the removed
+    openers of a listing and the removed `presentation` of a form included), navigation placements, conditions and
     texts refuse before anything runs, and what a compact surface refuses when
     it is first read.
 imports: { Assert: ../../assert }
@@ -57,22 +58,26 @@ expect:
       message: "Ui.InlineSurface/inlineSize: / must NOT have additional properties ('size' is not allowed)"
     - code: SCHEMA_VIOLATION
       message: "Ui.Panel/panelModal: / must NOT have additional properties ('modal' is not allowed)"
-    - code: SCHEMA_VIOLATION
-      message: "Ui.PageSurface/pageCompact: / must NOT have additional properties ('compact' is not allowed)"
-    - code: SCHEMA_VIOLATION
-      message: "Ui.PageSurface/pageUnaddressed: / is missing required property 'address'"
+    - code: UNDEFINED_KIND
+      message: "No Telo.Definition found for kind 'Ui.PageSurface': module 'Ui' declares no kind 'PageSurface'."
     - code: REFERENCE_KIND_MISMATCH
       message: "Ui.Panel/compactPopover: reference at 'compact' → 'Ui.Popover' does not implement 'Ui.ViewportOverlay'"
     - code: REFERENCE_KIND_MISMATCH
-      message: "Ui.Listing/surfaceIsForm: reference at 'create.surface' → 'Ui.Form' does not implement 'Ui.Surface'"
+      message: "Ui.OpenPage/formAsSurface: reference at 'surface' → 'Ui.Form' does not implement 'Ui.Surface'"
     - code: SCHEMA_VIOLATION
-      message: "Ui.Listing/editAgain: /edit/afterSubmit must be equal to one of the allowed values (close | keep)"
+      message: "Ui.Form/legacyPresentation: / must NOT have additional properties ('presentation' is not allowed)"
     - code: SCHEMA_VIOLATION
-      message: "Ui.Listing/bareCreate: /create is missing required property 'form'"
+      message: "Ui.Form/legacyPresentation: / is missing required property 'record'"
     - code: SCHEMA_VIOLATION
-      message: "Ui.Listing/bareCreate: /create must NOT have additional properties ('kind' is not allowed)"
+      message: "Ui.Listing/legacyCreate: /create is missing required property 'to'"
     - code: SCHEMA_VIOLATION
-      message: "Ui.Listing/bareCreate: /create must NOT have additional properties ('name' is not allowed)"
+      message: "Ui.Listing/legacyCreate: /create must NOT have additional properties ('form' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Listing/legacyCreate: /create must NOT have additional properties ('surface' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Listing/legacyEdit: /edit is missing required property 'to'"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Listing/legacyEdit: /edit must NOT have additional properties ('form' is not allowed)"
 ---
 kind: Assert.Manifest
 metadata: { name: navigationPlacements }

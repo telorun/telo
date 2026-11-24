@@ -16,6 +16,7 @@ export class UiError extends Error {
     readonly code: string,
     message: string,
     readonly text?: OwnText,
+    readonly status?: number,
   ) {
     super(message);
   }
@@ -39,6 +40,7 @@ export function errorSpec(error: unknown, fallbackCode: string): ErrorSpec {
 function statusFailure(status: number): { code: string; text: OwnText } {
   if (status === 401) return { code: "ERR_UI_UNAUTHORIZED", text: { key: "requestUnauthorized" } };
   if (status === 403) return { code: "ERR_UI_FORBIDDEN", text: { key: "requestForbidden" } };
+  if (status === 412) return { code: "ERR_UI_PRECONDITION_FAILED", text: { key: "requestPreconditionFailed" } };
   return { code: "ERR_UI_REQUEST_FAILED", text: { key: "requestFailedStatus", values: { status } } };
 }
 
@@ -58,8 +60,8 @@ export async function responseError(response: Response): Promise<UiError> {
   const fallback = statusFailure(response.status);
   const code = problem.code ?? fallback.code;
   return problem.detail !== undefined
-    ? new UiError(code, problem.detail)
-    : new UiError(code, String(response.status), fallback.text);
+    ? new UiError(code, problem.detail, undefined, response.status)
+    : new UiError(code, String(response.status), fallback.text, response.status);
 }
 
 /** A request that got no response at all. */

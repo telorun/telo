@@ -10,6 +10,7 @@ messages:
   cancel: Скасувати
   close: Закрити
   newRecord: Створити
+  create: Створити
   edit: Редагувати
   delete: Видалити
   deleteRowQuestion: Видалити цей рядок?
@@ -101,6 +102,7 @@ messages:
   keepEditing: Продовжити редагування
   requestUnauthorized: Ви не ввійшли, або ваш сеанс завершився.
   requestForbidden: У вас немає дозволу на цю дію.
+  requestPreconditionFailed: Запис змінив хтось інший. Перевірте його й збережіть знову.
   requestFailedStatus: Запит не виконано, статус {$status}.
   requestFailed: "Запит не виконано: {$reason}"
   recordRefused: Запис відхилено.

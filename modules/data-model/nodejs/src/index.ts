@@ -6,4 +6,4 @@
 export * as CollectionController from "./collection-controller.js";
 export { collectionProblems, type CollectionProblem } from "./collection-problems.js";
 export { readCollection, type CollectionDeclaration } from "./collection-declaration.js";
-export type { AcceptedQuery, JsonSchema, RelationTarget } from "./collection-types.js";
+export type { AcceptedQuery, DeclaredSchemas, JsonSchema, RelationTarget } from "./collection-types.js";

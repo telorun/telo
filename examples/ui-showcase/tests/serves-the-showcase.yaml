@@ -313,6 +313,14 @@ steps:
           - [ /crud, CRUD ]
           - [ /records, Related records ]
           - [ "/records/{id}", Post ]
+          - [ /tasks/new, New task ]
+          - [ /tasks/create, Create task ]
+          - [ "/tasks/{id}", Task ]
+          - [ "/tasks/{id}/quick", Quick edit ]
+          - [ /records/posts/new, New post ]
+          - [ "/records/posts/{id}", Edit post ]
+          - [ /records/employees/new, New person ]
+          - [ "/records/employees/{id}", Person ]
           - [ /search, Search posts ]
           - [ /search-beside, Posts beside their filters ]
           - [ /search-releases, Release posts ]
@@ -473,7 +481,7 @@ steps:
       expected:
         polish:
           lang: pl
-          pages: [ Przegląd, Warunki, Dane, Tabele, Filtry, Formularze, Akcje, Komponenty, CRUD, Powiązane rekordy, Wpis, Szukaj wpisów, Wpisy obok swoich filtrów, Wpisy o wydaniach, Recenzje, Recenzja, Zmiany, Wykonawca, Motywy ]
+          pages: [ Przegląd, Warunki, Dane, Tabele, Filtry, Formularze, Akcje, Komponenty, CRUD, Powiązane rekordy, Wpis, Nowe zadanie, Utwórz zadanie, Zadanie, Szybka edycja, Nowy wpis, Edytuj wpis, Nowa osoba, Osoba, Szukaj wpisów, Wpisy obok swoich filtrów, Wpisy o wydaniach, Recenzje, Recenzja, Zmiany, Wykonawca, Motywy ]
           logo: { lang: pl, message: [ Logo pokazu interfejsu ] }
           menus: [ Język, Motyw ]
         english: { lang: en, title: { lang: en, message: [UI showcase] } }
@@ -538,7 +546,7 @@ steps:
       expected:
         lang: pl
         title: { lang: pl, message: [ Pokaz interfejsu ] }
-        pages: [ Przegląd, Warunki, Dane, Tabele, Filtry, Formularze, Akcje, Komponenty, CRUD, Powiązane rekordy, Wpis, Szukaj wpisów, Wpisy obok swoich filtrów, Wpisy o wydaniach, Recenzje, Recenzja, Zmiany, Wykonawca, Motywy ]
+        pages: [ Przegląd, Warunki, Dane, Tabele, Filtry, Formularze, Akcje, Komponenty, CRUD, Powiązane rekordy, Wpis, Nowe zadanie, Utwórz zadanie, Zadanie, Szybka edycja, Nowy wpis, Edytuj wpis, Nowa osoba, Osoba, Szukaj wpisów, Wpisy obok swoich filtrów, Wpisy o wydaniach, Recenzje, Recenzja, Zmiany, Wykonawca, Motywy ]
         save: { lang: pl, message: [ Zapisz ] }
         heading: { lang: pl, message: [ Każdy rodzaj węzła ] }
 
@@ -883,8 +891,8 @@ steps:
         derived:
           columns: !cel "steps.nodes.result.tables[2].layout.columns.map(c, ['sort' in c ? c.sort : '-', c.header.message[0]])"
           pageSize: !cel "steps.nodes.result.tables[2].pageSize"
-          create: !cel "[steps.nodes.result.tables[2].create.surface, steps.nodes.result.tables[2].create.afterSubmit, steps.nodes.result.tables[2].create.unsaved]"
-          forms: !cel "[steps.nodes.result.tables[2].create.form.fields.map(f, f.property), steps.nodes.result.tables[2].edit.form.fields.map(f, f.property)]"
+          create: !cel "[steps.nodes.result.tables[2].create.to.type, steps.nodes.result.tables[2].create.to.href.path, steps.nodes.result.tables[2].create.to.surface]"
+          edit: !cel "[steps.nodes.result.tables[2].edit.to.type, steps.nodes.result.tables[2].edit.to.href.path, steps.nodes.result.tables[2].edit.to.surface]"
           delete: !cel "steps.nodes.result.tables[2].delete"
         written:
           pageSize: !cel "steps.nodes.result.tables[5].pageSize"
@@ -899,9 +907,9 @@ steps:
           filters: !cel "steps.nodes.result.tables[12].filters"
           fixed: !cel "steps.nodes.result.tables[15].filters"
         surfaces: !cel >-
-          [20, 23, 26, 29, 32, 35, 38].map(i, steps.nodes.result.tables[i]).map(t, [
-            t.create.surface, t.create.afterSubmit, t.create.unsaved,
-            t.edit.surface, t.edit.afterSubmit, t.edit.unsaved, t.delete])
+          [20, 23, 26, 29, 32, 35].map(i, steps.nodes.result.tables[i]).map(t, [
+            t.create.to.type, t.create.to.surface, t.edit.to.type, t.edit.to.surface, t.delete])
+        ownPage: !cel "[steps.nodes.result.tables[38].create.to, steps.nodes.result.tables[38].edit.to]"
         polish: !cel "[steps.polishTables.result.body.children[0].children[0].text.message[0], steps.polishTables.result.body.children[0].children[2].layout.columns[3].labels[1].label.message[0]]"
       expected:
         kinds: [text, text, listing, text, text, listing, text, text, listing, text, text, columns, listing, text, text, listing, text, text, text, text, listing, text, text, listing, text, text, listing, text, text, listing, text, text, listing, text, text, listing, text, text, listing]
@@ -918,12 +926,13 @@ steps:
             - [ "-", Blocked ]
           pageSize: 25
           create:
-            - { type: dialog, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
-            - close
-            - confirm
-          forms:
-            - &taskFields [ title, projectCode, assigneeEmail, status, priority, estimate, dueOn, label, blocked ]
-            - *taskFields
+            - openPage
+            - { value: /tasks/new }
+            - &dialog { type: dialog, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+          edit:
+            - openPage
+            - { value: "/tasks/{id}" }
+            - *dialog
           delete: true
         written:
           pageSize: 8
@@ -952,71 +961,55 @@ steps:
           fixed: { blocked: { value: true } }
         surfaces:
           # Dialogs.
-          - - { type: dialog, size: small, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
-            - again
-            - confirm
+          - - openPage
+            - { type: dialog, size: small, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+            - openPage
             - { type: dialog, size: large, modal: false, dismiss: { escape: true, outside: false, closeButton: true }, address: { name: taskDialog } }
-            - keep
-            - discard
             - true
           # Drawers.
-          - - { type: drawer, side: start, size: small, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
-            - close
-            - confirm
+          - - openPage
+            - { type: drawer, side: start, size: small, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+            - openPage
             - { type: drawer, side: end, size: large, modal: true, dismiss: { escape: true, outside: true, closeButton: false } }
-            - close
-            - confirm
             - true
           # Sheets.
-          - - { type: drawer, side: top, size: medium, modal: false, dismiss: { escape: true, outside: true, closeButton: true } }
-            - close
-            - confirm
+          - - openPage
+            - { type: drawer, side: top, size: medium, modal: false, dismiss: { escape: true, outside: true, closeButton: true } }
+            - openPage
             - { type: drawer, side: bottom, size: full, modal: true, dismiss: { escape: true, outside: true, closeButton: true }, address: { name: taskSheet } }
-            - close
-            - confirm
             - false
           # Popovers.
-          - - type: popover
+          - - openPage
+            - type: popover
               side: end
               align: center
               dismiss: { escape: true, outside: true }
               compact: { type: dialog, size: full, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
-            - close
-            - confirm
+            - openPage
             - { type: popover, side: bottom, align: end, dismiss: { escape: true, outside: false } }
-            - keep
-            - confirm
             - false
           # In line.
-          - - type: inline
+          - - openPage
+            - type: inline
               compact: { type: drawer, side: bottom, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
-            - close
-            - confirm
+            - openPage
             - { type: inline }
-            - close
-            - confirm
             - true
           # Panels.
-          - - { type: panel, side: start, size: small, dismiss: { escape: false, closeButton: true } }
-            - close
-            - confirm
+          - - openPage
+            - { type: panel, side: start, size: small, dismiss: { escape: false, closeButton: true } }
+            - openPage
             - type: panel
               side: end
               size: large
               dismiss: { escape: true, closeButton: true }
               address: { name: taskPanel }
               compact: { type: drawer, side: bottom, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
-            - close
-            - confirm
             - false
-          # A page of its own, one address name for both.
-          - - { type: page, address: { name: task } }
-            - close
-            - confirm
-            - { type: page, address: { name: task } }
-            - close
-            - confirm
-            - false
+        # A page of its own: both navigate.
+        ownPage:
+          - { type: navigate, href: { path: { value: /tasks/new }, pathParams: {}, queryParams: {} } }
+          - { type: navigate, href: { path: { value: "/tasks/{id}" }, pathParams: { id: { root: row, path: [ id ] } }, queryParams: {} } }
         polish: [ Kolumny z modelu, W toku ]
 
   # Filter bars: one deriving everything; one with every control, presets, a
@@ -1184,7 +1177,7 @@ steps:
       actual:
         kinds: !cel "steps.nodes.result.forms.map(c, c.type)"
         derived:
-          basePath: !cel "steps.nodes.result.forms[3].basePath"
+          basePath: !cel "steps.nodes.result.forms[3].record.basePath"
           fields: !cel "steps.nodes.result.forms[3].fields.map(f, [f.type, f.property, f.control, f.label.message[0], f.description == null ? '-' : f.description.message[0]])"
           kindLabels: !cel "steps.nodes.result.forms[3].fields[1].labels.map(l, [l.value, l.label.message[0]])"
           # What the renderer derives each control from.
@@ -1198,7 +1191,7 @@ steps:
           state: !cel "steps.nodes.result.forms[6].state"
         requests: !cel "[steps.nodes.result.forms[9].query.url, steps.nodes.result.forms[9].content[0].columns.map(c, c.header.message[0])]"
         booking:
-          basePath: !cel "steps.nodes.result.forms[13].basePath"
+          basePath: !cel "steps.nodes.result.forms[13].record.basePath"
           groups: !cel "steps.nodes.result.forms[13].groups.map(g, [g.name, g.label.message[0], has(g.description) ? g.description.message[0] : '-', has(g.shown) ? g.shown : null])"
           fields: !cel >-
             steps.nodes.result.forms[13].fields.map(f, [f.type, f.property, f.group,
@@ -1570,10 +1563,9 @@ steps:
             f.state.store, size(f.fields)])
         sharedState: !cel "[steps.nodes.result.crud[4].state.key, steps.nodes.result.crud[4].state.store] == [steps.nodes.result.filters[8].state.key, steps.nodes.result.filters[8].state.store]"
         table: !cel >-
-          cel.bind(t, steps.nodes.result.crud[4].content, [t.basePath, t.key, t.delete, t.layout.columns.map(c, c.value.path[0]),
-            t.create.form.fields.map(f, f.property) == t.edit.form.fields.map(f, f.property)])
-        create: !cel "cel.bind(o, steps.nodes.result.crud[4].content.create, [o.surface.type, o.surface.side, o.afterSubmit, o.unsaved])"
-        edit: !cel "cel.bind(o, steps.nodes.result.crud[4].content.edit, [o.surface.type, o.surface.address, o.afterSubmit, o.unsaved])"
+          cel.bind(t, steps.nodes.result.crud[4].content, [t.basePath, t.key, t.delete, t.layout.columns.map(c, c.value.path[0])])
+        create: !cel "cel.bind(o, steps.nodes.result.crud[4].content.create, [o.to.type, o.to.href.path, o.to.surface.type, o.to.surface.side])"
+        edit: !cel "cel.bind(o, steps.nodes.result.crud[4].content.edit, [o.to.type, o.to.surface.type, o.to.surface.address])"
         polish: !cel "steps.polishCrud.result.body.children[0].children[0].text"
       expected:
         kinds: [ text, text, text, text, filters ]
@@ -1584,9 +1576,8 @@ steps:
           - id
           - true
           - [ title, projectCode, assigneeEmail, status, priority, estimate, dueOn, label, blocked ]
-          - true
-        create: [ drawer, end, again, confirm ]
-        edit: [ panel, { name: crudTask }, close, confirm ]
+        create: [ openPage, { value: /tasks/new }, drawer, end ]
+        edit: [ openPage, panel, { name: crudTask } ]
         polish: { lang: pl, message: [ Wygenerowany ekran administracyjny ] }
 
   # Themes: the four mounts, every design token and the typefaces drawn by
@@ -1671,9 +1662,10 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        menu: !cel "steps.records.result.body.children[0].children[20].items.map(i, i.to)"
-        press: !cel "steps.records.result.body.children[0].children[21].press"
-        fullPage: !cel "steps.records.result.body.children[0].children[21].layout.content.children[1].to"
+        menu: !cel "steps.records.result.body.children[0].children[21].items.map(i, i.to)"
+        press: !cel "steps.records.result.body.children[0].children[22].press"
+        fullPage: !cel "steps.records.result.body.children[0].children[22].layout.content.children[1].to"
+        boardCreate: !cel "steps.records.result.body.children[0].children.filter(c, c.type == 'filters' || c.type == 'listing').map(c, c.type == 'listing' ? c : c.content).filter(l, l.layout.type == 'board').map(l, l.create.to)"
         page: !cel "[steps.recordPage.result.body.path, steps.recordPage.result.body.title.message[0], steps.recordPage.result.body.children[0].query.url]"
       expected:
         menu:
@@ -1694,6 +1686,12 @@ steps:
         fullPage:
           type: navigate
           href: { path: { value: "/records/{id}" }, pathParams: { id: { root: row, path: [id] } }, queryParams: {} }
+        # A board column's create button opens the new-post page with its status.
+        boardCreate:
+          - type: openPage
+            href: { path: { value: /records/posts/new }, pathParams: {}, queryParams: { status: { root: values, path: [ status ] } } }
+            surface: { type: dialog, modal: true, size: medium, dismiss: { escape: true, outside: true, closeButton: true } }
+            keepsSurface: true
         page:
           - "/records/{id}"
           - Post

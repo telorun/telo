@@ -35,6 +35,8 @@ export interface CollectionFacts {
   key: string;
   query: AcceptedQuery;
   relations: Record<string, { target?: CollectionIdentity }>;
+  /** The bodies the collection's writes accept; a write left out is one it does not accept. */
+  schemas: { create?: JsonSchema; update?: JsonSchema };
 }
 
 /** Where a collection's list endpoint is: a literal path, or a template whose
@@ -72,6 +74,7 @@ interface CollectionReading {
   model: { schema: JsonSchema };
   key: string;
   query: Partial<AcceptedQuery>;
+  schemas?: { create?: { schema: JsonSchema }; update?: { schema: JsonSchema } };
 }
 
 interface PublishingInstance {
@@ -164,6 +167,10 @@ class CollectionSource implements ResourceInstance, CollectionSourceInstance {
         sort: reading.query.sort ?? [],
         facets: reading.query.facets ?? [],
         ...(reading.query.search ? { search: reading.query.search } : {}),
+      },
+      schemas: {
+        ...(reading.schemas?.create ? { create: reading.schemas.create.schema } : {}),
+        ...(reading.schemas?.update ? { update: reading.schemas.update.schema } : {}),
       },
       relations: Object.fromEntries(
         Object.entries(declared?.relations ?? {}).map(([property, entry]) => {

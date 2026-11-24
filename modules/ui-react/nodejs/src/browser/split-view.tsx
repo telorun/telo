@@ -1,3 +1,4 @@
+import { anchorRef } from "./node-anchors.js";
 import { useAside, type AsideSpec } from "./aside.js";
 import { fillAttribute, styleAttribute, type Style } from "./bindings.js";
 import { Node, type SpecNode } from "./nodes.js";
@@ -20,7 +21,7 @@ export function SplitNode({ node }: { node: SplitNodeSpec }) {
   if (aside === undefined) return null;
   const { side } = node.aside;
   return (
-    <div data-telo-part="split" data-side={side} data-state={aside.state} data-frame={node.aside.frame} data-fill={fill} data-style={styleAttribute(node.style)}>
+    <div ref={anchorRef(node)} data-telo-part="split" data-side={side} data-state={aside.state} data-frame={node.aside.frame} data-fill={fill} data-style={styleAttribute(node.style)}>
       {!narrow && side !== "end" && aside.place()}
       {side !== "end" && aside.rail}
       <div data-telo-part="split-content" data-fill={fill}>

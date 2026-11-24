@@ -6,7 +6,7 @@ import { ResponseWatchContext, useHost, useHostStore, type ResponseWatcher } fro
 import { Nodes, type SpecNode } from "./nodes.js";
 import { queryRoot } from "./query-root.js";
 import { QueryReads, type Holder, type QueryRequest, type QueryTerms, type ReadState } from "./query-reads.js";
-import { RendererContext, RootsContext, underMount, VisibleContext } from "./renderer-context.js";
+import { QueryAddressContext, RendererContext, RootsContext, underMount, VisibleContext } from "./renderer-context.js";
 import { useSay } from "./texts.js";
 import type { RequestError } from "./ui-error.js";
 import type { JsonSchema } from "./validation.js";
@@ -76,7 +76,12 @@ export function QueryNode({ node }: { node: SpecNode }) {
   const subscribe = useCallback((listener: () => void) => (key === undefined ? () => {} : reads.subscribe(key, listener)), [key]);
   const state = useSyncExternalStore(subscribe, () => (key === undefined ? undefined : reads.state(key)));
   const last = useRef<ReadState>(undefined);
-  if (state?.outcome !== undefined) last.current = state;
+  // The address the drawn answer was read at: it moves with the answer, not with the request.
+  const answeredAt = useRef<string>(undefined);
+  if (state?.outcome !== undefined) {
+    last.current = state;
+    answeredAt.current = request?.url;
+  }
   const drawn = state?.outcome !== undefined ? state : last.current;
 
   const unauthorized = spec.reloadOn.includes("unauthorized");
@@ -101,7 +106,9 @@ export function QueryNode({ node }: { node: SpecNode }) {
           <div style={{ display: hidden ? "none" : "contents" }}>
             <VisibleContext.Provider value={visible && !hidden}>
               <RootsContext.Provider value={contentRoots}>
-                <Nodes nodes={node.content} />
+                <QueryAddressContext.Provider value={answeredAt.current}>
+                  <Nodes nodes={node.content} />
+                </QueryAddressContext.Provider>
               </RootsContext.Provider>
             </VisibleContext.Provider>
           </div>

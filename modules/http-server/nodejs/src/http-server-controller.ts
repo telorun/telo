@@ -904,6 +904,20 @@ class HttpServer implements ResourceInstance {
   }
 
   /**
+   * A body of any `+json` type (RFC 6839) is read as `application/json` is: the
+   * default JSON parser over the buffered text, so the same charset handling,
+   * body limit, malformed-body refusal and schema validation apply. Registered
+   * as a pattern, so a `contentTypeParsers` entry naming one exact type
+   * replaces it for that type alone.
+   */
+  private installStructuredJsonParser(): void {
+    const parseJson = this.app.getDefaultJsonParser("error", "error");
+    this.app.addContentTypeParser(/^[^/;\s]+\/[^;\s]*\+json\s*(?:;.*)?$/i, { parseAs: "string" }, (_request, body, done) => {
+      parseJson(_request, body as string, done);
+    });
+  }
+
+  /**
    * The raw parser behind every streamed body: the undrained request, held to the
    * matched route's body limit. A declared length over the limit is refused before
    * anything is read; a chunked one is counted as the handler pulls it.
@@ -1054,6 +1068,7 @@ class HttpServer implements ResourceInstance {
     this.app.addHook("preSerialization", async (_request, _reply, payload) => toPlainJson(payload));
     this.installRequestLogging();
     this.installDefaultMultipartParser();
+    this.installStructuredJsonParser();
     for (const { contentType, parser, stream } of this.resource.contentTypeParsers ?? []) {
       if (stream) {
         // Raw passthrough: no `parseAs`, so nothing is buffered and AJV never

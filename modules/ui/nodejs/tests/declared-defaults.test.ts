@@ -15,6 +15,7 @@ import { NavbarController, NavigationColumnController } from "../src/navigation-
 import { IconButtonController } from "../src/button-display.js";
 import * as CollectionPresentationController from "../src/collection-presentation.js";
 import * as ListingController from "../src/listing-controller.js";
+import * as FormController from "../src/form-controller.js";
 import * as TableLayoutController from "../src/table-layout.js";
 import { BoardLayoutController, CalendarLayoutController, CardLayoutController, ListLayoutController, TimelineLayoutController } from "../src/listing-layouts.js";
 
@@ -224,20 +225,28 @@ describe("a default the manifest declares", () => {
     expect({ values: board.reads.groups.values }).toEqual(defaultsOf(declared("Grouping")));
   });
 
-  it("is what a listing's opener carries when it names only its form", async () => {
-    const form = { provide: async () => ({ node: { type: "form" }, assets: [] }) };
-    const { node } = await provided(ListingController, {
+  it("is what a form carries for a member left out: the declared lifecycle, no key and no starting record", async () => {
+    const collection = { ...facts(), schemas: { create: { type: "object", properties: {} } } };
+    const { node } = await provided(FormController, {
       model: { type: "object", properties: {} },
-      presentation: presentation("/api/todos"),
-      create: { form, surface: undefined, afterSubmit: undefined, unsaved: undefined },
-      edit: { form },
+      record: { presentation: presentation("/api/todos", collection) },
     });
-    const { type, ...dialog } = node.create.surface;
-    expect(type).toBe("dialog");
-    expect(dialog).toEqual(defaultsOf(declared("Dialog")));
-    expect(node.edit.surface).toEqual(node.create.surface);
-    expect([node.create.afterSubmit, node.edit.afterSubmit]).toEqual([declared("AfterCreate").default, declared("AfterEdit").default]);
-    expect([node.create.unsaved, node.edit.unsaved]).toEqual([declared("UnsavedInput").default, declared("UnsavedInput").default]);
+    expect(node.record).toEqual({ basePath: "/api/todos", key: null });
+    expect(node.initialValues).toBeNull();
+    expect([node.unsaved, node.afterSubmit]).toEqual([declared("UnsavedInput").default, declared("AfterSubmit").default]);
+  });
+
+  it("is what a listing sends for create, edit and press: each text defaulted, press falling back to edit", async () => {
+    const to = { provide: async () => ({ type: "navigate", href: "/new" }) };
+    const model = { type: "object", properties: {} };
+    const listing = async (config: Schema) =>
+      (await provided(ListingController, { model, presentation: presentation("/api/todos"), ...config })).node;
+    const both = await listing({ create: { to }, edit: { to } });
+    expect(both.create).toEqual({ to: await to.provide(), label: { set: "Ui.Translations", key: "create" } });
+    expect(both.edit).toEqual({ to: await to.provide(), label: { set: "Ui.Translations", key: "edit" } });
+    expect(both.press).toEqual(both.edit);
+    const none = await listing({});
+    expect([none.create, none.edit, none.press]).toEqual([null, null, null]);
   });
 
   it("is what a navigation placement provides for a member left out: an overlay drawer from the start edge, under the header", async () => {
