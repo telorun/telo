@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.140.0 - 2026-11-24
+### Fixed
+* Regular expressions that could take polynomial or exponential time on crafted input now run in linear time with the same results.
+
 ## 0.136.0
 
 ## 0.135.0

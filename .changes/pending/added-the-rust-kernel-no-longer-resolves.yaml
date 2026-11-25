@@ -1,7 +1,0 @@
-units:
-  kernel: Added
-body: "The Rust kernel no longer resolves a file embed in an Application target when the
-  target runs: the analysis refuses the load first, as the Node kernel does, so an
-  `!include-text` or `!module-path` written in a `targets:` entry is refused at load
-  with `INCLUDE_OUTSIDE_RESOURCE` or `MODULE_PATH_OUTSIDE_RESOURCE` where it used to
-  run."

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.41.0 - 2026-11-24
+### Added
+* The agent's primer covers `x-telo-context-partial: true`, which types a binding as some members of the record its typing annotation names, each optional and nullable.
+* The agent's primer teaches that a record's screens are pages: an edit page is a query node at the item's address holding a Ui.Form with record { presentation, key } and initialValues, a create page the same form with no key, the listing's create and edit are presses to a Ui.OpenPage in any surface, and CrudUi.Admin's create and edit point at those pages.
+
 ## 0.40.0 - 2026-11-22
 ### Added
 * The authoring agent reads the hub's # Advisories: line and advisoriesComplete when choosing a version: it never copies the line into a manifest, picks the newest version with no advisories and complete coverage, names the advisories when every version has some, and tells the user when a module's embedded code is unchecked.

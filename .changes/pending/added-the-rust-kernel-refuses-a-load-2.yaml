@@ -1,6 +1,0 @@
-units:
-  kernel: Added
-body: The Rust kernel refuses a load whose entry or path-imported library holds an
-  !include-text or !module-path naming nothing, before any resource is created, as the
-  Node kernel does; its local file source answers what a claim names, and the
-  creation-time refusal keeps the Node kernel's wording.

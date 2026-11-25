@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.17.0 - 2026-11-24
+### Added
+* A page opened by a press is drawn in any surface and placed against what opened it: a popover anchored to the pressed element, an inline surface drawn after it, a panel beside the nearest composite holding it, and on a cold load, a narrow viewport or an opener not on screen the surface's compact, else a dialog, restored from the page document or layout that declares it. The open key _telo.open.<name> now always holds the opened page's app-relative address; its old record-key value and empty create value are gone. The leave guard holds for every form with unsaved input wherever it is placed, a form submits and closes by its own afterSubmit and unsaved, starts from initialValues (again, asking first, when the address its query reads changes), and a board column's create intent (onCreate(values)) runs the listing's create press with the values it proposes, the create page reading them as its query.
+* The renderer sends an edit form's changes as PATCH <basePath>/<key> (application/merge-patch+json) instead of PUT, keeps per request path the ETag of the last GET, PATCH or PUT answer and sends it as If-Match with every PATCH, PUT and DELETE to that path (a server sending no ETag gets none), and on a 412 draws the failure with the problem's code or ERR_UI_PRECONDITION_FAILED, announces the path as changed so its readers read again, and keeps what was typed so a second press sends it against the current record. A hand-written collection that serves the collection contract must now answer PATCH as a merge patch. It passes every row of ui's conformance/merge-patch.json.
+
 ## 0.16.1 - 2026-11-22
 ### Fixed
 * The bill of materials records the version of @telorun/message-format the renderer inlines, so it names the release that ships it.

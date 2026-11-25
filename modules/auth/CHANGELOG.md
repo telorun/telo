@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0 - 2026-11-24
+### Added
+* Auth.Presentation gains a fifth variant, Auth.SignaturePresentation (type signature): the exact signed bytes, the signatures presented, and the key id, algorithm, created and expires the request claimed.
+
 ## 0.2.1 - 2026-11-09
 ### Fixed
 * `requires.telo` now holds the measured floor: the lowest published telo that reads this module.

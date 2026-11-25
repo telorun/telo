@@ -1,4 +1,0 @@
-units:
-  release: Fixed
-body: The pypi simple-index page scan runs in linear time, so a registry page of
-  unclosed anchors can no longer stall a release.

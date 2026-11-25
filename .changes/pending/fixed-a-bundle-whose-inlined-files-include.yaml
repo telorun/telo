@@ -1,5 +1,0 @@
-units:
-  release: Fixed
-body: A bundle whose inlined files include another unit's version file is planned
-  whenever that unit moves, as a payload holding its version, so a bundle embedding a
-  sibling's version is released with it instead of in a follow-up release.

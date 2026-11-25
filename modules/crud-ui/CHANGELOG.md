@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.0 - 2026-11-24
+### Added
+* CrudUi.Admin no longer generates forms: its create and edit are Ui.Press values forwarded whole to the listing, so each points at a page the application declares (a Ui.OpenPage to a page holding a Ui.Form with record), and the previous { surface, afterSubmit, unsaved } objects are refused. An omitted create draws no create button. There is no migration, since a composite cannot add routes: write the create and edit pages and press them from the admin.
+
 ## 0.9.0 - 2026-11-22
 ### Added
 * The admin docs draw reads with the `query` node over a `Ui.Query`, and the module requires the telo release the `ui` module it imports needs.
