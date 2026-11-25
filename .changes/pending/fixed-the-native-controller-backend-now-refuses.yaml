@@ -1,5 +1,0 @@
-units:
-  sdk: Fixed
-body: The native controller backend now refuses a null instance handle, a null buffer
-  with a length, or a missing host table with an error, where it used to dereference
-  them.

@@ -1,8 +1,0 @@
-units:
-  modules/crud-ui: Added
-body: "CrudUi.Admin no longer generates forms: its create and edit are Ui.Press values
-  forwarded whole to the listing, so each points at a page the application declares (a
-  Ui.OpenPage to a page holding a Ui.Form with record), and the previous { surface,
-  afterSubmit, unsaved } objects are refused. An omitted create draws no create button.
-  There is no migration, since a composite cannot add routes: write the create and edit
-  pages and press them from the admin."

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.140.0 - 2026-11-24
+### Fixed
+* Regular expressions that could take polynomial or exponential time on crafted input now run in linear time with the same results.
+
 ## 0.139.0 - 2026-11-22
 ### Added
 * CEL message construction: `Name{field: value}`, `.Name{…}` and, under optional types, `?field: value` build a value of a host-registered named type that opts in with `constructible: true`. `required` lists the fields a construction must write, and an optional `construct` builder passed to `registerType` builds the value or refuses it with a CEL error. A construction refuses a field value its declared type does not admit, before any builder runs. Values of a constructible type compare field by field everywhere, and an `==` or `!=` registration that could compare them is refused. New check codes: `CEL_UNKNOWN_TYPE`, `CEL_TYPE_NOT_CONSTRUCTIBLE` and `CEL_MISSING_FIELD`. Both the Node and the Rust engine carry it.

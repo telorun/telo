@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.39.0 - 2026-11-24
+### Added
+* Crud.Api serves PATCH <prefix>/{id} (operationId update<Singular>), a JSON Merge Patch (application/merge-patch+json, which the server reads with no contentTypeParsers entry) that sets the properties it names, clears those it holds null for and leaves the rest, answering 200 with the stored record; the merged record is held to the update shape, so clearing a required property is a 400 required issue and an unknown member a 400 additionalProperties. Read-one and every write answer carry a strong ETag, and PATCH, PUT and DELETE honour If-Match inside the write's own transaction with the row read under its write lock, answering a stale validator with 412 (ERR_CRUD_PRECONDITION_FAILED). The PUT route stays as operationId replace<Singular>, now outside the collection contract, so the operationId update<Singular> names the merge. Crud.Collection still requires list, create and update, create and update now also declared by DataModel.Collection. The delete route is now rendered through the connection dialect and runs on PostgreSQL as well as SQLite.
+
 ## 0.37.0 - 2026-11-12
 ### Added
 * Crud.Reader is exported: it lists a DataModel.Collection over a table or one fixed SELECT with joined or computed columns, through the same list contract as Crud.Api, with a `scope` input that fixes property values no client can filter by or widen. A reader names its collection instead of a model, and its row and query default from it.

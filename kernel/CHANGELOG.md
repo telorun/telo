@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.140.0 - 2026-11-24
+### Added
+* The kernel reads an absolute `member` of `x-telo-value-schema-from` (`member: /key`) through the analyzer's reader: it refuses a kind whose pointer names no string in the schema of the declaration holding the reached type with `ERR_VALUE_SCHEMA_FROM_INVALID` when the definition registers, refuses a literal of the wrong type when the resource is created, and binds a contract node to the property the declaration names.
+* The Rust kernel no longer resolves a file embed in an Application target when the target runs: the analysis refuses the load first, as the Node kernel does, so an `!include-text` or `!module-path` written in a `targets:` entry is refused at load with `INCLUDE_OUTSIDE_RESOURCE` or `MODULE_PATH_OUTSIDE_RESOURCE` where it used to run.
+* The Rust kernel refuses a load whose entry or path-imported library holds an !include-text or !module-path naming nothing, before any resource is created, as the Node kernel does; its local file source answers what a claim names, and the creation-time refusal keeps the Node kernel's wording.
+* The Rust kernel refuses a load whose module documents carry a native-entry, source-entry or file-embed-placement defect, as the Node kernel does, and reads a controller's package URL through the one parser the analyzer now owns.
+* The Rust kernel refuses to load a manifest whose module, or a library it imports, declares a requires: or restrictions: range this telo is outside of, or whose own module declares a malformed one, as the Node kernel does: one ERR_MANIFEST_VALIDATION_FAILED carrying the same findings. A module whose telo bound is met but which states a host.node bound, which this kernel has no Node.js version to judge, loads with the bound unjudged unless it holds errors that apply only where the bound is met; that load is refused as ERR_UNSUPPORTED_MANIFEST_FEATURE naming the bound.
+### Fixed
+* Regular expressions that could take polynomial or exponential time on crafted input now run in linear time with the same results.
+### Security
+* A `__proto__` key in a resource declaration is carried into a controller's copy as an own data property, instead of replacing the copy's prototype.
+
 ## 0.139.2 - 2026-11-23
 ### Fixed
 * Release planning bumps a Telo module whenever a workspace package whose version the module's bill of materials records is released, so a release moving such a package no longer leaves the module stale and refused by the release PR's import gate.

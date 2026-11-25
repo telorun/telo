@@ -11,7 +11,7 @@ metadata:
     limits enforced before decoding; make a solid-colour canvas; and draw
     labelled rectangles onto an image. Reads PNG, JPEG, WebP and GIF, and
     returns encoded PNG, JPEG or WebP bytes.
-requires: { telo: ">=0.90.0" }
+requires: { telo: ">=0.96.0" }
 exports: { kinds: [Blank, Overlay, Fit] }
 # Skia, through `@napi-rs/canvas`, for every platform its upstream release
 # publishes. Its JavaScript inlines into the bundle; only the addon is staged and

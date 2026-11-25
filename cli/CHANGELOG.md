@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.140.0 - 2026-11-24
+### Added
+* The Rust telo check reports a module's requires: and restrictions: findings as the Node one does, and telo --version, telo builtins and its dependency verdict keys read the built-in vocabulary archive the Rust analyzer embeds.
+* The Rust telo check reports an !include-* or !module-path naming nothing, in the entry and in every library its path imports reach, as the Node one does.
+### Fixed
+* Finding the newest published release candidate no longer builds a regular expression from the surface version.
+### Security
+* The desktop webview now uses cookie 0.18.3, which fixes RUSTSEC-2026-0594 (private cookie nonces could repeat in a process that forks).
+* Updated the url crate to 2.5.9, which fixes a stack overflow in Url::origin() on deeply nested blob: URLs (RUSTSEC-2026-0592).
+
 ## 0.139.2 - 2026-11-23
 ### Fixed
 * Release planning bumps a Telo module whenever a workspace package whose version the module's bill of materials records is released, so a release moving such a package no longer leaves the module stale and refused by the release PR's import gate.

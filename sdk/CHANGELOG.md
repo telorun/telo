@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.140.0 - 2026-11-24
+### Fixed
+* The native controller backend now refuses a null instance handle, a null buffer with a length, or a missing host table with an error, where it used to dereference them.
+
 ## 0.139.0 - 2026-11-22
 ### Added
 * A diagnostic a load refusal carries for a finding re-reported at an import now says where its defect is written: `origin.writtenAt` (`filePath`, `path`, `resource`), the place the module writing it reports it at in its own `telo check`. It is absent for a finding that is the reporting module's own.

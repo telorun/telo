@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: Ui
-  version: 0.15.0
+  version: 0.16.0
   repository: https://github.com/telorun/telo
   license: MIT
   categories: [UI]
@@ -14,7 +14,7 @@ metadata:
     back-office screen without frontend code.
 requires:
   # Measured by `telo release floor`: 0.137.0 refuses this file.
-  telo: ">=unreleased"
+  telo: ">=0.140.0"
 restrictions:
   - requires: { telo: ">=0.139.0" }
     reason: >-

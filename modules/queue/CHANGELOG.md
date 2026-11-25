@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0 - 2026-11-24
+### Added
+* The receiving-webhooks guide now shows how to verify a provider's signature with Http.FromBodySignature and AuthSignature.Verifier, and pairs it with Idempotency.Once keyed on the delivery id.
+
 ## 0.3.1 - 2026-11-08
 ### Fixed
 * Documentation links now point at telo.run pages and hub module pages instead of the repository tree.
