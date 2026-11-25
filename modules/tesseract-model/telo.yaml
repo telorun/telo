@@ -70,7 +70,8 @@ schema:
         fine-tuned model takes a name of its own, such as `eng_invoice`. `osd` is the
         orientation model's and is not a language.
       type: string
-      pattern: "^(?!osd$)[a-z][a-z0-9_]*$"
+      pattern: "^[a-z][a-z0-9_]*$"
+      not: { const: osd }
 ---
 # A kind of its own rather than a Language with a reserved code, so a recognition
 # slot and an orientation slot each accept only their own kind and `telo check`

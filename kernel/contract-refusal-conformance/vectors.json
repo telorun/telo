@@ -1,0 +1,244 @@
+{
+  "target": "Fx.Target/probe",
+  "rows": [
+    {
+      "id": "input/required",
+      "direction": "inputType",
+      "schema": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "value": {},
+      "expect": {
+        "code": "ERR_INPUT_INVALID",
+        "message": "Fx.Target/probe: inputs do not satisfy the declared inputType: Invalid value passed: {}. Error: / is missing required property 'name'",
+        "data": {
+          "issues": [
+            {
+              "pointer": "/name",
+              "keyword": "required",
+              "params": {
+                "missingProperty": "name"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "output/type",
+      "direction": "outputType",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer"
+          }
+        }
+      },
+      "value": {
+        "count": "seven"
+      },
+      "expect": {
+        "code": "ERR_OUTPUT_INVALID",
+        "message": "Fx.Target/probe: result do not satisfy the declared outputType: Invalid value passed: {\"count\":\"seven\"}. Error: /count must be integer",
+        "data": {
+          "issues": [
+            {
+              "pointer": "/count",
+              "keyword": "invalid",
+              "params": {}
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "input/url-members",
+      "direction": "inputType",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "endpoint": {
+            "x-telo-type": {
+              "name": "Telo.Url",
+              "scheme": {
+                "enum": [
+                  "https"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "value": {
+        "endpoint": "ftp://files.example.com/a"
+      },
+      "expect": {
+        "code": "ERR_INPUT_INVALID",
+        "message": "Fx.Target/probe: inputs do not satisfy the declared inputType: /endpoint: ERR_URL_INVALID: not a Telo.Url — its scheme must be one of https",
+        "data": {
+          "issues": [
+            {
+              "pointer": "/endpoint",
+              "keyword": "format",
+              "params": {
+                "format": "Telo.Url"
+              },
+              "code": "ERR_URL_INVALID"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "input/timestamp-written",
+      "direction": "inputType",
+      "schema": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "at": {
+            "x-telo-type": "Telo.Timestamp"
+          }
+        }
+      },
+      "value": {
+        "at": {
+          "$telo": "google.protobuf.Timestamp",
+          "value": "2023-11-14T22:13:20Z"
+        }
+      },
+      "expect": {
+        "code": "ERR_INPUT_INVALID",
+        "message": "Fx.Target/probe: inputs do not satisfy the declared inputType: Invalid value passed: {\"at\":\"2023-11-14T22:13:20Z\"}. Error: / is missing required property 'name'",
+        "data": {
+          "issues": [
+            {
+              "pointer": "/name",
+              "keyword": "required",
+              "params": {
+                "missingProperty": "name"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "input/duration-written",
+      "direction": "inputType",
+      "schema": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "wait": {
+            "x-telo-type": "Telo.Duration"
+          }
+        }
+      },
+      "value": {
+        "wait": {
+          "$telo": "google.protobuf.Duration",
+          "value": "5400s"
+        }
+      },
+      "expect": {
+        "code": "ERR_INPUT_INVALID",
+        "message": "Fx.Target/probe: inputs do not satisfy the declared inputType: Invalid value passed: {\"wait\":\"5400s\"}. Error: / is missing required property 'name'",
+        "data": {
+          "issues": [
+            {
+              "pointer": "/name",
+              "keyword": "required",
+              "params": {
+                "missingProperty": "name"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "input/bytes-written",
+      "direction": "inputType",
+      "schema": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "raw": {
+            "x-telo-type": "Telo.Bytes"
+          }
+        }
+      },
+      "value": {
+        "raw": {
+          "$telo": "bytes",
+          "value": "AQID"
+        }
+      },
+      "expect": {
+        "code": "ERR_INPUT_INVALID",
+        "message": "Fx.Target/probe: inputs do not satisfy the declared inputType: Invalid value passed: {\"raw\":\"AQID\"}. Error: / is missing required property 'name'",
+        "data": {
+          "issues": [
+            {
+              "pointer": "/name",
+              "keyword": "required",
+              "params": {
+                "missingProperty": "name"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "output/url-members",
+      "direction": "outputType",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "endpoint": {
+            "x-telo-type": "Telo.Url"
+          }
+        }
+      },
+      "value": {
+        "endpoint": {
+          "host": "files.example.com",
+          "path": "/a"
+        }
+      },
+      "expect": {
+        "code": "ERR_OUTPUT_INVALID",
+        "message": "Fx.Target/probe: result do not satisfy the declared outputType: /endpoint: ERR_URL_INVALID: not a Telo.Url — it has no 'scheme' member",
+        "data": {
+          "issues": [
+            {
+              "pointer": "/endpoint",
+              "keyword": "format",
+              "params": {
+                "format": "Telo.Url"
+              },
+              "code": "ERR_URL_INVALID"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -59,6 +59,8 @@ import {
   type NeedTypeShape,
   StaticAnalyzer,
   judgeSchemaFindings,
+  isValidationOverflow,
+  schemaNestingExceededMessage,
   type AnalysisDiagnostic,
   type DefResolver,
   type DiffEntry,
@@ -3343,9 +3345,12 @@ export class Kernel implements IKernel {
     // restoring the pre-CEL string view that the schema expects.
     const standIns: StandIns = new Map();
     const stripped = stripCompiledValues(resource, configSchema, undefined, schemaForRef, standIns);
+    const unvalidated = () =>
+      new RuntimeError("ERR_SCHEMA_NESTING_EXCEEDED", schemaNestingExceededMessage(resourceLabel, "the resource"));
     try {
       this.sharedSchemaValidator.compile(configSchema).validate(stripped);
     } catch (error) {
+      if (isValidationOverflow(error)) throw unvalidated();
       // A failure may be about a stand-in, which says nothing about what the
       // author wrote — and the first error hides every one after it. Judged
       // again on the whole error set, excusing what the analyzer excuses. The
@@ -3356,9 +3361,10 @@ export class Kernel implements IKernel {
           ? this.sharedSchemaValidator.findingsFor(configSchema)
           : undefined;
       const all = findings?.(configSchema, stripped);
-      const remaining =
+      if (all !== undefined && !Array.isArray(all)) throw unvalidated();
+      const judged =
         findings && all
-          ? judgeSchemaFindings(all, {
+          ? judgeSchemaFindings(all as Exclude<typeof all, { finished: false }>, {
               value: stripped,
               schema: configSchema as Record<string, any>,
               standIns,
@@ -3366,6 +3372,8 @@ export class Kernel implements IKernel {
               reference: (node, ref) => this.sharedSchemaValidator.reference(node, ref),
             })
           : undefined;
+      if (judged && !judged.finished) throw unvalidated();
+      const remaining = judged?.finished ? judged.issues : undefined;
       if (remaining?.length !== 0) {
         // A value type admitting text refuses a literal that does not build under its
         // own code, naming the field and the reason — never the value, which may hold

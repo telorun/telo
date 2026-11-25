@@ -179,7 +179,12 @@
               ]
             },
             "default": {}
-          }
+          },
+          "allOf": [
+            {
+              "$ref": "telo://manifest#/$defs/JsonSchema7"
+            }
+          ]
         }
       },
       "secrets": {
@@ -207,7 +212,12 @@
               ]
             },
             "default": {}
-          }
+          },
+          "allOf": [
+            {
+              "$ref": "telo://manifest#/$defs/JsonSchema7"
+            }
+          ]
         }
       },
       "needs": {

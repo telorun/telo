@@ -1,5 +1,46 @@
 {
   "code": "ERR_OUTPUT_INVALID",
   "description": "A result, or the data of an error leaving a dispatch, did not satisfy what its kind declares.",
-  "displayMessage": "The service produced a result it could not deliver."
+  "displayMessage": "The service produced a result it could not deliver.",
+  "data": {
+    "description": "Where the refusal lies in the value, or null when it locates nothing.",
+    "anyOf": [
+      {
+        "type": "null"
+      },
+      {
+        "type": "object",
+        "required": [
+          "issues"
+        ],
+        "properties": {
+          "issues": {
+            "description": "Where in the value each refusal is, never quoting the value.",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "pointer": {
+                  "description": "The refused value's place, as a JSON Pointer.",
+                  "type": "string"
+                },
+                "keyword": {
+                  "description": "What it violated, in the issue vocabulary (`required`, `format`, `invalid`, …).",
+                  "type": "string"
+                },
+                "params": {
+                  "description": "The keyword's parameters (`missingProperty`, `format`).",
+                  "type": "object"
+                },
+                "code": {
+                  "description": "The value type's own code, for a value of a type with members that does not build.",
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    ]
+  }
 }

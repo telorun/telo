@@ -1,0 +1,5 @@
+units:
+  sdk: Added
+body: "telorun-sdk-core no longer depends on the jsonschema crate, its tests included:
+  the controller protocol's message schemas are judged against their vectors by the Rust
+  analyzer's validator twin."

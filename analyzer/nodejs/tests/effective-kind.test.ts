@@ -1,3 +1,4 @@
+import { finishedIssues } from "./judged-validation.js";
 import { canonicalTypeSchemaId, type ResourceDefinition } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
 import { BUILTIN_DOCUMENT_FILES } from "../src/builtin-entries/index.js";
@@ -46,11 +47,11 @@ describe("the effective kind", () => {
     registry.register(definition("Alias", { extends: "Lib.Server" }));
     registry.register(PARENT);
     const holder = { $ref: canonicalTypeSchemaId("Lib", "Alias") };
-    expect(registry.validateWithRefs({}, holder)).not.toEqual([]);
-    expect(registry.validateWithRefs({ port: 80 }, holder)).toEqual([]);
+    expect(finishedIssues(registry.validateWithRefs({}, holder))).not.toEqual([]);
+    expect(finishedIssues(registry.validateWithRefs({ port: 80 }, holder))).toEqual([]);
     // A replaced parent changes what the id addresses.
     registry.register(definition("Server", { capability: "Telo.Service", schema: { type: "object" } }));
-    expect(registry.validateWithRefs({}, { $ref: canonicalTypeSchemaId("Lib", "Alias") })).toEqual([]);
+    expect(finishedIssues(registry.validateWithRefs({}, { $ref: canonicalTypeSchemaId("Lib", "Alias") }))).toEqual([]);
   });
 });
 

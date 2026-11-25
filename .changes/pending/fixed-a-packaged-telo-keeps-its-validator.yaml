@@ -1,0 +1,6 @@
+units:
+  cli: Fixed
+body: "A packaged telo keeps its validator cache: compiled validators are now keyed by
+  the RE2 engine's version as well, and the standalone build bakes every package a
+  kernel cache key reads, from the kernel's own list, refusing to finish when one cannot
+  be resolved."

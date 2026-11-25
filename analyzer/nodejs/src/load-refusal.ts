@@ -6,6 +6,7 @@ import type { GraphLoadError, LoadedGraph } from "./loaded-types.js";
 import { runtimeCodeOf } from "./load-refusal-code.js";
 import { METADATA_RESERVED_FIELD } from "./metadata-stamps.js";
 import type { NeedTable } from "./need-table.js";
+import { SCHEMA_NESTING_EXCEEDED } from "./schema-validation.js";
 import { describeModuleSource } from "./nested-module-origin.js";
 import { RuntimeError, type ResourceManifest } from "@telorun/sdk";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
@@ -61,8 +62,9 @@ const MIGRATION_FAILED = "MIGRATION_FAILED";
  * (2) the parse and coded loader findings; the module artifacts are built;
  * (3) the version conflicts; (4) the module-file findings; (5) an entry that is
  * a library; the analysis runs; a failed library migration; (6) the metadata
- * stamps; (7) the need table's refusals; each of the last three beside every
- * other error the analysis found; (8) the analysis's errors.
+ * stamps; (7) the validations that could not finish; (8) the need table's
+ * refusals; each of the last four beside every other error the analysis found;
+ * (9) the analysis's errors.
  */
 export async function loadRefusal(
   graph: LoadedGraph,
@@ -100,15 +102,12 @@ export async function loadRefusal(
   if (migrationRefusal) return migrationRefusal;
   const stamps = [...graph.metadataDiagnostics, ...errors.filter((d) => d.code === METADATA_RESERVED_FIELD)];
   if (stamps.length > 0) {
-    const sorted = new FindingOrder(manifests, collectFilePositions(graph)).sort(stamps);
-    return {
-      code: runtimeCodeOf(METADATA_RESERVED_FIELD),
-      message: sorted.map((d) => `${located(graph, d)}${d.message}`).join("\n"),
-      carried: [
-        ...sorted.map((diagnostic) => ({ diagnostic, code: runtimeCodeOf(String(diagnostic.code)) })),
-        ...errors.filter((d) => d.code !== METADATA_RESERVED_FIELD).map((diagnostic) => ({ diagnostic })),
-      ],
-    };
+    return ownCodeRefusal(graph, manifests, METADATA_RESERVED_FIELD, stamps, errors.filter((d) => d.code !== METADATA_RESERVED_FIELD));
+  }
+  // A validation that could not finish holds no verdict on its value.
+  const unfinished = errors.filter((d) => d.code === SCHEMA_NESTING_EXCEEDED);
+  if (unfinished.length > 0) {
+    return ownCodeRefusal(graph, manifests, SCHEMA_NESTING_EXCEEDED, unfinished, errors.filter((d) => d.code !== SCHEMA_NESTING_EXCEEDED));
   }
   // A load refused for a need-table problem reports its twins beside every other
   // error, rather than the analysis's aggregate.
@@ -200,6 +199,26 @@ function needTableRefusals(table: NeedTable, analysed: readonly AnalysisDiagnost
     });
   }
   return refusals;
+}
+
+/** `found`, raised under the runtime twin of `code` with each finding naming its
+ *  file, beside `others`. */
+function ownCodeRefusal(
+  graph: LoadedGraph,
+  manifests: readonly ResourceManifest[],
+  code: string,
+  found: readonly AnalysisDiagnostic[],
+  others: readonly AnalysisDiagnostic[],
+): LoadRefusal {
+  const sorted = new FindingOrder(manifests, collectFilePositions(graph)).sort(found);
+  return {
+    code: runtimeCodeOf(code),
+    message: sorted.map((d) => `${located(graph, d)}${d.message}`).join("\n"),
+    carried: [
+      ...sorted.map((diagnostic) => ({ diagnostic, code: runtimeCodeOf(String(diagnostic.code)) })),
+      ...others.map((diagnostic) => ({ diagnostic })),
+    ],
+  };
 }
 
 /** Findings that each name their file, refused as one validation failure. */

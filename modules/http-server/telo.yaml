@@ -14,7 +14,7 @@ metadata:
     and static files with SPA fallback.
 requires:
   # Measured floor; what raised it is in docs/design-notes.md.
-  telo: ">=0.133.0"
+  telo: ">=unreleased"
 restrictions:
   - requires: { telo: ">=0.133.0" }
     reason: "The server reports `status.localUrl` from `run()`, which an older kernel refuses when a templated kind's `run:` starts the server, so that start fails."

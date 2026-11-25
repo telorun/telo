@@ -1,0 +1,9 @@
+kind: Telo.Application
+metadata: { name: RetryingApp }
+variables:
+  retries: { env: RETRIES, type: integer, minimum: 0, default: -1 }
+imports:
+  Worker:
+    source: ./worker
+    variables:
+      retries: !cel "variables.retries"

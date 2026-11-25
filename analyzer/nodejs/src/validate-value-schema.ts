@@ -3,6 +3,7 @@ import { valueTypeRefusalCode } from "./schema-error-report.js";
 import { valueSchemaSites } from "./derived-slots.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
 import { type ExternalSchemaResolver, type SchemaIssue } from "./schema-compat.js";
+import type { SchemaValidationOutcome } from "./schema-validation.js";
 import type { StandIns } from "./stand-in-findings.js";
 import type { ValueSchemaHost } from "./value-schema-slot.js";
 import type { DeclarationRequests } from "./declaration-requests.js";
@@ -28,8 +29,15 @@ import type { DeclarationRequests } from "./declaration-requests.js";
 /** The validator holding the registered shapes, and the resolver that lets the
  *  decoding walk see through them. */
 export interface ShapeAwareValidator {
-  validate(data: unknown, schema: Record<string, any>, standIns?: StandIns): SchemaIssue[];
+  validate(data: unknown, schema: Record<string, any>, standIns?: StandIns): SchemaValidationOutcome;
   external: ExternalSchemaResolver;
+}
+
+/** What the `x-telo-value-schema-from` slots of one resource raise: each slot's
+ *  issues, and the path of every slot whose validation could not finish. */
+export interface ValueSchemaFindings {
+  issues: SchemaIssue[];
+  unfinished: string[];
 }
 
 /**
@@ -52,8 +60,9 @@ export function collectValueSchemaIssues(
   /** Follows a location across a reference. Omitted by a caller holding no
    *  module scope, where a location is read off the resource alone. */
   valueSchemaHost?: ValueSchemaHost,
-): SchemaIssue[] {
+): ValueSchemaFindings {
   const issues: SchemaIssue[] = [];
+  const unfinished: string[] = [];
   for (const { path, value, schema, from: written } of valueSchemaSites(manifest, defSchema, { types, valueSchemaHost })) {
     const from = locationAsPath(written);
     const standIns: StandIns = new Map();
@@ -61,7 +70,12 @@ export function collectValueSchemaIssues(
       standIns,
       external: validator.external,
     });
-    for (const issue of validator.validate(substituted, schema, standIns)) {
+    const outcome = validator.validate(substituted, schema, standIns);
+    if (!outcome.finished) {
+      unfinished.push(path);
+      continue;
+    }
+    for (const issue of outcome.issues) {
       issues.push({
         // A value type's own refusal keeps what names it, so it reports under the
         // type's code wherever the slot is.
@@ -73,7 +87,7 @@ export function collectValueSchemaIssues(
       });
     }
   }
-  return issues;
+  return { issues, unfinished };
 }
 
 /** A location written as a JSON Pointer (`/input/model`), as the path of the

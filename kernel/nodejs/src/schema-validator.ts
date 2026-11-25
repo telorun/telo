@@ -1,15 +1,15 @@
 import { DataValidator, isCompiledValue, NOOP_LOGGER, RuntimeError, TypeRule, type Logger } from "@telorun/sdk";
-import AjvModule, { type ValidateFunction } from "ajv";
+import type { ValidateFunction } from "ajv";
 import standaloneCodeMod from "ajv/dist/standalone/index.js";
-import addFormats from "ajv-formats";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
 import {
+  createAjv,
   judgeSchemaFindings,
   ManifestRootSchema,
-  registerTeloKeywords,
+  type SchemaAjv,
   schemaIssues,
   SchemaNodeValidator,
   schemaWithTagsAsText,
@@ -24,7 +24,6 @@ import {
 import {
   CEL_SCALAR_FORMS,
   holdsSensitiveMember,
-  membersEntryOfValue,
   PLAIN_ENCODINGS,
   plainScalar,
   VALUE_TYPES,
@@ -33,15 +32,17 @@ import {
 import { bigIntView, mergeFilledDefaults } from "./bigint-schema-view.js";
 import { realmRequire } from "./controller-loaders/realm.js";
 import { REDACTED } from "./instance-sensitive-paths.js";
-import { readVersion, reportUndeterminableVersion } from "./runtime-versions.js";
+import { readCacheKeyVersion, reportUndeterminableVersion } from "./runtime-versions.js";
 import { formatAjvErrors } from "./manifest-schemas.js";
 import { ruleCondition, stampRuleCallNames } from "./type-rule-condition.js";
 
 /** Render a value for an error message without ever throwing — the offending
  *  data may be cyclic, and a throw here would REPLACE the validation failure
- *  with an unrelated error naming no field. A value holding a member its type
- *  declares sensitive (a URL's password) is written as the censor, whoever built
- *  it (logging §14), and one holding none as its text. */
+ *  with an unrelated error naming no field. An instance value is written in its
+ *  type's plain encoding (an instant as RFC 3339, a duration as `"5400s"`, bytes
+ *  as base64url, a URL as its text); one holding a member its type declares
+ *  sensitive (a URL's password) is written as the censor, whoever built it
+ *  (logging §14). */
 export function describeValue(data: unknown): string {
   try {
     return JSON.stringify(data, describedValue) ?? String(data);
@@ -52,7 +53,9 @@ export function describeValue(data: unknown): string {
 
 function describedValue(_key: string, held: unknown): unknown {
   if (holdsSensitiveMember(held)) return REDACTED;
-  return membersEntryOfValue(held) ? plainScalar(held) : held;
+  // A `uint`'s digits stay its own JSON form, which the kernel's BigInt writer gives.
+  const plain = plainScalar(held);
+  return plain === undefined || typeof plain === "bigint" ? held : plain;
 }
 
 /** A value its schema refuses, carrying the reduced, path-anchored issues the
@@ -70,11 +73,10 @@ import {
   isTaggedSentinel,
 } from "@telorun/templating";
 
-const Ajv = AjvModule.default ?? AjvModule;
-
 /**
- * A validator instance with every Telo keyword, the formats and the shared
- * manifest root.
+ * A validator instance of the named configuration (`createAjv`, `@telorun/analyzer`):
+ * every Telo keyword, the formats, the schema pattern seam and the shared manifest
+ * root.
  *
  * - `primary` stops at the first error and fills defaults: the one every
  *   validation runs on.
@@ -84,33 +86,11 @@ const Ajv = AjvModule.default ?? AjvModule;
  *   and fills NO default: it also validates a union branch on its own, where a
  *   default the whole schema ignores would be applied and written.
  */
-function createValidatorAjv(role: "primary" | "filling" | "locating"): InstanceType<typeof Ajv> {
-  const ajv = new Ajv({
-    strict: false,
-    allErrors: role !== "primary",
-    verbose: role === "locating",
-    removeAdditional: false,
-    useDefaults: role !== "locating",
-    // Required for `standaloneCode` extraction — tells AJV to keep the
-    // generated validator's source available rather than wrapping it
-    // through `new Function`. The cost at compile time is negligible.
-    code: { source: true },
-  });
-  addFormats.default(ajv);
-  // One registration site for every Telo keyword: the annotations as no-ops
-  // and `x-telo-type` as the one that actually checks. `x-telo-type` is defined
-  // as codegen in the analyzer so it inlines into the standalone validators
-  // compiled and cached below, rather than needing the implementation present
-  // at load.
-  registerTeloKeywords(ajv);
-  // Register the shared manifest root so module schemas can
-  // `$ref: "telo://manifest#/$defs/ResourceRef"` without each manifest
-  // bundling its own copy. Mirrors the analyzer's createAjv().
-  ajv.addSchema(ManifestRootSchema);
-  return ajv;
+function createValidatorAjv(role: "primary" | "filling" | "locating"): SchemaAjv {
+  return createAjv(role);
 }
 
-function registerOnce(ajv: InstanceType<typeof Ajv>, name: string, schema: object): void {
+function registerOnce(ajv: SchemaAjv, name: string, schema: object): void {
   if (!ajv.getSchema(name)) ajv.addSchema(schema, name);
 }
 
@@ -121,7 +101,8 @@ const standaloneCode: (...args: any[]) => string =
   (standaloneCodeMod as any).default ?? (standaloneCodeMod as any);
 
 /** How a standalone-compiled validator, read back off disk, gets the
- *  `ajv/dist/runtime/...` and `ajv-formats/...` modules it names.
+ *  `ajv/dist/runtime/...`, `ajv-formats/...` and `@telorun/sdk` modules it names
+ *  (the SDK carries the schema pattern seam and the value-type predicates).
  *
  *  The realm answers first, handing back the instances this kernel is already
  *  validating with — which is what makes a cached validator loadable where the
@@ -145,8 +126,11 @@ const cacheRequire = (specifier: string): unknown =>
  *  by one ajv is handed to another. So the disk cache is disabled instead
  *  (`validatorCacheKeyable`), which costs a compile per schema per run and
  *  cannot serve the wrong code. */
-const AJV_VERSION = readVersion("ajv");
-const AJV_FORMATS_VERSION = readVersion("ajv-formats");
+const AJV_VERSION = readCacheKeyVersion("ajv");
+const AJV_FORMATS_VERSION = readCacheKeyVersion("ajv-formats");
+/** RE2 compiles every schema pattern (`schemaPattern`, through `@telorun/cel`), so a
+ *  validator cached against another RE2 may accept another language. */
+const RE2JS_VERSION = readCacheKeyVersion("re2js");
 
 /** The `x-telo-type` keyword emits code and messages from the value-type
  *  vocabulary, its codecs and its scalar ranges, so a cached validator built
@@ -168,14 +152,14 @@ const VALUE_TYPE_DIGEST = createHash("sha256")
 export function formatVocabularyDigest(entries: readonly TeloFormatEntry[]): string {
   return createHash("sha256").update(JSON.stringify(entries)).digest("hex").slice(0, 16);
 }
-const VALIDATOR_RUNTIME_TAG =
-  `ajv@${AJV_VERSION}+ajv-formats@${AJV_FORMATS_VERSION}+value-types@${VALUE_TYPE_DIGEST}` +
+export const VALIDATOR_RUNTIME_TAG =
+  `ajv@${AJV_VERSION}+ajv-formats@${AJV_FORMATS_VERSION}+re2js@${RE2JS_VERSION}+value-types@${VALUE_TYPE_DIGEST}` +
   `+formats@${formatVocabularyDigest([...TELO_FORMATS.values()])}`;
 
 /** Whether a compiled validator may be persisted or read back at all. */
 function validatorCacheKeyable(report: (message: string) => void): boolean {
-  if (AJV_VERSION && AJV_FORMATS_VERSION) return true;
-  reportUndeterminableVersion("validator", ["ajv", "ajv-formats"], report);
+  if (AJV_VERSION && AJV_FORMATS_VERSION && RE2JS_VERSION) return true;
+  reportUndeterminableVersion("validator", ["ajv", "ajv-formats", "re2js"], report);
   return false;
 }
 
@@ -266,7 +250,7 @@ function stripTeloAnnotations(value: unknown, nameKeyed = false): unknown {
 }
 
 export class SchemaValidator {
-  private ajv: InstanceType<typeof Ajv>;
+  private ajv: SchemaAjv;
   private typeRules = new Map<string, TypeRule[]>();
   private rawSchemas = new Map<string, object>();
   private compiledValidators = new WeakMap<object, DataValidator>();
@@ -316,8 +300,8 @@ export class SchemaValidator {
    *  failure that needs them, holding every shape registered so far. */
   private failurePath:
     | {
-        filling: InstanceType<typeof Ajv>;
-        locating: InstanceType<typeof Ajv>;
+        filling: SchemaAjv;
+        locating: SchemaAjv;
         nodes: SchemaNodeValidator;
       }
     | undefined;
@@ -391,7 +375,7 @@ export class SchemaValidator {
 
   /** `schema` compiled on a mirror of the primary instance, a reference only
    *  the primary holds adopted from it first. */
-  private compileOnMirror(mirror: InstanceType<typeof Ajv>, schema: object): ValidateFunction {
+  private compileOnMirror(mirror: SchemaAjv, schema: object): ValidateFunction {
     const adopted = new Set<string>();
     for (;;) {
       try {
@@ -514,12 +498,15 @@ export class SchemaValidator {
       validate: (data: any) => {
         if (!check(data)) {
           // The first failure is reported, its unions decided by the judge.
-          const findings = judgeSchemaFindings(validate.errors, {
+          const judged = judgeSchemaFindings(validate.errors, {
             value: data,
             schema,
             validate: (node, value) => this.findingsFor(schema)(node, value),
             reference: (node, ref) => this.reference(node, ref),
           });
+          // Refused either way; where judging its unions could not finish, the
+          // validator's own findings are phrased.
+          const findings = judged.finished ? judged.issues : (validate.errors ?? []);
           // Reports `data`, not the normalized view: the view renders a wide
           // integer through a double, so the digits it prints for the offending
           // value would not be the ones the author wrote.

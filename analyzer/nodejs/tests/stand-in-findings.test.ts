@@ -1,7 +1,8 @@
+import { finishedIssues } from "./judged-validation.js";
 import { makeTaggedSentinel } from "@telorun/templating";
 import AjvModule from "ajv";
 import { describe, expect, it } from "vitest";
-import { createAjv } from "../src/schema-compat.js";
+import { createAjv } from "../src/schema-validation.js";
 import { SchemaNodeValidator } from "../src/schema-node-validator.js";
 import { judgeSchemaFindings } from "../src/schema-findings-judge.js";
 import { readStandIn, type StandIn, type StandIns } from "../src/stand-in-findings.js";
@@ -17,7 +18,7 @@ function findings(
   shapes: Record<string, Record<string, any>> = {},
 ) {
   const ajv = createAjv();
-  const located = createAjv({ verbose: true });
+  const located = createAjv("analysis-verbose");
   for (const [id, shape] of Object.entries(shapes)) {
     ajv.addSchema(shape, id);
     located.addSchema(shape, id);
@@ -25,13 +26,13 @@ function findings(
   const validate = ajv.compile(schema);
   expect(validate(data)).toBe(false);
   const nodes = new SchemaNodeValidator(located, { resolveReference: () => undefined });
-  return judgeSchemaFindings(validate.errors, {
+  return finishedIssues(judgeSchemaFindings(validate.errors, {
     value: data,
     schema,
     standIns,
     validate: nodes.findingsFor(schema),
     reference: (node, ref) => nodes.reference(node, ref),
-  }).map((e) => `${e.instancePath} ${e.keyword}`);
+  })).map((e) => `${e.instancePath} ${e.keyword}`);
 }
 
 const SECONDS = { type: "string", pattern: "^\\d+s$" };
@@ -232,13 +233,13 @@ describe("judgeSchemaFindings — content keywords at a value holding stand-ins"
     const data = { tags: ["x", "x", "", ""] };
     expect(validate(data)).toBe(false);
     expect(validate.errors?.[0]?.params).toEqual({ i: 3, j: 2 });
-    const kept = judgeSchemaFindings(validate.errors, {
+    const kept = finishedIssues(judgeSchemaFindings(validate.errors, {
       value: data,
       schema: tags,
       standIns,
       validate: () => undefined,
       reference: () => undefined,
-    });
+    }));
     expect(kept.map((e) => [e.instancePath, e.params, e.message])).toEqual([
       ["/tags", { i: 1, j: 0 }, "must NOT have duplicate items (items ## 0 and 1 are identical)"],
     ]);
@@ -283,13 +284,13 @@ describe("judgeSchemaFindings — the same expression twice in a uniqueItems lis
     const data = { tags: [item(""), item("")] };
     const validate = createAjv().compile(tags);
     expect(validate(data)).toBe(false);
-    return judgeSchemaFindings(validate.errors, {
+    return finishedIssues(judgeSchemaFindings(validate.errors, {
       value: data,
       schema: tags,
       standIns,
       validate: () => undefined,
       reference: () => undefined,
-    }).map((e) => [e.instancePath, e.params, e.message]);
+    })).map((e) => [e.instancePath, e.params, e.message]);
   };
   const DUPLICATE = [
     ["/tags", { i: 1, j: 0 }, "must NOT have duplicate items (items ## 0 and 1 are identical)"],
@@ -333,20 +334,20 @@ describe("judgeSchemaFindings — a branch judged alone, on a validator that fil
    *  defaults-free locating instance for the whole schema and each branch. */
   function judged(schema: Record<string, any>, data: unknown, standIns: StandIns) {
     const filling = new Ajv({ strict: false, allErrors: true, useDefaults: true });
-    const nodes = new SchemaNodeValidator(createAjv({ verbose: true }), {
+    const nodes = new SchemaNodeValidator(createAjv("analysis-verbose"), {
       resolveReference: () => undefined,
       fillDefaults: (whole, value) => void filling.compile(whole)(value),
     });
     const seam = nodes.findingsFor(schema);
     const all = seam(schema, data);
     const filled = structuredClone(data);
-    const kept = judgeSchemaFindings(all, {
+    const kept = finishedIssues(judgeSchemaFindings(all, {
       value: data,
       schema,
       standIns,
       validate: seam,
       reference: (node, ref) => nodes.reference(node, ref),
-    });
+    }));
     expect(data).toEqual(filled);
     return kept.map((e) => `${e.instancePath} ${e.keyword}`);
   }
@@ -414,18 +415,18 @@ describe("SchemaNodeValidator", () => {
       type: "object",
       properties: { wait: { anyOf: [SECONDS, { type: "integer" }] } },
     };
-    const validate = createAjv({ verbose: true }).compile(schema);
+    const validate = createAjv("analysis-verbose").compile(schema);
     expect(validate({ wait: "" })).toBe(false);
-    const nodes = new SchemaNodeValidator(createAjv({ verbose: true }), { resolveReference: () => undefined });
+    const nodes = new SchemaNodeValidator(createAjv("analysis-verbose"), { resolveReference: () => undefined });
     const seam = nodes.findingsFor({});
     expect(seam(schema.properties.wait.anyOf[0]!, "")).toBeUndefined();
-    const kept = judgeSchemaFindings(validate.errors, {
+    const kept = finishedIssues(judgeSchemaFindings(validate.errors, {
       value: { wait: "" },
       schema,
       standIns: new Map([["/wait", { class: "produced" }]]),
       validate: seam,
       reference: (node, ref) => nodes.reference(node, ref),
-    });
+    }));
     expect(kept.map((e) => `${e.instancePath} ${e.keyword}`)).toEqual(["/wait type", "/wait anyOf"]);
   });
 
@@ -435,7 +436,7 @@ describe("SchemaNodeValidator", () => {
       "telo:M/Surface": { anyOf: [{ $ref: "telo:M/Overlay" }, { type: "integer" }] },
     };
     const ajv = createAjv();
-    const located = createAjv({ verbose: true });
+    const located = createAjv("analysis-verbose");
     for (const [id, shape] of Object.entries(shapes)) {
       ajv.addSchema(shape, id);
       located.addSchema(shape, id);
@@ -444,17 +445,17 @@ describe("SchemaNodeValidator", () => {
     const validate = ajv.compile(schema);
     expect(validate({ d: 1 })).toBe(false);
     const nodes = new SchemaNodeValidator(located, { resolveReference: () => undefined });
-    const kept = judgeSchemaFindings(validate.errors, {
+    const kept = finishedIssues(judgeSchemaFindings(validate.errors, {
       value: { d: 1 },
       schema,
       validate: nodes.findingsFor(schema),
     reference: (node, ref) => nodes.reference(node, ref),
-    });
+    }));
     expect(kept.map((e) => `${e.instancePath} ${e.keyword}`)).toEqual(["/d type"]);
   });
 
   it("throws, naming the node, when a held node does not compile where it stands", () => {
-    const ajv = createAjv({ verbose: true });
+    const ajv = createAjv("analysis-verbose");
     const document = { anyOf: [{ $ref: "telo://m/Missing" }, { type: "integer" }] };
     ajv.addSchema(document, "telo://m/Doc", undefined, false);
     const seam = new SchemaNodeValidator(ajv, { resolveReference: () => undefined }).findingsFor({});

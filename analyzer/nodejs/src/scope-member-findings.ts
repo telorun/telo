@@ -30,7 +30,7 @@ import { holdsChoice } from "./key-door.js";
 import { isKindDocument } from "./kind-declaration.js";
 import { reportDocumentStage } from "./cel-site-judgements.js";
 import { TEMPLATE_BODY_FIELDS } from "./template-expansion.js";
-import type { SchemaIssue } from "./schema-error-report.js";
+import type { SchemaValidationOutcome } from "./schema-validation.js";
 import { validateScopedKindMembers, type KindDocumentKind } from "./validate-scoped-kind-documents.js";
 import { duplicateNameDiagnostic } from "./validate-references.js";
 import { scopeArrayNameCollisions } from "./validate-scoped-imports.js";
@@ -54,7 +54,7 @@ export interface ScopeMemberInputs {
   /** How the runs judge the objects written beneath `declaration`. */
   nestedOf(declaration: ConditionedDeclaration): NestedPlaces;
   /** A kind document's findings against its built-in entry's schema. */
-  validateKindDocument(member: ResourceManifest, kind: KindDocumentKind): SchemaIssue[];
+  validateKindDocument(member: ResourceManifest, kind: KindDocumentKind): SchemaValidationOutcome;
   /** The branches no configuration takes, each read once. */
   readonly deadBranches: readonly DeadBranchRun[];
 }

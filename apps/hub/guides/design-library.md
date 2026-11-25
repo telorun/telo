@@ -33,7 +33,7 @@ own.
 
 Put behaviour in libraries and keep the application a thin wiring file: the
 application imports a feature library, and so does that library's test, so the
-test exercises exactly what the application runs without standing up ports or
+test exercises what the application runs without standing up ports or
 secrets.
 
 Three words, three things:
@@ -169,8 +169,8 @@ handler enqueueing on an outbox. Never declare a handler in a `with:` scope.
 
 ## Making a kind
 
-A `Telo.Definition` registers a kind. Without writing code there are two ways
-to make one, and a third shape for a contract. Pick by intent:
+A `Telo.Definition` registers a kind. Without code there are two ways
+to make one, and a third shape for a contract:
 
 | Your kind is… | Use |
 | --- | --- |
@@ -227,8 +227,11 @@ result:
   `default:`. `inputs` (the caller's arguments) is in scope in the top-level
   `inputs:` of an Invocable or Runnable; `result` (typed from the target's
   `outputType`) in `result:`.
+- **A `pattern:` is RE2** (no lookaround): exclude with `not:`. A field
+  holding JSON Schema `$ref`s `telo://manifest#/$defs/JsonSchema7`; a path
+  template field declares `format: path-template`.
 - **Each `resources:` entry is an ordinary declaration of its own kind.**
-  Write it exactly as at the top level; every name that kind binds is in
+  Write it as at the top level; every name that kind binds is in
   scope where it binds it — `inputs` inside a `Telo.Sequence`'s steps (its
   own `inputType`, never the template's), `item` in an iteration, `request`
   in an `Http.Api` route, `error` in a `catch:`. A body may hold as many
@@ -263,8 +266,7 @@ result:
   importer's own line. So your `schema:` declares only what your kind adds —
   titles, required fields — and does not restate the entry's constraints or
   context blocks; it keeps every **reference slot** (`x-telo-ref`) beneath a
-  forwarded value, which is what lets the reference resolve where the
-  importer wrote it. A contradiction is `TEMPLATE_FORWARD_INCOMPATIBLE`.
+  forwarded value, so the reference resolves where the importer wrote it. A contradiction is `TEMPLATE_FORWARD_INCOMPATIBLE`.
 - **Starting several things.** A Service or Runnable kind that starts more
   than one entry — a server and the poller beside it, a migration before the
   server — lists them in `targets: [!ref migrate, !ref server]`, started in
@@ -578,15 +580,13 @@ it proves the translations complete.
   no dot. The `env:` an application binds is `SCREAMING_SNAKE_CASE`;
   directories and published repository names are `kebab-case`.
 - **`metadata.description` is search text** on the library and on every kind:
-  it is what a reader who does not yet know your library exists matches
-  against. One paragraph of 40–60 words, leading with what it does in the
+  a reader who does not yet know your library exists matches it. One paragraph of 40–60 words, leading with what it does in the
   words a searcher would type. No kind or capability names, no backend names
-  in a generic library, no comparison with siblings, nothing that only makes
-  sense against history. A kind's description states its operation, inputs,
+  in a generic library, no comparison with siblings, no history. A kind's description states its operation, inputs,
   outputs and what a failure means.
 - **`metadata.categories`** is a short list of display labels — a grouping
-  facet, never repeated in the description. Reuse an
-  existing label: `AI`, `Compute`, `Configuration`, `Coordination`, `Data`,
+  facet, never repeated in the description. Reuse a
+  label: `AI`, `Compute`, `Configuration`, `Coordination`, `Data`,
   `Observability`, `Performance`, `Reliability`, `Scheduling`, `Storage`,
   `Streaming`, `Testing`, `Transport`, `Visualization`.
 - **`metadata.license`** names the license of the library's own files (an
@@ -594,7 +594,7 @@ it proves the translations complete.
 
 ## Keeping consumers working
 
-A library that renames or reshapes what importers write ships the repair as
+A library renaming or reshaping what importers write ships the repair as
 `migrations:` on its `Telo.Library`, keyed by diagnostic code: rules
 `rewrite: Self.<Type>` with a closed `match` disjoint from the current schema,
 changing only what it names (`remove`, `move`, `copy`, literal `set`). Prove
@@ -617,12 +617,10 @@ covers it.
 ## Inline or named
 
 Declare a resource **inline at its use site** when it is used exactly once
-(`invoke: { kind: Sql.Query, connection: !ref db }`), with no
-`metadata.name`. Give it a top-level document of its own only when something
+(`invoke: { kind: Sql.Query, connection: !ref db }`), unnamed. Give it a top-level document of its own only when something
 must name it: it is referenced more than once, listed in `targets:`, or
-exported. A router mounted on a server stays named, so it can be tested on
-its own. In a template body, entries are always named (the dispatch verb
-names one). For a kind declaring no `name` field, `{ kind, name }` is the
+exported. A router mounted on a server stays named, testable alone. Template
+body entries are always named. For a kind declaring no `name` field, `{ kind, name }` is the
 removed reference form (`INVALID_REFERENCE_FORM`) — write `!ref <name>`.
 
 ## Testing a library

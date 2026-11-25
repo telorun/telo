@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createAjv } from "../src/schema-compat.js";
+import { createAjv } from "../src/schema-validation.js";
 import { formatAjvErrors, schemaIssues } from "../src/schema-error-report.js";
 import { judgedFindings } from "./judged-validation.js";
 

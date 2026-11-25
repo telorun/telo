@@ -3147,6 +3147,7 @@ dependencies = [
  "telorun-cel",
  "telorun-cel-value",
  "telorun-glob",
+ "telorun-message-format",
  "telorun-sdk-core",
  "thiserror 1.0.69",
  "url",
@@ -3184,7 +3185,6 @@ name = "telo-kernel"
 version = "0.140.0"
 dependencies = [
  "flate2",
- "jsonschema",
  "libloading 0.8.9",
  "serde_json",
  "sha2",
@@ -3192,6 +3192,8 @@ dependencies = [
  "telo-analyzer",
  "telo-templating",
  "telorun-abi",
+ "telorun-cel",
+ "telorun-cel-value",
  "telorun-glob",
  "telorun-message-format",
  "telorun-sdk-core",
@@ -3293,7 +3295,6 @@ dependencies = [
 name = "telorun-sdk-core"
 version = "0.140.0"
 dependencies = [
- "jsonschema",
  "serde",
  "serde_json",
  "telorun-cel-value",

@@ -207,6 +207,12 @@ pub trait TemplatingEngine: Send + Sync {
         Vec::new()
     }
 
+    /// Whether the tag's scalar holds CEL — Node's engine declaring `expressionRegions` —
+    /// so that it defers to evaluation by construction rather than being asked to compile.
+    fn holds_expressions(&self) -> bool {
+        false
+    }
+
     /// Whether the text, written twice in one value, means one value both times. An engine
     /// giving no verdict reads as not repeatable.
     #[allow(unused_variables)]

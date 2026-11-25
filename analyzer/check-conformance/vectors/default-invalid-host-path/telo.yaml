@@ -1,0 +1,9 @@
+kind: Telo.Application
+metadata: { name: DataApp }
+variables:
+  dataDir: { env: DATA_DIR, type: string, x-telo-type: Telo.HostPath, minLength: 2, default: ./data }
+imports:
+  Worker:
+    source: ./worker
+    variables:
+      dataDir: !cel "string(variables.dataDir)"

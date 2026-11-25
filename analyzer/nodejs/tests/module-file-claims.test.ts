@@ -1,10 +1,12 @@
+import { finishedIssues } from "./judged-validation.js";
 import { describe, expect, it } from "vitest";
 import {
   INCLUDE_BYTES_ENGINE,
   INCLUDE_TEXT_ENGINE,
   makeTaggedSentinel,
 } from "@telorun/templating";
-import { substituteCelFields, validateAgainstSchema } from "../src/schema-compat.js";
+import { substituteCelFields } from "../src/schema-compat.js";
+import { validateAgainstSchema } from "../src/schema-validation.js";
 import { collectModuleFileClaims } from "../src/module-file-claims.js";
 
 const library = "kind: Telo.Library\nmetadata:\n  name: demo\n  version: 1.0.0\n";
@@ -136,7 +138,7 @@ describe("substituteCelFields — embed types", () => {
     const substituted = substituteCelFields(data, schema, schema) as Record<string, unknown>;
     expect(substituted.code).toBeInstanceOf(Uint8Array);
     expect(substituted.blob).toBe("");
-    expect(validateAgainstSchema(substituted, schema)).toHaveLength(2);
+    expect(finishedIssues(validateAgainstSchema(substituted, schema))).toHaveLength(2);
   });
 
   it("accepts each embed at the slot whose type it produces", () => {
@@ -149,13 +151,13 @@ describe("substituteCelFields — embed types", () => {
       blob: makeTaggedSentinel(INCLUDE_BYTES_ENGINE, "assets/x.bin"),
     };
     const substituted = substituteCelFields(data, schema, schema);
-    expect(validateAgainstSchema(substituted, schema)).toEqual([]);
+    expect(finishedIssues(validateAgainstSchema(substituted, schema))).toEqual([]);
   });
 
   it("still gives a CEL expression the slot's placeholder", () => {
     const schema = { type: "object", properties: { code: { type: "string" } } } as Record<string, any>;
     const data = { code: makeTaggedSentinel("cel", "variables.x") };
     const substituted = substituteCelFields(data, schema, schema);
-    expect(validateAgainstSchema(substituted, schema)).toEqual([]);
+    expect(finishedIssues(validateAgainstSchema(substituted, schema))).toEqual([]);
   });
 });

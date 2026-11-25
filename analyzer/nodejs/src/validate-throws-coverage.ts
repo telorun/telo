@@ -26,7 +26,7 @@ import {
   type ScopeRung,
 } from "./catch-scope.js";
 import type { ValidateFunction } from "ajv";
-import { createAjv, judgedSchemaIssues } from "./schema-compat.js";
+import { createAjv, finishedValidation, judgedSchemaIssues, SCHEMA_NESTING_EXCEEDED, schemaNestingExceededMessage, unlessOverflow } from "./schema-validation.js";
 import { builtinDocumentSchema } from "./builtins.js";
 import { declarableCapabilities, throwsAllowedCapabilities } from "./capability-roster.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
@@ -295,7 +295,9 @@ const atThrows = (message: string): string =>
 const validateAbstractThrows = (value: unknown) => {
   abstractThrowsHost ??= createAjv();
   const validate = (abstractThrowsValidator ??= abstractThrowsHost.compile(abstractThrowsSchema()));
-  return validate(value) ? [] : judgedSchemaIssues(abstractThrowsHost, validate.errors, value, validate.schema as object);
+  return unlessOverflow(() =>
+    validate(value) ? finishedValidation([]) : judgedSchemaIssues(abstractThrowsHost!, validate.errors, value, validate.schema as object),
+  );
 };
 
 export function validateThrowsDeclarations(manifests: ResourceManifest[]): AnalysisDiagnostic[] {
@@ -308,7 +310,18 @@ export function validateThrowsDeclarations(manifests: ResourceManifest[]): Analy
     const filePath = (m.metadata as { source?: string } | undefined)?.source;
 
     if (m.kind === "Telo.Abstract") {
-      const issues = validateAbstractThrows(throws);
+      const outcome = validateAbstractThrows(throws);
+      if (!outcome.finished) {
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: SCHEMA_NESTING_EXCEEDED,
+          source: SOURCE,
+          message: schemaNestingExceededMessage(`Telo.Abstract/${name}`, "'throws'"),
+          data: { resource: { kind: m.kind, name }, filePath, path: "throws" },
+        });
+        continue;
+      }
+      const issues = outcome.issues;
       for (const issue of issues) {
         diagnostics.push({
           severity: DiagnosticSeverity.Error,

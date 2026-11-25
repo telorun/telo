@@ -18,10 +18,11 @@ use telo_templating::{
 };
 use telo_analyzer::system_kinds::{is_module_document, skips_ref_resolution, DEFINITION, JSON_SCHEMA};
 use telo_analyzer::inline_imports::IMPORT;
+use telo_analyzer::schema_validation::SCHEMA_NESTING_EXCEEDED;
 use telo_analyzer::{
     declares_name_field, find_invalid_reference_forms, find_unresolved_sentinels, kind_of, name_of,
-    reference_form_message, resolve_ref_sentinels, target_reference_forms, RefTargets, ReferenceForm,
-    RESOLVED_REFERENCE_MARKER,
+    nesting_exceeded_slot_message, reference_form_message, resolve_ref_sentinels, runtime_code_of,
+    target_reference_forms, RefTargets, ReferenceForm, ReferenceFormFindings, RESOLVED_REFERENCE_MARKER,
 };
 
 use crate::controllers::module::import_controller::import_spec;
@@ -363,10 +364,11 @@ fn reject_keyed_translations(documents: &[Value], source: &str) -> Result<(), Ke
 
 /// Mark an imported library's legacy `{ kind, name }` at its reference slots as
 /// the reference it means, before `!ref` resolution writes the marker itself, and
-/// refuse an author-written `__ref` key there — what the Node kernel's import
-/// does with a library's documents. The entry's own module is refused for both
-/// spellings by the load's analysis (`INVALID_REFERENCE_FORM`), before any
-/// module is created.
+/// refuse an author-written `__ref` key there, and a slot whose value branch could
+/// not finish validating its value — what the Node kernel's import does with a
+/// library's documents, the slots first. The entry's own module is refused for
+/// each by the load's analysis (`INVALID_REFERENCE_FORM`, `SCHEMA_NESTING_EXCEEDED`),
+/// before any module is created.
 fn read_reference_forms(
     context: &ModuleContext,
     documents: &mut [Value],
@@ -382,6 +384,8 @@ fn read_reference_forms(
             .filter(|definition| definition.manifest.get("extends").is_none())
             .map(|definition| declares_name_field(definition.manifest.get("schema").unwrap_or(&Value::Null)))
     };
+    let mut unfinished = Vec::new();
+    let mut refused = None;
     for document in documents.iter_mut() {
         let Some(kind) = kind_of(document).map(str::to_owned) else {
             continue;
@@ -391,7 +395,7 @@ fn read_reference_forms(
         }
         let label = format!("{kind}/{}", name_of(document).unwrap_or("<unnamed>"));
         let found = if is_module_document(&kind) {
-            target_reference_forms(document, &kind_declares_name)
+            ReferenceFormFindings { forms: target_reference_forms(document, &kind_declares_name), unfinished: Vec::new() }
         } else {
             let Some(schema) = context
                 .resolve_kind(&kind)
@@ -400,37 +404,26 @@ fn read_reference_forms(
             else {
                 continue;
             };
-            find_invalid_reference_forms(document, &schema, &kind_declares_name, &value_branch_accepts)
+            find_invalid_reference_forms(document, &schema, &kind_declares_name)
         };
-        for invalid in found {
+        unfinished.extend(found.unfinished.iter().map(|slot| nesting_exceeded_slot_message(&label, slot)));
+        for invalid in found.forms {
             if invalid.form == ReferenceForm::Object {
                 if let Some(Value::Object(object)) = document.pointer_mut(&invalid.pointer) {
                     object.insert(RESOLVED_REFERENCE_MARKER.to_string(), Value::Bool(true));
                 }
                 continue;
             }
-            return Err(KernelError::new(
-                "ERR_INVALID_REFERENCE_FORM",
-                format!("{label}: {}", reference_form_message(&invalid)),
-            ));
+            refused.get_or_insert_with(|| format!("{label}: {}", reference_form_message(&invalid)));
         }
+    }
+    if !unfinished.is_empty() {
+        return Err(KernelError::new(runtime_code_of(SCHEMA_NESTING_EXCEEDED), unfinished.join("\n")));
+    }
+    if let Some(message) = refused {
+        return Err(KernelError::new("ERR_INVALID_REFERENCE_FORM", message));
     }
     Ok(())
-}
-
-/// Whether a value branch of a union accepts `value`, validated against the
-/// branch with the `$defs` of the document it was written in. A branch that
-/// does not compile accepts nothing.
-pub fn value_branch_accepts(branch: &Value, root: &Value, value: &Value) -> bool {
-    let mut schema = branch.clone();
-    if let Some(object) = schema.as_object_mut() {
-        for key in ["$defs", "definitions"] {
-            if let Some(definitions) = root.get(key) {
-                object.entry(key.to_string()).or_insert_with(|| definitions.clone());
-            }
-        }
-    }
-    jsonschema::validator_for(&schema).is_ok_and(|validator| validator.is_valid(value))
 }
 
 /// Fail on a `!ref` that resolved to nothing, once resolution has run over

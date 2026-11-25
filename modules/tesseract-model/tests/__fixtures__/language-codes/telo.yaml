@@ -1,0 +1,25 @@
+# Language codes: `osd` is the orientation model's and is refused, as is a code
+# that is not lower-case letters, digits and underscores starting with a letter.
+kind: Telo.Library
+metadata: { name: LanguageCodes }
+imports: { TesseractModel: ../../.. }
+---
+kind: TesseractModel.Language
+metadata: { name: english }
+code: eng
+data: !module-path ./sample.traineddata
+---
+kind: TesseractModel.Language
+metadata: { name: startsLikeOrientation }
+code: osd_legacy
+data: !module-path ./sample.traineddata
+---
+kind: TesseractModel.Language
+metadata: { name: orientation }
+code: osd
+data: !module-path ./sample.traineddata
+---
+kind: TesseractModel.Language
+metadata: { name: upperCase }
+code: Eng
+data: !module-path ./sample.traineddata

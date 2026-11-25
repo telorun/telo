@@ -340,6 +340,6 @@ mod tests {
         let lines: Vec<&str> = message.lines().collect();
         assert_eq!(lines[0], "No built-in is named 'Aplication', 'Stp'. The names are:");
         assert!(lines[1].starts_with("  kinds (with or without 'Telo.'): Abstract, Application,"));
-        assert_eq!(lines[5], "  formats: cpe, css-selector, language-tag, message-pattern, package-url, re2-pattern, vcs-revision, vcs-url");
+        assert_eq!(lines[5], "  formats: cpe, css-selector, language-tag, message-pattern, package-url, path-template, re2-pattern, vcs-revision, vcs-url");
     }
 }

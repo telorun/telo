@@ -40,6 +40,10 @@ impl TemplatingEngine for SqlEngine {
         analyze_holes(source, env, None).into()
     }
 
+    fn holds_expressions(&self) -> bool {
+        true
+    }
+
     fn expression_regions(&self, source: &str) -> Vec<ExpressionRegion> {
         hole_regions(source)
     }

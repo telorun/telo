@@ -40,6 +40,7 @@
  * one over an instance of their own.
  */
 
+import { isValidationOverflow, VALIDATION_UNFINISHED, type ValidationUnfinished } from "./schema-validation.js";
 import type { LocatedFinding, SchemaNodeFindings } from "./stand-in-findings.js";
 
 type NodeValidate = ((data: unknown, context?: any) => unknown) & {
@@ -107,7 +108,12 @@ export class SchemaNodeValidator {
   findingsFor(schema: object): SchemaNodeFindings {
     return (node, value) => {
       if (node !== schema) return this.validate(node, value, false);
-      this.options.fillDefaults?.(schema, value);
+      try {
+        this.options.fillDefaults?.(schema, value);
+      } catch (error) {
+        if (isValidationOverflow(error)) return VALIDATION_UNFINISHED;
+        throw error;
+      }
       return this.validate(node, value, true);
     };
   }
@@ -228,10 +234,11 @@ export class SchemaNodeValidator {
   }
 
   /**
-   * Every finding `node` raises against `value`, or `undefined` when the node
-   * lies in no held document. Compiled once per node.
+   * Every finding `node` raises against `value`, `undefined` when the node
+   * lies in no held document, or that the validation could not finish.
+   * Compiled once per node.
    */
-  private validate(node: object, value: unknown, whole: boolean): LocatedFinding[] | undefined {
+  private validate(node: object, value: unknown, whole: boolean): LocatedFinding[] | undefined | ValidationUnfinished {
     let validate = this.validators.get(node);
     if (!validate) {
       const place = whole ? (this.places.get(node) ?? this.hold(node)) : this.placeOf(node);
@@ -240,8 +247,15 @@ export class SchemaNodeValidator {
       this.validators.set(node, validate);
     }
     const run = this.options.run;
-    const valid = run ? run(validate, value) : validate(value);
-    return valid ? [] : [...(validate.errors ?? [])];
+    const compiled = validate;
+    let valid: unknown;
+    try {
+      valid = run ? run(compiled, value) : compiled(value);
+    } catch (error) {
+      if (isValidationOverflow(error)) return VALIDATION_UNFINISHED;
+      throw error;
+    }
+    return valid ? [] : [...(compiled.errors ?? [])];
   }
 
   private compile(place: NodePlace): NodeValidate {

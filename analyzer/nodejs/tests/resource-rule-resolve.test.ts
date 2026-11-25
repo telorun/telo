@@ -166,11 +166,11 @@ describe("resource rules — resolve", () => {
   it("is not evaluated over a declaration the slot refuses, and reports nothing", () => {
     const orientation = {
       kind: "std.OrientationModel",
-      metadata: { name: "osd" },
+      metadata: { name: "scan" },
     } as unknown as ResourceManifest;
     const binder = binderOver([orientation]);
     const findings = evaluateResourceRules(
-      recognizer("osd"),
+      recognizer("scan"),
       schema,
       undefined,
       undefined,
@@ -181,7 +181,7 @@ describe("resource rules — resolve", () => {
     ]);
     expect(
       reportResourceRules(
-        recognizer("osd"),
+        recognizer("scan"),
         { kind: "Telo.Definition", metadata: { name: "Recognizer" } } as unknown as ResourceManifest,
         findings,
         false,

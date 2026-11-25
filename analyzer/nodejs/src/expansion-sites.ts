@@ -16,7 +16,7 @@
  * Browser-safe.
  */
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
-import { EMITTED_STEP_MEMBER } from "@telorun/sdk";
+import { EMITTED_STEP_MEMBER, schemaPattern } from "@telorun/sdk";
 import {
   expansionBody,
   expansionShapeCode,
@@ -38,7 +38,15 @@ import { definitionInScope } from "./module-alias-scope.js";
 import { isModuleKind } from "./module-kinds.js";
 import { refSentinelRefusal, refSentinelTarget } from "./ref-sentinel-target.js";
 import { isResolvedReference } from "./resolved-reference.js";
-import { createAjv } from "./schema-compat.js";
+import {
+  createAjv,
+  finishedValidation,
+  isValidationOverflow,
+  SCHEMA_NESTING_EXCEEDED,
+  schemaNestingExceededSentence,
+  VALIDATION_UNFINISHED,
+  type SchemaValidationOutcome,
+} from "./schema-validation.js";
 import { gatherPropertySchemas, resolveLocalRef } from "./schema-walk.js";
 import { readStepSlot, STEP_FRAGMENT } from "./step-slot.js";
 import { isKindDocumentOrImport } from "./system-kinds.js";
@@ -391,8 +399,10 @@ class Walker {
     }
 
     const shape = shapeProblems(sentinel, tag, position, place.nested);
-    if (shape.length > 0) {
-      this.record(sentinel, keys, position, place, expansionShapeCode(tag), shape.join(" "));
+    if (!shape.finished) {
+      this.record(sentinel, keys, position, place, SCHEMA_NESTING_EXCEEDED, schemaNestingExceededSentence(label));
+    } else if (shape.issues.length > 0) {
+      this.record(sentinel, keys, position, place, expansionShapeCode(tag), shape.issues.join(" "));
     } else {
       this.sites.push(siteOf(this.holder, keys, tag, position, place, sentinel));
     }
@@ -586,17 +596,25 @@ function validatorFor(fragment: string): ((value: unknown) => boolean) & { error
   return compiled as ((value: unknown) => boolean) & { errors?: any[] | null };
 }
 
-/** What is wrong with a tag's mapping at a position — empty when it fits. */
+/** What is wrong with a tag's mapping at a position — none when it fits — or
+ *  that validating it could not finish. */
 function shapeProblems(
   sentinel: ExpansionSentinel,
   tag: ExpansionTag,
   position: ExpansionPosition,
   nested: boolean,
-): string[] {
+): SchemaValidationOutcome<string> {
   const body = expansionBody(sentinel);
   const fragment = fragmentFor(tag, position, nested, body);
   const validate = validatorFor(fragment);
-  if (validate(body)) return [];
+  let fits: boolean;
+  try {
+    fits = validate(body);
+  } catch (error) {
+    if (isValidationOverflow(error)) return VALIDATION_UNFINISHED;
+    throw error;
+  }
+  if (fits) return finishedValidation([]);
   const label = `'!${tag}'`;
   const declaration = DECLARATION_POSITIONS.has(position) && !nested;
   const problems = new Set<string>();
@@ -616,7 +634,7 @@ function shapeProblems(
       problems.add(`${label}: '${path.slice(1).replace(/\//g, ".") || "(the mapping)"}' ${error.message}.`);
     }
   }
-  return [...problems];
+  return finishedValidation([...problems]);
 }
 
 function extraKeyMessage(
@@ -718,7 +736,7 @@ function childCursor(cursor: Cursor, key: string | number): Cursor {
   if (patterns) {
     for (const [pattern, schema] of Object.entries(patterns)) {
       try {
-        if (new RegExp(pattern, "u").test(key)) return { schema, root };
+        if (schemaPattern(pattern, "u").test(key)) return { schema, root };
       } catch {
         // An unreadable pattern names nothing here; the schema's own check reports it.
       }

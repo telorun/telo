@@ -13,9 +13,19 @@
  * need the full 64-bit range, and serialization emits them exactly (see
  * `enableBigIntJson` in `@telorun/sdk`). A value beyond the safe-integer range loses
  * precision in the VIEW, which can only affect a bound check at the extremes.
+ *
+ * The view also presents every instance value opaque (`opaqueSchemaView`,
+ * `@telorun/sdk`), so a schema keyword never reads a value's representation.
  */
 
-import { isCelRecord, isCelUint, markExactRendering } from "@telorun/sdk";
+import {
+  isCelRecord,
+  isCelUint,
+  isOpaqueSchemaValue,
+  isSchemaInstanceValue,
+  markExactRendering,
+  opaqueSchemaValue,
+} from "@telorun/sdk";
 import type { DataValidationCxt } from "ajv/dist/types/index.js";
 
 /** The validation context of a view: where its root sits, so a root the view
@@ -74,6 +84,10 @@ function render(value: unknown, container: object, key: string | number): unknow
     });
     return changed ? items : value;
   }
+  // An instance value (bytes, an instant, a duration, a host's typed value) is
+  // presented opaque: an object to `type`, holding no entries any other keyword
+  // could read; `x-telo-type` reads the value the stand-in holds.
+  if (isSchemaInstanceValue(value)) return opaqueSchemaValue(value);
   if (!value || typeof value !== "object") return value;
   // A CEL value is opaque here, not a container: it is a PLAIN object carrying a type
   // key, so testing the prototype alone would descend into a duration or a uint and rebuild
@@ -103,6 +117,8 @@ export function mergeFilledDefaults(target: unknown, view: unknown): unknown {
   if (target === view) return target;
   if (!target || typeof target !== "object") return target;
   if (!view || typeof view !== "object") return target;
+  // A stand-in holds an instance value, which a fill never writes into.
+  if (isOpaqueSchemaValue(view)) return target;
 
   if (Array.isArray(target)) {
     if (!Array.isArray(view)) return target;

@@ -1,6 +1,4 @@
-import AjvModule from "ajv";
 import { resolveSchemaReference } from "./schema-reference.js";
-import addFormats from "ajv-formats";
 import { isRefSentinel } from "@telorun/templating";
 import {
   celBaseOfValueType,
@@ -17,82 +15,10 @@ import {
 } from "@telorun/sdk";
 import { canonicalJson } from "./canonical-json.js";
 import { memberForbidden, memberSlotSchema, memberSlotSchemas, membersSlotOf } from "./members-value-slot.js";
-import { liftFragmentDefs, ManifestRootSchema } from "./manifest-schemas.js";
+import { liftFragmentDefs } from "./manifest-schemas.js";
 import { deepEquals } from "./migrations/match.js";
-import { schemaIssues, type AjvErrorLike, type SchemaIssue } from "./schema-error-report.js";
-import { judgeSchemaFindings } from "./schema-findings-judge.js";
-import { registeredDocument, SchemaNodeValidator } from "./schema-node-validator.js";
 import { readStandIn, type StandIns } from "./stand-in-findings.js";
 import { teloFormatOf } from "./telo-format.js";
-import { registerTeloKeywords } from "./value-type-keyword.js";
-import { valueTypeDefaultFiller } from "./value-type-defaults.js";
-
-const Ajv = (AjvModule as any).default ?? AjvModule;
-
-/** Creates a configured AJV instance (allErrors, strict: false, with formats).
- *  Also registers the kernel manifest root schema under `telo://manifest` so
- *  module YAMLs can `$ref` into the shared `$defs/ResourceRef` (and any future
- *  shared fragments) from this analyzer's AJV without each module having to
- *  bundle its own copy.
- *
- *  Called once for the module-level instance and once per
- *  DefinitionRegistry instance. */
-export function createAjv(options: { verbose?: boolean; useDefaults?: boolean } = {}): InstanceType<typeof Ajv> {
-  // `verbose` makes each error name the schema node that raised it — what the
-  // stand-in judge locates a union by.
-  const instance = new Ajv({ allErrors: true, strict: false,
-    verbose: options.verbose === true,
-    useDefaults: options.useDefaults === true,
-  });
-  (addFormats as any).default
-    ? (addFormats as any).default(instance)
-    : (addFormats as any)(instance);
-  // One registration site for every Telo keyword — the annotations as no-ops and
-  // `x-telo-type` as the one that checks. Registered here and in the kernel's
-  // validators from one definition, so a literal at an instance-typed slot is
-  // rejected statically and at dispatch by the identical rule. This instance is
-  // static analysis alone, so it also asserts a `live` type: no literal can be one.
-  registerTeloKeywords(instance, { assertLive: true });
-  // This package's own constant, meta-validated once by its test rather than on
-  // every instance.
-  instance.addSchema(ManifestRootSchema, undefined, undefined, false);
-  return instance;
-}
-
-/** The verbose twin of each {@link createAjv} instance a failure is judged on,
- *  created by the first failure that has a union to decide. */
-const judgeTwins = new WeakMap<object, SchemaNodeValidator>();
-
-/** Issues for `errors`, raised by `host` validating `data` against `schema`,
- *  each union decided by the judge. `host` is an instance {@link createAjv}
- *  built. */
-export function judgedSchemaIssues(
-  host: InstanceType<typeof Ajv>,
-  errors: AjvErrorLike[] | null | undefined,
-  data: unknown,
-  schema: object,
-): SchemaIssue[] {
-  const twinOf = () => {
-    let twin = judgeTwins.get(host);
-    if (!twin) {
-      twin = new SchemaNodeValidator(createAjv({ verbose: true }), {
-        resolveReference: (id) => registeredDocument(host, id),
-      });
-      judgeTwins.set(host, twin);
-    }
-    return twin;
-  };
-  const judged = judgeSchemaFindings(errors, {
-    value: data,
-    schema,
-    validate: (node, value) => twinOf().findingsFor(schema)(node, value),
-    reference: (node, ref) => twinOf().reference(node, ref),
-  });
-  return schemaIssues(judged, data);
-}
-
-const ajv = createAjv();
-const compiledSchemaValidators = new WeakMap<Record<string, any>, ReturnType<typeof ajv.compile>>();
 
 export interface CompatibilityResult {
   compatible: boolean;
@@ -623,69 +549,6 @@ function sameJson(a: unknown, b: unknown): boolean {
 
 export { formatAjvErrors, formatSingleError } from "./schema-error-report.js";
 export type { SchemaIssue } from "./schema-error-report.js";
-
-/** Does `schema` compile as-authored? Used to tell a malformed module schema
- *  (the author's problem) apart from a fault we introduced while normalizing it. */
-function schemaCompiles(schema: Record<string, any>): boolean {
-  try {
-    ajv.compile(schema);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Validate actual data against a JSON Schema. Returns issues with path info, or empty array if valid. */
-export function validateAgainstSchema(data: unknown, schema: Record<string, any>): SchemaIssue[] {
-  let validate = compiledSchemaValidators.get(schema);
-  if (!validate) {
-    try {
-      validate = ajv.compile(schema);
-    } catch (err) {
-      // The normalized schema didn't compile. If the original schema is itself
-      // malformed, that is the module author's error — already surfaced once,
-      // anchored on the definition, by the analyzer's `SCHEMA_COMPILE_ERROR`
-      // pre-check (`DefinitionRegistry.schemaCompileError`); re-reporting it per
-      // resource would be noise, so skip. If the original compiles and only the
-      // normalized form fails, the fault is ours — let it throw.
-      if (schemaCompiles(schema)) throw err;
-      return [];
-    }
-    compiledSchemaValidators.set(schema, validate);
-  }
-  if (validate(data)) return [];
-  return judgedSchemaIssues(ajv, validate.errors, data, schema);
-}
-
-const defaultFillingAjv = createAjv({ useDefaults: true });
-const defaultFillingValidators = new WeakMap<Record<string, any>, ReturnType<typeof ajv.compile>>();
-const defaultFillers = new WeakMap<Record<string, any>, ((value: unknown) => void) | null>();
-
-/** Validates `data` the way the kernel binds a contract: declared defaults are
- *  filled into a copy first — one at an instance-typed slot decoded as its literal
- *  is — so a value a default completes is not reported. A schema that does not
- *  compile is the author's, reported elsewhere. */
-export function validateAgainstSchemaWithDefaults(
-  data: unknown,
-  schema: Record<string, any>,
-): SchemaIssue[] {
-  let validate = defaultFillingValidators.get(schema);
-  if (!validate) {
-    try {
-      validate = defaultFillingAjv.compile(schema);
-    } catch (err) {
-      if (schemaCompiles(schema)) throw err;
-      return [];
-    }
-    defaultFillingValidators.set(schema, validate);
-  }
-  let filler = defaultFillers.get(schema);
-  if (filler === undefined) defaultFillers.set(schema, (filler = valueTypeDefaultFiller(schema) ?? null));
-  const copy = structuredClone(data);
-  filler?.(copy);
-  if (validate(copy)) return [];
-  return schemaIssues(validate.errors, copy);
-}
 
 /** Resolves a JSON Pointer (RFC 6901, must start with "/") into a schema object.
  *  Returns undefined when any segment along the path is missing or not an object. */

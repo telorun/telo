@@ -14,10 +14,9 @@ use std::collections::HashSet;
 
 use serde_json::json;
 use telo_analyzer::{
-    analyze_loaded_graph, diagnostic_identity, AnalysisOptions, DependencyAnalysisOptions, DependencyVerdictMemo,
+    analyze_loaded_graph, diagnostic_identity, DependencyAnalysisOptions, DependencyVerdictMemo,
     DependencyVerdictStore, TELO_RUNNING_SURFACE, UNSUPPORTED_MANIFEST_FEATURE as UNSUPPORTED,
 };
-use telo_kernel::controllers::module::module_controller::value_branch_accepts;
 use telo_kernel::manifest_sources::local_manifest_cache_source::write_manifest_cache;
 use telo_kernel::manifest_sources::origin_digests::write_origin_digests;
 
@@ -104,7 +103,6 @@ fn check_one(
     let analyzed = analyze_loaded_graph(
         &graph,
         &DependencyAnalysisOptions {
-            analysis: &AnalysisOptions { accepts_value: &value_branch_accepts },
             store: store.as_ref().map(|store| store as &dyn DependencyVerdictStore),
             memo: Some(&invocation.memo),
         },

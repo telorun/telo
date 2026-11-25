@@ -1,4 +1,5 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { SCHEMA_NESTING_EXCEEDED } from "./schema-validation.js";
 import type { DeclarationRequests } from "./declaration-requests.js";
 import type { AliasResolver, ModuleScopes } from "./alias-resolver.js";
 import { resolveReference, scopeReadAt } from "./scoped-name-resolver.js";
@@ -30,8 +31,9 @@ export interface StepInputIssue {
   path: string;
   targetLabel: string;
   message: string;
-  /** Set when the issue is not a contract shape violation: a live value retried, or a
-   *  value type's own refusal (`URL_INVALID`). */
+  /** Set when the issue is not a contract shape violation: a live value retried, a
+   *  value type's own refusal (`URL_INVALID`), or a validation that could not
+   *  finish (`SCHEMA_NESTING_EXCEEDED`). */
   code?: string;
   /** Set when no argument map is written: the default it was judged as, and
    *  where the map would be written. `path` is then the reference. */
@@ -272,7 +274,12 @@ export function checkCallSite(
     (ref) => defs.schemaForId(ref),
     (path) => filled.push(path),
   );
-  for (const issue of defs.validateResourceConfig(effective, contract.schema, standIns)) {
+  const outcome = defs.validateResourceConfig(effective, contract.schema, standIns);
+  if (!outcome.finished) {
+    out.push({ path: site.path, targetLabel, message: "", code: SCHEMA_NESTING_EXCEEDED, ...(omitted ? { omitted } : {}) });
+    return out;
+  }
+  for (const issue of outcome.issues) {
     // A target that obtains what the map leaves unbound is missing none of it.
     if (site.completed && missingRequired(issue) && containerOf(issue.path) === "") continue;
     // A missing-required issue names the property that ISN'T there, so anchoring

@@ -1,0 +1,10 @@
+units:
+  analyzer: Added
+body: "The Rust analyzer gains a JSON Schema validator that answers as the Node analyzer
+  and kernel validators do: draft-07 under each of Telo's seven validator
+  configurations, with JSON Schema's formats and every Telo format (css-selector,
+  language-tag, message-pattern, path-template and re2-pattern are now checked in Rust
+  too), x-telo-type, RE2 schema patterns judged wherever the draft-07 meta-schema reads
+  one, defaults filled and undeclared members removed as each configuration says, and
+  each error recorded with the same keyword, paths, parameters and message, in the same
+  order. It answers every row of the schema-validation conformance vectors."

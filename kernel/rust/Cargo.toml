@@ -10,7 +10,6 @@ description = "Rust Telo kernel — loads a manifest, resolves resources, dispat
 # The pure-Rust backend, so gzip decoding links no zlib. (The build still needs
 # a C compiler, for `ring` under `ureq`'s rustls — see README.)
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
-jsonschema = { version = "0.49", default-features = false }
 libloading = "0.8"
 # Manifest key order is part of what a manifest says, and what the Node half keeps.
 serde_json = { version = "1", features = ["preserve_order"] }
@@ -18,6 +17,9 @@ sha2 = "0.10"
 tar = { version = "0.4", default-features = false }
 telo-analyzer = { path = "../../analyzer/rust" }
 telo-templating = { path = "../../templating/rust" }
+# The value domain a schema validation reads, and the JSON a schema is read as.
+telorun-cel = { path = "../../cel/rust" }
+telorun-cel-value = { path = "../../cel/rust/value" }
 telorun-abi = { path = "../../sdk/rust/abi" }
 telorun-glob = { path = "../../packages/glob/rust" }
 # Judges a kind's declared error texts, as the Node kernel does through its twin.

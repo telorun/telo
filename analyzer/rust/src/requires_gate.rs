@@ -277,7 +277,7 @@ mod tests {
         }
 
         fn analyze(&mut self) -> crate::analyzer::Analysis {
-            crate::analyzer::analysis(self.0, &crate::analyzer::AnalysisOptions { accepts_value: &|_, _, _| false })
+            crate::analyzer::analysis(self.0)
         }
     }
 

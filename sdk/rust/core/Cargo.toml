@@ -20,6 +20,3 @@ thiserror = "1"
 # The conformance vectors are read with serde_json, whose default float parsing
 # is not correctly rounded; the vectors pin doubles to the last digit.
 serde_json = { version = "1", features = ["float_roundtrip"] }
-# The controller-protocol vectors validate message bodies against their schemas,
-# at the version and feature set `telorun-sdk`'s `native` backend uses.
-jsonschema = { version = "0.49", default-features = false }

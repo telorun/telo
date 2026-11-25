@@ -79,6 +79,7 @@
 import { resolveSchemaReference, schemaReferenceParts } from "./schema-reference.js";
 import { childNodes, type CelNode } from "@telorun/cel";
 import type { ResourceManifest } from "@telorun/sdk";
+import { schemaPattern } from "@telorun/sdk";
 import {
   celExpressionsOf,
   expansionTagLabel,
@@ -2530,12 +2531,12 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       let matched = false;
       for (const [pattern, child] of Object.entries((schema.patternProperties ?? {}) as Record<string, unknown>)) {
         try {
-          if (new RegExp(pattern, "u").test(key)) {
+          if (schemaPattern(pattern, "u").test(key)) {
             matched = true;
             visit(child, depth + 1, root, document, guard, record);
           }
         } catch {
-          // A pattern JS cannot read is the schema check's to report.
+          // A pattern RE2 cannot read is the schema check's to report.
         }
       }
       if (!matched && schema.additionalProperties && typeof schema.additionalProperties === "object") {
@@ -3462,12 +3463,12 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
         let matched = false;
         for (const [pattern, member] of Object.entries((schema.patternProperties ?? {}) as Record<string, unknown>)) {
           try {
-            if (new RegExp(pattern, "u").test(key)) {
+            if (schemaPattern(pattern, "u").test(key)) {
               matched = true;
               visit(member, next, root, document, guard);
             }
           } catch {
-            // A pattern JS cannot read is the schema check's to report.
+            // A pattern RE2 cannot read is the schema check's to report.
           }
         }
         if (!matched && schema.additionalProperties && typeof schema.additionalProperties === "object") {

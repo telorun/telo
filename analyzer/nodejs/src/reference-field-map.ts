@@ -14,6 +14,7 @@ import {
   type SchemaReach,
 } from "./reference-reach.js";
 import { substituteCelFields } from "./schema-compat.js";
+import type { SchemaValidationOutcome } from "./schema-validation.js";
 import type { StandIns } from "./stand-in-findings.js";
 
 export { readRefSlot, isRefSlot, hasDeclaredUse } from "./ref-slot.js";
@@ -96,11 +97,39 @@ export interface SchemaFromFieldEntry {
  *  field map keeps depending on nothing. */
 export interface ValueBranchValidator {
   schemaCompileError(schema: Record<string, any>): string | undefined;
-  validateWithRefs(data: unknown, schema: Record<string, any>, standIns?: StandIns): string[];
+  validateWithRefs(data: unknown, schema: Record<string, any>, standIns?: StandIns): SchemaValidationOutcome<string>;
+}
+
+/** Whether a value branch takes a value: it accepts it, refuses it, or the
+ *  validation could not finish and holds no verdict either way. */
+export type ValueBranchOutcome = "accepts" | "refuses" | "unfinished";
+
+/** Any of `outcomes`, asked lazily: accepts when one accepts, else unfinished
+ *  when one could not finish, else refuses. */
+function anyOutcome<T>(items: readonly T[], outcomeOf: (item: T) => ValueBranchOutcome): ValueBranchOutcome {
+  let unfinished = false;
+  for (const item of items) {
+    const outcome = outcomeOf(item);
+    if (outcome === "accepts") return "accepts";
+    if (outcome === "unfinished") unfinished = true;
+  }
+  return unfinished ? "unfinished" : "refuses";
+}
+
+/** All of `outcomes`, asked lazily: refuses when one refuses, else unfinished
+ *  when one could not finish, else accepts. */
+function everyOutcome<T>(items: readonly T[], outcomeOf: (item: T) => ValueBranchOutcome): ValueBranchOutcome {
+  let unfinished = false;
+  for (const item of items) {
+    const outcome = outcomeOf(item);
+    if (outcome === "refuses") return "refuses";
+    if (outcome === "unfinished") unfinished = true;
+  }
+  return unfinished ? "unfinished" : "accepts";
 }
 
 /**
- * True when a value at a ref slot satisfies one of the slot's VALUE branches —
+ * Whether a value at a ref slot satisfies one of the slot's VALUE branches —
  * a storage class beside a `!ref`, so it is a value and not a malformed
  * reference.
  *
@@ -114,7 +143,9 @@ export interface ValueBranchValidator {
  * by design, so one bad schema does not abort the pass — and reading that as
  * "no issues, therefore a value" would switch the reference-form rule off for
  * the slot silently. The uncompilable schema is reported on its own definition
- * by `schemaCompileError`.
+ * by `schemaCompileError`. A validation that could not finish is neither: the
+ * slot's own finding, reported by `validateReferenceForms` in place of any
+ * reference finding.
  */
 export function satisfiesValueBranch(
   value: unknown,
@@ -122,19 +153,18 @@ export function satisfiesValueBranch(
   registry: ValueBranchValidator,
   /** The stand-ins `value` was substituted with, when it was. */
   standIns?: StandIns,
-): boolean {
-  if (!branches?.length) return false;
-  return branches.some((branch) => {
+): ValueBranchOutcome {
+  return anyOutcome(branches ?? [], (branch) => {
     const schema = valueBranchSchema(branch);
-    return (
-      registry.schemaCompileError(schema) === undefined &&
-      registry.validateWithRefs(value, schema, standIns).length === 0
-    );
+    if (registry.schemaCompileError(schema) !== undefined) return "refuses";
+    const outcome = registry.validateWithRefs(value, schema, standIns);
+    if (!outcome.finished) return "unfinished";
+    return outcome.issues.length === 0 ? "accepts" : "refuses";
   });
 }
 
 /**
- * True when the value at a reference site satisfies one of its value branches:
+ * Whether the value at a reference site satisfies one of its value branches:
  * a branch of a slot node's own union, or a pattern-level alternative whose
  * union members all accept the concrete value at their union's position.
  *
@@ -151,34 +181,46 @@ export function satisfiesSiteValue(
   value: unknown,
   refs: readonly Pick<ReachRef, "node" | "alternatives" | "declaredIn">[],
   registry: ValueBranchValidator,
-): boolean {
-  return refs.some(
-    (ref) =>
-      (readRefSlot(ref.node)?.valueBranches ?? []).some((branch) => {
-        const standIns: StandIns = new Map();
-        const substituted = substituteCelFields(
-          value,
-          valueBranchSchema(branch),
-          ref.declaredIn.document,
-          { standIns },
-        );
-        return satisfiesValueBranch(substituted, [branch], registry, standIns);
-      }) ||
-      ref.alternatives.some(
-        ({ node, members }) =>
-          members !== undefined &&
-          satisfiesValueBranch(value, [node], registry) &&
-          members.every(({ member, document, value: at }) => {
+): ValueBranchOutcome {
+  return anyOutcome(refs, (ref) =>
+    anyOutcome<() => ValueBranchOutcome>(
+      [
+        () =>
+          anyOutcome(readRefSlot(ref.node)?.valueBranches ?? [], (branch) => {
             const standIns: StandIns = new Map();
-            const substituted = substituteCelFields(at, member, document, { standIns });
-            return satisfiesValueBranch(substituted, [member], registry, standIns);
+            const substituted = substituteCelFields(
+              value,
+              valueBranchSchema(branch),
+              ref.declaredIn.document,
+              { standIns },
+            );
+            return satisfiesValueBranch(substituted, [branch], registry, standIns);
           }),
-      ),
+        () =>
+          anyOutcome(ref.alternatives, ({ node, members }) =>
+            members === undefined
+              ? "refuses"
+              : everyOutcome<() => ValueBranchOutcome>(
+                  [
+                    () => satisfiesValueBranch(value, [node], registry),
+                    () =>
+                      everyOutcome(members, ({ member, document, value: at }) => {
+                        const standIns: StandIns = new Map();
+                        const substituted = substituteCelFields(at, member, document, { standIns });
+                        return satisfiesValueBranch(substituted, [member], registry, standIns);
+                      }),
+                  ],
+                  (ask) => ask(),
+                ),
+          ),
+      ],
+      (ask) => ask(),
+    ),
   );
 }
 
 /**
- * True when the value at a reference site is a VALUE rather than a reference.
+ * Whether the value at a reference site is a VALUE rather than a reference.
  *
  * A scalar at a slot whose own node unions a value branch is left to that
  * branch, which AJV already judges beside the reference branch. A pattern-level
@@ -191,9 +233,9 @@ export function isValueAtSlot(
   value: unknown,
   refs: readonly Pick<ReachRef, "node" | "alternatives" | "declaredIn">[],
   registry: ValueBranchValidator,
-): boolean {
+): ValueBranchOutcome {
   const nodeUnionsValue = refs.some((ref) => (readRefSlot(ref.node)?.valueBranches.length ?? 0) > 0);
-  if (nodeUnionsValue && typeof value !== "object") return true;
+  if (nodeUnionsValue && typeof value !== "object") return "accepts";
   return satisfiesSiteValue(value, refs, registry);
 }
 

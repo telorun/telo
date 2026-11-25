@@ -68,7 +68,7 @@ Every entry binds `env:` — a `variables:` entry may bind `arg:` instead, or bo
 | `arg:` | The command-line argument to read — see [Command-line arguments](#command-line-arguments). Not on `secrets:`; beside `env:` on `ports:`. |
 | `type:` | `string`, `integer`, `number`, `boolean`, `object`, or `array`. Not written on `ports:` entries — a port is always an integer. A path on the host is a `string` marked `x-telo-type: Telo.HostPath` — see [File paths](#file-paths). |
 | `default:` | Used when neither the argument nor the variable is given. An entry with no default is **required**. |
-| anything else | Any further JSON Schema keyword — `minimum`, `enum`, `pattern`, … — validated at load. |
+| anything else | Any further JSON Schema keyword — `minimum`, `enum`, `pattern`, … — validated at load. A `pattern` is [RE2](../extend/telo-formats.md#patterns-are-re2), and one RE2 cannot read is refused before the app runs. |
 
 ```yaml
 variables:

@@ -1,0 +1,12 @@
+# A kind whose schema refers to itself without descending into the value, so
+# validating any resource of it never finishes.
+kind: Telo.Application
+metadata: { name: SchemaNestingResource, version: 1.0.0 }
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Invocable
+schema: { type: object, $ref: "#" }
+---
+kind: Self.Holder
+metadata: { name: holder }

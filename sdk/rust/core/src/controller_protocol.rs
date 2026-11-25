@@ -2,7 +2,10 @@
 //!
 //! The Rust twin of `sdk/nodejs/tests/controller-protocol.test.ts`: the same four
 //! vector files under `sdk/controller-protocol/vectors/`, executed row for row, so
-//! a claim the spec makes is a claim both languages answer identically.
+//! a claim the spec makes is a claim both languages answer identically. Whether a body
+//! satisfies its message's schema is `telo-analyzer`'s test
+//! (`analyzer/rust/tests/controller_protocol_schemas.rs`), judged by the one JSON Schema
+//! validator a Rust process the kernel runs holds; this crate carries none.
 //!
 //! The module carries no implementation. The protocol's carriers are later steps,
 //! and the framing codec inside `mod tests` is **private to the test**, written
@@ -11,7 +14,7 @@
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{BTreeMap, BTreeSet, HashMap};
+    use std::collections::{BTreeMap, BTreeSet};
 
     use serde_json::Value as Json;
 
@@ -161,7 +164,6 @@ mod tests {
 
     struct Messages {
         entries: BTreeMap<String, Json>,
-        validators: HashMap<String, jsonschema::Validator>,
     }
 
     impl Messages {
@@ -173,35 +175,13 @@ mod tests {
                 let entry: Json = serde_json::from_str(&text).expect("a message file is JSON");
                 entries.insert(entry["name"].as_str().expect("name").to_string(), entry);
             }
-            Self { entries, validators: HashMap::new() }
+            Self { entries }
         }
 
         fn entry(&self, message: &str) -> &Json {
             self.entries
                 .get(message)
                 .unwrap_or_else(|| panic!("No message named '{message}' in sdk/controller-protocol/messages/"))
-        }
-
-        fn validator(&mut self, message: &str, part: &str) -> &jsonschema::Validator {
-            let key = format!("{message}#{part}");
-            if !self.validators.contains_key(&key) {
-                let schema = self.entry(message)[part].clone();
-                assert!(!schema.is_null(), "'{message}' is a notification: it has no response schema");
-                let validator = jsonschema::validator_for(&schema)
-                    .unwrap_or_else(|err| panic!("{key} is not a usable schema: {err}"));
-                self.validators.insert(key.clone(), validator);
-            }
-            &self.validators[&key]
-        }
-
-        /// The distinct RFC 6901 instance pointers a refusal names.
-        fn refusals(&mut self, message: &str, part: &str, body: &Json) -> Vec<String> {
-            let pointers: BTreeSet<String> = self
-                .validator(message, part)
-                .iter_errors(body)
-                .map(|error| error.instance_path().to_string())
-                .collect();
-            pointers.into_iter().collect()
         }
     }
 
@@ -252,33 +232,6 @@ mod tests {
     }
 
     #[test]
-    fn every_valid_message_body_satisfies_its_schema() {
-        let file = vectors(MESSAGES);
-        let mut messages = Messages::read();
-        for row in rows(&file, "valid") {
-            let (message, part) = (text(row, "message"), text(row, "part"));
-            let refusals = messages.refusals(message, part, &row["body"]);
-            assert!(refusals.is_empty(), "{message} {part} was refused at {refusals:?}");
-        }
-    }
-
-    #[test]
-    fn refuses_every_invalid_message_body_at_its_pointer() {
-        let file = vectors(MESSAGES);
-        let mut messages = Messages::read();
-        for row in rows(&file, "invalid") {
-            let (name, message, part) = (text(row, "name"), text(row, "message"), text(row, "part"));
-            let refusals = messages.refusals(message, part, &row["body"]);
-            assert!(!refusals.is_empty(), "{name} was accepted");
-            assert_eq!(
-                refusals,
-                vec![text(row, "pointer").to_string()],
-                "{name} names a place other than the pointer its row pins"
-            );
-        }
-    }
-
-    #[test]
     fn every_message_has_a_valid_body_in_every_direction_it_declares() {
         let file = vectors(MESSAGES);
         let messages = Messages::read();
@@ -319,7 +272,7 @@ mod tests {
     }
 
     /// Everything §3.2, §3.4, §8 and §10 decide about a whole exchange.
-    fn check_sequence(row: &Json, messages: &mut Messages) {
+    fn check_sequence(row: &Json, messages: &Messages) {
         let name = text(row, "name");
         let frames = row["frames"].as_array().expect("frames");
         assert!(!frames.is_empty(), "{name} has no frames");
@@ -362,8 +315,6 @@ mod tests {
                     panic!("{at} was sent while '{}', a synchronous request, was outstanding", blocked.message);
                 }
                 assert!(!outstanding.contains_key(&envelope.id), "{at} reuses id {}", envelope.id);
-                let refusals = messages.refusals(&message, "request", payload);
-                assert!(refusals.is_empty(), "{at}: {message} request refused at {refusals:?}");
                 if !entry["response"].is_null() {
                     outstanding.insert(
                         envelope.id,
@@ -391,8 +342,6 @@ mod tests {
                 let members: Vec<&String> = payload.as_object().expect("a response payload").keys().collect();
                 assert_eq!(members.len(), 1, "{at}: a response payload carries exactly 'ok' or 'error'");
                 if members[0] == "ok" {
-                    let refusals = messages.refusals(&message, "response", &payload["ok"]);
-                    assert!(refusals.is_empty(), "{at}: {message} response refused at {refusals:?}");
                     if message == "Session.Close" {
                         if let Some(session) = &request.session {
                             open.remove(session);
@@ -493,9 +442,9 @@ mod tests {
     #[test]
     fn every_exchange_is_well_formed() {
         let file = vectors(SEQUENCES);
-        let mut messages = Messages::read();
+        let messages = Messages::read();
         for row in rows(&file, "sequences") {
-            check_sequence(row, &mut messages);
+            check_sequence(row, &messages);
         }
     }
 

@@ -9,6 +9,7 @@ import { visitManifest } from "./manifest-visitor.js";
 import { definitionInScope } from "./module-alias-scope.js";
 import { isRefSourceSpelling } from "./ref-sentinel-target.js";
 import { isValueAtSlot } from "./reference-field-map.js";
+import { SCHEMA_NESTING_EXCEEDED, schemaNestingExceededMessage } from "./schema-validation.js";
 import {
   carriesReferenceMarker,
   declaresNameField,
@@ -120,13 +121,27 @@ export function validateInstanceReferenceForms(
         // author to convert a typo into a reference, and AJV has already said
         // what the value must be one of. An object is still judged below unless
         // a branch genuinely describes that shape.
-        if (isValueAtSlot(value, e.refs, registry)) return;
+        const valueOutcome = isValueAtSlot(value, e.refs, registry);
+        if (valueOutcome === "accepts") return;
 
         const r = e.source;
         const resourceLabel = `${r.kind}/${r.metadata!.name as string}`;
         const resourceData = { kind: r.kind, name: r.metadata!.name as string };
         const filePath = (r.metadata as { source?: string } | undefined)?.source;
         const path = e.concretePath;
+
+        // A value the slot's value branch could not finish validating holds no
+        // verdict: that is the slot's one finding, never a reference form.
+        if (valueOutcome === "unfinished") {
+          diagnostics.push(withQuotedPath({
+            severity: DiagnosticSeverity.Error,
+            code: SCHEMA_NESTING_EXCEEDED,
+            source: SOURCE,
+            message: schemaNestingExceededMessage(resourceLabel, `the value at '${path}'`),
+            data: { resource: resourceData, filePath, path },
+          }, path));
+          return;
+        }
 
         if (typeof value === "string") {
           // A bare string at a ref slot is the removed string / dotted-FQN form.
@@ -210,7 +225,30 @@ export function validateTemplateBodyReferenceForms(
       for (const site of registry.referenceSites(view, aliases, aliasesByModule, entry.manifest)) {
         if (site.refs.length === 0 || site.data == null) continue;
         if (isTaggedSentinel(site.data) || typeof site.data === "string") continue;
-        if (isValueAtSlot(site.data, site.refs, registry)) continue;
+        const valueOutcome = isValueAtSlot(site.data, site.refs, registry);
+        if (valueOutcome === "accepts") continue;
+        if (valueOutcome === "unfinished") {
+          diagnostics.push(
+            withQuotedPath(
+              {
+                severity: DiagnosticSeverity.Error,
+                code: SCHEMA_NESTING_EXCEEDED,
+                source: SOURCE,
+                message: schemaNestingExceededMessage(
+                  `${definition.kind}/${meta.name}`,
+                  `the value at '${site.path}' on the ${entry.kind} entry`,
+                ),
+                data: {
+                  resource: { kind: definition.kind, name: meta.name },
+                  filePath: meta.source,
+                  path: `${entry.prefix}.${site.path}`,
+                },
+              },
+              { text: site.path, relativeTo: entry.prefix },
+            ),
+          );
+          continue;
+        }
         const form = objectForm(site.data, view.metadata);
         if (!form) continue;
         const refusal: AnalysisDiagnostic = withQuotedPath(

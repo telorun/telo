@@ -1,0 +1,4 @@
+# Imports a library holding a resource whose reference slot cannot be validated.
+kind: Telo.Application
+metadata: { name: SchemaNestingSlot, version: 1.0.0 }
+imports: { Lib: ./lib }

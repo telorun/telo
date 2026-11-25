@@ -732,6 +732,14 @@ targets:
   - !ref libraryMigrationFailedInLibrary
   - !ref libraryMigrationSuppliedFallback
   - !ref libraryOwnNamedShape
+  - !ref schemaPatternNamedShape
+  - !ref schemaPatternInlineInput
+  - !ref schemaPatternVariable
+  - !ref schemaPatternDefinitionInput
+  - !ref schemaNestingDefault
+  - !ref schemaNestingSlot
+  - !ref schemaNestingSlotAtRuntime
+  - !ref schemaNestingResource
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -7921,3 +7929,84 @@ kind: Assert.Manifest
 metadata: { name: libraryOwnNamedShape }
 source: ./__fixtures__/check-run-agreement/library-own-named-shape/telo.yaml
 expect: { runs: true }
+---
+# A pattern RE2 cannot read, written where Telo reads a schema — a named shape, an
+# inline contract at a slot taking a type, an application variable, a definition's
+# contract: refused at the pattern by the schema fragments, and at load.
+kind: Assert.Manifest
+metadata: { name: schemaPatternNamedShape }
+source: ./__fixtures__/check-run-agreement/schema-pattern-named-shape/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Telo.JsonSchema/Code: /schema/pattern invalid RE2 pattern \"^(?!tmp$)[a-z]+$\": invalid or unsupported Perl syntax"
+  runFails: "[SCHEMA_VIOLATION] Telo.JsonSchema/Code: /schema/pattern invalid RE2 pattern \"^(?!tmp$)[a-z]+$\": invalid or unsupported Perl syntax"
+---
+kind: Assert.Manifest
+metadata: { name: schemaPatternInlineInput }
+source: ./__fixtures__/check-run-agreement/schema-pattern-inline-input/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Telo.Value/echo: /inputType/schema/properties/code/pattern invalid RE2 pattern \"^(?!tmp$)[a-z]+$\": invalid or unsupported Perl syntax"
+  runFails: "[SCHEMA_VIOLATION] Telo.Value/echo: /inputType/schema/properties/code/pattern invalid RE2 pattern \"^(?!tmp$)[a-z]+$\": invalid or unsupported Perl syntax"
+---
+kind: Assert.Manifest
+metadata: { name: schemaPatternVariable }
+source: ./__fixtures__/check-run-agreement/schema-pattern-variable/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Telo.Application/SchemaPatternVariable: /variables/code/pattern invalid RE2 pattern \"^(?!tmp$)[a-z]+$\": invalid or unsupported Perl syntax"
+  runFails: "[SCHEMA_VIOLATION] Telo.Application/SchemaPatternVariable: /variables/code/pattern invalid RE2 pattern \"^(?!tmp$)[a-z]+$\": invalid or unsupported Perl syntax"
+---
+kind: Assert.Manifest
+metadata: { name: schemaPatternDefinitionInput }
+source: ./__fixtures__/check-run-agreement/schema-pattern-definition-input/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Telo.Definition/Probe: /inputType/properties/code/pattern invalid RE2 pattern \"^(?!tmp$)[a-z]+$\": invalid or unsupported Perl syntax"
+  runFails: "[SCHEMA_VIOLATION] Telo.Definition/Probe: /inputType/properties/code/pattern invalid RE2 pattern \"^(?!tmp$)[a-z]+$\": invalid or unsupported Perl syntax"
+---
+# A default whose validation nests without end is a finding at the default, at
+# check and at run, never an uncoded stack overflow.
+kind: Assert.Manifest
+metadata: { name: schemaNestingDefault }
+source: ./__fixtures__/check-run-agreement/schema-nesting-default/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_NESTING_EXCEEDED
+      message: "Telo.Application/SchemaNestingDefault: the default of variables.tree cannot be validated — validating it nests past the depth a validation may reach. Either its schema refers to itself without descending into the value, or the value is nested deeper than a validation can follow: make each self-reference descend into the value at every step, or nest the value less deeply."
+  runFails: "[ERR_SCHEMA_NESTING_EXCEEDED] Telo.Application/SchemaNestingDefault: the default of variables.tree cannot be validated — validating it nests past the depth a validation may reach. Either its schema refers to itself without descending into the value, or the value is nested deeper than a validation can follow: make each self-reference descend into the value at every step, or nest the value less deeply."
+---
+# A reference slot whose value branch nests without end is a finding at the slot,
+# in place of any reference-form finding: at the library itself, from a consumer
+# importing it, and refused when the import loads the library.
+kind: Assert.Manifest
+metadata: { name: schemaNestingSlot }
+source: ./__fixtures__/check-run-agreement/schema-nesting-slot/lib/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_NESTING_EXCEEDED
+      message: "Self.Router/router: the value at 'handler' cannot be validated — validating it nests past the depth a validation may reach. Either its schema refers to itself without descending into the value, or the value is nested deeper than a validation can follow: make each self-reference descend into the value at every step, or nest the value less deeply."
+---
+kind: Assert.Manifest
+metadata: { name: schemaNestingSlotAtRuntime }
+source: ./__fixtures__/check-run-agreement/schema-nesting-slot/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_NESTING_EXCEEDED
+      message: "Self.Router/router: the value at 'handler' cannot be validated — validating it nests past the depth a validation may reach. Either its schema refers to itself without descending into the value, or the value is nested deeper than a validation can follow: make each self-reference descend into the value at every step, or nest the value less deeply."
+  runFails: "[ERR_SCHEMA_NESTING_EXCEEDED] RuntimeError: Self.Router/router: the value at 'handler' cannot be validated — validating it nests past the depth a validation may reach. Either its schema refers to itself without descending into the value, or the value is nested deeper than a validation can follow: make each self-reference descend into the value at every step, or nest the value less deeply."
+---
+# A kind whose schema refers to itself without descending: the resource's own
+# validation never finishes, a finding at the resource, refused at load.
+kind: Assert.Manifest
+metadata: { name: schemaNestingResource }
+source: ./__fixtures__/check-run-agreement/schema-nesting-resource/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_NESTING_EXCEEDED
+      message: "Self.Holder/holder: the resource cannot be validated — validating it nests past the depth a validation may reach. Either its schema refers to itself without descending into the value, or the value is nested deeper than a validation can follow: make each self-reference descend into the value at every step, or nest the value less deeply."
+  runFails: "[ERR_SCHEMA_NESTING_EXCEEDED] Self.Holder/holder: the resource cannot be validated — validating it nests past the depth a validation may reach. Either its schema refers to itself without descending into the value, or the value is nested deeper than a validation can follow: make each self-reference descend into the value at every step, or nest the value less deeply."

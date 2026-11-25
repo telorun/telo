@@ -381,12 +381,14 @@ export function normalizeInlineResources(
     const extractedAt: (readonly (string | number)[])[] = [];
     for (const site of sites) {
       if (site.refs.length === 0) continue;
-      if (
-        site.holder &&
-        site.key !== undefined &&
-        legacyReference(site.data) &&
-        !isValueAtSlot(site.data, site.refs, registry)
-      ) {
+      const valueOutcome =
+        site.data !== null && typeof site.data === "object" && !isTaggedSentinel(site.data)
+          ? isValueAtSlot(site.data, site.refs, registry)
+          : undefined;
+      // A value whose branch could not finish validating is neither a reference nor
+      // a declaration: the slot's own finding is the one report.
+      if (valueOutcome === "unfinished") continue;
+      if (site.holder && site.key !== undefined && legacyReference(site.data) && valueOutcome === "refuses") {
         (site.holder as Record<string | number, unknown>)[site.key] = asResolvedReference(site.data);
         continue;
       }

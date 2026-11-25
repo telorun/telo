@@ -12,15 +12,21 @@
 //! local `$ref`s and union and `allOf` branches — never a whole document: a
 //! resource whose own kind declares a `name` field carries `kind` and `name` at
 //! its root. Where a union gives a slot value branches beside its reference
-//! branch, an object one of them accepts is a value, not a reference.
+//! branch, an object one of them accepts is a value, not a reference, and one
+//! whose validation could not finish is the slot's `SCHEMA_NESTING_EXCEEDED`,
+//! with no reference-form finding beside it.
 
 use serde_json::Value;
+
+use telo_templating::is_tagged_sentinel;
 
 use crate::loaded_types::LoadedGraph;
 use crate::module_alias_scope::definition_in_scope;
 use crate::quoted_place::with_quoted_path;
+use crate::reference_field_map::{value_branches_accept, ValueBranchOutcome};
 use crate::resolved_reference::{carries_reference_marker, declares_name_field, RESOLVED_REFERENCE_MARKER};
 use crate::schema_compat::{collect_properties, resolve_ref_in, union_branches};
+use crate::schema_validation::{schema_nesting_exceeded_message, SCHEMA_NESTING_EXCEEDED};
 use crate::system_kinds::{is_module_document, skips_ref_resolution};
 use crate::types::{kind_of, name_of, AnalysisDiagnostic, DiagnosticData, DiagnosticResource};
 
@@ -47,10 +53,27 @@ pub struct InvalidReferenceForm {
     pub name: Option<String>,
 }
 
-/// Whether a value branch of a union accepts a value: the branch, the document
-/// it was written in (its local `$ref`s resolve there), and the value. A branch
-/// that cannot be compiled accepts nothing.
-pub type AcceptsValue<'a> = dyn Fn(&Value, &Value, &Value) -> bool + 'a;
+/// A reference slot whose value branch could not finish validating the value it holds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnfinishedSlot {
+    /// The slot's path in the resource, `mounts[0].mount`.
+    pub path: String,
+    /// The same place as a JSON Pointer into the resource.
+    pub pointer: String,
+}
+
+/// What the reference slots of one resource hold that is refused: the objects written as a
+/// reference, and the slots whose value no validation could finish over.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ReferenceFormFindings {
+    pub forms: Vec<InvalidReferenceForm>,
+    pub unfinished: Vec<UnfinishedSlot>,
+}
+
+/// The sentence of a slot whose value branch could not finish validating its value.
+pub fn nesting_exceeded_slot_message(label: &str, slot: &UnfinishedSlot) -> String {
+    schema_nesting_exceeded_message(label, &format!("the value at '{}'", slot.path))
+}
 
 /// The reference spelling an author wrote, or `None` for an inline
 /// declaration. `kind_declares_name` answers for the object's own `kind`, `None`
@@ -71,14 +94,13 @@ pub fn authored_object_form(
 }
 
 /// Every refused object at a reference slot of `resource`, its kind's author
-/// schema being `schema`.
+/// schema being `schema`, and every slot whose value branch could not finish.
 pub fn find_invalid_reference_forms(
     resource: &Value,
     schema: &Value,
     kind_declares_name: &dyn Fn(&str) -> Option<bool>,
-    accepts: &AcceptsValue,
-) -> Vec<InvalidReferenceForm> {
-    let mut found: Vec<InvalidReferenceForm> = Vec::new();
+) -> ReferenceFormFindings {
+    let mut found = ReferenceFormFindings::default();
     if let Value::Object(entries) = resource {
         let properties = collect_properties(schema);
         let additional = schema.get("additionalProperties").filter(|a| a.is_object());
@@ -88,7 +110,7 @@ pub fn find_invalid_reference_forms(
             }
             if let Some(child_schema) = properties.get(key).or(additional) {
                 let at = Place { path: key.clone(), pointer: format!("/{}", escape_pointer(key)) };
-                let walk = Walk { kind_declares_name, accepts };
+                let walk = Walk { kind_declares_name };
                 walk.visit(child, child_schema, schema, &at, &mut found, 0);
             }
         }
@@ -104,11 +126,10 @@ pub fn mark_legacy_references(
     resource: &mut Value,
     schema: &Value,
     kind_declares_name: &dyn Fn(&str) -> Option<bool>,
-    accepts: &AcceptsValue,
 ) -> Vec<InvalidReferenceForm> {
-    let found = find_invalid_reference_forms(resource, schema, kind_declares_name, accepts);
+    let found = find_invalid_reference_forms(resource, schema, kind_declares_name);
     let mut refused = Vec::new();
-    for form in found {
+    for form in found.forms {
         match form.form {
             ReferenceForm::Object => {
                 if let Some(Value::Object(object)) = resource.pointer_mut(&form.pointer) {
@@ -168,19 +189,18 @@ fn escape_pointer(key: &str) -> String {
     key.replace('~', "~0").replace('/', "~1")
 }
 
-struct Walk<'a, 'b> {
+struct Walk<'a> {
     kind_declares_name: &'a dyn Fn(&str) -> Option<bool>,
-    accepts: &'a AcceptsValue<'b>,
 }
 
-impl Walk<'_, '_> {
+impl Walk<'_> {
     fn visit(
         &self,
         value: &Value,
         raw: &Value,
         root: &Value,
         at: &Place,
-        found: &mut Vec<InvalidReferenceForm>,
+        found: &mut ReferenceFormFindings,
         hops: usize,
     ) {
         if hops > MAX_HOPS {
@@ -189,8 +209,8 @@ impl Walk<'_, '_> {
         let (here, root) = resolve_ref_in(raw, root, None);
         if here.get("x-telo-ref").is_some() {
             if let Some((form, name)) = authored_object_form(value, self.kind_declares_name) {
-                if !found.iter().any(|existing| existing.path == at.path) {
-                    found.push(InvalidReferenceForm {
+                if !found.forms.iter().any(|existing| existing.path == at.path) {
+                    found.forms.push(InvalidReferenceForm {
                         path: at.path.clone(),
                         pointer: at.pointer.clone(),
                         form,
@@ -203,13 +223,23 @@ impl Walk<'_, '_> {
         let branches = union_branches(here).unwrap_or_default();
         // A union delegating its reference constraint to a branch: an object a
         // value branch accepts is that value, so the reference branches beside
-        // it are not asked about it.
-        let as_value = branches.iter().any(|branch| branch.get("x-telo-ref").is_some())
+        // it are not asked about it; one no branch could finish validating is
+        // the slot's own finding.
+        let outcome = if branches.iter().any(|branch| branch.get("x-telo-ref").is_some())
             && value.is_object()
-            && branches
-                .iter()
-                .filter(|branch| branch.get("x-telo-ref").is_none())
-                .any(|branch| (self.accepts)(branch, root, value));
+            && !is_tagged_sentinel(value)
+        {
+            value_branches_accept(branches.iter().copied().filter(|branch| branch.get("x-telo-ref").is_none()), root, value)
+        } else {
+            ValueBranchOutcome::Refuses
+        };
+        if outcome == ValueBranchOutcome::Unfinished {
+            if !found.unfinished.iter().any(|slot| slot.path == at.path) {
+                found.unfinished.push(UnfinishedSlot { path: at.path.clone(), pointer: at.pointer.clone() });
+            }
+            return;
+        }
+        let as_value = outcome == ValueBranchOutcome::Accepts;
         for branch in branches {
             if as_value && branch.get("x-telo-ref").is_some() {
                 continue;
@@ -247,10 +277,6 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    fn no_value(_branch: &Value, _root: &Value, _value: &Value) -> bool {
-        false
-    }
-
     fn forms(resource: Value) -> Vec<(String, ReferenceForm)> {
         let schema = json!({
             "type": "object",
@@ -268,7 +294,8 @@ mod tests {
             "Self.Named" => Some(true),
             _ => None,
         };
-        find_invalid_reference_forms(&resource, &schema, &declares, &no_value)
+        find_invalid_reference_forms(&resource, &schema, &declares)
+            .forms
             .into_iter()
             .map(|form| (form.path, form.form))
             .collect()
@@ -324,7 +351,7 @@ mod tests {
             "b": { "kind": "Self.Named", "name": "house" },
             "c": { "__ref": true, "kind": "Self.Api", "name": "usersApi" }
         });
-        let refused = mark_legacy_references(&mut resource, &schema, &declares, &no_value);
+        let refused = mark_legacy_references(&mut resource, &schema, &declares);
         assert_eq!(
             resource["a"],
             json!({ "__ref": true, "kind": "Self.Api", "name": "usersApi", "indexes": [] })
@@ -352,15 +379,10 @@ mod tests {
             }
         });
         let declares = |_: &str| Some(false);
-        let accepts = |branch: &Value, _root: &Value, value: &Value| {
-            branch["required"].as_array().is_some_and(|required| {
-                required.iter().filter_map(Value::as_str).all(|key| value.get(key).is_some())
-            })
-        };
         let value = json!({ "type": { "kind": "Self.Api", "name": "text", "length": 3 } });
         let reference = json!({ "type": { "kind": "Self.Api", "name": "usersApi" } });
-        assert!(find_invalid_reference_forms(&value, &schema, &declares, &accepts).is_empty());
-        assert_eq!(find_invalid_reference_forms(&reference, &schema, &declares, &accepts).len(), 1);
+        assert!(find_invalid_reference_forms(&value, &schema, &declares).forms.is_empty());
+        assert_eq!(find_invalid_reference_forms(&reference, &schema, &declares).forms.len(), 1);
     }
 }
 
@@ -389,10 +411,11 @@ pub fn target_reference_forms(
 }
 
 /// `INVALID_REFERENCE_FORM` for every object an author wrote as a reference in the entry
-/// module — a dependency's are not the consumer's to fix, and the kernel refuses only an
-/// author-written `__ref` key there, when an import loads the library. A resource whose
-/// kind does not resolve is not judged.
-pub fn validate_reference_forms(graph: &LoadedGraph, accepts: &AcceptsValue) -> Vec<AnalysisDiagnostic> {
+/// module, and `SCHEMA_NESTING_EXCEEDED` for every slot whose value branch could not finish
+/// validating its value — a dependency's are not the consumer's to fix, and the kernel
+/// refuses only an author-written `__ref` key and such a slot there, when an import loads the
+/// library. A resource whose kind does not resolve is not judged.
+pub fn validate_reference_forms(graph: &LoadedGraph) -> Vec<AnalysisDiagnostic> {
     let source = graph.root_source.as_str();
     let file = &graph.entry().owner;
     let declares_name = |kind: &str| {
@@ -408,16 +431,30 @@ pub fn validate_reference_forms(graph: &LoadedGraph, accepts: &AcceptsValue) -> 
             continue;
         }
         let found = if is_module_document(kind) {
-            target_reference_forms(document, &declares_name)
+            ReferenceFormFindings { forms: target_reference_forms(document, &declares_name), unfinished: Vec::new() }
         } else {
             let Some(schema) = definition_in_scope(graph, source, kind).and_then(|definition| definition.get("schema"))
             else {
                 continue;
             };
-            find_invalid_reference_forms(document, schema, &declares_name, accepts)
+            find_invalid_reference_forms(document, schema, &declares_name)
         };
         let name = name_of(document).unwrap_or_default();
-        for form in found {
+        let at = |path: &str| DiagnosticData {
+            resource: Some(DiagnosticResource { kind: kind.to_string(), name: name.to_string() }),
+            file_path: Some(file.source.clone()),
+            path: Some(path.to_string()),
+            ..Default::default()
+        };
+        for slot in &found.unfinished {
+            let diagnostic = AnalysisDiagnostic::error(
+                SCHEMA_NESTING_EXCEEDED,
+                nesting_exceeded_slot_message(&format!("{kind}/{name}"), slot),
+                at(&slot.path),
+            );
+            diagnostics.push(with_quoted_path(diagnostic, &slot.path));
+        }
+        for form in found.forms {
             let diagnostic = AnalysisDiagnostic::error(
                 CODE,
                 format!("{kind}/{name}: {}", reference_form_message(&form)),

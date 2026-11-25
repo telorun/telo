@@ -156,26 +156,39 @@ function isMuslHost() {
   }
 }
 
-/** The versions the caches are keyed by, read from the workspace being built. */
-function bakedVersions() {
+/** The versions the caches are keyed by, read from the workspace being built.
+ *  Every package a kernel cache key reads comes from the kernel's own list
+ *  (`CACHE_KEY_PACKAGES`), resolved by the kernel's own reader, and a build that
+ *  cannot resolve one refuses to finish: a binary missing one would run with that
+ *  cache disabled. */
+async function bakedVersions() {
   const read = (relative) =>
     JSON.parse(fs.readFileSync(path.join(REPO_ROOT, relative), "utf8")).version;
-  // ajv and ajv-formats belong to the kernel, not to this package, so they are
-  // resolved the way the kernel resolves them — anchored at the kernel's own
-  // manifest. Under pnpm a dependency of a sibling package is not reachable
-  // from here by name.
+  // esbuild belongs to the kernel, not to this package, so it is resolved the way
+  // the kernel resolves it — anchored at the kernel's own manifest. Under pnpm a
+  // dependency of a sibling package is not reachable from here by name.
   const fromKernel = createRequire(path.join(REPO_ROOT, "kernel", "nodejs", "package.json"));
   const dep = (name) =>
     JSON.parse(fs.readFileSync(fromKernel.resolve(`${name}/package.json`), "utf8")).version;
+  const { CACHE_KEY_PACKAGES, readCacheKeyVersion } = await import(
+    pathToFileURL(path.join(REPO_ROOT, "kernel", "nodejs", "dist", "runtime-versions.js")).href
+  );
+  const cacheKeys = {};
+  for (const { name, through } of CACHE_KEY_PACKAGES) {
+    const version = readCacheKeyVersion(name);
+    if (version === undefined) {
+      throw new Error(
+        `cannot determine the version of ${name}${through ? ` (through ${through})` : ""}, which a kernel cache key reads; ` +
+          "a binary built without it would run with that cache disabled",
+      );
+    }
+    cacheKeys[name] = version;
+  }
   return {
     "@telorun/cli": read("cli/nodejs/package.json"),
     "@telorun/kernel": read("kernel/nodejs/package.json"),
-    "@telorun/analyzer": read("analyzer/nodejs/package.json"),
-    "@telorun/templating": read("templating/nodejs/package.json"),
     "@telorun/debug-ui": read("packages/debug-ui/package.json"),
-    ajv: dep("ajv"),
-    "ajv-formats": dep("ajv-formats"),
-    yaml: dep("yaml"),
+    ...cacheKeys,
     // The executable this build embeds. The binary keys its unpacked copy on
     // this, so an upgrade unpacks its own rather than driving the previous
     // version's — esbuild refuses a host/binary version mismatch, which would
@@ -365,7 +378,7 @@ async function main() {
   fs.mkdirSync(stagingDir, { recursive: true });
   fs.mkdirSync(args.out, { recursive: true });
 
-  const versions = { ...bakedVersions(), ...args.bake };
+  const versions = { ...(await bakedVersions()), ...args.bake };
   if (!fs.existsSync(args.entry)) throw new Error(`entry not found: ${args.entry}`);
   process.stderr.write(`building ${args.name} (telo ${versions["@telorun/cli"]}) for ${args.target}\n`);
 

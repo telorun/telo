@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  CACHE_KEY_PACKAGES,
+  readCacheKeyVersion,
   readKernelVersion,
   readVersion,
   reportUndeterminableVersion,
@@ -29,5 +31,16 @@ describe("runtime versions", () => {
     // the reader gets.
     expect(report.mock.calls[0]![0]).toContain("pkg-a / pkg-b");
     expect(report.mock.calls[0]![0]).toContain("neither read nor written");
+  });
+});
+
+describe("the cache-key packages", () => {
+  it("resolves every package a cache key reads, a dependency's dependency through the package declaring it", () => {
+    for (const { name } of CACHE_KEY_PACKAGES) expect(readCacheKeyVersion(name), name).toMatch(/^\d+\.\d+\.\d+/);
+    expect(CACHE_KEY_PACKAGES).toContainEqual({ name: "re2js", through: "@telorun/cel" });
+  });
+
+  it("refuses a version no cache key is listed for", () => {
+    expect(() => readCacheKeyVersion("left-pad")).toThrow("'left-pad' is not a cache-key package");
   });
 });

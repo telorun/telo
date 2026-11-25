@@ -19,6 +19,7 @@ import {
   membersSlotOf,
   reservedImportAliasMessage,
   isResolvedReference,
+  runtimeCodeOf,
 } from "@telorun/analyzer";
 import type { AnalysisDiagnostic, ParsedExportEntry } from "@telorun/analyzer";
 import { refuseExpansionConstructs } from "../../expansion-refusals.js";
@@ -51,10 +52,10 @@ import {
 
 /** The marker refusals of a library, judged once per library scope — the
  *  scope is cached per resolved URL, and its raw manifests never change. */
-const markerRefusals = new WeakMap<object, string[]>();
-function markerRefusalsOf(scope: object, judge: () => { message: string }[]): string[] {
+const markerRefusals = new WeakMap<object, AnalysisDiagnostic[]>();
+function markerRefusalsOf(scope: object, judge: () => AnalysisDiagnostic[]): AnalysisDiagnostic[] {
   let found = markerRefusals.get(scope);
-  if (!found) markerRefusals.set(scope, (found = judge().map((d) => d.message)));
+  if (!found) markerRefusals.set(scope, (found = judge()));
   return found;
 }
 
@@ -166,9 +167,12 @@ export async function create(
         .join("\n"),
     );
   }
+  // A slot whose value branch could not finish validating its value holds no
+  // verdict, refused under its own code before any reference form.
   const forms = markerRefusalsOf(scope, () => analyzer.referenceForms(scope.rawManifests, libraryRegistry));
   if (forms.length > 0) {
-    throw new RuntimeError("ERR_INVALID_REFERENCE_FORM", forms.join("\n"));
+    const refused = forms.filter((d) => d.code === forms[0]!.code);
+    throw new RuntimeError(runtimeCodeOf(String(refused[0]!.code)), refused.map((d) => d.message).join("\n"));
   }
   const libraryDocument = scope.rawManifests.find((m: any) => m.kind === "Telo.Library")! as any;
 

@@ -25,7 +25,7 @@ schema:
       title: Schema
       description: Variable schema loaded from the environment variable store.
       type: "object"
-      additionalProperties: { type: "object" }
+      additionalProperties: { type: "object", allOf: [{ $ref: "telo://manifest#/$defs/JsonSchema7" }] }
   required: ["schema"]
   additionalProperties: true
 ---
@@ -119,6 +119,7 @@ schema:
             description: Default value when the environment variable is not set.
         required: [env, type]
         additionalProperties: true
+        allOf: [{ $ref: "telo://manifest#/$defs/JsonSchema7" }]
     secrets:
       title: Secrets
       description: Secrets read from environment variables.
@@ -140,4 +141,5 @@ schema:
             description: Default value when the environment variable is not set.
         required: [env, type]
         additionalProperties: true
+        allOf: [{ $ref: "telo://manifest#/$defs/JsonSchema7" }]
   additionalProperties: true

@@ -284,9 +284,52 @@ fn a_literal_reaches_schema_validation_as_its_text() {
         ("app/telo.yaml", &string_field_app("!literal \"${{ not an expression }}\"")),
         ("lib/telo.yaml", THING_LIBRARY),
     ]);
-    assert!(!err.to_string().contains("is invalid"), "{err}");
+    assert_ne!(err.code, "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED", "{err}");
     let (_dir, err) = load(&[("app/telo.yaml", &string_field_app("7")), ("lib/telo.yaml", THING_LIBRARY)]);
-    assert!(err.to_string().contains("is invalid"), "{err}");
+    assert_eq!(err.code, "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED", "{err}");
+    assert!(err.message.ends_with("Error: /text must be string"), "{err}");
+}
+
+fn kind_library(schema: &str) -> String {
+    format!("kind: Telo.Library\nmetadata: {{ name: Lib }}\nexports: {{ kinds: [Thing] }}\n---\nkind: Telo.Definition\nmetadata: {{ name: Thing }}\ncapability: Telo.Invocable\nschema: {schema}\n")
+}
+
+fn thing_app(fields: &str) -> String {
+    app(&format!("imports: {{ Lib: ../lib }}\n---\nkind: Lib.Thing\nmetadata: {{ name: t }}\n{fields}\n"))
+}
+
+/// A value type's own refusal raises its own code, naming the field and the reason, never
+/// the value.
+#[test]
+fn a_literal_its_value_type_refuses_raises_the_type_s_own_code() {
+    let (_dir, err) = load(&[
+        ("app/telo.yaml", &thing_app("url: not a url")),
+        ("lib/telo.yaml", &kind_library("{ type: object, properties: { url: { type: string, x-telo-type: Telo.Url } } }")),
+    ]);
+    assert_eq!(err.code, "ERR_URL_INVALID", "{err}");
+    assert_eq!(err.message, "Lib.Thing/t: /url is not a Telo.Url: it does not begin with a scheme ('postgres:', 'https:')");
+}
+
+/// A failed union reports what the judge decides, as `telo check` does.
+#[test]
+fn a_union_the_value_matches_no_branch_of_reports_the_alternatives() {
+    let (_dir, err) = load(&[
+        ("app/telo.yaml", &thing_app("mode: 7")),
+        ("lib/telo.yaml", &kind_library("{ type: object, properties: { mode: { anyOf: [{ type: string }, { type: boolean }] } } }")),
+    ]);
+    assert_eq!(err.code, "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED", "{err}");
+    assert!(err.message.ends_with("Error: /mode matches no alternative — expected a string, or a boolean"), "{err}");
+}
+
+/// `format: path-template` is the path-template reader's verdict, enforced at creation.
+#[test]
+fn a_path_naming_a_variable_twice_is_refused_by_its_format() {
+    let (_dir, err) = load(&[
+        ("app/telo.yaml", &thing_app("path: /x/{id}/{id}")),
+        ("lib/telo.yaml", &kind_library("{ type: object, properties: { path: { type: string, format: path-template } } }")),
+    ]);
+    assert_eq!(err.code, "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED", "{err}");
+    assert!(err.message.contains("Error: /path must be a path-template: '{id}' appears twice"), "{err}");
 }
 
 /// A library's own string holding a `${{` no hole can be read out of is refused before

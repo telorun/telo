@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Map, Value};
 use telo_analyzer::sources::source_failure::{file_source_failure, file_url, ManifestSourceFailure, SourceFailureKind};
 use telo_analyzer::{
-    analyze_loaded_graph, join_relative, load_graph, HostEntryKind, locate_diagnostic, AnalysisOptions, DependencyAnalysisOptions,
+    analyze_loaded_graph, join_relative, load_graph, HostEntryKind, locate_diagnostic, DependencyAnalysisOptions,
     LoadError, ManifestLoader, ManifestSource, ReadManifest, DEFAULT_MANIFEST_FILENAME, TELO_RUNNING_SURFACE,
 };
 use telorun_glob::{select_by_patterns, SelectOptions};
@@ -163,7 +163,6 @@ fn diagnostics_of(dir: &Path) -> Vec<Value> {
     let entry = dir.join(DEFAULT_MANIFEST_FILENAME).display().to_string();
     let graph = load_graph(&loader, &entry).expect("graph loads");
     let options = DependencyAnalysisOptions {
-        analysis: &AnalysisOptions { accepts_value: &|_, _, _| false },
         store: None,
         memo: None,
     };

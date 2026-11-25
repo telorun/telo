@@ -16,7 +16,7 @@ use std::rc::Rc;
 use serde_json::{json, Value};
 use telo_analyzer::sources::oci_ref::is_oci_ref;
 use telo_analyzer::{
-    analysis, as_resolved_ref, load_graph, load_refusal, Analysis, AnalysisOptions, ImportTargetPort, LoadError,
+    analysis, as_resolved_ref, load_graph, load_refusal, Analysis, ImportTargetPort, LoadError,
     LoadRefusalHost, LoadedFile, LoadedGraph, LoadedModule as TargetModule, ManifestLoader, ManifestSource,
 };
 
@@ -27,7 +27,7 @@ use crate::bundle::module_manifest::read_owner_manifest;
 use crate::controller_loader::ControllerLoader;
 use crate::controller_registry::ControllerRegistry;
 use crate::controllers::module::import_controller::refuse_unreadable_import;
-use crate::controllers::module::module_controller::{load_module, value_branch_accepts, LoadedModule, ModuleRole};
+use crate::controllers::module::module_controller::{load_module, LoadedModule, ModuleRole};
 use crate::error::KernelError;
 use crate::evaluation_context::ResourceInstance;
 use crate::sentinel_pass::{compile_sentinels_at, Owner};
@@ -243,7 +243,7 @@ impl LoadRefusalHost for StaticPreflight<'_> {
     }
 
     fn analyze(&mut self) -> Analysis {
-        analysis(self.graph, &AnalysisOptions { accepts_value: &value_branch_accepts })
+        analysis(self.graph)
     }
 }
 

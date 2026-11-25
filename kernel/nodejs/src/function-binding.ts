@@ -49,6 +49,7 @@ import {
   type ResourceInstance,
 } from "@telorun/sdk";
 import { textRecordOf } from "./text-records.js";
+import { schemaRefusalData } from "./schema-value-issues.js";
 
 type SchemaResolver = (ref: string) => Record<string, any> | undefined;
 type ValidatorFor = (schema: Record<string, any>) => { validate(value: unknown): void };
@@ -129,7 +130,12 @@ export function bindFunction(
     : undefined;
 
   const refuse = (code: string, message: string, cause?: unknown): InvokeError => {
-    const error = new InvokeError(code, message, { function: label }, cause ? { cause } : undefined);
+    const error = new InvokeError(
+      code,
+      message,
+      { function: label, issues: schemaRefusalData(cause)?.issues ?? [] },
+      cause ? { cause } : undefined,
+    );
     bindingRefusals.add(error);
     return error;
   };

@@ -1,5 +1,5 @@
 import { expect } from "vitest";
-import { createAjv } from "../src/schema-compat.js";
+import { createAjv, type SchemaValidationOutcome } from "../src/schema-validation.js";
 import { judgeSchemaFindings } from "../src/schema-findings-judge.js";
 import type { AjvErrorLike } from "../src/schema-error-report.js";
 import { registeredDocument, SchemaNodeValidator } from "../src/schema-node-validator.js";
@@ -18,14 +18,22 @@ export function judgedFindings(
   for (const [id, shape] of Object.entries(options.shapes ?? {})) host.addSchema(shape, id);
   const validate = host.compile(schema);
   expect(validate(value)).toBe(false);
-  const twin = new SchemaNodeValidator(createAjv({ verbose: true }), {
+  const twin = new SchemaNodeValidator(createAjv("analysis-verbose"), {
     resolveReference: (id) => registeredDocument(host, id),
   });
-  return judgeSchemaFindings(validate.errors, {
-    value,
-    schema,
-    ...(options.standIns ? { standIns: options.standIns } : {}),
-    validate: twin.findingsFor(schema),
-    reference: (node, ref) => twin.reference(node, ref),
-  });
+  return finishedIssues(
+    judgeSchemaFindings(validate.errors, {
+      value,
+      schema,
+      ...(options.standIns ? { standIns: options.standIns } : {}),
+      validate: twin.findingsFor(schema),
+      reference: (node, ref) => twin.reference(node, ref),
+    }),
+  );
+}
+
+/** The issues of a validation that finished — failing the test when it did not. */
+export function finishedIssues<I>(outcome: SchemaValidationOutcome<I>): I[] {
+  expect(outcome.finished).toBe(true);
+  return outcome.finished ? outcome.issues : [];
 }

@@ -1,3 +1,4 @@
+import { finishedIssues } from "./judged-validation.js";
 import { describe, expect, it } from "vitest";
 import { parseAllDocuments } from "yaml";
 import { defaultCustomTags, isTaggedSentinel } from "@telorun/templating";
@@ -7,7 +8,7 @@ import { migrateFileText } from "../src/migrations/driver.js";
 import { parseMigrationEntry } from "../src/migrations/entry-data.js";
 import { remapMigratedPaths } from "../src/migrations/provenance.js";
 import { CORE_MIGRATIONS } from "../src/migrations/registry.js";
-import { validateAgainstSchema } from "../src/schema-compat.js";
+import { validateAgainstSchema } from "../src/schema-validation.js";
 import { DiagnosticSeverity, type ManifestSource } from "../src/types.js";
 import type { MigrationEntry } from "../src/migrations/types.js";
 
@@ -971,13 +972,13 @@ describe("the core entry set", () => {
     expect((raw.manifests[0] as any).schema.properties.handler.type).toBe("string");
 
     const slot = (raw.manifests[0] as any).schema.properties.handler;
-    const issues = validateAgainstSchema({ kind: "Telo.Invocable", name: "h" }, slot);
+    const issues = finishedIssues(validateAgainstSchema({ kind: "Telo.Invocable", name: "h" }, slot));
     expect(issues.length).toBeGreaterThan(0);
 
     // …and with the migration, the same value validates.
     const migrated = parseLoadedFile("/ws/telo.yaml", "/ws/telo.yaml", text, { migrate: true });
     const migratedSlot = (migrated.manifests[0] as any).schema.properties.handler;
-    expect(validateAgainstSchema({ kind: "Telo.Invocable", name: "h" }, migratedSlot)).toEqual([]);
+    expect(finishedIssues(validateAgainstSchema({ kind: "Telo.Invocable", name: "h" }, migratedSlot))).toEqual([]);
   });
 
   it("is idempotent — the migrated spelling matches nothing", () => {

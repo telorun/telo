@@ -37,3 +37,13 @@ kind: Ui.Chat
 metadata: { name: refreshReadsUnknown }
 source: !ref source
 refreshes: [{ path: "/api/chat/conversations/{id}", pathParams: { id: !cel "conversation.title" } }]
+---
+kind: Ui.Chat
+metadata: { name: parameterReserved }
+source: !ref source
+conversation: { parameter: _teloC }
+---
+kind: Ui.Chat
+metadata: { name: parameterKeyword }
+source: !ref source
+conversation: { parameter: "null" }

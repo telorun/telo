@@ -36,6 +36,7 @@ import {
   type ThrowsUnion,
 } from "./resolve-throws-union.js";
 import { isResolvedReference } from "./resolved-reference.js";
+import { AMBIENT_CONTRACT_ERROR_CODES, builtinErrorCode } from "@telorun/sdk";
 import {
   caughtCodeChains,
   catchListContext,
@@ -644,13 +645,17 @@ export class CatchLadder {
     // typed from that code wherever it may arrive.
     const union = reading && (reading.catchAll || !reading.proven) ? this.catchAllUnionOf(list) : this.denominatorOf(list);
     let schema: Record<string, any> | null = null;
-    if (reading && !union.unbounded && union.codes.size > 0) {
-      const codes =
-        reading.catchAll || !reading.proven
-          ? [...union.codes.keys()]
-          : [...reading.codes].filter((code) => union.codes.has(code));
+    const bounded = !union.unbounded && union.codes.size > 0;
+    // An entry proven to name only codes whose data is known: the union's, or an
+    // ambient code's, which every dispatch may raise with its built-in data.
+    const named = reading && reading.proven && !reading.catchAll ? [...reading.codes] : undefined;
+    const ambient = (code: string) => (union.codes.has(code) ? undefined : ambientErrorData(code));
+    if (reading && (bounded || (named && named.length > 0 && named.every((code) => ambient(code) !== undefined)))) {
+      const codes = named
+        ? named.filter((code) => (bounded && union.codes.has(code)) || ambient(code) !== undefined)
+        : [...union.codes.keys()];
       const schemas = codes
-        .map((code) => union.codes.get(code)?.data)
+        .map((code) => union.codes.get(code)?.data ?? ambient(code))
         .filter((data): data is Record<string, any> => !!data && typeof data === "object");
       if (schemas.length > 0) schema = intersectDataSchemas(schemas);
     }
@@ -877,3 +882,9 @@ export const catchesForReads: ReadReporter = ({ node, at }) => {
 /** What `x-telo-outcome-list` reads: a catch list answers for what the
  *  resource drives. */
 export const outcomeListReads: ReadReporter = () => [{ kind: "reference", keys: [], transitive: true, reads: drivenReads }];
+
+/** The data an ambient code's built-in entry declares (`sdk/error-codes/`). */
+function ambientErrorData(code: string): Record<string, any> | undefined {
+  if (!(AMBIENT_CONTRACT_ERROR_CODES as readonly string[]).includes(code)) return undefined;
+  return builtinErrorCode(code)?.data as Record<string, any> | undefined;
+}

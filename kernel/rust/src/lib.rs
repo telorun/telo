@@ -27,12 +27,14 @@ pub mod failure_trace;
 pub mod invoke_dispatch;
 pub mod kernel;
 pub mod lexical_path;
+pub mod members_values;
 pub mod manifest_sources;
 pub mod module_context;
 pub mod resolve_include_sentinels;
 pub mod resource_context;
 pub mod runtime_registry;
 pub mod schema_validator;
+pub mod schema_value_issues;
 pub mod transports;
 pub mod workspace_marker;
 

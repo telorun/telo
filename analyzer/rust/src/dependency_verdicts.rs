@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use telo_templating::is_tagged_sentinel;
 
-use crate::analyzer::{analyze, AnalysisOptions};
+use crate::analyzer::analyze;
 use crate::dependency_configurations::library_document_of;
 use crate::diagnostic_identity::{defect_identity, written_place_of};
 use crate::entry_diagnostics::assemble_entry_diagnostics;
@@ -93,8 +93,6 @@ impl DependencyVerdictMemo {
 }
 
 pub struct DependencyAnalysisOptions<'a> {
-    /// What each library's analysis needs from the host.
-    pub analysis: &'a AnalysisOptions<'a>,
     /// Verdicts kept between processes; none when absent.
     pub store: Option<&'a dyn DependencyVerdictStore>,
     /// Verdicts kept in process; one for this call when absent.
@@ -159,7 +157,7 @@ pub fn analyze_dependencies(graph: &LoadedGraph, options: &DependencyAnalysisOpt
                     return kept;
                 }
             }
-            let fresh = judge_library(&library_graph(graph, source), options.analysis);
+            let fresh = judge_library(&library_graph(graph, source));
             if let Some(store) = options.store {
                 store.set(&key, &fresh);
             }
@@ -391,9 +389,9 @@ pub fn library_graph(graph: &LoadedGraph, library_source: &str) -> LoadedGraph {
 
 /// The library's own verdict over its re-rooted graph: its load findings and its analysis, as
 /// `telo check <library>` reports them.
-fn judge_library(graph: &LoadedGraph, options: &AnalysisOptions) -> DependencyVerdict {
+fn judge_library(graph: &LoadedGraph) -> DependencyVerdict {
     let module = library_document_of(graph, &graph.root_source).and_then(name_of).unwrap_or_default().to_string();
-    let analysis = analyze(graph, options);
+    let analysis = analyze(graph);
     DependencyVerdict { format: VERDICT_FORMAT, module, diagnostics: assemble_entry_diagnostics(graph, analysis).diagnostics }
 }
 
@@ -437,14 +435,12 @@ mod tests {
     }
 
     fn options<'a>(
-        analysis: &'a AnalysisOptions<'a>,
         store: Option<&'a dyn DependencyVerdictStore>,
         memo: Option<&'a DependencyVerdictMemo>,
     ) -> DependencyAnalysisOptions<'a> {
-        DependencyAnalysisOptions { analysis, store, memo }
+        DependencyAnalysisOptions { store, memo }
     }
 
-    const ANALYSIS: AnalysisOptions<'static> = AnalysisOptions { accepts_value: &|_, _, _| false };
 
     /// Each finding's code, severity, file and path.
     fn places(diagnostics: &[AnalysisDiagnostic]) -> Vec<(String, Option<DiagnosticSeverity>, String, String)> {
@@ -461,7 +457,7 @@ mod tests {
     fn reports_an_editable_library_finding_at_its_own_line_and_covers_the_entry_re_report() {
         let graph = graph(&[("/app/telo.yaml", &app("./lib")), ("/app/lib/telo.yaml", BAD_CAPABILITY)]);
         assert_eq!(module_origins(&graph)["/app/lib/telo.yaml"], ModuleOrigin::Editable);
-        let analysis = crate::graph_analysis::analyze_loaded_graph(&graph, &options(&ANALYSIS, None, None));
+        let analysis = crate::graph_analysis::analyze_loaded_graph(&graph, &options(None, None));
         let error = Some(DiagnosticSeverity::Error);
         assert_eq!(
             places(&analysis.diagnostics),
@@ -473,7 +469,7 @@ mod tests {
     fn keeps_the_entry_refusal_at_an_artifact_import_and_drops_the_artifact_warning_it_covers() {
         let graph = graph(&[("/app/telo.yaml", &app(PUBLISHED)), (PUBLISHED, BAD_CAPABILITY)]);
         assert_eq!(module_origins(&graph)[PUBLISHED], ModuleOrigin::Artifact);
-        let analysis = crate::graph_analysis::analyze_loaded_graph(&graph, &options(&ANALYSIS, None, None));
+        let analysis = crate::graph_analysis::analyze_loaded_graph(&graph, &options(None, None));
         let error = Some(DiagnosticSeverity::Error);
         assert_eq!(
             places(&analysis.diagnostics),
@@ -484,7 +480,7 @@ mod tests {
     #[test]
     fn reports_an_artifact_library_error_as_a_warning_at_the_import_reaching_it() {
         let graph = graph(&[("/app/telo.yaml", &app(PUBLISHED)), (PUBLISHED, OBJECT_REFERENCE)]);
-        let analysis = crate::graph_analysis::analyze_loaded_graph(&graph, &options(&ANALYSIS, None, None));
+        let analysis = crate::graph_analysis::analyze_loaded_graph(&graph, &options(None, None));
         let warning = Some(DiagnosticSeverity::Warning);
         assert_eq!(
             places(&analysis.diagnostics),
@@ -520,9 +516,9 @@ mod tests {
         let files: Vec<(&str, &str)> = files.iter().map(|(path, text)| (*path, text.as_str())).collect();
         let store = Kept::default();
         let memo = DependencyVerdictMemo::default();
-        let first = analyze_dependencies(&graph(&files), &options(&ANALYSIS, Some(&store), Some(&memo)));
-        let again = analyze_dependencies(&graph(&files), &options(&ANALYSIS, Some(&store), Some(&memo)));
-        let restored = analyze_dependencies(&graph(&files), &options(&ANALYSIS, Some(&store), None));
+        let first = analyze_dependencies(&graph(&files), &options(Some(&store), Some(&memo)));
+        let again = analyze_dependencies(&graph(&files), &options(Some(&store), Some(&memo)));
+        let restored = analyze_dependencies(&graph(&files), &options(Some(&store), None));
         assert_eq!(store.sets.get(), 1);
         assert_eq!(again.diagnostics, first.diagnostics);
         assert_eq!(restored.diagnostics, first.diagnostics);
@@ -533,7 +529,7 @@ mod tests {
             dependency_verdict_key(&edited, "/app/lib/telo.yaml"),
             dependency_verdict_key(&graph(&files), "/app/lib/telo.yaml")
         );
-        assert!(analyze_dependencies(&edited, &options(&ANALYSIS, Some(&store), Some(&memo))).diagnostics.is_empty());
+        assert!(analyze_dependencies(&edited, &options(Some(&store), Some(&memo))).diagnostics.is_empty());
         assert_eq!(store.sets.get(), 2);
     }
 
@@ -553,11 +549,11 @@ mod tests {
             key.clone(),
             DependencyVerdict { format: VERDICT_FORMAT, module: "Lib".into(), diagnostics: vec![kept.clone()] },
         );
-        assert_eq!(analyze_dependencies(&graph, &options(&ANALYSIS, Some(&store), None)).diagnostics, [kept]);
+        assert_eq!(analyze_dependencies(&graph, &options(Some(&store), None)).diagnostics, [kept]);
         assert_eq!(store.sets.get(), 0);
 
         store.verdicts.borrow_mut().insert(key, DependencyVerdict { format: 2, module: "Lib".into(), diagnostics: Vec::new() });
-        let judged = analyze_dependencies(&graph, &options(&ANALYSIS, Some(&store), None));
+        let judged = analyze_dependencies(&graph, &options(Some(&store), None));
         assert_eq!(places(&judged.diagnostics)[0].0, "CAPABILITY_UNKNOWN");
         assert_eq!(store.sets.get(), 1);
     }

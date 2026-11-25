@@ -55,6 +55,73 @@ string is `CEL_TYPE_ERROR`. A `dyn` expression passes that check, so at creation
 the kernel also refuses a result that is not a string at all
 (`ERR_RESOURCE_SCHEMA_VALIDATION_FAILED`, naming the field by JSON Pointer).
 
+## Patterns are RE2
+
+A schema's `pattern`, the keys of its `patternProperties` and `format: regex`
+are read as [RE2](https://github.com/google/re2/wiki/Syntax) wherever a value
+is validated — by `telo check`, by the kernel, and by a transport's request
+validator — never as the host's own regular expressions. RE2 matches in time
+linear in the text, so no pattern can hang a validation, and every runtime reads
+a pattern the same way. A match is a search: anchor it with `^` and `$` to hold
+the whole value.
+
+A pattern RE2 cannot read is refused before the app runs wherever a schema is
+written: a kind's `schema:`, `status:`, `inputType:` and `outputType:`, a
+`throws.codes` entry's `data:`, a `Telo.JsonSchema`, an Application's or a
+Library's `variables:` and `secrets:` entries, and a field a module declares as
+JSON Schema. Every such position is typed by the shared fragment
+`telo://manifest#/$defs/JsonSchema7` (a kind's `schema:` by `KindSchema`), which
+is Telo's meta-schema: it declares `pattern` and every `patternProperties` key as
+`format: regex` at every place the draft-07 meta-schema places a schema. So
+`telo check` reports the refusal as `SCHEMA_VIOLATION` at the pattern — at the
+`patternProperties` object for a key, naming the key — and the kernel refuses
+the load with the same finding:
+
+```text
+/schema/properties/code/pattern invalid RE2 pattern "^(?!tmp$)[a-z]+$": invalid or unsupported Perl syntax
+```
+
+A module field that holds JSON Schema says so the same way, with
+`$ref: "telo://manifest#/$defs/JsonSchema7"` — a field a kind takes through
+`x-telo-schema-from` included, where the refusal is reported as
+`DEPENDENT_SCHEMA_MISMATCH`, the code every mismatch at such a field carries,
+with the same sentence. A schema that reaches a validator
+some other way is still judged when it is compiled: every pattern it holds,
+wherever it sits — in a `definitions` entry nothing references, under `not`,
+`if` / `then` / `else` or `dependencies`, as a `patternProperties` key whose
+schema accepts everything — is refused with the same sentence, naming its place.
+A `default:` or `const:` beside `format: regex` is a value, not a pattern of the
+schema, and is not judged when it is compiled. `format: regex` accepts exactly
+the patterns RE2 reads; a value it refuses is explained with the same sentence.
+
+What RE2 reads differently from an ECMAScript engine:
+
+| Construct | RE2 |
+| --- | --- |
+| `.` | Any character but a line feed — a carriage return, U+2028 and U+2029 included. Write the class you mean: `[^\n\r]`. |
+| `\s` | `[\t\n\f\r ]` only: no vertical tab, no no-break space, no other Unicode space. |
+| `\S` | Everything `\s` does not match, so a no-break space is `\S`. |
+| `\p{…}` | A general category (`\p{L}`, `\p{Lu}`) or a script (`\p{Greek}`); long names such as `\p{Letter}` are refused. |
+| `\x{…}` | A code point by number: `\x{41}`, `\x{1F600}`. `\uXXXX` and `\cX` are refused. |
+| `(?=…)` `(?!…)` `(?<=…)` `(?<!…)` | Refused: RE2 has no lookaround. |
+| `\1` | Refused: RE2 has no backreferences. |
+
+What a lookahead excluded is written as a positive pattern beside a `not:` —
+here, a name that looks like an identifier and is not a reserved word:
+
+```yaml
+type: string
+pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+not: { enum: [if, else, while] }
+```
+
+A name a `patternProperties` key must exclude gets a key of its own whose schema
+is `false`: `"^_telo": false` beside `"^[A-Za-z_][A-Za-z0-9_]*$": { … }`.
+
+The `re2-pattern` format below is a different question: it accepts only a
+pattern RE2 and an ECMAScript engine would match identically, for a value a
+module hands to both.
+
 ## The formats
 
 | Format | Accepts |
@@ -66,6 +133,7 @@ the kernel also refuses a result that is not a string at all
 | `cpe` | A [CPE 2.3](https://nvlpubs.nist.gov/nistpubs/Legacy/IR/nistir7695.pdf) formatted string: `cpe:2.3:` and eleven attributes, 13 colon-separated fields in all, each `*`, `-` or text with backslash-escaped punctuation. |
 | `vcs-url` | A git repository's location in the [SPDX](https://spdx.github.io/spdx-spec/v2.3/package-information/#77-package-download-location-field) and purl VCS notation, without a revision: `git+https://`, a host, an optional `:port` and a path of non-empty segments (`git+https://github.com/sqlite/sqlite`). No user name or password, no `@`, no query, no fragment. |
 | `vcs-revision` | A full commit id: exactly 40 (SHA-1) or 64 (SHA-256) lower-case hexadecimal digits. A tag, a branch and an abbreviated id are refused. |
+| `path-template` | An [RFC 6570](https://www.rfc-editor.org/rfc/rfc6570) template narrowed to the [path templates](path-templates.md) Telo reads: an app-relative path, or an `http`, `https` or `mailto` address, whose variables are whole path segments `{name}`, each a name (`^[A-Za-z_][A-Za-z0-9_]*$`) written once. An absolute URL's authority, a query and a fragment hold none. |
 | `message-pattern` | A [MessageFormat 2](https://www.unicode.org/reports/tr35/tr35-messageFormat.html#pattern) pattern in Telo's profile: literal text, placeholders `{$name}` (a name starts with a letter or `_`, continues with letters, digits or `_`, and is not a CEL reserved word) and the escapes `\{`, `\}`, `\\`. Literals, functions, options and markup in braces are outside the profile. A `Text` field is not typed by this format — its pattern is judged by the message core, so an unparsable one is `MESSAGE_SYNTAX_INVALID`; the format is for any other string slot holding a pattern. |
 
 The vocabulary is closed and declared as data in `sdk/formats/`, one JSON

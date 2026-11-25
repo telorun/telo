@@ -547,7 +547,7 @@ export type {
   RowKind,
 } from "./module-graph.js";
 export { canonicalLoopSource, iteratesFamilySource, type LoopView } from "./family-source.js";
-export { satisfiesValueBranch } from "./reference-field-map.js";
+export { satisfiesValueBranch, type ValueBranchOutcome } from "./reference-field-map.js";
 export {
   carriesReferenceMarker,
   declaresNameField,
@@ -1091,6 +1091,27 @@ export type { SchemaJudgment } from "./schema-findings-judge.js";
 export { unionOutcome } from "./union-outcome.js";
 export type { BranchState, UnionOutcome } from "./union-outcome.js";
 export { registeredDocument, SchemaNodeValidator } from "./schema-node-validator.js";
+export {
+  createAjv,
+  finishedValidation,
+  isValidationOverflow,
+  judgedSchemaIssues,
+  SCHEMA_NESTING_EXCEEDED,
+  SCHEMA_VALIDATION_CONFIGURATIONS,
+  schemaNestingExceededMessage,
+  schemaNestingExceededSentence,
+  unlessOverflow,
+  VALIDATION_UNFINISHED,
+  validateAgainstSchema,
+  validateAgainstSchemaWithDefaults,
+} from "./schema-validation.js";
+export type {
+  CreateAjvOptions,
+  SchemaAjv,
+  SchemaValidationConfiguration,
+  SchemaValidationOutcome,
+  ValidationUnfinished,
+} from "./schema-validation.js";
 export type { NodeValidatingAjv, SchemaNodeValidatorOptions } from "./schema-node-validator.js";
 export {
   ajvErrorToPath,

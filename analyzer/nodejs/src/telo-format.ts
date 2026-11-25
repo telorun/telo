@@ -13,11 +13,13 @@
  *  survives the cache rather than being a closure lost on load. Browser-safe. */
 
 import { fullFormats } from "ajv-formats/dist/formats.js";
+import { SCHEMA_REGEX_FORMAT } from "@telorun/sdk";
 import { cpeChecker } from "./cpe-format.js";
 import { cssSelectorChecker } from "./css-selector-format.js";
 import { languageTagChecker } from "./language-tag-format.js";
 import { messagePatternChecker } from "./message-pattern-format.js";
 import { packageUrlChecker } from "./package-url-format.js";
+import { pathTemplateChecker } from "./path-template-format.js";
 import { re2PatternChecker } from "./re2-pattern-format.js";
 import { vcsRevisionChecker } from "./vcs-revision-format.js";
 import { vcsUrlChecker } from "./vcs-url-format.js";
@@ -50,6 +52,7 @@ const CHECKERS: Readonly<Record<string, TeloFormatChecker>> = {
   "language-tag": languageTagChecker,
   "message-pattern": messagePatternChecker,
   "package-url": packageUrlChecker,
+  "path-template": pathTemplateChecker,
   "re2-pattern": re2PatternChecker,
   "vcs-revision": vcsRevisionChecker,
   "vcs-url": vcsUrlChecker,
@@ -166,10 +169,13 @@ export function describeTeloFormatFailure(
 }
 
 /** Every format an AJV instance in the runtime may name — JSON Schema's own
- *  (`ajv-formats`' full set) plus the Telo formats — as one table, because a
- *  standalone validator reaches all of them through one code expression. */
+ *  (`ajv-formats`' full set, its `regex` replaced by the schema pattern seam's
+ *  verdict, so a pattern is RE2 wherever it is judged) plus the Telo formats — as
+ *  one table, because a standalone validator reaches all of them through one code
+ *  expression. */
 export const TELO_AJV_FORMATS: Readonly<Record<string, unknown>> = {
   ...fullFormats,
+  regex: SCHEMA_REGEX_FORMAT,
   ...Object.fromEntries(
     [...TELO_FORMATS.keys()].map((name) => [
       name,

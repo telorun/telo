@@ -212,6 +212,10 @@ impl TemplatingEngine for CelEngine {
         analyze_cel_expression(source, env).into()
     }
 
+    fn holds_expressions(&self) -> bool {
+        true
+    }
+
     fn expression_regions(&self, source: &str) -> Vec<ExpressionRegion> {
         vec![ExpressionRegion { start: 0, end: source.encode_utf16().count() }]
     }

@@ -39,6 +39,7 @@
  * and one union per catalog's closure, memoized per module — linear in what the
  * closure writes. Browser-safe.
  */
+import type { SchemaValidationOutcome } from "./schema-validation.js";
 import { listRequests, type DeclarationRequests } from "./declaration-requests.js";
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { celExpressionsOf, isTaggedSentinel, writtenCalls } from "@telorun/templating";
@@ -134,10 +135,11 @@ export interface TextPassOptions {
   readonly moduleCallNames: ReadonlyMap<string, ReadonlySet<string>>;
   /** Resolves a named shape a kind's schema references. */
   readonly schemaForId: (id: string) => Record<string, any> | undefined;
-  /** Whether a value satisfies a text fragment's schema. The core judges only a
+  /** A value validated against a text fragment's schema. The core judges only a
    *  value the schema accepts: a fault the schema states is its one
-   *  `SCHEMA_VIOLATION`. */
-  readonly accepts: (fragment: TextFragment, value: unknown) => boolean;
+   *  `SCHEMA_VIOLATION`, and a validation that could not finish its one
+   *  `SCHEMA_NESTING_EXCEEDED`, both the declaration's own. */
+  readonly accepts: (fragment: TextFragment, value: unknown) => SchemaValidationOutcome;
   /** What the expression at `path` of `manifest` is checked to be, as a message's
    *  value: its CEL type, or the schema its chain reads. */
   readonly valueKindAt?: (
@@ -536,7 +538,7 @@ export function textReader(options: TextReaderOptions): (manifest: ResourceManif
             // A bare `self.<path>` a template body or a `base:` mapping writes hands
             // on what the consumer wrote, judged where the consumer wrote it.
             if (writing.forwards && selfForwardPath(catalog)) continue;
-            if (expressionsWithin(catalog, isExpression).length === 0 && !options.accepts(site.fragment, catalog)) {
+            if (expressionsWithin(catalog, isExpression).length === 0 && !acceptedBy(options.accepts(site.fragment, catalog))) {
               continue;
             }
             const result = judgeCatalog(catalog, isExpression);
@@ -547,7 +549,7 @@ export function textReader(options: TextReaderOptions): (manifest: ResourceManif
             continue;
           }
           if (expressionsWithin(site.value, isExpression).length > 0) continue;
-          if (!options.accepts(site.fragment, site.value)) continue;
+          if (!acceptedBy(options.accepts(site.fragment, site.value))) continue;
           // What a body wrote whole is judged at its definition; the data a text's
           // values come from may still be the consumer's.
           const own = bodyWritten(at);
@@ -1221,4 +1223,9 @@ export class ClosureTexts {
     }
     return seen;
   }
+}
+
+/** Whether a validation finished and raised nothing: a value judged further. */
+function acceptedBy(outcome: SchemaValidationOutcome): boolean {
+  return outcome.finished && outcome.issues.length === 0;
 }

@@ -1,5 +1,6 @@
-//! Emits the migration entry list from the directory listing of `analyzer/migrations/`, and
-//! refuses to build without the built-in vocabulary archive the crate embeds.
+//! Emits the migration entry list from the directory listing of `analyzer/migrations/` and
+//! the shared schema fragment list from `sdk/builtins/fragments/`, and refuses to build
+//! without the built-in vocabulary archive the crate embeds.
 //!
 //! The one Rust file with no Node twin here, because it is Cargo's: the Node half emits
 //! its barrel from the same listing in `scripts/copy-migration-entries.mjs`. Nothing lists
@@ -39,6 +40,32 @@ fn main() {
     out.push_str("];\n");
     let target = PathBuf::from(std::env::var("OUT_DIR").expect("Cargo sets OUT_DIR")).join("migration_entries.rs");
     std::fs::write(target, out).expect("write the migration entry list");
+    emit_manifest_fragments();
+}
+
+/// The shared schema fragments of `sdk/builtins/fragments/`, lexically by name — the
+/// manifest root a validator registers under `telo://manifest`, as the Node half's
+/// `BUILTIN_FRAGMENT_FILES` lists them.
+fn emit_manifest_fragments() {
+    let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../sdk/builtins/fragments");
+    println!("cargo:rerun-if-changed={}", directory.display());
+    let listing = std::fs::read_dir(&directory).unwrap_or_else(|err| {
+        panic!("\n{} cannot be read ({err}). The shared schema fragments are data the analyzer embeds.\n", directory.display())
+    });
+    let mut names: Vec<String> = listing
+        .map(|entry| entry.expect("a fragment directory entry").file_name().to_string_lossy().into_owned())
+        .filter(|name| name.ends_with(".json"))
+        .collect();
+    names.sort();
+    let mut out = String::from("/// Every shared schema fragment, lexically by name, with its text.\npub(crate) const MANIFEST_FRAGMENT_FILES: &[(&str, &str)] = &[\n");
+    for name in &names {
+        let path = directory.join(name).canonicalize().expect("a listed fragment");
+        println!("cargo:rerun-if-changed={}", path.display());
+        writeln!(out, "    ({:?}, include_str!({:?})),", name.trim_end_matches(".json"), path.display().to_string()).expect("write to a string");
+    }
+    out.push_str("];\n");
+    let target = PathBuf::from(std::env::var("OUT_DIR").expect("Cargo sets OUT_DIR")).join("manifest_fragments.rs");
+    std::fs::write(target, out).expect("write the manifest fragment list");
 }
 
 fn require_builtin_vocabulary_archive() {

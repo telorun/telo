@@ -39,6 +39,7 @@
  */
 import { readRefSlot, type RefSlot } from "./ref-slot.js";
 import { resolveSchemaReference } from "./schema-reference.js";
+import { schemaPattern, type SchemaPatternMatcher } from "@telorun/sdk";
 
 /** A path into a value: property names and array indices. */
 export type ValuePath = readonly (string | number)[];
@@ -77,14 +78,15 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   return prototype === Object.prototype || prototype === null;
 };
 
-const patternCache = new Map<string, RegExp | null>();
+const patternCache = new Map<string, SchemaPatternMatcher | null>();
 
-/** A `patternProperties` key compiled, or null for one that does not compile. */
-export function safeRegExp(pattern: string): RegExp | null {
+/** A `patternProperties` key compiled through the schema pattern seam, or null for
+ *  one RE2 refuses. */
+export function safeRegExp(pattern: string): SchemaPatternMatcher | null {
   let compiled = patternCache.get(pattern);
   if (compiled === undefined) {
     try {
-      compiled = new RegExp(pattern, "u");
+      compiled = schemaPattern(pattern, "u");
     } catch {
       // An unreadable `patternProperties` key is the schema's own defect, which
       // schema validation reports; here it matches nothing.

@@ -15,10 +15,16 @@
         "$ref": "telo://manifest#/$defs/ModuleMetadata"
       },
       "variables": {
-        "type": "object"
+        "type": "object",
+        "additionalProperties": {
+          "$ref": "telo://manifest#/$defs/JsonSchema7"
+        }
       },
       "secrets": {
-        "type": "object"
+        "type": "object",
+        "additionalProperties": {
+          "$ref": "telo://manifest#/$defs/JsonSchema7"
+        }
       },
       "lifecycle": {
         "type": "string",

@@ -31,6 +31,7 @@ import {
 /** A contract whose `x-telo-span-attribute` marks cannot be read — the kernel
  *  twin of `SPAN_ATTRIBUTE_INVALID` / `SPAN_ATTRIBUTE_MISPLACED`. */
 export const ERR_SPAN_ATTRIBUTE_INVALID = "ERR_SPAN_ATTRIBUTE_INVALID";
+import { schemaRefusalData } from "./schema-value-issues.js";
 import { typeReferenceKey } from "./type-field-schema.js";
 import type { WalkGuide } from "./held-streams.js";
 import {
@@ -414,7 +415,8 @@ function copyAlong(node: unknown, segments: readonly string[]): unknown {
  *
  * The message names the target, the direction, and the offending detail, because
  * a caller several steps away otherwise cannot tell which boundary rejected the
- * value or which side supplied it.
+ * value or which side supplied it; `data.issues` says where in the value each
+ * refusal is, in the value-issue vocabulary, never quoting the value.
  */
 export function contractViolation(
   direction: ContractDirection,
@@ -444,7 +446,7 @@ export function contractViolation(
   return new InvokeError(
     CONTRACT_ERROR[direction],
     `${describeTarget()}: ${side} do not satisfy the declared ${direction}: ${detail}`,
-    undefined,
+    schemaRefusalData(cause),
     { cause, ...(inputPointer !== undefined ? { inputPointer } : {}) },
   );
 }

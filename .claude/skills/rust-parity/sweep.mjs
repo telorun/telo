@@ -240,7 +240,8 @@ function readPackageScript(name) {
 //     the code passes, the full sweep confirms;
 //   - the exit status and `ok` may differ only under `unsupported` (Rust holds the file back and
 //     says so) or when the only diagnostics Rust lacks are errors;
-//   - wherever the two JSON payloads agree whole, the text form is also compared, byte for byte;
+//   - wherever the two JSON payloads agree whole, the text form is also compared, byte for byte (under
+//     `unsupported` without Rust's own `[ERR_UNSUPPORTED_MANIFEST_FEATURE]` lines, which Node never prints);
 //   - an entry that no longer holds is stale and fails: a listed code no longer missing in the module's
 //     own run (its own files and its context findings), an `unsupported` on a manifest Rust reads whole,
 //     a path not in the repo's covered set, a code with no owner (the entry's own `owners` override,
@@ -502,7 +503,10 @@ function judgeCheck(path, result, debt, analysis) {
     const [n, r] = [result.node.text, result.rust.text];
     if (n && r && !RULE_BUDGET.test(n.stdout)) {
       if (n.stdout !== r.stdout) failures.push(`text stdout differs from Node's:\n--- node\n${n.stdout}--- rust\n${r.stdout}`);
-      if (n.stderr !== r.stderr) failures.push(`text stderr differs from Node's:\n--- node\n${n.stderr}--- rust\n${r.stderr}`);
+      const rustStderr = unsupportedAllowed
+        ? r.stderr.split(/(?<=\n)/).filter((line) => !line.startsWith(`[${HOST_REFUSAL}]`)).join("")
+        : r.stderr;
+      if (n.stderr !== rustStderr) failures.push(`text stderr differs from Node's:\n--- node\n${n.stderr}--- rust\n${rustStderr}`);
       if (n.exitCode !== r.exitCode) failures.push(`text exit differs: Node ${n.exitCode}, Rust ${r.exitCode}`);
     }
   }

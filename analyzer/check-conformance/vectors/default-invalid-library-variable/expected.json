@@ -1,0 +1,29 @@
+{
+  "diagnostics": [
+    {
+      "code": "DEFAULT_INVALID",
+      "data": {
+        "filePath": "telo.yaml",
+        "path": "variables.mode.default",
+        "resource": {
+          "kind": "Telo.Library",
+          "name": "Modes"
+        }
+      },
+      "message": "Telo.Library/Modes: the default of variables.mode must be equal to one of the allowed values (fast | safe). A default is the value the input holds when nothing supplies one, so it must satisfy the input's own declaration.",
+      "range": {
+        "end": {
+          "character": 69,
+          "line": 2
+        },
+        "start": {
+          "character": 64,
+          "line": 2
+        }
+      },
+      "severity": 1,
+      "source": "telo-analyzer"
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] Root manifest 'telo.yaml' is a Telo.Library. Only Telo.Application manifests can be run directly — libraries are imported via Telo.Import."
+}

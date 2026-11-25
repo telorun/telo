@@ -123,6 +123,18 @@ describe("caught members", () => {
     expect(unknown.map((d) => d.message).join("\n")).toMatch(/idd/);
   });
 
+  it("types an ambient contract code's data as its built-in entry declares it: null, or holding issues", async () => {
+    const unguarded = await analyze(app("error.code == 'ERR_INPUT_INVALID'", "error.data.issues"));
+    expect(unguarded.diagnostics.filter((d) => d.code === "CEL_NULLABLE_ACCESS").map((d) => (d.data as { path?: string }).path)).toEqual([
+      "routes[0].catches[0].body",
+    ]);
+    const guarded = await analyze(
+      app("error.code == 'ERR_INPUT_INVALID'", "error.data != null ? error.data.issues.map(i, i.pointer) : []"),
+    );
+    expect(codes(guarded.diagnostics)).not.toContain("CEL_NULLABLE_ACCESS");
+    expect(codes(guarded.diagnostics)).not.toContain("CEL_UNKNOWN_FIELD");
+  });
+
   it("proves coverage through any chain reaching a code-marked member", async () => {
     const { diagnostics } = await analyze(app("problem.code == 'ORDER_NOT_FOUND'", "problem.data.id"));
     expect(codes(diagnostics)).not.toContain("UNCOVERED_THROW_CODE");

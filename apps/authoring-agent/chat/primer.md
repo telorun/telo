@@ -350,9 +350,22 @@ field holding a JSON Schema matched against what an accessor names carries
 `x-telo-match-for: /<sibling accessor>`; a schema that can never hold for the
 accessor's type (`const: billing` at an integer, `type: string` at an integer)
 is `MATCH_UNSATISFIABLE`, and a pointer naming no accessor field is
-`MATCH_FOR_INVALID`. A `format: re2-pattern` string is a regular expression both
-RE2 and the browser match alike — no lookaround, backreferences, `.` or
-`\s` (write the class: `[^\n]`, `[ \t]`).
+`MATCH_FOR_INVALID`. Every schema `pattern:`, `patternProperties` key and
+`format: regex` is RE2, searched unanchored, wherever a value is validated: no
+lookaround or backreferences (a pattern RE2 refuses is `SCHEMA_VIOLATION` at the
+pattern, before the app runs, wherever a schema is written — a kind's schema and
+contracts, a `Telo.JsonSchema`, `variables:` entries; in a field a kind derives
+through `x-telo-schema-from`, such as a route's `request.schema`, it is
+`DEPENDENT_SCHEMA_MISMATCH` — and a refused `patternProperties` key is reported at the object, naming it),
+`.` matches a carriage return, `\s` is `[\t\n\f\r ]`, `\x{41}` names a code point
+and `\u0041` is refused. Write an exclusion as a positive `pattern` beside `not:`
+(`not: { enum: [tmp] }`), a `patternProperties` key exclusion as a key whose
+schema is `false` (`"^_telo": false`). A field of your own kind that holds JSON
+Schema declares `$ref: "telo://manifest#/$defs/JsonSchema7"`, so its patterns
+are judged too. A
+`format: re2-pattern` string is a regular expression both RE2 and the browser
+match alike — no lookaround, backreferences, `.` or `\s` (write the class:
+`[^\n]`, `[ \t]`).
 
 A string field naming an EXPORT of a browser entry carries
 `x-telo-browser-export: { entry: /<sibling> }`, a JSON Pointer to the sibling
@@ -2106,7 +2119,10 @@ One annotation says what the value at a slot is, beyond what JSON Schema's
     refuses, is `URL_INVALID` wherever it is written (a field, a call's `inputs:`,
     an import's `variables:`, a `default:`); a computed one `ERR_URL_INVALID` at creation, and at a call's
     dispatch `ERR_INPUT_INVALID` / `ERR_OUTPUT_INVALID` (catch those; the entry in
-    `error.data.issues` carries `code: ERR_URL_INVALID` and the reason). A URL
+    `error.data.issues` carries `code: ERR_URL_INVALID` and the reason). Every
+    schema refusal under those two codes carries `data: { issues }` (`pointer`,
+    `keyword`, `params`), and `data` may be null, so guard it:
+    `error.data != null ? error.data.issues : []`. A URL
     holding a password prints `[redacted]` in every log, trace and span attribute,
     wherever it was built (its host does not); one read at load also redacts its
     password and text when logged as strings, but one built per call does not —
@@ -2169,8 +2185,11 @@ relative to the element it is matched from starts with `:scope`
 there passes the check and its result is refused at creation (or dispatch)
 with the same reason.
 
-A language tag (`format: language-tag`, RFC 5646: `en`, `pl-PL`, `zh-Hant-TW`)
-and a MessageFormat 2 pattern (`format: message-pattern`) are checked the same way.
+A language tag (`format: language-tag`, RFC 5646: `en`, `pl-PL`, `zh-Hant-TW`),
+a MessageFormat 2 pattern (`format: message-pattern`) and a path template
+(`format: path-template`: `{name}` variables as whole path segments, each named
+once, none in a query or fragment — declare it on every field holding one) are
+checked the same way.
 
 ## Text shown to a person — `Text`, `lang:`, translations
 

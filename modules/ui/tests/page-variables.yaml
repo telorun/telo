@@ -9,8 +9,8 @@ metadata:
     templated `basePath` cross as bindings over `params`, and `reloadEvery`
     crosses in milliseconds. Refused by `telo check`: a read of a variable the
     page lacks — in its own tree, in a view or a source it places, a library's
-    view included — a brace beside other text or a name given twice in a page
-    path, a link to a page with a variable that leaves it unfilled, and a reload
+    view included — a brace beside other text, a name given twice or a variable
+    after `?` in a page path, a link to a page with a variable that leaves it unfilled, and a reload
     more often than every five seconds, which the resource refuses again when
     it is created.
 imports:
@@ -110,9 +110,15 @@ expect:
     - code: PATH_PARAMETER_UNBOUND
       message: "Ui.Page/inbox: the template 'path: /plans/{id}' of 'plan' (named at 'href.path') reads '{id}'"
     - code: SCHEMA_VIOLATION
+      message: "Ui.Page/textBeside: /path must be a path-template: segment 'x{id}' holds a variable beside other text — a variable is a whole segment, '/{<name>}/' at offset 7 of \"/plans/x{id}\""
+    - code: SCHEMA_VIOLATION
       message: "Ui.Page/textBeside: /path must match pattern"
     - code: SCHEMA_VIOLATION
-      message: "Ui.Page/repeated: /path matches a shape that is not allowed here"
+      message: "Ui.Page/repeated: /path must be a path-template: '{id}' appears twice — each variable names one segment at offset 22 of \"/plans/{id}/revisions/{id}\""
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Page/afterQuery: /path must be a path-template: its query or fragment '?view=all/{id}' holds '{' or '}' — a variable is a whole path segment at offset 16 of \"/plans?view=all/{id}\""
+    - { code: SCHEMA_VIOLATION, message: "Ui.Page/keywordVariable: /path matches a shape that is not allowed here" }
+    - { code: SCHEMA_VIOLATION, message: "Ui.Page/keywordQuery: /query/if is not allowed here" }
 ---
 kind: Assert.Manifest
 metadata: { name: reloadEveryRefused }

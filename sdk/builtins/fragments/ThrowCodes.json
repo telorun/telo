@@ -20,7 +20,11 @@
       },
       "data": {
         "type": "object",
-        "additionalProperties": true
+        "allOf": [
+          {
+            "$ref": "telo://manifest#/$defs/JsonSchema7"
+          }
+        ]
       }
     }
   }

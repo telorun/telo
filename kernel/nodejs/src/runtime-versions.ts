@@ -9,7 +9,7 @@ import { fileURLToPath } from "url";
  *
  * Two caches embed a version in their key so that upgrading the code that built
  * an entry invalidates it: the analysis stamp embeds the kernel's and the
- * analyzer's, and a compiled validator embeds ajv's and ajv-formats'. Both used
+ * analyzer's, and a compiled validator embeds ajv's, ajv-formats' and re2js'. Both used
  * to read the version out of a `package.json` at runtime and fall back to the
  * string `unknown` when they could not — which turned an unanswerable question
  * into a cache key that every version agrees on, so entries built by one version
@@ -35,16 +35,26 @@ const baked: Record<string, string> =
     ? __TELO_BAKED_VERSIONS__
     : {};
 
-const localRequire = createRequire(import.meta.url);
+const kernelRequire = createRequire(import.meta.url);
 
 /** Read a dependency's version, or `undefined` when it cannot be determined.
  *
  *  The fast path is `require("<pkg>/package.json")`, which fails with
  *  `ERR_PACKAGE_PATH_NOT_EXPORTED` for a package whose `exports` map does not
  *  list it — common enough that a filesystem walk up from the package's main
- *  entry is the fallback rather than an admission of defeat. */
-export function readVersion(spec: string): string | undefined {
+ *  entry is the fallback rather than an admission of defeat. `through` names the
+ *  package whose own dependency `spec` is. */
+export function readVersion(spec: string, through?: string): string | undefined {
   if (baked[spec]) return baked[spec];
+  let localRequire = kernelRequire;
+  if (through !== undefined) {
+    // A dependency of a dependency resolves only from the package that declares it.
+    try {
+      localRequire = createRequire(kernelRequire.resolve(`${through}/package.json`));
+    } catch {
+      return undefined;
+    }
+  }
   try {
     const pkg = localRequire(`${spec}/package.json`) as { version?: unknown };
     if (typeof pkg.version === "string") return pkg.version;
@@ -75,6 +85,38 @@ export function readVersion(spec: string): string | undefined {
     // Not installed.
   }
   return undefined;
+}
+
+/** A package whose version a kernel cache key reads, and the package it resolves
+ *  through when it is a dependency of a dependency. */
+export interface CacheKeyPackage {
+  readonly name: string;
+  readonly through?: string;
+}
+
+/**
+ * Every package whose version a kernel cache key reads — the analysis stamp, the
+ * parsed-YAML cache and the compiled validators. The one list: a reader asks for a
+ * version through {@link readCacheKeyVersion}, and a build that bakes the versions
+ * (the single-file executable) bakes exactly these, so a key read at runtime is
+ * never one the build left unknown. The kernel's own version is read by position
+ * ({@link readKernelVersion}).
+ */
+export const CACHE_KEY_PACKAGES: readonly CacheKeyPackage[] = [
+  { name: "@telorun/analyzer" },
+  { name: "@telorun/templating" },
+  { name: "yaml" },
+  { name: "ajv" },
+  { name: "ajv-formats" },
+  { name: "re2js", through: "@telorun/cel" },
+];
+
+/** The version of a package {@link CACHE_KEY_PACKAGES} lists, or `undefined` when
+ *  it cannot be determined. */
+export function readCacheKeyVersion(name: string): string | undefined {
+  const entry = CACHE_KEY_PACKAGES.find((each) => each.name === name);
+  if (!entry) throw new Error(`'${name}' is not a cache-key package; add it to CACHE_KEY_PACKAGES`);
+  return readVersion(entry.name, entry.through);
 }
 
 /** The kernel's own version. `createRequire` cannot resolve

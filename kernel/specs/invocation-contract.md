@@ -703,7 +703,22 @@ block, leaving an author unable to match it or to rethrow it faithfully.
 
 The message MUST identify the target, the direction, and the offending detail. A
 caller several steps away cannot otherwise tell which boundary rejected the value
-or which side supplied it.
+or which side supplied it. A value the contract's schema refuses is described in
+the detail as plain JSON — an instance value in its type's plain encoding (an
+instant in RFC 3339, a duration as `"5400s"`, bytes as base64url), a value holding
+a sensitive member as `[redacted]`.
+
+Every refusal a schema makes under `ERR_INPUT_INVALID` / `ERR_OUTPUT_INVALID` — a
+bound contract's in either direction, a module function's arguments or result, an
+error's `data` its kind does not declare — MUST carry `data: { issues }`, one finding
+per refusal in the issue vocabulary as `readPlainEncoded` maps them below: a value
+type that does not read is `format` / `{ format }`, a missing property `required` /
+`{ missingProperty }` (its pointer naming the property), anything else `invalid`
+with no params. No issue quotes the value. The built-in entries of the two codes
+(`sdk/error-codes/`) declare that `data`: `null`, or an object holding `issues`, so
+a `catches:` entry naming the code reads `error.data.issues` behind a null guard.
+`kernel/contract-refusal-conformance/` pins the code, message and `data` every
+kernel answers.
 
 A value type's own refusal at a contract boundary — a value of a type declaring
 `members` that does not build (§4.6) — MUST be raised as the direction's code, never

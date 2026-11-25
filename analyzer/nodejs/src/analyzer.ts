@@ -252,11 +252,11 @@ import {
   fittingUnionBranches,
   selectUnionBranch,
   substituteCelFields,
-  validateAgainstSchema,
   VALUE_BRAND_BASE,
   type ExternalSchemaResolver,
   type SchemaIssue,
 } from "./schema-compat.js";
+import { SCHEMA_NESTING_EXCEEDED, schemaNestingExceededMessage, validateAgainstSchema, type SchemaValidationOutcome } from "./schema-validation.js";
 import { shapeNamedBy } from "./referenced-shape.js";
 import { declaredResultSchemaAt, isCallableKind, RETURNS_FROM_ANNOTATION } from "./callable-signature.js";
 import type { CallableSlotContext } from "./callable-slot.js";
@@ -1931,6 +1931,20 @@ function relationFindingAt(
     },
   };
   return { diagnostic: quoted === undefined ? diagnostic : withQuotedPath(diagnostic, quoted), judgedAt: path };
+}
+
+/** A validation of the value at `path` of the declaration `identity` names that
+ *  could not finish, `place` naming the value in the message. */
+function nestingFindingAt(identity: DeclarationIdentity, place: string, path: string): RelationFinding {
+  const name = identity.metadata.name as string;
+  const diagnostic: AnalysisDiagnostic = {
+    severity: DiagnosticSeverity.Error,
+    code: SCHEMA_NESTING_EXCEEDED,
+    source: SOURCE,
+    message: schemaNestingExceededMessage(`${identity.kind}/${name}`, place),
+    data: { resource: { kind: identity.kind, name }, filePath: identity.metadata.source as string | undefined, path },
+  };
+  return { diagnostic: path ? withQuotedPath(diagnostic, path) : diagnostic, judgedAt: path };
 }
 
 /** Whether the declaration `identity` names is one of the entry's own modules'. */
@@ -3702,7 +3716,12 @@ function templateTargetChecks(entry: "inputs" | "result", { identity, value, doo
       standIns,
       external: door.validator.external,
     });
-    for (const issue of door.validator.validate(substituted, valueSchema, standIns)) {
+    const outcome = door.validator.validate(substituted, valueSchema, standIns);
+    if (!outcome.finished) {
+      out.push(nestingFindingAt(identity, `'${path}'`, path));
+      return;
+    }
+    for (const issue of outcome.issues) {
       out.push(
         relationFindingAt(
           identity,
@@ -3823,7 +3842,7 @@ function contractProjectionChecks(instance: RelationInstance, { identity, value,
     out.push({
       diagnostic: {
         severity: DiagnosticSeverity.Error,
-        code: "SCHEMA_PROJECTION_FROM_UNRESOLVED",
+        code: projectionFailureCode(failure),
         source: SOURCE,
         message: `${identity.kind}: ${describeProjectionFailure(failure)}`,
         data: {
@@ -3850,6 +3869,8 @@ function callInputFinding(m: ResourceManifest, issue: StepInputIssue): OwnFindin
         message:
           issue.code === "LIVE_VALUE_RETRIED"
             ? `${m.kind}/${name}: at '${issue.path}', ${issue.message}`
+            : issue.code === SCHEMA_NESTING_EXCEEDED
+              ? schemaNestingExceededMessage(`${m.kind}/${name}`, `the inputs at '${issue.path}'`)
             : issue.omitted
               ? `${m.kind}/${name}: the call at '${issue.path}' writes no 'inputs:', so ${issue.targetLabel} is sent ` +
                 `the default ${JSON.stringify(issue.omitted.default)} its argument map declares, which does not satisfy ` +
@@ -4923,6 +4944,30 @@ function judgedPlaceOf(issue: SchemaIssue): string {
   return pathText(keys);
 }
 
+/** The code a projection failure reported at its consumer is raised under. */
+function projectionFailureCode(failure: ProjectionFailure): string {
+  return failure.reason === "condition-unfinished" ? SCHEMA_NESTING_EXCEEDED : "SCHEMA_PROJECTION_FROM_UNRESOLVED";
+}
+
+/** `SCHEMA_NESTING_EXCEEDED` for a validation of `m` that could not finish: of
+ *  the value at `path`, the whole declaration when there is none, `place` naming
+ *  it in the message. */
+function nestingDiagnostic(m: ResourceManifest, place: string, path?: string): AnalysisDiagnostic {
+  const name = m.metadata?.name as string;
+  const diagnostic: AnalysisDiagnostic = {
+    severity: DiagnosticSeverity.Error,
+    code: SCHEMA_NESTING_EXCEEDED,
+    source: SOURCE,
+    message: schemaNestingExceededMessage(`${m.kind}/${name}`, place),
+    data: {
+      resource: { kind: m.kind, name },
+      filePath: (m.metadata as { source?: string } | undefined)?.source,
+      ...(path ? { path } : {}),
+    },
+  };
+  return path ? withQuotedPath(diagnostic, path) : diagnostic;
+}
+
 /**
  * A declaration's own schema checks: the built-in shape of a `Telo.Abstract`;
  * for a declaration of a resolved kind, its configuration against the kind's
@@ -4941,7 +4986,12 @@ function ownSchemaChecks(world: OwnCheckWorld, m: ResourceManifest, declared: De
     // kernel validates it against when it registers.
     const abstractDefinition = defs.resolve("Telo.Abstract");
     if (!abstractDefinition) return out;
-    for (const issue of defs.validateResourceConfig(m, world.validationSchemaFor(abstractDefinition))) {
+    const outcome = defs.validateResourceConfig(m, world.validationSchemaFor(abstractDefinition));
+    if (!outcome.finished) {
+      push(nestingDiagnostic(m, "the document"));
+      return out;
+    }
+    for (const issue of outcome.issues) {
       // `throws:` is the rule-8 pass's, which names the rule.
       if (kindDocumentFindingReportedElsewhere(issue) || /^throws(\.|$)/.test(issue.path)) continue;
       const quoted = quotingIssue(`${m.kind}/${m.metadata?.name as string}: `, issue, issue.path);
@@ -4987,7 +5037,7 @@ function ownSchemaChecks(world: OwnCheckWorld, m: ResourceManifest, declared: De
       if (!isReportedAtConsumer(failure)) continue;
       push({
         severity: DiagnosticSeverity.Error,
-        code: "SCHEMA_PROJECTION_FROM_UNRESOLVED",
+        code: projectionFailureCode(failure),
         source: SOURCE,
         message: `${m.kind}/${resource.name}: ${describeProjectionFailure(failure)}`,
         data: { resource, filePath, path: pointerToPath(failure.pointer) },
@@ -5000,7 +5050,7 @@ function ownSchemaChecks(world: OwnCheckWorld, m: ResourceManifest, declared: De
   // an input the configuration decides is held to its slot as that literal.
   const narrowed = withNarrowedLiterals(m as Record<string, unknown>, world.narrowing?.(ownModule, importPathOf(m))?.chains);
   const standIns: StandIns = new Map();
-  const ajvIssues = defs.validateResourceConfig(
+  const own = defs.validateResourceConfig(
     // A resource's own config: the kernel decodes its plain-encoded literals
     // when it creates it.
     substituteDecodedCelFields(narrowed.value, projected, undefined, { standIns, external: world.validator.external }),
@@ -5009,14 +5059,18 @@ function ownSchemaChecks(world: OwnCheckWorld, m: ResourceManifest, declared: De
   );
   // Value slots that must satisfy a type declared elsewhere on the resource
   // (`x-telo-value-schema-from`).
-  const valueSchemaIssues = collectValueSchemaIssues(
+  const valueSchema = collectValueSchemaIssues(
     m as Record<string, any>,
     schema,
     world.types,
     world.validator,
     world.valueSchemaHost,
   );
-  const issues = [...ajvIssues, ...valueSchemaIssues];
+  // A validation that could not finish holds no verdict on its value: that is
+  // its one finding.
+  if (!own.finished) push(nestingDiagnostic(m, "the resource"));
+  for (const path of valueSchema.unfinished) push(nestingDiagnostic(m, `'${path}'`, path));
+  const issues = [...(own.finished ? own.issues : []), ...valueSchema.issues];
   // A module file named at a host-path slot that says what the path names,
   // where the loader found the other kind of entry.
   if (!ownModule || rootModules.has(ownModule)) {
@@ -5835,7 +5889,7 @@ function runRefusals(
 }
 
 /** A kind document's findings against the schema of its built-in entry. */
-function validateScopedKindDocument(defs: DefinitionRegistry, aliases: AliasResolver, member: ResourceManifest, kind: KindDocumentKind): SchemaIssue[] {
+function validateScopedKindDocument(defs: DefinitionRegistry, aliases: AliasResolver, member: ResourceManifest, kind: KindDocumentKind): SchemaValidationOutcome {
   const definition = defs.resolve(kind);
   if (!definition) throw new Error(`the built-in kind '${kind}' is not registered`);
   const schema = validationSchemaOfDefinition(definition, { defs, aliases });
@@ -6556,9 +6610,15 @@ export class StaticAnalyzer {
                       moduleAliasScope(written.metadata, aliases, aliasesByModule)?.resolveKind(kind),
                     ).map((issue) => ({
                       severity: DiagnosticSeverity.Error,
-                      code: "SCHEMA_VIOLATION",
+                      code: "unfinished" in issue ? SCHEMA_NESTING_EXCEEDED : "SCHEMA_VIOLATION",
                       source: SOURCE,
-                      message: `Telo.Definition/${written.metadata?.name as string}: ${issue.message}`,
+                      message:
+                        "unfinished" in issue
+                          ? schemaNestingExceededMessage(
+                              `Telo.Definition/${written.metadata?.name as string}`,
+                              `the value a '...' splice emits at '${issue.path}'`,
+                            )
+                          : `Telo.Definition/${written.metadata?.name as string}: ${issue.message}`,
                       data: {
                         resource: { kind: "Telo.Definition", name: written.metadata?.name as string },
                         filePath: (written.metadata as { source?: string } | undefined)?.source,
@@ -6635,7 +6695,7 @@ export class StaticAnalyzer {
                   (parseCanonicalTypeSchemaId(id) && shapeVaries(id) ? shapeAtWitness(id, witness) : scopeDefs.schemaForId(id)) as
                     | Record<string, any>
                     | undefined,
-                accepts: (fragment, value) => defs.validateResourceConfig(value, TEXT_FRAGMENT_SCHEMAS[fragment]).length === 0,
+                accepts: (fragment, value) => defs.validateResourceConfig(value, TEXT_FRAGMENT_SCHEMAS[fragment]),
                 libraries: options?.moduleDocuments ?? [],
                 facts: (at, witness) => solution!.factsAt(at, witness),
                 valueKindOf: (facts) =>
@@ -11387,8 +11447,7 @@ export class StaticAnalyzer {
         moduleDocuments: options?.moduleDocuments ?? [],
         moduleCallNames,
         schemaForId: (id) => defs.schemaForId(id),
-        accepts: (fragment, value) =>
-          defs.validateResourceConfig(value, TEXT_FRAGMENT_SCHEMAS[fragment]).length === 0,
+        accepts: (fragment, value) => defs.validateResourceConfig(value, TEXT_FRAGMENT_SCHEMAS[fragment]),
         valueKindAt: (manifest, path) => {
           const type = celTypeByPath.get(manifest)?.get(path);
           if (type !== undefined && type !== "dyn") return celTypeValueKind(type);
@@ -11542,14 +11601,15 @@ export class StaticAnalyzer {
 
   /** The author-written `__ref` keys {@link validateReferenceForms} refuses in
    *  `manifests` — a raw, unresolved manifest set — read in the registry's
-   *  scope. Only resolution writes the marker, so a library carrying one is
-   *  refused when an import loads it, whose own analysis is not the entry's; a
-   *  library's legacy `{ kind, name }` is read as the reference it means. */
+   *  scope, and every reference slot whose value branch could not finish
+   *  validating its value (`SCHEMA_NESTING_EXCEEDED`). Only resolution writes the
+   *  marker, so a library carrying one is refused when an import loads it, whose
+   *  own analysis is not the entry's; a library's legacy `{ kind, name }` is read
+   *  as the reference it means. */
   referenceForms(manifests: ResourceManifest[], registry: AnalysisRegistry): AnalysisDiagnostic[] {
     const ctx = registry._context();
-    return markerFormRefusals(
-      validateReferenceForms(manifests, ctx.definitions!, ctx.aliases, ctx.aliasesByModule),
-    );
+    const found = validateReferenceForms(manifests, ctx.definitions!, ctx.aliases, ctx.aliasesByModule);
+    return [...found.filter((d) => d.code === SCHEMA_NESTING_EXCEEDED), ...markerFormRefusals(found)];
   }
 
   /** Each reference, in a library's documents as one import expanded and

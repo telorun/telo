@@ -31,6 +31,30 @@
         "description": "What a resource of this kind reports while running, published at `resources.<name>.status.<field>`.",
         "$ref": "telo://manifest#/$defs/JsonSchema7"
       },
+      "inputType": {
+        "title": "Input type",
+        "description": "The schema of the inputs a call passes — a `!ref` to a named shape, or inline JSON Schema.",
+        "anyOf": [
+          {
+            "$ref": "telo://manifest#/$defs/JsonSchema7"
+          },
+          {
+            "type": "string"
+          }
+        ]
+      },
+      "outputType": {
+        "title": "Output type",
+        "description": "The schema of what a call returns — a `!ref` to a named shape, or inline JSON Schema.",
+        "anyOf": [
+          {
+            "$ref": "telo://manifest#/$defs/JsonSchema7"
+          },
+          {
+            "type": "string"
+          }
+        ]
+      },
       "params": {
         "$ref": "telo://manifest#/$defs/CallableParams"
       },

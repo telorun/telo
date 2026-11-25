@@ -505,13 +505,14 @@ export function defaultBearingPaths(
     let s = node as Record<string, any>;
     let document = within;
     if (chain.includes(s)) return;
+    const here = [...chain, node as object];
     if (typeof s.$ref === "string" && (resolveRef || s.$ref.startsWith("#"))) {
       const followed = contractRefTarget(s.$ref, document, resolveRef);
       if (!followed || chain.includes(followed.target)) return;
+      here.push(followed.target);
       s = { ...followed.target, ...s, $ref: undefined };
       document = followed.document;
     }
-    const here = [...chain, node as object];
 
     if ("default" in s && path.length > 0) out.push(path);
 
@@ -546,14 +547,15 @@ export function reachesMembersSlot(
     if (!node || typeof node !== "object" || chain.includes(node)) return false;
     let s = node as Record<string, any>;
     let document = within;
+    const here = [...chain, node as object];
     if (typeof s.$ref === "string" && (resolveRef || s.$ref.startsWith("#"))) {
       const followed = contractRefTarget(s.$ref, document, resolveRef);
       if (!followed || chain.includes(followed.target)) return false;
+      here.push(followed.target);
       s = { ...followed.target, ...s, $ref: undefined };
       document = followed.document;
     }
     if (membersSlotOf(s)) return true;
-    const here = [...chain, node as object];
     const children: unknown[] = [
       ...Object.values((s.properties ?? {}) as Record<string, unknown>),
       ...Object.values((s.patternProperties ?? {}) as Record<string, unknown>),
@@ -805,13 +807,14 @@ export function declaredScalarPaths(
     let s = node as Record<string, any>;
     let document = within;
     if (chain.includes(s)) return;
+    const here = [...chain, node as object];
     if (typeof s.$ref === "string" && (resolveRef || s.$ref.startsWith("#"))) {
       const followed = contractRefTarget(s.$ref, document, resolveRef);
       if (!followed || chain.includes(followed.target)) return;
+      here.push(followed.target);
       s = { ...followed.target, ...s, $ref: undefined };
       document = followed.document;
     }
-    const here = [...chain, node as object];
 
     const entry = valueTypeOf(s);
     // An `instance` representation replaces the JSON layer: it is its own

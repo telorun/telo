@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use serde_json::{json, Value};
 use telo_analyzer::{
-    analyze, assemble_graph_diagnostics, load_graph, locate_diagnostic, AnalysisOptions, LoadError, ManifestLoader,
+    analyze, assemble_graph_diagnostics, load_graph, locate_diagnostic, LoadError, ManifestLoader,
     ManifestSource, ReadManifest,
 };
 
@@ -47,7 +47,7 @@ fn check(files: &[(&str, &str)], entry: &str) -> Value {
         files.iter().map(|(path, text)| (path.to_string(), text.to_string())).collect(),
     ))]);
     let graph = load_graph(&loader, entry).expect("graph loads");
-    let analysis = analyze(&graph, &AnalysisOptions { accepts_value: &|_, _, _| false });
+    let analysis = analyze(&graph);
     let dir = format!("{}/", entry.rsplit_once('/').unwrap().0);
     let rows = assemble_graph_diagnostics(&graph, analysis)
         .diagnostics

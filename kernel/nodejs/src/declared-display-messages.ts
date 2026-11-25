@@ -15,7 +15,7 @@
  * message can never fail. An ambient code the kind does not declare gets its
  * built-in one.
  */
-import type { EffectiveKind } from "@telorun/analyzer";
+import type { EffectiveKind, SchemaIssue } from "@telorun/analyzer";
 import {
   attachDisplayMessage,
   builtinErrorCode,
@@ -24,6 +24,7 @@ import {
   type TextRecord,
 } from "@telorun/sdk";
 import { SchemaValidationError, type SchemaValidator } from "./schema-validator.js";
+import { schemaValueIssue } from "./schema-value-issues.js";
 
 export interface DeclaredDisplayMessage {
   readonly record: TextRecord;
@@ -54,7 +55,7 @@ export function declaredDisplayMessageOf(kind: EffectiveKind | undefined, code: 
 }
 
 /** Validates `data` against a JSON Schema; the issues, empty when it holds. */
-export type ErrorDataValidator = (schema: Record<string, unknown>, data: unknown) => readonly string[];
+export type ErrorDataValidator = (schema: Record<string, unknown>, data: unknown) => readonly SchemaIssue[];
 
 /** The kernel's validator as an {@link ErrorDataValidator}: one engine in the
  *  process, its named shapes and keywords included. */
@@ -65,9 +66,7 @@ export function errorDataValidatorOver(validator: SchemaValidator): ErrorDataVal
       compiled.validate(data);
       return [];
     } catch (error) {
-      if (error instanceof SchemaValidationError) {
-        return error.issues.map((issue) => issue.message);
-      }
+      if (error instanceof SchemaValidationError) return error.issues;
       throw error;
     }
   };
@@ -89,8 +88,8 @@ export function errorDataRefusal(
   if (issues.length === 0) return undefined;
   return new InvokeError(
     "ERR_OUTPUT_INVALID",
-    `${where}: the error '${code}' carries data its kind does not declare (declared by ${entry.declarer}): ${issues.join("; ")}`,
-    { code, data: data ?? null, issues },
+    `${where}: the error '${code}' carries data its kind does not declare (declared by ${entry.declarer}): ${issues.map((issue) => issue.message).join("; ")}`,
+    { code, data: data ?? null, issues: issues.map(schemaValueIssue) },
   );
 }
 

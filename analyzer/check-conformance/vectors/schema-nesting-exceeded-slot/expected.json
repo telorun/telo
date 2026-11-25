@@ -1,0 +1,39 @@
+{
+  "diagnostics": [
+    {
+      "code": "SCHEMA_NESTING_EXCEEDED",
+      "data": {
+        "filePath": "telo.yaml",
+        "path": "handler",
+        "quotedPlace": [
+          {
+            "after": "' cannot be validated — validating it nests past the depth a validation may reach. Either its schema refers to itself without descending into the value, or the value is nested deeper than a validation can follow: make each self-reference descend into the value at every step, or nest the value less deeply.",
+            "before": "Self.Router/router: the value at '",
+            "form": "dotted",
+            "from": 0,
+            "path": "handler",
+            "place": "handler"
+          }
+        ],
+        "resource": {
+          "kind": "Self.Router",
+          "name": "router"
+        }
+      },
+      "message": "Self.Router/router: the value at 'handler' cannot be validated — validating it nests past the depth a validation may reach. Either its schema refers to itself without descending into the value, or the value is nested deeper than a validation can follow: make each self-reference descend into the value at every step, or nest the value less deeply.",
+      "range": {
+        "end": {
+          "character": 20,
+          "line": 17
+        },
+        "start": {
+          "character": 9,
+          "line": 17
+        }
+      },
+      "severity": 1,
+      "source": "telo-analyzer"
+    }
+  ],
+  "runFails": "[ERR_SCHEMA_NESTING_EXCEEDED] telo.yaml: Self.Router/router: the value at 'handler' cannot be validated — validating it nests past the depth a validation may reach. Either its schema refers to itself without descending into the value, or the value is nested deeper than a validation can follow: make each self-reference descend into the value at every step, or nest the value less deeply.\n  [ERR_SCHEMA_NESTING_EXCEEDED] Self.Router/router: the value at 'handler' cannot be validated — validating it nests past the depth a validation may reach. Either its schema refers to itself without descending into the value, or the value is nested deeper than a validation can follow: make each self-reference descend into the value at every step, or nest the value less deeply."
+}

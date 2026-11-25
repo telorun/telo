@@ -41,13 +41,13 @@ import { isRefSentinel, isTaggedSentinel } from "@telorun/templating";
 import { enclosingKeys, placeAt, type ReadPlace, type ReadReporter } from "./read-place.js";
 import { resolveRefIn, type ExternalSchemaResolver } from "./schema-compat.js";
 import { pointerSegments, renderValuePath, type ValuePath } from "./text-slot.js";
+import { readPathTemplate } from "./path-template-reading.js";
+
+export { readPathTemplate, type PathTemplateReading } from "./path-template-reading.js";
 
 export const PATH_PARAMS_FOR_ANNOTATION = "x-telo-path-params-for";
 
 const ANNOTATION_KEYS = ["template", "through"] as const;
-const VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const ABSOLUTE_URL = /^(https?):\/\/([^/?#]*)((?:[/?#].*)?)$/i;
-const MAILTO = /^mailto:(.*)$/i;
 
 type Schema = Record<string, any>;
 
@@ -58,53 +58,6 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
 };
-
-/** What a template reads: its variables in order, or why it is no template. */
-export type PathTemplateReading =
-  | { readonly variables: readonly string[] }
-  | { readonly invalid: string };
-
-/**
- * A path template's variables, or the reason it is not one. A variable is a
- * whole path segment `{<name>}`, `<name>` a Telo name, each named once; an
- * absolute URL's authority, its query and its fragment hold none.
- */
-export function readPathTemplate(template: string): PathTemplateReading {
-  let rest = template;
-  const absolute = ABSOLUTE_URL.exec(template);
-  if (absolute) {
-    if (/[{}]/.test(absolute[2]!)) {
-      return { invalid: `its authority '${absolute[2]}' holds a variable — only the path segments after the authority are variables` };
-    }
-    rest = absolute[3]!;
-  } else {
-    const mailto = MAILTO.exec(template);
-    if (mailto) rest = mailto[1]!;
-  }
-  const tailAt = rest.search(/[?#]/);
-  const path = tailAt === -1 ? rest : rest.slice(0, tailAt);
-  const tail = tailAt === -1 ? "" : rest.slice(tailAt);
-  if (/[{}]/.test(tail)) {
-    return { invalid: `its query or fragment '${tail}' holds '{' or '}' — a variable is a whole path segment` };
-  }
-  const variables: string[] = [];
-  for (const segment of path.split("/")) {
-    if (!/[{}]/.test(segment)) continue;
-    const whole = /^\{([^{}]*)\}$/.exec(segment);
-    if (!whole) {
-      return { invalid: `segment '${segment}' holds a variable beside other text — a variable is a whole segment, '/{<name>}/'` };
-    }
-    const name = whole[1]!;
-    if (!VARIABLE_NAME.test(name)) {
-      return { invalid: `'{${name}}' names no variable — a name matches /^[A-Za-z_][A-Za-z0-9_]*$/` };
-    }
-    if (variables.includes(name)) {
-      return { invalid: `'{${name}}' appears twice — each variable names one segment` };
-    }
-    variables.push(name);
-  }
-  return { variables };
-}
 
 /** The annotation as the sites read it. Lenient: a part the strict half
  *  refuses is read as absent, so nothing beyond its own refusal follows. */

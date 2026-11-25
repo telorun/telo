@@ -43,6 +43,7 @@ import {
 } from "@telorun/templating";
 import { buildCelEnvironment } from "./cel-environment.js";
 import type { AjvErrorLike } from "./schema-error-report.js";
+import type { ValidationUnfinished } from "./schema-validation.js";
 
 export type StandInClass = "computed" | "produced";
 
@@ -187,12 +188,13 @@ export interface LocatedFinding extends AjvErrorLike {
  * Asked about the judged schema itself, the findings are the host's own
  * whole-schema validation's — whatever defaults that fills are in `value` when
  * it returns; asked about a node inside it, no default is applied and nothing is
- * written. `undefined` when the node lies in no document the validator holds.
+ * written. `undefined` when the node lies in no document the validator holds, and
+ * {@link ValidationUnfinished} when the validation could not finish.
  */
 export type SchemaNodeFindings = (
   node: object,
   value: unknown,
-) => readonly LocatedFinding[] | undefined;
+) => readonly LocatedFinding[] | undefined | ValidationUnfinished;
 
 /** A `oneOf` that failed because SEVERAL branches matched: which one a value
  *  takes is decided by its content, so it is value-level. */

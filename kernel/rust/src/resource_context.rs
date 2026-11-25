@@ -13,6 +13,9 @@ use std::rc::Rc;
 
 use serde_json::Value;
 use telo_analyzer::builtins::is_supported_capability;
+use telo_analyzer::schema_error_report::value_type_refusal_code;
+use telo_analyzer::schema_validation::{schema_nesting_exceeded_message, SCHEMA_NESTING_EXCEEDED};
+use telo_analyzer::runtime_code_of;
 
 use crate::controller_loader::ControllerLoader;
 use crate::controller_loaders::native_abi::host_vtable;
@@ -43,6 +46,7 @@ pub fn create_resource(
     }
 
     refuse_text_fields(&definition, name)?;
+    refuse_relative_host_path_literals(&definition, manifest, name)?;
     validate_against_kind_schema(&definition, manifest, name)?;
     refuse_misplaced_host_paths(&definition, manifest, name)?;
 
@@ -98,35 +102,57 @@ fn reaches_text(schema: &Value) -> bool {
     }
 }
 
-/// A host path that is relative, that exists as the other kind of entry than its
-/// slot names, or that cannot be read — checked in the order the Node kernel
-/// checks them at creation.
-fn refuse_misplaced_host_paths(definition: &Definition, manifest: &Value, name: &str) -> Result<(), KernelError> {
-    let Some(schema) = definition.manifest.get("schema") else {
+/// A relative host path written in the document — what Node's load refuses as
+/// `HOST_PATH_RELATIVE` before anything is created, refused here before the schema,
+/// whose `x-telo-type` would otherwise word it, since this kernel's analysis has no
+/// host-path pass.
+fn refuse_relative_host_path_literals(definition: &Definition, manifest: &Value, name: &str) -> Result<(), KernelError> {
+    let Some(schema) = definition.manifest.get("schema").filter(|_| definition.declares_host_path()) else {
         return Ok(());
     };
-    if !definition.declares_host_path() {
-        return Ok(());
-    }
-    let label = format!("{}/{name}", definition.kind);
-    refuse_mismatched_host_paths(manifest, schema, &label)?;
-    refuse_relative_host_paths(manifest, schema, &label)
+    refuse_relative_host_paths(manifest, schema, &format!("{}/{name}", definition.kind))
 }
 
-/// Check the document against the kind's author-facing schema, compiled once per
-/// kind by [`Definition::author_schema`].
+/// A host path that exists as the other kind of entry than its slot names, or that
+/// cannot be read — checked after the schema, as the Node kernel checks it at creation.
+fn refuse_misplaced_host_paths(definition: &Definition, manifest: &Value, name: &str) -> Result<(), KernelError> {
+    let Some(schema) = definition.manifest.get("schema").filter(|_| definition.declares_host_path()) else {
+        return Ok(());
+    };
+    refuse_mismatched_host_paths(manifest, schema, &format!("{}/{name}", definition.kind))
+}
+
+/// Check the document against the kind's author-facing schema, compiled once per kind by
+/// [`Definition::author_schema`], as Node's creation does: a copy validated, every literal
+/// at an instance slot decoded first; a value type's own refusal under its own code, naming
+/// the field and the reason, never the value.
 fn validate_against_kind_schema(
     definition: &Definition,
     manifest: &Value,
     name: &str,
 ) -> Result<(), KernelError> {
-    let Some(validator) = definition.author_schema()? else {
-        return Ok(());
+    let written_kind = manifest.get("kind").and_then(Value::as_str).unwrap_or(&definition.kind).to_string();
+    let refused = |reason: String| {
+        KernelError::new(
+            "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED",
+            format!("Resource does not match schema for kind {written_kind}: {reason}"),
+        )
     };
-    validator.validate(manifest).map_err(|message| {
-        KernelError::manifest_validation_failed(format!(
-            "resource '{name}' of kind '{}' is invalid: {message}",
-            definition.kind
-        ))
-    })
+    let validator = match definition.author_schema() {
+        Ok(Some(validator)) => validator,
+        Ok(None) => return Ok(()),
+        Err(message) => return Err(refused(message)),
+    };
+    let Err(refusal) = validator.check(&validator.decoded(manifest)) else { return Ok(()) };
+    // A validation that could not finish holds no verdict on the resource.
+    if refusal.issues.is_none() {
+        return Err(KernelError::new(
+            runtime_code_of(SCHEMA_NESTING_EXCEEDED),
+            schema_nesting_exceeded_message(&format!("{}/{name}", definition.kind), "the resource"),
+        ));
+    }
+    if let Some((issue, code)) = refusal.issues.iter().flatten().find_map(|issue| value_type_refusal_code(issue).map(|code| (issue, code))) {
+        return Err(KernelError::new(format!("ERR_{code}"), format!("{}/{name}: {}", definition.kind, issue.message)));
+    }
+    Err(refused(refusal.message))
 }
