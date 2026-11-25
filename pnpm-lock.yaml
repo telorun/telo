@@ -50,10 +50,10 @@ importers:
         specifier: workspace:*
         version: link:../../templating/nodejs
       ajv:
-        specifier: ^8.17.1
+        specifier: 8.20.0
         version: 8.20.0
       ajv-formats:
-        specifier: ^3.0.1
+        specifier: 3.0.1
         version: 3.0.1(ajv@8.20.0)
       css-selector-parser:
         specifier: ^3.3.0
@@ -699,10 +699,10 @@ importers:
         specifier: workspace:*
         version: link:../../templating/nodejs
       ajv:
-        specifier: ^8.17.1
+        specifier: 8.20.0
         version: 8.20.0
       ajv-formats:
-        specifier: ^3.0.1
+        specifier: 3.0.1
         version: 3.0.1(ajv@8.20.0)
       packageurl-js:
         specifier: ^2.0.1
@@ -2018,10 +2018,10 @@ importers:
         specifier: workspace:*
         version: link:../../http-signature/nodejs
       ajv:
-        specifier: ^8.17.1
+        specifier: 8.20.0
         version: 8.20.0
       ajv-formats:
-        specifier: ^3.0.1
+        specifier: 3.0.1
         version: 3.0.1(ajv@8.20.0)
       fastify:
         specifier: ^5.12.5
@@ -3949,7 +3949,7 @@ importers:
         specifier: ^20.0.0
         version: 20.19.43
       ajv:
-        specifier: ^8.17.1
+        specifier: 8.20.0
         version: 8.20.0
       typescript:
         specifier: ^5.0.0

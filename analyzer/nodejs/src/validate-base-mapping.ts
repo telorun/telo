@@ -5,6 +5,7 @@ import { celExpressionsOf, isTaggedSentinel } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { effectiveAuthorSchema, resolveParent, type DefResolver } from "./extends-resolution.js";
+import { SCHEMA_NESTING_EXCEEDED, schemaNestingExceededMessage } from "./schema-validation.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
 const SOURCE = "telo-analyzer";
@@ -152,8 +153,18 @@ function checkObject(
       }
       continue;
     }
-    const issues = ctx.registry.validateWithRefs(fieldValue, propSchema);
-    for (const issue of issues) {
+    const outcome = ctx.registry.validateWithRefs(fieldValue, propSchema);
+    if (!outcome.finished) {
+      ctx.diagnostics.push({
+        severity: DiagnosticSeverity.Error,
+        code: SCHEMA_NESTING_EXCEEDED,
+        source: SOURCE,
+        message: schemaNestingExceededMessage(ctx.label, `'${fieldPath}'`),
+        data: { resource: ctx.resource, filePath: ctx.filePath, path: fieldPath },
+      });
+      continue;
+    }
+    for (const issue of outcome.issues) {
       ctx.diagnostics.push({
         severity: DiagnosticSeverity.Error,
         code: "BASE_SCHEMA_MISMATCH",

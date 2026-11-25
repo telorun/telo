@@ -67,3 +67,19 @@ kind: Ui.Page
 metadata: { name: repeated }
 path: /plans/{id}/revisions/{id}
 children: []
+---
+kind: Ui.Page
+metadata: { name: afterQuery }
+path: /plans?view=all/{id}
+children: []
+---
+kind: Ui.Page
+metadata: { name: keywordVariable }
+path: /plans/{as}
+children: []
+---
+kind: Ui.Page
+metadata: { name: keywordQuery }
+path: /keyword-query
+query: { if: { type: string } }
+children: []

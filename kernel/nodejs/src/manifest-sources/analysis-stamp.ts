@@ -5,7 +5,7 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import type { Logger } from "@telorun/sdk";
-import { readKernelVersion, readVersion, reportUndeterminableVersion } from "../runtime-versions.js";
+import { readCacheKeyVersion, readKernelVersion, reportUndeterminableVersion } from "../runtime-versions.js";
 
 /**
  * Hash-keyed analysis cache: a tiny JSON sidecar under `.telo/cache/analysis/`
@@ -44,7 +44,7 @@ import { readKernelVersion, readVersion, reportUndeterminableVersion } from "../
 const ANALYSIS_STAMP_FORMAT_VERSION = 1;
 
 const KERNEL_VERSION = readKernelVersion();
-const ANALYZER_VERSION = readVersion("@telorun/analyzer");
+const ANALYZER_VERSION = readCacheKeyVersion("@telorun/analyzer");
 
 export interface AnalysisStamp {
   version: number;

@@ -1,0 +1,12 @@
+kind: Telo.Application
+metadata: { name: PatternProbe }
+---
+# A lookahead, in a definition nothing references: the host's regular
+# expressions read it, RE2 does not, and it is judged though never compiled.
+kind: Telo.Definition
+metadata: { name: Model }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties: { code: { type: string } }
+  definitions: { Unused: { type: string, pattern: "^(?!tmp$)[a-z]+$" } }

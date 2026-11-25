@@ -1,0 +1,17 @@
+units:
+  kernel: Added
+body: "The Rust kernel validates every resource, invocation contract and declared
+  error's data through the Rust analyzer's validator twin instead of the jsonschema
+  crate, and refuses as the Node kernel does: a resource its kind's schema refuses is
+  ERR_RESOURCE_SCHEMA_VALIDATION_FAILED, worded 'Resource does not match schema for kind
+  <Kind>: Invalid value passed: <value>. Error: <sentence>' with an instance value in
+  its plain encoding, a sensitive member written [redacted] and each union decided as
+  telo check decides it, where it used to be ERR_MANIFEST_VALIDATION_FAILED; a value
+  type's own refusal raises its own code (ERR_URL_INVALID); a contract refusal is
+  ERR_INPUT_INVALID / ERR_OUTPUT_INVALID naming <Kind>/<name> and carrying data: {
+  issues } in the value-issue vocabulary (pointer, keyword, params); a Telo.Url written
+  as text or as an object of its members is built before a call's inputs or a result are
+  validated, and one that does not build is refused under the direction's code, its
+  issue carrying code ERR_URL_INVALID, never quoting the value; a declared default is
+  filled with a value type's default decoded first; and format: path-template is
+  enforced at creation."

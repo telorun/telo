@@ -5,7 +5,7 @@ import type { DefinitionRegistry } from "./definition-registry.js";
 import { type ContractDirection, type DefResolver, effectiveContractField } from "./extends-resolution.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { reachSites, siteRefEntry } from "./reference-reach.js";
-import { validateAgainstSchemaWithDefaults } from "./schema-compat.js";
+import { finishedValidation, SCHEMA_NESTING_EXCEEDED, schemaNestingExceededMessage, validateAgainstSchemaWithDefaults } from "./schema-validation.js";
 import { type SignatureMismatch } from "./signature-substitution.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { isResolvedReference } from "./resolved-reference.js";
@@ -130,7 +130,21 @@ function checkRefSlotWiring(
       // A run is the contract applied to `{}` with defaults filled, as the kernel
       // binds it: whatever it still refuses can never be started there.
       if (runSite) {
-        const issues = targetSchema ? validateAgainstSchemaWithDefaults({}, targetSchema) : [];
+        const outcome = targetSchema ? validateAgainstSchemaWithDefaults({}, targetSchema) : finishedValidation([]);
+        if (!outcome.finished) {
+          diagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: SCHEMA_NESTING_EXCEEDED,
+            source: SOURCE,
+            message: schemaNestingExceededMessage(
+              `${m.kind}/${resource.name}`,
+              `the call \`run()\` makes of '${name}' at '${path}'`,
+            ),
+            data: { resource, filePath, path },
+          });
+          continue;
+        }
+        const issues = outcome.issues;
         if (issues.length > 0) {
           diagnostics.push({
             severity: DiagnosticSeverity.Error,

@@ -20,6 +20,7 @@ use crate::import_resolution_diagnostics::{import_failure_code, import_failure_d
 use crate::load_refusal_code::runtime_code_of;
 use crate::loaded_types::LoadedGraph;
 use crate::metadata_stamps::METADATA_RESERVED_FIELD;
+use crate::schema_validation::SCHEMA_NESTING_EXCEEDED;
 use crate::requires_gate::UndecidedHold;
 use crate::system_kinds::LIBRARY;
 use crate::types::{kind_of, AnalysisDiagnostic, DiagnosticSeverity};
@@ -49,8 +50,8 @@ pub trait LoadRefusalHost {
 /// The refusal of a load of `graph` from `entry_url`, or `None` when it loads, by the first
 /// group that refuses, in Node's order: (1) the import failures; (2) the parse and coded loader
 /// findings; the module artifacts are built; (3) the version conflicts; (4) the module-file
-/// findings; (5) an entry that is a library; the analysis runs; (6) the metadata stamps, beside every other error the analysis
-/// found; (8) a module the requires gate left undecided holding errors, then the analysis's
+/// findings; (5) an entry that is a library; the analysis runs; (6) the metadata stamps, then (7) the validations that
+/// could not finish, each beside every other error the analysis found; (9) a module the requires gate left undecided holding errors, then the analysis's
 /// errors. A construct this build cannot read is refused before all.
 pub fn load_refusal<H: LoadRefusalHost>(
     graph: &LoadedGraph,
@@ -111,17 +112,15 @@ pub fn load_refusal<H: LoadRefusalHost>(
     let mut stamps = graph.metadata_diagnostics.clone();
     stamps.extend(errors.iter().filter(|d| is_stamp(d)).cloned());
     if !stamps.is_empty() {
-        let stamps = FindingOrder::new(graph).sort(stamps);
-        let message = stamps.iter().map(located).collect::<Vec<_>>().join("\n");
-        let mut diagnostics: Vec<AnalysisDiagnostic> = stamps
-            .into_iter()
-            .map(|mut d| {
-                d.code = d.code.map(|code| runtime_code_of(&code));
-                d
-            })
-            .collect();
-        diagnostics.extend(errors.into_iter().filter(|d| !is_stamp(d)));
-        return Ok(Some(LoadRefusal { code: runtime_code_of(METADATA_RESERVED_FIELD), message, diagnostics }));
+        let others = errors.into_iter().filter(|d| !is_stamp(d)).collect();
+        return Ok(Some(own_code_refusal(graph, METADATA_RESERVED_FIELD, stamps, others)));
+    }
+    // A validation that could not finish holds no verdict on its value.
+    let is_unfinished = |d: &AnalysisDiagnostic| d.code.as_deref() == Some(SCHEMA_NESTING_EXCEEDED);
+    let unfinished: Vec<AnalysisDiagnostic> = errors.iter().filter(|d| is_unfinished(d)).cloned().collect();
+    if !unfinished.is_empty() {
+        let others = errors.into_iter().filter(|d| !is_unfinished(d)).collect();
+        return Ok(Some(own_code_refusal(graph, SCHEMA_NESTING_EXCEEDED, unfinished, others)));
     }
     let undecided: Vec<String> =
         analysis.undecided.iter().filter(|hold| !hold.hidden_errors.is_empty()).map(undecided_message).collect();
@@ -140,6 +139,27 @@ pub fn load_refusal<H: LoadRefusalHost>(
         }));
     }
     Ok(None)
+}
+
+/// `found`, raised under the runtime twin of `code` with each finding naming its file, beside
+/// `others`.
+fn own_code_refusal(
+    graph: &LoadedGraph,
+    code: &str,
+    found: Vec<AnalysisDiagnostic>,
+    others: Vec<AnalysisDiagnostic>,
+) -> LoadRefusal {
+    let found = FindingOrder::new(graph).sort(found);
+    let message = found.iter().map(located).collect::<Vec<_>>().join("\n");
+    let mut diagnostics: Vec<AnalysisDiagnostic> = found
+        .into_iter()
+        .map(|mut d| {
+            d.code = d.code.map(|code| runtime_code_of(&code));
+            d
+        })
+        .collect();
+    diagnostics.extend(others);
+    LoadRefusal { code: runtime_code_of(code), message, diagnostics }
 }
 
 /// Why a module the gate left undecided is refused: the bound this kernel cannot judge, never

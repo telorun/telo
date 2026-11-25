@@ -9,7 +9,8 @@
  * against the base, which holds none of them, and the schema fails to compile.
  *
  * So a schema is registered and compiled with every hoisted fragment definition
- * of every named shape it reaches, transitively, beside its own. The reserved
+ * of every named shape it reaches, transitively, beside its own — and a node
+ * taken out of a document with that document's. The reserved
  * `telo:` namespace is what makes the merge safe: two documents holding
  * `telo:Message` hold the same fragment.
  *
@@ -49,11 +50,18 @@ const hoistedDefsOf = (document: Schema): [string, unknown][] =>
  * `schema` with the hoisted fragment definitions of every named shape it
  * reaches — through `lookup`, at any depth — added to its own `$defs`, or
  * `schema` itself when it lacks none of them. Copy-on-write.
+ *
+ * `base` is the document `schema` was read out of, when it is a node taken from
+ * inside another document (an `x-telo-schema-from` site): its `#/$defs/telo:*`
+ * pointers were written against `base`, so `base` is reached too.
  */
-export function withReachedFragmentDefs<T extends Schema>(schema: T, lookup: NamedShapeLookup): T {
+export function withReachedFragmentDefs<T extends Schema>(schema: T, lookup: NamedShapeLookup, base?: Schema): T {
   if (!isObject(schema)) return schema;
   const own = new Set(hoistedDefsOf(schema).map(([key]) => key));
   const added: Record<string, unknown> = {};
+  if (isObject(base) && base !== schema) {
+    for (const [key, body] of hoistedDefsOf(base)) if (!own.has(key)) added[key] = body;
+  }
   const visited = new Set<string>();
   const pending = [...referencedShapes(schema, new Set(), new Set())];
   while (pending.length > 0) {

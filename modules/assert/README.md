@@ -16,7 +16,7 @@ Inline assertions for Telo manifests — pluggable matchers that compare actual 
 | `Assert.Equals` | Assert two values are deep-equal. |
 | `Assert.Matches` | Assert a string matches a regex / pattern. |
 | `Assert.Contains` | Assert a collection or string contains a value. |
-| `Assert.Schema` | Validate a value against a JSON Schema. |
+| `Assert.Schema` | Validate a value against a JSON Schema (`schema:`; a pattern RE2 cannot read is refused before the run). |
 | `Assert.Manifest` | Walk structured manifest data and assert on it. |
 | `Assert.Events` | Assert on emitted kernel events. |
 | `Assert.ModuleContext` | Capture the module-level context for assertions. |

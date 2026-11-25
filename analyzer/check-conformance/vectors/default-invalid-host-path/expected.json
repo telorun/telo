@@ -1,0 +1,29 @@
+{
+  "diagnostics": [
+    {
+      "code": "DEFAULT_INVALID",
+      "data": {
+        "filePath": "telo.yaml",
+        "path": "variables.dataDir.default",
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "DataApp"
+        }
+      },
+      "message": "Telo.Application/DataApp: the default of variables.dataDir must NOT have fewer than 2 characters. A default is the value the input holds when nothing supplies one, so it must satisfy the input's own declaration.",
+      "range": {
+        "end": {
+          "character": 99,
+          "line": 3
+        },
+        "start": {
+          "character": 93,
+          "line": 3
+        }
+      },
+      "severity": 1,
+      "source": "telo-analyzer"
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] Manifest validation failed\n  [DEFAULT_INVALID] Telo.Application/DataApp: the default of variables.dataDir must NOT have fewer than 2 characters. A default is the value the input holds when nothing supplies one, so it must satisfy the input's own declaration."
+}

@@ -43,7 +43,7 @@ pub struct Definition {
     /// Author-facing schema, compiled once. Every resource of a kind validates
     /// against the same schema, so recompiling per resource pays a JSON Schema
     /// build for something that cannot have changed.
-    author_schema: OnceCell<Option<Rc<SchemaValidator>>>,
+    author_schema: OnceCell<Result<Option<Rc<SchemaValidator>>, String>>,
     /// Whether the schema declares a host path anywhere, read once.
     declares_host_path: OnceCell<bool>,
     /// The display message each code declares, read and judged at registration.
@@ -87,40 +87,16 @@ impl Definition {
         })
     }
 
-    /// The compiled author-facing schema, or `None` when the kind declares none.
-    ///
-    /// `kind` and `metadata` are injected before compiling: a definition's schema
-    /// is `additionalProperties: false` over the fields the *author* may write,
-    /// and those two are the kernel's. A kind that declares no fields at all
-    /// still gets them, or the closed schema would reject every document of it.
-    pub fn author_schema(&self) -> Result<Option<Rc<SchemaValidator>>, KernelError> {
-        if let Some(cached) = self.author_schema.get() {
-            return Ok(cached.clone());
-        }
-        let compiled = match self.manifest.get("schema") {
-            None => None,
-            Some(schema) => {
-                let mut schema = schema.clone();
-                if let Some(object) = schema.as_object_mut() {
-                    let properties = object
-                        .entry("properties")
-                        .or_insert_with(|| serde_json::json!({}));
-                    if let Some(properties) = properties.as_object_mut() {
-                        properties
-                            .entry("kind")
-                            .or_insert_with(|| serde_json::json!({ "type": "string" }));
-                        properties
-                            .entry("metadata")
-                            .or_insert_with(|| serde_json::json!({ "type": "object" }));
-                    }
-                }
-                Some(Rc::new(SchemaValidator::compile(&schema)?))
-            }
-        };
-        // Ignoring the set race is safe: `OnceCell` is single-threaded here, so
-        // a second set can only mean a re-entrant call, and both values are equal.
-        let _ = self.author_schema.set(compiled.clone());
-        Ok(compiled)
+    /// The compiled author-facing schema, or `None` when the kind declares none; a schema
+    /// that does not compile is the validator's message. The implicit `kind` / `metadata`
+    /// beside a closed schema are the validator's canonical form's.
+    pub fn author_schema(&self) -> Result<Option<Rc<SchemaValidator>>, String> {
+        self.author_schema
+            .get_or_init(|| match self.manifest.get("schema") {
+                None => Ok(None),
+                Some(schema) => SchemaValidator::compile(schema).map(|validator| Some(Rc::new(validator))),
+            })
+            .clone()
     }
 
     /// The loaded controller, resolving (and building) it on first use.

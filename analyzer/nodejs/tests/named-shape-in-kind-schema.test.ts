@@ -1,3 +1,4 @@
+import { finishedIssues } from "./judged-validation.js";
 import { describe, expect, it } from "vitest";
 import { DefinitionRegistry } from "../src/definition-registry.js";
 import { resolveRefIn, selectUnionBranch, substituteCelFields } from "../src/schema-compat.js";
@@ -57,7 +58,7 @@ const cel = (source: string) => ({ __tagged: true, engine: "cel", source }) as u
 describe("a kind schema referencing a named shape", () => {
   it("validates the resource, rather than silently checking nothing", () => {
     const defs = registry();
-    const issues = defs.validateResourceConfig({ content: [{ paragraph: "x" }] }, KIND_SCHEMA);
+    const issues = finishedIssues(defs.validateResourceConfig({ content: [{ paragraph: "x" }] }, KIND_SCHEMA));
     expect(issues).toHaveLength(1);
     expect(issues[0].message).toContain("matches no alternative");
     expect(issues[0].path).toBe("content[0]");
@@ -65,9 +66,8 @@ describe("a kind schema referencing a named shape", () => {
 
   it("reports a fault inside the referenced shape at its own path", () => {
     const defs = registry();
-    const issues = defs.validateResourceConfig(
-      { content: [{ table: { body: "not-an-array" } }] },
-      KIND_SCHEMA,
+    const issues = finishedIssues(
+      defs.validateResourceConfig({ content: [{ table: { body: "not-an-array" } }] }, KIND_SCHEMA),
     );
     expect(issues.map((i) => [i.path, i.message])).toEqual([
       ["content[0].table.body", "/content/0/table/body must be array"],
@@ -86,7 +86,7 @@ describe("a kind schema referencing a named shape", () => {
     // per slot, which is what proves the shape was actually read.
     expect(substituted.content[0].text).toBe("");
     expect(substituted.content[1].table.body).toEqual([]);
-    expect(defs.validateResourceConfig(substituted, KIND_SCHEMA)).toEqual([]);
+    expect(finishedIssues(defs.validateResourceConfig(substituted, KIND_SCHEMA))).toEqual([]);
   });
 
   it("resolves a reference INSIDE the shape against that shape's own document", () => {

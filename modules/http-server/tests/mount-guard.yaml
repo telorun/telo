@@ -156,6 +156,7 @@ steps:
             status: 500
             detail: The request is not valid.
             code: ERR_INPUT_INVALID
+            data: { issues: [{ pointer: /authorization, keyword: invalid, params: {} }] }
         preflightStatus: 204
         sibling: { status: 200, body: { ok: true } }
         # No notFoundHandler: the bare 404 problem.

@@ -58,6 +58,10 @@ impl TemplatingEngine for InterpolateEngine {
         Some(serde_json::json!({ "type": "string" }))
     }
 
+    fn holds_expressions(&self) -> bool {
+        true
+    }
+
     fn expression_regions(&self, source: &str) -> Vec<ExpressionRegion> {
         hole_regions(source)
     }

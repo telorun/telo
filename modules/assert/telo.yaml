@@ -66,7 +66,7 @@ schema:
         required: [code]
   properties:
     metadata: { type: object, properties: { name: { type: string } }, required: [name] }
-    schema: { title: Schema, description: Value to assert (can be any type or expression) }
+    schema: { title: Schema, description: The JSON Schema the value must satisfy., allOf: [{ $ref: "telo://manifest#/$defs/JsonSchema7" }] }
   required: [metadata, schema]
 ---
 kind: Telo.Definition

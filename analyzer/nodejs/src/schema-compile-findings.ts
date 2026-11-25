@@ -9,10 +9,13 @@
  * pair — the document writing the reference and the shape it names — is one
  * `SCHEMA_COMPILE_ERROR` at the kind, held where the pair is reached and the
  * shape there does not compile or holds no node at the pointer. The plain
- * analysis runs the same rule over its one configuration.
+ * analysis runs the same rule over its one configuration. A pattern RE2 refuses
+ * is never one of these: the schema fragments report it as `SCHEMA_VIOLATION`
+ * where the schema is written.
  *
  * Browser-safe.
  */
+import { schemaPatternRefusalIn } from "./schema-validation.js";
 import type { ResourceManifest } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
@@ -57,6 +60,13 @@ function kindSchemas(kinds: readonly ResourceManifest[], scope: SchemaCompileSco
   return out;
 }
 
+/** Whether `error` is the schema pattern seam's refusal of a pattern `schema`
+ *  holds — a `SCHEMA_VIOLATION` at the pattern, which the schema fragments report
+ *  where the schema is written, never a compile error. */
+function isPatternRefusal(schema: unknown, error: string): boolean {
+  return schemaPatternRefusalIn(schema)?.message === error;
+}
+
 /** What AJV reports for a reference that names nothing. */
 function missingReference(ref: string, from: string): string {
   return `can't resolve reference ${ref} from id ${from}`;
@@ -73,7 +83,8 @@ export function schemaCompileFindings(
   const compile = scope.defs.standInCompiler(shapes.standIns(roots));
   const classError = (id: string, index: number): string | undefined => {
     const shape = shapes.classes(id)[index]!;
-    return shapes.verdict("compile", shape, () => compile(shape.schema, id));
+    const error = shapes.verdict("compile", shape, () => compile(shape.schema, id));
+    return error !== undefined && isPatternRefusal(shape.schema, error) ? undefined : error;
   };
   /** Where `edge`'s target compiles and holds a node at its pointer. */
   const compilesAt = (edge: ShapeEdge) => {
@@ -100,7 +111,9 @@ export function schemaCompileFindings(
       },
     });
     const own = compile(schema);
-    if (own !== undefined) out.push({ held: TRUE, render: () => [diagnostic(own)] });
+    if (own !== undefined && !isPatternRefusal(schema, own)) {
+      out.push({ held: TRUE, render: () => [diagnostic(own)] });
+    }
     for (const pair of shapes.reach(roots[at]!)) {
       const held = space.and(pair.condition, space.not(compilesAt(pair)));
       if (held === FALSE) continue;

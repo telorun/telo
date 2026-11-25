@@ -1,0 +1,7 @@
+# A named shape whose pattern RE2 cannot read: refused where it is written.
+kind: Telo.Application
+metadata: { name: SchemaPatternNamedShape, version: 1.0.0 }
+---
+kind: Telo.JsonSchema
+metadata: { name: Code }
+schema: { type: string, pattern: "^(?!tmp$)[a-z]+$" }

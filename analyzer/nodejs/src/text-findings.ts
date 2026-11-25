@@ -69,6 +69,7 @@ import {
   type InstantiatedKind,
   type ManifestTexts,
   type TextDefResolver,
+  type TextPassOptions,
 } from "./validate-texts.js";
 
 type Keys = readonly (string | number)[];
@@ -93,7 +94,7 @@ export interface TextFindingsInputs {
   readonly moduleCallNames: ReadonlyMap<string, ReadonlySet<string>>;
   /** A named shape as `witness` holds it. */
   readonly schemaForId: (id: string, witness: World) => Record<string, any> | undefined;
-  readonly accepts: (fragment: TextFragment, value: unknown) => boolean;
+  readonly accepts: TextPassOptions["accepts"];
   /** Every imported library's full documents. */
   readonly libraries: readonly ModuleDocuments[];
   /** What an expression was typed as, by its keys. */

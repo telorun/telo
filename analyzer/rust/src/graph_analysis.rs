@@ -33,7 +33,7 @@ pub struct GraphAnalysis<'g> {
 /// Analyze `graph` as `telo check` does: the entry, then every library it loads by that
 /// library's own verdict.
 pub fn analyze_loaded_graph<'g>(graph: &'g LoadedGraph, options: &DependencyAnalysisOptions) -> GraphAnalysis<'g> {
-    let analysis = analyze(graph, options.analysis);
+    let analysis = analyze(graph);
     let dependencies = analyze_dependencies(graph, options);
     let assembled = assemble_entry_diagnostics(graph, analysis);
     let entry = without_covered_dependency_findings(&assembled.diagnostics, &dependencies);

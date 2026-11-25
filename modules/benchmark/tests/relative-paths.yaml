@@ -1,0 +1,22 @@
+# A subject's relative path is RE2-checked: an absolute path, the directory
+# itself, a `..` segment, a line break and an empty path are refused, and every
+# other relative path is accepted.
+kind: Telo.Application
+metadata: { name: BenchmarkRelativePathsTest }
+imports: { Assert: ../../assert }
+targets: [!ref relativePaths]
+---
+kind: Assert.Manifest
+metadata: { name: relativePaths }
+source: ./__fixtures__/relative-paths/telo.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "Benchmark.Comparison/refused: /subjects/0/caches/0 matches a shape that is not allowed here" }
+    - { code: SCHEMA_VIOLATION, message: "Benchmark.Comparison/refused: /subjects/0/caches/1 matches a shape that is not allowed here" }
+    - { code: SCHEMA_VIOLATION, message: "Benchmark.Comparison/refused: /subjects/0/caches/2 matches a shape that is not allowed here" }
+    - { code: SCHEMA_VIOLATION, message: "Benchmark.Comparison/refused: /subjects/0/caches/3 matches a shape that is not allowed here" }
+    - { code: SCHEMA_VIOLATION, message: "Benchmark.Comparison/refused: /subjects/0/caches/4 matches a shape that is not allowed here" }
+    - { code: SCHEMA_VIOLATION, message: "Benchmark.Comparison/refused: /subjects/0/caches/5 matches a shape that is not allowed here" }
+    - { code: SCHEMA_VIOLATION, message: "Benchmark.Comparison/refused: /subjects/0/caches/6 must match pattern \"^[^\\n\\r\u2028\u2029]+$\"" }
+    - { code: SCHEMA_VIOLATION, message: "Benchmark.Comparison/refused: /subjects/0/caches/7 must match pattern \"^[^\\n\\r\u2028\u2029]+$\"" }
+    - { code: SCHEMA_VIOLATION, message: "Benchmark.Comparison/refused: /subjects/0/caches/8 must match pattern \"^[^\\n\\r\u2028\u2029]+$\"" }

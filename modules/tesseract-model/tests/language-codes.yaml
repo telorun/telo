@@ -1,0 +1,14 @@
+# A language code is a lower-case name that is not `osd`, the orientation
+# model's: `eng` and `osd_legacy` are accepted, `osd` and `Eng` refused.
+kind: Telo.Application
+metadata: { name: TesseractModelLanguageCodesTest }
+imports: { Assert: ../../assert }
+targets: [!ref languageCodes]
+---
+kind: Assert.Manifest
+metadata: { name: languageCodes }
+source: ./__fixtures__/language-codes/telo.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "TesseractModel.Language/orientation: /code matches a shape that is not allowed here" }
+    - { code: SCHEMA_VIOLATION, message: "TesseractModel.Language/upperCase: /code must match pattern \"^[a-z][a-z0-9_]*$\"" }

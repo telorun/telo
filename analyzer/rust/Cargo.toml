@@ -18,6 +18,8 @@ telorun-glob = { path = "../../packages/glob/rust" }
 telo-templating = { path = "../../templating/rust" }
 # RE2, the pattern language a migration entry's value patterns are written in.
 telorun-cel = { path = "../../cel/rust" }
+# The message core: the `message-pattern` format is its pattern parser.
+telorun-message-format = { path = "../../message-format/rust" }
 # A YAML key is filed under ECMAScript's text of its number, as the Node index files it.
 telorun-cel-value = { path = "../../cel/rust/value" }
 # Value types, read as data — backend-free, so no controller backend comes with it.

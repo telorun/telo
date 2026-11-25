@@ -3,7 +3,7 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { hostAnchorFor } from "./host-path-slot.js";
 import { decodePlainLiterals, mapTextLeaves } from "./plain-literal-decoding.js";
 import { residualEntrySchema } from "./residual-schema.js";
-import { validateAgainstSchema } from "./schema-compat.js";
+import { SCHEMA_NESTING_EXCEEDED, schemaNestingExceededMessage, validateAgainstSchema } from "./schema-validation.js";
 import { valueTypeRefusalCode } from "./schema-error-report.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
@@ -53,7 +53,23 @@ export function validateInputDefaults(
           schema,
           (slot, text) => (hostAnchorFor(slot, text) !== undefined ? ANCHORED : text),
         );
-        for (const issue of validateAgainstSchema(value, schema)) {
+        const at = {
+          resource: { kind: manifest.kind, name },
+          filePath: typeof metadata.source === "string" ? metadata.source : undefined,
+          path: `${block}.${key}.default`,
+        };
+        const outcome = validateAgainstSchema(value, schema);
+        if (!outcome.finished) {
+          out.push({
+            severity: DiagnosticSeverity.Error,
+            code: SCHEMA_NESTING_EXCEEDED,
+            source: SOURCE,
+            message: schemaNestingExceededMessage(`${manifest.kind}/${name}`, `the default of ${block}.${key}`),
+            data: { ...at },
+          });
+          continue;
+        }
+        for (const issue of outcome.issues) {
           // The rendered issue opens with its instance path, `/` for the whole value.
           const text = issue.message.replace(/^\/ /, "");
           out.push({
@@ -64,11 +80,7 @@ export function validateInputDefaults(
               `${manifest.kind}/${name}: the default of ${block}.${key} ${text}. ` +
               `A default is the value the input holds when nothing supplies one, so it must ` +
               `satisfy the input's own declaration.`,
-            data: {
-              resource: { kind: manifest.kind, name },
-              filePath: typeof metadata.source === "string" ? metadata.source : undefined,
-              path: `${block}.${key}.default`,
-            },
+            data: { ...at },
           });
         }
       }

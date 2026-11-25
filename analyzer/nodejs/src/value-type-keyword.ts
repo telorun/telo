@@ -32,6 +32,8 @@ import {
   VALUE_TYPE_BINDINGS,
   X_TELO_TYPE,
   readValueTypeSlot,
+  SCHEMA_REGEX_FORMAT,
+  schemaHeldValue,
   valueTypeBoundHolds,
   valueTypeBoundsOf,
   valueTypeBoundsText,
@@ -114,7 +116,7 @@ export const ANNOTATION_KEYWORDS = [
 /** Folded into the kernel's validator cache key. Bump it with any change to the
  *  code or messages {@link valueTypeKeyword} emits: a validator compiled before
  *  the change is otherwise served from disk unchanged. */
-export const VALUE_TYPE_KEYWORD_VERSION = 8;
+export const VALUE_TYPE_KEYWORD_VERSION = 9;
 
 /** How an AJV instance treats a `live` value type. */
 export interface TeloKeywordOptions {
@@ -211,13 +213,20 @@ export function valueTypeKeyword(options: TeloKeywordOptions = {}): KeywordDefin
         ref: binding.holds,
         code: codegen`require("@telorun/sdk").VALUE_TYPE_BINDINGS[${entry.binding!}].holds`,
       });
+      // A validator's view presents an instance value opaque; this keyword alone
+      // reads the value it holds.
+      const heldOf = cxt.gen.scopeValue("func", {
+        ref: schemaHeldValue,
+        code: codegen`require("@telorun/sdk").schemaHeldValue`,
+      });
+      const held = cxt.gen.const("held", codegen`${heldOf}(${cxt.data})`);
       const bound = boundMemberArguments(entry, cxt.schema);
       const { bounds } = valueTypeBoundsOf(readValueTypeSlot({ [X_TELO_TYPE]: cxt.schema }));
       if (bound.length === 0 && bounds.length === 0) {
-        cxt.pass(codegen`${holds}(${cxt.data})`);
+        cxt.pass(codegen`${holds}(${held})`);
         return;
       }
-      const valid = cxt.gen.let("valid", codegen`${holds}(${cxt.data})`);
+      const valid = cxt.gen.let("valid", codegen`${holds}(${held})`);
       if (bounds.length > 0) {
         const holdsBound = cxt.gen.scopeValue("func", {
           ref: valueTypeBoundHolds,
@@ -225,7 +234,7 @@ export function valueTypeKeyword(options: TeloKeywordOptions = {}): KeywordDefin
         });
         for (const { bound: kind, written } of bounds) {
           cxt.gen.if(valid, () =>
-            cxt.gen.assign(valid, codegen`${holdsBound}(${entry.name}, ${kind}, ${written as string | number}, ${cxt.data})`),
+            cxt.gen.assign(valid, codegen`${holdsBound}(${entry.name}, ${kind}, ${written as string | number}, ${held})`),
           );
         }
       }
@@ -237,13 +246,13 @@ export function valueTypeKeyword(options: TeloKeywordOptions = {}): KeywordDefin
       // the value holds the member at all. One error, this keyword's, whatever
       // inside the argument refused it: the refusal is about the value type.
       for (const { parameter, member } of bound) {
-        cxt.gen.if(codegen`${valid} && ${cxt.data}[${member}] !== undefined`, () => {
+        cxt.gen.if(codegen`${valid} && ${held}[${member}] !== undefined`, () => {
           const accepted = cxt.gen.name("valid");
           cxt.subschema(
             {
               keyword: X_TELO_TYPE,
               schemaProp: parameter,
-              dataProp: member,
+              data: codegen`${held}[${member}]`,
               compositeRule: true,
               createErrors: false,
               allErrors: false,
@@ -369,6 +378,9 @@ export function registerTeloKeywords(
   for (const keyword of ANNOTATION_KEYWORDS) ajv.addKeyword(keyword);
   ajv.addKeyword(valueTypeKeyword(options));
   for (const name of TELO_FORMATS.keys()) ajv.addFormat(name, TELO_AJV_FORMATS[name]);
+  // `format: regex` is the schema pattern seam's verdict, so the meta-schema's own
+  // check of a `pattern` reads RE2 too.
+  ajv.addFormat("regex", SCHEMA_REGEX_FORMAT);
   // A standalone validator names every format through this one expression, so it
   // points at the table holding JSON Schema's formats AND Telo's. Set whether or
   // not `ajv-formats` ran first: its own `??=` would otherwise leave a table

@@ -13,18 +13,28 @@ transport. Its only instantiable kinds are the cookie declarations.
 - **`HttpDispatch.Outcomes`** — `$defs/Returns` and `$defs/Catches`, the response
   rendering lists. A transport anchors its own slots at them with
   `x-telo-schema-from`, so `Http.Api`'s routes, `Http.Server`'s `notFoundHandler`
-  and both scope-level catch lists all validate against the same entries.
+  and both scope-level catch lists all validate against the same entries. An
+  entry's `content.<type>.schema` is a JSON Schema.
 - **`HttpDispatch.Request`** — `$defs/Matcher`, the canonical request matcher
   (`method` — `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `QUERY`, `HEAD` or `OPTIONS` —
   and `path`, with an optional `schema` block of `params`, `query`,
-  `body`, `headers` and `cookies`), and `$defs/Hostname`,
+  `body`, `headers` and `cookies`, each a JSON Schema), and `$defs/Hostname`,
   one entry of a host matcher: a `!ref` to a `Telo.PublicUrl` or
   `Telo.PublicHostPattern` need, never a domain name. `Http.Server`'s
   `mounts[].hostnames` anchors at it, so every HTTP transport reads the same
   matcher with the same meaning. A transport that cannot carry a method narrows `method`
-  in its own schema; `QUERY` takes a body like `POST`.
+  in its own schema; `QUERY` takes a body like `POST`. The `schema` block types
+  `request.*` in a route's CEL (without it `request.*` is untyped), validates the
+  request and feeds the generated OpenAPI document — `query` as query parameters,
+  `params` as path parameters, `body` as the request body, `headers` and `cookies`
+  as header and cookie parameters — so give each property a `type`, a
+  `description` and `examples`. It is distinct from the matcher's top-level
+  `query`, `body` and `headers`, which describe the matcher itself.
 
-Both are `capability: Telo.Type`: they are never instantiated.
+Both are `capability: Telo.Type`: they are never instantiated. Every field
+holding JSON Schema is typed `$ref: telo://manifest#/$defs/JsonSchema7`, so what
+a transport writes there is judged as JSON Schema before the app runs — a
+pattern RE2 cannot read is refused at the pattern.
 
 - **`HttpDispatch.Cookie`** — the abstract every cookie declaration extends, and
   the kind an entry's `cookies[].cookie` slot takes. Its kinds `HostCookie`

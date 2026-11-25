@@ -20,6 +20,7 @@
  *
  * Browser-safe: no Node built-ins.
  */
+import { schemaNestingExceededSentence } from "../schema-validation.js";
 import type { ResourceManifest } from "@telorun/sdk";
 import { canonicalTypeSchemaId, parseCanonicalTypeSchemaId, parseTeloTypeRef } from "@telorun/sdk";
 import { expansionBody, expansionTagOf, isExpansionSentinel } from "@telorun/templating";
@@ -1387,7 +1388,10 @@ function validateConverged(stage: ModuleStage, value: unknown, target: TypeTarge
     const { kind: _kind, metadata: _metadata, ...rest } = value;
     data = rest;
   }
-  const issues = stage.defs.validateResourceConfig(data, stage.selfContained(schema)).filter((issue) => {
+  const outcome = stage.defs.validateResourceConfig(data, stage.selfContained(schema));
+  // A result no validation can finish over is no result the stage can hand on.
+  if (!outcome.finished) return schemaNestingExceededSentence("the result, against the current schema,");
+  const issues = outcome.issues.filter((issue) => {
     const segments = (issue.pointer ?? "").split("/").slice(1).map((s) => s.replace(/~1/g, "/").replace(/~0/g, "~"));
     let at: unknown = data;
     for (let i = 0; i <= segments.length; i++) {

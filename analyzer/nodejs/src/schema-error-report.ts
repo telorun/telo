@@ -12,7 +12,7 @@
  * each union replaced by what it reports — and decides nothing itself.
  */
 
-import { readValueTypeSlot, VALUE_TYPES, valueTypeBoundRefusal, X_TELO_TYPE } from "@telorun/sdk";
+import { readValueTypeSlot, schemaPatternRefusal, VALUE_TYPES, valueTypeBoundRefusal, X_TELO_TYPE } from "@telorun/sdk";
 import { membersSlotOf, membersValueRefusal } from "./members-value-slot.js";
 import { nearestNames } from "./nearest-name.js";
 import { describeTeloFormatFailure, TELO_FORMATS, teloFormatFailure } from "./telo-format.js";
@@ -26,6 +26,8 @@ export interface AjvErrorLike {
   message?: string;
   params?: Record<string, any>;
   data?: unknown;
+  /** The property name a `propertyNames` finding is about. */
+  propertyName?: string;
 }
 
 /** A schema validation issue with a dotted-path pointer to the offending field. */
@@ -203,14 +205,61 @@ export function explainFormatErrors(
   data: unknown,
 ): AjvErrorLike[] | null | undefined {
   if (!errors) return errors;
-  return errors.map((err) => {
+  const explained = errors.map((err) => {
     const name = err.keyword === "format" ? err.params?.format : undefined;
+    if (name === "regex") return explainedPattern(err, data, errors);
     if (typeof name !== "string" || !TELO_FORMATS.has(name)) return err;
     const value = valueAt(data, err.instancePath);
     if (typeof value !== "string") return err;
     const failure = teloFormatFailure(name, value);
     return failure ? { ...err, message: describeTeloFormatFailure(name, value, failure) } : err;
   });
+  return explained.filter((err) => !restatesExplainedKey(err, explained));
+}
+
+/**
+ * `format: regex` explained by the schema pattern seam: why RE2 refuses the pattern,
+ * `invalid RE2 pattern "<pattern>": <kind>`. A `patternProperties` key is the error's
+ * `propertyName`; a pattern value is read from the validated root.
+ */
+function explainedPattern(err: AjvErrorLike, data: unknown, all: readonly AjvErrorLike[]): AjvErrorLike {
+  const pattern = err.propertyName ?? keyOf(err, all) ?? valueAt(data, err.instancePath);
+  const refusal = typeof pattern === "string" ? schemaPatternRefusal(pattern) : undefined;
+  return refusal ? { ...err, message: refusal } : err;
+}
+
+/** The property name a `propertyNames` finding beside `err` names, for a finding
+ *  raised under it that does not carry the name itself. */
+function keyOf(err: AjvErrorLike, all: readonly AjvErrorLike[]): string | undefined {
+  const at = all.indexOf(err);
+  const companion = all.slice(at + 1).find((other) => isCompanion(other, err));
+  const name = companion?.params?.propertyName;
+  return typeof name === "string" ? name : undefined;
+}
+
+/** Whether `outer` is the `propertyNames` finding `inner` was raised beneath. */
+function isCompanion(outer: AjvErrorLike, inner: AjvErrorLike): boolean {
+  return (
+    outer !== inner &&
+    outer.keyword === "propertyNames" &&
+    outer.instancePath === inner.instancePath &&
+    (inner.schemaPath ?? "").startsWith(`${outer.schemaPath ?? ""}/`)
+  );
+}
+
+/** A `propertyNames` finding whose name an explained pattern finding beneath it
+ *  already reports at the same place. */
+function restatesExplainedKey(err: AjvErrorLike, all: readonly AjvErrorLike[]): boolean {
+  if (err.keyword !== "propertyNames") return false;
+  const name = err.params?.propertyName;
+  return all.some(
+    (other) =>
+      isCompanion(err, other) &&
+      other.keyword === "format" &&
+      other.params?.format === "regex" &&
+      typeof name === "string" &&
+      other.message === schemaPatternRefusal(name),
+  );
 }
 
 /**

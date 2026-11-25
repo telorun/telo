@@ -1,0 +1,23 @@
+{
+  "name": "path-template",
+  "grammar": "https://www.rfc-editor.org/rfc/rfc6570",
+  "standIn": "/",
+  "description": "An RFC 6570 template narrowed to whole path segments: an app-relative path, or an http, https or mailto address, whose variables are path segments written exactly {name}, each name matching ^[A-Za-z_][A-Za-z0-9_]*$ and named once. An absolute URL's authority, a query and a fragment hold no variable, and a brace anywhere else is refused.",
+  "conformance": {
+    "valid": [
+      "/x/{id}/y/{rev}",
+      "https://example.com/{org}/repo?tab=1",
+      "mailto:{address}",
+      "/static",
+      "/"
+    ],
+    "invalid": [
+      "/x/{id}/{id}",
+      "/x{id}",
+      "/{1a}",
+      "/{}",
+      "https://{host}/x",
+      "/x?{q}"
+    ]
+  }
+}

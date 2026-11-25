@@ -36,8 +36,6 @@ import {
   type NeedObservation,
   type NeedResolution,
   type CoReferrer,
-  type ValueIssue,
-  valueIssue,
   refSentinelTarget,
   parseCanonicalTypeSchemaId,
   canonicalTypeSchemaId,
@@ -58,7 +56,7 @@ import {
   declaredScalarPaths,
   normalizeDeclaredScalars,
   reachesMembersSlot,
-  registerTeloKeywords,
+  createAjv,
   type DeclaredScalarPath,
   type NamedContractShape,
   type NamedShapeLookup,
@@ -78,7 +76,6 @@ import {
   registeredDocument,
   SchemaNodeValidator,
   type ResolvedReference,
-  type SchemaIssue,
   type AnalysisRegistry,
   type EffectiveKind,
   readApplicationSourceSlot,
@@ -121,21 +118,19 @@ interface KernelModuleContext {
 }
 import { stripCompiledValues } from "./schema-compiled-values.js";
 import { resolveTypeFieldSchema, typeReferenceKey } from "./type-field-schema.js";
-import AjvModule from "ajv";
-import addFormats from "ajv-formats";
 import { Kernel } from "./kernel.js";
 import { formatAjvErrors } from "./manifest-schemas.js";
 import { stampRuleCallNames } from "./type-rule-condition.js";
 import { policyFingerprint } from "./runtime-registry.js";
 import { KernelRuntimeSeam } from "./runtime-seam.js";
-import { describeValue, SchemaValidationError, SchemaValidator } from "./schema-validator.js";
+import { describeValue, SchemaValidator } from "./schema-validator.js";
+import { schemaRefusalData } from "./schema-value-issues.js";
 import { acceptsBy, buildMembersValues, membersEntryText, membersIssues } from "./members-values.js";
 import type { LateTexts } from "./text-records.js";
 import type { RunRedaction } from "./scope-run-redaction.js";
 import { INBOUND_ABANDONED, INBOUND_COMPLETED, rootOwner } from "./held-streams.js";
 import { refuseWrittenStamps } from "./metadata-stamp-refusals.js";
 
-const Ajv = AjvModule.default ?? AjvModule;
 
 /** How long a resource's teardown waits for its in-flight detached tasks before
  *  abandoning them (with a logged event). */
@@ -384,11 +379,7 @@ export class ResourceContextImpl implements ResourceContext {
       // Where in the value each refusal is and what it violated, in the issue
       // vocabulary, so a transport can point its caller at the field rather than
       // at the whole payload. The prose stays in the message.
-      const issues =
-        error instanceof SchemaValidationError
-          ? { issues: error.issues.map(plainEncodedIssue) }
-          : undefined;
-      throw new InvokeError(ERR_INPUT_INVALID, error.message, issues, { cause: error });
+      throw new InvokeError(ERR_INPUT_INVALID, error.message, schemaRefusalData(error), { cause: error });
     }
     return normalizeDeclaredScalars(decoded, reading.scalars);
   }
@@ -523,11 +514,7 @@ export class ResourceContextImpl implements ResourceContext {
   }
 
   validateSchema(value: any, schema: any) {
-    const ajv = new Ajv({
-      removeAdditional: true,
-    });
-    addFormats.default(ajv);
-    registerTeloKeywords(ajv);
+    const ajv = createAjv("schema-validate");
     const effective =
       "type" in schema && typeof schema.type === "string"
         ? schema
@@ -549,10 +536,7 @@ export class ResourceContextImpl implements ResourceContext {
       let nodes: SchemaNodeValidator | undefined;
       const nodesOf = (): SchemaNodeValidator => {
         if (!nodes) {
-          const twin = new Ajv({ allErrors: true, strict: false, verbose: true });
-          addFormats.default(twin);
-          registerTeloKeywords(twin);
-          nodes = new SchemaNodeValidator(twin, {
+          nodes = new SchemaNodeValidator(createAjv("locating"), {
             resolveReference: (id) => registeredDocument(ajv, id),
             run: (check, value) => {
               const normalized = bigIntView(value);
@@ -562,12 +546,15 @@ export class ResourceContextImpl implements ResourceContext {
         }
         return nodes;
       };
-      const findings = judgeSchemaFindings(validate.errors, {
+      const judged = judgeSchemaFindings(validate.errors, {
         value: view,
         schema: effective,
         validate: (node, at) => nodesOf().findingsFor(effective)(node, at),
         reference: (node, ref) => nodesOf().reference(node, ref),
       });
+      // Refused either way; where judging its unions could not finish, the
+      // validator's own findings are phrased.
+      const findings = judged.finished ? judged.issues : (validate.errors ?? []);
       throw new RuntimeError(
         "ERR_INVALID_VALUE",
         `[${this.metadata.name}] Invalid value. Error: ${formatAjvErrors(findings, view)}`,
@@ -1633,18 +1620,4 @@ export class ResourceContextImpl implements ResourceContext {
       }
     })() as unknown as T;
   }
-}
-
-/** A schema refusal of a transport's inbound value as a finding: a value type that
- *  does not read is `format`, a missing property `required`, anything else
- *  `invalid` — the dotted path and the validator's sentence stay in the message. */
-function plainEncodedIssue(issue: SchemaIssue): ValueIssue {
-  const pointer = issue.pointer ?? "";
-  if (issue.keyword === "x-telo-type" && issue.valueType) {
-    return valueIssue(pointer, "format", { format: issue.valueType });
-  }
-  if (issue.keyword === "required") {
-    return valueIssue(pointer, "required", { missingProperty: issue.missingProperty });
-  }
-  return valueIssue(pointer, undefined);
 }

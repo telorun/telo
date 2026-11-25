@@ -1,14 +1,11 @@
 import {
+  createAjv,
   formatAjvErrors,
   judgeSchemaFindings,
   registeredDocument,
-  registerTeloKeywords,
   SchemaNodeValidator,
 } from "@telorun/analyzer";
-import AjvModule from "ajv";
 import { detachSnapshotValue, OBSERVED_STATE_KEY, RuntimeError } from "@telorun/sdk";
-
-const Ajv = AjvModule.default ?? AjvModule;
 
 /**
  * Publication of a resource's **observed state** — what it learns while running,
@@ -67,8 +64,8 @@ function mark(target: Record<string, unknown>, info: ObservedStateInfo): void {
   });
 }
 
-const ajv = new Ajv({ allErrors: true, strict: false });
-registerTeloKeywords(ajv);
+// Every error, each naming its schema node, no default written into the report.
+const ajv = createAjv("locating");
 // Compiling a status schema costs ~ms and a resource may report repeatedly, so
 // keep the validator keyed on the schema object it came from. The kind's folded
 // `status:` is the registry's effective-kind answer, one object until a
@@ -80,9 +77,8 @@ const validators = new WeakMap<object, ReturnType<typeof ajv.compile>>();
 let judgeTwin: SchemaNodeValidator | undefined;
 function judgeNodes(): SchemaNodeValidator {
   if (!judgeTwin) {
-    const twin = new Ajv({ allErrors: true, strict: false, verbose: true });
-    registerTeloKeywords(twin);
-    judgeTwin = new SchemaNodeValidator(twin, { resolveReference: (id) => registeredDocument(ajv, id) });
+    // The validator is itself the verbose one a union is decided on.
+    judgeTwin = new SchemaNodeValidator(ajv, { resolveReference: (id) => registeredDocument(ajv, id) });
   }
   return judgeTwin;
 }
@@ -119,12 +115,15 @@ export function acceptReportedStatus(
   }
   const validate = validatorFor(opts.statusSchema);
   if (!validate(status)) {
-    const findings = judgeSchemaFindings(validate.errors, {
+    const judged = judgeSchemaFindings(validate.errors, {
       value: status,
       schema: opts.statusSchema,
       validate: (node, value) => judgeNodes().findingsFor(opts.statusSchema!)(node, value),
       reference: (node, ref) => judgeNodes().reference(node, ref),
     });
+    // The value is refused either way; judging its unions could not finish, so
+    // the validator's own findings are phrased.
+    const findings = judged.finished ? judged.issues : (validate.errors ?? []);
     const detail = formatAjvErrors(findings, status);
     throw new RuntimeError(
       "ERR_OBSERVED_STATE_INVALID",

@@ -215,4 +215,5 @@ steps:
           status: 500
           detail: The request is not valid.
           code: ERR_INPUT_INVALID
+          data: { issues: [{ pointer: /id, keyword: invalid, params: {} }] }
     invoke: { kind: Assert.Equals }

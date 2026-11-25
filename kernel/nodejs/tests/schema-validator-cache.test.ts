@@ -3,7 +3,7 @@ import * as os from "os";
 import * as path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { TELO_FORMATS } from "@telorun/analyzer";
-import { formatVocabularyDigest, SchemaValidator } from "../src/schema-validator.js";
+import { formatVocabularyDigest, SchemaValidator, VALIDATOR_RUNTIME_TAG } from "../src/schema-validator.js";
 
 let workdir: string;
 
@@ -304,10 +304,39 @@ describe("SchemaValidator disk cache", () => {
     );
   });
 
+  it("refuses a path template naming a variable twice with the reader's reason", () => {
+    const validator = new SchemaValidator().compile({ type: "object", properties: { path: { type: "string", format: "path-template" } } });
+    expect(validator.isValid({ path: "/plans/{id}" })).toBe(true);
+    expect(() => validator.validate({ path: "/plans/{id}/revisions/{id}" })).toThrow(
+      `/path must be a path-template: '{id}' appears twice — each variable names one segment at offset 22 of "/plans/{id}/revisions/{id}"`,
+    );
+  });
+
   it("keys the cache on the Telo format vocabulary", () => {
     const entry = [...TELO_FORMATS.values()][0]!;
     const changed = { ...entry, conformance: { ...entry.conformance, valid: [] } };
     expect(formatVocabularyDigest([entry])).not.toBe(formatVocabularyDigest([changed]));
     expect(formatVocabularyDigest([entry])).not.toBe(formatVocabularyDigest([]));
+  });
+  it("keys the cache on the RE2 that compiles every schema pattern", () => {
+    // A key without it is the key every validator cached before patterns were RE2
+    // was filed under, so none of those files is ever read.
+    expect(VALIDATOR_RUNTIME_TAG).toMatch(/\+re2js@\d+\.\d+\.\d+\+/);
+  });
+
+  it("a schema pattern survives the disk cache as RE2", async () => {
+    const schema = { type: "object", properties: { code: { type: "string", pattern: "^a.c$" } } };
+    const writer = new SchemaValidator();
+    writer.setCacheDir(workdir);
+    writer.compile(schema);
+    const [file] = await fs.readdir(workdir);
+    expect(await fs.readFile(path.join(workdir, file!), "utf-8")).toContain('require("@telorun/sdk").schemaPattern');
+
+    const reader = new SchemaValidator();
+    reader.setCacheDir(workdir);
+    const cached = reader.compile(schema);
+    // RE2's `.` matches a carriage return, where the host's regular expressions do not.
+    expect(cached.isValid({ code: "a\rc" })).toBe(true);
+    expect(cached.isValid({ code: "a\nc" })).toBe(false);
   });
 });

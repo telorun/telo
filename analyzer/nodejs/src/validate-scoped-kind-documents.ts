@@ -6,7 +6,7 @@ import type { DefinitionRegistry } from "./definition-registry.js";
 import type { ModuleDocuments } from "./module-documents.js";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { isKindDocument } from "./kind-declaration.js";
-import type { SchemaIssue } from "./schema-error-report.js";
+import { SCHEMA_NESTING_EXCEEDED, schemaNestingExceededMessage, type SchemaValidationOutcome } from "./schema-validation.js";
 import type { WrittenAt } from "./diagnostic-identity.js";
 import { importAnchoredDiagnostic, type ImportReach } from "./reaching-import.js";
 import { declaredScopes, isScopeMember } from "./scope-declarations.js";
@@ -54,7 +54,7 @@ export function validateScopedKindMembers(
   members: readonly ScopeMember[],
   rootModules: ReadonlySet<string>,
   /** The document's findings against its built-in entry's schema. */
-  validate: (member: ResourceManifest, kind: KindDocumentKind) => SchemaIssue[],
+  validate: (member: ResourceManifest, kind: KindDocumentKind) => SchemaValidationOutcome,
 ): AnalysisDiagnostic[] {
   const out: AnalysisDiagnostic[] = [];
   const judge = scopedKindJudge(validate);
@@ -86,7 +86,7 @@ const kindOf = (m: ResourceManifest): KindDocumentKind | undefined =>
   m.kind === "Telo.Definition" || m.kind === "Telo.Abstract" ? m.kind : undefined;
 
 function scopedKindJudge(
-  validate: (member: ResourceManifest, kind: KindDocumentKind) => SchemaIssue[],
+  validate: (member: ResourceManifest, kind: KindDocumentKind) => SchemaValidationOutcome,
 ): (member: ResourceManifest, kind: KindDocumentKind, report: Report) => void {
   return (member, kind, report) => {
     const label = `${kind} '${member.metadata.name}'`;
@@ -95,7 +95,12 @@ function scopedKindJudge(
       (member as Record<string, unknown>).extends !== undefined,
     );
     if (capability) report(capability.code, `${label}: ${capability.message}`, "capability");
-    for (const issue of validate(member, kind)) {
+    const outcome = validate(member, kind);
+    if (!outcome.finished) {
+      report(SCHEMA_NESTING_EXCEEDED, schemaNestingExceededMessage(`${kind}/${member.metadata.name}`, "the document"), "");
+      return;
+    }
+    for (const issue of outcome.issues) {
       if (capability && issue.path === "capability") continue;
       const quoted = quotingIssue(`${kind}/${member.metadata.name}: `, issue, issue.path);
       report("SCHEMA_VIOLATION", quoted.message, issue.path, quoted.quotedPlace);
@@ -112,7 +117,7 @@ export function validateLibraryScopedKindDocuments(
   aliasesByModule: Map<string, AliasResolver>,
   rootModules: ReadonlySet<string>,
   reach: ImportReach,
-  validate: (member: ResourceManifest, kind: KindDocumentKind) => SchemaIssue[],
+  validate: (member: ResourceManifest, kind: KindDocumentKind) => SchemaValidationOutcome,
 ): AnalysisDiagnostic[] {
   const out: AnalysisDiagnostic[] = [];
   const judge = scopedKindJudge(validate);

@@ -30,6 +30,7 @@ import {
   type StandIn,
   type StandInRule,
 } from "./stand-in-findings.js";
+import { finishedValidation, VALIDATION_UNFINISHED, type SchemaValidationOutcome } from "./schema-validation.js";
 import { unionOutcome, type BranchState, type UnionOutcome } from "./union-outcome.js";
 import { jsonTypeOf, readUnion, UnreadableReference, type ReferenceReader, type UnionReading } from "./union-tags.js";
 
@@ -196,6 +197,30 @@ interface UnionVerdict {
 export function judgeSchemaFindings(
   errors: readonly LocatedFinding[] | null | undefined,
   judgment: SchemaJudgment,
+): SchemaValidationOutcome<AjvErrorLike> {
+  try {
+    return finishedValidation(judgedFindings(errors, judgment));
+  } catch (error) {
+    if (error instanceof JudgementUnfinished) return VALIDATION_UNFINISHED;
+    throw error;
+  }
+}
+
+/** Raised where a validation the judge asks for could not finish, so the whole
+ *  judgement answers that it could not. Never leaves this module. */
+class JudgementUnfinished {}
+
+/** What a node raises, a validation that could not finish ending the judgement. */
+function finishedFindings(
+  raised: readonly LocatedFinding[] | undefined | { readonly finished: false },
+): readonly LocatedFinding[] | undefined {
+  if (raised !== undefined && !Array.isArray(raised)) throw new JudgementUnfinished();
+  return raised as readonly LocatedFinding[] | undefined;
+}
+
+function judgedFindings(
+  errors: readonly LocatedFinding[] | null | undefined,
+  judgment: SchemaJudgment,
 ): AjvErrorLike[] {
   const plan = judgment.plan;
   const places = plan?.placesIn(judgment.value);
@@ -346,7 +371,7 @@ function locatedFindings(
   judgment: SchemaJudgment,
 ): readonly LocatedFinding[] | undefined {
   if (errors.every((error) => !isUnion(error) || typeof error.parentSchema === "object")) return errors;
-  const whole = judgment.validate(judgment.schema, judgment.value);
+  const whole = finishedFindings(judgment.validate(judgment.schema, judgment.value));
   if (!whole || whole.length === 0) return undefined;
   const owed = new Map<string, number>();
   for (const error of errors) owed.set(twinKey(error), (owed.get(twinKey(error)) ?? 0) + 1);
@@ -697,7 +722,7 @@ class FindingsJudge {
       return [{ keyword: "false schema", instancePath: place, params: {}, message: "boolean schema is false" }];
     }
     if (branch === null || typeof branch !== "object") return undefined;
-    const raised = this.judgment.validate(branch, value);
+    const raised = finishedFindings(this.judgment.validate(branch, value));
     if (!raised) return undefined;
     return raised.map((finding) => ({ ...finding, instancePath: `${place}${finding.instancePath ?? ""}` }));
   }

@@ -37,6 +37,7 @@
  */
 import { resolveSchemaReference } from "./schema-reference.js";
 import type { ResourceManifest } from "@telorun/sdk";
+import { schemaPattern } from "@telorun/sdk";
 import { expansionTagLabel, isTaggedSentinel } from "@telorun/templating";
 import { assignmentKey, type Assignment } from "./configuration-dimensions.js";
 import {
@@ -262,7 +263,7 @@ function reaches(node: Record<string, any>, key: string): boolean {
   if (node.properties && Object.hasOwn(node.properties, key) && node.properties[key] !== true) return true;
   for (const pattern of Object.keys((node.patternProperties ?? {}) as Record<string, unknown>)) {
     try {
-      if (new RegExp(pattern, "u").test(key)) return true;
+      if (schemaPattern(pattern, "u").test(key)) return true;
     } catch {
       return true;
     }
@@ -284,7 +285,7 @@ function memberInForce(at: InForce, key: string, schemas: OwnSiteSchemas): InFor
     if (properties && Object.hasOwn(properties, key)) own.push(properties[key]);
     for (const [pattern, child] of Object.entries((node.patternProperties ?? {}) as Record<string, unknown>)) {
       try {
-        if (new RegExp(pattern, "u").test(key)) own.push(child);
+        if (schemaPattern(pattern, "u").test(key)) own.push(child);
       } catch {
         related = true;
       }
@@ -340,7 +341,7 @@ function omissionRelates(parent: InForce, key: string): boolean {
     const declared = !!node.properties && Object.hasOwn(node.properties, key);
     const patterned = Object.keys((node.patternProperties ?? {}) as Record<string, unknown>).some((pattern) => {
       try {
-        return new RegExp(pattern, "u").test(key);
+        return schemaPattern(pattern, "u").test(key);
       } catch {
         return true;
       }

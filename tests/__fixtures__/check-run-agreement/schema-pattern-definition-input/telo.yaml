@@ -1,0 +1,13 @@
+# A definition's input contract holding a lookahead.
+kind: Telo.Application
+metadata: { name: SchemaPatternDefinitionInput, version: 1.0.0 }
+---
+kind: Telo.Definition
+metadata: { name: Probe }
+capability: Telo.Invocable
+inputType:
+  type: object
+  properties: { code: { type: string, pattern: "^(?!tmp$)[a-z]+$" } }
+resources:
+  - { kind: Telo.Value, metadata: { name: answer }, value: 1 }
+invoke: !ref answer

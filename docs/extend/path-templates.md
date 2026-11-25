@@ -66,6 +66,12 @@ hold none.
 | `/x/{id}/{id}` | refused: `id` is written twice |
 | `https://{host}/x` | refused: a variable in the authority |
 
+A field holding a template declares `format: path-template` (a [Telo
+format](telo-formats.md)), so a template written anywhere — whether or not a map
+names its variables — is refused before the app runs, and at creation, with the
+same reason: `/path must be a path-template: '{id}' appears twice — each
+variable names one segment at offset 8 of "/x/{id}/{id}"`.
+
 ## What the template field may hold
 
 - **A literal template** — read as above.

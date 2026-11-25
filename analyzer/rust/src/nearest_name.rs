@@ -32,3 +32,26 @@ pub fn nearest_name<'a>(target: &str, candidates: impl IntoIterator<Item = &'a s
         best
     }
 }
+
+/// Every candidate at the smallest distance from `target` within [`nearest_name`]'s
+/// threshold, in candidate order — for prose naming its suggestions, where a tie is
+/// information rather than a pick. Mirrors `nearestNames`.
+pub fn nearest_names<'a>(target: &str, candidates: impl IntoIterator<Item = &'a str>) -> Vec<&'a str> {
+    let threshold = 3.min(target.encode_utf16().count() / 3);
+    if threshold < 1 {
+        return Vec::new();
+    }
+    let mut best: Vec<&'a str> = Vec::new();
+    let mut best_distance = threshold + 1;
+    for candidate in candidates {
+        let d = distance(target, candidate);
+        if d < best_distance {
+            best = vec![candidate];
+            best_distance = d;
+        } else if d == best_distance {
+            best.push(candidate);
+        }
+    }
+    best
+}
+

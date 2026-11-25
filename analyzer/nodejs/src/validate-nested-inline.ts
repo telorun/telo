@@ -7,7 +7,7 @@ import type { ExternalSchemaResolver } from "./schema-compat.js";
 import { collectProperties, resolveRef } from "./schema-compat.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
 import type { StandIns } from "./stand-in-findings.js";
-import type { SchemaIssue } from "./schema-error-report.js";
+import { SCHEMA_NESTING_EXCEEDED, schemaNestingExceededMessage, type SchemaValidationOutcome } from "./schema-validation.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { collectValueSchemaIssues } from "./validate-value-schema.js";
 import type { DeclarationRequests } from "./declaration-requests.js";
@@ -37,7 +37,7 @@ export interface InlineDefinitionLookup {
  * the caller supplies the one that holds the shapes.
  */
 export interface InlineConfigValidator {
-  validate(data: unknown, schema: Record<string, any>, standIns?: StandIns): SchemaIssue[];
+  validate(data: unknown, schema: Record<string, any>, standIns?: StandIns): SchemaValidationOutcome;
   external: ExternalSchemaResolver;
 }
 
@@ -218,10 +218,25 @@ export function validateNestedInline(
     // the common shape rather than the exception. `data` carries the synthesized
     // metadata; `x-telo-value-schema-from` reads sibling fields off the
     // resource, which are present either way.
-    const inlineIssues = [
-      ...validator.validate(substituted, effectiveSchema, standIns),
-      ...collectValueSchemaIssues(data, schema, types, validator),
-    ];
+    const own = validator.validate(substituted, effectiveSchema, standIns);
+    const valueSchema = collectValueSchemaIssues(data, schema, types, validator);
+    const unfinishedAt = [...(own.finished ? [] : [""]), ...valueSchema.unfinished];
+    for (const at of unfinishedAt) {
+      const place = at ? `${path}.${at}` : path;
+      diagnostics.push(
+        withQuotedPath(
+          {
+            severity: DiagnosticSeverity.Error,
+            code: SCHEMA_NESTING_EXCEEDED,
+            source: SOURCE,
+            message: schemaNestingExceededMessage(`${resource.kind}/${resource.name}`, `the inline ${kind} at '${place}'`),
+            data: { resource, filePath, path: place },
+          },
+          place,
+        ),
+      );
+    }
+    const inlineIssues = [...(own.finished ? own.issues : []), ...valueSchema.issues];
     for (const issue of inlineIssues) {
       diagnostics.push(
         withQuotedPath(

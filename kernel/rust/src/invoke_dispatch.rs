@@ -34,19 +34,10 @@ pub fn invoke(
 }
 
 fn dispatch(instance: &ResourceInstance, inputs: &Value) -> Result<Value, KernelError> {
-    let prepared = instance.contract.prepare_inputs(inputs).map_err(|err| {
-        KernelError::new(
-            err.code.clone(),
-            format!("resource '{}': {}", instance.name, err.message),
-        )
-    })?;
+    let target = format!("{}/{}", instance.kind, instance.name);
+    let prepared = instance.contract.prepare_inputs(inputs, &target)?;
     let host = host_vtable();
     let result = instance.handle.invoke(&prepared, &host)?;
-    instance.contract.check_output(&result).map_err(|err| {
-        KernelError::new(
-            err.code.clone(),
-            format!("resource '{}': {}", instance.name, err.message),
-        )
-    })?;
+    instance.contract.check_output(&result, &target)?;
     Ok(result)
 }

@@ -1,13 +1,12 @@
-//! The registry of Telo validating formats this crate checks, binding a format name
-//! to its checker (`package_url_format`, `cpe_format`, `vcs_url_format`,
-//! `vcs_revision_format`). Mirrors
-//! `../../nodejs/src/telo-format.ts`.
-//!
-//! This crate reads a manifest with no JSON Schema pass, so the formats a
-//! `sources:` entry's identity declares are checked where its reader reads them.
-//! The other Telo formats have no checker here yet.
+//! The registry of Telo validating formats, binding each format name of
+//! `sdk/formats/*.json` to its checker. Mirrors `../../nodejs/src/telo-format.ts`: the
+//! JSON Schema validator (`schema_validation`) checks every one, and the readers of a
+//! `sources:` entry's identity ask the same checkers.
 
-use crate::{cpe_format, package_url_format, vcs_revision_format, vcs_url_format};
+use crate::{
+    cpe_format, css_selector_format, language_tag_format, message_pattern_format, package_url_format, path_template_format,
+    re2_pattern_format, vcs_revision_format, vcs_url_format,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FormatFailure {
@@ -35,15 +34,53 @@ pub fn describe_failure(name: &str, value: &str, failure: &FormatFailure) -> Str
     )
 }
 
+/// Every Telo format, lexically by name — the vocabulary `sdk/formats/` declares.
+pub const TELO_FORMATS: [&str; 9] = [
+    "cpe",
+    "css-selector",
+    "language-tag",
+    "message-pattern",
+    "package-url",
+    "path-template",
+    "re2-pattern",
+    "vcs-revision",
+    "vcs-url",
+];
+
+/// Whether `name` is a Telo format.
+pub fn is_telo_format(name: &str) -> bool {
+    TELO_FORMATS.contains(&name)
+}
+
 /// Why `value` is not in the grammar of the Telo format `name`, or `None` when it is
-/// (or when `name` is not one this crate checks).
+/// (or when `name` is not a Telo format).
 pub fn format_failure(name: &str, value: &str) -> Option<FormatFailure> {
     match name {
-        "package-url" => package_url_format::check(value),
         "cpe" => cpe_format::check(value),
-        "vcs-url" => vcs_url_format::check(value),
+        "css-selector" => css_selector_format::check(value),
+        "language-tag" => language_tag_format::check(value),
+        "message-pattern" => message_pattern_format::check(value),
+        "package-url" => package_url_format::check(value),
+        "path-template" => path_template_format::check(value),
+        "re2-pattern" => re2_pattern_format::check(value),
         "vcs-revision" => vcs_revision_format::check(value),
+        "vcs-url" => vcs_url_format::check(value),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn checks_every_format_the_vocabulary_declares() {
+        let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/formats");
+        let mut declared: Vec<String> = std::fs::read_dir(directory)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .filter_map(|name| name.strip_suffix(".json").map(str::to_string))
+            .collect();
+        declared.sort();
+        assert_eq!(declared, super::TELO_FORMATS);
     }
 }
 

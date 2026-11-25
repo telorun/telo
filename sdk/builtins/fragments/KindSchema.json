@@ -69,8 +69,11 @@
     },
     "patternProperties": {
       "title": "Pattern properties",
-      "description": "Schema per regular expression matching a property name.",
+      "description": "Schema per regular expression matching a property name, each read as RE2.",
       "type": "object",
+      "propertyNames": {
+        "format": "regex"
+      },
       "additionalProperties": {
         "$ref": "telo://manifest#/$defs/KindSchema"
       }
@@ -207,8 +210,9 @@
     },
     "pattern": {
       "title": "Pattern",
-      "description": "Regular expression the string must match.",
-      "type": "string"
+      "description": "Regular expression the string must match, read as RE2.",
+      "type": "string",
+      "format": "regex"
     },
     "format": {
       "title": "Format",

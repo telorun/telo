@@ -18,6 +18,7 @@ targets:
   - !ref buttons
   - !ref iconFormat
   - !ref retired
+  - !ref parameterName
   - !ref starter
   - !ref headerKeys
   - !ref headerKeysTitleAtRuntime
@@ -56,6 +57,10 @@ expect:
       message: "Ui.Chat/newConversationButton: /buttons must NOT have additional properties ('newConversation' is not allowed)"
     - code: SCHEMA_VIOLATION
       message: "Ui.Chat/parameterNotAName: /conversation/parameter must match pattern"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Chat/parameterReserved: /conversation/parameter matches a shape that is not allowed here"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Chat/parameterKeyword: /conversation/parameter matches a shape that is not allowed here"
     - code: CEL_UNKNOWN_FIELD
       message: "Ui.Chat/refreshReadsUnknown: !cel: 'conversation.title' is not defined (available: id)"
 ---
@@ -135,3 +140,9 @@ kind: Assert.Manifest
 metadata: { name: headerCommandAtRuntime }
 source: ./__fixtures__/invalid/chat-command-at-runtime/telo.yaml
 expect: { errors: [], runFails: "header[0].command: the command node names a fixed value, which is no command a root in scope offers" }
+---
+# A conversation parameter that is a Telo name, neither reserved nor a keyword.
+kind: Assert.Manifest
+metadata: { name: parameterName }
+source: ./__fixtures__/chat-parameter-name/telo.yaml
+expect: { errors: [] }

@@ -1,0 +1,29 @@
+{
+  "diagnostics": [
+    {
+      "code": "URL_INVALID",
+      "data": {
+        "filePath": "telo.yaml",
+        "path": "variables.storeUrl.default",
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "StoreApp"
+        }
+      },
+      "message": "Telo.Application/StoreApp: the default of variables.storeUrl is not a Telo.Url: it does not begin with a scheme ('postgres:', 'https:'). A default is the value the input holds when nothing supplies one, so it must satisfy the input's own declaration.",
+      "range": {
+        "end": {
+          "character": 85,
+          "line": 3
+        },
+        "start": {
+          "character": 76,
+          "line": 3
+        }
+      },
+      "severity": 1,
+      "source": "telo-analyzer"
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] Manifest validation failed\n  [URL_INVALID] Telo.Application/StoreApp: the default of variables.storeUrl is not a Telo.Url: it does not begin with a scheme ('postgres:', 'https:'). A default is the value the input holds when nothing supplies one, so it must satisfy the input's own declaration."
+}

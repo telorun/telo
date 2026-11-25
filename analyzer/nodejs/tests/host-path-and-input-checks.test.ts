@@ -1,12 +1,10 @@
+import { finishedIssues } from "./judged-validation.js";
 import type { ResourceManifest } from "@telorun/sdk";
 import { makeTaggedSentinel } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
-import {
-  celTypeSatisfiesJsonSchema,
-  checkSchemaCompatibility,
-  validateAgainstSchema,
-} from "../src/schema-compat.js";
+import { celTypeSatisfiesJsonSchema, checkSchemaCompatibility } from "../src/schema-compat.js";
+import { validateAgainstSchema } from "../src/schema-validation.js";
 import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 
 /** `file` is the union a SQLite connection declares: an in-memory constant
@@ -187,7 +185,7 @@ describe("checkSchemaCompatibility at a host path", () => {
 
 describe("schema issue reduction", () => {
   it("reports a wrong JSON type once, not again as each keyword it then fails", () => {
-    const issues = validateAgainstSchema(5, { type: "string", enum: ["a", "b"] });
+    const issues = finishedIssues(validateAgainstSchema(5, { type: "string", enum: ["a", "b"] }));
     expect(issues.map((i) => i.keyword)).toEqual(["type"]);
   });
 });

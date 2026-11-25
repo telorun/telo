@@ -1,4 +1,5 @@
 import { localRefName } from "./ref-sentinel-target.js";
+import { SCHEMA_NESTING_EXCEEDED, schemaNestingExceededMessage } from "./schema-validation.js";
 import { isEntryOwned } from "./entry-ownership.js";
 import { nearestName } from "./nearest-name.js";
 import { isKindDocument } from "./kind-declaration.js";
@@ -333,7 +334,7 @@ export function validateTemplateBody(
         const schema = entrySchemaFor(body.definition, registry);
         if (Object.keys(schema).length > 0) {
           const standIns: StandIns = new Map();
-          const issues = registry.validateResourceConfig(
+          const outcome = registry.validateResourceConfig(
             substituteDecodedCelFields(body.manifest, schema, undefined, {
               standIns,
               external: (ref) => registry.schemaForId(ref),
@@ -341,7 +342,16 @@ export function validateTemplateBody(
             schema,
             standIns,
           );
-          for (const issue of issues) {
+          if (!outcome.finished) {
+            out.push({
+              severity: DiagnosticSeverity.Error,
+              code: SCHEMA_NESTING_EXCEEDED,
+              source: SOURCE,
+              message: schemaNestingExceededMessage(subject, label),
+              data: { resource: resourceRef, filePath, path: body.prefix },
+            });
+          }
+          for (const issue of outcome.finished ? outcome.issues : []) {
             // The pointer is the entry's own, quoted from where it was written.
             const path = issue.path ? `${body.prefix}.${issue.path}` : body.prefix;
             const quoted = quotingIssue(`${subject}: ${label}: `, issue, path, "", parseKeys(body.prefix).length);
@@ -411,7 +421,8 @@ export function validateTemplateBody(
           unknownRef(refName, path, `'${site.path}: !ref ${value.source}' on ${label}`, body.manifest.metadata?.name);
           continue;
         }
-        if (isValueAtSlot(value, site.refs, registry)) continue;
+        // A value whose branch could not finish validating is `validateReferenceForms`'s.
+        if (isValueAtSlot(value, site.refs, registry) !== "refuses") continue;
         if (typeof value === "string") {
           report(
             "INVALID_REFERENCE_FORM",

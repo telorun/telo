@@ -18,8 +18,11 @@ use telorun_message_format::{
     invalid_plural_categories, message_variables, parse_json, read_text, Message, MessageProblem,
 };
 
+use telo_analyzer::schema_error_report::SchemaIssue;
+
 use crate::error::KernelError;
-use crate::schema_validator::SchemaValidator;
+use crate::schema_validator::{SchemaRefusal, SchemaValidator};
+use crate::schema_value_issues::schema_value_issue;
 
 /// The language every built-in display message is written in.
 const BUILTIN_LANG: &str = "en";
@@ -202,9 +205,15 @@ pub fn settle_display_message(
     };
     if let Some(schema) = &entry.data {
         let data = err.data.clone().unwrap_or(Value::Null);
-        let issues = match SchemaValidator::compile(schema) {
-            Ok(validator) => validator.errors(&data),
-            Err(compile) => return compile,
+        let issues: Vec<SchemaIssue> = match SchemaValidator::compile(schema) {
+            Ok(validator) => match validator.check(&telo_analyzer::schema_validation::cel_value_of(&data)) {
+                Ok(_) => Vec::new(),
+                Err(SchemaRefusal { issues: Some(issues), .. }) => issues,
+                // A validation that could not finish replaces the failure, as Node's
+                // thrown `RangeError` does at the dispatch exit.
+                Err(SchemaRefusal { message, issues: None }) => return KernelError::new("ERR_EXECUTION_FAILED", message),
+            },
+            Err(compile) => return KernelError::manifest_validation_failed(format!("invalid JSON Schema: {compile}")),
         };
         if !issues.is_empty() {
             let mut refusal = KernelError::new(
@@ -213,9 +222,10 @@ pub fn settle_display_message(
                     "{where_}: the error '{}' carries data its kind does not declare (declared by {}): {}",
                     err.code,
                     entry.declarer,
-                    issues.join("; ")
+                    issues.iter().map(|issue| issue.message.as_str()).collect::<Vec<_>>().join("; ")
                 ),
             );
+            let issues: Vec<Value> = issues.iter().map(schema_value_issue).collect();
             refusal.data = Some(json!({ "code": err.code, "data": data, "issues": issues }));
             if let Some(own) = builtin_display_message("ERR_OUTPUT_INVALID") {
                 refusal.display_message = Some(own.record);

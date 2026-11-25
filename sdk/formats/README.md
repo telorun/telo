@@ -50,6 +50,12 @@ and that reason is what both `telo check` and the kernel's refusal print.
   nest; `:nth-child(An+B of S)` takes a selector list. State and user-action
   pseudo-classes (`:hover`) are valid syntax — what they match is the consuming
   kind's to say.
+- **`path-template`** — an address whose `{name}` variables are whole path
+  segments, each named once, none in an absolute URL's authority, query or
+  fragment. Its checker is the path-template reader the `x-telo-path-params-for`
+  and `x-telo-context-from-path-template` annotations read, so a template the
+  format accepts is one those annotations read, and a refusal carries that
+  reader's reason.
 - **`re2-pattern`** — a regular expression RE2 and an ECMAScript engine with
   the `u` flag both accept and match identically, as a closed allowlist (the
   entry's `description` lists it). What the two engines read differently — `.`,

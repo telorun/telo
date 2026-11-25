@@ -1,0 +1,5 @@
+# An application variable's schema holding a lookahead.
+kind: Telo.Application
+metadata: { name: SchemaPatternVariable, version: 1.0.0 }
+variables:
+  code: { env: CODE, type: string, pattern: "^(?!tmp$)[a-z]+$", default: abc }

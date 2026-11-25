@@ -1,0 +1,20 @@
+kind: Telo.Application
+metadata:
+  name: HttpRequestSchemaChecksTest
+  version: 1.0.0
+  description: |
+    What `telo check` says about a route's request schema: it is JSON Schema,
+    so a pattern RE2 cannot read is refused at the pattern before the app runs,
+    and the run is refused with the same finding.
+imports: { Assert: ../../assert }
+targets:
+  - !ref patternRefused
+---
+kind: Assert.Manifest
+metadata: { name: patternRefused }
+source: ./__fixtures__/route-schema-pattern.yaml
+expect:
+  errors:
+    - code: DEPENDENT_SCHEMA_MISMATCH
+      message: "Http.Api/api: 'routes[0].request' does not match schema from 'HttpDispatch.Request/$defs/Matcher': /schema/body/properties/code/pattern invalid RE2 pattern \"^(?!tmp$)[a-z]+$\": invalid or unsupported Perl syntax"
+  runFails: "[DEPENDENT_SCHEMA_MISMATCH] Http.Api/api: 'routes[0].request' does not match schema from 'HttpDispatch.Request/$defs/Matcher': /schema/body/properties/code/pattern invalid RE2 pattern \"^(?!tmp$)[a-z]+$\": invalid or unsupported Perl syntax"

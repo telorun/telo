@@ -1,0 +1,18 @@
+# A conversation parameter that is a Telo name: accepted.
+kind: Telo.Application
+metadata: { name: UiChatParameterNameApp, version: 1.0.0 }
+imports: { Ui: ../../../, Fixture: ../conversation }
+---
+kind: Fixture.Endpoint
+metadata: { name: conversation }
+operations: [cancel]
+---
+kind: Ui.ConversationSource
+metadata: { name: source }
+conversation: !ref conversation
+basePath: /api/chat
+---
+kind: Ui.Chat
+metadata: { name: chat }
+source: !ref source
+conversation: { parameter: conv }

@@ -1595,6 +1595,10 @@ function templateAssignmentKey(assignment: TemplateAssignment): string {
   return JSON.stringify(Object.keys(assignment).sort().map((key) => [key, assignment[key]]));
 }
 
+/** What a `...` splice's representative key raises: a mismatch's sentence, or
+ *  that validating the value it emits could not finish. */
+export type SpliceIssue = { readonly path: string; readonly message: string } | { readonly path: string; readonly unfinished: true };
+
 /**
  * A splice's representative entry, held to every value schema a key of its
  * mapping could receive — each `properties` entry, each `patternProperties`
@@ -1607,8 +1611,8 @@ export function representativeSpliceIssues(
   expansion: TemplateBodyExpansion,
   registry: DefinitionRegistry,
   resolveKind: (kind: string) => string | undefined,
-): { path: string; message: string }[] {
-  const out: { path: string; message: string }[] = [];
+): SpliceIssue[] {
+  const out: SpliceIssue[] = [];
   const body = expansion.definition as Record<string, any>;
   for (const spliced of expansion.splicedKeys) {
     if (spliced.key !== REPRESENTATIVE_KEY) continue;
@@ -1649,17 +1653,21 @@ export function representativeSpliceIssues(
     }
     const union = { $defs: schema.$defs, anyOf: branches };
     const standIns: StandIns = new Map();
-    const issues = registry.validateResourceConfig(
+    const outcome = registry.validateResourceConfig(
       substituteDecodedCelFields(value, union, schema, { standIns, external: (ref) => registry.schemaForId(ref) }),
       union,
       standIns,
     );
-    if (issues.length === 0) continue;
+    if (!outcome.finished) {
+      out.push({ path: at, unfinished: true });
+      continue;
+    }
+    if (outcome.issues.length === 0) continue;
     out.push({
       path: at,
       message:
         `the value a '...' splice emits fits no value the mapping takes at any key — ` +
-        `${issues.map((issue) => issue.message).join("; ")}`,
+        `${outcome.issues.map((issue) => issue.message).join("; ")}`,
     });
   }
   return out;

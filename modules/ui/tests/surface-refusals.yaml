@@ -138,7 +138,7 @@ expect:
     - code: SCHEMA_VIOLATION
       message: "Ui.View/outsideProfile: /content/shown/matches must NOT have additional properties ('if' is not allowed)"
     - code: SCHEMA_VIOLATION
-      message: "Ui.View/reservedQuery: /content/query/query must NOT have additional properties ('_teloOpen' is not allowed)"
+      message: "Ui.View/reservedQuery: /content/query/query/_teloOpen is not allowed here"
     - code: MATCH_UNSATISFIABLE
       message: "Ui.View/unsatisfiable: the schema at 'content.content[0].shown.matches' can never hold for 'content.content[0].shown.at' — it requires \"billing\", and the value is integer."
     - code: CEL_UNKNOWN_IDENTIFIER

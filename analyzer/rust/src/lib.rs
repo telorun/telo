@@ -32,6 +32,12 @@
 //! inline integrity — lives here for the same reason it lives in the Node
 //! analyzer: every reader of a published module must agree on it.
 
+pub mod ajv_core;
+pub mod ajv_equal;
+pub mod ajv_formats;
+pub mod ajv_keywords;
+pub mod ajv_runtime;
+pub mod ajv_uri_resolver;
 pub mod analyzer;
 pub mod artifact_layer_index;
 pub mod artifact_selector;
@@ -40,6 +46,7 @@ pub mod builtin_vocabulary_slices;
 pub mod builtins;
 pub mod capability_roster;
 pub mod cpe_format;
+pub mod css_selector_format;
 pub mod dependency_configurations;
 pub mod dependency_verdicts;
 pub mod diagnostic_identity;
@@ -53,6 +60,7 @@ pub mod graph_diagnostics;
 pub mod host_path_slot;
 pub mod import_resolution_diagnostics;
 pub mod inline_imports;
+pub mod language_tag_format;
 pub mod levenshtein;
 pub mod library_migrations;
 pub mod load_refusal;
@@ -61,6 +69,9 @@ pub mod loaded_types;
 pub mod loader_expansion_refusals;
 pub mod manifest_loader;
 pub mod manifest_navigation;
+pub mod manifest_schemas;
+pub mod members_value_slot;
+pub mod message_pattern_format;
 pub mod metadata_stamp_refusals;
 pub mod metadata_stamps;
 pub mod migrations;
@@ -79,44 +90,61 @@ pub mod nearest_name;
 pub mod need_type;
 pub mod package_url_format;
 pub mod parse_loaded_file;
+pub mod path_template_format;
+pub mod path_template_reading;
 pub mod placement;
 pub mod plain_literal_decoding;
 pub mod position_metadata;
 pub mod purl;
 pub mod quoted_place;
+pub mod re2_pattern_format;
 pub mod reaching_import;
 pub mod reconcile_module_versions;
+pub mod reference_field_map;
 pub mod release;
 pub mod requires_block;
 pub mod requires_gate;
 pub mod reserved_kind_prefix;
+pub mod residual_schema;
 pub mod resolve_ref_sentinels;
 pub mod resolved_reference;
 pub mod restrictions;
 pub mod runtime_range;
 pub mod schema_compat;
+pub mod schema_error_report;
+pub mod schema_findings_judge;
+pub mod schema_node_validator;
+pub mod schema_opaque_value;
+pub mod schema_pattern;
 pub mod schema_region;
+pub mod schema_tag_text;
+pub mod schema_validation;
 pub mod source_entries;
+pub mod stand_in_findings;
 pub mod sources;
 pub mod system_kinds;
 pub mod telo_format;
 pub mod telo_version;
 pub mod types;
+pub mod union_outcome;
+pub mod union_tags;
 pub mod untagged_interpolation;
 pub mod validate_identifier_names;
 pub mod validate_include_placement;
+pub mod validate_input_defaults;
 pub mod validate_library_blocks;
 pub mod validate_native_entries;
 pub mod validate_reference_forms;
 pub mod validate_requires;
 pub mod validate_source_entries;
+pub mod value_type_defaults;
 pub mod value_type_keyword;
 pub mod vcs_revision_format;
 pub mod vcs_url_format;
 pub mod version_range;
 pub mod yaml_ast;
 
-pub use analyzer::{analysis, analyze, Analysis, AnalysisOptions};
+pub use analyzer::{analysis, analyze, Analysis};
 pub use requires_gate::UndecidedHold;
 pub use validate_requires::UndecidedModule;
 pub use dependency_verdicts::{
@@ -154,9 +182,11 @@ pub use resolved_reference::{
     carries_reference_marker, declares_name_field, is_resolved_reference,
     RESOLVED_REFERENCE_MARKER,
 };
+pub use reference_field_map::{value_branch_accepts, value_branches_accept, ValueBranchOutcome};
 pub use validate_reference_forms::{
-    authored_object_form, find_invalid_reference_forms, mark_legacy_references,
-    reference_form_message, target_reference_forms, AcceptsValue, InvalidReferenceForm, ReferenceForm,
+    authored_object_form, find_invalid_reference_forms, mark_legacy_references, nesting_exceeded_slot_message,
+    reference_form_message, target_reference_forms, InvalidReferenceForm, ReferenceForm, ReferenceFormFindings,
+    UnfinishedSlot,
 };
 pub use types::{
     kind_of, name_of, AnalysisDiagnostic, DiagnosticData, DiagnosticFix, DiagnosticFixTag, DiagnosticMigration, DiagnosticResource,

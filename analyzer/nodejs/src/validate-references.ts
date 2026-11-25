@@ -1,4 +1,5 @@
 import type { FindingOrder } from "./finding-order.js";
+import { SCHEMA_NESTING_EXCEEDED, schemaNestingExceededMessage } from "./schema-validation.js";
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { listRequests } from "./declaration-requests.js";
 import { isRefSentinel } from "@telorun/templating";
@@ -752,7 +753,9 @@ export function referenceSiteDiagnostics(
   // same narrowing `validateReferenceForms` applies, through the same function:
   // an OBJECT-shaped value branch would otherwise reach the structural check
   // below and be refused as a value the slot does not take.
-  if (satisfiesSiteValue(val, site.refs, registry)) return [];
+  // A value whose branch could not finish validating is `validateReferenceForms`'s
+  // one finding at the slot.
+  if (satisfiesSiteValue(val, site.refs, registry) !== "refuses") return [];
 
   // Inline resources are extracted by Phase 2 normalization.
   if (isInlineDeclaration(refVal)) return [];
@@ -933,9 +936,44 @@ export function schemaFromSiteDiagnostics(
       standIns,
       external: (ref) => registry.schemaForId(ref),
     });
+    const outcome = registry.validateResourceConfig(substituted, site.schema, standIns);
+    // A schema read out of a kind's: one that does not compile there validates
+    // nothing. A declared shape's own compile failure is reported where it is written.
+    const compileError = site.form === "instance" ? undefined : registry.validatedSchemaCompileError(site.schema);
+    if (compileError !== undefined) {
+      diagnostics.push(
+        withQuotedPath(
+          {
+            severity: DiagnosticSeverity.Error,
+            code: "SCHEMA_COMPILE_ERROR",
+            source: SOURCE,
+            message: `${resourceLabel}: '${site.path}' takes its schema from '${site.source}', which failed to compile: ${compileError}`,
+            data: { resource: resourceData, filePath, path: site.path },
+          },
+          site.path,
+        ),
+      );
+      continue;
+    }
+    if (!outcome.finished) {
+      diagnostics.push(
+        withQuotedPath(
+          {
+            severity: DiagnosticSeverity.Error,
+            code: SCHEMA_NESTING_EXCEEDED,
+            source: SOURCE,
+            message: schemaNestingExceededMessage(resourceLabel, `'${site.path}'`),
+            data: { resource: resourceData, filePath, path: site.path },
+          },
+          site.path,
+        ),
+      );
+      continue;
+    }
+    const issues = outcome.issues;
     if (site.form !== "anchored") {
       const against = site.form === "instance" ? site.source : `schema from '${site.source}'`;
-      for (const issue of registry.validateResourceConfig(substituted, site.schema, standIns)) {
+      for (const issue of issues) {
         diagnostics.push(
           withQuotedPath(
             {
@@ -954,7 +992,7 @@ export function schemaFromSiteDiagnostics(
     // Anchored at the offending node INSIDE the value, not at the slot: a
     // `returns:` list is an array of entries, and reporting every issue on the
     // `returns:` line puts them all on one line and none on the entry.
-    for (const issue of registry.validateResourceConfig(substituted, site.schema, standIns)) {
+    for (const issue of issues) {
       diagnostics.push(
         withQuotedPath(
           {

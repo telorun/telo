@@ -1,3 +1,4 @@
+import { finishedIssues } from "./judged-validation.js";
 import { describe, expect, it } from "vitest";
 import { DefinitionRegistry } from "../src/definition-registry.js";
 
@@ -44,9 +45,7 @@ const KIND_SCHEMA = {
 function issues(root: unknown) {
   const defs = new DefinitionRegistry();
   expect(defs.registerNamedTypeSchema(NODE_ID, NODE)).toBe(true);
-  return defs
-    .validateResourceConfig({ root }, KIND_SCHEMA)
-    .map((issue) => [issue.path, issue.message]);
+  return finishedIssues(defs.validateResourceConfig({ root }, KIND_SCHEMA)).map((issue) => [issue.path, issue.message]);
 }
 
 const stack = (...children: unknown[]) => ({ type: "stack", children });

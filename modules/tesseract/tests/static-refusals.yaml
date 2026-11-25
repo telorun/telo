@@ -57,7 +57,7 @@ metadata: { name: osdIsNotALanguage }
 source: ./__fixtures__/osd-coded-language.yaml
 expect:
   errors:
-    - { code: SCHEMA_VIOLATION, message: "/code must match pattern" }
+    - { code: SCHEMA_VIOLATION, message: "/code matches a shape that is not allowed here" }
 ---
 kind: Assert.Manifest
 metadata: { name: recognitionTimeAboveZero }

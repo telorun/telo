@@ -45,7 +45,13 @@ import {
 import { isRefSentinel, isTaggedSentinel } from "@telorun/templating";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
 import type { LibraryDeclarations } from "./library-declarations.js";
-import { createAjv } from "./schema-compat.js";
+import {
+  createAjv,
+  finishedValidation,
+  schemaNestingExceededSentence,
+  unlessOverflow,
+  type SchemaValidationOutcome,
+} from "./schema-validation.js";
 import { isInjectedDeclaration, readSuppliedResources } from "./resource-input.js";
 import { isResolvedReference } from "./resolved-reference.js";
 import type { ScopeSite } from "./scope-address.js";
@@ -589,7 +595,7 @@ export function modifierDefaultSites(
   return sites;
 }
 
-type ConditionCheck = ((entry: unknown) => boolean) | { readonly error: string };
+type ConditionCheck = ((entry: unknown) => SchemaValidationOutcome<unknown>) | { readonly error: string };
 const compiledConditions = new WeakMap<object, ConditionCheck>();
 let conditionAjv: ReturnType<typeof createAjv> | undefined;
 
@@ -599,14 +605,14 @@ let conditionAjv: ReturnType<typeof createAjv> | undefined;
  * no `const` and the entry lands in the branch that does not rely on it.
  */
 export function compileDefaultCondition(condition: unknown): ConditionCheck {
-  if (typeof condition === "boolean") return () => condition;
+  if (typeof condition === "boolean") return () => finishedValidation(condition ? [] : [false]);
   if (!isObject(condition)) return { error: "an 'if' is a JSON Schema: an object or a boolean" };
   const cached = compiledConditions.get(condition);
   if (cached) return cached;
   let check: ConditionCheck;
   try {
     const validate = (conditionAjv ??= createAjv()).compile(condition);
-    check = (entry) => validate(entry) === true;
+    check = (entry) => unlessOverflow(() => finishedValidation(validate(entry) === true ? [] : [validate.errors]));
   } catch (error) {
     check = { error: error instanceof Error ? error.message : String(error) };
   }
@@ -615,14 +621,25 @@ export function compileDefaultCondition(condition: unknown): ConditionCheck {
 }
 
 /** The default declared for `field` that applies to this entry, or undefined —
- *  none declared, or declared ambiguously (reported by the strict half). */
-function applicableDefault(sites: readonly ModifierDefaultSite[] | undefined, entry: unknown): unknown {
+ *  none declared, declared ambiguously (reported by the strict half), or decided
+ *  by a conditional whose validation could not finish (reported through
+ *  `unfinished`). */
+function applicableDefault(
+  sites: readonly ModifierDefaultSite[] | undefined,
+  entry: unknown,
+  unfinished: () => void,
+): unknown {
   if (!sites || sites.length !== 1) return undefined;
   const [site] = sites;
   if (site.kind === "field") return site.value;
   const check = compileDefaultCondition(site.condition);
   if (typeof check !== "function") return undefined;
-  return (check(entry) ? site.then : site.else)?.value;
+  const outcome = check(entry);
+  if (!outcome.finished) {
+    unfinished();
+    return undefined;
+  }
+  return (outcome.issues.length === 0 ? site.then : site.else)?.value;
 }
 
 function modifierDefaultSitesOf(
@@ -705,7 +722,16 @@ function projectEntry(
   // kind's declaration, not a shape to guess at.
   if (!mapped) return undefined;
   const modifier = (field: string): unknown =>
-    entry[field] !== undefined ? entry[field] : applicableDefault(run.defaultSites[field], entry);
+    entry[field] !== undefined
+      ? entry[field]
+      : applicableDefault(run.defaultSites[field], entry, () =>
+          options?.failures?.push({
+            reason: "condition-unfinished",
+            pointer: failureAnchor(entryPointer, projection, options),
+            entry: name,
+            field,
+          }),
+        );
   let node: Record<string, unknown> = { ...mapped };
   if (projection.array && modifier(projection.array) === true) {
     node = { type: "array", items: node };
@@ -1073,6 +1099,9 @@ export type ProjectionFailure =
   /** The annotation is malformed — at the slot, or on the kind document a hop
    *  reached. Reported where it is written, as `SCHEMA_PROJECTION_INVALID`. */
   | { readonly reason: "invalid"; readonly pointer: string; readonly detail: string }
+  /** The conditional deciding an entry's modifier default could not finish
+   *  validating the entry: no default is read for it. */
+  | { readonly reason: "condition-unfinished"; readonly pointer: string; readonly entry: string; readonly field: string }
   /** Kind-document derivations lead back to a declaration already on the path. */
   | { readonly reason: "cycle"; readonly pointer: string; readonly holder: string }
   /** A `pick` / `omit` pointer lands on a value an expression computes. */
@@ -1561,6 +1590,10 @@ export function describeProjectionFailure(failure: ProjectionFailure): string {
       ? `'${failure.pointer}' leads to '${via.prefix}' inside '${via.holder}', which`
       : `'${failure.pointer}'`;
   switch (failure.reason) {
+    case "condition-unfinished":
+      return schemaNestingExceededSentence(
+        `the entry '${failure.entry}' at '${failure.pointer}', against the conditional deciding its '${failure.field}' default,`,
+      );
     case "no-ref":
       return failure.pointer === "" && !failure.via
         ? "this resource declares no 'kind:', so there is no definition to project it through."

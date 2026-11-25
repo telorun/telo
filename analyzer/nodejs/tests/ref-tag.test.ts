@@ -3,7 +3,7 @@ import { makeTaggedSentinel } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
 import { AnalysisRegistry } from "../src/analysis-registry.js";
-import { createAjv } from "../src/schema-compat.js";
+import { createAjv } from "../src/schema-validation.js";
 import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 
 /** End-to-end analyzer coverage for the new `!ref <name>` YAML tag and the

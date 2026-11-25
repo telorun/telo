@@ -1,0 +1,14 @@
+units:
+  analyzer: Added
+body: "Schema validation has one configuration factory: `createAjv(<configuration>)`
+  builds one of seven named validator configurations (`analysis`, `analysis-verbose`,
+  `analysis-defaults`, `primary`, `filling`, `locating`, `schema-validate`), each
+  `strict: false` with the formats, every Telo keyword and RE2 as the pattern language;
+  the validator half of `schema-compat.ts` moved to `schema-validation.ts`, and
+  `analyzer/schema-validation-conformance/` records what each configuration answers.
+  Breaking: a schema `pattern`, a `patternProperties` key and `format: regex` are RE2,
+  and every pattern a schema holds is judged wherever it sits — an unreferenced
+  `definitions` entry, `not`, `if` / `then` / `else` included; `.` matches a carriage
+  return and `\\s` is `[\\t\\n\\f\\r ]`; an instance value (bytes, an instant, a
+  duration, a URL) is validated as an object holding no members, and `ajv` /
+  `ajv-formats` are pinned exactly."

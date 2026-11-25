@@ -1,0 +1,29 @@
+# Paths a subject names inside its working directory. `accepted` holds each
+# shape a relative path may take; every cache of `refused` leaves the directory,
+# names it whole, or holds a line break.
+kind: Telo.Library
+metadata: { name: RelativePaths }
+imports: { Benchmark: ../../.. }
+---
+kind: Benchmark.Comparison
+metadata: { name: accepted }
+subjects:
+  - name: app
+    command: node
+    cwd: !module-path work
+    readiness: { url: "http://127.0.0.1:9491/ping" }
+    caches: [.cache, a/b, a..b, .hidden/x, ..x]
+    traceFile: spans/trace.jsonl
+workloads:
+  - { name: ping, duration: 1s, concurrency: 1, requests: [{ url: "http://127.0.0.1:9491/ping" }] }
+---
+kind: Benchmark.Comparison
+metadata: { name: refused }
+subjects:
+  - name: app
+    command: node
+    cwd: !module-path work
+    readiness: { url: "http://127.0.0.1:9491/ping" }
+    caches: [/abs, ., ./, ../up, a/../b, a/.., "line\nbreak", "a\rb", ""]
+workloads:
+  - { name: ping, duration: 1s, concurrency: 1, requests: [{ url: "http://127.0.0.1:9491/ping" }] }

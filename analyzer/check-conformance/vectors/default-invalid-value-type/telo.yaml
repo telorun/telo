@@ -1,0 +1,9 @@
+kind: Telo.Application
+metadata: { name: StoreApp }
+variables:
+  storeUrl: { env: STORE_URL, type: string, x-telo-type: Telo.Url, default: not a url }
+imports:
+  Worker:
+    source: ./worker
+    variables:
+      storeUrl: !cel "string(variables.storeUrl)"

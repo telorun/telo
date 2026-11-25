@@ -1,4 +1,4 @@
-import { jsonPointerSegment, valueIssue, type ValueIssue } from "@telorun/sdk";
+import { jsonPointerSegment, SCHEMA_REGEX_FORMAT, schemaPattern, valueIssue, type ValueIssue } from "@telorun/sdk";
 import { Ajv, type AnySchema } from "ajv";
 import addFormats from "ajv-formats";
 import type { FastifyServerOptions } from "fastify";
@@ -14,8 +14,11 @@ function validatorOver(sharedSchemas: Record<string, unknown>, coerceTypes: fals
     removeAdditional: false,
     addUsedSchema: false,
     allErrors: false,
+    // A schema pattern is RE2, read through the one seam every Telo validator reads.
+    code: { regExp: schemaPattern },
   });
   addFormats.default(ajv);
+  ajv.addFormat("regex", SCHEMA_REGEX_FORMAT);
   for (const shared of Object.values(sharedSchemas)) ajv.addSchema(shared as AnySchema);
   return ajv;
 }

@@ -11,7 +11,13 @@ metadata:
     entry is selected by, the rules that render a handler's result or error into a
     status, headers, cookies and body, and cookie declarations whose prefix, scope
     and Secure, HttpOnly and SameSite attributes are checked before the app runs.
-requires: { telo: ">=0.96.0" }
+requires: { telo: ">=0.133.0" }
+restrictions:
+  - requires: { telo: ">=unreleased" }
+    reason: >-
+      Route matchers and response content schemas are typed as JSON Schema, which
+      telo releases before this one cannot compile, so they would check no route's
+      method, status or schemas before the app runs.
 imports:
   # The response-encoder contract the Outcomes carrier's `content[mime].encoder`
   # slot pins. Naming it by alias is what makes the coupling a declared edge.
@@ -20,13 +26,8 @@ exports:
   kinds: [Cookie, HostCookie, Outcomes, Request, SecureCookie, UnprefixedCookie]
   resources: [CookieAttributeValue]
 ---
-# Pure schema carrier. Never instantiated as a resource. Publishes
-# $defs/Matcher — the canonical HTTP request matcher value-shape — as a single
-# source of truth that every HTTP-shaped transport (http-server, lambda, ...)
-# anchors against via x-telo-schema-from. Consumers keep their own
-# x-telo-topology-role / x-telo-context-from annotations on the field they
-# declare; the carrier owns only the structural value-shape (method, path,
-# query, body, headers, cookies).
+# Schema carrier, never instantiated: transports anchor at $defs/Matcher with
+# x-telo-schema-from and keep their own annotations on the field they declare.
 kind: Telo.Definition
 metadata:
   name: Request
@@ -61,31 +62,18 @@ schema:
           additionalProperties: { type: string }
         schema:
           title: Schema
-          description: |
-            User-supplied JSON Schemas typing the CEL-visible parts of the
-            incoming request. Serves two purposes, so declare it for any route
-            that takes inputs:
-            (1) the analyzer reads it via
-            `x-telo-context-from: "request/schema"` to populate and type-check
-            the `request.{query,body,headers,params}` shape of CEL contexts
-            inside `inputs:` / `returns:` / `catches:` (without it, `request.*`
-            is untyped `dyn`);
-            (2) the server registers these as the route's request validation
-            schema and renders them into the generated OpenAPI document
-            (`query` → query parameters, `params` → path parameters, `body` →
-            request body, `headers` → header params, `cookies` → cookie params).
-            For a good OpenAPI spec, write full property schemas with `type`,
-            `description`, and `examples` on each field, not bare `{}`.
-            Distinct from the top-level `query`/`body`/`headers` fields above,
-            which document the matcher value-shape itself.
+          description: >-
+            JSON Schemas of the request's parts — `params`, `query`, `body`,
+            `headers`, `cookies` — which type `request.*` in CEL and are the
+            route's request validation and its OpenAPI parameters and body.
           type: object
           additionalProperties: false
           properties:
-            params:  { type: object }
-            query:   { type: object }
-            body:    { type: object }
-            headers: { type: object }
-            cookies: { type: object }
+            params: { $ref: "telo://manifest#/$defs/JsonSchema7" }
+            query: { $ref: "telo://manifest#/$defs/JsonSchema7" }
+            body: { $ref: "telo://manifest#/$defs/JsonSchema7" }
+            headers: { $ref: "telo://manifest#/$defs/JsonSchema7" }
+            cookies: { $ref: "telo://manifest#/$defs/JsonSchema7" }
       required: ["path", "method"]
     Hostname:
       title: Hostname
@@ -96,13 +84,8 @@ schema:
         A domain name is never written here — the need's fulfilment holds it.
       x-telo-ref: { kind: [Telo.PublicUrl, Telo.PublicHostPattern], use: dependency }
 ---
-# Pure schema carrier. Never instantiated as a resource. Its only job is to
-# publish $defs/Returns and $defs/Catches as a single source of truth that
-# every HTTP-shaped transport (http-server, lambda, ...) anchors against via
-# x-telo-schema-from. Consumers keep their own x-telo-outcome-list /
-# x-telo-catches-for / x-telo-context annotations on the field they declare;
-# the carrier owns only the value-shape (status, when, mode, headers, cookies,
-# content).
+# Schema carrier, never instantiated: transports anchor at $defs/Returns and
+# $defs/Catches with x-telo-schema-from and keep their own annotations.
 kind: Telo.Definition
 metadata:
   name: Outcomes
@@ -119,10 +102,7 @@ schema:
         title: Return Entry
         description: Conditional rendering entry for a successful return.
         type: object
-        # Closed, so a misspelled key is reported rather than ignored. The
-        # http-server route's own copy of this shape always was; this carrier was
-        # not, so the identical typo was an error on a route and silence in a
-        # `notFoundHandler`.
+        # Closed, so a misspelled key is reported rather than ignored.
         additionalProperties: false
         properties:
           status:
@@ -207,7 +187,7 @@ schema:
                     in the generated OpenAPI document — declare it for every
                     body-bearing return, with `type`, `description`, and
                     `examples` on each field so the OpenAPI spec is complete.
-                  type: object
+                  $ref: "telo://manifest#/$defs/JsonSchema7"
                 encoder:
                   title: Encoder
                   description: Encoder ref (any kind extending Codec.Encoder) for stream mode. handler.result.output is piped through encoder.invoke({input}) and the encoder's result.output bytes flow to the response.
@@ -330,7 +310,7 @@ schema:
                   schema:
                     title: Schema
                     description: JSON Schema used to validate the rendered body.
-                    type: object
+                    $ref: "telo://manifest#/$defs/JsonSchema7"
                   headers:
                     title: Headers
                     description: Per-MIME header overrides (merge over entry-level headers; per-MIME wins). Content-Type and Set-Cookie are refused.
@@ -348,7 +328,7 @@ schema:
                 schema:
                   title: Schema
                   description: JSON Schema used to validate the rendered body.
-                  type: object
+                  $ref: "telo://manifest#/$defs/JsonSchema7"
                 headers:
                   title: Headers
                   description: Per-MIME header overrides (merge over entry-level headers; per-MIME wins). Content-Type and Set-Cookie are refused.
@@ -357,13 +337,8 @@ schema:
                   additionalProperties: { type: string }
         required: ["status"]
 ---
-# One cookie a response sets: the attributes are the declaration's, so a cookie
-# set by one route and cleared by another is sent with the same scope and the
-# browser actually drops it. Only value and lifetime vary per response.
-#
-# Each kind's controller publishes the whole normalized attribute record, so a
-# transport writes `Set-Cookie` from the record alone and never asks which kind
-# declared it.
+# Attributes are the declaration's, so a cookie set by one route and cleared by
+# another carries the same scope; only value and lifetime vary per response.
 kind: Telo.Abstract
 metadata:
   name: Cookie

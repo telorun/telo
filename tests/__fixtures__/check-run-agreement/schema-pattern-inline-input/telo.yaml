@@ -1,0 +1,12 @@
+# An inline input contract at a slot taking a type, holding a lookahead.
+kind: Telo.Application
+metadata: { name: SchemaPatternInlineInput, version: 1.0.0 }
+---
+kind: Telo.Value
+metadata: { name: echo }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties: { code: { type: string, pattern: "^(?!tmp$)[a-z]+$" } }
+value: !cel "inputs"

@@ -1,0 +1,3 @@
+kind: Telo.Library
+metadata: { name: Modes }
+variables: { mode: { type: string, enum: [fast, safe], default: quick } }

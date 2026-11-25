@@ -34,7 +34,7 @@ import type { ImportReach } from "./reaching-import.js";
 import { reachedLibraryDocuments } from "./requires-gate.js";
 import { libraryBlockDiagnostics } from "./validate-library-blocks.js";
 import { validateLibraryScopedKindDocuments, type KindDocumentKind } from "./validate-scoped-kind-documents.js";
-import type { SchemaIssue } from "./schema-error-report.js";
+import type { SchemaValidationOutcome } from "./schema-validation.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { readDeadBranches, type DeadFinding, type PassTable, type ReadFinding } from "./union-passes.js";
 import { validateApplicationArguments } from "./validate-application-arguments.js";
@@ -153,7 +153,7 @@ export interface ModuleDocumentInputs {
   /** Which of the entry's imports reaches each library. */
   readonly reach: ImportReach;
   /** A scope member's kind document held against its built-in entry. */
-  readonly validateScopedKind: (member: ResourceManifest, kind: KindDocumentKind) => SchemaIssue[];
+  readonly validateScopedKind: (member: ResourceManifest, kind: KindDocumentKind) => SchemaValidationOutcome;
 }
 
 /**

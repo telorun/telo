@@ -21,7 +21,8 @@ import {
   type ShapeResolver,
   type VaryingShapes,
 } from "./reference-reach.js";
-import { createAjv, navigateJsonPointer } from "./schema-compat.js";
+import { navigateJsonPointer } from "./schema-compat.js";
+import { createAjv, finishedValidation, unlessOverflow, type SchemaValidationOutcome } from "./schema-validation.js";
 import { SchemaNodeValidator } from "./schema-node-validator.js";
 import { judgeSchemaFindings, type UnionPlan } from "./schema-findings-judge.js";
 import type { StandIns } from "./stand-in-findings.js";
@@ -595,7 +596,7 @@ export class DefinitionRegistry {
   private nodeValidator(): SchemaNodeValidator {
     const store = this.store;
     if (!store.nodes) {
-      const ajv = createAjv({ verbose: true });
+      const ajv = createAjv("analysis-verbose");
       for (const { schema, id } of this.registeredSchemas) ajv.addSchema(schema, id, undefined, false);
       if (store !== this.sharedStore) {
         for (const [id, schema] of this.layer!.registered) {
@@ -627,13 +628,13 @@ export class DefinitionRegistry {
   }
 
   /** `errors` judged: each union decided, and what the stand-ins in `data`
-   *  excuse dropped. */
+   *  excuse dropped — or that judging them could not finish. */
   private judged(
     errors: AjvErrorLike[] | null | undefined,
     data: unknown,
     schema: Record<string, any>,
     standIns: StandIns | undefined,
-  ): AjvErrorLike[] {
+  ): SchemaValidationOutcome<AjvErrorLike> {
     const plan = this.unionPlan;
     return judgeSchemaFindings(errors, {
       value: data,
@@ -696,13 +697,10 @@ export class DefinitionRegistry {
    * Two AJVs answering one question is what made that possible; there is now
    * one, and it is the same one `schemaCompileError` reports through.
    */
-  validateWithRefs(data: unknown, schema: Record<string, any>, standIns?: StandIns): string[] {
-    const validate = this.compiledFor(schema);
-    if (!validate) return [];
-    const valid = validate(data);
-    if (valid && !this.judgedWhole(data)) return [];
-    const errors = this.judged(valid ? [] : validate.errors, data, schema, standIns);
-    return (withEnumValues(explainFormatErrors(errors, data), data) ?? []).map(formatSingleError);
+  validateWithRefs(data: unknown, schema: Record<string, any>, standIns?: StandIns): SchemaValidationOutcome<string> {
+    const judged = this.judgedValidation(data, schema, standIns);
+    if (!judged.finished) return judged;
+    return finishedValidation((withEnumValues(explainFormatErrors(judged.issues, data), data) ?? []).map(formatSingleError));
   }
 
   /** {@link validateWithRefs}, with the path each issue is anchored at. */
@@ -710,12 +708,25 @@ export class DefinitionRegistry {
     data: unknown,
     schema: Record<string, any>,
     standIns?: StandIns,
-  ): SchemaIssue[] {
+  ): SchemaValidationOutcome {
+    const judged = this.judgedValidation(data, schema, standIns);
+    return judged.finished ? finishedValidation(schemaIssues(judged.issues, data)) : judged;
+  }
+
+  /** `data` validated against `schema` and every finding judged — none for a
+   *  schema that does not compile — or that the validation could not finish. */
+  private judgedValidation(
+    data: unknown,
+    schema: Record<string, any>,
+    standIns: StandIns | undefined,
+  ): SchemaValidationOutcome<AjvErrorLike> {
     const validate = this.compiledFor(schema);
-    if (!validate) return [];
-    const valid = validate(data);
-    if (valid && !this.judgedWhole(data)) return [];
-    return schemaIssues(this.judged(valid ? [] : validate.errors, data, schema, standIns), data);
+    if (!validate) return finishedValidation([]);
+    return unlessOverflow(() => {
+      const valid = validate(data);
+      if (valid && !this.judgedWhole(data)) return finishedValidation([]);
+      return this.judged(valid ? [] : validate.errors, data, schema, standIns);
+    });
   }
 
   /** Memoized per schema OBJECT — the analyzer validates every resource of a
@@ -753,6 +764,12 @@ export class DefinitionRegistry {
       this.refuseWithheld(missingSchemaOf(err));
       return err instanceof Error ? err.message : String(err);
     }
+  }
+
+  /** {@link schemaCompileError} of a schema {@link validateResourceConfig} has
+   *  validated against: `undefined` at once when its validator is held. */
+  validatedSchemaCompileError(schema: Record<string, any>): string | undefined {
+    return this.store.compiled.has(schema) ? undefined : this.schemaCompileError(schema);
   }
 
   /**

@@ -1,0 +1,14 @@
+units:
+  analyzer: Added
+body: "A value no validation can finish over — its schema refers to itself without
+  descending into it, or it is nested deeper than a validation can follow — is reported
+  as `SCHEMA_NESTING_EXCEEDED` where its mismatch would go, and nothing else for that
+  value: a `variables:` / `secrets:` default, a resource, a `base:` field, a reference
+  slot's value branch (in place of `INVALID_REFERENCE_FORM` / `INVALID_REFERENCE`), a
+  step's or import's inputs, a template body entry, an inline declaration, a need's
+  parameters and the other validated positions. Before, `telo check` and the load
+  stopped with an uncoded \"Maximum call stack size exceeded\", or a value branch that
+  could not finish read as refusing the value. The analysis's validation results, the
+  judge and `satisfiesValueBranch` now answer valid, invalid or could-not-finish
+  (`SchemaValidationOutcome`, `ValueBranchOutcome`) — a break for a caller reading them
+  as lists or booleans."

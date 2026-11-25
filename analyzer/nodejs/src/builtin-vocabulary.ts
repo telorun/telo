@@ -1,11 +1,9 @@
 import { readText, readValueTypeSlot } from "@telorun/sdk";
-import AjvModule from "ajv";
-import addFormats from "ajv-formats";
 import { fullFormats } from "ajv-formats/dist/formats.js";
 import { parseAllDocuments } from "yaml";
 import { TELO_FORMATS } from "./telo-format.js";
 import { describeTextKey, judgeCatalog, keyOfText } from "./text-judgement.js";
-import { registerTeloKeywords } from "./value-type-keyword.js";
+import { createAjv, finishedValidation, schemaNestingExceededSentence, unlessOverflow } from "./schema-validation.js";
 import { readProvidesZone, readRequiresZone, readViolatesZone } from "./zone-slot.js";
 
 /**
@@ -72,7 +70,6 @@ const HOISTED_KEY_PREFIX = "telo:";
 /** The language every built-in display message is written in, which no
  *  translation catalog of the archive may be. */
 const BUILTIN_TEXT_LANG = "en";
-const Ajv = (AjvModule as any).default ?? AjvModule;
 
 export interface BuiltinVocabulary {
   /** The release the archive is the vocabulary of, `metadata.version`. */
@@ -273,9 +270,8 @@ function translationProblems(
     if (read.ok) builtinTexts.add(keyOfText(read.text));
   }
   if (Object.keys(translations).length === 0) return problems;
-  const ajv = new Ajv({ allErrors: true, strict: false });
-  (addFormats as any).default ? (addFormats as any).default(ajv) : (addFormats as any)(ajv);
-  registerTeloKeywords(ajv);
+  // The archive's own fragments are judged, not this package's copy of them.
+  const ajv = createAjv("analysis", { manifestRoot: false });
   ajv.addSchema({ $id: "telo://manifest", $defs: defs });
   let isTextCatalog: ReturnType<typeof ajv.compile>;
   try {
@@ -287,7 +283,12 @@ function translationProblems(
   }
   for (const [key, catalog] of Object.entries(translations)) {
     const where = `\`translations.${key}\``;
-    if (!isTextCatalog(catalog)) {
+    const fits = unlessOverflow(() => finishedValidation(isTextCatalog(catalog) ? [] : [isTextCatalog.errors]));
+    if (!fits.finished) {
+      problems.push(schemaNestingExceededSentence(where));
+      continue;
+    }
+    if (fits.issues.length > 0) {
       const why = (isTextCatalog.errors ?? [])
         .map((error: { instancePath: string; message?: string }) => `${error.instancePath || "/"} ${error.message}`)
         .join("; ");

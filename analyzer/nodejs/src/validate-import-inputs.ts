@@ -1,4 +1,5 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { SCHEMA_NESTING_EXCEEDED, schemaNestingExceededMessage } from "./schema-validation.js";
 import { VALUE_TYPES } from "@telorun/sdk";
 import { isTaggedSentinel } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
@@ -107,7 +108,12 @@ export function declaredInputFindings(
     standIns,
     external: (ref) => defs.schemaForId(ref),
   });
-  for (const issue of defs.validateResourceConfig(substituted, schema, standIns)) {
+  const outcome = defs.validateResourceConfig(substituted, schema, standIns);
+  if (!outcome.finished) {
+    out.push({ code: SCHEMA_NESTING_EXCEEDED, message: schemaNestingExceededMessage(subject, "what it supplies"), path: "" });
+    return out;
+  }
+  for (const issue of outcome.issues) {
     const textRefusal = valueTypeRefusalCode(issue);
     if (textRefusal !== undefined) {
       const quoted = quotingIssue(`${subject}: `, issue, issue.path);

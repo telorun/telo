@@ -8,7 +8,7 @@ import { createHash } from "crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
 import * as path from "path";
 import { deserialize, serialize } from "v8";
-import { readVersion, reportUndeterminableVersion } from "../runtime-versions.js";
+import { readCacheKeyVersion, reportUndeterminableVersion } from "../runtime-versions.js";
 
 /**
  * YAML parses on disk, under `<cache-root>/yaml-parses/`, one file per source.
@@ -36,9 +36,9 @@ export function createParsedYamlCache(
   options: { write: boolean; log: Logger },
 ): YamlParseCache | undefined {
   const versions = {
-    analyzer: readVersion("@telorun/analyzer"),
-    templating: readVersion("@telorun/templating"),
-    yaml: readVersion("yaml"),
+    analyzer: readCacheKeyVersion("@telorun/analyzer"),
+    templating: readCacheKeyVersion("@telorun/templating"),
+    yaml: readCacheKeyVersion("yaml"),
   };
   const unknown = Object.entries(versions)
     .filter(([, version]) => version === undefined)

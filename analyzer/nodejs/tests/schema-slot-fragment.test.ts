@@ -1,3 +1,4 @@
+import { finishedIssues } from "./judged-validation.js";
 import type { ResourceManifest } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
@@ -10,7 +11,7 @@ import {
   manifestFragmentRef,
   withSchemaFragments,
 } from "../src/manifest-schemas.js";
-import { validateAgainstSchema } from "../src/schema-compat.js";
+import { validateAgainstSchema } from "../src/schema-validation.js";
 import { argumentRecordSchema } from "../src/callable-signature.js";
 
 /** The recursive half of the shared fragment set: a slot holding author-written
@@ -93,7 +94,7 @@ describe("schema slots on the built-in kinds", () => {
       status: { type: "object", properties: { port: { type: "integer", minimum: "3" } } },
     };
 
-    const issues = validateAgainstSchema(doc, definition.schema);
+    const issues = finishedIssues(validateAgainstSchema(doc, definition.schema));
     expect(issues.map((i) => i.path)).toContain("status.properties.port.minimum");
   });
 
@@ -114,7 +115,7 @@ describe("schema slots on the built-in kinds", () => {
 
     // Open by construction: the annotations are not properties of the fragment,
     // and closing it would reject the next one a module invents.
-    expect(validateAgainstSchema(doc, definition.schema)).toEqual([]);
+    expect(finishedIssues(validateAgainstSchema(doc, definition.schema))).toEqual([]);
   });
 
   it("keeps an author's own $defs entry of the same name, which the reserved key makes possible", () => {
@@ -140,7 +141,7 @@ describe("schema slots on the built-in kinds", () => {
       schema: { type: "object", properties: { total: { type: "nubmer" } } },
     };
 
-    const issues = validateAgainstSchema(doc, definition.schema);
+    const issues = finishedIssues(validateAgainstSchema(doc, definition.schema));
     expect(issues.map((i) => i.path)).toContain("schema.properties.total.type");
   });
 });
@@ -236,7 +237,7 @@ describe("a recursive fragment at a nested schema root", () => {
     const record = argumentRecordSchema(definition.params);
     expect(record.properties.text.$defs).toBeUndefined();
     expect(Object.keys(record.$defs)).toEqual(["telo:Message"]);
-    expect(validateAgainstSchema({ text: { plural: "n", cases: { other: "x" } } }, record)).toEqual([]);
-    expect(validateAgainstSchema({ text: { plural: "n", cases: {} } }, record)).not.toEqual([]);
+    expect(finishedIssues(validateAgainstSchema({ text: { plural: "n", cases: { other: "x" } } }, record))).toEqual([]);
+    expect(finishedIssues(validateAgainstSchema({ text: { plural: "n", cases: {} } }, record))).not.toEqual([]);
   });
 });

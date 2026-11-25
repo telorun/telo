@@ -131,5 +131,6 @@ Pick `Config.Env` for a single-module app that reads the environment directly. P
 ## Notes
 
 - A key not listed in the store's `schema` cannot be read, even in a CEL expression — it will fail at init time.
+- Each entry of a store's `schema`, and each `Config.Env` variable or secret, is JSON Schema: a `pattern` RE2 cannot read is refused by `telo check` and at load.
 - Multiple maps can reference the same store.
 - CEL expressions have access only to the keys declared in the referenced store.

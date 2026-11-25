@@ -1,7 +1,16 @@
-import { judgeSchemaFindings, type StandIns } from "@telorun/analyzer";
+import { judgeSchemaFindings, type SchemaValidationOutcome, type StandIns } from "@telorun/analyzer";
 import { describe, expect, it } from "vitest";
 import { stripCompiledValues } from "../src/schema-compiled-values.js";
 import { SchemaValidationError, SchemaValidator } from "../src/schema-validator.js";
+
+/** What a validation or judgement that must finish answered. */
+function finished<T>(answer: SchemaValidationOutcome<T> | readonly T[] | undefined): T[] {
+  if (answer === undefined) return [];
+  if (Array.isArray(answer)) return [...answer];
+  const outcome = answer as SchemaValidationOutcome<T>;
+  expect(outcome.finished).toBe(true);
+  return outcome.finished ? outcome.issues : [];
+}
 
 const SECONDS = { type: "string", pattern: "^\\d+s$" };
 const tagged = (engine: string, source: string) => ({ __compiled: true, engine, source });
@@ -38,13 +47,15 @@ function createTime(schema: Record<string, any>, config: Record<string, unknown>
     if (standIns.size === 0) return { refusedBy: ["the first error"], stripped };
   }
   const findings = validator.findingsFor(schema);
-  const remaining = judgeSchemaFindings(findings(schema, stripped), {
-    value: stripped,
-    schema,
-    standIns,
-    validate: findings,
-    reference: (node, ref) => validator.reference(node, ref),
-  });
+  const remaining = finished(
+    judgeSchemaFindings(finished(findings(schema, stripped)), {
+      value: stripped,
+      schema,
+      standIns,
+      validate: findings,
+      reference: (node, ref) => validator.reference(node, ref),
+    }),
+  );
   return { refusedBy: remaining.map((e) => `${e.instancePath} ${e.keyword}`), stripped };
 }
 
@@ -239,13 +250,15 @@ describe("create-time validation judging a union through a reference", () => {
     ) as Record<string, unknown>;
     expect(() => validator.compile(schema).validate(stripped)).toThrow(SchemaValidationError);
     const findings = validator.findingsFor(schema);
-    const remaining = judgeSchemaFindings(findings(schema, stripped), {
-      value: stripped,
-      schema,
-      standIns,
-      validate: findings,
-      reference: (node, ref) => validator.reference(node, ref),
-    });
+    const remaining = finished(
+      judgeSchemaFindings(finished(findings(schema, stripped)), {
+        value: stripped,
+        schema,
+        standIns,
+        validate: findings,
+        reference: (node, ref) => validator.reference(node, ref),
+      }),
+    );
     expect(remaining.map((e) => `${e.instancePath} ${e.keyword}`)).toEqual([" required"]);
   });
 });

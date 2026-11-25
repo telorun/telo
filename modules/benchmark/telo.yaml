@@ -306,7 +306,12 @@ schema:
     RelativePath:
       type: string
       description: A path relative to the subject's working directory that stays inside it.
-      pattern: "^(?!/)(?!\\.?/?$)(?!(.*/)?\\.\\.(/|$)).+$"
+      pattern: "^[^\\n\\r\u2028\u2029]+$"
+      not:
+        anyOf:
+          - { pattern: "^/" }
+          - { enum: [., ./] }
+          - { pattern: "(^|/)\\.\\.(/|$)" }
   x-telo-resource-rules:
     - in: /subjects
       condition: !cel "self.subjects.filter(s, s.name == this.name).size() == 1"

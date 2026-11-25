@@ -32,18 +32,13 @@ use crate::reaching_import::{import_anchored_diagnostic, import_reach, module_na
 use crate::types::{kind_of, name_of, AnalysisDiagnostic, DiagnosticData, DiagnosticResource, WrittenAt};
 use crate::untagged_interpolation::validate_untagged_interpolation;
 use crate::validate_identifier_names::validate_identifier_names;
-use crate::validate_reference_forms::{validate_reference_forms, AcceptsValue};
+use crate::validate_reference_forms::validate_reference_forms;
 use crate::validate_include_placement::validate_include_placement;
+use crate::validate_input_defaults::validate_input_defaults;
 use crate::validate_library_blocks::library_block_diagnostics;
 use crate::validate_native_entries::validate_native_entries;
 use crate::validate_requires::{judge_requires, SourcedDocument, ValidateRequiresOptions};
 use crate::validate_source_entries::validate_source_entries;
-
-/// What an analysis needs from its host.
-pub struct AnalysisOptions<'a> {
-    /// Whether a union's value branch accepts a value — the host's JSON Schema validator.
-    pub accepts_value: &'a AcceptsValue<'a>,
-}
 
 /// The kind documents a capability names a lifecycle role on.
 const KIND_DOCUMENTS: &[&str] = &["Telo.Definition", "Telo.Abstract"];
@@ -57,12 +52,12 @@ pub struct Analysis {
 }
 
 /// Every diagnostic the analysis makes of `graph`, before any host's presentation.
-pub fn analyze(graph: &LoadedGraph, options: &AnalysisOptions) -> Vec<AnalysisDiagnostic> {
-    analysis(graph, options).diagnostics
+pub fn analyze(graph: &LoadedGraph) -> Vec<AnalysisDiagnostic> {
+    analysis(graph).diagnostics
 }
 
 /// [`analyze`]'s diagnostics, with the modules the requires gate left undecided.
-pub fn analysis(graph: &LoadedGraph, options: &AnalysisOptions) -> Analysis {
+pub fn analysis(graph: &LoadedGraph) -> Analysis {
     let documents = analysed_documents(graph);
     let root_modules = root_modules(&documents);
     // Declared runtime requirements first: a module this runtime cannot read also yields the
@@ -75,13 +70,14 @@ pub fn analysis(graph: &LoadedGraph, options: &AnalysisOptions) -> Analysis {
     let mut diagnostics = judgement.diagnostics;
     let unreadable_files = files_of_unreadable_modules(&documents, &diagnostics);
     diagnostics.extend(capability_diagnostics(graph));
-    diagnostics.extend(validate_reference_forms(graph, options.accepts_value));
+    diagnostics.extend(validate_reference_forms(graph));
     diagnostics.extend(validate_identifier_names(graph));
     diagnostics.extend(validate_untagged_interpolation(graph));
     // The module documents' own blocks, in Node's order: native files, staged sources, the
-    // placement of file embeds, a library's variable and export blocks.
+    // inputs' defaults, the placement of file embeds, a library's variable and export blocks.
     diagnostics.extend(validate_native_entries(&documents, Some(&root_modules)));
     diagnostics.extend(validate_source_entries(&documents, Some(&root_modules)));
+    diagnostics.extend(validate_input_defaults(&documents, &root_modules));
     diagnostics.extend(validate_include_placement(&documents));
     diagnostics.extend(library_block_diagnostics(&documents));
     let refusals = unreadable_module_refusals(unreadable_files);

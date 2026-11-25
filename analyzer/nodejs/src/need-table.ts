@@ -34,7 +34,8 @@ import {
   readResourceInputs,
 } from "./resource-input.js";
 import { findDynamicLeaf } from "./resource-rule.js";
-import { navigateSchemaToExprPath, substituteCelFields, validateAgainstSchema } from "./schema-compat.js";
+import { navigateSchemaToExprPath, substituteCelFields } from "./schema-compat.js";
+import { SCHEMA_NESTING_EXCEEDED, schemaNestingExceededMessage, validateAgainstSchema } from "./schema-validation.js";
 import {
   describeHostEntry,
   holdsHostPath,
@@ -829,10 +830,15 @@ function checkParameters(
     }
   }
   if (tagRefused) return;
-  const [issue] = validateAgainstSchema(
+  const outcome = validateAgainstSchema(
     substituteCelFields(need.parameters ?? {}, shape.parameters),
     shape.parameters,
   );
+  if (!outcome.finished) {
+    report(module, SCHEMA_NESTING_EXCEEDED, schemaNestingExceededMessage(`Need '${need.name}'`, "its parameters"), { path });
+    return;
+  }
+  const [issue] = outcome.issues;
   if (issue) {
     report(
       module,
@@ -1140,7 +1146,12 @@ export function fieldSupplyFindings(
       const standIns: StandIns = new Map();
       const value = substituteDecodedCelFields(written, schema, undefined, { standIns });
       if (standIns.has("")) continue;
-      const [issue] = validateAgainstSchema(value, schema);
+      const outcome = validateAgainstSchema(value, schema);
+      if (!outcome.finished) {
+        out.push({ code: SCHEMA_NESTING_EXCEEDED, message: schemaNestingExceededMessage(subject, `field '${field}'`), path: `${path}.${field}` });
+        continue;
+      }
+      const [issue] = outcome.issues;
       if (!issue) continue;
       out.push({
         code: valueTypeRefusalCode(issue) ?? "SCHEMA_VIOLATION",
@@ -1150,7 +1161,12 @@ export function fieldSupplyFindings(
       continue;
     }
     if (findDynamicLeaf(written)) continue;
-    const [issue] = validateAgainstSchema(written, schema);
+    const outcome = validateAgainstSchema(written, schema);
+    if (!outcome.finished) {
+      out.push({ code: SCHEMA_NESTING_EXCEEDED, message: schemaNestingExceededMessage(subject, `field '${field}'`), path: `${path}.${field}` });
+      continue;
+    }
+    const [issue] = outcome.issues;
     if (!issue) continue;
     out.push({
       code: "SCHEMA_VIOLATION",

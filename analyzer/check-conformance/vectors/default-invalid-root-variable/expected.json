@@ -1,0 +1,29 @@
+{
+  "diagnostics": [
+    {
+      "code": "DEFAULT_INVALID",
+      "data": {
+        "filePath": "telo.yaml",
+        "path": "variables.retries.default",
+        "resource": {
+          "kind": "Telo.Application",
+          "name": "RetryingApp"
+        }
+      },
+      "message": "Telo.Application/RetryingApp: the default of variables.retries must be >= 0. A default is the value the input holds when nothing supplies one, so it must satisfy the input's own declaration.",
+      "range": {
+        "end": {
+          "character": 65,
+          "line": 3
+        },
+        "start": {
+          "character": 63,
+          "line": 3
+        }
+      },
+      "severity": 1,
+      "source": "telo-analyzer"
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] Manifest validation failed\n  [DEFAULT_INVALID] Telo.Application/RetryingApp: the default of variables.retries must be >= 0. A default is the value the input holds when nothing supplies one, so it must satisfy the input's own declaration."
+}

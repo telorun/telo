@@ -1,0 +1,11 @@
+units:
+  kernel: Added
+body: 'A load is refused with `ERR_SCHEMA_NESTING_EXCEEDED` where a value cannot be
+  validated because its schema refers to itself without descending into it or it is
+  nested deeper than a validation can follow: an application whose `telo check` reports
+  `SCHEMA_NESTING_EXCEEDED`, an import loading a library with a reference slot whose
+  value branch cannot finish, and a resource whose configuration cannot be validated
+  when it is created, each naming `<Kind>/<name>` and the place. Before, the run stopped
+  with an uncoded stack overflow or `ERR_RESOURCE_SCHEMA_VALIDATION_FAILED` quoting
+  "Maximum call stack size exceeded"; an application default that could not be validated
+  was refused as `ERR_MANIFEST_VALIDATION_FAILED`.'
