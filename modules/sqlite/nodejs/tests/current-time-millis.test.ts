@@ -20,8 +20,9 @@ describe("sqliteDialect.renderCurrentTimeMillis", () => {
     db.close();
 
     expect(Number.isInteger(row.now_ms)).toBe(true);
-    // julianday resolves to about a millisecond; allow that on both sides.
-    expect(row.now_ms).toBeGreaterThanOrEqual(before - 2);
-    expect(row.now_ms).toBeLessThanOrEqual(after + 2);
+    // SQLite reads a coarser clock than Date.now on Windows (up to ~16ms behind);
+    // a second's slack still tells milliseconds from seconds.
+    expect(row.now_ms).toBeGreaterThanOrEqual(before - 1000);
+    expect(row.now_ms).toBeLessThanOrEqual(after + 1000);
   });
 });

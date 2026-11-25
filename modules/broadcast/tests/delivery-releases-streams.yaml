@@ -6,7 +6,10 @@ metadata:
     Each delivery runs under a context of its own, released when its handler
     returns: a handler whose `with:` member answers a stream nobody reads has its
     scope torn down once per message, while the subscription keeps running.
-imports: { Broadcast: ../, Stream: ../../stream, Timer: ../../timer, Assert: ../../assert }
+    Each handler reports its message on `handled`, and the test waits for the
+    third rather than for a fixed time, so no message is still queued when the
+    subscription stops.
+imports: { Broadcast: ../, Stream: ../../stream, Watch: ../../watch, Assert: ../../assert }
 targets:
   - !ref test
   - !ref expectReleased
@@ -18,12 +21,21 @@ messageType:
   kind: Telo.JsonSchema
   schema: { type: object, required: [n], properties: { n: { type: integer } } }
 ---
+kind: Watch.MemoryStore
+metadata: { name: handled }
+---
 kind: Telo.Sequence
 metadata: { name: reply }
+inputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [n], properties: { n: { type: integer } } }
 with:
   - { kind: Stream.Of, metadata: { name: replyItems }, items: [a, b] }
 steps:
   - { name: call, invoke: !ref replyItems }
+  - name: report
+    invoke: { kind: Watch.Publish, store: !ref handled }
+    inputs: { topic: replies, version: !cel "inputs.n" }
 outputs: { output: !cel "steps.call.result.output" }
 ---
 kind: Telo.Sequence
@@ -33,6 +45,7 @@ with:
     metadata: { name: replies }
     channel: !ref bus
     invoke: !ref reply
+    inputs: { n: !cel "message.n" }
 targets:
   - !ref replies
 steps:
@@ -45,7 +58,13 @@ steps:
   - name: third
     invoke: { kind: Broadcast.Publish, channel: !ref bus }
     inputs: { message: { n: 3 } }
-  - { name: settle, invoke: { kind: Timer.Delay }, inputs: { duration: 2s } }
+  - name: thirdHandled
+    invoke: { kind: Watch.Wait, store: !ref handled, maxTimeout: 60s }
+    inputs: { topic: replies, after: 2, timeout: 60s }
+  - name: expectThird
+    if: !cel "!steps.thirdHandled.result.changed"
+    then:
+      - { name: late, throw: { code: ERR_TEST_TIMEOUT, message: The third message was not handled within 60s. } }
 ---
 kind: Assert.Events
 metadata: { name: expectReleased }
