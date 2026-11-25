@@ -8,10 +8,10 @@ metadata:
     signature is refused with 401, since the signature check is the other half of
     the contract.
 imports:
-  App: ../../../modules/app
-  HttpClient: ../../../modules/http-client
-  Crypto: ../../../modules/crypto
-  Assert: ../../../modules/assert
+  App: oci://ghcr.io/telorun/app@0.7.2#sha256-29SmNhB_A4l2fGjs5eiV0pYRetQ8-ylNBnPHY_iqgOs
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.1#sha256-yODGL4HqbynR4aaPrcN1I2RIsmNBDn3ciL1uobA8nqA
+  Crypto: oci://ghcr.io/telorun/crypto@0.2.3#sha256-pijV9uQW2Dhg3XjbhERdeC2ejNCfJPqNGMy_gMgl8rY
+  Assert: oci://ghcr.io/telorun/assert@0.22.2#sha256-Rh9B2qPXTZKRjB9hbsGaFJKk25OmsxL2YfBSit177Lw
 targets:
   - !ref test
 ---

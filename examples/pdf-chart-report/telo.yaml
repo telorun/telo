@@ -34,13 +34,13 @@ requires:
   # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
   telo: ">=0.128.0"
 imports:
-  SvgChart: ../../modules/svg-chart
-  Font: ../../modules/font
-  PdfMake: ../../modules/pdfmake
-  Collection: ../../modules/collection
-  Fs: ../../modules/fs
-  Run: ../../modules/run
-  Console: ../../modules/console
+  SvgChart: oci://ghcr.io/telorun/svg-chart@0.3.3#sha256-B5V2OqUIPPrARQbl46hOTUg_svoDoJ_3_7OZZ50Qz4w
+  Font: oci://ghcr.io/telorun/font@0.3.2#sha256-YKPTjW2lXYSBSwIlfv284l24CxtulpcA-Ui-D_zykZM
+  PdfMake: oci://ghcr.io/telorun/pdfmake@0.4.4#sha256-jCxCU-loPJqAzttflM4lc24BSXislTPglLYSSTsCFwI
+  Collection: oci://ghcr.io/telorun/collection@0.9.2#sha256-OYzxb3MZqBL206pj4zaxOTqhsvBK1ILkWwNRBvjdRSA
+  Fs: oci://ghcr.io/telorun/fs@0.16.1#sha256-6nwm53u7kJHB3XW52O32h2HBoObzfVP4Wh4qswG6tZ8
+  Run: oci://ghcr.io/telorun/run@0.35.1#sha256-m6oA-tLMj4v0JvzkvRt17CBuWzXSYpumtxyNRb3qVz8
+  Console: oci://ghcr.io/telorun/console@0.19.6#sha256-VyoTKRcqFJDNAj1fqj1shTiapLN3VbZxYC1KGaAY5F4
 variables:
   quarter:
     env: QUARTER

@@ -11,9 +11,9 @@ metadata:
     Package: telo package ./examples/hello-desktop
 lang: en
 imports:
-  App: ../../modules/app
-  Console: ../../modules/console
-  Desktop: ../../modules/desktop
+  App: oci://ghcr.io/telorun/app@0.7.2#sha256-29SmNhB_A4l2fGjs5eiV0pYRetQ8-ylNBnPHY_iqgOs
+  Console: oci://ghcr.io/telorun/console@0.19.6#sha256-VyoTKRcqFJDNAj1fqj1shTiapLN3VbZxYC1KGaAY5F4
+  Desktop: oci://ghcr.io/telorun/desktop@0.2.1#sha256-IZRHwpNGe4_VpJDbWuw-u2Yklv3Td3W4RyrYfFDkwEQ
 ports: { http: { env: PORT } }
 needs:
   desktopHost:

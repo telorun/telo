@@ -8,9 +8,9 @@ metadata:
     The second prompt only exists once the first is answered, so this is the shape
     the example cannot be tested in any other way.
 imports:
-  App: ../../../modules/app
-  Channel: ../../../modules/channel
-  Assert: ../../../modules/assert
+  App: oci://ghcr.io/telorun/app@0.7.2#sha256-29SmNhB_A4l2fGjs5eiV0pYRetQ8-ylNBnPHY_iqgOs
+  Channel: oci://ghcr.io/telorun/channel@0.4.1#sha256-0AdimfyKquQp_v2xG3qY5IR4DnAOrI8GH1AV8fFa54I
+  Assert: oci://ghcr.io/telorun/assert@0.22.2#sha256-Rh9B2qPXTZKRjB9hbsGaFJKk25OmsxL2YfBSit177Lw
 targets:
   - !ref app
   - !ref test

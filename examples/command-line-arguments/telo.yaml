@@ -42,8 +42,8 @@ variables:
     default: false
     examples: [true]
 imports:
-  Console: ../../modules/console
-  Run: ../../modules/run
+  Console: oci://ghcr.io/telorun/console@0.19.6#sha256-VyoTKRcqFJDNAj1fqj1shTiapLN3VbZxYC1KGaAY5F4
+  Run: oci://ghcr.io/telorun/run@0.35.1#sha256-m6oA-tLMj4v0JvzkvRt17CBuWzXSYpumtxyNRb3qVz8
 targets:
   - !ref greet
 ---

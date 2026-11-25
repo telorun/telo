@@ -8,7 +8,7 @@ metadata:
     anywhere shows up as a failed run rather than a wrong pixel, which is exactly
     what a run-to-completion check is good for.
 imports:
-  Assert: ../../../modules/assert
+  Assert: oci://ghcr.io/telorun/assert@0.22.2#sha256-Rh9B2qPXTZKRjB9hbsGaFJKk25OmsxL2YfBSit177Lw
 targets:
   - !ref test
 ---
