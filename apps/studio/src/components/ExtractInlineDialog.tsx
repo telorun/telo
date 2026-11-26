@@ -1,7 +1,7 @@
 import { checkName } from "@telorun/analyzer";
 import { useEffect, useState } from "react";
 import { Button } from "./ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 import { nameViolationMessage } from "./name-violation-message";
 
 interface ExtractInlineDialogProps {
@@ -64,9 +64,9 @@ export function ExtractInlineDialog({
           <DialogTitle>Extract {kind} to a resource</DialogTitle>
         </DialogHeader>
         <div className="flex flex-col gap-2">
-          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+          <DialogDescription className="text-xs">
             The declaration moves to its own document and the slot becomes a reference to it.
-          </p>
+          </DialogDescription>
           <input
             autoFocus
             value={name}

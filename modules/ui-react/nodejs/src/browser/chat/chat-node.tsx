@@ -37,7 +37,7 @@ export interface ChatNodeSpec {
   /** The page query parameter that names the conversation shown; null keeps the choice in memory. */
   conversation: { parameter: string } | null;
   /** Requests read again when a send is admitted and when a turn ends, over `conversation.id`. */
-  refreshes: AddressWire[];
+  invalidates: AddressWire[];
   style?: Style;
   fill?: boolean;
 }
@@ -191,12 +191,12 @@ export function ChatNode({ node, embedded = false }: { node: ChatNodeSpec; embed
   const api = useMemo(() => new ChatApi(() => hostRef.current, prefix, node.basePath, (key, values) => sayRef.current(key, values)), [prefix, node.basePath]);
   const drafts = useDrafts();
   const parameter = node.conversation?.parameter;
-  const refreshes = useRef(node.refreshes);
-  refreshes.current = node.refreshes;
+  const invalidates = useRef(node.invalidates);
+  invalidates.current = node.invalidates;
   const refresh = (conversation: string) => {
-    for (const each of refreshes.current) {
-      const refresh = resolveRefresh(each, { conversation: { id: conversation } }, "chat refresh");
-      if (refresh !== undefined) store.notifyRefresh(refresh);
+    for (const each of invalidates.current) {
+      const invalidated = resolveRefresh(each, { conversation: { id: conversation } }, "chat invalidates");
+      if (invalidated !== undefined) store.notifyRefresh(invalidated);
     }
   };
   const session = useChatSession(api, {

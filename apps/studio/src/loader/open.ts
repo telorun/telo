@@ -3,8 +3,13 @@ import type { WorkspaceAdapter } from "../model";
 import { TauriFsAdapter } from "./adapters/tauri-fs";
 import { FsaAdapter } from "./adapters/fsa";
 import { LocalStorageAdapter } from "./adapters/local-storage";
-import { CLOUD_ROOT_PREFIX, cloudProjectIdOf } from "../cloud/working-copy-adapter";
+import {
+  CLOUD_ROOT_PREFIX,
+  WorkingCopyAdapter,
+  cloudProjectIdOf,
+} from "../cloud/working-copy-adapter";
 import { findWorkingCopy } from "../cloud/working-copy-index";
+import type { WorkspaceBackend } from "../storage";
 import { workingCopyAdapter } from "../cloud/working-copy-store";
 
 // ---------------------------------------------------------------------------
@@ -64,6 +69,14 @@ export interface OpenedWorkspace {
  *  auto-restore a workspace on mount. Returns null when the current environment
  *  cannot re-attach to the path silently (e.g. FSA, where the directory handle
  *  isn't persisted across reloads). */
+/** The backend an attached workspace adapter is. */
+export function workspaceBackendOf(adapter: WorkspaceAdapter): WorkspaceBackend {
+  if (adapter instanceof LocalStorageAdapter) return "browser";
+  if (adapter instanceof TauriFsAdapter) return "desktop";
+  if (adapter instanceof WorkingCopyAdapter) return "cloud";
+  return "folder";
+}
+
 export function reopenWorkspaceAt(rootDir: string): OpenedWorkspace | null {
   // A Telo Cloud working copy is its own backend on every build, chosen by the
   // root rather than by the environment. One this device no longer holds (the

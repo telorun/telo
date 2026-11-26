@@ -1,0 +1,23 @@
+units:
+  modules/ui: Added
+body: "A write is declared once as Ui.Mutation (inputModel, outputModel, method, url,
+  invalidates, concurrency) and run from anywhere by a call: Ui.MutationCall on a
+  listing or list row action, a markdown annotation and the button node (held under
+  action), Ui.Move on a layout move, and a form onSubmit or autosave. A call carries its
+  own label, prompt, onSuccess effects, result and failure; onSuccess is a list of
+  Ui.Effect (Ui.Destination extends it) and onSuccess.to is gone, and prompt is a
+  Ui.Prompt read by inputs as the prompt root (prompt: true is refused). Ui.Form is a
+  record editor, a mutation form (onSubmit, autosave, clearAnswerOn) or free-standing,
+  with record optional and excluding onSubmit and autosave; its onSuccess runs after
+  afterSubmit over values and result, and autosave over a POST is
+  UI_FORM_AUTOSAVE_NOT_IDEMPOTENT. Ui.Query.form and Ui.Listing.form name a form placed
+  anywhere and bind the form root, its settled valid record. Wire: a Ui.MutationSpec,
+  call specs with onSuccess and prompt, the form node id, onSubmit, autosave, onSuccess
+  and clearAnswerOn and its record answer, form on the query spec and listing node.
+  Keyed texts saving and retry in Ui.Translations and its fourteen translations;
+  conformance/form-writes.json; the collection contract answers a POST with the stored
+  record. Removed: Ui.Action (UNDEFINED_KIND), Ui.BoundAction,
+  UI_ACTION_CLEAR_UNKNOWN_PROPERTY; Ui.Chat.refreshes is invalidates, Ui.RefreshTarget
+  is Ui.InvalidationTarget, UI_ACTION_INPUT_UNSENT is UI_MUTATION_INPUT_UNSENT. Existing
+  manifests are rewritten by hand: no migration splits an action into a form, a call and
+  a mutation."

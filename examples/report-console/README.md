@@ -48,7 +48,7 @@ Http.Server (:8140)
   entered. A refused consent comes back as `?signin=denied` (a declared query
   parameter) and a lapsed one as `failure: expired` in the check's answer; each
   draws its own notice.
-- **The form** is a `Ui.Action` posting to `/api/generate`:
+- **The form** is a `Ui.Form` whose `onSubmit` runs a `Ui.Mutation` posting to `/api/generate`:
   - the timesheet and the upload folder are pickers over the Drive listing,
     searched as you type, each choice linked to its file and a sheet showing
     its owner as a hint; both are remembered in the browser (`state`) and labelled again from

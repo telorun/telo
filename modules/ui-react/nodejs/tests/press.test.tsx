@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { readsResult } from "../src/browser/operation.js";
+import { readsResult } from "../src/browser/mutation-call.js";
 import { render, type Rendered } from "./harness.js";
 import { address, dialogSurface, navigateTo, openPageAt } from "./spec-nodes.js";
 import { wireText } from "./ui-texts.js";
@@ -65,7 +65,7 @@ describe("a record leading to the page open over it", () => {
   });
 });
 
-describe("what reads an action's answer", () => {
+describe("what reads a call's answer", () => {
   it("counts a destination reading `result` at a link, a menu item, a value, a list column and a press, and the values of a press's label", () => {
     const reading = address("/projects/{id}", { id: { root: "result", path: ["id"] } });
     const fixed = address("/projects");

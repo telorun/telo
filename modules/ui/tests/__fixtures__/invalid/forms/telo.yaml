@@ -1,0 +1,248 @@
+# Forms, queries and listings that each write something `telo check` refuses
+# on the line it was written: a collection write beside a mutation, a key a
+# write does not take, an answer read as a member it does not declare, a
+# `form` root where nothing names a form, and a form naming something that is
+# none.
+kind: Telo.Application
+metadata: { name: UiInvalidFormsApp, version: 1.0.0 }
+imports: { Ui: ../../../../, DataModel: ../../../../../data-model }
+---
+kind: Telo.JsonSchema
+metadata: { name: Request }
+schema:
+  type: object
+  additionalProperties: false
+  required: [period]
+  properties: { period: { type: string }, team: { type: string, enum: [north, south] } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Answer }
+schema:
+  type: object
+  properties:
+    kind: { type: string }
+    files: { type: array, items: { type: object, properties: { name: { type: string } } } }
+    id: { type: string }
+---
+kind: Telo.JsonSchema
+metadata: { name: Draft }
+schema:
+  type: object
+  additionalProperties: false
+  properties: { title: { type: string }, body: { type: string } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Person }
+schema:
+  type: object
+  required: [id, name]
+  properties: { id: { type: integer }, name: { type: string } }
+---
+kind: Ui.CollectionPresentation
+metadata: { name: people }
+source:
+  kind: Ui.CollectionSource
+  basePath: /api/people
+  collection:
+    kind: DataModel.Collection
+    model: !ref Person
+    schemas: { create: { kind: Telo.JsonSchema, schema: { type: object, properties: { name: { type: string }, title: { type: string }, body: { type: string } } } } }
+    query: { filters: [{ property: name, operator: eq }], sort: [] }
+---
+kind: Ui.Mutation
+metadata: { name: store }
+inputModel: { kind: Telo.JsonSchema, schema: { type: object, properties: { name: { type: string } } } }
+url: /api/people
+---
+kind: Ui.Mutation
+metadata: { name: put }
+inputModel: { kind: Telo.JsonSchema, schema: { type: object, additionalProperties: false, properties: { title: { type: string } } } }
+method: PUT
+url: /api/draft
+---
+kind: Ui.Mutation
+metadata: { name: generate }
+inputModel: { kind: Telo.JsonSchema, schema: { type: object, properties: {} } }
+outputModel: !ref Answer
+url: /api/reports
+---
+# A free-standing form: no write, read by what names it.
+kind: Ui.Form
+metadata: { name: previewForm }
+model: !ref Request
+---
+# A `record` is a collection write, which `onSubmit` and `autosave` replace.
+kind: Ui.Form
+metadata: { name: recordWithSubmit }
+model: !ref Draft
+record: { presentation: !ref people }
+onSubmit: { mutation: !ref store, inputs: {} }
+---
+kind: Ui.Form
+metadata: { name: recordWithAutosave }
+model: !ref Draft
+record: { presentation: !ref people }
+autosave: { mutation: !ref put, inputs: {} }
+---
+# What a form entering the fields asks nothing of: no `prompt`, no `onSuccess`.
+kind: Ui.Form
+metadata: { name: promptUnderSubmit }
+model: !ref Draft
+onSubmit:
+  mutation: !ref store
+  inputs: {}
+  prompt: { kind: Ui.Prompt, model: !ref Draft }
+---
+kind: Ui.Form
+metadata: { name: effectsUnderSubmit }
+model: !ref Draft
+onSubmit:
+  mutation: !ref store
+  inputs: {}
+  onSuccess: [{ kind: Ui.Navigate, href: / }]
+---
+# An autosave is never pressed: no `confirm`, no `label`.
+kind: Ui.Form
+metadata: { name: confirmUnderAutosave }
+model: !ref Draft
+autosave: { mutation: !ref put, inputs: {}, confirm: Save it? }
+---
+kind: Ui.Form
+metadata: { name: labelUnderAutosave }
+model: !ref Draft
+autosave: { mutation: !ref put, inputs: {}, label: Save }
+---
+# The effects and `afterSubmit` follow a submit write the form does not make.
+kind: Ui.Form
+metadata: { name: effectsWithoutWrite }
+model: !ref Draft
+onSuccess: [{ kind: Ui.Navigate, href: / }]
+---
+kind: Ui.Form
+metadata: { name: afterSubmitWithoutWrite }
+model: !ref Draft
+afterSubmit: keep
+---
+kind: Ui.Form
+metadata: { name: inputsAbsent }
+model: !ref Draft
+onSubmit: { mutation: !ref store }
+---
+kind: Ui.Form
+metadata: { name: autosaveInputsAbsent }
+model: !ref Draft
+autosave: { mutation: !ref put }
+---
+kind: Ui.Form
+metadata: { name: inputNotTaken }
+model: !ref Draft
+autosave: { mutation: !ref put, inputs: { slug: !cel "values.title" } }
+---
+kind: Ui.Form
+metadata: { name: valuesTypo }
+model: !ref Draft
+autosave: { mutation: !ref put, inputs: { title: !cel "values.titel" } }
+---
+kind: Ui.Form
+metadata: { name: autosaveCreates }
+model: !ref Draft
+autosave: { mutation: !ref store, inputs: { name: !cel "values.title" } }
+---
+kind: Ui.Form
+metadata: { name: clearUnknown }
+model: !ref Draft
+onSubmit: { mutation: !ref store, inputs: {} }
+clearAnswerOn: [title, titel]
+---
+# Without `record` a property is entered by what its type says.
+kind: Ui.Form
+metadata: { name: bareObject }
+model: { kind: Telo.JsonSchema, schema: { type: object, properties: { owner: { type: object } } } }
+fields: [owner]
+---
+kind: Ui.Form
+metadata: { name: resultTypo }
+model: !ref Person
+record: { presentation: !ref people }
+onSuccess:
+  - { kind: Ui.Navigate, href: { path: "/people/{id}", pathParams: { id: !cel "result.titel" } } }
+---
+kind: Ui.Form
+metadata: { name: effectNotAnEffect }
+model: !ref Draft
+onSubmit: { mutation: !ref store, inputs: {} }
+onSuccess: [{ kind: Ui.Dialog }]
+---
+kind: Ui.Form
+metadata: { name: answerTypo }
+model: !ref Draft
+onSubmit:
+  mutation: !ref generate
+  inputs: {}
+  result: { type: value, value: !cel "result.titel" }
+---
+kind: Ui.Action
+metadata: { name: removedKind }
+inputModel: !ref Draft
+request: { target: /api/drafts }
+label: Save
+---
+# A `form` root where no form is named, and where a nested query names none.
+kind: Ui.Query
+metadata: { name: formless }
+model: !ref Answer
+url: /api/preview
+input:
+  model: !ref Request
+  body: { period: !cel "form.period" }
+---
+kind: Ui.Query
+metadata: { name: typoField }
+form: !ref previewForm
+model: !ref Answer
+url: /api/preview
+input:
+  model: !ref Request
+  body: { period: !cel "form.perod", team: !cel "form.team" }
+---
+kind: Ui.Query
+metadata: { name: wrongKind }
+form: !ref Request
+model: !ref Answer
+url: /api/preview
+---
+kind: Ui.Listing
+metadata: { name: listingWrongKind }
+form: !ref Answer
+model: !ref Person
+presentation: !ref people
+---
+kind: Ui.Listing
+metadata: { name: listingFormless }
+model: !ref Person
+presentation: !ref people
+filters: { name: !cel "form.team" }
+---
+kind: Ui.Query
+metadata: { name: followed }
+form: !ref previewForm
+model: !ref Answer
+url: /api/preview
+---
+kind: Ui.Query
+metadata: { name: unfollowed }
+model: !ref Answer
+url: /api/other
+---
+kind: Ui.View
+metadata: { name: nestedFormless }
+content:
+  type: query
+  query: !ref followed
+  content:
+    - type: value
+      value: !cel "form.team"
+    - type: query
+      query: !ref unfollowed
+      content:
+        - { type: value, value: !cel "form.team" }

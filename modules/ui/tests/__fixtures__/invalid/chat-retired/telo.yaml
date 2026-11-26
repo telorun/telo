@@ -36,7 +36,7 @@ conversation: { parameter: _telo.c }
 kind: Ui.Chat
 metadata: { name: refreshReadsUnknown }
 source: !ref source
-refreshes: [{ path: "/api/chat/conversations/{id}", pathParams: { id: !cel "conversation.title" } }]
+invalidates: [{ path: "/api/chat/conversations/{id}", pathParams: { id: !cel "conversation.title" } }]
 ---
 kind: Ui.Chat
 metadata: { name: parameterReserved }

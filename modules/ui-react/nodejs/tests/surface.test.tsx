@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import { Surface } from "../src/browser/surface.js";
 import { loadFixtureComponents, render, type Page, type Rendered } from "./harness.js";
-import { address, asideOf, component, decisionSchema, dialogSurface,operation, listingNode, navigateTo, openPageAt, querySpec, recordPages, recordPresses, todos } from "./spec-nodes.js";
+import { address, asideOf, component, decisionSchema, dialogSurface, buttonOf, call, listingNode, literals, navigateTo, openPageAt, querySpec, recordPages, recordPresses, todoSchema, todos } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
@@ -508,9 +508,10 @@ describe("a form restarting", () => {
         url: address("/api/todos/{id}", { id: { root: "query", path: ["record"] } }),
         input: null,
         query: { record: { type: "string" } },
+        form: null,
         reloadOn: ["focus"],
       },
-      content: [{ ...(edit.content[0] as object), record: { basePath: "/api/todos", key: { root: "data", path: ["id"] } } }],
+      content: [{ ...(edit.content[0] as object), record: { basePath: "/api/todos", key: { root: "data", path: ["id"] }, answer: todoSchema } }],
       loading: [],
       failure: [],
       fill: false,
@@ -553,13 +554,11 @@ describe("a form restarting", () => {
 describe("a surface opened by a button node", () => {
   const json = (body: unknown, status = 201) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
   const decide = (surfaceSpec: Record<string, unknown>) =>
-    operation("/api/plans/p7/decisions", "Approve", decisionSchema, { onSuccess: { refreshes: [], to: openPageAt(address("/todos/new"), surfaceSpec, false) } });
-  const button = (surfaceSpec: Record<string, unknown>) => ({
-    type: "button",
-    action: decide(surfaceSpec),
-    inputs: { id: { value: "p7" }, decision: { value: "approve" }, revision: { value: 3 } },
-    button: { type: "text" },
-  });
+    call("/api/plans/p7/decisions", "Approve", decisionSchema, {
+      inputs: literals({ id: "p7", decision: "approve", revision: 3, author: "Ada" }),
+      onSuccess: [openPageAt(address("/todos/new"), surfaceSpec, false)],
+    });
+  const button = (surfaceSpec: Record<string, unknown>) => buttonOf(decide(surfaceSpec));
   const showing = (children: unknown[], path = "/") => {
     const pending = render({
       path,

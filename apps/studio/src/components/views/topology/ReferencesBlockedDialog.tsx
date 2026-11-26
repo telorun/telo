@@ -1,7 +1,7 @@
 import { ArrowRight } from "lucide-react";
 import type { ResourceReference } from "../../../resource-references";
 import { Button } from "../../ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../../ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../ui/dialog";
 
 /** What was refused. Both moves fail for the same reason — something else still
  *  names the resource — and differ only in what the user is told to do about
@@ -58,7 +58,7 @@ export function ReferencesBlockedDialog({
                 : "is still referenced"}
           </DialogTitle>
         </DialogHeader>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+        <DialogDescription className="text-zinc-500 dark:text-zinc-400">
           {unknown ? (
             <>
               The analysis has not finished, so what still names it is unknown.{" "}
@@ -81,7 +81,7 @@ export function ReferencesBlockedDialog({
               .
             </>
           )}
-        </p>
+        </DialogDescription>
         <ul className="flex max-h-64 flex-col gap-1 overflow-y-auto">
           {references.map((ref) => (
             <li key={`${ref.via}/${ref.source.kind}/${ref.source.name}/${ref.path}`}>

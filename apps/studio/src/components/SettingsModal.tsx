@@ -4,6 +4,7 @@ import { Button } from './ui/button'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from './ui/dialog'
@@ -21,6 +22,7 @@ export function SettingsModal({ open, onOpenChange, settings, onChange }: Settin
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-120">
         <DialogHeader>
           <DialogTitle>Settings</DialogTitle>
+          <DialogDescription>Choose where applications run and how Studio behaves.</DialogDescription>
         </DialogHeader>
 
         <div className="mb-6">

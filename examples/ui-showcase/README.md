@@ -2,7 +2,7 @@
 
 One application that tours the declarative UI, page by page. The screens are
 declared, not programmed: the only browser code is four small components the
-Components and Themes pages place. Each page covers one area, and every
+Components and Themes pages place and the one that shows each section's YAML. Each page covers one area, and every
 demonstration carries a muted line saying what it shows. The data is a small
 studio — its team, people, projects, tasks, the requests and bookings its
 forms send, comments on tasks, the authors of its blog with their posts, its
@@ -40,7 +40,7 @@ relative path, so the example runs from a checkout.
 | `/sidebar` | the built-in look and `showcase.css`, its navigation in an aside of the page layout instead of the header, and its pages at full width beside it (`pageWidth: full`) instead of the theme's centred column |
 
 All four place the same pages. Each page's content is one `Ui.View`, and
-each page one `Ui.Page` placing it, declared once in its `pages-*.yaml`; every
+each page one `Ui.Page` placing it, declared once in its `pages/*.yaml`; every
 application lists the pages by reference, so the four page bodies are
 identical. Three pages of `/` are pages of its own (`rootOverview`,
 `rootConditions`, `rootThemes` in `telo.yaml`), carrying nodes beside the view,
@@ -96,7 +96,7 @@ and brand cookies last a year. None of the example's cookies is `Secure`,
 because it is served over plain http locally; a deployment behind TLS adds it.
 
 The pages' request paths are app-relative too: a query, a listing, a form, an
-option source, an action and the task desk component read and write `/api/tasks`
+option source, a mutation and the task desk component read and write `/api/tasks`
 under the mount they are drawn in. So
 the server serves the API — the guarded `/api/private` routes, the six
 collections and the other routes — under `/`, `/radix`, `/brand` and `/sidebar` alike,
@@ -104,17 +104,30 @@ every guarded mount behind the one session check, and the files under each
 mount the same way — the language switch, `/api/lang`, included. Only the
 brand switch, `/api/brand`, is the root's alone.
 
+## Source snippets
+
+Each section of a page carries a **Show source** strip that opens the YAML that
+builds it, with a **Copy** button. The text is not copied into the manifest: the
+snippet component reads the page file from `source/`, which the server serves
+from `pages/` under every mount, and cuts out the resource the file anchors
+exactly as it is written there. Each snippet is a whole resource declaration:
+a page file places the section as a `composite` node whose inline `ref:` holds
+the resource and carries the anchor (`ref: &name`, beginning at its `kind:`),
+and places a `Components.sourceSnippet` node naming the file and the anchor
+beside it. A section reading one query is a view holding that query node, since
+a view cannot read the `data` of a query placed around it.
+
 ## Files
 
 | File | Holds |
 | --- | --- |
 | `telo.yaml` | the application, the four `UiReact.App` mounts with their page layout (a navbar, and an aside on `/sidebar`), the navigation's icons, the root's own overview, conditions and themes pages, the logo view they share, the `Callout` composite kind, the session check, the three collections, the server serving the API under each mount, the Inter family the brand serves |
 | `data.yaml` | the SQLite connection, schema, tables with their seed rows (the posts' and the reporting lines' with foreign keys), the projects, tasks, people, authors, posts and employees `Crud.Collection`s, the sources the browser reads them from, and the tasks' and posts' presentations; the review tables, the `reviews` and `commands` `DataModel.Collection`s and the inbox's presentation |
-| `api.yaml` | the routes `crud` does not give and the shapes they share with the pages: record reads, the task board, the tag action, the forms' writes and lists, every action of the actions page, the session, the language and brand switches, the request origin and redirect target rules (`origin`, `sameOriginTarget`), and the review routes under `/api/review` |
+| `api.yaml` | the routes `crud` does not give and the shapes they share with the pages: record reads, the task board, the tag route, the forms' writes and lists, every write of the actions page, the session, the language and brand switches, the request origin and redirect target rules (`origin`, `sameOriginTarget`), and the review routes under `/api/review` |
 | `translations/` | one `Telo.TextTranslations` per language for the example's own texts, listed in the application's `translations:` block after ui's shipped `Ui.*Translations`, each file named by its language tag (`pl.yaml`, `ja.yaml`, …); `en.yaml` covers the one text crud writes with no `lang` |
-| `pages-*.yaml` | one view per page and the `Ui.Page` placing it, with the resources only that page uses (the tables page's task pages, the filters page's task listing, the forms page's team and project option sources and the requests' presentation, the actions page's assign action, the related-records page's post and person pages and the reporting lines' presentation); `pages-review.yaml` holds the four review pages with their trees written in the pages themselves, every application listing the same four |
+| `pages/*.yaml` | one view per page and the `Ui.Page` placing it, with the resources only that page uses (the tables page's task pages, the filters page's task listing, the forms page's team and project option sources and the requests' presentation, the actions page's assign, set-status and team-links mutations, the related-records page's post and person pages and the reporting lines' presentation); `pages/review.yaml` holds the four review pages with their trees written in the pages themselves, every application listing the same four |
 | `showcase.css` | the `/` and `/sidebar` applications' stylesheet |
-| `components/` | a library of the example's own: four browser components written in TSX (`nodejs/src/components.tsx`, with the stylesheet they import) against the `ui_react-1` host, built by the kernel and published as `Ui.ComponentExport`s — `taskDesk`, `priorityMeter`, `tokenSheet` and `typefaceSamples`. Its `nodejs/package.json` exists only to type-check the sources |
+| `components/` | a library of the example's own: five browser components written in TSX (`nodejs/src/components.tsx`, with the stylesheet they import) against the `ui_react-1` host, built by the kernel and published as `Ui.ComponentExport`s — `taskDesk`, `priorityMeter`, `tokenSheet`, `typefaceSamples` and `sourceSnippet`. Its `nodejs/package.json` exists only to type-check the sources |
 | `brand/` | a library of the example's own exporting the `/brand` theme: `brand.css`, which styles every part of the styling contract, the token values, and Radix's controls |
 | `files/` | the handbook and the image served under each mount |
 | `icons/` | the example's own mark as a glyph, the Overview entry's icon |
@@ -130,7 +143,7 @@ brand switch, `/api/brand`, is the root's alone.
 | `/tables` | listings drawn as tables: columns derived from the model and written by hand, sorting, style rules on rows and cells, members nested behind references, the pager, a filter from the page address and a fixed one, and create, edit and delete opening on every kind of surface — dialogs of each size, drawers from each edge, popovers, in line, panels and a page of its own — each opening the same task pages (`/tasks/new`, `/tasks/{id}`) as a destination, with addresses and compact replacements, and each page carrying its form's `afterSubmit` and `unsaved` |
 | `/filters` | nine filter bars over the tasks: every placement (above, aside at either edge, folded open and closed, an overlay in a dialog, a drawer and a popover), every value of `show`, `controls`, `apply` and `summary`, every control a filter is entered with, presets, pinned filters and defaults, and state kept in the address, in local storage, in session storage and in both |
 | `/forms` | a form deriving a control for every type of property, with a write-only one never kept and its values kept in the address and local storage; the same record with every input control chosen by hand, kept in session storage; a booking form choosing from the projects and the team — a select list and options side by side with hints and More, pickers in a dialog, a drawer and a popover with search and links, a source narrowed by another field and a default labelled by `in` — with a date range, groups, a group and a field shown on a condition; live validation, and the server's refusals landing on a field; lists of what each form wrote |
-| `/actions` | a bare button; an estimate with grouped fields kept in the address, its answer drawn as sentences, a date and a list; a failure tree of an action's own, and an answer its output model refuses; successes moving to a page by a fixed address and by the answer, to an https address, loading a served file, and going nowhere for an address the rule refuses; a move reading a query and a table again; comments sent one after another, enabled by the form and clearing their answer; a manager-only action refused with 401 and 403, and one whose route never answers; row actions — plain, confirmed, prompting, enabled per row, and a plain confirmation whose inputs come from the row and the table's query — on tables of tasks and a list of comments |
+| `/actions` | a bare button; an estimate with grouped fields kept in the address, its answer drawn as sentences, a date and a list; a failure tree of a form's own, and an answer its output model refuses; successes moving to a page by a fixed address and by the answer, to an https address, loading a served file, and going nowhere for an address the rule refuses; a move reading a query and a table again; comments sent one after another, enabled by the form and clearing their answer; a manager-only action refused with 401 and 403, and one whose route never answers; row actions — plain, confirmed, prompting, enabled per row, and a plain confirmation whose inputs come from the row and the table's query — on tables of tasks and a list of comments |
 | `/components` | a component of the example's own using every field of the host — where the page is, a panel kept in the address, `navigate` and an anchor from `href`, an https address refused, `fetch` reading counts and adding a task, `notifyChanged` reloading the table below, `onChanged` counting every change, a toast in a layer of its own — and a component drawing a table's priority cell; their stylesheet in the `telo.component` layer |
 | `/crud` | a `CrudUi.Admin` over the tasks collection: a filter bar beside the listing showing chosen filters as chips and sharing its state key with a bar on `/filters`, create opening the new-task page in a drawer whose form starts again for the next record, edit opening the task's page in an addressed panel asking before unsaved input is dropped |
 | `/records` | posts naming their author by key, the author shown by name: a table with a bar offering every author and a new-post page picking one; cards, a list on a narrow screen loading more at the end, with filters offering only the authors and statuses present, with counts; a board by status whose cards move by drag or menu and whose column create buttons open the new-post page with the column's status in its address (`/records/posts/new?status=review`); a calendar by publication day; the authors' generated screen; the reporting lines as a tree; and cards whose press opens the post in an addressed end drawer, beside a link to its full page `/records/{id}` and a menu item opening the same page in a dialog |
@@ -240,11 +253,11 @@ Each test that runs the application gives it a database file of its own under
 
 | Test | Port | Asserts |
 | --- | --- | --- |
-| `tests/serves-the-showcase.yaml` | 8151 | the application documents of all four mounts — `/sidebar`'s aside with every default filled — in English and Polish and with the brand cookie, the derived theme's tokens and the brand's Inter faces, and every page document — the overview's nodes, conditions, readers, the tables' columns and every surface spec, every filter bar's policy and fields, every form's fields, option sources, groups and state, every action's fields, answer trees, `onSuccess` and row actions, the components with their module and stylesheet served, the admin screen's bar, forms and surfaces, the related-records page's title and navigation entry, and the themes page with the root's links and brand badge — `/radix`, `/brand` and `/sidebar` placing the same views |
-| `tests/answers-every-route.yaml` | 8152 | the project, record, tag, session and brand routes against the real database: paging, sorting, `in`, a create / read / replace / delete round trip, the 400 validation problem, a 401, the session and the brand switch; and under `/radix`, `/brand` and `/sidebar`, a reader's route, a collection listing, an action's route, the guard's 401 and no brand switch |
+| `tests/serves-the-showcase.yaml` | 8151 | the application documents of all four mounts — `/sidebar`'s aside with every default filled — in English and Polish and with the brand cookie, the derived theme's tokens and the brand's Inter faces, and every page document — the overview's nodes, conditions, readers, the tables' columns and every surface spec, every filter bar's policy and fields, every form's fields, option sources, groups and state, every form's and button's call — its mutation, `inputs`, answer trees, `onSuccess` and row actions, the components with their module and stylesheet served, the admin screen's bar, forms and surfaces, the related-records page's title and navigation entry, and the themes page with the root's links and brand badge — `/radix`, `/brand` and `/sidebar` placing the same views |
+| `tests/answers-every-route.yaml` | 8152 | the project, record, tag, session and brand routes against the real database: paging, sorting, `in`, a create / read / replace / delete round trip, the 400 validation problem, a 401, the session and the brand switch; and under `/radix`, `/brand` and `/sidebar`, a reader's route, a collection listing, a mutation's route, the guard's 401 and no brand switch |
 | `tests/searches-posts.yaml` | 8158 | the three search pages' bars, their search and placement, and the requests they send: a search joined to a status filter, the authors present under a search, and the refusal of a search over the authors |
 | `tests/tables-and-filters.yaml` | 8153 | the routes the tables and filter bars call: the tasks a page at a time by cursor, sorted both ways, every filter operator the bars send with `in` repeated, a refused sort and filter, a create / read / replace / delete round trip with refused bodies, and the task board's nested rows and cursor |
-| `tests/forms-and-actions.yaml` | 8154 | the routes the forms and actions call: both forms' writes with the server's refusals, the option sources paged, narrowed by a field, searched and labelling by `in`, every action's success, 400 validation problem and other problems, the answer the days action refuses, and each row action's route |
+| `tests/forms-and-actions.yaml` | 8154 | the routes the forms and actions call: both forms' writes with the server's refusals, the option sources paged, narrowed by a field, searched and labelling by `in`, every write's success, 400 validation problem and other problems, the answer the days action refuses, and each row action's route |
 | `tests/brand-theme.yaml` | none — it starts no application | the `/brand` theme meets the renderer's contract (`UiReactConformance.CheckTheme`): every part styled, no reserved property set, every token given a value and read, every scene drawn with its controls |
 | `tests/related-records.yaml` | 8157 | the related-records page: the author relation behind the table's column, the bar's field and the form's picker, the layouts and their read plans — present values, cards with a compact list, the board's columns and move, the calendar's span, the tree's parent — and the routes they call: the facet request with counts, the batched label lookup, the tree's roots and children, a board move, and a post the foreign key refuses |
 | `tests/review-screens.yaml` | 8159 | the review pages as a renderer receives them — the inbox listing's reload, row style, link and relative preset, the document reader's address and reload, the decision buttons' bindings, prompts and shared state, the Markdown's annotations, the comparison's styles and the worker listing's templated `basePath` — and the routes they call: the inbox filtered, paged by cursor and faceted with an undeclared filter refused, a worker's commands scoped by the route, a document with its items and timeline, comparisons chosen and by default, a decision on a replaced revision, a change request without a note, an approval, and comments |
@@ -305,9 +318,9 @@ why it is not shown.
 | D44 | hidden content stays mounted and reads nothing | `/data` (the sign-in gate), `/forms` (a field and a group shown on a condition) |
 | D45 | roots `data`, `error`, `query`, `values`, `result`, `input`, `row` | `/conditions`, `/data`, `/forms`, `/actions` |
 | D46 | query parameters: a string, a list, a pattern | `/conditions`, `/data`, `/actions` |
-| D47 | `Ui.Enablement` with `disabledText`, on an action and on row actions | `/conditions`, `/actions` |
+| D47 | `Ui.Enablement` with `disabledText`, on a form's `onSubmit` and on row actions | `/conditions`, `/actions` |
 | E48–E50 | `Ui.View`, a view providing no node, the `Callout` composite kind, nodes carrying their assets | Overview, `/conditions`, `/components`, `/themes` |
-| F51–F55 | queries: `queryParams` from `query`, `loading`, `failure`, `reloadOn` focus and unauthorized, a refresh by an action, 404 / 401 / refused answers, a sign-in gate, nesting | `/data`, `/actions` |
+| F51–F55 | queries: `queryParams` from `query`, `loading`, `failure`, `reloadOn` focus and unauthorized, an invalidation by a mutation, 404 / 401 / refused answers, a sign-in gate, nesting | `/data`, `/actions` |
 | G56–G60 | the collection contract: declared query with every operator, paging, sorting, `in`, the 400 validation problem, item routes; a `Crud.Collection` at every `collection` slot | `/api/projects`, `/api/tasks`, `/api/people`, `/api/task-board` |
 | G61 | labelling chosen values by `in` | `/forms` |
 | H62–H64, H66–H70 | tables: derived and written columns, headers, presentation by type, sorting, members behind references, `rowStyle` and cell style rules, `pageSize` and the pager, `filters` from `query` and fixed, `create` / `edit` / `delete` | Overview, `/tables`, `/filters`, `/crud` |
@@ -321,9 +334,9 @@ why it is not shown.
 | J94 | form rules | out of scope |
 | K96–K102 | every field kind and control, option sources | `/forms`, `/actions` |
 | K103 | a field kind of your own | not shown: it is an extension, and the design gives it no page |
-| L104–L113 | actions: fields, groups, state; bare buttons; `result` and `failure` trees; an answer the output model refuses; `navigate` to a page by a fixed address and by the answer, to a served file, to https, and nowhere for an invalid one; `refreshes`; `concurrency: serial`; `clearAnswerOn`; 400, 401, 403, 404, 409 and no answer; one shape for the route and the action | `/conditions`, `/data`, `/actions` |
+| L104–L113 | mutations run from forms and buttons: fields, groups, state; bare `button` nodes; `result` and `failure` trees; an answer the output model refuses; `navigate` to a page by a fixed address and by the answer, to a served file, to https, and nowhere for an invalid one; `invalidates`; `concurrency: serial`; `clearAnswerOn`; 400, 401, 403, 404, 409 and no answer; one shape for the route and the action | `/conditions`, `/data`, `/actions` |
 | L114 | check codes | out of scope |
-| M115–M121 | row actions on a table and a list: by `!ref` and inline, inputs from the row, the table's `query` and fixed, `confirm`, `prompt` with fields and as a plain confirmation, `enabled` per row, answers in place of the button | `/actions` |
+| M115–M121 | row actions on a table and a list: a mutation by `!ref` and inline, inputs from the row, the table's `query` and fixed, `confirm`, a `Ui.Prompt` (`prompt.<x>` bound in `inputs`) and a plain confirmation, `enabled` per row, answers in place of the button | `/actions` |
 | M122 | check codes | out of scope |
 | N123–N136 | filter bars: derived and listed fields, every control, two bounds under one label, presets, pinned filters, defaults, every `show` / `controls` / `apply` / `summary` value, every placement, state in the address, local and session storage and both, one key shared by bars on two pages | `/filters`, `/crud`. Storage the browser refuses cannot be arranged by a page |
 | N137 | filter rules | out of scope |

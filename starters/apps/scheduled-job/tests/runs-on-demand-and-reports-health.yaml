@@ -76,7 +76,7 @@ steps:
         # The run answers with the history including itself, which is what the
         # page draws under its button.
         answered: !cel "steps.run.result.body.runs.map(r, r.outcome)"
-        page: !cel "steps.page.result.body.children.filter(c, c.type == 'action').map(c, [c.label, c.request.target.path.value, size(c.fields)])"
+        page: !cel "steps.page.result.body.children.filter(c, c.type == 'button').map(c, [c.action.label, c.action.mutation.url.path.value, size(c.action.inputs)])"
         again: !cel "steps.again.result.body.runs.map(r, r.outcome)"
       expected:
         healthStatus: 200

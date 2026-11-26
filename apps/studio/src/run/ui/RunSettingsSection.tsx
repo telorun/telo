@@ -1,3 +1,4 @@
+import { runnerTitle } from "./runner-title";
 import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
@@ -83,6 +84,9 @@ export function RunSettingsSection({
           onSelect={() => onChangeActiveRunner(runner.id)}
           onEdit={() => setDialog({ mode: "edit", runner })}
           onRemove={() => handleRemove(runner.id)}
+          onAdoptName={(name) =>
+            onChangeRunners(runners.map((r) => (r.id === runner.id ? { ...r, name } : r)))
+          }
         />
       ))}
 
@@ -120,9 +124,11 @@ interface RunnerRowProps {
   onSelect: () => void;
   onEdit: () => void;
   onRemove: () => void;
+  /** The runner answered with its own name while it still carried the adapter's label. */
+  onAdoptName: (name: string) => void;
 }
 
-function RunnerRow({ runner, selected, canRemove, onSelect, onEdit, onRemove }: RunnerRowProps) {
+function RunnerRow({ runner, selected, canRemove, onSelect, onEdit, onRemove, onAdoptName }: RunnerRowProps) {
   const adapter = registry.get(runner.adapterId) as RunAdapter<unknown> | undefined;
   const [report, setReport] = useState<AvailabilityReport | null>(null);
   const [checking, setChecking] = useState(false);
@@ -149,7 +155,10 @@ function RunnerRow({ runner, selected, canRemove, onSelect, onEdit, onRemove }: 
     adapter
       .fetchCapabilities(runner.config)
       .then((next) => {
-        if (!cancelled) setCaps(next);
+        if (cancelled) return;
+        setCaps(next);
+        const adopted = runnerTitle(runner.name, next?.displayName, adapter.displayName);
+        if (adopted !== runner.name) onAdoptName(adopted);
       })
       .catch(() => {
         // Unreachable / malformed — the availability badge surfaces the fault;
@@ -165,10 +174,14 @@ function RunnerRow({ runner, selected, canRemove, onSelect, onEdit, onRemove }: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adapter, baseUrl]);
 
-  const title = caps?.displayName ?? runner.name ?? adapter?.displayName ?? "Runner";
-  const description =
+  // The stored name is the runner's title everywhere; the name it advertises
+  // is shown beside its description only when it differs.
+  const title = runnerTitle(runner.name, caps?.displayName, adapter?.displayName ?? "Runner");
+  const advertisedName = caps?.displayName && caps.displayName !== title ? caps.displayName : undefined;
+  const advertisedDescription =
     caps?.description ??
     (adapter && !adapter.fetchCapabilities ? adapter.description : runner.description);
+  const description = [advertisedName, advertisedDescription].filter(Boolean).join(" · ");
 
   // An editor-MANAGED runner is one the adapter can stop; whether it is up
   // right now is its own question, which `isAvailable` does not answer (a

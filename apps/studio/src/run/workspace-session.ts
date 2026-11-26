@@ -52,6 +52,8 @@ export interface WorkspaceSessionState {
    *  runner's agreement waits to be accepted; `live` once there is a session;
    *  `failed` when none could be had, with `problem` saying why. */
   phase: "connecting" | "terms" | "live" | "failed";
+  /** The runner this session belongs to: a state may outlive a runner switch by a render. */
+  runnerId: string;
   problem: string | null;
   terms: RunnerTerms | null;
   sessionId: string | null;
@@ -759,12 +761,28 @@ export class WorkspaceSession {
     }
   }
 
+  /** Whether the runner reports the session running now; what it reports replaces a replayed status. */
+  private async runningNow(): Promise<boolean> {
+    const session = this.session;
+    if (!session) return false;
+    const document = await session.read();
+    if (document.status.kind === "running") return true;
+    this.status = document.status;
+    return false;
+  }
+
   private seed(): void {
     const surface = this.workspaceSurface;
-    if (!surface) return;
+    // The workspace route answers only a running session: nothing is read or
+    // sent to one that is suspended, starting, failed or let go of.
+    if (!surface || this.disposed || this.status?.kind !== "running") return;
     this.syncAgain = false;
-    this.seeding = seedDelta(surface, this.options.bridge)
-      .then(() => {
+    // The event stream replays history after a resume, so a `running` status
+    // may be a past one: the session's own word is asked before it is read.
+    this.seeding = this.runningNow()
+      .then(async (running) => {
+        if (!running) return;
+        await seedDelta(surface, this.options.bridge);
         this.seeded = true;
       })
       .catch((err: unknown) => {
@@ -818,6 +836,7 @@ export class WorkspaceSession {
       capabilities: this.capabilities,
       agentOffered: this.capabilitiesRead ? this.capabilities?.features.agents?.includes(AGENT_APP_NAME) === true : null,
       phase: this.phase,
+      runnerId: this.options.runner.id,
       problem: this.problem,
       terms: this.terms,
       sessionId: this.session?.id ?? null,

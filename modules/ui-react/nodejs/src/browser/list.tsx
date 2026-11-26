@@ -3,9 +3,9 @@ import { conditionHolds, presentValue, readBinding, ruleStyle, styleAttribute, t
 import { resolveDestination, type DestinationWire } from "./destination.js";
 import { useViewer } from "./current-location.js";
 import { anyLeadsHere, columnLeads } from "./record-selection.js";
-import type { RowActionSpec } from "./operation.js";
+import type { MutationCallSpec } from "./mutation-call.js";
 import { RecordLinkContext, RootsContext } from "./renderer-context.js";
-import { useRowActions } from "./row-actions.js";
+import { useMutationCalls } from "./mutation-calls.js";
 import { useRowActionsDisplay, type ActionsSetting } from "./row-actions-display.js";
 import { useSay, useText, type ValueLabel, type WireText } from "./texts.js";
 import { TimeValue } from "./time-value.js";
@@ -47,7 +47,7 @@ export function ListView({
   rows: Binding;
   columns: ListColumn[];
   rowStyle?: StyleRule;
-  rowActions?: RowActionSpec[];
+  rowActions?: MutationCallSpec[];
   rowActionsDisplay: ActionsSetting;
   style?: Style;
   /** Whether the list is a node filling the room it is in. */
@@ -60,7 +60,7 @@ export function ListView({
   const read = readBinding(rows, roots);
   const items: unknown[] = read.present && Array.isArray(read.value) ? read.value : [];
   const shown = columns.filter((column) => conditionHolds(column.shown, roots));
-  const actions = useRowActions(rowActions, roots, () => {});
+  const actions = useMutationCalls(rowActions, roots, () => {});
   const offered = rowActions.length > 0;
   const shownActions = useRowActionsDisplay(rowActionsDisplay, `${items.length}|${rowActions.length}`);
   useEffect(() => actions.clear(), [read.present ? read.value : undefined]);

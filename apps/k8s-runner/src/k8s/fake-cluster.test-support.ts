@@ -3,6 +3,7 @@ import type { AddressInfo } from "node:net";
 import { threadId } from "node:worker_threads";
 
 import type { V1Pod } from "@kubernetes/client-node";
+import { SUPERVISOR_GENERATION } from "@telorun/runner-core";
 import { FakeSupervisor } from "@telorun/runner-core/test-support";
 
 import type { KubeClient } from "./client.js";
@@ -52,7 +53,7 @@ export class FakeCluster {
   readonly workspaceWrites: unknown[] = [];
   private watchers: Array<{ name: string; onEvent: (type: string, obj: unknown) => void }> = [];
   /** The generation supervisors of pods created from now on claim. */
-  generation = 1;
+  generation = SUPERVISOR_GENERATION;
 
   readonly kube = {
     core: {

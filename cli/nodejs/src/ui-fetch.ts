@@ -4,6 +4,7 @@ import { createRequire } from "module";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import { debugUiVersion } from "./distribution-versions.js";
+import { reportPhase } from "./phase-progress.js";
 
 const require = createRequire(import.meta.url);
 
@@ -85,11 +86,11 @@ export async function resolveUiBundle(
   const base = process.env.TELO_DEBUG_UI_URL ?? DEFAULT_CDN_BASE;
   const url = `${base}/${UI_PACKAGE}@${version}/${UI_ASSET}`;
   try {
-    const res = await fetch(url);
-    if (!res.ok) {
-      return { kind: "unavailable", reason: `could not fetch the debug UI from ${url} — HTTP ${res.status} ${res.statusText}.` };
-    }
-    const body = Buffer.from(await res.arrayBuffer());
+    const body = await reportPhase("debug UI", { doing: "fetching", done: "fetched" }, async () => {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+      return Buffer.from(await res.arrayBuffer());
+    });
     // `--no-cache-write`: the cache dir is read-only (e.g. the k8s runner's baked
     // `/telo-cache`), so serve the freshly fetched bytes from memory rather than
     // attempting a write that would fail (EROFS / ENOENT) and lose a good fetch.

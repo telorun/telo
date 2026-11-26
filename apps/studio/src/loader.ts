@@ -69,8 +69,10 @@ export {
   noopAdapter,
   openWorkspaceDirectory,
   reopenWorkspaceAt,
+  workspaceBackendOf,
   workspaceOpenMode,
 } from "./loader/open";
+export { recentWorkspaceLabel, restoreDecision } from "./loader/workspace-restore";
 export type { OpenedWorkspace } from "./loader/open";
 export {
   buildRemoteImportPlan,

@@ -7,6 +7,8 @@ messages:
   noRows: 暂无数据。
   nothingFound: 未找到任何内容。
   save: 保存
+  saving: 正在保存…
+  retry: 重试
   cancel: 取消
   close: 关闭
   newRecord: 新建

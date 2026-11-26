@@ -12,6 +12,12 @@ telo-k8s-runner
 
 {{- define "k8s-runner.labels" -}}
 app.kubernetes.io/name: {{ include "k8s-runner.name" . }}
+{{ include "k8s-runner.releaseLabels" . }}
+{{- end -}}
+
+{{/* The labels without `app.kubernetes.io/name`, for an object that names
+     itself: a repeated key is refused by Flux's post-render parse. */}}
+{{- define "k8s-runner.releaseLabels" -}}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}

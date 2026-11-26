@@ -590,20 +590,20 @@ children:
       create:
         to: { kind: Ui.OpenPage, page: !ref newRequestPage }
       rowActions:
-        - action:
-            kind: Ui.Action
+        - mutation:
+            kind: Ui.Mutation
             inputModel: !ref Decision
-            request: { target: { path: /api/approve } }
-            label: Approve
+            url: /api/approve
           inputs:
             id: !cel "row.id"
-        - action:
-            kind: Ui.Action
+          label: Approve
+        - mutation:
+            kind: Ui.Mutation
             inputModel: !ref Decision
-            request: { target: { path: /api/reject } }
-            label: Reject
+            url: /api/reject
           inputs:
             id: !cel "row.id"
+          label: Reject
           confirm: Reject this request?
   - { type: text, text: "Every request", style: heading }
   - type: composite

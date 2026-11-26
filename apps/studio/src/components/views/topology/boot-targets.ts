@@ -1,8 +1,9 @@
-import type { GraphNode, GraphRow, ModuleGraph } from "@telorun/analyzer";
+import { readRefSlot, type GraphNode, type GraphRow, type ModuleGraph } from "@telorun/analyzer";
 import { isTaggedSentinel, makeTaggedSentinel, type TaggedSentinel } from "@telorun/templating";
 import { isRecord } from "../../../lib/utils";
+import { resolveRef } from "../../../schema-utils";
 import type { RefResolver } from "../../resource-schema-form/ref-candidates";
-import { accepts, isReferenceable } from "./module-graph-view/wire";
+import { accepts, isReferenceable, referenceableTargets, referenceName } from "./module-graph-view/wire";
 
 /**
  * An Application's boot sequence, `targets:`, as the editor reads and writes it.
@@ -158,6 +159,77 @@ export function bootConstraint(graph: ModuleGraph): string[] | undefined {
   return root.ports.find((port) => port.slot === `${BOOT_FIELD}[]`)?.refs;
 }
 
+/**
+ * The kinds an inline invoke step's `invoke:` accepts, read off the `targets`
+ * slot's own schema — the step grammar's slot, not a list restated here.
+ * Undefined when the schema holds no such step.
+ */
+export function bootInvokeConstraint(
+  moduleSchema: Record<string, unknown> | undefined,
+): string[] | undefined {
+  if (!moduleSchema) return undefined;
+  const properties = moduleSchema.properties;
+  const targets = isRecord(properties) ? resolveRef(properties[BOOT_FIELD], moduleSchema) : undefined;
+  const items = isRecord(targets) ? resolveRef(targets.items, moduleSchema) : undefined;
+  if (!isRecord(items)) return undefined;
+  const kinds: string[] = [];
+  let found = false;
+  for (const branch of unionBranches(items, moduleSchema)) {
+    const branchProperties = branch.properties;
+    const invoke = isRecord(branchProperties)
+      ? resolveRef(branchProperties.invoke, moduleSchema)
+      : undefined;
+    const slot = isRecord(invoke) ? readRefSlot(invoke) : undefined;
+    if (!slot) continue;
+    found = true;
+    for (const kind of slot.kinds) if (!kinds.includes(kind)) kinds.push(kind);
+  }
+  return found ? kinds : undefined;
+}
+
+/** A schema's own shape and every branch of its `anyOf` / `oneOf`, references followed. */
+function unionBranches(
+  node: Record<string, unknown>,
+  root: Record<string, unknown>,
+): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [node];
+  for (const key of ["anyOf", "oneOf"] as const) {
+    const branches = node[key];
+    if (!Array.isArray(branches)) continue;
+    for (const branch of branches) {
+      const resolved = resolveRef(branch, root);
+      if (isRecord(resolved)) out.push(...unionBranches(resolved, root));
+    }
+  }
+  return out;
+}
+
+/** What the Boot "+" offers: the resources a bare entry may start (none an
+ *  entry starts already) and those an invoke step may call, by the name a
+ *  reference to each is written with. */
+export function bootAddCandidates(
+  graph: ModuleGraph,
+  resolver: RefResolver,
+  moduleSchema: Record<string, unknown> | undefined,
+  entries: readonly BootEntry[],
+): { start: string[]; call: string[] } {
+  const names = (refs: string[], skip?: ReadonlySet<string>): string[] =>
+    refs.length === 0
+      ? []
+      : [
+          ...new Set(
+            referenceableTargets({ refs }, graph.nodes, resolver)
+              .filter((node) => !skip?.has(node.id))
+              .map(referenceName),
+          ),
+        ].sort();
+  const startRefs = bootConstraint(graph);
+  return {
+    start: startRefs ? names(startRefs, new Set(bootMarkers(entries, graph).keys())) : [],
+    call: names(bootInvokeConstraint(moduleSchema) ?? []),
+  };
+}
+
 /** May this resource be started at boot? A declaration owned by another box has
  *  no name to reference it by, and the root is not a resource. On a template
  *  body only its own entries are offered: a module resource drawn there is
@@ -195,6 +267,12 @@ export function bootToggleAction(
 export function withBootTarget(targets: unknown, reference: string): unknown[] {
   const ref: TaggedSentinel = makeTaggedSentinel("ref", reference);
   return [...(Array.isArray(targets) ? targets : []), ref];
+}
+
+/** `targets:` with an invoke step calling `reference` appended. */
+export function withBootInvokeStep(targets: unknown, reference: string): unknown[] {
+  const step = { invoke: makeTaggedSentinel("ref", reference) };
+  return [...(Array.isArray(targets) ? targets : []), step];
 }
 
 /** `targets:` without the entries at `indexes`. */

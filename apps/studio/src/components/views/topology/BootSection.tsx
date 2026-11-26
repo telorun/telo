@@ -4,18 +4,18 @@ import type { StructuredModel } from "../../../language/structured-model";
 import type { ParsedResource, Selection } from "../../../model";
 import {
   BOOT_FIELD,
-  bootConstraint,
+  bootAddCandidates,
   bootEntries,
   bootEntryLabel,
   bootEntryPointer,
-  bootMarkers,
   bootRows,
+  withBootInvokeStep,
   withBootTarget,
   type BootEntry,
 } from "./boot-targets";
 import { entrySchemaFor } from "./module-graph-view/entry-schema";
 import { jsonPointer } from "./module-graph-view/field-pointer";
-import { referenceableTargets, referenceName } from "./module-graph-view/wire";
+import { referenceName } from "./module-graph-view/wire";
 import { Chip, isSelected, type ChipAction } from "./ModuleBarChip";
 import { Section } from "./ModuleBarSection";
 
@@ -59,20 +59,28 @@ export function BootSection({
   const rows = moduleGraph ? bootRows(entries, moduleGraph) : new Map<number, GraphRow>();
   const host = { kind: root.kind, name: root.name };
 
-  // What may be added: every resource the `targets` slot accepts that no entry
-  // starts yet — the same rule the canvas's toggle and a wire read.
-  const refs = moduleGraph ? bootConstraint(moduleGraph) : undefined;
-  const started = new Set(moduleGraph ? bootMarkers(entries, moduleGraph).keys() : []);
+  // What may be added: what a bare entry may start (nothing an entry starts
+  // already), and what an invoke step may call.
   const candidates =
-    moduleGraph && structuredModel && refs && refs.length > 0
-      ? [
-          ...new Set(
-            referenceableTargets({ refs }, moduleGraph.nodes, structuredModel)
-              .filter((node) => !started.has(node.id))
-              .map(referenceName),
-          ),
-        ].sort()
-      : [];
+    moduleGraph && structuredModel
+      ? bootAddCandidates(moduleGraph, structuredModel, moduleSchema, entries)
+      : { start: [], call: [] };
+
+  const inputsSelection = (index: number, targetKind: string | undefined): Selection => ({
+    resource: host,
+    pointer: `${bootEntryPointer(index)}/inputs`,
+    schema: (targetKind ? structuredModel?.inputTypeForKind(targetKind) : undefined) ?? {
+      type: "object",
+      additionalProperties: true,
+    },
+    celEval: "runtime",
+  });
+
+  const addInvokeStep = (name: string) => {
+    onWrite({ ...fields, [BOOT_FIELD]: withBootInvokeStep(fields[BOOT_FIELD], name) });
+    const node = moduleGraph?.nodes.find((n) => !n.root && referenceName(n) === name);
+    onSelect(inputsSelection(entries.length, node ? (node.canonicalKind ?? node.kind) : undefined));
+  };
 
   const entryActions = (entry: BootEntry): ChipAction[] => {
     const out: ChipAction[] = [];
@@ -97,16 +105,15 @@ export function BootSection({
     if (row?.inputs) {
       const target = row.targetNode ? moduleGraph?.nodeById(row.targetNode) : undefined;
       const targetKind = target ? (target.canonicalKind ?? target.kind) : undefined;
-      const schema = (targetKind ? structuredModel?.inputTypeForKind(targetKind) : undefined) ?? {
-        type: "object",
-        additionalProperties: true,
-      };
       out.push({
         key: "inputs",
         icon: <Braces className="size-3.5" />,
         title: "Edit this step's arguments",
         onClick: () =>
-          onSelect({ resource: host, pointer: jsonPointer(row.inputs!), schema, celEval: "runtime" }),
+          onSelect({
+            ...inputsSelection(entry.index, targetKind),
+            pointer: jsonPointer(row.inputs!),
+          }),
       });
     }
     if (!readOnly && onMoveField && entry.index > 0) {
@@ -146,16 +153,26 @@ export function BootSection({
   return (
     <Section
       title="Boot"
-      addTitle="Start a resource at boot"
-      addMenu={
-        readOnly || candidates.length === 0
+      addTitle="Add to boot"
+      addGroups={
+        readOnly
           ? undefined
-          : candidates.map((name) => ({
-              name,
-              onSelect: () =>
-                onWrite({ ...fields, [BOOT_FIELD]: withBootTarget(fields[BOOT_FIELD], name) }),
-            }))
+          : [
+              {
+                label: "Start",
+                items: candidates.start.map((name) => ({
+                  name,
+                  onSelect: () =>
+                    onWrite({ ...fields, [BOOT_FIELD]: withBootTarget(fields[BOOT_FIELD], name) }),
+                })),
+              },
+              {
+                label: "Call",
+                items: candidates.call.map((name) => ({ name, onSelect: () => addInvokeStep(name) })),
+              },
+            ]
       }
+      addEmptyText="Nothing to start or call yet — add an import or a resource first."
     >
       {entries.map((entry) => {
         const details = [

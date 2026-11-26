@@ -144,7 +144,7 @@ steps:
       actual:
         accepted: !cel "steps.bad.result.status"
         answeredWithQueue: !cel "steps.bad.result.leads"
-        page: !cel "steps.page.result.body.children.filter(c, c.type == 'action').map(c, [c.label, c.request.target.path.value, c.fields.map(f, f.label)])"
+        page: !cel "steps.page.result.body.children.filter(c, c.type == 'form' || c.type == 'button').map(c, c.type == 'form' ? [c.onSubmit.label, c.onSubmit.mutation.url.path.value, c.fields.map(f, f.label)] : [c.action.label, c.action.mutation.url.path.value, []])"
         pageTitle: !cel "steps.shell.result.status"
         empty: !cel "steps.empty.result.status"
         otherReplica: !cel "steps.other.result.body.me"

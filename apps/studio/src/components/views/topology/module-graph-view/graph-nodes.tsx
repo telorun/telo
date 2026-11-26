@@ -131,6 +131,9 @@ export interface GraphBoxData extends Record<string, unknown> {
   /** Start this resource at boot, or stop starting it. Absent where it may not
    *  be a boot target, or where the module root cannot be written. */
   onToggleBoot?: () => void;
+  /** Delete this resource from the module. Absent where it is not declared
+   *  here or the module cannot be written. */
+  onDelete?: () => void;
   /** Put a question about this resource into the agent's composer. Absent
    *  where no agent panel is offered. */
   onAskAgent?: () => void;
@@ -349,7 +352,7 @@ function GraphBox({ data }: NodeProps<Node<GraphBoxData>>) {
         position={Position.Left}
         className="!size-2 !border-zinc-400 !bg-white dark:!bg-zinc-900"
       />
-      <div className="flex items-center gap-1.5 px-2 pt-1.5">
+      <div className="group/head flex items-center gap-1.5 px-2 pt-1.5">
         <Icon className="size-3.5 shrink-0 text-zinc-400" />
         <span className="min-w-0 truncate text-xs font-semibold text-zinc-800 dark:text-zinc-100">
           {node.name}
@@ -383,6 +386,23 @@ function GraphBox({ data }: NodeProps<Node<GraphBoxData>>) {
           <span data-no-open className="ml-auto shrink-0">
             <DiagnosticBadge summary={summary} size="sm" />
           </span>
+        )}
+        {data.onDelete && (
+          <button
+            type="button"
+            data-no-open
+            title="Delete this resource"
+            aria-label={`Delete ${node.name}`}
+            className={`nodrag nopan hidden shrink-0 rounded p-0.5 text-zinc-400 group-hover/head:block touch:block hover:bg-zinc-200 hover:text-red-600 dark:hover:bg-zinc-700 ${
+              summary ? "" : "ml-auto"
+            }`}
+            onClick={(e) => {
+              e.stopPropagation();
+              data.onDelete?.();
+            }}
+          >
+            <Trash2 className="size-3" />
+          </button>
         )}
       </div>
       <div className="flex items-center gap-1 px-2 pb-1">
@@ -449,7 +469,7 @@ function GraphBox({ data }: NodeProps<Node<GraphBoxData>>) {
     </div>
   );
 
-  if (!data.onToggleBoot && !data.onAskAgent) return box;
+  if (!data.onToggleBoot && !data.onAskAgent && !data.onDelete) return box;
   const markers = data.boot ?? [];
   const label =
     markers.length === 0
@@ -473,6 +493,12 @@ function GraphBox({ data }: NodeProps<Node<GraphBoxData>>) {
           <ContextMenuItem className="text-xs" onSelect={data.onAskAgent}>
             <Sparkles />
             Ask AI
+          </ContextMenuItem>
+        )}
+        {data.onDelete && (
+          <ContextMenuItem className="text-xs" onSelect={data.onDelete}>
+            <Trash2 />
+            Delete
           </ContextMenuItem>
         )}
       </ContextMenuContent>

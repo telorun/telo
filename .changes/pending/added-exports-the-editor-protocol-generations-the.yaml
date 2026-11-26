@@ -1,0 +1,4 @@
+units:
+  packages/language-host: Added
+body: Exports the editor protocol generations the router speaks as ROUTER_SPEAKS, so a
+  host reading the engine catalog asks for the same ones.

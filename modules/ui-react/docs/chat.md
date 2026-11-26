@@ -230,14 +230,14 @@ the entry holding the calls; once every pending request has a decision, one
 A turn runs on the server whichever conversation is shown, so several conversations
 run at once. Switching to another closes the event stream of the one left and
 nothing else: its turn keeps running, the page keeps reading its events without
-drawing them until it ends (so its `refreshes` are announced), and opening that
+drawing them until it ends (so its `invalidates` are announced), and opening that
 conversation again tails it from the start. A write to the shown conversation's
 own address reads it again in place, the transcript staying drawn until the new
 data arrives. What was in flight for the conversation left — a message
 being started, a branch being read after a turn ended, an earlier page, a frame
 already received — is dropped when it arrives and never touches the conversation
 shown, nor shows a failure in it. A message being started when the viewer
-switches away is still admitted by the server, its `refreshes` announced, and the
+switches away is still admitted by the server, its `invalidates` announced, and the
 address left as the viewer set it.
 
 Each conversation keeps its own draft — the text and the attached files — for as
@@ -269,11 +269,11 @@ conversation. The list of past conversations is not the chat's: a page draws
 it as a listing beside the chat, and the transcript is exported or copied as
 Markdown by the header's commands.
 
-The node's `refreshes` are resolved over the root `conversation` (`{ id }`) and
-announced with `host.notifyChanged`, as an action's are: when a send is admitted
+The node's `invalidates` are resolved over the root `conversation` (`{ id }`) and
+announced with `host.notifyChanged`, as a mutation's are: when a send is admitted
 (a `2xx` of `POST /turns`, in a new or an existing conversation) and when a turn
 the page started or followed ends, whatever its reason. A listing of the
-conversations, or a query of one, at a refreshed path reads again.
+conversations, or a query of one, at an invalidated path reads again.
 
 ## When something goes wrong
 
@@ -298,7 +298,7 @@ built-in themes from the existing design tokens alone.
 ## Invalidation
 
 The chat reads its open conversation at `<basePath>/conversations/<id>`. A write
-announced for exactly that path (a rename or a delete from an action or a
+announced for exactly that path (a rename or a delete from a call or a
 listing elsewhere on the page, see [invalidation](urls.md#invalidation)) reads
 the conversation again while no turn is running in it; a conversation that is
 gone is drawn in place as its error.

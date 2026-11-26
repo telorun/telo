@@ -1,10 +1,11 @@
 import { RuntimeError, type ResourceContext, type ResourceInstance, type RuntimeResource } from "@telorun/sdk";
 import { mergeAssets, type AssetFile, type Provided, type SpecNode } from "./composite.js";
+import { namedForm } from "./query-controller.js";
 import { presentationAt } from "./collection-presentation.js";
 import { modelSchema, type JsonSchema } from "./model-schema.js";
 import { resolveNode, type AuthoredNode } from "./node-resolution.js";
 import type { Binding, StyleRule } from "./row-binding.js";
-import { pendingBoundAction, providedBoundActions, type BoundActionConfig } from "./bound-actions.js";
+import { pendingMutationCall, providedMutationCalls, type MutationCallConfig } from "./mutation-calls.js";
 import { uiText } from "./spec-texts.js";
 import { isLayout, type LayoutAnswer, type LayoutInputs } from "./listing-layout.js";
 import { tableLayout } from "./table-layout.js";
@@ -15,6 +16,7 @@ import { defaultedPressSpec, pressSpec, type PressConfig } from "./press.js";
 type ListingResource = RuntimeResource & {
   presentation: unknown;
   model: unknown;
+  form?: unknown;
   filters?: Record<string, Binding> | null;
   query?: Record<string, JsonSchema> | null;
   pageSize?: number | bigint | null;
@@ -26,7 +28,7 @@ type ListingResource = RuntimeResource & {
   create?: { to: unknown; label?: unknown } | null;
   edit?: { to: unknown; label?: unknown } | null;
   delete?: boolean | null;
-  rowActions?: BoundActionConfig[] | null;
+  rowActions?: MutationCallConfig[] | null;
   press?: PressConfig | null;
   empty?: AuthoredNode | null;
   layout?: unknown;
@@ -100,8 +102,8 @@ class Listing implements ResourceInstance {
     const layout = (await this.layout("layout", inputs, owner))!;
     const compact = await this.layout("compact", inputs, owner);
     assets.push(layout.assets, compact?.assets ?? []);
-    const pending = (resource.rowActions ?? []).map((entry, index) => pendingBoundAction(entry, this.ctx, owner, `rowActions[${index}]`));
-    const { entries: rowActions, assets: actionAssets } = await providedBoundActions(pending);
+    const pending = (resource.rowActions ?? []).map((entry, index) => pendingMutationCall(entry, this.ctx, owner, `rowActions[${index}]`, "call"));
+    const { entries: rowActions, assets: actionAssets } = await providedMutationCalls(pending);
     assets.push(...actionAssets);
     const create = await defaultedPressSpec(resource.create, "create", this.ctx, owner, "create");
     const edit = await defaultedPressSpec(resource.edit, "edit", this.ctx, owner, "edit");
@@ -114,6 +116,7 @@ class Listing implements ResourceInstance {
       basePath,
       key: collection.key,
       query: resource.query ?? {},
+      form: namedForm(resource.form, this.ctx, owner)?.id ?? null,
       ...(resource.filters ? { filters: resource.filters } : {}),
       pageSize: Number(resource.pageSize ?? 25),
       paging: resource.paging ?? "pages",

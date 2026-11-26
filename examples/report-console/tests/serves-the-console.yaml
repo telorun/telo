@@ -50,7 +50,7 @@ steps:
       account: !cel "steps.page.result.body.children[1].content[0].children[3].children[0]"
       form: !cel "steps.page.result.body.children[1].content[0].children[3].children[1]"
       polishForm: !cel "steps.polishPage.result.body.children[1].content[0].children[3].children[1]"
-      files: !cel "steps.page.result.body.children[1].content[0].children[3].children[1].result.children[9]"
+      files: !cel "steps.page.result.body.children[1].content[0].children[3].children[1].onSubmit.result.children[9]"
       listing: !cel "steps.projectsPage.result.body.children[1].content[0].children[1]"
 
   # The application: two pages, the stylesheet beside the theme, and a
@@ -89,7 +89,7 @@ steps:
         sheetLabel: !cel "steps.nodes.result.polishForm.fields[0].label"
         hoursAs: !cel "steps.nodes.result.polishForm.fields[5].labels"
         group: !cel "steps.nodes.result.polishForm.groups[0].label"
-        found: !cel "steps.nodes.result.polishForm.result.children[0].text"
+        found: !cel "steps.nodes.result.polishForm.onSubmit.result.children[0].text"
       expected:
         lang: pl
         title: { lang: pl, message: [ Raporty ] }
@@ -136,16 +136,16 @@ steps:
         loading: !cel "steps.nodes.result.gate.loading"
         branches: !cel "steps.nodes.result.gate.content[0].children.map(c, [c.type, c.shown])"
         connect:
-          path: !cel "steps.nodes.result.connect.request.target.path.value"
-          label: !cel "steps.nodes.result.connect.label"
-          onSuccess: !cel "steps.nodes.result.connect.onSuccess"
+          path: !cel "steps.nodes.result.connect.action.mutation.url.path.value"
+          label: !cel "steps.nodes.result.connect.action.label"
+          onSuccess: !cel "steps.nodes.result.connect.action.onSuccess"
         account:
           type: !cel "steps.nodes.result.account.type"
           url: !cel "steps.nodes.result.account.query.url"
           email: !cel "steps.nodes.result.account.content[0].children[0].value"
           signOut:
-            path: !cel "steps.nodes.result.account.content[0].children[1].request.target.path.value"
-            onSuccess: !cel "steps.nodes.result.account.content[0].children[1].onSuccess"
+            path: !cel "steps.nodes.result.account.content[0].children[1].action.mutation.url.path.value"
+            invalidates: !cel "steps.nodes.result.account.content[0].children[1].action.mutation.invalidates"
       expected:
         type: query
         url: { path: { value: /api/auth }, pathParams: {}, queryParams: {} }
@@ -160,12 +160,12 @@ steps:
         connect:
           path: /api/auth/connect
           label: { lang: en, message: [ Connect Google ] }
-          onSuccess: { to: { type: navigate, href: { path: { root: result, path: [ url ] }, pathParams: {}, queryParams: {} } }, refreshes: [] }
+          onSuccess: [ { type: navigate, href: { path: { root: result, path: [ url ] }, pathParams: {}, queryParams: {} } } ]
         account:
           type: query
           url: { path: { value: /api/auth/user }, pathParams: {}, queryParams: {} }
           email: { root: data, path: [ email ] }
-          signOut: { path: /api/auth/signout, onSuccess: { refreshes: [ { path: { value: /api/auth }, pathParams: {}, queryParams: {} } ] } }
+          signOut: { path: /api/auth/signout, invalidates: [ { path: { value: /api/auth }, pathParams: {}, queryParams: {} } ] }
 
   # The report form: its fields by kind and group, each option source, the
   # date range, the columns' fixed order and default, the remembered sheet
@@ -175,8 +175,8 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        path: !cel "steps.nodes.result.form.request.target.path.value"
-        label: !cel "steps.nodes.result.form.label"
+        path: !cel "steps.nodes.result.form.onSubmit.mutation.url.path.value"
+        label: !cel "steps.nodes.result.form.onSubmit.label"
         fields: !cel "steps.nodes.result.form.fields.map(f, [f.type, f.property, f.group, 'control' in f ? f.control : '-'])"
         hints: !cel "steps.nodes.result.form.fields.map(f, f.description == null ? '-' : f.description.message[0])"
         sources: !cel >-
@@ -196,9 +196,9 @@ steps:
           default: !cel "steps.nodes.result.form.schema.properties.columns.default"
         groups: !cel "steps.nodes.result.form.groups.map(g, [g.name, g.label.message[0], 'shown' in g ? g.shown : null])"
         state: !cel "steps.nodes.result.form.state"
-        enabled: !cel "steps.nodes.result.form.enabled"
+        enabled: !cel "steps.nodes.result.form.onSubmit.enabled"
         clearAnswerOn: !cel "steps.nodes.result.form.clearAnswerOn"
-        concurrency: !cel "steps.nodes.result.form.concurrency"
+        concurrency: !cel "steps.nodes.result.form.onSubmit.mutation.concurrency"
       expected:
         path: /api/generate
         label: { lang: en, message: [ Generate ] }
@@ -268,10 +268,10 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        drawn: !cel "steps.nodes.result.form.result.children.map(c, [c.type, 'style' in c ? c.style : '-', 'shown' in c ? c.shown : null])"
-        skipped: !cel "steps.nodes.result.form.result.children[1].text"
-        warnings: !cel "steps.nodes.result.form.result.children.filter(c, c.type == 'box').map(c, [c.children[0].heading.message[0], c.children[0].rows])"
-        failure: !cel "steps.nodes.result.form.failure"
+        drawn: !cel "steps.nodes.result.form.onSubmit.result.children.map(c, [c.type, 'style' in c ? c.style : '-', 'shown' in c ? c.shown : null])"
+        skipped: !cel "steps.nodes.result.form.onSubmit.result.children[1].text"
+        warnings: !cel "steps.nodes.result.form.onSubmit.result.children.filter(c, c.type == 'box').map(c, [c.children[0].heading.message[0], c.children[0].rows])"
+        failure: !cel "steps.nodes.result.form.onSubmit.failure"
       expected:
         drawn:
           - [ text, heading, { at: { root: result, path: [ projectsInPeriod ] }, matches: { minimum: 1 } } ]
@@ -332,8 +332,8 @@ steps:
         columns: !cel "steps.nodes.result.files.columns.map(c, [c.header.message[0], c.value, c.present, 'shown' in c ? c.shown : null])"
         rowActions: !cel >-
           steps.nodes.result.files.rowActions.map(r, {
-            'path': r.action.request.target.path.value, 'label': r.action.label.message[0], 'concurrency': r.action.concurrency,
-            'inputs': r.inputs, 'enabled': r.enabled, 'result': r.action.result})
+            'path': r.mutation.url.path.value, 'label': r.label.message[0], 'concurrency': r.mutation.concurrency,
+            'inputs': r.inputs, 'enabled': r.enabled, 'result': r.result})
       expected:
         rows: { root: result, path: [ files ] }
         columns:
@@ -401,7 +401,7 @@ steps:
           query: !cel "steps.nodes.result.listing.query"
           filters: !cel "steps.nodes.result.listing.filters"
           remind:
-            path: !cel "steps.nodes.result.listing.rowActions[0].action.request.target.path.value"
+            path: !cel "steps.nodes.result.listing.rowActions[0].mutation.url.path.value"
             inputs: !cel "steps.nodes.result.listing.rowActions[0].inputs"
             confirm: !cel "steps.nodes.result.listing.rowActions[0].confirm"
             enabled: !cel "steps.nodes.result.listing.rowActions[0].enabled"

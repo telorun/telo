@@ -1,0 +1,11 @@
+# The write is the importer's: nothing here can say what it answers, so
+# `result` is open.
+kind: Telo.Library
+metadata: { name: RefFromLib }
+imports: { RefKinds: ../kinds }
+resources: { write: { kind: RefKinds.Write } }
+---
+kind: RefKinds.Editor
+metadata: { name: borrowed }
+a: { write: !ref write }
+effects: [!cel "result.anything"]

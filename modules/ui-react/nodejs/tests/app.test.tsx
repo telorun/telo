@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 import { render, type Rendered } from "./harness.js";
-import { address, navigateTo, asideOf, operation } from "./spec-nodes.js";
+import { address, formNode, memoryState, navigateTo, asideOf } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
@@ -178,7 +178,12 @@ describe("the application shell", () => {
   });
 
   it("draws a page afresh for another value of a variable, and keeps it mounted for another query", async () => {
-    const note = operation("/api/notes", "Send", { type: "object", properties: { note: { type: "string", title: "Note" } } });
+    const note = formNode("/api/notes", {
+      schema: { type: "object", properties: { note: { type: "string", title: "Note" } } },
+      fields: [{ type: "input", property: "note", label: "Note", control: "auto" }],
+      state: memoryState(["note"]),
+      unsaved: "discard",
+    });
     const links = [
       { type: "link", text: "Same", to: navigateTo(address("/plans/a", {}, { tab: { value: "x" } })) },
       { type: "link", text: "Other", to: navigateTo(address("/plans/b")) },

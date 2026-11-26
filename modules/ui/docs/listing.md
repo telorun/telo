@@ -10,7 +10,8 @@ layout. How records are drawn is [the layout's](listing-layouts.md).
 | --- | --- | --- |
 | `presentation` | required | the [`Ui.CollectionPresentation`](collection-presentation.md) shown, `!ref` or inline |
 | `model` | required | the shape of one record: a `!ref` to a `Telo.JsonSchema`, or one inline |
-| `filters` | | property → a fixed value or a path into `query` or [`params`](page.md#params): equalities applied to every request, each a filter the collection accepts with `eq` and typed against its model property — a key the model does not declare is refused by `telo check` (`SCHEMA_VIOLATION`); while one holds nothing the listing reads nothing |
+| `form` | none | the [`Ui.Form`](form.md) the listing [follows](#following-a-form), read as `form` |
+| `filters` | | property → a fixed value or a path into `query`, [`params`](page.md#params) or `form`: equalities applied to every request, each a filter the collection accepts with `eq` and typed against its model property — a key the model does not declare is refused by `telo check` (`SCHEMA_VIOLATION`); while one holds nothing the listing reads nothing |
 | `query` | none | the page query parameters its filters and row actions read, a [`Ui.QueryParameters`](conditions.md); read as `query` |
 | `pageSize` | `25` | records per read, 1–100, sent as `limit` |
 | `paging` | `pages` | how further pages are reached: [`pages`, `more` or `scroll`](#paging) |
@@ -22,7 +23,7 @@ layout. How records are drawn is [the layout's](listing-layouts.md).
 | `edit` | | [the edit action of each record](#create-and-edit): `{ to, label? }` over `row`, `query` and `params` |
 | `press` | what `edit`'s `to` says | [what pressing a record does](#pressing-a-record): a [`Ui.Press`](presses.md#presses), `{ to, label }`, over `row`, `query` and `params` |
 | `delete` | `false` | whether each record offers a confirmed delete |
-| `rowActions` | none | [operations each record offers](#row-actions): `{ action, inputs, confirm?, prompt?, enabled? }` each |
+| `rowActions` | none | [operations each record offers](#row-actions): a [`Ui.MutationCall`](mutation.md#uimutationcall) each |
 | `rowActionsDisplay` | `auto` | [how the actions, edit and delete are drawn](#how-the-actions-are-drawn): `auto`, `inline` or `menu` |
 | `empty` | the text `noRows`, "No rows." | a [node](nodes.md) drawn where the records would be when the reads answer none |
 | `layout` | a table | how the records are drawn: [a layout kind](listing-layouts.md), `!ref` or inline |
@@ -116,10 +117,10 @@ Row actions, edit and delete are drawn the same way in every layout, as
 `rowActionsDisplay` says. `inline` draws each as a button on its record. `menu`
 folds them into one icon button (the glyph `more`, named by the text
 `rowActionsMenu`, "Actions") opening a menu of the row actions, then edit, then
-delete, each labelled by its action's `label`, `edit` and `delete`. An entry
+delete, each labelled by its call's `label`, `edit` and `delete`. An entry
 whose `enabled` condition does not hold is a disabled item, its `disabledText`
 the item's hint; a `confirm` or `prompt` opens as it does from a button, with
-the focus returning to the menu button. A pressed action's answer is drawn in
+the focus returning to the menu button. A pressed call's answer is drawn in
 the record's actions before the menu button, a failure beside it.
 
 `auto` is one judgement for the whole listing, so the rows stay aligned, made
@@ -248,99 +249,115 @@ doing so, are `CEL_UNKNOWN_FIELD`; a press with no `label` is
 ## Row actions
 
 `rowActions` puts buttons on every record, in the order written, before edit
-and delete. Each is a [`Ui.BoundAction`](action.md#bound-actions) running a
-[`Ui.Action`](action.md) with values of that record, of the listing's
-declared `query` and of the page's [`params`](page.md#params):
+and delete. Each is a [`Ui.MutationCall`](mutation.md#uimutationcall) running a
+[`Ui.Mutation`](mutation.md) with values of that record, of the listing's
+declared `query`, of the page's [`params`](page.md#params) and of the
+[form it follows](#following-a-form):
 
 ```yaml
 rowActions:
-  - action: !ref archiveTodo
+  - mutation: !ref archiveTodo
     inputs:
       id: !cel "row.id"
       status: archived
+    label: Archive
     confirm: Archive this task?
 ```
 
 | Field | | |
 | --- | --- | --- |
-| `action` | required | the [`Ui.Action`](action.md) run, `!ref` or inline |
-| `inputs` | required, at least one | the record sent, by input property: a path into `row`, `query` or `params`, or a fixed value |
-| `confirm` | | a question asked first; left out, a press runs the action at once, unless `prompt` opens a dialog |
-| `prompt` | `false` | whether a press opens a dialog that [asks for more](#asking-for-more) before the action is sent |
-| `enabled` | always | when the record's button can be pressed, over `row`, `query` and `params`, and why not; the action's own `enabled` does not govern it |
+| `mutation` | required | the [`Ui.Mutation`](mutation.md) run, `!ref` or inline |
+| `inputs` | required | the record sent, by input property: a path into `row`, `query`, `params`, `form` or `prompt`, or a fixed value; `{}` for a mutation that takes nothing |
+| `label` | required | the button's accessible name; include the text it shows |
+| `confirm` | | a question asked first; left out, a press runs the write at once, unless `prompt` opens a dialog |
+| `prompt` | none | a [`Ui.Prompt`](#asking-for-more) the press opens before the write is sent |
+| `enabled` | always | when the record's button can be pressed, over `row`, `query` and `params`, and why not |
+| `onSuccess` | none | [effects](mutation.md#after-a-success) run once the write succeeds |
+| `result` | nothing drawn | a node tree drawn in place of the button after a success, over `result` and `input` |
+| `failure` | the error's code and message | a node tree drawn beside the button when the write does not succeed, over `error` and `input` |
 
-The button shows the action's `label` and sends
-[its request](action-contract.md#from-bound-inputs) to its `request.target`, filled from the inputs. Every
-property the action's `inputModel` requires is bound here. A record takes no
-press while its last is pending or queued. Once the operation succeeds, the
-listings whose collection source has the same `basePath` reload, the action's
-`result` tree is drawn in place of its button — kept while that record is
-shown, through the reload — and its `onSuccess` applies; a failure draws its
-`failure` tree beside the button, or in the confirmation when one was open.
+The button shows the call's `label` and sends
+[the mutation's request](mutation-contract.md#from-bound-inputs) to its `url`,
+filled from the inputs. Every property the mutation's `inputModel` requires is
+bound here. A record takes no press while its last is pending or queued. Once
+the write succeeds, the listings whose collection source has the same `basePath`
+reload, the call's `result` tree is drawn in place of its button — kept while
+that record is shown, through the reload — and its `onSuccess` effects run; a
+failure draws its `failure` tree beside the button, or in the confirmation when
+one was open. The mutation's `concurrency` applies wherever it runs.
 
 ### Asking for more
 
-`prompt: true` opens a dialog on the press, titled with `confirm` — or with the
-action's label when there is no question — and holding a field for each of the
-action's [`fields`](action.md) that `inputs` does not bind: a reason, a note,
-a date.
+`prompt` opens a dialog on the press, titled with `confirm` — or with the call's
+label when there is no question — and holding the fields of a
+[`Ui.Prompt`](mutation.md#asking-first): a reason, a note, a date. What was
+entered is read by `inputs` as `prompt`.
 
 ```yaml
 rowActions:
-  - action:
-      kind: Ui.Action
-      inputModel: !ref Rejection      # { id (required), reason }
-      request: { target: /api/reject }
-      label: Reject
-    inputs:
-      id: !cel "row.id"
+  - mutation: !ref reject            # inputModel: { id, reason }
+    inputs: { id: !cel "row.id", reason: !cel "prompt.reason" }
+    label: Reject
     confirm: Reject this request?
-    prompt: true                      # the dialog asks for `reason`
+    prompt:
+      kind: Ui.Prompt
+      model:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [reason]
+          properties: { reason: { type: string, title: Reason } }
 ```
 
-- The fields are the action's own: the ones it lists, or every property a
-  control can enter, less those the record binds. Each is drawn as a form
-  draws it.
-- The record sent is what the dialog entered with the record's `inputs` over
-  it. A field left empty is left out.
-- What is entered is checked in the page, with the bound values, against the
-  whole input model before anything is sent, as a form's is: a required field
-  left empty blocks sending.
-- With `prompt: true`, a property the input model requires may be left unbound
-  for the person to enter; without it, `inputs` binds every one. A 400 the
+- The dialog's fields are the prompt's own: the ones it lists, or every property
+  of its `model` a control can enter. Each is drawn as a form draws it.
+- What is entered is checked in the page against the prompt's `model` before
+  anything is sent: a required field left empty blocks sending. A 400 the
   operation answers is shown on the dialog's fields.
-- With every field of the action bound by the record, the dialog holds none and
-  is a confirmation.
+- Every input the mutation requires is bound in `inputs`; one left unbound is
+  `CONTRACT_INPUTS_MISMATCH`, and `prompt.reason` on a call with no prompt is
+  `CEL_UNKNOWN_IDENTIFIER`. `prompt: true` is `SCHEMA_VIOLATION`.
 
-Each entry's `inputs` is checked as a record of **its own** action's
-`inputModel`, so two entries over different models do not mix. `telo check`
-names that model "the declared inputType" of the action:
+Each entry's `inputs` is checked as a record of **its own** mutation's
+`inputModel`, so two entries over different models do not mix:
 
 | Written | Reported |
 | --- | --- |
-| a key a closed input model does not declare, a required input left out by an entry that does not prompt, a fixed value of the wrong type | `CONTRACT_INPUTS_MISMATCH` |
+| a key a closed input model does not declare, a required input left out, a fixed value of the wrong type | `CONTRACT_INPUTS_MISMATCH` |
 | `!cel "row.<name>"` for a property the row model does not declare, `query.<name>` for a parameter the listing does not declare | `CEL_UNKNOWN_FIELD` |
 | a path whose type the input property does not take (`row.name`, a string, for an integer `id`) | `CEL_TYPE_ERROR` |
 | anything but a plain path (`!cel "row.id + 1"`) | `ACCESSOR_NOT_PLAIN_CHAIN` |
-| no `inputs`, an empty one, a `confirm` that is not text or is empty | `SCHEMA_VIOLATION` |
+| no `label`, a `confirm` that is not text or is empty | `SCHEMA_VIOLATION` |
 | a `confirm` naming a placeholder it does not bind (`{ text, values }` binds them) | `MESSAGE_PLACEHOLDER_UNBOUND` |
 
 The listing refuses a record's inputs itself when it is first read, as
-`ERR_UI_BOUND_ACTION_INPUTS_INVALID`: a key a closed input model does not
+`ERR_UI_MUTATION_CALL_INPUTS_INVALID`: a key a closed input model does not
 declare, a required input left unbound, or a fixed value its property refuses.
+
+## Following a form
+
+`form: !ref <form>` names a [`Ui.Form`](form.md) placed elsewhere on the page and
+binds the `form` root — the form's settled, valid record, typed from its `model`
+— in the listing's `filters` and row actions. A board that follows a team
+choice is a form with a `team` field and a listing with
+`filters: { team: !cel "form.team" }`; the listing reads each column again when
+the team changes, and reads nothing while the form has never held a valid
+record. `form` read where the listing names no form is `CEL_UNKNOWN_IDENTIFIER`.
+The listing node carries the form's id as `form`, `null` when none. The rules are
+those of [a query that follows a form](form.md#a-query-that-follows-a-form).
 
 ## Reloading
 
 A write, a delete, a row action, a [move](listing-layouts.md#moving-a-record),
-`notifyChanged(basePath)` and an action's `onSuccess.refreshes` reload every
+`notifyChanged(basePath)` and a mutation's `invalidates` reload every
 listing whose presentation's source has that `basePath` — every group, every
 period and every loaded tree level — and every facet request over it: a
 `values: present` filter field's values and counts, and a `present` board's
 columns. A notify on a relation's source `basePath` reloads that relation's
 labels.
 
-**What a success announces.** After a 2xx an action announces the resolved path
-of its `request.target` and of each `onSuccess.refreshes` entry; in a listing
+**What a success announces.** After a 2xx a call announces the resolved path
+of its mutation's `url` and of each `invalidates` entry; in a listing
 it announces the listing's own `basePath` too, and a listing's own item write
 (create, edit, delete, move) announces the item path (`<basePath>/<key>`) as
 well. A `Ui.Query`, `Ui.Listing` or `Ui.Chat` reads again exactly when the
@@ -354,7 +371,7 @@ announces the item path and the listing's own `basePath` as a success does, so
 the listing reads again and shows the record as it now is. A form's `PATCH` answered
 `412` announces the item path, so the record is read again. The form
 or dialog that was open shows the failure and keeps what was entered
-([preconditions](action-contract.md#preconditions)).
+([preconditions](mutation-contract.md#preconditions)).
 
 One rule for every reload, whatever causes it:
 

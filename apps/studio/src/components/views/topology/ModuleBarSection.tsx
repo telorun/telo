@@ -3,6 +3,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../ui/dropdown-menu";
 
@@ -13,6 +15,8 @@ export function Section({
   onAdd,
   addMenu,
   addTitle,
+  addGroups,
+  addEmptyText,
   action,
   children,
 }: {
@@ -22,6 +26,10 @@ export function Section({
    *  something the module already declares. */
   addMenu?: { name: string; onSelect: () => void }[];
   addTitle: string;
+  /** Labelled groups of pick-from-existing entries; when every group is empty
+   *  the menu still opens and says `addEmptyText`. */
+  addGroups?: { label: string; items: { name: string; onSelect: () => void }[] }[];
+  addEmptyText?: string;
   /** One block-wide action beside the add button — something that acts on every
    *  row at once, which no row can offer for itself. */
   action?: { icon: React.ReactNode; title: string; onClick: () => void; disabled?: boolean };
@@ -50,7 +58,38 @@ export function Section({
             {action.icon}
           </button>
         )}
-        {addMenu ? (
+        {addGroups ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200" title={addTitle}>
+                <Plus className="size-3.5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="max-h-64 overflow-y-auto">
+              {addGroups.every((group) => group.items.length === 0) ? (
+                <DropdownMenuItem className="text-xs" disabled>
+                  {addEmptyText ?? "Nothing to add yet."}
+                </DropdownMenuItem>
+              ) : (
+                addGroups
+                  .filter((group) => group.items.length > 0)
+                  .map((group, index) => (
+                    <div key={group.label}>
+                      {index > 0 && <DropdownMenuSeparator />}
+                      <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-zinc-400">
+                        {group.label}
+                      </DropdownMenuLabel>
+                      {group.items.map((item) => (
+                        <DropdownMenuItem key={item.name} className="text-xs" onSelect={item.onSelect}>
+                          {item.name}
+                        </DropdownMenuItem>
+                      ))}
+                    </div>
+                  ))
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : addMenu ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200" title={addTitle}>

@@ -87,7 +87,7 @@ steps:
         approve: !cel "steps.approve.result.body.delivered"
         completed: !cel "steps.completed.result.status"
       expected:
-        homeNodes: [text, text, action]
+        homeNodes: [text, text, form]
         expenseReads: /api/expenses/{run}/screen
         submit: { status: 202, token: "approve:expense:ada:250000" }
         parked: parked

@@ -42,7 +42,7 @@ else is parsed — footnotes, for one, stay literal text.
 A node's `annotations` put a control on the items of the text the server
 names: each element of `rows` is `row`, `line` reads the 1-based source line
 starting its item, `count` a number drawn as a `badge`, and `action` is the
-bound action the control runs — labelled with the action's `label`, run as a
+[call](app.md#mutation-calls) the control runs — labelled with its `label`, run as a
 [row action](app.md#row-actions) is, its answer drawn in place of its button
 and lasting as long as the rows it was pressed on. The renderer draws exactly
 the rows it is given: it finds no item in the text itself.
@@ -82,7 +82,7 @@ exposes no Markdown to custom components.
 
 Every element carries a `markdown-…` [part](styling.md#markdown) — an
 annotation's control is a `markdown-annotation` holding a `row-action`, its
-`badge` and what a press drew — and the two
+`badge` and what a press drew (`mutation-result` or `mutation-failure`) — and the two
 attributes `data-level` (a heading's depth) and `data-token` (the kind of a
 highlighted run) are listed [states](styling.md#state). Both built-in themes
 style them with the existing design tokens alone — the syntax colours are mixed

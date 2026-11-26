@@ -1,8 +1,8 @@
 import { lazy, Suspense, useContext, useEffect, type ReactNode } from "react";
 import { readBinding, styleAttribute, type Binding, type Style } from "../bindings.js";
-import type { RowActionSpec } from "../operation.js";
+import type { MutationCallSpec } from "../mutation-call.js";
 import { RootsContext } from "../renderer-context.js";
-import { useRowActions } from "../row-actions.js";
+import { useMutationCalls } from "../mutation-calls.js";
 import { UiError } from "../ui-error.js";
 
 // The renderer is a chunk of its own, fetched when the first markdown is drawn.
@@ -48,12 +48,12 @@ export function Markdown({
   );
 }
 
-/** The items of a text the server names, each with a control running a bound action. */
+/** The items of a text the server names, each with a control running a call. */
 interface AnnotationsSpec {
   rows: Binding;
   line: Binding;
   count?: Binding;
-  action: RowActionSpec;
+  action: MutationCallSpec;
 }
 
 export interface MarkdownNodeSpec {
@@ -66,14 +66,14 @@ export interface MarkdownNodeSpec {
 /**
  * A `markdown` node: its text a binding, nothing drawn while it reads nothing.
  * Each element of its annotations' `rows` is `row`, and puts a control on the
- * block holding its `line`: a button running the bound action over `row` and
+ * block holding its `line`: a button running the call over `row` and
  * the roots in scope, with `count` as a badge beside it, drawn as a row action
  * is. An answer lasts as long as the rows it was pressed on.
  */
 export function MarkdownNode({ node }: { node: MarkdownNodeSpec }) {
   const roots = useContext(RootsContext);
   const spec = node.annotations;
-  const actions = useRowActions(spec ? [spec.action] : [], roots, () => {});
+  const actions = useMutationCalls(spec ? [spec.action] : [], roots, () => {});
   const read = readBinding(node.value, roots);
   const rows = spec ? readBinding(spec.rows, roots) : undefined;
   const items: unknown[] = rows?.present && Array.isArray(rows.value) ? rows.value : [];

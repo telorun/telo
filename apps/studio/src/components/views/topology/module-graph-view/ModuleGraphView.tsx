@@ -17,6 +17,7 @@ import {
   type ReactFlowInstance,
 } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { canDeleteResourceByKey } from "../../../resource-delete";
 import { askAboutResourcePrompt, useAgentCompose } from "../../../../agent";
 import { isRecord } from "../../../../lib/utils";
 import { readConcretePath } from "../../../../lib/concrete-path";
@@ -45,11 +46,12 @@ import { isPickerPort, pickerCandidates } from "./picker-port";
 import { applyEdgeSelection } from "./edge-selection";
 import { layoutWithElk, type ModuleGraphLayout } from "./elk-layout";
 import { anchorShift, defaultAnchor } from "./viewport-anchor";
+import { viewportRevealing } from "./viewport-reveal";
 import { moduleGraphEdgeTypes, type RoutedEdgeData } from "./RoutedEdge";
 import { jsonPointer } from "./field-pointer";
 import { entrySchemaFor } from "./entry-schema";
 import { ModuleDrawer } from "./ModuleDrawer";
-import { drawerGroups, kindPlaneIsSoleContent } from "./drawer-groups";
+import { drawerGroups, kindAsWritten, kindPlaneIsSoleContent } from "./drawer-groups";
 import {
   handleId,
   moduleGraphNodeTypes,
@@ -101,6 +103,8 @@ import { suggestedResourceName } from "../../../../resource-naming";
  * collapse feel like the screen jumping.
  */
 const VIEWPORT_KEY = "graph";
+/** Fitting never magnifies: a lone box stays at its natural size. */
+const FIT_MAX_ZOOM = 1;
 
 interface ViewState {
   /** Branches the reader has PUT AWAY, as `<node id><property>` keys. Stored as
@@ -176,6 +180,7 @@ export function ModuleGraphView({
   structuredModel,
   viewData,
   selectedResource,
+  selection,
   resource,
   state,
   onStateChange,
@@ -185,6 +190,8 @@ export function ModuleGraphView({
   onMoveField,
   onRemoveField,
   onWriteRef,
+  onDeleteResource,
+  justDeleted,
   onExtractInline,
   resolvedResources,
   refResolver,
@@ -364,9 +371,11 @@ export function ModuleGraphView({
     if (!moduleGraph || !offCanvas) return visible.nodes;
     return withoutModuleRoot(
       moduleGraph,
-      new Set([...visible.nodes].filter((id) => !offCanvas.ids.has(id))),
+      new Set(
+        [...visible.nodes].filter((id) => !offCanvas.ids.has(id) && !justDeleted?.has(id)),
+      ),
     );
-  }, [moduleGraph, visible, offCanvas]);
+  }, [moduleGraph, visible, offCanvas, justDeleted]);
 
   const sourcePathOf = useCallback(
     (edge: GraphEdge) => sourceHandlePath(moduleGraph, edge, isOpen),
@@ -694,7 +703,12 @@ export function ModuleGraphView({
     const reaching = nodesReaching(moduleGraph, selectedId);
     const mirrorOf = new Map((mirrored?.mirrors ?? []).map((m) => [m.node.id, m.targetId] as const));
 
-    const flowNodes: FlowNode[] = layout.placed.map((placed) => {
+    const shown = layout.placed.filter(
+      (placed) =>
+        !justDeleted?.has(placed.node.id) && !(placed.parent && justDeleted?.has(placed.parent)),
+    );
+    const shownIds = new Set(shown.map((placed) => placed.node.id));
+    const flowNodes: FlowNode[] = shown.map((placed) => {
       const node = placed.node;
       const collapsed = [...(collapsedBySource.get(node.id) ?? new Map()).entries()].map(
         ([slot, targets]) => ({ slot, targets: targets as string[] }),
@@ -732,6 +746,9 @@ export function ModuleGraphView({
         ...(isMirror ? { mirror: true } : {}),
         ...(boot ? { boot } : {}),
         ...(bootToggle ? { onToggleBoot: () => toggleBoot(node) } : {}),
+        ...(!isMirror && editable && declaredHere && onWriteRef && onDeleteResource
+          ? { onDelete: () => onDeleteResource(node.kind, node.name) }
+          : {}),
         ...(agentCompose && !isMirror && declaredFile !== undefined
           ? {
               onAskAgent: () =>
@@ -894,7 +911,7 @@ export function ModuleGraphView({
     });
 
     const flowEdges: Edge[] = (mirrored?.edges ?? visible.edges)
-      .filter((e) => e.to && layout.byId.has(e.from) && layout.byId.has(e.to))
+      .filter((e) => e.to && shownIds.has(e.from) && shownIds.has(e.to))
       .map((edge) => {
         const path = sourcePathOf(edge);
         const selected = selectedEdges.has(edge.id);
@@ -934,9 +951,11 @@ export function ModuleGraphView({
     onMoveField,
     onRemoveField,
     onWriteRef,
+    onDeleteResource,
     onExtractInline,
     onSelectResource,
     selectedEdges,
+    justDeleted,
     mirrored,
     pickerOptions,
     selectRow,
@@ -1029,6 +1048,27 @@ export function ModuleGraphView({
   }, []);
 
   /**
+   * Delete / Backspace removes the selected resource when no edge is selected —
+   * the edge case is the canvas's own. Typing in a field never reaches it.
+   */
+  const onKeyDeleteResource = useCallback(
+    (event: React.KeyboardEvent) => {
+      if (event.key !== "Delete" && event.key !== "Backspace") return;
+      if (selectedEdges.size > 0 || !selectedResource || !onWriteRef || !onDeleteResource) return;
+      if (!canDeleteResourceByKey(selectedResource, selection)) return;
+      const target = event.target as HTMLElement;
+      if (target.closest("input, textarea, select, [contenteditable], .monaco-editor")) return;
+      const declared = viewData.manifest.resources.some(
+        (r) => r.name === selectedResource.name && r.kind === selectedResource.kind,
+      );
+      if (!declared) return;
+      event.preventDefault();
+      onDeleteResource(selectedResource.kind, selectedResource.name);
+    },
+    [selectedEdges, selectedResource, selection, onWriteRef, viewData, onDeleteResource],
+  );
+
+  /**
    * Delete the selected edges — which means clearing the reference each one
    * came from, since an edge is not a thing of its own: it is a slot holding a
    * name. An array item is spliced (its position is meaningful), a single slot
@@ -1080,7 +1120,7 @@ export function ModuleGraphView({
     // canvas was empty when xyflow would have fitted it. Fit once, here, unless
     // the reader already has a saved viewport for this module.
     if (!previous) {
-      if (!viewportFor(VIEWPORT_KEY)) flow.current.fitView({ padding: 0.15 });
+      if (!viewportFor(VIEWPORT_KEY)) flow.current.fitView({ padding: 0.15, maxZoom: FIT_MAX_ZOOM });
       return;
     }
     const shift = anchorShift(previous, layout, anchor.current ?? defaultAnchor(previous, layout));
@@ -1093,6 +1133,32 @@ export function ModuleGraphView({
       y: viewport.y - shift.dy * viewport.zoom,
     });
   }, [layout]);
+
+  // The detail panel opening narrows the canvas: keep the selected box in view
+  // by panning to it rather than refitting everything.
+  const [canvasEl, setCanvasEl] = useState<HTMLDivElement | null>(null);
+  const reveal = useRef<{ id: string | undefined; layout: ModuleGraphLayout | null }>({
+    id: undefined,
+    layout: null,
+  });
+  reveal.current = { id: selectedId, layout };
+  useEffect(() => {
+    if (!canvasEl || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      const instance = flow.current;
+      const { id, layout: current } = reveal.current;
+      const placed = id ? current?.byId.get(id) : undefined;
+      if (!instance || !placed) return;
+      const next = viewportRevealing(
+        instance.getViewport(),
+        { x: placed.absoluteX, y: placed.absoluteY, width: placed.width, height: placed.height },
+        { width: canvasEl.clientWidth, height: canvasEl.clientHeight },
+      );
+      if (next) void instance.setViewport(next);
+    });
+    observer.observe(canvasEl);
+    return () => observer.disconnect();
+  }, [canvasEl]);
 
   if (!moduleGraph || !layout) {
     return (
@@ -1107,7 +1173,11 @@ export function ModuleGraphView({
   return (
     <div className="flex h-full min-h-0 flex-1">
       {!kindOnly && (
-        <div className="relative h-full min-w-0 flex-1 bg-zinc-50 dark:bg-zinc-900">
+        <div
+          ref={setCanvasEl}
+          className="relative h-full min-w-0 flex-1 bg-zinc-50 dark:bg-zinc-900"
+          onKeyDown={onKeyDeleteResource}
+        >
           {layoutError && (
             <div className="pointer-events-none absolute inset-x-0 top-2 z-20 flex justify-center">
               <div className="pointer-events-auto max-w-lg rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] text-amber-800 shadow-sm dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
@@ -1139,6 +1209,7 @@ export function ModuleGraphView({
             }}
             defaultViewport={viewportFor(VIEWPORT_KEY) ?? undefined}
             fitView={!viewportFor(VIEWPORT_KEY)}
+            fitViewOptions={{ padding: 0.15, maxZoom: FIT_MAX_ZOOM }}
             onMoveEnd={(_e, vp) => onViewportChange(VIEWPORT_KEY, vp)}
             minZoom={0.1}
             proOptions={{ hideAttribution: true }}
@@ -1184,6 +1255,7 @@ export function ModuleGraphView({
       )}
       <ModuleDrawer
         groups={drawerGroups({ graph: moduleGraph, offCanvas: offCanvas!, sole: kindOnly })}
+        kindLabel={(node) => kindAsWritten(moduleGraph, node)}
         heldBy={drawerHeldBy}
         open={view.kindsOpen ?? false}
         sole={kindOnly}

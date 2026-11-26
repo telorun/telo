@@ -15,6 +15,7 @@ import {
   LocalFileSource,
   LocalManifestCacheSource,
   resolveCacheRoot,
+  defaultTransportRegistry,
   resolveEntryDir,
   unresolvedInputsOf,
   writeManifestCache,
@@ -36,6 +37,7 @@ import {
 } from "../application-input-session.js";
 import { writeNestedOriginDigests } from "../bundle/nested-origin-digests.js";
 import { attachControllerProgress } from "../controller-progress.js";
+import { withFetchProgress } from "../fetch-progress-source.js";
 import { DebugEventSubscriber } from "../debug-event-subscriber.js";
 import { serializeEvent, serializeLog } from "../debug-serialize.js";
 import { DebugServer } from "../debug-server.js";
@@ -558,7 +560,12 @@ async function buildKernel(
   // sources so production images boot without any network I/O. A missing cache
   // file falls through transparently — dev runs and ad-hoc invocations work
   // unchanged.
-  const sources: ManifestSource[] = [new LocalFileSource()];
+  // Each source registered later is tried first, so the progress-reporting network
+  // sources sit behind the local file and the cache and report only a real fetch.
+  const sources: ManifestSource[] = [
+    ...defaultTransportRegistry().sources().map(withFetchProgress),
+    new LocalFileSource(),
+  ];
   // `cacheRoot` is resolved once per invocation (honours TELO_CACHE_DIR) and
   // threaded here, to the kernel, and to persistManifestCache.
   if (cacheRoot) {

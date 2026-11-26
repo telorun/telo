@@ -1,3 +1,5 @@
+import type { Duplex } from "node:stream";
+
 import WebSocket from "ws";
 
 import { AppRunRefused, type AppRun } from "../backend.js";
@@ -14,6 +16,7 @@ import {
   type SupervisorHello,
   type SupervisorMessage,
 } from "./supervisor-protocol.js";
+import { openPortForward } from "./port-forward-stream.js";
 
 /** Why a client stopped for good. Each is a fact about the pod, not the run:
  *  - `generation_mismatch` — the supervisor speaks another generation; the pod
@@ -204,6 +207,16 @@ export class SupervisorClient {
   resize(runId: string, cols: number, rows: number): void {
     if (!this.ready || this.live !== runId) return;
     this.send({ type: "resize", cols, rows });
+  }
+
+  /** A byte stream to `127.0.0.1:<port>` inside the container, through the
+   *  supervisor's port forward. Independent of the driving connection: it
+   *  needs no `hello` and supersedes nothing. */
+  openPortForward(port: number, signal?: AbortSignal): Promise<Duplex> {
+    const failure = this.unusable();
+    if (failure) return Promise.reject(failure);
+    const { host, port: supervisorPort, token } = this.options;
+    return openPortForward({ host, port: supervisorPort, token, target: port, signal });
   }
 
   /** Ends the connection and stops reconnecting; the run, if any, keeps

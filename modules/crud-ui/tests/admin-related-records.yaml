@@ -8,8 +8,8 @@ metadata:
     related author is labelled: the listing's author column shows the author's
     name and the filter bar's author filter offers authors by name, both read
     from the one authors source. The same admin drawn as a board by `status`
-    reads one column per value of the status enum, and a record is moved by an
-    action the application declares over the record as read and as the move
+    reads one column per value of the status enum, and a record is moved by a
+    mutation the application declares over the record as read and as the move
     leaves it.
 imports:
   CrudUi: ../
@@ -120,11 +120,10 @@ layout:
   groups: { property: status }
   content: { type: value, value: !cel "row.title" }
   move:
-    action:
-      kind: Ui.Action
+    mutation:
+      kind: Ui.Mutation
       inputModel: !ref PostMove
-      request: { target: /api/posts/move }
-      label: Move
+      url: /api/posts/move
     inputs:
       id: !cel "row.id"
       status: !cel "to.status"
@@ -165,7 +164,7 @@ steps:
           'type': l.type,
           'groups': l.reads.groups,
           'content': l.content,
-          'move': {'inputs': l.move.inputs, 'path': l.move.action.request.target.path.value}
+          'move': {'inputs': l.move.inputs, 'path': l.move.mutation.url.path.value}
         })
       expected:
         type: board

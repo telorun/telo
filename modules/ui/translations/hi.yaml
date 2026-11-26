@@ -7,6 +7,8 @@ messages:
   noRows: कोई पंक्ति नहीं।
   nothingFound: कुछ नहीं मिला।
   save: सहेजें
+  saving: सहेजा जा रहा है…
+  retry: फिर से कोशिश करें
   cancel: रद्द करें
   close: बंद करें
   newRecord: नया

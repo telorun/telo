@@ -1,5 +1,5 @@
 import { anchorRef } from "./node-anchors.js";
-import { TYPING_PAUSE } from "./typing-pause.js";
+import { Settling } from "./typing-pause.js";
 import { Fragment, useContext, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useControl, useControls } from "./effective-controls.js";
 import { fillAttribute, styleAttribute } from "./bindings.js";
@@ -255,23 +255,18 @@ export function Filters({ node }: { node: SpecNode }) {
   const toggle = useRef<HTMLButtonElement | null>(null);
   const latest = useRef(draft);
   latest.current = draft;
-  const pause = useRef<ReturnType<typeof setTimeout>>(undefined);
-  useEffect(() => () => clearTimeout(pause.current), []);
+  // The settle rule every entered value follows: under `apply: typing` typed text applies after the pause.
+  const settling = useMemo(() => new Settling(() => setApplied((current) => (sameValues(current, latest.current) ? current : latest.current))), []);
+  useEffect(() => () => settling.cancel(), []);
 
-  const apply = () => {
-    clearTimeout(pause.current);
-    setApplied((current) => (sameValues(current, latest.current) ? current : latest.current));
-  };
+  const apply = () => settling.now();
   const change = (next: Values, how: "choice" | "typed" | "command") => {
     latest.current = next;
     setDraft(next);
     // A command acts on the whole bar as it then stands, whatever waits in it.
     if (how === "command") return apply();
     if (node.apply === "button") return;
-    if (how === "choice") return apply();
-    if (node.apply !== "typing") return;
-    clearTimeout(pause.current);
-    pause.current = setTimeout(apply, TYPING_PAUSE);
+    if (how === "choice" || node.apply === "typing") settling.change(how);
   };
   const commit = () => {
     if (node.apply !== "button") apply();

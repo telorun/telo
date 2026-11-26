@@ -324,27 +324,29 @@ children:
                     shown: { at: !cel "row.title", matches: { type: "null" } }
                   - { type: badge, text: Replying, shown: { at: !cel "row.running", matches: { const: true } } }
             rowActions:
-              - prompt: true
-                inputs: { id: !cel "row.id" }
-                action:
-                  kind: Ui.Action
-                  label: Rename
+              - mutation:
+                  kind: Ui.Mutation
                   inputModel:
                     kind: Telo.JsonSchema
-                    schema: { type: object, required: [id], properties: { id: { type: string }, title: { type: string, title: Title, minLength: 1 } } }
-                  request:
-                    method: PATCH
-                    target: { path: "/api/chat/conversations/{id}", pathParams: { id: !cel "input.id" } }
-              - inputs: { id: !cel "row.id", archived: true }
-                action:
-                  kind: Ui.Action
-                  label: Archive
+                    schema: { type: object, required: [id, title], properties: { id: { type: string }, title: { type: string } } }
+                  method: PATCH
+                  url: { path: "/api/chat/conversations/{id}", pathParams: { id: !cel "input.id" } }
+                inputs: { id: !cel "row.id", title: !cel "prompt.title" }
+                label: Rename
+                prompt:
+                  kind: Ui.Prompt
+                  model:
+                    kind: Telo.JsonSchema
+                    schema: { type: object, required: [title], properties: { title: { type: string, title: Title, minLength: 1 } } }
+              - mutation:
+                  kind: Ui.Mutation
                   inputModel:
                     kind: Telo.JsonSchema
                     schema: { type: object, required: [id, archived], properties: { id: { type: string }, archived: { type: boolean } } }
-                  request:
-                    method: PATCH
-                    target: { path: "/api/chat/conversations/{id}", pathParams: { id: !cel "input.id" } }
+                  method: PATCH
+                  url: { path: "/api/chat/conversations/{id}", pathParams: { id: !cel "input.id" } }
+                inputs: { id: !cel "row.id", archived: true }
+                label: Archive
       content:
         type: composite
         fill: true
@@ -352,7 +354,7 @@ children:
           kind: Ui.Chat
           source: { kind: Ui.ConversationSource, conversation: !ref conversation, basePath: /api/chat }
           conversation: { parameter: conversation }
-          refreshes: [/api/chat/conversations]
+          invalidates: [/api/chat/conversations]
           placeholder: Ask about the weather, a topic, money or time — or drop an image or a PDF
           starters:
             - What's the weather in Tokyo this weekend?

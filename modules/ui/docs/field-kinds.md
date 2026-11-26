@@ -1,6 +1,6 @@
 # Field kinds
 
-The `fields` of a [`Ui.Form`](form.md) and a [`Ui.Action`](action.md) are one
+The `fields` of a [`Ui.Form`](form.md) and a [`Ui.Prompt`](mutation.md#asking-first) are one
 flat ordered list. Each entry is a property name, entered as its model says, or
 a field kind — a kind extending `Ui.Field`, written inline or by `!ref`:
 
@@ -39,10 +39,10 @@ What every field kind has:
 | --- | --- | --- |
 | `property` | required | the model property it enters; every field kind enters exactly one |
 | `group` | none | the name of the [group](#groups) it is drawn in |
-| `shown` | always | a [condition](conditions.md) over `values`, the record the form holds now — typed from the model of whichever form or action places the field |
+| `shown` | always | a [condition](conditions.md) over `values`, the record the form holds now — typed from the model of whichever form or prompt places the field |
 
 A field kind judges its own fit to the model it is placed in: a rule on the
-form or action referencing it, for `telo check`, and the same answer from the
+form or prompt referencing it, for `telo check`, and the same answer from the
 kind's `invoke` when the form is first read. `Ui.Field` is a `Telo.Invocable`
 taking `{ model }` — the JSON Schema of the record — and answering
 `{ property, problems, spec? }`: `problems` is `[{ code, message }]`, and
@@ -186,7 +186,7 @@ of `address: true` and `store` written — the same record a
 - Values read back are held to the interpreted profile, to the current fields
   and to their option source; a store the browser refuses leaves the values in
   memory.
-- The renderer spells a form's and an action's keys apart from a bar's
+- The renderer spells a form's keys apart from a bar's
   (`_telo.v.<key>.<property>` in the address, `telo.ui:<mount>:v:<key>` in
   storage), so a bar and a form sharing a `key` never read each other's
   entries.
@@ -208,9 +208,9 @@ field's place in `fields`:
 | `UI_OPTION_VALUE_NOT_FILTERABLE` | collection options | `value` is not `row.<property>` for a property the collection declares with `in` |
 | `UI_SOURCE_FILTER_NOT_ACCEPTED` | collection options | a `filters` key names a property the collection does not accept with `eq` |
 
-The form and action rules are listed on [`Ui.Form`](form.md#refused). Each has
-its `ERR_` twin, raised when the form, the action or the option source is first
-read.
+The form and prompt rules are listed on [`Ui.Form`](form.md#refused); a prompt
+is judged by them as a form is. Each has its `ERR_` twin, raised when the form,
+the prompt or the option source is first read.
 
 ## What a renderer receives
 
@@ -234,6 +234,6 @@ preset the field starts at, `null` when none is declared. See
 [Texts and translation](texts.md#what-a-renderer-receives).
 
 An option source is `{ type: collection, schema, value, label, hint?, to?,
-basePath, filters, pageSize, search? }`, each accessor a binding, `to` a [`Ui.DestinationSpec`](presses.md#what-a-renderer-receives) and `basePath` the source's literal path or its [template](collection-source.md#a-templated-base-path). The form and
-action nodes carry `groups` (empty when none) and `state` — `{ key?, address,
-store, fields }`, `store` `{ type: memory }` when none is named.
+basePath, filters, pageSize, search? }`, each accessor a binding, `to` a [`Ui.DestinationSpec`](presses.md#what-a-renderer-receives) and `basePath` the source's literal path or its [template](collection-source.md#a-templated-base-path). The form node carries `groups` (empty when none) and `state` — `{ key?, address,
+store, fields }`, `store` `{ type: memory }` when none is named; a call's prompt
+spec carries `groups` alone.

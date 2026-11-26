@@ -201,9 +201,9 @@ steps:
     inputs:
       actual:
         shell: !cel "steps.shell.result.status"
-        ask: !cel "steps.askPage.result.body.children.filter(c, c.type == 'action').map(c, {'path': c.request.target.path.value, 'label': c.label, 'fields': c.fields.map(f, f.label), 'result': (c.result.type == 'stack' ? c.result.children : [c.result]).map(l, l.columns.map(col, col.header))})"
-        search: !cel "steps.searchPage.result.body.children.filter(c, c.type == 'action').map(c, {'path': c.request.target.path.value, 'label': c.label, 'fields': c.fields.map(f, f.label), 'result': (c.result.type == 'stack' ? c.result.children : [c.result]).map(l, l.columns.map(col, col.header))})"
-        documents: !cel "steps.documentsPage.result.body.children.filter(c, c.type == 'action').map(c, {'path': c.request.target.path.value, 'label': c.label, 'fields': c.fields.map(f, f.label), 'result': (c.result.type == 'stack' ? c.result.children : [c.result]).map(l, l.columns.map(col, col.header))})"
+        ask: !cel "steps.askPage.result.body.children.filter(c, c.type == 'form').map(c, {'path': c.onSubmit.mutation.url.path.value, 'label': c.onSubmit.label, 'fields': c.fields.map(f, f.label), 'result': (c.onSubmit.result.type == 'stack' ? c.onSubmit.result.children : [c.onSubmit.result]).map(l, l.columns.map(col, col.header))})"
+        search: !cel "steps.searchPage.result.body.children.filter(c, c.type == 'form').map(c, {'path': c.onSubmit.mutation.url.path.value, 'label': c.onSubmit.label, 'fields': c.fields.map(f, f.label), 'result': (c.onSubmit.result.type == 'stack' ? c.onSubmit.result.children : [c.onSubmit.result]).map(l, l.columns.map(col, col.header))})"
+        documents: !cel "steps.documentsPage.result.body.children.filter(c, c.type == 'form').map(c, {'path': c.onSubmit.mutation.url.path.value, 'label': c.onSubmit.label, 'fields': c.fields.map(f, f.label), 'result': (c.onSubmit.result.type == 'stack' ? c.onSubmit.result.children : [c.onSubmit.result]).map(l, l.columns.map(col, col.header))})"
       expected:
         shell: 200
         ask:

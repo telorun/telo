@@ -34,3 +34,10 @@ export function resolveBody(template: BodyTemplate, roots: Readonly<Record<strin
   const read = readBinding(template, roots);
   return read.present && read.value !== null ? read : { present: false };
 }
+
+/** Whether a template reads the named root anywhere within it. */
+export function bodyReads(template: BodyTemplate, root: string): boolean {
+  if ("map" in template) return Object.values(template.map).some((member) => bodyReads(member, root));
+  if ("list" in template) return template.list.some((item) => bodyReads(item, root));
+  return "root" in template && template.root === root;
+}

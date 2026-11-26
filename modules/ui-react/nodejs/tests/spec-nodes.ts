@@ -48,8 +48,9 @@ const todoProperties = ["text", "isDone", "priority", "status", "dueOn", "notes"
  */
 export const formNode = (basePath = "/api/todos", overrides: Record<string, unknown> = {}): SpecNode => ({
   type: "form",
+  id: "Test/form",
   schema: todoSchema,
-  record: { basePath, key: null },
+  record: { basePath, key: null, answer: (overrides.schema as Record<string, unknown> | undefined) ?? todoSchema },
   initialValues: null,
   unsaved: "confirm",
   afterSubmit: "close",
@@ -61,12 +62,16 @@ export const formNode = (basePath = "/api/todos", overrides: Record<string, unkn
   })),
   groups: [],
   state: memoryState(todoProperties),
+  onSubmit: null,
+  autosave: null,
+  onSuccess: [],
+  clearAnswerOn: [],
   ...overrides,
 });
 
 /** The form that edits the record the page's query read: keyed by the page's `id` variable, starting from `data`. */
 export const editFormNode = (basePath = "/api/todos", overrides: Record<string, unknown> = {}): SpecNode =>
-  formNode(basePath, { record: { basePath, key: { root: "params", path: ["id"] } }, initialValues: { root: "data", path: [] }, ...overrides });
+  formNode(basePath, { record: { basePath, key: { root: "params", path: ["id"] }, answer: (overrides.schema as Record<string, unknown> | undefined) ?? todoSchema }, initialValues: { root: "data", path: [] }, ...overrides });
 
 /** The edit page's read of one record: `/api/todos/{id}` by the page's `id`, drawing `content`. */
 export const recordQuery = (content: SpecNode[], basePath = "/api/todos", schema: Record<string, unknown> = todoSchema): SpecNode => ({
@@ -78,6 +83,7 @@ export const recordQuery = (content: SpecNode[], basePath = "/api/todos", schema
     url: address(`${basePath}/{id}`, { id: { root: "params", path: ["id"] } }),
     input: null,
     query: {},
+    form: null,
     reloadOn: [],
   },
   content,
@@ -91,7 +97,7 @@ export const recordEditPage = (basePath: string, schema: Record<string, unknown>
   title: "Record",
   children: [
     recordQuery(
-      [formNode(basePath, { schema, record: { basePath, key: { root: "params", path: ["id"] } }, initialValues: { root: "data", path: [] }, ...form })],
+      [formNode(basePath, { schema, record: { basePath, key: { root: "params", path: ["id"] }, answer: schema }, initialValues: { root: "data", path: [] }, ...form })],
       basePath,
       schema,
     ),
@@ -129,7 +135,7 @@ export const recordPresses = (surface: Record<string, unknown> = dialogSurface, 
   return { create: pressOpening("create", surface), edit, press: edit };
 };
 
-/** A record kept in memory: what a form or an action without `state` carries. */
+/** A record kept in memory: what a form without `state` carries. */
 export const memoryState = (fields: string[]) => ({ address: false, store: { type: "memory" }, fields });
 
 export const component = (name: string, props: Record<string, unknown> = {}): SpecNode => ({
@@ -176,6 +182,7 @@ export const listingNode = ({ columns = todoColumns, layout, ...overrides }: Rec
   empty: { type: "text", text: uiText("noRows") },
   layout: layout ?? { type: "table", columns, reads: {} },
   press: null,
+  form: null,
   ...overrides,
 });
 
@@ -238,47 +245,83 @@ export const defaultFailure = {
   ],
 };
 
-/** An operation as `ui` provides it, every member it fills filled. */
-export const operation = (path: string, label: string, schema: Record<string, unknown>, overrides: Record<string, unknown> = {}): SpecNode => ({
-  type: "action",
+/** A mutation as `ui` provides it, every member present. */
+export const mutationSpec = (path: string, schema: Record<string, unknown>, overrides: Record<string, unknown> = {}) => ({
+  id: `${(overrides.method as string | undefined) ?? "POST"} ${path}`,
   schema,
-  request: { method: "POST", target: address(path), consumed: [] },
-  label,
-  fields: Object.entries((schema.properties ?? {}) as Record<string, { title?: string }>).map(([property, { title }]) => ({
-    type: "input",
-    property,
-    label: title ?? property,
-    control: "auto",
-  })),
-  groups: [],
-  state: memoryState(Object.keys(schema.properties ?? {})),
-  failure: defaultFailure,
-  onSuccess: { refreshes: [] },
+  method: "POST",
+  url: address(path),
+  consumed: [],
+  invalidates: [],
   concurrency: "parallel",
-  clearAnswerOn: [],
   ...overrides,
 });
 
-/** An action over the report model that draws the files of its answer, then its totals. */
-export const actionNode = (overrides: Record<string, unknown> = {}): SpecNode =>
-  operation("/api/reports", "Generate", reportSchema, {
-    result: {
-      type: "stack",
-      children: [
-        {
-          type: "list",
-          heading: "Files",
-          rows: result("files"),
-          columns: [
-            { header: "File", value: row("name"), present: { type: "string" } },
-            { header: "Download", value: row("url"), present: { type: "string", format: "uri-reference" } },
-            { header: "Month", value: result("month"), present: { type: "string" } },
-            { header: "Kind", value: { value: "report" } },
-          ],
-        },
-        { type: "list", rows: result("totals"), columns: [{ header: "Made", value: row("at"), present: { type: "string", format: "date" } }] },
+const MUTATION_MEMBERS = ["id", "answer", "method", "url", "consumed", "invalidates", "concurrency"];
+
+/**
+ * A call as `ui` provides it, every member it fills filled: of the mutation at
+ * `path` over `schema`. The members of the mutation (`method`, `url`,
+ * `consumed`, `invalidates`, `concurrency`, `answer`, `id`) go to it; every
+ * other override replaces a member of the call.
+ */
+export const call = (path: string, label: string | null, schema: Record<string, unknown>, overrides: Record<string, unknown> = {}): Record<string, any> => {
+  const mutation = Object.fromEntries(Object.entries(overrides).filter(([name]) => MUTATION_MEMBERS.includes(name)));
+  const rest = Object.fromEntries(Object.entries(overrides).filter(([name]) => !MUTATION_MEMBERS.includes(name)));
+  return {
+    mutation: mutationSpec(path, schema, mutation),
+    inputs: {},
+    ...(label === null ? {} : { label }),
+    prompt: null,
+    onSuccess: [],
+    failure: defaultFailure,
+    ...rest,
+  };
+};
+
+/** A `button` node holding `action`, drawn as text. */
+export const buttonOf = (action: Record<string, unknown>, more: Record<string, unknown> = {}): SpecNode => ({ type: "button", action, button: { type: "text" }, fill: false, ...more });
+
+/** Each member of a record as a literal binding. */
+export const literals = (record: Record<string, unknown>): Record<string, { value: unknown }> => Object.fromEntries(Object.entries(record).map(([name, value]) => [name, { value }]));
+
+/** The prompt `ui` gives a call: a field per property it asks for, over their part of the input model. */
+export const promptOf = (schema: Record<string, any>, properties: string[]) => ({
+  schema: {
+    type: "object",
+    required: ((schema.required ?? []) as string[]).filter((name) => properties.includes(name)),
+    properties: Object.fromEntries(properties.map((name) => [name, schema.properties[name]])),
+  },
+  fields: properties.map((property) => ({ type: "input", property, label: schema.properties[property].title ?? property, control: "auto" })),
+  groups: [],
+});
+
+/** What a call that draws the files of its answer, then its totals, draws. */
+export const reportResult = (): SpecNode => ({
+  type: "stack",
+  children: [
+    {
+      type: "list",
+      heading: "Files",
+      rows: result("files"),
+      columns: [
+        { header: "File", value: row("name"), present: { type: "string" } },
+        { header: "Download", value: row("url"), present: { type: "string", format: "uri-reference" } },
+        { header: "Month", value: result("month"), present: { type: "string" } },
+        { header: "Kind", value: { value: "report" } },
       ],
     },
+    { type: "list", rows: result("totals"), columns: [{ header: "Made", value: row("at"), present: { type: "string", format: "date" } }] },
+  ],
+});
+
+/** A form entering the report model's properties, posted to `/api/reports`, kept after it is saved. */
+export const reportForm = (overrides: Record<string, unknown> = {}): SpecNode =>
+  formNode("/api/reports", {
+    schema: reportSchema,
+    fields: Object.entries(reportSchema.properties).map(([property, { title }]) => ({ type: "input", property, label: title, control: "auto" })),
+    state: memoryState(Object.keys(reportSchema.properties)),
+    afterSubmit: "keep",
     ...overrides,
   });
 
@@ -303,6 +346,7 @@ export const querySpec = (overrides: Record<string, unknown> = {}) => ({
   url: address("/api/account"),
   input: null,
   query: {},
+  form: null,
   reloadOn: [],
   ...overrides,
 });
@@ -360,14 +404,6 @@ export const decisionSchema = {
     note: { type: "string", title: "Note", minLength: 1 },
   },
 };
-
-/** The state a review's actions keep `author` in, under one key in the local store. */
-export const reviewerState = (fields: string[]) => ({ key: "reviewer", address: false, store: { type: "local" }, fields });
-
-/** The prompt `ui` gives a bound action: a field per property the inputs leave. */
-export const promptOf = (action: SpecNode, properties: string[]) => ({
-  fields: (action.fields as { property: string }[]).filter((field) => properties.includes(field.property)),
-});
 
 /** The `Aside` shape a split view and a page layout hold, every member present. */
 export const asideOf = (content: SpecNode, overrides: Record<string, unknown> = {}) => ({

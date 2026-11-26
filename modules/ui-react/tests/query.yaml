@@ -54,6 +54,7 @@ steps:
               input: null
               query: {}
               reloadOn: [focus, unauthorized]
+              form: null
             content:
               - type: value
                 fill: false
@@ -76,6 +77,7 @@ steps:
               input: null
               query: {}
               reloadOn: [focus, unauthorized]
+              form: null
             content:
               - type: text
                 fill: false

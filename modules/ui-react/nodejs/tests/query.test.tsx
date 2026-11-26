@@ -2,7 +2,7 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, type Page, type Rendered } from "./harness.js";
-import { actionNode, address, listingNode, navigateTo, operation, queryNode, reportSchema, todos } from "./spec-nodes.js";
+import { address, buttonOf, call, listingNode, navigateTo, queryNode, reportForm, reportSchema, todos } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
@@ -59,7 +59,7 @@ describe("a query node", () => {
             content: [
               { type: "text", text: "Sign in first.", shown: { at: { root: "data", path: ["authorized"] }, matches: { const: false } } },
               {
-                ...listingNode({ columns: [], rowActions: [{ action: operation("/api/todos/archive", "Archive", { type: "object", properties: { id: { type: "integer" } } }), inputs: { id: { root: "row", path: ["id"] } } }] }),
+                ...listingNode({ columns: [], rowActions: [call("/api/todos/archive", "Archive", { type: "object", properties: { id: { type: "integer" } } }, { inputs: { id: { root: "row", path: ["id"] } } })] }),
                 shown: { at: { root: "data", path: ["authorized"] }, matches: { const: true } },
               },
             ],
@@ -101,7 +101,7 @@ describe("a query node", () => {
           {
             content: [
               {
-                ...actionNode({ result: undefined }),
+                ...reportForm(),
                 shown: { at: { root: "data", path: ["authorized"] }, matches: { const: true } },
               },
             ],
@@ -230,7 +230,7 @@ describe("one query, one read", () => {
   it("re-reads once for a 401 inside either node, and never for its own", async () => {
     let authorized = true;
     const archiving = {
-      ...listingNode({ columns: [], rowActions: [{ action: operation("/api/todos/archive", "Archive", { type: "object", properties: { id: { type: "integer" } } }), inputs: { id: { root: "row", path: ["id"] } } }] }),
+      ...listingNode({ columns: [], rowActions: [call("/api/todos/archive", "Archive", { type: "object", properties: { id: { type: "integer" } } }, { inputs: { id: { root: "row", path: ["id"] } } })] }),
       shown: { at: { root: "data", path: ["authorized"] }, matches: { const: true } },
     };
     rendered = await render({
@@ -290,9 +290,7 @@ describe("one query, one read", () => {
         { content: [{ type: "text", text: method }] },
         { id: `report-${method}`, method, url: address(`/api/report/${method}`), input: { body: { value: {} } }, schema: { type: "object" } },
       );
-    const archive = operation("/api/archive", "Archive", { type: "object", properties: {} }, {
-      onSuccess: { refreshes: [address("/api/account"), address("/api/report/QUERY"), address("/api/report/POST")] },
-    });
+    const archive = buttonOf(call("/api/archive", "Archive", { type: "object", properties: {} }, { invalidates: [address("/api/account"), address("/api/report/QUERY"), address("/api/report/POST")] }));
     rendered = await render({
       path: "/",
       answers: {
@@ -304,7 +302,7 @@ describe("one query, one read", () => {
     });
     const counts = () => [reads(rendered!), reads(rendered!, "/api/report/QUERY", "QUERY"), reads(rendered!, "/api/report/POST", "POST")];
     expect(counts()).toEqual([1, 1, 1]);
-    await rendered.click(rendered.part("submit"));
+    await rendered.click(rendered.part("button"));
     expect(counts()).toEqual([2, 2, 2]);
   });
 
@@ -395,8 +393,7 @@ describe("a query with a body", () => {
 
 describe("a field's condition", () => {
   const gated = () =>
-    actionNode({
-      result: undefined,
+    reportForm({
       fields: [
         { type: "input", control: "auto", property: "copies", label: "Copies" },
         { type: "input", control: "auto", property: "month", label: "Month", shown: { at: { root: "values", path: ["copies"] }, matches: { minimum: 2 } } },
@@ -428,8 +425,7 @@ describe("a field's condition", () => {
       path: "/",
       answers: { "/api/reports": () => json({}) },
       pages: page(
-        actionNode({
-          result: undefined,
+        reportForm({
           fields: [
             { type: "input", control: "auto", property: "month", label: "Month" },
             { type: "input", control: "auto", property: "copies", label: "Copies", shown: { at: { root: "values", path: ["month"] }, matches: { const: "2026-09" } } },
@@ -445,12 +441,10 @@ describe("a field's condition", () => {
   });
 });
 
-describe("an action's refreshes with wildcard segments", () => {
+describe("a mutation's invalidates with wildcard segments", () => {
   it("reads again every query whose path they cover, and no other", async () => {
     const reading = (path: string) => queryNode({ content: [{ type: "text", text: path }] }, { id: path, url: address(path) });
-    const archive = operation("/api/archive", "Archive", { type: "object", properties: {} }, {
-      onSuccess: { refreshes: [address("/api/projects/{id}/**", { id: { value: 7 } })] },
-    });
+    const archive = buttonOf(call("/api/archive", "Archive", { type: "object", properties: {} }, { invalidates: [address("/api/projects/{id}/**", { id: { value: 7 } })] }));
     rendered = await render({
       path: "/",
       answers: {
@@ -462,29 +456,45 @@ describe("an action's refreshes with wildcard segments", () => {
       pages: page(reading("/api/projects/7"), reading("/api/projects/7/members"), reading("/api/projects/70"), archive),
     });
     const readsOf = (path: string) => rendered!.requests.filter((request) => request === `GET ${path}`).length;
-    await rendered.click(rendered.part("submit"));
+    await rendered.click(rendered.part("button"));
     expect([readsOf("/api/projects/7"), readsOf("/api/projects/7/members"), readsOf("/api/projects/70")]).toEqual([2, 2, 1]);
   });
 });
 
-describe("an action's enabled condition", () => {
-  it("disables the button and says why while it does not hold", async () => {
+describe("a call's enabled condition", () => {
+  it("disables the button and says why while it does not hold over the roots in scope", async () => {
+    let authorized = false;
     rendered = await render({
       path: "/",
-      answers: { "/api/reports": () => json({}) },
-      pages: page(actionNode({ result: undefined, enabled: { at: { root: "values", path: ["month"] }, matches: { minLength: 7 }, disabledText: "Choose a month first." } })),
+      answers: { "/api/account": () => json({ authorized }) },
+      pages: page(
+        queryNode(
+          {
+            content: [
+              buttonOf(
+                call("/api/archive", "Archive", { type: "object", properties: {} }, { enabled: { at: { root: "data", path: ["authorized"] }, matches: { const: true }, disabledText: "Sign in first." } }),
+              ),
+            ],
+          },
+          { reloadOn: ["focus"] },
+        ),
+      ),
     });
-    expect((rendered.part("submit") as HTMLButtonElement).disabled).toBe(true);
-    expect(rendered.part("disabled-text").textContent).toBe("Choose a month first.");
-    await rendered.enter(rendered.parts("input")[0], "2026-09");
-    expect((rendered.part("submit") as HTMLButtonElement).disabled).toBe(false);
+    expect((rendered.part("button") as HTMLButtonElement).disabled).toBe(true);
+    expect(rendered.part("disabled-text").textContent).toBe("Sign in first.");
+    authorized = true;
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    await rendered.settle();
+    expect((rendered.part("button") as HTMLButtonElement).disabled).toBe(false);
     expect(rendered.parts("disabled-text")).toEqual([]);
   });
 
   it("offers a list's row actions over its rows, draws an answer in place of the button, and drops it with the answer it was drawn in", async () => {
-    const remove = operation("/api/files/remove", "Remove", { type: "object", required: ["name"], properties: { name: { type: "string" } } }, {
+    const remove = call("/api/files/remove", "Remove", { type: "object", required: ["name"], properties: { name: { type: "string" } } }, {
       result: { type: "text", text: "Removed" },
-      onSuccess: { refreshes: [address("/api/account")] },
+      invalidates: [address("/api/account")],
+      inputs: { name: { root: "row", path: ["name"] } },
+      enabled: { at: { root: "data", path: ["authorized"] }, matches: { const: true }, disabledText: "Sign in first." },
     });
     const files = [{ name: "a.pdf" }, { name: "b.pdf" }];
     rendered = await render({
@@ -497,7 +507,7 @@ describe("an action's enabled condition", () => {
               type: "list",
               rows: { root: "data", path: ["files"] },
               columns: [{ header: "Name", value: { root: "row", path: ["name"] }, present: { type: "string" } }],
-              rowActions: [{ action: remove, inputs: { name: { root: "row", path: ["name"] } }, enabled: { at: { root: "data", path: ["authorized"] }, matches: { const: true }, disabledText: "Sign in first." } }],
+              rowActions: [remove],
             },
           ],
         }),
@@ -510,12 +520,12 @@ describe("an action's enabled condition", () => {
     // The success refreshes the query; its new answer is a new list, so the
     // row's answer goes with the old one.
     expect(reads(rendered)).toBe(before + 1);
-    expect(rendered.parts("row-answer")).toEqual([]);
+    expect(rendered.parts("mutation-result")).toEqual([]);
     expect(rendered.parts("row-action")).toHaveLength(2);
   });
 
   it("keeps a list row's answer while the list's answer stands", async () => {
-    const remove = operation("/api/files/remove", "Remove", { type: "object", properties: { name: { type: "string" } } }, { result: { type: "text", text: "Removed" } });
+    const remove = call("/api/files/remove", "Remove", { type: "object", properties: { name: { type: "string" } } }, { result: { type: "text", text: "Removed" }, inputs: { name: { root: "row", path: ["name"] } } });
     rendered = await render({
       path: "/",
       answers: { "/api/account": () => json({ authorized: true, files: [{ name: "a.pdf" }] }), "/api/files/remove": () => new Response(null, { status: 204 }) },
@@ -526,14 +536,14 @@ describe("an action's enabled condition", () => {
               type: "list",
               rows: { root: "data", path: ["files"] },
               columns: [{ header: "Name", value: { root: "row", path: ["name"] } }],
-              rowActions: [{ action: remove, inputs: { name: { root: "row", path: ["name"] } } }],
+              rowActions: [remove],
             },
           ],
         }),
       ),
     });
     await rendered.click(rendered.part("row-action"));
-    expect(shownTexts(rendered, "row-answer")).toEqual(["Removed"]);
+    expect(shownTexts(rendered, "mutation-result")).toEqual(["Removed"]);
     expect(rendered.parts("row-action")).toEqual([]);
   });
 });

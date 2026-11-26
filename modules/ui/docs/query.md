@@ -12,6 +12,7 @@ query from one read.
 | `url` | required | where the answer is read from, under [the record contract](record-contract.md): a `Ui.RequestTarget` over `query` and `params` — an app-relative path string, or `{ path, pathParams, queryParams }` like an [address](nodes.md#addresses) that is never a page. `path` may be a template (`/accounts/{id}`) filled by `pathParams`; `queryParams` are sent as the query. A value that holds nothing leaves the read unsent |
 | `input` | none | what the read sends as a JSON body: `{ method?, model, body }`. Without it the read is a `GET` |
 | `query` | none | the [query parameters](conditions.md#query-parameters) the query reads, as `query` |
+| `form` | none | the [`Ui.Form`](form.md) whose values the query [follows](#following-a-form), read as `form` |
 | `reloadOn` | none | what reads the answer again: `focus`, `unauthorized` |
 | `reloadEvery` | none | how often the answer is read again while a node drawing it is shown, a duration of at least `5s` — see [When it reads](#when-it-reads) |
 
@@ -94,6 +95,10 @@ reloadEvery: 1m
   view placed there) and at every site of the query itself — `url` and
   `input.body` among them; closed and empty with none declared, open in a
   library whose importer supplies the query.
+- `form` — the form `form` names: its settled, valid record, typed from its
+  `model`, in `url` and `input.body` and in the trees of every node drawing the
+  query. Withheld where the query names no form. See
+  [following a form](#following-a-form).
 - `params` — the placing page's [path variables](page.md#params), in the node's
   lists and at every site of the query itself, typed from each page placing the
   query.
@@ -101,6 +106,42 @@ reloadEvery: 1m
 Each is read only by what is named — a condition's `at`, a `value` or `list`
 node, a parameter. A `when` in a tree is evaluated once, when the tree is
 created, and reads none of them.
+
+## Following a form
+
+`form` names a [`Ui.Form`](form.md) placed anywhere on the page — beside the
+query node, in another cell, under a tab or in a view of its own — and binds the
+`form` root: the form's record once it has settled and is valid against its
+`model`. A read that follows its inputs needs no press: the live preview of a
+period and a few display options is a form and a query node.
+
+```yaml
+kind: Ui.Query
+form: !ref previewForm
+model: !ref PreviewAnswer
+url: /api/preview
+input:
+  model: !ref PreviewRequest
+  body: { period: !cel "form.period", columns: !cel "form.columns" }
+```
+
+- **Typed.** `form.perod` is `CEL_UNKNOWN_FIELD`. `form` where the query names
+  none is `CEL_UNKNOWN_IDENTIFIER` ("'form' is not available here: the query
+  names no form in `form`"), also inside a query node nested in one whose query
+  names a form — a node's trees bind `form` from their own query only. A `form`
+  that is not a `Ui.Form` is `REFERENCE_KIND_MISMATCH`.
+- **Sent.** Until the form first holds a valid record, a query whose `url` or
+  `input.body` reads `form` is not sent at all and its nodes draw nothing, not
+  even their `loading` tree. A body member whose chain over `query` or `params`
+  holds nothing is only left out; one over `form` holds nothing only until the
+  form is valid. Afterwards the query reads again whenever the request its
+  `url` and `input.body` resolve to changes, so an invalid entry keeps the last
+  valid answer drawn while the fields show their findings.
+- **Where the form is not drawn.** A query whose form is not on the page being
+  drawn reads nothing and its nodes draw nothing.
+
+The settle rule, one record per page and the rest are the form's: see
+[a query that follows a form](form.md#a-query-that-follows-a-form).
 
 ## One query, one read
 
@@ -139,7 +180,7 @@ To draw nothing until a parameter is chosen, hide the node with `shown`.
   `telo check` (`SCHEMA_VIOLATION`) and when the query is created
   (`ERR_RESOURCE_SCHEMA_VALIDATION_FAILED`).
 - `unauthorized` — when a request made by anything drawn inside any of its
-  nodes' `content`, `loading` or `failure` answers 401: a listing's page, a form's save, an action, a
+  nodes' `content`, `loading` or `failure` answers 401: a listing's page, a form's save, a call, a
   custom component's `fetch`, at any depth, across composite placements. Its own
   read never counts, so a refused read cannot loop; a 401 or 403 to its own
   read draws `failure`.
@@ -154,7 +195,7 @@ never drawn.
 ## What a renderer receives
 
 A `query` node carries a `Ui.QuerySpec`:
-`{ id, schema, method, url, input, query, reloadOn }`, every member present
+`{ id, schema, method, url, input, query, form, reloadOn }`, every member present
 (plus `reloadEvery` when set) —
 
 - `id` the declaration's identity, qualified by its module so two modules'
@@ -169,6 +210,7 @@ A `query` node carries a `Ui.QuerySpec`:
 - `input` `null`, or `{ body }` — the template as bindings: a chain or a
   `{ value }`, or a `{ map }` / `{ list }` of them for a structure holding a
   chain, one `{ value }` for a structure holding none.
+- `form` the id of the form named, `null` when none.
 - `query` the declared parameters (`{ }` when none), `reloadOn` a list (`[]`
   when none) — plus `reloadEvery`, an integer number of milliseconds of at least
   `5000`, omitted when it is not written.

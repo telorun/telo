@@ -120,17 +120,17 @@ steps:
         created: !cel "{'record': steps.created.result.children[0].record, 'initialValues': steps.created.result.children[0].initialValues, 'unsaved': steps.created.result.children[0].unsaved, 'afterSubmit': steps.created.result.children[0].afterSubmit}"
       expected:
         task:
-          record: { basePath: /api/tasks, key: { root: data, path: [id] } }
+          record: { basePath: /api/tasks, key: { root: data, path: [id] }, answer: { type: object, required: [id], properties: { id: { type: integer }, title: { type: string } } } }
           initialValues: { root: data, path: [] }
           unsaved: discard
           afterSubmit: keep
         doc:
-          record: { basePath: /api/docs, key: { root: params, path: [slug] } }
+          record: { basePath: /api/docs, key: { root: params, path: [slug] }, answer: { type: object, required: [slug], properties: { slug: { type: string }, title: { type: string } } } }
           initialValues: { root: params, path: [] }
           unsaved: confirm
           afterSubmit: close
         created:
-          record: { basePath: /api/tasks, key: null }
+          record: { basePath: /api/tasks, key: null, answer: { type: object, required: [id], properties: { id: { type: integer }, title: { type: string } } } }
           initialValues: null
           unsaved: confirm
           afterSubmit: again

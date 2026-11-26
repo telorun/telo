@@ -129,7 +129,9 @@ schema:
       properties:
         create:
           title: Create
-          description: The body that creates a record, without the key.
+          description: >-
+            The body that creates a record, without the key. The `POST` answers 2xx
+            with the stored record, valid against `model`, as `PATCH` does.
           x-telo-ref: { kind: Telo.Type, use: schema }
         update:
           title: Update

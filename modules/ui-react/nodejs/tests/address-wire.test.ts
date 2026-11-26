@@ -65,9 +65,9 @@ interface RefreshRow {
 }
 
 /** `ui`'s conformance rows: which readers a refresh entry reads again. */
-const refreshRows = (JSON.parse(readFileSync(new URL("../../../ui/conformance/refreshes.json", import.meta.url), "utf8")) as { rows: RefreshRow[] }).rows;
+const refreshRows = (JSON.parse(readFileSync(new URL("../../../ui/conformance/invalidations.json", import.meta.url), "utf8")) as { rows: RefreshRow[] }).rows;
 
-describe("refreshes.json", () => {
+describe("invalidations.json", () => {
   it.each(refreshRows.map((row) => [row.name, row] as const))("%s", (_name, row) => {
     const refresh = resolveRefresh(row.address, row.roots ?? {}, "test");
     expect(refresh).toBeDefined();

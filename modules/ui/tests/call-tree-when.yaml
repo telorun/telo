@@ -1,0 +1,70 @@
+kind: Telo.Application
+metadata:
+  name: UiCallTreeWhenTest
+  version: 1.0.0
+  description: |
+    A `when` in a call's `result` or `failure` tree is evaluated once, when the
+    call is resolved: a node whose `when` is false is not delivered.
+imports: { Ui: ../, Assert: ../../assert }
+variables: { flag: { env: UI_CALL_TREE_WHEN_FLAG, type: boolean, default: true } }
+targets: [!ref main]
+---
+kind: Ui.Mutation
+metadata: { name: archive }
+inputModel:
+  kind: Telo.JsonSchema
+  schema: { type: object, additionalProperties: false, properties: {} }
+url: /api/archive
+---
+kind: Ui.Page
+metadata: { name: shown }
+path: /shown
+title: Shown
+children:
+  - type: button
+    action:
+      mutation: !ref archive
+      inputs: {}
+      label: Archive
+      result: { type: text, text: Done, when: !cel "variables.flag" }
+      failure: { type: text, text: Failed, when: !cel "!variables.flag" }
+---
+kind: Ui.Page
+metadata: { name: hidden }
+path: /hidden
+title: Hidden
+children:
+  - type: button
+    action:
+      mutation: !ref archive
+      inputs: {}
+      label: Archive
+      result: { type: text, text: Done, when: !cel "!variables.flag" }
+      failure: { type: text, text: Failed, when: !cel "variables.flag" }
+---
+kind: Telo.Sequence
+metadata: { name: main }
+steps:
+  - name: shown
+    invoke: !ref shown
+    inputs: { request: { headers: {} } }
+  - name: hidden
+    invoke: !ref hidden
+    inputs: { request: { headers: {} } }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        shown:
+          result: !cel "steps.shown.result.children[0].action.result"
+          failure: !cel "steps.shown.result.children[0].action.failure"
+        hidden:
+          result: !cel "steps.hidden.result.children[0].action.result"
+          failure: !cel "steps.hidden.result.children[0].action.failure"
+      expected:
+        shown:
+          result: { type: text, fill: false, text: { text: Done, context: null, lang: und, computed: false } }
+          failure: { type: stack, children: [], press: null, fill: false }
+        hidden:
+          result: { type: stack, children: [], press: null, fill: false }
+          failure: { type: text, fill: false, text: { text: Failed, context: null, lang: und, computed: false } }

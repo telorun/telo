@@ -1,0 +1,440 @@
+# Tables: columns derived and written, sorting, style rules, members behind a
+# reference, the pager, filters from the address and fixed ones, and a table's
+# create and edit pages opening on every kind of surface. Every table but the
+# task board lists the tasks crud serves, so each write reloads them all.
+kind: Ui.View
+metadata: { name: tablesPage }
+content:
+  type: stack
+  children:
+    # ---- Columns from the model ----
+    - { type: text, text: Columns from the model, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        With no columns written, a table shows one per model property but the row key, each headed by its
+        title and drawn by its type. It shows 25 rows to a page, the default, and opens its create and edit
+        forms in a dialog, the surface a table uses when it names none.
+    - type: composite
+      ref: &columnsFromModel
+        kind: Ui.Listing
+        presentation: !ref tasksPresentation
+        model: !ref Task
+        create: { to: { kind: Ui.OpenPage, page: !ref newTaskPage } }
+        edit: { to: { kind: Ui.OpenPage, page: !ref taskPage, pathParams: { id: !cel "row.id" } } }
+        delete: true
+    - { type: composite, ref: { kind: Ui.Component, component: !ref Components.sourceSnippet, props: { file: tables.yaml, anchor: columnsFromModel } } }
+
+    # ---- Written columns, sorting and style rules ----
+    - { type: text, text: "Written columns, sorting and style rules", style: heading }
+    - type: text
+      style: muted
+      text: >-
+        Columns written by hand, in the order given, one with a header of its own. A column sorts where the
+        collection lists its property for sorting. A blocked task's row is strong and red, each status cell
+        has its colour, and a priority no case names takes the default. Eight rows to a page.
+    - type: composite
+      ref: &writtenColumns
+        kind: Ui.Listing
+        presentation: !ref tasksPresentation
+        model: !ref Task
+        pageSize: 8
+        layout:
+          kind: Ui.TableLayout
+          columns:
+            - value: !cel "row.title"
+            - { header: Where, value: !cel "row.projectCode" }
+            - value: !cel "row.status"
+              style: { by: !cel "row.status", cases: { todo: muted, doing: accent, review: warning, done: success } }
+            - value: !cel "row.priority"
+              style: { by: !cel "row.priority", cases: { "5": danger, "4": warning }, default: muted }
+            - value: !cel "row.estimate"
+            - value: !cel "row.dueOn"
+            - value: !cel "row.assigneeEmail"
+        rowStyle: { by: !cel "row.blocked", cases: { "true": [ strong, danger ] } }
+    - { type: composite, ref: { kind: Ui.Component, component: !ref Components.sourceSnippet, props: { file: tables.yaml, anchor: writtenColumns } } }
+
+    # ---- Members behind a reference ----
+    - { type: text, text: Members behind a reference, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        The task board answers each task with its assignee and its project nested in it. A column over a
+        nested member takes that member's title and presentation through a named shape, through a definition
+        of the model's own, and through a reference whose own title wins over the shape it names: the contact
+        is a mail link and the brief a link to a page.
+    - type: composite
+      ref: &nestedMembers
+        kind: Ui.Listing
+        presentation:
+          kind: Ui.CollectionPresentation
+          source:
+            kind: Ui.CollectionSource
+            collection: { kind: DataModel.Collection, model: !ref TaskCard, query: { filters: [], sort: [] } }
+            basePath: /api/task-board
+        model: !ref TaskCard
+        pageSize: 6
+        layout:
+          kind: Ui.TableLayout
+          columns:
+            - value: !cel "row.title"
+            - value: !cel "row.assignee.name"
+            - value: !cel "row.assignee.contact"
+            - value: !cel "row.project.code"
+            - value: !cel "row.project.name"
+            - value: !cel "row.project.brief"
+    - { type: composite, ref: { kind: Ui.Component, component: !ref Components.sourceSnippet, props: { file: tables.yaml, anchor: nestedMembers } } }
+
+    # ---- Filtered by the address, and by a fixed value ----
+    - { type: text, text: Filtered by the address, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        This table declares a project parameter and sends it as an equality with every request. With no project
+        in the address it reads nothing.
+    - type: composite
+      ref: &filteredByAddress
+        kind: Ui.View
+        content:
+          type: stack
+          children:
+            - type: columns
+              children:
+                - { type: link, text: Atlas redesign tasks, to: { kind: Ui.Navigate, href: "/tables?project=TEL-42" } }
+                - { type: link, text: Billing migration tasks, to: { kind: Ui.Navigate, href: "/tables?project=OPS-7" } }
+                - { type: link, text: No project, to: { kind: Ui.Navigate, href: /tables } }
+            - type: composite
+              ref:
+                kind: Ui.Listing
+                presentation: !ref tasksPresentation
+                model: !ref Task
+                query: { project: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" } }
+                filters: { projectCode: !cel "query.project" }
+                pageSize: 10
+                layout:
+                  kind: Ui.TableLayout
+                  columns:
+                    - value: !cel "row.title"
+                    - value: !cel "row.status"
+                    - value: !cel "row.assigneeEmail"
+                    - value: !cel "row.dueOn"
+    - { type: composite, ref: { kind: Ui.Component, component: !ref Components.sourceSnippet, props: { file: tables.yaml, anchor: filteredByAddress } } }
+    - { type: text, text: Blocked tasks, style: subheading }
+    - type: text
+      style: muted
+      text: This one is filtered by a fixed value written into the table, and lists only the tasks that are blocked.
+    - type: composite
+      ref: &fixedFilter
+        kind: Ui.Listing
+        presentation: !ref tasksPresentation
+        model: !ref Task
+        filters: { blocked: true }
+        pageSize: 5
+        layout:
+          kind: Ui.TableLayout
+          columns:
+            - value: !cel "row.title"
+            - value: !cel "row.projectCode"
+            - value: !cel "row.status"
+    - { type: composite, ref: { kind: Ui.Component, component: !ref Components.sourceSnippet, props: { file: tables.yaml, anchor: fixedFilter } } }
+
+    # ---- Where a form opens ----
+    - { type: text, text: Where a form opens, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        Each table below opens its create and edit forms on a different surface. A save reloads every table
+        of tasks on the page.
+
+    - { type: text, text: Dialogs, style: subheading }
+    - type: text
+      style: muted
+      text: >-
+        Create in a small dialog that stays open, emptied, for another task. Edit in a large dialog that does
+        not block the page and ignores a click outside; it keeps its values after a save, drops unsaved input
+        without asking, and is part of the address. Each row offers a confirmed delete.
+    - type: composite
+      ref: &dialogSurfaces
+        kind: Ui.Listing
+        presentation: !ref tasksPresentation
+        model: !ref Task
+        pageSize: 5
+        layout:
+          kind: Ui.TableLayout
+          columns:
+            - value: !cel "row.title"
+            - value: !cel "row.status"
+            - value: !cel "row.dueOn"
+        create: { to: { kind: Ui.OpenPage, page: !ref newTaskPage, surface: { kind: Ui.Dialog, size: small } } }
+        edit:
+          to:
+            kind: Ui.OpenPage
+            page: !ref taskQuickPage
+            pathParams: { id: !cel "row.id" }
+            surface:
+              kind: Ui.Dialog
+              size: large
+              modal: false
+              dismiss: { outside: false }
+              address: { name: taskDialog }
+        delete: true
+    - { type: composite, ref: { kind: Ui.Component, component: !ref Components.sourceSnippet, props: { file: tables.yaml, anchor: dialogSurfaces } } }
+
+    - { type: text, text: Drawers, style: subheading }
+    - type: text
+      style: muted
+      text: >-
+        Create in a small drawer from the start edge; edit in a large drawer from the end edge, with no close
+        button. Both close after a save and ask before unsaved input is dropped.
+    - type: composite
+      ref: &drawerSurfaces
+        kind: Ui.Listing
+        presentation: !ref tasksPresentation
+        model: !ref Task
+        pageSize: 5
+        layout:
+          kind: Ui.TableLayout
+          columns:
+            - value: !cel "row.title"
+            - value: !cel "row.status"
+            - value: !cel "row.dueOn"
+        create: { to: { kind: Ui.OpenPage, page: !ref createTaskPage, surface: { kind: Ui.Drawer, side: start, size: small } } }
+        edit:
+          to:
+            kind: Ui.OpenPage
+            page: !ref taskPage
+            pathParams: { id: !cel "row.id" }
+            surface: { kind: Ui.Drawer, side: end, size: large, dismiss: { closeButton: false } }
+        delete: true
+    - { type: composite, ref: { kind: Ui.Component, component: !ref Components.sourceSnippet, props: { file: tables.yaml, anchor: drawerSurfaces } } }
+
+    - { type: text, text: Sheets, style: subheading }
+    - type: text
+      style: muted
+      text: >-
+        Create in a sheet from the top that does not block the page; edit in a full sheet from the bottom, part
+        of the address.
+    - type: composite
+      ref: &sheetSurfaces
+        kind: Ui.Listing
+        presentation: !ref tasksPresentation
+        model: !ref Task
+        pageSize: 5
+        layout:
+          kind: Ui.TableLayout
+          columns:
+            - value: !cel "row.title"
+            - value: !cel "row.status"
+            - value: !cel "row.dueOn"
+        create: { to: { kind: Ui.OpenPage, page: !ref newTaskPage, surface: { kind: Ui.Drawer, side: top, modal: false } } }
+        edit:
+          to:
+            kind: Ui.OpenPage
+            page: !ref taskPage
+            pathParams: { id: !cel "row.id" }
+            surface: { kind: Ui.Drawer, side: bottom, size: full, address: { name: taskSheet } }
+    - { type: composite, ref: { kind: Ui.Component, component: !ref Components.sourceSnippet, props: { file: tables.yaml, anchor: sheetSurfaces } } }
+
+    - { type: text, text: Popovers, style: subheading }
+    - type: text
+      style: muted
+      text: >-
+        Create in a card beside the New button, centred on it; below the breakpoint it becomes a full dialog.
+        Edit in a card under the row's button, aligned to its end, which a click outside does not close and
+        which stays open after a save.
+    - type: composite
+      ref: &popoverSurfaces
+        kind: Ui.Listing
+        presentation: !ref tasksPresentation
+        model: !ref Task
+        pageSize: 5
+        layout:
+          kind: Ui.TableLayout
+          columns:
+            - value: !cel "row.title"
+            - value: !cel "row.status"
+            - value: !cel "row.dueOn"
+        create:
+          to:
+            kind: Ui.OpenPage
+            page: !ref newTaskPage
+            surface:
+              kind: Ui.Popover
+              side: end
+              align: center
+              compact: { kind: Ui.Dialog, size: full }
+        edit:
+          to:
+            kind: Ui.OpenPage
+            page: !ref taskQuickPage
+            pathParams: { id: !cel "row.id" }
+            surface: { kind: Ui.Popover, side: bottom, align: end, dismiss: { outside: false } }
+    - { type: composite, ref: { kind: Ui.Component, component: !ref Components.sourceSnippet, props: { file: tables.yaml, anchor: popoverSurfaces } } }
+
+    - { type: text, text: In line, style: subheading }
+    - type: text
+      style: muted
+      text: >-
+        The create form opens above the rows and the edit form under the row it changes. Below the breakpoint
+        the create form opens in a sheet from the bottom.
+    - type: composite
+      ref: &inlineSurfaces
+        kind: Ui.Listing
+        presentation: !ref tasksPresentation
+        model: !ref Task
+        pageSize: 5
+        layout:
+          kind: Ui.TableLayout
+          columns:
+            - value: !cel "row.title"
+            - value: !cel "row.status"
+            - value: !cel "row.dueOn"
+        create:
+          to:
+            kind: Ui.OpenPage
+            page: !ref newTaskPage
+            surface: { kind: Ui.InlineSurface, compact: { kind: Ui.Drawer, side: bottom } }
+        edit:
+          to:
+            kind: Ui.OpenPage
+            page: !ref taskPage
+            pathParams: { id: !cel "row.id" }
+            surface: { kind: Ui.InlineSurface }
+        delete: true
+    - { type: composite, ref: { kind: Ui.Component, component: !ref Components.sourceSnippet, props: { file: tables.yaml, anchor: inlineSurfaces } } }
+
+    - { type: text, text: Panels, style: subheading }
+    - type: text
+      style: muted
+      text: >-
+        Create in a small panel at the start edge, which Escape does not close. Edit in a large panel at the end
+        edge, part of the address, with the rows still usable beside it; below the breakpoint it becomes a
+        sheet from the bottom.
+    - type: composite
+      ref: &panelSurfaces
+        kind: Ui.Listing
+        presentation: !ref tasksPresentation
+        model: !ref Task
+        pageSize: 5
+        layout:
+          kind: Ui.TableLayout
+          columns:
+            - value: !cel "row.title"
+            - value: !cel "row.status"
+            - value: !cel "row.dueOn"
+        create:
+          to:
+            kind: Ui.OpenPage
+            page: !ref newTaskPage
+            surface: { kind: Ui.Panel, side: start, size: small, dismiss: { escape: false } }
+        edit:
+          to:
+            kind: Ui.OpenPage
+            page: !ref taskPage
+            pathParams: { id: !cel "row.id" }
+            surface:
+              kind: Ui.Panel
+              side: end
+              size: large
+              address: { name: taskPanel }
+              compact: { kind: Ui.Drawer, side: bottom }
+    - { type: composite, ref: { kind: Ui.Component, component: !ref Components.sourceSnippet, props: { file: tables.yaml, anchor: panelSurfaces } } }
+
+    - { type: text, text: A page of its own, style: subheading }
+    - type: text
+      style: muted
+      text: >-
+        Create and edit navigate to the pages themselves, a new task's and the task's own, and Back returns to
+        the table. The same two pages open over the table in every surface above.
+    - type: composite
+      ref: &pageSurfaces
+        kind: Ui.Listing
+        presentation: !ref tasksPresentation
+        model: !ref Task
+        pageSize: 5
+        layout:
+          kind: Ui.TableLayout
+          columns:
+            - value: !cel "row.title"
+            - value: !cel "row.status"
+            - value: !cel "row.dueOn"
+        create: { to: { kind: Ui.Navigate, href: { path: !ref newTaskPage } } }
+        edit: { to: { kind: Ui.Navigate, href: { path: !ref taskPage, pathParams: { id: !cel "row.id" } } } }
+    - { type: composite, ref: { kind: Ui.Component, component: !ref Components.sourceSnippet, props: { file: tables.yaml, anchor: pageSurfaces } } }
+---
+# A task's pages. The listings above open them in every kind of surface, and
+# each is a full page at its own address. This one starts a fresh form after a
+# save; the posts board on /records opens a page like it with a status filled in.
+kind: Ui.Page
+metadata: { name: newTaskPage }
+path: /tasks/new
+title: New task
+children:
+  - type: composite
+    ref:
+      kind: Ui.Form
+      model: !ref TaskDraft
+      record: { presentation: !ref tasksPresentation }
+      afterSubmit: again
+---
+# The same form, closing the drawer it opens in after a save.
+kind: Ui.Page
+metadata: { name: createTaskPage }
+path: /tasks/create
+title: Create task
+children:
+  - type: composite
+    ref:
+      kind: Ui.Form
+      model: !ref TaskDraft
+      record: { presentation: !ref tasksPresentation }
+---
+# One task by the key in its address: the edit form starts from the record the
+# query reads, sends only what changed, and asks before unsaved input is dropped.
+kind: Ui.Page
+metadata: { name: taskPage }
+path: /tasks/{id}
+title: Task
+children:
+  - type: query
+    query:
+      kind: Ui.Query
+      model: !ref Task
+      url: { path: "/api/tasks/{id}", pathParams: { id: !cel "params.id" } }
+    content:
+      - type: composite
+        ref:
+          kind: Ui.Form
+          model: !ref TaskEdit
+          record: { presentation: !ref tasksPresentation, key: !cel "data.id" }
+          initialValues: !cel "data"
+---
+# The same edit form for a surface that stays: it keeps its values after a
+# save and drops unsaved input without asking.
+kind: Ui.Page
+metadata: { name: taskQuickPage }
+path: /tasks/{id}/quick
+title: Quick edit
+children:
+  - type: query
+    query:
+      kind: Ui.Query
+      model: !ref Task
+      url: { path: "/api/tasks/{id}", pathParams: { id: !cel "params.id" } }
+    content:
+      - type: composite
+        ref:
+          kind: Ui.Form
+          model: !ref TaskEdit
+          record: { presentation: !ref tasksPresentation, key: !cel "data.id" }
+          initialValues: !cel "data"
+          afterSubmit: keep
+          unsaved: discard
+---
+# The page every application lists at /tables, placing the view.
+kind: Ui.Page
+metadata: { name: tablesScreen }
+path: /tables
+title: Tables
+children:
+  - { type: composite, ref: !ref tablesPage }

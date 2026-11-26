@@ -1,0 +1,5 @@
+units:
+  apps/studio: Fixed
+body: The browser-stored workspace now reopens after a page reload instead of offering a
+  folder picker, and a resource can be deleted from the graph (Delete key, the node's
+  delete button or context menu), the detail panel and the Outline.

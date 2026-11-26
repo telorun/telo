@@ -2,6 +2,16 @@ import type { AppSettings, EditorState, EditorTab, ViewId } from "./model";
 import { migrateSettingsFields } from "./settings-field-migration";
 import { LOCAL_KEYS, LOCAL_PREFIXES } from "./storage-keys";
 
+/** What a workspace is stored in. */
+export type WorkspaceBackend = "browser" | "folder" | "desktop" | "cloud";
+
+const WORKSPACE_BACKENDS: ReadonlySet<unknown> = new Set<WorkspaceBackend>([
+  "browser",
+  "folder",
+  "desktop",
+  "cloud",
+]);
+
 const KEY = LOCAL_KEYS.uiState;
 const SETTINGS_KEY = LOCAL_KEYS.settings;
 
@@ -64,6 +74,10 @@ function normalizeView(view: string | undefined): string {
 // is rebuilt by `loadWorkspace` on launch, not serialized.
 interface PersistedState {
   rootDir: string | null;
+  /** Which backend the root belongs to; absent in a hint written before it was
+   *  recorded. A root alone cannot say: a picked folder named `workspace` has
+   *  the browser-stored workspace's root. */
+  backend?: WorkspaceBackend;
   /** The user closed the workspace: nothing is reopened on the next launch,
    *  not even a browser-stored workspace found by its files. */
   closed?: boolean;
@@ -99,6 +113,7 @@ export function saveState(state: EditorState): void {
     }
     const persisted: PersistedState = {
       rootDir: state.workspace?.rootDir ?? prev?.rootDir ?? null,
+      ...(prev?.backend ? { backend: prev.backend } : {}),
       ...(!state.workspace && prev?.closed ? { closed: true } : {}),
       activeModulePath: state.activeModulePath,
       activeView: state.activeView,
@@ -117,8 +132,15 @@ export function loadPersistedState(): PersistedState | null {
   try {
     const raw = localStorage.getItem(KEY);
     const data = raw ? (JSON.parse(raw) as PersistedState) : null;
+    const detected = data?.rootDir ? null : data?.closed ? null : detectStoredWorkspaceRoot();
+    const backend = WORKSPACE_BACKENDS.has(data?.backend)
+      ? data?.backend
+      : detected
+        ? "browser"
+        : undefined;
     return {
-      rootDir: data?.rootDir ?? (data?.closed ? null : detectStoredWorkspaceRoot()),
+      rootDir: data?.rootDir ?? detected,
+      ...(backend ? { backend } : {}),
       activeModulePath: data?.activeModulePath ?? null,
       activeView: normalizeView(data?.activeView),
       openTabs: Array.isArray(data?.openTabs) ? data.openTabs.filter(isValidTab) : [],
@@ -129,6 +151,20 @@ export function loadPersistedState(): PersistedState | null {
     };
   } catch {
     return null;
+  }
+}
+
+/** Records which backend the workspace being opened lives in, so the next launch
+ *  restores it by that backend rather than by its root. */
+export function recordWorkspaceBackend(backend: WorkspaceBackend): void {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = localStorage.getItem(KEY);
+    const prev = raw ? (JSON.parse(raw) as PersistedState) : null;
+    const next: PersistedState = prev ?? { rootDir: null, activeModulePath: null };
+    localStorage.setItem(KEY, JSON.stringify({ ...next, backend }));
+  } catch {
+    // localStorage may be full or unavailable — the hint is best-effort
   }
 }
 

@@ -2,7 +2,7 @@
 import { act } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { render, type Rendered } from "./harness.js";
-import { dialogSurface, formNode, memoryState, operation, recordEditPage } from "./spec-nodes.js";
+import { dialogSurface, formNode, memoryState, recordEditPage } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => {
@@ -52,9 +52,9 @@ const picker = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-/** An action whose form shows `fields`, posted to /api/tasks. */
-const action = (fields: Record<string, unknown>[], overrides: Record<string, unknown> = {}) =>
-  operation("/api/tasks", "Send", taskSchema, { fields, state: memoryState(fields.map((field) => field.property as string)), ...overrides });
+/** A form showing `fields`, posted to /api/tasks and kept after it is saved. */
+const form = (fields: Record<string, unknown>[], overrides: Record<string, unknown> = {}) =>
+  formNode("/api/tasks", { schema: taskSchema, fields, state: memoryState(fields.map((field) => field.property as string)), afterSubmit: "keep", unsaved: "discard", ...overrides });
 
 const show = (children: Record<string, unknown>[], answers?: Record<string, () => Response>, path = "/") =>
   render({ path, collections: { "/api/people": people }, answers, pages: { "/": { title: "Tasks", children: children as never } } });
@@ -63,7 +63,7 @@ const peopleRequests = () => rendered!.requests.filter((request) => request.star
 
 describe("a picker", () => {
   it("reads one page per scroll to the end of its list, however often it is scrolled", async () => {
-    rendered = await show([action([picker()])]);
+    rendered = await show([form([picker()])]);
     expect(peopleRequests()).toEqual([]);
     await rendered.click(rendered.part("picker-trigger"));
     expect(peopleRequests()).toEqual(["GET /api/people?limit=2"]);
@@ -82,7 +82,7 @@ describe("a picker", () => {
   it("discards the answer to an older search", async () => {
     let release: () => void = () => {};
     const held = new Promise<void>((resolve) => (release = resolve));
-    rendered = await show([action([picker()])]);
+    rendered = await show([form([picker()])]);
     const platform = globalThis.fetch;
     globalThis.fetch = (async (request: RequestInfo | URL, init?: RequestInit) => {
       if (String(request).includes("name.contains=A")) await held;
@@ -135,7 +135,7 @@ describe("an option source reading the form's values", () => {
   };
 
   it("reads nothing and offers nothing while a value it reads is absent", async () => {
-    rendered = await show([action([input("team", "Team"), owners])]);
+    rendered = await show([form([input("team", "Team"), owners])]);
     expect(peopleRequests()).toEqual([]);
     expect(rendered.parts("option")).toEqual([]);
     await rendered.enter(rendered.part("input"), "red");
@@ -145,7 +145,7 @@ describe("an option source reading the form's values", () => {
 
   it("keeps the chosen values a changed filter still offers, and drops the rest", async () => {
     // A person of two teams: the fake reads one team per row, so the second is answered here.
-    rendered = await show([action([input("team", "Team"), owners])]);
+    rendered = await show([form([input("team", "Team"), owners])]);
     const platform = globalThis.fetch;
     const answered: string[] = [];
     globalThis.fetch = (async (request: RequestInfo | URL, init?: RequestInit) => {
@@ -170,7 +170,7 @@ describe("an option source reading the form's values", () => {
 describe("a form's values", () => {
   it("are kept in the declared store and read back after a reload", async () => {
     const state = { key: "report", address: true, store: { type: "local" }, fields: ["month"] };
-    const node = action([input("month", "Month")], { state });
+    const node = form([input("month", "Month")], { state });
     rendered = await show([node]);
     await rendered.enter(rendered.part("input"), "2026-05");
     expect(JSON.parse(localStorage.getItem("telo.ui:/:v:report")!)).toEqual({ v: 1, values: { month: "2026-05" } });
@@ -184,15 +184,15 @@ describe("a form's values", () => {
   const values = () => rendered!.parts("input").map((each) => (each as HTMLInputElement).value);
 
   it("are one value per kept property across the entries sharing their key: what one enters, every other mounted follows", async () => {
-    const entry = () => action([input("month", "Month")], { state: keptUnder(["month"]) });
+    const entry = () => form([input("month", "Month")], { state: keptUnder(["month"]) });
     rendered = await show([entry(), entry()]);
     await rendered.enter(rendered.parts("input")[0], "2026-07");
     expect(values()).toEqual(["2026-07", "2026-07"]);
   });
 
   it("are merged into the store property by property: a narrower entry's write keeps a wider one's other property", async () => {
-    const wide = action([input("month", "Month"), input("team", "Team")], { state: keptUnder(["month", "team"]) });
-    const narrow = action([input("month", "Month")], { state: keptUnder(["month"]) });
+    const wide = form([input("month", "Month"), input("team", "Team")], { state: keptUnder(["month", "team"]) });
+    const narrow = form([input("month", "Month")], { state: keptUnder(["month"]) });
     rendered = await show([wide, narrow]);
     await rendered.enter(rendered.parts("input")[1], "red");
     await rendered.enter(rendered.parts("input")[2], "2026-08");
@@ -202,7 +202,7 @@ describe("a form's values", () => {
 
 describe("live validation", () => {
   it("reports a field's own finding once it is touched, then the server's issue on that field", async () => {
-    rendered = await show([action([input("month", "Month")])], {
+    rendered = await show([form([input("month", "Month")])], {
       "/api/tasks": () =>
         new Response(JSON.stringify({ type: "about:blank", title: "Bad Request", status: 400, detail: "The request is not valid.", code: "ERR_INPUT_INVALID", data: { issues: [{ pointer: "/body/month", keyword: "pattern", params: { pattern: "^[0-9]{4}-[0-9]{2}$" } }] } }), {
           status: 400,
@@ -220,7 +220,7 @@ describe("live validation", () => {
 
   it("lands an issue about a member of a property on the field entering it", async () => {
     const range = { type: "dateRange", property: "period", label: "Period", presets: [], weekStart: "monday" };
-    rendered = await show([action([range])], {
+    rendered = await show([form([range])], {
       "/api/tasks": () =>
         new Response(JSON.stringify({ type: "about:blank", title: "Bad Request", status: 400, detail: "The request is not valid.", code: "ERR_INPUT_INVALID", data: { issues: [{ pointer: "/body/period/from", keyword: "format", params: { format: "date" } }] } }), {
           status: 400,

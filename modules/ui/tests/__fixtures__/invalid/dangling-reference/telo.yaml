@@ -1,39 +1,34 @@
 # A list whose items point at a definition the answer model does not hold:
-# nothing is reported when it is checked, and the action refuses to be read.
+# nothing is reported when it is checked, and the form refuses to be read.
 kind: Telo.Application
-metadata:
-  name: UiInvalidDanglingReferenceApp
-  version: 1.0.0
-imports:
-  Ui: ../../../../
-  Probe: ../../probe
+metadata: { name: UiInvalidDanglingReferenceApp, version: 1.0.0 }
+imports: { Ui: ../../../../, Probe: ../../probe }
 targets:
   - invoke: !ref read
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Answer
+metadata: { name: Answer }
 schema:
   type: object
-  properties:
-    files: { type: array, items: { $ref: "#/$defs/File" } }
+  properties: { files: { type: array, items: { $ref: "#/$defs/File" } } }
 ---
-kind: Ui.Action
-metadata:
-  name: danglingReference
-inputModel:
-  kind: Telo.JsonSchema
-  schema: { type: object, properties: {} }
-outputModel: !ref Answer
-request: { target: /api/reports }
-label: Generate
-result:
-  type: list
-  rows: !cel "result.files"
-  columns:
-    - value: !cel "row.url"
+kind: Ui.Form
+metadata: { name: danglingReference }
+model: { kind: Telo.JsonSchema, schema: { type: object, properties: {} } }
+onSubmit:
+  mutation:
+    kind: Ui.Mutation
+    inputModel: { kind: Telo.JsonSchema, schema: { type: object, properties: {} } }
+    outputModel: !ref Answer
+    url: /api/reports
+  inputs: {}
+  label: Generate
+  result:
+    type: list
+    rows: !cel "result.files"
+    columns:
+      - value: !cel "row.url"
 ---
 kind: Probe.Read
-metadata:
-  name: read
+metadata: { name: read }
 source: !ref danglingReference

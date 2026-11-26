@@ -3,7 +3,7 @@ import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { judgeRowActions } from "../src/browser/row-actions-display.js";
 import { render, type Rendered } from "./harness.js";
-import { listingNode, operation, todos } from "./spec-nodes.js";
+import { call, listingNode, todos } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
@@ -96,16 +96,14 @@ afterEach(() => {
 });
 
 const row = (...path: string[]) => ({ root: "row", path });
-const archive = {
-  action: operation("/api/todos/archive", "Archive", { type: "object", properties: { id: { type: "integer" } } }),
+const archive = call("/api/todos/archive", "Archive", { type: "object", properties: { id: { type: "integer" } } }, {
   inputs: { id: row("id") },
   enabled: { at: row("isDone"), matches: { const: false }, disabledText: "Already done." },
-};
-const rename = {
-  action: operation("/api/todos/rename", "Rename", { type: "object", properties: { text: { type: "string" } } }),
+});
+const rename = call("/api/todos/rename", "Rename", { type: "object", properties: { text: { type: "string" } } }, {
   inputs: { text: row("text") },
   confirm: "Rename this task?",
-};
+});
 // The widest record holds five elements of 80 — the failing condition's text among them — so the container must be 800 wide.
 const acting = (overrides: Record<string, unknown> = {}) => listingNode({ rowActions: [archive, rename], create: undefined, ...overrides });
 const show = (children: unknown[]) =>

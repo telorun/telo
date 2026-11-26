@@ -229,8 +229,8 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
   "x-telo-context-ref-from": {
     title: "Context ref from",
     description:
-      "`<refField>/<subpath>`: type this node from the field at `<subpath>` of the declaration the sibling reference names, falling back to its kind's. A subpath of several segments continues past each reference slot into the declaration it names.",
-    type: "string",
+      "A path read from the object holding the region — data segments to a reference slot, then on past each slot into the declaration it names — typing this node from the field it ends on, falling back to the kind's; or a list of paths, the first that names something typing it. Where the path holds nothing the node keeps its own keywords, and beside `x-telo-context-withheld` it is withheld where no path names anything.",
+    anyOf: [{ type: "string" }, { type: "array", items: { type: "string" } }],
   },
   "x-telo-context-parameters-from": {
     title: "Context parameters from",

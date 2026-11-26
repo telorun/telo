@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 priority: medium
 depends-on: [2026-11-15-ui-record-pages.md]
 packages: [modules/ui, modules/ui-react, modules/crud-ui, modules/data-model, analyzer, examples/ui-showcase, examples/chat, examples/report-console, apps/hub, apps/authoring-agent, docs]
@@ -37,6 +37,7 @@ None.
 - `Ui.Form.onSuccess` — a list of effects run after the form's submit write succeeds, its default write or `onSubmit`'s, over `values` and `result`.
 - `Ui.Form.clearAnswerOn` — form properties whose change clears what its writes drew from their last answers.
 - `UI_FORM_CLEAR_UNKNOWN_PROPERTY` (twin `ERR_UI_FORM_CLEAR_UNKNOWN_PROPERTY`) — `clearAnswerOn` naming a property the form's `model` does not declare.
+- `CONTEXT_REF_FROM_INVALID` — a kind's `x-telo-context-ref-from` path whose segments up to and including the first reference slot the schema of the object holding the region does not declare, or that crosses no slot; analyzer-only, reported at the kind.
 - `UI_FORM_AUTOSAVE_NOT_IDEMPOTENT` (twin `ERR_UI_FORM_AUTOSAVE_NOT_IDEMPOTENT`) — `autosave` over a mutation whose `method` is `POST`, written or by default.
 - `Ui.Query.form` — a reference to the `Ui.Form` whose values the query reads; binds the `form` root in its `url` and `input.body`, and in the trees of every `query` node drawing it.
 - `Ui.Listing.form` — the same for a listing: binds `form` in its `filters` and its row actions.
@@ -49,13 +50,13 @@ None.
 
 **Changed**
 
-- Every place that ran an action holds a call: a listing's and a `list` node's `rowActions`, a markdown node's `annotations.action` and the `button` node a `Ui.MutationCall`, a layout's `move` a `Ui.Move`. `action:` becomes `mutation:`, and the call carries its own `label`, `result` and `failure`.
+- Every place that ran an action holds a call: a listing's and a `list` node's `rowActions`, a markdown node's `annotations.action` and the `button` node, which holds its call under `action`, a `Ui.MutationCall`, a layout's `move` a `Ui.Move`. `action:` becomes `mutation:`, and the call carries its own `label`, `result` and `failure`.
 - `onSuccess` — moves from the write to the call and becomes a list of effects, `[<Ui.Effect>…]`; `onSuccess.to` is gone (`SCHEMA_VIOLATION`).
 - `Ui.Destination` — extends `Ui.Effect`, so `Ui.Navigate` and `Ui.OpenPage` are effects.
 - `prompt` — was `true`, asking with the action's own fields; now a `Ui.Prompt`, inline or by `!ref`, whose entries `inputs` binds through the `prompt` root. `prompt: true` is `SCHEMA_VIOLATION`.
 - `UI_FIELD_REQUIRED_NOT_ENTERED`, `UI_FIELD_UNSUPPORTED` — judged on `Ui.Prompt` as on `Ui.Form`, no longer on an action.
-- `x-telo-context-withheld` — also legal beside `x-telo-context-ref-from`: the binding is typed where the walk's first slot names something and withheld where it holds nothing.
-- `x-telo-context-ref-from` — also takes a list of paths, read as ordered alternatives: the first whose walk's first slot names something types the node. It falls back to the node's own keywords before an open schema.
+- `x-telo-context-withheld` — also legal beside `x-telo-context-ref-from`, with the JSON Schema keywords of the node's own reading beside it: the binding is typed where the path names something and withheld where no alternative names anything.
+- `x-telo-context-ref-from` — a path read from the object holding the region, data segments to its first reference slot and then across each slot; also a list of paths, read as ordered alternatives: the first that names something types the node. A path names nothing where a segment before its last crossed slot holds nothing, and names something where every segment through that slot holds a value — a crossing the walk cannot follow included, which leaves the node open. Where the path holds nothing, the node keeps its own keywords before an open schema.
 - `Ui.Chat.refreshes` → `invalidates`, `Ui.RefreshTarget` → `Ui.InvalidationTarget`, `modules/ui/conformance/refreshes.json` → `invalidations.json`.
 - `Ui.Form` — `record` excludes `onSubmit` and `autosave`, and `onSuccess` and `afterSubmit` need `record` or `onSubmit` (each `SCHEMA_VIOLATION`).
 - The collection contract — `POST <basePath>` answers 2xx with the stored record, valid against the collection's `model`, as `PATCH` does.
@@ -68,7 +69,7 @@ None.
 
 **Removed**
 
-- `Ui.Action` — an unknown kind (`UNDEFINED_KIND`); its wire `action` node with it. A form and a button that run one write are a `Ui.Form` with `onSubmit`; a bare button is a `button` node.
+- `Ui.Action` — an unknown kind (`UNDEFINED_KIND`); its wire `action` node with it. A form and a button that run one write are a `Ui.Form` with `onSubmit`; a bare button is a `button` node holding its call under `action`.
 - `Ui.BoundAction` — `Ui.MutationCall` and `Ui.Move` replace it.
 - `UI_ACTION_CLEAR_UNKNOWN_PROPERTY` — `UI_FORM_CLEAR_UNKNOWN_PROPERTY` replaces it.
 - Parts `action`, `action-result`, `action-failure`, `row-answer`, `row-failure`, and `action` among `data-state`'s holders — `mutation-result` / `mutation-failure` replace the answer parts.
@@ -90,7 +91,7 @@ What follows a success depends on where the write was made, so it belongs to the
 
 **Prompting.** `prompt` holds a `Ui.Prompt`: `model` (what the person enters), `fields` and `groups` as a form's. Pressing the call opens a dialog with those fields, and `inputs` reads what was entered through the `prompt` root (`note: !cel "prompt.note"`), typed from the prompt's `model` and withheld where the call has no prompt. So every required input is bound in `inputs` — one left unbound is `CONTRACT_INPUTS_MISMATCH` — and the field rules (`UI_FIELD_REQUIRED_NOT_ENTERED`, `UI_FIELD_UNSUPPORTED`) are resource rules on `Ui.Prompt`, as on `Ui.Form`; the field kinds' referrer rules name `Ui.Form` and `Ui.Prompt`. A prompt is a kind of its own rather than a `Ui.Form`, because a form's `record`, `onSubmit`, `autosave`, `state` and `afterSubmit` mean nothing there, and rather than fields written on the call, because a call sits at any depth of a node tree where no rule can reach it.
 
-**A form and a button that run one write** — what `Ui.Action` was — is a `Ui.Form` with `onSubmit`. Its `model` is what the person enters, `onSubmit.inputs` maps it onto the mutation's `inputModel`, its `enabled` reads `values`, and its answer is drawn beneath the fields. A bare button is `{ type: button, mutation, inputs: {}, label }`.
+**A form and a button that run one write** — what `Ui.Action` was — is a `Ui.Form` with `onSubmit`. Its `model` is what the person enters, `onSubmit.inputs` maps it onto the mutation's `inputModel`, its `enabled` reads `values`, and its answer is drawn beneath the fields. A bare button is `{ type: button, action: { mutation, inputs: {}, label } }`.
 
 **`record` becomes optional.** Without it, `model` and `fields` are all the form needs: a bare property is entered with the control its type calls for, and a relation is entered by an explicit `Ui.PickerField`, which carries its own options (a bare relation property is `UI_FIELD_UNSUPPORTED`). A form with neither `record` nor `onSubmit` shows no submit button; with no `autosave` either it is legal, and its values are read by its own `shown` conditions, by forms sharing its `state.key`, and by every query or listing naming it in `form`.
 
@@ -102,7 +103,7 @@ What follows a success depends on where the write was made, so it belongs to the
 - **Validity.** While the entered record is invalid, `form` keeps the last valid record and the fields show their findings. Until the form first holds a valid record `form` holds nothing, and a query whose `url` or `input.body` reads it is not sent at all — as for a `url` that holds nothing, and unlike a body member whose chain over `query` or `params` holds nothing, which is only left out — and its nodes draw nothing, not even their `loading` tree, so an invalid start shows no loading indicator.
 - **Reading.** A query reads again when the request its `url` and `input.body` resolve to changes — at most one read in flight, an answer to an earlier request never drawn, the drawn answer kept while the next is awaited.
 
-**Typed from the form, checked by `telo check`.** `form` is a reference slot (`x-telo-ref`, `use: schema`, kind `Ui.Form`), and the root is typed by `x-telo-context-ref-from: "form/model"` beside `x-telo-context-withheld`, accessor-only like every browser root — so `form.perod` is `CEL_UNKNOWN_FIELD`, `form` read where the query names no form is `CEL_UNKNOWN_IDENTIFIER` ("'form' is not available here: the query names no form in `form`"), and a slot naming anything but a form is `REFERENCE_KIND_MISMATCH`. A query node's trees bind `form` from their own query only: a query node nested in another, whose query names no form, withholds it there. The two widenings that make this work are generic: `x-telo-context-withheld` becomes legal beside `x-telo-context-ref-from` (typed where the walk's first slot names something, withheld where it holds nothing — the rule it already follows beside `x-telo-context-from-referrer`), and `x-telo-context-ref-from` falls back to the node's own keywords before an open schema, as `x-telo-context-from-root` already does. The same pair types the `prompt` root and the `result` root of a form's `onSuccess`, the latter through the list form of `x-telo-context-ref-from` — ordered alternatives, the first whose first slot names something typing the node. No part of the analyzer names a form.
+**Typed from the form, checked by `telo check`.** `form` is a reference slot (`x-telo-ref`, `use: schema`, kind `Ui.Form`), and the root is typed by `x-telo-context-ref-from: "form/model"` beside `x-telo-context-withheld`, accessor-only like every browser root — so `form.perod` is `CEL_UNKNOWN_FIELD`, `form` read where the query names no form is `CEL_UNKNOWN_IDENTIFIER` ("'form' is not available here: the query names no form in `form`"), and a slot naming anything but a form is `REFERENCE_KIND_MISMATCH`. A query node's trees bind `form` from their own query only: a query node nested in another, whose query names no form, withholds it there. The two widenings that make this work are generic: `x-telo-context-withheld` becomes legal beside `x-telo-context-ref-from` (typed where the path names something, withheld where no alternative names anything — the rule it already follows beside `x-telo-context-from-referrer`), and `x-telo-context-ref-from` falls back to the node's own keywords where the path holds nothing, as `x-telo-context-from-root` already does. A path names nothing where a segment before its last crossed slot holds nothing — so a query node's `query/form/model` names nothing when its query names no form — and names something where every segment through that slot holds a value. The same pair types the `prompt` root and the `result` root of a form's `onSuccess`, the latter through the list form of `x-telo-context-ref-from` — ordered alternatives, the first that names something typing the node. No part of the analyzer names a form.
 
 **Where the form is not drawn.** A query whose form is not on the page being drawn reads nothing and its nodes draw nothing, as for a `url` that holds nothing.
 
@@ -307,6 +308,16 @@ source:
   collection:
     kind: DataModel.Collection
     model: !ref Person
+    schemas:
+      create:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [name, team, status]
+          properties:
+            name: { type: string }
+            team: { type: string, enum: [north, south] }
+            status: { type: string, enum: [active, away] }
     query: { filters: [{ property: team, operator: eq }, { property: status, operator: eq }], sort: [] }
 ---
 kind: Telo.JsonSchema
@@ -512,15 +523,16 @@ mounts:
           title: New post
           children:
             - type: button
-              mutation:
-                kind: Ui.Mutation
-                inputModel: { kind: Telo.JsonSchema, schema: { type: object, additionalProperties: false, properties: {} } }
-                outputModel: { kind: Telo.JsonSchema, schema: { type: object, required: [id], properties: { id: { type: string } } } }
-                url: /api/posts
-              inputs: {}
-              label: Start a draft
-              onSuccess:
-                - { kind: Ui.Navigate, href: { path: "/posts/{id}", pathParams: { id: !cel "result.id" } } }
+              action:
+                mutation:
+                  kind: Ui.Mutation
+                  inputModel: { kind: Telo.JsonSchema, schema: { type: object, additionalProperties: false, properties: {} } }
+                  outputModel: { kind: Telo.JsonSchema, schema: { type: object, required: [id], properties: { id: { type: string } } } }
+                  url: /api/posts
+                inputs: {}
+                label: Start a draft
+                onSuccess:
+                  - { kind: Ui.Navigate, href: { path: "/posts/{id}", pathParams: { id: !cel "result.id" } } }
         - kind: Ui.Page
           path: /posts/{id}
           title: Edit post
@@ -642,4 +654,4 @@ Refused, each by `telo check` where it is written:
 
 ## Bookkeeping
 
-Run `telo release floor` with the change — `ui` adopts the widened `x-telo-context-withheld` reading and the list form of `x-telo-context-ref-from`. Analyzer: the three annotation widenings, with `CONTEXT_WITHHELD_INVALID` relaxed beside `x-telo-context-ref-from`; documented in `docs/extend/referrer-typed-bindings.md` and the analyzer guide. `ui`'s tests pin `UI_FORM_AUTOSAVE_NOT_IDEMPOTENT` both ways — refused at the declaring manifest, and `runFails:` from a consumer. Docs: `ui` `action.md` replaced by `mutation.md` (the mutation, the call shapes, prompting, `concurrency` with an autosave), `action-contract.md` renamed `mutation-contract.md`; `form.md` (the free-standing form, a query following a form placed elsewhere, `onSubmit`, `onSuccess` and the order after a submit, `autosave` and its idempotency, `clearAnswerOn`, the draft editor); `nodes.md` (the `button` node and every row action and annotation holding a call); `listing.md`, `listing-layouts.md` (`move`), `query.md` on `form` and the `form` root; `surfaces.md` §unsaved input; `filters.md` and the controls contract for the settle rule; `texts.md` and the translations; `data-model` `collection-contract.md` (`POST` answers with the stored record), with `Crud.Api` pinned to it; the `refreshes` → `invalidates` rename across `ui`'s schema, `Ui.Chat` docs and examples; `ui-react` `parts.json` and `styling.md` (the action section becomes mutation answers); `ui-react` `urls.md` and the component ABI where a component runs a call. Every in-repo manifest placing a `Ui.Action` or a bound action (`examples/ui-showcase`, `examples/chat`, `examples/report-console`, and the `ui` and `crud-ui` tests). The ui README's kind table and benefits list, the Declarative UI paragraph of `modules/CLAUDE.md`, the authoring-agent primer and the hub `build-ui` guide. Benefits-ledger entries under Standard library: "Live preview and autosave", and the entry on buttons that run an operation rewritten around mutations run from anywhere. `Added` fragments describing the break for `ui`, `ui-react` and `crud-ui`.
+Run `telo release floor` with the change — `ui` adopts the widened `x-telo-context-withheld` reading and the list form of `x-telo-context-ref-from`. Analyzer: the three annotation widenings, with `CONTEXT_WITHHELD_INVALID` relaxed beside `x-telo-context-ref-from` (a withheld node there may carry the JSON Schema keywords of its own reading, and one beside both typing annotations is refused) and the new `CONTEXT_REF_FROM_INVALID`; documented in `docs/extend/referrer-typed-bindings.md` and the analyzer guide. `ui`'s tests pin `UI_FORM_AUTOSAVE_NOT_IDEMPOTENT` both ways — refused at the declaring manifest, and `runFails:` from a consumer. Docs: `ui` `action.md` replaced by `mutation.md` (the mutation, the call shapes, prompting, `concurrency` with an autosave), `action-contract.md` renamed `mutation-contract.md`; `form.md` (the free-standing form, a query following a form placed elsewhere, `onSubmit`, `onSuccess` and the order after a submit, `autosave` and its idempotency, `clearAnswerOn`, the draft editor); `nodes.md` (the `button` node and every row action and annotation holding a call); `listing.md`, `listing-layouts.md` (`move`), `query.md` on `form` and the `form` root; `surfaces.md` §unsaved input; `filters.md` and the controls contract for the settle rule; `texts.md` and the translations; `data-model` `collection-contract.md` (`POST` answers with the stored record), with `Crud.Api` pinned to it; the `refreshes` → `invalidates` rename across `ui`'s schema, `Ui.Chat` docs and examples; `ui-react` `parts.json` and `styling.md` (the action section becomes mutation answers); `ui-react` `urls.md` and the component ABI where a component runs a call. Every in-repo manifest placing a `Ui.Action` or a bound action (`examples/ui-showcase`, `examples/chat`, `examples/report-console`, and the `ui` and `crud-ui` tests). The ui README's kind table and benefits list, the Declarative UI paragraph of `modules/CLAUDE.md`, the authoring-agent primer and the hub `build-ui` guide. Benefits-ledger entries under Standard library: "Live preview and autosave", and the entry on buttons that run an operation rewritten around mutations run from anywhere. `Added` fragments describing the break for `ui`, `ui-react` and `crud-ui`.

@@ -1,0 +1,159 @@
+kind: Telo.Application
+metadata:
+  name: UiShowcaseSourceSnippetsTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/ui-showcase` and reads the page files it serves under
+    `source/`, the files the source snippets cut their YAML from: each answers
+    with the file's YAML, a path out of the directory serves nothing,
+    every page file places snippets, and every snippet names a file and an
+    anchor its file declares.
+imports:
+  App: ../../../modules/app
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+variables:
+  # The DIRECTORY each run's database goes in, anchored at the working directory.
+  dbFile:
+    env: UI_SHOWCASE_TEST_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: ./.telo
+targets:
+  - !ref test
+---
+kind: HttpClient.Client
+metadata: { name: browser }
+baseUrl: http://127.0.0.1:8160
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    variables:
+      dbFile: !cel "variables.dbFile.joinPath('ui-showcase-source-' + uuidv4() + '.db')"
+    ports: { http: 8160 }
+targets:
+  - !ref app
+steps:
+  - name: actions
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /source/actions.yaml, responseType: text }
+  - name: components
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /source/components.yaml, responseType: text }
+  - name: conditions
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /source/conditions.yaml, responseType: text }
+  - name: crud
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /source/crud.yaml, responseType: text }
+  - name: data
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /source/data.yaml, responseType: text }
+  - name: filters
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /source/filters.yaml, responseType: text }
+  - name: forms
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /source/forms.yaml, responseType: text }
+  - name: overview
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /source/overview.yaml, responseType: text }
+  - name: records
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /source/records.yaml, responseType: text }
+  - name: review
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /source/review.yaml, responseType: text }
+  - name: search
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /source/search.yaml, responseType: text }
+  - name: tables
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /source/tables.yaml, responseType: text }
+  - name: themes
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /source/themes.yaml, responseType: text }
+  - name: underMount
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /sidebar/source/tables.yaml, responseType: text }
+  - name: outside
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/source/..%2fshowcase.db", responseType: text }
+  - name: texts
+    value: !cel >-
+      {
+        'actions': steps.actions.result.body,
+        'components': steps.components.result.body,
+        'conditions': steps.conditions.result.body,
+        'crud': steps.crud.result.body,
+        'data': steps.data.result.body,
+        'filters': steps.filters.result.body,
+        'forms': steps.forms.result.body,
+        'overview': steps.overview.result.body,
+        'records': steps.records.result.body,
+        'review': steps.review.result.body,
+        'search': steps.search.result.body,
+        'tables': steps.tables.result.body,
+        'themes': steps.themes.result.body
+      }
+  - name: verifyServed
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        statuses: !cel >-
+          [
+            steps.actions.result.status,
+            steps.components.result.status,
+            steps.conditions.result.status,
+            steps.crud.result.status,
+            steps.data.result.status,
+            steps.filters.result.status,
+            steps.forms.result.status,
+            steps.overview.result.status,
+            steps.records.result.status,
+            steps.review.result.status,
+            steps.search.result.status,
+            steps.tables.result.status,
+            steps.themes.result.status
+          ]
+        firstResource:
+          actions: !cel "regexGroups(steps.actions.result.body, '(?m)^metadata: [{] name: ([A-Za-z]+) [}]')[0]"
+          components: !cel "regexGroups(steps.components.result.body, '(?m)^metadata: [{] name: ([A-Za-z]+) [}]')[0]"
+          conditions: !cel "regexGroups(steps.conditions.result.body, '(?m)^metadata: [{] name: ([A-Za-z]+) [}]')[0]"
+          crud: !cel "regexGroups(steps.crud.result.body, '(?m)^metadata: [{] name: ([A-Za-z]+) [}]')[0]"
+          data: !cel "regexGroups(steps.data.result.body, '(?m)^metadata: [{] name: ([A-Za-z]+) [}]')[0]"
+          filters: !cel "regexGroups(steps.filters.result.body, '(?m)^metadata: [{] name: ([A-Za-z]+) [}]')[0]"
+          forms: !cel "regexGroups(steps.forms.result.body, '(?m)^metadata: [{] name: ([A-Za-z]+) [}]')[0]"
+          overview: !cel "regexGroups(steps.overview.result.body, '(?m)^metadata: [{] name: ([A-Za-z]+) [}]')[0]"
+          records: !cel "regexGroups(steps.records.result.body, '(?m)^metadata: [{] name: ([A-Za-z]+) [}]')[0]"
+          review: !cel "regexGroups(steps.review.result.body, '(?m)^metadata: [{] name: ([A-Za-z]+) [}]')[0]"
+          search: !cel "regexGroups(steps.search.result.body, '(?m)^metadata: [{] name: ([A-Za-z]+) [}]')[0]"
+          tables: !cel "regexGroups(steps.tables.result.body, '(?m)^metadata: [{] name: ([A-Za-z]+) [}]')[0]"
+          themes: !cel "regexGroups(steps.themes.result.body, '(?m)^metadata: [{] name: ([A-Za-z]+) [}]')[0]"
+        underMount: !cel "steps.underMount.result.body == steps.tables.result.body"
+        outside: !cel "steps.outside.result.status"
+      expected:
+        statuses: [ 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 ]
+        firstResource:
+          actions: actionsPage
+          components: componentsPage
+          conditions: conditionsPage
+          crud: crudPage
+          data: dataPage
+          filters: filtersPage
+          forms: formsPage
+          overview: overviewPage
+          records: recordsPage
+          review: inbox
+          search: searchPostTable
+          tables: tablesPage
+          themes: themesPage
+        underMount: true
+        outside: 404
+
+  # Every file places snippets; each names its own file and an anchor the file
+  # declares as a resource placed by a composite, `ref: &name`, so a snippet
+  # always shows a whole resource.
+  - name: verifyAnchors
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        withoutSnippets: !cel "steps.texts.result.filter(f, !steps.texts.result[f].contains('Components.sourceSnippet'))"
+        misnamed: !cel >-
+          steps.texts.result.filter(f,
+            regexExtractAll(steps.texts.result[f], 'file: [a-z-]+[.]yaml, anchor: [A-Za-z]+')
+              .exists(u, !u.startsWith('file: ' + f + '.yaml, ')))
+        undeclared: !cel >-
+          steps.texts.result.filter(f,
+            regexExtractAll(steps.texts.result[f], 'file: [a-z-]+[.]yaml, anchor: [A-Za-z]+')
+              .exists(u, !steps.texts.result[f].matches('(?m)^\\s*ref: &' + u.split('anchor: ')[1] + '( |$)')))
+      expected: { withoutSnippets: [], misnamed: [], undeclared: [] }

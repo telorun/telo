@@ -3,7 +3,7 @@
 A surface is where an opened page appears, and how it is dismissed. Whoever
 opens the page names it — a [`Ui.OpenPage`](presses.md#uiopenpage) takes one,
 wherever it is written: a listing's `create` and `edit`, a `button`, a link, an
-action's success — and the page says nothing about it, so one page can open in
+call's success — and the page says nothing about it, so one page can open in
 a dialog from one listing and in a panel from another.
 
 Each way of appearing is a kind. `kind:` is the only thing that tells them
@@ -251,7 +251,9 @@ behaves as one opened in a surface: `afterSubmit: close` closes the surface the
 form's page is open in, and on a page of its own the form stays, saved.
 
 **What `unsaved: confirm` asks about.** A form holds unsaved input from the
-first change until it is saved. While it does, anything that would **close the
+first change until it is saved. A form with an [`autosave`](form.md#unsaved)
+is also unsaved while its record differs from the one last acknowledged, or a
+write is waiting, in flight or failed. While it does, anything that would **close the
 form** asks first, and happens only if the user chooses to leave:
 
 - closing the surface the page is open in — its close button, Escape, a click
@@ -262,6 +264,11 @@ form** asks first, and happens only if the user chooses to leave:
 A move within the page that keeps the form open — a filter in the query, a
 fragment — asks nothing. Several forms holding unsaved input are one question.
 The guard holds for every form with unsaved input, wherever it is placed.
+
+With an `autosave`, the question's two answers differ in what they do to the
+waiting write: **keep editing** leaves it to send as scheduled, **discard** drops
+it; a write already in flight is never aborted, and nothing is sent with
+`keepalive`, so a stuck server never blocks navigation.
 
 **Back and forward.** A step through the browser's history that would close
 the form is undone before the question is asked: the address and the history

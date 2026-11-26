@@ -34,6 +34,7 @@ steps:
           url: { path: { value: /api/auth }, pathParams: {}, queryParams: {} }
           input: null
           query: {}
+          form: null
           reloadOn: [focus, unauthorized]
         - id: HoursReport/web_pages_0/children/1/query
           schema:
@@ -52,6 +53,7 @@ steps:
                 period: { map: { from: { root: query, path: [from] }, to: { root: query, path: [to] } } }
                 projects: { root: query, path: [project] }
           query: { from: { type: string, format: date }, to: { type: string, format: date }, project: { type: array, items: { type: string } } }
+          form: null
           reloadOn: []
           reloadEvery: 60000
   - name: report

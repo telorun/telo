@@ -5,7 +5,7 @@ import type { SpecNode } from "./nodes.js";
 import { presentedAddress } from "./value-cell.js";
 
 /** Nodes that draw records of their own, whose links belong to those records. */
-const DRAWS_OWN_RECORDS = new Set(["list", "listing", "query", "action", "form", "filters", "chat", "split", "component"]);
+const DRAWS_OWN_RECORDS = new Set(["list", "listing", "query", "form", "filters", "chat", "split", "component"]);
 
 /** Nodes a press is written on. */
 const PRESSABLE = new Set(["box", "stack", "columns"]);

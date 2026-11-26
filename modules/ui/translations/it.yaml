@@ -7,6 +7,8 @@ messages:
   noRows: Nessuna riga.
   nothingFound: Nessun risultato.
   save: Salva
+  saving: Salvataggio in corso…
+  retry: Riprova
   cancel: Annulla
   close: Chiudi
   newRecord: Nuovo

@@ -6,6 +6,7 @@ import {
   MODULE_OVERVIEW_TOPOLOGY,
 } from "../../../application-adapter";
 import { DetailPanel } from "../../DetailPanel";
+import { canDeleteSelection } from "../../resource-delete";
 import type { ResolvedResourceOption, TypeKindOption } from "../../resource-schema-form/types";
 import type { ViewProps } from "../types";
 import { RegionErrorBoundary } from "../../RegionErrorBoundary";
@@ -16,6 +17,7 @@ import { ConfigurationPicker } from "./ConfigurationPicker";
 import { ModuleBar } from "./ModuleBar";
 import { PreviewNotice } from "./PreviewNotice";
 import { StructuredModelNotice } from "./StructuredModelNotice";
+import { useJustDeleted } from "./useJustDeleted";
 import type { TopologyViewProps } from "./topology-view";
 
 /**
@@ -46,7 +48,7 @@ export function TopologyView({
   selectedResource,
   selection,
   onUpdateResource,
-  onDeleteResource,
+  onDeleteResource: deleteNow,
   onWriteRef,
   onCreateAndLink,
   onCreateResource,
@@ -74,6 +76,11 @@ export function TopologyView({
   // The synthesized module root, which `buildModuleViewData` puts in the
   // resource list so every surface finds it through the same lookups.
   const root = viewData.manifest.resources.find((r) => isModuleRootKind(r.kind)) ?? null;
+  const { hiddenIds: justDeleted, deleteResource: onDeleteResource } = useJustDeleted(
+    moduleGraph,
+    viewData,
+    deleteNow,
+  );
   const rootKind = root ? (viewData.kinds.get(root.kind) ?? null) : null;
 
   const resolvedResources = useMemo<ResolvedResourceOption[]>(
@@ -175,6 +182,7 @@ export function TopologyView({
           onUpdateResource,
           onCreateAndLink,
           onDeleteResource,
+          justDeleted,
           onWriteRef,
           onCreateResource,
           onMoveField,
@@ -292,6 +300,11 @@ export function TopologyView({
         onSelect={onSelect}
         onCreateAndLink={onCreateAndLink}
         onClose={onClearSelection}
+        onDelete={
+          selectedResource && !readOnly && canDeleteSelection(selectedResource, "")
+            ? () => onDeleteResource(selectedResource.kind, selectedResource.name)
+            : undefined
+        }
       />
       </RegionErrorBoundary>
     </div>

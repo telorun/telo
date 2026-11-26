@@ -79,9 +79,9 @@ steps:
         recentStatus: !cel "steps.recent.result.status"
         recentText: !cel "steps.recent.result.body.entries[0].text"
         page: !cel "steps.page.result.body.children.map(c, c.type)"
-        formPosts: !cel "steps.page.result.body.children[1].request.target.path.value"
+        formPosts: !cel "steps.page.result.body.children[1].onSubmit.mutation.url.path.value"
       expected:
         recentStatus: 200
         recentText: the docs made sense
-        page: [text, action, text, query]
+        page: [text, form, text, query]
         formPosts: /v1/feedback

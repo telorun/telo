@@ -36,6 +36,25 @@ RUN --mount=type=cache,target=/pnpm pnpm fetch
 COPY . /build
 RUN --mount=type=cache,target=/pnpm pnpm install --frozen-lockfile
 RUN pnpm --filter=@telorun/cli... run build
+# A release image reports exactly its version, as a published package does (its `prepack`
+# embeds the identity with `--published`); any other build reports `<version>+unreleased`.
+# The builds above regenerate the version modules unpublished, so each is rebuilt, then held
+# to the identity checks each package's `prepack` relies on.
+ARG TELO_PUBLISHED=false
+RUN set -eu; \
+    if [ "$TELO_PUBLISHED" = "true" ]; then \
+      node scripts/generate-telo-version.mjs --published; \
+      node scripts/render-builtin-vocabulary.mjs --published; \
+      pnpm --filter=@telorun/cel exec tsc -p tsconfig.lib.json; \
+      pnpm --filter=@telorun/analyzer exec tsc -p tsconfig.lib.json; \
+      pnpm --filter=@telorun/kernel exec tsc; \
+      node scripts/check-pack-identity.mjs cel; \
+      node scripts/check-pack-identity.mjs analyzer; \
+      node scripts/check-pack-identity.mjs kernel; \
+      node analyzer/nodejs/scripts/check-builtin-vocabulary.mjs; \
+    elif [ "$TELO_PUBLISHED" != "false" ]; then \
+      echo "TELO_PUBLISHED must be true or false" >&2; exit 1; \
+    fi
 RUN pnpm --filter=@telorun/cli --prod deploy --legacy /deploy
 # `pnpm deploy` (unlike `pnpm publish`) leaves the `@telorun/debug-ui` devDep
 # pinned at `workspace:*`, so the runtime CLI can't derive a version to fetch the

@@ -498,14 +498,16 @@ title: Sync
 children:
   - { type: text, text: "Sync now", style: title }
   - { type: text, text: "Pulls every page from the upstream and upserts it. Rate limited: a second press too soon is refused.", style: muted }
-  - type: composite
-    ref:
-      kind: Ui.Action
-      inputModel:
-        kind: Telo.JsonSchema
-        schema: { type: object, additionalProperties: false, properties: {} }
-      outputModel: !ref SyncResult
-      request: { target: { path: /api/sync } }
+  - type: button
+    action:
+      mutation:
+        kind: Ui.Mutation
+        inputModel:
+          kind: Telo.JsonSchema
+          schema: { type: object, additionalProperties: false, properties: {} }
+        outputModel: !ref SyncResult
+        url: /api/sync
+      inputs: {}
       label: Sync now
       result:
         type: list
@@ -527,18 +529,23 @@ children:
   - { type: text, text: "Leave the user empty to list every user's posts.", style: muted }
   - type: composite
     ref:
-      kind: Ui.Action
-      inputModel: !ref PostSearch
-      outputModel: !ref PostList
-      request: { target: { path: /api/posts/search } }
-      label: Find posts
-      result:
-        type: list
-        rows: !cel "result.posts"
-        columns:
-          - value: !cel "row.id"
-          - value: !cel "row.userId"
-          - value: !cel "row.title"
+      kind: Ui.Form
+      model: !ref PostSearch
+      onSubmit:
+        mutation:
+          kind: Ui.Mutation
+          inputModel: !ref PostSearch
+          outputModel: !ref PostList
+          url: /api/posts/search
+        inputs: { userId: !cel "values.userId" }
+        label: Find posts
+        result:
+          type: list
+          rows: !cel "result.posts"
+          columns:
+            - value: !cel "row.id"
+            - value: !cel "row.userId"
+            - value: !cel "row.title"
 ---
 # The whole frontend: a button that syncs and shows how the last runs went, and
 # a form that looks posts up in the local copy.

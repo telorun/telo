@@ -24,7 +24,8 @@ spec:
     - Egress
   ingress:
     # The runner reaches session pods on every port — the workspace surface,
-    # each app's session supervisor and kernel debug stream; deny pod-to-pod
+    # each slot's session supervisor and the apps' declared ports (the kernel
+    # debug stream binds loopback, read through the supervisor); deny pod-to-pod
     # traffic between sessions (no podSelector peer is allowed).
     - from:
         - namespaceSelector:

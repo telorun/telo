@@ -189,15 +189,6 @@ schema:
           rating: { type: integer, title: Rating }
           created_at: { type: string, title: Received }
 ---
-kind: Ui.Action
-metadata: { name: sendFeedback }
-inputModel: !ref NewFeedback
-outputModel: !ref Received
-request: { target: /v1/feedback }
-label: Send feedback
-result: { type: text, text: Thank you — your feedback was received., style: success }
-onSuccess: { refreshes: [/v1/feedback/recent] }
----
 kind: Ui.Page
 metadata: { name: feedbackPage }
 path: /
@@ -205,7 +196,20 @@ title: Feedback
 width: contained
 children:
   - { type: text, text: Tell us what you think, style: title }
-  - { type: composite, ref: !ref sendFeedback }
+  - type: composite
+    ref:
+      kind: Ui.Form
+      model: !ref NewFeedback
+      onSubmit:
+        mutation:
+          kind: Ui.Mutation
+          inputModel: !ref NewFeedback
+          outputModel: !ref Received
+          url: /v1/feedback
+          invalidates: [/v1/feedback/recent]
+        inputs: { text: !cel "values.text", source: !cel "values.source", rating: !cel "values.rating" }
+        label: Send feedback
+        result: { type: text, text: Thank you — your feedback was received., style: success }
   - { type: text, text: What came in, style: subheading }
   - type: query
     query:

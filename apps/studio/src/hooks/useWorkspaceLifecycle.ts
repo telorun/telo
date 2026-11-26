@@ -14,6 +14,8 @@ import {
   openWorkspaceDirectory,
   readManifestUrlParam,
   reopenWorkspaceAt,
+  restoreDecision,
+  workspaceBackendOf,
   VIRTUAL_WORKSPACE_ROOT,
   writeRemoteImportPlan,
 } from "../loader";
@@ -34,7 +36,7 @@ import type {
   Workspace,
   WorkspaceAdapter,
 } from "../model";
-import { forgetWorkspaceRoot } from "../storage";
+import { forgetWorkspaceRoot, recordWorkspaceBackend } from "../storage";
 import { getModuleFiles } from "../diagnostics-aggregate";
 import { INITIAL_STATE, pickInitialActiveModule } from "../editor-state";
 import type { PersistedEditorState } from "./useEditorPersistence";
@@ -136,7 +138,7 @@ export interface WorkspaceLifecycle {
     kind: ModuleKind,
     name: string,
     selection: NewModuleSelection,
-    opts?: { overwrite?: boolean },
+    opts?: { overwrite?: boolean; title?: string },
   ) => Promise<void>;
   handleConfirmImport: () => Promise<void>;
   /** Drives the remote-import AlertDialog's open state: confirms ride the
@@ -187,6 +189,7 @@ export function useWorkspaceLifecycle({
   // goes unpublished.
   function attachWorkspaceAdapter(adapter: WorkspaceAdapter) {
     workspaceAdapterRef.current = new ObservedWorkspaceAdapter(adapter, changes.publish);
+    recordWorkspaceBackend(workspaceBackendOf(adapter));
   }
   const autoRestoredRef = useRef(false);
   const remoteImportRef = useRef(false);
@@ -271,8 +274,10 @@ export function useWorkspaceLifecycle({
   }
 
   async function restoreLastWorkspace(shouldAbort?: () => boolean) {
-    if (!persistedHint?.rootDir) return;
-    const reopened = reopenWorkspaceAt(persistedHint.rootDir);
+    const decision = restoreDecision(persistedHint);
+    if (!persistedHint || decision === "none") return;
+    const reopened =
+      decision === "browser" ? openedBrowserWorkspace() : reopenWorkspaceAt(persistedHint.rootDir!);
     if (!reopened) return;
     manifestAdapterRef.current = reopened.manifestAdapter;
     attachWorkspaceAdapter(reopened.workspaceAdapter);
@@ -482,13 +487,13 @@ export function useWorkspaceLifecycle({
 
   // Named by its backend, not its root: where a directory picker exists, a
   // picked folder called `workspace` has the same root.
-  async function openBrowserWorkspace() {
+  function openedBrowserWorkspace(): OpenedWorkspace {
     const adapter = createVirtualWorkspaceAdapter();
-    await openAttached({
-      manifestAdapter: adapter,
-      workspaceAdapter: adapter,
-      rootDir: VIRTUAL_WORKSPACE_ROOT,
-    });
+    return { manifestAdapter: adapter, workspaceAdapter: adapter, rootDir: VIRTUAL_WORKSPACE_ROOT };
+  }
+
+  async function openBrowserWorkspace() {
+    await openAttached(openedBrowserWorkspace());
   }
 
   function closeWorkspace() {
@@ -519,7 +524,7 @@ export function useWorkspaceLifecycle({
     kind: ModuleKind,
     name: string,
     selection: NewModuleSelection,
-    opts?: { overwrite?: boolean },
+    opts?: { overwrite?: boolean; title?: string },
   ) {
     const workspaceOpen = !!state.workspace && !!workspaceAdapterRef.current;
 
@@ -537,6 +542,7 @@ export function useWorkspaceLifecycle({
       selection,
       manifestSources,
       overwrite: opts?.overwrite,
+      ...(opts?.title !== undefined ? { title: opts.title } : {}),
     });
 
     if (workspaceOpen) {

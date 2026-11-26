@@ -1,12 +1,16 @@
 import { BYTE_STREAM_CODES, type ByteStreamTag, type IoMode } from "../contract.js";
 
 /**
- * The runner's half of the session supervisor protocol, generation 1
+ * The runner's half of the session supervisor protocol, generation 2
  * (normative: `specs/supervisor-protocol.md`; the supervisor's half is the
  * `supervisor/` crate). Pinned by `supervisor/vectors/`.
  */
-export const SUPERVISOR_GENERATION = 1;
+export const SUPERVISOR_GENERATION = 2;
 export const SUPERVISOR_PATH = "/v1/supervisor";
+export const SUPERVISOR_PORT_FORWARD_PATH = "/v1/port-forward";
+/** What a port forward holds read from its port and not yet written to the
+ *  WebSocket before it stops reading the port. */
+export const PORT_FORWARD_MAX_QUEUED_BYTES = 1024 * 1024;
 
 export const SUPERVISOR_CLOSE = {
   protocolError: 4400,
@@ -16,6 +20,9 @@ export const SUPERVISOR_CLOSE = {
   superseded: 4409,
   generationMismatch: 4426,
   backlogged: 4429,
+  /** A port forward's port: nothing accepts a connection on it, or its
+   *  connection failed. */
+  portUnreachable: 4502,
 } as const;
 
 const MAX_DIMENSION = 10_000;
@@ -116,6 +123,13 @@ export function encodeRunnerMessage(message: RunnerMessage): string {
       requireInteger(message.rows, 1, MAX_DIMENSION, "resize.rows");
       return JSON.stringify({ type: "resize", cols: message.cols, rows: message.rows });
   }
+}
+
+/** The request target of a port forward to `127.0.0.1:<port>` inside the
+ *  workload, refusing a port the supervisor would close on. */
+export function portForwardTarget(port: number): string {
+  requireInteger(port, 1, 0xffff, "port");
+  return `${SUPERVISOR_PORT_FORWARD_PATH}?port=${port}`;
 }
 
 /** Decodes a supervisor text frame strictly: a field this generation does not

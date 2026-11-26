@@ -129,8 +129,8 @@ steps:
   - name: same
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.kinded.result"
-      expected: !cel "steps.bare.result"
+      actual: !cel "{'fields': steps.kinded.result.node.fields, 'groups': steps.kinded.result.node.groups, 'state': steps.kinded.result.node.state}"
+      expected: !cel "{'fields': steps.bare.result.node.fields, 'groups': steps.bare.result.node.groups, 'state': steps.bare.result.node.state}"
   - name: check
     invoke: { kind: Assert.Equals }
     inputs:

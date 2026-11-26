@@ -1,7 +1,8 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
-import { changeKey, resolveRequest, type AddressWire } from "./address-wire.js";
+import { addressReads, changeKey, resolveRequest, type AddressWire } from "./address-wire.js";
 import { fillAttribute, styleAttribute } from "./bindings.js";
-import { resolveBody, type BodyTemplate } from "./body-template.js";
+import { bodyReads, resolveBody, type BodyTemplate } from "./body-template.js";
+import { useFormRoot } from "./form-records.js";
 import { ResponseWatchContext, useHost, useHostStore, type ResponseWatcher } from "./host.js";
 import { Nodes, type SpecNode } from "./nodes.js";
 import { queryRoot } from "./query-root.js";
@@ -19,6 +20,8 @@ interface QuerySpec {
   url: AddressWire;
   input: { body: BodyTemplate } | null;
   query: Record<string, JsonSchema>;
+  /** The id of the form whose settled record `form` reads; null when none. */
+  form: string | null;
   reloadOn: string[];
   reloadEvery?: number;
 }
@@ -30,7 +33,9 @@ interface QuerySpec {
  * the same request draws from one read; a node whose request changes keeps
  * drawing its last answer until the new one is in. A failed read keeps the
  * content out of sight, but a failed tick of `reloadEvery` keeps it drawn, the
- * failure beside it.
+ * failure beside it. A query naming a form reads its settled, valid record as
+ * `form`: it reads nothing and draws nothing while the form is not on the page,
+ * or — when its `url` or body reads `form` — before the form first holds one.
  */
 export function QueryNode({ node }: { node: SpecNode }) {
   const reads = useHostStore().queries;
@@ -42,10 +47,19 @@ export function QueryNode({ node }: { node: SpecNode }) {
   const watchers = useContext(ResponseWatchContext);
   const spec = node.query as QuerySpec;
   const query = useMemo(() => queryRoot(spec.query, host.location.search), [spec.query, host.location.search]);
-  const scope = useMemo(() => ({ ...outer, query }), [outer, query]);
-  const resolved = useMemo(() => resolveRequest(spec.url, scope, `query '${spec.id}' url`), [spec.url, scope]);
+  const followed = useFormRoot(spec.form);
+  const form = followed?.record;
+  // `form` is the query's own: a query naming no form withholds one bound around it.
+  const scope = useMemo(() => {
+    const { form: around, ...rest } = outer;
+    return spec.form === null ? { ...rest, query } : { ...rest, query, form };
+  }, [outer, query, spec.form, form]);
+  const readsForm = useMemo(() => addressReads(spec.url, "form") || (spec.input !== null && bodyReads(spec.input.body, "form")), [spec.url, spec.input]);
+  const waiting = followed !== undefined && (!followed.placed || (readsForm && form === undefined));
+  // Resolved only once there is a record to read: a url over `form` is not judged while it holds nothing.
+  const resolved = useMemo(() => (waiting ? undefined : resolveRequest(spec.url, scope, `query '${spec.id}' url`)), [waiting, spec.url, scope]);
   const request = useMemo<QueryRequest | undefined>(() => {
-    if (!resolved.ok) return undefined;
+    if (resolved === undefined || !resolved.ok) return undefined;
     const body = spec.input === null ? undefined : resolveBody(spec.input.body, scope);
     return {
       method: spec.method,
@@ -89,16 +103,18 @@ export function QueryNode({ node }: { node: SpecNode }) {
   const data = drawn?.data;
   const contentRoots = useMemo(() => ({ ...scope, data }), [scope, data]);
   // An address that does not resolve sends nothing and draws the failure.
-  const failure: RequestError | undefined = !resolved.ok
+  const failure: RequestError | undefined = resolved !== undefined && !resolved.ok
     ? { code: resolved.error.code, message: resolved.error.message }
     : drawn?.outcome !== undefined && !drawn.outcome.ok
       ? drawn.outcome.error
       : undefined;
   const failed = failure !== undefined;
   // A failed tick leaves what was read on show, the failure beside it.
-  const hidden = failed && !(drawn?.outcome?.tick === true && resolved.ok);
+  const hidden = failed && !(drawn?.outcome?.tick === true && resolved?.ok === true);
   const status = failed ? "error" : data === undefined ? "loading" : "idle";
 
+  // Before the form it follows is there to read, nothing is drawn — not even the loading tree.
+  if (resolved === undefined) return null;
   return (
     <div data-telo-part="query" data-state={status} data-fill={fillAttribute(node)} data-style={styleAttribute(node.style)}>
       <ResponseWatchContext.Provider value={inside}>

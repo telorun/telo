@@ -8,18 +8,25 @@ import {
   type ExchangeVectors,
 } from "../test-support/supervisor-exchange.js";
 import { FakeSupervisor } from "./fake-supervisor.js";
-import { SUPERVISOR_GENERATION, SUPERVISOR_PATH, type RunnerMessage } from "./supervisor-protocol.js";
+import {
+  SUPERVISOR_GENERATION,
+  SUPERVISOR_PATH,
+  SUPERVISOR_PORT_FORWARD_PATH,
+  type RunnerMessage,
+} from "./supervisor-protocol.js";
 
 interface RunnerMessageVectors {
   runner: {
     valid: Array<{ name: string; message: RunnerMessage }>;
     invalid: Array<{ name: string; text: string; close: number }>;
   };
+  portForward: { invalid: Array<{ name: string; query: string | null; close: number }> };
 }
 
 const TOKEN = "vector-token";
 const exchanges = supervisorVectors<ExchangeVectors>("exchanges.json").exchanges;
 const messages = supervisorVectors<RunnerMessageVectors>("messages.json").runner;
+const portForwards = supervisorVectors<RunnerMessageVectors>("messages.json").portForward;
 
 let fake: FakeSupervisor | undefined;
 
@@ -95,5 +102,17 @@ describe("the fake supervisor reads the runner's message vectors", () => {
     const connection = await greeted(supervisor, isHello ? text : undefined);
     if (!isHello) connection.socket.send(text);
     expect(await connection.closed).toBe(close);
+  });
+});
+
+describe("the fake supervisor reads the port forward vectors", () => {
+  it.each(portForwards.invalid)("closes a port forward with $name", async ({ query, close }) => {
+    const supervisor = await startFake();
+    const target = query === null ? SUPERVISOR_PORT_FORWARD_PATH : `${SUPERVISOR_PORT_FORWARD_PATH}?${query}`;
+    const socket = new WebSocket(`ws://127.0.0.1:${supervisor.port}${target}`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    });
+    expect(await new Promise<number>((resolve) => socket.once("close", (code) => resolve(code)))).toBe(close);
+    expect(supervisor.forwards).toEqual([]);
   });
 });

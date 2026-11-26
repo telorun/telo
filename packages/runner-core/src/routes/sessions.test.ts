@@ -7,6 +7,7 @@ import { deriveChildSeed, encodeSecretSeed } from "@telorun/secret-seed";
 
 import { AGENT_NAME, loadAgentFromEnv } from "../config.js";
 import type { RunEvent } from "../contract.js";
+import { openInspectSocket } from "../debug/inspect-socket.js";
 import { resumeSecretHash } from "../session/session-credentials.js";
 import {
   bootTestServer,
@@ -200,7 +201,7 @@ describe("running an app", () => {
       app: "web",
       run: {
         runId,
-        argv: ["telo", "run", "--watch", "--no-input", "--inspect", "0.0.0.0:9230", "--no-open", "web/telo.yaml"],
+        argv: ["telo", "run", "--watch", "--no-input", "--inspect", "127.0.0.1:9230", "--no-open", "web/telo.yaml"],
         env: { NAME: "x", TELO_HOST_STATE_DIR: "/var/lib/telo-apps/web" },
         cwd: ".",
         io: "streams",
@@ -244,7 +245,10 @@ describe("running an app", () => {
     const seen: IncomingHttpHeaders[] = [];
     const inspect = await sseServer((headers) => seen.push(headers));
     const backend = new FakeWorkloadBackend();
-    backend.addresses = () => ({ inspect: { listen: "0.0.0.0:9230", url: inspect.url }, host: "127.0.0.1" });
+    backend.addresses = () => ({
+      inspect: { listen: "127.0.0.1:9230", connect: (signal) => openInspectSocket("127.0.0.1", inspect.port, signal) },
+      host: "127.0.0.1",
+    });
     const b = await boot({ backend });
     const s = await create(b);
 
@@ -266,7 +270,10 @@ describe("running an app", () => {
     const urls = ["http://localhost:3000/docs/", "http://localhost:3000/docs/", "javascript:alert(1)"];
     const inspect = await sseServer(() => undefined, urls);
     const backend = new FakeWorkloadBackend();
-    backend.addresses = () => ({ inspect: { listen: "0.0.0.0:9230", url: inspect.url }, host: "127.0.0.1" });
+    backend.addresses = () => ({
+      inspect: { listen: "127.0.0.1:9230", connect: (signal) => openInspectSocket("127.0.0.1", inspect.port, signal) },
+      host: "127.0.0.1",
+    });
     const b = await boot({ backend });
     const s = await create(b);
 
@@ -647,7 +654,7 @@ function runStarts(b: Booted, sessionId: string) {
 async function sseServer(
   onConnect: (headers: IncomingHttpHeaders) => void,
   openUrls: string[] = [],
-): Promise<{ url: string }> {
+): Promise<{ port: number }> {
   const server: Server = createServer((req, res) => {
     onConnect(req.headers);
     res.writeHead(200, { "content-type": "text/event-stream" });
@@ -678,7 +685,7 @@ async function sseServer(
         server.close(() => resolve());
       }),
   );
-  return { url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/events` };
+  return { port: (server.address() as AddressInfo).port };
 }
 
 function closeCode(url: string): Promise<number> {

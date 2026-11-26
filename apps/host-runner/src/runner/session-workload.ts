@@ -16,6 +16,7 @@ import type {
 } from "@telorun/runner-core";
 import {
   AppRunRefused,
+  openInspectSocket,
   portKey,
   SessionStartError,
   WORKSPACE_MARKER_CONTENTS,
@@ -128,7 +129,7 @@ export class LocalSessionWorkload implements BackendWorkload {
     const index = [...this.slots.keys()].indexOf(app);
     const port = await freeLoopbackPort(index >= 0 ? INSPECT_PORT_BASE + index : undefined);
     return {
-      inspect: { listen: `127.0.0.1:${port}`, url: `http://127.0.0.1:${port}/events` },
+      inspect: { listen: `127.0.0.1:${port}`, connect: (signal) => openInspectSocket("127.0.0.1", port, signal) },
       host: "127.0.0.1",
     };
   }

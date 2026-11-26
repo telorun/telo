@@ -7,7 +7,8 @@ import { anchorMove } from "./link-address.js";
 import { ErrorNode, Loading, Nodes, type SpecNode } from "./nodes.js";
 import { anchorOf } from "./node-anchors.js";
 import { locationAt, OpenedPageStore } from "./opened-page-store.js";
-import { PressQueueContext, PressQueues } from "./operation.js";
+import { MutationRunner, MutationRunnerContext } from "./mutation-call.js";
+import { FormRecords, FormRecordsContext } from "./form-records.js";
 import { fetchDocument, fetchNotFound, type PageDocument } from "./page-documents.js";
 import { pageEntries, pageKey, sameSurface, surfaceDeclaring, type DeclaredSurface } from "./page-key.js";
 import { matchPage } from "./page-route.js";
@@ -218,7 +219,7 @@ export const openedLocation = (opened: OpenedPage | undefined): CurrentLocation 
 const FALLBACK_DIALOG: SurfaceSpec = { type: "dialog", size: "medium", modal: true, dismiss: { escape: true, outside: true, closeButton: true } };
 
 /** The nodes a panel is drawn beside: the nearest of these that holds what was pressed. */
-const COMPOSITES = ["listing", "split", "form", "action", "filters", "chat"].map((part) => `[data-telo-part="${part}"]`).join(",");
+const COMPOSITES = ["listing", "split", "form", "filters", "chat"].map((part) => `[data-telo-part="${part}"]`).join(",");
 
 /** Whether a surface is placed against what opened it, rather than against the viewport. */
 const isPlaced = (surface: SurfaceSpec): boolean => surface.type === "popover" || surface.type === "inline" || surface.type === "panel";
@@ -347,7 +348,9 @@ function OpenedPageContent({
   const [drawing, setDrawing] = useState<Drawing>();
   const held = useRef<PageDocument | undefined>(undefined);
   const closing = useMemo(() => ({ close: onClose, busy: (busy: boolean) => void (opened.busy.current = busy) }), [onClose, opened]);
-  const queues = useMemo(() => new PressQueues(), []);
+  const runner = useMemo(() => new MutationRunner(), []);
+  // A page opened over another keeps its forms' records apart from the page under it.
+  const forms = useMemo(() => new FormRecords(), []);
   const url = `${environment.prefix}/_telo/ui/page?path=${encodeURIComponent(path)}`;
 
   useEffect(() => {
@@ -394,9 +397,11 @@ function OpenedPageContent({
       <PageHostContext.Provider value={inside}>
         <OpenedPageContext.Provider value={closing}>
           <div style={{ display: "contents" }} onClick={follow}>
-            <PressQueueContext.Provider value={queues}>
-              <RootsContext.Provider value={roots}>{content}</RootsContext.Provider>
-            </PressQueueContext.Provider>
+            <MutationRunnerContext.Provider value={runner}>
+              <FormRecordsContext.Provider value={forms}>
+                <RootsContext.Provider value={roots}>{content}</RootsContext.Provider>
+              </FormRecordsContext.Provider>
+            </MutationRunnerContext.Provider>
           </div>
         </OpenedPageContext.Provider>
       </PageHostContext.Provider>

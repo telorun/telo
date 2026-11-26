@@ -5,7 +5,7 @@ import {
   type AppSettings,
   type RunnerInstance,
 } from "../model";
-import { DEFAULT_RUNNER_URL } from "./adapters/http-runner/config-schema";
+import { DEFAULT_RUNNER } from "./adapters/http-runner/default-runner";
 import { localCliDefaultConfig } from "./adapters/local-cli/config-schema";
 import {
   localDockerDefaultConfig,
@@ -25,9 +25,9 @@ const LEGACY_TAURI_DEFAULT_IMAGE = "telorun/telo:nodejs";
 function cloudRunner(): RunnerInstance {
   return {
     id: TELO_CLOUD_RUNNER_ID,
-    name: "Telo Cloud",
+    name: DEFAULT_RUNNER.name,
     adapterId: "http-runner",
-    config: { baseUrl: DEFAULT_RUNNER_URL },
+    config: { baseUrl: DEFAULT_RUNNER.baseUrl },
   };
 }
 

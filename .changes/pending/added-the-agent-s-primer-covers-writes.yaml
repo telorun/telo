@@ -1,0 +1,10 @@
+units:
+  apps/authoring-agent: Added
+body: "The agent's primer covers writes declared once as Ui.Mutation and run by calls
+  (Ui.MutationCall, Ui.Move, a form's onSubmit and autosave) with Ui.Prompt, onSuccess
+  effects and invalidates in place of Ui.Action, Ui.BoundAction and refreshes; the three
+  kinds of Ui.Form; queries and listings that follow a form through form; and the
+  widened x-telo-context-ref-from: data segments before the first reference, a list of
+  paths as ordered alternatives, the binding's own keywords where the path holds
+  nothing, and x-telo-context-withheld beside it refusing the binding wherever no path
+  names anything."

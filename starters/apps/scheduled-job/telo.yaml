@@ -322,14 +322,16 @@ title: Job
 children:
   - { type: text, text: "Run the job", style: title }
   - { type: text, text: "Fires the same run the schedule fires. One run at a time: a second one is refused while the first is going.", style: muted }
-  - type: composite
-    ref:
-      kind: Ui.Action
-      inputModel: &nothing
-        kind: Telo.JsonSchema
-        schema: { type: object, additionalProperties: false, properties: {} }
-      outputModel: !ref RunHistory
-      request: { target: { path: /api/run } }
+  - type: button
+    action:
+      mutation:
+        kind: Ui.Mutation
+        inputModel: &nothing
+          kind: Telo.JsonSchema
+          schema: { type: object, additionalProperties: false, properties: {} }
+        outputModel: !ref RunHistory
+        url: /api/run
+      inputs: {}
       label: Run now
       result:
         type: list
@@ -342,12 +344,14 @@ children:
           - value: !cel "row.outcome"
           - value: !cel "row.detail"
   - { type: text, text: "History", style: heading }
-  - type: composite
-    ref:
-      kind: Ui.Action
-      inputModel: *nothing
-      outputModel: !ref RunHistory
-      request: { target: { path: /api/runs/recent } }
+  - type: button
+    action:
+      mutation:
+        kind: Ui.Mutation
+        inputModel: *nothing
+        outputModel: !ref RunHistory
+        url: /api/runs/recent
+      inputs: {}
       label: Show history
       result:
         type: list

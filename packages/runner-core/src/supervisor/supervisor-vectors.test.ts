@@ -8,6 +8,8 @@ import {
   decodeOutputFrame,
   decodeSupervisorMessage,
   encodeRunnerMessage,
+  portForwardTarget,
+  SUPERVISOR_PORT_FORWARD_PATH,
   type RunnerMessage,
 } from "./supervisor-protocol.js";
 import {
@@ -26,12 +28,17 @@ interface MessageVectors {
   };
 }
 
+interface PortForwardVectors {
+  portForward: { valid: Array<{ name: string; port: number; query: string }> };
+}
+
 interface FrameVectors {
   valid: Array<{ name: string; seq: number; stream: ByteStreamTag; payloadHex: string; frameHex: string }>;
   invalid: Array<{ name: string; frameHex: string }>;
 }
 
 const messages = vectors<MessageVectors>("messages.json");
+const portForwards = vectors<PortForwardVectors>("messages.json").portForward;
 const frames = vectors<FrameVectors>("output-frames.json");
 
 describe("supervisor message vectors", () => {
@@ -49,6 +56,10 @@ describe("supervisor message vectors", () => {
     expect(() => decodeSupervisorMessage(text)).toThrow(
       close === SUPERVISOR_CLOSE.generationMismatch ? SupervisorGenerationMismatch : SupervisorProtocolError,
     );
+  });
+
+  it.each(portForwards.valid)("asks for a port forward to $name", ({ port, query }) => {
+    expect(portForwardTarget(port)).toBe(`${SUPERVISOR_PORT_FORWARD_PATH}?${query}`);
   });
 
   it.each(frames.valid)("decodes the output frame $name", ({ seq, stream, payloadHex, frameHex }) => {

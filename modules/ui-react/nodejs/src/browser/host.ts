@@ -78,7 +78,7 @@ export class HostStore {
   /** The application's query reads, shared with a page opened over it. */
   readonly queries: QueryReads;
   protected readonly guards = new Set<UnsavedGuard>();
-  private question?: { guards: UnsavedGuard[]; perform: () => void };
+  private question?: { guards: UnsavedGuard[]; perform: () => void; settled?: (moved: boolean) => void };
   /** The index of the current history entry among those this application wrote. */
   private position: number;
   /** The entries an opening added during this visit, by position. One lasts
@@ -177,12 +177,15 @@ export class HostStore {
   }
 
   /** Ask whether the input these forms hold may be dropped; `perform` runs
-   *  once it is. Several forms are one question. */
-  readonly ask = (guards: UnsavedGuard[], perform: () => void): void => this.askAbout(guards, perform);
+   *  once it is. Several forms are one question. `settled` is told the answer:
+   *  whether `perform` ran — false too when another question replaces this one. */
+  readonly ask = (guards: UnsavedGuard[], perform: () => void, settled?: (moved: boolean) => void): void => this.askAbout(guards, perform, settled);
 
-  protected askAbout(guards: UnsavedGuard[], perform: () => void): void {
-    this.question = { guards, perform };
+  protected askAbout(guards: UnsavedGuard[], perform: () => void, settled?: (moved: boolean) => void): void {
+    const replaced = this.question;
+    this.question = { guards, perform, settled };
     this.notify();
+    replaced?.settled?.(false);
   }
 
   readonly answer = (leave: boolean): void => {
@@ -190,9 +193,11 @@ export class HostStore {
     if (!question) return;
     this.question = undefined;
     this.notify();
-    if (!leave) return;
-    for (const guard of question.guards) guard.discard();
-    question.perform();
+    if (leave) {
+      for (const guard of question.guards) guard.discard();
+      question.perform();
+    }
+    question.settled?.(leave);
   };
 
   /**
@@ -285,22 +290,26 @@ export class HostStore {
   /**
    * Move the application to an app-relative reference, asking first about the
    * unsaved input of the forms the move closes and of `also`; `then` runs as
-   * the move happens.
+   * the move happens. Resolves with whether it happened.
    */
-  readonly go = (to: string, then: () => void, also: readonly UnsavedGuard[] = []): void => {
+  readonly go = (to: string, then: () => void, also: readonly UnsavedGuard[] = []): Promise<boolean> => {
     const target = this.resolve(to);
     const closing = [...new Set([...this.closedBy(target), ...also])];
     const perform = () => {
       then();
       this.write(target, false);
     };
-    if (closing.length === 0) perform();
-    else this.askAbout(closing, perform);
+    if (closing.length === 0) {
+      perform();
+      return Promise.resolve(true);
+    }
+    return new Promise((settled) => this.askAbout(closing, perform, settled));
   };
 
-  /** Move to an address within the application, as a destination moving there does: from a page opened over another, the application moves. */
-  follow(to: string): void {
-    this.navigateTo(to);
+  /** Move to an address within the application, as a destination moving there does: from a page opened over another, the application moves.
+   *  Resolves with whether the move happened, once it has or the user chose to stay. */
+  follow(to: string): Promise<boolean> {
+    return this.navigateTo(to);
   }
 
   private readonly warnUnload = (event: BeforeUnloadEvent): void => {
@@ -327,11 +336,14 @@ export class HostStore {
     return [...this.guards].filter((guard) => !guard.shows(target));
   }
 
-  /** Move, unless that would close a form holding unsaved input: then ask. */
-  protected request(target: Target, move: () => void): void {
+  /** Move, unless that would close a form holding unsaved input: then ask. Resolves with whether it moved. */
+  protected request(target: Target, move: () => void): Promise<boolean> {
     const closing = this.closedBy(target);
-    if (closing.length === 0) move();
-    else this.askAbout(closing, move);
+    if (closing.length === 0) {
+      move();
+      return Promise.resolve(true);
+    }
+    return new Promise((settled) => this.askAbout(closing, move, settled));
   }
 
   protected write(target: Target, replace: boolean): void {
@@ -417,9 +429,9 @@ export class HostStore {
     return target && this.prefix + target.path + target.search + target.hash;
   };
 
-  protected navigateTo(to: string, options?: { replace?: boolean }): void {
+  protected navigateTo(to: string, options?: { replace?: boolean }): Promise<boolean> {
     const target = this.resolve(to);
-    this.request(target, () => this.write(target, options?.replace === true));
+    return this.request(target, () => this.write(target, options?.replace === true));
   }
 
   private readonly href = (to: string): string => {

@@ -716,10 +716,11 @@ export function toAnalysisManifest(doc: Document): Record<string, unknown> | nul
 export function buildInitialModuleDocument(
   kind: "Application" | "Library",
   name: string,
+  title?: string,
 ): Document {
   const content = {
     kind: kind === "Application" ? "Telo.Application" : "Telo.Library",
-    metadata: { name, version: "1.0.0" },
+    metadata: { name, ...(title !== undefined ? { title } : {}), version: "1.0.0" },
   };
   return newTeloDocument(content);
 }

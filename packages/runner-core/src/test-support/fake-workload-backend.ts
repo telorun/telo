@@ -16,6 +16,7 @@ import {
   type WorkloadTokens,
 } from "../backend.js";
 import type { RunnerAgent, RunnerCoreConfig } from "../config.js";
+import { openInspectSocket } from "../debug/inspect-socket.js";
 import type { AppRunEnding, RunnerCapabilities, WorkspaceChangeSet } from "../contract.js";
 import { buildServer, type ServerDeps, type ServerHandle } from "../server.js";
 import type { SessionContainerEngine } from "../session-containers/session-container-engine.js";
@@ -36,8 +37,9 @@ export class FakeWorkloadBackend implements RunnerBackend {
   readonly adoptable = new Map<string, { tokens: WorkloadTokens; live?: Record<string, string> }>();
   /** Set to make `create` reject. */
   failCreate: Error | undefined;
-  addresses: (app: string) => AppAddresses = (app) => ({
-    inspect: { listen: `0.0.0.0:9230`, url: `http://127.0.0.1:1/${app}/events` },
+  /** Its inspect endpoint answers nothing: port 1 refuses every connection. */
+  addresses: (app: string) => AppAddresses = () => ({
+    inspect: { listen: "127.0.0.1:9230", connect: (signal) => openInspectSocket("127.0.0.1", 1, signal) },
     host: "127.0.0.1",
   });
   adopt?: RunnerBackend["adopt"] = async (spec, callbacks) => {

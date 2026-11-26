@@ -39,6 +39,16 @@ describe("filling", () => {
     expect(filledNode(bar)).toMatchObject({ fill: false, end: [{ fill: true }] });
   });
 
+  it("decides a form's write answers in boxes of their own", () => {
+    const form = {
+      type: "form",
+      onSubmit: { result: { type: "stack", children: [{ type: "text", text: "Done", fill: true }], fill: false }, failure: { type: "text", text: "No", fill: false } },
+      autosave: null,
+      fill: false,
+    };
+    expect(filledNode(form)).toMatchObject({ fill: false, onSubmit: { result: { fill: true }, failure: { fill: false } }, autosave: null });
+  });
+
   it("marks nothing for a filling node a condition leaves out", () => {
     const [stack] = delivered([{ type: "stack", children: [{ type: "text", text: "Gone", fill: true, when: false }, { type: "text", text: "Kept", fill: false }], fill: false }]);
     expect(stack).toEqual({ type: "stack", children: [{ type: "text", text: "Kept", fill: false }], fill: false });

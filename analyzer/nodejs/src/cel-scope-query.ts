@@ -14,7 +14,6 @@ import type { LibraryDeclarations } from "./library-declarations.js";
  */
 import type { DeclarationRequests } from "./declaration-requests.js";
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
-import { scopeReadAt } from "./scoped-name-resolver.js";
 import type { CelEnvironment } from "@telorun/cel";
 import { AliasResolver, type ModuleScopes } from "./alias-resolver.js";
 import { buildCelEnvironment } from "./cel-environment.js";
@@ -49,9 +48,10 @@ import {
   getContextHolder,
   getContextHolderPath,
   readContextFrom,
-  readContextRefFrom,
+  readRefFromPath,
   type MatchedContext,
 } from "./validate-cel-context.js";
+import { CONTEXT_REF_FROM, refFromPaths } from "./context-ref-from.js";
 
 /** Where a CEL context binding was declared: the manifest that declares it,
  *  by identity, plus the concrete path within it. Identity rather than the
@@ -327,25 +327,24 @@ export class CelScopeQuery {
 
     // Cross-manifest: the binding is declared by whatever this slot REFERENCES,
     // which is the node a reader wants when a result's members do not resolve.
-    const refFrom = annotated["x-telo-context-ref-from"];
-    if (typeof refFrom === "string") {
-      const reference = readContextRefFrom(
-        refFrom,
-        matchedScope ? getContextHolder(sitePath, matchedScope, root) : root,
-      );
-      if (!reference) return undefined;
-      const { ref, subpath } = reference;
-      const { names } = this.declarations;
-      const member = names.scopeMember(ref.name, scopeReadAt(root, sitePath));
-      const target = (
-        member
-          ? member.kind === ref.kind
-            ? member
-            : undefined
-          : names.declarationsOf(ref.name).find((m) => m.kind === ref.kind)
-      ) as Record<string, any> | undefined;
-      if (!target) return undefined;
-      return { manifest: target, path: subpath.split("/").join("."), propertyMap: false };
+    const refFrom = annotated[CONTEXT_REF_FROM];
+    if (refFrom !== undefined) {
+      const holder = matchedScope ? getContextHolder(sitePath, matchedScope, root) : root;
+      const site = {
+        manifestRoot: root,
+        sitePath,
+        declarations: this.declarations,
+        referenceHost: this.resolver.referenceHost,
+        shapes: this.ctx.defs.shapeLookup,
+      };
+      // The alternative the typing reads: the first that names something.
+      for (const segments of refFromPaths(refFrom) ?? []) {
+        const reading = readRefFromPath(segments, holder, site);
+        if (reading.state === "nothing") continue;
+        if (reading.state !== "named" || reading.fieldAbsent) return undefined;
+        return { manifest: reading.declaration, path: reading.field.join("."), propertyMap: false };
+      }
+      return undefined;
     }
 
     // A kind's own declaration: the target is the `Telo.Definition` document,

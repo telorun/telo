@@ -254,7 +254,12 @@ the member a list sorts by — is annotated `x-telo-eval: accessor`, with an
 
 The path after the reference may cross further references
 (`"source/collection/model"`: the model of the collection the sibling `source`
-reads, each map entry from its own `source`).
+reads, each map entry from its own `source`). It may start with data segments
+before the first reference (`"onSubmit/write/answer"`), and a list of paths is
+ordered alternatives: the first that names something types the binding. Where
+the path holds nothing, the binding keeps its own keywords. With
+`x-telo-context-withheld` beside it, the binding is refused wherever no path
+names anything.
 
 In a `oneOf` / `anyOf`, a property two branches declare carries the same
 `x-telo-eval` and the same `x-telo-context` regions in each (its type may
@@ -296,7 +301,7 @@ accessor field itself is left unevaluated at creation — an expression beside i
 under a provider's compile-eval root is still evaluated.
 
 To reuse members of a closed shape in another closed shape, point at them with a
-JSON Pointer `$ref` (`$ref: "telo://Self/BoundAction#/properties/inputs"`, or
+JSON Pointer `$ref` (`$ref: "telo://Self/MutationCall#/properties/inputs"`, or
 `#/$defs/Column/properties/href` within one schema) — never copy their
 annotations. A member reached that way keeps every annotation it declares: a
 reference slot with its `inputs` / `completedWhen` siblings (read from the object
@@ -871,7 +876,7 @@ the others are text). `conversation: { parameter: <name> }` makes it
 follow that page query parameter (absent is a new conversation, an id opens it,
 a conversation it creates is written back by replacing the history entry, a
 link or back switches without cancelling a running turn; omitted, the choice
-lives in memory), and `refreshes: [<request target>]` over `conversation.id`
+lives in memory), and `invalidates: [<request target>]` over `conversation.id`
 re-reads readers of a path when a send is admitted and a turn ends. The list of
 conversations is COMPOSED: a `Ui.SplitView` whose `aside` is `{ label, size, collapse, actions, content }`: `actions` holds, under the toggle's bar, a
 button `link` to the page (New conversation) and `content` a `Ui.Listing` over a `Ui.CollectionSource` for
@@ -3540,6 +3545,16 @@ to `telo.run/next/`: a module's bytes must not depend on which release publishes
   boots clean, reports nothing, and every URL the runner hands out answers 503;
   loopback is for a mock server inside a test only. The address a server is
   REACHED at is a public address need (below), never a value in the manifest.
+- **Every application serving HTTP declares its public address** — every
+  `Http.Server`, whether or not it builds a link today:
+  `needs: { site: { kind: Telo.PublicUrl, parameters: { port: http, primary: true } } }`
+  (one per served port, `primary: true` on the main one); the host running it
+  supplies the address. Every URL the app hands out to itself — a
+  link in a response or an email, an OAuth `redirect_uri`, a webhook endpoint
+  the user registers with a provider (print it at boot, after the server, so
+  the user pastes exactly that) — is built from `resources.site.url`, never a
+  `BASE_URL` variable, a literal host or `status.localUrl` (the socket, not a
+  public address). Name no router `site` beside it.
 - `targets:` (Application only) — a flat boot list of `!ref`s to the
   Runnables / Services to start after resources init. ORDER MATTERS: a Service
   prepares in `init()` but does not begin accepting events until it is run
@@ -4326,22 +4341,6 @@ to `telo.run/next/`: a module's bytes must not depend on which release publishes
   beside a `site` need). Build an absolute link from the need
   (`resources.site.url`, `resources.tenants.pattern.replace('*', id)`).
 
-  SHARING A LOCAL RUN: `telo run --share[=<name>] ./app` (optionally
-  `--share-runner <url>`, else `TELO_RUNNER_URL`, else
-  `https://runner.telo.run`; needs `telo login`, which a terminal offers inline
-  when there is no sign-in) gives every
-  `tcp` port a public `<port>-<id>` HTTPS address through a runner and answers
-  every `Telo.PublicUrl` need from the share, so an app that builds links or
-  OAuth callbacks from `resources.site.url` needs nothing else in its manifest.
-  Offer it when a user wants to show a local app, test a webhook or try a
-  callback against a real origin. A `Telo.PublicUrl` whose `TELO_NEED_…__URL`
-  is set keeps it; `udp` ports are not shared; an app with no `tcp` port or a
-  `Telo.DesktopHost` is `ERR_SHARE_APP_UNSUPPORTED`; setting
-  `TELO_HOST_PUBLIC_URL_TEMPLATE` beside `--share` is
-  `ERR_SHARE_HOST_VALUE_CONFLICT`. A second run of the same share takes it
-  over and the first ends `ERR_SHARE_LOST`. `telo shares list` and
-  `telo shares delete <id>` manage them.
-
   COOKIES are declared once, never written into `headers:` (`Set-Cookie` and
   `Content-Type` there are refused): import `HttpDispatch` (`http-dispatch`)
   beside `Http` and declare `HttpDispatch.HostCookie` (sent `__Host-<name>`,
@@ -4816,7 +4815,7 @@ them before writing any resource from a module you did not author yourself:
     fields you must produce. Read the `schema`, `inputType` and `outputType` —
     never invent a field from a kind name alone. The parent a kind `extends`
     and takes fields from is included, even when it lives in another module.
-    The named shapes a definition references (`Node`, `BoundAction`) are NOT:
+    The named shapes a definition references (`Node`, `MutationCall`) are NOT:
     a final `# Reached, not included:` line lists each with its size — read
     only the ones you need to write the resource, by naming them in one later
     `get_kinds` call, and never fetch one you already have. A name the
@@ -4994,8 +4993,8 @@ Where to start:
   - `ui` is the vocabulary of a screen, with no browser code in it:
     `Ui.Listing` (the records of a collection, paged and sortable, with create
     and edit presses and delete), `Ui.Form`, `Ui.Filters` (a filter bar over the listings
-    inside it), `Ui.Action` (a button sending a request to a route and drawing what it
-    answered), `Ui.Query` (a declared read, drawn by `query` nodes) and `Ui.View` (a
+    inside it), `Ui.Mutation` (a write declared once — a request to a route — run from a
+    button, a row, an annotation, a layout's `move` or a form), `Ui.Query` (a declared read, drawn by `query` nodes) and `Ui.View` (a
     node tree placed wherever it is needed), each reading `Telo.JsonSchema`
     shapes. A request target is an ADDRESS: a literal string, or
     `{ path, pathParams, queryParams }` — `path` a template whose `{name}`
@@ -5015,8 +5014,8 @@ Where to start:
     "In place of the page" is `Ui.Navigate`.
     `to` sits on a `link` node, a menu item, a `value` node, `list` and
     `Ui.TableLayout` columns, a relation, `Ui.CollectionOptions`, a navigation
-    `link` entry and `Ui.Action.onSuccess` (`{ to, refreshes }`); `href` at
-    those sites and `onSuccess.navigate` are refused. A region holding several
+    `link` entry and each entry of an `onSuccess` effect list; `href` at
+    those sites is refused. A region holding several
     things — a `box`, `stack` or `columns` node, a `Ui.Listing`'s records, a
     `CrudUi.Admin`'s rows — takes `press: { to, label }`, `label` a required
     text naming it (`{ text: "Open {$title}", values: { title: !cel
@@ -5024,19 +5023,21 @@ Where to start:
     a `link`. A listing with no `press` opens its `edit` page when a record is pressed.
     A destination reads only the roots bound where its `to` is written (`row`
     on a page's own `link` is refused) and is never per-request CEL — two
-    `link` nodes with `when` instead. Running an action is never a
+    `link` nodes with `when` instead. Running a mutation is never a
     destination: it stays a `button` node or a row action.
-    `Ui.Action` sends `request: { method, target }` — `method` `POST`
-    (default), `PUT`, `PATCH` or `DELETE`, `target` an address over `input`
-    (there is no `source`). An input property bound as exactly `input.<name>` is
-    consumed: it travels in the target and is left out of the JSON body; a
-    `DELETE` sends no body and must consume every input property
-    (`UI_ACTION_INPUT_UNSENT`). A 2xx with no body (204) is a success unless
-    `result`, `onSuccess.to` or a `refreshes` entry reads `result`. After a 2xx the
-    target's path, each `onSuccess.refreshes` request target and a listing's
-    `basePath` are announced, and every `Ui.Query`, `Ui.Listing` and `Ui.Chat`
-    reading exactly that path (a `QUERY` or `POST` read counts as a `GET`) reads again; a whole segment of a literal
-    `refreshes` (or `Ui.Chat.refreshes`) path may be `*` (one segment) or `**`
+    `Ui.Mutation` is a write and draws nothing: `inputModel`, `outputModel?`,
+    `method` (`POST` default, `PUT`, `PATCH` or `DELETE`), `url` (an address over
+    `input`), `invalidates?` and `concurrency?` (`parallel` | `serial`, across
+    every call of it on the page). An input property bound as exactly
+    `input.<name>` is consumed: it travels in the url and is left out of the JSON
+    body; a `DELETE` sends no body and must consume every input property
+    (`UI_MUTATION_INPUT_UNSENT`). A 2xx with no body (204) is a success unless
+    `result`, an `onSuccess` effect or an `invalidates` entry reads `result`.
+    After a 2xx the url's path, each `invalidates` request target and a
+    listing's `basePath` are announced, and every `Ui.Query`, `Ui.Listing` and
+    `Ui.Chat` reading exactly that path (a `QUERY` or `POST` read counts as a
+    `GET`) reads again; a whole segment of a literal
+    `invalidates` (or `Ui.Chat.invalidates`) path may be `*` (one segment) or `**`
     (any number, none included, so `/api/projects/{id}/**` covers
     `/api/projects/7` and its subtree), refused in any other address, and a
     computed path or `pathParams` value is exact. `Ui.Query.url` is a request target
@@ -5091,7 +5092,7 @@ Where to start:
     `Ui.BoardLayout` (`groups`), `Ui.CalendarLayout` and `Ui.TimelineLayout`
     (`span`), `Ui.TreeLayout` (`parent`), or `Ui.ComponentLayout` for a
     component of your own (built for `ui_react_layouts-2`); `compact` is the layout below the narrow-screen
-    breakpoint, and a layout's `move` is a bound action running when a card,
+    breakpoint, and a layout's `move` (a `Ui.Move`, a call without `label` and `result`) runs when a card,
     event or tree item is dragged. `telo check` refuses a layout whose filter
     the collection does not accept. `Ui.Collection`, `Ui.Table` and `Crud.Ui`
     no longer exist.
@@ -5131,7 +5132,7 @@ Where to start:
     loaded pages, scroll and open forms, skipped while the document is hidden or
     a read is in flight. A `markdown` node (`value`, an accessor to a string)
     draws CommonMark, never inserting raw HTML; `annotations: { rows, line,
-    count?, action }` puts a control, running the `action` (a `Ui.BoundAction`
+    count?, action }` puts a control, running the `action` (a `Ui.MutationCall`
     over `row`), on the block holding each item's source `line` the server
     names, with `count` as a badge. A `time` node (`value` an accessor to a
     `date` / `date-time` string, `relative?`) and a `list` column
@@ -5139,14 +5140,34 @@ Where to start:
     with `relative: true`; `relative` is not a key of `value`. A `list` takes
     `rowStyle` and each column `style`. A date or date-time filter's `default`
     and a preset's value may be relative, `{ unit, offset }` (the address keeps
-    `now-1day`; `eq`, `gt`, `gte`, `lt`, `lte`). `Ui.BoundAction` is
-    `{ action, inputs, confirm?, prompt?, enabled? }` — the entry of
-    `rowActions`, a layout's `move` and `annotations.action`; a `button` node
-    (`{ type: button, action, inputs, confirm?, prompt?, enabled?, button? }`)
-    runs one on a page, its `inputs` reading `params`, `query` and `data`. With
-    `prompt: true` a required input the person enters may stay unbound: the
-    prompt asks for the fields the inputs do not bind and checks the whole
-    record, so a required field left empty blocks sending. Entries sharing a
+    `now-1day`; `eq`, `gt`, `gte`, `lt`, `lte`). A write is run by a CALL, a closed
+    shape per holder: `Ui.MutationCall` is `{ mutation, inputs, label,
+    confirm?, prompt?, enabled?, onSuccess?, result?, failure? }` — the entry of
+    `rowActions` and `annotations.action`, and the `action` of a `button` node
+    (`{ type: button, action, button? }`; `inputs: {}` for a mutation that takes
+    nothing); `mutation` a `!ref` or one inline, `inputs` reading `row`, `params`,
+    `query`, `data` and `prompt`, every required input bound; `label` the
+    button's accessible name; `result` and `failure` node trees drawn where it
+    ran, over `result` / `error` and `input`. `onSuccess` is a list of effects
+    run in order (`{ kind: Ui.Navigate, … }`, `{ kind: Ui.OpenPage, … }`), an
+    old `{ to }` being refused. `prompt` is a `Ui.Prompt` `{ model, fields?,
+    groups? }`, a dialog asking for entries first that `inputs` reads as
+    `prompt.<name>` (`prompt: true` is refused). A `Ui.Form` is a record editor (`record`), a
+    mutation form (`onSubmit: { mutation, inputs, label?, confirm?, enabled?,
+    result?, failure? }` pressed, `autosave: { mutation, inputs, debounce?,
+    result?, failure? }` as the values settle, `inputs` reading `values`, `params`
+    and `query`) or free-standing (neither); `record` beside either write key is
+    refused, as are `onSuccess` and `afterSubmit` without `record` or `onSubmit`.
+    The form's `onSuccess` effects run after `afterSubmit`, over `values` and
+    `result` (the answer, or the stored record the collection's `POST` answered
+    with), so a create page goes to `result.id`. An `autosave` must replace (a
+    `PUT`, or a `PATCH` of the whole record; a `POST` is refused), is sent when
+    the record is valid and differs from the last acknowledged, coalesces edits
+    behind a write in flight and draws a retry button on failure; `clearAnswerOn:
+    [<property>]` clears the answers. A query or listing follows a form placed
+    anywhere on the page with `form: !ref <form>`, reading its settled valid
+    record as `form` (`body: { period: !cel "form.period" }`), so a preview needs
+    no button. Entries sharing a
     `state` key hold each kept property as one value. For a list over a join or
     computed columns, `Crud.Reader` is a route handler over a
     `DataModel.Collection` and a table or one fixed `select: !sql` (columns
@@ -5205,7 +5226,7 @@ Where to start:
     a board column proposes, `{}` from the listing's own button), carried to the
     create page by `queryParams` and read there as `initialValues: !cel
     "query"` — so the page's `query` declares every property the model
-    requires. A `button`, a related record's label or an action's `onSuccess.to`
+    requires. A `button`, a related record's label or a call's `onSuccess` effect
     opens the same page the same way; an old `create: { form: … }` opener or
     `Ui.PageSurface` is refused. Example:
 

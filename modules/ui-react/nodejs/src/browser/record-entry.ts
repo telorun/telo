@@ -75,7 +75,7 @@ const keptText = (value: unknown): string => JSON.stringify(value) ?? "";
  * hold each kept property as one value: a change one makes is followed by
  * every other mounted, except one editing a record, which starts from that record.
  */
-export function useRecordEntry(entry: EntrySpec, initial?: Record<string, unknown>, fresh = false) {
+export function useRecordEntry(entry: EntrySpec, initial?: Record<string, unknown>, fresh = false, held?: EnteredValues) {
   const host = useHost();
   const store = useHostStore();
   const { prefix } = useContext(RendererContext);
@@ -84,7 +84,7 @@ export function useRecordEntry(entry: EntrySpec, initial?: Record<string, unknow
   const text = useText();
   const { schema, fields, groups, state } = entry;
   const storedAt = state.key === undefined ? undefined : valueStorageKey(prefix, state.key);
-  const started = useMemo(() => enteredValues(schema, fields, startRecord(entry, initial, host.location.search, storedAt, fresh)), []);
+  const started = useMemo(() => held ?? enteredValues(schema, fields, startRecord(entry, initial, host.location.search, storedAt, fresh)), []);
   const [values, setValues] = useState<EnteredValues>(started);
   const [touched, setTouched] = useState<ReadonlySet<string>>(new Set());
   const [served, setServed] = useState<Record<string, string>>({});
@@ -198,6 +198,12 @@ export function useRecordEntry(entry: EntrySpec, initial?: Record<string, unknow
     restarted(record?: Record<string, unknown>): EnteredValues {
       return enteredValues(schema, fields, record ?? (initial ? (fresh ? { ...newRecord(entry), ...initial } : initial) : newRecord(entry)));
     },
+    /** Hold the values another placement of the form holds, as entered there. */
+    adopt(next: EnteredValues) {
+      setValues(next);
+    },
+    /** Whether a field has been changed, or a submission held every field to the model. */
+    touched: (property: string) => touched.has(property),
     /** Start again from these values, nothing touched. */
     reset(next: EnteredValues) {
       setValues(next);

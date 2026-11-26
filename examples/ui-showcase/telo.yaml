@@ -43,7 +43,7 @@ imports:
 # The database, the routes crud does not give, the translations with one file
 # per language, and one file per page holding the view every application
 # places there.
-include: [./data.yaml, ./api.yaml, ./translations/en.yaml, ./translations/de.yaml, ./translations/es.yaml, ./translations/fr.yaml, ./translations/hi.yaml, ./translations/it.yaml, ./translations/ja.yaml, ./translations/ko.yaml, ./translations/nl.yaml, ./translations/pl.yaml, ./translations/pt.yaml, ./translations/ru.yaml, ./translations/tr.yaml, ./translations/uk.yaml, ./translations/zh.yaml, ./pages-overview.yaml, ./pages-conditions.yaml, ./pages-data.yaml, ./pages-tables.yaml, ./pages-filters.yaml, ./pages-forms.yaml, ./pages-actions.yaml, ./pages-components.yaml, ./pages-crud.yaml, ./pages-records.yaml, ./pages-search.yaml, ./pages-review.yaml, ./pages-themes.yaml]
+include: [./data.yaml, ./api.yaml, ./translations/en.yaml, ./translations/de.yaml, ./translations/es.yaml, ./translations/fr.yaml, ./translations/hi.yaml, ./translations/it.yaml, ./translations/ja.yaml, ./translations/ko.yaml, ./translations/nl.yaml, ./translations/pl.yaml, ./translations/pt.yaml, ./translations/ru.yaml, ./translations/tr.yaml, ./translations/uk.yaml, ./translations/zh.yaml, ./pages/overview.yaml, ./pages/conditions.yaml, ./pages/data.yaml, ./pages/tables.yaml, ./pages/filters.yaml, ./pages/forms.yaml, ./pages/actions.yaml, ./pages/components.yaml, ./pages/crud.yaml, ./pages/records.yaml, ./pages/search.yaml, ./pages/review.yaml, ./pages/themes.yaml]
 # The texts are written in English, the module's `lang`; `english` covers the
 # one text crud writes with no `lang`, and ui's own texts come translated with ui.
 translations:
@@ -927,6 +927,12 @@ kind: Http.Static
 metadata: { name: files }
 root: !module-path ./files
 ---
+# The page files, served under each application's mount at `source/`: the
+# source snippets cut the YAML of a section from the file that declares it.
+kind: Http.Static
+metadata: { name: pageSources }
+root: !module-path ./pages
+---
 # The session check behind every `/api/private` mount: a cookie naming no row
 # of `sessions` is answered 401 with no body, which a reader shows as
 # ERR_UI_UNAUTHORIZED and its sign-in gate reads again on.
@@ -1111,12 +1117,20 @@ mounts:
     mount: !ref brandSwitch
   - path: /files
     mount: !ref files
+  - path: /source
+    mount: !ref pageSources
   - path: /radix/files
     mount: !ref files
+  - path: /radix/source
+    mount: !ref pageSources
   - path: /brand/files
     mount: !ref files
+  - path: /brand/source
+    mount: !ref pageSources
   - path: /sidebar/files
     mount: !ref files
+  - path: /sidebar/source
+    mount: !ref pageSources
   - path: /radix
     mount: !ref radixShowcase
   - path: /brand

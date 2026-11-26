@@ -1,13 +1,14 @@
 import { useContext, useRef, type ReactNode } from "react";
 import { styleAttribute, type Style } from "./bindings.js";
 import { Displayed, type ButtonSpec } from "./display-button.js";
-import type { RowActionSpec } from "./operation.js";
+import type { MutationCallSpec } from "./mutation-call.js";
 import { anchorRef } from "./node-anchors.js";
 import { RootsContext } from "./renderer-context.js";
-import { useRowActions } from "./row-actions.js";
+import { useMutationCalls } from "./mutation-calls.js";
 
-/** A `button` node: a bound action, and how its button is drawn. */
-export interface ButtonNodeSpec extends RowActionSpec {
+/** A `button` node: a call of a mutation, and how its button is drawn. */
+export interface ButtonNodeSpec {
+  action: MutationCallSpec;
   button: ButtonSpec;
   style?: Style;
   fill?: boolean;
@@ -16,15 +17,15 @@ export interface ButtonNodeSpec extends RowActionSpec {
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 
 /**
- * A `button` node: its action run with the inputs it binds over the roots in
- * scope, labelled with the action's label and drawn as its display says. It is
- * drawn as a row action is — the action's answer in place of the button, its
- * failure beside it or in the open confirmation, no press while one is pending.
+ * A `button` node: its call run with the inputs it binds over the roots in
+ * scope, labelled with the call's label and drawn as its display says. It is
+ * drawn as a row's call is — its answer in place of the button, its failure
+ * beside it or in the open confirmation, no press while one is pending.
  */
 export function ButtonNode({ node }: { node: ButtonNodeSpec }): ReactNode {
   const roots = useContext(RootsContext);
   const drawn = useRef<HTMLElement | null>(null);
-  const actions = useRowActions([node], roots, () => {}, () => drawn.current);
+  const actions = useMutationCalls([node.action], roots, () => {}, () => drawn.current);
   // A button inside a record reads that record as `row`, as its other roots.
   const row = isRecord(roots.row) ? roots.row : {};
   return (

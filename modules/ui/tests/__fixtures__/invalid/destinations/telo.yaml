@@ -46,11 +46,12 @@ children:
           pathParams: { id: ada }
   # SCHEMA_VIOLATION — `href` is gone from `link`.
   - { type: link, text: Authors, href: /authors }
-  # SCHEMA_VIOLATION — `onSuccess.navigate` is gone.
+  # SCHEMA_VIOLATION — `onSuccess` is a list of effects, `navigate` is gone.
   - type: composite
     ref:
-      kind: Ui.Action
-      inputModel: !ref Author
-      request: { target: /api/authors }
-      label: Add
+      kind: Ui.Form
+      model: !ref Author
+      onSubmit:
+        mutation: { kind: Ui.Mutation, inputModel: { kind: Telo.JsonSchema, schema: { type: object, properties: {} } }, url: /api/authors }
+        inputs: {}
       onSuccess: { navigate: / }

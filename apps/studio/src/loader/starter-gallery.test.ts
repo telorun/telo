@@ -111,3 +111,16 @@ describe("galleryVersionOf", () => {
     expect(galleryVersionOf({ workspaceOpen: true, hasModule: false, language: running("auto") })).toEqual({ newest: true });
   });
 });
+
+describe("loadStarterGallery without any known version", () => {
+  it("names why the version list could not be read", async () => {
+    await expect(
+      loadStarterGallery({
+        fixedBaseUrl: undefined,
+        version: { newest: true },
+        catalogVersions: [],
+        catalogFailure: "could not reach the registry: offline",
+      }),
+    ).rejects.toThrow(/could not reach the registry: offline/);
+  });
+});

@@ -10,6 +10,7 @@ import {
   type SupervisorListener,
   type SupervisorTermination,
 } from "./supervisor-client.js";
+import { PortForwardClosed } from "./port-forward-stream.js";
 import { SUPERVISOR_CLOSE } from "./supervisor-protocol.js";
 import {
   startSupervisor,
@@ -236,6 +237,34 @@ describe.skipIf(unavailable !== undefined)("SupervisorClient against the supervi
     expect(second.of("terminated")).toEqual([]);
   });
 
+  it("forwards a stream to a loopback port inside the workload, ended when the port's connection ends", async () => {
+    const target = await supervisor();
+    const port = createServer((socket) => socket.once("data", (bytes) => socket.end(Buffer.concat([Buffer.from("echo:"), bytes]))));
+    await new Promise<void>((done) => port.listen(0, "127.0.0.1", done));
+    cleanups.push(() => new Promise((done) => port.close(() => done())));
+    const supervised = client(target.port, target.token, new RecordingListener());
+
+    const stream = await supervised.openPortForward((port.address() as { port: number }).port);
+    stream.write("hi");
+    const received: Buffer[] = [];
+    for await (const chunk of stream) received.push(chunk as Buffer);
+    expect(Buffer.concat(received).toString()).toBe("echo:hi");
+  });
+
+  it("ends a port forward to a port nothing listens on with the supervisor's 4502", async () => {
+    const target = await supervisor();
+    const free = createServer();
+    await new Promise<void>((done) => free.listen(0, "127.0.0.1", done));
+    const unused = (free.address() as { port: number }).port;
+    await new Promise<void>((done) => free.close(() => done()));
+    const supervised = client(target.port, target.token, new RecordingListener());
+
+    const stream = await supervised.openPortForward(unused);
+    const failure = await new Promise<unknown>((done) => stream.once("error", done));
+    expect(failure).toBeInstanceOf(PortForwardClosed);
+    expect((failure as PortForwardClosed).code).toBe(SUPERVISOR_CLOSE.portUnreachable);
+  });
+
   it("reconnects after a drop, is replayed from its last seq, and learns an ending it missed", async () => {
     const target = await supervisor();
     const relay = await Relay.start(target.port);
@@ -291,13 +320,13 @@ describe("SupervisorClient generation check", () => {
   });
 
   // The supervisor of another generation cannot be built from this tree, so a
-  // stand-in answers as one would.
+  // stand-in answers as an earlier one would.
   it("terminates on a supervisor hello of another generation, closing 4426", async () => {
     const closed = new Promise<number>((resolveClose) => {
       server = new WebSocketServer({ host: "127.0.0.1", port: 0 }, () => undefined);
       server.on("connection", (socket) => {
         socket.once("message", () =>
-          socket.send(JSON.stringify({ type: "hello", generation: 2, instance: "x", state: "idle" })),
+          socket.send(JSON.stringify({ type: "hello", generation: 1, instance: "x", state: "idle" })),
         );
         socket.once("close", (code) => resolveClose(code));
       });

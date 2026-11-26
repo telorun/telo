@@ -1,0 +1,106 @@
+# A sheet holds a record shape; a lookup reads the sheet it names; an editor's
+# effects read the answer of whichever write it holds.
+kind: Telo.Library
+metadata: { name: RefKinds }
+exports: { kinds: [Sheet, Lookup, Write, Table, Feed, View, Editor] }
+---
+kind: Telo.Definition
+metadata: { name: Sheet }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  properties: { model: { x-telo-ref: { kind: Telo.Type, use: schema } } }
+---
+kind: Telo.Definition
+metadata: { name: Lookup }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    sheet: { x-telo-ref: { kind: Self.Sheet, use: dependency } }
+    url:
+      type: string
+      x-telo-eval: runtime
+      x-telo-context:
+        type: object
+        properties:
+          sheet: { x-telo-context-ref-from: sheet/model, x-telo-context-withheld: "the lookup names no sheet in `sheet`." }
+---
+kind: Telo.Definition
+metadata: { name: Write }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    answer: { x-telo-ref: { kind: Telo.Type, use: schema } }
+    sample: { type: object }
+---
+kind: Telo.Definition
+metadata: { name: Table }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    model: { x-telo-ref: { kind: Telo.Type, use: schema } }
+    sample: { type: object }
+---
+kind: Telo.Definition
+metadata: { name: Feed }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  properties: { table: { x-telo-ref: { kind: Self.Table, use: dependency } } }
+---
+kind: Telo.Definition
+metadata: { name: View }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  properties: { feed: { x-telo-ref: { kind: Self.Feed, use: dependency } } }
+---
+# `result` is the answer of the write `a` holds, else the record of the table
+# `b` reaches; closed and empty where the reached write declares no answer.
+kind: Telo.Definition
+metadata: { name: Editor }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    a:
+      type: object
+      additionalProperties: false
+      properties: { write: { x-telo-ref: { kind: Self.Write, use: dependency } } }
+    b:
+      type: object
+      additionalProperties: false
+      properties: { view: { x-telo-ref: { kind: Self.View, use: dependency } } }
+    effects:
+      type: array
+      items: { type: string, x-telo-eval: accessor }
+      x-telo-context:
+        type: object
+        properties:
+          result:
+            x-telo-context-eval: accessor
+            x-telo-context-ref-from: [a/write/answer, b/view/feed/table/model]
+            type: object
+            properties: {}
+            additionalProperties: false
+          # A shape written in place, so a binding's declaration can be found.
+          sample:
+            x-telo-context-eval: accessor
+            x-telo-context-ref-from: [a/write/sample, b/view/feed/table/sample]

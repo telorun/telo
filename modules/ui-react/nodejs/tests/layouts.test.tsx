@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadFixtureComponents, render, type Rendered } from "./harness.js";
 import { FakeIntersections } from "./intersections.js";
 import { wireText } from "./harness.js";
-import { address, dialogSurface, filterField, filtersNode, listingNode, openPageAt, operation, prefilledPages, pressOpening, recordPages, todoColumns, todos } from "./spec-nodes.js";
+import { address, dialogSurface, filterField, filtersNode, listingNode, openPageAt, call, prefilledPages, pressOpening, recordPages, todoColumns, todos } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => {
@@ -28,10 +28,9 @@ const listOf = (overrides: Record<string, unknown> = {}) =>
   listingNode({ rowStyle: undefined, create: null, edit: null, delete: false, layout: { type: "list", content, reads: {} }, ...overrides });
 const statuses = { property: "status", values: "all", enum: ["open", "blocked", "done"], labels: [] };
 /** The move setting a record's status, posted to an operation that rewrites the record. */
-const moveStatus = {
-  action: operation("/api/moves", "Move", { type: "object", properties: { id: { type: "integer" }, status: { type: "string" } } }),
+const moveStatus = call("/api/moves", null, { type: "object", properties: { id: { type: "integer" }, status: { type: "string" } } }, {
   inputs: { id: row("id"), status: { root: "to", path: ["status"] } },
-};
+});
 const board = (overrides: Record<string, unknown> = {}) =>
   listingNode({ rowStyle: undefined, create: null, edit: null, delete: false, layout: { type: "board", content, move: moveStatus, reads: { groups: statuses } }, ...overrides });
 const cardsOf = (overrides: Record<string, unknown> = {}) =>

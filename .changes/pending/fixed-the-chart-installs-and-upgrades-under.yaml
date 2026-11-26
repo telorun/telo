@@ -1,0 +1,5 @@
+units:
+  apps/k8s-runner: Fixed
+body: "The chart installs and upgrades under Flux again with shares.enabled: the relay
+  pod template no longer repeats the app.kubernetes.io/name label, which Flux's
+  post-render refused as a duplicate mapping key, failing the whole upgrade."

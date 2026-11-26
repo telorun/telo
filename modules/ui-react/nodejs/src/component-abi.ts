@@ -27,6 +27,12 @@ export function withUnhostedComponentsReplaced(
   child?: (node: SpecNode) => SpecNode,
 ): SpecNode {
   const down = (below: SpecNode): SpecNode => (child ?? visit)(below);
+  /** A call or a form's write with its answer trees visited: a success's, where one is drawn, and a failure's. */
+  const answers = (call: Record<string, any>): Record<string, any> => ({
+    ...call,
+    ...(call.result !== undefined ? { result: down(call.result) } : {}),
+    failure: down(call.failure),
+  });
   const visit = (current: SpecNode): SpecNode => {
     if (current.type === "component") {
       const refused = refusal(current, hosted.abis, hosted.specifiers);
@@ -45,9 +51,9 @@ export function withUnhostedComponentsReplaced(
       next.loading = current.loading.map(down);
       next.failure = current.failure.map(down);
     }
-    if (current.type === "action") {
-      if (current.result !== undefined) next.result = down(current.result);
-      next.failure = down(current.failure);
+    if (current.type === "form") {
+      next.onSubmit = current.onSubmit && answers(current.onSubmit);
+      next.autosave = current.autosave && answers(current.autosave);
     }
     if (current.type === "listing") {
       for (const spec of [current.layout, current.compact]) {
@@ -61,6 +67,7 @@ export function withUnhostedComponentsReplaced(
       // A layout's per-record content, and each component a table column draws in place of a value.
       const layout = (spec: Record<string, any>) => ({
         ...spec,
+        ...(spec.move != null ? { move: answers(spec.move) } : {}),
         ...(spec.content !== undefined ? { content: down(spec.content) } : {}),
         ...(Array.isArray(spec.columns)
           ? { columns: spec.columns.map((column: Record<string, any>) => (column.cell ? { ...column, cell: down(column.cell) } : column)) }
@@ -69,13 +76,11 @@ export function withUnhostedComponentsReplaced(
       next.layout = layout(current.layout);
       if (current.compact !== undefined) next.compact = layout(current.compact);
     }
-    if (Array.isArray(current.rowActions)) {
-      next.rowActions = current.rowActions.map((entry: Record<string, any>) => ({ ...entry, action: down(entry.action) }));
-    }
-    // A bound action's answer and failure trees: a button's own, and a markdown annotation's.
-    if (current.type === "button") next.action = down(current.action);
+    // A call's answer trees, wherever it is held: a row's, a button's, a markdown annotation's.
+    if (Array.isArray(current.rowActions)) next.rowActions = current.rowActions.map(answers);
+    if (current.type === "button") next.action = answers(current.action);
     if (current.type === "markdown" && current.annotations !== undefined) {
-      next.annotations = { ...current.annotations, action: { ...current.annotations.action, action: down(current.annotations.action.action) } };
+      next.annotations = { ...current.annotations, action: answers(current.annotations.action) };
     }
     return next;
   };

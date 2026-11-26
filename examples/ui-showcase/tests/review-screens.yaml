@@ -107,7 +107,7 @@ steps:
         links: !cel "steps.nodes.result.reviewNodes[2].children.map(l, l.to)"
         buttons: !cel >-
           steps.nodes.result.reviewNodes[3].children.map(b,
-            [b.inputs.decision, b.action.label.message[0], b.prompt.fields.map(f, f.property), b.action.state.key])
+            [b.action.inputs.decision, b.action.label.message[0], b.action.prompt.fields.map(f, f.property)])
         annotations: !cel >-
           cel.bind(a, steps.nodes.result.reviewNodes[4].annotations,
             [a.rows, a.line, a.count, a.action.inputs, a.action.prompt.fields.map(f, f.property)])
@@ -123,9 +123,9 @@ steps:
           - { type: navigate, href: { path: { value: "/reviews/{id}/compare" }, pathParams: { id: { root: params, path: [id] } }, queryParams: {} } }
           - { type: navigate, href: { path: { value: "/workers/{name}" }, pathParams: { name: { root: data, path: [review, worker] } }, queryParams: {} } }
         buttons:
-          - [{ value: approve }, Approve, [author], reviewer]
-          - [{ value: request_changes }, Request changes, [author, note], reviewer]
-          - [{ value: reject }, Reject, [author, note], reviewer]
+          - [{ value: approve }, Approve, [author]]
+          - [{ value: request_changes }, Request changes, [author, note]]
+          - [{ value: reject }, Reject, [author, note]]
         annotations:
           - { root: data, path: [review, latestRevision, items] }
           - { root: row, path: [line] }
@@ -133,6 +133,8 @@ steps:
           - id: { root: params, path: [id] }
             revision: { root: data, path: [review, latestRevision, seq] }
             item: { root: row, path: [id] }
+            author: { root: prompt, path: [author] }
+            body: { root: prompt, path: [body] }
           - [author, body]
         timeline: [[Event], [By], [time, true]]
 
@@ -142,8 +144,8 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        rowStyles: !cel "steps.nodes.result.compareNodes.filter(n, n.type == 'list').map(l, l.rowStyle)"
-        lineStyle: !cel "steps.nodes.result.compareNodes[3].columns[0].style"
+        rowStyles: !cel "(steps.nodes.result.compareNodes[0].children + steps.nodes.result.compareNodes).filter(n, n.type == 'list').map(l, l.rowStyle)"
+        lineStyle: !cel "steps.nodes.result.compareNodes[2].columns[0].style"
         basePath: !cel "steps.nodes.result.commands.basePath"
         reloadEvery: !cel "steps.nodes.result.commands.reloadEvery"
       expected:

@@ -1,0 +1,7 @@
+units:
+  apps/studio: Fixed
+body: "Add import lists each kind once, shows ready-made instances by their own name,
+  and no longer offers the built-in vocabulary. The new application and library dialog
+  labels its name field and takes any text: a name that is not an identifier is saved
+  under one derived from it (new app becomes NewApp, shown before Create) and kept as
+  metadata.title. Every dialog now has a description."

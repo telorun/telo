@@ -1,0 +1,65 @@
+# A board's node tree, a recursive named shape: each node reads its own
+# lookup's sheet, and `note` the region of the list holding it.
+kind: Telo.Library
+metadata: { name: RefBoard }
+imports: { RefKinds: ../kinds }
+---
+kind: Telo.JsonSchema
+metadata: { name: Node }
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    lookup: { x-telo-ref: { kind: RefKinds.Lookup, use: dependency } }
+    label:
+      type: string
+      x-telo-eval: accessor
+      x-telo-context: { type: object, properties: { sheet: { $ref: "#/$defs/Sheet", x-telo-context-eval: accessor } } }
+    note: { type: string, x-telo-eval: accessor }
+    content:
+      type: array
+      items: { $ref: "#" }
+      x-telo-context: { type: object, properties: { sheet: { $ref: "#/$defs/Sheet", x-telo-context-eval: accessor } } }
+  $defs:
+    Sheet:
+      x-telo-context-ref-from: lookup/sheet/model
+      x-telo-context-withheld: "the node's lookup names no sheet in `sheet`."
+---
+kind: Telo.Definition
+metadata: { name: Board }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  properties: { nodes: { type: array, items: { $ref: "telo://Self/Node" } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Draft }
+schema: { type: object, properties: { id: { type: string }, title: { type: string } } }
+---
+kind: RefKinds.Sheet
+metadata: { name: drafts }
+model: !ref Draft
+---
+kind: RefKinds.Lookup
+metadata: { name: withSheet }
+sheet: !ref drafts
+---
+kind: RefKinds.Lookup
+metadata: { name: noSheet }
+---
+kind: Self.Board
+metadata: { name: board }
+nodes:
+  - lookup: !ref withSheet
+    label: !cel "sheet.title"
+    content:
+      # Inherits the outer node's typed `sheet`.
+      - lookup: !ref noSheet
+        note: !cel "sheet.title"
+      # Its own region shadows the outer binding, and its lookup names no sheet.
+      - lookup: !ref noSheet
+        label: !cel "sheet.title"
+      - lookup: !ref withSheet
+        label: !cel "sheet.titel"

@@ -489,14 +489,16 @@ title: Reports
 children:
   - { type: text, text: "Build a report", style: title }
   - { type: text, text: "Queries the orders, draws the charts and stores the page and its CSV.", style: muted }
-  - type: composite
-    ref:
-      kind: Ui.Action
-      inputModel: &nothing
-        kind: Telo.JsonSchema
-        schema: { type: object, additionalProperties: false, properties: {} }
-      outputModel: !ref ReportList
-      request: { target: { path: /api/reports } }
+  - type: button
+    action:
+      mutation:
+        kind: Ui.Mutation
+        inputModel: &nothing
+          kind: Telo.JsonSchema
+          schema: { type: object, additionalProperties: false, properties: {} }
+        outputModel: !ref ReportList
+        url: /api/reports
+      inputs: {}
       label: Build report
       result:
         type: list
@@ -508,12 +510,14 @@ children:
           - value: !cel "row.html"
           - value: !cel "row.csv"
   - { type: text, text: "Built so far", style: heading }
-  - type: composite
-    ref:
-      kind: Ui.Action
-      inputModel: *nothing
-      outputModel: !ref ReportList
-      request: { target: { path: /api/reports/recent } }
+  - type: button
+    action:
+      mutation:
+        kind: Ui.Mutation
+        inputModel: *nothing
+        outputModel: !ref ReportList
+        url: /api/reports/recent
+      inputs: {}
       label: Show reports
       result:
         type: list

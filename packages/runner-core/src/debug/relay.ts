@@ -1,22 +1,25 @@
+import { request, type IncomingMessage } from "node:http";
+
 import type { DebugFrame } from "@telorun/debug-wire";
 
 import { abortableDelay } from "../abortable-delay.js";
+import type { InspectEndpoint } from "../backend.js";
 
 export interface DebugRelayOptions {
-  /** The workload's inspect SSE endpoint, e.g. `http://telo-run-<id>:9230/events`.
-   *  Reachable only by the runner over the backend's private network. */
-  url: string;
+  /** The workload's inspect endpoint: the stream is asked for over whatever
+   *  connection `connect` opens. */
+  inspect: InspectEndpoint;
   /** Delivered each parsed frame off the stream. */
   onFrame: (frame: DebugFrame) => void;
   /** Aborts the relay (session ended). */
   signal: AbortSignal;
-  /** Optional connect-retry budget. The workload's inspect server isn't up the
-   *  instant the container starts; we retry until it answers or `signal` aborts.
-   *  Default: retry indefinitely (until abort). */
+  /** Each failed attempt. The workload's inspect server isn't up the instant the
+   *  process starts; the relay retries until it answers or `signal` aborts. */
   onError?: (err: Error) => void;
 }
 
 const RECONNECT_DELAY_MS = 500;
+const EVENTS_PATH = "/events";
 
 /** The largest frame relayed as written. An event carrying a large invocation
  *  payload (a query's whole result set) runs to tens of megabytes; parsed and
@@ -30,12 +33,13 @@ export const DEBUG_FRAME_MAX_BYTES = 1024 * 1024;
  * `onFrame`. Retries the connection until the endpoint answers or `signal`
  * aborts, and reconnects if the stream drops while the session is still live.
  * The runner relays these frames onward; the workload's inspect port is never
- * exposed outside the runner.
+ * exposed outside it.
  *
- * Backend-neutral (uses global `fetch`); the docker and k8s backends share it.
+ * Backend-neutral: it speaks HTTP over the stream the backend's opener returns
+ * (a supervisor port forward, a loopback socket).
  */
 export async function relayDebugStream(opts: DebugRelayOptions): Promise<void> {
-  const { url, onFrame, signal } = opts;
+  const { inspect, onFrame, signal } = opts;
   // The last id delivered, carried across reconnects. Without it a drop replays
   // the producer's whole buffer, and a consumer that DERIVES state from the
   // stream — the run projection counting generations — re-counts every reload
@@ -43,20 +47,15 @@ export async function relayDebugStream(opts: DebugRelayOptions): Promise<void> {
   let lastEventId = 0;
   while (!signal.aborted) {
     try {
-      const res = await fetch(url, {
-        signal,
-        headers: {
-          accept: "text/event-stream",
-          ...(lastEventId > 0 ? { "last-event-id": String(lastEventId) } : {}),
-        },
-      });
-      if (!res.ok || !res.body) {
-        await abortableDelay(RECONNECT_DELAY_MS, signal);
-        continue;
+      const res = await subscribe(inspect, lastEventId, signal);
+      if (res.statusCode === 200) {
+        await pump(res, onFrame, signal, (id) => {
+          lastEventId = id;
+        });
+      } else {
+        res.destroy();
+        opts.onError?.(new Error(`the inspect endpoint answered ${res.statusCode}`));
       }
-      await pump(res.body, onFrame, signal, (id) => {
-        lastEventId = id;
-      });
     } catch (err) {
       if (signal.aborted) return;
       opts.onError?.(err instanceof Error ? err : new Error(String(err)));
@@ -65,22 +64,40 @@ export async function relayDebugStream(opts: DebugRelayOptions): Promise<void> {
   }
 }
 
+/** `GET /events` over a connection the endpoint opens. */
+async function subscribe(inspect: InspectEndpoint, lastEventId: number, signal: AbortSignal): Promise<IncomingMessage> {
+  const connection = await inspect.connect(signal);
+  return new Promise<IncomingMessage>((resolve, reject) => {
+    const req = request({
+      path: EVENTS_PATH,
+      signal,
+      headers: {
+        host: inspect.listen,
+        accept: "text/event-stream",
+        ...(lastEventId > 0 ? { "last-event-id": String(lastEventId) } : {}),
+      },
+      createConnection: () => connection,
+    });
+    req.once("response", resolve);
+    req.once("error", reject);
+    req.end();
+  });
+}
+
 async function pump(
-  body: ReadableStream<Uint8Array>,
+  body: IncomingMessage,
   onFrame: (frame: DebugFrame) => void,
   signal: AbortSignal,
   onId: (id: number) => void,
 ): Promise<void> {
-  const reader = body.getReader();
   const decoder = new TextDecoder();
   let buf = "";
   // Where the search for the next separator resumes, so a frame arriving in
   // many chunks is scanned once rather than once per chunk.
   let scanned = 0;
   try {
-    while (!signal.aborted) {
-      const { value, done } = await reader.read();
-      if (done) return;
+    for await (const value of body as AsyncIterable<Buffer>) {
+      if (signal.aborted) return;
       buf += decoder.decode(value, { stream: true });
       let sep: number;
       // SSE frames are separated by a blank line.
@@ -99,7 +116,7 @@ async function pump(
       scanned = Math.max(0, buf.length - 1);
     }
   } finally {
-    reader.cancel().catch(() => undefined);
+    body.destroy();
   }
 }
 

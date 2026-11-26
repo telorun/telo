@@ -391,31 +391,38 @@ children:
   - { type: text, text: "A payload starting with fail is refused by the worker, tried again, and parked as failed.", style: muted }
   - type: composite
     ref:
-      kind: Ui.Action
-      inputModel: !ref NewJob
-      outputModel: !ref Queue
-      request: { target: { path: /api/jobs } }
-      label: Enqueue
-      result:
-        type: list
-        heading: Queue
-        rows: !cel "result.jobs"
-        columns: &jobColumns
-          - value: !cel "row.id"
-          - value: !cel "row.payload"
-          - value: !cel "row.status"
-          - value: !cel "row.attempts"
-          - value: !cel "row.workedBy"
-          - value: !cel "row.lastError"
+      kind: Ui.Form
+      model: !ref NewJob
+      onSubmit:
+        mutation:
+          kind: Ui.Mutation
+          inputModel: !ref NewJob
+          outputModel: !ref Queue
+          url: /api/jobs
+        inputs: { payload: !cel "values.payload" }
+        label: Enqueue
+        result:
+          type: list
+          heading: Queue
+          rows: !cel "result.jobs"
+          columns: &jobColumns
+            - value: !cel "row.id"
+            - value: !cel "row.payload"
+            - value: !cel "row.status"
+            - value: !cel "row.attempts"
+            - value: !cel "row.workedBy"
+            - value: !cel "row.lastError"
   - { type: text, text: "Watch it drain", style: heading }
-  - type: composite
-    ref:
-      kind: Ui.Action
-      inputModel:
-        kind: Telo.JsonSchema
-        schema: { type: object, additionalProperties: false, properties: {} }
-      outputModel: !ref Queue
-      request: { target: { path: /api/jobs/recent } }
+  - type: button
+    action:
+      mutation:
+        kind: Ui.Mutation
+        inputModel:
+          kind: Telo.JsonSchema
+          schema: { type: object, additionalProperties: false, properties: {} }
+        outputModel: !ref Queue
+        url: /api/jobs/recent
+      inputs: {}
       label: Refresh
       result:
         type: list

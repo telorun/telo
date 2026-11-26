@@ -107,7 +107,7 @@ steps:
         listing: !cel "steps.page.result.body.children[0].aside.content.basePath"
         listingRow: !cel "steps.page.result.body.children[0].aside.content.layout.content.children[0].to.href"
         listingBadge: !cel "steps.page.result.body.children[0].aside.content.layout.content.children[2].type"
-        chat: !cel "{'conversation': steps.page.result.body.children[0].content.conversation, 'refreshes': steps.page.result.body.children[0].content.refreshes}"
+        chat: !cel "{'conversation': steps.page.result.body.children[0].content.conversation, 'invalidates': steps.page.result.body.children[0].content.invalidates}"
         offer: !cel "steps.page.result.body.children[0].content.spec"
         basePath: !cel "steps.page.result.body.children[0].content.basePath"
         answeredInParts: !cel "steps.events.result.body.contains('\"text\":\"po\"') && steps.events.result.body.contains('\"text\":\"ng\"')"
@@ -125,7 +125,7 @@ steps:
         listingBadge: badge
         chat:
           conversation: { parameter: conversation }
-          refreshes: [{ path: { value: /api/chat/conversations }, pathParams: {}, queryParams: {} }]
+          invalidates: [{ path: { value: /api/chat/conversations }, pathParams: {}, queryParams: {} }]
         offer:
           attachments:
             accepts:

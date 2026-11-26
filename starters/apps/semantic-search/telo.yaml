@@ -467,24 +467,29 @@ children:
   - { type: text, text: "Answered only from the passages retrieved for the question.", style: muted }
   - type: composite
     ref:
-      kind: Ui.Action
-      inputModel: !ref Question
-      outputModel: !ref Answer
-      request: { target: { path: /api/ask } }
-      label: Ask
-      result:
-        type: stack
-        children:
-          - type: list
-            rows: !cel "result.reply"
-            columns:
-              - value: !cel "row.answer"
-          - type: list
-            heading: Sources
-            rows: !cel "result.sources"
-            columns:
-              - value: !cel "row.title"
-              - value: !cel "row.score"
+      kind: Ui.Form
+      model: !ref Question
+      onSubmit:
+        mutation:
+          kind: Ui.Mutation
+          inputModel: !ref Question
+          outputModel: !ref Answer
+          url: /api/ask
+        inputs: { q: !cel "values.q" }
+        label: Ask
+        result:
+          type: stack
+          children:
+            - type: list
+              rows: !cel "result.reply"
+              columns:
+                - value: !cel "row.answer"
+            - type: list
+              heading: Sources
+              rows: !cel "result.sources"
+              columns:
+                - value: !cel "row.title"
+                - value: !cel "row.score"
 ---
 kind: Ui.Page
 metadata: { name: searchPage }
@@ -495,18 +500,23 @@ children:
   - { type: text, text: "The passages nearest to a query, with their scores — retrieval on its own.", style: muted }
   - type: composite
     ref:
-      kind: Ui.Action
-      inputModel: !ref Question
-      outputModel: !ref Matches
-      request: { target: { path: /api/search } }
-      label: Search
-      result:
-        type: list
-        rows: !cel "result.matches"
-        columns:
-          - value: !cel "row.title"
-          - value: !cel "row.id"
-          - value: !cel "row.score"
+      kind: Ui.Form
+      model: !ref Question
+      onSubmit:
+        mutation:
+          kind: Ui.Mutation
+          inputModel: !ref Question
+          outputModel: !ref Matches
+          url: /api/search
+        inputs: { q: !cel "values.q" }
+        label: Search
+        result:
+          type: list
+          rows: !cel "result.matches"
+          columns:
+            - value: !cel "row.title"
+            - value: !cel "row.id"
+            - value: !cel "row.score"
 ---
 kind: Ui.Page
 metadata: { name: documentsPage }
@@ -517,22 +527,27 @@ children:
   - { type: text, text: "Indexed at once; adding one under a title already used replaces it.", style: muted }
   - type: composite
     ref:
-      kind: Ui.Action
-      inputModel: !ref Document
-      outputModel: !ref Indexed
-      request: { target: { path: /api/documents } }
-      label: Index
+      kind: Ui.Form
+      model: !ref Document
       # The form shows these two only; the id is left for the API to derive.
       fields: [title, text]
-      result:
-        type: list
-        rows: !cel "result.indexed"
-        columns:
-          - value: !cel "row.id"
+      onSubmit:
+        mutation:
+          kind: Ui.Mutation
+          inputModel: !ref Document
+          outputModel: !ref Indexed
+          url: /api/documents
+        inputs: { title: !cel "values.title", text: !cel "values.text" }
+        label: Index
+        result:
+          type: list
+          rows: !cel "result.indexed"
+          columns:
+            - value: !cel "row.id"
 ---
-# The whole frontend. An action is a form built from its input shape, a button
-# that sends one POST, and tables drawn from what comes back. What crosses to
-# the browser is this description, never generated code.
+# The whole frontend. A form's submit is one POST, and tables are drawn from
+# what comes back. What crosses to the browser is this description, never
+# generated code.
 kind: UiReact.App
 metadata: { name: ui }
 title: Semantic search

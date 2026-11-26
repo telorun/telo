@@ -2,7 +2,7 @@
 
 A [filter bar](filters.md) with no `policy.state` keeps what the viewer chose
 in memory: it is gone on a reload. `state` — a `Ui.StateRecord`, the same
-record a [form's and an action's `state`](field-kinds.md#kept-values) is —
+record a [form's `state`](field-kinds.md#kept-values) is —
 says where else it is kept.
 
 ```yaml

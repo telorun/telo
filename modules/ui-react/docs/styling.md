@@ -200,7 +200,7 @@ and `page`, under the header and above the footer and a tab bar, is the one part
 - the last filling part of a chain scrolls inside itself — a chat in its
   transcript, as always, and a split view's half in itself — and is as short as
   the room makes it, a chat no shorter than `24rem`;
-- inside a record, an action's answer, a chat's header, a split view's actions,
+- inside a record, a call's answer, a chat's header, a split view's actions,
   an in-line surface or a panel, a filling part grows to the room but is as tall
   as its content: those boxes grow with what they hold;
 - a filling filter bar above its content draws its controls one under another,
@@ -261,7 +261,7 @@ navigation text alone, so no part holds it.
 | `svg` | an `svg` node, drawn as an image |
 | `value` | a `value` node: one value of a data scope, presented as its schema says — a `format: uri` / `uri-reference` string as a `link` |
 | `time` | a `time` node, or the value of a time column: a `<time>` whose `datetime` is the machine-readable time, its text relative to now with the exact time as its `title`, or absolute; a value that is no date is a `span` holding its text |
-| `list` | a `list` node, or one list of an action's answer: its heading, then its grid |
+| `list` | a `list` node, or one list of a call's answer: its heading, then its grid |
 | `list-heading` | a list's heading, an `h3`; absent when the list declares none |
 | `list-empty` | the cell a list shows when its rows hold none |
 | `query` | a `query` node: one query's answer, laid out as a `box` lays out its children — its `loading` nodes before the node's first answer, its `content` nodes once one is in, its `failure` nodes when the read did not succeed |
@@ -270,7 +270,7 @@ navigation text alone, so no part holds it.
 | `bar-center` | the bar's `center` nodes; drawn, empty, when there are none |
 | `bar-end` | the bar's `end` nodes, at its end edge |
 | `command` | a `command` node: a `<button>` running a command of the place it is in — `data-command` names it, `data-button` how it is drawn — disabled while it cannot run, not drawn where it is not offered; a glyph alone is named by `aria-label` and a tooltip |
-| `button` | a `button` node: a `<button>` running its action, labelled with the action's label — `data-button` says how it is drawn, `data-state="submitting"` while its press is pending; once the action has answered, its `row-answer` stands in its place, and a failure is its `row-failure` beside it |
+| `button` | a `button` node: a `<button>` running its call, labelled with the call's label — `data-button` says how it is drawn, `data-state="submitting"` while its press is pending; once the call has answered, its `mutation-result` stands in its place, and a failure is its `mutation-failure` beside it |
 | `press` | what pressing a `box`, `stack` or `columns` node, or a listing's record, does: an empty `<a>` to its destination's address, named by `aria-label` exactly as its `label` is formatted, the first child of the element it covers — the node, the record's element, or in a table the row's first `table-cell` — spanning it; `aria-current="page"` while it leads to where the viewer is. Drawn only where its address resolves |
 
 **A pressed node or record** is covered by its `press`: the base layer
@@ -339,7 +339,7 @@ is on it as `data-style`.
 | `markdown-code-text` | the `code` inside it |
 | `markdown-token` | a highlighted run of code, its kind in `data-token` |
 | `markdown-annotations` | the controls of the annotations on one block, in order, inside it: at the end of a heading, a paragraph, a quote, a code block or a table's frame, after the first block of a list item |
-| `markdown-annotation` | one annotation's control: its `row-action` button, then the `badge` holding its count when it has one, and the `row-answer` or `row-failure` of a press |
+| `markdown-annotation` | one annotation's control: its `row-action` button, then the `badge` holding its count when it has one, and the `mutation-result` or `mutation-failure` of a press |
 | `markdown-unplaced-annotations` | after the text, the `markdown-annotation`s whose line is past it; drawn only when there are any, and holding every annotation while the chunk is fetched |
 
 ### Chat
@@ -680,7 +680,7 @@ near the viewport; a page out of view stands in at its height, with no part.
 | `field-error` | what is wrong with a field |
 | `form-error` | what is wrong that no field names |
 | `form-actions` | the row of buttons under a form or in a confirmation |
-| `submit` | the button that commits: `Save` on a form, an action's own label on an action, a confirmation's answer |
+| `submit` | the button that commits: `Save` on a form writing its record, the `onSubmit` label on a form running a mutation, a confirmation's answer; absent from a form with neither |
 | `cancel` | the button that backs out |
 | `field-group` | a labelled section of a form, around the fields that name it |
 | `field-group-label` | the section's heading |
@@ -716,27 +716,26 @@ near the viewport; a page out of view stands in at its height, with no part.
 | `date-range-from` | the date the range starts on |
 | `date-range-to` | the date it ends on |
 
-### Action
+### Mutation answers
 
 | Part | Is |
 | --- | --- |
-| `action` | an action, with everything belonging to it: its form, then what its operation answered |
-| `action-result` | the action's `result` tree, drawn from a success; absent until the operation has answered, and while it runs again |
-| `action-failure` | the action's `failure` tree, drawn for any answer but a success and for no answer at all |
-| `row-answer` | a row action's `result` tree, drawn in the row in place of its `row-action` button once it succeeded |
-| `row-failure` | a row action's `failure` tree, drawn in the row beside its button when no confirmation was open |
-| `disabled-text` | why a button cannot be pressed — beside an action's `submit` in `form-actions`, or beside a `row-action` — present only while its `enabled` condition does not hold |
+| `mutation-result` | a call's `result` tree, drawn from a success where the call ran — in place of its button for a `button` node or a row's `row-action`, beneath the fields for a form's `onSubmit` or `autosave`; absent until the mutation has answered, and while a pressed call runs again |
+| `mutation-failure` | a call's `failure` tree, drawn for any answer but a success and for no answer at all — beside the button, the annotation or the record where the call ran, beneath a form's fields, or in the open confirmation when one was open |
+| `disabled-text` | why a button cannot be pressed — beside a `row-action`, a `button` or a form's `submit` — present only while its `enabled` condition does not hold |
+| `saving` | the text drawn beside a form's last `autosave` answer while its next write is awaited |
+| `retry` | the button beside a failed `autosave` write's `mutation-failure` that sends it again; present until the next change or until it is pressed |
 
-Inside `action`, in this order: one `form` holding a `field` per field shown, a
-`form-error` when there is one, and a `form-actions` with the `submit` (and the
-`disabled-text` while it is disabled); `action-result` after a success, or
-`action-failure` after anything else. The `form` of an action carries no
-`data-state` and no `data-dirty` — the `action` carries the state, and a
-`row-action` its own while its press is pending or queued.
+A call's answers are told apart by their container: the `row-actions` cell or
+`table-row` of a row's call, the `markdown-annotation` of an annotation's, the
+place of a `button` node's own, and a `form` for its writes — each write's
+answers in a region of its own beneath the fields, `autosave`'s before the
+`form-actions` and `onSubmit`'s after them, the region `aria-busy` while an
+`autosave` write is awaited.
 
 A list's row actions are drawn as a table layout's are: a last
 `table-header-cell` and, per row, a `row-actions` cell holding each
-`row-action`, or its `row-answer`.
+`row-action`, or its `mutation-result`.
 
 A `list` draws its rows with the table's own grid parts — `table-frame`,
 `table-grid`, `table-head`, `table-body`, `table-row`, `table-header-cell`,
@@ -867,7 +866,7 @@ Where each sits:
   a table layout, in a `table-detail` cell — and after the pressed element
   elsewhere.
 - `panel` is a child of the nearest composite (`listing`, `split`, `form`,
-  `action`, `filters`, `chat`) holding what was pressed, beside its content on
+  `filters`, `chat`) holding what was pressed, beside its content on
   its `data-side`; a listing's is beside `listing-main`.
 - On a cold load the declaration of the surface stands in for what opened the
   page where one element is known; where what opened the page is not on screen,
@@ -924,7 +923,7 @@ listed.
 
 | Attribute | Values | On |
 | --- | --- | --- |
-| `data-state="…"` | `idle`, `loading`, `error`, `empty`, `submitting` | `page`, `query`, `listing`, `form`, `filters`, `component`, `action`, `row-action`, `button`, `markdown`, `chat` |
+| `data-state="…"` | `idle`, `loading`, `error`, `empty`, `submitting` | `page`, `query`, `listing`, `form`, `filters`, `component`, `row-action`, `button`, `markdown`, `chat` |
 | `data-invalid="…"` | `true`, while what it holds is refused; the control inside carries its own | `field`, `picker` |
 | `data-dirty="…"` | `true`, while it holds input that is not saved | `form` |
 | `data-compact="…"` | `true`, while the viewport is below the application's `compactBelow` | `app` |
@@ -939,8 +938,8 @@ listed.
 | `data-embedded="…"` | `true`, on a part that draws a frame of its own (an outer border, radius and background) while it is the direct content of a flush split view's aside or content — a listing's layout counting as its listing — so it draws none, the split's frame being the one panel | `chat`, `list-layout`, `table-frame`, `tree-layout`, `calendar-grid` |
 | `data-button="…"` | `text`, `icon`: a `link` node drawn as a button, by its text or by a glyph, absent on a link drawn inline; how a `command` or a `button` is drawn | `link`, `command`, `button` |
 | `data-command="…"` | `chat.exportTranscript`, `chat.copyTranscript`, `chat.stop`, `chat.newConversation`: the command a `command` part runs, so a look can choose its glyph | `command` |
-| `data-fill="…"` | `true`, while the part [fills](#filling) the room it is in | `app`, `main`, `page`, `box`, `stack`, `columns`, `text`, `badge`, `link`, `image`, `svg`, `value`, `time`, `list`, `bar`, `command`, `button`, `query`, `listing`, `form`, `action`, `filters`, `component`, `chat`, `split`, `aside`, `split-content`, `markdown`, `navigation`, `tabs`, `tab-panel` |
-| `data-record="…"` | `true`: a link drawn from a record's own content — a layout's content, a column's or value's `to` — and never from a relation's label, an action's answer or a form; absent otherwise | `link` |
+| `data-fill="…"` | `true`, while the part [fills](#filling) the room it is in | `app`, `main`, `page`, `box`, `stack`, `columns`, `text`, `badge`, `link`, `image`, `svg`, `value`, `time`, `list`, `bar`, `command`, `button`, `query`, `listing`, `form`, `filters`, `component`, `chat`, `split`, `aside`, `split-content`, `markdown`, `navigation`, `tabs`, `tab-panel` |
+| `data-record="…"` | `true`: a link drawn from a record's own content — a layout's content, a column's or value's `to` — and never from a relation's label, a call's answer or a form; absent otherwise | `link` |
 | `data-selected="…"` | `true`, while a link or press the record draws leads to where the viewer is — moving to the current location, with the same address and query, or opening the page open in a surface now — and never by a relation's label; absent otherwise | `table-row`, `list-item`, `card`, `board-card`, `calendar-event`, `timeline-bar`, `tree-item` |
 | `data-align="…"` | `start`, `center`, `end` — a popover's, along its side; a table column's alignment | `surface`, `markdown-table-header-cell`, `markdown-table-cell` |
 | `data-modal="…"` | `true`, `false` — a dialog's or a drawer's | `surface` |
@@ -991,8 +990,7 @@ to an `https:`, `http:` or `mailto:` address is never current, and a navigation
 from — `filters-add`, an icon button — carries no state of the control's: its
 list's is on `menu`, its tooltip's on `tooltip`.
 
-An `action` is `idle`, `submitting` while its operation runs, and `error` once
-its record or the operation was refused. A `row-action` carries `data-state`
+A `row-action` carries `data-state`
 only while its own operation runs — `submitting`. A listing takes no press of
 a record while that record's last is pending, so for as long its `row-action`
 and `row-delete` are `disabled`, the pressed one alone carrying the state;

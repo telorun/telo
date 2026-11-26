@@ -45,12 +45,12 @@ expect:
   errors:
     - { code: SCHEMA_VIOLATION, message: "Ui.View/literalLink: /content/to/href" }
     - { code: SCHEMA_VIOLATION, message: "Ui.View/templateLink: /content/to/href/path" }
-    - { code: SCHEMA_VIOLATION, message: "Ui.Action/literalTarget: /request/target" }
-    - { code: SCHEMA_VIOLATION, message: "Ui.Action/templateTarget: /request/target/path" }
-    - { code: PATH_PARAMETER_UNBOUND, message: "Ui.Action/unboundRefresh" }
-    - { code: PATH_PARAMETER_UNUSED, message: "Ui.Action/unboundRefresh" }
+    - { code: SCHEMA_VIOLATION, message: "Ui.Mutation/literalTarget: /url" }
+    - { code: SCHEMA_VIOLATION, message: "Ui.Mutation/templateTarget: /url/path" }
+    - { code: PATH_PARAMETER_UNBOUND, message: "Ui.Mutation/unboundRefresh" }
+    - { code: PATH_PARAMETER_UNUSED, message: "Ui.Mutation/unboundRefresh" }
 ---
 kind: Assert.Manifest
 metadata: { name: wildcardAtRuntime }
 source: ./__fixtures__/invalid/address-wildcard/telo.yaml
-expect: { errors: [{ code: SCHEMA_VIOLATION, message: "Ui.View/literalLink: /content/to/href matches a shape that is not allowed here" }, { code: SCHEMA_VIOLATION, message: "Ui.View/templateLink: /content/to/href/path matches a shape that is not allowed here" }, { code: SCHEMA_VIOLATION, message: "Ui.Action/literalTarget: /request/target matches a shape that is not allowed here" }, { code: SCHEMA_VIOLATION, message: "Ui.Action/templateTarget: /request/target/path matches a shape that is not allowed here" }, { code: PATH_PARAMETER_UNBOUND, message: "Ui.Action/unboundRefresh: 'onSuccess.refreshes[0].path: /api/{id}/**' reads '{id}', which 'onSuccess.refreshes[0].pathParams' does not bind. Add 'id' to 'onSuccess.refreshes[0].pathParams'." }, { code: PATH_PARAMETER_UNUSED, message: "Ui.Action/unboundRefresh: 'onSuccess.refreshes[0].pathParams.idd' names no variable of 'onSuccess.refreshes[0].path: /api/{id}/**' — it reads 'id'. Remove the entry, or name the variable it fills." }], runFails: "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED" }
+expect: { errors: [{ code: SCHEMA_VIOLATION, message: "Ui.View/literalLink: /content/to/href matches a shape that is not allowed here" }, { code: SCHEMA_VIOLATION, message: "Ui.View/templateLink: /content/to/href/path matches a shape that is not allowed here" }, { code: SCHEMA_VIOLATION, message: "Ui.Mutation/literalTarget: /url matches a shape that is not allowed here" }, { code: SCHEMA_VIOLATION, message: "Ui.Mutation/templateTarget: /url/path matches a shape that is not allowed here" }, { code: PATH_PARAMETER_UNBOUND, message: "Ui.Mutation/unboundRefresh: 'invalidates[0].path: /api/{id}/**' reads '{id}', which 'invalidates[0].pathParams' does not bind. Add 'id' to 'invalidates[0].pathParams'." }, { code: PATH_PARAMETER_UNUSED, message: "Ui.Mutation/unboundRefresh: 'invalidates[0].pathParams.idd' names no variable of 'invalidates[0].path: /api/{id}/**' — it reads 'id'. Remove the entry, or name the variable it fills." }], runFails: "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED" }

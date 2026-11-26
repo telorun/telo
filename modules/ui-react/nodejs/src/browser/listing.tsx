@@ -12,13 +12,14 @@ import { TableLayout } from "./layouts/table-layout.js";
 import { readMode, readPositions, useGroupValues, useListingReads, type GroupValues, type ListedRecord, type ReadView } from "./listing-engine.js";
 import type { ListingReads, ReadPlan, ReadPosition } from "./listing-reads.js";
 import { ErrorNode, Node, type SpecNode } from "./nodes.js";
-import type { RowActionSpec } from "./operation.js";
+import type { MutationCallSpec } from "./mutation-call.js";
 import type { OptionSourceSpec } from "./option-source.js";
 import { queryRoot } from "./query-root.js";
 import { heldValues, RelatedContext, useRelatedLabels, type RelatedLabels } from "./related-labels.js";
 import { useEndReached } from "./record-window.js";
 import { FilterContext, RendererContext, RootsContext, underMount, VisibleContext } from "./renderer-context.js";
-import { useRowActions } from "./row-actions.js";
+import { useMutationCalls } from "./mutation-calls.js";
+import { useFormRoot } from "./form-records.js";
 import { useRowActionsDisplay, type ActionsDisplay, type ActionsSetting } from "./row-actions-display.js";
 import { anchorRef } from "./node-anchors.js";
 import { Confirmation } from "./surface.js";
@@ -113,7 +114,9 @@ export function LoadMore({ read, scroll }: { read: ReadView; scroll: boolean }) 
  * related records, invalidation, a timed reload, openers, row actions, delete
  * and the empty state are the listing's, whatever the layout. A templated
  * `basePath` resolves over the roots in scope; one that does not resolve reads
- * nothing and draws its failure.
+ * nothing and draws its failure. A listing naming a form reads its settled,
+ * valid record as `form` in its filters and row actions, and reads nothing
+ * until the form, placed on the page, first holds one.
  */
 export function Listing({ node, embedded = false }: { node: SpecNode; embedded?: boolean }) {
   const Icon = useControl("Icon");
@@ -130,7 +133,16 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
   const plan = spec.reads;
   const mode = readMode(spec.type, plan, node.paging);
   const query = useMemo(() => queryRoot(node.query as Record<string, JsonSchema>, host.location.search), [node.query, host.location.search]);
-  const rowRoots = useMemo(() => ({ ...roots, query }), [roots, query]);
+  const formId = (node.form ?? null) as string | null;
+  const followed = useFormRoot(formId);
+  const form = followed?.record;
+  // `form` is the listing's own: one naming no form withholds one bound around it.
+  const rowRoots = useMemo(() => {
+    const { form: around, ...rest } = roots;
+    return formId === null ? { ...rest, query } : { ...rest, query, form };
+  }, [roots, query, formId, form]);
+  // A listing following a form reads nothing while the form is not on the page or has never held a valid record.
+  const following = followed === undefined || form !== undefined;
   const base = resolveBasePath(node.basePath as BasePath, rowRoots, "'listing' basePath");
   const basePath = base.ok ? base.address : undefined;
   const unresolved = unresolvedFailure(base);
@@ -148,7 +160,7 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
   // While a filter the listing reads holds nothing, nothing is read.
   const fixed = boundFilters(node.filters as Record<string, Binding> | undefined, rowRoots);
   const listing: ListingReads | undefined =
-    fixed && basePath !== undefined
+    following && fixed && basePath !== undefined
       ? { basePath, pageSize: node.pageSize, filters: fixed, bar: filterParams, ...(sort !== undefined ? { sort } : {}) }
       : undefined;
   const groups = useGroupValues(host, prefix, listing, plan, relations, rowRoots, visible, changes);
@@ -214,22 +226,22 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
   // the disabled buttons are drawn.
   const writing = useRef(false);
   // A record an action or a move answered with is drawn from that answer.
-  const rowActions = useRowActions(node.rowActions as RowActionSpec[], rowRoots, (result, key) => succeeded(result, key));
+  const rowActions = useMutationCalls(node.rowActions as MutationCallSpec[], rowRoots, (result, key) => succeeded(result, key));
   const succeeded = (result: Record<string, unknown> | undefined, key: string) => {
     if (basePath === undefined) return;
     if (result && Object.hasOwn(result, recordKey) && String(result[recordKey]) === key) store.written(basePath, result);
     host.notifyChanged(basePath);
   };
-  // The layout's move, run as a row action over `row` and `to`.
-  const moves = useRowActions(spec.move ? [spec.move as RowActionSpec] : [], rowRoots, succeeded);
+  // The layout's move, run as a call over `row` and `to`.
+  const moves = useMutationCalls(spec.move ? [spec.move as MutationCallSpec] : [], rowRoots, succeeded);
   const itemPath = (key: string) => `${collectionPath}/${segment(key)}`;
   const itemUrl = (key: string) => underMount(prefix, itemPath(key));
   const creates = (node.create ?? undefined) as PressSpec | undefined;
   const edits = (node.edit ?? undefined) as PressSpec | undefined;
-  const hasActions = (node.rowActions as RowActionSpec[]).length > 0 || edits !== undefined || node.delete === true;
+  const hasActions = (node.rowActions as MutationCallSpec[]).length > 0 || edits !== undefined || node.delete === true;
   const shownActions = useRowActionsDisplay(
     node.rowActionsDisplay as ActionsSetting,
-    `${records.map((record) => record.key).join("\u0000")}|${(node.rowActions as RowActionSpec[]).length}|${edits ? 1 : 0}|${node.delete ? 1 : 0}`,
+    `${records.map((record) => record.key).join("\u0000")}|${(node.rowActions as MutationCallSpec[]).length}|${edits ? 1 : 0}|${node.delete ? 1 : 0}`,
   );
 
   /** Go where a press of the listing leads: over the roots in scope — and the record's, where it is one's. */
@@ -323,7 +335,7 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
     ...(detailing !== undefined ? { detail: { key: detailing.key, ref: detailRef } } : {}),
     ...(creates ? { create: (values: Row) => press(creates, { ...rowRoots, values }, null) } : {}),
     move: (record, to) => moves.press(0, record.row, record.key, { to }),
-    movable: (record) => spec.move !== undefined && !moves.busy(record.key) && conditionHolds((spec.move as RowActionSpec).enabled, { ...rowRoots, row: record.row }),
+    movable: (record) => spec.move !== undefined && !moves.busy(record.key) && conditionHolds((spec.move as MutationCallSpec).enabled, { ...rowRoots, row: record.row }),
     moveFailure: (record) => moves.failure(0, record.key),
     labels,
   };

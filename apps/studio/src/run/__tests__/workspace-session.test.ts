@@ -178,6 +178,30 @@ describe("a workspace's session", () => {
     expect(runner.sessions.get("s1")!.status.kind).toBe("starting");
   });
 
+  it("does not read the workspace on a replayed running status while the runner reports the session starting", async () => {
+    const runner = new FakeRunner();
+    let snapshots = 0;
+    const counting: WorkspaceBridge = {
+      ...emptyBridge,
+      snapshot: async () => {
+        snapshots += 1;
+        return emptyBridge.snapshot();
+      },
+    };
+    const { session } = open(runner, "manual", undefined, null, counting);
+    session.setDesired([app("api")], true, false);
+    await session.open();
+    const fake = runner.sessions.get("s1")!;
+    for (const listener of [...(fake as unknown as { listeners: Set<(e: unknown) => void> }).listeners]) listener({ type: "status", status: { kind: "running" } });
+    await settle();
+    expect(snapshots).toBe(0);
+    expect(session.state.status?.kind).toBe("starting");
+
+    fake.up();
+    await settle();
+    expect(snapshots).toBe(1);
+  });
+
   it("tries a failed push once, not in a loop, and tries again only on a write or a retry", async () => {
     const runner = new FakeRunner();
     let snapshots = 0;

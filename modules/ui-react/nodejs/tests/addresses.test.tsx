@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, type Rendered } from "./harness.js";
-import { actionNode, address, navigateTo, listingNode, operation, queryNode } from "./spec-nodes.js";
+import { address, buttonOf, call, literals, navigateTo, listingNode, promptOf, queryNode, reportForm, reportResult, reportSchema } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => {
@@ -73,7 +73,7 @@ describe("addresses", () => {
   it("keeps a node's state across a move to the page already shown", async () => {
     rendered = await render({
       path: "/",
-      pages: { "/": { title: "Reports", children: [actionNode(), { type: "link", text: "Again", to: navigateTo(address("/", {}, { page: { value: 2 } })) }] as never } },
+      pages: { "/": { title: "Reports", children: [reportForm(), { type: "link", text: "Again", to: navigateTo(address("/", {}, { page: { value: 2 } })) }] as never } },
     });
     await rendered.enter(rendered.part("input"), "2026-09");
     const pageReads = reads(rendered, "/_telo/ui/page");
@@ -96,16 +96,14 @@ describe("a query over an address", () => {
 });
 
 describe("a request target", () => {
-  const renaming = (method: "PATCH" | "DELETE") => ({
-    action: operation(
-      "/",
-      "Rename",
-      method === "PATCH" ? conversationSchema : { type: "object", required: ["id"], properties: { id: { type: "string" } } },
-      { request: { method, target: address("/api/chat/conversations/{id}", { id: input("id") }), consumed: ["id"] } },
-    ),
-    inputs: { id: row("id") },
-    ...(method === "PATCH" ? { prompt: { fields: [{ type: "input", control: "auto", property: "title", label: "Title" }] } } : {}),
-  });
+  const renaming = (method: "PATCH" | "DELETE") =>
+    call("/", "Rename", method === "PATCH" ? conversationSchema : { type: "object", required: ["id"], properties: { id: { type: "string" } } }, {
+      method,
+      url: address("/api/chat/conversations/{id}", { id: input("id") }),
+      consumed: ["id"],
+      inputs: { id: row("id"), ...(method === "PATCH" ? { title: { root: "prompt", path: ["title"] } } : {}) },
+      ...(method === "PATCH" ? { prompt: promptOf(conversationSchema, ["title"]) } : {}),
+    });
 
   it("sends a rename without the consumed id, and reads the listing and the record at the path again", async () => {
     const item = vi.fn(({ method }: { method: string }) => (method === "PATCH" ? new Response(null, { status: 204 }) : json({ id: "cnv_x", title: "Old name" })));
@@ -138,27 +136,25 @@ describe("a request target", () => {
 });
 
 describe("a success with no body", () => {
-  const send = async (node: ReturnType<typeof actionNode>) => {
+  const send = async (overrides: Record<string, unknown>) => {
     rendered = await render({
       path: "/",
       answers: { "/api/reports": () => new Response(null, { status: 204 }) },
-      pages: { "/": { title: "Reports", children: [node] } },
+      pages: { "/": { title: "Reports", children: [buttonOf(call("/api/reports", "Generate", reportSchema, { inputs: literals({ month: "2026-09" }), ...overrides }))] } },
     });
-    await rendered.enter(rendered.part("input"), "2026-09");
-    await rendered.click(rendered.part("submit"));
+    await rendered.click(rendered.part("button"));
     return rendered;
   };
 
   it("is a success when nothing reads the answer", async () => {
-    const r = await send(actionNode({ result: undefined }));
-    expect(r.part("action").getAttribute("data-state")).toBe("idle");
+    const r = await send({});
+    expect(r.parts("mutation-failure")).toEqual([]);
     expect(r.parts("error")).toEqual([]);
   });
 
   it("is ERR_UI_RESPONSE_INVALID when the result tree reads it", async () => {
-    const r = await send(actionNode());
-    expect(r.part("action").getAttribute("data-state")).toBe("error");
-    expect(r.part("action-failure").querySelector('[data-telo-part="value"]')?.textContent).toBe("ERR_UI_RESPONSE_INVALID");
+    const r = await send({ result: reportResult() });
+    expect(r.part("mutation-failure").querySelector('[data-telo-part="value"]')?.textContent).toBe("ERR_UI_RESPONSE_INVALID");
   });
 });
 

@@ -22,7 +22,7 @@ expression selects nothing.
 | `time` | `value`, `relative?` | a [date or a date-time](#times), relative to now or absolute |
 | `list` | `rows`, `columns`, `heading?`, `rowStyle?` | the rows of a list one answer holds, a column per value |
 | `markdown` | `value`, `annotations?` | [Markdown text](#markdown), with a control on each item the server names |
-| `button` | `action`, `inputs`, `confirm?`, `prompt?`, `enabled?`, `button?` | a [button running an action](#buttons) with inputs bound from the data in scope |
+| `button` | `action`, `button?` | a [button running a mutation](#buttons): the [call](mutation.md#uimutationcall) held under `action`, its inputs bound from the data in scope |
 | `bar` | `start?`, `center?`, `end?` | a [bar](#bars): nodes at its start, its centre and its end |
 | `command` | `command`, `text`, `button?` | a button running a [command](#commands) of the place it is written in |
 | `composite` | `ref` | a [composite](composite.md): a `!ref`, or an inline declaration |
@@ -128,7 +128,7 @@ it provides, as `style` and `shown` do).
   aside). Its minimum is its renderer's (a chat's `24rem`), else none.
 - **Below the minimum** the room scrolls, never a node inside it.
 
-A box drawn on its own — a surface's form, a listing's empty tree, an action's
+A box drawn on its own — a surface's form, a listing's empty tree, a call's
 answer, a row action, a menu's items, a split view's actions, a chat's header —
 is decided inside itself and fills nothing around it. A card or board layout
 gives one row's records one height; a list record is as tall as its content.
@@ -252,8 +252,8 @@ a parameter is chosen, hide the node with `shown`.
 A `value` and a `list` name what they draw with [accessors](https://telo.run/docs/extend/accessor-fields)
 over the roots in scope — `data` inside a [`query` node](#the-query-node)'s `content`, `query` where
 query parameters are declared, `params` — the page's [path
-variables](page.md#params) — wherever a page's nodes are, `error` in a query node's or an action's `failure`,
-`result`, `input` and `values` in an [action's answer](action.md#the-answer),
+variables](page.md#params) — wherever a page's nodes are, `error` in a query node's or a call's `failure`,
+`result`, `input` and `values` in a [call's answer](mutation.md#the-answer),
 `row` in a list column and its row actions, and in a markdown node's
 [annotations](#markdown):
 
@@ -290,9 +290,9 @@ A list's `rowStyle` and a column's `style` are [style rules](#style-rules) over
 `row`, as a listing's are: the first styles each row, the second each cell of
 its column.
 
-A list's `rowActions` offers an action on every row, each entry a
-[`Ui.BoundAction`](action.md#bound-actions) whose `inputs` and `enabled` read `row`
-and the roots the list is drawn under; a pressed one draws its action's answer
+A list's `rowActions` offers a mutation on every row, each entry a
+[`Ui.MutationCall`](mutation.md#uimutationcall) whose `inputs` and `enabled` read `row`
+and the roots the list is drawn under; a pressed one draws its own `result` tree
 in place of its button, which lasts as long as the answer the list is drawn
 from. `rowActionsDisplay` (`auto`, the default, `inline` or `menu`) says how
 they are drawn, as a [listing's](listing.md#how-the-actions-are-drawn) are —
@@ -337,7 +337,7 @@ none.
 | `rows` | required: an accessor to a list, each element being `row` |
 | `line` | required: an accessor over `row` to the 1-based source line starting the item, an integer |
 | `count` | an accessor over `row` to an integer, shown on the control as a badge |
-| `action` | required: a [`Ui.BoundAction`](action.md#bound-actions) whose `inputs` and `enabled` read `row` beside the roots in scope; the control is labelled with the action's `label` |
+| `action` | required: a [`Ui.MutationCall`](mutation.md#uimutationcall) whose `inputs` and `enabled` read `row` beside the roots in scope; the control is labelled with the call's `label` |
 
 ```yaml
 - type: markdown
@@ -347,9 +347,12 @@ none.
     line: !cel "row.line"
     count: !cel "row.count"
     action:
-      inputs: { id: !cel "params.id", revision: !cel "data.plan.latestRevision.seq", item: !cel "row.id" }
-      prompt: true
-      action: !ref comment
+      mutation: !ref comment
+      inputs: { id: !cel "params.id", revision: !cel "data.plan.latestRevision.seq", item: !cel "row.id", text: !cel "prompt.text" }
+      label: Comment
+      prompt:
+        kind: Ui.Prompt
+        model: !ref CommentText
 ```
 
 `row` is typed as an element of what `rows` names, so `row.lnie` is
@@ -357,37 +360,41 @@ none.
 drawn on the block containing `line` — a list item for an item's line, a
 heading for a heading's — two annotations on one block drawing two controls in
 order, and an annotation whose line is past the text is drawn after it, so
-none is lost. A pressed control draws its action's answer as a row action does.
+none is lost. A pressed control draws its call's answer as a row action does.
 
 ## Buttons
 
-A `button` runs a [`Ui.Action`](action.md) with its inputs bound from the data
-in scope — the page's `params` and `query`, and the roots of the tree it sits
-in, `data` inside a query node's `children`. Its members are a
-[`Ui.BoundAction`](action.md#bound-actions)'s, plus `button`, a
-[`Ui.ButtonDisplay`](#links-drawn-as-buttons) (a text button when left out),
-and it is labelled with the action's `label`:
+A `button` runs a [call](mutation.md#uimutationcall) of a [`Ui.Mutation`](mutation.md),
+held under `action`, with its inputs bound from the data in scope — the page's
+`params` and `query`, and the roots of the tree it sits in, `data` inside a
+query node's `children`. Beside `action` it has `button`, a
+[`Ui.ButtonDisplay`](#links-drawn-as-buttons) (a text button when left out). The
+call's `label` is the button's accessible name:
 
 ```yaml
 - type: button
-  inputs:
-    id: !cel "params.id"
-    decision: approve
-    revision: !cel "data.plan.latestRevision.seq"
-  prompt: true
-  action: !ref decide
+  action:
+    mutation: !ref decide
+    inputs:
+      id: !cel "params.id"
+      decision: approve
+      revision: !cel "data.plan.latestRevision.seq"
+      author: !cel "prompt.author"
+    label: Approve
+    prompt: !ref authorPrompt
+    onSuccess:
+      - { kind: Ui.Navigate, href: /plans }
 ```
 
-`inputs` is judged against the action's `inputModel` as a row action's is: a
-key the action does not take, a member the data does not declare, or a value of
-the wrong type is refused by `telo check`, and so is a required input left
-unbound unless `prompt: true`; inputs that make no record of the input model are
-refused again when the node is first read (`ERR_UI_BOUND_ACTION_INPUTS_INVALID`).
-`prompt: true` opens a dialog asking for the action's fields the inputs do not
-bind, where the person completes the record — see [bound
-actions](action.md#bound-actions). A pressed button draws its action's answer in
-place of itself and its `failure` beside it, or in the open dialog; it takes no
-press while one is pending.
+A bare button — a mutation that takes nothing — is `inputs: {}`. `inputs` is
+judged against the mutation's `inputModel` as a row action's is: a key the
+mutation does not take, a member the data does not declare, a required input left
+unbound or a value of the wrong type is refused by `telo check`; inputs that
+make no record of the input model are refused again when the node is first read
+(`ERR_UI_MUTATION_CALL_INPUTS_INVALID`). A `prompt` opens a dialog asking for its
+entries, read as `prompt` — see [asking first](mutation.md#asking-first). A
+pressed button draws the call's `result` in place of itself and its `failure`
+beside it, or in the open dialog; it takes no press while one is pending.
 
 ## Texts
 
@@ -417,8 +424,8 @@ key, and a `type` outside the list is an error listing the valid ones.
 
 Spacing is not a field — no gap, alignment, width or image size. How nodes are
 spaced is the renderer's styling contract. A button runs an operation only as a
-[`button` node](#buttons), a [`Ui.Action`](action.md) or what a listing offers
-on its records; a `menu`'s button only opens its links.
+[`button` node](#buttons), a [form's `onSubmit`](form.md#onsubmit) or what a
+listing offers on its records; a `menu`'s button only opens its links.
 
 ## Addresses
 
@@ -474,8 +481,8 @@ on its records; a `menu`'s button only opens its links.
   query and before its fragment. The result is held to the address rule below.
 - **A `*` or `**` segment is refused** in every address and request target
   (`SCHEMA_VIOLATION`, by `telo check` and again at creation): a whole segment
-  that is `*` or `**` belongs to a [`refreshes`](action.md#after-a-success)
-  entry alone, which takes a `Ui.RefreshTarget` — a request target whose
+  that is `*` or `**` belongs to an [`invalidates`](mutation.md#invalidation)
+  entry alone, which takes a `Ui.InvalidationTarget` — a request target whose
   literal path may hold them.
 - What a renderer receives is `{ path, pathParams, queryParams }` with every
   member present, each a binding: a literal string is
@@ -495,7 +502,7 @@ on its records; a `menu`'s button only opens its links.
 
   It is one exported shape, `Ui.AppRelativeReference`, named by every field
   holding an address — a page's `path`, an address's and a request target's
-  `path`, an action's `request.target` and `refreshes`, and a collection
+  `path`, a mutation's `url` and `invalidates`, and a collection
   source's `basePath` and its template's `path` —
   so a kind of another module holding one references it too. A literal one is
   refused by `telo check`; a computed `src` that breaks it is replaced by an
@@ -503,8 +510,8 @@ on its records; a `menu`'s button only opens its links.
   drawn as text.
 - An app-relative path is the application's own: a renderer mounted under a
   prefix resolves every one under that prefix — a destination's address, an
-  `image`'s `src`, a collection source's `basePath` and an action's
-  `request.target` alike.
+  `image`'s `src`, a collection source's `basePath` and a mutation's
+  `url` alike.
 - `svg.markup` is never inserted into the page. A renderer draws it as an
   image, so nothing in it can run or reach the document.
 
@@ -573,7 +580,7 @@ null value takes `default`; a value no case names takes `default` too.
 
 `Ui.SpecNode` is the same vocabulary after resolution: every `when` decided
 and gone — a menu's items and a `tabs` node's tabs included, so a `menu` carries at least one item and `tabs` at least one tab — every `shown` carried as written (`{ at, matches }`, `at` a binding),
-every composite replaced by the node it provides (`listing`, `form`, `action`,
+every composite replaced by the node it provides (`listing`, `form`,
 `filters`, `data`, `component`), every pane by the node it answers (left out
 when it answers none — there is no `pane` node on the wire), and `error` for a
 node that could not be produced. Every node carries `fill`, `true` exactly where it or a node in the
@@ -599,9 +606,12 @@ path; no expression engine runs in the browser.
 `create`, `edit` and `press` are each a [`Ui.PressSpec`](presses.md#what-a-renderer-receives)
 or `null`, all three present: `create` and `edit` carry `label` filled — `ui`'s
 text `create` or `edit` when none was written — and `press` is `edit`'s press
-when only that is written. A `form` node carries `record` (`{ basePath, key }`,
-`key` a binding or `null`), `initialValues` (a binding or `null`), `unsaved` and
-`afterSubmit`, declared or defaulted. The defaults are this module's, filled
+when only that is written. A `form` node carries `id`, `record` (`{ basePath, key, answer }`, or `null`
+without a collection; `key` a binding or `null`), `initialValues` (a binding or
+`null`), `unsaved` and `afterSubmit`, declared or defaulted, `onSubmit` and
+`autosave` (each a call-shaped write or `null`) and `onSuccess` and
+`clearAnswerOn` (lists, `[]` when none) — see [what a form
+receives](form.md#what-a-renderer-receives). The defaults are this module's, filled
 before the node is provided, so two renderers cannot disagree about them and none
 carries a table of its own.
 
@@ -612,24 +622,23 @@ none), `rowActions` (an empty list when the listing declares none),
 press); a `list` node always carries
 `rowActionsDisplay` and carries `rowActions` when it declares them, and
 `rowStyle` and a column's `style` — each `{ by, cases, default? }`, `by` a
-binding — when declared. A bound action is
-`{ action, inputs, confirm?, prompt?, enabled? }`: `action` is the action's
-own node, `inputs` maps each input property to a binding, `confirm` is present
-exactly when the entry asks a question, `prompt` — `{ fields }`, the fields its
-dialog enters — exactly when the entry declares `prompt: true`, and `enabled`
-exactly when the entry declares one. A `button` node is a bound action's
-members plus `button` (a `Ui.ButtonDisplaySpec`, `{ type: text }` when none is
-written), `style?`, `shown?` and `fill`. A `markdown` node is `{ value,
-annotations?, style?, shown?, fill }`, `value` a binding and `annotations`
-`{ rows, line, count?, action }` exactly when written, the first three bindings
-and `action` a bound action.
+binding — when declared. A call is `{ mutation, inputs, label, confirm?, prompt, onSuccess, result?,
+failure, enabled? }`: `mutation` the write's [spec](mutation.md#what-a-renderer-receives),
+`inputs` maps each input property to a binding, `confirm` is present exactly when
+the call asks a question, `prompt` is `{ schema, fields, groups }` or `null`,
+`onSuccess` a list of effect specs (`[]` when none), `result` present when
+written, `failure` the tree with the default filled in, and `enabled` exactly
+when declared; a layout's move is the same without `label` and `result`. A
+`button` node is `{ action, button, style?, shown?, fill }` (`button` a
+`Ui.ButtonDisplaySpec`, `{ type: text }` when none is written). A `markdown` node
+is `{ value, annotations?, style?, shown?, fill }`, `value` a binding and
+`annotations` `{ rows, line, count?, action }` exactly when written, the first
+three bindings and `action` a call.
 
-An `action` node always carries its input model, its `request` (method, target and the consumed input properties), the
-button's text, one `{ property, label, shown? }` per field, its `failure` tree
-(the default filled in), `onSuccess` (`refreshes` empty when none),
-`concurrency` and `clearAnswerOn`; `answer` (the output model), `result` and
-`enabled` are present exactly when declared. See
-[what an action provides](action.md#what-a-renderer-receives). A `query` node is
+There is no `action` node: a form and a button that ran one write are a `form`
+node with an `onSubmit`.
+
+A `query` node is
 described in [what a query provides](query.md#what-a-renderer-receives).
 
 A `filters` node likewise carries its whole policy: `placement` (a
@@ -651,7 +660,7 @@ that are not written by hand in a page's tree:
 
 | `type` | Members | Is |
 | --- | --- | --- |
-| `chat` | `spec`, `basePath`, `header`, `placeholder`, `starters`, `show`, `buttons`, `composer`, `conversation`, `refreshes`, `style?`, `shown?` | the node [`Ui.Chat`](chat.md) provides, every member present |
+| `chat` | `spec`, `basePath`, `header`, `placeholder`, `starters`, `show`, `buttons`, `composer`, `conversation`, `invalidates`, `style?`, `shown?` | the node [`Ui.Chat`](chat.md) provides, every member present |
 | `split` | `aside` — every member of a [`Ui.Aside`](split-view.md#the-aside) present — `content`, `style?`, `shown?` | the node [`Ui.SplitView`](split-view.md) provides |
 | `navbar` | `title?`, `start`, `end`, `navigation`, `placement`, `shown?` | the node [`Ui.Navbar`](navigation.md#uinavbar) answers, every member but `title` present |
 | `navigation-column` | `navigation`, `state`, `shown?` | the node [`Ui.NavigationColumn`](navigation.md#uinavigationcolumn) answers, `state` `null` when the open groups are kept in memory |

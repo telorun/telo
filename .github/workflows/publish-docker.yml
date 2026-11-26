@@ -270,6 +270,8 @@ jobs:
           file: cli/nodejs/Dockerfile
           target: lean
           platforms: linux/amd64,linux/arm64
+          build-args: |
+            TELO_PUBLISHED=true
           tags: ${{ steps.tags.outputs.lean }}
           repository: telorun/node
           variant: lean
@@ -281,6 +283,8 @@ jobs:
           file: cli/nodejs/Dockerfile
           target: lean-slim
           platforms: linux/amd64,linux/arm64
+          build-args: |
+            TELO_PUBLISHED=true
           tags: ${{ steps.tags.outputs.lean-slim }}
           repository: telorun/node
           variant: lean-slim
@@ -297,6 +301,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           build-args: |
             RUST_VERSION=${{ needs.context.outputs.rust-version }}
+            TELO_PUBLISHED=true
           tags: |
             ${{ steps.tags.outputs.rust }}
             ${{ steps.tags.outputs.rust-slim }}

@@ -1,3 +1,5 @@
+import type { Duplex } from "node:stream";
+
 import type { AppRun } from "../backend.js";
 import type { AppState, ByteStreamTag } from "../contract.js";
 import { SupervisorClient, SupervisorTerminated, type SupervisorTermination } from "./supervisor-client.js";
@@ -114,6 +116,12 @@ export class SupervisedApp {
 
   resize(runId: string, cols: number, rows: number): void {
     this.client.resize(runId, cols, rows);
+  }
+
+  /** A byte stream to `127.0.0.1:<port>` inside the workload, through this
+   *  slot's supervisor. */
+  openPortForward(port: number, signal?: AbortSignal): Promise<Duplex> {
+    return this.client.openPortForward(port, signal);
   }
 
   /** Drop the connection; a live run keeps running. */

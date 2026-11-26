@@ -230,10 +230,15 @@ export class DockerSessionWorkload implements BackendWorkload {
     return appStateMount(app);
   }
 
+  /** The kernel's debug stream binds the container's loopback, reached through
+   *  the app's own supervisor, so nothing else on the network reaches it. */
   async addresses(app: string): Promise<AppAddresses> {
     const slot = this.appSlot(app);
     const port = inspectPortFor(this.indexOf(app));
-    return { inspect: { listen: `0.0.0.0:${port}`, url: `http://${slot.ip}:${port}/events` }, host: slot.ip };
+    return {
+      inspect: { listen: `127.0.0.1:${port}`, connect: (signal) => slot.supervisor.openPortForward(port, signal) },
+      host: slot.ip,
+    };
   }
 
   runApp(app: string, run: AppRun): Promise<void> {

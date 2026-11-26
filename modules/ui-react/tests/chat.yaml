@@ -71,7 +71,7 @@ steps:
           stop: { type: text }
         composer: { actions: inside }
         conversation: { parameter: conversation }
-        refreshes: [{ path: { value: /api/chat/conversations }, pathParams: {}, queryParams: {} }]
+        invalidates: [{ path: { value: /api/chat/conversations }, pathParams: {}, queryParams: {} }]
         fill: false
   - name: glyphServed
     invoke: { kind: Assert.Equals }

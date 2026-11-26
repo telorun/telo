@@ -29,8 +29,8 @@ A source carries no relations, so an option source reading it can never form
 a cycle. A kind narrowing `collection` to a kind extending
 `DataModel.Collection` extends this one.
 
-A write, a delete, a row action, `notifyChanged(basePath)` and an action's
-`onSuccess.refreshes` resolving to the source's `basePath` reload every listing over
+A write, a delete, a row action, `notifyChanged(basePath)` and a mutation's
+`invalidates` resolving to the source's `basePath` reload every listing over
 it, and every facet request over it.
 
 ## A templated base path

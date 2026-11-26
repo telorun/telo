@@ -390,8 +390,8 @@ documents conditionally. Streams end when the server stops.
 Every address the page document carries — the `href` of a destination (the
 `to` of a `link` node, a menu item, a `value` node, a `list` or
 `Ui.TableLayout` column, a relation, an option source, a navigation `link`
-entry, a press and an action's `onSuccess`), a query's `url`, an action's
-`request.target` and `onSuccess.refreshes` — is `{ path, pathParams,
+entry, a press and an `onSuccess` effect), a query's `url`, a mutation's
+`url` and `invalidates` — is `{ path, pathParams,
 queryParams }`, expanded in the browser over the roots its site binds (`row`,
 `query`, `params`, `data`, `input`, `result`). A collection source's templated
 `basePath` is `{ path, pathParams }` and expands the same way, over `params`
@@ -404,8 +404,8 @@ the result must be an address under the mount or an `https:`, `http:` or
 `mailto:` one. An app-relative address is requested and linked under the mount.
 
 - **Unresolved.** A link or cell is drawn as plain text, a menu item is left
-  out, a query sends nothing and draws its `failure` nodes, an action sends
-  nothing and draws its `failure` tree, a refresh is skipped and a navigation
+  out, a query sends nothing and draws its `failure` nodes, a call sends
+  nothing and draws its `failure` tree, an invalidation is skipped and a navigation
   goes nowhere; each is reported once in the console as
   `ERR_UI_ADDRESS_UNRESOLVED`, naming the parameter.
 - **Following one.** An address a declared page [opens](app.md#routing) moves
@@ -419,30 +419,30 @@ the result must be an address under the mount or an `https:`, `http:` or
   followed to its own address.
 - **The page already shown.** A move to the page being shown (same path, new
   query or fragment) fetches no document and keeps every node mounted — what a
-  form or an action holds, a listing's loaded pages — and each query node
+  form holds, a listing's loaded pages — and each query node
   re-reads the query parameters its query declares from the new address. A move to another
   value of its variables fetches no document either, and draws the page afresh.
 
 ## Invalidation
 
 Readers and writers meet at one key: the resolved, percent-encoded,
-app-relative path, its query left out. After a 2xx the renderer announces an
-action's resolved target path, each resolved `refreshes` path and, inside a
+app-relative path, its query left out. After a 2xx the renderer announces a
+mutation's resolved `url` path, each resolved `invalidates` path and, inside a
 listing, its `basePath`; a listing's own edit (`PATCH`) and delete also announce
 the record's path (`<basePath>/<key>`). Announcing reloads, by exact equality:
-every query whose resolved `url` path is that path, whatever its method (a `refreshes`
+every query whose resolved `url` path is that path, whatever its method (an `invalidates`
 entry whose literal path holds a `*` / `**` segment instead reads again every
 subscribed reader — query, listing or chat — whose key it matches, segment by
 segment: `*` one non-empty segment, `**` any number, none included), every listing
 whose resolved `basePath` is (with its facet and relation label reads), and a `chat`
 whose open conversation path (`<basePath>/conversations/<id>`) is — read again
-unless a turn is running in it. A chat announces its own `refreshes` when a send
+unless a turn is running in it. A chat announces its own `invalidates` when a send
 is admitted and when a turn ends.
 
 **The kept validator.** The renderer keeps, per that same key, the `ETag` of the
 last `GET`, `PATCH` or `PUT` answer at the path — a `Ui.Query` read, a listing's
 edit read, a write's answer — and sends it as `If-Match` with every `PATCH`,
-`PUT` and `DELETE` to the path, whoever makes the request (a form, an action, a
+`PUT` and `DELETE` to the path, whoever makes the request (a form, a call, a
 row action, a listing's delete). A write's answer replaces it, an answer with
 no `ETag` (or a weak one, `W/…`, which `If-Match` never matches) drops it, the
 least recently used of the 2,000 paths kept is dropped past that, a removed or missing record drops it, and a `POST` keeps
@@ -456,7 +456,7 @@ pinned by `modules/ui/conformance/merge-patch.json`.
 ## Queries
 
 A `query` node carries its query's spec — `{ id, schema, method, url, input,
-query, reloadOn }`, plus `reloadEvery` in milliseconds when set — and three node
+query, form, reloadOn }`, `form` the id of the form it follows or `null`, plus `reloadEvery` in milliseconds when set — and three node
 lists, `content`, `loading` and `failure`, laid out as a `box` lays out its
 children.
 
@@ -495,6 +495,17 @@ children.
   `reloadOn: [unauthorized]`, when a request made by anything drawn in any of
   its nodes' lists answers 401 — its own read never counts. Any number of
   triggers during a read cause exactly one more.
+- **Following a form.** A query naming a form (`form` is its id) resolves its
+  `url` and body over `form` too: the form's settled, valid record, which the
+  renderer keeps per form id and page (the page and each page opened over it
+  keep their own) for as long as that page is drawn, so a form placed twice is
+  one record. A `form` reading with no valid record yet sends nothing and draws
+  nothing, not even `loading`; a query whose form is not on the page draws
+  nothing; a form that starts again (its `initialValues` read at another address)
+  discards its record. A change to what `url` and body resolve to reads again —
+  at most one read in flight, the drawn answer kept while the next is awaited.
+  The settle rule and the rows are `ui`'s `conformance/form-writes.json`. A
+  listing carries `form` the same way for its `filters` and row actions.
 - **Query parameters.** A declared parameter the address leaves out, gives
   twice for a scalar, or gives a value its declaration refuses is absent —
   `format: date` / `date-time` included, so `?to=oops` under

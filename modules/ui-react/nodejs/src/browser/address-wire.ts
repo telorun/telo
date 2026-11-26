@@ -223,7 +223,7 @@ export function resolveRefresh(address: AddressWire, roots: Readonly<Record<stri
   return { path, wildcard: "value" in address.path && segmentsOf(path).some(isWildcardSegment) };
 }
 
-/** Whether a refresh reads again the readers of change key `key` (their encoded app-relative path, query left out). Held to `conformance/refreshes.json`. */
+/** Whether a refresh reads again the readers of change key `key` (their encoded app-relative path, query left out). Held to `conformance/invalidations.json`. */
 export function refreshCovers(refresh: Refresh, key: string): boolean {
   return refresh.wildcard ? segmentsMatch(segmentsOf(refresh.path), segmentsOf(key)) : refresh.path === key;
 }

@@ -213,8 +213,8 @@ button[data-telo-part="button"][data-state="submitting"] { opacity: 0.7; }
 [data-telo-part="submit"][data-style~="danger"] { background: var(--ui-react-derived-danger-fill); color: var(--telo-color-danger); }
 [data-telo-part="submit"][data-style~="danger"]:hover { background: var(--ui-react-derived-danger-fill-hover); }
 [data-telo-part="submit"][data-style~="danger"]:focus-visible { border-color: color-mix(in oklab, var(--telo-color-danger) 40%, transparent); box-shadow: 0 0 0 3px var(--ui-react-derived-danger-ring); }
-[data-telo-part="cancel"], [data-telo-part="pager-prev"], [data-telo-part="pager-next"], [data-telo-part="load-more"] { border-color: var(--telo-color-border); background: var(--ui-react-derived-control); }
-[data-telo-part="cancel"]:hover, [data-telo-part="pager-prev"]:hover, [data-telo-part="pager-next"]:hover, [data-telo-part="load-more"]:hover { background: var(--ui-react-derived-control-hover); }
+[data-telo-part="cancel"], [data-telo-part="pager-prev"], [data-telo-part="pager-next"], [data-telo-part="load-more"], [data-telo-part="retry"] { border-color: var(--telo-color-border); background: var(--ui-react-derived-control); }
+[data-telo-part="cancel"]:hover, [data-telo-part="pager-prev"]:hover, [data-telo-part="pager-next"]:hover, [data-telo-part="load-more"]:hover, [data-telo-part="retry"]:hover { background: var(--ui-react-derived-control-hover); }
 [data-telo-part="filters-reset"]:hover, [data-telo-part="row-action"]:hover, [data-telo-part="row-edit"]:hover, [data-telo-part="surface-close"]:hover, [data-telo-part="table-sort"]:hover { background: var(--ui-react-derived-fill); }
 [data-telo-part="row-edit"], [data-telo-part="row-delete"], [data-telo-part="pager-prev"], [data-telo-part="pager-next"], [data-telo-part="surface-close"] { width: 1.75rem; height: 1.75rem; padding: 0; }
 button[data-telo-part="row-action"] { height: 1.75rem; padding: 0 0.5rem; }
@@ -360,7 +360,6 @@ button:is([data-telo-part="switch"], [data-telo-part="filter-toggle"])[data-stat
 
 /* Listing */
 [data-telo-part="listing"], [data-telo-part="list"] { gap: var(--telo-space-md); }
-[data-telo-part="action"], [data-telo-part="action-result"] { gap: var(--telo-space-lg); }
 [data-telo-part="list-heading"] { margin: 0; font-family: var(--telo-font-heading); font-size: var(--telo-font-size-md); font-weight: 600; line-height: var(--telo-line-height-heading); }
 [data-telo-part="listing-toolbar"], [data-telo-part="pager"] { gap: var(--telo-space-sm); }
 [data-telo-part="listing-main"] { gap: var(--telo-space-md); }
@@ -472,11 +471,12 @@ button[data-telo-part="calendar-period"], button[data-telo-part="timeline-scale"
 [data-surface="page"] > [data-telo-part="surface-body"] { margin: 0; padding: 0; }
 [data-surface="page"] [data-telo-part="form-actions"] { margin: 0; padding: var(--telo-space-lg) 0 0; background: var(--telo-color-background); }
 
-/* Actions */
-[data-telo-part="action-failure"] { gap: var(--telo-space-md); }
-[data-telo-part="row-answer"] { display: inline-block; vertical-align: middle; font-size: var(--telo-font-size-sm); text-align: left; }
-[data-telo-part="row-failure"] { margin-top: var(--telo-space-xs); font-size: var(--telo-font-size-sm); text-align: left; white-space: normal; }
+/* A mutation's answers, drawn small beside the button or row that ran it. */
+[data-telo-part="mutation-result"] { display: inline-block; vertical-align: middle; font-size: var(--telo-font-size-sm); text-align: left; }
+[data-telo-part="mutation-failure"] { margin-top: var(--telo-space-xs); font-size: var(--telo-font-size-sm); text-align: left; white-space: normal; }
 [data-telo-part="disabled-text"] { color: var(--telo-color-muted); font-size: var(--telo-font-size-sm); }
+[data-telo-part="saving"] { color: var(--telo-color-muted); font-size: var(--telo-font-size-sm); }
+button[data-telo-part="retry"] { height: 1.75rem; margin-top: var(--telo-space-xs); padding: 0 0.5rem; font-size: var(--telo-font-size-sm); }
 [data-telo-part="row-actions"] > [data-telo-part="disabled-text"] { margin-left: var(--telo-space-xs); }
 
 /* Status */

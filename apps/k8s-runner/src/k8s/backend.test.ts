@@ -1,5 +1,6 @@
 import type { V1Pod } from "@kubernetes/client-node";
 import {
+  SUPERVISOR_GENERATION,
   WORKSPACE_MARKER_CONTENTS,
   type AppState,
   type BackendStatus,
@@ -201,6 +202,17 @@ describe.skipIf(NO_LOOPBACK_ALIASES)("running an app", () => {
     });
   });
 
+  it("binds each app's debug stream to the pod's loopback, reached through that app's supervisor slot", async () => {
+    const backend = boot();
+    const workload = await backend.create(spec("s1"), recorder().callbacks);
+
+    const worker = await workload.addresses("worker");
+    expect(worker.inspect.listen).toBe("127.0.0.1:9231");
+    (await worker.inspect.connect(new AbortController().signal)).destroy();
+    await expect.poll(() => cluster.supervisorOf("worker").forwards).toEqual([9231]);
+    expect(cluster.supervisorOf("web").forwards).toEqual([]);
+  });
+
   it("rejects a port a reload declares when the pod reserves it", async () => {
     const backend = boot();
     const r = recorder();
@@ -260,7 +272,7 @@ describe.skipIf(NO_LOOPBACK_ALIASES)("adoption at boot", () => {
       { app: "web", state: "running", runId: "run-1" },
       { app: "worker", state: "ready" },
     ]);
-    expect(cluster.supervisorOf("web").received[0]).toEqual({ type: "hello", generation: 1, lastSeq: 0 });
+    expect(cluster.supervisorOf("web").received[0]).toEqual({ type: "hello", generation: SUPERVISOR_GENERATION, lastSeq: 0 });
 
     await adopted!.workload.stopApp("web", "run-1", 10_000);
     await expect.poll(() => r.states.at(-1)).toMatchObject({ app: "web", state: "ready" });
@@ -268,12 +280,13 @@ describe.skipIf(NO_LOOPBACK_ALIASES)("adoption at boot", () => {
 
   it("removes a pod whose supervisors speak another generation, whose agent is not the stored one, or that runs as another user, and suspends", async () => {
     const backend = boot();
-    cluster.generation = 2;
+    // Generation 1's supervisors: a pod an earlier runner build left.
+    cluster.generation = 1;
     await cluster.start(earlierPod("s1"));
     expect(await backend.adopt!(spec("s1", { agent: AGENT }), recorder().callbacks)).toBeUndefined();
     expect(cluster.pods.size).toBe(0);
 
-    cluster.generation = 1;
+    cluster.generation = SUPERVISOR_GENERATION;
     await cluster.start(earlierPod("s2", false));
     expect(await backend.adopt!(spec("s2", { agent: AGENT }), recorder().callbacks)).toBeUndefined();
     expect(cluster.pods.size).toBe(0);

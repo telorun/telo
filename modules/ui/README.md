@@ -2,7 +2,7 @@
 
 A vocabulary for user interfaces written as data. A page is a tree of nodes —
 layout, text, links, images — and of **composites**: a listing of a REST
-collection's records, a form over a data model, a button that runs an operation and
+collection's records, a form over a data model, a button that runs a mutation and
 draws its answer, a filter bar, a custom component. This
 module holds the vocabulary and the controllers that resolve it; it ships no
 code for a browser. A renderer, such as [`ui-react`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/),
@@ -47,10 +47,10 @@ turns what it produces into a web application.
   variable the placing page lacks is refused by `telo check`. Queries and
   listings can also read again on a timer (`reloadEvery`), keeping what is
   loaded and drawn.
-- **Actions bound to what is on screen.** A `button` node runs an action with
-  inputs taken from the page's variables and the data it reads, a prompt asking
-  the person for the rest — an input the action requires that is neither bound
-  nor asked for is refused by `telo check`. A `markdown` node draws text the page
+- **Mutations bound to what is on screen.** A `button` node runs a mutation with
+  inputs taken from the page's variables and the data it reads, a `Ui.Prompt` asking
+  the person for the rest — an input the mutation requires that is neither bound
+  nor read from the prompt is refused by `telo check`. A `markdown` node draws text the page
   reads with such a control on each item the server names in it, and a `time`
   node draws a date relative to now ("3 hours ago") or in the viewer's own
   zone. Filter defaults and presets may be relative to now (a day ago, this
@@ -78,19 +78,28 @@ turns what it produces into a web application.
   and whether the choice survives a reload or travels in a link are keys of the
   bar, checked like the rest.
 - **What could not be drawn is refused when the manifest is checked.** A form
-  or an action listing a property no control can enter
+  or a prompt listing a property no control can enter
   (`UI_FIELD_UNSUPPORTED`), a field kind whose control or options do not fit
   its property — judged by the kind itself, from whichever module it comes —
-  and an action
-  clearing its answer on a property its input does not have
-  (`UI_ACTION_CLEAR_UNKNOWN_PROPERTY`) are reported by `telo check`, and
+  a form clearing its answer on a property its model does not have
+  (`UI_FORM_CLEAR_UNKNOWN_PROPERTY`) and an autosave over a `POST`
+  (`UI_FORM_AUTOSAVE_NOT_IDEMPOTENT`) are reported by `telo check`, and
   refused again by the resource itself for a manifest that never passed it.
-- **An operation's answer is drawn as content.** An action draws a success as
-  its `result` tree and anything else as its `failure` tree, then refreshes the
-  queries and listings a success changed and goes where its answer says — to
-  another page, or opening one over the current page; a
-  listing's or a list's row draws the answer of the action it ran in place of its
-  button.
+- **A write is declared once and run from anywhere.** A `Ui.Mutation` is the
+  request — the record it takes, the route, the reads it invalidates, whether
+  its calls run in order — and draws nothing; a row, a `button`, a markdown
+  annotation, a layout's move and a form each run it, asking first with a
+  `Ui.Prompt` where the person must enter something.
+- **An operation's answer is drawn as content.** A call draws a success as its
+  `result` tree and anything else as its `failure` tree where it ran, then
+  reads again the queries and listings the mutation invalidated and runs its
+  `onSuccess` effects in order — to another page, or opening one over the
+  current page.
+- **A preview follows its inputs; a draft saves itself.** A query or listing
+  names a `Ui.Form` placed anywhere on the page and reads the form's settled,
+  valid record as `form`; a form's `autosave` sends a replacing write as the
+  values settle and a form with an `onSubmit` publishes it, checked against the
+  mutations' input models before anything is sent.
 - **What is drawn can depend on data, declared as data.** A node's `shown` is a
   condition — a value it names and a schema the value must satisfy — decided in
   the browser, while `when` decides on the server what is delivered at all. A
@@ -135,20 +144,22 @@ turns what it produces into a web application.
 | [`Ui.Chat`](docs/chat.md) | A full AI chat on a page: streamed replies, reasoning, tool calls and approvals, attachments and branches, following a query parameter of the page so a listing of conversations beside it chooses the one shown. |
 | [`Ui.SplitView`](docs/split-view.md) | A fold-out side panel beside the main content: an aside that folds away, remembers the choice, and opens in a drawer or dialog on a narrow screen. |
 | [`Ui.CollectionPresentation`](docs/collection-presentation.md) | How screens show a collection: its source, and how each related record is read and labelled. |
-| [`Ui.Form`](docs/form.md) | A form over a data model. |
-| [`Ui.InputField`, `Ui.ChoiceField`, `Ui.PickerField`, `Ui.DateRangeField`](docs/field-kinds.md) | A form's or an action's fields: a named control, a choice or a picker over options read from an API, a date range with presets. |
+| [`Ui.Form`](docs/form.md) | A form over a data model: a collection's record editor, a form running a mutation on submit or as its values settle, or a free-standing one whose values queries and listings follow. |
+| [`Ui.Mutation`](docs/mutation.md) | A write declared once — the record it takes, the request, the reads it invalidates, parallel or serial calls — and run from a row, a `button`, an annotation, a layout's move or a form. |
+| [`Ui.Prompt`](docs/mutation.md#asking-first) | The dialog a call opens to ask for entries before its write runs, read by the call's inputs as `prompt`. |
+| [`Ui.Effect`](docs/presses.md#effects) | The contract of what happens after a write succeeds; `Ui.Destination` is one. |
+| [`Ui.InputField`, `Ui.ChoiceField`, `Ui.PickerField`, `Ui.DateRangeField`](docs/field-kinds.md) | A form's or a prompt's fields: a named control, a choice or a picker over options read from an API, a date range with presets. |
 | [`Ui.Field`](docs/field-kinds.md#uifield) | The contract every field kind answers through, judging its own fit to the model it is placed in. |
 | [`Ui.CollectionOptions`](docs/field-kinds.md#option-sources) | A field's options, read, searched and labelled through the collection contract. |
 | [`Ui.OptionSource`](docs/field-kinds.md#option-sources) | The contract every source of options provides through. |
-| [`Ui.Navigate`, `Ui.OpenPage`](docs/presses.md) | Where a link, a menu item, a column, a related record, an option, a navigation entry or a success goes: to an address, or to a page opened over the current one in a dialog or a drawer. |
+| [`Ui.Navigate`, `Ui.OpenPage`](docs/presses.md) | Where a link, a menu item, a column, a related record, an option, a navigation entry or a success effect goes: to an address, or to a page opened over the current one in a dialog or a drawer. |
 | [`Ui.Destination`](docs/presses.md#destinations) | The contract every destination provides through, reading the values bound where it is written. |
-| [`Ui.Action`](docs/action.md) | A button that runs an operation: a form for its input, its answer and its failure drawn as node trees, a destination and refreshes after a success, serial or parallel presses, and a place on every record of a listing or a list or on a `button` node, its inputs bound from the data in scope. |
 | [`Ui.Dialog`, `Ui.Drawer`, `Ui.Popover`, `Ui.InlineSurface`, `Ui.Panel`](docs/surfaces.md) | Where an opened page appears: over the page, anchored to what was pressed, in line, or beside the nearest composite. |
 | [`Ui.Surface`, `Ui.Overlay`, `Ui.ViewportOverlay`](docs/surfaces.md#the-abstracts) | The contracts every surface, every floating one, and every one placed against the viewport — what a narrow viewport uses — provides through. |
 | [`Ui.Filters`](docs/filters.md) | A filter bar over the listings it contains. |
 | [`Ui.AbovePlacement`, `Ui.AsidePlacement`, `Ui.CollapsiblePlacement`, `Ui.OverlayPlacement`, `Ui.SearchBoxPlacement`](docs/filter-placement.md) | Where a filter bar's controls sit: above its content, beside it, folded behind a toggle, in an overlay, or gathered into one search box. |
 | [`Ui.FilterPlacement`, `Ui.FoldingFilterPlacement`](docs/filter-placement.md) | The contracts every placement, and every one that folds — what a narrow viewport uses — provides through. |
-| [`Ui.LocalStore`, `Ui.SessionStore`](docs/state-store.md#stores) | Where a filter bar's, a form's or an action's values, a navigation column's open groups and an aside's fold are kept between visits. |
+| [`Ui.LocalStore`, `Ui.SessionStore`](docs/state-store.md#stores) | Where a filter bar's or a form's values, a navigation column's open groups and an aside's fold are kept between visits. |
 | [`Ui.StateStore`](docs/state-store.md#stores) | The contract every store provides through. |
 | [`Ui.Component`](docs/component.md) | A custom browser component, with its properties. |
 | [`Ui.ComponentExport`](docs/component-export.md) | Publishes a component a module ships. |
@@ -171,7 +182,7 @@ press goes, the roots a destination reads, and a pressed region or record —
 interpreted profile `Ui.Match` are in [Conditions](docs/conditions.md). What a
 collection source speaks is [the collection contract](https://hub.telo.run/module/oci/ghcr.io/telorun/data-model/),
 what a query's speaks is [the record contract](docs/record-contract.md), and
-what an action's speaks is [the action contract](docs/action-contract.md).
+what a mutation's speaks is [the mutation contract](docs/mutation-contract.md).
 A renderer's controller addresses browser files through the module's code
 entry, [`@telorun/ui`](docs/composite.md#for-a-renderers-controller-telorunui).
 

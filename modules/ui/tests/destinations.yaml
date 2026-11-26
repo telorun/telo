@@ -6,8 +6,8 @@ metadata:
     A destination reaches a renderer as its wire form: `Ui.Navigate` its
     address, `Ui.OpenPage` the opened page's own address with the surface it
     opens in filled. Without a surface it is a dialog's defaults and keeps the
-    surface it is pressed in; a written dialog, equal on the wire, does not. An
-    action's success goes to a destination reading the answer.
+    surface it is pressed in; a written dialog, equal on the wire, does not. A
+    form's success goes to a destination reading the answer.
 imports: { Ui: ../, Probe: ./__fixtures__/probe, Assert: ../../assert }
 targets:
   - !ref check
@@ -36,18 +36,25 @@ content:
         queryParams: { from: list }
         surface: { kind: Ui.Drawer, size: large, address: { name: post } }
 ---
-kind: Ui.Action
+kind: Ui.Form
 metadata: { name: publish }
-inputModel:
+model:
   kind: Telo.JsonSchema
   schema: { type: object, required: [title], properties: { title: { type: string } } }
-outputModel:
-  kind: Telo.JsonSchema
-  schema: { type: object, required: [id], properties: { id: { type: string } } }
-request: { target: /api/posts }
-label: Publish
+onSubmit:
+  mutation:
+    kind: Ui.Mutation
+    inputModel:
+      kind: Telo.JsonSchema
+      schema: { type: object, required: [title], properties: { title: { type: string } } }
+    outputModel:
+      kind: Telo.JsonSchema
+      schema: { type: object, required: [id], properties: { id: { type: string } } }
+    url: /api/posts
+  inputs: { title: !cel "values.title" }
+  label: Publish
 onSuccess:
-  to: { kind: Ui.OpenPage, page: !ref postPage, pathParams: { id: !cel "result.id" } }
+  - { kind: Ui.OpenPage, page: !ref postPage, pathParams: { id: !cel "result.id" } }
 ---
 kind: Telo.Sequence
 metadata: { name: check }
@@ -88,9 +95,7 @@ steps:
     inputs:
       actual: !cel "steps.publish.result.node.onSuccess"
       expected:
-        to:
-          type: openPage
+        - type: openPage
           href: { path: { value: "/posts/{id}" }, pathParams: { id: { root: result, path: [id] } }, queryParams: {} }
           surface: { type: dialog, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
           keepsSurface: true
-        refreshes: []

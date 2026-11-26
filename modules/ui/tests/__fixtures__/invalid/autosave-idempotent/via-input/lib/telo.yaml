@@ -1,0 +1,21 @@
+# An autosave over a `POST` the importer hands in: `telo check` cannot see it
+# until the importer supplies it, and only the kernel refuses it.
+kind: Telo.Library
+metadata:
+  name: UiInvalidAutosaveSupplied
+  version: 1.0.0
+  description: Test fixture exporting a form that autosaves over a mutation the importer supplies.
+imports: { Ui: ../../../../../../ }
+resources: { save: { kind: Ui.Mutation } }
+exports: { resources: [supplied] }
+---
+kind: Telo.JsonSchema
+metadata: { name: Draft }
+schema: { type: object, additionalProperties: false, properties: { title: { type: string } } }
+---
+kind: Ui.Form
+metadata: { name: supplied }
+model: !ref Draft
+autosave:
+  mutation: !ref save
+  inputs: { title: !cel "values.title" }

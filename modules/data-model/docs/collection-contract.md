@@ -87,13 +87,18 @@ the form.
 | Request | Does |
 | --- | --- |
 | `GET <basePath>/<key value>` | answers with that one record |
-| `POST <basePath>` | creates a row from the JSON body, held to `schemas.create` |
+| `POST <basePath>` | creates a row from the JSON body, held to `schemas.create`, answering 2xx with the stored record |
 | `PATCH <basePath>/<key value>` | merges a JSON Merge Patch into that row, answering 200 with the stored record |
 | `DELETE <basePath>/<key value>` | deletes it |
 
 A record read by its key may hold more than its row of the list does. An edit
 form reads it before it opens, so what it sends back is what the record held
 and not what the list happened to show.
+
+A `POST`'s 2xx body is the stored record in the `model` shape, valid against the
+collection's `model` as a `PATCH`'s is: a form reads it as the `result` of its
+`onSuccess` (a create page goes to what it created with `result.id`), and one
+the `model` refuses is shown as a failure.
 
 `PATCH` is a JSON Merge Patch (RFC 7396), sent as
 `Content-Type: application/merge-patch+json`. A member holding a value sets

@@ -231,7 +231,7 @@ describe("a default the manifest declares", () => {
       model: { type: "object", properties: {} },
       record: { presentation: presentation("/api/todos", collection) },
     });
-    expect(node.record).toEqual({ basePath: "/api/todos", key: null });
+    expect(node.record).toEqual({ basePath: "/api/todos", key: null, answer: collection.model });
     expect(node.initialValues).toBeNull();
     expect([node.unsaved, node.afterSubmit]).toEqual([declared("UnsavedInput").default, declared("AfterSubmit").default]);
   });

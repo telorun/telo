@@ -1,6 +1,5 @@
 import { Component, useContext, type CSSProperties, type ReactNode, type Ref } from "react";
 import { conditionHolds, fillAttribute, readBinding, styleAttribute, type Condition, type Style } from "./bindings.js";
-import { Action } from "./action.js";
 import { Displayed, type ButtonSpec } from "./display-button.js";
 import { ChatNode, type ChatNodeSpec } from "./chat/chat-node.js";
 import { CommandNode } from "./command-node.js";
@@ -292,8 +291,6 @@ function Drawn({ node, embedded }: { node: SpecNode; embedded: boolean }): React
       return <Listing node={node} embedded={embedded} />;
     case "form":
       return <Form node={node} />;
-    case "action":
-      return <Action node={node} />;
     case "button":
       return <ButtonNode node={node as unknown as ButtonNodeSpec} />;
     case "filters":

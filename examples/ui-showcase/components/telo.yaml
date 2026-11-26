@@ -5,20 +5,21 @@ metadata:
   description: >-
     Browser components of the UI showcase, written in TSX against the UI host:
     a task desk using every field the host offers, a priority meter for a data
-    grid cell, a sheet of every design token as the page applies it, and the
-    page's typefaces in each face with whether the application serves them.
+    grid cell, a sheet of every design token as the page applies it, the
+    page's typefaces in each face with whether the application serves them, and
+    a snippet showing the YAML that builds a section of a page.
 imports: { Ui: ../../../modules/ui }
 exports:
-  resources: [ taskDesk, priorityMeter, tokenSheet, typefaceSamples ]
+  resources: [ taskDesk, priorityMeter, tokenSheet, typefaceSamples, sourceSnippet ]
   browser:
-    # One entry for the four components and their stylesheet, built by the
+    # One entry for the five components and their stylesheet, built by the
     # kernel from the TSX source. React and the host module come from the page.
     - specifier: "@ui-showcase/components"
       path: ./browser/components.js
       source: ./nodejs/src/components.tsx
       abi: ui_react-1
       external: [ react, react/jsx-runtime, react-dom, "@telorun/ui-react" ]
-      exports: [ TaskDesk, PriorityMeter, TokenSheet, TypefaceSamples ]
+      exports: [ TaskDesk, PriorityMeter, TokenSheet, TypefaceSamples, SourceSnippet ]
 ---
 # Adds tasks to one project and shows how it stands, at the collection and the
 # counts route it is given.
@@ -62,3 +63,19 @@ metadata: { name: typefaceSamples }
 entry: "@ui-showcase/components"
 export: TypefaceSamples
 props: { kind: Telo.JsonSchema, schema: { type: object, additionalProperties: false } }
+---
+# The YAML that builds a section of a page: the anchored node of a page file,
+# cut at runtime from the file the application serves under `source/`.
+kind: Ui.ComponentExport
+metadata: { name: sourceSnippet }
+entry: "@ui-showcase/components"
+export: SourceSnippet
+props:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ file, anchor ]
+    properties:
+      file: { type: string, pattern: "^[a-z-]+\\.yaml$" }
+      anchor: { type: string }

@@ -43,6 +43,9 @@ export default defineConfig({
   },
   server: {
     host: true,
+    // The repo root: pnpm-workspace.yaml here makes this package the workspace
+    // root, which would 403 files served from the root node_modules (fonts).
+    fs: { allow: [path.resolve(__dirname, "../..")] },
   },
   build: {
     outDir: "dist",

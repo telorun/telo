@@ -13,19 +13,23 @@
  * Beside `x-telo-context-from-referrer` it is the node's own reading, kept
  * wherever no referrer types it: typed where a referrer's scope holds the path,
  * withheld — naming that referrer — where it lacks it, and withheld where
- * nothing references the resource.
+ * nothing references the resource. Beside `x-telo-context-ref-from` it is kept
+ * where no alternative of the path names anything, and dropped wherever one
+ * does — the node then typed from what it names, or by its own keywords.
  *
  * Written on a binding beside `x-telo-context-eval`, `x-telo-context-from-
- * referrer`, `x-telo-context-partial`, `title` and `description` only, or in
- * a `$defs` entry a binding names by `$ref` — read as if written on the binding
- * (the context reader follows that `$ref`). This file is the one reader of the
- * value and its strict half.
+ * referrer`, `x-telo-context-partial`, `title` and `description` only — beside
+ * `x-telo-context-ref-from` also the JSON Schema keywords of the node's own
+ * reading — or in a `$defs` entry a binding names by `$ref`, read as if written
+ * on the binding (the context reader follows that `$ref`). This file is the one
+ * reader of the value and its strict half.
  *
  * Browser-safe: no Node built-ins.
  */
 import { CONTEXT_EVAL } from "./context-eval.js";
 import { CONTEXT_FROM_REFERRER } from "./context-from-referrer.js";
 import { CONTEXT_PARTIAL } from "./context-partial.js";
+import { CONTEXT_REF_FROM } from "./context-ref-from.js";
 import { schemaReferenceParts } from "./schema-reference.js";
 
 export const CONTEXT_WITHHELD = "x-telo-context-withheld";
@@ -58,6 +62,12 @@ export function withheldReason(node: unknown): string | undefined {
     }
   }
   return undefined;
+}
+
+/** `node` as a withheld node reads: the mark and the keys allowed beside it,
+ *  never a type — every read of it is refused once, by the mark. */
+export function withheldOnly(node: Schema): Schema {
+  return Object.fromEntries(Object.entries(node).filter(([key]) => BESIDE.has(key)));
 }
 
 /** One withheld node of a context: its location — the binding, then each
@@ -188,14 +198,30 @@ export function withheldProblem(node: Schema, where: string, placed: boolean): W
         `one, so here it withholds nothing.`,
     };
   }
-  const beside = Object.keys(node).find((key) => !BESIDE.has(key));
-  if (beside !== undefined) {
-    return {
-      code: "CONTEXT_WITHHELD_INVALID",
-      message:
-        `'${where}' says the node holds no value here, so '${beside}' beside it types nothing; keep only ` +
-        `'${CONTEXT_EVAL}', '${CONTEXT_FROM_REFERRER}', '${CONTEXT_PARTIAL}', 'title' and 'description' beside it.`,
-    };
+  if (CONTEXT_REF_FROM in node) {
+    if (CONTEXT_FROM_REFERRER in node) {
+      return {
+        code: "CONTEXT_WITHHELD_INVALID",
+        message:
+          `'${where}' is the node's reading where nothing types it, and both '${CONTEXT_FROM_REFERRER}' and ` +
+          `'${CONTEXT_REF_FROM}' beside it type it; keep one.`,
+      };
+    }
+    // Typed from what the path names, or by its own keywords where it names a
+    // declaration holding nothing there; withheld where it names nothing.
+    const typing = Object.keys(node).find((key) => key.startsWith("x-telo-") && !BESIDE.has(key) && key !== CONTEXT_REF_FROM);
+    return typing === undefined ? undefined : besideProblem(where, typing, true);
   }
-  return undefined;
+  const beside = Object.keys(node).find((key) => !BESIDE.has(key));
+  return beside === undefined ? undefined : besideProblem(where, beside, false);
+}
+
+function besideProblem(where: string, beside: string, refFrom: boolean): WithheldProblem {
+  return {
+    code: "CONTEXT_WITHHELD_INVALID",
+    message:
+      `'${where}' says the node holds no value here, so '${beside}' beside it types nothing; keep only ` +
+      `'${CONTEXT_EVAL}', '${CONTEXT_FROM_REFERRER}', '${CONTEXT_PARTIAL}', 'title' and 'description' beside it` +
+      (refFrom ? `, and beside '${CONTEXT_REF_FROM}' the keywords of the node's own reading.` : "."),
+  };
 }

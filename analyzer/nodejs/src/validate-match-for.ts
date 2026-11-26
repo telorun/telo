@@ -30,6 +30,7 @@ import { CONTEXT_EVAL, contextEvalValueProblem } from "./context-eval.js";
 import { CONTEXT_FROM_PATH_TEMPLATE, fromPathTemplateProblem } from "./context-from-path-template.js";
 import { CONTEXT_FROM_REFERRER, fromReferrerProblem } from "./context-from-referrer.js";
 import { CONTEXT_PARTIAL, partialProblem } from "./context-partial.js";
+import { CONTEXT_REF_FROM, refFromHolderProblem, refFromPaths, refFromValueProblem } from "./context-ref-from.js";
 import { CONTEXT_WITHHELD, withheldProblem, withheldReason } from "./context-withheld.js";
 import { ITEM_FILLS, itemFillsValueProblem } from "./context-fill-cycle.js";
 import { NULLABLE_WHEN, nullableWhenTarget, nullableWhenValueProblem, readNullableWhen } from "./context-nullable-when.js";
@@ -54,6 +55,7 @@ export interface AnnotationProblem {
     | "CONTEXT_NULLABLE_WHEN_INVALID"
     | "CONTEXT_WITHHELD_INVALID"
     | "CONTEXT_PARTIAL_INVALID"
+    | "CONTEXT_REF_FROM_INVALID"
     | "CONTEXT_ITEM_FILLS_INVALID";
   readonly warning?: true;
   /** Where the annotation is written, from the document root. */
@@ -152,6 +154,27 @@ export function annotationDeclarationProblems(
       const where = renderValuePath([...path, CONTEXT_FROM_REFERRER]);
       const problem = fromReferrerProblem(node, where, binding !== undefined);
       if (problem) problems.push({ code: problem.code, path: where, message: problem.message });
+    }
+
+    if (CONTEXT_REF_FROM in node) {
+      const where = renderValuePath([...path, CONTEXT_REF_FROM]);
+      const written = node[CONTEXT_REF_FROM];
+      const malformed = refFromValueProblem(written);
+      const holder = binding?.field ? regionHolder(binding.field) : undefined;
+      if (malformed !== undefined) {
+        problems.push({ code: "SCHEMA_VIOLATION", path: where, message: `'${where}' names what types the node, and ${malformed}.` });
+      } else if (holder) {
+        for (const segments of refFromPaths(written) ?? []) {
+          const refusal = refFromHolderProblem(holder, root, segments, shapes);
+          if (refusal) {
+            problems.push({
+              code: "CONTEXT_REF_FROM_INVALID",
+              path: where,
+              message: `'${where}: ${segments.join("/")}' names no declaration to type the node from: ${refusal}.`,
+            });
+          }
+        }
+      }
     }
 
     if (CONTEXT_PARTIAL in node) {
@@ -312,6 +335,17 @@ export function annotationDeclarationProblems(
   };
   visit(schema, at, { kind: "other" }, false, [{ node: schema, key: undefined }]);
   return problems;
+}
+
+/** The schema of the object holding the region declared on the field `levels`
+ *  ends at — the field's enclosing object, a list item for a region on `items`,
+ *  the resource for one at the root — as the context reader reads it. */
+function regionHolder(levels: readonly SchemaLevel[]): Schema | undefined {
+  const field = levels[levels.length - 1];
+  const enclosing = levels[levels.length - 2];
+  if (!field) return undefined;
+  if (!enclosing || enclosing.node.items === field.node) return field.node;
+  return enclosing.node;
 }
 
 /** A `$ref` followed to the node it names, with the document that node's own

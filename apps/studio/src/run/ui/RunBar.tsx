@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { isRunLive, useRun } from "../context";
+import { programEnd } from "../program-end";
 import { RunStatusChip } from "./RunStatusChip";
 import { SessionStatusChip, sessionUnavailableReason } from "./SessionStatusChip";
 import { useElapsed } from "./use-elapsed";
@@ -57,7 +58,8 @@ export function RunBar({
   const dock = dockForApp(appPath);
   const starting = isStartingApp(appPath);
   const blocker = blockerForApp(appPath);
-  const elapsed = useElapsed(liveRun?.startedAt ?? null);
+  const liveEnd = liveRun ? programEnd(liveRun) : null;
+  const elapsed = useElapsed(liveRun?.startedAt ?? null, liveEnd?.endedAt);
   const hasHistory = runs.some((r) => !isRunLive(r.status));
   const hasOutput = dockHasContent(appPath);
   const unavailable = session ? sessionUnavailableReason(session) : null;
@@ -81,7 +83,7 @@ export function RunBar({
 
       {liveRun ? (
         <>
-          <RunStatusChip status={liveRun.status} />
+          <RunStatusChip status={liveRun.status} ended={liveEnd} />
           {elapsed && (
             <span className="tabular-nums text-xs text-zinc-500 dark:text-zinc-400">{elapsed}</span>
           )}
@@ -172,7 +174,7 @@ export function RunBar({
                   <span className="truncate tabular-nums">
                     {new Date(run.startedAt).toLocaleTimeString()}
                   </span>
-                  <RunStatusChip status={run.status} />
+                  <RunStatusChip status={run.status} ended={programEnd(run)} />
                 </DropdownMenuItem>
               ))
             )}

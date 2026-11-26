@@ -241,7 +241,8 @@ jobs:
   # behind once its run ends, the session no pod once suspended, and nothing
   # once deleted. The test's PostgreSQL runs as `999:999` with its data in the
   # container layer, which is what the session namespace's `restricted` Pod
-  # Security standard has to admit.
+  # Security standard has to admit. Then every other configuration of the chart
+  # is installed in turn (`scripts/k8s-runner-chart-e2e.mjs`).
   runner-containers:
     name: Runner session containers (kind)
     runs-on: ubuntu-latest
@@ -284,7 +285,7 @@ jobs:
           git fetch --no-tags origin "$BASE_REF" || true
           base="origin/$BASE_REF"
           changed=$(git diff --name-only "$base...HEAD") || run
-          if grep -qE '^((kernel|analyzer|sdk|templating|cel|cli|packages/runner-core|apps/k8s-runner)/|(pnpm-lock\.yaml|scripts/runner-containers-e2e\.mjs|\.github/workflows/e2e\.yml)$)' <<<"$changed"; then run; fi
+          if grep -qE '^((kernel|analyzer|sdk|templating|cel|cli|packages/runner-core|apps/k8s-runner)/|(pnpm-lock\.yaml|scripts/(runner-containers|k8s-runner-chart)-e2e\.mjs|\.github/workflows/e2e\.yml)$)' <<<"$changed"; then run; fi
           affected=$(pnpm run --silent telo changed \
                modules/vector-store-pgvector/tests/integration/filtered-top-k.yaml \
                --base "$base" -o json | jq '.affected | length') || run
@@ -320,17 +321,10 @@ jobs:
           echo 'FROM pgvector/pgvector:pg18' | docker build --pull --provenance=false --sbom=false -t pgvector/pgvector:pg18 -
           kind load docker-image --name telo telo-k8s-runner:e2e telo-dev/node:local pgvector/pgvector:pg18
 
+      # Read as strictly as Flux reads a chart, and checked alive.
       - name: Install the chart with session containers on
         if: steps.changed.outputs.run == 'true'
-        run: |
-          helm install telo-runner apps/k8s-runner/chart --wait --timeout 5m \
-            --set image.repository=telo-k8s-runner \
-            --set image.tag=e2e \
-            --set image.pullPolicy=Never \
-            --set session.image=telo-dev/node:local \
-            --set session.baseImages.enabled=false \
-            --set sessionRouting.mode=none \
-            --set session.containers.enabled=true
+        run: node scripts/k8s-runner-chart-e2e.mjs install session-containers
 
       - name: Run a container-backed test as a session
         if: steps.changed.outputs.run == 'true'
@@ -341,6 +335,16 @@ jobs:
             --runner-url http://127.0.0.1:8062 \
             --namespace telo-sessions \
             --image telo-dev/node:local
+
+      # Every other configuration of the chart — both session stores, every
+      # routing mode, shares over Gateway API and Ingress, identity, terms, the
+      # agent, the quota and network policy off — installed in turn, each alive
+      # and advertising what it turns on.
+      - name: Install every other chart configuration
+        if: steps.changed.outputs.run == 'true'
+        run: |
+          node scripts/k8s-runner-chart-e2e.mjs uninstall
+          node scripts/k8s-runner-chart-e2e.mjs all --skip session-containers
 
       - name: Show the cluster on failure
         if: failure() && steps.changed.outputs.run == 'true'

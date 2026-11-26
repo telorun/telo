@@ -54,7 +54,7 @@ outside the profile are left to the API.
 
 A record answered with an `ETag` (a strong validator, quoted) is guarded: the
 renderer keeps it for the request path and sends it as `If-Match` with the next
-`PATCH`, `PUT` or `DELETE` to that path, as the [action contract](action-contract.md#preconditions)
+`PATCH`, `PUT` or `DELETE` to that path, as the [mutation contract](mutation-contract.md#preconditions)
 says. A read answered with none leaves nothing kept.
 
 A 401 or 403 to a request made *inside* the children of a query node — a listing's page, a form's

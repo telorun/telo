@@ -7,13 +7,14 @@ import {
   type VersionCompatibilityCheck,
 } from "@telorun/ide-support";
 import { useEffect, useRef, useState } from "react";
-import { Check, FolderOpen, Loader2, Search, TriangleAlert } from "lucide-react";
+import { Box, Check, FolderOpen, Loader2, Search, TriangleAlert } from "lucide-react";
 import { type ImportableLibrary, toPascalCase } from "../loader";
-import { type HubModuleHit, importSourceForHit, searchHubModules } from "../hub-search";
+import { type HubModuleHit, hubHitTitle, importSourceForHit, matchChips, searchHubModules } from "../hub-search";
 import { Button } from "./ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog";
@@ -96,7 +97,7 @@ function candidateForHit(hit: HubModuleHit): Candidate {
     key: hit.module.ref,
     source: importSourceForHit(hit),
     alias: deriveAlias(hit.module.ref),
-    label: hit.module.ref,
+    label: hubHitTitle(hit),
   };
 }
 
@@ -272,6 +273,7 @@ export function AddImportDialog({
       <DialogContent className="sm:max-w-140">
         <DialogHeader>
           <DialogTitle>Add import</DialogTitle>
+          <DialogDescription>Search the hub or this workspace for a module to import.</DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
@@ -341,6 +343,7 @@ export function AddImportDialog({
             )}
             {hits.map((hit) => {
               const candidate = candidateForHit(hit);
+              const chips = matchChips(hit);
               const active = selected?.key === candidate.key;
               return (
                 <button
@@ -351,14 +354,14 @@ export function AddImportDialog({
                 >
                   <span className="flex items-center gap-1.5">
                     <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-800 dark:text-zinc-200">
-                      {hit.module.ref}
-                    </span>
-                    <span className="shrink-0 text-xs tabular-nums text-zinc-400">
-                      {hit.module.version}
+                      {hubHitTitle(hit)}
                     </span>
                     {active && (
                       <Check className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
                     )}
+                  </span>
+                  <span className="truncate text-xs text-zinc-400">
+                    {hit.module.ref} · {hit.module.version}
                   </span>
                   {hit.module.description && (
                     <span className="line-clamp-2 text-xs text-zinc-500 dark:text-zinc-400">
@@ -377,14 +380,20 @@ export function AddImportDialog({
                       ))}
                     </span>
                   )}
-                  {hit.matchedKinds.length > 0 && (
+                  {chips.length > 0 && (
                     <span className="flex flex-wrap gap-1">
-                      {hit.matchedKinds.slice(0, 6).map((k) => (
+                      {chips.slice(0, 6).map((chip) => (
                         <span
-                          key={k.kind}
-                          className="rounded bg-zinc-200 px-1.5 py-0.5 text-[10px] text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300"
+                          key={`${chip.instance}:${chip.name}`}
+                          title={chip.instance ? "Ready-made instance" : undefined}
+                          className={
+                            chip.instance
+                              ? "inline-flex items-center gap-1 rounded border border-dashed border-zinc-300 px-1.5 py-0.5 text-[10px] italic text-zinc-400 dark:border-zinc-600 dark:text-zinc-500"
+                              : "rounded bg-zinc-200 px-1.5 py-0.5 text-[10px] text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300"
+                          }
                         >
-                          {k.kind}
+                          {chip.instance && <Box className="size-2.5" />}
+                          {chip.name}
                         </span>
                       ))}
                     </span>
