@@ -1,0 +1,9 @@
+units:
+  kernel: Added
+body: An import validates and binds the values it hands its library's `variables:` /
+  `secrets:` entries against the named shapes as the configuration it decides declares
+  them, a shape the library declares under a choice included, so two isolated imports of
+  one library taking different options each validate against their own variant. A value
+  for an entry whose shape the taken option leaves undeclared is refused when the import
+  initializes as `ERR_SCHEMA_TYPE_REF_UNRESOLVED`, naming the import, the entry and the
+  shape, where it used to fail with `can't resolve reference`.

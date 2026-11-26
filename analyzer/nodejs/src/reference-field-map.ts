@@ -14,7 +14,7 @@ import {
   type SchemaReach,
 } from "./reference-reach.js";
 import { substituteCelFields } from "./schema-compat.js";
-import type { SchemaValidationOutcome } from "./schema-validation.js";
+import type { SchemaValidationOutcome, ValidationUnfinished } from "./schema-validation.js";
 import type { StandIns } from "./stand-in-findings.js";
 
 export { readRefSlot, isRefSlot, hasDeclaredUse } from "./ref-slot.js";
@@ -102,30 +102,30 @@ export interface ValueBranchValidator {
 
 /** Whether a value branch takes a value: it accepts it, refuses it, or the
  *  validation could not finish and holds no verdict either way. */
-export type ValueBranchOutcome = "accepts" | "refuses" | "unfinished";
+export type ValueBranchOutcome = "accepts" | "refuses" | ValidationUnfinished;
 
 /** Any of `outcomes`, asked lazily: accepts when one accepts, else unfinished
  *  when one could not finish, else refuses. */
 function anyOutcome<T>(items: readonly T[], outcomeOf: (item: T) => ValueBranchOutcome): ValueBranchOutcome {
-  let unfinished = false;
+  let unfinished: ValidationUnfinished | undefined;
   for (const item of items) {
     const outcome = outcomeOf(item);
     if (outcome === "accepts") return "accepts";
-    if (outcome === "unfinished") unfinished = true;
+    if (typeof outcome === "object") unfinished ??= outcome;
   }
-  return unfinished ? "unfinished" : "refuses";
+  return unfinished ?? "refuses";
 }
 
 /** All of `outcomes`, asked lazily: refuses when one refuses, else unfinished
  *  when one could not finish, else accepts. */
 function everyOutcome<T>(items: readonly T[], outcomeOf: (item: T) => ValueBranchOutcome): ValueBranchOutcome {
-  let unfinished = false;
+  let unfinished: ValidationUnfinished | undefined;
   for (const item of items) {
     const outcome = outcomeOf(item);
     if (outcome === "refuses") return "refuses";
-    if (outcome === "unfinished") unfinished = true;
+    if (typeof outcome === "object") unfinished ??= outcome;
   }
-  return unfinished ? "unfinished" : "accepts";
+  return unfinished ?? "accepts";
 }
 
 /**
@@ -158,7 +158,7 @@ export function satisfiesValueBranch(
     const schema = valueBranchSchema(branch);
     if (registry.schemaCompileError(schema) !== undefined) return "refuses";
     const outcome = registry.validateWithRefs(value, schema, standIns);
-    if (!outcome.finished) return "unfinished";
+    if (!outcome.finished) return outcome;
     return outcome.issues.length === 0 ? "accepts" : "refuses";
   });
 }

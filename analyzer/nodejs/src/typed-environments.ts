@@ -31,6 +31,11 @@ export class TypedEnvironments {
     return value !== null && typeof value === "object" && this.identities.has(value);
   }
 
+  /** Every environment built so far. */
+  environments(): Iterable<CelEnvironment> {
+    return this.built.values();
+  }
+
   /** The environment built from `inputs`, building it on first request. */
   environmentFor(inputs: unknown, build: () => CelEnvironment): CelEnvironment {
     const content = this.textOf(inputs);

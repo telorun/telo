@@ -1,0 +1,18 @@
+kind: Telo.Application
+metadata: { name: DocumentReferenceRefused }
+---
+kind: Telo.Definition
+metadata: { name: Router }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    handler:
+      anyOf:
+        - { x-telo-ref: { kind: Telo.Invocable, use: call } }
+        - { type: object, properties: { next: { $ref: "#" } }, additionalProperties: false }
+    label: { type: string }
+---
+kind: Self.Router
+metadata: { name: refused }
+handler: { next: { label: 5 } }

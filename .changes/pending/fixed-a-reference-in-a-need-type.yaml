@@ -1,0 +1,8 @@
+units:
+  analyzer: Fixed
+body: A `#` reference in a need type's field, its `parameters`, or a `variables:` /
+  `secrets:` entry of a module that names no node of that field or entry is refused by
+  `telo check` as `SCHEMA_COMPILE_ERROR` at the reference — a library's at the importing
+  `imports:` entry — where it used to check clean and fail at run with a bare validator
+  message. A need type's field is the root its own `#/…` references are read from
+  wherever it is validated, a fulfilment written in a manifest included.

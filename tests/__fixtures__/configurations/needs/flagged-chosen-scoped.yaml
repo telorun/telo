@@ -1,0 +1,16 @@
+# The library's flag bound behind a choice at a scoped import: its need is
+# required where the option the importer takes sets the flag.
+kind: Telo.Application
+metadata: { name: FlaggedChosenScoped }
+variables: { flag: { env: FLAG, type: boolean, default: false } }
+targets: [!ref scope]
+---
+kind: Telo.Sequence
+metadata: { name: scope }
+with:
+  - kind: Telo.Import
+    metadata: { name: Flagged }
+    source: ./flagged
+    variables:
+      flag: !if { if: !cel "variables.flag", then: true, else: false }
+steps: [{ name: noop, value: 1 }]

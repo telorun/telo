@@ -77,9 +77,9 @@
  * Browser-safe.
  */
 import { resolveSchemaReference, schemaReferenceParts } from "./schema-reference.js";
-import { childNodes, type CelNode } from "@telorun/cel";
+import { childNodes, type CelNode, type CelType } from "@telorun/cel";
 import type { ResourceManifest } from "@telorun/sdk";
-import { schemaPattern } from "@telorun/sdk";
+import { canonicalTypeSchemaId, schemaPattern } from "@telorun/sdk";
 import {
   celExpressionsOf,
   expansionTagLabel,
@@ -93,6 +93,7 @@ import { readReporterOf } from "./annotation-reads.js";
 import { celSiteName } from "./cel-site-name.js";
 import { observingKeyCosts, observingRelationParity, reportKeyCost } from "./cel-site-judgements.js";
 import { countNodes, regionExtent } from "./key-parts.js";
+import { STEP_GUARD_FIELDS, STEP_GUARDED_BRANCHES } from "./step-guards.js";
 import { parseCelSource } from "./cel-environment.js";
 import { stepNamesReadBy, stepRecordBodies, stepRecordNames } from "./cel-scope.js";
 import { contractReads } from "./invocation-contract.js";
@@ -120,12 +121,24 @@ import { isOptionalResourceInput } from "./resource-input.js";
 import { observedStateRead } from "./validate-observed-state.js";
 import { ownSitesOf, type OwnSite, type OwnSiteSchemas } from "./own-check-sites.js";
 import type { CarveSummary } from "./schema-findings-judge.js";
+import {
+  carveDecisionText,
+  isLiteralCarveText,
+  type CarveFindingText,
+  type CarveTextReading,
+  type CarveTextResolver,
+  type SchemaCarveSummary,
+} from "./schema-carve.js";
+import { splitByReads } from "./world-reader.js";
 import type { UnionOutcome } from "./union-outcome.js";
 import { valueDerivedSlot } from "./value-derived-contract.js";
 import { callableInstanceFields } from "./callable-signature.js";
 import { CARVED_PLACE, placeByProjectedKeys, placeByUnionKeys, regionSkeleton, scopePlacesOf } from "./region-part.js";
 import { isAtOrAbove, relationSiteId, type RelationReads, type RelationTarget } from "./relation-sites.js";
 import { FALSE, TRUE, type Condition } from "./presence-condition.js";
+import type { NamedShapeReader, ShapeClass, ShapeInstance } from "./named-shape-reader.js";
+import type { WorldReader } from "./world-reader.js";
+import { schemaBoundaries, type SchemaBoundary } from "./schema-boundaries.js";
 import { READS_IDENTITY, type ReadKeys, type ReadPlace, type Referent, type ReferentPlace, type ReferentReads, type ReferrerReads } from "./read-place.js";
 import type { ScopeSite } from "./scope-address.js";
 import { FactIdentities, producerFact, type StepFact } from "./step-result-inference.js";
@@ -152,15 +165,18 @@ export interface CelOccurrenceFacts {
   readonly layout: readonly number[];
   readonly source: string;
   readonly type?: string;
+  /** The type itself, beside its text `type`. */
+  readonly checkedType?: CelType;
   readonly literal?: string;
   readonly produced?: Record<string, any>;
-  readonly composed?: unknown;
+  readonly origins?: unknown;
   /** Per referrer typing, when the site was judged under several. */
   readonly variants?: ReadonlyArray<{
     readonly type?: string;
+    readonly checkedType?: CelType;
     readonly literal?: string;
     readonly produced?: Record<string, any>;
-    readonly composed?: unknown;
+    readonly origins?: unknown;
     readonly label?: string;
   }>;
 }
@@ -246,6 +262,33 @@ export interface OwnKeyRequest {
   readonly reads: readonly Keys[];
   /** A site at or beneath a union: how its unions are decided. */
   readonly union?: OwnUnionRequest;
+  /** The schema carves the judgement reads, each with the summary it answers
+   *  at its data position (`schema-carve.ts`). */
+  readonly carves?: readonly OwnCarveRead[];
+  /** A sub-verdict: the value at `at` judged against class `index` of the
+   *  named shape `shape`, through the reference `ref`, every other shape some
+   *  configuration varies read as its stand-in; only what is found at or
+   *  beneath `at` is kept. */
+  readonly focus?: {
+    readonly shape: string;
+    readonly ref: string;
+    readonly index: number;
+    readonly at: Keys;
+    /** The shapes held with it — itself — as the witness holds it. */
+    readonly held: readonly string[];
+    /** The carves its key holds by their text: none, since a carve's class is
+     *  its decision alone. */
+    readonly textParts?: number;
+  };
+}
+
+/** A schema carve a judgement reads: the shape and pointer its reference
+ *  names, the data position it applies at, and its summary there. */
+export interface OwnCarveRead {
+  readonly id: string;
+  readonly pointer: string;
+  readonly at: Keys;
+  readonly summary: SchemaCarveSummary;
 }
 
 /** What one judgement of an own-check site found: its findings at their
@@ -261,6 +304,15 @@ export interface OwnVerdict {
   readonly unions?: {
     readonly outcomes: Readonly<Record<string, UnionOutcome>>;
     readonly contributions: Readonly<Record<string, CarveSummary>>;
+  };
+  /** The schema carves it read: each whose findings an enclosing keyword
+   *  reported (`JSON.stringify([carve, place])`), and a sub-verdict's summary
+   *  at its position. */
+  readonly carves?: {
+    readonly passed: readonly string[];
+    readonly summary?: SchemaCarveSummary;
+    /** Each finding it reports phrased over carves' texts. */
+    readonly textReads: readonly CarveTextReading[];
   };
 }
 
@@ -308,6 +360,10 @@ export interface CelSiteSolveInput {
   readonly shapeOf: (ref: string, witness: World) => Record<string, any> | undefined;
   /** The name of the declaration a named shape's `$ref` names, when one does. */
   readonly shapeNameOf: (ref: string) => string | undefined;
+  /** The one reader of the named shapes, where any is declared. */
+  readonly namedShapes?: NamedShapeReader;
+  /** The module instance a shape at canonical `id` is read in from `within`. */
+  readonly shapeInstanceOf: (id: string, within: ResourceManifest) => ShapeInstance;
   /** Whether `declaration` is a named shape: its whole is the schema a read of
    *  it reads. */
   readonly isNamedShape: (declaration: ResourceManifest) => boolean;
@@ -601,6 +657,8 @@ export interface OwnSolvedKey {
    *  condition is over the configurations alone, and it keeps what is found
    *  beneath the branch. */
   readonly bodyDead?: BodyUnitDeadBranch;
+  /** Its findings, each split by the carves' texts its phrasing reads. */
+  textSplit?: (diagnostic: AnalysisDiagnostic, held: Condition) => readonly { diagnostic: AnalysisDiagnostic; condition: Condition }[];
 }
 
 /** Which keys of a schema site are solved: what it contributes to the unions
@@ -1067,6 +1125,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
    *  and, onward, the shapes their content names; a name some declaration of
    *  which is no named shape is held as its identity alone. */
   const shapeClasses = (names: Iterable<string>, wit: World): ReadClass[] => {
+    if (relationWithin) return directShapeClasses(names, relationWithin, wit);
     const whole = new Set<string>();
     const others = new Set<string>();
     const queue = [...names];
@@ -1088,6 +1147,68 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     const classes = whole.size > 0 ? [declarationClass(whole, wit, false, "schema")] : [];
     if (others.size > 0) classes.push(...nameReadClasses(others, wit, () => [], false).classes);
     return classes;
+  };
+
+  /** The declaration whose relation key is being read, while one is: every
+   *  named shape the key reads is then held as its own class, never with the
+   *  shapes its content names. */
+  let relationWithin: ResourceManifest | undefined;
+
+  /** Whether the named shape at `id` differs between configurations. */
+  const shapeVaries = (id: string): boolean => input.namedShapes?.varies(id) ?? false;
+
+  /** The named shapes `names` name directly, each held as its own class
+   *  through the named-shape reader, read in the instance `within` reads it
+   *  in — never the shapes their content names; a name some declaration of
+   *  which is no named shape is held as its identity alone. */
+  const directShapeClasses = (names: Iterable<string>, within: ResourceManifest, wit: World): ReadClass[] => {
+    const shapes: string[] = [];
+    const others = new Set<string>();
+    for (const name of new Set(names)) {
+      if (allNamedShapes(name)) shapes.push(name);
+      else others.add(name);
+    }
+    const out: ReadClass[] = [];
+    if (shapes.length > 0) {
+      const reader = input.namedShapes;
+      const read: WorldReader<Condition> = {
+        holds: (held) => space.holds(held, wit.assignment),
+        taken: () => {
+          throw new Error("internal: a named shape's class is read by its condition alone.");
+        },
+      };
+      const parts: unknown[] = [];
+      let condition = TRUE;
+      for (const name of shapes) {
+        const ids = new Set<string>();
+        for (const declaration of nameIndex.declarationsNamed(name)) {
+          const module = (declaration.manifest.metadata as { module?: unknown } | undefined)?.module;
+          if (typeof module === "string") ids.add(canonicalTypeSchemaId(module, name));
+        }
+        for (const id of [...ids].sort()) {
+          if (!reader || !shapeVaries(id)) {
+            parts.push([id, 0]);
+            continue;
+          }
+          const instance = input.shapeInstanceOf(id, within);
+          const found = reader.classIn(instance, id, read);
+          if (found) {
+            parts.push([instance, id, found.index]);
+            condition = space.and(condition, found.condition);
+          } else {
+            parts.push([instance, id, null]);
+            condition = space.and(condition, space.not(space.some(reader.classesIn(instance, id).map((each) => each.condition))));
+          }
+        }
+      }
+      out.push({
+        text: textOf(["shapes", parts]),
+        condition,
+        covers: { names: new Set(shapes), readers: new Map(shapes.map((name): [string, WholeNameReader] => [name, "shape"])) },
+      });
+    }
+    if (others.size > 0) out.push(...nameReadClasses(others, wit, () => [], false).classes);
+    return out;
   };
 
   /** Which declarations there are: what a read of a name none answers to is
@@ -1921,7 +2042,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     if (known) return known;
     if (!celRequests.has(key)) throw new Error(`internal: the producer ${producer.id} was read before its key was judged.`);
     const facts = key.verdict.facts[0];
-    const fact = producerFact(producer.engine, facts?.type, facts?.produced);
+    const fact = producerFact(producer.engine, facts?.checkedType, facts?.produced);
     factOf.set(key, fact);
     return fact;
   };
@@ -2455,6 +2576,37 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     return { text: textOf(parts.sort((a, b) => textOf(a).localeCompare(textOf(b)))), condition };
   };
 
+  /** The named shapes the declaration of a module input names (`$ref`), each
+   *  as its own class: an input's declaration is the same everywhere, a named
+   *  shape it names is not. Read off the module document of `within`'s module,
+   *  or the globals a forwarded declaration carries; a resource input names
+   *  none. */
+  const inputShapeClasses = (
+    within: ResourceManifest,
+    module: string | undefined,
+    block: "variables" | "secrets" | "resources",
+    name: string | undefined,
+    wit: World,
+  ): ReadClass[] => {
+    if (block === "resources") return [];
+    const forwarded = (within.metadata as { moduleGlobals?: Record<string, unknown> } | undefined)?.moduleGlobals?.[block];
+    const blocks =
+      forwarded !== undefined
+        ? [forwarded]
+        : module === undefined
+          ? []
+          : nameIndex
+              .declarationsNamed(module)
+              .filter((declaration) => isModuleKind(declaration.manifest.kind))
+              .map((declaration) => (declaration.manifest as Record<string, unknown>)[block]);
+    const shapes = new Set<string>();
+    for (const entries of blocks) {
+      if (entries === null || typeof entries !== "object") continue;
+      namesIn(name === undefined ? entries : (entries as Record<string, unknown>)[name], shapes, false);
+    }
+    return shapes.size > 0 ? shapeClasses(shapes, wit) : [];
+  };
+
   /** The schema nodes on the way to `keys` of a projected declaration, each
    *  with its data path, and where the innermost declaration begins — and the
    *  named shapes the walk follows. */
@@ -2699,6 +2851,28 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     return { text: textOf([...prefix, ...classes.map((c) => c.text)]), condition, coverage };
   };
 
+  /** The keys of the outermost step object enclosing `keys` that carries a guard
+   *  over the branch `keys` runs through, read off the step grammar's own fields. */
+  const guardingStepKeys = (projected: Record<string, unknown>, keys: Keys): Keys | undefined => {
+    let value: unknown = projected;
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i]!;
+      const next = value !== null && typeof value === "object" ? (value as Record<string | number, unknown>)[key] : undefined;
+      if (
+        typeof key === "string" &&
+        value !== null &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        STEP_GUARD_FIELDS.some((field) => field in (value as object)) &&
+        STEP_GUARDED_BRANCHES.has(key)
+      ) {
+        return keys.slice(0, i);
+      }
+      value = next;
+    }
+    return undefined;
+  };
+
   /** A site's key at the witness. */
   const keyAt = (
     site: UnionSite,
@@ -2738,6 +2912,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       const name = second === undefined || second === INDEX_SEGMENT ? undefined : second;
       if (head === "variables" || head === "secrets") {
         classes.push(inputClass(module, importPath, head, name, wit));
+        classes.push(...inputShapeClasses(site.declaration.manifest, module, head, name, wit));
         // A module document's own expression reads the block it declares.
         if (isModuleKind(site.declaration.manifest.kind)) reads.push([head]);
       } else if (head === "resources") {
@@ -2791,6 +2966,13 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       }
     }
     if (readsObservedStateGate(site.declaration.manifest, site.unionKeys, chains)) classes.push(observedClass(wit));
+    // A guard enclosing the site is an assumption it is judged under: the
+    // outermost step carrying one is part of its region.
+    const guarding = guardingStepKeys(projected, keys);
+    if (guarding) {
+      reads.push(guarding);
+      classes.push(...placeClasses(site.declaration, { kind: "value", keys: guarding }, wit));
+    }
     if (calls.size > 0) {
       const found = nameReadClasses([...calls].map((q) => q.slice(q.indexOf(".") + 1)), wit, callablePlaces, true, site.declaration);
       classes.push(...found.classes);
@@ -3187,6 +3369,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
         const name = second === undefined || second === INDEX_SEGMENT ? undefined : second;
         if (head === "variables" || head === "secrets" || head === "resources") {
           classes.push(inputClass(module, importPath, head, name, witness));
+          classes.push(...inputShapeClasses(site.holder, module, head, name, witness));
         }
         if (head === "resources") {
           classes.push(...nameReadClasses(name ? [name] : nameIndex.names(), witness, dispatchPlaces, false).classes);
@@ -3390,8 +3573,12 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   };
 
   /** Every schema node a declaration's data at `keys`, on the way to it and
-   *  beneath it is judged against, each with its data path and where its
-   *  declaration begins; the named shapes followed join `shapes`. */
+   *  beneath it is judged against, each with its data path, where its
+   *  declaration begins and the named shape whose document holds it; the
+   *  named shapes followed join `shapes`. `boundaries.stops` names the
+   *  references written inside a named shape that are boundaries — beneath
+   *  `keys` alone when `beneath` — and `boundaries.lookup` answers a shape in
+   *  place of the witness. */
   const nodesUnder = (
     data: unknown,
     keys: Keys,
@@ -3399,9 +3586,19 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     shapes: Set<string>,
     wit: World,
     carved: readonly Keys[] = [],
-  ): { node: Record<string, any>; at: Keys; root: Keys }[] => {
-    const out: { node: Record<string, any>; at: Keys; root: Keys }[] = [];
+    boundaries?: {
+      readonly stops?: (id: string) => boolean;
+      readonly beneath?: boolean;
+      readonly lookup?: (id: string) => Record<string, any> | undefined;
+    },
+  ): { node: Record<string, any>; at: Keys; root: Keys; shape?: string }[] => {
+    const out: { node: Record<string, any>; at: Keys; root: Keys; shape?: string }[] = [];
     const carvedTexts = new Set(carved.map((keys) => textOf(keys)));
+    // A named shape's own documents, by identity, each with its shape's id: a
+    // reference written inside one that `boundaries` stops at is a boundary,
+    // never followed.
+    const shapeDocuments = new WeakMap<object, string>();
+    const lookup = (id: string) => boundaries?.lookup?.(id) ?? input.shapeOf(id, wit);
     const visit = (node: unknown, at: Keys, root: Keys, document: Record<string, any>, seen: Set<object>): void => {
       if (!node || typeof node !== "object" || Array.isArray(node)) return;
       // A carved place is its own site's: nothing at or beneath it is read here.
@@ -3412,14 +3609,26 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       if (typeof schema.$ref === "string") {
         const ref = schema.$ref as string;
         const { shape: id } = schemaReferenceParts(ref);
-        if (id !== undefined) {
-          const shape = input.shapeNameOf(id);
-          if (shape !== undefined) shapes.add(shape);
+        const boundary =
+          id !== undefined &&
+          boundaries?.stops !== undefined &&
+          (!boundaries.beneath || at.length >= keys.length) &&
+          shapeDocuments.has(document) &&
+          boundaries.stops(id);
+        if (!boundary) {
+          if (id !== undefined) {
+            const shape = input.shapeNameOf(id);
+            if (shape !== undefined) shapes.add(shape);
+          }
+          const target = resolveSchemaReference(ref, document, lookup);
+          if (target) {
+            if (id !== undefined) shapeDocuments.set(target.document, id);
+            visit(target.node, at, root, target.document, guard);
+          }
         }
-        const target = resolveSchemaReference(ref, document, (shape) => input.shapeOf(shape, wit));
-        if (target) visit(target.node, at, root, target.document, guard);
       }
-      out.push({ node: schema, at, root });
+      const shape = shapeDocuments.get(document);
+      out.push(shape === undefined ? { node: schema, at, root } : { node: schema, at, root, shape });
       for (const branch of ["allOf", "anyOf", "oneOf"] as const) {
         if (Array.isArray(schema[branch])) for (const member of schema[branch]) visit(member, at, root, document, guard);
       }
@@ -3479,6 +3688,53 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     const rootSchema = input.schemaOf(data as Record<string, any>, within);
     if (rootSchema) visit(rootSchema, [], [], rootSchema, new Set());
     return out;
+  };
+
+  /** The keywords holding the schemas a walk meets beneath a node. */
+  const SCHEMA_CHILDREN = new Set([
+    "properties", "patternProperties", "additionalProperties", "propertyNames", "items", "prefixItems",
+    "additionalItems", "contains", "allOf", "anyOf", "oneOf", "not", "if", "then", "else",
+    "dependentSchemas", "dependencies", "$defs", "definitions", "unevaluatedProperties", "unevaluatedItems",
+  ]);
+
+  /**
+   * A varying named shape a relation key's walk to `keys` passes only on the
+   * way, held as what the way reads in it — the nodes of its document met on
+   * the way, each without the schemas beneath it — under every class of the
+   * shape meeting the same ones: a reach edge through the shape, never its
+   * content. Covers the shape's name, so the door reads the class it holds.
+   */
+  const wayClass = (
+    id: string,
+    data: unknown,
+    keys: Keys,
+    within: ResourceManifest,
+    wit: World,
+  ): ReadClass => {
+    const reader = input.namedShapes!;
+    const instance = input.shapeInstanceOf(id, within);
+    const wayText = (schema: Record<string, any>): string =>
+      textOf(
+        nodesUnder(data, keys, within, new Set(), wit, [], { stops: shapeVaries, beneath: true, lookup: (shape) => (shape === id ? schema : undefined) })
+          .filter((found) => found.shape === id && found.at.length < keys.length)
+          .map((found) => [found.at, Object.fromEntries(Object.entries(found.node).filter(([keyword]) => !SCHEMA_CHILDREN.has(keyword)))]),
+      );
+    const held = reader.classIn(instance, id, readAt(wit));
+    const name = input.shapeNameOf(id);
+    const covers: Cover | undefined = name === undefined ? undefined : { names: new Set([name]), readers: new Map([[name, "shape" as WholeNameReader]]) };
+    if (!held) {
+      return {
+        text: textOf(["way", id, null]),
+        condition: space.not(space.some(reader.classesIn(instance, id).map((each) => each.condition))),
+        ...(covers ? { covers } : {}),
+      };
+    }
+    const text = wayText(held.schema);
+    let condition = held.condition;
+    for (const each of reader.classesIn(instance, id)) {
+      if (each !== held && wayText(each.schema) === text) condition = space.or(condition, each.condition);
+    }
+    return { text: textOf(["way", id, text]), condition, ...(covers ? { covers } : {}) };
   };
 
   /** The places every annotation in a region of `data`, a declaration
@@ -3639,7 +3895,15 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     // A site whose root is absent at the witness judges nothing, and reads nothing.
     const place = placeByUnionKeys(union, declaration, site.unionKeys, wit);
     if (!place.present) {
-      return { ...keyOf(keyText, site.condition, classes), dead: region.dead, reads: [] as Keys[] };
+      return {
+        ...keyOf(keyText, site.condition, classes),
+        dead: region.dead,
+        reads: [] as Keys[],
+        boundaries: [] as SchemaBoundary[],
+        carves: [] as OwnCarveRead[],
+        region: textOf(region.value),
+        domain: region.taken,
+      };
     }
     classes.push(...unionClasses(site, wit, dead, phase));
     // The named shapes the schemas checking it reach.
@@ -3653,6 +3917,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
         if (head !== "variables" && head !== "secrets" && head !== "resources") continue;
         const name = second === undefined || second === INDEX_SEGMENT ? undefined : second;
         classes.push(inputClass(module, importPath, head, name, wit));
+        classes.push(...inputShapeClasses(declaration.manifest, module, head, name, wit));
       }
     }
     // What every annotation in the region reads.
@@ -3662,10 +3927,16 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       .map((text) => placeByUnionKeys(union, declaration, JSON.parse(text) as Keys, wit))
       .filter((at) => at.present)
       .map((at) => at.at);
+    // The boundary references the region meets: each member-wise one a
+    // sub-verdict's, each beneath a keyword relating members a schema carve.
+    // A template body unit's key, which no sub-verdict serves, still holds
+    // every shape its region reaches.
+    const bodyUnit = site.unit !== undefined || site.units !== undefined;
+    const boundaries = bodyUnit ? [] : boundariesAt(projected, [], declaration.manifest, keys, carvedAt, wit);
     /** The places of the declaration the key reads beyond its region. */
     const readKeys: Keys[] = [];
     if (valueAt(projected, keys) !== undefined) {
-      const nodes = nodesUnder(projected, keys, declaration.manifest, shapes, wit, carvedAt);
+      const nodes = nodesUnder(projected, keys, declaration.manifest, shapes, wit, carvedAt, bodyUnit ? undefined : { stops: shapeVaries });
       for (const { node } of nodes) {
         for (const [keyword, value] of Object.entries(node)) if (keyword.startsWith("x-telo-")) namesIn(value, shapes, false);
       }
@@ -3725,7 +3996,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       }
       namesIn(kindContract, shapes, false);
     }
-    classes.push(...shapeClasses(shapes, wit));
+    classes.push(...(bodyUnit ? shapeClasses(shapes, wit) : directShapeClasses(shapes, declaration.manifest, wit)));
     const reads = new Map<string, Keys>();
     for (const keys of readKeys) reads.set(textOf(keys), keys);
     // The members of the scopes on the way to the region and its reads.
@@ -3735,7 +4006,48 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       if (at.present) roots.push(at.unionKeys);
     }
     classes.push(...scopeMembersClass(declaration, roots, wit));
-    return { ...keyOf(keyText, site.condition, classes), dead: region.dead, reads: [...reads.values()] };
+    // Each schema carve the region meets, read by its decision summary.
+    const domain = { region: textOf(region.value), domain: region.taken };
+    const carves = carveReadsAt(site, boundaries, domain, wit, keyOf(keyText, site.condition, classes).coverage);
+    classes.push(...carves.classes);
+    return {
+      ...keyOf(keyText, site.condition, classes),
+      dead: region.dead,
+      reads: [...reads.values()],
+      boundaries,
+      carves: carves.reads,
+      region: domain.region,
+      domain: domain.domain,
+    };
+  };
+
+  /** The boundary references the region at `region` of `data`, a declaration
+   *  written in `within`, meets from `at` — validated against `schema` there,
+   *  a node of `document`, or the declaration's kind schema — none beneath a
+   *  carved place, which is its own site's. */
+  const boundariesAt = (
+    data: unknown,
+    at: Keys,
+    within: ResourceManifest,
+    region: Keys,
+    carved: readonly Keys[],
+    wit: World,
+    schema?: { readonly node: Record<string, any>; readonly document: Record<string, any> },
+    own?: string,
+  ): SchemaBoundary[] => {
+    if (!input.namedShapes) return [];
+    const root = schema ?? (() => {
+      const kind = input.schemaOf(data as Record<string, any>, within);
+      return kind ? { node: kind, document: kind } : undefined;
+    })();
+    if (!root) return [];
+    // A reference to the shape a sub-verdict holds is followed: it is held.
+    return schemaBoundaries(data, at, root.node, root.document, schema !== undefined, {
+      lookup: (shape) => input.shapeOf(shape, wit),
+      stops: (id) => id !== own && shapeVaries(id),
+      declaration: (value) => input.schemaOf(value as Record<string, any>, within) !== undefined,
+      region,
+    }).filter((boundary) => !carved.some((place) => isAtOrAbove(place, boundary.at)));
   };
 
   /**
@@ -3774,6 +4086,19 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     return n + countNodes(content) + scoped;
   };
 
+  /** What an own-check key read at its witness. */
+  type OwnFound = {
+    coverage: KeyCoverage;
+    reads: readonly Keys[];
+    /** The boundary references its region meets. */
+    boundaries: readonly SchemaBoundary[];
+    /** The schema carves it reads, each with its summary at the witness. */
+    carves: readonly OwnCarveRead[];
+    /** Its region's content, which a sub-verdict beneath it judges, and where
+     *  the region holds that content. */
+    region: string;
+    domain: Condition;
+  };
   const ownSolved = new Map<string, OwnSolvedKey[]>();
   /** Where each own-check key was judged. */
   const ownWitnesses = new WeakMap<OwnSolvedKey, World>();
@@ -3781,7 +4106,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
   const bodyOwn: { site: OwnSite; unit: TemplateBodyUnit; keys: OwnSolvedKey[] }[] = [];
   const ownRequests = new WeakMap<
     OwnSolvedKey,
-    { site: OwnSite; sites: readonly OwnSite[]; coverage: KeyCoverage; reads: readonly Keys[]; union?: OwnUnionRequest }
+    { site: OwnSite; sites: readonly OwnSite[]; coverage: KeyCoverage; reads: readonly Keys[]; carves: readonly OwnCarveRead[]; union?: OwnUnionRequest }
   >();
   /** A contribution key judged: what the site gives each branch of the unions
    *  above it; its findings are its final keys'. */
@@ -3790,7 +4115,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     sites: readonly OwnSite[],
     key: OwnSolvedKey,
     witness: World,
-    found: { coverage: KeyCoverage; reads: readonly Keys[] },
+    found: { coverage: KeyCoverage; reads: readonly Keys[]; carves: readonly OwnCarveRead[] },
   ): void => {
     key.verdict = input.judgeOwnKey({
       site,
@@ -3799,6 +4124,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       coverage: found.coverage,
       sites,
       reads: found.reads,
+      carves: found.carves,
       union: unionRequestOf(site, witness, key.dead, "contribution")!,
     });
   };
@@ -3811,9 +4137,9 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     sites: readonly OwnSite[],
     key: OwnSolvedKey,
     witness: World,
-    found: { coverage: KeyCoverage; reads: readonly Keys[] },
+    found: { coverage: KeyCoverage; reads: readonly Keys[]; carves: readonly OwnCarveRead[] },
   ): void => {
-    const { coverage, reads } = found;
+    const { coverage, reads, carves } = found;
     reportPresence("schema", site.id, site.declaration, site.unionKeys, witness, reads.length, coverage, key, site.unit !== undefined);
     if (observingKeyCosts()) {
       reportKeyCost({ kind: "schema-extent", site: site.id, nodes: ownExtentOf(site, witness) });
@@ -3841,6 +4167,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       coverage,
       sites,
       reads,
+      carves,
       ...(unionRequest ? { union: unionRequest } : {}),
     });
     // A body unit's key in a dead branch keeps what is found beneath it.
@@ -3853,7 +4180,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       : judged;
     key.verdict = verdict;
     ownWitnesses.set(key, witness);
-    ownRequests.set(key, { site, sites, coverage, reads, ...(unionRequest ? { union: unionRequest } : {}) });
+    ownRequests.set(key, { site, sites, coverage, reads, carves, ...(unionRequest ? { union: unionRequest } : {}) });
     for (const origin of verdict.origins) judgedOrigins.add(origin);
     for (const d of verdict.diagnostics) {
       const origin = (d.data as { ownOrigin?: string } | undefined)?.ownOrigin;
@@ -3863,6 +4190,362 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     }
   };
   const viewSiteName = (view: ConditionedView): string => viewSiteNameOf(union, view);
+
+  // --- Sub-verdicts beneath boundary references ------------------------------
+  // A key reads only the named shapes its site names directly; a reference
+  // met inside one to a shape some configuration varies is a boundary. What
+  // the shape finds there is a sub-verdict: the value at the reference's data
+  // position judged against one class of the shape, its own boundaries read
+  // the same way. A member-wise boundary stands in empty beside its own
+  // sub-verdict; a schema carve — a boundary beneath a keyword relating
+  // members, and every boundary inside a carve's class — stands as the
+  // `schemaCarve` keyword answering its sub-verdict's decision summary, which
+  // the judgement reading it splits on. One memo entry per (site, region,
+  // reference, position, class, decision of each carve the judgement reads),
+  // one validation each. The sub-verdicts are joined to the keys by one reach
+  // fixpoint over (reference, position) nodes, an edge labelled by the class
+  // holding it and — beneath a carve — by the holder's judgement reporting
+  // what the carve raises (pass-through), so a finding holds where its class
+  // is, its node is reached and every keyword above passes it through.
+  /** Every sub-verdict's findings, each with where it holds. */
+  const ownSubEmissions: { diagnostic: AnalysisDiagnostic; condition: Condition; origin: string }[] = [];
+  type SubNode = {
+    /** A carve is read by its summary; a member-wise boundary stands in empty. */
+    readonly kind: "carve" | "member";
+    readonly ref: string;
+    readonly id: string;
+    readonly at: Keys;
+    /** The region of the key it lies beneath, and where that region holds. */
+    readonly region: string;
+    readonly domain: Condition;
+  };
+  type SubResult = {
+    readonly condition: Condition;
+    readonly diagnostics: readonly AnalysisDiagnostic[];
+    /** Its boundaries, each with whether its findings pass through. */
+    readonly inner: readonly { readonly node: SubNode; readonly passed: boolean }[];
+    /** A carve's summary at its position; none where the shape is absent. */
+    readonly summary?: SchemaCarveSummary;
+    /** Each finding it reports phrased over its carves' texts. */
+    readonly textReads: readonly CarveTextReading[];
+  };
+  const nodeText = (node: SubNode) => JSON.stringify([node.kind, node.region, node.ref, node.at]);
+  const pointerOfKeys = (keys: Keys): string => keys.map((key) => `/${String(key).replace(/~/g, "~0").replace(/\//g, "~1")}`).join("");
+  const carveIdOf = (node: { readonly id: string; readonly ref: string }): string => `${node.id}${schemaReferenceParts(node.ref).pointer}`;
+  const carvePlaceText = (node: SubNode): string => JSON.stringify([carveIdOf(node), pointerOfKeys(node.at)]);
+  const CLEAN_CARVE: SchemaCarveSummary = { clean: true, candidate: true, constrained: [], required: [], reports: false, findings: [], text: [] };
+  const subVerdictMemo = new Map<string, SubResult>();
+  /** Each site's sibling sites, which a finding is attributed among. */
+  const siblingSites = new WeakMap<OwnSite, readonly OwnSite[]>();
+  /** Each carve's decision classes over its domain: per decision, where it
+   *  holds, and the sub-verdicts holding it, each where it holds. */
+  const carveProfiles = new Map<string, Map<string, { condition: Condition; results: SubResult[] }> | "reading">();
+  const readAt = (wit: World): WorldReader<Condition> => ({
+    holds: (held) => space.holds(held, wit.assignment),
+    taken: () => {
+      throw new Error("internal: a named shape's class is read by its condition alone.");
+    },
+  });
+  const decisionOf = (result: SubResult): string => (result.summary ? carveDecisionText(result.summary) : "absent");
+  const carveProfile = (site: OwnSite, node: SubNode, coverage: KeyCoverage) => {
+    const memo = `${site.id}\0${nodeText(node)}`;
+    const known = carveProfiles.get(memo);
+    if (known === "reading") throw new Error(`internal: the schema carve '${carveIdOf(node)}' beneath own-check site ${site.id} reaches itself.`);
+    if (known) return known;
+    carveProfiles.set(memo, "reading");
+    const profile = new Map<string, { condition: Condition; results: SubResult[] }>();
+    let remaining = space.and(node.domain, universe);
+    while (remaining !== FALSE) {
+      const witness = World.key(space.firstAssignment(remaining)!);
+      const result = subVerdictAt(site, node, witness, coverage);
+      if (!space.holds(result.condition, witness.assignment)) {
+        throw new Error(`internal: a sub-verdict beneath own-check site ${site.id} does not hold where it was judged.`);
+      }
+      const decision = decisionOf(result);
+      let entry = profile.get(decision);
+      if (!entry) profile.set(decision, (entry = { condition: FALSE, results: [] }));
+      entry.condition = space.or(entry.condition, result.condition);
+      if (!entry.results.includes(result)) entry.results.push(result);
+      remaining = space.and(remaining, space.not(result.condition));
+    }
+    carveProfiles.set(memo, profile);
+    return profile;
+  };
+  /** A carve at the witness: the class a judgement reading it splits on — its
+   *  decision alone — and what it answers there, its text resolved there. */
+  const carveClassAt = (
+    site: OwnSite,
+    node: SubNode,
+    wit: World,
+    coverage: KeyCoverage,
+  ): { readonly class: ReadClass; readonly textPart: boolean; readonly read?: OwnCarveRead } => {
+    const result = subVerdictAt(site, node, wit, coverage);
+    const condition = carveProfile(site, node, coverage).get(decisionOf(result))?.condition ?? FALSE;
+    const read = result.summary
+      ? { id: node.id, pointer: schemaReferenceParts(node.ref).pointer, at: node.at, summary: resolvedSummary(site, result, readAt(wit), coverage, wit) }
+      : undefined;
+    return {
+      class: { text: textOf(["carve", nodeText(node), decisionOf(result)]), condition },
+      textPart: false,
+      ...(read ? { read } : {}),
+    };
+  };
+  /** The sub-verdict of the carve `node` the reader holds. */
+  const carveResultRead = (site: OwnSite, node: SubNode, read: WorldReader<Condition>, coverage: KeyCoverage, wit?: World): SubResult => {
+    for (const entry of carveProfile(site, node, coverage).values()) {
+      for (const result of entry.results) if (read.holds(result.condition)) return result;
+    }
+    // A witness no configuration takes reads the sub-verdict judged there.
+    if (wit) return subVerdictAt(site, node, wit, coverage);
+    throw new Error(`internal: no sub-verdict of the schema carve '${carveIdOf(node)}' beneath own-check site ${site.id} holds where its text is read.`);
+  };
+  /** What resolves, against `read`, the texts of the carves `inner` holds. */
+  const carveResolver = (
+    site: OwnSite,
+    inner: readonly { readonly node: SubNode }[],
+    read: WorldReader<Condition>,
+    coverage: KeyCoverage,
+    wit?: World,
+    resolved: Map<SubResult, SchemaCarveSummary> = new Map(),
+  ): CarveTextResolver => (carve, place) => {
+    const found = inner.find(({ node }) => node.kind === "carve" && carvePlaceText(node) === JSON.stringify([carve, place]));
+    if (!found) throw new Error(`internal: a text read names the schema carve '${carve}' at '${place}', which its judgement does not read.`);
+    return resolvedSummary(site, carveResultRead(site, found.node, read, coverage, wit), read, coverage, wit, resolved);
+  };
+  /** A carve's summary with its text resolved: each reference to an inner
+   *  carve's finding and each phrasing over inner carves' texts read through
+   *  `read`. */
+  const resolvedSummary = (
+    site: OwnSite,
+    result: SubResult,
+    read: WorldReader<Condition>,
+    coverage: KeyCoverage,
+    wit?: World,
+    /** Each sub-verdict already resolved against `read`. */
+    resolved: Map<SubResult, SchemaCarveSummary> = new Map(),
+  ): SchemaCarveSummary => {
+    const summary = result.summary!;
+    if (summary.text.every(isLiteralCarveText)) return summary;
+    const known = resolved.get(result);
+    if (known) return known;
+    const resolve = carveResolver(site, result.inner, read, coverage, wit, resolved);
+    const text = summary.text.map((each: CarveFindingText) => {
+      if (isLiteralCarveText(each)) return each;
+      if ("ref" in each) {
+        const inner = resolve(each.ref.carve, each.ref.place).text[each.ref.index];
+        if (!inner || !isLiteralCarveText(inner)) throw new Error(`internal: the schema carve '${each.ref.carve}' resolved with its text unresolved.`);
+        return inner;
+      }
+      return each.rebuild.render(resolve);
+    });
+    const out = { ...summary, text };
+    resolved.set(result, out);
+    return out;
+  };
+  /** `diagnostic`, held where `held` is, split by the carves' texts the
+   *  phrasings among `reads` read. */
+  const splitByCarveTexts = (
+    site: OwnSite,
+    inner: readonly { readonly node: SubNode }[],
+    reads: readonly CarveTextReading[],
+    coverage: KeyCoverage,
+    diagnostic: AnalysisDiagnostic,
+    held: Condition,
+  ): { diagnostic: AnalysisDiagnostic; condition: Condition }[] => {
+    const own = reads.filter((read) => diagnostic.message.includes(read.old));
+    if (own.length === 0) return [{ diagnostic, condition: held }];
+    const parts = new Map<string, { diagnostic: AnalysisDiagnostic; condition: Condition }>();
+    for (const { condition, value } of splitByReads(space, held, (read) => {
+      const resolve = carveResolver(site, inner, read, coverage);
+      let message = diagnostic.message;
+      for (const each of own) message = message.replace(each.old, each.render(resolve));
+      return message;
+    })) {
+      const known = parts.get(value);
+      if (known) known.condition = space.or(known.condition, condition);
+      else parts.set(value, { diagnostic: value === diagnostic.message ? diagnostic : { ...diagnostic, message: value }, condition });
+    }
+    return [...parts.values()];
+  };
+  /** The carves among `boundaries` a key reads, each by its class. */
+  const carveReadsAt = (
+    site: OwnSite,
+    boundaries: readonly SchemaBoundary[],
+    domain: { readonly region: string; readonly domain: Condition },
+    wit: World,
+    coverage: KeyCoverage,
+  ): { classes: ReadClass[]; reads: OwnCarveRead[] } => {
+    const classes: ReadClass[] = [];
+    const reads: OwnCarveRead[] = [];
+    if (!input.namedShapes) return { classes, reads };
+    for (const boundary of boundaries) {
+      if (!boundary.carve) continue;
+      const read = carveClassAt(site, { kind: "carve", ref: boundary.ref, id: boundary.id, at: boundary.at, ...domain }, wit, coverage);
+      classes.push(read.class);
+      if (read.read) reads.push(read.read);
+    }
+    return { classes, reads };
+  };
+  /** One sub-verdict of `node`, judged at `witness`: its shape's class there,
+   *  each carve it reads by its class, and where those classes hold. */
+  const subVerdictAt = (site: OwnSite, node: SubNode, witness: World, coverage: KeyCoverage): SubResult => {
+    const reader = input.namedShapes!;
+    const within = site.declaration.manifest;
+    const read = readAt(witness);
+    const own = reader.classIn(input.shapeInstanceOf(node.id, within), node.id, read);
+    if (!own) {
+      // Absent there: the reference names nothing, which its own check reports.
+      const absent = space.not(space.some(reader.classesIn(input.shapeInstanceOf(node.id, within), node.id).map((each) => each.condition)));
+      return { condition: absent, diagnostics: [], inner: [], textReads: [] };
+    }
+    const place = placeByUnionKeys(union, site.declaration, site.unionKeys, witness);
+    const carvedAt = [...site.carved]
+      .map((text) => placeByUnionKeys(union, site.declaration, JSON.parse(text) as Keys, witness))
+      .filter((at) => at.present)
+      .map((at) => at.at);
+    const target = resolveSchemaReference(node.ref, undefined, (id) => (id === node.id ? own.schema : undefined));
+    const boundaries =
+      target && place.present
+        ? boundariesAt(project(within, witness).value, node.at, within, place.at, carvedAt, witness, target, node.id)
+        : [];
+    // Inside a carve's class every boundary is read by its summary.
+    const inner = boundaries.map(
+      (boundary): SubNode => ({
+        kind: node.kind === "carve" || boundary.carve ? "carve" : "member",
+        ref: boundary.ref,
+        id: boundary.id,
+        at: boundary.at,
+        region: node.region,
+        domain: node.domain,
+      }),
+    );
+    let condition = own.condition;
+    const classes: string[] = [];
+    const reads: OwnCarveRead[] = [];
+    let textParts = 0;
+    for (const each of inner) {
+      if (each.kind !== "carve") continue;
+      const carve = carveClassAt(site, each, witness, coverage);
+      condition = space.and(condition, carve.class.condition);
+      classes.push(carve.class.text);
+      if (carve.textPart) textParts++;
+      if (carve.read) reads.push(carve.read);
+    }
+    const memo = JSON.stringify([site.id, nodeText(node), own.index, classes]);
+    const known = subVerdictMemo.get(memo);
+    if (known) return known;
+    const verdict = input.judgeOwnKey({
+      site,
+      key: memo,
+      witness,
+      coverage,
+      sites: siblingSites.get(site) ?? [site],
+      reads: [],
+      carves: reads,
+      focus: { shape: node.id, ref: node.ref, index: own.index, at: node.at, held: [node.id], textParts },
+    });
+    const passed = new Set(verdict.carves?.passed ?? []);
+    const result: SubResult = {
+      condition,
+      diagnostics: verdict.diagnostics,
+      inner: inner.map((each) => ({ node: each, passed: each.kind === "member" || passed.has(carvePlaceText(each)) })),
+      ...(node.kind === "carve" ? { summary: verdict.carves?.summary ?? CLEAN_CARVE } : {}),
+      textReads: verdict.carves?.textReads ?? [],
+    };
+    subVerdictMemo.set(memo, result);
+    return result;
+  };
+  const judgeSubVerdicts = (
+    site: OwnSite,
+    judged: readonly { key: OwnSolvedKey; witness: World; found: OwnFound }[],
+  ): void => {
+    if (!input.namedShapes) return;
+    const reached = new Map<string, { node: SubNode; condition: Condition; coverage: KeyCoverage; covered: Condition; results: SubResult[] }>();
+    const pendingNodes: string[] = [];
+    const add = (node: SubNode, condition: Condition, coverage: KeyCoverage): void => {
+      if (condition === FALSE) return;
+      const text = nodeText(node);
+      const known = reached.get(text);
+      const before = known?.condition ?? FALSE;
+      const after = space.or(before, condition);
+      if (after === before) return;
+      if (known) known.condition = after;
+      else reached.set(text, { node, condition: after, coverage, covered: FALSE, results: [] });
+      pendingNodes.push(text);
+    };
+    /** The nodes a key's boundaries are, each with whether its findings pass
+     *  through the key's judgement. */
+    const nodesOf = (key: OwnSolvedKey, found: OwnFound): { node: SubNode; passed: boolean }[] => {
+      const passed = new Set(key.verdict.carves?.passed ?? []);
+      return found.boundaries.map((boundary) => {
+        const node: SubNode = {
+          kind: boundary.carve ? "carve" : "member",
+          ref: boundary.ref,
+          id: boundary.id,
+          at: boundary.at,
+          region: found.region,
+          domain: found.domain,
+        };
+        return { node, passed: !boundary.carve || passed.has(carvePlaceText(node)) };
+      });
+    };
+    for (const { key, found } of judged) {
+      if (key.dead || key.bodyDead) continue;
+      const nodes = nodesOf(key, found);
+      const reads = key.verdict.carves?.textReads ?? [];
+      if (reads.length > 0) key.textSplit = (diagnostic, held) => splitByCarveTexts(site, nodes, reads, found.coverage, diagnostic, held);
+      for (const { node, passed } of nodes) if (passed) add(node, key.condition, found.coverage);
+    }
+    while (pendingNodes.length > 0) {
+      const entry = reached.get(pendingNodes.pop()!)!;
+      // Every class reached anew, judged once each.
+      let remaining = space.and(space.and(entry.condition, universe), space.not(entry.covered));
+      while (remaining !== FALSE) {
+        const witness = World.key(space.firstAssignment(remaining)!);
+        const result = subVerdictAt(site, entry.node, witness, entry.coverage);
+        if (!space.holds(result.condition, witness.assignment)) {
+          throw new Error(`internal: a sub-verdict beneath own-check site ${site.id} does not hold where it was judged.`);
+        }
+        if (!entry.results.includes(result)) entry.results.push(result);
+        entry.covered = space.or(entry.covered, result.condition);
+        remaining = space.and(remaining, space.not(result.condition));
+      }
+      for (const result of entry.results) {
+        for (const { node, passed } of result.inner) {
+          if (passed) add(node, space.and(entry.condition, result.condition), entry.coverage);
+        }
+      }
+    }
+    // A key in a branch no configuration takes reads its sub-verdicts at its
+    // own witness, as that branch's run would.
+    for (const { key, witness, found } of judged) {
+      if (!key.dead) continue;
+      const extra: AnalysisDiagnostic[] = [];
+      const seen = new Set<string>();
+      const queue = nodesOf(key, found).flatMap(({ node, passed }) => (passed ? [node] : []));
+      for (let node = queue.shift(); node; node = queue.shift()) {
+        if (seen.has(nodeText(node))) continue;
+        seen.add(nodeText(node));
+        const result = subVerdictAt(site, node, witness, found.coverage);
+        extra.push(...result.diagnostics);
+        for (const each of result.inner) if (each.passed) queue.push(each.node);
+      }
+      if (extra.length > 0) key.verdict = { ...key.verdict, diagnostics: [...key.verdict.diagnostics, ...extra] };
+    }
+    for (const { condition, results, coverage } of reached.values()) {
+      for (const result of results) {
+        const held = space.and(space.and(condition, result.condition), universe);
+        if (held === FALSE) continue;
+        for (const found of result.diagnostics) {
+          const origin = (found.data as { ownOrigin?: string } | undefined)?.ownOrigin;
+          if (origin === undefined) throw new Error(`internal: a sub-verdict of own-check site ${site.id} names no declaration it was judged on.`);
+          for (const { diagnostic, condition: part } of splitByCarveTexts(site, result.inner, result.textReads, coverage, found, held)) {
+            ownSubEmissions.push({ diagnostic, condition: part, origin });
+          }
+        }
+      }
+    }
+  };
 
   // --- Unions read in parts --------------------------------------------------
   // A union at a site's root reads each site carved beneath it by what that
@@ -4029,10 +4712,10 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     site: OwnSite,
     phase: OwnPhase,
     reaches: (branch: DeadBranch) => boolean,
-  ): { keys: OwnSolvedKey[]; pending: { key: OwnSolvedKey; witness: World; found: { coverage: KeyCoverage; reads: readonly Keys[] } }[]; reached: DeadBranch[] } => {
+  ): { keys: OwnSolvedKey[]; pending: { key: OwnSolvedKey; witness: World; found: OwnFound }[]; reached: DeadBranch[] } => {
     const declaration = site.declaration;
     const keys: OwnSolvedKey[] = [];
-    const pending: { key: OwnSolvedKey; witness: World; found: { coverage: KeyCoverage; reads: readonly Keys[] } }[] = [];
+    const pending: { key: OwnSolvedKey; witness: World; found: OwnFound }[] = [];
     const reached: DeadBranch[] = [];
     const rootPath = [...declaration.path, ...(site.options[site.options.length - 1]?.path ?? [])];
     if (space.and(site.condition, universe) !== FALSE) {
@@ -4107,6 +4790,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     if (cutStarted !== undefined) reportKeyCost({ kind: "own-cut", milliseconds: performance.now() - cutStarted });
     // Each site's carved sites read under the same validation, and the union
     // sites above it, nearest first.
+    for (const site of schemaSites) siblingSites.set(site, schemaSites);
     const byKeys = new Map(schemaSites.map((site) => [JSON.stringify(site.unionKeys), site]));
     const parentOf = new Map<OwnSite, OwnSite>();
     for (const site of schemaSites) for (const text of site.carved) parentOf.set(byKeys.get(text)!, site);
@@ -4148,6 +4832,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       finalReach.set(site, new Set(reached));
       for (const branch of reached) ownReach.set(branch, [...(ownReach.get(branch) ?? []), site.id]);
       for (const { key, witness, found } of pending) judgeOwn(site, schemaSites, key, witness, found);
+      if (!site.unit && !site.units) judgeSubVerdicts(site, pending);
     }
   }
 
@@ -4532,6 +5217,16 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     const lifted = viewSites.has(declaration) ? undefined : input.bodyUnits.get(declaration.manifest);
     const body = bodyRelation.get(site.id);
     if (body) carving = false;
+    /** `read` with every named shape it reads held as its own class. */
+    const direct = <T>(read: () => T): T => {
+      const before = relationWithin;
+      relationWithin = declaration.manifest;
+      try {
+        return read();
+      } finally {
+        relationWithin = before;
+      }
+    };
     const touched = new Set<TemplateBodyUnit>(body ? (body.unit ? [body.unit] : body.units) : []);
     const touch = (keys: Keys): Keys => {
       if (!lifted || !inBody(keys)) return keys;
@@ -4621,8 +5316,13 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       };
       collect(readValue.value);
     };
-    // What each target it follows reaches, and the places it reads there.
-    const follow = (asRead: RelationTarget): void => {
+    // What each target it follows reaches, and the places it reads there. A
+    // target read one hop by name holds each shape it names as its own
+    // class; any other still holds what the shapes it reaches name, since no
+    // relation sub-verdict reads beneath them.
+    const follow = (asRead: RelationTarget): void =>
+      asRead.hop === "named" && !asRead.transitive ? direct(() => followIn(asRead)) : followIn(asRead);
+    const followIn = (asRead: RelationTarget): void => {
       const target = lifted && inBody(asRead.at) ? { ...asRead, at: touch(asRead.at) } : asRead;
       if (target.hop === "resolved" && extractedAt(declaration, target.at, wit)) {
         const found = placeByProjectedKeys(union, declaration, target.at, wit);
@@ -4647,7 +5347,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     }
     // The named shapes it names, each as which declaration answers its name.
     if (declared.shapes && declared.shapes.length > 0) {
-      classes.push(...nameReadClasses(declared.shapes, wit, () => [], false).classes);
+      classes.push(...direct(() => nameReadClasses(declared.shapes!, wit, () => [], false).classes));
     }
     // What it reads depending on what its declared places hold, asked of
     // those places alone.
@@ -4678,15 +5378,16 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
     // A place of its own declaration a target reached by name.
     for (const keys of ownReads.reads) readPlace(keys);
     // The named shapes its read places name — a callable's declared result
-    // among them — each whole, as the witness holds it.
+    // among them — each as its own class.
     const readShapes = [...placeShapes].filter(allNamedShapes);
-    if (readShapes.length > 0) classes.push(...shapeClasses(readShapes, wit));
+    if (readShapes.length > 0) classes.push(...directShapeClasses(readShapes, declaration.manifest, wit));
     const reads: RelationReads = { ...declared, places };
     for (const { engine, source } of expressions) {
       for (const [head, second] of treeReads(engine, source, input.moduleNamesOf(declaration.manifest)).chains) {
         if (head !== "variables" && head !== "secrets" && head !== "resources") continue;
         const name = second === undefined || second === INDEX_SEGMENT ? undefined : second;
         classes.push(inputClass(module, importPath, head, name, wit));
+        classes.push(...inputShapeClasses(declaration.manifest, module, head, name, wit));
       }
     }
     // What each expression in the anchor and its read places was typed as.
@@ -4711,7 +5412,7 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       classes.push(...found.classes);
       roots.push(...found.roots);
     }
-    // What the schemas in force at the anchor reach and the annotations there read.
+    // The named shapes in force at the anchor and those its annotations name.
     const shapes = new Set<string>();
     const anchor = placeByUnionKeys(union, declaration, site.unionKeys, wit);
     // The members of the scopes declared on the way to the anchor, its read
@@ -4732,19 +5433,34 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
       { kind: declaration.manifest.kind, metadata: declaration.manifest.metadata },
       [{ place: anchor, content: region.value }],
     );
-    const nodes = nodesUnder(skeleton, anchor.at, declaration.manifest, shapes, wit);
-    for (const { node } of nodes) {
+    const walk = { stops: shapeVaries, beneath: true } as const;
+    const nodes = nodesUnder(skeleton, anchor.at, declaration.manifest, new Set(), wit, [], walk);
+    /** The varying shapes the walk passes on the way to the anchor alone. */
+    const way = new Set<string>();
+    for (const { node, at, shape } of nodes) {
       for (const [keyword, value] of Object.entries(node)) if (keyword.startsWith("x-telo-")) namesIn(value, shapes, false);
+      if (shape === undefined) continue;
+      const name = input.shapeNameOf(shape);
+      if (at.length < anchor.at.length) {
+        if (shapeVaries(shape)) way.add(shape);
+        else if (name !== undefined) shapes.add(name);
+      } else if (name !== undefined) shapes.add(name);
+    }
+    for (const id of way) {
+      const name = input.shapeNameOf(id);
+      if (name === undefined || !shapes.has(name)) classes.push(wayClass(id, skeleton, anchor.at, declaration.manifest, wit));
     }
     // A reference an annotation reads is read for its own content: what it
     // names is a read only where the reader declares it (`targets`), and the
     // door refuses any other.
     for (const place of regionAnnotationPlaces(nodes, skeleton, declaration.manifest)) {
       classes.push(
-        ...placeClasses(declaration, place.kind === "reference" || place.kind === "tagged" ? { kind: "value", keys: place.keys } : place, wit),
+        ...direct(() =>
+          placeClasses(declaration, place.kind === "reference" || place.kind === "tagged" ? { kind: "value", keys: place.keys } : place, wit),
+        ),
       );
     }
-    classes.push(...shapeClasses(shapes, wit));
+    classes.push(...directShapeClasses(shapes, declaration.manifest, wit));
     for (const unit of touched) classes.push(unit.classAt(wit, bodyDead !== undefined));
     return { ...keyOf([site.id, bodyDead?.path ?? null], site.condition, classes), dead: region.dead, reads, roots, carved: [...carved.values()] };
   };
@@ -5119,12 +5835,16 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
         const keys = ownSolved.get(site.id) ?? [];
         for (const key of keys) {
           if (key.dead || key.bodyDead) continue;
-          for (const diagnostic of key.verdict.diagnostics) {
-            if ((diagnostic.data as { ownOrigin?: string }).ownOrigin === origin) out.push({ diagnostic, condition: key.condition, family: "own", origin });
+          for (const found of key.verdict.diagnostics) {
+            if ((found.data as { ownOrigin?: string }).ownOrigin !== origin) continue;
+            for (const { diagnostic, condition } of key.textSplit?.(found, key.condition) ?? [{ diagnostic: found, condition: key.condition }]) {
+              out.push({ diagnostic, condition, family: "own", origin });
+            }
           }
         }
       }
     }
+    for (const { diagnostic, condition, origin } of ownSubEmissions) out.push({ diagnostic, condition, family: "own", origin });
     for (const [id, branches] of ownDead) {
       for (const dead of branches) {
         const key = ownSolved.get(id)?.find((k) => k.dead === dead);

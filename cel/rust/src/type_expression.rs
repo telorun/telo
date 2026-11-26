@@ -2,7 +2,7 @@
 //! `type-expression.ts`.
 //!
 //! One grammar reads a variable's declared type and every type in a signature, and it
-//! is the spelling [`format_type`](crate::format_type) writes. A bare capital letter is
+//! is the spelling [`format_type`](crate::format_type) writes up to its cut. A bare capital letter is
 //! a type parameter; a name the host registered resolves through its resolver; any
 //! other name is refused as a [`CelUnknownTypeNameError`].
 //!
@@ -129,42 +129,52 @@ fn no_arguments(name: &str, args: &[CelType], ty: CelType) -> Result<CelType, Ce
 }
 
 fn resolve(name: &str, args: Vec<CelType>, resolver: Option<&NominalResolver<'_>>) -> Result<CelType, CelTypeTextError> {
+    resolve_type_name(name, args, resolver)?.ok_or_else(|| CelUnknownTypeNameError { type_name: name.into() }.into())
+}
+
+/// What a name with its type arguments resolves to, read as this grammar reads one: CEL's
+/// own types first — the well-known `google.protobuf.Timestamp` / `google.protobuf.Duration`
+/// included — then a type parameter, then `resolver`. Nothing where no type is registered
+/// under the name; a language type given the wrong arguments is refused.
+pub(crate) fn resolve_type_name(
+    name: &str,
+    args: Vec<CelType>,
+    resolver: Option<&NominalResolver<'_>>,
+) -> Result<Option<CelType>, CelTypeTextError> {
     if let Some((_, well_known)) = WELL_KNOWN_TYPE_NAMES.iter().find(|(known, _)| *known == name) {
-        return no_arguments(name, &args, CelType::Primitive(*well_known));
+        return no_arguments(name, &args, CelType::Primitive(*well_known)).map(Some);
     }
     let mut args = args;
     match name {
         "list" => {
-            return Ok(if args.len() == 1 { list_of(args.pop().expect("one argument")) } else { list_of(DYN) });
+            return Ok(Some(if args.len() == 1 { list_of(args.pop().expect("one argument")) } else { list_of(DYN) }));
         }
         "map" => {
-            return Ok(if args.len() == 2 {
+            return Ok(Some(if args.len() == 2 {
                 let value = args.pop().expect("two arguments");
                 map_of(args.pop().expect("two arguments"), value)
             } else {
                 map_of(DYN, DYN)
-            });
+            }));
         }
         "optional" => {
             if args.len() != 1 {
                 return Err(expression_error("optional takes exactly one type argument".into()));
             }
-            return Ok(optional_of(args.pop().expect("one argument")));
+            return Ok(Some(optional_of(args.pop().expect("one argument"))));
         }
         _ => {}
     }
     if let Some(primitive) = primitive(name) {
-        return no_arguments(name, &args, primitive);
+        return no_arguments(name, &args, primitive).map(Some);
     }
     if is_parameter_name(name) {
-        return no_arguments(name, &args, parameter_of(name));
+        return no_arguments(name, &args, parameter_of(name)).map(Some);
     }
-    if let Some(resolver) = resolver {
-        if let Some(nominal) = resolver(name, &args)? {
-            return Ok(nominal);
-        }
+    match resolver {
+        Some(resolver) => Ok(resolver(name, &args)?),
+        None => Ok(None),
     }
-    Err(CelUnknownTypeNameError { type_name: name.into() }.into())
 }
 
 fn is_name_byte(byte: u8) -> bool {

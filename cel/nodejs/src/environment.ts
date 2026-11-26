@@ -37,7 +37,7 @@ import { environmentDigest } from "./environment-digest.js";
 import type { CelValue } from "./cel-value.js";
 import { CEL_VALUE_KEYS } from "./cel-value.js";
 import type { CelType } from "./cel-type.js";
-import { DYN, formatType } from "./cel-type.js";
+import { DYN, exactTypeText, formatType, optionalOf } from "./cel-type.js";
 import { CelEngineError } from "./check-diagnostic.js";
 import type { CheckResult, NamespaceFunction } from "./checker.js";
 import { checkExpression } from "./checker.js";
@@ -49,7 +49,8 @@ import type {
   SchemaTypeResolver,
   UnjudgedSchemaNode,
 } from "./json-schema-type.js";
-import { fieldMapType, schemaType } from "./json-schema-type.js";
+import { fieldMapType, readSchemaType } from "./json-schema-type.js";
+import type { SchemaProvenance } from "./schema-dependencies.js";
 import { normalizeNamespaces } from "./namespace-resolution.js";
 import type { ConstructionTypes } from "./construction.js";
 import {
@@ -72,7 +73,7 @@ import { formatSignature, parseSignature } from "./signature.js";
 import { languageTypeNames, registerStandardLibrary, standardConstants } from "./standard-library.js";
 import { standardConstantValues } from "./runtime-library.js";
 import type { NominalResolver } from "./type-expression.js";
-import { parseTypeExpression } from "./type-expression.js";
+import { parseTypeExpression, resolveTypeName } from "./type-expression.js";
 
 export interface CelEnvironmentOptions {
   /**
@@ -104,18 +105,21 @@ export interface CelEnvironmentOptions {
   readonly compiledCacheCapacity?: number;
 }
 
+/** A type declared as a JSON Schema, read to full depth through the environment's resolver. */
+export interface SchemaDeclaration {
+  readonly schema: JsonSchemaNode;
+  /**
+   * The document the schema belongs to — what a `#/…` reference inside it resolves
+   * against. Absent where the schema **is** the document, which is the common case.
+   */
+  readonly document?: JsonSchemaNode;
+}
+
 export type TypeDeclaration =
   | string
   | CelType
   | { readonly fields: Readonly<Record<string, FieldDeclaration>> }
-  | {
-      readonly schema: JsonSchemaNode;
-      /**
-       * The document the schema belongs to — what a `#/…` reference inside it resolves
-       * against. Absent where the schema **is** the document, which is the common case.
-       */
-      readonly document?: JsonSchemaNode;
-    };
+  | SchemaDeclaration;
 
 export interface VariableDefinition {
   readonly name: string;
@@ -153,9 +157,17 @@ export interface TypeDefinitionListing {
   readonly description?: string;
 }
 
+/** One function a namespace declares, as its listing holds it. */
+export interface NamespaceFunctionListing {
+  /** The signature, or `name(…): <result>` where the parameters are withheld — a result declared as a schema printed cut past its bound. */
+  readonly declaration: string;
+  /** The CEL type of a result declared as a JSON Schema, present exactly then: what identifies it, since its printed text does not. */
+  readonly resultType?: CelType;
+}
+
 export interface NamespaceListing {
   readonly name: string;
-  readonly functions: readonly string[];
+  readonly functions: readonly NamespaceFunctionListing[];
   /** Whether names beyond the listed ones are reachable; see {@link NamespaceOptions.open}. */
   readonly open: boolean;
 }
@@ -198,6 +210,12 @@ export interface SchemaRegistrationReport {
  * them to be ignored would hold a list nothing reads, which no reader can tell from a list
  * that is simply wrong.
  *
+ * Its `returns` is a type expression, a type, or a JSON Schema document (`{ schema,
+ * document? }`) read through the environment's resolver as a schema-typed variable is: a
+ * check reading through the call's result lists the nodes it read with that document
+ * (`CheckResult.schemaDependencies`), and what the conversion could not judge is in
+ * `schemaReports()` under `<namespace>.<name>`.
+ *
  * **A type name this environment registers nothing under is accepted and reads `dyn`**, and
  * every call to such a function carries a ranged `CEL_TYPE_ERROR` naming it. A declaration
  * is a host's own data — a module function's declared result out of a manifest — so a typo
@@ -208,7 +226,7 @@ export interface SchemaRegistrationReport {
  */
 export type NamespaceFunctionDeclaration = (
   | { readonly signature: string; readonly name?: never; readonly returns?: never }
-  | { readonly name: string; readonly returns: string | CelType; readonly signature?: never }
+  | { readonly name: string; readonly returns: string | CelType | SchemaDeclaration; readonly signature?: never }
 ) & {
   readonly deterministic?: boolean;
   readonly hostBacked?: boolean;
@@ -234,6 +252,8 @@ interface VariableRecord {
   /** What the schema it was typed from could not judge, where it was typed from one. */
   readonly unjudged?: readonly UnjudgedSchemaNode[];
   readonly recursive?: readonly RecursiveSchemaReference[];
+  /** Where each type of it came from, where it was typed from a schema. */
+  readonly provenance?: SchemaProvenance;
 }
 
 /** A type a declaration named, beside what converting it could not judge. */
@@ -241,6 +261,48 @@ interface DeclaredType {
   readonly type: CelType;
   readonly unjudged?: readonly UnjudgedSchemaNode[];
   readonly recursive?: readonly RecursiveSchemaReference[];
+  readonly provenance?: SchemaProvenance;
+}
+
+/** A namespaced function's result declared as a schema: where its types came from and what was not judged. */
+interface SchemaResult {
+  readonly provenance: SchemaProvenance;
+  readonly unjudged: readonly UnjudgedSchemaNode[];
+  readonly recursive: readonly RecursiveSchemaReference[];
+}
+
+/** What a host asks of one check beyond its verdicts. */
+export interface CheckOptions {
+  /**
+   * Whether to list the schema nodes the verdicts and the result type read
+   * (`CheckResult.schemaDependencies`). Off, nothing is collected.
+   */
+  readonly schemaDependencies?: boolean;
+  /**
+   * Whether to name the schema node each refused member, operand or nullable read was
+   * judged at (`CelCheckDiagnostic.schemaNode`) and every place the result may have come
+   * from (`CheckResult.resultOrigins`). Off, nothing is located.
+   */
+  readonly schemaNodes?: boolean;
+  /**
+   * Conditions known at the expression's site — each held (`holds: true`) or failed on the way
+   * to it — read as if a `?:` enclosed the expression: what each proves narrows what the
+   * expression reads, as a guard written inside it would, except a proof rooted at one of its
+   * `rebound` chains, which may denote another value at the site. Read in order, each under
+   * the ones before it; what a condition itself says is never reported.
+   */
+  readonly assumptions?: readonly CheckAssumption[];
+}
+
+/**
+ * One condition known at a checked expression's site. `condition` is a source this
+ * environment parses, or a tree its `parse` produced; `rebound` names the chains (`a`, `a.b`)
+ * that may denote another value at the site than they did where it was tested.
+ */
+export interface CheckAssumption {
+  readonly condition: string | CelExpression;
+  readonly holds: boolean;
+  readonly rebound?: readonly string[];
 }
 
 /** How many compiled expressions an environment keeps when nothing says otherwise. */
@@ -251,6 +313,8 @@ export class CelEnvironment {
   private readonly variables: Map<string, VariableRecord>;
   private readonly types: Map<string, RegisteredType>;
   private readonly namespaceFunctions: Map<string, Map<string, NamespaceFunction>>;
+  /** Per namespace, each function whose result was declared as a schema. */
+  private readonly namespaceResults: Map<string, Map<string, SchemaResult>>;
   /** Namespaces that declare only part of what they reach; see {@link NamespaceOptions.open}. */
   private readonly openNamespaces: Set<string>;
   private readonly constants: Map<string, CelValue>;
@@ -279,6 +343,7 @@ export class CelEnvironment {
     for (const [namespace, functions] of inherited?.namespaceFunctions ?? []) {
       this.namespaceFunctions.set(namespace, new Map(functions));
     }
+    this.namespaceResults = new Map(inherited?.namespaceResults);
     this.openNamespaces = new Set(inherited?.openNamespaces);
     this.constants = new Map(inherited?.constants);
     this.compiled = new BoundedCache(
@@ -411,15 +476,19 @@ export class CelEnvironment {
 
   /**
    * Every schema-typed registration whose schema this engine could not judge whole, with
-   * each node by JSON Pointer. Empty is every node judged, which is the normal answer.
+   * each node by JSON Pointer, by name: a variable's, or `<namespace>.<name>` for a
+   * namespaced function's result. Empty is every node judged, which is the normal answer.
    */
   schemaReports(): readonly SchemaRegistrationReport[] {
+    const held: [string, readonly UnjudgedSchemaNode[], readonly RecursiveSchemaReference[]][] = [];
+    for (const [name, variable] of this.variables) held.push([name, variable.unjudged ?? [], variable.recursive ?? []]);
+    for (const [namespace, results] of this.namespaceResults) {
+      for (const [name, result] of results) held.push([`${namespace}.${name}`, result.unjudged, result.recursive]);
+    }
     const reports: SchemaRegistrationReport[] = [];
-    for (const [name, held] of [...this.variables.entries()].sort(([left], [right]) =>
+    for (const [name, unjudged, recursive] of held.sort(([left], [right]) =>
       left < right ? -1 : left > right ? 1 : 0,
     )) {
-      const unjudged = held.unjudged ?? [];
-      const recursive = held.recursive ?? [];
       if (unjudged.length === 0 && recursive.length === 0) continue;
       reports.push({ name, unjudged, recursive });
     }
@@ -485,6 +554,7 @@ export class CelEnvironment {
   ): this {
     normalizeNamespaces([name]);
     const declared = new Map<string, NamespaceFunction>();
+    const results = new Map<string, SchemaResult>();
     for (const declaration of functions) {
       const entry: NamespaceFunctionDeclaration =
         typeof declaration === "string" ? { signature: declaration } : declaration;
@@ -513,6 +583,7 @@ export class CelEnvironment {
             `a namespaced function is declared without a receiver: ${JSON.stringify(entry.signature)}`,
           );
         }
+        results.delete(signature.name);
         declared.set(signature.name, {
           name: signature.name,
           returns: signature.returns,
@@ -523,15 +594,17 @@ export class CelEnvironment {
         });
         continue;
       }
+      // A name declared again replaces what it declared, its result schema included.
+      results.delete(entry.name);
       declared.set(entry.name, {
         name: entry.name,
-        returns:
-          typeof entry.returns === "string" ? parseTypeExpression(entry.returns, resolver) : entry.returns,
+        returns: this.declaredResult(entry.name, entry.returns, resolver, results),
         ...recorded(),
         ...flags,
       });
     }
     this.namespaceFunctions.set(name, declared);
+    this.namespaceResults.set(name, results);
     if (options.open === true) this.openNamespaces.add(name);
     else this.openNamespaces.delete(name);
     this.compiled.clear();
@@ -559,7 +632,36 @@ export class CelEnvironment {
    * rather than checked: its qualified calls are not the ones this environment would
    * have found, so every answer about it would be about a different expression.
    */
-  check(source: string | CelExpression): CheckResult {
+  check(source: string | CelExpression, options: CheckOptions = {}): CheckResult {
+    const expression = this.checkedTree(source);
+    const assumptions = (options.assumptions ?? []).map((assumption) => ({
+      condition: this.checkedTree(assumption.condition).root,
+      holds: assumption.holds,
+      rebound: assumption.rebound ?? [],
+    }));
+    return checkExpression(expression, {
+      registry: this.registry,
+      variable: (name) => this.variables.get(name)?.type,
+      variableProvenance: (name) => this.variables.get(name)?.provenance,
+      schemaDependencies: options.schemaDependencies === true,
+      schemaNodes: options.schemaNodes === true,
+      declaredVariableNames: () => [...this.variables.keys()],
+      namespaceFunction: (namespace, name) => this.namespaceFunctions.get(namespace)?.get(name),
+      namespaceResultProvenance: (namespace, name) => this.namespaceResults.get(namespace)?.get(name)?.provenance,
+      namespaceIsOpen: (namespace) => this.openNamespaces.has(namespace),
+      construction: this.constructionTypes(),
+      typeNamed: (name) => this.typeNamed(name),
+      options: {
+        unlistedVariablesAreDyn: this.options.unlistedVariablesAreDyn,
+        homogeneousAggregateLiterals: this.options.homogeneousAggregateLiterals,
+        enableOptionalTypes: this.options.enableOptionalTypes,
+      },
+      ...(assumptions.length === 0 ? {} : { assumptions }),
+    });
+  }
+
+  /** A source parsed here, or a tree resolved under this environment's namespaces. */
+  private checkedTree(source: string | CelExpression): CelExpression {
     const expression = typeof source === "string" ? this.parse(source) : source;
     if (typeof source !== "string" && !resolvedUnder(expression, this.namespaces())) {
       throw new CelEngineError(
@@ -567,19 +669,7 @@ export class CelEnvironment {
         `the expression was resolved under [${expression.namespaces.join(", ")}] and this environment has [${this.namespaces().join(", ")}]`,
       );
     }
-    return checkExpression(expression, {
-      registry: this.registry,
-      variable: (name) => this.variables.get(name)?.type,
-      declaredVariableNames: () => [...this.variables.keys()],
-      namespaceFunction: (namespace, name) => this.namespaceFunctions.get(namespace)?.get(name),
-      namespaceIsOpen: (namespace) => this.openNamespaces.has(namespace),
-      construction: this.constructionTypes(),
-      options: {
-        unlistedVariablesAreDyn: this.options.unlistedVariablesAreDyn,
-        homogeneousAggregateLiterals: this.options.homogeneousAggregateLiterals,
-        enableOptionalTypes: this.options.enableOptionalTypes,
-      },
-    });
+    return expression;
   }
 
   /**
@@ -712,12 +802,14 @@ export class CelEnvironment {
 
   /**
    * Whether a value of this type can be converted to text by the environment's own
-   * `string()`. A consumer that renders a value into text asks this before it tries;
-   * `dyn` passes, because only the runtime knows what it holds.
+   * `string()`: whether a call `string(x)` over it resolves, as the checker resolves one —
+   * as written, then over a union's members. A consumer that renders a value into text
+   * asks this before it tries; `dyn` passes, because only the runtime knows what it holds.
    */
   convertsToString(type: CelType): boolean {
     if (type.kind === "dyn") return true;
-    return "resolved" in this.registry.resolve("string", "global", [type]);
+    if ("resolved" in this.registry.resolve("string", "global", [type])) return true;
+    return this.registry.resolveExpanded("string", "global", [type])?.kind === "resolved";
   }
 
   /** Every registration, for a listing a host prints or compares. */
@@ -735,9 +827,9 @@ export class CelEnvironment {
       functions: this.registry.list().map((entry) => ({
         name: entry.signature.name,
         signature: formatSignature(entry.signature),
-        receiverType: entry.signature.receiver ? formatType(entry.signature.receiver) : null,
-        parameters: entry.signature.parameters.map((type) => formatType(type)),
-        returns: formatType(entry.signature.returns),
+        receiverType: entry.signature.receiver ? exactTypeText(entry.signature.receiver) : null,
+        parameters: entry.signature.parameters.map((type) => exactTypeText(type)),
+        returns: exactTypeText(entry.signature.returns),
         deterministic: entry.metadata.deterministic ?? true,
         hostBacked: entry.metadata.hostBacked ?? false,
         ...(entry.metadata.throws === undefined ? {} : { throws: entry.metadata.throws }),
@@ -746,13 +838,13 @@ export class CelEnvironment {
       })),
       types: [...this.types.values()].map((registered) => ({
         name: registered.definition.name,
-        base: formatType(registered.base),
+        base: exactTypeText(registered.base),
         parameters: registered.parameters,
         ...(registered.self.fields === undefined
           ? {}
           : {
               fields: Object.fromEntries(
-                [...registered.self.fields].map(([field, type]) => [field, formatType(type)]),
+                [...registered.self.fields].map(([field, type]) => [field, exactTypeText(type)]),
               ),
             }),
         ...(registered.constructible
@@ -768,9 +860,11 @@ export class CelEnvironment {
         // A declaration whose parameter list is withheld has no signature text, so it is
         // listed by what it DOES declare — its name and its result. Printing an invented
         // empty parameter list would read as a function of no arguments.
-        functions: [...this.namespaceFunctions.get(name)!.values()].map(
-          (held) => held.signature ?? `${held.name}(…): ${formatType(held.returns)}`,
-        ),
+        functions: [...this.namespaceFunctions.get(name)!.values()].map((held): NamespaceFunctionListing => {
+          const schema = this.namespaceResults.get(name)?.has(held.name) ?? false;
+          const declaration = held.signature ?? `${held.name}(…): ${schema ? formatType(held.returns) : exactTypeText(held.returns)}`;
+          return schema ? { declaration, resultType: held.returns } : { declaration };
+        }),
       })),
     };
   }
@@ -789,12 +883,40 @@ export class CelEnvironment {
     return { ...registered.self, args };
   };
 
+  /**
+   * The type a name denotes as a type value, as `type()` compares it: the type-expression
+   * grammar's reading of the name, `optional_type` the optional — which that grammar spells
+   * `optional` and gives an argument.
+   */
+  private typeNamed(name: string): CelType | undefined {
+    if (name === "optional_type") return optionalOf(DYN);
+    if (name === "optional") return undefined;
+    return resolveTypeName(name, [], this.nominalResolver);
+  }
+
   private readType(text: string): CelType {
     return parseTypeExpression(text, this.nominalResolver);
   }
 
   private signatureOf(signature: string | CelSignature): CelSignature {
     return typeof signature === "string" ? parseSignature(signature, this.nominalResolver) : signature;
+  }
+
+  /**
+   * A withheld declaration's result: a type expression, a type, or a schema document, whose
+   * provenance and reports are kept in `results` under the function's name.
+   */
+  private declaredResult(
+    name: string,
+    returns: string | CelType | SchemaDeclaration,
+    resolver: NominalResolver,
+    results: Map<string, SchemaResult>,
+  ): CelType {
+    if (typeof returns === "string") return parseTypeExpression(returns, resolver);
+    if ("kind" in returns) return returns;
+    const read = this.schemaTypeOf(returns);
+    results.set(name, { provenance: read.provenance!, unjudged: read.unjudged ?? [], recursive: read.recursive ?? [] });
+    return read.type;
   }
 
   /** The type a declaration names: a type expression, a field map, or a schema. */
@@ -804,27 +926,32 @@ export class CelEnvironment {
     if ("fields" in declaration) {
       return { type: fieldMapType(declaration.fields, (text) => this.readType(text)) };
     }
-    if ("schema" in declaration) {
-      const converted = schemaType(
-        {
-          node: declaration.schema,
-          ...(declaration.document === undefined ? {} : { root: declaration.document }),
-        },
-        {
-          ...(this.options.resolveSchemaType ? { resolveSchemaType: this.options.resolveSchemaType } : {}),
-          lookupNamedType: (name, args) =>
-            this.nominalResolver(
-              name,
-              args.map((text) => this.readType(text)),
-            ),
-        },
-      );
-      return {
-        type: converted.type,
-        ...(converted.unjudged.length === 0 ? {} : { unjudged: converted.unjudged }),
-        ...(converted.recursive.length === 0 ? {} : { recursive: converted.recursive }),
-      };
-    }
+    if ("schema" in declaration) return this.schemaTypeOf(declaration);
     throw new CelTypeRegistrationError("a declaration is a type expression, a field map or a schema");
+  }
+
+  /** A schema read to full depth through this environment's resolver, with its provenance. */
+  private schemaTypeOf(declaration: SchemaDeclaration): DeclaredType {
+    const { result: converted, provenance } = readSchemaType(
+      {
+        node: declaration.schema,
+        ...(declaration.document === undefined ? {} : { root: declaration.document }),
+      },
+      {
+        ...(this.options.resolveSchemaType ? { resolveSchemaType: this.options.resolveSchemaType } : {}),
+        lookupNamedType: (name, args) =>
+          resolveTypeName(
+            name,
+            args.map((text) => this.readType(text)),
+            this.nominalResolver,
+          ),
+      },
+    );
+    return {
+      type: converted.type,
+      ...(converted.unjudged.length === 0 ? {} : { unjudged: converted.unjudged }),
+      ...(converted.recursive.length === 0 ? {} : { recursive: converted.recursive }),
+      provenance,
+    };
   }
 }

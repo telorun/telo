@@ -1,0 +1,18 @@
+# A scoped import's inputs, written in a scope a choice decides, are judged in
+# the import's environment where the choice takes them.
+kind: Telo.Application
+metadata: { name: ScopedImportCelChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.Sequence
+metadata: { name: held }
+with: !if
+  if: !cel "variables.flag1"
+  then:
+    - kind: Telo.Import
+      metadata: { name: Inner }
+      source: ./host-path-import-lib
+      variables:
+        root: !cel "variables.flag1 + 1"
+        extra: /srv/extra
+steps: []

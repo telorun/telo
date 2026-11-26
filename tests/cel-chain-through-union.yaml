@@ -7,25 +7,20 @@ metadata:
     is held to what the union's alternatives declare for the member it reads:
     a member every alternative declares a string checks and runs into a string
     slot, and is refused into an integer one with the member's own type named.
-imports:
-  Assert: ../modules/assert
+imports: { Assert: ../modules/assert }
 targets:
   - !ref memberFitsItsSlot
   - !ref memberRefusedByItsOwnType
 ---
 kind: Assert.Manifest
-metadata:
-  name: memberFitsItsSlot
+metadata: { name: memberFitsItsSlot }
 source: ./__fixtures__/cel-chain-through-union/telo.yaml
-expect:
-  errors: []
-  runs: true
+expect: { errors: [], runs: true }
 ---
 kind: Assert.Manifest
-metadata:
-  name: memberRefusedByItsOwnType
+metadata: { name: memberRefusedByItsOwnType }
 source: ./__fixtures__/cel-chain-through-union/into-integer.yaml
 expect:
   errors:
     - code: CEL_TYPE_ERROR
-      message: "source is 'string', target expects 'integer'"
+      message: "declared 'string', but consume's declared inputType expects 'integer'"

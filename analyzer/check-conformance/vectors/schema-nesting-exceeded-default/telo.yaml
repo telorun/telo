@@ -1,7 +1,15 @@
+# An application variable whose default nests 101 levels deep, one past the
+# 100 a validation follows.
 kind: Telo.Application
-metadata: { name: NestingApp }
+metadata: { name: NestingApp, version: 1.0.0 }
 variables:
-  tree: { env: TREE, type: object, $ref: "#", default: { leaf: 1 } }
+  tree:
+    env: TREE
+    type: array
+    $ref: "#/$defs/N"
+    $defs:
+      N: { anyOf: [{ const: 0 }, { type: array, items: { $ref: "#/$defs/N" } }] }
+    default: [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]
 imports:
   Worker:
     source: ./worker

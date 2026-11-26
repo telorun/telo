@@ -81,6 +81,10 @@ export interface ResolvedFunction {
   readonly params: readonly FunctionParameter[];
   /** The result's schema, named shapes inlined and `nullable` folded in. */
   readonly returns?: Record<string, any>;
+  /** The result's schema as declared — `nullable` folded in, named shapes
+   *  left as references — which the CEL engine reads a call's result through,
+   *  to full depth. */
+  readonly declaredReturns?: Record<string, any>;
   /** The CEL type a call yields. */
   readonly celType: string;
 }
@@ -439,11 +443,15 @@ export class ModuleFunctionIndex {
         ? signatureSchemaOf({ ...signature.returns, schema: inline(returnsSchema as Record<string, any>) })
         : undefined;
     if (withholds) return { status: "withheld", manifest: target };
+    const declaredReturns = returns
+      ? signatureSchemaOf({ ...signature.returns, schema: returnsSchema as Record<string, any> })
+      : undefined;
     return {
       status: "resolved",
       manifest: target,
       params,
       ...(returns ? { returns } : {}),
+      ...(declaredReturns ? { declaredReturns } : {}),
       celType: returns ? jsonSchemaToCelType(returns) : "dyn",
     };
   }

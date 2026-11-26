@@ -1,0 +1,9 @@
+# A library asking its importer for a host path, publishing what it was handed.
+kind: Telo.Library
+metadata: { name: ImportInputChoiceLib }
+variables: { root: { type: string, x-telo-type: Telo.HostPath } }
+exports: { resources: [root] }
+---
+kind: Telo.Value
+metadata: { name: root }
+value: !cel "string(variables.root)"

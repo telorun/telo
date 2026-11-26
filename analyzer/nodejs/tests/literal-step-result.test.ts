@@ -82,7 +82,7 @@ describe("a literal `value:` step's result", () => {
     expect(reading(value, "steps.written.result.count * 2 + steps.written.result.list[0]")).toEqual([]);
     const [unknown, ...rest] = reading(value, "steps.written.result.cuont");
     expect(unknown).toBe(
-      'CEL_UNKNOWN_FIELD: srv.Sequence/main: !cel: "cuont" is not declared here (declared: count, list)',
+      "CEL_UNKNOWN_FIELD: srv.Sequence/main: !cel: 'steps.written.result.cuont' is not defined (available: count, list)",
     );
     expect(rest).toEqual([]);
   });
@@ -130,6 +130,14 @@ describe("a literal `value:` step's result", () => {
     const [refused, ...rest] = reading(cel("1.0 + 1.0"), "steps.written.result * 2");
     expect(refused).toContain('no "*" is declared over double, int');
     expect(rest).toEqual([]);
+  });
+
+  it("keeps a whole-value expression's uint and bytes types", () => {
+    for (const [source, type] of [["1u", "uint"], ["b'ab'", "bytes"]] as const) {
+      const [refused, ...rest] = reading(cel(source), "steps.written.result + 1");
+      expect(refused).toContain(`no "+" is declared over ${type}, int`);
+      expect(rest).toEqual([]);
+    }
   });
 });
 
@@ -197,7 +205,7 @@ describe("a misspelled step name", () => {
   it("is reported once, beside a literal step and beside an expression step", () => {
     for (const value of [3, cel("3")]) {
       expect(reading(value, "steps.writen.result")).toEqual([
-        'CEL_UNKNOWN_FIELD: srv.Sequence/main: !cel: "writen" is not declared here (declared: written, read)',
+        "CEL_UNKNOWN_FIELD: srv.Sequence/main: !cel: 'steps.writen' is not defined (available: written, read)",
       ]);
     }
   });
@@ -281,7 +289,7 @@ describe("a computed step's result", () => {
       ]);
     expect(forwarded("steps.again.result.a * 2")).toEqual([]);
     const [refused, ...rest] = forwarded("steps.again.result.b");
-    expect(refused).toMatch(/^CEL_UNKNOWN_FIELD: .*"b"/);
+    expect(refused).toMatch(/^CEL_UNKNOWN_FIELD: .*'steps\.again\.result\.b' is not defined/);
     expect(rest).toEqual([]);
   });
 

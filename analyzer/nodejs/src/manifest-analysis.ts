@@ -246,7 +246,7 @@ export class ManifestAnalysis {
         if (engine !== CEL_ENGINE) return producedTypeName(producedTypeOf(engine));
         const checked = this.celScope.scopeAt(manifest, path).env.check(source);
         // `dyn` is the checker saying it has no type for the expression.
-        return checked.valid && checked.typeName !== "dyn" ? checked.typeName : undefined;
+        return checked.valid && checked.type.kind !== "dyn" ? checked.typeName : undefined;
       },
       referenceSites: (manifest) => new Set(deps.refSites(manifest).map((site) => site.path)),
     });

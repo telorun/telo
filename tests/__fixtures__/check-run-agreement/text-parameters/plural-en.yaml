@@ -1,0 +1,30 @@
+# A plural text an importer writing English supplies, at an imports: entry, a
+# top-level Telo.Import and a scoped import: `few` is no English category, judged in the importer's language.
+kind: Telo.Application
+metadata: { name: TextParameterPluralEn }
+lang: en
+imports:
+  Entry:
+    source: ../../import-text-input/title
+    variables:
+      title: { plural: count, cases: { few: "{$count} pliki", other: "{$count} plików" } }
+targets: [!ref scope]
+---
+kind: Telo.Import
+metadata: { name: TopLevel }
+source: ../../import-text-input/title
+variables:
+  title: { plural: count, cases: { few: "{$count} pliki", other: "{$count} plików" } }
+---
+kind: Telo.Sequence
+metadata: { name: scope }
+with:
+  - kind: Telo.Import
+    metadata: { name: Scoped }
+    source: ../../import-text-input/title
+    variables:
+      title: { plural: count, cases: { few: "{$count} pliki", other: "{$count} plików" } }
+steps:
+  - { name: entry, invoke: !ref Entry.shown }
+  - { name: topLevel, invoke: !ref TopLevel.shown }
+  - { name: scoped, invoke: !ref Scoped.shown }

@@ -71,13 +71,13 @@ steps:
   - name: verifyRoundTrip
     invoke: { kind: Assert.Contains }
     inputs:
-      actual: !cel "steps.search.result.content[0].text"
+      actual: !cel "steps.search.result.content[0].?text.orValue('')"
       value: !cel "steps.subject.result.title"
 
   # `Saved note #<id>` is all the tool says, so the id is read out of it.
   - name: saved
     value:
-      id: !cel "int(regexExtract(steps.add.result.content[0].text, '[0-9]+'))"
+      id: !cel "int(regexExtract(steps.add.result.content[0].?text.orValue(''), '[0-9]+'))"
   - name: read
     inputs:
       name: get_note
@@ -97,7 +97,7 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        read: !cel "steps.read.result.content[0].text"
+        read: !cel "steps.read.result.content[0].?text.orValue('')"
         structured: !cel "steps.search.result.structuredContent"
         restStatus: !cel "steps.overRest.result.status"
         rest: !cel "steps.overRest.result.body"
@@ -153,7 +153,7 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        removed: !cel "steps.remove.result.content[0].text"
+        removed: !cel "steps.remove.result.content[0].?text.orValue('')"
         readGone: !cel "steps.readGoneFailure.result"
         removeGone: !cel "steps.removeGoneFailure.result"
       expected:

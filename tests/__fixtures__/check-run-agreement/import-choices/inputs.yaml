@@ -1,0 +1,18 @@
+# An import's inputs chosen per option: a literal the library's entry refuses,
+# a need supplied with a field of the wrong type, and two imports of a shared
+# library disagreeing — each where its option is taken.
+kind: Telo.Application
+metadata: { name: ImportInputsPerOption }
+variables: { flag1: { env: FLAG_1, type: boolean, default: true } }
+imports:
+  Lib:
+    source: ./lib
+    variables:
+      size: !if { if: !cel "variables.flag1", then: 3, else: three }
+    needs:
+      upstream: !if { if: !cel "variables.flag1", then: { url: "http://upstream" }, else: { url: 5 } }
+  First: { source: ./shared-lib, variables: { size: 3 } }
+  Second:
+    source: ./shared-lib
+    variables:
+      size: !if { if: !cel "variables.flag1", then: 3, else: 4 }

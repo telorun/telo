@@ -1,0 +1,5 @@
+# A library variable whose schema refers back to itself through `anyOf` alone.
+kind: Telo.Library
+metadata: { name: InputInPlaceCycleLib }
+variables:
+  x: { type: object, default: { a: 1 }, anyOf: [{ $ref: "#" }] }

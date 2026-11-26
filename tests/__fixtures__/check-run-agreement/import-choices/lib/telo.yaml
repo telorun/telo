@@ -1,0 +1,10 @@
+# A library asking for an integer and a need whose url is text.
+kind: Telo.Library
+metadata: { name: ImportChoicesLib }
+variables: { size: { type: integer } }
+needs: { upstream: { kind: Self.Upstream, optional: true } }
+---
+kind: Telo.NeedType
+metadata: { name: Upstream }
+fields: { url: { type: string } }
+required: [url]

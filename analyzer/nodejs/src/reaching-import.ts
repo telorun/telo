@@ -1,4 +1,5 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { expansionTagLabel } from "@telorun/templating";
 import { scopedImportMembers } from "./flatten-for-analyzer.js";
 import type { ModuleDocuments } from "./module-documents.js";
 import { writtenAt, type WrittenAt } from "./diagnostic-identity.js";
@@ -113,7 +114,7 @@ export function importReach(
         alias: meta.name,
         filePath: topMeta?.source,
         path,
-        resource: { kind: top.kind as string, name: topMeta?.name as string },
+        resource: { kind: (top.kind as string | undefined) ?? expansionTagLabel(top)!, name: topMeta?.name as string },
       },
       path: [...(meta.scopeHolders ?? []), meta.name],
     });

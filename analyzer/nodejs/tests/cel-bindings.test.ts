@@ -72,7 +72,7 @@ describe("named CEL bindings", () => {
 
   it("reports a reference to a name that is neither a binding nor in scope", () => {
     const diagnostics = analyze(runValue({ gross: "inputs.qty" }, { net: "grosss" }));
-    expect(diagnostics.map((d) => d.code)).toContain("CEL_UNKNOWN_FIELD");
+    expect(diagnostics.map((d) => d.code)).toContain("CEL_UNKNOWN_IDENTIFIER");
   });
 
   it("types a binding from the chain it reads, so an unknown field under it is caught", () => {

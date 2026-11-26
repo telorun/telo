@@ -1,0 +1,30 @@
+# A call's inputs held to a contract naming a shape whose member names a
+# second shape, which types the member by its flag: the text written there is
+# refused only where that shape asks for an integer.
+kind: Telo.Application
+metadata: { name: StepInputsNestedShapeChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets: [!ref run]
+---
+kind: Telo.JsonSchema
+metadata: { name: Amount }
+schema: !if
+  if: !cel "variables.flag1"
+  then: { type: string }
+  else: { type: integer }
+---
+kind: Telo.JsonSchema
+metadata: { name: Price }
+schema: { type: object, properties: { amount: { $ref: "telo://Self/Amount" } } }
+---
+kind: Telo.Value
+metadata: { name: price }
+inputType: !ref Price
+value: 1
+---
+kind: Telo.Sequence
+metadata: { name: run }
+steps:
+  - name: priced
+    invoke: !ref price
+    inputs: { amount: text }

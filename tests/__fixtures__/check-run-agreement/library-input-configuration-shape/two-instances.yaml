@@ -1,0 +1,8 @@
+# Two isolated imports taking different options: each literal is held to its own
+# instance's variant, never the other's.
+kind: Telo.Application
+metadata: { name: ConfigurationShapeTwoInstances }
+imports:
+  Count: { source: ./mode, variables: { mode: count, config: { n: 2 } } }
+  Label: { source: ./mode, variables: { mode: label, config: { n: two } } }
+targets: [{ name: count, invoke: !ref Count.read }, { name: label, invoke: !ref Label.read }]

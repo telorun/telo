@@ -1,0 +1,5 @@
+# A library asking its importer for the path of a PNG image.
+kind: Telo.Library
+metadata: { name: ImportModuleFilesAgreementIcon }
+variables:
+  icon: { type: string, x-telo-type: { name: Telo.HostPath, entry: file, mediaType: image/png } }

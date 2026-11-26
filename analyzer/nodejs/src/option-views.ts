@@ -17,6 +17,7 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { isCompiledValue } from "@telorun/sdk";
 import { expansionTagOf, isExpansionSentinel, isTaggedSentinel, SPLICE_KEY, type ExpansionSentinel } from "@telorun/templating";
 import { branchKeys, branchValue, declaresNoResource } from "./choice-reading.js";
+import { withBranchStamps } from "./chosen-scoped-import.js";
 import type { PlaceMapping } from "./conditioned-expansion.js";
 import type { ExpansionPosition, ExpansionSite } from "./expansion-sites.js";
 
@@ -130,10 +131,10 @@ export function optionViews(document: ResourceManifest, sites: ReadonlyMap<objec
         at = [...from, "emit"];
       }
       if (DECLARATION_POSITIONS.has(site.position)) {
-        if (!chosen || typeof chosen !== "object" || Array.isArray(chosen) || declaresNoResource(chosen)) return { present: false };
+        if (!chosen || typeof chosen !== "object" || Array.isArray(chosen) || declaresNoResource(chosen, site.position === "scope-member")) return { present: false };
         mappings.push({ from: to, to: at, ...(tagNamed ? { metadataAt: tagNamed.at } : {}) });
         const { kind, ...fields } = chosen as Record<string, unknown>;
-        const declared: Record<string, unknown> = { kind, metadata: tagNamed?.value ?? {} };
+        const declared: Record<string, unknown> = { kind, metadata: withBranchStamps((tagNamed?.value ?? {}) as Record<string, unknown>, chosen) };
         for (const [key, field] of Object.entries(fields)) {
           if (key === "metadata") continue;
           const r = expandValue(field, [...at, key], [...to, key]);

@@ -4,6 +4,10 @@ import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { isKindDocument } from "./kind-declaration.js";
 import { isModuleKind } from "./module-kinds.js";
 import { moduleMetadataSchema } from "./module-metadata-scope.js";
+import { liftFragmentDefs } from "./manifest-schemas.js";
+import { declaredDocument } from "./referenced-shape.js";
+import { moduleInputBlock } from "./text-parameter.js";
+import { isTextRecordSchema } from "./text-slot.js";
 import { inputValueSchema, residualEntrySchemaMap } from "./residual-schema.js";
 import { admitsAbsence } from "./configuration-dimensions.js";
 import { scopeSiteKey, type ScopeSite } from "./scope-address.js";
@@ -242,7 +246,8 @@ function narrowedEntries(
   const current = (name: string) => out.get(name) ?? declared[name];
   for (const [name, value] of decided[blockName]) {
     const entry = current(name);
-    if (!entry || typeof entry !== "object") continue;
+    // A text parameter reads as its record, which no decided text narrows.
+    if (!entry || typeof entry !== "object" || isTextRecordSchema(entry)) continue;
     if ("whole" in value) {
       const narrowed: Record<string, unknown> = { ...(entry as Record<string, unknown>), enum: [value.whole] };
       delete narrowed.const;
@@ -292,8 +297,8 @@ interface GlobalsBlocks {
 
 function globalsBlocks(doc: ModuleGlobals | Record<string, any> | undefined): GlobalsBlocks {
   return {
-    variables: buildSchemaMapSchema(doc?.variables as Record<string, any> | undefined),
-    secrets: buildSchemaMapSchema(doc?.secrets as Record<string, any> | undefined),
+    variables: buildSchemaMapSchema(moduleInputBlock(doc, "variables") as Record<string, any> | undefined),
+    secrets: buildSchemaMapSchema(moduleInputBlock(doc, "secrets") as Record<string, any> | undefined),
     ports: buildPortsSchema(doc?.ports as Record<string, any> | undefined),
     module: buildModuleSchema(doc),
   };
@@ -316,9 +321,8 @@ export class ModuleGlobalsOverlays {
     let base = this.bases.get(doc);
     if (!base) this.bases.set(doc, (base = globalsBlocks(doc)));
     if (!decided) return base;
-    const record = doc as Record<string, any>;
-    const variables = narrowedEntries("variables", record.variables, decided);
-    const secrets = narrowedEntries("secrets", record.secrets, decided);
+    const variables = narrowedEntries("variables", moduleInputBlock(doc, "variables"), decided);
+    const secrets = narrowedEntries("secrets", moduleInputBlock(doc, "secrets"), decided);
     if (variables.size === 0 && secrets.size === 0) return base;
     const text = overlayText([[...variables].sort(byName), [...secrets].sort(byName)]);
     let byText = this.overlaid.get(doc);
@@ -329,7 +333,7 @@ export class ModuleGlobalsOverlays {
       if (entries.size === 0) return block;
       const properties: Record<string, any> = { ...block.properties };
       for (const [name, entry] of entries) properties[name] = inputValueSchema(entry);
-      return { ...block, properties };
+      return withEntryDocuments(liftFragmentDefs({ ...block, properties }));
     };
     const blocks: GlobalsBlocks = {
       ...base,
@@ -549,11 +553,22 @@ function buildSchemaMapSchema(
   if (Object.keys(props).length === 0) {
     return { type: "object", additionalProperties: true };
   }
-  return {
-    type: "object",
-    properties: props,
-    additionalProperties: false,
-  };
+  return withEntryDocuments(
+    liftFragmentDefs({
+      type: "object",
+      properties: props,
+      additionalProperties: false,
+    }),
+  );
+}
+
+/** `block` with each entry's schema recorded as a document of its own: a `#/…`
+ *  reference written in an entry names that entry, as the kernel validates it. */
+function withEntryDocuments(block: Record<string, any>): Record<string, any> {
+  for (const entry of Object.values(block.properties ?? {})) {
+    if (entry && typeof entry === "object" && !Array.isArray(entry)) declaredDocument(entry as Record<string, any>);
+  }
+  return block;
 }
 
 /**

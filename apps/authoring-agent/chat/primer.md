@@ -229,7 +229,11 @@ under `exports.resources:`, and point the slot at it with
 `$ref: "telo://Self/<Name>"` (or `telo://<Alias>/<Name>` for one an imported
 library exports). References INSIDE that shape (`#/$defs/…`, or `#` for its
 own root) resolve against the shape's own document, so it can refer to itself
-and a container node can hold further nodes. The shape is checked at
+and a container node can hold further nodes. A shape refers to itself only
+beneath a property or an item (`properties`, `items`, `additionalProperties`,
+…): one whose `$ref` comes back to it through `anyOf` / `oneOf` / `allOf` /
+`not` / `if` alone (`anyOf: [{ $ref: "telo://Self/Node" }, …]`) never finishes
+validating and is refused as `SCHEMA_IN_PLACE_CYCLE`. The shape is checked at
 `telo check` and again at boot, exactly as an inline schema is. A reference
 slot (`x-telo-ref`) declared INSIDE such a shape is a slot of every kind that
 reaches it: a `!ref` written there, at any depth of the recursion, is checked,
@@ -1283,6 +1287,38 @@ A context binding typed from a reference (`x-telo-context-ref-from`,
 declare it `type: [object, "null"]` when the value may be absent, and every read
 of it needs a guard (`message != null && message.id`).
 
+A step's guard (`if:`, `while:`, `switch:`, a `try` step's `when:`) narrows a nullable
+value in the guarded steps only for `inputs` and `steps`; for any other root
+(`variables`, `secrets`, `error`, `request`, a kind's own binding) keep the guard
+in the same expression, `a != null && a.b`, or use `.orValue(…)`.
+
+**CEL reads are typed from the declared shapes, to full depth.** Every binding
+(`inputs`, `steps.<n>.result`, `request`, `self`, `variables`, a module call's
+result) is read as its JSON Schema, so `inputs.order.total * 2` over a string
+`total` is `CEL_TYPE_ERROR` at check, not a failure at run time. A declared
+`number` is a double (`inputs.value * 2.0`; `* 2` is refused), a declared
+`integer` an int. Inside a template body and a `base:` mapping `self` is the
+declared view (`self.a.x`), a declared integer an int. A finding names the
+chain, its declared type and the slot: `reads 'variables.flag', declared
+'string', but the field expects 'boolean'`. A value of a union shape (an
+`anyOf` of records — an MCP content part, an auth result `{ principal }` |
+`{ reason }`) may be read by a member only some shapes declare through `.?m`
+(`result.?principal.subject.value()`, `part.?text.orValue('')`), behind
+`has(r.principal) ? r.principal.x : …`, or behind a test on a field that tells the
+shapes apart (`type(c) == list ? … : …`, `u.k == 'a' ? u.p : 0`); a plain read is
+`CEL_UNKNOWN_FIELD` naming `.?m`. `.?m` answers an optional: unwrap it with
+`.orValue(default)`, or `.value()` where it is known to be present. A comprehension
+reads a list or a map (`map` also takes a filter: `xs.map(x, x > 0, x * 2)`), and
+`string(x)` over a `T | null` value is refused — guard it. A member read off a
+`Telo.Stream` is refused: hand the stream to a step that consumes it. In a
+`Telo.Import`'s `variables:` / `secrets:`, `resources` and `ports` are not in scope
+(`CEL_UNKNOWN_IDENTIFIER`): an import's inputs are configuration, evaluated before
+any resource exists, so pass the value through a variable of the importing module.
+An Application `variables:` entry written `$ref: telo://Self/<Shape>` is typed from
+that shape, and a `!ref` at a `returns: { schema: … }` or a parameter `schema` must
+name a `Telo.JsonSchema` shape (`REFERENCE_KIND_MISMATCH`, `ERR_REFERENCE_KIND_MISMATCH`
+at load).
+
 A `!ref` inside a `Telo.Sequence` `with:` block may name either a scope-local
 resource or one from the enclosing module; scope-local wins, exactly as CEL's
 `resources.<name>` layers inside a scope. So two resources declared together in
@@ -1340,7 +1376,11 @@ the scope its EXPORTED INSTANCES only — `!ref Inner.greet` in a step,
 `kind: Inner.Thing` or `Inner.fn(…)` is `UNDEFINED_KIND` / unresolved, so import
 the module under `imports:` to use its kinds or functions. Do not name a scoped
 import like one of the module's `imports:` aliases (`DUPLICATE_RESOURCE_NAME`).
-Its library's needs are named beneath the holder (`seq` importing `Inner` →
+A scoped `Telo.Import` may be written inside a choice — in a chosen holder, as
+`with: !if …`, or as a `with:` item `!if { metadata: { name: Inner }, if: …,
+then: { kind: Telo.Import, source: … } }` — but its source must resolve in every
+configuration: the loader follows every option, so a broken one refuses the app
+whichever branch is taken. Its library's needs are named beneath the holder (`seq` importing `Inner` →
 `TELO_NEED_SEQ__INNER__<NEED>__<FIELD>`). A `Domain.Handler` in such a library
 handles only that library's own events, per run; one on a `shared` library's
 event is `CO_REFERRER_SCOPED` — declare it in the application or an `imports:`
@@ -1403,7 +1443,13 @@ else: { kind: SQLite.Connection, file: !cel "variables.dataFile" } # presence of
 `telo check` checks EVERY combination of dimensions ("configuration") and labels a
 finding that holds in some (`(when variables.dialect is postgres)`). The kernel starts
 the one the environment selects and loads only its controllers, so IMPORT every
-backend (imports are never chosen). An input is demanded only in the configurations
+backend (imports are never chosen: an import's alias, `kind`, `source` and `integrity`
+behind a tag, and a `...` splice at an import's top level, are refused at load). An
+import's INPUTS are values and may be chosen —
+`variables: { root: !if { if: !cel "variables.shared", then: …, else: … } }` at an
+`imports:` entry, a `Telo.Import` or a scoped import — each checked where its option
+is taken; a need supplied behind a choice is read from the environment where the option
+taken leaves it out. An input is demanded only in the configurations
 that read it: an app choosing OpenAI by `secrets.openaiApiKey != null` and reading
 `secrets.anthropicApiKey` only in `else:` boots on either key alone. Inline when used
 once (`connection: !if {…}` at the slot); a declaration-position choice only when
@@ -2211,7 +2257,12 @@ of the `Telo.Application` / `Telo.Library` document (`lang: en`). A plural text 
 a module with no `lang:` is `MESSAGE_SOURCE_LANGUAGE_MISSING`; a case its language
 lacks (`few` in `en`) is `MESSAGE_PLURAL_CATEGORY_INVALID`. A `Text` parameter
 takes a text WRITTEN AT THE CALL — `Self.t('Rate for {$who}', {'who': name})` —
-never an expression (`TEXT_ARGUMENT_COMPUTED`); a parameter whose schema says
+never an expression (`TEXT_ARGUMENT_COMPUTED`). A library `variables:` / `secrets:`
+entry typed `Text` is the same: the IMPORTER writes the text, judged in the
+importer's `lang:`, and the library reads `variables.<name>` as that importer's
+`TextRecord` (the entry's `default:` is the library's own text); a library
+forwarding it to a library it imports writes `!cel "variables.<name>"`, and any
+other expression there is `TEXT_ARGUMENT_COMPUTED`. A parameter whose schema says
 `x-telo-text-values-for: /text` holds that text's values, and every placeholder
 and selector must be given (`MESSAGE_PLACEHOLDER_UNBOUND`), a string or a number.
 A field holding a text's values declares the same annotation, its pointer relative
@@ -4463,8 +4514,10 @@ to `telo.run/next/`: a module's bytes must not depend on which release publishes
   prompt text, certificates. Rules: the path is a LITERAL relative to the
   MODULE ROOT (the directory holding `telo.yaml`) — never to the file the tag
   was written in, never absolute, no URL, no glob, and never above the module
-  root; and the tag only belongs INSIDE a resource, because the file is read
-  when that resource is created. A named file that is not there is
+  root; and the tag only belongs INSIDE a resource, or in the values an
+  import hands its library (`variables:`, `secrets:`, a need supplied field
+  by field), because the file is read when that resource or import is
+  created — an import's tag names the IMPORTER's file. A named file that is not there is
   `INCLUDE_FILE_NOT_FOUND` — create the file, never drop the tag. `telo
   publish` adds a named file to the artifact automatically, so do NOT restate
   it in `files:`. A path that must
@@ -4487,7 +4540,7 @@ to `telo.run/next/`: a module's bytes must not depend on which release publishes
   nothing fixed. Two ways to write one, chosen by where the files come from:
     - a file or directory that SHIPS WITH THE MODULE is
       `!module-path ./public` — the embed rules above (literal, module-root
-      relative, inside a resource), but it yields the location, not the
+      relative, inside a resource or an import's values), but it yields the location, not the
       contents, and may name a directory; publish and packaging carry it
       with no `files:` entry;
     - a location ON THE HOST — data the app writes, an upload directory, a
@@ -4509,7 +4562,9 @@ to `telo.run/next/`: a module's bytes must not depend on which release publishes
   relative value: a library or a blueprint takes the path from its importer,
   so a blueprint's path field (`AgentApp.App.history`,
   `ApprovalApp.App.journal`) is required and the app passes its own
-  host-path variable into it.
+  host-path variable into it — or, for a directory that ships with the app,
+  `variables: { root: !module-path ./public }` at the import, which names the
+  app's `./public`, never the library's.
   A host-path slot may say what it names —
   `x-telo-type: { name: Telo.HostPath, entry: directory }` (or `entry: file`):
   `Http.Static.root`, every Fs `cwd`, a journal `directory` and a blob

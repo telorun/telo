@@ -213,7 +213,7 @@ mod tests {
             .expect("the kind's `required: [output]` must not apply");
     }
 
-    /// A schema nesting without end over the value cannot be judged: the refusal says so,
+    /// A value nested past the shared depth limit cannot be judged: the refusal says so,
     /// locating nothing, rather than stopping the process.
     #[test]
     fn a_validation_that_cannot_finish_is_a_refusal_carrying_no_issues() {
@@ -232,7 +232,7 @@ mod tests {
             .join()
             .unwrap();
         assert_eq!(refused.code, "ERR_INPUT_INVALID");
-        assert_eq!(refused.message, "Console/x: inputs do not satisfy the declared inputType: Maximum call stack size exceeded");
+        assert_eq!(refused.message, "Console/x: inputs do not satisfy the declared inputType: the value cannot be validated — it is nested deeper than the 100 levels a validation follows: nest it less deeply.");
         assert_eq!(refused.data, None);
     }
 

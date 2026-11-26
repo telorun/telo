@@ -19,7 +19,7 @@
 
 use std::fmt;
 
-use telorun_cel::CelCheckCode;
+use telorun_cel::{CelCheckCode, CelType};
 
 use crate::engine::{AnalyzeResult, DiagnosticFix, EngineDiagnostic};
 
@@ -160,9 +160,11 @@ impl From<CelDiagnostic> for EngineDiagnostic {
 pub struct CelAnalyzeResult {
     pub diagnostics: Vec<CelDiagnostic>,
     pub type_name: Option<String>,
+    pub checked_type: Option<CelType>,
     pub calls: Vec<crate::engine::CallSite>,
     pub string_literal: Option<String>,
     pub read_types: Option<Vec<String>>,
+    pub read_checked_types: Option<Vec<CelType>>,
 }
 
 impl From<CelAnalyzeResult> for AnalyzeResult {
@@ -170,9 +172,11 @@ impl From<CelAnalyzeResult> for AnalyzeResult {
         AnalyzeResult {
             diagnostics: result.diagnostics.into_iter().map(Into::into).collect(),
             type_name: result.type_name,
+            checked_type: result.checked_type,
             calls: result.calls,
             string_literal: result.string_literal,
             read_types: result.read_types,
+            read_checked_types: result.read_checked_types,
         }
     }
 }

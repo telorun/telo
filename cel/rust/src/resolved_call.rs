@@ -11,6 +11,7 @@
 //!
 //! Node items with no twin in this file: none.
 
+use crate::cel_type::CelType;
 use crate::signature::CallForm;
 use crate::syntax_tree::SourceRange;
 
@@ -36,6 +37,9 @@ pub struct ResolvedCall {
     pub throws: Option<Vec<String>>,
     /// Each argument's own type, for a namespaced call only: the host judges such a call
     /// against its own signature grammar and needs what was passed, typed in the scope the
-    /// call stands in.
-    pub argument_types: Option<Vec<String>>,
+    /// call stands in — the type itself, every unresolved type parameter `dyn`, which a host
+    /// reads as a type and never parses from text.
+    pub argument_types: Option<Vec<CelType>>,
+    /// How each of `argument_types` prints, for a message: cut as every printed type is.
+    pub argument_type_names: Option<Vec<String>>,
 }

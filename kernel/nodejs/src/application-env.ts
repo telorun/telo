@@ -26,6 +26,7 @@ import type {
 } from "@telorun/sdk";
 import { RuntimeError } from "@telorun/sdk";
 import { parseApplicationArguments } from "./application-arguments.js";
+import { refuseInPlaceCycleModuleInputs } from "./controllers/resource-definition/in-place-cycle-guard.js";
 import { create as createJsonSchemaType } from "./controllers/type/json-schema-controller.js";
 import { decodeHostValue, hostPathMismatches, hostPathMismatchText } from "./host-paths.js";
 import {
@@ -237,6 +238,7 @@ export function resolveApplicationEnv(
   argv: readonly string[] = [],
   needs?: NeedEnvironmentRequest,
 ): EnvResolutionResult {
+  refuseInPlaceCycleModuleInputs(manifest as ResourceManifest);
   const reading = readApplicationInputs(manifest, env, validator, { demand, inputs, argv, needs }, new Map());
   const refusal = refusalOf(reading);
   if (refusal) throw refusal;
@@ -258,6 +260,8 @@ export async function resolveApplicationInputs(
   sources: ApplicationInputSources,
   resolver?: ApplicationInputResolver,
 ): Promise<EnvResolutionResult> {
+  // An entry recursing in place is one no value can be validated against.
+  refuseInPlaceCycleModuleInputs(manifest as ResourceManifest);
   const answers = new Map<string, string>();
   for (;;) {
     const reading = readApplicationInputs(manifest, env, validator, sources, answers);

@@ -1,0 +1,16 @@
+# A function whose parameter is typed by `!ref` to a resource that is no named
+# shape: `thing` is an invocable, so the signature constrains nothing.
+kind: Telo.Library
+metadata: { name: SignatureParamShapeKindLib, version: 1.0.0 }
+exports: { resources: [measure] }
+---
+kind: Telo.Value
+metadata: { name: thing }
+value: 1
+---
+kind: Telo.Function
+metadata: { name: measure }
+params:
+  - { name: x, schema: !ref thing }
+returns: { schema: { type: integer } }
+body: !cel "1"

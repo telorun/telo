@@ -2722,10 +2722,6 @@
             },
             {
               "code": "CEL_UNKNOWN_FIELD",
-              "message": "'nme' is not defined (available: request, error, codes, note, body)"
-            },
-            {
-              "code": "CEL_UNKNOWN_FIELD",
               "message": "'request.query.nme' is not defined (available: name)"
             }
           ],

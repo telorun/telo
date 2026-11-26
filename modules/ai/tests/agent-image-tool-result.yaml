@@ -47,9 +47,9 @@ steps:
   - name: assertParts
     inputs:
       content: !cel "steps.invoke.result.toolResults[0].content"
-      textType: !cel "steps.invoke.result.toolResults[0].content[0].type"
-      imageType: !cel "steps.invoke.result.toolResults[0].content[1].type"
-      mediaType: !cel "steps.invoke.result.toolResults[0].content[1].mediaType"
+      textType: !cel "cel.bind(c, steps.invoke.result.toolResults[0].content, type(c) == list ? c[0].type : null)"
+      imageType: !cel "cel.bind(c, steps.invoke.result.toolResults[0].content, type(c) == list ? c[1].type : null)"
+      mediaType: !cel "cel.bind(c, steps.invoke.result.toolResults[0].content, type(c) == list ? c[1].mediaType : null)"
       finalText: !cel "steps.invoke.result.text"
     invoke:
       kind: Assert.Schema

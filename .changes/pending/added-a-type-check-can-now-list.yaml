@@ -1,0 +1,32 @@
+units:
+  cel: Added
+body: "A type check can now list the JSON Schema nodes its verdicts and result type
+  read: ask for schemaDependencies (schema_dependencies in Rust) and each entry names
+  the schema document you registered or your resolver answered, plus a JSON Pointer into
+  it. A field the expression never reads is not listed, so a host holding several
+  versions of one schema can tell which versions could change a check's answer and check
+  once for the rest. Unasked, nothing is collected. A namespaced function's result can
+  now be declared as a JSON Schema document (returns: { schema },
+  WithheldReturns::Schema in Rust): it is read through your resolver like a schema-typed
+  variable, reads through a call's result are listed with that document, and the nodes
+  its schema leaves unjudged are reported under <namespace>.<name>. schemaOwnTypesAgree
+  (schema_own_types_agree in Rust) answers whether two versions of a document agree on
+  the own type of a listed node, so a host no longer compares schema keywords itself.
+  And a check asked for schemaNodes (schema_nodes in Rust) names, on each
+  unknown-member, type and nullable-access refusal, the schema node it judged
+  (schemaNode: the node lacking the member, the node an offending operand was read from,
+  the nullable node), and lists every place the result may have come from
+  (resultOrigins, result_origins in Rust), each with its source range, its CEL type and,
+  where its value is an instance of one, its schema node in the same
+  document-and-pointer form: a read over a union whose branches declare the member at
+  different nodes lists each branch's node, a conditional lists its branches' origins, a
+  member read through a $ref names the referenced node, cel.bind and optFlatMap list the
+  origins of what they answer, and a literal or computed value names none. optional.of,
+  optional.ofNonZeroValue, optMap and a read through an optional (.?a, [?k], over a
+  union too) are one origin typed optional<…> with no schema node, since no optional is
+  an instance of a schema node; a refusal read through one still names the node it
+  judged. Unasked, nothing is located. A type name your schema resolver answers is now
+  read as a CEL type expression, CEL's own types first, so bytes, uint,
+  google.protobuf.Timestamp and google.protobuf.Duration resolve at any depth of a
+  schema, and type arguments are read as type expressions; only a name that is neither
+  one of CEL's types nor registered is reported named-type-unregistered."

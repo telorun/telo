@@ -38,13 +38,13 @@ steps:
     invoke: !ref issue
     inputs: { subject: !cel "inputs.email", holder: requesters-browser }
   - name: wrongCode
-    value: !cel "steps.issued.result.token == '000000' ? '111111' : '000000'"
+    value: !cel "steps.issued.result.?token.value() == '000000' ? '111111' : '000000'"
   - name: reissued
     invoke: !ref issue
     inputs: { subject: !cel "inputs.email", holder: requesters-browser }
   - name: madeUpHolder
     invoke: !ref redeem
-    inputs: { subject: !cel "inputs.email", token: !cel "steps.issued.result.token", holder: made-up-browser }
+    inputs: { subject: !cel "inputs.email", token: !cel "steps.issued.result.?token.value()", holder: made-up-browser }
   - name: ownHolderWrong1
     invoke: !ref redeem
     inputs: { subject: !cel "inputs.email", token: !cel "steps.wrongCode.result", holder: requesters-browser }
@@ -56,7 +56,7 @@ steps:
     inputs: { subject: !cel "inputs.email", token: !cel "steps.wrongCode.result", holder: requesters-browser }
   - name: afterExhaustion
     invoke: !ref redeem
-    inputs: { subject: !cel "inputs.email", token: !cel "steps.issued.result.token", holder: requesters-browser }
+    inputs: { subject: !cel "inputs.email", token: !cel "steps.issued.result.?token.value()", holder: requesters-browser }
 outputs:
   issued: !cel "steps.issued.result.issued"
   reissued: !cel "steps.reissued.result.issued"

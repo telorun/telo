@@ -1,0 +1,6 @@
+kind: Telo.Application
+metadata: { name: NonShapeContractApp, version: 1.0.0 }
+imports: { Lib: ./lib }
+---
+kind: Lib.Measure
+metadata: { name: measure }

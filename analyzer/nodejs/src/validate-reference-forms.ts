@@ -132,12 +132,12 @@ export function validateInstanceReferenceForms(
 
         // A value the slot's value branch could not finish validating holds no
         // verdict: that is the slot's one finding, never a reference form.
-        if (valueOutcome === "unfinished") {
+        if (typeof valueOutcome === "object") {
           diagnostics.push(withQuotedPath({
             severity: DiagnosticSeverity.Error,
             code: SCHEMA_NESTING_EXCEEDED,
             source: SOURCE,
-            message: schemaNestingExceededMessage(resourceLabel, `the value at '${path}'`),
+            message: schemaNestingExceededMessage(resourceLabel, `the value at '${path}'`, valueOutcome),
             data: { resource: resourceData, filePath, path },
           }, path));
           return;
@@ -227,7 +227,7 @@ export function validateTemplateBodyReferenceForms(
         if (isTaggedSentinel(site.data) || typeof site.data === "string") continue;
         const valueOutcome = isValueAtSlot(site.data, site.refs, registry);
         if (valueOutcome === "accepts") continue;
-        if (valueOutcome === "unfinished") {
+        if (typeof valueOutcome === "object") {
           diagnostics.push(
             withQuotedPath(
               {
@@ -237,6 +237,7 @@ export function validateTemplateBodyReferenceForms(
                 message: schemaNestingExceededMessage(
                   `${definition.kind}/${meta.name}`,
                   `the value at '${site.path}' on the ${entry.kind} entry`,
+                  valueOutcome,
                 ),
                 data: {
                   resource: { kind: definition.kind, name: meta.name },

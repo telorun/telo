@@ -100,14 +100,14 @@ export function auditCalls(
               const literal = node ? literalValueOf(node) : undefined;
               const entries = node ? mapLiteralEntries(node) : undefined;
               return {
-                ...(type === "dyn" ? {} : { type }),
+                ...(type.kind === "dyn" ? {} : { type, typeName: call.argumentTypeNames![at]! }),
                 ...(chain ? { chain } : {}),
                 ...(literal ? { literal } : {}),
                 ...(entries
                   ? {
                       entries: entries.map((entry) => {
-                        const entryType = literalTypeOf(entry.value) ?? mapValueType(type);
-                        return { key: entry.key, ...(entryType ? { type: entryType } : {}) };
+                        const literalKind = literalTypeOf(entry.value);
+                        return { key: entry.key, ...(literalKind ? { literalKind } : {}) };
                       }),
                     }
                   : {}),
@@ -148,18 +148,3 @@ export function explainUnresolved(names: readonly string[], environment: CelEnvi
   return ` Registered: ${listed.length > 0 ? `${listed.join(", ")} and ${last}` : last}.`;
 }
 
-/** The value type a `map(K, V)` type names, unless it is `dyn`. */
-function mapValueType(type: string): string | undefined {
-  if (!type.startsWith("map(") || !type.endsWith(")")) return undefined;
-  let depth = 0;
-  for (let at = 4; at < type.length - 1; at++) {
-    const char = type[at];
-    if (char === "(") depth++;
-    else if (char === ")") depth--;
-    else if (char === "," && depth === 0) {
-      const value = type.slice(at + 1, -1).trim();
-      return value === "dyn" ? undefined : value;
-    }
-  }
-  return undefined;
-}

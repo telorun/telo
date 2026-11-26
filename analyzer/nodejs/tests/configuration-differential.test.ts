@@ -43,6 +43,9 @@ import {
   scopeMemberOnwardCrossing,
   scopeMemberMisspelled,
   scopePadding,
+  shapeChain,
+  textChain,
+  unionChain,
   topLevelCrossing,
   derivedResultTarget,
   nameReadPadding,
@@ -541,6 +544,7 @@ const PACKAGE_FIXTURES = [
   "analyzer/nodejs/tests/__fixtures__/resource-rule-reachable/choice.yaml",
   "analyzer/nodejs/tests/__fixtures__/context-withheld/destination/choice.yaml",
   "analyzer/nodejs/tests/__fixtures__/text-choice/literal.yaml",
+  "analyzer/nodejs/tests/__fixtures__/forward-omitted-choice/choice.yaml",
 ];
 
 describe("each fixture projects as its configurations", () => {
@@ -628,6 +632,12 @@ describe("each configuration's findings equal its own analysis", () => {
     it(`generated ${name}`, async () => judge(await loadGenerated(name, scopeMemberOnwardCrossing(topLevel))), 120_000);
   }
   it("generated scope-padding.yaml", async () => judge(await loadGenerated("scope-padding.yaml", scopePadding(2))), 120_000);
+  for (let j = 1; j <= SWEPT_CHOICES; j++) {
+    const name = `shape-chain-${SWEPT_CHOICES}-misfit-${j}.yaml`;
+    it(`generated ${name}`, async () => judge(await loadGenerated(name, shapeChain(SWEPT_CHOICES, j))), 120_000);
+  }
+  it("generated union-chain-4.yaml", async () => judge(await loadGenerated("union-chain-4.yaml", unionChain(4))), 240_000);
+  it("generated text-chain-4.yaml", async () => judge(await loadGenerated("text-chain-4.yaml", textChain(4))), 240_000);
   it("generated scope-member-misspelled.yaml", async () =>
     judge(await loadGenerated("scope-member-misspelled.yaml", scopeMemberMisspelled())), 120_000);
   it("generated derived-result-target.yaml", async () =>

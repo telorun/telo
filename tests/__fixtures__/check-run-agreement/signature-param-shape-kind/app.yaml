@@ -1,0 +1,12 @@
+# Calls the library's function; the kernel refuses the signature's reference
+# where it resolves the shape.
+kind: Telo.Application
+metadata: { name: SignatureParamShapeKindApp, version: 1.0.0 }
+imports: { Lib: ./lib }
+targets:
+  - name: measured
+    invoke: !ref measured
+---
+kind: Telo.Value
+metadata: { name: measured }
+value: !cel "Lib.measure(1)"

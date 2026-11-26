@@ -1,0 +1,5 @@
+# A value the shape the import's own option declares refuses.
+kind: Telo.Application
+metadata: { name: FlagShapeMistyped }
+imports: { Lib: { source: ./flag, variables: { flag: true, config: { n: two } } } }
+targets: [{ name: read, invoke: !ref Lib.config }]

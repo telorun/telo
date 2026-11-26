@@ -1,0 +1,10 @@
+kind: Telo.Application
+metadata: { name: TextParameterDefaultFewApp }
+lang: en
+imports: { Lib: ./default-few }
+targets: [!ref scope]
+---
+kind: Telo.Sequence
+metadata: { name: scope }
+steps:
+  - { name: shown, invoke: !ref Lib.shown }

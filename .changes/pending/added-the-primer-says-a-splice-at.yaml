@@ -1,0 +1,5 @@
+units:
+  apps/authoring-agent: Added
+body: The primer says a '...' splice at an import's top level is refused at load, and
+  that a need supplied behind a choice is read from the environment where the option
+  taken leaves it out.

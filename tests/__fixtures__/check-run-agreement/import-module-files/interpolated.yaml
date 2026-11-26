@@ -1,0 +1,13 @@
+# An import handing a library's host-path input text built by `!interpolate`,
+# which is a plain string, beside a `!module-path`, which is a host path.
+kind: Telo.Application
+metadata: { name: ImportModulePathInterpolated }
+variables:
+  base: { env: BASE, type: string, x-telo-type: Telo.HostPath, default: /srv }
+imports:
+  Lib:
+    source: ./lib
+    variables: { page: !interpolate "${{ string(variables.base) }}/index.html" }
+  Shipped:
+    source: ./lib
+    variables: { page: !module-path ./a/README.md }

@@ -10,6 +10,7 @@
 
 mod check_support;
 mod support;
+mod type_text_support;
 
 use std::sync::Arc;
 
@@ -90,7 +91,11 @@ const LABELS: [&str; 17] = [
 /// Node's three-deep and four-deep answers, carried to `n`.
 fn nesting(label: &str, n: usize) -> Nesting {
     let around = |open: &str, inner: &str, close: &str| format!("{}{inner}{}", open.repeat(n), close.repeat(n));
-    let nested_type = |open: &str, inner: &str| format!("{}{inner}{}", open.repeat(n), ">".repeat(n));
+    // A level of `map<string, …>` writes two type nodes, the map and its key.
+    let nested_type = |open: &str, inner: &str| {
+        let per_level = if open.starts_with("map<") { 2 } else { 1 };
+        type_text_support::printed_nested(open, per_level, inner, 1, ">", n)
+    };
     let plain = |source: String, type_name: &str| Nesting { source, type_name: type_name.into(), diagnostics: vec![], calls: 0 };
     let at = |offset: usize| u32::try_from(offset).expect("an offset fits");
     match label {
@@ -259,7 +264,7 @@ fn reads_a_member_through_one_optional_and_refuses_it_through_more_at_any_depth(
         refused_through_nested_optionals(&environment);
         assert_eq!(
             environment.check("o").type_name,
-            format!("{}map<string, int>{}", "optional<".repeat(DEEP), ">".repeat(DEEP))
+            type_text_support::printed_nested("optional<", 1, "map<string, int>", 3, ">", DEEP)
         );
     });
 }

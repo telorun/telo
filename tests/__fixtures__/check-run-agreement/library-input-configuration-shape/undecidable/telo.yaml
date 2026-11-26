@@ -1,0 +1,19 @@
+# A choice over the presence of an input typed by a named shape another choice
+# varies: the input is settled against the shape before the documents are
+# expanded, so nothing decides the choice before boot.
+kind: Telo.Library
+metadata: { name: ConfigurationShapeUndecidable }
+variables:
+  flag: { type: boolean }
+  config: { $ref: "telo://Self/Config", default: null }
+exports: { resources: [read] }
+--- !if
+metadata: { name: Config }
+if: !cel "variables.flag"
+then: { kind: Telo.JsonSchema, schema: { type: object } }
+else: { kind: Telo.JsonSchema, schema: { type: string } }
+--- !if
+metadata: { name: read }
+if: !cel "variables.config != null"
+then: { kind: Telo.Value, value: 1 }
+else: { kind: Telo.Value, value: 2 }

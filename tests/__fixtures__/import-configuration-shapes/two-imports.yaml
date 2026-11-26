@@ -1,0 +1,22 @@
+# Two isolated imports of one library whose shape its `mode` decides: each
+# import's value is held to its own instance's variant.
+kind: Telo.Application
+metadata: { name: TwoImports }
+imports:
+  Assert: ../../../modules/assert
+  Count: { source: ./mode, variables: { mode: count, config: { n: 2 } } }
+  Label: { source: ./mode, variables: { mode: label, config: { n: two } } }
+targets: [!ref test]
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - { name: count, invoke: !ref Count.config }
+  - { name: label, invoke: !ref Label.config }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        count: !cel "steps.count.result"
+        label: !cel "steps.label.result"
+      expected: { count: { n: 2 }, label: { n: two } }

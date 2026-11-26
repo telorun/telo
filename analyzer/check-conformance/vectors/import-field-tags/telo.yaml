@@ -1,0 +1,8 @@
+kind: Telo.Application
+metadata: { name: ImportFieldTagsApp }
+imports:
+  Pinned:
+    source: ./lib
+    integrity: !include-text ./pin.txt
+  Located:
+    source: !module-path ./lib

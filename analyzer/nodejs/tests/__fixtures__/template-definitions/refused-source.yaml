@@ -1,0 +1,98 @@
+# A loop over a source the definition does not declare: its binding stays in
+# scope, untyped, and every read of it — and of a loop over its value — is
+# accepted, so the refused source is the one finding.
+kind: Telo.Library
+metadata: { name: RefusedSource }
+exports: { kinds: [Store, Refused, Misspelled, Nested, Declared] }
+---
+kind: Telo.Definition
+metadata: { name: Store }
+capability: Telo.Service
+controllers: ["pkg:telo/local/js?path=./store.mjs#Store"]
+schema:
+  type: object
+  properties:
+    label: { type: string }
+    note: { type: string }
+    peer: { x-telo-ref: { kind: Self.Store, use: dependency } }
+    tags: { type: object, additionalProperties: { type: string } }
+---
+kind: Telo.Definition
+metadata: { name: Refused }
+capability: Telo.Service
+schema:
+  type: object
+  properties: { tags: { type: object, additionalProperties: { type: string } } }
+resources:
+  - !for-each
+    metadata: { name: fam }
+    in: !cel "self.names"
+    as: x
+    emit:
+      kind: Self.Store
+      label: !cel "x.value.deep + x.key + string(x.index) + string(x.value)"
+      peer: !ref fam[x.key]
+      tags:
+        ...:
+          !for-each
+          in: !cel "self.tags"
+          as: t
+          key: !cel "x.key + t.key + x.value.deep"
+          emit: !cel "t.value + x.value"
+---
+kind: Telo.Definition
+metadata: { name: Misspelled }
+capability: Telo.Service
+schema: { type: object }
+resources:
+  - !for-each
+    metadata: { name: fam }
+    in: !cel "self.names"
+    as: x
+    emit:
+      kind: Self.Store
+      label: !cel "x.value.deep + x.key"
+      note: !cel "slef.y"
+---
+kind: Telo.Definition
+metadata: { name: Nested }
+capability: Telo.Service
+schema: { type: object }
+resources:
+  - !for-each
+    metadata: { name: fam }
+    in: !cel "self.names"
+    as: x
+    emit:
+      kind: Self.Store
+      label: !cel "x.value.deep"
+      tags:
+        ...:
+          !for-each
+          in: !cel "x.value.items"
+          as: y
+          key: !cel "y.key + x.key + y.value.anything"
+          emit: !cel "y.value.z + y.index"
+      ...:
+        !for-each
+        in: !cel "x.value.more"
+        as: z
+        key: !cel "z.key + x.key"
+        emit: !cel "z.value.w"
+---
+kind: Telo.Definition
+metadata: { name: Declared }
+capability: Telo.Service
+schema:
+  type: object
+  properties:
+    names: { type: array, items: { type: object, properties: { deep: { type: string } } } }
+resources:
+  - !for-each
+    metadata: { name: fam }
+    in: !cel "self.names"
+    as: x
+    emit:
+      kind: Self.Store
+      label: !cel "x.value.deeep"
+      peer: !ref fam[x.index]

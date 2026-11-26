@@ -1,0 +1,8 @@
+units:
+  kernel: Fixed
+body: "A scoped Telo.Import written under a choice — in a chosen holder, a with: !if, or
+  as a member a tag chooses — boots with the library the load resolved for the option
+  the configuration takes, so !ref <Member>.<name> reaches its exports, a target that
+  does not resolve refuses the load whichever option is taken, and a need of its library
+  is read from the environment, and refused when unset, only in a configuration holding
+  the import."

@@ -17,11 +17,12 @@
 
 import { CelEngineError } from "./check-diagnostic.js";
 import type { CelType } from "./cel-type.js";
-import { assignable, DYN, formatType, isDyn, typesEqual } from "./cel-type.js";
+import { assignable, DYN, formatType, isDyn, typesEqual, unify, unionOf } from "./cel-type.js";
 import type { CallForm, CelSignature, FunctionMetadata } from "./signature.js";
 import { formatSignature, signatureKey } from "./signature.js";
 import { CALL_SITE_DIRECT_ARITY } from "./runtime-library.js";
 import { isIdentifierSpelling, isReservedWord } from "./reserved-words.js";
+import expansion from "./union-expansion.json" with { type: "json" };
 
 export interface RegisteredFunction {
   readonly signature: CelSignature;
@@ -45,6 +46,33 @@ export type ResolutionFailure =
  * over the name exactly as it was written.
  */
 export const UNKNOWN_FUNCTION_CANDIDATES = 5;
+
+/**
+ * How many combinations of its union-typed arguments' members one call is resolved over.
+ *
+ * Declared as data both engines read, because a call past it is refused with a message the
+ * vectors pin: a bound a second engine chose for itself would answer the same call differently.
+ */
+export const UNION_EXPANSION_LIMIT: number = expansion.unionExpansionLimit;
+
+/**
+ * A call resolved member by member over its union-typed receiver and arguments.
+ *
+ * - `resolved`: every combination resolves; each distinct overload once, in combination
+ *   order, and the union of the combinations' return types (`dyn` where one is `dyn`).
+ * - `untaken`: the first combination no overload takes, receiver first, with the member
+ *   index each position took.
+ * - `limit`: more than {@link UNION_EXPANSION_LIMIT} combinations.
+ */
+export type Expansion =
+  | { readonly kind: "resolved"; readonly overloads: readonly Resolution[]; readonly returns: CelType }
+  | { readonly kind: "untaken"; readonly combination: readonly CelType[]; readonly members: readonly number[] }
+  | { readonly kind: "limit" };
+
+/** The members a position is expanded into: a union's, else the type alone. */
+export function expandedMembers(type: CelType): readonly CelType[] {
+  return type.kind === "union" ? type.members : [type];
+}
 
 export interface Resolution {
   readonly resolved: RegisteredFunction;
@@ -171,6 +199,48 @@ export class FunctionRegistry {
   }
 
   /**
+   * A call no overload takes as written, resolved over each combination of its union-typed
+   * receiver and arguments' members — in member order, the receiver and then the arguments
+   * left to right, the leftmost varying slowest. Nothing where no position is a union, or
+   * where no overload of the name and form has the call's arity: no narrowing could make
+   * such a call resolve.
+   *
+   * It is asked only after both passes failed, so no answer that resolves as written moves.
+   */
+  resolveExpanded(name: string, form: CallForm, args: readonly CelType[], receiver?: CelType): Expansion | undefined {
+    const positions = receiver === undefined ? args : [receiver, ...args];
+    if (!positions.some((type) => type.kind === "union")) return undefined;
+    const named = this.byName.get(name) ?? [];
+    if (!named.some((entry) => entry.signature.form === form && entry.signature.parameters.length === args.length)) {
+      return undefined;
+    }
+    let count = 1;
+    for (const position of positions) {
+      count *= expandedMembers(position).length;
+      if (count > UNION_EXPANSION_LIMIT) return { kind: "limit" };
+    }
+    const overloads: Resolution[] = [];
+    const returns: CelType[] = [];
+    const members = positions.map(() => 0);
+    for (let left = count; left > 0; left -= 1) {
+      const combination = positions.map((position, at) => expandedMembers(position)[members[at]!]!);
+      const resolution =
+        receiver === undefined
+          ? this.resolve(name, form, combination)
+          : this.resolve(name, form, combination.slice(1), combination[0]);
+      if (!("resolved" in resolution)) return { kind: "untaken", combination, members: [...members] };
+      if (!overloads.some((held) => held.resolved === resolution.resolved)) overloads.push(resolution);
+      returns.push(resolution.returns);
+      for (let at = positions.length - 1; at >= 0; at -= 1) {
+        members[at]! += 1;
+        if (members[at]! < expandedMembers(positions[at]!).length) break;
+        members[at] = 0;
+      }
+    }
+    return { kind: "resolved", overloads, returns: returns.some(isDyn) ? DYN : unionOf(returns) };
+  }
+
+  /**
    * The loose pass: a `dyn` argument makes a candidate viable, and **where several become
    * viable and they do not agree on a return type, the call answers `dyn`.**
    *
@@ -221,10 +291,12 @@ export class FunctionRegistry {
 /**
  * Whether an argument fits a parameter, binding type parameters as it goes.
  *
- * **A type parameter is bound by the first argument that mentions it**, and a later
- * argument does not refine it: `[] + [3, 4]` is `list<T>`, because the empty list
- * fixed the element type as "unknown" and the second argument cannot retroactively
- * decide what the first one held.
+ * **A type parameter is bound by the first argument that mentions it**, and a later argument
+ * that does not fit that binding widens it to the join of the two — the conditional's join —
+ * refused exactly where the join is not one type: `xs + ys` over a list of string maps and a
+ * list of records is a list of their join, and `[1] + ['a']` is refused. A binding holding
+ * only an unresolved parameter is replaced by a later concrete argument instead:
+ * `optional.none().orValue(42)` is an int.
  */
 function fits(
   argument: CelType,
@@ -245,7 +317,11 @@ function fits(
       return true;
     }
     if (bound.kind === "parameter" || argument.kind === "parameter") return true;
-    return assignable(argument, bound) || (allowDyn && (isDyn(argument) || isDyn(bound)));
+    if (assignable(argument, bound) || (allowDyn && (isDyn(argument) || isDyn(bound)))) return true;
+    const joined = unify(bound, argument);
+    if (isDyn(joined) && !isDyn(bound) && !isDyn(argument)) return false;
+    bindings.set(parameter.name, joined);
+    return true;
   }
   if (parameter.kind === "list" && argument.kind === "list") {
     return fits(argument.element, parameter.element, bindings, allowDyn);

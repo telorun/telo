@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 use telorun_cel_value::{es_trim, is_es_whitespace, json_quote, CelValue};
 
-use crate::cel_type::{format_type, CelType};
+use crate::cel_type::{exact_type_text, CelType};
 use crate::runtime_library::CelImplementation;
 use crate::type_expression::{parse_type_expression, CelTypeExpressionError, CelTypeTextError, NominalResolver};
 
@@ -145,14 +145,15 @@ pub fn parse_signature(text: &str, resolver: Option<&NominalResolver<'_>>) -> Re
     Ok(CelSignature { name: name.into(), receiver, parameters, returns: parse_type_expression(returns, resolver)? })
 }
 
+/// A signature's text, its types written whole: the text is what identifies it.
 pub fn format_signature(signature: &CelSignature) -> String {
-    format!("{}: {}", signature_key(signature), format_type(&signature.returns, false))
+    format!("{}: {}", signature_key(signature), exact_type_text(&signature.returns, false))
 }
 
 /// What two registrations of the same call share: the name, the form and the parameters.
 pub fn signature_key(signature: &CelSignature) -> String {
-    let on = signature.receiver.as_ref().map(|receiver| format!("{}.", format_type(receiver, false))).unwrap_or_default();
-    let parameters: Vec<String> = signature.parameters.iter().map(|ty| format_type(ty, false)).collect();
+    let on = signature.receiver.as_ref().map(|receiver| format!("{}.", exact_type_text(receiver, false))).unwrap_or_default();
+    let parameters: Vec<String> = signature.parameters.iter().map(|ty| exact_type_text(ty, false)).collect();
     format!("{on}{}({})", signature.name, parameters.join(", "))
 }
 

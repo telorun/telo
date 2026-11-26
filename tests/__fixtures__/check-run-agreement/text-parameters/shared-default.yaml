@@ -1,0 +1,14 @@
+# Two imports leaving the title out agree on the library's default.
+kind: Telo.Application
+metadata: { name: TextParameterSharedDefault }
+lang: en
+imports:
+  First: ../../import-text-input/shared
+  Second: ../../import-text-input/shared
+targets: [!ref scope]
+---
+kind: Telo.Sequence
+metadata: { name: scope }
+steps:
+  - { name: first, invoke: !ref First.shown }
+  - { name: second, invoke: !ref Second.shown }

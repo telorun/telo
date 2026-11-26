@@ -1,0 +1,10 @@
+kind: Telo.Application
+metadata: { name: TextParameterForwardingComputedApp }
+lang: en
+imports: { Lib: ./forwarding-computed }
+targets: [!ref scope]
+---
+kind: Telo.Sequence
+metadata: { name: scope }
+steps:
+  - { name: literal, invoke: !ref Lib.shown }

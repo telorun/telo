@@ -1,0 +1,8 @@
+units:
+  analyzer: Fixed
+body: "telo check reports `TEMPLATE_TARGET_MISMATCH` for a template's `inputs:` where
+  the dispatched entry's kind derives its input contract from the entry
+  (`x-telo-value-schema-from`, `x-telo-schema-projection-from`): the entry's references
+  are read as the template creates it — a sibling entry first, then a declaration of the
+  defining module, `<Alias>.<name>` through its imports. A refused value there used to
+  pass the check and fail at the call."

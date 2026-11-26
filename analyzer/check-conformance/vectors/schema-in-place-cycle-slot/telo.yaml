@@ -1,0 +1,18 @@
+kind: Telo.Application
+metadata: { name: InPlaceCycleSlotApp }
+---
+kind: Telo.Definition
+metadata: { name: Router }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    handler:
+      anyOf:
+        - { x-telo-ref: { kind: Telo.Invocable, use: call } }
+        - { $ref: "#/$defs/Loop" }
+  $defs: { Loop: { type: object, $ref: "#/$defs/Loop" } }
+---
+kind: Self.Router
+metadata: { name: router }
+handler: { leaf: 1 }

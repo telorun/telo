@@ -1,0 +1,10 @@
+# A splice at a top-level `Telo.Import`'s top level: refused by the loader, and
+# nothing beneath it is judged.
+kind: Telo.Application
+metadata: { name: ImportSpliceDocument }
+variables: { flag1: { env: FLAG_1, type: boolean, default: true } }
+---
+kind: Telo.Import
+metadata: { name: Lib }
+source: ./lib
+...: !if { if: !cel "variables.flag1", then: { source: ./shared-lib, variables: { size: wrong } } }

@@ -39,8 +39,8 @@ steps:
   # (not a JSON-stringified blob), carried untouched into the agent's `toolResults`.
   - name: assertImage
     inputs:
-      imageType: !cel "steps.invoke.result.toolResults[0].content[0].type"
-      mediaType: !cel "steps.invoke.result.toolResults[0].content[0].mediaType"
+      imageType: !cel "cel.bind(c, steps.invoke.result.toolResults[0].content, type(c) == list ? c[0].type : null)"
+      mediaType: !cel "cel.bind(c, steps.invoke.result.toolResults[0].content, type(c) == list ? c[0].mediaType : null)"
     invoke:
       kind: Assert.Schema
       schema:

@@ -1,0 +1,85 @@
+# A template's `inputs:` writes a value its entry's contract refuses, and the
+# entry's kind derives that contract from the entry: through a module's named
+# shape (`model: !ref Count`), across a reference into a module declaration
+# (`/form/shape`), and through a sibling entry (`model: !ref local`).
+kind: Telo.Application
+metadata: { name: TemplateDerivedContract, version: 1.0.0 }
+targets: [!ref run]
+---
+kind: Telo.JsonSchema
+metadata: { name: Count }
+schema: { type: object, properties: { count: { type: integer } }, required: [count] }
+---
+kind: Telo.Definition
+metadata: { name: Form }
+capability: Telo.Type
+schema:
+  type: object
+  properties: { shape: { x-telo-ref: { kind: Telo.Type, use: schema } } }
+---
+kind: Self.Form
+metadata: { name: CountForm }
+shape: !ref Count
+---
+kind: Telo.Definition
+metadata: { name: Echo }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties: { model: { x-telo-ref: { kind: Telo.Type, use: schema } } }
+inputType: { type: object, x-telo-value-schema-from: model }
+resources:
+  - kind: Telo.Value
+    metadata: { name: echo }
+    value: !cel "inputs"
+invoke: !ref echo
+---
+kind: Telo.Definition
+metadata: { name: FormEcho }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties: { form: { x-telo-ref: { kind: Self.Form, use: schema } } }
+inputType: { type: object, x-telo-value-schema-from: /form/shape }
+resources:
+  - kind: Telo.Value
+    metadata: { name: echo }
+    value: !cel "inputs"
+invoke: !ref echo
+---
+kind: Telo.Definition
+metadata: { name: ByModule }
+capability: Telo.Invocable
+schema: { type: object }
+resources:
+  - { kind: Self.Echo, metadata: { name: e }, model: !ref Count }
+invoke: !ref e
+inputs: { count: three }
+---
+kind: Telo.Definition
+metadata: { name: ByCrossing }
+capability: Telo.Invocable
+schema: { type: object }
+resources:
+  - { kind: Self.FormEcho, metadata: { name: e }, form: !ref CountForm }
+invoke: !ref e
+inputs: { count: three }
+---
+kind: Telo.Definition
+metadata: { name: BySibling }
+capability: Telo.Invocable
+schema: { type: object }
+resources:
+  - kind: Telo.JsonSchema
+    metadata: { name: local }
+    schema: { type: object, properties: { count: { type: integer } }, required: [count] }
+  - { kind: Self.Echo, metadata: { name: e }, model: !ref local }
+invoke: !ref e
+inputs: { count: three }
+---
+kind: Telo.Sequence
+metadata: { name: run }
+steps:
+  - { name: byModule, invoke: { kind: Self.ByModule } }
+  - { name: byCrossing, invoke: { kind: Self.ByCrossing } }
+  - { name: bySibling, invoke: { kind: Self.BySibling } }

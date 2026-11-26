@@ -1,0 +1,6 @@
+units:
+  analyzer: Fixed
+body: "`telo check` and `telo run` no longer slow down quadratically with the number of
+  resources a templated kind's `!for-each` emits, nor with the number of `!if` /
+  `!switch` documents reading the same inputs: at a thousand of either they take less
+  than half the time they did."

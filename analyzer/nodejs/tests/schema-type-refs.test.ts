@@ -134,7 +134,7 @@ describe("named-shape references", () => {
     const diags = setup("telo://Self/Missing");
     expect(diags).toHaveLength(1);
     expect(diags[0].code).toBe("SCHEMA_TYPE_REF_UNRESOLVED");
-    expect(diags[0].data?.path).toBe("inputType/schema/properties/f/$ref");
+    expect(diags[0].data?.path).toBe("inputType.schema.properties.f.$ref");
   });
 
   it("flags an undeclared authority with SCHEMA_TYPE_REF_UNKNOWN_ALIAS", () => {

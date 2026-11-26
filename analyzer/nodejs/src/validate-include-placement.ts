@@ -5,6 +5,9 @@ import {
   walkCelExpressions,
 } from "@telorun/templating";
 import { stampedNeedParametersPaths } from "./flatten-for-analyzer.js";
+import { importInputValuePaths } from "./import-input-values.js";
+import { carriedImportPaths } from "./inline-imports.js";
+import { isModuleKind } from "./module-kinds.js";
 import { isAtOrBeneathPath, needParametersPaths } from "./need-type.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
@@ -13,8 +16,10 @@ const SOURCE = "telo-analyzer";
 /**
  * Docs that are never instantiated as resources.
  *
- * `Telo.Application` / `Telo.Library` are module declarations, and `Telo.Import`
- * is a dependency edge — none of the three reaches a controller's `create()`.
+ * `Telo.Application` / `Telo.Library` are module declarations and never reach a
+ * controller's `create()`. A `Telo.Import` is created — its import controller
+ * initializes the library — but only the values it hands the library are read
+ * there (`importInputValues`); the rest of it is a dependency edge.
  * `Telo.Definition` and `Telo.Abstract` are deliberately absent: a definition's
  * template body (`resources:` / `invoke:` / `run:` / `provide:`) DOES become
  * resources, so an embed there resolves normally.
@@ -25,14 +30,32 @@ const NEVER_INSTANTIATED: ReadonlySet<string> = new Set([
   "Telo.Import",
 ]);
 
-/** Whether a doc of this kind is never created, so no tag in it is resolved. */
+/** Whether a doc of this kind resolves no tag outside the positions
+ *  {@link resolvedPositions} names. */
 export function isNeverInstantiated(kind: string): boolean {
   return NEVER_INSTANTIATED.has(kind);
 }
 
 /**
+ * The positions of a doc of a {@link isNeverInstantiated} kind whose tags are
+ * resolved: a module document's needs' `parameters:` (and the copies an import's
+ * `metadata.requiredNeeds` stamp carries), and an import's input values. The
+ * fields of a module document's `imports:` entries that a desugared import
+ * carries are listed too — each is judged at that `Telo.Import`, so a finding
+ * there is not reported twice; an entry's `source` and `integrity` are not.
+ */
+export function resolvedPositions(manifest: ResourceManifest): string[] {
+  return [
+    ...needParametersPaths(manifest),
+    ...stampedNeedParametersPaths(manifest),
+    ...(manifest.kind === "Telo.Import" ? importInputValuePaths(manifest) : []),
+    ...(isModuleKind(manifest.kind) ? carriedImportPaths(manifest) : []),
+  ];
+}
+
+/**
  * An `!include-text` / `!include-bytes` / `!module-path` in a doc that is never
- * instantiated is never read.
+ * instantiated, outside the positions it resolves, is never read.
  *
  * The tags resolve when the resource owning them is created — deferred so
  * that loading a manifest does not pull payload layers, which is the property
@@ -53,8 +76,9 @@ export function isNeverInstantiated(kind: string): boolean {
  * no pass answers it for any tag today.
  *
  * A need's `parameters:` are the exception: the kernel resolves a `!module-path`
- * there at load, and the need table judges every tag written there — as are
- * the copies an import's `metadata.requiredNeeds` stamp carries.
+ * there at load, and the need table judges every tag written there. An import's
+ * input values are the other: the import controller resolves them against the
+ * importing module when the import initializes.
  */
 export function validateIncludePlacement(manifests: ResourceManifest[]): AnalysisDiagnostic[] {
   const out: AnalysisDiagnostic[] = [];
@@ -62,10 +86,10 @@ export function validateIncludePlacement(manifests: ResourceManifest[]): Analysi
     if (!NEVER_INSTANTIATED.has(manifest.kind)) continue;
     const name = (manifest.metadata as { name?: string } | undefined)?.name;
     const filePath = (manifest.metadata as { source?: string } | undefined)?.source;
-    const parameters = [...needParametersPaths(manifest), ...stampedNeedParametersPaths(manifest)];
+    const resolved = resolvedPositions(manifest);
     walkCelExpressions(manifest, "", (source, path, engineName) => {
       if (!MODULE_FILE_ENGINE_NAMES.has(engineName)) return;
-      if (isAtOrBeneathPath(path, parameters)) return;
+      if (isAtOrBeneathPath(path, resolved)) return;
       const embed = INCLUDE_ENGINE_NAMES.has(engineName);
       out.push({
         severity: DiagnosticSeverity.Error,
@@ -73,7 +97,10 @@ export function validateIncludePlacement(manifests: ResourceManifest[]): Analysi
         source: SOURCE,
         message:
           `${manifest.kind}${name ? `/${name}` : ""}: \`!${engineName} ${source}\` at '${path}' is ` +
-          `never read — a ${manifest.kind} doc is not instantiated, and ` +
+          (manifest.kind === "Telo.Import"
+            ? `never read — a Telo.Import reads only what it hands its library (its ` +
+              `variables:, its secrets: and the fields of a need it supplies), and `
+            : `never read — a ${manifest.kind} doc is not instantiated, and `) +
           (embed
             ? `a file embed is resolved when the resource holding it is created. Move it onto ` +
               `the resource that needs the file, or read the file at runtime with a file-reading kind.`

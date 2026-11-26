@@ -207,21 +207,21 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        accepted: !cel "steps.accepted.result.principal"
+        accepted: !cel "steps.accepted.result.?principal.value()"
         changedByte: !cel "steps.changedByte.result"
         algorithmClaim: !cel "steps.algorithmClaim.result"
         unknownKey: !cel "steps.unknownKey.result"
         idlessSkipsKeyedKey: !cel "steps.idlessSkipsKeyedKey.result"
-        rotatedOld: !cel "steps.rotatedOld.result.principal.subject"
-        rotatedNew: !cel "steps.rotatedNew.result.principal.subject"
+        rotatedOld: !cel "steps.rotatedOld.result.?principal.value().subject"
+        rotatedNew: !cel "steps.rotatedNew.result.?principal.value().subject"
         noCreated: !cel "steps.noCreated.result"
         tooOld: !cel "steps.tooOld.result"
-        withinTolerance: !cel "steps.withinTolerance.result.principal.subject"
-        justCreated: !cel "steps.justCreated.result.principal.subject"
+        withinTolerance: !cel "steps.withinTolerance.result.?principal.value().subject"
+        justCreated: !cel "steps.justCreated.result.?principal.value().subject"
         expired: !cel "steps.expired.result"
-        notYetExpired: !cel "steps.notYetExpired.result.principal.subject"
-        rfcEd25519: !cel "steps.rfcEd25519.result.principal.subject"
-        rfcWithoutClaims: !cel "steps.rfcWithoutClaims.result.principal.subject"
+        notYetExpired: !cel "steps.notYetExpired.result.?principal.value().subject"
+        rfcEd25519: !cel "steps.rfcEd25519.result.?principal.value().subject"
+        rfcWithoutClaims: !cel "steps.rfcWithoutClaims.result.?principal.value().subject"
         challenges: !cel "resources.plain.challenges"
       expected:
         accepted:

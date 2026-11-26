@@ -1,21 +1,16 @@
 # Import inputs are config-only: a `${{ resources.X }}` reference in an import's
 # variables/secrets must be a static error (resources/env are not in scope there).
 kind: Telo.Application
-metadata:
-  name: ImportInputRejectsResourcesTest
-  version: 1.0.0
-imports:
-  Assert: ../modules/assert
+metadata: { name: ImportInputRejectsResourcesTest, version: 1.0.0 }
+imports: { Assert: ../modules/assert }
 targets:
   - !ref check
 ---
 kind: Assert.Manifest
-metadata:
-  name: check
+metadata: { name: check }
 source: ./__fixtures__/import-value-flow/rejects-resources-input.yaml
 expect:
   errors:
-    # The engine decides the verdict where the cause is known: a name the import does
-    # not declare is an unknown FIELD of `resources`, not a type error about a key.
-    - code: CEL_UNKNOWN_FIELD
-      message: "'resources.Foo' is not defined (available: Data)"
+    # An import's inputs are configuration: `resources` is withheld, so it is an
+    # unknown identifier there however its members are read.
+    - { code: CEL_UNKNOWN_IDENTIFIER, message: "'resources' is not available here" }

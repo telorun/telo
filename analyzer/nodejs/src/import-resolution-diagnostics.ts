@@ -9,8 +9,16 @@ const SOURCE = "telo-analyzer";
  *  with a child application's source, which fails the same three ways. */
 export function importFailureCode(
   e: Pick<GraphLoadError, "reason" | "source" | "url">,
-): "INVALID_IMPORT_TARGET" | "INVALID_IMPORT_SOURCE" | "IMPORT_UNRESOLVED" | "KIND_PREFIX_RESERVED" {
+):
+  | "INVALID_IMPORT_TARGET"
+  | "INVALID_IMPORT_SOURCE"
+  | "IMPORT_UNRESOLVED"
+  | "KIND_PREFIX_RESERVED"
+  | "BRANCH_POSITION_INVALID"
+  | "REPEAT_OUTSIDE_TEMPLATE" {
   if (e.reason === "reserved-prefix") return "KIND_PREFIX_RESERVED";
+  if (e.reason === "branch-position") return "BRANCH_POSITION_INVALID";
+  if (e.reason === "repeat-outside-template") return "REPEAT_OUTSIDE_TEMPLATE";
   if (e.reason === "unusable-target") return "INVALID_IMPORT_TARGET";
   // A source no module reference reads is malformed, however its read failed —
   // reported apart from a well-formed one that could not be obtained.
@@ -33,6 +41,7 @@ function isRemovedBareRef(source: string): boolean {
 }
 
 function messageFor(e: GraphLoadError, code: ReturnType<typeof importFailureCode>): string {
+  if (code === "BRANCH_POSITION_INVALID" || code === "REPEAT_OUTSIDE_TEMPLATE") return e.error.message;
   const authored = e.source ?? e.url;
   const via = e.alias ? `import '${e.alias}' → '${authored}'` : `'${authored}'`;
   if (code === "INVALID_IMPORT_SOURCE") {

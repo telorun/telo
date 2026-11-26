@@ -69,7 +69,7 @@ steps:
   - name: parse
     invoke: !ref parsePayload
     inputs:
-      text: !cel "steps.call.result.content[0].text"
+      text: !cel "steps.call.result.content[0].?text.orValue('')"
   # The hit list itself is not assertable as a literal — scores and the rest of
   # the corpus move — so the claim is stated directly: the query echoes back,
   # and the seeded timer's Delay is a hit under its own module, which states the
@@ -99,7 +99,7 @@ steps:
   - name: parse
     invoke: !ref parsePayload
     inputs:
-      text: !cel "steps.call.result.content[0].text"
+      text: !cel "steps.call.result.content[0].?text.orValue('')"
   - name: loopHit
     value: !cel >-
       steps.parse.result.docs[0].results[0].modules
@@ -129,7 +129,7 @@ steps:
   - name: parse
     invoke: !ref parsePayload
     inputs:
-      text: !cel "steps.call.result.content[0].text"
+      text: !cel "steps.call.result.content[0].?text.orValue('')"
   - name: assert
     inputs:
       actual:
@@ -156,7 +156,7 @@ steps:
   - name: parse
     invoke: !ref parsePayload
     inputs:
-      text: !cel "steps.call.result.content[0].text"
+      text: !cel "steps.call.result.content[0].?text.orValue('')"
   - name: assert
     inputs:
       actual: !cel >-
@@ -203,7 +203,7 @@ steps:
           - { ref: "oci://ghcr.io/telorun/timer", kind: Delay }
           - { ref: "oci://ghcr.io/telorun/kv-store-redis", kind: Store }
   - name: text
-    value: !cel "steps.call.result.content[0].text"
+    value: !cel "steps.call.result.content[0].?text.orValue('')"
   - name: assert
     inputs:
       actual:
@@ -240,7 +240,7 @@ steps:
           - { ref: "oci://ghcr.io/telorun/run", kind: Run.Loop }
           - { ref: "oci://ghcr.io/telorun/run", kind: Nope }
   - name: text
-    value: !cel "steps.call.result.content[0].text"
+    value: !cel "steps.call.result.content[0].?text.orValue('')"
   - name: assert
     inputs:
       actual:
@@ -264,7 +264,7 @@ steps:
         kinds:
           - { ref: "./apps/hub/tests/e2e/__fixtures__/quoted-kinds", kind: Quoted }
   - name: text
-    value: !cel "steps.call.result.content[0].text"
+    value: !cel "steps.call.result.content[0].?text.orValue('')"
   - name: assert
     inputs:
       actual:
@@ -287,7 +287,7 @@ steps:
           - { ref: "oci://ghcr.io/telorun/kv-store-redis", kind: Store }
         implementation: true
   - name: text
-    value: !cel "steps.call.result.content[0].text"
+    value: !cel "steps.call.result.content[0].?text.orValue('')"
   - name: assert
     inputs:
       actual:
@@ -333,7 +333,7 @@ steps:
           - { ref: "oci://ghcr.io/telorun/timer", kind: Delay, version: "" }
         telo: ""
   - name: text
-    value: !cel "steps.call.result.content[0].text"
+    value: !cel "steps.call.result.content[0].?text.orValue('')"
   - name: assert
     inputs:
       actual:
@@ -368,7 +368,7 @@ steps:
           actual:
             code: !cel "error.code"
             namesVersions: !cel >-
-              size(regexExtract(string(error.data.content[0].text),
+              size(regexExtract(string(error.data.content[0].?text.orValue('')),
                 'is tracked by the hub, but not at version 0[.]0[.]1 [(]asked for: Delay[)][.] Its latest version is [0-9.]+;')) > 0
           expected: { code: ERR_MCP_TOOL_ERROR, namesVersions: true }
         invoke: { kind: Assert.Equals }
@@ -386,7 +386,7 @@ steps:
         kinds:
           - { ref: "oci://ghcr.io/telorun/kv-store-redis", kind: Store, version: 0.6.0 }
   - name: text
-    value: !cel "steps.call.result.content[0].text"
+    value: !cel "steps.call.result.content[0].?text.orValue('')"
   - name: assert
     inputs:
       actual:
@@ -476,7 +476,7 @@ steps:
   - name: parse
     invoke: !ref parsePayload
     inputs:
-      text: !cel "steps.call.result.content[0].text"
+      text: !cel "steps.call.result.content[0].?text.orValue('')"
   - name: assert
     inputs:
       actual:
@@ -498,7 +498,7 @@ steps:
   - name: parse
     invoke: !ref parsePayload
     inputs:
-      text: !cel "steps.call.result.content[0].text"
+      text: !cel "steps.call.result.content[0].?text.orValue('')"
   # Projected to the two facts this route owes a caller — the whole owner doc
   # carries a description, version and exports that move with every release.
   # The keys are `docKind` / `moduleName`, not `kind` / `name`: a literal object
@@ -575,7 +575,7 @@ steps:
   - name: parse
     invoke: !ref parsePayload
     inputs:
-      text: !cel "steps.call.result.content[0].text"
+      text: !cel "steps.call.result.content[0].?text.orValue('')"
   - name: assert
     inputs:
       actual:
@@ -595,7 +595,7 @@ steps:
   - name: parse
     invoke: !ref parsePayload
     inputs:
-      text: !cel "steps.call.result.content[0].text"
+      text: !cel "steps.call.result.content[0].?text.orValue('')"
   - name: assert
     inputs:
       actual:
@@ -621,7 +621,7 @@ steps:
   - name: parse
     invoke: !ref parsePayload
     inputs:
-      text: !cel "steps.call.result.content[0].text"
+      text: !cel "steps.call.result.content[0].?text.orValue('')"
   - name: assert
     inputs:
       actual:
@@ -649,7 +649,7 @@ steps:
   - name: parse
     invoke: !ref parsePayload
     inputs:
-      text: !cel "steps.call.result.content[0].text"
+      text: !cel "steps.call.result.content[0].?text.orValue('')"
   - name: assert
     inputs:
       actual: !cel >-
@@ -669,7 +669,7 @@ steps:
   - name: parse
     invoke: !ref parsePayload
     inputs:
-      text: !cel "steps.call.result.content[0].text"
+      text: !cel "steps.call.result.content[0].?text.orValue('')"
   - name: assert
     inputs:
       actual:
@@ -687,7 +687,7 @@ steps:
   - name: parse
     invoke: !ref parsePayload
     inputs:
-      text: !cel "steps.call.result.content[0].text"
+      text: !cel "steps.call.result.content[0].?text.orValue('')"
   - name: assert
     inputs:
       actual:
@@ -707,7 +707,7 @@ steps:
   - name: parse
     invoke: !ref parsePayload
     inputs:
-      text: !cel "steps.call.result.content[0].text"
+      text: !cel "steps.call.result.content[0].?text.orValue('')"
   - name: one
     invoke: !ref mcpToolCall
     inputs:
@@ -716,7 +716,7 @@ steps:
   - name: parseOne
     invoke: !ref parsePayload
     inputs:
-      text: !cel "steps.one.result.content[0].text"
+      text: !cel "steps.one.result.content[0].?text.orValue('')"
   - name: assert
     inputs:
       actual: !cel >-
@@ -749,7 +749,7 @@ steps:
   - name: parse
     invoke: !ref parsePayload
     inputs:
-      text: !cel "steps.call.result.content[0].text"
+      text: !cel "steps.call.result.content[0].?text.orValue('')"
   - name: none
     invoke: !ref mcpToolCall
     inputs:
@@ -758,7 +758,7 @@ steps:
   - name: parseNone
     invoke: !ref parsePayload
     inputs:
-      text: !cel "steps.none.result.content[0].text"
+      text: !cel "steps.none.result.content[0].?text.orValue('')"
   - name: assert
     inputs:
       actual: !cel >-

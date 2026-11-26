@@ -1,5 +1,7 @@
+# An object at a reference slot nesting 101 levels deep — itself and 100
+# arrays — one past the 100 a validation follows.
 kind: Telo.Application
-metadata: { name: NestingSlotApp }
+metadata: { name: NestingSlotApp, version: 1.0.0 }
 ---
 kind: Telo.Definition
 metadata: { name: Router }
@@ -10,9 +12,10 @@ schema:
     handler:
       anyOf:
         - { x-telo-ref: { kind: Telo.Invocable, use: call } }
-        - { $ref: "#/$defs/Loop" }
-  $defs: { Loop: { type: object, $ref: "#/$defs/Loop" } }
+        - { type: object, properties: { tree: { $ref: "#/$defs/N" } } }
+  $defs:
+    N: { anyOf: [{ const: 0 }, { type: array, items: { $ref: "#/$defs/N" } }] }
 ---
 kind: Self.Router
 metadata: { name: router }
-handler: { leaf: 1 }
+handler: { tree: [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]] }

@@ -109,6 +109,9 @@ export interface LoopBinding {
   readonly keyed: boolean;
   /** The source's element schema, when the source resolved. */
   readonly element: Record<string, any> | undefined;
+  /** Its source is refused, or reads a binding whose source is: an untyped
+   *  value nothing is derived from, every read of it accepted. */
+  readonly poisoned?: true;
 }
 
 /** One element a loop iterates. */
@@ -826,6 +829,12 @@ export function walkTemplateBody(definition: ResourceManifest, expander: Templat
       const frame = [...instance].reverse().find((f) => f.binding.name === index.binding);
       if (!frame) return undefined;
       const element = frame.element;
+      // A loop over a refused source has no keyed-or-indexed reading: the
+      // reference names the member it emitted.
+      if (frame.binding.poisoned) {
+        text += elementIndexText(element);
+        continue;
+      }
       if (index.member === "key") {
         if (element.key === undefined) return undefined;
         text += element.representative ? "[⟨key⟩]" : sdkIndexLiteral(element.key);
@@ -992,12 +1001,13 @@ export function pathText(keys: Keys): string {
   return out;
 }
 
-/** `a.b[0].c` → `["a", "b", 0, "c"]`. */
+/** `a.b[0].c` → `["a", "b", 0, "c"]`; a splice key `...` is the segment
+ *  `pathText` writes for it (`a....[0]`). */
 export function parseKeys(path: string): Key[] {
   const keys: Key[] = [];
-  for (const match of path.matchAll(/([^.[\]]+)|\[(\d+)\]/g)) {
-    if (match[2] !== undefined) keys.push(Number(match[2]));
-    else keys.push(match[1]!);
+  for (const match of path.matchAll(/(\.\.\.)(?=[.[]|$)|([^.[\]]+)|\[(\d+)\]/g)) {
+    if (match[3] !== undefined) keys.push(Number(match[3]));
+    else keys.push(match[1] ?? match[2]!);
   }
   return keys;
 }

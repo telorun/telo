@@ -1,0 +1,4 @@
+# Asks for a need of a type nothing declares.
+kind: Telo.Library
+metadata: { name: ScopedChoiceBadNeedLib }
+needs: { upstream: { kind: Self.Missing } }

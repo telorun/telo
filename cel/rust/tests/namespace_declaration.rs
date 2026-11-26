@@ -11,9 +11,9 @@ mod check_support;
 use check_support::{assert_rows, first_code, found};
 use telorun_cel::CelCheckCode::*;
 use telorun_cel::{
-    list_of, CallForm, CelEnvironment, CelEnvironmentOptions, CelRegistrationError, CelTypeExpressionError,
-    NamespaceFunction, NamespaceFunctionDeclaration, NamespaceListing, NamespaceOptions, NominalTypeDefinition,
-    ResolvedCall, SourceRange, DYN, INT, STRING,
+    format_type, list_of, CallForm, CelEnvironment, CelType, CelEnvironmentOptions, CelRegistrationError, CelTypeExpressionError,
+    NamespaceFunction, NamespaceFunctionDeclaration, NamespaceFunctionListing, NamespaceListing, NamespaceOptions, NominalTypeDefinition,
+    read_json_text, JsonSchemaDocument, ResolvedCall, SourceRange, WithheldReturns, DOUBLE, DYN, INT, STRING,
 };
 
 fn loose() -> CelEnvironment {
@@ -36,9 +36,28 @@ fn withheld() -> CelEnvironment {
 
 #[test]
 fn is_listed_by_what_it_declares_never_as_a_function_of_no_arguments() {
-    assert_eq!(withheld().definitions().namespaces[0].functions, ["total(…): double"]);
+    let declarations = |environment: CelEnvironment| {
+        environment.definitions().namespaces[0].functions.iter().map(|listed| listed.declaration.clone()).collect::<Vec<_>>()
+    };
+    assert_eq!(declarations(withheld()), ["total(…): double"]);
     // A full declaration still prints its signature.
-    assert_eq!(closed().definitions().namespaces[0].functions, ["total(double, int): double"]);
+    assert_eq!(declarations(closed()), ["total(double, int): double"]);
+}
+
+#[test]
+fn lists_a_result_declared_as_a_schema_with_its_type_which_a_signatures_entry_does_not_carry() {
+    let mut environment = CelEnvironment::new(CelEnvironmentOptions::default());
+    let schema = read_json_text(r#"{"type":"object","properties":{"amount":{"type":"integer"}}}"#).expect("JSON");
+    let declared = vec![
+        NamespaceFunctionDeclaration::withheld("rows", WithheldReturns::Schema(JsonSchemaDocument { node: schema, root: None })),
+        NamespaceFunctionDeclaration::signature("total(double): double"),
+    ];
+    environment.register_namespace("Alias", declared, NamespaceOptions::default()).expect("registers");
+    let listed = environment.definitions().namespaces[0].functions.clone();
+    assert_eq!(listed[0].declaration, "rows(…): map");
+    assert!(matches!(listed[0].result_type, Some(CelType::Record(_))));
+    assert_eq!(listed[0].result_type, Some(environment.check("Alias.rows()").ty));
+    assert_eq!(listed[1], NamespaceFunctionListing { declaration: "total(double): double".into(), result_type: None });
 }
 
 #[test]
@@ -87,7 +106,10 @@ fn lists_open_closed_and_withheld_namespaces_in_name_order() {
     environment.register_namespace("Empty", vec![], NamespaceOptions::default()).expect("registers");
     let listing = |name: &str, functions: &[&str], open: bool| NamespaceListing {
         name: name.into(),
-        functions: functions.iter().map(|function| function.to_string()).collect(),
+        functions: functions
+            .iter()
+            .map(|function| NamespaceFunctionListing { declaration: function.to_string(), result_type: None })
+            .collect(),
         open,
     };
     assert_eq!(
@@ -137,7 +159,7 @@ fn open() -> CelEnvironment {
 }
 
 /// A namespaced call as the listing holds it.
-fn qualified(name: &str, arity: usize, end: u32, argument_types: &[&str]) -> ResolvedCall {
+fn qualified(name: &str, arity: usize, end: u32, argument_types: &[CelType]) -> ResolvedCall {
     ResolvedCall {
         name: name.into(),
         form: CallForm::Receiver,
@@ -149,7 +171,8 @@ fn qualified(name: &str, arity: usize, end: u32, argument_types: &[&str]) -> Res
         deterministic: None,
         host_backed: None,
         throws: None,
-        argument_types: Some(argument_types.iter().map(|ty| ty.to_string()).collect()),
+        argument_types: Some(argument_types.to_vec()),
+        argument_type_names: Some(argument_types.iter().map(|ty| format_type(ty, false)).collect()),
     }
 }
 
@@ -159,7 +182,7 @@ fn an_open_namespace_leaves_a_name_it_did_not_declare_to_the_host() {
     assert_eq!(result.diagnostics, []);
     assert_eq!(result.type_name, "dyn");
     // Listed, so the host can resolve the name against its own vocabulary.
-    assert_eq!(result.calls, [qualified("Alias.whatever", 2, 24, &["int", "string"])]);
+    assert_eq!(result.calls, [qualified("Alias.whatever", 2, 24, &[INT, STRING])]);
 }
 
 #[test]
@@ -177,7 +200,7 @@ fn an_open_namespace_still_judges_a_name_it_did_declare() {
 fn an_open_namespace_is_not_the_default_a_closed_one_refuses_an_undeclared_name() {
     let result = closed().check("Alias.whatever(1)");
     assert_eq!(result.diagnostics, [found(FunctionUnresolved, "\"Alias\" declares no function named \"whatever\"", 0, 17)]);
-    assert_eq!(result.calls, [qualified("Alias.whatever", 1, 17, &["int"])]);
+    assert_eq!(result.calls, [qualified("Alias.whatever", 1, 17, &[INT])]);
 }
 
 #[test]
@@ -212,8 +235,8 @@ fn a_withheld_declaration_types_the_calls_result_and_judges_neither_its_arity_no
     let held = withheld();
     for (source, end, argument_types) in [
         ("Alias.total()", 13, vec![]),
-        ("Alias.total(1.0, 2)", 19, vec!["double", "int"]),
-        ("Alias.total('a', 'b', 'c')", 26, vec!["string", "string", "string"]),
+        ("Alias.total(1.0, 2)", 19, vec![DOUBLE, INT]),
+        ("Alias.total('a', 'b', 'c')", 26, vec![STRING, STRING, STRING]),
     ] {
         let result = held.check(source);
         assert_eq!(result.diagnostics, [], "{source}");
@@ -289,7 +312,7 @@ fn a_declaration_naming_an_unregistered_type_is_accepted_and_the_call_carries_a_
             returns: Some("dyn".into()),
             deterministic: Some(true),
             host_backed: Some(false),
-            ..qualified("Alias.untyped", 1, 16, &["int"])
+            ..qualified("Alias.untyped", 1, 16, &[INT])
         }]
     );
     assert_eq!(result.type_name, "dyn");

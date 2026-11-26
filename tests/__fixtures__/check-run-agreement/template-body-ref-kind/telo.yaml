@@ -1,0 +1,10 @@
+# A consumer of the library's templated kind.
+kind: Telo.Application
+metadata: { name: TemplateBodyRefKind, version: 1.0.0 }
+imports: { Lib: ./lib }
+targets: [!ref wrap]
+---
+kind: Telo.Sequence
+metadata: { name: wrap }
+steps:
+  - { name: wrapped, invoke: { kind: Lib.Wrapper } }

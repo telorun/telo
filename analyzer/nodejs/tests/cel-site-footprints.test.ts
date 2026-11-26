@@ -556,7 +556,7 @@ describe("a value held to its slot", () => {
       [
         "CEL_TYPE_ERROR",
         "payload",
-        "Self.Op/op: CEL at 'payload' returns 'string' but the field expects 'integer'. (when variables.flag1 is false)",
+        "Self.Op/op: CEL at 'payload' produces 'Self.pick()', declared 'string', but the field expects 'integer'. (when variables.flag1 is false)",
       ],
     ]);
   }, 120_000);
@@ -599,6 +599,8 @@ describe("the per-site model's boundary", () => {
       "finishing-pipeline.ts",
       // What an import supplies for a host-path input, typed by the key judging its CEL site.
       "import-host-path-findings.ts",
+      // An import read once per class of its inputs' options.
+      "import-input-classes.ts",
       "index.ts",
       // Which application inputs each configuration requires, as conditions.
       "input-requirements.ts",
@@ -646,6 +648,8 @@ describe("the per-site model's boundary", () => {
       "rule-absence.ts",
       // Kind schema compile failures, a shape class compiled once each.
       "schema-compile-findings.ts",
+      // In-place cycles, each labelled by its classes' conditions.
+      "schema-in-place-cycle-findings.ts",
       // Scope-member collisions and scoped sinks: passes carrying conditions.
       "scope-member-findings.ts",
       // The scoped imports a module writes, each with its presence.

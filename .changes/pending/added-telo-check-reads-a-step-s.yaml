@@ -1,0 +1,17 @@
+units:
+  analyzer: Added
+body: "`telo check` reads a step's guard as known at the CEL sites it guards: `if:`
+  holds over `then:` and fails over every `elseif:` and `else:`, an `elseif:`'s `if:`
+  holds over its `then:`, `while:` over `do:`, a `switch:` over a string subject proves
+  its case over each case and none of them over `default:`, a `try` step's `when:` holds
+  over its `try:`, `catch:` and `finally:`, and an invoke step's `when:` over its own
+  `inputs:`. So after `if: inputs.item != null`, a read of `inputs.item` in `then:`
+  checks as not null. A proof survives only over `inputs` and `steps`; one over
+  `variables`, `secrets`, `ports`, `module`, `self`, `error`, `request` or a kind's own
+  binding does not carry across a step guard, so keep the guard in the same expression.
+  A proof is also dropped where the value may differ at the site: a resource's reading,
+  a step the guarded steps write again, a caught `error`, a loop binding. A computed
+  value is now fitted to its slot by its type rather than its printed name: a union fits
+  only where every member does, and a union slot's alternatives are read with the keys
+  they share, so a union-typed value one of whose members the slot refuses is newly a
+  type error."

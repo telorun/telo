@@ -1,0 +1,26 @@
+# A kind's value is held to a `dependencies` entry around a named shape that
+# varies under `variables.flag1`: the shape requires `b` beside `a` where the
+# flag is true.
+kind: Telo.Application
+metadata: { name: ShapeCarveDependenciesChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Inner }
+schema: !if
+  if: !cel "variables.flag1"
+  then: { required: [b] }
+  else: { type: object }
+---
+kind: Telo.JsonSchema
+metadata: { name: Outer }
+schema: { type: object, dependencies: { a: { $ref: "telo://Self/Inner" } } }
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Runnable
+schema: { type: object, properties: { v: { $ref: "telo://Self/Outer" } } }
+---
+kind: Self.Holder
+metadata: { name: holder }
+v: { a: 1 }

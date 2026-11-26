@@ -26,7 +26,9 @@ pub enum ParseErrorOrigin {
     Yaml(YamlErrorKind),
     /// A refusal both loaders name under `code` — an expansion construct the loader
     /// cannot read.
-    Loader { code: &'static str, message: String },
+    /// `path` is the refused value's path in its document, for a refusal at an import's
+    /// own field.
+    Loader { code: &'static str, message: String, path: Option<String> },
     /// A construct this reader cannot hold, which the Node loader reads: never a
     /// diagnostic, a refusal of the Rust kernel's load.
     Unsupported(UnsupportedConstruct),

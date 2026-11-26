@@ -149,12 +149,12 @@ steps:
     inputs:
       actual:
         active:
-          subject: !cel "steps.active.result.principal.subject"
-          issuer: !cel "steps.active.result.principal.issuer"
-          kind: !cel "steps.active.result.principal.kind"
-          scopes: !cel "steps.active.result.principal.scopes"
-          via: !cel "steps.active.result.principal.via"
-        stillCached: !cel "steps.stillCached.result.principal.subject"
+          subject: !cel "steps.active.result.?principal.subject.value()"
+          issuer: !cel "steps.active.result.?principal.issuer.value()"
+          kind: !cel "steps.active.result.?principal.kind.value()"
+          scopes: !cel "steps.active.result.?principal.scopes.value()"
+          via: !cel "steps.active.result.?principal.via.value()"
+        stillCached: !cel "steps.stillCached.result.?principal.subject.value()"
         inactive: !cel "steps.inactive.result"
         rejectedClient: !cel "steps.caughtRejected.result"
         unreachable: !cel "steps.caughtUnreachable.result"

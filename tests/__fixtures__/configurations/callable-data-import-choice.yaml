@@ -1,0 +1,20 @@
+# An import supplying a native function's data input behind a choice: the
+# option handing it a resource holding a per-call expression is refused, the
+# other is not.
+kind: Telo.Application
+metadata: { name: CallableDataImportChoice, version: 1.0.0 }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+imports:
+  Kinds: ../check-run-agreement/callable-data/kinds
+  Input:
+    source: ../check-run-agreement/callable-data/input
+    resources:
+      source: !if { if: !cel "variables.flag1", then: !ref late, else: !ref plain }
+---
+kind: Kinds.Late
+metadata: { name: late }
+greeting: !cel "'hello'"
+---
+kind: Kinds.Late
+metadata: { name: plain }
+greeting: hello

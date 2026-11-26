@@ -1,4 +1,6 @@
 import type { ResourceDefinition } from "@telorun/sdk";
+import { inheritSchemaPlaces } from "./schema-provenance.js";
+import { recordAuthoredSchemaRef } from "./authored-schema-refs.js";
 import { inheritedCapability } from "./extends-resolution.js";
 import type { ResourceManifest } from "@telorun/sdk";
 import { canonicalTypeSchemaId, parseCanonicalTypeSchemaId, parseTeloTypeRef } from "@telorun/sdk";
@@ -9,6 +11,7 @@ import { refSentinelTarget } from "./ref-sentinel-target.js";
 import { schemaReferenceParts } from "./schema-reference.js";
 import { isResolvedReference, RESOLVED_REFERENCE_MARKER } from "./resolved-reference.js";
 import { withCanonicalAnnotationKinds } from "./resolve-schema-ref-kinds.js";
+import { isModuleKind } from "./module-kinds.js";
 
 /** Schema-bearing fields on a Telo.Definition / Telo.Type resource. */
 const SCHEMA_FIELDS = ["schema", "inputType", "outputType"];
@@ -71,6 +74,17 @@ export function resolveSchemaTypeRefs(
     }
     for (const field of SIGNATURE_FIELDS) {
       canonicalizeInPlace((r as Record<string, unknown>)[field], resolveAuthority, ownModule, false);
+    }
+    // A module document's `variables:` / `secrets:` entries are schemas, read
+    // in the module the document declares.
+    if (isModuleKind(r.kind)) {
+      const declared = ownModule ?? (r.metadata as { name?: string } | undefined)?.name;
+      const authority = (name: string) => (name === "Self" ? declared : resolver?.moduleForAlias(name));
+      for (const field of ["variables", "secrets"]) {
+        const block = (r as Record<string, unknown>)[field];
+        if (!block || typeof block !== "object" || Array.isArray(block)) continue;
+        for (const entry of Object.values(block)) canonicalizeInPlace(entry, authority, declared, false);
+      }
     }
     if (!defs) continue;
     const namesShape = (kind: string): boolean =>
@@ -142,6 +156,9 @@ export function registeredDefinitionForms<T extends object>(
   if (canonicalExtends !== undefined && canonicalExtends !== (definition as { extends?: unknown }).extends) {
     (copy ??= { ...(definition as Record<string, unknown>) }).extends = canonicalExtends;
   }
+  // The copies keep the place of the nodes they were built from.
+  if (kinds !== definition) inheritSchemaPlaces(kinds, definition);
+  if (copy) inheritSchemaPlaces(copy, definition);
   return { kinds, registered: (copy ?? definition) as T };
 }
 
@@ -256,6 +273,8 @@ function plainCopy(value: unknown): unknown {
   return out;
 }
 
+export { authoredSchemaRef, carryAuthoredSchemaRef } from "./authored-schema-refs.js";
+
 function canonicalizeInPlace(
   value: unknown,
   resolveAuthority: (authority: string) => string | undefined,
@@ -279,7 +298,10 @@ function canonicalizeInPlace(
   const parsed = parseTeloTypeRef(shape);
   if (parsed) {
     const module = resolveAuthority(parsed.authority);
-    if (module) obj.$ref = `${canonicalTypeSchemaId(module, parsed.typeName)}${pointer === "#" ? "" : pointer}`;
+    if (module) {
+      recordAuthoredSchemaRef(obj, obj.$ref as string);
+      obj.$ref = `${canonicalTypeSchemaId(module, parsed.typeName)}${pointer === "#" ? "" : pointer}`;
+    }
   }
   // A reference the tag left behind. Rewritten in place rather than replaced,
   // so a node that carried siblings (a `title`, a `description`) keeps them —

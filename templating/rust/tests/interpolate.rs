@@ -15,7 +15,7 @@ use telo_templating::{
     build_cel_environment, cel_expressions_of, AnalyzeEnv, CallError, CelHandlers, CompileEnv, CompileOutcome,
     InterpolateEngine, SqlEngine, TemplatingEngine, TemplatingError,
 };
-use telorun_cel::{CelEnvironment, EvaluateOptions, PropertyMap};
+use telorun_cel::{read_json_text, CelEnvironment, EvaluateOptions, JsonSchemaDocument, PropertyMap, TypeDeclaration};
 use telorun_cel_value::{CelHostValue, CelValue};
 use telorun_sdk_core::compiled_value::ParameterizedSql;
 
@@ -141,11 +141,12 @@ fn refuses_a_hole_cel_cannot_convert_and_passes_one_it_can() {
 #[test]
 fn reports_a_nullable_hole() {
     let env = env();
-    let schema = json!({
-        "type": "object",
-        "properties": { "variables": { "type": "object", "properties": { "x": { "type": ["string", "null"] } } } }
-    });
-    let result = InterpolateEngine.analyze("${{ variables.x }}", &AnalyzeEnv { context_schema: Some(&schema), ..AnalyzeEnv::new(&env) });
+    let mut typed = env.clone();
+    let schema = json!({ "type": "object", "properties": { "x": { "type": ["string", "null"] } } });
+    typed
+        .register_variable("variables", TypeDeclaration::Schema(JsonSchemaDocument { node: json_value(&schema), root: None }), None)
+        .unwrap();
+    let result = InterpolateEngine.analyze("${{ variables.x }}", &AnalyzeEnv::new(&typed));
     let codes: Vec<_> = result.diagnostics.iter().map(|diagnostic| diagnostic.code.as_deref().unwrap()).collect();
     assert_eq!(codes, ["CEL_NULLABLE_ACCESS"]);
 }
@@ -168,4 +169,9 @@ fn sql_binds_each_hole_and_keeps_the_text_between_them() {
             values: vec![CelValue::Int(7)],
         })
     );
+}
+
+/// A JSON value as the engine holds one.
+fn json_value(value: &serde_json::Value) -> Arc<telorun_cel::JsonValue> {
+    read_json_text(&value.to_string()).expect("a JSON value reads as JSON text")
 }

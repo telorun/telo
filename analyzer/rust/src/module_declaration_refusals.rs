@@ -44,7 +44,7 @@ fn kind_range(file: &LoadedFile, index: usize) -> Option<Range> {
 }
 
 fn loader_error(document_index: usize, code: &'static str, message: String, range: Option<Range>) -> ParseError {
-    ParseError { document_index, origin: ParseErrorOrigin::Loader { code, message }, range }
+    ParseError { document_index, origin: ParseErrorOrigin::Loader { code, message, path: None }, range }
 }
 
 /// Exactly one `Telo.Application` or `Telo.Library`: none is `MODULE_DECLARATION_MISSING`

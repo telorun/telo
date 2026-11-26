@@ -17,6 +17,7 @@
   { "field": "sharedLibrary", "holds": "that an import's library is shared" },
   { "field": "scopeHolders", "holds": "the resources a scoped import sits in" },
   { "field": "scopePath", "holds": "a scoped import's place in its holder" },
+  { "field": "scopeField", "holds": "the scope field a scoped import is declared in" },
   { "field": "scopeAnchor", "holds": "where a scoped import's findings are reported" },
   { "field": "requiredResources", "holds": "the resource inputs an import's library declares" },
   { "field": "optionalResources", "holds": "the optional resource inputs an import's library declares" },

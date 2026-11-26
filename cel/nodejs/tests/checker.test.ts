@@ -80,25 +80,15 @@ describe("a dereference of something that may be null", () => {
     }
   });
 
-  it("is not reported for a chain rooted at a name the expression bound", () => {
-    // The guard constructs are only half the rule: a comprehension variable is not a subject
-    // of this verdict at all, so reporting one would newly reject a manifest that checks today.
-    expect(listOfNullable().check("rows.all(e, e.code == 'x')").diagnostics).toEqual([]);
-    expect(listOfNullable().check("rows.map(e, e.code)").diagnostics).toEqual([]);
-    expect(
-      listOfNullable().check("cel.bind(e, rows[0], e.code == 'x')").diagnostics,
-    ).toEqual([]);
-    // The skip is about the ROOT, not about sitting inside a comprehension: a chain rooted at
-    // a name the host declared is still reported from inside one.
-    const both = listOfNullable().registerVariable("request", {
-      schema: {
-        type: "object",
-        properties: { body: { type: ["object", "null"], properties: { id: { type: "string" } } } },
-      },
-    });
-    expect(both.check("rows.all(e, request.body.id == 'x')").diagnostics[0]?.code).toBe(
-      "CEL_NULLABLE_ACCESS",
-    );
+  it("is reported for a chain rooted at a name the expression bound, as for any other", () => {
+    for (const source of ["rows.all(e, e.code == 'x')", "rows.map(e, e.code)", "cel.bind(e, rows[0], e.code == 'x')"]) {
+      expect(listOfNullable().check(source).diagnostics.map((held) => held.code), source).toEqual([
+        "CEL_NULLABLE_ACCESS",
+      ]);
+    }
+    for (const source of ["rows.all(e, e != null && e.code == 'x')", "rows.map(e, e != null, e.code)"]) {
+      expect(listOfNullable().check(source).diagnostics, source).toEqual([]);
+    }
   });
 });
 
@@ -251,7 +241,8 @@ describe("the per-call resolved-signature listing", () => {
         // Each argument's own type, which only a NAMESPACED call carries: the host judges
         // such a call against its own signature grammar, and checking an argument's subtree
         // on its own would lose whatever the expression bound around it.
-        argumentTypes: ["int"],
+        argumentTypes: [INT],
+        argumentTypeNames: ["int"],
         signature: "total(int): int",
         returns: "int",
         deterministic: false,

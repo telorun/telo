@@ -4,11 +4,12 @@
  * disagreeing (`SHARED_LIBRARY_*`), and a reference to an optional resource
  * input where it may be absent (`RESOURCE_INPUT_OPTIONAL_REFERENCED`).
  *
- * An import never varies — a choice is refused in a module document's
- * `imports:` — so what varies is what each name it supplies resolves to. Each
- * supplied entry is judged once per outcome of the lookups its reference
+ * An import's alias and source never vary, while its inputs are values chosen
+ * per option: an import is read once per class of the options its inputs hold,
+ * and within a class what varies is what each name it supplies resolves to.
+ * Each supplied entry is judged once per outcome of the lookups its reference
  * makes, with the import normalized at a witness of that outcome; every other
- * finding of the import is judged once. A reference to an optional input is a
+ * finding of the import is judged once per class. A reference to an optional input is a
  * call-graph edge reaching it, held where the edge reaches it and the input is
  * not proven present.
  *
@@ -27,6 +28,7 @@ import type { ConditionedNameIndex, ConditionedOutcome } from "./conditioned-nam
 import { reportKeyCost } from "./cel-site-judgements.js";
 import type { Assignment } from "./configuration-dimensions.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
+import { holdsChoice } from "./key-door.js";
 import type { KeyParts } from "./key-parts.js";
 import type { ModuleDocuments } from "./module-documents.js";
 import { optionalInputReferenceMessage } from "./optional-input-references.js";
@@ -35,6 +37,8 @@ import { refSentinelTarget } from "./ref-sentinel-target.js";
 import { declarationOf } from "./reference-resolution.js";
 import { isOptionalResourceInput, readSuppliedResources } from "./resource-input.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
+import { listRequests } from "./declaration-requests.js";
+import { TextLanguageScope } from "./validate-texts.js";
 import { fixedFindings, fixedPassTable, readDeadBranches, type PassFinding, type PassTable, type ReadFinding } from "./union-passes.js";
 import {
   importInputDiagnostics,
@@ -56,6 +60,13 @@ const present = (d: ConditionedDeclaration): boolean => d.condition !== FALSE &&
 interface Alternative {
   readonly condition: Condition;
   readonly witness: World;
+}
+
+/** One class of the options an import's inputs hold: where it holds, a
+ *  witness, and the import as that class projects it. */
+interface ImportClass extends Alternative {
+  readonly varies: boolean;
+  readonly manifest: ResourceManifest;
 }
 
 export interface ResourceInputFindingsInputs {
@@ -101,14 +112,41 @@ export function resourceInputFindings(inputs: ResourceInputFindingsInputs): Pass
   const declarations = union.declarations.filter(present);
   const imports = declarations.filter((d) => d.manifest.kind === "Telo.Import");
 
-  /** The classes the entry at `key` of `declaration` is judged in: one per
-   *  combination of the outcomes of every lookup its reference makes. */
-  const alternativesOf = (declaration: ConditionedDeclaration, key: string): Alternative[] => {
-    const target = refSentinelTarget(readSuppliedResources(declaration.manifest)[key]);
-    if (!target) return [{ condition: space.and(declaration.condition, inputs.universe), witness: base }];
+  /** The classes an import is read in: one per combination of the options its
+   *  inputs hold, each with a witness, the import read whole there — or the
+   *  one class of an import no option varies, read at `base`. */
+  const importClasses = new Map<ConditionedDeclaration, ImportClass[]>();
+  const classesOfImport = (declaration: ConditionedDeclaration): ImportClass[] => {
+    let known = importClasses.get(declaration);
+    if (known) return known;
+    const within = space.and(declaration.condition, inputs.universe);
+    if (!holdsChoice(declaration.manifest)) {
+      known = [{ condition: within, witness: base, varies: false, manifest: declaration.manifest }];
+    } else {
+      known = [];
+      let remaining = within;
+      while (remaining !== FALSE) {
+        const witness = World.key(space.firstAssignment(remaining) as Assignment);
+        const projected = union.project(declaration.manifest, witness.assignment);
+        const held = space.and(remaining, projected.taken);
+        if (held === FALSE) throw new Error(`internal: the import '${String(declaration.manifest.metadata?.name)}' does not hold where it was read.`);
+        known.push({ condition: held, witness, varies: true, manifest: projected.value as ResourceManifest });
+        remaining = space.and(remaining, space.not(held));
+      }
+    }
+    importClasses.set(declaration, known);
+    return known;
+  };
+
+  /** The classes the entry at `key` of `declaration` is judged in within
+   *  `cls`: one per combination of the outcomes of every lookup its reference
+   *  makes. */
+  const alternativesOf = (declaration: ConditionedDeclaration, key: string, cls: ImportClass): Alternative[] => {
+    const target = refSentinelTarget(readSuppliedResources(cls.manifest)[key]);
+    if (!target) return [{ condition: cls.condition, witness: cls.witness }];
     const named = new Set([target.name, ...(target.alias ? [target.alias] : [])]);
     const lists: ConditionedOutcome[][] = [names.locate("local", target.name, moduleOf(declaration.manifest))];
-    for (const lookup of parts.partAt(declaration, base).lookups) {
+    for (const lookup of parts.partAt(declaration, cls.witness).lookups) {
       if (!named.has(lookup.name)) continue;
       lists.push(
         lookup.locate
@@ -116,7 +154,7 @@ export function resourceInputFindings(inputs: ResourceInputFindingsInputs): Pass
           : names.inModule(lookup.population, lookup.name, lookup.inModule!.module, lookup.inModule!.importPath),
       );
     }
-    return classesOf(space, space.and(declaration.condition, inputs.universe), lists);
+    return classesOf(space, cls.condition, lists);
   };
 
   const findings: PassFinding[] = [];
@@ -129,62 +167,89 @@ export function resourceInputFindings(inputs: ResourceInputFindingsInputs): Pass
     findings.push({ diagnostic, condition: TRUE });
   }
 
-  const alternatives = new Map<ConditionedDeclaration, Map<string, Alternative[]>>();
-  const entryAlternatives = (declaration: ConditionedDeclaration, key: string): Alternative[] => {
-    let byKey = alternatives.get(declaration);
-    if (!byKey) alternatives.set(declaration, (byKey = new Map()));
+  const alternatives = new Map<ImportClass, Map<string, Alternative[]>>();
+  const entryAlternatives = (declaration: ConditionedDeclaration, key: string, cls: ImportClass): Alternative[] => {
+    let byKey = alternatives.get(cls);
+    if (!byKey) alternatives.set(cls, (byKey = new Map()));
     let known = byKey.get(key);
-    if (!known) byKey.set(key, (known = alternativesOf(declaration, key)));
+    if (!known) byKey.set(key, (known = alternativesOf(declaration, key, cls)));
     return known;
   };
+  /** The import read with its entry at `key` judged at `witness`: the entry
+   *  alone for an import no option varies, else the whole import. */
+  const entryRead = (declaration: ConditionedDeclaration, key: string, cls: ImportClass, witness: World): ResourceManifest =>
+    cls.varies ? normalizedAt(declaration, witness) : entryAt(declaration, key, witness);
 
   for (const declaration of imports) {
-    const entries = Object.keys(readSuppliedResources(declaration.manifest));
-    const entryPaths = new Set(entries.map((key) => `resources.${key}`));
-    const pathOf = (d: AnalysisDiagnostic) => (d.data as { path?: unknown } | undefined)?.path;
-    for (const diagnostic of importInputDiagnostics(normalizedAt(declaration, base), scopeAt(base))) {
-      if (!entryPaths.has(String(pathOf(diagnostic)))) findings.push({ diagnostic, condition: declaration.condition });
-    }
-    for (const key of entries) {
-      for (const { condition, witness } of entryAlternatives(declaration, key)) {
-        for (const diagnostic of importInputDiagnostics(entryAt(declaration, key, witness), scopeAt(witness), key)) {
-          findings.push({ diagnostic, condition });
+    for (const cls of classesOfImport(declaration)) {
+      const entries = Object.keys(readSuppliedResources(cls.manifest));
+      const entryPaths = new Set(entries.map((key) => `resources.${key}`));
+      const pathOf = (d: AnalysisDiagnostic) => (d.data as { path?: unknown } | undefined)?.path;
+      for (const diagnostic of importInputDiagnostics(normalizedAt(declaration, cls.witness), scopeAt(cls.witness))) {
+        if (!entryPaths.has(String(pathOf(diagnostic)))) findings.push({ diagnostic, condition: cls.condition });
+      }
+      for (const key of entries) {
+        for (const { condition, witness } of entryAlternatives(declaration, key, cls)) {
+          for (const diagnostic of importInputDiagnostics(entryRead(declaration, key, cls, witness), scopeAt(witness), key)) {
+            findings.push({ diagnostic, condition });
+          }
         }
       }
     }
   }
 
+  // Which imports reach one shared library is no option's: their identities
+  // are read off the import as the loader stamped it.
   const byBase = new Map(imports.map((d) => [normalizedAt(d, base), d] as const));
-  for (const pair of sharedLibraryPairs([...byBase.keys()], inputs.documents)) {
+  const texts = new TextLanguageScope(listRequests(declarations.map((d) => d.manifest)), inputs.rootModules, inputs.documents);
+  const langOf = (m: ResourceManifest) => texts.langOf(m);
+  for (const pair of sharedLibraryPairs([...byBase.keys()], inputs.documents, langOf)) {
     const [first, later] = pair.imports.map((m) => byBase.get(m)!);
-    const held = space.and(first!.condition, later!.condition);
-    for (const block of SUPPLIED_BLOCKS) {
-      for (const key of sharedKeysOf(pair, block)) {
-        if (block !== "resources") {
-          const diagnostic = sharedKeyConflict(pair, block, key, isOwn);
-          if (diagnostic) findings.push({ diagnostic, condition: held });
-          continue;
-        }
-        // The two entries' values, each as its own lookups resolve it.
-        const sides = [first!, later!].map((d) =>
-          Object.hasOwn(readSuppliedResources(d.manifest), key)
-            ? entryAlternatives(d, key)
-            : [{ condition: space.and(d.condition, inputs.universe), witness: base }],
-        );
-        for (const a of sides[0]!) {
-          for (const b of sides[1]!) {
-            const condition = space.and(a.condition, b.condition);
-            if (condition === FALSE) continue;
-            const witness: World = World.key(space.firstAssignment(condition) as Assignment);
-            const at = [first!, later!].map(
-              (d) =>
-                suppliedConfigOf(
-                  Object.hasOwn(readSuppliedResources(d.manifest), key) ? entryAt(d, key, witness) : normalizedAt(d, base),
-                  inputs.documents,
-                )!,
+    for (const a of classesOfImport(first!)) {
+      for (const b of classesOfImport(later!)) {
+        const held = space.and(a.condition, b.condition);
+        if (held === FALSE) continue;
+        const witness: World = World.key(space.firstAssignment(held) as Assignment);
+        const read = (d: ConditionedDeclaration, cls: ImportClass) => (cls.varies ? normalizedAt(d, witness) : normalizedAt(d, base));
+        const classPair = {
+          first: suppliedConfigOf(read(first!, a), inputs.documents, langOf)!,
+          later: suppliedConfigOf(read(later!, b), inputs.documents, langOf)!,
+        };
+        for (const block of SUPPLIED_BLOCKS) {
+          for (const key of sharedKeysOf(classPair, block)) {
+            if (block !== "resources") {
+              const diagnostic = sharedKeyConflict(classPair, block, key, isOwn);
+              if (diagnostic) findings.push({ diagnostic, condition: held });
+              continue;
+            }
+            // The two entries' values, each as its own lookups resolve it.
+            const sides = [
+              [first!, a],
+              [later!, b],
+            ].map(([d, cls]) =>
+              Object.hasOwn(readSuppliedResources((cls as ImportClass).manifest), key)
+                ? entryAlternatives(d as ConditionedDeclaration, key, cls as ImportClass)
+                : [{ condition: (cls as ImportClass).condition, witness: (cls as ImportClass).witness }],
             );
-            const diagnostic = sharedKeyConflict({ first: at[0]!, later: at[1]! }, block, key, isOwn);
-            if (diagnostic) findings.push({ diagnostic, condition });
+            for (const x of sides[0]!) {
+              for (const y of sides[1]!) {
+                const condition = space.and(held, space.and(x.condition, y.condition));
+                if (condition === FALSE) continue;
+                const at = World.key(space.firstAssignment(condition) as Assignment);
+                const sideAt = (d: ConditionedDeclaration, cls: ImportClass) =>
+                  suppliedConfigOf(
+                    Object.hasOwn(readSuppliedResources(cls.manifest), key)
+                      ? entryRead(d, key, cls, at)
+                      : cls.varies
+                        ? normalizedAt(d, at)
+                        : normalizedAt(d, base),
+                    inputs.documents,
+                    langOf,
+                  )!;
+                const diagnostic = sharedKeyConflict({ first: sideAt(first!, a), later: sideAt(later!, b) }, block, key, isOwn);
+                if (diagnostic) findings.push({ diagnostic, condition });
+              }
+            }
           }
         }
       }

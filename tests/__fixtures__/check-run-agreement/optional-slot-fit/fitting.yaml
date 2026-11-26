@@ -1,0 +1,35 @@
+# An optional read out with `.orValue(…)` fits a `string` slot, and a
+# `cel.bind` result is fitted by the node its answer is read from.
+kind: Telo.Application
+metadata: { name: OptionalSlotFitting, version: 1.0.0 }
+targets:
+  - name: run
+    invoke: !ref forward
+---
+kind: Telo.Definition
+metadata: { name: Forward }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    a: { type: string }
+    o: { type: object, properties: { b: { type: string } } }
+invoke: !ref target
+inputs:
+  read: !cel "self.?a.orValue('x')"
+  bound: !cel "cel.bind(n, self.o.b, n)"
+resources:
+  - kind: Telo.Value
+    metadata: { name: target }
+    inputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        required: [read, bound]
+        properties: { read: { type: string }, bound: { type: string } }
+    value: {}
+---
+kind: Self.Forward
+metadata: { name: forward }
+a: hi
+o: { b: there }

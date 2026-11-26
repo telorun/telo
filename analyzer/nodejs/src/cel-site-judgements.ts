@@ -128,6 +128,8 @@ export type KeyCost =
   /** One view of a declaration the call graph over every configuration reads:
    *  one chain of its options. */
   | { readonly kind: "graph-reading"; readonly declaration: object }
+  /** One side of a view's cut points the call graph reads the view on. */
+  | { readonly kind: "graph-side"; readonly declaration: object }
   /** One key of a relation site judged, and the nodes of its declaration its
    *  environment holds: the anchor, the places it reads and what encloses
    *  them. */
@@ -192,6 +194,20 @@ export type KeyCost =
   | { readonly kind: "own-cut"; readonly milliseconds: number }
   /** One analysis pass over a manifest set, and how long it took. */
   | { readonly kind: "run"; readonly purpose: AnalysisRunPurpose; readonly milliseconds: number }
+  /** One sub-verdict computed beneath a boundary reference: the named shape,
+   *  its class and the data position it judges, and how long it took. */
+  | {
+      readonly kind: "sub-verdict";
+      readonly shape: string;
+      readonly index: number;
+      readonly at: string;
+      readonly milliseconds: number;
+      /** Its memo key: no two sub-verdicts share one. */
+      readonly key: string;
+      /** The schema carves its key holds by their text, which a carve's key
+         holds only where its text varies under one decision. */
+      readonly textParts: number;
+    }
   /** One key's environment built — a CEL key's, a schema own-check key's or a
    *  relation key's (an own-check key of the forward-view site included) — and
    *  its site judged, and how long it took. */

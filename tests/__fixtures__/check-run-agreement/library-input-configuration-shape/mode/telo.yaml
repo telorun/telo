@@ -1,0 +1,19 @@
+# A library input typed by a named shape whose schema the library's `mode`
+# decides.
+kind: Telo.Library
+metadata: { name: ConfigurationShapeMode }
+variables:
+  mode: { type: string, enum: [count, label] }
+  config: { $ref: "telo://Self/Config" }
+exports: { resources: [read] }
+---
+kind: Telo.JsonSchema
+metadata: { name: Config }
+schema: !if
+  if: !cel "variables.mode == 'count'"
+  then: { type: object, required: [n], properties: { n: { type: integer } } }
+  else: { type: object, required: [n], properties: { n: { type: string } } }
+---
+kind: Telo.Value
+metadata: { name: read }
+value: !cel "variables.config"

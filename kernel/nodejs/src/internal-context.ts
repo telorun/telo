@@ -10,6 +10,7 @@ import type { LoadOptions, ResourceContext, ResourceManifest } from "@telorun/sd
 import type { ScopeConfig } from "./logging/scope-config.js";
 import type { EvaluationContext } from "./evaluation-context.js";
 import type { ModuleContext } from "./module-context.js";
+import type { SchemaValidator } from "./schema-validator.js";
 
 /** The kernel's analysis state an import reads its library's scope from. */
 export interface LibraryAnalysisHost {
@@ -58,6 +59,9 @@ export interface BuiltinControllerContext extends ResourceContext {
    *  analyzed during `Kernel.load()`. */
   isImportValidatedAtLoad(url: string): boolean;
   libraryAnalysisHost(): LibraryAnalysisHost;
+  /** The kernel's schema validator as a table of named schemas — what an import
+   *  registers its library's input shapes into before it validates them. */
+  registeredSchemas(): Pick<SchemaValidator, "getSchema" | "addSchema" | "compile">;
   /** Resolve `importSource` against `fromSource` through the loader's
    *  source-chain `resolveRelative`. Identical to what `loadGraph` used
    *  internally — so the produced URL agrees with the loader's caches. */
@@ -65,6 +69,9 @@ export interface BuiltinControllerContext extends ResourceContext {
   /** The root Application's resolved logging configuration — the base an
    *  import's own `logging:` block cascades over (§12.2). */
   kernelLoggingRootScope(): ScopeConfig;
+  /** The `lang:` of the module the file `source` belongs to (`null` when it
+   *  declares none) — the language an import's text inputs are written in. */
+  langOfModuleFile(source: string | undefined): string | null;
   /** The scope run owning the resource, when it is declared in one — where a
    *  scoped `Telo.Import` registers its exports. */
   scopeRunContext(): EvaluationContext | undefined;

@@ -1,0 +1,11 @@
+kind: Telo.Application
+metadata:
+  name: App
+  version: 1.0.0
+imports:
+  Lib:
+    source: ./lib.yaml
+    variables:
+      title: 5
+targets:
+  - invoke: !ref Lib.shown

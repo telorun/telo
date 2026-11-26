@@ -54,6 +54,9 @@ export interface ParseError {
   message: string;
   /** Line/character of the failure, when the yaml parser provided one. */
   range?: Range;
+  /** The refused value's path in its document, for a refusal at an import's
+   *  own field (`imports.Lib.source`, `source`). */
+  path?: string;
 }
 
 /** An owner file plus the partial files it includes. The unit
@@ -98,17 +101,35 @@ export interface ScopeHolderStep {
   readonly index: number;
 }
 
+/** One option on the way to a scoped import a choice writes: the tag's keys in
+ *  the top-level document and the branch taken there (`then`, `else`,
+ *  `default`, `case:<key>`). */
+export interface ScopedImportOption {
+  readonly at: readonly (string | number)[];
+  readonly branch: string;
+}
+
 /** A `Telo.Import` declared as a scope member, resolved as an `imports:` entry
- *  is. It names a module instance of its own, never a module alias. */
+ *  is — wherever a choice writes it, so the graph is the union over every
+ *  configuration. It names a module instance of its own, never a module alias. */
 export interface ScopedImportEdge extends ImportEdge {
-  /** The member's `metadata.name`. */
+  /** The member's name — its `metadata.name`, or the name the tag declaring it
+   *  at a scope-member position gives it. */
   alias: string;
   /** The holders from the declaring module's top level down to the scope. */
   holders: readonly ScopeHolderStep[];
-  /** The top-level holder's kind, as written. */
+  /** The top-level holder's kind, as written — the tag (`!if`) for a holder a
+   *  whole-document choice declares. */
   holderKind: string;
-  /** The member, as the declaring file holds it. */
+  /** The member, as the declaring file holds it: for one a choice declares at
+   *  a scope-member position, the branch. */
   member: Record<string, unknown>;
+  /** Where the member is written in its top-level document, option keys
+   *  included (`with.then[0]`, `with[0].then`, `then.with[0]`). */
+  place: readonly (string | number)[];
+  /** Its presence: every option on the way to it, outermost first — none for a
+   *  member no choice writes. */
+  options: readonly ScopedImportOption[];
 }
 
 /** An entry plus every transitively-imported library. Returned by
@@ -220,8 +241,12 @@ export interface GraphLoadError {
    *  them differently rather than asserting one cause for both.
    *  `"reserved-prefix"` means the import's alias, or the name of the library it
    *  reached, is `Telo` or `Self` (`reserved-kind-prefix.ts`): registering it
-   *  would replace the built-in or the module's own kinds. */
-  reason?: "unresolved" | "unusable-target" | "reserved-prefix";
+   *  would replace the built-in or the module's own kinds.
+   *  `"branch-position"` / `"repeat-outside-template"` mean a scope member's
+   *  alias, kind, source or integrity is written behind an expansion construct
+   *  (`importFieldRefusals`), so nothing was loaded; `error.message` is the
+   *  whole sentence. */
+  reason?: "unresolved" | "unusable-target" | "reserved-prefix" | "branch-position" | "repeat-outside-template";
   /** Set for an import declared as a scope member, which has no `imports:`
    *  entry: the top-level holder and the member's place in it (`with[0]`). */
   scope?: { holder: { kind: string; name: string }; path: string };

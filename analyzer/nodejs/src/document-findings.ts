@@ -12,9 +12,14 @@
  * the same way. What a stage finds beside the document — an import's or a sink's —
  * is read by a later part and stays in the runs.
  *
+ * A named shape is read as the classes of every instance of its module
+ * (`NamedShapeReader.classes`), never one instance's: a document stage judges a
+ * document once for every instance, so a shape of a library imported more than
+ * once holds each instance's content where that instance reads it.
+ *
  * Browser-safe.
  */
-import type { ResourceManifest } from "@telorun/sdk";
+import { parseCanonicalTypeSchemaId, type ResourceManifest } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DocumentStage } from "./analysis-families.js";
 import { reportDocumentStage } from "./cel-site-judgements.js";
@@ -22,6 +27,7 @@ import type { ConditionedDeclaration, ConditionedExpansion } from "./conditioned
 import type { DefinitionRegistry } from "./definition-registry.js";
 import type { NamedShapeReader } from "./named-shape-reader.js";
 import { schemaCompileFindings } from "./schema-compile-findings.js";
+import { moduleInputCycleDiagnostics, schemaInPlaceCycleFindings } from "./schema-in-place-cycle-findings.js";
 import { kindAnnotationFindings } from "./kind-annotation-findings.js";
 import { kindContractFindings } from "./kind-contract-findings.js";
 import { libraryBrowserExportFindings, libraryTextKeyPlacementFindings } from "./library-document-findings.js";
@@ -29,7 +35,7 @@ import { holdsChoice } from "./key-door.js";
 import { isKindDocument } from "./kind-declaration.js";
 import { isModuleKind } from "./module-kinds.js";
 import type { ModuleDocuments } from "./module-documents.js";
-import { FALSE, TRUE } from "./presence-condition.js";
+import { FALSE, TRUE, type Condition } from "./presence-condition.js";
 import type { ImportReach } from "./reaching-import.js";
 import { reachedLibraryDocuments } from "./requires-gate.js";
 import { libraryBlockDiagnostics } from "./validate-library-blocks.js";
@@ -42,7 +48,7 @@ import { validateBaseMapping } from "./validate-base-mapping.js";
 import { validateCallableKindDocuments } from "./validate-callable-kinds.js";
 import { validateExtends } from "./validate-extends.js";
 import { validateKindHostPathDefaults, validateLibraryHostPathDefaults } from "./validate-host-path-defaults.js";
-import { validateInputDefaults } from "./validate-input-defaults.js";
+import { canonicalInModule, validateInputDefaults, type InputDefaultsScope } from "./validate-input-defaults.js";
 import { validateModuleDocumentLogging } from "./validate-logging.js";
 import { validateControllerSelectorDocuments, validateModuleDocumentArtifact } from "./validate-module-artifact.js";
 import { validateKindDocumentMetadata, validateModuleDocumentMetadata } from "./validate-module-metadata.js";
@@ -85,6 +91,7 @@ export const KIND_STAGES: readonly KindStage[] = [
     read: (kinds, { defs, aliases, aliasesByModule, rootModules, shapes }) =>
       schemaCompileFindings(kinds, shapes, { defs, aliases, aliasesByModule, rootModules: new Set(rootModules) }),
   },
+  { name: "schemaInPlaceCycle", read: (kinds, scope) => schemaInPlaceCycleFindings(kinds, scope) },
   { name: "extends", run: (kinds, { defs, aliases, rootModules }) => validateExtends([...kinds], defs, aliases, rootModules) },
   { name: "baseMapping", run: (kinds, { defs, aliases, rootModules }) => validateBaseMapping([...kinds], defs, aliases, rootModules) },
   { name: "providerCoherence", run: (kinds, { defs, aliases, rootModules }) => validateProviderCoherence([...kinds], defs, aliases, rootModules) },
@@ -127,12 +134,30 @@ export function kindDocumentsOf(union: ConditionedExpansion, asRunHolds: (declar
     .map(asRunHolds);
 }
 
+/** Each named shape by canonical id as the configurations `read` reads take
+ *  it, canonical in the module declaring it. */
+export function inputShapeLookup(
+  shapes: NamedShapeReader,
+  read: WorldReader<Condition>,
+  scope: InputDefaultsScope,
+): (id: string) => Record<string, any> | undefined {
+  const known = new Map<string, Record<string, any> | undefined>();
+  return (id) => {
+    if (known.has(id)) return known.get(id);
+    const named = parseCanonicalTypeSchemaId(id);
+    const taken = named ? shapes.classAt(id, read) : undefined;
+    const schema = taken && named ? canonicalInModule(taken.schema, named.moduleName, scope) : undefined;
+    known.set(id, schema);
+    return schema;
+  };
+}
+
 /** One stage of a module document: the fields it reads, and what it finds in
  *  the document projected to them. */
 interface ModuleStage {
   readonly name: DocumentStage;
   readonly fields: readonly string[];
-  run(documents: ResourceManifest[]): AnalysisDiagnostic[];
+  run(documents: ResourceManifest[], read: WorldReader<Condition>): AnalysisDiagnostic[];
 }
 
 export interface ModuleDocumentInputs {
@@ -145,6 +170,8 @@ export interface ModuleDocumentInputs {
    *  staged controller path is claimed by. */
   readonly kindDocuments: readonly ResourceManifest[];
   readonly moduleDocuments: readonly ModuleDocuments[];
+  /** The named shapes, by class, an entry's references read. */
+  readonly shapes: NamedShapeReader;
   readonly hostVersions: ValidateRequiresOptions["hostVersions"];
   /** The branches no configuration takes, each read once. */
   readonly deadBranches: readonly DeadBranchRun[];
@@ -165,6 +192,7 @@ export interface ModuleDocumentInputs {
 export function moduleDocumentFindings(inputs: ModuleDocumentInputs): PassTable {
   const { union, rootModules, defs, aliases } = inputs;
   const requires: ValidateRequiresOptions = { hostVersions: inputs.hostVersions, entryModules: rootModules };
+  const inputScope = { aliases, aliasesByModule: inputs.aliasesByModule, rootModules };
   const stages: readonly ModuleStage[] = [
     { name: "requires", fields: ["requires", "restrictions"], run: (docs) => validateRequires(docs, requires) },
     { name: "nativeEntries", fields: ["native"], run: (docs) => validateNativeEntries(docs, rootModules) },
@@ -174,7 +202,12 @@ export function moduleDocumentFindings(inputs: ModuleDocumentInputs): PassTable 
       run: (docs) => validateSourceEntries([...docs, ...inputs.kindDocuments], rootModules),
     },
     { name: "applicationArguments", fields: ["variables", "secrets", "ports"], run: (docs) => validateApplicationArguments(docs, rootModules) },
-    { name: "inputDefaults", fields: ["variables", "secrets"], run: (docs) => validateInputDefaults(docs, rootModules) },
+    {
+      name: "inputDefaults",
+      fields: ["variables", "secrets"],
+      run: (docs, read) => validateInputDefaults(docs, inputScope, inputShapeLookup(inputs.shapes, read, inputScope)),
+    },
+    { name: "inputCycles", fields: ["variables", "secrets"], run: (docs) => moduleInputCycleDiagnostics(docs, rootModules, inputs.reach) },
     { name: "moduleArtifact", fields: ["layers", "exports"], run: (docs) => validateModuleDocumentArtifact(docs) },
     { name: "hostPathDefaults", fields: ["variables", "secrets"], run: (docs) => validateLibraryHostPathDefaults(docs, rootModules) },
     { name: "logging", fields: ["logging", "imports"], run: (docs) => validateModuleDocumentLogging(docs) },
@@ -201,7 +234,7 @@ export function moduleDocumentFindings(inputs: ModuleDocumentInputs): PassTable 
         held: declaration.condition,
         render: (read: WorldReader<unknown>) => {
           reportDocumentStage(stage.name, false);
-          return stage.run([viewOf(declaration, stage, read)]);
+          return stage.run([viewOf(declaration, stage, read)], read);
         },
       });
       const varies = stage.fields.some((field) => holdsChoice((declaration.manifest as Record<string, unknown>)[field]));
@@ -214,7 +247,12 @@ export function moduleDocumentFindings(inputs: ModuleDocumentInputs): PassTable 
           render: (read) => {
             if (!read.taken(declaration)) return [];
             reportDocumentStage(stage.name, false);
-            return stage.run([viewOf(declaration, stage, read)]);
+            // What lies outside the branch reads as the configuration reaching it.
+            const atBaseline: WorldReader<Condition> = {
+              holds: (condition) => union.space.holds(condition, branch.baseline),
+              taken: read.taken,
+            };
+            return stage.run([viewOf(declaration, stage, read)], atBaseline);
           },
         });
       }
@@ -227,6 +265,10 @@ export function moduleDocumentFindings(inputs: ModuleDocumentInputs): PassTable 
   if (libraries.length > 0) {
     reportDocumentStage("libraryRequires", false);
     for (const diagnostic of validateRequires(libraries, requires)) found.push({ held: TRUE, render: () => [diagnostic] });
+    reportDocumentStage("libraryInputCycles", false);
+    for (const diagnostic of moduleInputCycleDiagnostics(libraries, rootModules, inputs.reach, true)) {
+      found.push({ held: TRUE, render: () => [diagnostic] });
+    }
   }
   // What an imported library holds is read outside every configuration, at
   // the imports that reach it.

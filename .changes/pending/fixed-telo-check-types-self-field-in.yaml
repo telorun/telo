@@ -1,0 +1,6 @@
+units:
+  analyzer: Fixed
+body: "telo check types `self.<field>` in a pure step's `value:` inside a template body
+  from the definition's schema, as the instance binds it: an `integer` field is an `int`
+  and a `number` field a `double`, so `self.n * 10` over a `number` field is now a
+  `CEL_TYPE_ERROR` instead of a failure when the step runs."

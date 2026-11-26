@@ -1,0 +1,12 @@
+kind: Telo.Library
+metadata:
+  name: ImportTextTitle
+  version: 1.0.0
+  description: "Test fixture: a library whose title is a text its importer writes."
+lang: en
+variables: { title: { $ref: "telo://manifest#/$defs/Text" } }
+exports: { resources: [shown] }
+---
+kind: Telo.Value
+metadata: { name: shown }
+value: !cel "variables.title"

@@ -133,6 +133,8 @@ export function choiceScopeOf(
     moduleNames: (caller) => moduleCallNamesOf(calls().names, caller),
     dispatch: (caller) => calls().bodies.dispatchFor(caller),
     nameLevel(kind, module) {
+      // An import's name is a module instance's, as an `imports:` alias is.
+      if (kind === "Telo.Import") return "type";
       const def = resolveDef.in(kind, module);
       if (!def) return undefined;
       return inheritedCapability(def, resolveDef as DefResolver) === "Telo.Type" ? "type" : "value";

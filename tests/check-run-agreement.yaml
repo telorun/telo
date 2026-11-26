@@ -69,6 +69,8 @@ targets:
   - !ref templateEntrySchemaAtRuntime
   - !ref templateDuplicateEntry
   - !ref templateDuplicateEntryAtRuntime
+  - !ref templateBodyRefKind
+  - !ref templateBodyRefKindAtRuntime
   - !ref badExports
   - !ref libraryResourceSchema
   - !ref libraryResourceSchemaAtRuntime
@@ -132,10 +134,20 @@ targets:
   - !ref celArgumentFractionAtRuntime
   - !ref literalStepNumber
   - !ref literalStepNumberAtRuntime
+  - !ref stepResultUintBytes
   - !ref loopSeedAdvance
   - !ref loopSeedAdvanceAtRuntime
   - !ref templateValueStepNumber
+  - !ref templateSelfValueNumber
+  - !ref templateSelfValueInteger
+  - !ref templateDerivedContract
+  - !ref templateDerivedContractDecoded
   - !ref baseValueStepNumber
+  - !ref templateSelfDepthInteger
+  - !ref templateSelfDepthString
+  - !ref templateMisspelledRoot
+  - !ref baseSelfDepthInteger
+  - !ref baseSelfDepthString
   - !ref inheritedConsumerScope
   - !ref inheritedMappingScope
   - !ref templateInputsCel
@@ -266,6 +278,8 @@ targets:
   - !ref capabilityRoster
   - !ref capabilityUnknownAtRuntime
   - !ref capabilityNotDeclarableAtRuntime
+  - !ref schemaInPlaceCycle
+  - !ref schemaInPlaceCycleAtRuntime
   - !ref scopedKindDocumentCapability
   - !ref scopedKindDocumentSchema
   - !ref scopedKindDocumentLibrary
@@ -481,6 +495,7 @@ targets:
   - !ref needParameterPathMissingAtRuntime
   - !ref needParameterPathEntry
   - !ref needParameterPathEntryAtRuntime
+  - !ref needFieldPathEntry
   - !ref needParameterPathContent
   - !ref needParameterPathContentAtRuntime
   - !ref needSharedConflict
@@ -509,6 +524,14 @@ targets:
   - !ref scopedImportShadowing
   - !ref scopedImportOutlivingHandler
   - !ref scopedImportOwnHandler
+  - !ref scopedImportChoiceUnresolvedOff
+  - !ref scopedImportChoiceUnresolvedOn
+  - !ref scopedImportChoiceNeedOff
+  - !ref scopedImportChoiceNeedOn
+  - !ref importNeedSupplyChoiceOn
+  - !ref importNeedSupplyChoiceOff
+  - !ref libraryImportNeedChoiceOn
+  - !ref libraryImportNeedChoiceOff
   - !ref needConstraintUnverified
   - !ref needConstraintUnverifiedSuppliedAtRuntime
   - !ref needConstraintUnverifiedForwardedAtRuntime
@@ -532,6 +555,33 @@ targets:
   - !ref importVariableUrlAtRuntime
   - !ref importVariableType
   - !ref importVariableTypeAtRuntime
+  - !ref importEntryLocalRef
+  - !ref importEntryLocalRefMistyped
+  - !ref moduleEntryFragmentImporter
+  - !ref moduleEntryFragmentApplication
+  - !ref moduleEntryFragmentLibraryType
+  - !ref moduleEntryFragmentApplicationNoType
+  - !ref moduleEntryFragmentApplicationNoTypeAtRuntime
+  - !ref moduleEntryFragmentApplicationNoBinding
+  - !ref moduleEntryFragmentApplicationNoBindingAtRuntime
+  - !ref moduleEntryFragmentWrongValue
+  - !ref moduleEntryFragmentWrongValueAtRuntime
+  - !ref textParameterPluralPl
+  - !ref textParameterPluralEn
+  - !ref textParameterPluralEnAtRuntime
+  - !ref textParameterChoice
+  - !ref textParameterChoiceAtRuntime
+  - !ref textParameterComputed
+  - !ref textParameterComputedAtRuntime
+  - !ref textParameterTranslation
+  - !ref textParameterForwardingComputed
+  - !ref textParameterForwardingComputedAtRuntime
+  - !ref textParameterDefaultFew
+  - !ref textParameterDefaultFewAtRuntime
+  - !ref textParameterSharedLangs
+  - !ref textParameterSharedLangsAtRuntime
+  - !ref textParameterSharedAgree
+  - !ref textParameterSharedDefault
   - !ref builtinVocabularyEntry
   - !ref builtinVocabularyDeclared
   - !ref builtinVocabularyImport
@@ -654,6 +704,18 @@ targets:
   - !ref expansionLoaderPosition
   - !ref expansionLoaderPositionAtRuntime
   - !ref expansionLoaderPositionInDependency
+  - !ref importSourceChoiceEntry
+  - !ref importSourceChoiceDocument
+  - !ref importSourceChoiceMember
+  - !ref importSpliceEntry
+  - !ref importSpliceDocument
+  - !ref importSpliceMember
+  - !ref importInputsPerOption
+  - !ref importHostPathPerOption
+  - !ref importHostPathPerOptionOff
+  - !ref importModulePathMissing
+  - !ref importModulePathEntry
+  - !ref importModulePathInterpolated
   - !ref expansionFirstDocument
   - !ref expansionOnSequence
   - !ref expansionMissingKey
@@ -740,6 +802,44 @@ targets:
   - !ref schemaNestingSlot
   - !ref schemaNestingSlotAtRuntime
   - !ref schemaNestingResource
+  - !ref schemaNestingAtLimit
+  - !ref schemaNestingImportLiteral
+  - !ref schemaInPlaceCycleDefault
+  - !ref schemaInPlaceCycleSlot
+  - !ref schemaInPlaceCycleSlotAtRuntime
+  - !ref schemaInPlaceCycleResource
+  - !ref baseParentDocument
+  - !ref baseParentDocumentMismatch
+  - !ref valueBranchDocumentReferenceRefused
+  - !ref signatureShapeKind
+  - !ref signatureShapeKindAtRuntime
+  - !ref signatureParamShapeKind
+  - !ref signatureParamShapeKindAtRuntime
+  - !ref inlineContractShapeReference
+  - !ref variableNamedShape
+  - !ref integerBehindRefAppShape
+  - !ref integerBehindRefAppLocal
+  - !ref integerBehindRefLibShape
+  - !ref integerBehindRefLibLocal
+  - !ref libraryInputOwnShape
+  - !ref libraryInputOwnShapeMistyped
+  - !ref libraryInputOwnShapeMistypedAtRuntime
+  - !ref libraryInputConfigurationShape
+  - !ref libraryInputConfigurationShapeUntaken
+  - !ref libraryInputConfigurationShapeTwoInstances
+  - !ref libraryInputConfigurationShapeUndecidable
+  - !ref libraryInputConfigurationShapeUndecidableAtRuntime
+  - !ref variableNamedShapeRefused
+  - !ref variableLocalRef
+  - !ref optionalAtSlot
+  - !ref optionalUnwrappedAtSlot
+  - !ref inputInPlaceCycle
+  - !ref inputInPlaceCycleInLibrary
+  - !ref inputInPlaceCycleAtImport
+  - !ref needTypeFieldCycle
+  - !ref needTypeFieldDangling
+  - !ref inputDanglingReference
+  - !ref inputDanglingReferenceAtImport
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -858,6 +958,29 @@ expect:
   errors:
     - { code: DUPLICATE_RESOURCE_NAME, message: "Telo.Definition/Job: two 'resources:' entries are named 'body'. Every entry of a template body is created in one scope, by name — rename one of them." }
   runFails: "ERR_DUPLICATE_RESOURCE"
+---
+# A reference slot inside a template body's entry is held to the slot's kind, as
+# at a top-level declaration: a sibling entry and a resource of the defining
+# module of the wrong kind are each refused where the body is written…
+kind: Assert.Manifest
+metadata: { name: templateBodyRefKind }
+source: ./__fixtures__/check-run-agreement/template-body-ref-kind/lib/telo.yaml
+expect:
+  errors:
+    - { code: REFERENCE_KIND_MISMATCH, message: "Telo.Definition/Wrapper: reference at 'src' on the Self.Holder entry 'bySibling' → 'Self.User' (resolved: 'BodyRefKind.User') does not match required 'BodyRefKind.Thing'" }
+    - { code: REFERENCE_KIND_MISMATCH, message: "Telo.Definition/Wrapper: reference at 'src' on the Self.Holder entry 'byModule' → 'Self.User' (resolved: 'BodyRefKind.User') does not match required 'BodyRefKind.Thing'" }
+---
+# …and a consumer's check reports the library's findings at the library's file,
+# while the kernel creates the entries with the references as written: nothing
+# at creation holds a template body's slot to its kind.
+kind: Assert.Manifest
+metadata: { name: templateBodyRefKindAtRuntime }
+source: ./__fixtures__/check-run-agreement/template-body-ref-kind/telo.yaml
+expect:
+  errors:
+    - { code: REFERENCE_KIND_MISMATCH, message: "Telo.Definition/Wrapper: reference at 'src' on the Self.Holder entry 'bySibling' → 'Self.User' (resolved: 'BodyRefKind.User') does not match required 'BodyRefKind.Thing'" }
+    - { code: REFERENCE_KIND_MISMATCH, message: "Telo.Definition/Wrapper: reference at 'src' on the Self.Holder entry 'byModule' → 'Self.User' (resolved: 'BodyRefKind.User') does not match required 'BodyRefKind.Thing'" }
+  runs: true
 ---
 kind: Assert.Manifest
 metadata: { name: templateEntrySchemaAtRuntime }
@@ -2506,7 +2629,7 @@ source: ./__fixtures__/check-run-agreement/host-path-untyped-source/lib/telo.yam
 expect:
   errors:
     - code: HOST_PATH_UNTYPED_SOURCE
-      message: "'root' is a Telo.HostPath, but this expression produces a plain 'string'"
+      message: "'root' is a Telo.HostPath, but the value it reads is declared 'string', so a relative path reaches it unresolved"
 ---
 # …and refused by the kernel once the expression has produced it.
 kind: Assert.Manifest
@@ -2514,7 +2637,7 @@ metadata: { name: hostPathUntypedSourceAtRuntime }
 source: ./__fixtures__/check-run-agreement/host-path-untyped-source/telo.yaml
 expect:
   errors:
-    - { code: HOST_PATH_UNTYPED_SOURCE, message: "Http.Static/site: 'root' is a Telo.HostPath, but this expression produces a plain 'string'. A host path comes from a variable declared x-telo-type: Telo.HostPath (which resolves a relative value against the working directory), from !module-path, or from .joinPath('sub/dir') on either." }
+    - { code: HOST_PATH_UNTYPED_SOURCE, message: "Http.Static/site: 'root' is a Telo.HostPath, but the value it reads is declared 'string', so a relative path reaches it unresolved and is refused when the resource is created. Declare the source 'x-telo-type: Telo.HostPath' — a variable resolves a relative value against the working directory; any other source must already hold an absolute one." }
   runFails: "ERR_HOST_PATH_RELATIVE"
 ---
 # A kind's relative default at a host-path field is resolved against nothing:
@@ -2619,6 +2742,25 @@ expect:
   errors:
     - { code: CAPABILITY_NOT_DECLARABLE, message: "Telo.Definition 'Templated': 'Telo.Template' cannot be declared as a capability: The lifecycle of a document that declares rather than runs: an application, a library, an import, a kind or a need type. Read by the kernel while it loads a module, never instantiated, and reserved for the built-in vocabulary — a kind declared in a module never takes this role. Declare one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type." }
   runFails: "[CAPABILITY_NOT_DECLARABLE] Imported library 'CapabilityRosterLib', reached through import 'Lib': Telo.Abstract 'ExecutableContract': 'Telo.Executable' cannot be declared as a capability: Anything control can be transferred to with call arguments — a resource that is invoked or run. A reference slot accepting either says so once with this constraint. It names no lifecycle of its own, so no kind declares it as its role: a kind declares the role it implements. Declare one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type."
+---
+# A named shape referring back to itself through in-place keywords alone, which
+# no validator finishes validating against: refused at the declaring library,
+# and a consumer's run is refused at load naming that cause. The kernel's own
+# guard (ERR_SCHEMA_IN_PLACE_CYCLE, at registration) is pinned by its unit tests.
+kind: Assert.Manifest
+metadata: { name: schemaInPlaceCycle }
+source: ./__fixtures__/check-run-agreement/schema-in-place-cycle/lib/telo.yaml
+expect:
+  errors:
+    - { code: SCHEMA_IN_PLACE_CYCLE, message: "Telo.JsonSchema 'Answer': its schema comes back to where it started without descending into the value — 'anyOf/0' of Answer refers to Answer" }
+---
+kind: Assert.Manifest
+metadata: { name: schemaInPlaceCycleAtRuntime }
+source: ./__fixtures__/check-run-agreement/schema-in-place-cycle/telo.yaml
+expect:
+  errors:
+    - { code: SCHEMA_IN_PLACE_CYCLE, message: "Telo.JsonSchema 'Answer': its schema comes back to where it started without descending into the value" }
+  runFails: "[SCHEMA_IN_PLACE_CYCLE] Imported library 'InPlaceCycleLib', reached through import 'Lib': Telo.JsonSchema 'Answer': its schema comes back to where it started without descending into the value — 'anyOf/0' of Answer refers to Answer"
 ---
 # A kind document declared as a `with:` scope member gets no per-resource pass,
 # yet the kernel judges it when the scope opens and creates it. `telo check`
@@ -3032,14 +3174,14 @@ source: ./__fixtures__/check-run-agreement/cel-argument-fraction/lib/telo.yaml
 expect:
   errors:
     - code: CEL_TYPE_ERROR
-      message: "source is 'number', target expects 'integer'"
+      message: "reads 'steps.measured.result.ratio', declared 'number', but consume's declared inputType expects 'integer'"
 ---
 kind: Assert.Manifest
 metadata: { name: celArgumentFractionAtRuntime }
 source: ./__fixtures__/check-run-agreement/cel-argument-fraction/telo.yaml
 expect:
   errors:
-    - { code: CEL_TYPE_ERROR, message: "Run.Sequence/call: CEL at 'steps[1].inputs.count' reads 'steps.measured.result.ratio', whose declared shape does not fit what consume's declared inputType expects: /: type mismatch — source is 'number', target expects 'integer'." }
+    - { code: CEL_TYPE_ERROR, message: "Run.Sequence/call: CEL at 'steps[1].inputs.count' reads 'steps.measured.result.ratio', declared 'number', but consume's declared inputType expects 'integer'." }
   runFails: "Run.Value/consume: inputs do not satisfy the declared inputType: Invalid value passed: {\"count\":2.5}. Error: /count must be integer"
 ---
 # A number written literally in a pure `value:` step is an int when integral,
@@ -3060,6 +3202,17 @@ expect:
   errors:
     - { code: CEL_TYPE_ERROR, message: "Run.Sequence/scale: !cel: no \"*\" is declared over int, double" }
   runFails: "Step \"scaled\": Expression !cel \"steps.count.result * 2.0\" failed: no overload of \"*\" takes (int, double)"
+---
+# A step whose `value:` checks to a uint or bytes is read as that type, so
+# adding an int to it is refused by both.
+kind: Assert.Manifest
+metadata: { name: stepResultUintBytes }
+source: ./__fixtures__/check-run-agreement/step-result-uint-bytes.yaml
+expect:
+  errors:
+    - { code: CEL_TYPE_ERROR, message: "Telo.Sequence/seq: !cel: no \"+\" is declared over uint, int" }
+    - { code: CEL_TYPE_ERROR, message: "Telo.Sequence/seq: !cel: no \"+\" is declared over bytes, int" }
+  runFails: "[CEL_TYPE_ERROR] Telo.Sequence/seq: !cel: no \"+\" is declared over uint, int"
 ---
 # A step name two steps carry is read by each as what the OTHER produces: a
 # loop's literal seed is an int, so advancing it by a double is reported where
@@ -3088,11 +3241,93 @@ metadata: { name: templateValueStepNumber }
 source: ./__fixtures__/check-run-agreement/template-value-step-number.yaml
 expect: { errors: [], runs: true }
 ---
+# `self` in a template body step's `value:` is typed from the definition's
+# schema, as the kernel binds it: a `number` field is a double at check and at
+# run, so multiplying it by an int is refused by both…
+kind: Assert.Manifest
+metadata: { name: templateSelfValueNumber }
+source: ./__fixtures__/check-run-agreement/template-self-value/number.yaml
+expect:
+  errors:
+    - { code: CEL_TYPE_ERROR, message: "Telo.Definition/Scale: !cel: no \"*\" is declared over double, int" }
+  runFails: "[CEL_TYPE_ERROR] Telo.Definition/Scale: !cel: no \"*\" is declared over double, int"
+---
+# …while an `integer` field is an int at both, so the same expression checks
+# and runs.
+kind: Assert.Manifest
+metadata: { name: templateSelfValueInteger }
+source: ./__fixtures__/check-run-agreement/template-self-value/integer.yaml
+expect: { errors: [], runs: true }
+---
 # The same holds for a step body a `base:` builds for the parent kind: the
 # `self` it reads is the instance's, evaluated when the step runs.
 kind: Assert.Manifest
 metadata: { name: baseValueStepNumber }
 source: ./__fixtures__/check-run-agreement/base-value-step-number.yaml
+expect: { errors: [], runs: true }
+---
+# `self.a.x`, two levels deep in a template body, is typed from the definition's
+# schema at check and bound as declared at run: an `integer` is an int, so
+# `self.a.x + 1` checks and runs…
+kind: Assert.Manifest
+metadata: { name: templateSelfDepthInteger }
+source: ./__fixtures__/check-run-agreement/template-self-depth/integer.yaml
+expect: { errors: [], runs: true }
+---
+# …and a `string` there is refused by both.
+kind: Assert.Manifest
+metadata: { name: templateSelfDepthString }
+source: ./__fixtures__/check-run-agreement/template-self-depth/string.yaml
+expect:
+  errors:
+    - { code: CEL_TYPE_ERROR, message: "Telo.Definition/Bump: !cel: no \"+\" is declared over string, int" }
+  runFails: "[CEL_TYPE_ERROR] Telo.Definition/Bump: !cel: no \"+\" is declared over string, int"
+---
+# A template body reading a root nothing binds there (`slef` for `self`) is
+# refused by both.
+kind: Assert.Manifest
+metadata: { name: templateMisspelledRoot }
+source: ./__fixtures__/check-run-agreement/template-misspelled-root.yaml
+expect:
+  errors:
+    - { code: CEL_UNKNOWN_IDENTIFIER, message: "Telo.Definition/Greeter: !cel: unknown identifier 'slef' — nothing by that name is in scope here." }
+  runFails: "[CEL_UNKNOWN_IDENTIFIER] Telo.Definition/Greeter: !cel: unknown identifier 'slef' — nothing by that name is in scope here."
+---
+# A `base:` mapping reads `self` as the declared view too: arithmetic on a
+# declared integer two levels deep checks and runs…
+kind: Assert.Manifest
+metadata: { name: baseSelfDepthInteger }
+source: ./__fixtures__/check-run-agreement/base-self-integer.yaml
+expect: { errors: [], runs: true }
+---
+# …and the same on a string is refused by both.
+kind: Assert.Manifest
+metadata: { name: baseSelfDepthString }
+source: ./__fixtures__/check-run-agreement/base-self-string.yaml
+expect:
+  errors:
+    - { code: CEL_TYPE_ERROR, message: "Telo.Definition/Bump: !cel: no \"+\" is declared over string, int" }
+  runFails: "[CEL_TYPE_ERROR] Telo.Definition/Bump: !cel: no \"+\" is declared over string, int"
+---
+# A template's `inputs:` is held to its entry's contract where the entry's kind
+# derives that contract from the entry, the entry's references read through the
+# body's own lookup — a module's named shape, a crossing into a module
+# declaration, a sibling entry — at check and by the load that refuses it…
+kind: Assert.Manifest
+metadata: { name: templateDerivedContract }
+source: ./__fixtures__/check-run-agreement/template-derived-contract/refused.yaml
+expect:
+  errors:
+    - { code: TEMPLATE_TARGET_MISMATCH, message: "Telo.Definition/ByModule: inputs does not satisfy Self.Echo's contract: /count must be integer" }
+    - { code: TEMPLATE_TARGET_MISMATCH, message: "Telo.Definition/ByCrossing: inputs does not satisfy Self.FormEcho's contract: /count must be integer" }
+    - { code: TEMPLATE_TARGET_MISMATCH, message: "Telo.Definition/BySibling: inputs does not satisfy Self.Echo's contract: /count must be integer" }
+  runFails: "[TEMPLATE_TARGET_MISMATCH] Telo.Definition/ByModule: inputs does not satisfy Self.Echo's contract: /count must be integer"
+---
+# …and the kernel decodes a plain-encoded literal there against the same
+# contract when it creates the template.
+kind: Assert.Manifest
+metadata: { name: templateDerivedContractDecoded }
+source: ./__fixtures__/check-run-agreement/template-derived-contract/decoded.yaml
 expect: { errors: [], runs: true }
 ---
 # A kind inheriting its controller from another module is created where the
@@ -3318,7 +3553,7 @@ source: ./__fixtures__/check-run-agreement/predicates/sink-when-tracing.yaml
 expect:
   errors:
     - code: CEL_TYPE_ERROR
-      message: "CEL at 'tracing.sinks[0].when' returns 'string' but the field expects 'boolean'"
+      message: "CEL at 'tracing.sinks[0].when' reads 'variables.flag', declared 'string', but the field expects 'boolean'."
 ---
 kind: Assert.Manifest
 metadata: { name: sinkWhenTracingAtRuntime }
@@ -3333,7 +3568,7 @@ source: ./__fixtures__/check-run-agreement/predicates/sink-when-logging.yaml
 expect:
   errors:
     - code: CEL_TYPE_ERROR
-      message: "CEL at 'logging.sinks[0].when' returns 'string' but the field expects 'boolean'"
+      message: "CEL at 'logging.sinks[0].when' reads 'variables.flag', declared 'string', but the field expects 'boolean'."
 ---
 kind: Assert.Manifest
 metadata: { name: sinkWhenLoggingAtRuntime }
@@ -3348,7 +3583,7 @@ source: ./__fixtures__/check-run-agreement/predicates/target-when-gated.yaml
 expect:
   errors:
     - code: CEL_TYPE_ERROR
-      message: "CEL at 'targets[0].when' returns 'string' but the field expects 'boolean'"
+      message: "CEL at 'targets[0].when' reads 'variables.flag', declared 'string', but the field expects 'boolean'."
 ---
 kind: Assert.Manifest
 metadata: { name: targetWhenGatedAtRuntime }
@@ -3363,7 +3598,7 @@ source: ./__fixtures__/check-run-agreement/predicates/target-when-invoke.yaml
 expect:
   errors:
     - code: CEL_TYPE_ERROR
-      message: "CEL at 'targets[0].when' returns 'string' but the field expects 'boolean'"
+      message: "CEL at 'targets[0].when' reads 'variables.flag', declared 'string', but the field expects 'boolean'."
 ---
 kind: Assert.Manifest
 metadata: { name: targetWhenInvokeAtRuntime }
@@ -3388,7 +3623,7 @@ source: ./__fixtures__/check-run-agreement/predicates/step-predicate.yaml
 expect:
   errors:
     - code: CEL_TYPE_ERROR
-      message: "CEL at 'steps[0].if' returns 'string' but the field expects 'boolean'"
+      message: "CEL at 'steps[0].if' reads 'variables.flag', declared 'string', but the field expects 'boolean'."
 ---
 kind: Assert.Manifest
 metadata: { name: stepPredicateAtRuntime }
@@ -3413,7 +3648,7 @@ source: ./__fixtures__/check-run-agreement/predicates/try-when.yaml
 expect:
   errors:
     - code: CEL_TYPE_ERROR
-      message: "CEL at 'steps[0].when' returns 'string' but the field expects 'boolean'"
+      message: "CEL at 'steps[0].when' reads 'variables.flag', declared 'string', but the field expects 'boolean'."
 ---
 kind: Assert.Manifest
 metadata: { name: tryWhenAtRuntime }
@@ -4540,9 +4775,8 @@ expect:
     - { code: ACCESSOR_NOT_PLAIN_CHAIN, message: "Acc.Table/notChains: 'rowStyle: !cel \"variables.style\"' is not a plain chain the field can name: it starts at 'variables', which the field's context does not declare at an accessor ('row'). An accessor field is never evaluated, so a chain there starts at one of its own bindings." }
     - { code: CEL_UNKNOWN_FIELD, message: "Acc.Table/mistyped: !cel: 'row.txt' is not defined (available: text, done, tags)" }
     - { code: CEL_UNKNOWN_IDENTIFIER, message: "Acc.Table/mistyped: !cel: unknown identifier 'rwo' — nothing by that name is in scope here." }
-    - { code: CEL_UNKNOWN_FIELD, message: "Acc.Table/mistyped: !cel: 'rwo' is not defined (available: variables, secrets, resources, ports, module, row)" }
     - { code: CEL_UNKNOWN_FIELD, message: "Acc.Table/mistypedInline: !cel: 'row.txt' is not defined (available: text)" }
-    - { code: CEL_TYPE_ERROR, message: "Acc.Table/mistyped: CEL at 'rowStyle' reads 'row.done', whose declared shape does not fit what the field expects: /: type mismatch — source is 'boolean', target expects 'string'." }
+    - { code: CEL_TYPE_ERROR, message: "Acc.Table/mistyped: CEL at 'rowStyle' reads 'row.done', declared 'boolean', but the field expects 'string'." }
   runFails: "AccessorKinds.Table/notChains: 'rowStyle: !cel \"variables.style\"' is not a plain chain the field can name"
 ---
 # The names an accessor chain may start at are read at its concrete place: a
@@ -5196,6 +5430,16 @@ expect:
     - { code: HOST_PATH_ENTRY_MISMATCH, message: "needs.printer.parameters.logo: 'assets' is a directory; this slot takes a file." }
   runFails: "ERR_HOST_PATH_ENTRY_MISMATCH"
 ---
+# A need supplied field by field with a `!module-path` naming a file where the
+# need type's field takes a directory is refused by both.
+kind: Assert.Manifest
+metadata: { name: needFieldPathEntry }
+source: ./__fixtures__/check-run-agreement/need-module-path-entry/telo.yaml
+expect:
+  errors:
+    - { code: HOST_PATH_ENTRY_MISMATCH, message: "Telo.Import/Stored: the imported library's need 'store' field 'path' is the path of a directory, but `!module-path ./note.txt` names a file." }
+  runFails: "ERR_HOST_PATH_ENTRY_MISMATCH"
+---
 # …and one naming a JPEG where the parameter's host path takes a PNG.
 kind: Assert.Manifest
 metadata: { name: needParameterPathContent }
@@ -5503,6 +5747,65 @@ metadata: { name: scopedImportOwnHandler }
 source: ./__fixtures__/scoped-imports/own-event.yaml
 expect: { errors: [], runs: true }
 ---
+# A scoped import a choice writes — beneath a chosen holder, in a chosen scope
+# array, as a member chosen at a scope-member position — is followed in every
+# option, so a source naming no module refuses the load whichever is taken.
+kind: Assert.Manifest
+metadata: { name: scopedImportChoiceUnresolvedOff }
+source: ./__fixtures__/scoped-imports/choice-unresolved-off.yaml
+expect:
+  errors:
+    - { code: IMPORT_UNRESOLVED, message: "Cannot resolve import 'Inner' → './nowhere-lib'" }
+    - { code: IMPORT_UNRESOLVED, message: "Cannot resolve import 'Inner' → './nowhere-lib'" }
+    - { code: IMPORT_UNRESOLVED, message: "Cannot resolve import 'Inner' → './nowhere-lib'" }
+  runFails: "[IMPORT_UNRESOLVED] Cannot resolve import 'Inner' → './nowhere-lib'"
+---
+kind: Assert.Manifest
+metadata: { name: scopedImportChoiceUnresolvedOn }
+source: ./__fixtures__/scoped-imports/choice-unresolved-on.yaml
+expect:
+  errors:
+    - { code: IMPORT_UNRESOLVED, message: "Cannot resolve import 'Inner' → './nowhere-lib'" }
+    - { code: IMPORT_UNRESOLVED, message: "Cannot resolve import 'Inner' → './nowhere-lib'" }
+    - { code: IMPORT_UNRESOLVED, message: "Cannot resolve import 'Inner' → './nowhere-lib'" }
+  runFails: "[IMPORT_UNRESOLVED] Cannot resolve import 'Inner' → './nowhere-lib'"
+---
+# A library reached only through a scoped import a choice writes asks for a need
+# nothing supplies: it is read from the environment only where the import is.
+kind: Assert.Manifest
+metadata: { name: scopedImportChoiceNeedOff }
+source: ./__fixtures__/scoped-imports/choice-need-off.yaml
+expect: { errors: [], runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: scopedImportChoiceNeedOn }
+source: ./__fixtures__/scoped-imports/choice-need-on.yaml
+expect: { errors: [], runFails: "[ERR_NEED_UNMET] Need 'scope.Inner.upstream'" }
+---
+# A library need supplied behind a choice — at an `imports:` entry, and at a
+# library's own import through the binding of its input — is a supply only
+# where the option taken writes it; where it is left out the need is read from
+# the environment, so with nothing set the load is refused naming the variable.
+kind: Assert.Manifest
+metadata: { name: importNeedSupplyChoiceOn }
+source: ./__fixtures__/check-run-agreement/need-supply-choice/supply-on.yaml
+expect: { errors: [], runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: importNeedSupplyChoiceOff }
+source: ./__fixtures__/check-run-agreement/need-supply-choice/supply-off.yaml
+expect: { errors: [], runFails: "Set TELO_NEED_LIB__DB__URL" }
+---
+kind: Assert.Manifest
+metadata: { name: libraryImportNeedChoiceOn }
+source: ./__fixtures__/check-run-agreement/inner-need-choice/choice-on.yaml
+expect: { errors: [], runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: libraryImportNeedChoiceOff }
+source: ./__fixtures__/check-run-agreement/inner-need-choice/choice-off.yaml
+expect: { errors: [], runFails: "Set TELO_NEED_OUTER__INNER__DB__URL" }
+---
 # A stated constraint must reach a slot observing it, through the module's own
 # reference slots and every need it is forwarded to whole, downward only — so a
 # library gets one verdict for its own needs under every importer.
@@ -5715,6 +6018,237 @@ expect:
   errors:
     - { code: SCHEMA_VIOLATION, message: "Telo.Import/Lib: /variables/pool must be integer — the imported library declares it so." }
   runFails: "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED"
+---
+# A library entry typing a member through a reference into its own `$defs` is
+# its own schema root at the import: a supplied value it admits boots…
+kind: Assert.Manifest
+metadata: { name: importEntryLocalRef }
+source: ./__fixtures__/check-run-agreement/import-inputs/local-ref-app.yaml
+expect: { errors: [], runs: true }
+---
+# …and one it refuses is a schema violation at the import, refused at load.
+kind: Assert.Manifest
+metadata: { name: importEntryLocalRefMistyped }
+source: ./__fixtures__/check-run-agreement/import-inputs/local-ref-mistyped.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "Telo.Import/Lib: /variables/cfg/a/x must be string — the imported library declares it so." }
+  runFails: "[SCHEMA_VIOLATION] Telo.Import/Lib: /variables/cfg/a/x must be string — the imported library declares it so."
+---
+# A library `variables:` entry is a JSON Schema position: a `$ref` to a recursive
+# fragment (`Text`) there checks, and an importer of it boots, the library
+# receiving the supplied value.
+kind: Assert.Manifest
+metadata: { name: moduleEntryFragmentImporter }
+source: ./__fixtures__/module-entry-fragments/app.yaml
+expect: { runs: true }
+---
+# An Application entry may hold the same `$ref` beside its `type:` and `env:`.
+kind: Assert.Manifest
+metadata: { name: moduleEntryFragmentApplication }
+source: ./__fixtures__/module-entry-fragments/app-variable.yaml
+expect: { runs: true }
+---
+# A library entry is judged as JSON Schema: a misspelled `type` is one refusal at the entry.
+kind: Assert.Manifest
+metadata: { name: moduleEntryFragmentLibraryType }
+source: ./__fixtures__/module-entry-fragments/lib-bad-type.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Telo.Library/LibBadType: /variables/title/type must be equal to one of the allowed values"
+---
+# An Application entry keeps its own constraints beside the `$ref`: `type:` is required…
+kind: Assert.Manifest
+metadata: { name: moduleEntryFragmentApplicationNoType }
+source: ./__fixtures__/module-entry-fragments/app-no-type.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "Telo.Application/AppNoType: /variables/title is missing required property 'type'" }
+---
+# …and the kernel refuses the same load.
+kind: Assert.Manifest
+metadata: { name: moduleEntryFragmentApplicationNoTypeAtRuntime }
+source: ./__fixtures__/module-entry-fragments/app-no-type.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "Telo.Application/AppNoType: /variables/title is missing required property 'type'" }
+  runFails: "[SCHEMA_VIOLATION] Telo.Application/AppNoType: /variables/title is missing required property 'type'"
+---
+# An entry binding neither `env:` nor `arg:` is refused…
+kind: Assert.Manifest
+metadata: { name: moduleEntryFragmentApplicationNoBinding }
+source: ./__fixtures__/module-entry-fragments/app-no-binding.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "Telo.Application/AppNoBinding: /variables/title matches no alternative" }
+---
+# …and at load.
+kind: Assert.Manifest
+metadata: { name: moduleEntryFragmentApplicationNoBindingAtRuntime }
+source: ./__fixtures__/module-entry-fragments/app-no-binding.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "Telo.Application/AppNoBinding: /variables/title matches no alternative" }
+  runFails: "[SCHEMA_VIOLATION] Telo.Application/AppNoBinding: /variables/title matches no alternative"
+---
+# A value an import supplies is held to the library's fragment-typed entry…
+kind: Assert.Manifest
+metadata: { name: moduleEntryFragmentWrongValue }
+source: ./__fixtures__/module-entry-fragments/app-wrong-value.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "Telo.Import/Lib: /variables/title matches no alternative" }
+---
+# …and when the import initializes.
+kind: Assert.Manifest
+metadata: { name: moduleEntryFragmentWrongValueAtRuntime }
+source: ./__fixtures__/module-entry-fragments/app-wrong-value.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "Telo.Import/Lib: /variables/title matches no alternative" }
+  runFails: "[SCHEMA_VIOLATION] Telo.Import/Lib: /variables/title matches no alternative"
+---
+# A library input typed Text is a text parameter: the value an import supplies
+# is the importer's text, judged in the importer's lang: at an imports: entry, a
+# top-level Telo.Import and a scoped import alike — `few` is Polish…
+kind: Assert.Manifest
+metadata: { name: textParameterPluralPl }
+source: ./__fixtures__/check-run-agreement/text-parameters/plural-pl.yaml
+expect: { runs: true }
+---
+# …and no English category, whatever the library's own lang:.
+kind: Assert.Manifest
+metadata: { name: textParameterPluralEn }
+source: ./__fixtures__/check-run-agreement/text-parameters/plural-en.yaml
+expect:
+  errors:
+    - { code: MESSAGE_PLURAL_CATEGORY_INVALID, message: "Telo.Import/Entry: the text for the imported library's variable 'title' is refused at its `cases.few`: few is not a plural category of en: its categories are one, other." }
+    - { code: MESSAGE_PLURAL_CATEGORY_INVALID, message: "Telo.Import/TopLevel: the text for the imported library's variable 'title' is refused at its `cases.few`: few is not a plural category of en: its categories are one, other." }
+    - { code: MESSAGE_PLURAL_CATEGORY_INVALID, message: "Telo.Import/Scoped: the text for the imported library's variable 'title' is refused at its `cases.few`: few is not a plural category of en: its categories are one, other." }
+---
+kind: Assert.Manifest
+metadata: { name: textParameterPluralEnAtRuntime }
+source: ./__fixtures__/check-run-agreement/text-parameters/plural-en.yaml
+expect:
+  errors:
+    - { code: MESSAGE_PLURAL_CATEGORY_INVALID, message: "Telo.Import/Entry: the text for the imported library's variable 'title' is refused at its `cases.few`: few is not a plural category of en: its categories are one, other." }
+    - { code: MESSAGE_PLURAL_CATEGORY_INVALID, message: "Telo.Import/TopLevel: the text for the imported library's variable 'title' is refused at its `cases.few`: few is not a plural category of en: its categories are one, other." }
+    - { code: MESSAGE_PLURAL_CATEGORY_INVALID, message: "Telo.Import/Scoped: the text for the imported library's variable 'title' is refused at its `cases.few`: few is not a plural category of en: its categories are one, other." }
+  runFails: "[MESSAGE_PLURAL_CATEGORY_INVALID] Telo.Import/Entry: the text for the imported library's variable 'title' is refused at its `cases.few`: few is not a plural category of en: its categories are one, other."
+---
+# A text input behind a choice is judged per option.
+kind: Assert.Manifest
+metadata: { name: textParameterChoice }
+source: ./__fixtures__/check-run-agreement/text-parameters/choice.yaml
+expect:
+  errors:
+    - { code: MESSAGE_SYNTAX_INVALID, message: "Telo.Import/Entry: the text for the imported library's variable 'title' is refused: the placeholder is not closed (at offset 0 of the pattern). (when variables.flag1 is true)" }
+    - { code: MESSAGE_SYNTAX_INVALID, message: "Telo.Import/Scoped: the text for the imported library's variable 'title' is refused: the placeholder is not closed (at offset 0 of the pattern). (when variables.flag1 is true)" }
+---
+kind: Assert.Manifest
+metadata: { name: textParameterChoiceAtRuntime }
+source: ./__fixtures__/check-run-agreement/text-parameters/choice.yaml
+expect:
+  errors:
+    - { code: MESSAGE_SYNTAX_INVALID, message: "Telo.Import/Entry: the text for the imported library's variable 'title' is refused: the placeholder is not closed" }
+    - { code: MESSAGE_SYNTAX_INVALID, message: "Telo.Import/Scoped: the text for the imported library's variable 'title' is refused: the placeholder is not closed" }
+  runFails: "[MESSAGE_SYNTAX_INVALID] Telo.Import/Entry: the text for the imported library's variable 'title' is refused: the placeholder is not closed"
+---
+# A text an expression computes is refused at a text parameter…
+kind: Assert.Manifest
+metadata: { name: textParameterComputed }
+source: ./__fixtures__/check-run-agreement/text-parameters/computed.yaml
+expect:
+  errors:
+    - { code: TEXT_ARGUMENT_COMPUTED, message: "Telo.Import/Entry: the value at 'variables.title' is computed, and the library's input 'title' is a text parameter" }
+---
+kind: Assert.Manifest
+metadata: { name: textParameterComputedAtRuntime }
+source: ./__fixtures__/check-run-agreement/text-parameters/computed.yaml
+expect:
+  errors:
+    - { code: TEXT_ARGUMENT_COMPUTED, message: "Telo.Import/Entry: the value at 'variables.title' is computed, and the library's input 'title' is a text parameter" }
+  runFails: "[TEXT_ARGUMENT_COMPUTED] Telo.Import/Entry: the value at 'variables.title' is computed, and the library's input 'title' is a text parameter"
+---
+# The importer's text is one its application shows, so a served language that
+# does not translate it is warned.
+kind: Assert.Manifest
+metadata: { name: textParameterTranslation }
+source: ./__fixtures__/check-run-agreement/text-parameters/translation.yaml
+expect:
+  warnings:
+    - code: MESSAGE_TRANSLATION_MISSING
+      message: "'de' is served, but nothing translates this text into it, so each shows in the language it is written in: \"Hello\""
+  runs: true
+---
+# A library forwarding a text it computes — a string literal, an untyped input —
+# to a library it imports: only a record of a text already shown is passed on…
+kind: Assert.Manifest
+metadata: { name: textParameterForwardingComputed }
+source: ./__fixtures__/check-run-agreement/text-parameters/forwarding-computed/telo.yaml
+expect:
+  errors:
+    - { code: TEXT_ARGUMENT_COMPUTED, message: "Telo.Import/Literal: the value at 'variables.title' is computed, and the library's input 'title' is a text parameter" }
+    - { code: TEXT_ARGUMENT_COMPUTED, message: "Telo.Import/Untyped: the value at 'variables.title' is computed, and the library's input 'title' is a text parameter" }
+---
+# …and the import controller refuses it when the import initializes.
+kind: Assert.Manifest
+metadata: { name: textParameterForwardingComputedAtRuntime }
+source: ./__fixtures__/check-run-agreement/text-parameters/forwarding-computed.yaml
+expect:
+  errors:
+    - { code: TEXT_ARGUMENT_COMPUTED, message: "Telo.Import/Literal: the value at 'variables.title' is computed, and the library's input 'title' is a text parameter" }
+    - { code: TEXT_ARGUMENT_COMPUTED, message: "Telo.Import/Untyped: the value at 'variables.title' is computed, and the library's input 'title' is a text parameter" }
+  runFails: "Import 'Literal': the value at 'variables.title' is computed, and the library's input 'title' is a text parameter"
+---
+# A text parameter's default: is the library's text, judged in its own lang:…
+kind: Assert.Manifest
+metadata: { name: textParameterDefaultFew }
+source: ./__fixtures__/check-run-agreement/text-parameters/default-few/telo.yaml
+expect:
+  errors:
+    - { code: MESSAGE_PLURAL_CATEGORY_INVALID, message: "Telo.Library/TextParameterDefaultFew: the text at 'variables.title.default.cases.few' is refused: few is not a plural category of en: its categories are one, other." }
+---
+# …and refused when an import leaving it out initializes.
+kind: Assert.Manifest
+metadata: { name: textParameterDefaultFewAtRuntime }
+source: ./__fixtures__/check-run-agreement/text-parameters/default-few.yaml
+expect:
+  errors:
+    - { code: MESSAGE_PLURAL_CATEGORY_INVALID, message: "Telo.Library/TextParameterDefaultFew: the text at 'variables.title.default.cases.few' is refused: few is not a plural category of en: its categories are one, other." }
+  runFails: "Import 'Lib': the library's text at 'variables.title.default.cases.few' is refused: few is not a plural category of en: its categories are one, other."
+---
+# A shared library compares a text parameter by its settled record: one text
+# from an English and a German module is two texts…
+kind: Assert.Manifest
+metadata: { name: textParameterSharedLangs }
+source: ./__fixtures__/check-run-agreement/text-parameters/shared-langs.yaml
+expect:
+  errors:
+    - code: SHARED_LIBRARY_CONFLICT
+      message: "Import 'Singleton' and import 'Shared' both reach a 'lifecycle: shared' library — one instantiation for the whole application — but they supply variables.title as the same text written in 'en' and in 'de'"
+---
+kind: Assert.Manifest
+metadata: { name: textParameterSharedLangsAtRuntime }
+source: ./__fixtures__/check-run-agreement/text-parameters/shared-langs.yaml
+expect:
+  errors:
+    - code: SHARED_LIBRARY_CONFLICT
+      message: "Import 'Singleton' and import 'Shared' both reach a 'lifecycle: shared' library"
+  runFails: "[SHARED_LIBRARY_CONFLICT] Import 'Singleton' and import 'Shared' both reach a 'lifecycle: shared' library — one instantiation for the whole application — but they supply variables.title as the same text written in 'en' and in 'de'"
+---
+# …while two spellings of one text in one language are one record…
+kind: Assert.Manifest
+metadata: { name: textParameterSharedAgree }
+source: ./__fixtures__/check-run-agreement/text-parameters/shared-agree.yaml
+expect: { runs: true }
+---
+# …and two imports leaving it out agree on the library's default.
+kind: Assert.Manifest
+metadata: { name: textParameterSharedDefault }
+source: ./__fixtures__/check-run-agreement/text-parameters/shared-default.yaml
+expect: { runs: true }
 ---
 # The built-in vocabulary archive is read, never run, declared or imported: as
 # an entry the loader refuses the whole file with one diagnostic, and a document
@@ -6455,8 +6989,6 @@ expect:
   errors:
     - code: CEL_UNKNOWN_IDENTIFIER
       message: "Kinds.Probe/labelled: !cel: unknown identifier 'row'"
-    - code: CEL_UNKNOWN_FIELD
-      message: "Kinds.Probe/labelled: !cel: 'row' is not defined"
 ---
 # …and the kernel, evaluating it at creation, has no such variable.
 kind: Assert.Manifest
@@ -6465,7 +6997,6 @@ source: ./__fixtures__/check-run-agreement/node-tree/accessor-only-app/telo.yaml
 expect:
   errors:
     - { code: CEL_UNKNOWN_IDENTIFIER, message: "Kinds.Probe/labelled: !cel: unknown identifier 'row' — nothing by that name is in scope here." }
-    - { code: CEL_UNKNOWN_FIELD, message: "Kinds.Probe/labelled: !cel: 'row' is not defined (available: variables, secrets, resources, ports, module)" }
   runFails: "Kinds.Probe labelled: Expression !cel \"string(row.amount)\" failed: no such variable: row.amount"
 ---
 # An accessor may root only at a binding that exists where a value is named; one
@@ -6477,8 +7008,6 @@ expect:
   errors:
     - code: CEL_UNKNOWN_IDENTIFIER
       message: "Kinds.Probe/byAddress: !cel: unknown identifier 'request'"
-    - code: CEL_UNKNOWN_FIELD
-      message: "Kinds.Probe/byAddress: !cel: 'request' is not defined"
 ---
 # …and the kernel refuses the chain when it delivers the field.
 kind: Assert.Manifest
@@ -6487,7 +7016,6 @@ source: ./__fixtures__/check-run-agreement/node-tree/runtime-root-app/telo.yaml
 expect:
   errors:
     - { code: CEL_UNKNOWN_IDENTIFIER, message: "Kinds.Probe/byAddress: !cel: unknown identifier 'request' — nothing by that name is in scope here." }
-    - { code: CEL_UNKNOWN_FIELD, message: "Kinds.Probe/byAddress: !cel: 'request' is not defined (available: variables, secrets, resources, ports, module, row)" }
   runFails: "[ERR_ACCESSOR_NOT_PLAIN_CHAIN] RuntimeError: NodeTreeKinds.Probe/byAddress: 'condition.at: !cel \"request.ip\"' is not a plain chain the field can name: it starts at 'request'"
 ---
 # A binding a region names and withholds is read by no expression, a guarded
@@ -6510,8 +7038,6 @@ expect:
   errors:
     - code: CEL_UNKNOWN_IDENTIFIER
       message: "Kinds.Tags/stamped: !cel: unknown identifier 'stamp'"
-    - code: CEL_UNKNOWN_FIELD
-      message: "Kinds.Tags/stamped: !cel: 'stamp' is not defined"
 ---
 # …and the controller, evaluating it per call, has no such variable.
 kind: Assert.Manifest
@@ -6520,7 +7046,6 @@ source: ./__fixtures__/check-run-agreement/node-tree/compile-only-app/telo.yaml
 expect:
   errors:
     - { code: CEL_UNKNOWN_IDENTIFIER, message: "Kinds.Tags/stamped: !cel: unknown identifier 'stamp' — nothing by that name is in scope here." }
-    - { code: CEL_UNKNOWN_FIELD, message: "Kinds.Tags/stamped: !cel: 'stamp' is not defined (available: variables, secrets, resources, ports, module, tag)" }
   runFails: "Expression !cel \"stamp\" failed: no such variable: stamp"
 ---
 # A region declared under a map value types every entry of the map…
@@ -6735,10 +7260,10 @@ source: ./__fixtures__/check-run-agreement/scope-members/cel.yaml
 expect:
   errors:
     - code: CEL_UNKNOWN_FIELD
-      message: "Run.Value/answer: !cel: \"limt\" is not declared here (declared: limit)"
+      message: "Run.Value/answer: !cel: 'variables.limt' is not defined (available: limit)"
     - code: CEL_UNKNOWN_FIELD
-      message: "Kinds.Target/answer: !cel: \"limt\" is not declared here (declared: limit)"
-  runFails: "[CEL_UNKNOWN_FIELD] Run.Value/answer: !cel: \"limt\" is not declared here"
+      message: "Kinds.Target/answer: !cel: 'variables.limt' is not defined (available: limit)"
+  runFails: "[CEL_UNKNOWN_FIELD] Run.Value/answer: !cel: 'variables.limt' is not defined"
 ---
 # `resources.<member>` is readable only inside the regions of the resource
 # declaring the scope, as the kernel's scope run binds it: a member's own field
@@ -6912,6 +7437,131 @@ expect:
     - code: BRANCH_POSITION_INVALID
       message: "'!if' at 'imports.Run' of the Telo.Library document"
   runFails: "[BRANCH_POSITION_INVALID] '!if' at 'imports.Run' of the Telo.Library document"
+---
+# An import's alias, kind, source and integrity are read by the loader before
+# anything is expanded: a tag at an `imports:` entry's source, at a top-level
+# `Telo.Import`'s source, at a `kind:` choosing `Telo.Import`, and at a scoped
+# import's source (`!if` and `!for-each`) is refused at load, worded with the
+# import's alias.
+kind: Assert.Manifest
+metadata: { name: importSourceChoiceEntry }
+source: ./__fixtures__/check-run-agreement/import-choices/source-entry.yaml
+expect:
+  errors:
+    - { code: BRANCH_POSITION_INVALID, message: "Telo.Import/Lib: '!if' at 'source' of the Telo.Import: the loader reads an import's alias and source before anything is expanded, so they cannot be chosen or repeated. Write them plainly." }
+  runFails: "[BRANCH_POSITION_INVALID] Telo.Import/Lib: '!if' at 'source' of the Telo.Import"
+---
+kind: Assert.Manifest
+metadata: { name: importSourceChoiceDocument }
+source: ./__fixtures__/check-run-agreement/import-choices/source-document.yaml
+expect:
+  errors:
+    - { code: BRANCH_POSITION_INVALID, message: "Telo.Import/Lib: '!if' at 'source' of the Telo.Import" }
+    - { code: BRANCH_POSITION_INVALID, message: "Telo.Import/Chosen: '!if' at 'kind' of the Telo.Import" }
+  runFails: "[BRANCH_POSITION_INVALID] Telo.Import/Chosen: '!if' at 'kind' of the Telo.Import"
+---
+kind: Assert.Manifest
+metadata: { name: importSourceChoiceMember }
+source: ./__fixtures__/check-run-agreement/import-choices/source-member.yaml
+expect:
+  errors:
+    - { code: BRANCH_POSITION_INVALID, message: "Telo.Import/Lib: '!if' at 'source' of the Telo.Import" }
+    - { code: REPEAT_OUTSIDE_TEMPLATE, message: "Telo.Import/Repeated: '!for-each' at 'source' of the Telo.Import" }
+  runFails: "[REPEAT_OUTSIDE_TEMPLATE] Telo.Import/Repeated: '!for-each' at 'source' of the Telo.Import"
+---
+# A `...` splice at an import's own top level may write any field the loader
+# reads, so it is refused at load in each form, and nothing beneath it is judged.
+kind: Assert.Manifest
+metadata: { name: importSpliceEntry }
+source: ./__fixtures__/check-run-agreement/import-choices/splice-entry.yaml
+expect:
+  errors:
+    - { code: REPEAT_OUTSIDE_TEMPLATE, message: "Telo.Import/Lib: A '...' splice at '...' of the Telo.Import: the loader reads an import's alias and source before anything is expanded, so they cannot be chosen or repeated. Write them plainly." }
+  runFails: "[REPEAT_OUTSIDE_TEMPLATE] Telo.Import/Lib: A '...' splice at '...' of the Telo.Import"
+---
+kind: Assert.Manifest
+metadata: { name: importSpliceDocument }
+source: ./__fixtures__/check-run-agreement/import-choices/splice-document.yaml
+expect:
+  errors:
+    - { code: REPEAT_OUTSIDE_TEMPLATE, message: "Telo.Import/Lib: A '...' splice at '...' of the Telo.Import" }
+  runFails: "[REPEAT_OUTSIDE_TEMPLATE] Telo.Import/Lib: A '...' splice at '...' of the Telo.Import"
+---
+kind: Assert.Manifest
+metadata: { name: importSpliceMember }
+source: ./__fixtures__/check-run-agreement/import-choices/splice-member.yaml
+expect:
+  errors:
+    - { code: REPEAT_OUTSIDE_TEMPLATE, message: "Telo.Import/Lib: A '...' splice at '...' of the Telo.Import" }
+  runFails: "[REPEAT_OUTSIDE_TEMPLATE] Telo.Import/Lib: A '...' splice at '...' of the Telo.Import"
+---
+# Every other field of an import is a value chosen per option: a literal the
+# library's entry refuses, a need supplied with a field of the wrong type and
+# two imports of a shared library disagreeing are each refused where their
+# option is taken.
+kind: Assert.Manifest
+metadata: { name: importInputsPerOption }
+source: ./__fixtures__/check-run-agreement/import-choices/inputs.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "Telo.Import/Lib: /variables/size/else must be integer — the imported library declares it so. (when variables.flag1 is false)" }
+    - { code: SCHEMA_VIOLATION, message: "Import 'Lib': need 'upstream': field 'url' does not match need type 'ImportChoicesLib.Upstream' — must be string. (when variables.flag1 is false)" }
+    - { code: SHARED_LIBRARY_CONFLICT, message: "but they supply different values for variables.size. Make the two imports agree, or make the library 'lifecycle: isolated'. (when variables.flag1 is false)" }
+  runFails: "Import 'Lib': need 'upstream': field 'url' does not match need type 'ImportChoicesLib.Upstream' — must be string. (when variables.flag1 is false)"
+---
+# A host-path input chosen per option is held to the library's entry where the
+# branch handing it a plain string is taken, at an `imports:` entry and at a
+# scoped import, and the branch's `!module-path` is a host path. Any analysis
+# error refuses every run, whatever its configuration label: refused with
+# `flag1` true and false alike.
+kind: Assert.Manifest
+metadata: { name: importHostPathPerOption }
+source: ./__fixtures__/import-input-choice/untyped.yaml
+expect:
+  errors:
+    - { code: HOST_PATH_UNTYPED_SOURCE, message: "Telo.Import/Lib: the imported library's variable 'root' is a Telo.HostPath, but `variables.plainDir` is declared 'string', so a relative path reaches the library unresolved and is refused there. Declare `variables.plainDir` with 'x-telo-type: Telo.HostPath' — a variable resolves a relative value against the working directory. (when variables.flag1 is false)" }
+    - { code: HOST_PATH_UNTYPED_SOURCE, message: "Telo.Import/Inner: the imported library's variable 'root' is a Telo.HostPath, but `variables.plainDir` is declared 'string', so a relative path reaches the library unresolved and is refused there. Declare `variables.plainDir` with 'x-telo-type: Telo.HostPath' — a variable resolves a relative value against the working directory. (when variables.flag1 is false)" }
+  runFails: "[HOST_PATH_UNTYPED_SOURCE] Telo.Import/Lib: the imported library's variable 'root' is a Telo.HostPath"
+---
+kind: Assert.Manifest
+metadata: { name: importHostPathPerOptionOff }
+source: ./__fixtures__/import-input-choice/untyped-off.yaml
+expect:
+  errors:
+    - { code: HOST_PATH_UNTYPED_SOURCE, message: "Telo.Import/Lib: the imported library's variable 'root' is a Telo.HostPath, but `variables.plainDir` is declared 'string', so a relative path reaches the library unresolved and is refused there. Declare `variables.plainDir` with 'x-telo-type: Telo.HostPath' — a variable resolves a relative value against the working directory. (when variables.flag1 is false)" }
+    - { code: HOST_PATH_UNTYPED_SOURCE, message: "Telo.Import/Inner: the imported library's variable 'root' is a Telo.HostPath, but `variables.plainDir` is declared 'string', so a relative path reaches the library unresolved and is refused there. Declare `variables.plainDir` with 'x-telo-type: Telo.HostPath' — a variable resolves a relative value against the working directory. (when variables.flag1 is false)" }
+  runFails: "[HOST_PATH_UNTYPED_SOURCE] Telo.Import/Lib: the imported library's variable 'root' is a Telo.HostPath"
+---
+# A module file an import hands its library is asked of the importer's source
+# at load: one naming nothing is refused by `telo check` and by `telo run`.
+kind: Assert.Manifest
+metadata: { name: importModulePathMissing }
+source: ./__fixtures__/check-run-agreement/import-module-files/missing.yaml
+expect:
+  errors:
+    - { code: MODULE_PATH_NOT_FOUND, message: "Telo.Import/Lib: `!module-path ./missing.html` names 'missing.html', and there is nothing there" }
+  runFails: "[MODULE_PATH_NOT_FOUND] Telo.Import/Lib: `!module-path ./missing.html` names 'missing.html', and there is nothing there"
+---
+# What a module file an import hands its library names, and what its head
+# holds, is held to the entry and media type the library's input declares.
+kind: Assert.Manifest
+metadata: { name: importModulePathEntry }
+source: ./__fixtures__/check-run-agreement/import-module-files/entry-file.yaml
+expect:
+  errors:
+    - { code: HOST_PATH_ENTRY_MISMATCH, message: "Telo.Import/Lib: the imported library's variable 'page' is the path of a file, but `!module-path ./a` names a directory." }
+    - { code: HOST_PATH_CONTENT_MISMATCH, message: "Telo.Import/Icon: the imported library's variable 'icon' is the path of a file of image/png, but `!module-path ./a/README.md` carries no known media type's signature." }
+  runFails: "[HOST_PATH_ENTRY_MISMATCH] Telo.Import/Lib: the imported library's variable 'page' is the path of a file"
+---
+# A tag is judged by the value it produces at an import's host-path input:
+# `!interpolate` makes a plain string, `!module-path` a host path.
+kind: Assert.Manifest
+metadata: { name: importModulePathInterpolated }
+source: ./__fixtures__/check-run-agreement/import-module-files/interpolated.yaml
+expect:
+  errors:
+    - { code: HOST_PATH_UNTYPED_SOURCE, message: "Telo.Import/Lib: the imported library's variable 'page' is a Telo.HostPath, but !interpolate produces a plain string, which reaches the library unresolved. Pass a variable declared 'x-telo-type: Telo.HostPath' or a !module-path." }
+  runFails: "[HOST_PATH_UNTYPED_SOURCE] Telo.Import/Lib: the imported library's variable 'page' is a Telo.HostPath, but !interpolate produces a plain string"
 ---
 # `--- !if` as a file's first document: one refusal at the tag, nothing else.
 kind: Assert.Manifest
@@ -7969,27 +8619,29 @@ expect:
       message: "Telo.Definition/Probe: /inputType/properties/code/pattern invalid RE2 pattern \"^(?!tmp$)[a-z]+$\": invalid or unsupported Perl syntax"
   runFails: "[SCHEMA_VIOLATION] Telo.Definition/Probe: /inputType/properties/code/pattern invalid RE2 pattern \"^(?!tmp$)[a-z]+$\": invalid or unsupported Perl syntax"
 ---
-# A default whose validation nests without end is a finding at the default, at
-# check and at run, never an uncoded stack overflow.
+# A default nested 101 levels deep, one past the 100 a validation follows, is
+# one finding at the default, at check and at run — nothing at the document
+# holding it, which counts the default as one leaf.
 kind: Assert.Manifest
 metadata: { name: schemaNestingDefault }
 source: ./__fixtures__/check-run-agreement/schema-nesting-default/telo.yaml
 expect:
   errors:
     - code: SCHEMA_NESTING_EXCEEDED
-      message: "Telo.Application/SchemaNestingDefault: the default of variables.tree cannot be validated — validating it nests past the depth a validation may reach. Either its schema refers to itself without descending into the value, or the value is nested deeper than a validation can follow: make each self-reference descend into the value at every step, or nest the value less deeply."
-  runFails: "[ERR_SCHEMA_NESTING_EXCEEDED] Telo.Application/SchemaNestingDefault: the default of variables.tree cannot be validated — validating it nests past the depth a validation may reach. Either its schema refers to itself without descending into the value, or the value is nested deeper than a validation can follow: make each self-reference descend into the value at every step, or nest the value less deeply."
+      message: "Telo.Application/SchemaNestingDefault: the default of variables.tree cannot be validated — it is nested deeper than the 100 levels a validation follows: nest it less deeply."
+  runFails: "[ERR_SCHEMA_NESTING_EXCEEDED] Telo.Application/SchemaNestingDefault: the default of variables.tree cannot be validated — it is nested deeper than the 100 levels a validation follows: nest it less deeply."
 ---
-# A reference slot whose value branch nests without end is a finding at the slot,
-# in place of any reference-form finding: at the library itself, from a consumer
-# importing it, and refused when the import loads the library.
+# A value at a reference slot nested 101 levels deep is one finding at the slot,
+# in place of any reference-form finding and with nothing at the resource: at
+# the library itself, from a consumer importing it, and refused when the import
+# loads the library.
 kind: Assert.Manifest
 metadata: { name: schemaNestingSlot }
 source: ./__fixtures__/check-run-agreement/schema-nesting-slot/lib/telo.yaml
 expect:
   errors:
     - code: SCHEMA_NESTING_EXCEEDED
-      message: "Self.Router/router: the value at 'handler' cannot be validated — validating it nests past the depth a validation may reach. Either its schema refers to itself without descending into the value, or the value is nested deeper than a validation can follow: make each self-reference descend into the value at every step, or nest the value less deeply."
+      message: "Self.Router/router: the value at 'handler' cannot be validated — it is nested deeper than the 100 levels a validation follows: nest it less deeply."
 ---
 kind: Assert.Manifest
 metadata: { name: schemaNestingSlotAtRuntime }
@@ -7997,16 +8649,358 @@ source: ./__fixtures__/check-run-agreement/schema-nesting-slot/telo.yaml
 expect:
   errors:
     - code: SCHEMA_NESTING_EXCEEDED
-      message: "Self.Router/router: the value at 'handler' cannot be validated — validating it nests past the depth a validation may reach. Either its schema refers to itself without descending into the value, or the value is nested deeper than a validation can follow: make each self-reference descend into the value at every step, or nest the value less deeply."
-  runFails: "[ERR_SCHEMA_NESTING_EXCEEDED] RuntimeError: Self.Router/router: the value at 'handler' cannot be validated — validating it nests past the depth a validation may reach. Either its schema refers to itself without descending into the value, or the value is nested deeper than a validation can follow: make each self-reference descend into the value at every step, or nest the value less deeply."
+      message: "Self.Router/router: the value at 'handler' cannot be validated — it is nested deeper than the 100 levels a validation follows: nest it less deeply."
+  runFails: "[ERR_SCHEMA_NESTING_EXCEEDED] RuntimeError: Self.Router/router: the value at 'handler' cannot be validated — it is nested deeper than the 100 levels a validation follows: nest it less deeply."
 ---
-# A kind whose schema refers to itself without descending: the resource's own
-# validation never finishes, a finding at the resource, refused at load.
+# A resource nested 101 levels deep from its own root, through an ordinary
+# field: a finding at the resource, refused at load.
 kind: Assert.Manifest
 metadata: { name: schemaNestingResource }
 source: ./__fixtures__/check-run-agreement/schema-nesting-resource/telo.yaml
 expect:
   errors:
     - code: SCHEMA_NESTING_EXCEEDED
-      message: "Self.Holder/holder: the resource cannot be validated — validating it nests past the depth a validation may reach. Either its schema refers to itself without descending into the value, or the value is nested deeper than a validation can follow: make each self-reference descend into the value at every step, or nest the value less deeply."
-  runFails: "[ERR_SCHEMA_NESTING_EXCEEDED] Self.Holder/holder: the resource cannot be validated — validating it nests past the depth a validation may reach. Either its schema refers to itself without descending into the value, or the value is nested deeper than a validation can follow: make each self-reference descend into the value at every step, or nest the value less deeply."
+      message: "Self.Holder/holder: the resource cannot be validated — it is nested deeper than the 100 levels a validation follows: nest it less deeply."
+  runFails: "[ERR_SCHEMA_NESTING_EXCEEDED] Self.Holder/holder: the resource cannot be validated — it is nested deeper than the 100 levels a validation follows: nest it less deeply."
+---
+# A default nesting exactly 100 levels deep, the most a validation follows, is
+# accepted at check and at run, and so is forwarding it to an import.
+kind: Assert.Manifest
+metadata: { name: schemaNestingAtLimit }
+source: ./__fixtures__/check-run-agreement/schema-nesting-at-limit/telo.yaml
+expect: { runs: true }
+---
+# An import supplying a literal exactly 100 levels deep is accepted: each
+# supplied value is judged from its own root, and the documents holding it count
+# it as one leaf.
+kind: Assert.Manifest
+metadata: { name: schemaNestingImportLiteral }
+source: ./__fixtures__/check-run-agreement/schema-nesting-import-literal/telo.yaml
+expect: { runs: true }
+---
+# An application variable whose schema refers to itself without descending is
+# refused where it is declared, and its default is not validated against it.
+kind: Assert.Manifest
+metadata: { name: schemaInPlaceCycleDefault }
+source: ./__fixtures__/check-run-agreement/schema-in-place-cycle-default/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_IN_PLACE_CYCLE
+      message: "Telo.Application 'SchemaInPlaceCycleDefault': its schema comes back to where it started without descending into the value — variables.tree refers to variables.tree"
+  runFails: "[SCHEMA_IN_PLACE_CYCLE] Telo.Application 'SchemaInPlaceCycleDefault': its schema comes back to where it started without descending into the value — variables.tree refers to variables.tree"
+---
+# A kind whose value branch refers to itself without descending is refused where
+# the kind is declared — at the library, and at the consumer's import — and the
+# value at the slot is judged by nothing else.
+kind: Assert.Manifest
+metadata: { name: schemaInPlaceCycleSlot }
+source: ./__fixtures__/check-run-agreement/schema-in-place-cycle-slot/lib/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_IN_PLACE_CYCLE
+      message: "Telo.Definition 'Router': its schema comes back to where it started without descending into the value — '$defs/Loop' of schema refers to schema at '$defs/Loop'"
+---
+kind: Assert.Manifest
+metadata: { name: schemaInPlaceCycleSlotAtRuntime }
+source: ./__fixtures__/check-run-agreement/schema-in-place-cycle-slot/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_IN_PLACE_CYCLE
+      message: "Telo.Definition 'Router': its schema comes back to where it started without descending into the value — '$defs/Loop' of schema refers to schema at '$defs/Loop'"
+  runFails: "[SCHEMA_IN_PLACE_CYCLE] Imported library 'SchemaInPlaceCycleSlotLib', reached through import 'Lib': Telo.Definition 'Router': its schema comes back to where it started without descending into the value"
+---
+# A kind whose schema refers to itself without descending: refused where it is
+# declared, at check and at load.
+kind: Assert.Manifest
+metadata: { name: schemaInPlaceCycleResource }
+source: ./__fixtures__/check-run-agreement/schema-in-place-cycle-resource/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_IN_PLACE_CYCLE
+      message: "Telo.Definition 'Holder': its schema comes back to where it started without descending into the value — schema refers to schema"
+  runFails: "[SCHEMA_IN_PLACE_CYCLE] Telo.Definition 'Holder': its schema comes back to where it started without descending into the value — schema refers to schema"
+---
+# A base: field is validated where it sits in the parent's schema, so a `#` there
+# names the parent's root: a value that root accepts checks clean and boots…
+kind: Assert.Manifest
+metadata: { name: baseParentDocument }
+source: ./__fixtures__/check-run-agreement/base-parent-document/telo.yaml
+expect: { errors: [], runs: true }
+---
+# …and one it refuses is refused at the field, at check and at load.
+kind: Assert.Manifest
+metadata: { name: baseParentDocumentMismatch }
+source: ./__fixtures__/check-run-agreement/base-parent-document-mismatch/telo.yaml
+expect:
+  errors:
+    - code: BASE_SCHEMA_MISMATCH
+      message: "Telo.Definition/Child: 'base.tree' does not match the parent field's schema: /tree must be object"
+  runFails: "[BASE_SCHEMA_MISMATCH] Telo.Definition/Child: 'base.tree' does not match the parent field's schema: /tree must be object"
+---
+# The refused value branch is resolved against the kind's root, so its `#` names the kind.
+kind: Assert.Manifest
+metadata: { name: valueBranchDocumentReferenceRefused }
+source: ./__fixtures__/check-run-agreement/value-branch-document-reference-refused/telo.yaml
+expect:
+  errors:
+    - code: INVALID_REFERENCE
+      message: "Self.Router/refused: the value at 'handler' is not one this slot accepts. It takes an object; !ref <name> naming a resource of a kind extending Telo.Invocable; or an inline declaration { kind: <a kind extending Telo.Invocable>, … }."
+  runFails: "[INVALID_REFERENCE] Self.Router/refused: the value at 'handler' is not one this slot accepts. It takes an object; !ref <name> naming a resource of a kind extending Telo.Invocable; or an inline declaration { kind: <a kind extending Telo.Invocable>, … }."
+---
+# A function's `returns.schema` names, with `!ref`, a resource that is no named
+# shape: refused where it is written…
+kind: Assert.Manifest
+metadata: { name: signatureShapeKind }
+source: ./__fixtures__/check-run-agreement/signature-shape-kind/lib/telo.yaml
+expect:
+  errors:
+    - code: REFERENCE_KIND_MISMATCH
+      message: "Telo.Function/measure: 'returns.schema' names 'thing', a Telo.Value, which is not a named shape"
+---
+# …and by the kernel where it resolves the signature's shape, from a consumer whose check reports the library's finding at its file while the kernel refuses the run.
+kind: Assert.Manifest
+metadata: { name: signatureShapeKindAtRuntime }
+source: ./__fixtures__/check-run-agreement/signature-shape-kind/app.yaml
+expect:
+  errors:
+    - { code: REFERENCE_KIND_MISMATCH, message: "Telo.Function/measure: 'returns.schema' names 'thing', a Telo.Value, which is not a named shape, so it constrains nothing. Reference a `Telo.JsonSchema` or another named shape, or write the schema inline." }
+  runFails: "[ERR_REFERENCE_KIND_MISMATCH] RuntimeError: Telo.Function/measure: 'returns.schema' names 'thing', a Telo.Value, which is not a named shape"
+---
+# A function's parameter schema names, with `!ref`, a resource that is no named
+# shape: refused where it is written…
+kind: Assert.Manifest
+metadata: { name: signatureParamShapeKind }
+source: ./__fixtures__/check-run-agreement/signature-param-shape-kind/lib/telo.yaml
+expect:
+  errors:
+    - code: REFERENCE_KIND_MISMATCH
+      message: "Telo.Function/measure: 'params[0].schema' names 'thing', a Telo.Value, which is not a named shape"
+---
+# …and by the kernel where it resolves the signature's shape, from a consumer whose check reports the library's finding at its file while the kernel refuses the run.
+kind: Assert.Manifest
+metadata: { name: signatureParamShapeKindAtRuntime }
+source: ./__fixtures__/check-run-agreement/signature-param-shape-kind/app.yaml
+expect:
+  errors:
+    - { code: REFERENCE_KIND_MISMATCH, message: "Telo.Function/measure: 'params[0].schema' names 'thing', a Telo.Value, which is not a named shape, so it constrains nothing. Reference a `Telo.JsonSchema` or another named shape, or write the schema inline." }
+  runFails: "[ERR_REFERENCE_KIND_MISMATCH] RuntimeError: Telo.Function/measure: 'params[0].schema' names 'thing', a Telo.Value, which is not a named shape"
+---
+# An inline contract shape whose member names no shape, read by a step: each
+# reference is refused at the place it is written, and the read is left untyped.
+kind: Assert.Manifest
+metadata: { name: inlineContractShapeReference }
+source: ./__fixtures__/check-run-agreement/inline-contract-shape-reference/telo.yaml
+expect:
+  errors:
+    - { code: SCHEMA_TYPE_REF_UNRESOLVED, message: "Telo.Sequence/missing: schema $ref 'telo://Self/Missing' resolves to module 'InlineContractShapeReference', which declares no Telo.Type named 'Missing'." }
+    - { code: REFERENCE_KIND_MISMATCH, message: "Telo.Sequence/notShape: 'inputType.schema.properties.m' names 'thing', a Telo.Value, which is not a named shape, so it constrains nothing. Reference a `Telo.JsonSchema` or another named shape, or write the schema inline." }
+  runFails: "[SCHEMA_TYPE_REF_UNRESOLVED] Telo.Sequence/missing: schema $ref 'telo://Self/Missing' resolves to module 'InlineContractShapeReference'"
+---
+# An Application variable typed by a `$ref` to a named shape is read through the
+# shape: it checks and boots…
+kind: Assert.Manifest
+metadata: { name: variableNamedShape }
+source: ./__fixtures__/check-run-agreement/variable-named-shape/telo.yaml
+expect: { runs: true }
+---
+# …and a default its shape refuses is refused by both.
+kind: Assert.Manifest
+metadata: { name: variableNamedShapeRefused }
+source: ./__fixtures__/check-run-agreement/variable-named-shape/refused.yaml
+expect:
+  errors:
+    - { code: DEFAULT_INVALID, message: "Telo.Application/VariableNamedShapeRefused: the default of variables.cfg /dir must be string" }
+  runFails: "[DEFAULT_INVALID] Telo.Application/VariableNamedShapeRefused: the default of variables.cfg /dir must be string"
+---
+# An integer behind a variable's `$ref` is bound as the int64 `telo check`
+# types it — through a named shape or the entry's own `$defs`, on an
+# Application and inside a library alike.
+kind: Assert.Manifest
+metadata: { name: integerBehindRefAppShape }
+source: ./__fixtures__/check-run-agreement/integer-behind-ref/app-shape.yaml
+expect: { runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: integerBehindRefAppLocal }
+source: ./__fixtures__/check-run-agreement/integer-behind-ref/app-local.yaml
+expect: { runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: integerBehindRefLibShape }
+source: ./__fixtures__/check-run-agreement/integer-behind-ref/lib-shape.yaml
+expect: { runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: integerBehindRefLibLocal }
+source: ./__fixtures__/check-run-agreement/integer-behind-ref/lib-local.yaml
+expect: { runs: true }
+---
+# A library variable typed by the library's own named shape: an import's value
+# is held to the shape, whether or not the library reads it…
+kind: Assert.Manifest
+metadata: { name: libraryInputOwnShape }
+source: ./__fixtures__/check-run-agreement/library-input-own-shape/unread.yaml
+expect: { runs: true }
+---
+# …and a read the shape's type refuses is refused at the library…
+kind: Assert.Manifest
+metadata: { name: libraryInputOwnShapeMistyped }
+source: ./__fixtures__/check-run-agreement/library-input-own-shape/mistyped/telo.yaml
+expect:
+  errors:
+    - { code: CEL_TYPE_ERROR, message: "Telo.Value/read: !cel: no \"+\" is declared over int, double" }
+---
+# …and reported at its file from a consumer, whose run fails at the read.
+kind: Assert.Manifest
+metadata: { name: libraryInputOwnShapeMistypedAtRuntime }
+source: ./__fixtures__/check-run-agreement/library-input-own-shape/mistyped.yaml
+expect:
+  errors:
+    - { code: CEL_TYPE_ERROR, message: "Telo.Value/read: !cel: no \"+\" is declared over int, double" }
+  runFails: "no overload of \"+\" takes (int, double)"
+---
+# A library input typed by a shape the library declares only where `flag`
+# holds: an import taking that option validates and binds its value through
+# the shape, the integer member an int64…
+kind: Assert.Manifest
+metadata: { name: libraryInputConfigurationShape }
+source: ./__fixtures__/check-run-agreement/library-input-configuration-shape/taken.yaml
+expect: { runs: true }
+---
+# …and one taking the other is refused at the import, naming the entry and the
+# shape: its check reports the library's own finding, which covers the import's,
+# and the load refuses the import's.
+kind: Assert.Manifest
+metadata: { name: libraryInputConfigurationShapeUntaken }
+source: ./__fixtures__/check-run-agreement/library-input-configuration-shape/untaken.yaml
+expect:
+  errors:
+    - code: SCHEMA_TYPE_REF_UNRESOLVED
+      message: "Telo.Library/ConfigurationShape: schema $ref 'telo://Self/Config' resolves to module 'ConfigurationShape', which declares no Telo.Type named 'Config'. (when variables.flag is false)"
+  runFails: "[SCHEMA_TYPE_REF_UNRESOLVED] Imported library 'ConfigurationShape', reached through import 'Lib': variables.config: schema $ref 'telo://Self/Config' resolves to module 'ConfigurationShape', which declares no Telo.Type named 'Config' in the configuration this import runs in."
+---
+# Two isolated imports of a library whose shape its input decides, taking
+# different options: each literal is judged against its own instance's
+# variant, and each import validates against it at start.
+kind: Assert.Manifest
+metadata: { name: libraryInputConfigurationShapeTwoInstances }
+source: ./__fixtures__/check-run-agreement/library-input-configuration-shape/two-instances.yaml
+expect: { errors: [], runs: true }
+---
+# A choice over an input typed by a shape another choice varies cannot be
+# decided before boot: refused at the library…
+kind: Assert.Manifest
+metadata: { name: libraryInputConfigurationShapeUndecidable }
+source: ./__fixtures__/check-run-agreement/library-input-configuration-shape/undecidable/telo.yaml
+expect:
+  errors:
+    - code: BRANCH_UNDECIDABLE
+      message: "but 'variables.config' is typed by 'telo://Self/Config', a named shape that differs between configurations, so its value is not settled before boot."
+---
+# …and at its file from a consumer, whose run is refused with the same code.
+kind: Assert.Manifest
+metadata: { name: libraryInputConfigurationShapeUndecidableAtRuntime }
+source: ./__fixtures__/check-run-agreement/library-input-configuration-shape/undecidable.yaml
+expect:
+  errors:
+    - code: BRANCH_UNDECIDABLE
+      message: "but 'variables.config' is typed by 'telo://Self/Config', a named shape that differs between configurations, so its value is not settled before boot."
+  runFails: "[BRANCH_UNDECIDABLE] !if/read: The condition of '!if' is decided before boot, but 'variables.config' is typed by 'telo://Self/Config'"
+---
+# A variable typing a member through a reference into its own entry is read
+# through it: a misuse of the member is refused by both.
+kind: Assert.Manifest
+metadata: { name: variableLocalRef }
+source: ./__fixtures__/check-run-agreement/variable-local-ref.yaml
+expect:
+  errors:
+    - { code: CEL_TYPE_ERROR, message: "Telo.Value/read: !cel: no \"+\" is declared over string, int" }
+  runFails: "[CEL_TYPE_ERROR] Telo.Value/read: !cel: no \"+\" is declared over string, int"
+---
+# An optional handed to a slot is no value of the slot's type, an untyped list
+# slot included: `optional.of(…)`, `self.?a` and `[self.?a]` are each refused
+# naming `.orValue(…)`, and the run is refused at load.
+kind: Assert.Manifest
+metadata: { name: optionalAtSlot }
+source: ./__fixtures__/check-run-agreement/optional-slot-fit/refused.yaml
+expect:
+  errors:
+    - { code: CEL_TYPE_ERROR, message: "Telo.Definition/Forward: CEL at 'inputs.t1' produces 'optional<string>', which holds an optional, but target's declared inputType expects 'string' and no field holds one. Unwrap it with '.orValue(<a default>)', or '.value()' where it is known to be present." }
+    - { code: CEL_TYPE_ERROR, message: "Telo.Definition/Forward: CEL at 'inputs.t2' produces 'optional<string>', which holds an optional, but target's declared inputType expects 'string' and no field holds one. Unwrap it with '.orValue(<a default>)', or '.value()' where it is known to be present." }
+    - { code: CEL_TYPE_ERROR, message: "Telo.Definition/Forward: CEL at 'inputs.l' produces 'list<optional<string>>', which holds an optional, but target's declared inputType expects 'array' and no field holds one. Unwrap it with '.orValue(<a default>)', or '.value()' where it is known to be present." }
+  runFails: "[CEL_TYPE_ERROR] Telo.Definition/Forward: CEL at 'inputs.t1' produces 'optional<string>', which holds an optional, but target's declared inputType expects 'string' and no field holds one. Unwrap it with '.orValue(<a default>)', or '.value()' where it is known to be present."
+---
+# `self.?a.orValue('x')` at a `string` slot, and a `cel.bind` result fitted by
+# the node its answer is read from, check clean and boot.
+kind: Assert.Manifest
+metadata: { name: optionalUnwrappedAtSlot }
+source: ./__fixtures__/check-run-agreement/optional-slot-fit/fitting.yaml
+expect: { errors: [], runs: true }
+---
+# A variable whose schema refers back to itself in place, which no validator
+# finishes validating against: refused by both — the kernel's own guard
+# (ERR_SCHEMA_IN_PLACE_CYCLE, before any input is read) is pinned by its unit tests.
+kind: Assert.Manifest
+metadata: { name: inputInPlaceCycle }
+source: ./__fixtures__/check-run-agreement/input-in-place-cycle/app.yaml
+expect:
+  errors:
+    - { code: SCHEMA_IN_PLACE_CYCLE, message: "Telo.Application 'InputInPlaceCycleApp': its schema comes back to where it started without descending into the value — 'anyOf/0' of variables.x refers to variables.x" }
+  runFails: "[SCHEMA_IN_PLACE_CYCLE] Telo.Application 'InputInPlaceCycleApp': its schema comes back to where it started without descending into the value — 'anyOf/0' of variables.x refers to variables.x"
+---
+# A library's: refused where it declares it…
+kind: Assert.Manifest
+metadata: { name: inputInPlaceCycleInLibrary }
+source: ./__fixtures__/check-run-agreement/input-in-place-cycle/lib/telo.yaml
+expect:
+  errors:
+    - { code: SCHEMA_IN_PLACE_CYCLE, message: "Telo.Library 'InputInPlaceCycleLib': its schema comes back to where it started without descending into the value — 'anyOf/0' of variables.x refers to variables.x" }
+---
+# …and a consumer's run is refused at load naming that cause.
+kind: Assert.Manifest
+metadata: { name: inputInPlaceCycleAtImport }
+source: ./__fixtures__/check-run-agreement/input-in-place-cycle/telo.yaml
+expect:
+  errors:
+    - { code: SCHEMA_IN_PLACE_CYCLE, message: "Telo.Library 'InputInPlaceCycleLib': its schema comes back to where it started without descending into the value" }
+  runFails: "[SCHEMA_IN_PLACE_CYCLE] Imported library 'InputInPlaceCycleLib', reached through import 'Lib': Telo.Library 'InputInPlaceCycleLib': its schema comes back to where it started without descending into the value — 'anyOf/0' of variables.x refers to variables.x"
+---
+# A need type's field is validated alone, so it is the root its own references
+# name: one recursing in place through its own `$defs` is refused by both — the
+# kernel's own guard (ERR_SCHEMA_IN_PLACE_CYCLE, at registration) is pinned by
+# its unit tests…
+kind: Assert.Manifest
+metadata: { name: needTypeFieldCycle }
+source: ./__fixtures__/check-run-agreement/need-type-field-root/cycle.yaml
+expect:
+  errors:
+    - { code: SCHEMA_IN_PLACE_CYCLE, message: "Telo.NeedType 'Db': its schema comes back to where it started without descending into the value — '$defs/L/anyOf/0' of fields.url refers to fields.url at '$defs/L'" }
+  runFails: "[SCHEMA_IN_PLACE_CYCLE] Telo.NeedType 'Db': its schema comes back to where it started without descending into the value — '$defs/L/anyOf/0' of fields.url refers to fields.url at '$defs/L'"
+---
+# …and one naming a place of the composed type rather than of the field is
+# refused by both.
+kind: Assert.Manifest
+metadata: { name: needTypeFieldDangling }
+source: ./__fixtures__/check-run-agreement/need-type-field-root/dangling.yaml
+expect:
+  errors:
+    - { code: SCHEMA_COMPILE_ERROR, message: "Telo.NeedType 'Db': the schema at 'fields.url' does not compile: its $ref '#/properties/url' names no node of it. A '#' reference is read from the root of 'fields.url', which is a schema of its own." }
+  runFails: "[SCHEMA_COMPILE_ERROR] Telo.NeedType 'Db': the schema at 'fields.url' does not compile: its $ref '#/properties/url' names no node of it."
+---
+# A library variable whose local reference names nothing in the entry: refused
+# where it declares it…
+kind: Assert.Manifest
+metadata: { name: inputDanglingReference }
+source: ./__fixtures__/check-run-agreement/input-dangling-reference/lib/telo.yaml
+expect:
+  errors:
+    - { code: SCHEMA_COMPILE_ERROR, message: "Telo.Library 'InputDanglingReferenceLib': the schema at 'variables.b' does not compile: its $ref '#/$defs/Nope' names no node of it. A '#' reference is read from the root of 'variables.b', which is a schema of its own." }
+---
+# …and a consumer's run is refused at load naming that cause.
+kind: Assert.Manifest
+metadata: { name: inputDanglingReferenceAtImport }
+source: ./__fixtures__/check-run-agreement/input-dangling-reference/telo.yaml
+expect:
+  errors:
+    - { code: SCHEMA_COMPILE_ERROR, message: "Telo.Library 'InputDanglingReferenceLib': the schema at 'variables.b' does not compile: its $ref '#/$defs/Nope' names no node of it." }
+  runFails: "[SCHEMA_COMPILE_ERROR] Imported library 'InputDanglingReferenceLib', reached through import 'Lib': Telo.Library 'InputDanglingReferenceLib': the schema at 'variables.b' does not compile: its $ref '#/$defs/Nope' names no node of it."

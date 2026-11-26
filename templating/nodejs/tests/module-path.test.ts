@@ -9,7 +9,7 @@ import {
 } from "../src/index.js";
 
 const analyze = (source: string) =>
-  modulePathEngine.analyze(source, { celEnv: {} as never, contextSchema: null }).diagnostics;
+  modulePathEngine.analyze(source, { celEnv: {} as never }).diagnostics;
 
 describe("!module-path", () => {
   it("names a file or a directory relative to the module root", () => {

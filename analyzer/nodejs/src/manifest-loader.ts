@@ -16,6 +16,7 @@ import type {
   ScopedImportEdge,
 } from "./loaded-types.js";
 import { scopedImportsOf, scopedMemberPath } from "./scoped-imports.js";
+import { isRefusedImport } from "./loader-expansion-refusals.js";
 import {
   BUILTIN_VOCABULARY_NOT_A_MODULE,
   builtinVocabularyImportMessage,
@@ -78,7 +79,7 @@ function collectParseDiagnostics(
           source: "telo-analyzer",
           message: err.message,
           range: err.range,
-          data: { filePath: file.source },
+          data: { filePath: file.source, ...(err.path !== undefined ? { path: err.path } : {}) },
         });
       }
     }
@@ -684,6 +685,8 @@ export class Loader {
           for (let i = 0; i < file.manifests.length; i++) {
             const m = file.manifests[i];
             if (!m || m.kind !== "Telo.Import") continue;
+            // Refused by the parse (`loader-expansion-refusals.ts`): read no further.
+            if (isRefusedImport(m as unknown as Record<string, unknown>)) continue;
             const importSource = (m as { source?: string }).source;
             if (!importSource) continue;
             const alias = m.metadata?.name as string | undefined;
@@ -735,10 +738,24 @@ export class Loader {
         if (!mod) continue;
         for (const file of [mod.owner, ...mod.partials]) {
           for (const site of scopedImportsOf({ modules, importEdges }, mod, file.manifests)) {
+            const sourceLine = file.positions[site.document]?.sourceLine;
+            const holder = { kind: site.holderKind, name: site.holders[0]!.name };
+            if (site.refusals.length > 0) {
+              for (const refusal of site.refusals) {
+                errors.push({
+                  url: file.source,
+                  fromSource: file.source,
+                  ...(site.alias !== undefined ? { alias: site.alias } : {}),
+                  ...(sourceLine !== undefined ? { sourceLine } : {}),
+                  reason: refusal.code === "BRANCH_POSITION_INVALID" ? "branch-position" : "repeat-outside-template",
+                  scope: { holder, path: `${scopedMemberPath(site.place)}.${refusal.place}` },
+                  error: new Error(refusal.message),
+                });
+              }
+              continue;
+            }
             const importSource = (site.member as { source?: unknown }).source;
-            if (typeof importSource !== "string" || importSource === "") continue;
-            const holderIndex = file.manifests.findIndex((m) => m?.metadata?.name === site.holders[0]!.name);
-            const sourceLine = file.positions[holderIndex]?.sourceLine;
+            if (typeof importSource !== "string" || importSource === "" || site.alias === undefined) continue;
             const loaded = await loadImportTarget(
               { fromSource: file.source, source: importSource, alias: site.alias, sourceLine },
               port,
@@ -746,10 +763,7 @@ export class Loader {
             if ("failure" in loaded) {
               errors.push({
                 ...loaded.failure,
-                scope: {
-                  holder: { kind: site.holderKind, name: site.holders[0]!.name },
-                  path: scopedMemberPath(site.holders),
-                },
+                scope: { holder, path: scopedMemberPath(site.place) },
               });
               continue;
             }
@@ -764,6 +778,8 @@ export class Loader {
               holders: site.holders,
               holderKind: site.holderKind,
               member: site.member as unknown as Record<string, unknown>,
+              place: site.place,
+              options: site.options,
             });
             scopedImportEdges.set(file.source, edges);
             if (!visited.has(targetCanonical)) {

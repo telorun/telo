@@ -311,7 +311,7 @@ function acceptedAtSlot(
  *  which needs the slot's alternatives and the target's flavour. */
 function checkKind(
   kind: string,
-  entry: RefFieldEntry,
+  entry: Pick<RefFieldEntry, "refs">,
   registry: DefinitionRegistry,
   aliases: AliasResolver,
   /** See {@link kindSatisfies}: the referent is a `resources:` stand-in. */
@@ -366,6 +366,87 @@ function checkKind(
     }
   }
   return errors;
+}
+
+/** The nominal verdict at a slot, overruled where a function stands in for a
+ *  callable abstract by structure — and explained by it where it does not. */
+function callableKindVerdict(
+  kindErrors: string[],
+  referent: ResourceManifest | undefined,
+  label: string,
+  refs: readonly string[],
+  callableSlots: () => CallableSlotContext,
+): string[] {
+  if (kindErrors.length === 0 || !referent) return kindErrors;
+  const verdict = callableSlotVerdict(referent, label, refs, callableSlots());
+  if (!verdict) return kindErrors;
+  return verdict.satisfied ? [] : [...verdict.reasons];
+}
+
+/** What makes a function stand in for a callable abstract at a slot, built on
+ *  first use: most analyses hold no such slot. */
+export function callableSlotContextOf(
+  resources: readonly ResourceManifest[],
+  registry: DefinitionRegistry,
+  aliases: AliasResolver,
+  aliasesByModule: Map<string, AliasResolver> | undefined,
+  shared?: { readonly functions: ModuleFunctionIndex; readonly flags: CallableFlagsIndex },
+): () => CallableSlotContext {
+  let callableSlots: CallableSlotContext | undefined;
+  return () => {
+    if (!callableSlots) {
+      let functions = shared?.functions;
+      let flags = shared?.flags;
+      if (!functions || !flags) {
+        const rootModules = new Set<string>();
+        for (const r of resources) {
+          if (isModuleKind(r.kind) && typeof r.metadata?.name === "string") {
+            rootModules.add(r.metadata.name);
+          }
+        }
+        functions = new ModuleFunctionIndex(
+          listRequests(resources as ResourceManifest[]),
+          registry,
+          aliases,
+          aliasesByModule ?? new Map(),
+          rootModules,
+        );
+        flags = new CallableFlagsIndex(functions, moduleCallNamesByModule(resources as ResourceManifest[]));
+      }
+      callableSlots = {
+        resources: resources as ResourceManifest[],
+        registry,
+        resolveDef: (kind) => registry.resolve(kind) ?? registry.resolve(aliases.resolveKind(kind) ?? kind),
+        functions,
+        flags,
+      };
+    }
+    return callableSlots;
+  };
+}
+
+/**
+ * Why a reference to `referent` does not satisfy a slot of `refs`, as the
+ * per-reference check words it after `reference at '<path>' → `; empty when it
+ * does. `scope` spells the referent's kind — the aliases of the module that
+ * wrote it.
+ */
+export function referentKindErrors(
+  referent: ResourceManifest,
+  label: string,
+  refs: readonly string[],
+  registry: DefinitionRegistry,
+  scope: AliasResolver,
+  callableSlots: () => CallableSlotContext,
+): string[] {
+  if (typeof referent.kind !== "string") return [];
+  return callableKindVerdict(
+    checkKind(referent.kind, { refs: [...refs] }, registry, scope, isInjectedDeclaration(referent)),
+    referent,
+    label,
+    refs,
+    callableSlots,
+  );
 }
 
 /**
@@ -455,37 +536,7 @@ export function validateReferences(
   // A function in a slot constrained to a callable abstract satisfies it by
   // structure as well as by `extends` (`callable-slot.ts`). Built on first use:
   // most analyses hold no such slot.
-  let callableSlots: CallableSlotContext | undefined;
-  const callableSlotContext = (): CallableSlotContext => {
-    if (!callableSlots) {
-      let functions = shared?.functions;
-      let flags = shared?.flags;
-      if (!functions || !flags) {
-        const rootModules = new Set<string>();
-        for (const r of resources) {
-          if (isModuleKind(r.kind) && typeof r.metadata?.name === "string") {
-            rootModules.add(r.metadata.name);
-          }
-        }
-        functions = new ModuleFunctionIndex(
-          listRequests(resources),
-          registry,
-          aliases,
-          aliasesByModule ?? new Map(),
-          rootModules,
-        );
-        flags = new CallableFlagsIndex(functions, moduleCallNamesByModule(resources));
-      }
-      callableSlots = {
-        resources,
-        registry,
-        resolveDef: (kind) => registry.resolve(kind) ?? registry.resolve(aliases.resolveKind(kind) ?? kind),
-        functions,
-        flags,
-      };
-    }
-    return callableSlots;
-  };
+  const callableSlotContext = callableSlotContextOf(resources, registry, aliases, aliasesByModule, shared);
   /** The positions `REF_SLOT_COMPUTED` claims for a resource — an expression at
    *  or above a reference slot in a field the kind evaluates — read
    *  from the one reader that owns the rule, so this pass cannot report a
@@ -688,14 +739,8 @@ export function referenceSiteDiagnostics(
       concretePath,
     );
 
-  /** The nominal verdict at a slot, overruled where a function stands in for a
-   *  callable abstract by structure — and explained by it where it does not. */
-  const kindVerdict = (kindErrors: string[], referent: ResourceManifest | undefined, label: string): string[] => {
-    if (kindErrors.length === 0 || !referent) return kindErrors;
-    const verdict = callableSlotVerdict(referent, label, entry.refs, scope.callableSlots());
-    if (!verdict) return kindErrors;
-    return verdict.satisfied ? [] : [...verdict.reasons];
-  };
+  const kindVerdict = (kindErrors: string[], referent: ResourceManifest | undefined, label: string): string[] =>
+    callableKindVerdict(kindErrors, referent, label, entry.refs, scope.callableSlots);
 
   // `!ref <name>` left unresolved by Phase 2.5.
   if (isRefSentinel(val)) {
@@ -937,24 +982,6 @@ export function schemaFromSiteDiagnostics(
       external: (ref) => registry.schemaForId(ref),
     });
     const outcome = registry.validateResourceConfig(substituted, site.schema, standIns);
-    // A schema read out of a kind's: one that does not compile there validates
-    // nothing. A declared shape's own compile failure is reported where it is written.
-    const compileError = site.form === "instance" ? undefined : registry.validatedSchemaCompileError(site.schema);
-    if (compileError !== undefined) {
-      diagnostics.push(
-        withQuotedPath(
-          {
-            severity: DiagnosticSeverity.Error,
-            code: "SCHEMA_COMPILE_ERROR",
-            source: SOURCE,
-            message: `${resourceLabel}: '${site.path}' takes its schema from '${site.source}', which failed to compile: ${compileError}`,
-            data: { resource: resourceData, filePath, path: site.path },
-          },
-          site.path,
-        ),
-      );
-      continue;
-    }
     if (!outcome.finished) {
       diagnostics.push(
         withQuotedPath(
@@ -962,7 +989,7 @@ export function schemaFromSiteDiagnostics(
             severity: DiagnosticSeverity.Error,
             code: SCHEMA_NESTING_EXCEEDED,
             source: SOURCE,
-            message: schemaNestingExceededMessage(resourceLabel, `'${site.path}'`),
+            message: schemaNestingExceededMessage(resourceLabel, `'${site.path}'`, outcome),
             data: { resource: resourceData, filePath, path: site.path },
           },
           site.path,

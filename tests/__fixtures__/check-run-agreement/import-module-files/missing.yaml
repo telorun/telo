@@ -1,0 +1,7 @@
+# An import handing its library a module file that is not there.
+kind: Telo.Application
+metadata: { name: ImportModulePathMissing }
+imports:
+  Lib:
+    source: ./lib
+    variables: { page: !module-path ./missing.html }

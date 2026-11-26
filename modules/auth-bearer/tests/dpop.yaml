@@ -153,7 +153,7 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        accepted: !cel "steps.accepted.result.principal.subject"
+        accepted: !cel "steps.accepted.result.?principal.subject.value()"
         replayed: !cel "steps.replayed.result"
         wrongMethod: !cel "steps.wrongMethod.result"
         wrongUri: !cel "steps.wrongUri.result"

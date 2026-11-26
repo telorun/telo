@@ -35,7 +35,6 @@ import {
   readText,
   RuntimeError,
   type Message,
-  type MessageSource,
   type ResourceManifest,
   type TextRecord,
 } from "@telorun/sdk";
@@ -49,7 +48,6 @@ import {
   judgeMessage,
   judgeText,
   judgeValues,
-  recordLangOf,
   renderValuePath,
   runtimeValueKind,
   schemaValueSites,
@@ -58,6 +56,7 @@ import {
   TEXT_CONTEXT_ANNOTATION,
   TEXT_VALUES_FOR_ANNOTATION,
   textAnnotationProblems,
+  textRecordOf,
   textSites,
   type KnownValues,
   type TextFragment,
@@ -68,6 +67,8 @@ import {
   type ValuePath,
 } from "@telorun/analyzer";
 import { instanceDeclaration } from "./instance-declaration.js";
+
+export { textRecordOf };
 
 /** Who wrote a value: the writing module's `lang:` (`null` when it declares none,
  *  absent for the module creating the resource) and whether it was computed. */
@@ -701,15 +702,6 @@ export class LateTexts {
     if (!values.known || !text.known || (!values.produced && !text.produced)) return;
     judgePairing(this.site, pairing.path, pairing.textPath, values.value, text.value, this.accessorPaths);
   }
-}
-
-/** The record a controller receives for a `Text` written `value`. */
-export function textRecordOf(value: unknown, lang: string | null, computed: boolean): TextRecord {
-  const objectForm =
-    !!value && typeof value === "object" && !Array.isArray(value) && Object.hasOwn(value, "text");
-  const text = (objectForm ? (value as { text: unknown }).text : value) as MessageSource;
-  const context = objectForm ? ((value as { context?: unknown }).context as string | undefined) ?? null : null;
-  return { text, context, lang: recordLangOf(lang), computed };
 }
 
 function containsExpression(value: unknown): boolean {

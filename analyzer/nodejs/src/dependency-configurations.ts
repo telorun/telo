@@ -1,6 +1,6 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { isCompiledValue } from "@telorun/sdk";
-import { isExpansionSentinel, isRefSentinel, isTaggedSentinel } from "@telorun/templating";
+import { expansionTagOf, isExpansionSentinel, isRefSentinel, isTaggedSentinel } from "@telorun/templating";
 import { ABSENT, memberOfValue, PRESENT, type Assignment } from "./configuration-dimensions.js";
 import { edgesFrom } from "./flatten-for-analyzer.js";
 import type { LoadedGraph } from "./loaded-types.js";
@@ -77,16 +77,23 @@ function importFixes(
     const declaration = recordAt(libraryDoc, block, name);
     if (!declaration) return undefined;
     const supplied = recordOf((imported as Record<string, unknown>)[block]);
-    const value = supplied && Object.hasOwn(supplied, name) ? supplied[name] : declaration.default;
-    if (value === undefined || !isLiteral(value)) return undefined;
-    if (member !== undefined) {
-      const held = memberOfValue(declaration, value, member);
-      return held === undefined ? undefined : (v) => sameValue(v, held);
+    // A value written behind a choice fixes the dimension to one of its
+    // options' values.
+    const values = optionValues(supplied && Object.hasOwn(supplied, name) ? supplied[name] : undefined, declaration.default);
+    if (!values) return undefined;
+    const tests: ((v: unknown) => boolean)[] = [];
+    for (const value of values) {
+      if (member !== undefined) {
+        const held = memberOfValue(declaration, value, member);
+        if (held === undefined) return undefined;
+        tests.push((v) => sameValue(v, held));
+        continue;
+      }
+      // A whole-value dimension holds the value (`null` its absence); a presence
+      // dimension `present` / `absent`.
+      tests.push((v) => sameValue(v, value) || (v === PRESENT && value !== null) || (v === ABSENT && value === null));
     }
-    // A whole-value dimension holds the value (`null` its absence); a presence
-    // dimension `present` / `absent`.
-    return (v) =>
-      sameValue(v, value) || (v === PRESENT && value !== null) || (v === ABSENT && value === null);
+    return (v) => tests.some((test) => test(v));
   }
   if (block === "resources" && member === undefined) {
     if (readResourceInputs(libraryDoc).some((input) => input.name === name && input.optional)) {
@@ -113,6 +120,27 @@ function recordOf(value: unknown): Record<string, unknown> | undefined {
 
 function recordAt(doc: unknown, block: string, name: string): Record<string, unknown> | undefined {
   return recordOf(recordOf(recordOf(doc)?.[block])?.[name]);
+}
+
+/** The literal values an import's binding may hold — each option of a
+ *  binding written behind a choice, the declaration's `fallback` where an
+ *  option writes none — or undefined when one is no literal. */
+function optionValues(written: unknown, fallback: unknown): unknown[] | undefined {
+  if (written === undefined) return fallback === undefined || !isLiteral(fallback) ? undefined : [fallback];
+  const tag = expansionTagOf(written);
+  if (tag !== "if" && tag !== "switch") return isLiteral(written) ? [written] : undefined;
+  const body = written as Record<string, unknown>;
+  const options =
+    tag === "if"
+      ? [body.then, body.else]
+      : [...Object.values(recordOf(body.cases) ?? {}), Object.hasOwn(body, "default") ? body.default : undefined];
+  const out: unknown[] = [];
+  for (const option of options) {
+    const values = optionValues(option, fallback);
+    if (!values) return undefined;
+    out.push(...values);
+  }
+  return out;
 }
 
 /** A value with no expression, reference or expansion anywhere in it. */

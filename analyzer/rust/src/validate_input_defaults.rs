@@ -16,7 +16,7 @@ use crate::host_path_slot::host_anchor_for;
 use crate::plain_literal_decoding::walk_text_leaves;
 use crate::residual_schema::residual_entry_schema;
 use crate::schema_error_report::value_type_refusal_code;
-use crate::schema_validation::{schema_nesting_exceeded_message, validate_against_schema, SCHEMA_NESTING_EXCEEDED};
+use crate::schema_validation::{schema_nesting_exceeded_message, validate_against_schema, ValidationUnfinished, SCHEMA_NESTING_EXCEEDED};
 use crate::types::{AnalysisDiagnostic, DiagnosticData, DiagnosticResource};
 use crate::validate_requires::SourcedDocument;
 use crate::value_type_defaults::decode_plain_literal;
@@ -93,13 +93,20 @@ pub fn validate_input_defaults(documents: &[SourcedDocument], root_modules: &Has
                 };
                 let value = decode_plain_literal(&anchored(fallback, &schema), &schema);
                 // A validation that could not finish is the schema's own finding.
-                let Ok(issues) = validate_against_schema(&value, &schema) else {
-                    out.push(AnalysisDiagnostic::error(
-                        SCHEMA_NESTING_EXCEEDED,
-                        schema_nesting_exceeded_message(&format!("{kind}/{name}"), &format!("the default of {block}.{key}")),
-                        at(format!("{block}.{key}.default")),
-                    ));
-                    continue;
+                let issues = match validate_against_schema(&value, &schema) {
+                    Ok(issues) => issues,
+                    Err(error) => {
+                        out.push(AnalysisDiagnostic::error(
+                            SCHEMA_NESTING_EXCEEDED,
+                            schema_nesting_exceeded_message(
+                                &format!("{kind}/{name}"),
+                                &format!("the default of {block}.{key}"),
+                                ValidationUnfinished::of(&error),
+                            ),
+                            at(format!("{block}.{key}.default")),
+                        ));
+                        continue;
+                    }
                 };
                 for issue in issues {
                     let text = issue.message.strip_prefix("/ ").unwrap_or(&issue.message).to_string();

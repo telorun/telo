@@ -126,7 +126,7 @@ describe("Telo.Definition: static CEL validation for `inputs`", () => {
     } as unknown as ResourceManifest;
 
     const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([def]));
-    const unknown = diagnostics.filter((d) => d.code === "CEL_UNKNOWN_FIELD");
+    const unknown = diagnostics.filter((d) => d.code === "CEL_UNKNOWN_IDENTIFIER");
     expect(unknown.length).toBeGreaterThanOrEqual(1);
     expect(unknown[0].severity).toBe(DiagnosticSeverity.Error);
     expect(unknown[0].message).toContain("inputs");

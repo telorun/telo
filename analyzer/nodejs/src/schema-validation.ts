@@ -35,10 +35,19 @@
 
 import AjvModule from "ajv";
 import addFormats from "ajv-formats";
-import { opaqueSchemaView, SCHEMA_REGEX_FORMAT, schemaPattern, SchemaPatternError, schemaPatternRefusal } from "@telorun/sdk";
-import { ManifestRootSchema } from "./manifest-schemas.js";
+import {
+  opaqueSchemaView,
+  parseCanonicalTypeSchemaId,
+  SCHEMA_REGEX_FORMAT,
+  schemaPattern,
+  SchemaPatternError,
+  schemaPatternRefusal,
+} from "@telorun/sdk";
+import { MANIFEST_SCHEMA_URI, ManifestRootSchema } from "./manifest-schemas.js";
 import { schemaIssues, type AjvErrorLike, type SchemaIssue } from "./schema-error-report.js";
 import { judgeSchemaFindings } from "./schema-findings-judge.js";
+import { InPlaceCycleGuard } from "./schema-in-place-cycle.js";
+import { MAX_VALUE_DEPTH, nestsPastValueDepth, type OwnValuePositions } from "./value-depth.js";
 import { registeredDocument, SchemaNodeValidator } from "./schema-node-validator.js";
 import type { StandIns } from "./stand-in-findings.js";
 import { registerTeloKeywords } from "./value-type-keyword.js";
@@ -172,6 +181,49 @@ export function createAjv(
   return instance;
 }
 
+/**
+ * Instances {@link createAjv} built, kept blank between uses, for a reader
+ * whose instance lives only while it judges — a named-shape layer's run, a
+ * stand-in compile — so that reader compiles the meta-schema no more often
+ * than one shared instance does. A returned instance is cleared of every
+ * schema and compiled validator but the meta-schema's, and holds again only
+ * what a new one holds; nothing it compiled for one reader answers another.
+ * Each is retired after {@link BLANK_USES} uses, since AJV's code scope grows
+ * with every compile.
+ */
+const blankInstances = new Map<string, SchemaAjv[]>();
+const blankUses = new WeakMap<
+  object,
+  { key: string; uses: number; aliases: [string, string][]; manifestRoot: boolean }
+>();
+const BLANK_USES = 64;
+
+/** A blank instance of the flavour `key` names, `make` building one when none
+ *  is kept; hand it back with {@link returnBlankAjv} once its reader is done. */
+export function takeBlankAjv(key: string, make: () => SchemaAjv): SchemaAjv {
+  const kept = blankInstances.get(key)?.pop();
+  if (kept) return kept;
+  const made = make();
+  // The meta-schema aliases a new instance holds, which clearing its references drops.
+  const aliases = Object.entries(made.refs).filter((entry): entry is [string, string] => typeof entry[1] === "string");
+  blankUses.set(made, { key, uses: 0, aliases, manifestRoot: made.getSchema(MANIFEST_SCHEMA_URI) !== undefined });
+  return made;
+}
+
+/** `instance`, taken with {@link takeBlankAjv}, cleared and kept for its next
+ *  reader. */
+export function returnBlankAjv(instance: SchemaAjv): void {
+  const record = blankUses.get(instance);
+  if (!record) throw new Error("internal: an AJV instance returned that was never taken blank.");
+  if (++record.uses >= BLANK_USES) return;
+  instance.removeSchema();
+  for (const [id, target] of record.aliases) instance.refs[id] = target;
+  if (record.manifestRoot) instance.addSchema(ManifestRootSchema, undefined, undefined, false);
+  const kept = blankInstances.get(record.key);
+  if (kept) kept.push(instance);
+  else blankInstances.set(record.key, [instance]);
+}
+
 /** The verbose twin of each instance a failure is judged on, created by the first
  *  failure that has a union to decide. */
 const judgeTwins = new WeakMap<object, SchemaNodeValidator>();
@@ -225,18 +277,46 @@ function schemaCompiles(schema: Record<string, any>): boolean {
 }
 
 /** A validation's outcome: its issues — none when the value is valid — or that it
- *  could not finish: the validation nested past the depth the engine's stack
- *  reaches, so it holds no verdict on the value. Every caller reads all three. */
+ *  could not finish, so it holds no verdict on the value. Every caller reads all three. */
 export type SchemaValidationOutcome<I = SchemaIssue> =
   | { readonly finished: true; readonly issues: I[] }
   | ValidationUnfinished;
 
-/** The outcome of a validation that could not finish. */
+/** The outcome of a validation that could not finish: the value nests past
+ *  {@link MAX_VALUE_DEPTH} (`value-depth`), or — the backstop — validating it
+ *  nested past the depth the engine's stack reaches (`engine-depth`). */
 export interface ValidationUnfinished {
   readonly finished: false;
+  readonly cause: "value-depth" | "engine-depth";
 }
 
-export const VALIDATION_UNFINISHED: ValidationUnfinished = Object.freeze({ finished: false as const });
+/** A validation the engine's stack could not finish. */
+export const VALIDATION_UNFINISHED: ValidationUnfinished = Object.freeze({ finished: false as const, cause: "engine-depth" as const });
+
+/** A validation refused because its value nests past {@link MAX_VALUE_DEPTH}. */
+export const VALUE_DEPTH_EXCEEDED: ValidationUnfinished = Object.freeze({ finished: false as const, cause: "value-depth" as const });
+
+/** Thrown by a validator asked to validate a value nested past {@link MAX_VALUE_DEPTH}. */
+export class ValueDepthExceededError extends Error {
+  constructor() {
+    super(schemaNestingExceededSentence("the value", VALUE_DEPTH_EXCEEDED));
+    this.name = "ValueDepthExceededError";
+  }
+}
+
+/** Throws {@link ValueDepthExceededError} when `value` nests past
+ *  {@link MAX_VALUE_DEPTH}, each value at `ownValues` counted as a leaf. */
+export function assertValueDepth(value: unknown, ownValues?: OwnValuePositions): void {
+  if (nestsPastValueDepth(value, ownValues)) throw new ValueDepthExceededError();
+}
+
+/** The unfinished outcome `error` stands for — the depth limit's refusal or the
+ *  engine's own stack overflow — or `undefined` for any other error. */
+export function unfinishedValidationOf(error: unknown): ValidationUnfinished | undefined {
+  if (error instanceof ValueDepthExceededError) return VALUE_DEPTH_EXCEEDED;
+  if (isValidationOverflow(error)) return VALIDATION_UNFINISHED;
+  return undefined;
+}
 
 /** The outcome of a validation that finished with `issues`. */
 export function finishedValidation<I>(issues: I[]): SchemaValidationOutcome<I> {
@@ -248,26 +328,24 @@ export const SCHEMA_NESTING_EXCEEDED = "SCHEMA_NESTING_EXCEEDED";
 
 /** The sentence of a validation that could not finish: `label` is the
  *  declaration (`<Kind>/<name>`), `place` the value it validated (`the value at
- *  'handler'`). */
-export function schemaNestingExceededMessage(label: string, place: string): string {
-  return `${label}: ${schemaNestingExceededSentence(place)}`;
+ *  'handler'`), `unfinished` why. */
+export function schemaNestingExceededMessage(label: string, place: string, unfinished: ValidationUnfinished): string {
+  return `${label}: ${schemaNestingExceededSentence(place, unfinished)}`;
 }
 
 /** {@link schemaNestingExceededMessage} without its label, for a message that
  *  names the declaration itself. */
-export function schemaNestingExceededSentence(place: string): string {
-  return (
-    `${place} cannot be validated — validating it nests past the depth a validation ` +
-    `may reach. Either its schema refers to itself without descending into the value, or the ` +
-    `value is nested deeper than a validation can follow: make each self-reference descend into ` +
-    `the value at every step, or nest the value less deeply.`
-  );
+export function schemaNestingExceededSentence(place: string, unfinished: ValidationUnfinished): string {
+  return unfinished.cause === "value-depth"
+    ? `${place} cannot be validated — it is nested deeper than the ${MAX_VALUE_DEPTH} levels a validation follows: nest it less deeply.`
+    : `${place} cannot be validated — validating it nests past what this engine can follow: nest it less deeply.`;
 }
 
 /** Validate a value against a JSON Schema: issues with path info, none when it is
  *  valid, or that the validation could not finish. An instance value is validated
  *  opaque. A schema that does not compile yields none. */
 export function validateAgainstSchema(data: unknown, schema: Record<string, any>): SchemaValidationOutcome {
+  if (recursesInPlace(schema)) return finishedValidation([]);
   let validate = compiledSchemaValidators.get(schema);
   if (!validate) {
     try {
@@ -281,8 +359,62 @@ export function validateAgainstSchema(data: unknown, schema: Record<string, any>
     compiledSchemaValidators.set(schema, validate);
   }
   const compiled = validate;
-  return unlessOverflow(() =>
+  return withinValueDepth(data, () =>
     compiled(opaqueSchemaView(data)) ? finishedValidation([]) : judgedSchemaIssues(ajv, compiled.errors, data, schema),
+  );
+}
+
+/**
+ * {@link validateAgainstSchema} for a schema that may reference named shapes by
+ * canonical id (`telo:<Module>/<Type>`), each read through `shapeOf`: the
+ * shapes it reaches are held by an instance of its own for this one
+ * validation, so a recursive shape is followed. A schema reaching an in-place cycle is
+ * validated against by nothing — its declaration is refused — and one naming
+ * a shape `shapeOf` does not answer is the unresolved reference's finding.
+ */
+export function validateAgainstSchemaWithShapes(
+  data: unknown,
+  schema: Record<string, any>,
+  shapeOf: (id: string) => Record<string, any> | undefined,
+): SchemaValidationOutcome {
+  const reached = new Map<string, Record<string, any>>();
+  let unresolved = false;
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) return node.forEach(visit);
+    if (!node || typeof node !== "object") return;
+    for (const [key, value] of Object.entries(node)) {
+      if (key === "$ref" && typeof value === "string") {
+        const id = value.split("#")[0]!;
+        if (!parseCanonicalTypeSchemaId(id) || reached.has(id)) continue;
+        const shape = shapeOf(id);
+        if (!shape) {
+          unresolved = true;
+          continue;
+        }
+        reached.set(id, shape);
+        visit(shape);
+      } else if (!key.startsWith("x-telo-")) {
+        visit(value);
+      }
+    }
+  };
+  visit(schema);
+  if (reached.size === 0 && !unresolved) return validateAgainstSchema(data, schema);
+  if (unresolved || new InPlaceCycleGuard((id) => reached.get(id)).holds(schema)) return finishedValidation([]);
+  // A fresh instance: the judge's twin of a host reads the shapes it held, and
+  // another configuration's reading of one id must never answer this one.
+  const host = createAjv("analysis");
+  for (const [id, shape] of reached) host.addSchema(shape, id, undefined, false);
+  let compiled: ReturnType<SchemaAjv["compile"]>;
+  try {
+    compiled = host.compile(schema);
+  } catch (error) {
+    // A pattern RE2 refuses is the author's, reported where the entry is declared.
+    if (error instanceof SchemaPatternError) return finishedValidation([]);
+    throw error;
+  }
+  return withinValueDepth(data, () =>
+    compiled(opaqueSchemaView(data)) ? finishedValidation([]) : judgedSchemaIssues(host, compiled.errors, data, schema),
   );
 }
 
@@ -297,6 +429,18 @@ export function unlessOverflow<I>(run: () => SchemaValidationOutcome<I>): Schema
   }
 }
 
+/** `run` validating `data`: refused unrun when `data` nests past
+ *  {@link MAX_VALUE_DEPTH} — each value at `ownValues` a leaf, its depth judged
+ *  where it is validated on its own — and with the engine's own overflow caught
+ *  as the backstop. */
+export function withinValueDepth<I>(
+  data: unknown,
+  run: () => SchemaValidationOutcome<I>,
+  ownValues?: OwnValuePositions,
+): SchemaValidationOutcome<I> {
+  return nestsPastValueDepth(data, ownValues) ? VALUE_DEPTH_EXCEEDED : unlessOverflow(run);
+}
+
 /** The engine's own stack overflow: V8's `RangeError`, and JavaScriptCore's
  *  spelling of it under Bun. */
 export function isValidationOverflow(error: unknown): boolean {
@@ -307,6 +451,11 @@ export function isValidationOverflow(error: unknown): boolean {
 }
 
 const defaultFillingAjv = createAjv("analysis-defaults");
+/** This module's instance holds no named shape, so only a schema's own
+ *  references can close an in-place cycle here. */
+let localCycleGuard: InPlaceCycleGuard | undefined;
+const recursesInPlace = (schema: Record<string, any>): boolean =>
+  (localCycleGuard ??= new InPlaceCycleGuard(() => undefined)).holds(schema);
 const defaultFillingValidators = new WeakMap<Record<string, any>, ReturnType<typeof ajv.compile>>();
 const defaultFillers = new WeakMap<Record<string, any>, ((value: unknown) => void) | null>();
 
@@ -318,6 +467,7 @@ export function validateAgainstSchemaWithDefaults(
   data: unknown,
   schema: Record<string, any>,
 ): SchemaValidationOutcome {
+  if (recursesInPlace(schema)) return finishedValidation([]);
   let validate = defaultFillingValidators.get(schema);
   if (!validate) {
     try {
@@ -332,7 +482,7 @@ export function validateAgainstSchemaWithDefaults(
   let filler = defaultFillers.get(schema);
   if (filler === undefined) defaultFillers.set(schema, (filler = valueTypeDefaultFiller(schema) ?? null));
   const fill = filler;
-  return unlessOverflow(() => {
+  return withinValueDepth(data, () => {
     const copy = structuredClone(data);
     fill?.(copy);
     if (compiled(opaqueSchemaView(copy))) return finishedValidation([]);

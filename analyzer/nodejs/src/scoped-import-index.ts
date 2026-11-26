@@ -25,6 +25,12 @@ export interface ScopedImportEntry {
   readonly holding: Holding;
   /** The document it is written in, and its keys there. */
   readonly written: { readonly root: ResourceManifest; readonly keys: readonly (string | number)[] };
+  /** The declaration holding it, and its keys in that declaration's manifest,
+   *  every option on the way skipped. */
+  readonly declaration: IndexedDeclaration;
+  readonly unionKeys: readonly (string | number)[];
+  /** The member as the declaration holds it. */
+  readonly member: Readonly<Record<string, unknown>>;
 }
 
 /** By declaring module, then alias, in written order. */
@@ -64,10 +70,10 @@ export function scopedImportIndex(
     const byAlias = new Map<string, ScopedImportEntry[]>();
     const root = declaration.holder ?? m;
     type Keys = readonly (string | number)[];
-    const item = (value: unknown, holder: string, field: string, holding: Holding, keys: Keys): void => {
+    const item = (value: unknown, holder: string, field: string, holding: Holding, keys: Keys, unionKeys: Keys): void => {
       if (isAlternatives(value)) {
         for (const option of value.options) {
-          if (option.present) item(option.value, holder, field, meet(space, holding, holdingOf(option)), option.moved ? option.at : keys);
+          if (option.present) item(option.value, holder, field, meet(space, holding, holdingOf(option)), option.moved ? option.at : keys, unionKeys);
         }
         return;
       }
@@ -77,27 +83,29 @@ export function scopedImportIndex(
       if (value.kind === "Telo.Import") {
         const list = byAlias.get(name) ?? [];
         byAlias.set(name, list);
-        list.push({ place: { alias: name, holder, field }, holding, written: { root, keys } });
+        list.push({ place: { alias: name, holder, field }, holding, written: { root, keys }, declaration, unionKeys, member: value });
         return;
       }
       if (isModuleKind(value.kind) || isKindDocument(value)) return;
-      visit({ ...value, metadata: { ...(value.metadata as object), module } } as unknown as ResourceManifest, name, holding, keys);
+      visit({ ...value, metadata: { ...(value.metadata as object), module } } as unknown as ResourceManifest, name, holding, keys, unionKeys);
     };
-    const list = (value: unknown, holder: string, field: string, holding: Holding, keys: Keys): void => {
+    const list = (value: unknown, holder: string, field: string, holding: Holding, keys: Keys, unionKeys: Keys): void => {
       if (isAlternatives(value)) {
         for (const option of value.options) {
-          if (option.present) list(option.value, holder, field, meet(space, holding, holdingOf(option)), option.moved ? option.at : keys);
+          if (option.present) list(option.value, holder, field, meet(space, holding, holdingOf(option)), option.moved ? option.at : keys, unionKeys);
         }
         return;
       }
-      if (Array.isArray(value)) value.forEach((entry, i) => item(entry, holder, field, holding, [...keys, i]));
+      if (Array.isArray(value)) value.forEach((entry, i) => item(entry, holder, field, holding, [...keys, i], [...unionKeys, i]));
     };
-    const visit = (holder: ResourceManifest, name: string, holding: Holding, keys: Keys): void => {
-      for (const field of scopeFieldsOf(holder)) list((holder as unknown as Record<string, unknown>)[field], name, field, holding, [...keys, field]);
+    const visit = (holder: ResourceManifest, name: string, holding: Holding, keys: Keys, unionKeys: Keys): void => {
+      for (const field of scopeFieldsOf(holder)) {
+        list((holder as unknown as Record<string, unknown>)[field], name, field, holding, [...keys, field], [...unionKeys, field]);
+      }
     };
     const name = m.metadata?.name;
     if (typeof name !== "string") continue;
-    visit(m, name, { condition: declaration.condition, path: declaration.path }, declaration.at ?? []);
+    visit(m, name, { condition: declaration.condition, path: declaration.path }, declaration.at ?? [], []);
     if (byAlias.size === 0) continue;
     const key = typeof module === "string" ? module : "";
     const known = out.get(key) ?? new Map<string, ScopedImportEntry[]>();

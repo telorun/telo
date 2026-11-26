@@ -1,0 +1,14 @@
+# Asks for an address nothing in the importer supplies, and reads it.
+kind: Telo.Library
+metadata: { name: ScopedChoiceNeedLib }
+needs: { upstream: { kind: Self.Upstream } }
+exports: { resources: [address] }
+---
+kind: Telo.NeedType
+metadata: { name: Upstream }
+fields: { url: { type: string } }
+required: [url]
+---
+kind: Telo.Value
+metadata: { name: address }
+value: !cel "resources.upstream.url"

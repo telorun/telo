@@ -1,11 +1,33 @@
 import { isTaggedSentinel } from "@telorun/templating";
 import type { ResourceManifest } from "@telorun/sdk";
+import type { AliasResolver } from "./alias-resolver.js";
 import { hostAnchorFor } from "./host-path-slot.js";
+import { declaringModuleScope } from "./module-alias-scope.js";
 import { decodePlainLiterals, mapTextLeaves } from "./plain-literal-decoding.js";
 import { residualEntrySchema } from "./residual-schema.js";
-import { SCHEMA_NESTING_EXCEEDED, schemaNestingExceededMessage, validateAgainstSchema } from "./schema-validation.js";
+import { canonicalShapeSchema, withCanonicalRefSentinels } from "./resolve-schema-type-refs.js";
+import { SCHEMA_NESTING_EXCEEDED, schemaNestingExceededMessage, validateAgainstSchemaWithShapes } from "./schema-validation.js";
 import { valueTypeRefusalCode } from "./schema-error-report.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
+
+type Schema = Record<string, any>;
+
+/** The alias scopes a module document's entries are read in. */
+export interface InputDefaultsScope {
+  readonly aliases: AliasResolver;
+  readonly aliasesByModule: Map<string, AliasResolver>;
+  readonly rootModules: ReadonlySet<string>;
+}
+
+/** `schema` with every named-shape reference made canonical in `module`. */
+export function canonicalInModule(schema: Schema, module: string, scope: InputDefaultsScope): Schema {
+  const aliases = declaringModuleScope(module, scope.aliases, {
+    aliasesByModule: scope.aliasesByModule,
+    rootModules: new Set(scope.rootModules),
+  });
+  const moduleForAlias = (alias: string) => aliases.moduleForAlias(alias);
+  return canonicalShapeSchema(withCanonicalRefSentinels(schema, module, moduleForAlias) as Schema, module, moduleForAlias);
+}
 
 const SOURCE = "telo-analyzer";
 
@@ -23,18 +45,23 @@ const ANCHORED = "/";
  * stand-in against the residual schema, a Library's as what the import site
  * builds when its importer supplies nothing, against the rest of its entry.
  *
+ * A named shape an entry references is read as the kernel reads it: by its
+ * canonical id, resolved in the declaring module's scope, through `shapeOf` —
+ * the shape as the configurations judged take it.
+ *
  * Entry-module-scoped: a dependency's inputs are its author's to fix.
  */
 export function validateInputDefaults(
   manifests: readonly ResourceManifest[],
-  rootModules: ReadonlySet<string>,
+  scope: InputDefaultsScope,
+  shapeOf: (id: string) => Schema | undefined,
 ): AnalysisDiagnostic[] {
   const out: AnalysisDiagnostic[] = [];
   for (const manifest of manifests) {
     if (manifest.kind !== "Telo.Application" && manifest.kind !== "Telo.Library") continue;
     const metadata = (manifest.metadata ?? {}) as Record<string, unknown>;
     const name = typeof metadata.name === "string" ? metadata.name : "";
-    if (!rootModules.has(name)) continue;
+    if (!scope.rootModules.has(name)) continue;
     for (const block of ["variables", "secrets"] as const) {
       const entries = (manifest as Record<string, unknown>)[block];
       if (!entries || typeof entries !== "object" || Array.isArray(entries)) continue;
@@ -47,24 +74,25 @@ export function validateInputDefaults(
         if (entry.default === undefined || entry.default === null || holdsTag(entry.default)) continue;
         const binding = "env" in entry || "arg" in entry;
         const { default: fallback, ...rest } = entry;
-        const schema = binding ? residualEntrySchema(entry) : rest;
+        const schema = canonicalInModule(binding ? residualEntrySchema(entry) : rest, name, scope);
         const value = mapTextLeaves(
-          decodePlainLiterals(structuredClone(fallback), schema),
+          decodePlainLiterals(structuredClone(fallback), schema, shapeOf),
           schema,
           (slot, text) => (hostAnchorFor(slot, text) !== undefined ? ANCHORED : text),
+          shapeOf,
         );
         const at = {
           resource: { kind: manifest.kind, name },
           filePath: typeof metadata.source === "string" ? metadata.source : undefined,
           path: `${block}.${key}.default`,
         };
-        const outcome = validateAgainstSchema(value, schema);
+        const outcome = validateAgainstSchemaWithShapes(value, schema, shapeOf);
         if (!outcome.finished) {
           out.push({
             severity: DiagnosticSeverity.Error,
             code: SCHEMA_NESTING_EXCEEDED,
             source: SOURCE,
-            message: schemaNestingExceededMessage(`${manifest.kind}/${name}`, `the default of ${block}.${key}`),
+            message: schemaNestingExceededMessage(`${manifest.kind}/${name}`, `the default of ${block}.${key}`, outcome),
             data: { ...at },
           });
           continue;

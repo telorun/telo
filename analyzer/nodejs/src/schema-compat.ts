@@ -1,5 +1,6 @@
 import { resolveSchemaReference } from "./schema-reference.js";
 import { isRefSentinel } from "@telorun/templating";
+import { WELL_KNOWN_TYPE_NAMES, type CelType, type PrimitiveName } from "@telorun/cel";
 import {
   celBaseOfValueType,
   celTypeOfValueType,
@@ -14,6 +15,7 @@ import {
   valueTypePlaceholder,
 } from "@telorun/sdk";
 import { canonicalJson } from "./canonical-json.js";
+import { inheritSchemaPlace } from "./schema-provenance.js";
 import { memberForbidden, memberSlotSchema, memberSlotSchemas, membersSlotOf } from "./members-value-slot.js";
 import { liftFragmentDefs } from "./manifest-schemas.js";
 import { deepEquals } from "./migrations/match.js";
@@ -237,15 +239,37 @@ const beneath = (side: CompatSide, node: Record<string, any>, ...keys: (string |
   doc: side.doc,
 });
 
-/** A union node's alternatives as sides, each at its written index. */
+/** A union node's alternatives as sides, each at its written index: a value of
+ *  one is the union's shared base AND the branch, so a branch is read with the
+ *  base's own keys beneath its own (`type: object` beside `anyOf`). */
 function branchSides(side: CompatSide): CompatSide[] | undefined {
   if (!unionBranches(side.node)) return undefined;
   const key = side.node.anyOf != null ? "anyOf" : "oneOf";
   const out: CompatSide[] = [];
   (side.node[key] as unknown[]).forEach((branch, index) => {
-    if (branch && typeof branch === "object") out.push(beneath(side, branch as Record<string, any>, key, index));
+    if (branch && typeof branch === "object") {
+      out.push(beneath(side, branchOverBase(side.node, key, branch as Record<string, any>), key, index));
+    }
   });
   return out;
+}
+
+/** `branch` over the shared base of the union `node` holds it under `key` —
+ *  the base's `properties` beneath the branch's, `required` joined — or
+ *  `branch` itself where the base declares no `type` or `properties`, and for
+ *  a reference, which is read as the shape it names. */
+function branchOverBase(node: Record<string, any>, key: string, branch: Record<string, any>): Record<string, any> {
+  if ((node.type === undefined && node.properties === undefined) || typeof branch.$ref === "string") return branch;
+  const { [key]: _union, ...base } = node;
+  const required = [...(Array.isArray(base.required) ? base.required : []), ...(Array.isArray(branch.required) ? branch.required : [])];
+  return {
+    ...base,
+    ...branch,
+    ...(base.properties !== undefined || branch.properties !== undefined
+      ? { properties: { ...(base.properties ?? {}), ...(branch.properties ?? {}) } }
+      : {}),
+    ...(required.length > 0 ? { required: [...new Set(required)] } : {}),
+  };
 }
 
 function compare(
@@ -421,15 +445,17 @@ function compare(
     }
   }
 
-  // Only flag definite primitive type clashes; an absent or union `type` says
-  // too little to judge.
+  // Only flag definite primitive type clashes; a union `type` says too little
+  // to judge, and an absent one is read off the node's `const` / `enum` values.
+  const sourceTypes = declaredJsonTypes(source, false);
+  const targetTypes = declaredJsonTypes(target, true);
   if (
-    typeof source.type === "string" &&
-    typeof target.type === "string" &&
-    !jsonTypeSatisfies(source.type, target.type)
+    sourceTypes.length > 0 &&
+    targetTypes.length > 0 &&
+    !sourceTypes.some((from) => targetTypes.some((to) => jsonTypeSatisfies(from, to)))
   ) {
     issues.push(
-      `${path || "/"}: type mismatch — ${roles.source} is '${source.type}', ${roles.target} expects '${target.type}'`,
+      `${path || "/"}: type mismatch — ${roles.source} is '${sourceTypes.join(" | ")}', ${roles.target} expects '${targetTypes.join(" | ")}'`,
     );
     return;
   }
@@ -535,6 +561,18 @@ const X_TELO_TYPE_KEY = "x-telo-type";
  *  filling defaults reads it: beside a `$ref`, never on the node it names. */
 function declaresOwnDefault(property: unknown): boolean {
   return !!property && typeof property === "object" && "default" in (property as object);
+}
+
+/**
+ * The one JSON type a node declares, or with no `type` the types of its listed
+ * values; empty when it says too little to judge. A listed integer is read as a
+ * `number` on the receiving side, since a source declared `number` may hold it.
+ */
+function declaredJsonTypes(schema: Record<string, any>, receiving: boolean): string[] {
+  if (typeof schema.type === "string") return [schema.type];
+  if (schema.type !== undefined) return [];
+  const listed = literalJsonTypes(schema);
+  return receiving ? [...new Set(listed.map((type) => (type === "integer" ? "number" : type)))] : listed;
 }
 
 /** The values a node allows when it lists them (`const`, `enum`), or undefined. */
@@ -651,10 +689,11 @@ export function jsonSchemaToCelType(schema: Record<string, any> | undefined): st
   return "dyn";
 }
 
-/** The CEL types an `instance` value carries, one per binding. */
-const INSTANCE_CEL_TYPES: ReadonlySet<string> = new Set(
-  Object.values(VALUE_TYPE_BINDINGS).map((binding) => binding.celType),
-);
+/** CEL's own primitives, as a declared name spells each. */
+const PRIMITIVE_NAMES: ReadonlySet<string> = new Set<PrimitiveName>(["int", "uint", "double", "bool", "string", "bytes", "null", "type", "timestamp", "duration"]);
+
+/** The CEL types an `instance` value carries, one per binding, as each binding declares it. */
+const INSTANCE_ROOTS: readonly CelRoot[] = Object.values(VALUE_TYPE_BINDINGS).map((binding) => declaredRoot(binding.celType));
 
 /** The JSON types of a node's `const` / `enum` values; empty when it lists none. */
 function literalJsonTypes(schema: Record<string, any>): string[] {
@@ -671,28 +710,59 @@ function literalJsonTypes(schema: Record<string, any>): string[] {
 }
 
 /**
- * Check whether a CEL type is compatible with a JSON Schema type constraint,
- * judged whole: a `list<T>`'s element type against the slot's `items`, a
- * `map<K, V>`'s value type against its `additionalProperties` and every
- * property it requires, recursively. A part the slot declares through a
- * reference, or the type leaves `dyn`, says nothing.
+ * Whether a CEL type is compatible with a JSON Schema type constraint, judged whole and read
+ * from the type itself: a union satisfies the slot where every member does, and so does a
+ * list's element; a map's value, the join of its entries', where some member does; a list's
+ * element against the slot's `items`, a map's value against its `additionalProperties` and
+ * every property it requires, recursively. A part the slot declares through a reference, or
+ * the type leaves `dyn`, says nothing.
  */
-export function celTypeSatisfiesJsonSchema(celType: string, schema: Record<string, any>): boolean {
-  const { name, args } = splitCelType(celType);
-  if (args.length === 0) return celBaseTypeSatisfies(name, schema);
-  const branches = valueTypeOf(schema) === undefined ? unionBranches(schema) : undefined;
-  if (branches) return branches.some((branch) => celTypeSatisfiesJsonSchema(celType, branch));
-  if (!celBaseTypeSatisfies(name, schema)) return false;
-  const holds = (part: string | undefined, slot: unknown): boolean =>
-    part === undefined ||
-    part === "dyn" ||
+export function celValueTypeSatisfiesJsonSchema(type: CelType, schema: Record<string, any>): boolean {
+  if (type.kind === "union") return type.members.every((member) => celValueTypeSatisfiesJsonSchema(member, schema));
+  if (!holdsUnionPart(type)) return celTypeFitsJsonSchema(type, schema);
+  const branches = valueTypeOf(schema) === undefined ? unionBranchesOverBase(schema) : undefined;
+  if (branches) return branches.some((branch) => celValueTypeSatisfiesJsonSchema(type, branch));
+  if (!celRootSatisfies(celRootOf(type), schema)) return false;
+  const holds = (part: CelType, slot: unknown): boolean =>
     !slot ||
     typeof slot !== "object" ||
     Array.isArray(slot) ||
     typeof (slot as Record<string, any>).$ref === "string" ||
-    celTypeSatisfiesJsonSchema(part, slot as Record<string, any>);
-  if (name === "list") return holds(args[0], schema.items);
-  if (name === "map") {
+    celValueTypeSatisfiesJsonSchema(part, slot as Record<string, any>);
+  if (type.kind === "list") return holds(type.element, schema.items);
+  if (type.kind !== "map") return true;
+  // A map's value type joins every entry's, so which member a key holds is not
+  // known: a member fitting is enough for the entries it may stand for.
+  const holdsEntry = (slot: unknown): boolean =>
+    type.value.kind === "union" ? type.value.members.some((member) => holds(member, slot)) : holds(type.value, slot);
+  if (!holdsEntry(schema.additionalProperties)) return false;
+  const required: unknown[] = Array.isArray(schema.required) ? schema.required : [];
+  return required.every(
+    (key) =>
+      typeof key !== "string" ||
+      declaresOwnDefault(schema.properties?.[key]) ||
+      holdsEntry(schema.properties?.[key]),
+  );
+}
+
+/** {@link celValueTypeSatisfiesJsonSchema} over a type holding no union in a list's element or a map's value. */
+function celTypeFitsJsonSchema(type: CelType, schema: Record<string, any>): boolean {
+  const root = celRootOf(type);
+  const args = celTypeArguments(type);
+  if (args.length === 0) return celRootSatisfies(root, schema);
+  const branches = valueTypeOf(schema) === undefined ? unionBranchesOverBase(schema) : undefined;
+  if (branches) return branches.some((branch) => celTypeFitsJsonSchema(type, branch));
+  if (!celRootSatisfies(root, schema)) return false;
+  const holds = (part: CelType | undefined, slot: unknown): boolean =>
+    part === undefined ||
+    part.kind === "dyn" ||
+    !slot ||
+    typeof slot !== "object" ||
+    Array.isArray(slot) ||
+    typeof (slot as Record<string, any>).$ref === "string" ||
+    celTypeFitsJsonSchema(part, slot as Record<string, any>);
+  if (root.kind === "list") return holds(args[0], schema.items);
+  if (root.kind === "map") {
     const value = args[1];
     if (!holds(value, schema.additionalProperties)) return false;
     const required: unknown[] = Array.isArray(schema.required) ? schema.required : [];
@@ -706,48 +776,127 @@ export function celTypeSatisfiesJsonSchema(celType: string, schema: Record<strin
   return true;
 }
 
-/** A CEL type's name and its type arguments, top-level commas only:
- *  `map<string, list<int>>` → `map`, [`string`, `list<int>`]. */
-function splitCelType(celType: string): { name: string; args: string[] } {
-  const open = celType.indexOf("<");
-  if (open === -1 || !celType.endsWith(">")) return { name: celType, args: [] };
-  const args: string[] = [];
-  let depth = 0;
-  let start = open + 1;
-  for (let i = start; i < celType.length - 1; i++) {
-    const c = celType[i];
-    if (c === "<") depth++;
-    else if (c === ">") depth--;
-    else if (c === "," && depth === 0) {
-      args.push(celType.slice(start, i).trim());
-      start = i + 1;
-    }
+/**
+ * A type's root as the slot rules read it, from the type itself: its kind, and a primitive's
+ * or a named type's own name. An unnamed record is a map with named keys; a union, a type
+ * parameter or anything else no rule knows is `other`.
+ */
+type CelRoot =
+  | { readonly kind: "dyn" | "list" | "map" | "optional" | "other" }
+  | { readonly kind: "primitive"; readonly name: PrimitiveName }
+  | { readonly kind: "named"; readonly name: string };
+
+function celRootOf(type: CelType): CelRoot {
+  switch (type.kind) {
+    case "dyn":
+    case "list":
+    case "map":
+    case "optional":
+      return { kind: type.kind };
+    case "primitive":
+      return { kind: "primitive", name: type.name };
+    case "nominal":
+      return { kind: "named", name: type.name };
+    case "record":
+      return type.name === undefined ? { kind: "map" } : { kind: "named", name: type.name };
+    default:
+      return { kind: "other" };
   }
-  args.push(celType.slice(start, celType.length - 1).trim());
-  return { name: celType.slice(0, open), args };
 }
 
-function celBaseTypeSatisfies(celType: string, schema: Record<string, any>): boolean {
-  if (celType === "dyn") return true;
+/** A type's arguments: a container's members, a named type's arguments. */
+function celTypeArguments(type: CelType): readonly CelType[] {
+  switch (type.kind) {
+    case "list":
+      return [type.element];
+    case "map":
+      return [type.key, type.value];
+    case "optional":
+      return [type.value];
+    case "nominal":
+      return type.args;
+    default:
+      return [];
+  }
+}
+
+/**
+ * The root of a type a value-type entry DECLARES by name — read as the type-expression
+ * grammar reads a name: a container's kind, CEL's own primitives and well-known types, then a
+ * named type.
+ */
+function declaredRoot(name: string): CelRoot {
+  if (name === "dyn" || name === "list" || name === "map" || name === "optional") return { kind: name };
+  const wellKnown = WELL_KNOWN_TYPE_NAMES[name];
+  if (wellKnown) return { kind: "primitive", name: wellKnown };
+  if (PRIMITIVE_NAMES.has(name)) return { kind: "primitive", name: name as PrimitiveName };
+  return { kind: "named", name };
+}
+
+function sameRoot(left: CelRoot, right: CelRoot): boolean {
+  return left.kind === right.kind && ("name" in left ? left.name === (right as { name: string }).name : true);
+}
+
+function isPrimitiveRoot(root: CelRoot, name: PrimitiveName): boolean {
+  return root.kind === "primitive" && root.name === name;
+}
+
+/**
+ * Whether a type's root, read from the type, is one the schema's type admits; a union's where
+ * every member's is, as a union passes where every member does.
+ */
+export function celRootTypeSatisfiesJsonSchema(type: CelType, schema: Record<string, any>): boolean {
+  if (type.kind === "union") return type.members.every((member) => celRootTypeSatisfiesJsonSchema(member, schema));
+  return celRootSatisfies(celRootOf(type), schema);
+}
+
+/** Whether a value of the type is text: a string, or a brand over one — read from the type. */
+export function celTypeIsText(type: CelType): boolean {
+  const root = celRootOf(type);
+  if (isPrimitiveRoot(root, "string")) return true;
+  const base = root.kind === "named" ? VALUE_BRAND_BASE[root.name] : undefined;
+  return base !== undefined && isPrimitiveRoot(declaredRoot(base), "string");
+}
+
+/** Whether a list's element or a map's value is, or holds, a union. */
+function holdsUnionPart(type: CelType): boolean {
+  if (type.kind === "union") return true;
+  if (type.kind === "list") return holdsUnionPart(type.element);
+  if (type.kind === "map") return holdsUnionPart(type.value);
+  return false;
+}
+
+/** A union node's alternatives, each read over the union's shared base
+ *  ({@link branchOverBase}); undefined when the node is not a union. */
+function unionBranchesOverBase(schema: Record<string, any>): Record<string, any>[] | undefined {
+  if (!unionBranches(schema)) return undefined;
+  const key = schema.anyOf != null ? "anyOf" : "oneOf";
+  return (schema[key] as unknown[])
+    .filter((branch): branch is Record<string, any> => !!branch && typeof branch === "object")
+    .map((branch) => branchOverBase(schema, key, branch));
+}
+
+function celRootSatisfies(root: CelRoot, schema: Record<string, any>): boolean {
+  if (root.kind === "dyn") return true;
   // A union is a CHOICE, satisfied by satisfying any branch — split BEFORE a
   // brand degrades to its base, or a `Telo.HostPath` source would reach the
   // host-path branch as a plain string and be refused by the one branch it fits.
   // Distributed for the same reason `compare` does it: accepting every union
   // outright turns the check off for exactly the slots that admit more than one
   // shape, and those are the ones where the branches carry the information.
-  const branches = valueTypeOf(schema) === undefined ? unionBranches(schema) : undefined;
-  if (branches) return branches.some((branch) => celBaseTypeSatisfies(celType, branch));
+  const branches = valueTypeOf(schema) === undefined ? unionBranchesOverBase(schema) : undefined;
+  if (branches) return branches.some((branch) => celRootSatisfies(root, branch));
   // Nominal value brands: when the expression's type is a recognized brand,
   // a branded consuming field must match exactly (a UdpPort wired into a
   // TcpPort-branded field is the error we want). An unbranded field accepts
   // the brand as its base type — gradual typing, so a TcpPort flows freely
   // into a plain integer field. (A plain integer into a branded field is also
   // allowed: only a *conflicting* brand is rejected.)
-  const sourceBase = VALUE_BRAND_BASE[celType];
-  if (sourceBase) {
+  const sourceBase = root.kind === "named" ? VALUE_BRAND_BASE[root.name] : undefined;
+  if (sourceBase && root.kind === "named") {
     const fieldBrand = brandOfSchema(schema);
-    if (fieldBrand) return fieldBrand === celType;
-    celType = sourceBase;
+    if (fieldBrand) return fieldBrand === root.name;
+    root = declaredRoot(sourceBase);
   } else if (valueTypeOf(schema)?.fromHost !== undefined) {
     // The one brand that is not gradual: a host path is made by anchoring
     // (a host-path variable, `!module-path`, `.join` on one), so a plain string
@@ -761,16 +910,16 @@ function celBaseTypeSatisfies(celType: string, schema: Record<string, any>): boo
   const slotEntry = valueTypeOf(schema);
   const liveSlot = slotEntry?.representation === "instance" && slotEntry.live === true;
   if (slotEntry?.representation === "instance") {
-    if (celTypeOfValueType(slotEntry) === celType) return true;
+    if (sameRoot(declaredRoot(celTypeOfValueType(slotEntry)), root)) return true;
     // Text stands where the type admits it, read through its encoding at creation.
-    if (slotEntry.acceptsText !== undefined && celType === "string") return true;
+    if (slotEntry.acceptsText !== undefined && isPrimitiveRoot(root, "string")) return true;
     if (!liveSlot) return false;
   }
   // And the reverse: an instance's CEL type is no JSON type, so it satisfies no
   // slot that declares one. Derived from the binding table, so a new instance
   // type needs no row here.
   if (
-    INSTANCE_CEL_TYPES.has(celType) &&
+    INSTANCE_ROOTS.some((instance) => sameRoot(instance, root)) &&
     (schema.type !== undefined || (slotEntry !== undefined && !liveSlot))
   ) {
     return false;
@@ -784,19 +933,31 @@ function celBaseTypeSatisfies(celType: string, schema: Record<string, any>): boo
       : [schema.type]
     : literalJsonTypes(schema);
   if (schemaTypes.length === 0) return true;
-  const accepted: Record<string, string[]> = {
-    int: ["integer", "number"],
-    uint: ["integer", "number"],
-    double: ["number"],
-    string: ["string"],
-    bool: ["boolean"],
-    list: ["array"],
-    map: ["object"],
-    null: ["null"],
-  };
-  const compatibleWith = accepted[celType];
+  const compatibleWith = jsonTypesOf(root);
   if (!compatibleWith) return true; // unknown CEL type — don't flag
   return compatibleWith.some((t) => schemaTypes.includes(t));
+}
+
+/** The JSON types a CEL type's root stands for, read from its kind and primitive; nothing for one no JSON type is. */
+function jsonTypesOf(root: CelRoot): readonly string[] | undefined {
+  if (root.kind === "list") return ["array"];
+  if (root.kind === "map") return ["object"];
+  if (root.kind !== "primitive") return undefined;
+  switch (root.name) {
+    case "int":
+    case "uint":
+      return ["integer", "number"];
+    case "double":
+      return ["number"];
+    case "string":
+      return ["string"];
+    case "bool":
+      return ["boolean"];
+    case "null":
+      return ["null"];
+    default:
+      return undefined;
+  }
 }
 
 /** Return a literal placeholder value of the correct schema type for AJV. */
@@ -1307,14 +1468,15 @@ export function inlineNamedShapes(
         for (const [key, value] of Object.entries(record)) {
           if (!REFERENCE_KEYS.has(key)) siblings[key] = value;
         }
-        return expand({ ...target, ...siblings }, new Set(open).add(ref));
+        // The inlined node is written where the shape's own is.
+        return expand(inheritSchemaPlace({ ...target, ...siblings }, target), new Set(open).add(ref));
       }
     }
     const out: Record<string, any> = {};
     for (const [key, value] of Object.entries(record)) {
       out[key] = key.startsWith("x-telo-") ? value : expand(value, open);
     }
-    return out;
+    return inheritSchemaPlace(out, record);
   };
   return liftFragmentDefs(expand(schema, new Set()) as Record<string, any>);
 }

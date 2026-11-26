@@ -1,0 +1,10 @@
+# Asks for a database address and reads it.
+kind: Telo.Library
+metadata: { name: InnerNeedChoiceInner }
+imports: { Types: ../types }
+needs: { db: { kind: Types.Database } }
+exports: { resources: [address] }
+---
+kind: Telo.Value
+metadata: { name: address }
+value: !cel "resources.db.url"

@@ -117,6 +117,36 @@ export function isTextOrRecordUnion(
   return text && record;
 }
 
+/**
+ * The text fragment a library `variables:` / `secrets:` entry takes when the
+ * entry is a TEXT PARAMETER: typed `Text` or `Message`, or a union of either with
+ * `TextRecord`. Whoever imports the library writes the text, and the library
+ * reads it as a `TextRecord`; undefined for any other entry.
+ */
+export function textParameterFragment(
+  entry: unknown,
+  root: Record<string, any> = isPlainObject(entry) ? entry : {},
+  resolveRef?: TextWalkOptions["resolveRef"],
+): typeof TEXT_FRAGMENT | typeof MESSAGE_FRAGMENT | undefined {
+  const own = textFragmentOf(entry);
+  if (own === TEXT_FRAGMENT || own === MESSAGE_FRAGMENT) return own;
+  if (!isPlainObject(entry)) return undefined;
+  const branches = [...(Array.isArray(entry.anyOf) ? entry.anyOf : []), ...(Array.isArray(entry.oneOf) ? entry.oneOf : [])];
+  let text: typeof TEXT_FRAGMENT | typeof MESSAGE_FRAGMENT | undefined;
+  let record = false;
+  for (const branch of branches) {
+    let node: unknown = branch;
+    if (isPlainObject(node) && typeof node.$ref === "string" && textFragmentOf(node) === undefined && !isTextRecordSchema(node)) {
+      node = referenceTarget(node.$ref, root, resolveRef)?.schema;
+    }
+    const fragment = textFragmentOf(node);
+    if (fragment === TEXT_FRAGMENT || fragment === MESSAGE_FRAGMENT) text = text === TEXT_FRAGMENT ? text : fragment;
+    else if (isTextRecordSchema(node)) record = true;
+    else return undefined;
+  }
+  return text && record ? text : undefined;
+}
+
 /** True when a schema a value is produced from can only hold a text record or
  *  null: the `TextRecord` fragment, or a union of it with `null`. */
 export function producesTextRecord(

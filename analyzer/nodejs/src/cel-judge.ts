@@ -12,6 +12,7 @@
  *
  * Browser-safe.
  */
+import type { CelType } from "@telorun/cel";
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { OBSERVED_STATE_KEY } from "@telorun/sdk";
 import {
@@ -27,9 +28,10 @@ import { accessorChainPlaces, accessorFields, accessorProblems } from "./accesso
 import type { AliasResolver } from "./alias-resolver.js";
 import { renderChain } from "./callable-flags.js";
 import { parseCelSource, valueBrandHint } from "./cel-environment.js";
-import { producedValueOf, type ProducedValue } from "./cel-produced-value.js";
+import { chainNodeOf, slotOriginsOf, type SlotOrigin } from "./cel-slot-origin.js";
+import { forwardedSchemaOf } from "./cel-schema-node.js";
 import { accessChains } from "./cel-access-chains.js";
-import { declaredChainSchemaAt, LOCATION_SEPARATOR, type CelScopeResolver, type CelSiteRef, type ReferrerLink, type ReferrerVariant } from "./cel-scope.js";
+import { LOCATION_SEPARATOR, type CelScopeResolver, type CelSiteRef, type ReferrerLink, type ReferrerVariant } from "./cel-scope.js";
 import { withheldMessage, withheldNodes, withheldOnChain, type WithheldNode } from "./context-withheld.js";
 import { isGeneratedDeclaration } from "./generated-name.js";
 import { reportCelSiteJudgement } from "./cel-site-judgements.js";
@@ -46,6 +48,8 @@ import {
 } from "./eval-paths.js";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { isTypeLevelName } from "./identifier-name.js";
+import { isSelfForward } from "./template-self-forward.js";
+import { pathInBody, templateBodyEntries } from "./template-body.js";
 import type { KernelGlobalsIndex } from "./kernel-globals.js";
 import { isKindDocument } from "./kind-declaration.js";
 import { moduleCallNamesOf } from "./module-call-names.js";
@@ -123,27 +127,31 @@ void holdsNoManifestList;
 
 /** What one judgement of a CEL site found about its value. */
 export interface CelSiteFacts {
+  /** The value's type as it prints, for a message. */
   type?: string;
+  /** The type itself: what a reader branching on the type reads. */
+  checkedType?: CelType;
   literal?: string;
   produced?: Record<string, any>;
-  /** What a non-chain expression's tree says about its value. */
-  composed?: ProducedValue;
+  /** Every place the value may come from, in written order. */
+  origins?: readonly SlotOrigin[];
 }
 
 /** What each expression of a set was typed as, by declaration and path. */
 export type CelFactMaps = Pick<
   CelJudge,
-  "typeByPath" | "sourceByPath" | "literalByPath" | "sourceSchemaByPath" | "composedByPath" | "variantFacts"
+  "typeByPath" | "checkedTypeByPath" | "sourceByPath" | "literalByPath" | "sourceSchemaByPath" | "originsByPath" | "variantFacts"
 >;
 
 /** No expression's facts yet. */
 export function emptyCelFactMaps(): CelFactMaps {
   return {
     typeByPath: new Map(),
+    checkedTypeByPath: new Map(),
     sourceByPath: new Map(),
     literalByPath: new Map(),
     sourceSchemaByPath: new Map(),
-    composedByPath: new Map(),
+    originsByPath: new Map(),
     variantFacts: new Map(),
   };
 }
@@ -163,10 +171,11 @@ export function replayCelFacts(
     byPath.set(path, value);
   };
   put(maps.typeByPath, facts.type);
+  put(maps.checkedTypeByPath, facts.checkedType);
   put(maps.sourceByPath, facts.type !== undefined ? facts.source : undefined);
   put(maps.literalByPath, facts.literal);
   put(maps.sourceSchemaByPath, facts.produced);
-  put(maps.composedByPath, facts.composed as ProducedValue | undefined);
+  put(maps.originsByPath, facts.origins as readonly SlotOrigin[] | undefined);
   put(maps.variantFacts, facts.variants as ReadonlyArray<CelSiteFacts & { label: string | undefined }> | undefined);
 }
 
@@ -175,13 +184,16 @@ export function replayCelFacts(
 export class CelJudge {
   /** What each judged expression was typed as, by declaration and path. */
   readonly typeByPath = new Map<ResourceManifest, Map<string, string>>();
+  /** The type itself of each judged expression, beside its text. */
+  readonly checkedTypeByPath = new Map<ResourceManifest, Map<string, CelType>>();
   /** The expression's source, for what its text alone decides. */
   readonly sourceByPath = new Map<ResourceManifest, Map<string, string>>();
   /** The string an expression is a literal of, as the engine parsed it. */
   readonly literalByPath = new Map<ResourceManifest, Map<string, string>>();
   /** The schema an expression RESOLVES TO, beside the CEL type it carries. */
   readonly sourceSchemaByPath = new Map<ResourceManifest, Map<string, Record<string, any>>>();
-  readonly composedByPath = new Map<ResourceManifest, Map<string, ProducedValue>>();
+  /** Where each expression's value may come from, as the slot fit reads it. */
+  readonly originsByPath = new Map<ResourceManifest, Map<string, readonly SlotOrigin[]>>();
   /** What a site judged under several referrer typings found under each. */
   readonly variantFacts = new Map<
     ResourceManifest,
@@ -255,9 +267,10 @@ export class CelJudge {
     return {
       source,
       type: this.typeByPath.get(m)?.get(path),
+      checkedType: this.checkedTypeByPath.get(m)?.get(path),
       literal: this.literalByPath.get(m)?.get(path),
       produced: this.sourceSchemaByPath.get(m)?.get(path),
-      composed: this.composedByPath.get(m)?.get(path),
+      origins: this.originsByPath.get(m)?.get(path),
       ...(variants ? { variants } : {}),
     };
   }
@@ -291,6 +304,9 @@ export class CelJudge {
     // A forwarded expression is checked once, where it is evaluated: at the
     // entry's view unless this kind evaluates it at compile time.
     if (w.forwardViews?.defersCel(m, path)) return;
+    // A module doc's inline `imports:` map is the expression its desugared
+    // `Telo.Import` carries, judged there in the import's config-only scope.
+    if (isModuleKind(m.kind as string) && path.startsWith("imports.")) return;
 
     // An accessor field is typed like any CEL leaf and never evaluated.
     // Only a plain chain written AS the field's value reaches the checker;
@@ -448,7 +464,10 @@ export class CelJudge {
         moduleCallType,
         moduleCallResult,
         moduleCallFlags,
-        explainSchema,
+        chainSchema,
+        withheldBindings,
+        assumptions,
+        rootsDeclared,
       } = w.celScope.scopeFor({ ...siteRef, ...(variant ? { variant } : {}) });
 
       reportCelSiteJudgement({
@@ -458,42 +477,52 @@ export class CelJudge {
       });
       const result = engine.analyze(expr, {
         celEnv: typedEnv,
-        contextSchema: effectiveContext,
         // A call whose receiver is one of these resolves to a module
         // function: it is not classified against the catalog, its
         // determinism is not the catalog's, and its receiver is not a root
-        // identifier. It types as its callee's declared result, and member
-        // access on it is checked against that result's schema.
+        // identifier. It types as its callee's declared result, which the
+        // environment reads to full depth.
         moduleNames: siteModuleNames,
         moduleCallType,
-        moduleCallResult,
         // Each module call carries its callee's derived flags, so the
         // policies below read `deterministic === false` for a module call as
         // they do for a catalog one.
         moduleCallFlags,
-        explainSchema,
         // `scopeFor` registers every kernel global (none in a parameter scope,
-        // which replaces them) and every name the site's context declares,
-        // so a root this environment does not know is one
-        // nothing puts in scope. Two places where the CEL belongs to another
-        // scope, both already recognised by the non-eval-field check: a kind
-        // document, whose CEL is written for whoever instantiates the kind,
-        // and anything below a nested inline `{ kind }`, whose CEL the
-        // nested kind evaluates — and which is analyzed again, in its own
-        // scope, as the resource it was extracted into.
-        rootsDeclared: !isKindDocument(m) && !pathCrossesNestedResource(m, path),
+        // which replaces them) and every name the site's context declares —
+        // a template body entry's the nested kind's, with `self` — so a root
+        // this environment does not know is one nothing puts in scope; it says
+        // where that does not hold. Below a nested inline `{ kind }` the CEL is
+        // that declaration's, analyzed again in its own scope as the resource
+        // it was extracted into; a body entry is the one declaration judged in
+        // place.
+        rootsDeclared: rootsDeclared && !crossesNestedDeclaration(m, path),
         // Which bare names could be a module: the naming rule, which the
         // engine does not own. A module name and an import alias are
         // type-level, so a lowercase receiver is a misspelled value and the
         // `imports:` repair would be advice for a different mistake.
         couldNameModule: isTypeLevelName,
+        // The step guards enclosing the site hold or fail on the way to it.
+        ...(assumptions ? { assumptions } : {}),
       });
 
-      if (result.type !== undefined) facts.type = result.type;
-      if (result.type !== undefined && primary) {
+      // A bare `self.<path>` in a template body is navigated, never evaluated:
+      // it hands the value through as the instance holds it, so it has no CEL
+      // type of its own for a slot to be judged by.
+      const navigated = isBodySelfForward(m, path, engineName, expr);
+      if (result.type !== undefined && !navigated) {
+        facts.type = result.type;
+        if (result.checkedType !== undefined) facts.checkedType = result.checkedType;
+      }
+      if (result.type !== undefined && !navigated && primary) {
         let byPath = this.typeByPath.get(m);
         if (!byPath) this.typeByPath.set(m, (byPath = new Map()));
         byPath.set(path, result.type);
+        if (result.checkedType !== undefined) {
+          let checked = this.checkedTypeByPath.get(m);
+          if (!checked) this.checkedTypeByPath.set(m, (checked = new Map()));
+          checked.set(path, result.checkedType);
+        }
         let sources = this.sourceByPath.get(m);
         if (!sources) this.sourceByPath.set(m, (sources = new Map()));
         sources.set(path, expr);
@@ -505,57 +534,43 @@ export class CelJudge {
         }
       }
 
-      // The producer half of the type-argument check. A CEL type is a bare
-      // name — cel-js types by constructor identity, so a byte stream and a
-      // string stream are one CEL type and always will be — so the argument
-      // comparison is a parallel pass over the SCHEMAS the analyzer already
-      // walks. This is where the producer's schema is in hand: navigating
-      // the expression's chain into its context schema is exactly "the
-      // producer's outputType at the expression's tail".
-      //
-      // Only a PLAIN CHAIN is navigated — `steps.encode.result.output`, the
-      // shape a wiring site actually takes. An expression that computes
-      // rather than names has no schema to read off the context, so it
-      // records nothing and no argument check fires: silence where the
-      // analyzer knows least is the conservative direction, and the same one
-      // `x-telo-step-context`'s pure-`value` typing takes.
-      // A site with no context of its own still reads the kernel globals —
-      // `variables.dataDir` in a plain config field — whose declared schemas
-      // the host-path check needs as much as a step result's.
-      const chainContext =
-        effectiveContext ?? w.kernelGlobals.forResource(m as unknown as ResourceManifest, path);
-      // Read as the shape it names: a reference at a hop or at the tail is
-      // followed, so what a producer declares behind one is judged. A step
-      // chain is read off the `steps` record the site reads, where each result
-      // is the document its target declared or its producer's fact; the
-      // context is a copy of it, in which no pointer can be traced to its
-      // document.
-      const stepsRead = w.celScope.stepsReadAt(path);
-      const declaredChainSchema = (chain: string): Record<string, any> | undefined =>
-        declaredChainSchemaAt(chain, chainContext, stepsRead, w.shapes);
+      // What the value is read from, for the slot fit and the type-argument
+      // check: every origin of the checked result, each with the schema node
+      // the engine read it from where it is an instance of one. A plain
+      // chain's one located origin is also the schema it forwards.
+      // A navigated forward hands the value through as the instance holds
+      // it, so only the node it is read from says what that value is.
+      const read = result.origins
+        ? slotOriginsOf(expr, result.origins, {
+            chainSchema,
+            moduleNames: siteModuleNames,
+            callResult: moduleCallResult,
+            resolveRef: w.shapes,
+          })
+        : undefined;
+      const origins = !navigated
+        ? read
+        : read?.every((origin) => origin.node !== undefined)
+          ? read.map(({ text, type, typeName, node }) => ({ text, ...(type ? { rootType: type } : {}), typeName, node }))
+          : undefined;
+      if (origins) {
+        facts.origins = origins;
+        if (primary) {
+          let byPath = this.originsByPath.get(m);
+          if (!byPath) this.originsByPath.set(m, (byPath = new Map()));
+          byPath.set(path, origins);
+        }
+      }
       const chain = plainChainOf(makeTaggedSentinel(engineName, expr));
       if (chain) {
-        const produced = declaredChainSchema(chain);
+        // A forward carries its node read where it sits in its document.
+        const located = !navigated && result.origins?.length === 1 ? result.origins[0]!.schemaNode : undefined;
+        const produced = located ? (forwardedSchemaOf(located) ?? chainNodeOf(origins ?? [])) : origins ? chainNodeOf(origins) : chainSchema(chain);
         if (produced) facts.produced = produced;
         if (produced && primary) {
           let byPath = this.sourceSchemaByPath.get(m);
           if (!byPath) this.sourceSchemaByPath.set(m, (byPath = new Map()));
           byPath.set(path, produced);
-        }
-      } else if (engineName === CEL_ENGINE) {
-        // Not a plain chain: what its tree says about its value, composed
-        // from the chains, calls and literals inside it.
-        const composed = producedValueOf(expr, {
-          chainSchema: declaredChainSchema,
-          moduleNames: siteModuleNames,
-          callResult: moduleCallResult,
-          resolveRef: w.shapes,
-        });
-        if (composed) facts.composed = composed;
-        if (composed && primary) {
-          let byPath = this.composedByPath.get(m);
-          if (!byPath) this.composedByPath.set(m, (byPath = new Map()));
-          byPath.set(path, composed);
         }
       }
 
@@ -578,7 +593,7 @@ export class CelJudge {
               filePath,
               path,
               calls: result.calls,
-              contextSchema: effectiveContext,
+              chainSchema,
               resolveRef: w.shapes,
               ...(unboundReason !== undefined ? { unboundReason } : {}),
               lang: w.textLanguages.langOf(m as unknown as ResourceManifest),
@@ -642,6 +657,7 @@ export class CelJudge {
       for (const region of siteRef.contexts ?? (siteRef.contextSchema ? [{ schema: siteRef.contextSchema }] : [])) {
         for (const name of Object.keys(region.schema?.properties ?? {})) regionNames.add(name);
       }
+      for (const name of withheldBindings ?? []) regionNames.add(name);
       const withheld = regionNames.size > 0 ? withheldNodes(effectiveContext, regionNames) : [];
       if (withheld.length > 0) {
         const reported = new Set<WithheldNode>();
@@ -702,7 +718,7 @@ export class CelJudge {
             source: SOURCE,
             message:
               `${m.kind}/${resource.name}: !${engineName}: ${f.message}` +
-              (f.code === "CEL_TYPE_ERROR" ? valueBrandHint(result.readTypes) : "") +
+              (f.code === "CEL_TYPE_ERROR" ? valueBrandHint(result.readCheckedTypes) : "") +
               (f.code === "CEL_UNKNOWN_FIELD"
                 ? w.scopeMemberClause(m as unknown as ResourceManifest, path, f.message)
                 : ""),
@@ -729,6 +745,15 @@ export class CelJudge {
       ...mergeVariantFindings(judged, (m.metadata as { module?: string } | undefined)?.module, w.rootModules),
     );
   }
+}
+
+/** Whether the expression at `path` of `m` is a bare `self.<path>` written in
+ *  a template body — never in the kind's `schema:` or its `base:` mapping,
+ *  whose expressions are evaluated. */
+function isBodySelfForward(m: ResourceManifest | Record<string, any>, path: string, engineName: string, expr: string): boolean {
+  if (m.kind !== "Telo.Definition" || engineName !== CEL_ENGINE || !isSelfForward(expr)) return false;
+  const field = path.split(/[.[]/, 1)[0];
+  return field !== "schema" && field !== "base";
 }
 
 /** Withheld-read findings, which name the referrer withholding the node
@@ -876,6 +901,14 @@ export function pathCrossesNestedResource(root: unknown, path: string): boolean 
     }
   }
   return false;
+}
+
+/** True when `path` crosses a nested inline `{ kind }` declaration other than
+ *  a template body entry, whose CEL is judged in place in its own scope. */
+function crossesNestedDeclaration(m: ResourceManifest, path: string): boolean {
+  if (!isKindDocument(m)) return pathCrossesNestedResource(m, path);
+  const entry = templateBodyEntries(m).find((candidate) => pathInBody(path, candidate.prefix));
+  return entry ? pathCrossesNestedResource(entry.manifest, path.slice(entry.prefix.length + 1)) : pathCrossesNestedResource(m, path);
 }
 
 /** Member-access chains in a CEL expression, or none when it doesn't parse.

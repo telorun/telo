@@ -1,0 +1,9 @@
+# A library asking for a directory as a need, publishing the path it was given.
+kind: Telo.Library
+metadata: { name: ImportModuleFilesStored }
+needs: { store: { kind: Telo.DurableDirectory } }
+exports: { resources: [read] }
+---
+kind: Telo.Value
+metadata: { name: read }
+value: !cel "string(resources.store.path)"

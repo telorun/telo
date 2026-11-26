@@ -1,4 +1,5 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { isExpansionSentinel } from "@telorun/templating";
 import { isKindDocument } from "./kind-declaration.js";
 import { isModuleKind } from "./module-kinds.js";
 import { isScopeMemberDeclaration } from "./scope-members.js";
@@ -52,10 +53,9 @@ export interface ScopedImportPlace {
 /** The place of a scoped import member from its stamps. */
 export function scopedImportPlace(member: unknown): ScopedImportPlace | undefined {
   const holders = scopeHoldersOf(member);
-  const meta = (member as { metadata?: { name?: unknown; scopePath?: unknown } }).metadata;
-  if (!holders?.length || typeof meta?.name !== "string" || typeof meta.scopePath !== "string") return undefined;
-  const last = meta.scopePath.split(".").pop() ?? "";
-  return { alias: meta.name, holder: holders[holders.length - 1]!, field: last.replace(/\[\d+\]$/, "") };
+  const meta = (member as { metadata?: { name?: unknown; scopeField?: unknown } }).metadata;
+  if (!holders?.length || typeof meta?.name !== "string" || typeof meta.scopeField !== "string") return undefined;
+  return { alias: meta.name, holder: holders[holders.length - 1]!, field: meta.scopeField };
 }
 
 /** The `UNDEFINED_KIND` sentence for a kind spelled through a scoped import. */
@@ -87,31 +87,38 @@ export interface ScopedImportMember {
   readonly member: ResourceManifest;
   /** The top-level declaration holding it. */
   readonly top: ResourceManifest;
-  /** Its place inside `top` (`with[0]`). */
+  /** Its place inside `top` as the manifests read hold it (`with[0]`; in a
+   *  document as written, option keys included: `with.then[0]`). */
   readonly path: string;
 }
 
 /** Every scoped `Telo.Import` member beneath `manifests`, at any depth, as
- *  {@link stampScopedImportIdentity} marked them, in document order. */
+ *  {@link stampScopedImportIdentity} marked them, in document order — one a
+ *  choice declares at a scope-member position read under the tag's name. */
 export function scopedImportMembers(manifests: readonly unknown[]): ScopedImportMember[] {
   const out: ScopedImportMember[] = [];
   const seen = new Set<object>();
-  const visit = (value: unknown, top: ResourceManifest, isTop: boolean): void => {
+  type Keys = readonly (string | number)[];
+  const visit = (value: unknown, top: ResourceManifest, keys: Keys, named: string | undefined): void => {
     if (!value || typeof value !== "object" || seen.has(value)) return;
     seen.add(value);
     if (Array.isArray(value)) {
-      for (const item of value) visit(item, top, false);
+      value.forEach((item, i) => visit(item, top, [...keys, i], undefined));
       return;
     }
     const proto = Object.getPrototypeOf(value);
     if (proto !== Object.prototype && proto !== null) return;
     const node = value as Record<string, unknown>;
-    if (!isTop && node.kind === "Telo.Import" && scopeHoldersOf(node)) {
-      const path = (node.metadata as { scopePath?: unknown }).scopePath;
-      out.push({ member: node as unknown as ResourceManifest, top, path: typeof path === "string" ? path : "" });
+    if (keys.length > 0 && node.kind === "Telo.Import" && scopeHoldersOf(node)) {
+      const meta = node.metadata as { name?: unknown };
+      const member = typeof meta.name === "string" || named === undefined ? node : { ...node, metadata: { ...meta, name: named } };
+      out.push({ member: member as unknown as ResourceManifest, top, path: scopedPathText(keys) });
       return;
     }
-    for (const [key, child] of Object.entries(node)) if (key !== "metadata") visit(child, top, false);
+    // A choice at a declaration position names what its branches declare.
+    const tagName = isExpansionSentinel(node) ? (node.metadata as { name?: unknown } | undefined)?.name : undefined;
+    const inner = isExpansionSentinel(node) ? (typeof tagName === "string" ? tagName : named) : undefined;
+    for (const [key, child] of Object.entries(node)) if (key !== "metadata") visit(child, top, [...keys, key], inner);
   };
   for (const m of manifests) {
     if (!m || typeof m !== "object") continue;
@@ -119,8 +126,14 @@ export function scopedImportMembers(manifests: readonly unknown[]): ScopedImport
     if (kind === "Telo.Import" || isModuleKind(kind as string) || isKindDocument(m as { kind?: unknown })) continue;
     // A scope member the analysis holds beside its holder is walked through it.
     if (isScopeMemberDeclaration(m)) continue;
-    visit(m, m as ResourceManifest, true);
+    visit(m, m as ResourceManifest, [], undefined);
   }
   return out;
 }
 
+/** `["with", "then", 0]` → `with.then[0]`. */
+function scopedPathText(keys: readonly (string | number)[]): string {
+  let out = "";
+  for (const key of keys) out += typeof key === "number" ? `[${key}]` : out.length === 0 ? key : `.${key}`;
+  return out;
+}

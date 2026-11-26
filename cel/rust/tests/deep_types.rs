@@ -11,6 +11,8 @@
 //! handled at all, and every answer on it, which is the three-deep answer carried to
 //! its depth.
 
+mod type_text_support;
+
 use std::fmt::{self, Write};
 use std::sync::Arc;
 
@@ -18,7 +20,7 @@ use telorun_cel::{
     assignable, format_signature, parameter_of, format_type, parse_signature, parse_type_expression, read_json_text,
     register_standard_library, scan_json_prefix, types_equal, unify, union_of, without_parameters, CallForm,
     CelEnvironment, CelType, FunctionRegistry, JsonRefusal, JsonValue, ListType, MapType, NominalType, NominalTypeDefinition, OptionalType,
-    RecordType, StandardLibraryOptions, INT, NULL,
+    record_of, StandardLibraryOptions, INT, NULL,
 };
 
 /// The one stack size any test of this crate names.
@@ -49,17 +51,22 @@ fn lists(inner: &str, depth: usize) -> String {
     nested("list<", inner, ">", depth)
 }
 
+/// [`lists`] as a type prints it, cut past the limit.
+fn printed_lists(inner: &str, depth: usize) -> String {
+    type_text_support::printed_nested("list<", 1, inner, 1, ">", depth)
+}
+
 #[test]
 fn reads_prints_compares_and_releases_a_deep_type() {
     on_a_small_stack(|| {
         for depth in [3, DEPTH] {
             let ints = parse_type_expression(&lists("int", depth), None).expect("reads");
-            assert_eq!(format_type(&ints, false), lists("int", depth));
+            assert_eq!(format_type(&ints, false), printed_lists("int", depth));
             let again = parse_type_expression(&lists("int", depth), None).expect("reads");
             assert!(types_equal(&ints, &again) && ints == again);
             assert!(assignable(&ints, &parse_type_expression(&lists("dyn", depth), None).expect("reads")));
             let parameters = parse_type_expression(&lists("A", depth), None).expect("reads");
-            assert_eq!(format_type(&without_parameters(&parameters), false), lists("dyn", depth));
+            assert_eq!(format_type(&without_parameters(&parameters), false), printed_lists("dyn", depth));
             // Equal sides unify at once; the union of two equal types is the type.
             assert!(unify(&ints, &again) == ints);
             assert!(union_of([ints.clone(), again]) == ints);
@@ -76,11 +83,7 @@ fn compares_and_releases_deep_records_named_types_and_unions() {
         let build = |depth: usize| {
             let mut ty = INT;
             for at in 0..depth {
-                let record = CelType::Record(RecordType {
-                    name: None,
-                    fields: [("x", ty), ("y", parameter_of("A"))].into_iter().collect(),
-                    open: false,
-                });
+                let record = record_of([("x", ty), ("y", parameter_of("A"))].into_iter().collect(), None, Vec::new(), None, Vec::new(), Vec::new());
                 ty = if at % 2 == 0 {
                     union_of([record, NULL])
                 } else {
@@ -110,7 +113,7 @@ fn releases_a_deep_type_whose_children_share_one_arc_at_every_level() {
         let mut ty = INT;
         for at in 0..DEPTH {
             let shared = Arc::new(ty);
-            let list = || CelType::List(ListType { element: Arc::clone(&shared) });
+            let list = || CelType::List(ListType::new(Arc::clone(&shared)));
             ty = match at % 3 {
                 0 => CelType::Map(MapType { key: Arc::clone(&shared), value: Arc::clone(&shared) }),
                 1 => CelType::Nominal(NominalType {
@@ -119,7 +122,7 @@ fn releases_a_deep_type_whose_children_share_one_arc_at_every_level() {
                     args: Arc::new([list(), list()]),
                     fields: None,
                 }),
-                _ => CelType::Record(RecordType { name: None, fields: [("x", list()), ("y", list())].into_iter().collect(), open: false }),
+                _ => record_of([("x", list()), ("y", list())].into_iter().collect(), None, Vec::new(), None, Vec::new(), Vec::new()),
             };
         }
         let again = ty.clone();
@@ -133,7 +136,7 @@ fn releases_a_deep_type_whose_children_share_one_arc_at_every_level() {
 #[test]
 fn releases_a_deep_type_watched_by_a_weak_handle_at_every_level() {
     on_a_small_stack(|| {
-        let bottom = Arc::new(CelType::List(ListType { element: Arc::new(INT) }));
+        let bottom = Arc::new(CelType::List(ListType::new(Arc::new(INT))));
         let mut args_watched = Vec::with_capacity(DEPTH);
         let mut ty = CelType::Optional(OptionalType { value: Arc::clone(&bottom) });
         for _ in 0..DEPTH {
@@ -150,7 +153,7 @@ fn releases_a_deep_type_watched_by_a_weak_handle_at_every_level() {
         for _ in 0..DEPTH {
             let child = Arc::new(ty);
             children_watched.push(Arc::downgrade(&child));
-            ty = CelType::List(ListType { element: child });
+            ty = CelType::List(ListType::new(child));
         }
         drop(ty);
         assert_eq!(Arc::strong_count(&bottom), 1);
@@ -166,7 +169,7 @@ fn unifies_two_deep_types_that_differ_at_the_bottom() {
         for depth in [3, 5_000] {
             let parameters = parse_type_expression(&lists("A", depth), None).expect("reads");
             let ints = parse_type_expression(&lists("int", depth), None).expect("reads");
-            assert_eq!(format_type(&unify(&parameters, &ints), false), lists("int", depth));
+            assert_eq!(format_type(&unify(&parameters, &ints), false), printed_lists("int", depth));
         }
     });
 }
@@ -177,7 +180,7 @@ fn joins_a_deep_record_with_a_deep_map_as_that_map() {
         for depth in [3, DEPTH] {
             let mut records = INT;
             for _ in 0..depth {
-                records = CelType::Record(RecordType { name: None, fields: [("x", records)].into_iter().collect(), open: false });
+                records = record_of([("x", records)].into_iter().collect(), None, Vec::new(), None, Vec::new(), Vec::new());
             }
             let maps = parse_type_expression(&nested("map<string, ", "int", ">", depth), None).expect("reads");
             assert!(unify(&records, &maps) == maps);
@@ -212,7 +215,7 @@ fn resolves_and_lists_calls_over_deep_types() {
             let text = nested("Box<", "int", ">", depth);
             environment.register_variable("v", text.as_str(), None).expect("registers");
             let listed = environment.definitions().variables.into_iter().find(|variable| variable.name == "v").expect("listed");
-            assert_eq!(listed.type_name, text);
+            assert_eq!(listed.type_name, type_text_support::printed_nested("Box<", 1, "int", 1, ">", depth));
         }
     });
 }

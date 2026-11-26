@@ -1,0 +1,24 @@
+# An Application variable typed by a named shape whose member a choice decides:
+# a CEL read of it is typed as each configuration holds the shape.
+kind: Telo.Application
+metadata: { name: VariableVaryingShape }
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+  cfg: { env: CFG, type: object, $ref: "telo://Self/Config", default: {} }
+targets:
+  - name: read
+    invoke: !ref read
+---
+kind: Telo.JsonSchema
+metadata: { name: Config }
+schema:
+  type: object
+  properties:
+    dir: !if
+      if: !cel "variables.flag1"
+      then: { type: string }
+      else: { type: integer }
+---
+kind: Telo.Value
+metadata: { name: read }
+value: !cel "variables.cfg.dir + 1"

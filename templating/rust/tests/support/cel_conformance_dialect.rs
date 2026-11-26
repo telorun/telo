@@ -28,11 +28,12 @@ use telo_templating::{
     TemplatingEngine,
 };
 use telorun_cel::{
-    catalog_implementation, catalog_literal_check, function_catalog, parse_signature, signature_key, CatalogRefusal,
-    CelCallContext, CelEnvironment, FieldDeclaration, FunctionMetadata, NamespaceFunctionDeclaration, NamespaceOptions,
-    NominalTypeDefinition, PropertyMap, TypeDeclaration,
+    read_json_text, catalog_implementation, catalog_literal_check, function_catalog, parse_signature, signature_key, CatalogRefusal,
+    CelCallContext, CelEnvironment, FieldDeclaration, FunctionMetadata, JsonSchemaDocument, NamespaceFunctionDeclaration,
+    NamespaceOptions, NominalTypeDefinition, PropertyMap, SchemaTypeAnswer, SchemaTypeResolver, TypeDeclaration,
+    WithheldReturns,
 };
-use telorun_sdk_core::value_type::{cel_type_of_value_type, value_types_in_order};
+use telorun_sdk_core::value_type::{cel_type_of_value_type, value_type_of, value_types_in_order};
 use telorun_cel_value::{cel_error, es_number, json_quote, CelEvaluationCode, CelValue};
 
 use super::cel_conformance_value::{decode, encode, typed_frame_text};
@@ -273,8 +274,13 @@ fn with_module_names(mut env: CelEnvironment, modules: Option<&Value>) -> CelEnv
             .flatten()
             .filter_map(|(qualified, function)| {
                 let member = qualified.strip_prefix(&prefix)?;
-                let mut declaration =
-                    NamespaceFunctionDeclaration::withheld(member, function["returns"].as_str().expect("returns"));
+                // A result declared as a schema is read to full depth through the
+                // environment's resolver, as a context binding is.
+                let returns: WithheldReturns = match function.get("resultSchema") {
+                    Some(schema) => JsonSchemaDocument { node: json_value(schema), root: None }.into(),
+                    None => function["returns"].as_str().expect("returns").into(),
+                };
+                let mut declaration = NamespaceFunctionDeclaration::withheld(member, returns);
                 declaration.deterministic = function["deterministic"].as_bool().expect("deterministic");
                 declaration.host_backed = function["hostBacked"].as_bool().expect("hostBacked");
                 Some(declaration)
@@ -286,11 +292,41 @@ fn with_module_names(mut env: CelEnvironment, modules: Option<&Value>) -> CelEnv
     env
 }
 
+/// The conformance host's resolver: a node declaring a value type reads as the CEL type it
+/// registers in the dialect environment.
+fn value_type_resolver(env: &CelEnvironment) -> SchemaTypeResolver {
+    let registered: HashSet<String> = env.definitions().types.into_iter().map(|listing| listing.name).collect();
+    Arc::new(move |document: &JsonSchemaDocument| {
+        let telorun_cel::JsonValue::Object(node) = &*document.node else { return None };
+        let declared = match node.get("x-telo-type").map(|held| &**held)? {
+            telorun_cel::JsonValue::String(name) => json!({ "x-telo-type": name }),
+            telorun_cel::JsonValue::Object(form) => match form.get("name").map(|held| &**held)? {
+                telorun_cel::JsonValue::String(name) => json!({ "x-telo-type": { "name": name } }),
+                _ => return None,
+            },
+            _ => return None,
+        };
+        let entry = value_type_of(&declared)?;
+        let name = cel_type_of_value_type(entry);
+        registered.contains(name).then(|| SchemaTypeAnswer::Named { name: name.to_owned(), args: Vec::new() })
+    })
+}
+
 fn static_environment(env: &CelEnvironment, row: &Value) -> CelEnvironment {
-    let mut cloned = env.clone();
+    let mut options = env.options().clone();
+    options.resolve_schema_type = Some(value_type_resolver(env));
+    let mut cloned = env.clone_with_options(options);
     for (name, declaration) in row.get("declarations").and_then(Value::as_object).into_iter().flatten() {
         cloned
             .register_variable(name, declaration_of(declaration), None)
+            .unwrap_or_else(|refusal| panic!("{name}: {refusal}"));
+    }
+    // Each binding of the site's context is a variable declared as its schema.
+    let context = row.get("context").and_then(|context| context.get("properties")).and_then(Value::as_object);
+    for (name, schema) in context.into_iter().flatten() {
+        let document = JsonSchemaDocument { node: json_value(schema), root: None };
+        cloned
+            .register_variable(name, TypeDeclaration::Schema(document), None)
             .unwrap_or_else(|refusal| panic!("{name}: {refusal}"));
     }
     with_module_names(with_functions(&cloned, row), row.get("modules"))
@@ -315,7 +351,6 @@ pub fn analyze_dialect_row(env: &CelEnvironment, row: &Value) -> Map<String, Val
     let could_name: Option<Vec<String>> = row.get("couldNameModule").map(|names| {
         names.as_array().into_iter().flatten().filter_map(Value::as_str).map(str::to_owned).collect()
     });
-    let result_schema = |qualified: &str| module_function(row, qualified)?.get("resultSchema").cloned();
     let flags = |qualified: &str| {
         module_function(row, qualified).map(|function| ModuleCallFlagValues {
             deterministic: function["deterministic"].as_bool().expect("deterministic"),
@@ -326,10 +361,8 @@ pub fn analyze_dialect_row(env: &CelEnvironment, row: &Value) -> Map<String, Val
     let has_modules = module_names.is_some();
     let analysis = AnalyzeEnv {
         cel_env: &site,
-        context_schema: row.get("context"),
         roots_declared: row.get("rootsDeclared") == Some(&Value::Bool(true)),
         module_names: module_names.as_ref(),
-        module_call_result: has_modules.then_some(&result_schema as &dyn Fn(&str) -> Option<Value>),
         module_call_flags: has_modules.then_some(&flags as &dyn Fn(&str) -> Option<ModuleCallFlagValues>),
         could_name_module: could_name.is_some().then_some(&could_name_module as &dyn Fn(&str) -> bool),
     };
@@ -373,7 +406,7 @@ pub fn analyze_dialect_row(env: &CelEnvironment, row: &Value) -> Map<String, Val
                         .map(|argument| {
                             let mut held = Map::new();
                             if let Some(type_name) = &argument.type_name {
-                                held.insert("type".into(), Value::String(type_name.clone()));
+                                held.insert("typeName".into(), Value::String(type_name.clone()));
                             }
                             if let Some(chain) = &argument.chain {
                                 held.insert("chain".into(), json!(chain));
@@ -553,4 +586,9 @@ pub fn run_dialect_row(env: &CelEnvironment, row: &Value) -> Result<Value, Strin
         }
     }
     Ok(Value::Object(answer))
+}
+
+/// A JSON value as the engine holds one.
+fn json_value(value: &serde_json::Value) -> Arc<telorun_cel::JsonValue> {
+    read_json_text(&value.to_string()).expect("a JSON value reads as JSON text")
 }

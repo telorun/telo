@@ -1,0 +1,14 @@
+# A need supplied field by field with a `!module-path` naming a file where the
+# need type's field takes a directory.
+kind: Telo.Application
+metadata: { name: NeedModulePathEntry }
+imports:
+  Stored:
+    source: ./stored
+    needs: { store: { path: !module-path ./note.txt } }
+targets: [!ref seq]
+---
+kind: Telo.Sequence
+metadata: { name: seq }
+steps:
+  - { name: r, invoke: !ref Stored.read }

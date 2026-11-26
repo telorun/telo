@@ -18,6 +18,6 @@ describe("declared module inputs", () => {
       "--boost",
       "3",
     ]);
-    expect(normalizeModuleInputs(variables, app.variables)).toEqual({ boost: 3n, label: "none" });
+    expect(normalizeModuleInputs(variables, app.variables, () => undefined)).toEqual({ boost: 3n, label: "none" });
   });
 });

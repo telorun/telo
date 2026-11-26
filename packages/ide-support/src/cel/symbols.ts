@@ -1,4 +1,4 @@
-import { formatType } from "@telorun/cel";
+import { formatType, type CelType } from "@telorun/cel";
 /**
  * **What a name means inside a CEL expression.**
  *
@@ -19,8 +19,10 @@ import { navigateSchema } from "../completions/detect-context.js";
  *  and gets its type from it. */
 export interface CelSymbol {
   name: string;
-  /** CEL type name (`int`, `string`, `map`), when the environment declares one. */
+  /** CEL type name (`int`, `string`, `map`), when the environment declares one — for display. */
   type?: string;
+  /** The CEL type itself, when the environment declares the symbol's: what a reader branching on it reads. */
+  celType?: CelType;
   /** JSON Schema node, when the context declares the shape. */
   schema?: Record<string, any>;
   description?: string;
@@ -91,6 +93,7 @@ export function celRootSymbols(scope: CelScope): CelSymbol[] {
       name: variable.name,
       // The listing carries the type's own spelling; a `CelType` is the engine's object.
       type: formatType(variable.type),
+      celType: variable.type,
       description: variable.description ?? undefined,
     });
   }
@@ -101,9 +104,12 @@ export function celRootSymbols(scope: CelScope): CelSymbol[] {
       out.delete(name);
       continue;
     }
+    const declared = schemaTypeName(node);
+    const held = out.get(name);
     out.set(name, {
       name,
-      type: schemaTypeName(node) ?? out.get(name)?.type,
+      type: declared ?? held?.type,
+      ...(declared === undefined && held?.celType ? { celType: held.celType } : {}),
       schema: node,
       description:
         typeof node.description === "string" ? node.description : out.get(name)?.description,

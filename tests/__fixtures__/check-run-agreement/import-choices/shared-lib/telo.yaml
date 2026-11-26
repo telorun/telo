@@ -1,0 +1,5 @@
+# One instantiation for the whole application: every import must agree.
+kind: Telo.Library
+metadata: { name: ImportChoicesShared }
+lifecycle: shared
+variables: { size: { type: integer } }

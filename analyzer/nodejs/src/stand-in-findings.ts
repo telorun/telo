@@ -194,6 +194,8 @@ export interface LocatedFinding extends AjvErrorLike {
 export type SchemaNodeFindings = (
   node: object,
   value: unknown,
+  /** Where `value` lies in the judged value, for a node asked about alone. */
+  at?: string,
 ) => readonly LocatedFinding[] | undefined | ValidationUnfinished;
 
 /** A `oneOf` that failed because SEVERAL branches matched: which one a value

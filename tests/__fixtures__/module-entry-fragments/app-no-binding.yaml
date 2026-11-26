@@ -1,0 +1,8 @@
+kind: Telo.Application
+metadata:
+  name: AppNoBinding
+  version: 1.0.0
+variables:
+  title:
+    type: string
+    default: Hello

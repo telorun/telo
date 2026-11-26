@@ -153,8 +153,6 @@ expect:
       message: "Ui.View/undeclaredQuery: !cel: 'query.signi' is not defined (available: signin)"
     - code: CEL_UNKNOWN_IDENTIFIER
       message: "Ui.View/evaluatedData: !cel: unknown identifier 'data'"
-    - code: CEL_UNKNOWN_FIELD
-      message: "Ui.View/evaluatedData: !cel: 'data' is not defined"
 ---
 # A node text is formatted with no values unless it is written as a text with
 # values, and then with exactly the values it binds.

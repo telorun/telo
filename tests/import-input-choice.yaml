@@ -1,0 +1,32 @@
+kind: Telo.Application
+metadata:
+  name: ImportInputChoiceTest
+  version: 1.0.0
+  description: |
+    An import's inputs are values chosen per option: a library's host-path input
+    written behind `!if` at an `imports:` entry and at a scoped import boots
+    handing the library the taken branch's value under each setting, and two
+    branches of one scope-member `!if` reaching different libraries each boot
+    with their own library's exports.
+imports: { Assert: ../modules/assert }
+targets: [!ref typedOn, !ref typedOff, !ref librariesOn, !ref librariesOff]
+---
+kind: Assert.Manifest
+metadata: { name: typedOn }
+source: ./__fixtures__/import-input-choice/typed-on.yaml
+expect: { errors: [], runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: typedOff }
+source: ./__fixtures__/import-input-choice/typed-off.yaml
+expect: { errors: [], runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: librariesOn }
+source: ./__fixtures__/import-input-choice/libraries-on.yaml
+expect: { errors: [], runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: librariesOff }
+source: ./__fixtures__/import-input-choice/libraries-off.yaml
+expect: { errors: [], runs: true }

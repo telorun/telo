@@ -1,0 +1,13 @@
+# A library handing its own module files to the library it imports.
+kind: Telo.Library
+metadata: { name: ImportModuleFilesOuter }
+imports:
+  Lib:
+    source: ../lib
+    variables: { root: !module-path ./a, note: !include-text ./note.txt }
+exports: { resources: [here, Lib.read] }
+---
+# The outer library's own `./a`, resolved as a resource field resolves it.
+kind: Telo.Value
+metadata: { name: here }
+value: !module-path ./a

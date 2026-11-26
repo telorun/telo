@@ -173,8 +173,8 @@ steps:
         inputs:
           output: !cel >-
             steps.approved.result.ok
-              ? '{green ✔} signed in — scopes: ' + string(steps.approved.result.scope)
-              : '{red ✗} not signed in — ' + string(steps.approved.result.reason)
+              ? '{green ✔} signed in — scopes: ' + (steps.approved.result.scope != null ? steps.approved.result.scope : '')
+              : '{red ✗} not signed in — ' + (steps.approved.result.reason != null ? steps.approved.result.reason : '')
     else:
       - name: reuse
         invoke: !ref say

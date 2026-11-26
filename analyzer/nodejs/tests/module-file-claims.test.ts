@@ -74,6 +74,14 @@ describe("collectModuleFileClaims", () => {
     expect(paths(text, "assets")).toEqual(["logo.png"]);
   });
 
+  it("claims the files an import hands its library, so publish carries them", () => {
+    const text =
+      "kind: Telo.Application\nmetadata:\n  name: App\n" +
+      "imports:\n  Lib:\n    source: ./lib\n    variables: { root: !module-path ./a, note: !include-text ./note.txt }\n" +
+      "---\nkind: Telo.Import\nmetadata:\n  name: Top\nsource: ./lib\nneeds: { store: { path: !module-path ./data } }\n";
+    expect(paths(text, "assets")).toEqual(["a", "data", "note.txt"]);
+  });
+
   it("names the tag and the value's path as the claim's origin", () => {
     const [claim] = collectModuleFileClaims(
       withDocs("kind: Demo.Thing\nmetadata:\n  name: t\nfont: !include-bytes assets/f.ttf\n"),

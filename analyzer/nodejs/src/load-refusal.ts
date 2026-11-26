@@ -5,7 +5,6 @@ import { libraryMigrationDiagnostics, withLibraryMigrationsApplied } from "./lib
 import type { GraphLoadError, LoadedGraph } from "./loaded-types.js";
 import { runtimeCodeOf } from "./load-refusal-code.js";
 import { METADATA_RESERVED_FIELD } from "./metadata-stamps.js";
-import type { NeedTable } from "./need-table.js";
 import { SCHEMA_NESTING_EXCEEDED } from "./schema-validation.js";
 import { describeModuleSource } from "./nested-module-origin.js";
 import { RuntimeError, type ResourceManifest } from "@telorun/sdk";
@@ -49,8 +48,6 @@ export interface LoadRefusalHost {
   register(): { manifests: readonly ResourceManifest[]; rootModuleDocument: ResourceManifest | undefined };
   /** After the root-module group: the analysis of the registered graph. */
   analyze(): readonly AnalysisDiagnostic[] | Promise<readonly AnalysisDiagnostic[]>;
-  /** The need table, asked only when the analysis found no error or a need-table one. */
-  needTable(): NeedTable;
 }
 
 const MANIFEST_VALIDATION_FAILED = "ERR_MANIFEST_VALIDATION_FAILED";
@@ -62,9 +59,9 @@ const MIGRATION_FAILED = "MIGRATION_FAILED";
  * (2) the parse and coded loader findings; the module artifacts are built;
  * (3) the version conflicts; (4) the module-file findings; (5) an entry that is
  * a library; the analysis runs; a failed library migration; (6) the metadata
- * stamps; (7) the validations that could not finish; (8) the need table's
- * refusals; each of the last four beside every other error the analysis found;
- * (9) the analysis's errors.
+ * stamps; (7) the validations that could not finish; (8) the analysis's
+ * need-table findings, as their twins; each of the last four beside every other
+ * error the analysis found; (9) the analysis's errors.
  */
 export async function loadRefusal(
   graph: LoadedGraph,
@@ -110,16 +107,14 @@ export async function loadRefusal(
     return ownCodeRefusal(graph, manifests, SCHEMA_NESTING_EXCEEDED, unfinished, errors.filter((d) => d.code !== SCHEMA_NESTING_EXCEEDED));
   }
   // A load refused for a need-table problem reports its twins beside every other
-  // error, rather than the analysis's aggregate.
+  // error, rather than the analysis's aggregate — whatever configurations the
+  // analysis holds each in.
   const analysed = errors.filter(isNeedTableDiagnostic);
-  if (errors.length === 0 || analysed.length > 0) {
-    const refusals = needTableRefusals(host.needTable(), analysed);
-    if (refusals.length > 0) {
-      return needRefusal(
-        refusals,
-        errors.filter((d) => !isNeedTableDiagnostic(d)),
-      );
-    }
+  if (analysed.length > 0) {
+    return needRefusal(
+      analysed.map(needTableRefusal),
+      errors.filter((d) => !isNeedTableDiagnostic(d)),
+    );
   }
   if (errors.length > 0) {
     return {
@@ -179,26 +174,16 @@ export function needRefusal(refusals: readonly NeedRefusal[], others: readonly A
   return { code: first.runtimeCode, message: carried.map(codedLine).join("\n"), carried };
 }
 
-/** The table's own problems, then each need-table refusal the analysis made in
- *  some configurations only — one standing where a choice expands, which the
- *  graph's documents hold unexpanded — raised as its twin. */
-function needTableRefusals(table: NeedTable, analysed: readonly AnalysisDiagnostic[]): NeedRefusal[] {
-  const refusals: NeedRefusal[] = [...table.problems];
-  for (const d of analysed) {
-    const data = d.data as
-      | { filePath?: string; path?: string; resource?: { kind: string; name: string }; configurations?: unknown }
-      | undefined;
-    if (!data?.configurations || d.code === undefined) continue;
-    if (table.problems.some((p) => p.code === d.code && p.path === data.path && p.filePath === data.filePath)) continue;
-    refusals.push({
-      runtimeCode: runtimeCodeOf(String(d.code)),
-      message: d.message,
-      path: data.path ?? "",
-      ...(data.filePath !== undefined ? { filePath: data.filePath } : {}),
-      ...(data.resource ? { resource: data.resource } : {}),
-    });
-  }
-  return refusals;
+/** A need-table finding of the analysis, raised as its twin. */
+function needTableRefusal(d: AnalysisDiagnostic): NeedRefusal {
+  const data = d.data as { filePath?: string; path?: string; resource?: { kind: string; name: string } } | undefined;
+  return {
+    runtimeCode: runtimeCodeOf(String(d.code)),
+    message: d.message,
+    path: data?.path ?? "",
+    ...(data?.filePath !== undefined ? { filePath: data.filePath } : {}),
+    ...(data?.resource ? { resource: data.resource } : {}),
+  };
 }
 
 /** `found`, raised under the runtime twin of `code` with each finding naming its

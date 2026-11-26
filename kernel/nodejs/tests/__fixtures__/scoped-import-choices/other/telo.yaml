@@ -1,0 +1,8 @@
+# Exports another answer.
+kind: Telo.Library
+metadata: { name: ScopedChoiceOtherLib }
+exports: { resources: [answer] }
+---
+kind: Telo.Value
+metadata: { name: answer }
+value: 7

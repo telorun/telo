@@ -18,7 +18,9 @@ use std::sync::Arc;
 
 use telorun_cel_value::compare_code_units;
 
-use crate::cel_type::{assignable, format_type, is_dyn, types_equal, CelType, ListType, MapType, NominalType, OptionalType, DYN};
+use crate::cel_type::{
+    assignable, format_type, is_dyn, types_equal, unify, union_of, CelType, ListType, MapType, NominalType, OptionalType, DYN,
+};
 use crate::check_diagnostic::{CelEngineError, CelEngineErrorCode};
 use crate::reserved_words::{is_identifier_spelling, is_reserved_word};
 use crate::runtime_library::CALL_SITE_DIRECT_ARITY;
@@ -67,6 +69,46 @@ pub struct Resolution {
 /// How many names a refused call may name as candidates — declared, because a message
 /// naming them is pinned byte for byte.
 pub const UNKNOWN_FUNCTION_CANDIDATES: usize = 5;
+
+/// How many combinations of its union-typed arguments' members one call is resolved over —
+/// read from the data Node's engine reads, so both bound a call alike.
+pub const UNION_EXPANSION_LIMIT: usize = first_number(include_str!("../../nodejs/src/union-expansion.json").as_bytes());
+
+/// The one number a limit's data holds, read at build.
+pub(crate) const fn first_number(text: &[u8]) -> usize {
+    let mut at = 0;
+    while at < text.len() && !text[at].is_ascii_digit() {
+        at += 1;
+    }
+    assert!(at < text.len(), "a limit's data holds no number");
+    let mut value = 0;
+    while at < text.len() && text[at].is_ascii_digit() {
+        value = value * 10 + (text[at] - b'0') as usize;
+        at += 1;
+    }
+    value
+}
+
+/// A call resolved member by member over its union-typed receiver and arguments.
+#[derive(Clone, Debug)]
+pub enum Expansion {
+    /// Every combination resolves: each distinct overload once, in combination order, and
+    /// the union of the combinations' return types (`dyn` where one is `dyn`).
+    Resolved { overloads: Vec<Resolution>, returns: CelType },
+    /// The first combination no overload takes, receiver first, with the member index each
+    /// position took.
+    Untaken { combination: Vec<CelType>, members: Vec<usize> },
+    /// More than [`UNION_EXPANSION_LIMIT`] combinations.
+    Limit,
+}
+
+/// The members a position is expanded into: a union's, else the type alone.
+pub fn expanded_members(ty: &CelType) -> &[CelType] {
+    match ty {
+        CelType::Union(union) => union.members(),
+        other => std::slice::from_ref(other),
+    }
+}
 
 /// What a receiver call written on nothing is matched as.
 static DYN_TYPE: CelType = DYN;
@@ -202,6 +244,66 @@ impl FunctionRegistry {
             candidates: in_form.into_iter().cloned().collect(),
         })
     }
+
+    /// A call no overload takes as written, resolved over each combination of its
+    /// union-typed receiver and arguments' members — in member order, the receiver and then
+    /// the arguments left to right, the leftmost varying slowest. Nothing where no position
+    /// is a union, or where no overload of the name and form has the call's arity: no
+    /// narrowing could make such a call resolve. Asked only after both passes failed.
+    pub fn resolve_expanded(
+        &self,
+        name: &str,
+        form: CallForm,
+        args: &[CelType],
+        receiver: Option<&CelType>,
+    ) -> Option<Expansion> {
+        let positions: Vec<&CelType> = receiver.into_iter().chain(args.iter()).collect();
+        if !positions.iter().any(|ty| matches!(ty, CelType::Union(_))) {
+            return None;
+        }
+        let takes_arity = self.by_name.get(name).is_some_and(|entries| {
+            entries
+                .iter()
+                .any(|entry| entry.function.signature.form() == form && entry.function.signature.parameters.len() == args.len())
+        });
+        if !takes_arity {
+            return None;
+        }
+        let mut count: usize = 1;
+        for position in &positions {
+            count = count.saturating_mul(expanded_members(position).len());
+            if count > UNION_EXPANSION_LIMIT {
+                return Some(Expansion::Limit);
+            }
+        }
+        let mut overloads: Vec<Resolution> = Vec::new();
+        let mut returns: Vec<CelType> = Vec::new();
+        let mut members = vec![0usize; positions.len()];
+        for _ in 0..count {
+            let combination: Vec<CelType> =
+                positions.iter().zip(&members).map(|(position, at)| expanded_members(position)[*at].clone()).collect();
+            let resolution = match receiver {
+                None => self.resolve(name, form, &combination, None),
+                Some(_) => self.resolve(name, form, &combination[1..], Some(&combination[0])),
+            };
+            let Ok(resolution) = resolution else {
+                return Some(Expansion::Untaken { combination, members });
+            };
+            if !overloads.iter().any(|held| Arc::ptr_eq(&held.resolved, &resolution.resolved)) {
+                overloads.push(resolution.clone());
+            }
+            returns.push(resolution.returns);
+            for at in (0..positions.len()).rev() {
+                members[at] += 1;
+                if members[at] < expanded_members(positions[at]).len() {
+                    break;
+                }
+                members[at] = 0;
+            }
+        }
+        let returns = if returns.iter().any(is_dyn) { DYN } else { union_of(returns) };
+        Some(Expansion::Resolved { overloads, returns })
+    }
 }
 
 /// The loose pass: a `dyn` argument makes a candidate viable, and where several are
@@ -241,8 +343,10 @@ fn matched(
 }
 
 /// Whether every argument fits its parameter, binding type parameters as it goes. A type
-/// parameter is bound by the first argument that mentions it; a binding holding only an
-/// unresolved parameter is refined by a later concrete argument.
+/// parameter is bound by the first argument that mentions it, and a later argument that
+/// does not fit the binding widens it to the join of the two, refused exactly where the
+/// join is not one type; a binding holding only an unresolved parameter is replaced by a
+/// later concrete argument.
 fn fits(pairs: &[(&CelType, &CelType)], bindings: &mut HashMap<String, CelType>, allow_dyn: bool) -> bool {
     let mut pending: Vec<(&CelType, &CelType)> = pairs.iter().rev().copied().collect();
     while let Some((argument, parameter)) = pending.pop() {
@@ -260,10 +364,22 @@ fn fits(pairs: &[(&CelType, &CelType)], bindings: &mut HashMap<String, CelType>,
                     }
                     Some(CelType::Parameter(_)) => true,
                     Some(_) if matches!(argument, CelType::Parameter(_)) => true,
-                    Some(bound) => assignable(argument, bound) || (allow_dyn && (is_dyn(argument) || is_dyn(bound))),
+                    Some(bound) => {
+                        if assignable(argument, bound) || (allow_dyn && (is_dyn(argument) || is_dyn(bound))) {
+                            true
+                        } else {
+                            let joined = unify(bound, argument);
+                            if is_dyn(&joined) && !is_dyn(bound) && !is_dyn(argument) {
+                                false
+                            } else {
+                                bindings.insert(name, joined);
+                                true
+                            }
+                        }
+                    }
                 }
             }
-            (CelType::List(ListType { element: argument }), CelType::List(ListType { element: parameter })) => {
+            (CelType::List(ListType { element: argument, .. }), CelType::List(ListType { element: parameter, .. })) => {
                 pending.push((argument, parameter));
                 true
             }
@@ -344,7 +460,7 @@ pub fn substitute(ty: &CelType, bindings: &HashMap<String, CelType>) -> CelType 
                 let mut children = children.into_iter().map(|(child, _)| child);
                 let mut next = || children.next().expect("each child was substituted");
                 let rebuilt = match ty {
-                    CelType::List(_) => CelType::List(ListType { element: Arc::new(next()) }),
+                    CelType::List(_) => CelType::List(ListType::new(Arc::new(next()))),
                     CelType::Map(_) => {
                         let key = Arc::new(next());
                         CelType::Map(MapType { key, value: Arc::new(next()) })

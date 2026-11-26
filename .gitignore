@@ -101,6 +101,10 @@ kernel/nodejs/src/telo-runtime-version.ts
 # the root `prepare`. Committing it would be a second place the axes live.
 analyzer/nodejs/src/artifact-axes.ts
 
+# Validation limits, copied in from analyzer/validation-limits.json by the root
+# and the analyzer's `prepare`.
+analyzer/nodejs/src/validation-limits.json
+
 # Python
 python/__pycache__/
 python/*.py[cod]

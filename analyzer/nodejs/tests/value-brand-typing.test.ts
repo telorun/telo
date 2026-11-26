@@ -3,11 +3,15 @@ import { makeTaggedSentinel } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
 import { buildCelEnvironment, buildTypedCelEnvironment } from "../src/cel-environment.js";
+import { BYTES, INT, STRING, type CelType } from "@telorun/cel";
 import {
   brandOfSchema,
-  celTypeSatisfiesJsonSchema,
+  celValueTypeSatisfiesJsonSchema,
   jsonSchemaToCelType,
 } from "../src/schema-compat.js";
+
+/** A host's named type over a base, as the environment registers a brand. */
+const named = (name: string, base: CelType): CelType => ({ kind: "nominal", name, base, args: [] });
 import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 
 describe("value brands (x-telo-type)", () => {
@@ -24,32 +28,32 @@ describe("value brands (x-telo-type)", () => {
     expect(brandOfSchema({ type: "integer" })).toBeUndefined();
   });
 
-  describe("celTypeSatisfiesJsonSchema", () => {
+  describe("celValueTypeSatisfiesJsonSchema", () => {
     const tcpField = { type: "integer", "x-telo-type": "Telo.TcpPort" };
     const plainIntField = { type: "integer" };
 
     it("accepts a matching brand", () => {
-      expect(celTypeSatisfiesJsonSchema("Telo.TcpPort", tcpField)).toBe(true);
+      expect(celValueTypeSatisfiesJsonSchema(named("Telo.TcpPort", INT), tcpField)).toBe(true);
     });
 
     it("rejects a conflicting brand", () => {
-      expect(celTypeSatisfiesJsonSchema("Telo.UdpPort", tcpField)).toBe(false);
+      expect(celValueTypeSatisfiesJsonSchema(named("Telo.UdpPort", INT), tcpField)).toBe(false);
     });
 
     it("accepts a branded value into an unbranded field of the base type", () => {
-      expect(celTypeSatisfiesJsonSchema("Telo.TcpPort", plainIntField)).toBe(true);
+      expect(celValueTypeSatisfiesJsonSchema(named("Telo.TcpPort", INT), plainIntField)).toBe(true);
     });
 
     it("accepts a plain base value into a branded field (gradual typing)", () => {
-      expect(celTypeSatisfiesJsonSchema("int", tcpField)).toBe(true);
+      expect(celValueTypeSatisfiesJsonSchema(INT, tcpField)).toBe(true);
     });
 
     it("still rejects a base-type mismatch on a branded field", () => {
-      expect(celTypeSatisfiesJsonSchema("string", tcpField)).toBe(false);
+      expect(celValueTypeSatisfiesJsonSchema(STRING, tcpField)).toBe(false);
     });
 
     it("judges no expression at a live slot, which dispatch does not validate", () => {
-      expect(celTypeSatisfiesJsonSchema("bytes", { "x-telo-type": "Telo.Stream" })).toBe(true);
+      expect(celValueTypeSatisfiesJsonSchema(BYTES, { "x-telo-type": "Telo.Stream" })).toBe(true);
     });
   });
 });

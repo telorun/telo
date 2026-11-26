@@ -1,10 +1,12 @@
 /**
  * The need table's refusals over every configuration at once.
  *
- * A module document, an import and a kind document never vary outside a
- * template body, so every need, need type and import the table reads is read
- * once. A lifted template body's reference sites are read unit by unit over
- * its reading (`lifted-body-findings.ts`), each held where the units it was
+ * A module document and a kind document never vary outside a template body,
+ * and an import never varies in its alias or source, so every need, need type
+ * and import the table reads is read once — except an entry module's import
+ * whose `needs:` an option chooses, read once per class of its options. A
+ * lifted template body's reference sites are read unit by unit over its
+ * reading (`lifted-body-findings.ts`), each held where the units it was
  * read under hold as there: a refusal about the body is held over the
  * definition's own dimensions, every other one reads the body's sites where
  * some value the definition can be given makes them hold. What varies is the entry's own
@@ -24,8 +26,11 @@ import { aboutDeclaration } from "./placement.js";
 import type { ResourceManifest } from "@telorun/sdk";
 import { reportKeyCost } from "./cel-site-judgements.js";
 import type { ConditionedCallGraph, HeldAt, HeldGraphNode, HeldView } from "./conditioned-call-graph.js";
-import type { ChoiceDecider, ConditionedDeclaration, ConditionedExpansion, World } from "./conditioned-expansion.js";
+import { World, type ChoiceDecider, type ConditionedDeclaration, type ConditionedExpansion } from "./conditioned-expansion.js";
+import { placeByUnionKeys } from "./region-part.js";
+import { isExpansionSentinel, isRefSentinel, isTaggedSentinel } from "@telorun/templating";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
+import { holdsChoice } from "./key-door.js";
 import type { KeyParts } from "./key-parts.js";
 import { isKindDocument } from "./kind-declaration.js";
 import { placedInPart, underBranch, unitAt, unitReadings } from "./lifted-body-findings.js";
@@ -38,6 +43,7 @@ import {
   templateBodyReferences,
   type NeedGraph,
   type NeedGraphDeclaration,
+  type NeedGraphImport,
   type NeedGraphReference,
   type NeedGraphScope,
   type NeedLogic,
@@ -46,16 +52,22 @@ import {
 import { FALSE, TRUE, type Condition } from "./presence-condition.js";
 import { isInjectedDeclaration } from "./resource-input.js";
 import type { TemplateBodyUnit } from "./template-body-sites.js";
-import { parseKeys, TEMPLATE_BODY_FIELDS } from "./template-expansion.js";
+import { parseKeys, pathText, TEMPLATE_BODY_FIELDS } from "./template-expansion.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { readDeadBranches, type PassBodyFinding, type PassTable } from "./union-passes.js";
 import { needProblemDiagnostics } from "./validate-needs.js";
+import { readSuppliedNeeds } from "./need-type.js";
+import type { ScopedImportIndex } from "./scoped-import-index.js";
+import { scopeHoldersOf } from "./scoped-import-identity.js";
 import { deadBranchReader, type DeadBranchRun } from "./world-reader.js";
 
 type Keys = readonly (string | number)[];
 
 export interface NeedTableFindingsInputs {
   readonly union: ConditionedExpansion;
+  /** The scoped imports the entry's own declarations write, each with where it
+   *  is present. */
+  readonly scopedImports: ScopedImportIndex;
   readonly graph: ConditionedCallGraph;
   readonly parts: KeyParts;
   /** The first configuration kept: what no choice varies is read there. */
@@ -95,6 +107,13 @@ const forwarded = (m: ResourceManifest): boolean => {
   return isForwardedDeclaration(m) || !!meta.forwardedExport || !!meta.forwardedInternal || !!meta.forwardedShape;
 };
 
+/** Whether a value, as written, holds an expansion construct. */
+function holdsWrittenChoice(value: unknown): boolean {
+  if (isExpansionSentinel(value)) return true;
+  if (value === null || typeof value !== "object" || isTaggedSentinel(value) || isRefSentinel(value)) return false;
+  return (Array.isArray(value) ? value : Object.values(value)).some(holdsWrittenChoice);
+}
+
 /** The value at `keys` of `root`. */
 function valueAt(root: unknown, keys: Keys): unknown {
   let at = root;
@@ -118,12 +137,76 @@ export function needTableFindings(inputs: NeedTableFindingsInputs): PassTable {
     atoms: (held) => space.atoms(held),
   };
 
+  /** An import's `needs:` once per class of the options it holds, each
+   *  projected there and held where its class holds within `within`. */
+  const needClasses = (node: unknown, within: Condition): { held: Condition; supplied: Record<string, unknown> }[] => {
+    const needs = (node as { needs?: unknown } | undefined)?.needs;
+    if (!holdsChoice(needs)) return [{ held: within, supplied: readSuppliedNeeds({ needs } as unknown as ResourceManifest) }];
+    const out: { held: Condition; supplied: Record<string, unknown> }[] = [];
+    let remaining = space.and(within, inputs.universe);
+    while (remaining !== FALSE) {
+      const projected = union.project(needs, space.firstAssignment(remaining)!);
+      const held = space.and(remaining, projected.taken);
+      if (held === FALSE) throw new Error("internal: an import's needs do not hold where they were read.");
+      const value = projected.present ? projected.value : undefined;
+      out.push({ held, supplied: readSuppliedNeeds({ needs: value } as unknown as ResourceManifest) });
+      remaining = space.and(remaining, space.not(held));
+    }
+    return out;
+  };
+  /** A scoped import's `needs:` once per class of the options on the way to
+   *  it and inside it, read where the member is written in its holder. */
+  const scopedNeedClasses = (
+    declaration: ConditionedDeclaration,
+    unionKeys: Keys,
+    within: Condition,
+  ): { held: Condition; supplied: Record<string, unknown> }[] => {
+    const out: { held: Condition; supplied: Record<string, unknown> }[] = [];
+    let remaining = space.and(within, inputs.universe);
+    while (remaining !== FALSE) {
+      const witness = World.key(space.firstAssignment(remaining)!);
+      const place = placeByUnionKeys(union, declaration, [...unionKeys, "needs"], witness);
+      let held = space.and(remaining, place.path);
+      let value: unknown;
+      if (place.present) {
+        const projected = union.project(place.node, witness.assignment);
+        held = space.and(held, space.and(place.position, projected.taken));
+        value = projected.present ? projected.value : undefined;
+      }
+      if (held === FALSE) throw new Error("internal: a scoped import's needs do not hold where they were read.");
+      out.push({ held, supplied: readSuppliedNeeds({ needs: value } as unknown as ResourceManifest) });
+      remaining = space.and(remaining, space.not(held));
+    }
+    return out;
+  };
+  const ownModule = (m: ResourceManifest): boolean => {
+    const module = (m.metadata as { module?: string } | undefined)?.module;
+    return module === undefined || inputs.rootModules.has(module);
+  };
+  /** An entry module's import whose `needs:` an option chooses: read per class. */
+  const choosesNeeds = (m: ResourceManifest): boolean => m.kind === "Telo.Import" && ownModule(m) && holdsChoice((m as { needs?: unknown }).needs);
+  /** A library's own import whose `needs:` an option chooses, by module and
+   *  alias: read per class through the binding of the import reaching it. */
+  const libraryChosen = new Map<string, ConditionedDeclaration>();
+  for (const declaration of union.declarations as readonly ConditionedDeclaration[]) {
+    const m = declaration.manifest;
+    if (m.kind !== "Telo.Import" || ownModule(m) || declaration.condition === FALSE || declaration.unreachable) continue;
+    if (!holdsChoice((m as { needs?: unknown }).needs)) continue;
+    libraryChosen.set(`${(m.metadata as { module?: string } | undefined)?.module}\0${String(m.metadata?.name)}`, declaration);
+  }
+
   // What no choice varies: the module and kind documents, the imports and the
-  // declarations injected for inputs and needs.
+  // declarations injected for inputs and needs; an import's chosen `needs:`
+  // is read per class below.
+  const chosenImports: ConditionedDeclaration[] = [];
   const invariant: ResourceManifest[] = union.declarations.flatMap((declaration) => {
     const m = declaration.manifest;
     if (declaration.condition === FALSE || declaration.unreachable) return [];
     if (!isModuleKind(m.kind) && !isKindDocument(m) && m.kind !== "Telo.Import" && !isInjectedDeclaration(m)) return [];
+    if (choosesNeeds(m)) {
+      chosenImports.push(declaration as ConditionedDeclaration);
+      return [];
+    }
     reportKeyCost({ kind: "pass-reading", pass: "needTable", declaration });
     return isKindDocument(m) ? [parts.partAt(declaration, base).manifests[0]!] : [union.project(m, base.assignment).value as ResourceManifest];
   });
@@ -232,8 +315,76 @@ export function needTableFindings(inputs: NeedTableFindingsInputs): PassTable {
     presentNeed: (need: string) => T,
     sites: Map<object, Site>,
     bodyHeld: BodyHeld<T>,
+    conditionHeld: (condition: Condition) => T,
   ): NeedGraph | undefined => {
-    const built = needGraphFromManifests(invariant, inputs.rootModules, inputs.scope, inputs.libraries);
+    // An import whose `needs:` an option chooses is one import per class of
+    // its options, each held where its class holds; a scoped import is an
+    // instance of its library wherever it is present, likewise per class.
+    const conditionedImportsOf = (module: string): NeedGraphImport[] => [
+      ...chosenImports.flatMap((declaration) => {
+        const m = declaration.manifest;
+        if (((m.metadata as { module?: string } | undefined)?.module ?? module) !== module) return [];
+        reportKeyCost({ kind: "pass-reading", pass: "needTable", declaration });
+        const manifest = union.project(m, base.assignment).value as ResourceManifest;
+        return needClasses(m, declaration.condition).map(({ held, supplied }) => ({
+          alias: m.metadata?.name as string,
+          manifest,
+          target: (m.metadata as { resolvedSource?: string } | undefined)?.resolvedSource,
+          supplied,
+          held: conditionHeld(held),
+        }));
+      }),
+      ...[...(inputs.scopedImports.get(module)?.values() ?? [])].flat().flatMap((entry) => {
+        const declaration = entry.declaration as ConditionedDeclaration;
+        if (entry.holding.condition === FALSE || declaration.unreachable) return [];
+        const member = entry.member as unknown as ResourceManifest;
+        // Reported at the member inside its holder as the union holds it, which
+        // placement moves to where it is written.
+        const holder = declaration.manifest;
+        const anchor = {
+          manifest: holder,
+          resource: { kind: holder.kind as string, name: holder.metadata?.name as string },
+          path: pathText(entry.unionKeys),
+        };
+        const classes = holdsWrittenChoice((member as { needs?: unknown }).needs)
+          ? scopedNeedClasses(declaration, entry.unionKeys, entry.holding.condition)
+          : [{ held: entry.holding.condition, supplied: readSuppliedNeeds(member) }];
+        return classes.map(({ held, supplied }) => ({
+          alias: entry.place.alias,
+          holders: scopeHoldersOf(member) ?? [],
+          manifest: member,
+          anchor,
+          target: (member.metadata as { resolvedSource?: string } | undefined)?.resolvedSource,
+          supplied,
+          held: conditionHeld(held),
+        }));
+      }),
+    ];
+    // A library's import whose `needs:` the importer's binding chooses: the
+    // tree walks each class, held where it holds, while the supplies stay the
+    // library's own verdict's, as it wrote them.
+    const libraryImportsOf = (module: string, imp: NeedGraphImport): NeedGraphImport[] | undefined => {
+      const declaration = libraryChosen.get(`${module}\0${imp.alias}`);
+      if (!declaration || imp.holders?.length) return undefined;
+      reportKeyCost({ kind: "pass-reading", pass: "needTable", declaration });
+      return [
+        { ...imp, reading: "written" },
+        ...needClasses(declaration.manifest, declaration.condition).map(({ held, supplied }) => ({
+          ...imp,
+          supplied,
+          held: conditionHeld(held),
+          reading: "walked" as const,
+        })),
+      ];
+    };
+    const built = needGraphFromManifests(
+      invariant,
+      inputs.rootModules,
+      inputs.scope,
+      inputs.libraries,
+      conditionedImportsOf,
+      libraryImportsOf,
+    );
     if (!built) return undefined;
     for (const unit of built.modules.values()) {
       if (!unit.checked || !inputs.rootModules.has(unit.name)) continue;
@@ -319,10 +470,14 @@ export function needTableFindings(inputs: NeedTableFindingsInputs): PassTable {
   const findingsOf = <T>(built: NeedGraph | undefined, sites: Map<object, Site>, logic: NeedLogic<T>): Found<T>[] => {
     if (!built) return [];
     const problems = resolveNeedTable(built).problems;
-    return needProblemDiagnostics(built, problems, inputs.rootModules).map(({ diagnostic, problems: stands }) => {
+    return needProblemDiagnostics(built, problems, inputs.rootModules).map(({ diagnostic, problems: stands, reached }) => {
       const site = siteOf(stands[0]!, sites);
       return {
-        held: stands.reduce((held, p) => logic.or(held, (p.held ?? logic.TRUE) as T), logic.FALSE),
+        // A library's own refusal holds where an import of the entry reaches it.
+        held: logic.and(
+          (reached ?? logic.TRUE) as T,
+          stands.reduce((held, p) => logic.or(held, (p.held ?? logic.TRUE) as T), logic.FALSE),
+        ),
         diagnostic,
         located: site !== undefined,
         render: (read) => (site ? renderBy(diagnostic, stands[0]!.about!, site, read) : diagnostic),
@@ -355,15 +510,20 @@ export function needTableFindings(inputs: NeedTableFindingsInputs): PassTable {
   // dimensions, which decides each refusal about a body.
   const sitesMay = new Map<object, Site>();
   const may = findingsOf(
-    graphIn(conditions, (r) => r.condition, inputs.presentNeed, sitesMay, (body) =>
-      body.live.map(({ reference, held }) => ({ reference, held: space.existsDefinitions(held) })),
+    graphIn(
+      conditions,
+      (r) => r.condition,
+      inputs.presentNeed,
+      sitesMay,
+      (body) => body.live.map(({ reference, held }) => ({ reference, held: space.existsDefinitions(held) })),
+      (condition) => condition,
     ),
     sitesMay,
     conditions,
   );
   const sitesOwn = new Map<object, Site>();
   const own = findingsOf(
-    graphIn(conditions, (r) => r.condition, inputs.presentNeed, sitesOwn, (body) => body.live),
+    graphIn(conditions, (r) => r.condition, inputs.presentNeed, sitesOwn, (body) => body.live, (condition) => condition),
     sitesOwn,
     conditions,
   );
@@ -402,10 +562,16 @@ export function needTableFindings(inputs: NeedTableFindingsInputs): PassTable {
     for (const { branch, references } of body.dead) {
       const sites = new Map<object, Site>();
       const forced = findingsOf(
-        graphIn(conditions, (r) => r.condition, inputs.presentNeed, sites, (each) =>
-          each === body
-            ? references.map((reference) => ({ reference, held: TRUE }))
-            : each.live.map(({ reference, held }) => ({ reference, held: space.existsDefinitions(held) })),
+        graphIn(
+          conditions,
+          (r) => r.condition,
+          inputs.presentNeed,
+          sites,
+          (each) =>
+            each === body
+              ? references.map((reference) => ({ reference, held: TRUE }))
+              : each.live.map(({ reference, held }) => ({ reference, held: space.existsDefinitions(held) })),
+          (condition) => condition,
         ),
         sites,
         conditions,
@@ -442,6 +608,7 @@ export function needTableFindings(inputs: NeedTableFindingsInputs): PassTable {
         (need) => space.holds(inputs.presentNeed(need), branch.baseline),
         sites,
         (body) => body.live.map(({ reference, held }) => ({ reference, held: space.holds(space.existsDefinitions(held), branch.baseline) })),
+        (condition) => space.holds(condition, branch.baseline),
       );
       return findingsOf(built, sites, oneConfiguration)
         .filter((found) => found.held && !bodyOf(found))

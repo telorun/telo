@@ -143,6 +143,7 @@
       "variables": {
         "type": "object",
         "additionalProperties": {
+          "$ref": "telo://manifest#/$defs/JsonSchema7",
           "type": "object",
           "required": [
             "type"
@@ -190,6 +191,7 @@
       "secrets": {
         "type": "object",
         "additionalProperties": {
+          "$ref": "telo://manifest#/$defs/JsonSchema7",
           "type": "object",
           "required": [
             "env",

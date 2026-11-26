@@ -141,7 +141,7 @@ source: ./__fixtures__/invalid/record-key/telo.yaml
 expect:
   errors:
     - code: CEL_TYPE_ERROR
-      message: "Ui.Page/pathParameter: CEL at 'children[0].ref.record.key' reads 'params.id', whose declared shape does not fit what the field expects: /: type mismatch — source is 'string', target expects 'integer'."
+      message: "Ui.Page/pathParameter: CEL at 'children[0].ref.record.key' reads 'params.id', declared 'string', but the field expects 'integer'."
     - code: CEL_UNKNOWN_IDENTIFIER
       message: "Ui.Page/outsideQuery: !cel: 'data' is not available here — Ui.Page/outsideQuery withholds it: a form reads only the roots bound where it is placed"
 ---

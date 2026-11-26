@@ -1,0 +1,29 @@
+{
+  "diagnostics": [
+    {
+      "code": "SCHEMA_IN_PLACE_CYCLE",
+      "data": {
+        "filePath": "telo.yaml",
+        "path": "schema",
+        "resource": {
+          "kind": "Telo.Definition",
+          "name": "Router"
+        }
+      },
+      "message": "Telo.Definition 'Router': its schema comes back to where it started without descending into the value — '$defs/Loop' of schema refers to schema at '$defs/Loop' — so validating any value against it never ends. A schema may refer back to itself only beneath 'properties', 'patternProperties', 'additionalProperties', 'items', 'additionalItems', 'prefixItems' or 'contains'.",
+      "range": {
+        "end": {
+          "character": 0,
+          "line": 14
+        },
+        "start": {
+          "character": 2,
+          "line": 7
+        }
+      },
+      "severity": 1,
+      "source": "telo-analyzer"
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] Manifest validation failed\n  [SCHEMA_IN_PLACE_CYCLE] Telo.Definition 'Router': its schema comes back to where it started without descending into the value — '$defs/Loop' of schema refers to schema at '$defs/Loop' — so validating any value against it never ends. A schema may refer back to itself only beneath 'properties', 'patternProperties', 'additionalProperties', 'items', 'additionalItems', 'prefixItems' or 'contains'."
+}

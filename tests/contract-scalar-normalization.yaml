@@ -7,9 +7,11 @@ metadata:
     declares, so the declaration is true and not merely satisfied: CEL types
     `type: integer` as `int`, and an int64 composes with an integer literal with
     no cast. Asserting the value alone cannot catch a regression — Assert.Equals
-    compares an int64 and a plain number equal by design — so every claim here is
-    ARITHMETIC against an int literal, which is the overload that used to fail at
-    dispatch with `no such overload: dyn<double> + int`.
+    compares an int64 and a plain number equal by design — so every claim on a
+    plain `type: integer` field is ARITHMETIC against an int literal with no
+    cast, the overload that used to fail at dispatch with `no such overload:
+    dyn<double> + int`; the port, typed by a value type that takes no
+    arithmetic, is held by its runtime type instead.
 imports: { Run: ../modules/run, Assert: ../modules/assert }
 targets:
   - !ref verifyNormalization
@@ -57,17 +59,19 @@ steps:
   - name: check
     inputs:
       actual:
-        port: !cel "steps.produced.result.port + 1"
+        # A port is typed `Telo.TcpPort`, which takes no arithmetic; its
+        # runtime type is what proves the `json` value type's `base` is read.
+        port: !cel "type(dyn(steps.produced.result.port)) == int"
         # `int + uint` has no overload, so only a normalized uint composes.
         quota: !cel "steps.produced.result.quota + 1u == 6u"
         item: !cel "steps.produced.result.counts[1] + 1"
         deep: !cel "steps.produced.result.nested.deep + 1"
-        maybe: !cel "steps.produced.result.maybe + 1"
+        maybe: !cel "steps.produced.result.maybe != null ? steps.produced.result.maybe + 1 : null"
         # A double stays a double: `+ 0.25` has no int overload either way.
         ratio: !cel "steps.produced.result.ratio + 0.25"
         label: !cel "steps.produced.result.label + '!'"
       expected:
-        port: 8081
+        port: true
         quota: true
         item: 3
         deep: 8

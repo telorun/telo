@@ -37,7 +37,7 @@
     "src/**"
   ],
   "scripts": {
-    "prepare": "node ../../scripts/generate-artifact-axes.mjs",
+    "prepare": "node ../../scripts/generate-artifact-axes.mjs && node ../../scripts/copy-validation-limits.mjs",
     "build": "node ../../scripts/generate-telo-version.mjs && node ../../scripts/render-builtin-vocabulary.mjs && tsc -p tsconfig.lib.json",
     "test": "vitest run",
     "test:watch": "vitest",

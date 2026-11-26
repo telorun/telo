@@ -1,0 +1,20 @@
+# A reference slot whose value branch refers to itself without descending into
+# the value: refused where the kind is declared, the value at the slot unjudged.
+kind: Telo.Library
+metadata: { name: SchemaInPlaceCycleSlotLib, version: 1.0.0 }
+---
+kind: Telo.Definition
+metadata: { name: Router }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    handler:
+      anyOf:
+        - { x-telo-ref: { kind: Telo.Invocable, use: call } }
+        - { $ref: "#/$defs/Loop" }
+  $defs: { Loop: { type: object, $ref: "#/$defs/Loop" } }
+---
+kind: Self.Router
+metadata: { name: router }
+handler: { leaf: 1 }

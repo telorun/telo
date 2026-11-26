@@ -346,7 +346,7 @@
     "apps/hub/tests/integration/register-unlimited.yaml": { "codes": ["INVALID_TYPE_NAME"] },
     "apps/hub/tests/integration/search-identity-ranking.yaml": { "codes": ["DEPRECATED_KIND"] },
     "apps/hub/tests/integration/search-instances.yaml": { "codes": ["DEPRECATED_KIND"] },
-    "apps/studio/src/__fixtures__/tagged-template.yaml": { "codes": ["BRANCH_UNDECIDABLE", "CEL_UNKNOWN_FIELD", "DUPLICATE_RESOURCE_NAME", "REF_MEMBER_INVALID", "REPEAT_KEY_INVALID", "REPEAT_SOURCE_INVALID"] },
+    "apps/studio/src/__fixtures__/tagged-template.yaml": { "codes": ["BRANCH_UNDECIDABLE", "DUPLICATE_RESOURCE_NAME", "REPEAT_SOURCE_INVALID"] },
     "benchmarks/lead-intake/telo/telo.yaml": { "codes": ["DEPRECATED_KIND"] },
     "blueprints/agent-app/example/telo.yaml": { "codes": ["DEPRECATED_KIND"] },
     "blueprints/agent-app/tests/__fixtures__/echo-assistant.yaml": { "codes": ["DEPRECATED_KIND"] },

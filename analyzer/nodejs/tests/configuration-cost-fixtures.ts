@@ -1719,8 +1719,8 @@ export function valueSchemaCrossing(): string {
  * handler whose result types a region — `caller` reads a member its output
  * contract does not declare (`x-telo-context-ref-from`) — a slot whose
  * schema is the type `thing` declares (`x-telo-schema-from`), a sequence's step
- * a `with:` member is scoped against (`x-telo-scope`) and a function's
- * `returns` (`x-telo-returns-from`); and it references `field`, whose accessor
+ * a `with:` member is scoped against (`x-telo-scope`), and a function whose
+ * `returns` names a shape of its own; and it references `field`, whose accessor
  * binding is typed from `thing`'s scope at that slot
  * (`x-telo-context-from-referrer`).
  */
@@ -1863,8 +1863,12 @@ function referentPaddingDocs(p: number, thingOutputType: string[]): string {
     "metadata: { name: measure }",
     "params:",
     "  - { name: x, schema: { type: integer } }",
-    "returns: { schema: !ref thing }",
+    "returns: { schema: !ref Measured }",
     `body: !cel "x + 1"`,
+    "---",
+    "kind: Telo.JsonSchema",
+    "metadata: { name: Measured }",
+    "schema: { type: integer }",
     "",
   ].join("\n");
 }
@@ -2647,6 +2651,129 @@ export function nestedInlinePlaces(lead: boolean, named = false): string {
     `          else: !cel "1"`,
     "",
   ].join("\n");
+}
+
+/**
+ * The chain fixture C(k): k named shapes `S1 … Sk`, each `schema: !if
+ * variables.flagI` whose `then` declares a reference slot `x` and whose
+ * `else` declares `x` a plain object, each holding `next` naming the shape
+ * after it; one kind `Route` whose `s` names `S1`; one resource writing an
+ * inline `Telo.Value` at every `x` down the chain. With `misfit`, the shape at
+ * that depth refuses the resource's `y` in the class its flag selects.
+ */
+export function shapeChain(k: number, misfit?: number): string {
+  const lines = ["kind: Telo.Application", `metadata: { name: ShapeChain${k} }`, "variables:"];
+  for (let i = 1; i <= k; i++) lines.push(`  flag${i}: { env: FLAG_${i}, type: boolean, default: false }`);
+  for (let i = 1; i <= k; i++) {
+    const next = i < k ? `, next: { $ref: "telo://Self/S${i + 1}" }` : "";
+    // With `misfit`, the shape at that depth types `y` an integer where its
+    // flag holds and a string where it does not; the resource writes text.
+    const y = (type: string) => (i === misfit ? `, y: { type: ${type} }` : "");
+    lines.push(
+      "---",
+      "kind: Telo.JsonSchema",
+      `metadata: { name: S${i} }`,
+      "schema: !if",
+      `  if: !cel "variables.flag${i}"`,
+      `  then: { type: object, properties: { x: { x-telo-ref: { kind: Telo.Invocable, use: call } }${y("integer")}${next} } }`,
+      `  else: { type: object, properties: { x: { type: object }${y("string")}${next} } }`,
+    );
+  }
+  lines.push(
+    "---",
+    "kind: Telo.Definition",
+    "metadata: { name: Route }",
+    "capability: Telo.Service",
+    "controllers: [pkg:telo/local/js?path=./probe.mjs#Route]",
+    'schema: { type: object, properties: { s: { $ref: "telo://Self/S1" } } }',
+    "---",
+    `kind: ShapeChain${k}.Route`,
+    "metadata: { name: route }",
+    "s:",
+  );
+  for (let i = 1; i <= k; i++) {
+    const indent = "  ".repeat(i);
+    lines.push(`${indent}x: { kind: Telo.Value, value: ${i} }`);
+    if (i === misfit) lines.push(`${indent}y: text`);
+    if (i < k) lines.push(`${indent}next:`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+/**
+ * The union chain U(k): k named shapes `S1 … Sk`, each varying under its own
+ * flag; each but the last a `oneOf` of a reference to the next and a scalar
+ * type its flag picks, the last an object typing `x` by its flag. One kind
+ * `Route` whose `s` names `S1`, and one resource writing `s`.
+ */
+export function unionChain(k: number): string {
+  const lines = ["kind: Telo.Application", `metadata: { name: UnionChain${k} }`, "variables:"];
+  for (let i = 1; i <= k; i++) lines.push(`  flag${i}: { env: FLAG_${i}, type: boolean, default: false }`);
+  for (let i = 1; i <= k; i++) {
+    const branch = (scalar: string) =>
+      i < k ? `{ oneOf: [{ $ref: "telo://Self/S${i + 1}" }, { type: ${scalar} }] }` : `{ type: object, properties: { x: { type: ${scalar} } } }`;
+    lines.push(
+      "---",
+      "kind: Telo.JsonSchema",
+      `metadata: { name: S${i} }`,
+      "schema: !if",
+      `  if: !cel "variables.flag${i}"`,
+      `  then: ${branch(i < k ? "string" : "integer")}`,
+      `  else: ${branch(i < k ? "integer" : "string")}`,
+    );
+  }
+  lines.push(
+    "---",
+    "kind: Telo.Definition",
+    "metadata: { name: Route }",
+    "capability: Telo.Service",
+    "controllers: [pkg:telo/local/js?path=./probe.mjs#Route]",
+    'schema: { type: object, properties: { s: { $ref: "telo://Self/S1" } } }',
+    "---",
+    `kind: UnionChain${k}.Route`,
+    "metadata: { name: route }",
+    "s: { x: 1 }",
+  );
+  return `${lines.join("\n")}\n`;
+}
+
+/**
+ * T(k): k named shapes `S1 … Sk`, each varying under its own flag which single
+ * value it allows — `S_i` a `oneOf` naming the next shape beside `enum:
+ * ["<i>-on"]` where `variables.flag<i>` holds and `["<i>-off"]` where it does
+ * not, `Sk` that enum alone — with a resource writing `0`. Every shape refuses
+ * the value the same way in both classes and words it differently, so each
+ * carve has one decision and two texts per class.
+ */
+export function textChain(k: number): string {
+  const lines = ["kind: Telo.Application", `metadata: { name: TextChain${k} }`, "variables:"];
+  for (let i = 1; i <= k; i++) lines.push(`  flag${i}: { env: FLAG_${i}, type: boolean, default: false }`);
+  for (let i = 1; i <= k; i++) {
+    const allowed = (state: string) =>
+      i < k ? `{ oneOf: [{ $ref: "telo://Self/S${i + 1}" }, { enum: ["${i}-${state}"] }] }` : `{ enum: ["${i}-${state}"] }`;
+    lines.push(
+      "---",
+      "kind: Telo.JsonSchema",
+      `metadata: { name: S${i} }`,
+      "schema: !if",
+      `  if: !cel "variables.flag${i}"`,
+      `  then: ${allowed("on")}`,
+      `  else: ${allowed("off")}`,
+    );
+  }
+  lines.push(
+    "---",
+    "kind: Telo.Definition",
+    "metadata: { name: Route }",
+    "capability: Telo.Service",
+    "controllers: [pkg:telo/local/js?path=./probe.mjs#Route]",
+    'schema: { type: object, properties: { s: { $ref: "telo://Self/S1" } } }',
+    "---",
+    `kind: TextChain${k}.Route`,
+    "metadata: { name: route }",
+    "s: 0",
+  );
+  return `${lines.join("\n")}\n`;
 }
 
 /** The most choices a per-fixture sweep (the parity, differential and

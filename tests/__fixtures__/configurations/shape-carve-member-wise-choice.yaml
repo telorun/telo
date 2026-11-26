@@ -1,0 +1,35 @@
+# A kind's value is held to an `anyOf` around a named shape that varies under
+# `variables.flag1` and itself names, member-wise, a second shape varying under
+# `variables.flag2`: the inner shape refuses `y` only where both flags hold.
+kind: Telo.Application
+metadata: { name: ShapeCarveMemberWiseChoice }
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+  flag2: { env: FLAG_2, type: boolean, default: false }
+---
+kind: Telo.JsonSchema
+metadata: { name: Deep }
+schema: !if
+  if: !cel "variables.flag2"
+  then: { type: object, properties: { y: { type: integer } } }
+  else: { type: object, properties: { y: { type: string } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Inner }
+schema: !if
+  if: !cel "variables.flag1"
+  then: { type: object, properties: { next: { $ref: "telo://Self/Deep" } } }
+  else: { type: object }
+---
+kind: Telo.JsonSchema
+metadata: { name: Outer }
+schema: { anyOf: [{ $ref: "telo://Self/Inner" }, { type: boolean }] }
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Runnable
+schema: { type: object, properties: { v: { $ref: "telo://Self/Outer" } } }
+---
+kind: Self.Holder
+metadata: { name: holder }
+v: { next: { y: text } }

@@ -50,10 +50,14 @@ const corpus = [
 const BROKEN_ON_PURPOSE = new Set(
   [
     "tests/__fixtures__/check-run-agreement/provider-status/scoped-lib/telo.yaml",
+    "tests/__fixtures__/import-input-choice/untyped.yaml",
+    "tests/__fixtures__/import-input-choice/untyped-off.yaml",
     "tests/__fixtures__/check-run-agreement/expansion/branch-shape/telo.yaml",
     "tests/__fixtures__/configurations/cycle-choice.yaml",
+    "tests/__fixtures__/configurations/host-path-import-choice.yaml",
     "tests/__fixtures__/configurations/scope-choice.yaml",
     "tests/__fixtures__/configurations/scope-member-own-kind.yaml",
+    "tests/__fixtures__/configurations/scoped-import-need-choice.yaml",
     "tests/__fixtures__/configurations/throws-coverage-choice.yaml",
     "tests/__fixtures__/check-run-agreement/scope-members/cel-lib/telo.yaml",
     "tests/__fixtures__/check-run-agreement/scope-members/cel-nested.yaml",
@@ -68,6 +72,8 @@ const BROKEN_ON_PURPOSE = new Set(
     "tests/__fixtures__/scoped-imports/outliving.yaml",
     "tests/__fixtures__/scoped-imports/shadowing.yaml",
     "tests/__fixtures__/check-run-agreement/scope-opening-inputs/undeclared-field.yaml",
+    "tests/__fixtures__/check-run-agreement/text-parameters/choice.yaml",
+    "tests/__fixtures__/check-run-agreement/text-parameters/plural-en.yaml",
   ].map((file) => join(REPO, file)),
 );
 

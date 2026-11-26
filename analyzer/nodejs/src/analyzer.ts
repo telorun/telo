@@ -7,7 +7,6 @@ import {
   isCompiledValue,
   parseCanonicalTypeSchemaId,
   parseTeloTypeRef,
-  readValueTypeSlot,
   VALUE_TYPES,
   X_TELO_TYPE,
 } from "@telorun/sdk";
@@ -225,10 +224,9 @@ import { inFamily, isRelationStage, stampedIn, type AnalysisFamily, type Documen
 import {
   validateSpanAttributes,
 } from "./validate-span-attributes.js";
+
 import {
-  producedValueMisfits,
-} from "./cel-produced-value.js";
-import {
+  authoredSchemaRef,
   canonicalShapeSchema,
   resolveSchemaTypeRefs,
   withCanonicalRefSentinels,
@@ -244,9 +242,6 @@ import {
   walkOwnCelExpressions,
 } from "./scope-members.js";
 import {
-  celTypeSatisfiesJsonSchema,
-  checkSchemaCompatibility,
-  unionBranches,
   navigateSchemaToExprPath,
   resolveRefIn,
   fittingUnionBranches,
@@ -256,9 +251,16 @@ import {
   type ExternalSchemaResolver,
   type SchemaIssue,
 } from "./schema-compat.js";
-import { SCHEMA_NESTING_EXCEEDED, schemaNestingExceededMessage, validateAgainstSchema, type SchemaValidationOutcome } from "./schema-validation.js";
+import { ownValuePositions } from "./own-value-positions.js";
+import {
+  SCHEMA_NESTING_EXCEEDED,
+  schemaNestingExceededMessage,
+  validateAgainstSchema,
+  type SchemaValidationOutcome,
+  type ValidationUnfinished,
+} from "./schema-validation.js";
 import { shapeNamedBy } from "./referenced-shape.js";
-import { declaredResultSchemaAt, isCallableKind, RETURNS_FROM_ANNOTATION } from "./callable-signature.js";
+import { isCallableKind, RETURNS_FROM_ANNOTATION } from "./callable-signature.js";
 import type { CallableSlotContext } from "./callable-slot.js";
 import { schemaFromIsKindDecidable } from "./schema-from-sites.js";
 import { collectValueSchemaIssues, type ShapeAwareValidator } from "./validate-value-schema.js";
@@ -266,7 +268,7 @@ import { slotKindResolverOf, valueSchemaFromProblems } from "./validate-value-sc
 import { annotationDeclarationProblems, matchPlaces, unsatisfiedMatch } from "./validate-match-for.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
 import type { StandIns } from "./stand-in-findings.js";
-import { producerAdmitsNull, slotAdmitsNull } from "./schema-nullability.js";
+
 import {
   callSiteAt,
   omittedSlotCallSite,
@@ -350,14 +352,7 @@ import { isNullPortDefaultFinding, validateInputDefaults } from "./validate-inpu
 import { untaggedInterpolationInManifests, untaggedInterpolationInLibraries, validateUntaggedInterpolation } from "./untagged-interpolation.js";
 import {
   alsoAccepts,
-  describeHostEntry,
-  hostEntryAt,
-  hostMediaTypeAt,
   HOST_PATH_SOURCES,
-  holdsHostPath,
-  holdsOnlyConstants,
-  hostPathBranchesFor,
-  leadingRelativeLiteral,
 } from "./host-path-slot.js";
 import { validateImportHostPaths } from "./validate-import-host-paths.js";
 import { moduleFileEntryMismatches } from "./validate-host-path-entries.js";
@@ -371,15 +366,23 @@ import { applicationSourceAnnotationProblems, readApplicationSourceSlot } from "
 import { importInputsJoinSchema } from "./import-inputs.js";
 import { validateKindDocumentMetadata, validateModuleDocumentMetadata } from "./validate-module-metadata.js";
 import { validateRequires } from "./validate-requires.js";
-import { filesOfUnreadableModules, gateRefusals, requiresGateInput, unreadableModuleRefusals } from "./requires-gate.js";
+import {
+  filesOfUnreadableModules,
+  gateRefusals,
+  reachedLibraryDocuments,
+  requiresGateInput,
+  unreadableModuleRefusals,
+} from "./requires-gate.js";
 import { libraryOptionalReferences, omittedInputFindings, type LibraryReferences } from "./omitted-input-references.js";
+import { importInputClasses } from "./import-input-classes.js";
 import { isEntryOwned } from "./entry-ownership.js";
 import { schemaAnnotationFindings, schemaProjectionDiagnostic, valueTypeSlotDiagnostic } from "./schema-annotation-diagnostics.js";
 import { importHostPathFindings } from "./import-host-path-findings.js";
-import { kindDocumentFindings, kindDocumentsOf, moduleDocumentFindings } from "./document-findings.js";
+import { inputShapeLookup, kindDocumentFindings, kindDocumentsOf, moduleDocumentFindings } from "./document-findings.js";
 import { NamedShapeReader, PLAIN_READER } from "./named-shape-reader.js";
 import { namedShapeReferenceFinding, namedShapeReferenceSites } from "./named-shape-references.js";
 import { schemaCompileFindings } from "./schema-compile-findings.js";
+import { moduleInputCycleDiagnostics, schemaInPlaceCycleFindings } from "./schema-in-place-cycle-findings.js";
 import { validateBaseMapping } from "./validate-base-mapping.js";
 import { leftoverInputsSchemaFindings, validateInvocationContract } from "./validate-invocation-contract.js";
 import { kindContractFindings } from "./kind-contract-findings.js";
@@ -470,7 +473,7 @@ import {
   type ConsumerBody,
 } from "./template-forward.js";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
-import { declareInScope, declaringScopeOf } from "./scope-members.js";
+import { declareInScope, declaringScopeOf, scopedImportsHeldBy } from "./scope-members.js";
 import { validateTemplateForwards } from "./validate-template-forward.js";
 import { validateUnusedDeclarations } from "./validate-unused-declarations.js";
 import { validateModuleCallNames } from "./validate-module-call-names.js";
@@ -585,7 +588,11 @@ import { removedKindReason, undeclaredKindMessage } from "./undeclared-kind.js";
 import { resolveScopeValues, valueSchemaSlots, type ValueSchemaHost } from "./value-schema-slot.js";
 import { fieldPlace, pointerReads, READS_IDENTITY, type ReadPlace, type ReferentPlace, type ReferentReads } from "./read-place.js";
 import { valueDerivedSlot } from "./value-derived-contract.js";
-import type { ProducedValue } from "./cel-produced-value.js";
+import { type SlotOrigin } from "./cel-slot-origin.js";
+import { assertReferencesReported, unjudgedSchemaFindings, type UnresolvedSchemaReference } from "./schema-unjudged.js";
+import { judgeSlotWith, type JoinSlot } from "./slot-fit-origins.js";
+import { recordDocumentPlaces, type WrittenSchemaPlace } from "./schema-provenance.js";
+import { withoutNull } from "./output-to-slot.js";
 import { ConditionSpace, definitionDimensionKey, FALSE, TRUE, type Condition } from "./presence-condition.js";
 import { composedThrough, type ViewBinding } from "./view-binding.js";
 import { choiceScopeOf } from "./choice-scope.js";
@@ -626,6 +633,14 @@ import {
   type TemplateBodySite,
   type TemplateBodyUnit,
 } from "./template-body-sites.js";
+import {
+  issueCarveToken,
+  newCarveContext,
+  recordingCarveFocus,
+  SCHEMA_CARVE_KEYWORD,
+  withCarveContext,
+  type CarveContext,
+} from "./schema-carve.js";
 import { CelJudge, emptyCelFactMaps, replayCelFacts, type CelFactMaps, type CelSiteFacts } from "./cel-judge.js";
 import { celSiteName, isBodySiteId } from "./cel-site-name.js";
 import {
@@ -635,6 +650,7 @@ import {
   type CelSiteVerdict,
   type KeyCoverage,
   type KeyRequest,
+  type OwnCarveRead,
   type OwnKeyRequest,
   type OwnUnionRequest,
   type OwnVerdict,
@@ -764,6 +780,55 @@ function refusedSentinels(expansion: ExpansionReading | undefined): ReadonlySet<
   return new Set((expansion?.sites ?? []).filter((site) => site.refusal).map((site) => site.value));
 }
 
+/** The module instance a named shape at canonical `id` is read in from
+ *  `within`, named by what is written there: `within`'s own instance where the
+ *  shape is its module's; a `Telo.Import`'s own inputs in that import's
+ *  instance; otherwise the instance of the alias `within` spells the shape's
+ *  module through — its `kind:`, or a `telo://<Alias>/<Type>` it writes — or
+ *  the one alias its module imports that module under. A site naming none of
+ *  several reads no one instance (`NamedShapeReader.classesIn`). */
+function shapeInstanceOf(
+  id: string,
+  within: ResourceManifest,
+  aliases: AliasResolver,
+  aliasesByModule: ReadonlyMap<string, AliasResolver>,
+): readonly string[] {
+  const own = importPathOf(within) ?? [];
+  const named = parseCanonicalTypeSchemaId(id);
+  const shapeModule = named?.moduleName;
+  const metadata = (within.metadata ?? {}) as { module?: unknown; name?: unknown; resolvedModuleName?: unknown };
+  if (within.kind === "Telo.Import" && metadata.resolvedModuleName === shapeModule && typeof metadata.name === "string") {
+    return importPathThrough(within, metadata.name);
+  }
+  if (shapeModule === undefined || shapeModule === metadata.module) return own;
+  const candidates = moduleAliasScope(within.metadata, aliases, aliasesByModule)
+    .aliasesFor(shapeModule)
+    .filter((each) => each !== "Self");
+  if (candidates.length <= 1) return candidates[0] === undefined ? own : importPathThrough(within, candidates[0]);
+  const written = writtenShapeAliases(within, named!.typeName, candidates);
+  return written.length === 1 ? importPathThrough(within, written[0]!) : own;
+}
+
+/** The aliases among `candidates` `within` spells a reference to the shape
+ *  `typeName` through: its `kind:`'s, and each `telo://<Alias>/<typeName>` it
+ *  writes, as authored. */
+function writtenShapeAliases(within: ResourceManifest, typeName: string, candidates: readonly string[]): string[] {
+  const out = new Set<string>();
+  const kindAlias = typeof within.kind === "string" && within.kind.includes(".") ? within.kind.split(".")[0]! : undefined;
+  if (kindAlias !== undefined && candidates.includes(kindAlias)) out.add(kindAlias);
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) return node.forEach(visit);
+    if (!node || typeof node !== "object") return;
+    const ref = (node as { $ref?: unknown }).$ref;
+    const writtenRef = authoredSchemaRef(node) ?? (typeof ref === "string" ? ref : undefined);
+    const parsed = writtenRef === undefined ? null : parseTeloTypeRef(writtenRef.split("#")[0]);
+    if (parsed && parsed.typeName === typeName && candidates.includes(parsed.authority)) out.add(parsed.authority);
+    for (const [key, child] of Object.entries(node)) if (key !== "metadata") visit(child);
+  };
+  visit(within);
+  return [...out];
+}
+
 /** `body` run with a named-shape layer open on `defs` (`shared` deciding which
  *  shapes the shared registry takes), and what the layer registered. */
 function withShapeLayer<T>(
@@ -780,6 +845,79 @@ function withShapeLayer<T>(
   } finally {
     if (registered === undefined) defs.closeShapeLayer();
   }
+}
+
+/** Registers, in the open named-shape layer, every shape some configuration
+ *  varies as an own-check key reads it: a shape the key names directly as the
+ *  class it holds at `witness`, through the named-shape reader in the
+ *  instance `within` reads it in; any other — a boundary — as its stand-in. */
+function registerKeyShapeClasses(
+  setup: KeySetup,
+  scope: DoorScope,
+  within: ResourceManifest,
+  witness: World,
+  carves: CarveContext,
+  reads: readonly OwnCarveRead[],
+  focus?: { readonly held: readonly string[] },
+): void {
+  const reader = setup.namedShapes;
+  const read: WorldReader<Condition> = {
+    holds: (held) => setup.union.space.holds(held, witness.assignment),
+    taken: () => {
+      throw new Error("internal: a named shape's class is read by its condition alone.");
+    },
+  };
+  for (const id of setup.variantShapes) {
+    // A sub-verdict reads its own shape and those held with it, no other.
+    if (focus ? focus.held.includes(id) : answersName(scope, parseCanonicalTypeSchemaId(id)!.typeName)) {
+      const held = reader.classIn(shapeInstanceOf(id, within, setup.aliases, setup.aliasesByModule), id, read);
+      if (held) setup.defs.registerNamedTypeSchema(id, held.schema);
+      continue;
+    }
+    const standIn = setup.shapeStandIns().get(id) ?? {};
+    const own = reads.filter((read) => read.id === id);
+    setup.defs.registerNamedTypeSchema(id, own.length > 0 ? schemaCarveStandIn(standIn, own, carves) : standIn);
+  }
+}
+
+/** `standIn` with the `schemaCarve` keyword at the node each of `reads` names,
+ *  its token issued by `carves` and its summary at each position entered in
+ *  the door's table. */
+function schemaCarveStandIn(standIn: Record<string, any>, reads: readonly OwnCarveRead[], carves: CarveContext): Record<string, any> {
+  const out = structuredClone(standIn);
+  const tokens = new Map<string, object>();
+  for (const read of reads) {
+    const carve = `${read.id}${read.pointer}`;
+    let node: any = out;
+    const body = read.pointer.replace(/^#/, "");
+    const segments =
+      body === "" || body === "/"
+        ? []
+        : body
+            .split("/")
+            .slice(1)
+            .map((segment) => decodeURIComponent(segment).replace(/~1/g, "/").replace(/~0/g, "~"));
+    segments.forEach((segment, i) => {
+      const list = /^\d+$/.test(segments[i + 1] ?? "");
+      if (Array.isArray(node)) {
+        const index = Number(segment);
+        while (node.length <= index) node.push({});
+        node = node[index] ??= list ? [] : {};
+      } else node = node[segment] ??= list ? [] : {};
+    });
+    let token = tokens.get(carve);
+    if (!token) tokens.set(carve, (token = issueCarveToken(carves, carve)));
+    node[SCHEMA_CARVE_KEYWORD] = token;
+    let table = carves.table.get(carve);
+    if (!table) carves.table.set(carve, (table = new Map()));
+    table.set(keysPointer(read.at), read.summary);
+  }
+  return out;
+}
+
+/** The JSON Pointer of `keys`. */
+function keysPointer(keys: readonly (string | number)[]): string {
+  return keys.map((key) => `/${String(key).replace(/~/g, "~0").replace(/\//g, "~1")}`).join("");
 }
 
 /** What one configuration decides: the branch each choice takes, and each
@@ -803,7 +941,12 @@ interface AnalysisConfiguration {
   readonly decidedValue?: (holder: ResourceManifest, source: string) => { value: unknown } | undefined;
   /** How CEL sites are judged in this run: none is — the facts of each site's
    *  key in this configuration are read for the stages still judged in it. */
-  readonly cel?: { readonly mode: "configuration"; readonly factsOf: (site: string) => RunFacts | undefined };
+  readonly cel?: {
+    readonly mode: "configuration";
+    readonly factsOf: (site: string) => RunFacts | undefined;
+    /** The typed environments the keys judging the sites were read against. */
+    readonly environments: () => Iterable<CelEnvironment>;
+  };
   /** What the run is for: the registration every configuration reads, one
    *  configuration, or a branch no configuration takes. */
   readonly run: Exclude<AnalysisRunPurpose, "whole" | "door">;
@@ -864,6 +1007,8 @@ interface KeySetup {
   readonly union: ConditionedExpansion;
   /** The union's forward views. */
   readonly views: ReadonlySet<ConditionedDeclaration>;
+  /** The union's forward views by the declaration each was built from. */
+  readonly viewsByUpstream: ReadonlyMap<ConditionedDeclaration, readonly ConditionedView[]>;
   readonly names: ConditionedNameIndex;
   /** What a key judged at a witness holds fixed: over the configurations kept
    *  where no branch is forced, over the whole space where one is. */
@@ -874,8 +1019,9 @@ interface KeySetup {
   /** The one reader of the named shapes: the shared registry holds each one it
    *  says no configuration varies. */
   readonly namedShapes: NamedShapeReader;
-  /** A named shape some configuration varies, as a witness holds it. */
-  readonly shapeAt: (id: string, witness: World) => Record<string, any> | undefined;
+  /** The stand-in of every named shape: what an own-check key reads a
+   *  boundary reference to a shape some configuration varies as. */
+  readonly shapeStandIns: () => ReadonlyMap<string, Record<string, any>>;
   /** A named shape some configuration varies, every option kept: what a
    *  relation reader finding sites walks. */
   readonly censusShape: (id: string) => Record<string, any> | undefined;
@@ -1022,18 +1168,26 @@ interface KeyNormalization {
 }
 
 /**
- * A kind document or a top-level import never varies: a choice inside one
- * outside its template body is refused, and one as a branch is refused, so
- * kinds and aliases resolve once for every configuration. Anything else here
- * is an internal error.
+ * A kind document never varies, and a top-level import never varies in its
+ * alias, kind, source or integrity: a choice inside a kind document outside
+ * its template body is refused, one at an import's own field is refused by the
+ * loader, and either as a branch is refused, so kinds and aliases resolve once
+ * for every configuration. An import's inputs are values chosen per option.
+ * Anything else here is an internal error.
  */
+const IMPORT_LOADER_FIELDS: ReadonlySet<string> = new Set(["kind", "metadata", "source", "integrity"]);
+
 function assertInvariantKindDocuments(union: ConditionedExpansion): void {
   for (const declaration of union.declarations) {
-    if (!isKindDocument(declaration.manifest) && declaration.manifest.kind !== "Telo.Import") continue;
+    const isImport = declaration.manifest.kind === "Telo.Import";
+    if (!isKindDocument(declaration.manifest) && !isImport) continue;
     const varies =
       declaration.condition !== TRUE ||
       Object.entries(declaration.manifest).some(
-        ([key, field]) => !(declaration.manifest.kind === "Telo.Definition" && TEMPLATE_BODY_FIELDS.includes(key)) && holdsChoice(field),
+        ([key, field]) =>
+          !(declaration.manifest.kind === "Telo.Definition" && TEMPLATE_BODY_FIELDS.includes(key)) &&
+          !(isImport && !IMPORT_LOADER_FIELDS.has(key)) &&
+          holdsChoice(field),
       );
     if (varies) {
       throw new Error(
@@ -1466,6 +1620,121 @@ function kindDocumentFindingReportedElsewhere(issue: SchemaIssue): boolean {
   return issue.path === "" && issue.keyword === "if";
 }
 
+/** The names the references a view holds name: a sibling's view its aimed
+ *  references name, anything else as written. */
+const viewReferenceNames = new WeakMap<ConditionedDeclaration, ReadonlySet<string>>();
+function referenceNamesOfView(view: ConditionedDeclaration): ReadonlySet<string> {
+  let names = viewReferenceNames.get(view);
+  if (names) return names;
+  const found = new Set<string>();
+  const visit = (value: unknown): void => {
+    if (isRefSentinel(value)) {
+      const target = refSentinelTarget(value);
+      if (target) found.add(target.name);
+      return;
+    }
+    if (value === null || typeof value !== "object" || isTaggedSentinel(value)) return;
+    if (isResolvedReference(value as Record<string, unknown>)) {
+      found.add((value as { name: string }).name);
+      return;
+    }
+    for (const field of Array.isArray(value) ? value : Object.values(value)) visit(field);
+  };
+  visit(view.manifest);
+  viewReferenceNames.set(view, (names = found));
+  return names;
+}
+
+function viewsByUpstreamOf(views: readonly ConditionedView[]): Map<ConditionedDeclaration, ConditionedView[]> {
+  const out = new Map<ConditionedDeclaration, ConditionedView[]>();
+  for (const view of views) {
+    const list = out.get(view.upstream);
+    if (list) list.push(view);
+    else out.set(view.upstream, [view]);
+  }
+  return out;
+}
+
+/** The views of one consumer joined by the references aimed between them,
+ *  each view's group by the view. */
+const siblingGroups = new WeakMap<ConditionedDeclaration, ReadonlySet<ConditionedView>>();
+function siblingGroupOf(views: readonly ConditionedView[], view: ConditionedView): ReadonlySet<ConditionedView> {
+  const known = siblingGroups.get(view);
+  if (known) return known;
+  const byName = new Map<string, ConditionedView[]>();
+  for (const each of views) {
+    const name = each.manifest.metadata?.name;
+    if (typeof name !== "string") continue;
+    const list = byName.get(name);
+    if (list) list.push(each);
+    else byName.set(name, [each]);
+  }
+  const parent = new Map<ConditionedView, ConditionedView>(views.map((each) => [each, each]));
+  const root = (each: ConditionedView): ConditionedView => {
+    let at = each;
+    while (parent.get(at) !== at) at = parent.get(at)!;
+    parent.set(each, at);
+    return at;
+  };
+  for (const each of views) {
+    for (const name of referenceNamesOfView(each)) {
+      for (const target of byName.get(name) ?? []) parent.set(root(target), root(each));
+    }
+  }
+  const groups = new Map<ConditionedView, Set<ConditionedView>>();
+  for (const each of views) {
+    const at = root(each);
+    let group = groups.get(at);
+    if (!group) groups.set(at, (group = new Set()));
+    group.add(each);
+  }
+  for (const each of views) siblingGroups.set(each, groups.get(root(each))!);
+  return siblingGroups.get(view) ?? new Set([view]);
+}
+
+/** The views of `view`'s consumer beside it that a relation key judging a site
+ *  of `view` reads: every one a chain of references aimed between them joins
+ *  it to, either way, and one referencing a declaration whose referrers its
+ *  classes read. */
+function siblingViewsRead(setup: KeySetup, view: ConditionedView, coverage: KeyCoverage): ConditionedView[] {
+  const views = setup.viewsByUpstream.get(view.upstream) ?? [];
+  const held = new Set(siblingGroupOf(views, view));
+  if (coverage.referrers.size > 0) {
+    const referencing = viewsReferencing(views);
+    for (const name of coverage.referrers) for (const other of referencing.get(name) ?? []) held.add(other);
+  }
+  held.delete(view);
+  if (held.size === 0) return [];
+  const order = viewOrder(views);
+  return [...held].sort((a, b) => order.get(a)! - order.get(b)!);
+}
+
+/** Each view of one consumer by its place among them. */
+const viewOrders = new WeakMap<readonly ConditionedView[], ReadonlyMap<ConditionedView, number>>();
+function viewOrder(views: readonly ConditionedView[]): ReadonlyMap<ConditionedView, number> {
+  let order = viewOrders.get(views);
+  if (!order) viewOrders.set(views, (order = new Map(views.map((each, i) => [each, i]))));
+  return order;
+}
+
+/** The views of one consumer by each name their references name. */
+const referencingIndexes = new WeakMap<readonly ConditionedView[], ReadonlyMap<string, readonly ConditionedView[]>>();
+function viewsReferencing(views: readonly ConditionedView[]): ReadonlyMap<string, readonly ConditionedView[]> {
+  let index = referencingIndexes.get(views);
+  if (!index) {
+    const out = new Map<string, ConditionedView[]>();
+    for (const each of views) {
+      for (const name of referenceNamesOfView(each)) {
+        const list = out.get(name);
+        if (list) list.push(each);
+        else out.set(name, [each]);
+      }
+    }
+    referencingIndexes.set(views, (index = out));
+  }
+  return index;
+}
+
 /** What a key's environment holds beside the shared layer: the site's own
  *  declaration first, then each declaration a class covers whole, by the
  *  readers holding it so (`wholeByName`), and, by the union paths of their
@@ -1553,6 +1822,9 @@ interface OwnCheckWorld {
   readonly groupOf: (m: ResourceManifest) => readonly ResourceManifest[] | undefined;
   /** Whether the declarations of this world are a configuration run's. */
   readonly inConfigurationRun: boolean;
+  /** A sub-verdict's position: the declaration is held to the shape its
+   *  reference names there, and to nothing else. */
+  readonly focus?: { readonly ref: string; readonly at: readonly (string | number)[] };
 }
 
 /** One own-check finding and the place its check judged: where a keyword is
@@ -1560,6 +1832,12 @@ interface OwnCheckWorld {
 interface OwnFinding {
   readonly diagnostic: AnalysisDiagnostic;
   readonly judgedAt: string;
+}
+
+/** Every literal an import supplies, held to the entry its library declares. */
+function importInputFindings(world: OwnCheckWorld, m: ResourceManifest): OwnFinding[] {
+  reportOwnStage("importInputs", world.inConfigurationRun);
+  return validateImportInputs([m], world.rootModules, world.moduleDocuments, world.defs, world.aliasesByModule).map(asOwnFinding);
 }
 
 /** The groups judged at the schema family's sites, and their checks. */
@@ -1602,13 +1880,7 @@ const OWN_GROUPS: ReadonlyArray<readonly [SchemaGroup, (world: OwnCheckWorld, m:
       return validateApplicationInputs(group, world.rootModules, world.applicationSources, applicationInputsScope(world), "fed").map(asOwnFinding);
     },
   ],
-  [
-    "importInputs",
-    (world, m) => {
-      reportOwnStage("importInputs", world.inConfigurationRun);
-      return validateImportInputs([m], world.rootModules, world.moduleDocuments, world.defs, world.aliasesByModule).map(asOwnFinding);
-    },
-  ],
+  ["importInputs", (world, m) => importInputFindings(world, m)],
   [
     "importAndSinkLogging",
     (world, m) => {
@@ -1659,6 +1931,17 @@ const OWN_GROUPS: ReadonlyArray<readonly [SchemaGroup, (world: OwnCheckWorld, m:
     },
   ],
 ];
+
+/** A schema holding nothing but a path to `at`, where `ref` is in force: what
+ *  a sub-verdict judges a declaration against. */
+function focusedSchema(at: readonly (string | number)[], ref: string): Record<string, any> {
+  let node: Record<string, any> = { $ref: ref };
+  for (let i = at.length - 1; i >= 0; i--) {
+    const key = at[i]!;
+    node = typeof key === "number" ? { items: [...Array.from({ length: key }, () => ({})), node] } : { properties: { [key]: node } };
+  }
+  return node;
+}
 
 /** A leftover `inputs:` property map on a kind whose input contract is `inputType:`. */
 function contractInputsFormFindings(world: OwnCheckWorld, m: ResourceManifest): AnalysisDiagnostic[] {
@@ -1935,13 +2218,18 @@ function relationFindingAt(
 
 /** A validation of the value at `path` of the declaration `identity` names that
  *  could not finish, `place` naming the value in the message. */
-function nestingFindingAt(identity: DeclarationIdentity, place: string, path: string): RelationFinding {
+function nestingFindingAt(
+  identity: DeclarationIdentity,
+  place: string,
+  path: string,
+  unfinished: ValidationUnfinished,
+): RelationFinding {
   const name = identity.metadata.name as string;
   const diagnostic: AnalysisDiagnostic = {
     severity: DiagnosticSeverity.Error,
     code: SCHEMA_NESTING_EXCEEDED,
     source: SOURCE,
-    message: schemaNestingExceededMessage(`${identity.kind}/${name}`, place),
+    message: schemaNestingExceededMessage(`${identity.kind}/${name}`, place, unfinished),
     data: { resource: { kind: identity.kind, name }, filePath: identity.metadata.source as string | undefined, path },
   };
   return { diagnostic: path ? withQuotedPath(diagnostic, path) : diagnostic, judgedAt: path };
@@ -2330,7 +2618,7 @@ function templateRelationFindings(definition: ResourceManifest, scope: TemplateR
     aliasesByModule,
     rootModules,
     libraries,
-    validator: { validate: (data, target, standIns) => defs.validateResourceConfig(data, target, standIns), external: (ref) => defs.schemaForId(ref) },
+    validator: { validate: (data, target, standIns, ownValues) => defs.validateResourceConfig(data, target, standIns, ownValues), external: (ref) => defs.schemaForId(ref) },
     requests,
     declaredScope: { defs, aliases, aliasesByModule, rootModules, importersByModule: scope.importersByModule, analysisOnly: () => false },
     moduleCallNames: scope.moduleCallNames,
@@ -3376,18 +3664,20 @@ function relationRegionOf(manifest: ResourceManifest, at: readonly (string | num
 /** What the expression at `path` of `m` was typed as, in `facts`. */
 function relationFactsIn(facts: CelFactMaps, m: ResourceManifest, path: string): RelationFacts | undefined {
   const type = facts.typeByPath.get(m)?.get(path);
+  const checkedType = facts.checkedTypeByPath.get(m)?.get(path);
   const literal = facts.literalByPath.get(m)?.get(path);
   const produced = facts.sourceSchemaByPath.get(m)?.get(path);
-  const composed = facts.composedByPath.get(m)?.get(path);
+  const origins = facts.originsByPath.get(m)?.get(path);
   const variants = facts.variantFacts.get(m)?.get(path);
   const source = facts.sourceByPath.get(m)?.get(path);
-  if ([type, literal, produced, composed, variants, source].every((v) => v === undefined)) return undefined;
+  if ([type, literal, produced, origins, variants, source].every((v) => v === undefined)) return undefined;
   return {
     ...(source !== undefined ? { source } : {}),
     ...(type !== undefined ? { type } : {}),
+    ...(checkedType !== undefined ? { checkedType } : {}),
     ...(literal !== undefined ? { literal } : {}),
     ...(produced !== undefined ? { produced } : {}),
-    ...(composed !== undefined ? { composed } : {}),
+    ...(origins !== undefined ? { origins } : {}),
     ...(variants !== undefined ? { variants } : {}),
   };
 }
@@ -3718,7 +4008,7 @@ function templateTargetChecks(entry: "inputs" | "result", { identity, value, doo
     });
     const outcome = door.validator.validate(substituted, valueSchema, standIns);
     if (!outcome.finished) {
-      out.push(nestingFindingAt(identity, `'${path}'`, path));
+      out.push(nestingFindingAt(identity, `'${path}'`, path, outcome));
       return;
     }
     for (const issue of outcome.issues) {
@@ -3869,8 +4159,8 @@ function callInputFinding(m: ResourceManifest, issue: StepInputIssue): OwnFindin
         message:
           issue.code === "LIVE_VALUE_RETRIED"
             ? `${m.kind}/${name}: at '${issue.path}', ${issue.message}`
-            : issue.code === SCHEMA_NESTING_EXCEEDED
-              ? schemaNestingExceededMessage(`${m.kind}/${name}`, `the inputs at '${issue.path}'`)
+            : issue.unfinished
+              ? schemaNestingExceededMessage(`${m.kind}/${name}`, `the inputs at '${issue.path}'`, issue.unfinished)
             : issue.omitted
               ? `${m.kind}/${name}: the call at '${issue.path}' writes no 'inputs:', so ${issue.targetLabel} is sent ` +
                 `the default ${JSON.stringify(issue.omitted.default)} its argument map declares, which does not satisfy ` +
@@ -4174,290 +4464,6 @@ function accessorFormatChecks(instance: RelationInstance, { identity, value, doo
     return relationFindingAt(identity, "CEL_TYPE_ERROR", `CEL at '${path}': '${chain}' ${reason}.${under}`, path, false, path);
   });
 }
-
-// The two halves of "does this expression fit the slot it flows into" meet
-// here: the engine resolved the expression's type during the walk above,
-// and the schema walk recorded the slot. An expression that failed to check
-// recorded no type and is already reported by its own diagnostic.
-function judgeSlotWith(
-  slot: JoinSlot,
-  facts: CelSiteFacts,
-  expression: string,
-  namedShape: ExternalSchemaResolver,
-): AnalysisDiagnostic | undefined {
-  const found = slotFinding(slot, facts, expression, namedShape);
-  return found && withQuotedPath(found, slot.path);
-}
-
-function slotFinding(
-  slot: JoinSlot,
-  facts: CelSiteFacts,
-  expression: string,
-  namedShape: ExternalSchemaResolver,
-): AnalysisDiagnostic | undefined {
-  const type = facts.type;
-  if (type === undefined) return undefined;
-  // A field whose value IS a callable's result is held to the declared
-  // result rather than to its own schema, which cannot know it. The declared
-  // result is a document of its own.
-  const result = declaredResultSchemaAt(slot.schema, slot.manifest, (schema) =>
-    shapeNamedBy(schema, schema, namedShape),
-  );
-  const target = result ?? slot.schema;
-  const data = { resource: slot.resource, filePath: slot.filePath, path: slot.path };
-  const baseType = type.split("<")[0]!;
-  // What declares the slot, as a message names it.
-  const holder =
-    slot.callTarget !== undefined ? `${slot.callTarget}'s declared inputType` : "the field";
-  const hostPath = holdsHostPath(target);
-  const fits = celTypeSatisfiesJsonSchema(
-    type,
-    hostPath
-      ? hostPathBranchesFor(
-          target,
-          facts.literal,
-          facts.produced,
-        )
-      : target,
-  );
-  // Text that is not a host path is the host-path finding; a value that is
-  // not text at all is an ordinary type mismatch.
-  if (!fits && hostPath && (baseType === "string" || VALUE_BRAND_BASE[baseType] === "string")) {
-    const leading = leadingRelativeLiteral(expression, target);
-    return {
-      severity: DiagnosticSeverity.Error,
-      code: leading !== undefined ? "HOST_PATH_RELATIVE" : "HOST_PATH_UNTYPED_SOURCE",
-      source: SOURCE,
-      message:
-        `${slot.resource.kind}/${slot.resource.name}: '${slot.path}' is a Telo.HostPath, but ` +
-        (leading !== undefined
-          ? `this expression builds a path starting with '${leading}', which is relative.`
-          : `this expression produces a plain '${type}'.`) +
-        ` ${HOST_PATH_SOURCES}${alsoAccepts(target)}`,
-      data,
-    };
-  }
-  if (!fits) {
-    const expected = describeSlotType(target);
-    return result
-      ? {
-          severity: DiagnosticSeverity.Error,
-          code: "FUNCTION_RETURN_MISMATCH",
-          source: SOURCE,
-          message: `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' returns '${type}' but '${slot.schema[RETURNS_FROM_ANNOTATION]}' declares '${expected}'.`,
-          data,
-        }
-      : {
-          severity: DiagnosticSeverity.Error,
-          code: "CEL_TYPE_ERROR",
-          source: SOURCE,
-          message: `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' returns '${type}' but ${holder} expects '${expected}'.`,
-          data,
-        };
-  }
-  // A null is refused at a slot that takes none, whatever the rest of the
-  // producer's type is — and the CEL type does not carry it. Only a plain
-  // chain has a producer schema to read; a guarded, computed or `dyn`
-  // expression says nothing here and is left to the runtime.
-  const nullable = facts.produced;
-  if (!result && !slot.accessorTemplate && nullable && producerAdmitsNull(nullable) && !slotAdmitsNull(target)) {
-    const chain = expression.trim();
-    return {
-      severity: DiagnosticSeverity.Error,
-      code: "CEL_TYPE_ERROR",
-      source: SOURCE,
-      message:
-        `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' reads '${chain}', ` +
-        `which may be null, but ${holder} expects '${describeSlotType(target)}', which does not ` +
-        `admit null. Guard it: '${chain} != null ? ${chain} : <a value for the null case>'.`,
-      data,
-    };
-  }
-  // The type fits; do its ARGUMENTS agree? Covariant and gradual — an
-  // omitted argument is *any* in both directions, so an unmigrated producer
-  // or consumer is never reported, and only a definite conflict is.
-  // A string that STARTS with relative text is relative whatever follows it
-  // — `'data/' + variables.name` — which the expression's text alone decides.
-  const leading = holdsHostPath(target)
-    ? leadingRelativeLiteral(expression, target)
-    : undefined;
-  if (leading !== undefined) {
-    return {
-      severity: DiagnosticSeverity.Error,
-      code: "HOST_PATH_RELATIVE",
-      source: SOURCE,
-      message:
-        `${slot.resource.kind}/${slot.resource.name}: '${slot.path}' is a Telo.HostPath, but ` +
-        `this expression builds a path starting with '${leading}', which is relative. ` +
-        `${HOST_PATH_SOURCES}${alsoAccepts(target)}`,
-      data,
-    };
-  }
-  const produced = facts.produced;
-  const formatMisfit = slot.accessorTemplate && produced ? accessorFormatMisfit(target, produced, namedShape) : undefined;
-  if (formatMisfit) {
-    return {
-      severity: DiagnosticSeverity.Error,
-      code: "CEL_TYPE_ERROR",
-      source: SOURCE,
-      message: `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}': '${expression.trim()}' ${formatMisfit}.`,
-      data,
-    };
-  }
-  if (!produced) {
-    const composed = facts.composed;
-    if (!composed) return undefined;
-    const misfits = producedValueMisfits(composed, target, namedShape);
-    if (misfits.length === 0) return undefined;
-    const reasons = misfits.map((conflict) => conflict.message).join("; ");
-    return result
-      ? {
-          severity: DiagnosticSeverity.Error,
-          code: "FUNCTION_RETURN_MISMATCH",
-          source: SOURCE,
-          message:
-            `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' produces a value ` +
-            `that disagrees with '${slot.schema[RETURNS_FROM_ANNOTATION]}': ${reasons}.`,
-          data,
-        }
-      : misfits.every((conflict) => conflict.beneathTypeArgument)
-        ? {
-            severity: DiagnosticSeverity.Error,
-            code: "CEL_TYPE_ARGUMENT_MISMATCH",
-            source: SOURCE,
-            message:
-              `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' produces a value ` +
-              `whose type arguments disagree with ${
-                slot.callTarget !== undefined ? holder : "the field's"
-              }: ${reasons}.`,
-            data,
-          }
-        : {
-            severity: DiagnosticSeverity.Error,
-            code: "CEL_TYPE_ERROR",
-            source: SOURCE,
-            message:
-              `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' produces a value ` +
-              `that does not fit what ${holder} expects: ${reasons}.`,
-            data,
-          };
-  }
-  // A host path forwarded from a source DECLARED as something else — a
-  // plain `type: string` field or variable — carries whatever relative text
-  // it was given, and is refused at creation for every consumer. The source
-  // is what must say what it holds. An undeclared source (an open result)
-  // says nothing either way and is left to the runtime.
-  if (
-    holdsHostPath(target) &&
-    !holdsHostPath(produced) &&
-    !holdsOnlyConstants(target, undefined, produced) &&
-    (produced.type !== undefined ||
-      produced["x-telo-type"] !== undefined ||
-      unionBranches(produced) !== undefined)
-  ) {
-    return {
-      severity: DiagnosticSeverity.Error,
-      code: "HOST_PATH_UNTYPED_SOURCE",
-      source: SOURCE,
-      message:
-        `${slot.resource.kind}/${slot.resource.name}: '${slot.path}' is a Telo.HostPath, but ` +
-        `the value it reads is declared '${produced["x-telo-type"] ?? produced.type ?? "a union with no host-path branch"}', so a ` +
-        `relative path reaches it unresolved and is refused when the resource is created. ` +
-        `Declare the source 'x-telo-type: Telo.HostPath' — a variable resolves a relative ` +
-        `value against the working directory; any other source must already hold an ` +
-        `absolute one.`,
-      data,
-    };
-  }
-  // A host path declared to name one kind of entry, read where the other is
-  // wanted, is refused by what it names; at a call site the generic argument
-  // comparison below reports it as the call's argument mismatch.
-  if (slot.callTarget === undefined && holdsHostPath(target) && holdsHostPath(produced)) {
-    const wanted = hostEntryAt(target);
-    const declared = hostEntryAt(produced);
-    if (wanted !== undefined && declared !== undefined && wanted !== declared) {
-      return {
-        severity: DiagnosticSeverity.Error,
-        code: "HOST_PATH_ENTRY_MISMATCH",
-        source: SOURCE,
-        message:
-          `${slot.resource.kind}/${slot.resource.name}: '${slot.path}' takes the path of ` +
-          `${describeHostEntry(wanted)}, but '${expression.trim()}' is declared to name ` +
-          `${describeHostEntry(declared)} (entry: ${declared}).`,
-        data,
-      };
-    }
-    const wantedMedia = hostMediaTypeAt(target);
-    const declaredMedia = hostMediaTypeAt(produced);
-    if (wantedMedia !== undefined && declaredMedia !== undefined && wantedMedia !== declaredMedia) {
-      return {
-        severity: DiagnosticSeverity.Error,
-        code: "HOST_PATH_CONTENT_MISMATCH",
-        source: SOURCE,
-        message:
-          `${slot.resource.kind}/${slot.resource.name}: '${slot.path}' takes a file of ${wantedMedia}, ` +
-          `but '${expression.trim()}' is declared to hold ${declaredMedia} (mediaType: ${declaredMedia}).`,
-        data,
-      };
-    }
-  }
-  const { compatible, issues, conflicts } = checkSchemaCompatibility(
-    produced,
-    target,
-    namedShape,
-    undefined,
-    { targetFillsDefaults: true },
-  );
-  if (compatible) return undefined;
-  return result
-    ? {
-        severity: DiagnosticSeverity.Error,
-        code: "FUNCTION_RETURN_MISMATCH",
-        source: SOURCE,
-        message:
-          `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' produces a value ` +
-          `whose declared shape disagrees with '${slot.schema[RETURNS_FROM_ANNOTATION]}': ${issues.join("; ")}.`,
-        data,
-      }
-    : conflicts.every((conflict) => conflict.beneathTypeArgument)
-      ? {
-          // Every conflict sits beneath a type argument of a value type
-          // both sides name; one outside makes it a shape misfit.
-          severity: DiagnosticSeverity.Error,
-          code: "CEL_TYPE_ARGUMENT_MISMATCH",
-          source: SOURCE,
-          message:
-            `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' produces a value ` +
-            `whose type arguments disagree with ${
-              slot.callTarget !== undefined ? holder : "the field's"
-            }: ${issues.join("; ")}.`,
-          data,
-        }
-      : {
-          severity: DiagnosticSeverity.Error,
-          code: "CEL_TYPE_ERROR",
-          source: SOURCE,
-          message:
-            `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' reads ` +
-            `'${expression.trim()}', whose declared shape does not fit what ${holder} expects: ` +
-            `${issues.join("; ")}.`,
-          data,
-        };
-}
-
-/** A value an expression produces, and the slot it flows into. */
-type JoinSlot = CelValueSlot & {
-  manifest: ResourceManifest;
-  resource: { kind: string; name: string };
-  filePath?: string;
-  /** Set for a call-site argument: the target whose declared inputType the
-   *  slot's schema is. */
-  callTarget?: string;
-  /** Set for a chain within an `accessor-template` field: its consumer leaves
-   *  out a member whose chain holds nothing, and the chain names a value, so
-   *  its format is judged as an accessor's. */
-  accessorTemplate?: true;
-};
 
 /** Where a declaration's slots are found: its own fields, a template's
  *  top-level `inputs:`, and the argument maps of its calls. */
@@ -4782,7 +4788,13 @@ function slotFitAt(
     if (!variants) {
       return judgeSlotWith(
         slot,
-        { type: facts?.type, literal: facts?.literal, produced: facts?.produced, composed: facts?.composed as ProducedValue | undefined },
+        {
+          type: facts?.type,
+          ...(facts?.checkedType ? { checkedType: facts.checkedType } : {}),
+          literal: facts?.literal,
+          produced: facts?.produced,
+          origins: facts?.origins as readonly SlotOrigin[] | undefined,
+        },
         expression,
         namedShape,
       );
@@ -4952,13 +4964,18 @@ function projectionFailureCode(failure: ProjectionFailure): string {
 /** `SCHEMA_NESTING_EXCEEDED` for a validation of `m` that could not finish: of
  *  the value at `path`, the whole declaration when there is none, `place` naming
  *  it in the message. */
-function nestingDiagnostic(m: ResourceManifest, place: string, path?: string): AnalysisDiagnostic {
+function nestingDiagnostic(
+  m: ResourceManifest,
+  place: string,
+  unfinished: ValidationUnfinished,
+  path?: string,
+): AnalysisDiagnostic {
   const name = m.metadata?.name as string;
   const diagnostic: AnalysisDiagnostic = {
     severity: DiagnosticSeverity.Error,
     code: SCHEMA_NESTING_EXCEEDED,
     source: SOURCE,
-    message: schemaNestingExceededMessage(`${m.kind}/${name}`, place),
+    message: schemaNestingExceededMessage(`${m.kind}/${name}`, place, unfinished),
     data: {
       resource: { kind: m.kind, name },
       filePath: (m.metadata as { source?: string } | undefined)?.source,
@@ -4988,7 +5005,7 @@ function ownSchemaChecks(world: OwnCheckWorld, m: ResourceManifest, declared: De
     if (!abstractDefinition) return out;
     const outcome = defs.validateResourceConfig(m, world.validationSchemaFor(abstractDefinition));
     if (!outcome.finished) {
-      push(nestingDiagnostic(m, "the document"));
+      push(nestingDiagnostic(m, "the document", outcome));
       return out;
     }
     for (const issue of outcome.issues) {
@@ -5016,7 +5033,7 @@ function ownSchemaChecks(world: OwnCheckWorld, m: ResourceManifest, declared: De
   if (declared.status !== "ok") return out;
   const { definition, ownModule } = declared;
   const resource = { kind: m.kind, name: m.metadata?.name as string };
-  const schema = world.validationSchemaFor(definition);
+  const schema = world.focus ? focusedSchema(world.focus.at, world.focus.ref) : world.validationSchemaFor(definition);
   if (Object.keys(schema).length === 0) return out;
   // A kind's own schema may point a slot at a PROJECTION — of a resource it
   // references, or of this very declaration — resolved per resource. A failure
@@ -5050,12 +5067,17 @@ function ownSchemaChecks(world: OwnCheckWorld, m: ResourceManifest, declared: De
   // an input the configuration decides is held to its slot as that literal.
   const narrowed = withNarrowedLiterals(m as Record<string, unknown>, world.narrowing?.(ownModule, importPathOf(m))?.chains);
   const standIns: StandIns = new Map();
-  const own = defs.validateResourceConfig(
-    // A resource's own config: the kernel decodes its plain-encoded literals
-    // when it creates it.
-    substituteDecodedCelFields(narrowed.value, projected, undefined, { standIns, external: world.validator.external }),
-    projected,
-    standIns,
+  // A sub-verdict's summary is read off this validation.
+  const own = recordingCarveFocus(() =>
+    defs.validateResourceConfig(
+      // A resource's own config: the kernel decodes its plain-encoded literals
+      // when it creates it.
+      substituteDecodedCelFields(narrowed.value, projected, undefined, { standIns, external: world.validator.external }),
+      projected,
+      standIns,
+      // Each value validated on its own is a leaf of the resource's depth.
+      ownValuePositions(m as Record<string, unknown>, projected, defs.referenceSites(m, aliases, world.aliasesByModule)),
+    ),
   );
   // Value slots that must satisfy a type declared elsewhere on the resource
   // (`x-telo-value-schema-from`).
@@ -5068,8 +5090,8 @@ function ownSchemaChecks(world: OwnCheckWorld, m: ResourceManifest, declared: De
   );
   // A validation that could not finish holds no verdict on its value: that is
   // its one finding.
-  if (!own.finished) push(nestingDiagnostic(m, "the resource"));
-  for (const path of valueSchema.unfinished) push(nestingDiagnostic(m, `'${path}'`, path));
+  if (!own.finished) push(nestingDiagnostic(m, "the resource", own));
+  for (const { path, unfinished } of valueSchema.unfinished) push(nestingDiagnostic(m, `'${path}'`, unfinished, path));
   const issues = [...(own.finished ? own.issues : []), ...valueSchema.issues];
   // A module file named at a host-path slot that says what the path names,
   // where the loader found the other kind of entry.
@@ -5745,17 +5767,6 @@ function declaredCelSlots(
   return slots;
 }
 
-/** What a slot holds, as a type-mismatch message names it: its value type, its
- *  JSON type, or a union's branches (`Telo.HostPath | ":memory:"`). */
-function describeSlotType(schema: Record<string, any>): string {
-  const branches = schema["x-telo-type"] === undefined ? unionBranches(schema) : undefined;
-  if (branches) return branches.map(describeSlotType).join(" | ");
-  if ("const" in schema) return JSON.stringify(schema.const);
-  const type = readValueTypeSlot(schema)?.name ?? schema.type;
-  if (Array.isArray(type)) return type.join(" | ");
-  return typeof type === "string" ? type : "unknown";
-}
-
 export interface StaticAnalyzerOptions {
   celHandlers?: CelHandlers;
 }
@@ -5951,15 +5962,24 @@ export class StaticAnalyzer {
     zoneExportCache?: ZoneExportCache,
   ): AnalysisDiagnostic[] {
     assertManifestPositions(manifests);
+    for (const manifest of manifests) recordDocumentPlaces(manifest);
     const order = new FindingOrder(manifests, options?.positions);
     const outer = this.order;
+    const outerUnresolved = this.unresolvedReferences;
     this.order = order;
+    this.unresolvedReferences = [];
     try {
-      return order.sort(this.analyzeFindings(manifests, options, registration, zoneExportCache));
+      const findings = order.sort(this.analyzeFindings(manifests, options, registration, zoneExportCache));
+      assertReferencesReported(this.unresolvedReferences, findings);
+      return findings;
     } finally {
       this.order = outer;
+      this.unresolvedReferences = outerUnresolved;
     }
   }
+
+  /** The unresolved references the running analysis's CEL registrations met. */
+  private unresolvedReferences: UnresolvedSchemaReference[] = [];
 
   /** The order the running analysis reports in, which its selections read. */
   private order: FindingOrder = new FindingOrder([], undefined);
@@ -6123,9 +6143,15 @@ export class StaticAnalyzer {
     const shapeVaries = (id: string): boolean => shapeReader !== undefined && shapeReader.varies(id);
     const variantShapes = shapeReader ? shapeReader.declaredIds().filter(shapeVaries) : [];
     // A shape no configuration kept varies is registered as the reader holds it:
-    // the registration run may have read another configuration of it.
+    // the registration run may have read another configuration of it, or —
+    // narrowed to configurations where it is declared — none holding it.
     for (const [id, schema] of read.shapes) {
       if (!shapeVaries(id)) scopeDefs.registerNamedTypeSchema(id, shapeReader?.classes(id)[0]?.schema ?? schema);
+    }
+    for (const id of shapeReader?.declaredIds() ?? []) {
+      if (read.shapes.has(id) || shapeVaries(id)) continue;
+      const held = shapeReader!.classes(id)[0];
+      if (held) scopeDefs.registerNamedTypeSchema(id, held.schema);
     }
     scopeDefs.withholdShapes(variantShapes);
     /** A named shape some configuration varies, as `witness` holds it: its
@@ -6214,7 +6240,6 @@ export class StaticAnalyzer {
             union,
             choices,
             shapeReader!,
-            shapeAtWitness,
             variantShapes,
             censusShape,
             universe,
@@ -6248,6 +6273,11 @@ export class StaticAnalyzer {
                 ? shapeAtWitness(ref, witness)
                 : (scopeDefs.schemaForId(ref) as Record<string, any> | undefined),
             shapeNameOf: (ref) => parseCanonicalTypeSchemaId(ref)?.typeName ?? parseTeloTypeRef(ref)?.typeName,
+            ...(shapeReader ? { namedShapes: shapeReader } : {}),
+            shapeInstanceOf: (id, within) => {
+              const ctx = scopeRegistry._context();
+              return shapeInstanceOf(id, within, ctx.aliases!, ctx.aliasesByModule ?? new Map());
+            },
             isNamedShape,
             scopeAt: (declaration, projected, keys) => {
               const address = addressOf(declaration.manifest);
@@ -6457,6 +6487,11 @@ export class StaticAnalyzer {
                 universe,
                 rootModules,
                 facts: (at, witness) => solution!.factsAt(at, witness),
+                scopedImports: (keySetup!.scopedImportIndex ??= scopedImportIndex(
+                  union!.declarations,
+                  (holder) => scopeFieldsOf(defs, holder, aliases, aliasesByModule),
+                  space,
+                )),
                 deadBranches: choices.unreachable,
               }),
               expansion: fixedPassTable(writtenReading.diagnostics.map((diagnostic) => ({ diagnostic, condition: TRUE }))),
@@ -6481,6 +6516,7 @@ export class StaticAnalyzer {
                 aliasesByModule,
                 kindDocuments,
                 moduleDocuments: options?.moduleDocuments ?? [],
+                shapes: shapeReader!,
                 hostVersions: options?.hostVersions,
                 deadBranches: choices.unreachable,
                 duplicateAliases: registration.duplicateAliases,
@@ -6565,13 +6601,19 @@ export class StaticAnalyzer {
                     union!.declarations
                     .filter((d) => d.condition !== FALSE && !d.unreachable)
                     .filter((d) => d.manifest.kind === "Telo.Import" || isForwardedDeclaration(d.manifest))
-                      .map((d) => d.condition),
+                      // An import's inputs are read once per class of their options.
+                      .flatMap((d) =>
+                        d.manifest.kind === "Telo.Import"
+                          ? importInputClasses(union!, space.and(d.condition, universe), d.manifest).map((c) => c.condition)
+                          : [d.condition],
+                      ),
                   )
                   .map((atom) => space.and(atom, universe))
                   .filter((atom) => atom !== FALSE)
                   .flatMap((atom) => {
                   // A dependency's references read the imports and the forwarded
-                  // documents, which vary only where a library's own choice does.
+                  // documents, which vary where a library's own choice or an
+                  // import's inputs do.
                   const assignment = space.firstAssignment(atom) as Assignment;
                   const held = union!.declarations
                     .filter((d) => takenAt(space, d.condition, d.path, assignment))
@@ -6617,6 +6659,7 @@ export class StaticAnalyzer {
                           ? schemaNestingExceededMessage(
                               `Telo.Definition/${written.metadata?.name as string}`,
                               `the value a '...' splice emits at '${issue.path}'`,
+                              issue.unfinished,
                             )
                           : `Telo.Definition/${written.metadata?.name as string}: ${issue.message}`,
                       data: {
@@ -6629,6 +6672,11 @@ export class StaticAnalyzer {
               }),
               needTable: needTableFindings({
                 union: union!,
+                scopedImports: (keySetup!.scopedImportIndex ??= scopedImportIndex(
+                  union!.declarations,
+                  (holder) => scopeFieldsOf(defs, holder, aliases, aliasesByModule),
+                  space,
+                )),
                 graph: callGraph,
                 parts,
                 base: World.key(configurations[0]!),
@@ -6699,8 +6747,8 @@ export class StaticAnalyzer {
                 libraries: options?.moduleDocuments ?? [],
                 facts: (at, witness) => solution!.factsAt(at, witness),
                 valueKindOf: (facts) =>
-                  facts.type !== undefined && facts.type !== "dyn"
-                    ? celTypeValueKind(facts.type)
+                  facts.checkedType !== undefined && facts.checkedType.kind !== "dyn"
+                    ? celTypeValueKind(facts.checkedType)
                     : facts.produced
                       ? schemaValueKind(facts.produced)
                       : undefined,
@@ -6973,6 +7021,24 @@ export class StaticAnalyzer {
           definitionFindings.push({ diagnostic, condition: universe });
         }
       }
+      /** Where the declaration holding a written schema node is taken: the
+       *  one whose position in its document encloses the node most closely. */
+      const writtenWhere = (place: WrittenSchemaPlace): Condition => {
+        if (!union) return TRUE;
+        let held: Condition = FALSE;
+        let depth = -1;
+        for (const declaration of union.declarations) {
+          if (declaration.holder !== place.manifest) continue;
+          const at = declaration.at;
+          if (at.length < depth || at.length > place.keys.length || at.some((key, i) => place.keys[i] !== key)) continue;
+          if (at.length > depth) {
+            depth = at.length;
+            held = FALSE;
+          }
+          held = space.or(held, declaration.condition);
+        }
+        return depth < 0 ? TRUE : held;
+      };
       /** Where some declaration a written document holds is taken. */
       const heldWhere = (holder: ResourceManifest): Condition => {
         if (!union) return TRUE;
@@ -6995,7 +7061,11 @@ export class StaticAnalyzer {
           decidedValue: (holder, source) => choices.valueIn(holder, source, assignment),
           ...(solution
             ? {
-                cel: { mode: "configuration" as const, factsOf: (site: string) => solution.runFactsAt(site, assignment) },
+                cel: {
+                  mode: "configuration" as const,
+                  factsOf: (site: string) => solution.runFactsAt(site, assignment),
+                  environments: () => keySetup!.typedEnvironments.environments(),
+                },
                 own: true as const,
               }
             : {}),
@@ -7092,7 +7162,8 @@ export class StaticAnalyzer {
           narrowing: choices.narrowing(unreachable.baseline),
           ...(liftedBodies ? { liftedBodies } : {}),
           decidedValue: (holder, source) => choices.valueIn(holder, source, unreachable.baseline),
-          cel: { mode: "configuration", factsOf },
+          // A branch no configuration takes reports no schema the environments read.
+          cel: { mode: "configuration", factsOf, environments: () => [] },
           ...(solution ? { own: true as const } : {}),
         }));
         if (solution && observingRelationParity()) {
@@ -7108,6 +7179,17 @@ export class StaticAnalyzer {
         runCovers.push(...run.refusals.flatMap((refusals) => refusals.covers({ condition: FALSE, world: unreachable })));
       }
       keyFindings(false);
+      // Each schema node the keys' environments could not read, once, labelled
+      // by where it is written: the declaration whose branch holds it.
+      if (keySetup) {
+        for (const found of unjudgedSchemaFindings(
+          keySetup.typedEnvironments.environments(),
+          entryModules,
+          this.unresolvedReferences,
+        )) {
+          placedFindings.push({ diagnostic: found.diagnostic, condition: space.and(universe, writtenWhere(found.place)) });
+        }
+      }
       const everywhere = { condition: TRUE, world: "every" as const };
       const standIns = choices.standIns(space);
       // A stand-in's own refusal is the choice reading's.
@@ -7656,7 +7738,6 @@ export class StaticAnalyzer {
     union: ConditionedExpansion,
     choices: ChoiceReading,
     namedShapes: NamedShapeReader,
-    shapeAt: (id: string, witness: World) => Record<string, any> | undefined,
     variantShapes: readonly string[],
     censusShape: (id: string) => Record<string, any> | undefined,
     /** The configurations kept: the care of every key some configuration holds. */
@@ -7671,6 +7752,7 @@ export class StaticAnalyzer {
     const names = new ConditionedNameIndex(union);
     const kept = doorCare(union, universe);
     const whole = doorCare(union);
+    let standIns: ReadonlyMap<string, Record<string, any>> | undefined;
     const careAt = (witness: World): DoorCare => {
       if (witness.forcing) return whole;
       if (!union.space.holds(universe, witness.assignment)) {
@@ -7694,7 +7776,9 @@ export class StaticAnalyzer {
     const defs = ctx.definitions!;
     const aliases = ctx.aliases!;
     const aliasesByModule = ctx.aliasesByModule ?? new Map();
-    // A varying named shape is read by a reach through its classes alone.
+    // A varying named shape is read by a reach through its classes alone —
+    // every instance's, for a library imported more than once: a reach is
+    // memoised per declaration and kind, not per instance of the shape's module.
     const varying: VaryingShapeClasses<Condition> | undefined =
       variantShapes.length === 0
         ? undefined
@@ -7730,6 +7814,7 @@ export class StaticAnalyzer {
       templated: manifests.some(holdsTemplateConstructs),
       union,
       views: new Set(union.views),
+      viewsByUpstream: viewsByUpstreamOf(union.views),
       names,
       careAt,
       moduleDocumentsVary: union.declarations.some(
@@ -7739,7 +7824,7 @@ export class StaticAnalyzer {
       ),
       choices,
       namedShapes,
-      shapeAt,
+      shapeStandIns: () => (standIns ??= namedShapes.standIns([])),
       censusShape,
       varying,
       parts,
@@ -8233,8 +8318,11 @@ export class StaticAnalyzer {
     const { scopeMembers, templateVariants, forwardViews } = normalized;
     const groupManifests = [...normalized.groupManifests];
     const moduleScopes = { aliasesByModule, rootModules, libraries };
+    // A scoped import of the group is no analysed member, yet its
+    // `variables:` / `secrets:` are sites of its holder's.
+    const celManifests = [...groupManifests, ...scopedImportsHeldBy(scopeMembers.all, groupManifests)];
 
-    const { siteOf, expressionsOf, holdersOf } = this.siteIdsOf(groupManifests, normalized.placed);
+    const { siteOf, expressionsOf, holdersOf } = this.siteIdsOf(celManifests, normalized.placed);
     const stepNames = region?.stepNames;
     const siteHolders = holdersOf(request.site);
     // The steps the site reads: a step it cannot reach is typed open, its
@@ -8342,6 +8430,12 @@ export class StaticAnalyzer {
       }
       return coverage.observed;
     };
+    /** A varying named shape the key holds, as it answers it. */
+    const varyingShapeAnswer = (id: string): Record<string, any> | undefined => {
+      const named = parseCanonicalTypeSchemaId(id);
+      if (!named || !setup.namedShapes.varies(id) || !answersName(scope, named.typeName)) return undefined;
+      return shapes(id) as Record<string, any> | undefined;
+    };
     // A named shape no configuration varies is the shared registry's — the
     // only ones it holds; any other is read as the key covers it.
     const shapes: NamedShapeLookup = (id) => {
@@ -8350,9 +8444,17 @@ export class StaticAnalyzer {
       if (!answersName(scope, named.typeName)) {
         throw new DoorRefusal(request.site, `for the named shape '${id}'`);
       }
-      const declared = requests.names
+      // The instance the key's declaration reads the shape in, where its module
+      // is imported more than once and the declaration names one.
+      const instance = JSON.stringify(shapeInstanceOf(id, request.declaration.manifest, aliases, aliasesByModule));
+      const declarations = requests.names
         .declarationsOf(named.typeName)
-        .find((m) => (m.metadata as { module?: unknown }).module === named.moduleName && !!(m as Record<string, any>).schema);
+        .filter((m) => (m.metadata as { module?: unknown }).module === named.moduleName && !!(m as Record<string, any>).schema);
+      const declared =
+        declarations.find((m) => {
+          const path = importPathOf(m);
+          return path === undefined || JSON.stringify(path) === instance;
+        }) ?? declarations[0];
       return declared
         ? resolveTypeFieldToSchema(
             { schema: (declared as Record<string, any>).schema, extends: (declared as Record<string, any>).extends },
@@ -8436,6 +8538,7 @@ export class StaticAnalyzer {
       ...(stepsRead ? { stepsRead } : {}),
       ...(stepNames ? { stepNamesAt: (m: ResourceManifest) => (siteHolders.has(m) ? stepNames : undefined) } : {}),
       typedEnvironments: setup.typedEnvironments,
+      varyingShapeAnswer,
     });
     const celJudge = new CelJudge({
       celScope,
@@ -8476,7 +8579,7 @@ export class StaticAnalyzer {
     const facts: CelOccurrenceFacts[] = [];
     const expressions: { engine: string; source: string; module: ResourceManifest }[] = [];
     visitManifest(
-      groupManifests,
+      celManifests,
       defs,
       {
         onResourceEnter: (e) => celJudge.enterResource(e.source, e.definition as unknown as ResourceDefinition | undefined),
@@ -8723,7 +8826,7 @@ export class StaticAnalyzer {
     // the same consumer, which its door holds beside it.
     const selection = keySelection(setup, site.declaration, coverage, request.byNameWhole);
     const siblings = setup.views.has(site.declaration)
-      ? setup.union.views.filter((view) => view !== site.declaration && view.upstream === (site.declaration as ConditionedView).upstream)
+      ? siblingViewsRead(setup, site.declaration as ConditionedView, coverage)
       : [];
     const normalized = this.normalizeKey(
       setup,
@@ -8787,7 +8890,7 @@ export class StaticAnalyzer {
       rootModules: new Set(rootModules),
       libraries,
       validator: {
-        validate: (data, target, standIns) => defs.validateResourceConfig(data, target, standIns),
+        validate: (data, target, standIns, ownValues) => defs.validateResourceConfig(data, target, standIns, ownValues),
         external: (ref) => defs.schemaForId(ref),
       },
       requests,
@@ -8845,15 +8948,14 @@ export class StaticAnalyzer {
     const value = valueAtKeys(found.manifest, found.instance.anchor);
     const judge = () =>
       reader.judge(found.instance, { identity: found.region.identity, anchor: found.instance.anchor, value, door });
-    const covered = setup.variantShapes.filter((id) => answersName(scope, parseCanonicalTypeSchemaId(id)!.typeName));
+    // A named shape some configuration varies is read in a layer of this
+    // judgement's own: the class the key holds of each shape its classes
+    // cover, and every other one as its stand-in.
     const findings =
-      covered.length === 0
+      setup.variantShapes.length === 0
         ? judge()
         : withShapeLayer(defs, (id) => !setup.namedShapes.varies(id), () => {
-            for (const id of covered) {
-              const shape = setup.shapeAt(id, witness);
-              if (shape) defs.registerNamedTypeSchema(id, shape);
-            }
+            registerKeyShapeClasses(setup, scope, site.declaration.manifest, witness, newCarveContext(undefined), []);
             return judge();
           }).result;
     return normalized.placed(findings.map((each) => each.diagnostic));
@@ -8873,14 +8975,28 @@ export class StaticAnalyzer {
       return reachAt(setup, request.witness, () => this.judgeOwnKeyIn(setup, request));
     } finally {
       if (started !== undefined) {
-        const family = request.site.family === "schema" ? "schema" : "relation";
-        reportKeyCost({ kind: "door", family, site: request.site.id, milliseconds: performance.now() - started });
+        const milliseconds = performance.now() - started;
+        const { focus } = request;
+        if (focus) {
+          reportKeyCost({
+            kind: "sub-verdict",
+            shape: focus.shape,
+            index: focus.index,
+            at: pathText(focus.at),
+            milliseconds,
+            key: request.key,
+            textParts: focus.textParts ?? 0,
+          });
+        } else {
+          const family = request.site.family === "schema" ? "schema" : "relation";
+          reportKeyCost({ kind: "door", family, site: request.site.id, milliseconds });
+        }
       }
     }
   }
 
   private judgeOwnKeyIn(setup: KeySetup, request: OwnKeyRequest): OwnVerdict {
-    const { site, witness, coverage } = request;
+    const { site, witness, coverage, focus } = request;
     const { defs, aliases, aliasesByModule, rootModules, libraries } = setup;
     // A schema key is judged on its site's region — its cut sub-sites carved,
     // with the places it reads beyond it — wherever that is less than the
@@ -8948,6 +9064,7 @@ export class StaticAnalyzer {
       });
     }
     const group = [...normalized.groupManifests];
+    const scopedImports = scopedImportsHeldBy(normalized.scopeMembers.all, group);
     let callGraphMemo: ReturnType<typeof buildCallGraph> | undefined;
     const requests = doorRequests(
       normalized.layers,
@@ -8986,7 +9103,7 @@ export class StaticAnalyzer {
       ),
       narrowing: narrowingAt(setup.choices, witness),
       validator: {
-        validate: (data, target, standIns) => defs.validateResourceConfig(data, target, standIns),
+        validate: (data, target, standIns, ownValues) => defs.validateResourceConfig(data, target, standIns, ownValues),
         external: (ref) => defs.schemaForId(ref),
       },
       valueSchemaHost: valueSchemaHostOf(analyzerContractScope(defs, aliases, moduleScopes, requests)),
@@ -9030,32 +9147,46 @@ export class StaticAnalyzer {
     let stepGraph: ReturnType<typeof buildCallGraph> | undefined;
     const judge = (): { m: ResourceManifest; group: OwnGroup; finding: OwnFinding }[] => {
       const out: { m: ResourceManifest; group: OwnGroup; finding: OwnFinding }[] = [];
+      // A sub-verdict judges the schema group of the site's own declaration
+      // alone, at and beneath its position.
+      if (focus) {
+        const m = group[0];
+        if (!m) return out;
+        for (const finding of ownSchemaChecks({ ...world, focus }, m, declaredDefinitionOf(m, declaredScope))) {
+          if (isAtOrAbove(focus.at, parseKeys(finding.judgedAt))) out.push({ m, group: "schema", finding });
+        }
+        return out;
+      }
       for (const m of group) {
         const declared = declaredDefinitionOf(m, declaredScope);
         for (const [name, checks] of OWN_GROUPS) {
           for (const finding of checks(world, m, declared)) out.push({ m, group: name, finding });
         }
       }
+      // A scoped import of the group: its supplied literals, as an `imports:`
+      // entry's are.
+      for (const m of scopedImports) {
+        for (const finding of importInputFindings(world, m)) out.push({ m, group: "importInputs", finding });
+      }
       return out;
     };
     // The unions at and above the site, decided in parts.
-    const plan = unions && region ? unionPlanOf(setup, site, witness, unions, region) : undefined;
-    const judged = () => (plan ? defs.withUnionPlan(plan.plan, judge) : judge());
-    // A named shape some configuration varies is read as the witness holds it,
-    // in a layer of this judgement's own — and only where the key covers it.
-    const covered = setup.variantShapes.filter((id) => answersName(scope, parseCanonicalTypeSchemaId(id)!.typeName));
+    const plan = unions && region && !focus ? unionPlanOf(setup, site, witness, unions, region) : undefined;
+    const carves = newCarveContext(focus ? keysPointer(focus.at) : undefined);
+    const judged = () => withCarveContext(carves, () => (plan ? defs.withUnionPlan(plan.plan, judge) : judge()));
+    // A named shape some configuration varies is read in a layer of this
+    // judgement's own: the class the key holds of each shape it names
+    // directly, read through the named-shape reader, and every other one — a
+    // boundary — as its stand-in, which always holds and says nothing.
     const raw =
-      covered.length === 0
+      setup.variantShapes.length === 0
         ? judged()
         : withShapeLayer(defs, (id) => !setup.namedShapes.varies(id), () => {
-            for (const id of covered) {
-              const shape = setup.shapeAt(id, witness);
-              if (shape) defs.registerNamedTypeSchema(id, shape);
-            }
+            registerKeyShapeClasses(setup, scope, site.declaration.manifest, witness, carves, request.carves ?? [], focus);
             return judged();
           }).result;
     const contribution = unions?.mode === "contribution";
-    const origins = originsOf(group, normalized.placed, normalized.views);
+    const origins = originsOf([...group, ...scopedImports], normalized.placed, normalized.views);
     // Each finding belongs to the site whose region holds where its check
     // judged, as written — a view's, by its place in the view: a view's own
     // places are written nowhere, and its consumer's sites hold the places it
@@ -9068,10 +9199,12 @@ export class StaticAnalyzer {
     }
     const viewMeta = ownView?.metadata as { name?: unknown; source?: unknown } | undefined;
     const viewIdentity = ownView && JSON.stringify([ownView.kind, viewMeta?.name, viewMeta?.source]);
+    // A carved site its own choice leaves out here still has its stand-in at
+    // its place in the view, so what is judged there is that site's.
     const viewRoots = ownView
       ? request.sites.flatMap((s) => {
           const at = placeByUnionKeys(setup.union, site.declaration, s.unionKeys, witness);
-          return at.present ? [{ site: s, at: at.at }] : [];
+          return at.present || at.unionKeys.length === s.unionKeys.length ? [{ site: s, at: at.at }] : [];
         })
       : [];
     const holdingInView = (keys: readonly (string | number)[]): OwnSite | undefined => {
@@ -9143,11 +9276,15 @@ export class StaticAnalyzer {
         return { ...d, data: data as DiagnosticData };
       });
     const unionVerdict = plan ? { unions: { outcomes: plan.outcomes, contributions: plan.contributions } } : {};
-    if (contribution) return { diagnostics: [], origins: [], ...unionVerdict };
+    const carveVerdict = {
+      carves: { passed: [...carves.passed], textReads: carves.textReads, ...(carves.focus?.summary ? { summary: carves.focus.summary } : {}) },
+    };
+    if (contribution) return { diagnostics: [], origins: [], ...unionVerdict, ...carveVerdict };
     return {
       diagnostics,
       origins: [...origins.values()],
       ...unionVerdict,
+      ...carveVerdict,
     };
   }
 
@@ -9217,7 +9354,7 @@ export class StaticAnalyzer {
     // registered shape: a module-level AJV holds none, so it compiles such a
     // schema nowhere and the value goes unchecked.
     const shapeAwareValidator: ShapeAwareValidator = {
-      validate: (data, target, standIns) => defs.validateResourceConfig(data, target, standIns),
+      validate: (data, target, standIns, ownValues) => defs.validateResourceConfig(data, target, standIns, ownValues),
       external: (ref) => defs.schemaForId(ref),
     };
 
@@ -9795,6 +9932,10 @@ export class StaticAnalyzer {
       ...collectedMembers.kindDocuments,
     ]);
     allManifests.push(...collectedMembers.analysed.map((member) => member.declaration));
+    // A scoped import is no analysed member, yet its `variables:` /
+    // `secrets:` are judged as an `imports:` entry's are: its CEL in the
+    // import's environment, its inputs against its library's.
+    const scopedImportMembers = scopedImportsHeldBy(scopeMembers.all, allManifests as unknown as ResourceManifest[]);
     // A scoped import named like an import of its module, and a name two scope
     // arrays of one holder share: judged once over the union, outside the runs.
     if (!configuration?.own && configuration?.run !== "setup") {
@@ -10172,7 +10313,25 @@ export class StaticAnalyzer {
         reportDocumentStage("applicationArguments", configuration !== undefined);
         pushIn("moduleDocuments", ...validateApplicationArguments(allManifests as unknown as ResourceManifest[], rootModules));
         reportDocumentStage("inputDefaults", configuration !== undefined);
-        pushIn("moduleDocuments", ...validateInputDefaults(allManifests as unknown as ResourceManifest[], rootModules));
+        pushIn("moduleDocuments", ...validateInputDefaults(
+            allManifests as unknown as ResourceManifest[],
+            { aliases, aliasesByModule, rootModules },
+            inputShapeLookup(plainShapeReader(allManifests as unknown as ResourceManifest[]), PLAIN_READER, {
+              aliases,
+              aliasesByModule,
+              rootModules,
+            }),
+          ),
+        );
+        // An input entry recursing in place: refused where it is declared, a
+        // dependency's at the import reaching it.
+        reportDocumentStage("inputCycles", configuration !== undefined);
+        pushIn("moduleDocuments", ...moduleInputCycleDiagnostics(allManifests as unknown as ResourceManifest[], rootModules, reach));
+        reportDocumentStage("libraryInputCycles", configuration !== undefined);
+        pushIn(
+          "moduleDocuments",
+          ...moduleInputCycleDiagnostics(reachedLibraryDocuments(allManifests as unknown as ResourceManifest[], options?.moduleDocuments), rootModules, reach, true),
+        );
       }
     }
     if (!options?.skipValidation && !configuration?.own) {
@@ -10296,6 +10455,20 @@ export class StaticAnalyzer {
         aliases,
         aliasesByModule,
         rootModules,
+      })) {
+        if (found.held !== FALSE) pushIn("kindDocuments", ...found.render(PLAIN_READER));
+      }
+      // A schema recursing in place: refused at its declaration, and validated
+      // against by nothing.
+      reportDocumentStage("schemaInPlaceCycle", configuration !== undefined);
+      for (const found of schemaInPlaceCycleFindings(allManifests as ResourceManifest[], {
+        defs,
+        aliases,
+        aliasesByModule,
+        rootModules,
+        reach,
+        shapes: plainShapeReader(allManifests as ResourceManifest[]),
+        moduleDocuments: options?.moduleDocuments ?? [],
       })) {
         if (found.held !== FALSE) pushIn("kindDocuments", ...found.render(PLAIN_READER));
       }
@@ -10474,7 +10647,7 @@ export class StaticAnalyzer {
       pushIn(
         "importHostPaths",
         ...validateImportHostPaths(
-          allManifests as unknown as ResourceManifest[],
+          [...(allManifests as unknown as ResourceManifest[]), ...scopedImportMembers],
           rootModules,
           kernelGlobals,
         ),
@@ -10485,7 +10658,7 @@ export class StaticAnalyzer {
       reportOwnStage("importInputs", configuration !== undefined);
       diagnostics.push(
         ...validateImportInputs(
-          allManifests as unknown as ResourceManifest[],
+          [...(allManifests as unknown as ResourceManifest[]), ...scopedImportMembers],
           rootModules,
           options?.moduleDocuments ?? [],
           defs,
@@ -10589,10 +10762,10 @@ export class StaticAnalyzer {
     // its slot.
     const {
       typeByPath: celTypeByPath,
+      checkedTypeByPath: celCheckedTypeByPath,
       sourceByPath: celSourceByPath,
       literalByPath: celLiteralByPath,
       sourceSchemaByPath: celSourceSchemaByPath,
-      composedByPath: celComposedByPath,
       variantFacts: celVariantFacts,
     } = celJudge;
 
@@ -10881,7 +11054,7 @@ export class StaticAnalyzer {
     if (celFactsOf) {
       const probes: AnalysisDiagnostic[] = [];
       const probed: { m: ResourceManifest; path: string }[] = [];
-      for (const m of allManifests as unknown as ResourceManifest[]) {
+      for (const m of [...(allManifests as unknown as ResourceManifest[]), ...scopedImportMembers]) {
         const meta = m.metadata as { name?: unknown; source?: unknown } | undefined;
         walkOwnCelExpressions(m, "", (source, path) => {
           probes.push({
@@ -10949,6 +11122,12 @@ export class StaticAnalyzer {
     const walk = (skip?: (m: ResourceManifest) => boolean): void => {
       celOccurrences = new Map();
       visitManifest(allManifests, defs, celWalk, { ...walkOptions, ...(skip ? { skip } : {}) });
+      visitManifest(
+        scopedImportMembers,
+        defs,
+        { onResourceEnter: (e) => celJudge.enterResource(e.source, e.definition as unknown as ResourceDefinition | undefined), onCel: celWalk.onCel },
+        { ...walkOptions, ...(skip ? { skip } : {}) },
+      );
     };
     walk();
 
@@ -11437,7 +11616,8 @@ export class StaticAnalyzer {
     if (!configuration?.own) reportConditionedPass("texts", configuration !== undefined);
     if (!configuration?.own) pushIn("texts", 
       ...validateTexts({
-        manifests: allManifests as unknown as ResourceManifest[],
+        // A scoped import's text inputs are its module's, as an `imports:` entry's are.
+        manifests: [...(allManifests as unknown as ResourceManifest[]), ...scopedImportMembers],
         rootModules,
         resolveDef: moduleScopedDefResolver<ResourceDefinition>(defs, aliases, {
           aliasesByModule,
@@ -11449,8 +11629,8 @@ export class StaticAnalyzer {
         schemaForId: (id) => defs.schemaForId(id),
         accepts: (fragment, value) => defs.validateResourceConfig(value, TEXT_FRAGMENT_SCHEMAS[fragment]),
         valueKindAt: (manifest, path) => {
-          const type = celTypeByPath.get(manifest)?.get(path);
-          if (type !== undefined && type !== "dyn") return celTypeValueKind(type);
+          const type = celCheckedTypeByPath.get(manifest)?.get(path);
+          if (type !== undefined && type.kind !== "dyn") return celTypeValueKind(type);
           const produced = celSourceSchemaByPath.get(manifest)?.get(path);
           return produced ? schemaValueKind(produced) : undefined;
         },
@@ -11463,6 +11643,17 @@ export class StaticAnalyzer {
           : {}),
       }),
     );
+
+    // Each schema node a CEL binding is typed from that the type checker
+    // cannot read, once, where it is written; where keys judge the sites, the
+    // driver reports them over every configuration, outside any run.
+    if (!configuration?.cel) {
+      diagnostics.push(
+        ...unjudgedSchemaFindings(celScope.environments(), rootModules, this.unresolvedReferences).map(
+          (found) => found.diagnostic,
+        ),
+      );
+    }
 
     return {
       diagnostics: placed(diagnostics),

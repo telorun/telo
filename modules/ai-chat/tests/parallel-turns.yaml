@@ -128,9 +128,9 @@ steps:
         secondEnding: !cel "steps.secondFrames.result.items[size(steps.secondFrames.result.items) - 1].event"
         toolLog: !cel "steps.log.result.rows.map(r, r.phase)"
         firstRoles: !cel "steps.firstEntries.result.rows.map(r, r.role)"
-        firstUsers: !cel "steps.firstEntries.result.rows.filter(r, r.role == 'user').map(r, r.parts[0].text)"
+        firstUsers: !cel "steps.firstEntries.result.rows.filter(r, r.role == 'user').map(r, r.parts[0].?text.orValue(''))"
         secondRoles: !cel "steps.secondEntries.result.rows.map(r, r.role)"
-        secondUsers: !cel "steps.secondEntries.result.rows.filter(r, r.role == 'user').map(r, r.parts[0].text)"
+        secondUsers: !cel "steps.secondEntries.result.rows.filter(r, r.role == 'user').map(r, r.parts[0].?text.orValue(''))"
       expected:
         distinct: true
         firstEnding: { type: turn-end, reason: stop, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 } }

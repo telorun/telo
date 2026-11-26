@@ -18,6 +18,7 @@ use serde_json::Value;
 
 use crate::builtin_vocabulary::{builtin_vocabulary_import_message, BUILTIN_VOCABULARY_KIND, BUILTIN_VOCABULARY_NOT_A_MODULE};
 use crate::inline_imports::{desugar_loaded_file, IMPORT};
+use crate::loader_expansion_refusals::is_refused_import;
 use crate::loaded_types::{
     GraphLoadError, ImportEdge, ImportFailureReason, LoadedFile, LoadedGraph, LoadedModule, ParseError, ParseErrorOrigin,
 };
@@ -239,15 +240,15 @@ pub fn collect_parse_diagnostics<'a>(files: impl IntoIterator<Item = &'a LoadedF
     let mut diagnostics = Vec::new();
     for file in files {
         for error in &file.parse_errors {
-            let code = match &error.origin {
-                ParseErrorOrigin::Yaml(_) => "MANIFEST_PARSE_FAILED",
-                ParseErrorOrigin::Loader { code, .. } => code,
+            let (code, path) = match &error.origin {
+                ParseErrorOrigin::Yaml(_) => ("MANIFEST_PARSE_FAILED", None),
+                ParseErrorOrigin::Loader { code, path, .. } => (*code, path.clone()),
                 ParseErrorOrigin::Unsupported(_) | ParseErrorOrigin::HostRefusal(_) => continue,
             };
             let mut diagnostic = AnalysisDiagnostic::error(
                 code,
                 error.message(),
-                DiagnosticData { file_path: Some(file.source.clone()), ..Default::default() },
+                DiagnosticData { file_path: Some(file.source.clone()), path, ..Default::default() },
             );
             diagnostic.range = error.range;
             diagnostics.push(diagnostic);
@@ -446,6 +447,10 @@ fn import_requests(file: &LoadedFile) -> Vec<ImportRequest> {
     let mut out = Vec::new();
     for (index, manifest) in file.manifests.iter().enumerate() {
         let Some(manifest) = manifest.as_ref().filter(|m| kind_of(m) == Some(IMPORT)) else { continue };
+        // Refused by the parse at one of its own fields: read no further.
+        if is_refused_import(manifest) {
+            continue;
+        }
         let Some(source) = manifest.get("source").and_then(Value::as_str).filter(|s| !s.is_empty()) else { continue };
         let Some(alias) = manifest
             .get("metadata")

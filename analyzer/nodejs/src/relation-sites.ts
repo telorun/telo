@@ -27,6 +27,7 @@
  *
  * Browser-safe.
  */
+import type { CelType } from "@telorun/cel";
 import type { ResourceManifest } from "@telorun/sdk";
 import type { ModuleCallDispatch } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
@@ -206,15 +207,18 @@ export interface RelationFacts {
   /** The expression's text, where it was typed. */
   readonly source?: string;
   readonly type?: string;
+  /** The type itself, beside its text `type`. */
+  readonly checkedType?: CelType;
   readonly literal?: string;
   readonly produced?: Record<string, any>;
-  readonly composed?: unknown;
+  readonly origins?: unknown;
   /** Per referrer typing, when the expression was judged under several. */
   readonly variants?: ReadonlyArray<{
     readonly type?: string;
+    readonly checkedType?: CelType;
     readonly literal?: string;
     readonly produced?: Record<string, any>;
-    readonly composed?: unknown;
+    readonly origins?: unknown;
     readonly label?: string;
   }>;
 }

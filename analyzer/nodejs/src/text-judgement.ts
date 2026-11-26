@@ -21,6 +21,7 @@ import {
   type MessageProblem,
   type Text,
 } from "@telorun/sdk";
+import { formatType, type CelType } from "@telorun/cel";
 import type { ValuePath } from "./text-slot.js";
 
 export type TextProblemCode =
@@ -255,12 +256,26 @@ export function runtimeValueKind(value: unknown): { kind: MessageValueKind; desc
   return { kind: "refused", describe: "neither a string nor a number" };
 }
 
-/** What a CEL type admits as a message value; `unknown` for `dyn` or no type. */
-export function celTypeValueKind(type: string | undefined): { kind: MessageValueKind; describe: string } {
-  if (type === undefined || type === "dyn") return { kind: "unknown", describe: "a value of unknown type" };
-  if (type === "string") return { kind: "string", describe: "a string" };
-  if (type === "int" || type === "uint" || type === "double") return { kind: "number", describe: `a ${type}` };
-  return { kind: "refused", describe: `a ${type}` };
+/**
+ * What a CEL type admits as a message value, read from the type itself; `unknown` for `dyn`
+ * or no type. A record is described as one, apart from a map, though both print `map`.
+ */
+export function celTypeValueKind(type: CelType | undefined): { kind: MessageValueKind; describe: string } {
+  if (type === undefined || type.kind === "dyn") return { kind: "unknown", describe: "a value of unknown type" };
+  if (type.kind === "primitive" && type.name === "string") return { kind: "string", describe: "a string" };
+  if (type.kind === "primitive" && (type.name === "int" || type.name === "uint" || type.name === "double")) {
+    return { kind: "number", describe: `a ${type.name}` };
+  }
+  if (type.kind === "record") return { kind: "refused", describe: `a ${type.name ?? "record"}` };
+  return { kind: "refused", describe: `a ${formatType(type, true)}` };
+}
+
+/** What a literal of the kind the tree writes it as (`string`, `int`, `null_type`, …) admits as a message value. */
+export function literalValueKind(kind: string | undefined): { kind: MessageValueKind; describe: string } {
+  if (kind === undefined) return { kind: "unknown", describe: "a value of unknown type" };
+  if (kind === "string") return { kind: "string", describe: "a string" };
+  if (kind === "int" || kind === "uint" || kind === "double") return { kind: "number", describe: `a ${kind}` };
+  return { kind: "refused", describe: `a ${kind}` };
 }
 
 /** What a declared schema admits as a message value, by its `type`; `unknown`

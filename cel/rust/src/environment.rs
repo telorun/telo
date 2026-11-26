@@ -46,18 +46,19 @@ use crate::activation::CelActivation;
 use crate::backend_runtime::{CelCompileError, CompileTarget, EnvironmentSnapshot, NominalRuntime};
 use crate::bounded_cache::BoundedCache;
 use crate::cel_expression::{parse_expression, resolved_under, CelExpression, ParseExpressionOptions};
-use crate::cel_type::{format_type, is_dyn, CelType, NominalType, DYN};
+use crate::cel_type::{exact_type_text, format_type, is_dyn, optional_of, CelType, NominalType, DYN};
 use crate::cel_program::{CelEvaluationError, CelProgram, EvaluateOptions};
 use crate::check_diagnostic::{CelEngineError, CelEngineErrorCode};
-use crate::checker::{check_expression, CheckResult, CheckerContext, CheckerOptions, NamespaceFunction};
+use crate::checker::{check_expression, CheckResult, CheckerAssumption, CheckerContext, CheckerOptions, NamespaceFunction};
 use crate::closure_backend::compile_tree;
 use crate::construction::{
     compared_constructible, constructible_equality_refusal, equality_comparing, equality_registration_refusal,
     is_own_comparison, ConstructionTypes,
 };
-use crate::function_registry::{FunctionRegistry, RegisteredFunction};
+use crate::function_registry::{Expansion, FunctionRegistry, RegisteredFunction};
+use crate::schema_dependencies::SchemaProvenance;
 use crate::json_schema_type::{
-    field_map_type, schema_type, FieldDeclaration, JsonSchemaDocument, RecursiveSchemaReference, SchemaConversion,
+    field_map_type, read_schema_type, FieldDeclaration, JsonSchemaDocument, RecursiveSchemaReference, SchemaConversion, SchemaTypeReading,
     SchemaTypeResolver, UnjudgedSchemaNode,
 };
 use crate::namespace_resolution::{normalize_namespaces, CelNamespaceError};
@@ -72,7 +73,7 @@ use crate::runtime_library::standard_constant_values;
 use crate::signature::{format_signature, parse_signature, CallForm, CelSignature, FunctionMetadata};
 use crate::standard_library::{register_standard_library, standard_constants, StandardLibraryOptions};
 use crate::type_expression::{
-    parse_type_expression, CelTypeExpressionError, CelTypeTextError, CelUnknownTypeNameError, NominalResolver,
+    parse_type_expression, resolve_type_name, CelTypeExpressionError, CelTypeTextError, CelUnknownTypeNameError, NominalResolver,
 };
 
 /// The options an environment is built under. Two options are equal when their schema
@@ -214,11 +215,16 @@ impl From<CelSignature> for SignatureDeclaration {
 }
 
 /// The result a declaration that withholds its parameters names.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum WithheldReturns {
     /// A type expression.
     Text(String),
     Type(CelType),
+    /// A JSON Schema document, read through the environment's resolver as a schema-typed
+    /// variable is: a check reading through the call's result lists what it read with that
+    /// document, and what the conversion could not judge is reported under
+    /// `<namespace>.<name>` by [`CelEnvironment::schema_reports`].
+    Schema(JsonSchemaDocument),
 }
 
 impl From<&str> for WithheldReturns {
@@ -233,9 +239,15 @@ impl From<CelType> for WithheldReturns {
     }
 }
 
+impl From<JsonSchemaDocument> for WithheldReturns {
+    fn from(document: JsonSchemaDocument) -> Self {
+        WithheldReturns::Schema(document)
+    }
+}
+
 /// How a namespaced function is declared: whole, as a global signature that arity and
 /// arguments are judged against; or by its name and result alone.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum NamespaceFunctionForm {
     Signature(String),
     Withheld { name: String, returns: WithheldReturns },
@@ -243,7 +255,7 @@ pub enum NamespaceFunctionForm {
 
 /// A namespaced function a host declares. A type name nothing is registered under is
 /// accepted, reads `dyn` and is recorded on the declaration.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct NamespaceFunctionDeclaration {
     pub form: NamespaceFunctionForm,
     pub deterministic: bool,
@@ -326,10 +338,21 @@ pub struct ConstructibleListing {
     pub builder: bool,
 }
 
+/// One function a namespace declares, as its listing holds it.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct NamespaceFunctionListing {
+    /// The signature, or `name(…): <result>` where the parameters are withheld — a result
+    /// declared as a schema printed cut past its bound.
+    pub declaration: String,
+    /// The CEL type of a result declared as a JSON Schema, present exactly then: what
+    /// identifies it, since its printed text does not.
+    pub result_type: Option<CelType>,
+}
+
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct NamespaceListing {
     pub name: String,
-    pub functions: Vec<String>,
+    pub functions: Vec<NamespaceFunctionListing>,
     pub open: bool,
 }
 
@@ -513,6 +536,17 @@ struct VariableRecord {
     /// What the schema it was typed from could not judge.
     unjudged: Vec<UnjudgedSchemaNode>,
     recursive: Vec<RecursiveSchemaReference>,
+    /// Where each type of it came from, where it was typed from a schema.
+    provenance: Option<Arc<SchemaProvenance>>,
+}
+
+/// A namespaced function's result declared as a schema: where its types came from and
+/// what was not judged.
+#[derive(Clone)]
+struct SchemaResult {
+    provenance: Arc<SchemaProvenance>,
+    unjudged: Vec<UnjudgedSchemaNode>,
+    recursive: Vec<RecursiveSchemaReference>,
 }
 
 /// A type a declaration named, beside what converting it could not judge.
@@ -520,12 +554,49 @@ struct DeclaredType {
     ty: CelType,
     unjudged: Vec<UnjudgedSchemaNode>,
     recursive: Vec<RecursiveSchemaReference>,
+    provenance: Option<Arc<SchemaProvenance>>,
 }
 
 impl From<CelType> for DeclaredType {
     fn from(ty: CelType) -> Self {
-        Self { ty, unjudged: Vec::new(), recursive: Vec::new() }
+        Self { ty, unjudged: Vec::new(), recursive: Vec::new(), provenance: None }
     }
+}
+
+/// What a host asks of one check beyond its verdicts.
+#[derive(Clone, Default, PartialEq, Debug)]
+pub struct CheckOptions {
+    /// Whether to list the schema nodes the verdicts and the result type read
+    /// (`CheckResult::schema_dependencies`). Off, nothing is collected.
+    pub schema_dependencies: bool,
+    /// Whether to name the schema node each refused member, operand or nullable read was
+    /// judged at (`CelCheckDiagnostic::schema_node`) and every place the result may have
+    /// come from (`CheckResult::result_origins`). Off, nothing is located.
+    pub schema_nodes: bool,
+    /// Conditions known at the expression's site — each held (`holds: true`) or failed on
+    /// the way to it — read as if a conditional enclosed the expression: what each proves
+    /// narrows what the expression reads, as a guard written inside it would, except a proof
+    /// rooted at one of its `rebound` chains, which may denote another value at the site.
+    /// Read in order, each under the ones before it; what a condition itself says is never
+    /// reported.
+    pub assumptions: Vec<CheckAssumption>,
+}
+
+/// One condition known at a checked expression's site: a source this environment parses, or
+/// a tree its `parse` produced; `rebound` names the chains (`a`, `a.b`) that may
+/// denote another value at the site than they did where it was tested.
+#[derive(Clone, PartialEq, Debug)]
+pub struct CheckAssumption {
+    pub condition: AssumedCondition,
+    pub holds: bool,
+    pub rebound: Vec<String>,
+}
+
+/// An assumption's condition, as source or as a tree.
+#[derive(Clone, PartialEq, Debug)]
+pub enum AssumedCondition {
+    Source(String),
+    Parsed(CelExpression),
 }
 
 /// Values by name with JavaScript `Map` semantics: a name set again keeps its place.
@@ -578,6 +649,21 @@ fn resolve_nominal(
     Ok(Some(with_arguments(&registered.self_type, args)))
 }
 
+/// The type a name denotes as a type value, as `type()` compares it: the type-expression
+/// grammar's reading of the name, `optional_type` the optional — which that grammar spells
+/// `optional` and gives an argument.
+fn type_named(types: &InsertionOrdered<RegisteredType>, name: &str) -> Option<CelType> {
+    match name {
+        "optional_type" => Some(optional_of(DYN)),
+        "optional" => None,
+        _ => {
+            let resolver = |name: &str, args: &[CelType]| resolve_nominal(types, name, args);
+            resolve_type_name(name, Vec::new(), Some(&resolver))
+                .expect("a name read with no type arguments, `optional` aside, always reads")
+        }
+    }
+}
+
 const COMPILED_LOCK: &str = "the compiled cache's lock is held only to read or write an entry";
 
 /// The programs compiled from text. A clone of it holds none.
@@ -619,6 +705,8 @@ pub struct CelEnvironment {
     /// The values the standard library's constants read as.
     constants: Arc<PropertyMap<CelValue>>,
     namespace_functions: HashMap<String, InsertionOrdered<NamespaceFunction>>,
+    /// Per namespace, each function whose result was declared as a schema.
+    namespace_results: HashMap<String, HashMap<String, SchemaResult>>,
     open_namespaces: HashSet<String>,
     compiled: CompiledCache,
 }
@@ -648,6 +736,7 @@ impl CelEnvironment {
             runtime_types: Arc::new(HashMap::new()),
             constants: Arc::new(PropertyMap::new()),
             namespace_functions: HashMap::new(),
+            namespace_results: HashMap::new(),
             open_namespaces: HashSet::new(),
             compiled,
         };
@@ -668,6 +757,7 @@ impl CelEnvironment {
                         constant: true,
                         unjudged: Vec::new(),
                         recursive: Vec::new(),
+                        provenance: None,
                     },
                 );
             }
@@ -768,28 +858,38 @@ impl CelEnvironment {
             TypeDeclaration::Text(text) => Ok(self.read_type(&text)?.into()),
             TypeDeclaration::Type(ty) => Ok(ty.into()),
             TypeDeclaration::Fields(fields) => Ok(field_map_type(&fields, &|text| self.read_type(text))?.into()),
-            TypeDeclaration::Schema(document) => {
-                let lookup = |name: &str, args: &[String]| -> Result<Option<CelType>, CelTypeTextError> {
-                    let args = args.iter().map(|text| self.read_type(text)).collect::<Result<Vec<_>, _>>()?;
-                    Ok(resolve_nominal(&self.types, name, &args)?)
-                };
-                let converted = schema_type(
-                    &document,
-                    &SchemaConversion {
-                        resolve_schema_type: self.options.resolve_schema_type.clone(),
-                        lookup_named_type: Some(&lookup),
-                    },
-                )?;
-                Ok(DeclaredType { ty: converted.ty, unjudged: converted.unjudged, recursive: converted.recursive })
-            }
+            TypeDeclaration::Schema(document) => self.schema_declared_type(&document),
         }
+    }
+
+    /// A schema read to full depth through this environment's resolver, with its provenance.
+    fn schema_declared_type(&self, document: &JsonSchemaDocument) -> Result<DeclaredType, CelTypeTextError> {
+        let lookup = |name: &str, args: &[String]| -> Result<Option<CelType>, CelTypeTextError> {
+            let args = args.iter().map(|text| self.read_type(text)).collect::<Result<Vec<_>, _>>()?;
+            let types = &self.types;
+            let resolver = |name: &str, args: &[CelType]| resolve_nominal(types, name, args);
+            resolve_type_name(name, args, Some(&resolver))
+        };
+        let SchemaTypeReading { result: converted, provenance, .. } = read_schema_type(
+            document,
+            &SchemaConversion {
+                resolve_schema_type: self.options.resolve_schema_type.clone(),
+                lookup_named_type: Some(&lookup),
+            },
+        )?;
+        Ok(DeclaredType {
+            ty: converted.ty,
+            unjudged: converted.unjudged,
+            recursive: converted.recursive,
+            provenance: Some(Arc::new(provenance)),
+        })
     }
 
     /// A declared name changes which name a dotted chain reads, which a program decides
     /// when it is compiled — so a declaration forgets what was compiled.
     fn declare(&mut self, name: &str, declared: DeclaredType, description: Option<String>, constant: bool) {
-        let DeclaredType { ty, unjudged, recursive } = declared;
-        self.variables.insert(name.into(), VariableRecord { ty, description, constant, unjudged, recursive });
+        let DeclaredType { ty, unjudged, recursive, provenance } = declared;
+        self.variables.insert(name.into(), VariableRecord { ty, description, constant, unjudged, recursive, provenance });
         self.compiled.clear();
     }
 
@@ -821,21 +921,28 @@ impl CelEnvironment {
     }
 
     /// Every schema-typed registration whose schema could not be judged whole, by name in
-    /// UTF-16 code-unit order. Empty is every node judged.
+    /// UTF-16 code-unit order — a variable's, or `<namespace>.<name>` for a namespaced
+    /// function's result. Empty is every node judged.
     pub fn schema_reports(&self) -> Vec<SchemaRegistrationReport> {
-        let mut held: Vec<(&String, &VariableRecord)> = self
+        let mut held: Vec<SchemaRegistrationReport> = self
             .variables
             .iter()
-            .filter(|(_, record)| !record.unjudged.is_empty() || !record.recursive.is_empty())
-            .collect();
-        held.sort_by(|left, right| compare_code_units(left.0, right.0));
-        held.into_iter()
             .map(|(name, record)| SchemaRegistrationReport {
                 name: name.clone(),
                 unjudged: record.unjudged.clone(),
                 recursive: record.recursive.clone(),
             })
-            .collect()
+            .collect();
+        for (namespace, results) in &self.namespace_results {
+            held.extend(results.iter().map(|(name, result)| SchemaRegistrationReport {
+                name: format!("{namespace}.{name}"),
+                unjudged: result.unjudged.clone(),
+                recursive: result.recursive.clone(),
+            }));
+        }
+        held.retain(|report| !report.unjudged.is_empty() || !report.recursive.is_empty());
+        held.sort_by(|left, right| compare_code_units(&left.name, &right.name));
+        held
     }
 
     /// Registers a named type, with every operator, conversion and member it declares:
@@ -954,6 +1061,7 @@ impl CelEnvironment {
     ) -> Result<(), CelRegistrationError> {
         normalize_namespaces([name])?;
         let mut declared: InsertionOrdered<NamespaceFunction> = InsertionOrdered::default();
+        let mut results: HashMap<String, SchemaResult> = HashMap::new();
         for declaration in functions {
             // A name nothing is registered under is recorded and read as `dyn`.
             let unregistered = std::cell::RefCell::new(Vec::<String>::new());
@@ -968,6 +1076,14 @@ impl CelEnvironment {
                 }
                 Ok(Some(DYN))
             };
+            // A name declared again replaces what it declared, its result schema included.
+            let declared_name = match &declaration.form {
+                NamespaceFunctionForm::Signature(_) => None,
+                NamespaceFunctionForm::Withheld { name, .. } => Some(name.clone()),
+            };
+            if let Some(name) = &declared_name {
+                results.remove(name);
+            }
             let record = match &declaration.form {
                 NamespaceFunctionForm::Signature(text) => {
                     let signature = parse_signature(text, Some(&resolver))?;
@@ -989,23 +1105,37 @@ impl CelEnvironment {
                         throws: declaration.throws.clone(),
                     }
                 }
-                NamespaceFunctionForm::Withheld { name, returns } => NamespaceFunction {
-                    name: name.clone(),
-                    returns: match returns {
-                        WithheldReturns::Text(text) => parse_type_expression(text, Some(&resolver))?,
-                        WithheldReturns::Type(ty) => ty.clone(),
-                    },
-                    parameters: None,
-                    signature: None,
-                    unregistered_types: unregistered.take(),
-                    deterministic: declaration.deterministic,
-                    host_backed: declaration.host_backed,
-                    throws: declaration.throws.clone(),
-                },
+                NamespaceFunctionForm::Withheld { name, returns } => {
+                    let declared = match returns {
+                        WithheldReturns::Text(text) => parse_type_expression(text, Some(&resolver))?.into(),
+                        WithheldReturns::Type(ty) => ty.clone().into(),
+                        WithheldReturns::Schema(document) => self.schema_declared_type(document)?,
+                    };
+                    if let Some(provenance) = declared.provenance {
+                        results.insert(
+                            name.clone(),
+                            SchemaResult { provenance, unjudged: declared.unjudged, recursive: declared.recursive },
+                        );
+                    }
+                    NamespaceFunction {
+                        name: name.clone(),
+                        returns: declared.ty,
+                        parameters: None,
+                        signature: None,
+                        unregistered_types: unregistered.take(),
+                        deterministic: declaration.deterministic,
+                        host_backed: declaration.host_backed,
+                        throws: declaration.throws.clone(),
+                    }
+                }
             };
+            if declared_name.is_none() {
+                results.remove(&record.name);
+            }
             declared.set(&record.name.clone(), record);
         }
         self.namespace_functions.insert(name.into(), declared);
+        self.namespace_results.insert(name.into(), results);
         if options.open {
             self.open_namespaces.insert(name.into());
         } else {
@@ -1036,26 +1166,62 @@ impl CelEnvironment {
 
     /// Checks an expression read against this environment.
     pub fn check(&self, source: &str) -> CheckResult {
-        check_expression(&self.parse(source), &self.checker_context())
+        check_expression(&self.parse(source), &self.checker_context(CheckOptions::default()))
+    }
+
+    /// [`check`](Self::check), answering what `options` asks for beside the verdicts. An
+    /// assumption's tree resolved under a different namespace set is refused, as
+    /// [`check_parsed`](Self::check_parsed) refuses an expression.
+    pub fn check_with(&self, source: &str, options: CheckOptions) -> Result<CheckResult, CelEngineError> {
+        self.check_parsed_with(&self.parse(source), options)
     }
 
     /// Checks a tree. A tree resolved under a different namespace set is refused rather
     /// than checked: its qualified calls are not the ones this environment would have
     /// found, so every answer about it would be about a different expression.
     pub fn check_parsed(&self, expression: &CelExpression) -> Result<CheckResult, CelEngineError> {
+        self.check_parsed_with(expression, CheckOptions::default())
+    }
+
+    /// [`check_parsed`](Self::check_parsed), answering what `options` asks for beside the
+    /// verdicts.
+    pub fn check_parsed_with(
+        &self,
+        expression: &CelExpression,
+        options: CheckOptions,
+    ) -> Result<CheckResult, CelEngineError> {
+        self.resolved_here(expression)?;
+        let mut assumptions = Vec::with_capacity(options.assumptions.len());
+        for assumption in &options.assumptions {
+            let condition = match &assumption.condition {
+                AssumedCondition::Source(source) => self.parse(source).root,
+                AssumedCondition::Parsed(tree) => {
+                    self.resolved_here(tree)?;
+                    Arc::clone(&tree.root)
+                }
+            };
+            assumptions.push(CheckerAssumption { condition, holds: assumption.holds, rebound: assumption.rebound.clone() });
+        }
+        let mut context = self.checker_context(options);
+        context.assumptions = assumptions;
+        Ok(check_expression(expression, &context))
+    }
+
+    /// Refuses a tree resolved under a different namespace set than this environment's.
+    fn resolved_here(&self, expression: &CelExpression) -> Result<(), CelEngineError> {
         let namespaces = self.namespaces();
         let same = resolved_under(expression, &namespaces).expect("every registered namespace was validated when it was registered");
-        if !same {
-            return Err(CelEngineError {
-                code: CelEngineErrorCode::NamespacesMismatch,
-                message: format!(
-                    "the expression was resolved under [{}] and this environment has [{}]",
-                    expression.namespaces.join(", "),
-                    namespaces.join(", ")
-                ),
-            });
+        if same {
+            return Ok(());
         }
-        Ok(check_expression(expression, &self.checker_context()))
+        Err(CelEngineError {
+            code: CelEngineErrorCode::NamespacesMismatch,
+            message: format!(
+                "the expression was resolved under [{}] and this environment has [{}]",
+                expression.namespaces.join(", "),
+                namespaces.join(", ")
+            ),
+        })
     }
 
     /// Compiles an expression read against this environment into a program. Nothing is
@@ -1133,22 +1299,32 @@ impl CelEnvironment {
         Ok(Arc::new(CelProgram::new(Arc::clone(&expression.source), tree, Arc::new(snapshot))))
     }
 
-    fn checker_context(&self) -> CheckerContext<'_> {
+    fn checker_context(&self, options: CheckOptions) -> CheckerContext<'_> {
         let variables = &self.variables;
         let namespace_functions = &self.namespace_functions;
+        let namespace_results = &self.namespace_results;
         let open_namespaces = &self.open_namespaces;
+        let types = &self.types;
         CheckerContext {
             registry: &self.registry,
             variable: Box::new(move |name| variables.get(name).map(|record| &record.ty)),
+            variable_provenance: Box::new(move |name| variables.get(name).and_then(|record| record.provenance.as_ref())),
+            schema_dependencies: options.schema_dependencies,
+            schema_nodes: options.schema_nodes,
             declared_variable_names: Box::new(move || variables.keys().map(String::as_str).collect()),
             namespace_function: Box::new(move |namespace, name| namespace_functions.get(namespace)?.get(name)),
+            namespace_result_provenance: Box::new(move |namespace, name| {
+                namespace_results.get(namespace)?.get(name).map(|result| &result.provenance)
+            }),
             namespace_is_open: Box::new(move |namespace| open_namespaces.contains(namespace)),
             construction: self.construction_types(),
+            type_named: Box::new(move |name| type_named(types, name)),
             options: CheckerOptions {
                 unlisted_variables_are_dyn: self.options.unlisted_variables_are_dyn,
                 homogeneous_aggregate_literals: self.options.homogeneous_aggregate_literals,
                 enable_optional_types: self.options.enable_optional_types,
             },
+            assumptions: Vec::new(),
         }
     }
 
@@ -1165,9 +1341,14 @@ impl CelEnvironment {
     }
 
     /// Whether a value of this type converts to text by the environment's own
-    /// `string()`. `dyn` passes, because only the runtime knows what it holds.
+    /// `string()`: whether a call `string(x)` over it resolves, as the checker resolves one —
+    /// as written, then over a union's members. `dyn` passes, because only the runtime knows
+    /// what it holds.
     pub fn converts_to_string(&self, ty: &CelType) -> bool {
-        is_dyn(ty) || self.registry.resolve("string", CallForm::Global, std::slice::from_ref(ty), None).is_ok()
+        let args = std::slice::from_ref(ty);
+        is_dyn(ty)
+            || self.registry.resolve("string", CallForm::Global, args, None).is_ok()
+            || matches!(self.registry.resolve_expanded("string", CallForm::Global, args, None), Some(Expansion::Resolved { .. }))
     }
 
     /// Every registration of one function name, in registration order, as
@@ -1198,13 +1379,13 @@ impl CelEnvironment {
                 .iter()
                 .map(|registered| TypeDefinitionListing {
                     name: registered.definition.name.clone(),
-                    base: format_type(&registered.base, false),
+                    base: exact_type_text(&registered.base, false),
                     parameters: registered.parameters().to_vec(),
                     fields: registered
                         .self_type
                         .fields
                         .as_ref()
-                        .map(|fields| fields.iter().map(|(name, ty)| (name, format_type(ty, false))).collect()),
+                        .map(|fields| fields.iter().map(|(name, ty)| (name, exact_type_text(ty, false))).collect()),
                     constructible: registered.constructible.then(|| ConstructibleListing {
                         required: registered.required.clone(),
                         builder: registered.construct.is_some(),
@@ -1221,9 +1402,14 @@ impl CelEnvironment {
                         .order
                         .iter()
                         .map(|held| {
-                            held.signature
-                                .clone()
-                                .unwrap_or_else(|| format!("{}(…): {}", held.name, format_type(&held.returns, false)))
+                            // A result declared as a schema is displayed, cut as every converted type is;
+                            // one read from type text is written whole.
+                            let schema = self.namespace_results.get(&name).is_some_and(|results| results.contains_key(&held.name));
+                            let declaration = held.signature.clone().unwrap_or_else(|| {
+                                let returns = if schema { format_type(&held.returns, false) } else { exact_type_text(&held.returns, false) };
+                                format!("{}(…): {returns}", held.name)
+                            });
+                            NamespaceFunctionListing { declaration, result_type: schema.then(|| held.returns.clone()) }
                         })
                         .collect(),
                     name,
@@ -1237,9 +1423,9 @@ fn function_definition(entry: &RegisteredFunction) -> FunctionDefinition {
     FunctionDefinition {
         name: entry.signature.name.clone(),
         signature: format_signature(&entry.signature),
-        receiver_type: entry.signature.receiver.as_ref().map(|receiver| format_type(receiver, false)),
-        parameters: entry.signature.parameters.iter().map(|ty| format_type(ty, false)).collect(),
-        returns: format_type(&entry.signature.returns, false),
+        receiver_type: entry.signature.receiver.as_ref().map(|receiver| exact_type_text(receiver, false)),
+        parameters: entry.signature.parameters.iter().map(|ty| exact_type_text(ty, false)).collect(),
+        returns: exact_type_text(&entry.signature.returns, false),
         deterministic: entry.metadata.deterministic,
         host_backed: entry.metadata.host_backed,
         throws: entry.metadata.throws.clone(),

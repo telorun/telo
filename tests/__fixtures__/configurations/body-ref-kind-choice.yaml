@@ -1,0 +1,46 @@
+# A template body's entry names a resource of the defining module whose kind is
+# chosen by `flag1`: the slot takes a `Self.Thing`, so the reference is the
+# wrong kind only where `owner` is a `Self.User`.
+kind: Telo.Application
+metadata: { name: BodyRefKindChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.Definition
+metadata: { name: Thing }
+capability: Telo.Invocable
+schema: { type: object }
+resources:
+  - { kind: Telo.Value, metadata: { name: value }, value: thing }
+invoke: !ref value
+---
+kind: Telo.Definition
+metadata: { name: User }
+capability: Telo.Invocable
+schema: { type: object }
+resources:
+  - { kind: Telo.Value, metadata: { name: value }, value: user }
+invoke: !ref value
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties: { src: { x-telo-ref: { kind: Self.Thing, use: call } } }
+  required: [src]
+resources:
+  - { kind: Telo.Value, metadata: { name: value }, value: held }
+invoke: !ref value
+--- !if
+metadata: { name: owner }
+if: !cel "variables.flag1"
+then: { kind: Self.User }
+else: { kind: Self.Thing }
+---
+kind: Telo.Definition
+metadata: { name: Wrapper }
+capability: Telo.Invocable
+schema: { type: object }
+resources:
+  - { kind: Self.Holder, metadata: { name: holder }, src: !ref owner }
+invoke: !ref holder

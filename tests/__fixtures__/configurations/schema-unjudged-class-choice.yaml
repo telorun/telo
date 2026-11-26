@@ -1,0 +1,19 @@
+# A named shape whose `variables.flag1` class alone uses a keyword the CEL type
+# checker cannot read: one CEL_SCHEMA_UNJUDGED where the shape is read, labelled
+# with that class, however many sites read beneath it.
+kind: Telo.Application
+metadata: { name: SchemaUnjudgedClassChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets: [!ref seq]
+--- !if
+metadata: { name: Labels }
+if: !cel "variables.flag1"
+then: { kind: Telo.JsonSchema, schema: { type: object, unevaluatedProperties: { type: string } } }
+else: { kind: Telo.JsonSchema, schema: { type: object, properties: { a: { type: string } } } }
+---
+kind: Telo.Sequence
+metadata: { name: seq }
+inputType: !ref Labels
+steps:
+  - { name: first, value: !cel "inputs.a" }
+  - { name: second, value: !cel "inputs.b" }

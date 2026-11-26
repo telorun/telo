@@ -1,0 +1,6 @@
+units:
+  kernel: Fixed
+body: An import handing a library a host path whose existing entry or file contradicts
+  the entry or mediaType the library's input declares is refused when the import
+  initializes (ERR_HOST_PATH_ENTRY_MISMATCH / ERR_HOST_PATH_CONTENT_MISMATCH), also for
+  an import inside a published module that no check of the consumer judges.

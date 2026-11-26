@@ -63,7 +63,7 @@
           "diagnostics": [
             {
               "code": "CEL_SYNTAX_ERROR",
-              "message": "the hole opened at offset 14 never closes \u2014 a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+              "message": "the hole opened at offset 14 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
             }
           ],
           "calls": [],
@@ -72,7 +72,7 @@
         "error": {
           "code": null,
           "celCode": null,
-          "message": "!interpolate: the hole opened at offset 14 never closes \u2014 a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+          "message": "!interpolate: the hole opened at offset 14 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
         }
       }
     },
@@ -85,7 +85,7 @@
           "diagnostics": [
             {
               "code": "CEL_SYNTAX_ERROR",
-              "message": "the hole opened at offset 31 never closes \u2014 a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+              "message": "the hole opened at offset 31 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
             }
           ],
           "calls": [],
@@ -94,7 +94,7 @@
         "error": {
           "code": null,
           "celCode": null,
-          "message": "!sql: the hole opened at offset 31 never closes \u2014 a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+          "message": "!sql: the hole opened at offset 31 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
         }
       }
     },
@@ -468,7 +468,7 @@
     {
       "id": "verdicts/CEL_TYPE_ERROR/highlight_second_line",
       "tag": "cel",
-      "source": "'\ud83d\ude00' ==\n  1 + 'a'",
+      "source": "'😀' ==\n  1 + 'a'",
       "expect": {
         "check": {
           "diagnostics": [
@@ -498,7 +498,7 @@
     {
       "id": "verdicts/CEL_TYPE_ERROR/highlight_utf16_column",
       "tag": "cel",
-      "source": "['\ud83d\ude00\ud83d\ude00', 1 + 'a']",
+      "source": "['😀😀', 1 + 'a']",
       "expect": {
         "check": {
           "diagnostics": [
@@ -611,7 +611,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 0,
@@ -667,11 +667,7 @@
           "diagnostics": [
             {
               "code": "CEL_TYPE_ERROR",
-              "message": "Stream holds no members"
-            },
-            {
-              "code": "CEL_UNKNOWN_FIELD",
-              "message": "'s' yields a stream \u2014 pipe it through an Encoder or iterate in a JS.Script step (no member access on stream-typed values)"
+              "message": "'s' is a Telo.Stream, which holds no members: hand it to a step that consumes a stream and read that step's result"
             }
           ],
           "calls": [],
@@ -704,7 +700,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_IDENTIFIER",
-              "message": "unknown identifier 'fff' \u2014 nothing by that name is in scope here."
+              "message": "unknown identifier 'fff' — nothing by that name is in scope here."
             }
           ],
           "type": "dyn",
@@ -773,7 +769,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_IDENTIFIER",
-              "message": "unknown identifier 'missing' \u2014 nothing by that name is in scope here."
+              "message": "unknown identifier 'missing' — nothing by that name is in scope here."
             }
           ],
           "type": "int",
@@ -798,6 +794,137 @@
       }
     },
     {
+      "id": "verdicts/CEL_UNKNOWN_IDENTIFIER/context_root",
+      "tag": "cel",
+      "source": "reqest.query",
+      "bindings": {
+        "request": {
+          "headers": {
+            "host": "example.test"
+          },
+          "items": [
+            {
+              "amount": 1.5
+            }
+          ],
+          "query": {
+            "name": "Ada"
+          },
+          "tags": {
+            "a": {
+              "label": "first"
+            }
+          }
+        }
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "rootsDeclared": true,
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_IDENTIFIER",
+              "message": "unknown identifier 'reqest' — nothing by that name is in scope here."
+            }
+          ],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 12
+            }
+          ],
+          "refs": [
+            "reqest"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "celCode": "no_such_variable",
+          "message": "no such variable: reqest.query"
+        }
+      }
+    },
+    {
       "id": "verdicts/CEL_UNKNOWN_IDENTIFIER/once_per_root",
       "tag": "cel",
       "source": "missing.a + missing.b + other",
@@ -807,11 +934,11 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_IDENTIFIER",
-              "message": "unknown identifier 'missing' \u2014 nothing by that name is in scope here."
+              "message": "unknown identifier 'missing' — nothing by that name is in scope here."
             },
             {
               "code": "CEL_UNKNOWN_IDENTIFIER",
-              "message": "unknown identifier 'other' \u2014 nothing by that name is in scope here."
+              "message": "unknown identifier 'other' — nothing by that name is in scope here."
             }
           ],
           "type": "dyn",
@@ -858,6 +985,41 @@
       }
     },
     {
+      "id": "verdicts/CEL_UNKNOWN_IDENTIFIER/reserved_namespace_receiver",
+      "tag": "cel",
+      "source": "optional.of(1).orValue(2)",
+      "rootsDeclared": true,
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "int",
+          "calls": [
+            {
+              "name": "orValue",
+              "form": "receiver",
+              "arity": 1,
+              "start": 0,
+              "end": 25,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 25
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$telo": "int",
+          "value": "1"
+        }
+      }
+    },
+    {
       "id": "verdicts/CEL_UNKNOWN_IDENTIFIER/module_hint",
       "tag": "cel",
       "source": "Foo.bar(1) + dbb.query(Foo.baz)",
@@ -870,19 +1032,19 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "no function named \"bar\" is registered \u2014 the closest written on a value with 1 argument: at, or, join, split, getDate"
+              "message": "no function named \"bar\" is registered — the closest written on a value with 1 argument: at, or, join, split, getDate"
             },
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "no function named \"query\" is registered \u2014 the closest written on a value with 1 argument: or, at, join, split, indexOf"
+              "message": "no function named \"query\" is registered — the closest written on a value with 1 argument: or, at, join, split, indexOf"
             },
             {
               "code": "CEL_UNKNOWN_IDENTIFIER",
-              "message": "unknown identifier 'Foo' \u2014 nothing by that name is in scope here. To call a function another module declares, 'Foo' must be one of this module's names \u2014 an 'imports:' alias, 'Self', or the module's own metadata.name."
+              "message": "unknown identifier 'Foo' — nothing by that name is in scope here. To call a function another module declares, 'Foo' must be one of this module's names — an 'imports:' alias, 'Self', or the module's own metadata.name."
             },
             {
               "code": "CEL_UNKNOWN_IDENTIFIER",
-              "message": "unknown identifier 'dbb' \u2014 nothing by that name is in scope here."
+              "message": "unknown identifier 'dbb' — nothing by that name is in scope here."
             }
           ],
           "calls": [
@@ -952,7 +1114,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_IDENTIFIER",
-              "message": "unknown identifier 'missing' \u2014 nothing by that name is in scope here."
+              "message": "unknown identifier 'missing' — nothing by that name is in scope here."
             }
           ],
           "type": "int",
@@ -1104,8 +1266,8 @@
               "message": "'request.query.nme' is not defined (available: name)"
             }
           ],
-          "type": "dyn",
           "calls": [],
+          "readTypes": [],
           "regions": [
             {
               "start": 0,
@@ -1121,136 +1283,6 @@
           "code": null,
           "celCode": "no_such_key",
           "message": "no such key: \"nme\""
-        }
-      }
-    },
-    {
-      "id": "verdicts/CEL_UNKNOWN_FIELD/context_root",
-      "tag": "cel",
-      "source": "reqest.query",
-      "bindings": {
-        "request": {
-          "headers": {
-            "host": "example.test"
-          },
-          "items": [
-            {
-              "amount": 1.5
-            }
-          ],
-          "query": {
-            "name": "Ada"
-          },
-          "tags": {
-            "a": {
-              "label": "first"
-            }
-          }
-        }
-      },
-      "context": {
-        "type": "object",
-        "properties": {
-          "request": {
-            "type": "object",
-            "properties": {
-              "query": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "string"
-                  }
-                }
-              },
-              "items": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "amount": {
-                      "type": "number"
-                    }
-                  }
-                }
-              },
-              "headers": {
-                "type": "object",
-                "properties": {
-                  "host": {
-                    "type": "string"
-                  }
-                },
-                "additionalProperties": true
-              },
-              "tags": {
-                "type": "object",
-                "additionalProperties": {
-                  "type": "object",
-                  "properties": {
-                    "label": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "error": {
-            "type": [
-              "object",
-              "null"
-            ],
-            "properties": {
-              "code": {
-                "type": "string"
-              }
-            }
-          },
-          "codes": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": "string"
-            }
-          },
-          "note": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "body": {
-            "x-telo-type": "Telo.Stream"
-          }
-        }
-      },
-      "expect": {
-        "check": {
-          "diagnostics": [
-            {
-              "code": "CEL_UNKNOWN_FIELD",
-              "message": "'reqest' is not defined (available: request, error, codes, note, body)"
-            }
-          ],
-          "type": "dyn",
-          "calls": [],
-          "regions": [
-            {
-              "start": 0,
-              "end": 12
-            }
-          ],
-          "refs": [
-            "reqest"
-          ],
-          "volatile": false
-        },
-        "error": {
-          "code": null,
-          "celCode": "no_such_variable",
-          "message": "no such variable: reqest.query"
         }
       }
     },
@@ -1364,8 +1396,8 @@
               "message": "'request.items.[*].amont' is not defined (available: amount)"
             }
           ],
-          "type": "dyn",
           "calls": [],
+          "readTypes": [],
           "regions": [
             {
               "start": 0,
@@ -1494,8 +1526,8 @@
               "message": "'request.tags.[*].lbel' is not defined (available: label)"
             }
           ],
-          "type": "dyn",
           "calls": [],
+          "readTypes": [],
           "regions": [
             {
               "start": 0,
@@ -1772,12 +1804,12 @@
         "check": {
           "diagnostics": [
             {
-              "code": "CEL_UNKNOWN_FIELD",
-              "message": "'body' yields a stream \u2014 pipe it through an Encoder or iterate in a JS.Script step (no member access on stream-typed values)"
+              "code": "CEL_TYPE_ERROR",
+              "message": "'body' is a Telo.Stream, which holds no members: hand it to a step that consumes a stream and read that step's result"
             }
           ],
-          "type": "dyn",
           "calls": [],
+          "readTypes": [],
           "regions": [
             {
               "start": 0,
@@ -1928,12 +1960,12 @@
         "check": {
           "diagnostics": [
             {
-              "code": "CEL_UNKNOWN_FIELD",
-              "message": "'feed' yields a stream \u2014 pipe it through an Encoder or iterate in a JS.Script step (no member access on stream-typed values)"
+              "code": "CEL_TYPE_ERROR",
+              "message": "'feed' is a Telo.Stream, which holds no members: hand it to a step that consumes a stream and read that step's result"
             }
           ],
-          "type": "dyn",
           "calls": [],
+          "readTypes": [],
           "regions": [
             {
               "start": 0,
@@ -2082,9 +2114,14 @@
       },
       "expect": {
         "check": {
-          "diagnostics": [],
-          "type": "dyn",
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "Telo.TcpPort holds no members"
+            }
+          ],
           "calls": [],
+          "readTypes": [],
           "regions": [
             {
               "start": 0,
@@ -2233,9 +2270,14 @@
       },
       "expect": {
         "check": {
-          "diagnostics": [],
-          "type": "dyn",
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "string holds no members"
+            }
+          ],
           "calls": [],
+          "readTypes": [],
           "regions": [
             {
               "start": 0,
@@ -2384,13 +2426,8 @@
       },
       "expect": {
         "check": {
-          "diagnostics": [
-            {
-              "code": "CEL_UNKNOWN_FIELD",
-              "message": "'labels.other' is not defined (available: env)"
-            }
-          ],
-          "type": "dyn",
+          "diagnostics": [],
+          "type": "string",
           "calls": [],
           "regions": [
             {
@@ -2542,8 +2579,8 @@
               "message": "'closed.b' is not defined (available: a)"
             }
           ],
-          "type": "dyn",
           "calls": [],
+          "readTypes": [],
           "regions": [
             {
               "start": 0,
@@ -2587,8 +2624,8 @@
               "message": "'empty.b' is not defined (available: none)"
             }
           ],
-          "type": "dyn",
           "calls": [],
+          "readTypes": [],
           "regions": [
             {
               "start": 0,
@@ -2642,9 +2679,14 @@
       },
       "expect": {
         "check": {
-          "diagnostics": [],
-          "type": "dyn",
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "'labels.[*].zzz' is not defined (available: x)"
+            }
+          ],
           "calls": [],
+          "readTypes": [],
           "regions": [
             {
               "start": 0,
@@ -2793,9 +2835,14 @@
       },
       "expect": {
         "check": {
-          "diagnostics": [],
-          "type": "dyn",
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "'pair.[*].b' is not defined (available: a)"
+            }
+          ],
           "calls": [],
+          "readTypes": [],
           "regions": [
             {
               "start": 0,
@@ -2856,11 +2903,11 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FIELD",
-              "message": "'tuple.[*].zzz' is not defined (available: b)"
+              "message": "'tuple.[*].zzz' is not defined (available: a)"
             }
           ],
-          "type": "dyn",
           "calls": [],
+          "readTypes": [],
           "regions": [
             {
               "start": 0,
@@ -3015,8 +3062,8 @@
               "message": "'rows.[*].zzz' is not defined (available: v)"
             }
           ],
-          "type": "dyn",
           "calls": [],
+          "readTypes": [],
           "regions": [
             {
               "start": 0,
@@ -3322,8 +3369,10 @@
               "message": "'either.zzz' is not defined (available: a)"
             }
           ],
-          "type": "bool",
           "calls": [],
+          "readTypes": [
+            "map|null"
+          ],
           "regions": [
             {
               "start": 0,
@@ -3339,6 +3388,76 @@
           "code": null,
           "celCode": "no_such_key",
           "message": "no such key: \"zzz\""
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/union_member_some_branches_declare",
+      "tag": "cel",
+      "source": "pick.b == \"x\"",
+      "bindings": {
+        "pick": {
+          "a": "x"
+        }
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "pick": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "a"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "b": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "b"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "\"b\" is declared by only some of the shapes this value may have — read it as '.?b' to handle the others"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 13
+            }
+          ],
+          "refs": [
+            "pick"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "celCode": "no_such_key",
+          "message": "no such key: \"b\""
         }
       }
     },
@@ -3456,8 +3575,8 @@
               "message": "'request.qery' is not defined (available: query, items, headers, tags)"
             }
           ],
-          "type": "dyn",
           "calls": [],
+          "readTypes": [],
           "regions": [
             {
               "start": 0,
@@ -3586,7 +3705,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FIELD",
-              "message": "\"prt\" is not declared here (declared: port)"
+              "message": "'variables.prt' is not defined (available: port)"
             }
           ],
           "calls": [],
@@ -3762,7 +3881,7 @@
             },
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "no function named \"lowr\" is registered \u2014 the closest taking 1 argument: lower, floor, bool, sort, abs"
+              "message": "no function named \"lowr\" is registered — the closest taking 1 argument: lower, floor, bool, sort, abs"
             }
           ],
           "calls": [
@@ -3847,14 +3966,13 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FIELD",
-              "message": "'Billing.invoice(\u2026).lines.[*].qy' is not defined (available: qty)"
+              "message": "'Billing.invoice(…).lines.[*].qy' is not defined (available: qty)"
             },
             {
               "code": "CEL_UNKNOWN_FIELD",
-              "message": "'Billing.invoice(\u2026).amont' is not defined (available: amount, lines)"
+              "message": "'Billing.invoice(…).amont' is not defined (available: amount, lines)"
             }
           ],
-          "type": "dyn",
           "calls": [
             {
               "name": "Billing.invoice",
@@ -3863,7 +3981,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 0,
@@ -3878,7 +3996,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 33,
@@ -3887,6 +4005,7 @@
               "hostBacked": false
             }
           ],
+          "readTypes": [],
           "regions": [
             {
               "start": 0,
@@ -3915,6 +4034,176 @@
       }
     },
     {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/declared_absent",
+      "tag": "cel",
+      "source": "cfg.count",
+      "bindings": {
+        "cfg": {}
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "cfg": {
+            "allOf": [
+              {
+                "properties": {
+                  "count": {
+                    "type": "number"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "count": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "\"count\" is declared absent here — its schema admits no value — so only a presence test (has(…), .?count) reads it"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 9
+            }
+          ],
+          "refs": [
+            "cfg"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "celCode": "no_such_key",
+          "message": "no such key: \"count\""
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/absence_words_in_name",
+      "tag": "cel",
+      "source": "closed.`b is declared absent here`",
+      "bindings": {
+        "closed": {
+          "a": "x"
+        }
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "closed": {
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "'closed.b is declared absent here' is not defined (available: a)"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 34
+            }
+          ],
+          "refs": [
+            "closed"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "celCode": "no_such_key",
+          "message": "no such key: \"b is declared absent here\""
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/closed_intersection",
+      "tag": "cel",
+      "source": "cfg.c",
+      "bindings": {
+        "cfg": {
+          "a": "x",
+          "b": 1
+        }
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "cfg": {
+            "allOf": [
+              {
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "b": {
+                    "type": "integer"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "\"c\" is not declared here (declared: a, b)"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 5
+            }
+          ],
+          "refs": [
+            "cfg"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "celCode": "no_such_key",
+          "message": "no such key: \"c\""
+        }
+      }
+    },
+    {
       "id": "verdicts/CEL_UNKNOWN_FUNCTION/one_candidate_fix",
       "tag": "cel",
       "source": "uppe('a')",
@@ -3923,7 +4212,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "no function named \"uppe\" is registered \u2014 the closest taking 1 argument: upper, type, size, uint, abs"
+              "message": "no function named \"uppe\" is registered — the closest taking 1 argument: upper, type, size, uint, abs"
             }
           ],
           "calls": [
@@ -3961,7 +4250,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "no function named \"no\" is registered \u2014 the closest taking no arguments: now, nowIso, today, uuidv1, uuidv4"
+              "message": "no function named \"no\" is registered — the closest taking no arguments: now, nowIso, today, uuidv1, uuidv4"
             }
           ],
           "calls": [
@@ -3999,7 +4288,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "no function named \"frobnicate\" is registered \u2014 the closest taking no arguments: nowMillis, today, now, nowIso, nowSeconds"
+              "message": "no function named \"frobnicate\" is registered — the closest taking no arguments: nowMillis, today, now, nowIso, nowSeconds"
             }
           ],
           "calls": [
@@ -4037,7 +4326,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "no function named \"endsWit\" is registered \u2014 the closest written on a value with 1 argument: endsWith, indexOf, split, at, join"
+              "message": "no function named \"endsWit\" is registered — the closest written on a value with 1 argument: endsWith, indexOf, split, at, join"
             }
           ],
           "calls": [
@@ -4075,7 +4364,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "no function named \"frobnicate\" is registered \u2014 the closest written on a value with no arguments: getDate, getMinutes, join, json, size"
+              "message": "no function named \"frobnicate\" is registered — the closest written on a value with no arguments: getDate, getMinutes, join, json, size"
             }
           ],
           "calls": [
@@ -4113,11 +4402,11 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "no function named \"uppe\" is registered \u2014 the closest taking 1 argument: upper, type, size, uint, abs"
+              "message": "no function named \"uppe\" is registered — the closest taking 1 argument: upper, type, size, uint, abs"
             },
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "no function named \"lowe\" is registered \u2014 the closest taking 1 argument: lower, bool, floor, size, sort"
+              "message": "no function named \"lowe\" is registered — the closest taking 1 argument: lower, bool, floor, size, sort"
             }
           ],
           "calls": [
@@ -4178,7 +4467,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "no function named \"uppe\" is registered \u2014 the closest taking 1 argument: upper, type, size, uint, abs"
+              "message": "no function named \"uppe\" is registered — the closest taking 1 argument: upper, type, size, uint, abs"
             }
           ],
           "calls": [
@@ -4189,7 +4478,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 0,
@@ -4600,11 +4889,11 @@
           "diagnostics": [
             {
               "code": "CEL_NULLABLE_ACCESS",
-              "message": "'error' may be null \u2014 guard it (e.g. 'error != null && \u2026' or 'error == null ? \u2026 : error.code') before accessing '.code'"
+              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
             }
           ],
-          "type": "dyn",
           "calls": [],
+          "readTypes": [],
           "regions": [
             {
               "start": 0,
@@ -4715,11 +5004,11 @@
           "diagnostics": [
             {
               "code": "CEL_NULLABLE_ACCESS",
-              "message": "'codes' may be null \u2014 guard it (e.g. 'codes != null && \u2026' or 'codes == null ? \u2026 : codes[index]') before accessing '[index]'"
+              "message": "'codes' may be null — guard it (e.g. 'codes != null && …' or 'codes == null ? … : codes[index]') before accessing '[index]'"
             }
           ],
-          "type": "dyn",
           "calls": [],
+          "readTypes": [],
           "regions": [
             {
               "start": 0,
@@ -4866,12 +5155,12 @@
         "check": {
           "diagnostics": [
             {
-              "code": "CEL_NULLABLE_ACCESS",
-              "message": "'gone' may be null \u2014 guard it (e.g. 'gone != null && \u2026' or 'gone == null ? \u2026 : gone.x') before accessing '.x'"
+              "code": "CEL_TYPE_ERROR",
+              "message": "null holds no members"
             }
           ],
-          "type": "dyn",
           "calls": [],
+          "readTypes": [],
           "regions": [
             {
               "start": 0,
@@ -5020,27 +5309,34 @@
       },
       "expect": {
         "check": {
-          "diagnostics": [],
-          "type": "int",
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "no overload of \"size\" takes string|null.size(): string.size(): int, bytes.size(): int, list<A>.size(): int, map<K, V>.size(): int; null.size() is taken by none"
+            },
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "no overload of \"size\" takes size(string|null): size(string): int, size(bytes): int, size(list<A>): int, size(map<K, V>): int; size(null) is taken by none"
+            }
+          ],
           "calls": [
             {
               "name": "size",
               "form": "receiver",
               "arity": 0,
               "start": 0,
-              "end": 12,
-              "deterministic": true,
-              "hostBacked": false
+              "end": 12
             },
             {
               "name": "size",
               "form": "global",
               "arity": 1,
               "start": 15,
-              "end": 26,
-              "deterministic": true,
-              "hostBacked": false
+              "end": 26
             }
+          ],
+          "readTypes": [
+            "string|null"
           ],
           "regions": [
             {
@@ -5190,7 +5486,7 @@
       "expect": {
         "check": {
           "diagnostics": [],
-          "type": "dyn",
+          "type": "string",
           "calls": [],
           "regions": [
             {
@@ -5486,11 +5782,11 @@
           "diagnostics": [
             {
               "code": "CEL_NULLABLE_ACCESS",
-              "message": "'either' may be null \u2014 guard it (e.g. 'either != null && \u2026' or 'either == null ? \u2026 : either.a') before accessing '.a'"
+              "message": "'either' may be null — guard it (e.g. 'either != null && …' or 'either == null ? … : either.a') before accessing '.a'"
             }
           ],
-          "type": "dyn",
           "calls": [],
+          "readTypes": [],
           "regions": [
             {
               "start": 0,
@@ -5599,7 +5895,7 @@
       "expect": {
         "check": {
           "diagnostics": [],
-          "type": "dyn",
+          "type": "string|null",
           "calls": [],
           "regions": [
             {
@@ -5929,7 +6225,7 @@
       "expect": {
         "check": {
           "diagnostics": [],
-          "type": "dyn",
+          "type": "string",
           "calls": [],
           "regions": [
             {
@@ -6039,7 +6335,7 @@
       "expect": {
         "check": {
           "diagnostics": [],
-          "type": "dyn",
+          "type": "string",
           "calls": [],
           "regions": [
             {
@@ -6480,7 +6776,7 @@
       "expect": {
         "check": {
           "diagnostics": [],
-          "type": "dyn",
+          "type": "string",
           "calls": [],
           "regions": [
             {
@@ -6593,11 +6889,13 @@
           "diagnostics": [
             {
               "code": "CEL_NULLABLE_ACCESS",
-              "message": "'error' may be null \u2014 guard it (e.g. 'error != null && \u2026' or 'error == null ? \u2026 : error.code') before accessing '.code'"
+              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
             }
           ],
-          "type": "bool",
           "calls": [],
+          "readTypes": [
+            "map|null"
+          ],
           "regions": [
             {
               "start": 0,
@@ -6708,11 +7006,13 @@
           "diagnostics": [
             {
               "code": "CEL_NULLABLE_ACCESS",
-              "message": "'error' may be null \u2014 guard it (e.g. 'error != null && \u2026' or 'error == null ? \u2026 : error.code') before accessing '.code'"
+              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
             }
           ],
-          "type": "bool",
           "calls": [],
+          "readTypes": [
+            "map|null"
+          ],
           "regions": [
             {
               "start": 0,
@@ -6823,11 +7123,13 @@
           "diagnostics": [
             {
               "code": "CEL_NULLABLE_ACCESS",
-              "message": "'error' may be null \u2014 guard it (e.g. 'error != null && \u2026' or 'error == null ? \u2026 : error.code') before accessing '.code'"
+              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
             }
           ],
-          "type": "dyn",
           "calls": [],
+          "readTypes": [
+            "map|null"
+          ],
           "regions": [
             {
               "start": 0,
@@ -6938,11 +7240,14 @@
           "diagnostics": [
             {
               "code": "CEL_NULLABLE_ACCESS",
-              "message": "'error' may be null \u2014 guard it (e.g. 'error != null && \u2026' or 'error == null ? \u2026 : error.code') before accessing '.code'"
+              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
             }
           ],
-          "type": "bool",
           "calls": [],
+          "readTypes": [
+            "map|null",
+            "list<string>|null"
+          ],
           "regions": [
             {
               "start": 0,
@@ -7054,11 +7359,13 @@
           "diagnostics": [
             {
               "code": "CEL_NULLABLE_ACCESS",
-              "message": "'error' may be null \u2014 guard it (e.g. 'error != null && \u2026' or 'error == null ? \u2026 : error.code') before accessing '.code'"
+              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
             }
           ],
-          "type": "bool",
           "calls": [],
+          "readTypes": [
+            "list<string>|null"
+          ],
           "regions": [
             {
               "start": 0,
@@ -7188,10 +7495,9 @@
           "diagnostics": [
             {
               "code": "CEL_NULLABLE_ACCESS",
-              "message": "'error' may be null \u2014 guard it (e.g. 'error != null && \u2026' or 'error == null ? \u2026 : error.code') before accessing '.code'"
+              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
             }
           ],
-          "type": "dyn",
           "calls": [
             {
               "name": "size",
@@ -7203,6 +7509,7 @@
               "hostBacked": false
             }
           ],
+          "readTypes": [],
           "regions": [
             {
               "start": 0,
@@ -7332,11 +7639,13 @@
           "diagnostics": [
             {
               "code": "CEL_NULLABLE_ACCESS",
-              "message": "'error' may be null \u2014 guard it (e.g. 'error != null && \u2026' or 'error == null ? \u2026 : error.code') before accessing '.code'"
+              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
             }
           ],
-          "type": "bool",
           "calls": [],
+          "readTypes": [
+            "list<map>"
+          ],
           "regions": [
             {
               "start": 0,
@@ -7467,10 +7776,9 @@
           "diagnostics": [
             {
               "code": "CEL_NULLABLE_ACCESS",
-              "message": "'error' may be null \u2014 guard it (e.g. 'error != null && \u2026' or 'error == null ? \u2026 : error.code') before accessing '.code'"
+              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
             }
           ],
-          "type": "int",
           "calls": [
             {
               "name": "Billing.total",
@@ -7479,6 +7787,7 @@
               "arity": 1,
               "arguments": [
                 {
+                  "typeName": "string",
                   "chain": [
                     "error",
                     "code"
@@ -7491,6 +7800,7 @@
               "hostBacked": false
             }
           ],
+          "readTypes": [],
           "regions": [
             {
               "start": 0,
@@ -7752,11 +8062,11 @@
           "diagnostics": [
             {
               "code": "CEL_NULLABLE_ACCESS",
-              "message": "'note' may be null, and a null has no text \u2014 guard it in the hole (e.g. '${{ note != null ? note : \"\" }}')."
+              "message": "'note' may be null, and a null has no text — guard it in the hole (e.g. '${{ note != null ? note : \"\" }}')."
             },
             {
               "code": "CEL_NULLABLE_ACCESS",
-              "message": "'codes' may be null, and a null has no text \u2014 guard it in the hole (e.g. '${{ codes != null ? codes : \"\" }}')."
+              "message": "'codes' may be null, and a null has no text — guard it in the hole (e.g. '${{ codes != null ? codes : \"\" }}')."
             }
           ],
           "calls": [],
@@ -7988,7 +8298,7 @@
           "diagnostics": [
             {
               "code": "CEL_NULLABLE_ACCESS",
-              "message": "'error' may be null \u2014 guard it (e.g. 'error != null && \u2026' or 'error == null ? \u2026 : error.code') before accessing '.code'"
+              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
             }
           ],
           "calls": [],
@@ -8234,7 +8544,7 @@
           "diagnostics": [
             {
               "code": "BINDING_NAME_RESERVED",
-              "message": "'Billing' names a module here (an imports: alias, Self, or this module's own name), so a call written 'Billing.f(\u2026)' resolves to that module and this binding could never be read. Rename the bound variable."
+              "message": "'Billing' names a module here (an imports: alias, Self, or this module's own name), so a call written 'Billing.f(…)' resolves to that module and this binding could never be read. Rename the bound variable."
             }
           ],
           "type": "list<int>",
@@ -8274,7 +8584,7 @@
           "diagnostics": [
             {
               "code": "BINDING_NAME_RESERVED",
-              "message": "'Self' names a module here (an imports: alias, Self, or this module's own name), so a call written 'Self.f(\u2026)' resolves to that module and this binding could never be read. Rename the bound variable."
+              "message": "'Self' names a module here (an imports: alias, Self, or this module's own name), so a call written 'Self.f(…)' resolves to that module and this binding could never be read. Rename the bound variable."
             }
           ],
           "type": "int",
@@ -8312,11 +8622,11 @@
           "diagnostics": [
             {
               "code": "BINDING_NAME_RESERVED",
-              "message": "'Shop' names a module here (an imports: alias, Self, or this module's own name), so a call written 'Shop.f(\u2026)' resolves to that module and this binding could never be read. Rename the bound variable."
+              "message": "'Shop' names a module here (an imports: alias, Self, or this module's own name), so a call written 'Shop.f(…)' resolves to that module and this binding could never be read. Rename the bound variable."
             },
             {
               "code": "BINDING_NAME_RESERVED",
-              "message": "'Telo' names a module here (an imports: alias, Self, or this module's own name), so a call written 'Telo.f(\u2026)' resolves to that module and this binding could never be read. Rename the bound variable."
+              "message": "'Telo' names a module here (an imports: alias, Self, or this module's own name), so a call written 'Telo.f(…)' resolves to that module and this binding could never be read. Rename the bound variable."
             }
           ],
           "type": "bool",
@@ -8612,7 +8922,7 @@
     {
       "id": "verdicts/ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE/source_written_as_json",
       "tag": "interpolate",
-      "source": "\u00e9\t\u001f\u007f\u2028/\ud83d\ude00${{ x }}\b\f\r",
+      "source": "é\t\u001f /😀${{ x }}\b\f\r",
       "bindings": {
         "x": null
       },
@@ -8634,7 +8944,7 @@
         "error": {
           "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
           "celCode": null,
-          "message": "the hole '${{ x }}' at offset 8 of !interpolate \"\u00e9\\t\\u001f\u007f\u2028/\ud83d\ude00${{ x }}\\b\\f\\r\" evaluated to null, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
+          "message": "the hole '${{ x }}' at offset 8 of !interpolate \"é\\t\\u001f /😀${{ x }}\\b\\f\\r\" evaluated to null, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
         }
       }
     },

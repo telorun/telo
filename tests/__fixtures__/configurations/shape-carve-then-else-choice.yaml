@@ -1,0 +1,34 @@
+# A kind's values are held to an applied `then` / `else`, each naming a named
+# shape that varies under `variables.flag1`: `v` takes `then` and misfits where the
+# flag is false, `w` takes `else` and misfits where it is true.
+kind: Telo.Application
+metadata: { name: ShapeCarveThenElseChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Inner }
+schema: !if
+  if: !cel "variables.flag1"
+  then: { type: string }
+  else: { type: integer }
+---
+kind: Telo.JsonSchema
+metadata: { name: Other }
+schema: !if
+  if: !cel "variables.flag1"
+  then: { type: string }
+  else: { type: integer }
+---
+kind: Telo.JsonSchema
+metadata: { name: Outer }
+schema: { if: { type: string }, then: { $ref: "telo://Self/Inner" }, else: { $ref: "telo://Self/Other" } }
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Runnable
+schema: { type: object, properties: { v: { $ref: "telo://Self/Outer" }, w: { $ref: "telo://Self/Outer" } } }
+---
+kind: Self.Holder
+metadata: { name: holder }
+v: text
+w: 5

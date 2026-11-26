@@ -1,0 +1,14 @@
+kind: Telo.Library
+metadata:
+  name: Lib
+  version: 1.0.0
+variables:
+  title:
+    $ref: telo://manifest#/$defs/Text
+exports:
+  resources: [shown]
+---
+kind: Telo.Value
+metadata:
+  name: shown
+value: !cel "variables.title"

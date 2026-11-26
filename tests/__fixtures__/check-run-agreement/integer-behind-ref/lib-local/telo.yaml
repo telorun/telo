@@ -1,0 +1,14 @@
+# A library variable typing a member through its own `$defs`, read inside the
+# library.
+kind: Telo.Library
+metadata: { name: IntegerBehindLibLocal }
+variables:
+  cfg:
+    type: object
+    $defs: { N: { type: integer } }
+    properties: { n: { $ref: "#/$defs/N" } }
+exports: { resources: [read] }
+---
+kind: Telo.Value
+metadata: { name: read }
+value: !cel "variables.cfg.n + 1"

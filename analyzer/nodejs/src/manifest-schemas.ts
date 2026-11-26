@@ -31,6 +31,7 @@
  * `$ref`-ing it. Browser-safe: no Node built-ins.
  */
 
+import { inheritSchemaPlace, recordBuiltInSchema } from "./schema-provenance.js";
 import { BUILTIN_DOCUMENT_FILES, BUILTIN_FRAGMENT_FILES } from "./builtin-entries/index.js";
 import { refuseRosterMarkers } from "./builtin-entry-markers.js";
 import { SCHEMA_REGION_KEYS } from "./schema-region.js";
@@ -161,6 +162,55 @@ export function liftFragmentDefs<T extends Record<string, unknown>>(composed: T)
   if (Object.keys(lifted).length === 0) return composed;
   const rootDefs = isPlainObject(result.$defs) ? result.$defs : {};
   return { ...result, $defs: { ...lifted, ...rootDefs } } as unknown as T;
+}
+
+/** Keywords whose value is data, never a schema. */
+export const DATA_KEYWORDS: ReadonlySet<string> = new Set(["default", "const", "enum", "examples"]);
+/** Keywords whose value maps names an author chose to schemas. */
+export const NAME_MAP_KEYWORDS: ReadonlySet<string> = new Set([
+  "properties",
+  "patternProperties",
+  "$defs",
+  "definitions",
+  "dependentSchemas",
+  "dependencies",
+]);
+
+/**
+ * `slot` placed at `pointer` (`#/properties/cfg`) of a schema composed over it,
+ * each document-local reference it writes (`#`, `#/$defs/A`) rebased onto
+ * `pointer` — so the slot stays the root those references name, as it is
+ * where it is validated alone. A reserved fragment pointer is left for
+ * {@link liftFragmentDefs} to answer at the composed root. Copy-on-write, each
+ * copy read where its original is written; a slot writing no such reference is
+ * returned by identity.
+ */
+export function slotAtPointer<T extends Record<string, unknown>>(slot: T, pointer: string): T {
+  const rebased = (ref: string): string => {
+    if (ref !== "#" && !ref.startsWith("#/")) return ref;
+    const first = ref.slice(2).split("/");
+    if (first[0] === "$defs" && first[1] !== undefined && isHoistedFragmentDefKey(first[1])) return ref;
+    return `${pointer}${ref.slice(1)}`;
+  };
+  const visit = (node: unknown, names: boolean): unknown => {
+    if (Array.isArray(node)) {
+      const next = node.map((child) => visit(child, false));
+      return next.some((child, index) => child !== node[index]) ? next : node;
+    }
+    if (!isPlainObject(node)) return node;
+    let out: Record<string, unknown> | undefined;
+    for (const [key, value] of Object.entries(node)) {
+      let next: unknown = value;
+      if (names) next = visit(value, false);
+      else if (key === "$ref" && typeof value === "string") next = rebased(value);
+      else if (!DATA_KEYWORDS.has(key) && !key.startsWith("x-telo-")) next = visit(value, NAME_MAP_KEYWORDS.has(key));
+      if (next === value) continue;
+      out ??= { ...node };
+      setOwnProperty(out, key, next);
+    }
+    return out ? inheritSchemaPlace(out, node) : node;
+  };
+  return visit(slot, false) as T;
 }
 
 /** Recursively freeze, so the fragment set cannot be edited through any of the
@@ -307,7 +357,9 @@ function expandedFragment(name: string): ExpandedTemplate {
     template = { body, hoists: [...hoists] };
     expandedFragments.set(name, template);
   }
-  return { body: structuredClone(template.body), hoists: template.hoists };
+  const body = structuredClone(template.body);
+  recordBuiltInSchema(body);
+  return { body, hoists: template.hoists };
 }
 
 /** A private, expanded copy of a fragment, for a consumer that must EMBED one
@@ -500,6 +552,8 @@ function expandRoot(value: Record<string, unknown>, seen: Set<object>): Record<s
   if (name && RECURSIVE_FRAGMENTS.has(name)) {
     const localized = { ...value, $ref: `#/$defs/${hoistedDefKey(name)}`, [X_TELO_FRAGMENT]: name };
     hoistFragmentDef(localized, name);
+    // What is written beside the reference holds fragments of its own.
+    walkFragments(localized, seen, rootCtx(localized));
     return localized;
   }
   const expanded = name && fragmentBody(name) ? fragmentFor(value, { hoist: () => {} }, true) : undefined;
@@ -530,6 +584,8 @@ function walkFragments(node: unknown, seen: Set<object>, ctx: ExpandContext): vo
     const localized = localizeRecursiveFragment(value, ctx);
     if (localized) {
       container[key] = localized;
+      // What is written beside the reference holds fragments of its own.
+      walkFragments(localized, seen, childContext(ctx, key));
       continue;
     }
     const fragment = fragmentFor(value, ctx);
@@ -548,10 +604,8 @@ function walkFragments(node: unknown, seen: Set<object>, ctx: ExpandContext): vo
  * throws on any `$ref` that does not start with `#/`, and that throw takes the
  * whole canvas down, exactly as gating fragment expansion once did.
  *
- * Siblings written beside the `$ref` are kept, but draft-07 makes `$ref`
- * exclusive, so they reach the human surfaces (completion, hover, the editor)
- * and not AJV. A slot adds a `title` / `description` that way; a slot narrowing
- * the shape would be silently ignored and should declare its own schema.
+ * Siblings written beside the `$ref` are kept and expanded; the validators
+ * apply them beside the reference.
  */
 function localizeRecursiveFragment(
   value: unknown,
@@ -583,7 +637,7 @@ function hoistFragmentDef(target: Record<string, unknown>, name: string): void {
     // That node is exactly where an annotation like `x-telo-eval` is written,
     // so it is where the stamp has to be readable.
     const { body, hoists } = expandedFragment(next);
-    defs[key] = { ...body, [X_TELO_FRAGMENT]: next };
+    defs[key] = inheritSchemaPlace({ ...body, [X_TELO_FRAGMENT]: next }, body);
     pending.push(...hoists);
   }
 }

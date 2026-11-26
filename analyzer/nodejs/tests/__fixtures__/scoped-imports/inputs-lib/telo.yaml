@@ -1,0 +1,6 @@
+kind: Telo.Library
+metadata: { name: ScopedImportInputsLib }
+variables:
+  root: { type: string, x-telo-type: Telo.HostPath }
+  extra: { type: string, x-telo-type: Telo.HostPath }
+  count: { type: integer }

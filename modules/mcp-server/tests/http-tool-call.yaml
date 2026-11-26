@@ -63,7 +63,7 @@ steps:
     invoke: !ref callGetWeather
   - name: assertResponse
     inputs:
-      contentText: !cel "steps.callGetWeather.result.content[0].text"
+      contentText: !cel "steps.callGetWeather.result.content[0].?text.orValue('')"
     invoke:
       kind: Assert.Schema
       schema:

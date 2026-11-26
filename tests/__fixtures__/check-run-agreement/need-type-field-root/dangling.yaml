@@ -1,0 +1,9 @@
+# A need type field whose local reference names a place of the composed type,
+# never of the field it is validated as.
+kind: Telo.Application
+metadata: { name: NeedTypeFieldDangling, version: 1.0.0 }
+---
+kind: Telo.NeedType
+metadata: { name: Db }
+fields:
+  url: { type: string, allOf: [{ $ref: "#/properties/url" }] }

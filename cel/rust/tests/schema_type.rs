@@ -5,7 +5,8 @@
 //!
 //! No Node test file is the twin of this one: `json-schema-type.test.ts` reads every
 //! answer through `check`, and arrives with the checker. Every expected value is the
-//! Node build's answer, executed: `@telorun/cel 0.118.0 at 63c81d00`. What is this
+//! Node build's answer, executed: `@telorun/cel 0.118.0 at 63c81d00`, and its three member-meet
+//! rows at the change reading member meets as absence. What is this
 //! crate's own: pointer identity where Node asserts `===`, and the tests named
 //! `difference_…`, where this crate answers by its own rule and Node's answer is named
 //! in the test.
@@ -32,14 +33,14 @@ fn types_a_schema_as_node_does() {
         row("a null", "{\"type\":\"null\"}", &[], &[], "null", "null", &[], 1),
         row("an object with properties, closed", "{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\"},\"b\":{\"type\":\"integer\"}}}", &[], &[], "{a: string, b: int}", "map", &[], 3),
         row("properties beside additionalProperties true, open", "{\"properties\":{\"a\":{\"type\":\"string\"}},\"additionalProperties\":true}", &[], &[], "{a: string, ...}", "map", &[], 2),
-        row("properties beside a typed additionalProperties, closed", "{\"properties\":{\"a\":{\"type\":\"string\"}},\"additionalProperties\":{\"type\":\"integer\"}}", &[], &[], "{a: string}", "map", &[], 3),
+        row("properties beside a typed additionalProperties, its undeclared members typed", "{\"properties\":{\"a\":{\"type\":\"string\"}},\"additionalProperties\":{\"type\":\"integer\"}}", &[], &[], "{a: string, ...: int}", "map", &[], 3),
         row("an object of typed values", "{\"type\":\"object\",\"additionalProperties\":{\"type\":\"integer\"}}", &[], &[], "map<string, int>", "map<string, int>", &[], 2),
         row("an object that admits no field", "{\"type\":\"object\",\"additionalProperties\":false}", &[], &[], "{}", "map", &[], 1),
         row("an object that admits anything", "{\"type\":\"object\",\"additionalProperties\":true}", &[], &[], "map<string, dyn>", "map<string, dyn>", &[], 1),
         row("an object", "{\"type\":\"object\"}", &[], &[], "map<string, dyn>", "map<string, dyn>", &[], 1),
         row("an array of strings", "{\"type\":\"array\",\"items\":{\"type\":\"string\"}}", &[], &[], "list<string>", "list<string>", &[], 2),
         row("an array", "{\"type\":\"array\"}", &[], &[], "list<dyn>", "list", &[], 1),
-        row("a tuple", "{\"type\":\"array\",\"items\":[{\"type\":\"string\"}]}", &[], &[], "list<dyn>", "list", &["shape-not-read pointer= keywords=items"], 1),
+        row("a tuple", "{\"type\":\"array\",\"items\":[{\"type\":\"string\"}]}", &[], &[], "[string, ...dyn]", "list", &[], 2),
         row("items with no type", "{\"items\":{\"type\":\"integer\"}}", &[], &[], "list<int>", "list<int>", &[], 2),
         row("nested", "{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"object\",\"properties\":{\"b\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"c\":{\"type\":\"boolean\"}}}}}}}}", &[], &[], "{a: {b: list<{c: bool}>}}", "map", &[], 5),
         row("a type list", "{\"type\":[\"string\",\"null\"]}", &[], &[], "string|null", "string|null", &[], 1),
@@ -51,17 +52,17 @@ fn types_a_schema_as_node_does() {
         row("allOf merges records, the left's fields first", "{\"allOf\":[{\"properties\":{\"b\":{\"type\":\"string\"},\"a\":{\"type\":\"integer\"}}},{\"properties\":{\"c\":{\"type\":\"boolean\"},\"a\":{\"type\":\"integer\"}},\"additionalProperties\":true}]}", &[], &[], "{b: string, a: int, c: bool}", "map", &[], 7),
         row("allOf of two open records is open", "{\"allOf\":[{\"properties\":{\"a\":{}},\"additionalProperties\":true},{\"properties\":{\"b\":{}},\"additionalProperties\":true}]}", &[], &[], "{a: dyn, b: dyn, ...}", "map", &[], 5),
         row("allOf narrows a field", "{\"allOf\":[{\"properties\":{\"a\":{}}},{\"properties\":{\"a\":{\"type\":\"string\"}}}]}", &[], &[], "{a: string}", "map", &[], 5),
-        row("allOf whose halves disagree on a field", "{\"allOf\":[{\"properties\":{\"a\":{\"type\":\"integer\"}}},{\"properties\":{\"a\":{\"type\":\"string\"}}}]}", &[], &[], "dyn", "dyn", &["intersection-empty pointer= keywords=allOf"], 5),
+        row("allOf whose halves disagree on a field", "{\"allOf\":[{\"properties\":{\"a\":{\"type\":\"integer\"}}},{\"properties\":{\"a\":{\"type\":\"string\"}}}]}", &[], &[], "{-a}", "map", &[], 5),
         row("allOf of two scalars", "{\"allOf\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}", &[], &[], "dyn", "dyn", &["intersection-empty pointer= keywords=allOf"], 3),
         row("allOf of three, the third empty against the met two", "{\"allOf\":[{\"type\":[\"string\",\"integer\"]},{\"type\":[\"integer\",\"null\"]},{\"type\":\"string\"}]}", &[], &[], "dyn", "dyn", &["intersection-empty pointer= keywords=allOf"], 4),
         row("type beside anyOf", "{\"type\":\"string\",\"anyOf\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}", &[], &[], "string", "string", &[], 3),
         row("unions meet member by member", "{\"allOf\":[{\"type\":[\"string\",\"integer\",\"null\"]},{\"type\":[\"integer\",\"null\",\"boolean\"]}]}", &[], &[], "int|null", "int|null", &[], 3),
         row("a record meets a map of its values", "{\"allOf\":[{\"properties\":{\"a\":{\"type\":\"string\"}}},{\"additionalProperties\":{\"type\":\"string\"}}]}", &[], &[], "{a: string}", "map", &[], 5),
         row("a map meets a record", "{\"allOf\":[{\"additionalProperties\":{\"type\":\"string\"}},{\"properties\":{\"a\":{},\"b\":{\"type\":\"string\"}}}]}", &[], &[], "{a: string, b: string}", "map", &[], 6),
-        row("a record whose field no map value admits", "{\"allOf\":[{\"properties\":{\"a\":{\"type\":\"integer\"}}},{\"additionalProperties\":{\"type\":\"string\"}}]}", &[], &[], "dyn", "dyn", &["intersection-empty pointer= keywords=allOf"], 5),
+        row("a record whose field no map value admits", "{\"allOf\":[{\"properties\":{\"a\":{\"type\":\"integer\"}}},{\"additionalProperties\":{\"type\":\"string\"}}]}", &[], &[], "{-a}", "map", &[], 5),
         row("two maps meet", "{\"allOf\":[{\"additionalProperties\":{}},{\"additionalProperties\":{\"type\":\"integer\"}}]}", &[], &[], "map<string, int>", "map<string, int>", &[], 5),
         row("two lists meet", "{\"allOf\":[{\"type\":\"array\"},{\"items\":{\"type\":\"string\"}}]}", &[], &[], "list<string>", "list<string>", &[], 4),
-        row("two lists that cannot meet", "{\"allOf\":[{\"items\":{\"type\":\"integer\"}},{\"items\":{\"type\":\"string\"}}]}", &[], &[], "dyn", "dyn", &["intersection-empty pointer= keywords=allOf"], 5),
+        row("two lists that cannot meet", "{\"allOf\":[{\"items\":{\"type\":\"integer\"}},{\"items\":{\"type\":\"string\"}}]}", &[], &[], "[]", "list", &[], 5),
         row("an object meets a record", "{\"allOf\":[{\"type\":\"object\"},{\"properties\":{\"a\":{\"type\":\"string\"}}}]}", &[], &[], "{a: string}", "map", &[], 4),
         row("type beside a constant reads the type", "{\"type\":\"integer\",\"const\":5}", &[], &[], "int", "int", &[], 1),
         row("a string constant", "{\"const\":\"x\"}", &[], &[], "string", "string", &[], 1),
@@ -92,34 +93,34 @@ fn types_a_schema_as_node_does() {
         row("a reference to the root from the root", "{\"$ref\":\"#\"}", &[], &[], "dyn", "dyn", &["recursive pointer= reference=#"], 1),
         row("mutual recursion", "{\"$ref\":\"#/$defs/A\",\"$defs\":{\"A\":{\"properties\":{\"b\":{\"$ref\":\"#/$defs/B\"}}},\"B\":{\"properties\":{\"a\":{\"$ref\":\"#/$defs/A\"}}}}}", &[], &[], "{b: {a: dyn}}", "map", &["recursive pointer=/$defs/A reference=#/$defs/A"], 5),
         row("recursion through items", "{\"$defs\":{\"T\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/T\"}}},\"$ref\":\"#/$defs/T\"}", &[], &[], "list<dyn>", "list", &["recursive pointer=/$defs/T reference=#/$defs/T"], 3),
-        row("a node reached twice is read once", "{\"properties\":{\"a\":{\"$ref\":\"#/$defs/S\"},\"b\":{\"$ref\":\"#/$defs/S\"}},\"$defs\":{\"S\":{\"type\":\"string\",\"not\":{}}}}", &[], &[], "{a: string, b: string}", "map", &["keyword-not-read pointer=/$defs/S keywords=not"], 4),
+        row("a node reached twice is read once", "{\"properties\":{\"a\":{\"$ref\":\"#/$defs/S\"},\"b\":{\"$ref\":\"#/$defs/S\"}},\"$defs\":{\"S\":{\"type\":\"string\",\"unevaluatedProperties\":{}}}}", &[], &[], "{a: string, b: string}", "map", &["keyword-not-read pointer=/$defs/S keywords=unevaluatedProperties"], 4),
         row("a pointer names the document, not the node", "{\"type\":\"object\",\"properties\":{\"a\":{\"$ref\":\"#\"}}}", &["properties", "a"], &[], "{a: dyn}", "map", &["recursive pointer=/properties/a"], 2),
-        row("a node of a document", "{\"$defs\":{\"S\":{\"type\":\"boolean\",\"if\":{}}},\"properties\":{\"a\":{\"$ref\":\"#/$defs/S\"}}}", &["properties", "a"], &[], "bool", "bool", &["keyword-not-read pointer=/$defs/S keywords=if"], 2),
-        row("unread keywords before the children, an empty intersection after", "{\"if\":{},\"allOf\":[{\"type\":\"string\",\"not\":{}},{\"type\":\"integer\"}]}", &[], &[], "dyn", "dyn", &["keyword-not-read pointer= keywords=if", "keyword-not-read pointer=/allOf/0 keywords=not", "intersection-empty pointer= keywords=allOf"], 3),
-        row("every unread keyword in the list's order", "{\"then\":{},\"if\":{},\"else\":{}}", &[], &[], "dyn", "dyn", &["keyword-not-read pointer= keywords=else,if,then"], 1),
-        row("each unread keyword", "{\"$dynamicRef\":\"#a\",\"$recursiveRef\":\"#\",\"additionalItems\":{},\"dependentSchemas\":{},\"not\":{},\"patternProperties\":{},\"prefixItems\":[],\"unevaluatedItems\":{},\"unevaluatedProperties\":{},\"if\":{},\"then\":{},\"else\":{}}", &[], &[], "dyn", "dyn", &["keyword-not-read pointer= keywords=$dynamicRef,$recursiveRef,additionalItems,dependentSchemas,else,if,not,patternProperties,prefixItems,then,unevaluatedItems,unevaluatedProperties"], 1),
+        row("a node of a document", "{\"$defs\":{\"S\":{\"type\":\"boolean\",\"unevaluatedProperties\":{}}},\"properties\":{\"a\":{\"$ref\":\"#/$defs/S\"}}}", &["properties", "a"], &[], "bool", "bool", &["keyword-not-read pointer=/$defs/S keywords=unevaluatedProperties"], 2),
+        row("unread keywords before the children, an empty intersection after", "{\"unevaluatedProperties\":{},\"allOf\":[{\"type\":\"string\",\"unevaluatedProperties\":{}},{\"type\":\"integer\"}]}", &[], &[], "dyn", "dyn", &["keyword-not-read pointer= keywords=unevaluatedProperties", "keyword-not-read pointer=/allOf/0 keywords=unevaluatedProperties", "intersection-empty pointer= keywords=allOf"], 3),
+        row("every unread keyword in the list's order", "{\"unevaluatedProperties\":{},\"dependentSchemas\":{}}", &[], &[], "dyn", "dyn", &["keyword-not-read pointer= keywords=dependentSchemas,unevaluatedProperties"], 1),
+        row("each unread keyword", "{\"$dynamicRef\":\"#a\",\"$recursiveRef\":\"#\",\"dependentSchemas\":{},\"unevaluatedItems\":{},\"unevaluatedProperties\":{}}", &[], &[], "dyn", "dyn", &["keyword-not-read pointer= keywords=$dynamicRef,$recursiveRef,dependentSchemas,unevaluatedItems,unevaluatedProperties"], 1),
         row("a type naming no JSON type", "{\"type\":\"strng\"}", &[], &[], "dyn", "dyn", &["shape-not-read pointer= keywords=type"], 1),
         row("a type list naming two that are none", "{\"type\":[\"string\",\"nope\",\"nope2\"]}", &[], &[], "dyn", "dyn", &["shape-not-read pointer= keywords=type", "shape-not-read pointer= keywords=type"], 1),
         row("a type list holding a number", "{\"type\":[\"string\",5]}", &[], &[], "dyn", "dyn", &["shape-not-read pointer= keywords=type"], 1),
         row("a type list of two numbers", "{\"type\":[5,6]}", &[], &[], "dyn", "dyn", &["shape-not-read pointer= keywords=type", "shape-not-read pointer= keywords=type"], 1),
         row("a number in a type list beside properties", "{\"type\":[5],\"properties\":{\"a\":{\"type\":\"string\"}}}", &[], &[], "dyn", "dyn", &["shape-not-read pointer= keywords=type"], 1),
-        row("a number in a type list reports after a child's", "{\"allOf\":[{\"if\":{}}],\"type\":[5]}", &[], &[], "dyn", "dyn", &["keyword-not-read pointer=/allOf/0 keywords=if", "shape-not-read pointer= keywords=type"], 2),
-        row("an object type list reading the tuple twice", "{\"type\":[\"array\",\"array\"],\"items\":[{}]}", &[], &[], "list<dyn>", "list", &["shape-not-read pointer= keywords=items", "shape-not-read pointer= keywords=items"], 1),
-        row("a property named with a slash and a tilde", "{\"properties\":{\"a/b~c\":{\"if\":{}}}}", &[], &[], "{a/b~c: dyn}", "map", &["keyword-not-read pointer=/properties/a~1b~0c keywords=if"], 2),
+        row("a number in a type list reports after a child's", "{\"allOf\":[{\"unevaluatedProperties\":{}}],\"type\":[5]}", &[], &[], "dyn", "dyn", &["keyword-not-read pointer=/allOf/0 keywords=unevaluatedProperties", "shape-not-read pointer= keywords=type"], 2),
+        row("an object type list reading the tuple twice", "{\"type\":[\"array\",\"array\"],\"items\":[{}]}", &[], &[], "[dyn, ...dyn]", "list", &[], 2),
+        row("a property named with a slash and a tilde", "{\"properties\":{\"a/b~c\":{\"unevaluatedProperties\":{}}}}", &[], &[], "{a/b~c: dyn}", "map", &["keyword-not-read pointer=/properties/a~1b~0c keywords=unevaluatedProperties"], 2),
         row("field order is the object's own", "{\"properties\":{\"b\":{},\"10\":{},\"a\":{},\"2\":{}}}", &[], &[], "{2: dyn, 10: dyn, b: dyn, a: dyn}", "map", &[], 5),
-        row("the additional schema is read beside properties", "{\"properties\":{\"a\":{}},\"additionalProperties\":{\"type\":\"string\",\"if\":{}}}", &[], &[], "{a: dyn}", "map", &["keyword-not-read pointer=/additionalProperties keywords=if"], 3),
+        row("the additional schema is read beside properties", "{\"properties\":{\"a\":{}},\"additionalProperties\":{\"type\":\"string\",\"unevaluatedProperties\":{}}}", &[], &[], "{a: dyn, ...: string}", "map", &["keyword-not-read pointer=/additionalProperties keywords=unevaluatedProperties"], 3),
         row("a resolver names a type", "{\"brand\":\"Money\",\"type\":\"integer\"}", &[], &[], "Money", "Money", &[], 1),
         row("a resolver names a type with arguments", "{\"brand\":\"Pair\",\"args\":[\"int\",\"list<string>\"]}", &[], &[], "Pair<int, list<string>>", "Pair<int, list<string>>", &[], 1),
-        row("a resolver names a type nothing registers", "{\"brand\":\"Nope\",\"type\":\"integer\",\"if\":{}}", &[], &[], "int", "int", &["named-type-unregistered pointer= keywords= type=Nope", "keyword-not-read pointer= keywords=if"], 1),
-        row("a named type skips the node's own keywords", "{\"brand\":\"Money\",\"if\":{}}", &[], &[], "Money", "Money", &[], 1),
-        row("a document crossing", "{\"properties\":{\"a\":{\"$ref\":\"ext:a\"}}}", &[], &[doc("ext:a", "{\"properties\":{\"x\":{\"if\":{}}}}", &[])], "{a: {x: dyn}}", "map", &["keyword-not-read pointer=/properties/x through=/properties/a keywords=if"], 4),
-        row("a crossing skips the referring node's keywords", "{\"properties\":{\"a\":{\"$ref\":\"ext:a\",\"if\":{}}}}", &[], &[doc("ext:a", "{\"type\":\"string\"}", &[])], "{a: string}", "map", &[], 3),
-        row("the first crossing is kept", "{\"properties\":{\"a\":{\"$ref\":\"ext:a\"}}}", &[], &[doc("ext:a", "{\"properties\":{\"b\":{\"$ref\":\"ext:b\"}}}", &[]), doc("ext:b", "{\"properties\":{\"c\":{\"not\":{}}}}", &[])], "{a: {b: {c: dyn}}}", "map", &["keyword-not-read pointer=/properties/c through=/properties/a keywords=not"], 6),
-        row("a crossing into a node of a document", "{\"properties\":{\"a\":{\"$ref\":\"ext:c\"}}}", &[], &[doc("ext:c", "{\"$defs\":{\"C\":{\"$ref\":\"#/$defs/D\"},\"D\":{\"type\":\"string\",\"not\":{}}}}", &["$defs", "C"])], "{a: string}", "map", &["keyword-not-read pointer=/$defs/D through=/properties/a keywords=not"], 4),
+        row("a resolver names a type nothing registers", "{\"brand\":\"Nope\",\"type\":\"integer\",\"unevaluatedProperties\":{}}", &[], &[], "int", "int", &["named-type-unregistered pointer= keywords= type=Nope", "keyword-not-read pointer= keywords=unevaluatedProperties"], 1),
+        row("a named type skips the node's own keywords", "{\"brand\":\"Money\",\"unevaluatedProperties\":{}}", &[], &[], "Money", "Money", &[], 1),
+        row("a document crossing", "{\"properties\":{\"a\":{\"$ref\":\"ext:a\"}}}", &[], &[doc("ext:a", "{\"properties\":{\"x\":{\"unevaluatedProperties\":{}}}}", &[])], "{a: {x: dyn}}", "map", &["keyword-not-read pointer=/properties/x through=/properties/a keywords=unevaluatedProperties"], 4),
+        row("a crossing skips the referring node's keywords", "{\"properties\":{\"a\":{\"$ref\":\"ext:a\",\"unevaluatedProperties\":{}}}}", &[], &[doc("ext:a", "{\"type\":\"string\"}", &[])], "{a: string}", "map", &[], 3),
+        row("the first crossing is kept", "{\"properties\":{\"a\":{\"$ref\":\"ext:a\"}}}", &[], &[doc("ext:a", "{\"properties\":{\"b\":{\"$ref\":\"ext:b\"}}}", &[]), doc("ext:b", "{\"properties\":{\"c\":{\"unevaluatedProperties\":{}}}}", &[])], "{a: {b: {c: dyn}}}", "map", &["keyword-not-read pointer=/properties/c through=/properties/a keywords=unevaluatedProperties"], 6),
+        row("a crossing into a node of a document", "{\"properties\":{\"a\":{\"$ref\":\"ext:c\"}}}", &[], &[doc("ext:c", "{\"$defs\":{\"C\":{\"$ref\":\"#/$defs/D\"},\"D\":{\"type\":\"string\",\"unevaluatedProperties\":{}}}}", &["$defs", "C"])], "{a: string}", "map", &["keyword-not-read pointer=/$defs/D through=/properties/a keywords=unevaluatedProperties"], 4),
         row("a recursive crossing", "{\"properties\":{\"a\":{\"$ref\":\"ext:r\"}}}", &[], &[doc("ext:r", "{\"properties\":{\"again\":{\"$ref\":\"ext:r\"}}}", &[])], "{a: {again: dyn}}", "map", &["recursive pointer= through=/properties/a"], 4),
-        row("a crossing reached twice is read once", "{\"properties\":{\"a\":{\"$ref\":\"ext:s\"},\"b\":{\"$ref\":\"ext:s\"}}}", &[], &[doc("ext:s", "{\"type\":\"string\",\"not\":{}}", &[])], "{a: string, b: string}", "map", &["keyword-not-read pointer= through=/properties/a keywords=not"], 4),
-        row("a crossing into the document's own node reads it under a second root", "{\"$defs\":{\"S\":{\"type\":\"string\",\"not\":{}}},\"properties\":{\"a\":{\"$ref\":\"ext:own\"},\"b\":{\"$ref\":\"#/$defs/S\"}}}", &[], &[doc_in_main("ext:own", &["$defs", "S"], true)], "{a: string, b: string}", "map", &["keyword-not-read pointer= through=/properties/a keywords=not", "keyword-not-read pointer=/$defs/S keywords=not"], 5),
-        row("a crossing into the document's own node under its root is the same read", "{\"$defs\":{\"S\":{\"type\":\"string\",\"not\":{}}},\"properties\":{\"a\":{\"$ref\":\"ext:same\"},\"b\":{\"$ref\":\"#/$defs/S\"}}}", &[], &[doc_in_main("ext:same", &["$defs", "S"], false)], "{a: string, b: string}", "map", &["keyword-not-read pointer= through=/properties/a keywords=not"], 4),
+        row("a crossing reached twice is read once", "{\"properties\":{\"a\":{\"$ref\":\"ext:s\"},\"b\":{\"$ref\":\"ext:s\"}}}", &[], &[doc("ext:s", "{\"type\":\"string\",\"unevaluatedProperties\":{}}", &[])], "{a: string, b: string}", "map", &["keyword-not-read pointer= through=/properties/a keywords=unevaluatedProperties"], 4),
+        row("a crossing into the document's own node reads it under a second root", "{\"$defs\":{\"S\":{\"type\":\"string\",\"unevaluatedProperties\":{}}},\"properties\":{\"a\":{\"$ref\":\"ext:own\"},\"b\":{\"$ref\":\"#/$defs/S\"}}}", &[], &[doc_in_main("ext:own", &["$defs", "S"], true)], "{a: string, b: string}", "map", &["keyword-not-read pointer= through=/properties/a keywords=unevaluatedProperties", "keyword-not-read pointer=/$defs/S keywords=unevaluatedProperties"], 5),
+        row("a crossing into the document's own node under its root is the same read", "{\"$defs\":{\"S\":{\"type\":\"string\",\"unevaluatedProperties\":{}}},\"properties\":{\"a\":{\"$ref\":\"ext:same\"},\"b\":{\"$ref\":\"#/$defs/S\"}}}", &[], &[doc_in_main("ext:same", &["$defs", "S"], false)], "{a: string, b: string}", "map", &["keyword-not-read pointer= through=/properties/a keywords=unevaluatedProperties"], 4),
         row("the resolver is asked about an array", "{\"properties\":{\"a\":{\"$ref\":\"#/$defs/list\"}},\"$defs\":{\"list\":[]}}", &[], &[], "{a: dyn}", "map", &[], 3),
         row("a node that is no object", "true", &[], &[], "dyn", "dyn", &[], 0),
         row("a property that is no object", "{\"properties\":{\"a\":true,\"b\":5}}", &[], &[], "{a: dyn, b: dyn}", "map", &[], 1),
@@ -128,7 +129,7 @@ fn types_a_schema_as_node_does() {
         row("additionalProperties holding null", "{\"additionalProperties\":null}", &[], &[], "map<string, dyn>", "map<string, dyn>", &[], 1),
         row("additionalProperties holding a list", "{\"additionalProperties\":[]}", &[], &[], "map<string, dyn>", "map<string, dyn>", &[], 2),
         row("items holding true", "{\"items\":true}", &[], &[], "list<dyn>", "list", &[], 1),
-        row("items holding false", "{\"items\":false}", &[], &[], "list<dyn>", "list", &[], 1),
+        row("items holding false, a list holding nothing", "{\"items\":false}", &[], &[], "[]", "list", &[], 1),
         row("items holding null", "{\"items\":null}", &[], &[], "list<dyn>", "list", &[], 1),
         row("items holding a number", "{\"items\":5}", &[], &[], "list<dyn>", "list", &[], 1),
         row("an empty node", "{}", &[], &[], "dyn", "dyn", &[], 1),
@@ -158,14 +159,14 @@ fn object(entries: Vec<(&str, Arc<JsonValue>)>) -> Arc<JsonValue> {
 #[test]
 fn reads_a_node_two_places_share_once() {
     // Node: one object at `properties.a` and at `properties.b.items`.
-    let shared = json(r#"{"type":"string","not":{}}"#);
+    let shared = json(r#"{"type":"string","unevaluatedProperties":{}}"#);
     let node = object(vec![(
         "properties",
         object(vec![("a", Arc::clone(&shared)), ("b", object(vec![("items", Arc::clone(&shared))]))]),
     )]);
     let result = schema_type(&JsonSchemaDocument { node, root: None }, &SchemaConversion::default()).expect("reads");
     assert_eq!(described(&result.ty), "{a: string, b: list<string>}");
-    assert_eq!(report_lines(&result), ["keyword-not-read pointer=/properties/a keywords=not"]);
+    assert_eq!(report_lines(&result), ["keyword-not-read pointer=/properties/a keywords=unevaluatedProperties"]);
 }
 
 #[test]
@@ -283,7 +284,7 @@ fn types_a_field_map_as_node_does() {
     assert_eq!(described(&ty), "{2: {}, 10: string, b: int, a: {y: list<int>, x: map<string, bool>}}");
     assert_eq!(format_type(&ty, true), "map");
     let CelType::Record(record) = &ty else { panic!("a record") };
-    assert!(!record.open && record.name.is_none());
+    assert!(record.additional_fields().is_none() && record.name.is_none());
     assert_eq!(described(&field_map_type(&PropertyMap::new(), &read).expect("reads")), "{}");
 
     // `(the field map, the class and text Node throws)`.
@@ -381,9 +382,9 @@ fn difference_a_read_keyword_of_a_json_type_its_shape_excludes_is_read_as_absent
         (r#"{"$ref":5}"#, "dyn", &["shape-not-read pointer= keywords=$ref"]),
         (r#"{"$ref":null,"type":"string"}"#, "string", &["shape-not-read pointer= keywords=$ref"]),
         (
-            r#"{"type":5,"allOf":"x","$ref":1,"if":{}}"#,
+            r#"{"type":5,"allOf":"x","$ref":1,"unevaluatedProperties":{}}"#,
             "dyn",
-            &["keyword-not-read pointer= keywords=if", "shape-not-read pointer= keywords=$ref,allOf,type"],
+            &["keyword-not-read pointer= keywords=unevaluatedProperties", "shape-not-read pointer= keywords=$ref,allOf,type"],
         ),
         (r#"{"properties":{"a":{"enum":1}}}"#, "{a: dyn}", &["shape-not-read pointer=/properties/a keywords=enum"]),
     ]);

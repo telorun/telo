@@ -6,6 +6,7 @@ import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
 import {
+  assertValueDepth,
   createAjv,
   judgeSchemaFindings,
   ManifestRootSchema,
@@ -16,6 +17,7 @@ import {
   TELO_FORMATS,
   VALUE_TYPE_KEYWORD_VERSION,
   type SchemaIssue,
+  type OwnValuePositions,
   type SchemaNodeFindings,
   type TeloFormatEntry,
   valueTypeDefaultFiller,
@@ -249,11 +251,18 @@ function stripTeloAnnotations(value: unknown, nameKeyed = false): unknown {
   return out;
 }
 
+/** A compiled validator whose depth count may take the positions of values
+ *  validated on their own. */
+interface CountedValidator extends DataValidator {
+  validate(data: unknown, ownValues?: OwnValuePositions): void;
+  isValid(data: unknown, ownValues?: OwnValuePositions): boolean;
+}
+
 export class SchemaValidator {
   private ajv: SchemaAjv;
   private typeRules = new Map<string, TypeRule[]>();
   private rawSchemas = new Map<string, object>();
-  private compiledValidators = new WeakMap<object, DataValidator>();
+  private compiledValidators = new WeakMap<object, CountedValidator>();
   private cacheDir: string | undefined;
   /** When false, the disk cache is read-only: compiled validators are still
    *  loaded from `cacheDir` but never written back. `telo run --no-cache-write`
@@ -264,7 +273,7 @@ export class SchemaValidator {
    *  but content-equal schema objects share one compile across the kernel
    *  process — `compiledValidators` is keyed by object identity and would
    *  miss those cases. */
-  private hashCache = new Map<string, DataValidator>();
+  private hashCache = new Map<string, CountedValidator>();
   /** Hashes whose compile went through the disk layer. A `persist: false`
    *  compile populates `hashCache` too — a repeat within the process should
    *  still collapse — but must not be mistaken for a baked entry: returning it
@@ -439,8 +448,18 @@ export class SchemaValidator {
    *  so persisting it only ever produced a miss-then-write on every boot — the
    *  EACCES noise on a read-only image. Declining to own what it cannot warm is
    *  the cache being honest, not a capability given up: the in-memory layers
-   *  still collapse a repeat compile within the process. */
-  compile(schema: any, options?: { persist?: boolean }): DataValidator {
+   *  still collapse a repeat compile within the process.
+   *
+   *  `ownValues` names the values the validated value holds that are validated on
+   *  their own, each counted as a leaf of its depth (`own-value-positions.ts`). */
+  compile(schema: any, options?: { persist?: boolean; ownValues?: OwnValuePositions }): DataValidator {
+    const shared = this.compileShared(schema, options);
+    const ownValues = options?.ownValues;
+    if (!ownValues) return shared;
+    return { validate: (data) => shared.validate(data, ownValues), isValid: (data) => shared.isValid(data, ownValues) };
+  }
+
+  private compileShared(schema: any, options?: { persist?: boolean }): CountedValidator {
     if (schema && typeof schema === "object") {
       const cached = this.compiledValidators.get(schema as object);
       if (cached) return cached;
@@ -486,7 +505,10 @@ export class SchemaValidator {
           | Record<string, any>
           | undefined,
     );
-    const check = (data: any): boolean => {
+    // A value nested past the shared limit is refused unvalidated, whatever this
+    // engine's stack could follow (`ValueDepthExceededError`).
+    const check = (data: any, ownValues?: OwnValuePositions): boolean => {
+      assertValueDepth(data, ownValues);
       fillDefaults?.(data);
       const { view, context } = bigIntView(data);
       const ok = validate(view, context);
@@ -494,9 +516,9 @@ export class SchemaValidator {
       return ok;
     };
 
-    const validator = {
-      validate: (data: any) => {
-        if (!check(data)) {
+    const validator: CountedValidator = {
+      validate: (data: any, ownValues?: OwnValuePositions) => {
+        if (!check(data, ownValues)) {
           // The first failure is reported, its unions decided by the judge.
           const judged = judgeSchemaFindings(validate.errors, {
             value: data,
@@ -516,7 +538,7 @@ export class SchemaValidator {
           );
         }
       },
-      isValid: (data: any) => check(data),
+      isValid: (data: any, ownValues?: OwnValuePositions) => check(data, ownValues),
     };
 
     this.hashCache.set(hash, validator);

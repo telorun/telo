@@ -1,0 +1,21 @@
+# A named shape refers back to itself in place only where a choice puts the
+# reference into its union: one finding, labelled with that choice, and no value
+# is validated against the shape there.
+kind: Telo.Application
+metadata: { name: InPlaceCycleChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Answer }
+schema:
+  anyOf:
+    - !if
+      if: !cel "variables.flag1"
+      then: { $ref: "telo://Self/Answer" }
+      else: { type: integer }
+    - { type: string }
+---
+kind: Telo.Value
+metadata: { name: answer }
+outputType: !ref Answer
+value: true

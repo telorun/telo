@@ -1,0 +1,17 @@
+# A variable whose entry types a member through its own `$defs`: read as typed.
+kind: Telo.Application
+metadata: { name: VariableLocalRef }
+variables:
+  cfg:
+    env: CFG
+    type: object
+    default: { a: { x: "1" } }
+    properties: { a: { $ref: "#/$defs/A" } }
+    $defs: { A: { type: object, properties: { x: { type: string } } } }
+targets:
+  - name: read
+    invoke: !ref read
+---
+kind: Telo.Value
+metadata: { name: read }
+value: !cel "variables.cfg.a.x + 1"

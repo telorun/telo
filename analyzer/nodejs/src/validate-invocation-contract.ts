@@ -139,6 +139,7 @@ function checkRefSlotWiring(
             message: schemaNestingExceededMessage(
               `${m.kind}/${resource.name}`,
               `the call \`run()\` makes of '${name}' at '${path}'`,
+              outcome,
             ),
             data: { resource, filePath, path },
           });

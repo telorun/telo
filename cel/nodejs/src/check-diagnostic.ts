@@ -13,6 +13,7 @@
  * sub-range offset means something different the moment the scalar is re-indented.
  */
 
+import type { SchemaDependency } from "./schema-dependencies.js";
 import type { SourceRange } from "./syntax-tree.js";
 
 /**
@@ -65,6 +66,19 @@ export interface CelCheckDiagnostic {
   readonly message: string;
   readonly range: SourceRange;
   readonly fix?: CelDiagnosticFix;
+  /**
+   * Present only when the host asked (`schema-nodes.ts`): on a `CEL_UNKNOWN_FIELD`, a
+   * `CEL_TYPE_ERROR` or a `CEL_NULLABLE_ACCESS`, the schema node the verdict was judged at —
+   * the node whose properties lack the member, the node an offending operand or argument was
+   * read from, the nullable node dereferenced. Absent where the subject was not read from one.
+   */
+  readonly schemaNode?: SchemaDependency;
+  /**
+   * On a `CEL_UNKNOWN_FIELD` refusing a member the schema declares absent — one whose
+   * schema admits no value, read by something other than a presence test — `true`, so a
+   * host tells it from an undeclared member without reading the message.
+   */
+  readonly absent?: true;
 }
 
 /**

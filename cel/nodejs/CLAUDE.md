@@ -393,16 +393,108 @@ a ranged `CEL_UNKNOWN_FIELD`, where an engine typing an object as a flat field m
 Conversion is memoized by node identity within a document and happens **once per registration**, which is
 the property the cost bound rests on: checking does not get more expensive as a schema gets deeper, and a
 shape referenced a hundred times converts once (`tests/checker-cost.test.ts`, on a fixture whose every
-level is reached through a reference and merged out of two `allOf` halves).
+level is reached through a reference and merged out of two `allOf` halves). **An intersection's
+cost grows linearly with the depth of the shapes it composes**, counted rather than timed — the
+holders the containers it built keep (`heldHolders`), the containers built (`builtContainers`) and
+the entries of the readings built (`readsEntries`), each within 2.5× per doubled depth on a chain
+meeting the level below with itself, on two chains of equal content and on a chain of unions —
+because a conversion answers each meet once, the ROBDD apply pattern: **holders are interned** by
+the side, member and typing they stand for and **kept canonical** (each distinct holder in
+first-occurrence order, at most twice — twice already says several parts hold a member).
+**Unique table.** Every type a meet builds is interned per conversion. A container is keyed by its
+kind; the identities of its members (fields, element, value, positions, rest, pattern parts);
+`fieldEnums`, `absentFields`, `additionalFields`; for each member, its canonical holder list; and
+for each absent name, its canonical holder list and whether some part declares it absent. A union is
+keyed by its members' identities in order. The key covers every side-table entry that placement or
+the listing reads. A second meet producing an equal key answers the interned type, whose side tables
+are written once. **Each meet is answered once** per conversion by (left, right, orientation) (the
+computed table, which also holds the meets nothing observes), a repeat pushing the one reading its
+comparison recorded where the meet would have pushed it and marking again a pass past
+`UNION_EXPANSION_LIMIT` — so `(X∧X)∧(X∧X)` meets pairs met before and answers `X∧X`, its key equal
+to `X∧X`'s. **An interned union is never placed.** Each node read whose own type is a union a meet
+built places a shallow copy of it at that node. The copy costs at most `UNION_EXPANSION_LIMIT`
+members, once per node read. Containers built by a meet keep the interned union. And **readings are
+a shared graph**: a joined reading holds its parts rather than a copy, and a check lists and reads
+each part once, in the order the copy would have been read, so listing a read through the met type
+is linear in its depth too. Negative controls, recorded with the gates, red in both engines:
+dropping the unique table turns every diamond gate red; dropping union interning alone turns the
+union-diamond gate red; placing the interned union at the first node read (instead of always
+copying) turns `union_meet_field_after_node` red; copying no union turns
+`union_meet_second_node_unknown` and `union_meet_field_after_node_unknown` red; replaying nothing on
+a computed-table hit turns the `meetSharing` rows red.
+
+**A walk over a type visits each distinct type object once.** Type graphs are shared: a reference is
+read once, and a meet's results are interned. So every whole-type walk memoizes by identity for the
+duration of the call: one-type walks (`withoutParameters`, the result origins' `holdsOptional`, the
+equality operands' null removal at every depth) answer each type object once. Equality,
+assignability and the join answer at once when both sides are the same object, and answer each
+identity pair once. The meet answers each identity pair once, through the computed table, and never
+answers at once on the same object. A member that several parts type, including equal parts and one
+shape reached twice, is placed nowhere, so a type met with itself is not the type alone (the row
+`telo/meetSharing/one_shape_met_with_itself_at_a_read`; the identity shortcut in `intersectTypes`
+turns it red in both engines). The environment digest's writer writes each distinct type once and
+refers back to it after that. Type graphs hold no cycle (recursion is the declared `dyn`), so a memo
+of results is enough. Counted, not timed (`typeVisits`, `tests/checker-cost.test.ts`): on `d_i =
+{properties: {a: {$ref: d_{i-1}}, b: {$ref: d_{i-1}}}}`, the visits registering it and checking `x`
+or `x.a.b.a` make satisfy v(24) ≤ 2.5·v(12) and v(48) ≤ 2.5·v(24), and a check of `x` at depth 64
+completes; dropping the memo from `withoutParameters` alone turns the gate red, and so does dropping
+it from `holdsOptional` alone.
+
+**A printed type is written whole up to `TYPE_TEXT_NODE_LIMIT` type nodes, then cut.** The limit is
+64, declared as data beside the union expansion limit (`src/type-text.json`) and read by both
+engines. Printing walks the type in pre-order: a union's members in order, a container's arguments
+in order, and a record as its one name. Each type node written counts one. The node that would
+exceed the limit is written `...` and printing stops there, every open bracket closed. So the text is
+bounded by the limit and the depth, whatever the type's size. One formatter serves `typeName` /
+`format_type` in both engines and every message that names a type, so a check result and its
+diagnostics always print a type the same way. Nothing reads a printed type back as a type, since the
+digest has its own writer and fitting a value never compares printed names. A union writes only its
+members, so it counts none of its own.
+
+**A printed type is display only, and nothing decides behaviour from it** — no parse, no equality, no
+lookup keyed by it, a one-node name included. A reader that branches on a type reads the CEL type:
+its `kind`, and the engine's own predicates and registry. A type read from type-expression text (a
+signature, a parameter, a declared variable) is a tree linear in that text, so `exactTypeText`
+writes it whole. That is its identity in a signature's text, a dispatch key and the environment
+listing. A type converted from a schema has no printed identity. The environment digest's writer
+identifies it, each distinct type written once with back-references. The cut formatter displays
+it, including the namespace listing's `name(…): <returns>` line for a result declared as a schema.
+`NamespaceListing.functions` lists each function as `{ declaration, resultType? }`: `declaration`
+is the signature, or `name(…): <result>` cut past its bound; `resultType` is the CEL type of a
+result declared as a JSON Schema, present exactly then, and the digest reads it structurally. A
+named type's arguments are compared as types (`typesEqual`, invariant, memoized), never by printed
+text. An unnamed record prints as `map`, so comparing by text made `Name<{a: int}>` equal to
+`Name<{b: string}>`. That contradicts the declared invariance of type parameters, and it costs the
+size of the printed tree. So a host reads a type, never its text: a namespaced call's
+`ResolvedCall.argumentTypes` holds the argument types themselves and `argumentTypeNames` the text
+each prints as, and `convertsToString(type)` answers whether `string(x)` over the type resolves, as
+the checker resolves a call — as written, then over a union's members.
+
+Rows `telo/typeText/<case>` pin a type of exactly 64 nodes printed whole, one of 65 cut at the 65th,
+and the `oneOf` array/object diamond 16 deep with its cut text; `telo/typeArguments/records_of_two_shapes`
+pins two records as a named type's arguments refused as `CEL_TYPE_ARGUMENT_MISMATCH`, red under text
+comparison. The printing gate holds the printed type of `x` at depths 16, 32 and 64 to exactly 64
+type nodes followed by one `...`, its length within one constant the test declares, the same at
+every depth, a check of `x` at depth 64 completing; a namespaced function whose result is that
+diamond declared as a schema lists in the same bounded text, its digest work linear in depth, and
+two such results differing past the cut digest apart. Removing the cut turns the depth-16 row and
+the gate red.
 
 **Nothing a schema says may fall through to `dyn` in silence**, and that is a stronger rule than "every
 keyword is read". The conversion answers a type **plus a report of every node it could not judge**, each
 by JSON Pointer (`UnjudgedSchemaNode`, reached through `environment.schemaReports()`), with one reason
-from a closed set: `keyword-not-read`, `shape-not-read` (a tuple `items`, a `type` naming no JSON type),
+from a closed set: `keyword-not-read`, `shape-not-read` (`prefixItems` beside `additionalItems` or an
+array `items`, a `type` naming no JSON type, a `not` whose subschema says more about a type than `type`,
+`const` and `enum` do, a `patternProperties` pattern RE2 refuses, and a meet whose unions would build more
+than `UNION_EXPANSION_LIMIT` members),
 `reference-unresolved`, `intersection-empty`, and `named-type-unregistered` — the host's resolver naming
-a type nothing is registered under, which is the host disagreeing with itself and was the one silent
-fall-through left after the rest: the structural reading still stands and the disagreement is reported
-beside it. It **reports rather than refuses** because a node it cannot type is usually a third party's
+a type that is neither one of CEL's own nor registered, which is the host disagreeing with itself and was
+the one silent fall-through left after the rest: the structural reading still stands and the disagreement
+is reported beside it. **A name the resolver answers is read as the type-expression grammar reads a name**
+(`resolveTypeName`, the one resolution the grammar and the conversion share): CEL's own types first —
+`bytes`, `uint`, `list`, `optional`, the well-known `google.protobuf.Timestamp` and
+`google.protobuf.Duration` — then the registered ones, its arguments read as type expressions, so a node
+answered `bytes` is `bytes` at any depth of the schema rather than a fall-through to its structure. It **reports rather than refuses** because a node it cannot type is usually a third party's
 data — a schema shipped inside something a host merely loaded — so
 throwing at registration would turn someone else's schema into a crash, while typing it `dyn` quietly is
 the hole itself. The consumer that knows where the schema was written is the one that can anchor a
@@ -433,10 +525,142 @@ to**, the document travelling with the node as the descent moves between documen
 **declared** (`recursive`) rather than reported: the descent terminates and the outer reading is what the
 consumer gets.
 
+**A record's undeclared members have a type of their own** (`RecordType.additionalFields`, absent on a
+closed record): `properties` beside `additionalProperties: <schema>` types every member the record does
+not declare as that schema, `true` as `dyn`, and `false` — or no `additionalProperties` — closes it. So
+a select, a literal-key index, `.?`, `[?'k']` or `has()` of an undeclared member is typed
+`additionalFields` (its `schemaNode` and dependency the `additionalProperties` node), and on a closed
+record it is `CEL_UNKNOWN_FIELD`. A computed-key index reads any member the record may hold: the **union**
+of every field type, every pattern entry admitting a value in every part, each part's `additionalFields`
+and the record's own — `dyn` where one of them is `dyn` or the record holds none — each type kept with
+its node, so the read gives one origin per distinct node and `x[k] + 1` over `{a: string, b: integer}`
+is refused naming the `string` combination. **A record stands wherever a string-keyed map does** — its fields, its patterns' types and
+`additionalFields` are each judged against the map's value type, `dyn` assigning anywhere — so `'k' in
+self.m` checks over one, and one declaring an `int` field is still refused as a `map<string, string>`
+argument. There is no `open` flag: whether a record is open is whether it carries `additionalFields`.
+
+**`patternProperties` is read by JSON Schema's applicability, one schema part at a time**
+(`RecordType.patternParts`, absent rather than empty). Each part carries the entries one schema part
+declares, in written order — a pattern and the type it gives, absent on an entry admitting no value — and
+its `additionalFields`: the type the part gives a member another part's pattern matches and none of its
+own does, absent where the part is closed or open to anything. A record read from one schema node has one
+part with no `additionalFields`. A pattern is matched as `matches` reads one — RE2, unanchored search —
+and one RE2 refuses (a lookaround, a backreference) is `shape-not-read`, keyword `patternProperties`, at
+the record's node: no pattern of it is read and every member the record does not declare is `dyn`; that is
+the only report patterns raise. A member read by a literal name (`.`, a literal index, `.?`, `[?'k']`,
+`has()`) is typed by its `properties` entry where there is one (already met at conversion with every
+pattern matching it); otherwise, where some part's pattern matches it, by the meet over the parts of each
+part's matching entries, else that part's `additionalFields` (a part carrying neither says nothing); and by
+the record's own `additionalFields` only where no pattern matches. It is placed at the one node that
+applies (`…/properties/<name>`, `…/patternProperties/<pattern>`, or the `additionalProperties` a part's
+undeclared members came from) and nowhere where several do, the read listing each (a meet at the read
+lists each type whole, since nothing placed beneath it). A pattern admitting no value makes every name it
+matches absent, and so does a meet that cannot hold. A closed record refusing a name lists its patterns,
+each text once (`"x" is not declared here (declared: a1), and matches none of its patterns (^a)`). One
+record with patterns stands where another does exactly when the two are equal: two records differing only
+in a pattern's text are different types, so a conditional joins them as a map. Record equality compares
+parts in any order, each by its `additionalFields` and its patterns by text in any order; the environment
+digest writes each part with its entries sorted and the parts sorted, the own-type agreement carries a
+node's pattern texts beside its property names, and `schemaDependencies` carries a pattern edge per part
+and entry position and one per part's `additionalFields`, keyed so no property name can stand for one.
+
+**A schema that admits no value is absence where absence can be stated** — `false`, `not: {}`, `not:
+true`, a conditional neither branch of which can hold. At a property the member is declared absent
+(`RecordType.absentFields`, never a declared field, absent rather than empty): every read but a presence read is `CEL_UNKNOWN_FIELD` naming the property's node and
+marked `absent: true`, so a host tells it from an undeclared member without reading its words, open record or closed, while `has()`
+is `bool` and `.?m` / `[?'m']` `optional<dyn>`; a union member declaring `m` absent counts as a shape
+lacking it. A closed record keeps its absent names, because closed means undeclared to the reader, not
+excluded from the value, and the field-wise `allOf` meet depends on the difference. At
+`additionalProperties` it closes the record (`{not: {}}` and `false` are one type), at
+a tuple's rest it closes the tuple, at a position it ends the tuple there, and a union branch admitting
+none is dropped. **So does every meet that cannot hold at a member position of a container a meet
+builds**: a field met with a pattern, with another part's `properties` entry, or with two patterns at a
+read becomes absent; a pattern entry admits no value; undeclared members that cannot meet close the record
+(as a part's `additionalFields`, it is absent); a plain list's element becomes a tuple of no positions and
+no rest; a map's value makes it a closed record of no fields. A node whose own parts cannot both hold (two
+scalars, say) admits no value and is read as absence by its holder. At a registration's root it has
+nowhere to be stated and is `intersection-empty` — the one place that reason is raised.
+`not: {required: [m]}` is no absence: `required` constrains a value.
+
+**A declared field whose schema admits a finite set of values carries that set** (`RecordType.fieldEnums`,
+absent rather than empty, never an empty set, never for an undeclared field): a `const`, an `enum`, or a
+union (`anyOf` / `oneOf`) of them, `null` among them — each value a scalar, read as the field's type reads
+it, an integral JSON number an int at an `integer` field and a double at `number`, a value the type cannot
+hold dropped and a field none of whose values it holds carrying none. Each set is held in canonical order
+(null, bools, ints, doubles, strings by code point; a double's negative zero is zero) and is part of the
+record's type: record equality, the environment digest and the own-type agreement (which reads an `enum` as
+the set of its values beside the order its values' JSON types first appear in, the order of the union it
+reads as) all compare it as a set, so two shapes differing only in a constant are two members of a union.
+A meet intersects the sets — `allOf` of `k: enum [a, b]` and `k: enum [b, c]` is `{b}`, and a `number` set met
+with `integer` keeps its integral values as ints — and an empty
+intersection makes the field absent, at a node met with itself and at a record meet alike; a field whose
+values are not finite, a pattern entry and a record joined as a map carry none. `not` takes no value out of
+a set: one wider than the node admits is still sound for every reader of it.
+
+**A tuple is a list carrying its positions** (`ListType.prefixElements`, and `additionalElements`, the
+type of every element past them, carried only beside them; `tupleOf` is the one constructor). Draft-07
+spells one `items: [...]` with `additionalItems`, 2020-12 `prefixItems` with `items`; in both an absent
+rest keyword is a `dyn` rest, `false` none, and a schema the rest's type (its node the rest's
+`schemaNode`). `element` is the join of every position and the rest, so every reader that does not ask
+for a position — a computed index, `size`, `in`, a comprehension, assignability to `list<T>` — reads the
+union, and only a literal index reads a position: inside the prefix that position, past it
+`additionalElements`, and past a closed tuple `CEL_TYPE_ERROR` (`<type> holds <n> positions, and index
+<i> is past them`; a presence index answers absence). Assignability is element by element and position
+by position where both declare one; two tuples of as many positions join position by position, their
+rest the join of the rests they have. `items: false` alone is a tuple of no positions and no rest.
+`prefixItems` beside `additionalItems` or an array `items` is `shape-not-read`. A printed tuple is
+`list<A|B>`.
+
+**`not` takes out of a type only what it excludes wholly.** `not: false` constrains nothing; a subschema
+holding only annotations admits every value, so the node admits none (above). A subschema whose type
+keywords are only `type`, `const` and `enum` removes each union member it accepts wholly — its `type`
+covers the member and no value keyword narrows it, or its `const` / `enum` lists every value the member
+has (`null`; `bool` only with both `true` and `false`) — and removing every member admits no value;
+otherwise the type is unchanged and exact, with no report. So `type: [string, "null"], not: {type:
+"null"}` is `string`, and `not: {enum: [...]}` over strings or `not: {required: [...]}` is the node's
+own type. A subschema carrying any other type keyword is `shape-not-read`, keyword `not`.
+
+**`if` / `then` / `else` is read as one part of the node's own type**: the union of `if` met with `then`
+(`{}` where absent) and `else`, a branch whose meet is empty dropped and both dropped admitting no value;
+with no `else` it says nothing, and `then` / `else` without `if` are read as absent. The three nodes are
+read whole, so a read of the holder lists them all.
+
 **`allOf` intersects, and so does everything else one node says about its own type.** Records merge
-field-wise and a narrower scalar wins, so a reference beside a `properties` block, or two partial records,
-compose; a field of each half is read and a third is `CEL_UNKNOWN_FIELD`. Two parts that cannot both hold
-are `intersection-empty` rather than silently resolved one way. **`enum` and `const` with no `type` are
+field-wise and a narrower scalar wins — JSON Schema's `integer` being a `number`, an `int` or `uint` met
+with a `double` is the integer — so a reference beside a `properties` block, or two partial records,
+compose; a field of each half is read and a third is `CEL_UNKNOWN_FIELD`; a field one side declares meets
+the other side's pattern parts' reading of it, else its `additionalFields` where those are a type other
+than `dyn`; a name either side declares absent is absent, the undeclared members meet, and closed wins
+over open — and any of those meets that cannot hold is absence (above), never a contradiction silently
+resolved one way. **Each part's patterns stay that part's**: the met record carries both sides' pattern
+parts, a side with one part or none as one part whose `additionalFields` is that side's undeclared members
+where they are a typed schema other than `dyn` (a closed part, or one open to anything, constrains nothing
+another part's pattern matches, so `allOf: [{patternProperties: {'^a': string}}, {properties: {b: {}}}]`
+reads `x.ab` as `string`), a side met before keeping its parts. A part with neither patterns nor undeclared
+members is dropped; parts with the same pattern texts are one part, their entries met by text and their
+`additionalFields` met — except parts whose `additionalFields` cannot meet, which stay apart, since a
+member only another part's pattern matches must hold both (merged, the failed meet would drop the
+constraint); parts with no `additionalFields` are one part; and a part left alone carries none.
+So every `allOf` of pattern-carrying records is read exactly — under part A (`^x-`, a typed
+`additionalProperties`) and part B (`y-`, closed), `x['y-1']` is B's pattern met with A's
+`additionalProperties` — and `allOf: [S, S]` is S in type and digest, parts included. **Each member is read from the part that
+types it**: one a single part types other than `dyn` — through its `properties` entry, or its
+`additionalProperties`, element or rest standing for the member — is placed at that part's node
+(`schemaNode`, `resultOrigins`), and so is one a single part holds as `dyn` where no part types it; one
+several parts type, equal parts included, was built by the intersection and is placed nowhere, its read
+listing every declaring node; a part an earlier meet built stands for every part it was built from; a
+member declared absent is placed at the first part, in written order, declaring it so; and an undeclared
+member of a closed intersection is refused at the node holding the `allOf`. This holds at every member
+position of every container a meet builds — a record's field and undeclared members, a list's element, a
+tuple's positions and rest, a map's value. Two equal containers still meet member by member, and two equal
+unions meet member by member at matching positions (the pairing their equality already fixes), so the met
+type equals each part's and no part stands for another. **A union meet distributes, and is bounded**:
+a union met with a type it is not equal to meets each of its members with that type, so `n` unions of
+two shapes build `2^n` members; a meet that would build more than `UNION_EXPANSION_LIMIT` (the call
+expansion's bound, `src/union-expansion.json`) stands as the one type joining every member of its
+operands, and the site holding it — an `allOf`, a node's own parts, `if` with `then`, a property met
+with its patterns — is read as that join of what it met, wider than the meet so no read the meet admits
+is refused, and reported `shape-not-read` at its node with the keywords met. **`enum` and `const` with no `type` are
 read from their values' JSON types**, which is what makes a constant beside a host-typed branch a `string`
 rather than a `dyn` that collapses the whole union.
 
@@ -444,9 +668,24 @@ rather than a `dyn` that collapses the whole union.
 stands where a string-keyed map does, so where two types are reduced to one — a conditional's branches, an
 aggregate literal's elements — a record meeting a map, or a record of another shape, joins as that map: the
 key is `string` joined with the other side's key type, the value the join of every field type with the
-other side's value type (`dyn` for an open record). Equal records stay that record, and a record against a
+other side's value type, `additionalFields` among them. Equal records stay that record, and a record against a
 scalar or a list is still nothing in common. Answering "not one type" for a record beside a map literal
 refused an expression the same engine would have accepted as an argument.
+
+**Null is joined apart, and a union absorbs what it includes.** The join takes null out of both sides,
+joins the rest by the rules above, and adds null back where either side admitted it; a side that is only
+null joins as the other side plus null. So `c ? x : null` is `T|null`, `[x, null]` is `list<T|null>`,
+`c ? n : 1` with `n` an `int|null` is `int|null`, and `map|null` beside a `map<string, string>` joins as
+the maps do, plus null. A union joined with a type it includes is that union (`int|string` with `int` is
+`int|string`). **A union joined with a type it does not include widens by kin**: against the other side —
+the right one where both are unions — one member at a time, a member that stands where some member of the
+union does is absorbed, one whose join with some member of the union is one type is kept as a member of its
+own, and one with nothing in common with any makes the join "not one type"; the members stay in written
+order, the union's all kept. So over `ms`, a list of a union of two closed records, `[{'a': 'x'}] + ms` is
+`list<map<string, string>|map|map>` and `ms + [{'a': 'x'}]` lists the records first, while `c ? true :
+ms[0]`, `c ? (int|string) : (int|bool)` and `[1] + ['a']` are still refused. Two non-union types join as
+above, and anything else with nothing in common is still "not one type" (`c ? 1 : 'a'`): a reader would be
+reading two things.
 
 **A flat field map is still accepted** (`{ fields: { columns: "map" } }`). It is not a convenience: a
 consumer replacing an older engine has to reproduce its verdicts exactly before it turns deep typing
@@ -557,19 +796,116 @@ which listing a host offers is the host's, and the same engine embedded somewher
 honour it. The fix beside it stays **singular** — a list of five repairs is not a repair, and the
 alternatives are already in the message.
 
+**A call resolves in three passes: exact, loose, then expansion over its unions.** The exact pass takes
+the first overload every argument is assignable to; the loose one admits a `dyn` argument and answers
+`dyn` where the viable overloads disagree on their return. Only where both fail is each union-typed
+receiver and argument expanded into its members (`function-registry.ts`, `resolveExpanded` — mypy's
+"union math"): every combination, in member order with the receiver and then the arguments left to
+right, must resolve, and the call is typed as the union of the combinations' returns (`dyn` if one is),
+each distinct overload listed once in combination order. So `type(string|map)` and
+`string(Duration|Timestamp)` check, while `string(int|null)` and `int|null + 1` are refused with the
+refusal as written plus `; <combination> is taken by none` — `string(null)`, `null, int` — whose
+`schemaNode` is the node of the member the failing combination took. Running last is what keeps every
+answer that resolves as written unchanged: `wrap(A): list<A>` over `string|int` is still
+`list<string|int>`, not `list<string>|list<int>`. At most `UNION_EXPANSION_LIMIT` (64) combinations are
+tried, **declared as data** (`src/union-expansion.json`) because the refusal past it is pinned by the
+vectors: `<call> holds more than 64 combinations of its arguments' types; narrow one with a type test`.
+A call reaches at most `CALL_SITE_DIRECT_ARITY` positions, so the limit is met by unions of three
+members or more, and a call no overload's arity takes is never expanded.
+
+**A type parameter bound at several arguments takes their join.** It is bound by the first argument that
+mentions it; a later argument that does not fit the binding widens it to the join of the two — the
+conditional's join, null apart, a union absorbing what it includes and widening by kin — and is refused
+exactly where that join is "not one type". So `xs + ys` over a list of string maps and a list of records is a list of their
+join, and `[1] + ['a']` is still refused. A binding holding only an unresolved parameter is replaced
+outright by a later concrete argument, as before: `optional.none().orValue(42)` is an `int`.
+
+**A comprehension over a union iterates every member**: where each is a list or a map (a record
+included), the bound name is the union of each list's element and each map's key; a member that is
+neither is refused, naming it (`a comprehension reads a list or a map, and string, a member of
+list<int>|string, is neither`). The engine has no two-variable comprehension form to extend.
+
 **A read that yields an optional (`.?f`, `[?k]`, or any select or index whose operand is an optional) is typed `optional<held>`, and an optional held value is NOT flattened** — `{'a': optional.of(1)}.?a` is `optional<optional<int>>`, as the runtime nests it. A chain `a.?b.c` still does not nest, because each step reads through exactly **one** optional layer of its operand; an operand that would be read through more than one optional layer — `optional<optional<…>>`, or an optional branch of a union beneath an optional — is refused naming the whole operand ("is read through one optional only; unwrap the inner optional …"), as the runtime refuses it. A dotted declaration's segments follow the same rule as a select.
 
-**`CEL_NULLABLE_ACCESS` recognises exactly three guards: `?:`, `&&`, `||`** (`nullable-access.ts`).
-Recognising a fourth would make a consumer newly accept an expression on the day it changes engines;
-recognising fewer would make it newly reject one. A guard written as a function call is deliberately not
-proof. A value whose declared type admits null may always be compared against `null`, or declaring it
-nullable would make it untestable.
+**A guard is one of three constructs, `?:`, `&&` and `||`, over three tests** (`nullable-access.ts`):
+`<chain> != null` / `<chain> == null` prove the chain is not null, `has(<chain>.<m>)` proves it holds
+`m`, and the type test `type(<chain>) == <T>` (or `<T> == type(<chain>)`) proves the chain is of the
+members whose runtime type is `T` where it holds and of the others where it fails; `!=` and `!` swap
+where each holds. `<T>` is a name the environment resolves to a type value (`string`, `list`, `map`,
+`google.protobuf.Timestamp`, `optional_type`, a registered type's name) and not rebound by a macro, or
+`type(<e>)` whose `<e>` is typed neither a union, `dyn` nor a bare parameter; anything else proves nothing,
+so the test is decided only once the comparison is typed. A member's runtime type is what `type()` answers
+for it — `list` for any list, `map` for any map or record, the primitive, the well-known type, a registered
+type's name — and a `dyn` or parameter member stays on both sides. `xs.map(e, p, t)` lowers to the ternary
+`p ? [t] : []`, so its transform is checked under what `p` proves. Any other guard written as a call is
+deliberately not proof.
 
-**Its SUBJECTS are the other half of that compatibility, and are easy to miss.** A chain rooted at a name
-the expression itself bound — a comprehension variable, a `cel.bind` name — is not a subject at all, so
-`xs.map(e, e.code)` over a nullable element is not reported. Matching the guard set and not the subject
-set would reject a manifest that checks today, which is the one thing this verdict's rules exist to
-prevent.
+**A discriminant test is a fourth test**: `<chain>.<m> == <lit>` (either order), `!=`, and `<chain>.<m> in
+[<lit>, …]` with every element a literal, the member read by a literal name, `.m` or `['m']`, and a literal a
+string, int, uint, double, bool or null literal, a negated number included — a bytes literal or anything
+computed proves nothing. Where the test holds `<chain>` is the members whose `m` can equal a listed literal:
+its set holds a value the runtime's own `==` finds equal (`celEqual`), or with no set `m`'s type is one a
+listed literal's value can have (the numeric types one another's). Where it fails `<chain>` is the members
+whose `m` can hold a value outside them: no set, or a set not within them. A closed shape that cannot hold
+`m` (or holds no members at all) is dropped on both sides; an open record not declaring it, a map, an
+optional and `dyn` are kept on both; whether `m` is required is never read. Where the test holds and no
+listed literal is null, the compared chain itself narrows to its members a listed literal's type can be
+(`x == 'a' ? x.size() : 0` over `string|int`); a test against null leaves the compared chain to the null
+test, so a dereference stays the nullable read it was. Composition and the rebinding rule are the other
+tests'. So over `u`, a union of closed `{k: const a, p: integer}` and `{k: const b}`, `u.k == 'a' ? u.p : 0`,
+`u.k != 'b' ? u.p : 0` and `u.k in ['a'] ? u.p : 0` check, while `u.k in ['a', 'b']` or `u.k == 'c'` leave
+both shapes and the read is refused.
+
+**What is proven narrows the chain wherever it is read** — as a dereference's operand, and as a value,
+an operand or an argument: a chain proven not null is typed without null, and one `has()` proved holds
+`m` is typed as only the shapes that can hold `m` (a shape declaring it, an open one, a map), located at
+the remaining branch's node. So `note == null ? '-' : note` is `string`, `hint == null ? null :
+hint.lowerAscii()` checks, `type(u) == string ? u.lowerAscii() : ''` checks over `string|map`, and a
+conditional's origins carry each branch as narrowed. A narrowing that would leave nothing leaves the type
+as it is. Narrowing costs one lookup in the proven set per plain chain, and nothing while no guard is in
+scope.
+
+**Equality and membership are judged by overlap.** `null` is comparable with every type, so `==` / `!=`
+with a side typed `null` is `bool` whatever the other is (`m == null` over a map) — or declaring a value
+nullable would make it untestable. Otherwise, where the comparison does not resolve as written nor with
+null taken out at every depth, it checks when some member of one side and some member of the other resolve
+it (`int|string == int|bool`), and `1 == 'a'` is still refused with the refusal as written. `in` over a
+list judges its element by overlap against the list's element members, over a map against the map's key
+members, and a union container is expanded as a call is, each member having to take the element.
+Ordering and arithmetic are expansion's, so they stay refused over a nullable.
+
+**Every plain chain is a subject**, a comprehension variable's and a `cel.bind` name's as much as a
+declared one's: `xs.map(e, e.code.n)` over a nullable `code` is `CEL_NULLABLE_ACCESS`, because the read
+fails when it runs.
+
+**A proof does not cross a rebinding.** A proof whose chain is rooted at a name a macro or `cel.bind`
+binds is dropped inside that binding's body, so `x != null ? xs.map(x, x) : []` does not narrow the inner
+`x`, which is another value. **An absolute chain is its own spelling** (`.x.a`): it names the
+declaration, so no binding drops a proof of it, and a chain whose root nothing binds where it is
+read is held under that spelling too — so `x.a != null ? [1].map(x, .x.a.b) : []` checks, while a
+guard on `.x.a` proves nothing of a bound `x.a`, nor the reverse. A host's `rebound` chains are bare
+names and never drop a proof of an absolute chain.
+
+**A member only some shapes of a union declare is absent from the closed shapes lacking it.** A presence
+read (`.?m`, `[?'m']`, `has()`) asks exactly that and is judged against the shapes holding `m`; any other
+read of it is one `CEL_UNKNOWN_FIELD` per read, naming `.?m` as the repair, whose `schemaNode` is the node
+holding the union — and, where the operand is a plain chain and a field every shape declares with a finite
+set tells the shapes holding `m` from the others (their values disjoint by the runtime's `==`; the first such
+field in the first shape's written order), the test as well: `… or read it behind the test that tells the
+shapes apart (u.k == "a" ? u.p : …)`, an `in [...]` where several values apply, each written by the
+serializer. A shape that is open, or a map, holds any member and is never a reason to refuse, and a
+shape holding no members at all keeps its own refusal.
+
+**A host hands what is known at the site in as `assumptions`** (`check(source, { assumptions })`), each
+`{ condition, holds, rebound? }`: `condition` a source this environment parses or a tree its `parse`
+produced (one resolved under another namespace set is `namespaces_mismatch`, as the expression would be),
+`holds` whether it held on the way to the site, and `rebound` the chains that may denote another value there.
+Each is read in order as if a `?:` enclosed the expression — its condition typed under the assumptions
+before it, so a type test it holds is decided, with nothing it says reported, listed or located (it is the
+host's own site to judge) — and its where-true or where-false proofs, by the one proof reader, are in scope
+for the whole walk, but for a proof rooted at a `rebound` chain (the chain, or one beneath it), which is
+dropped; the in-expression rebinding rule applies on top. The vectors' rows carry them as `assumptions`.
+Which conditions guard a site is the host's to read; the engine reads only the CEL it is handed.
 
 **A macro's shape is judged before any type** (`macro-shape.ts`), innermost first: a macro binds a name
 and that name is not a value, so `xs.map(1, …)` is wrong about its own shape rather than about a type,
@@ -618,6 +954,68 @@ is exactly the after-the-fact classifier this engine exists to retire. **The bli
 the tests:** they can show the verdict is withheld and cannot show the host reports it instead, so each
 case also asserts the call is **listed** — a verdict withheld and not listed is a verdict lost, and that is
 the failure they can see.
+
+**A check can say which schema nodes it read** (`check(source, { schemaDependencies: true })`, the
+list on `CheckResult.schemaDependencies`, `schema-dependencies.ts`), so a host that hands over several
+versions of one document knows which versions a verdict could tell apart. Each entry is `{ document,
+pointer }`: `document` is the very object the host handed over that the pointer is relative to — a
+registration's `schema` (or its `document`, for a node a `#…` reference reached), or a resolver answer's
+`node` / `root` — so it is matched back by identity, never by content. A node is read **for its own type**
+— what its keywords say other than through a subschema with an entry of its own: `type`, `const`, `enum`,
+the names in `properties` and whether each is a boolean, the form of `additionalProperties`, `items`,
+`prefixItems`, `additionalItems`, `if`, `then` and `else` (absent, `true`, `false` or a schema), how many
+positions a tuple and members `allOf` / `anyOf` / `oneOf` hold, whether a `not` schema holds anything
+beyond annotations and any value keyword, a `$ref`'s text, and what the host's resolver answers for it;
+a `not` subschema read is listed as a node of its own — so two versions agreeing on
+the own type of every listed node give the check the same answer. A **descent** (a member, an index, a
+comprehension's element) lists the member's node alone, and so a field the expression never reads is
+absent; any other **use** of a type (an operand, an argument, a branch, the result) lists everything
+beneath it. Conversion records where each type came from (`readSchemaType`'s provenance: per node what
+reading it continues into — a reference's target, a crossed document, a union's branches — and per
+container the node of each member), and a union branch dropped as equal to another is read whole; an
+intersection is read as what its meet compared — each part's own type, the node of each part holding a
+position as `dyn`, and where several parts type a position other than `dyn` each of those nodes and the
+positions beneath it — so a member one part alone types is listed only when a descent or a use reaches it.
+Entries are listed once, in the
+order the checker first read them. **Opt-in, because it costs**: unasked, nothing is collected (the
+recorder is never built); asked, each type and each reading is walked at most once per check.
+
+**A namespaced function's result may be declared as a JSON Schema document** (`{ name, returns: { schema,
+document? } }`), converted through the environment's resolver exactly as a schema-typed variable is: a call
+lists the result's root, a read through it lists what it reads, and what the conversion could not judge
+is in `schemaReports()` under `<namespace>.<name>`. The provenance is the environment's, beside the
+declaration rather than on `NamespaceFunction`, whose fields stay the declaration a host can build. **The
+engine answers whether two versions agree on a listed node's own type** (`schemaOwnTypesAgree(left, right,
+pointer, { resolveSchemaType?, answersAgree? })`, `schema-own-type.ts`), by the one definition above with
+every subschema position masked to its presence and form: a node missing in both agrees, missing in one
+does not, and a resolver answer is compared by name and arguments or by the document's identity unless the
+host says how. A host never compares keywords itself, so the definition lives in one place.
+
+**A check can name the node each verdict and its result were read from** (`check(source, { schemaNodes:
+true })`, `schema-nodes.ts`), so a host words a finding from the node the engine judged, reading only that
+node's own type, and compares a forwarded value's node against a slot schema. A `CEL_UNKNOWN_FIELD`, a
+`CEL_TYPE_ERROR` and a `CEL_NULLABLE_ACCESS` carry `schemaNode` — the node whose properties lack the
+member, the node the first offending operand or argument located at one was read from, the nullable node
+dereferenced — absent where its subject is a literal or a computed value, and `{ document, pointer }`
+with a dependency's identity. The result carries `resultOrigins`: every place its value may have come
+from, in written order, each `{ range, type, typeName, schemaNode? }`. A located read is one origin; a read
+over a union whose branches are located at different nodes is one per distinct node, in member order (the
+branches located nowhere sharing one); a conditional contributes its branches' origins in turn, each as
+its branch was typed; `cel.bind` and `optFlatMap` contribute those of the expression they answer;
+`optional.of`, `optional.ofNonZeroValue` and `optMap` are one origin with the wrapping's own type and range;
+an origin typed `optional<…>` carries no schema node, since no optional is an instance of one — so a read
+through an optional operand (`.?a`, `[?k]`) is one origin over a union too; anything computed is one origin
+carrying its type alone.
+A host judges a forwarded value over every origin, so keeping one would let a misfitting branch through. **A type is read from
+the node that built it**: through a `$ref` or a resolver's document the target, through a union that kept
+one branch that branch, a union's members each from the first branch holding it; a node combining parts
+(a `type` list, an intersection) built its type itself, and a member of an intersection is read from the
+one part declaring it, from none where several do (above). Conversion records that beside every member and
+union member, the checker locates each subexpression whose type came straight from a node (a registered
+name, a member or element read, a namespaced result, a macro-bound name, an optional wrapping one), and
+everything it names — every origin's node included — is also among that check's `schemaDependencies`:
+the conformance runners hold every row to it. Opt-in apart from the dependency list, because the two answer different questions; unasked,
+nothing is located.
 
 ## The value domain: identity is a string key, never a constructor
 
@@ -992,7 +1390,7 @@ dependency**, and it costs the browser bundle about 420 KB.
 
 The vectors are the cross-engine contract, and this package drives the files a Node engine alone answers (`CEL_CONFORMANCE_DIR`, below): `language.json` whole, and `catalog.json` / `types.json` through a projection. Three drivers live in `conformance/`, and each states its blind spot in its header. There is no list of rows answered otherwise anywhere: a row is the engine's answer, or the run fails.
 
-**`language.json`: one table-free whole-row driver** (`conformance/language-replay.ts`). `languageAnswer` computes the whole `expect` of a row — the check half in the environment with the row's types, declarations and functions (`diagnostics` with ranges, `type` only when clean, every call the checker lowered, resolved or not), the evaluation half in the environment with the types and functions alone, which checks first and records a refusal as the first diagnostic's `CEL_*` code with its range, and otherwise evaluates with the bindings — and the driver deep-compares it with the row. Beside it: the row-key gates (`divergence` refused by name), the two classes (the cel-spec import, then authored `telo/` rows with neither `provenance` nor `deviation`), the `celCode` membership check (`conformance-error.ts` holds the vocabulary, the engine-error codes held complete by their type; no new export from this package), the `deviation` checks above, and the round trip of every source that reads — it writes back and reads again to an equal tree. `LANGUAGE_ROWS` pins the count (1,882). A row's `types` — type definitions as data, in registration order, with no builder — are registered before its declarations and functions in both halves. The error classifier reads the error that left the seam: an evaluation error or an engine error gives `celCode`, an `ERR_*` gives `code`, no code gives both null — which in `language.json` is the engine failing, never an answer, and fails the row — and any other code fails the row naming it.
+**`language.json`: one table-free whole-row driver** (`conformance/language-replay.ts`). `languageAnswer` computes the whole `expect` of a row — the check half in the environment with the row's types, declarations and functions (`diagnostics` with ranges, `type` only when clean, every call the checker lowered, resolved or not), the evaluation half in the environment with the types and functions alone, which checks first and records a refusal as the first diagnostic's `CEL_*` code with its range, and otherwise evaluates with the bindings — and the driver deep-compares it with the row. Beside it: the row-key gates (`divergence` refused by name), the two classes (the cel-spec import, then authored `telo/` rows with neither `provenance` nor `deviation`), the `celCode` membership check (`conformance-error.ts` holds the vocabulary, the engine-error codes held complete by their type; no new export from this package), the `deviation` checks above, and the round trip of every source that reads — it writes back and reads again to an equal tree. `LANGUAGE_ROWS` pins the count (2,189). A row's `types` — type definitions as data, in registration order, with no builder — are registered before its declarations and functions in both halves. The error classifier reads the error that left the seam: an evaluation error or an engine error gives `celCode`, an `ERR_*` gives `code`, no code gives both null — which in `language.json` is the engine failing, never an answer, and fails the row — and any other code fails the row naming it.
 
 **`catalog.json` and `types.json`: the table-free projection driver** (`conformance/dialect-replay.ts`). These files hold the `cel` tag engine's whole answer, which the templating package's test reproduces; this driver computes the part this engine gives by itself — the projection: the check's diagnostics (`code`, `message`, `fix`, in order, no range) and its type when clean, then the row's value or its error (`code`, `celCode`, `message`) — and deep-compares it with the same projection of the row. Before that a row is held to the **input gate**: the tag `cel`, no `context`, `explain`, `rootsDeclared`, `couldNameModule`, `modules` or `functions`, a source that reads, and only the engine's own errors (`code: null`, a `celCode`). Its static half checks in the dialect environment plus the host's types plus the row's declarations; its runtime half evaluates unchecked in the dialect environment plus the host's types, **without** the declarations, with the bindings — so a row can record a refusal at check and a value at evaluation (`p + 1` over a port). Every conversion and member a host type declares is bound at runtime to a conformance implementation answering `<name>(<conformance text of each argument>)`, the handler set's rule, and the nine host-backed functions answer by the handler set. `CATALOG_ROWS` (195) and `TYPES_ROWS` (75) pin the counts. **Its blind spot:** it sees nothing outside the projection — calls, regions, refs, volatility, a site's context — which only the templating test holds, and its deep equality pins whatever this engine answered.
 
@@ -1118,10 +1516,19 @@ filter is a result waiting to be re-derived by hand.
 - Which words are refused where → `src/reserved-words.ts`
 - A dotted declaration, an absolute name → `src/declared-chain.ts` (the one split, read by the checker
   and the backend), `qualifiedVariableType` in `src/checker.ts`
+- The count of the types the whole-type walks visit, which the cost gates read → `src/type-visits.ts`
+- How a type is printed and where it is cut → `formatType` / `exactTypeText` in `src/cel-type.ts`, the limit as data → `src/type-text.json`
 - Types, their spelling, assignability and unification → `src/cel-type.ts`, `src/type-expression.ts`
   (an unregistered NAME in a readable expression is `CelUnknownTypeNameError`, a verdict for a caller
   that holds its source, never a refusal to register)
 - A schema or a field map as a type → `src/json-schema-type.ts`
+- How a record reads a member a literal names (fields, patterns, undeclared members, absence) → `src/record-member.ts`
+- Whether two versions agree on a node's own type → `src/schema-own-type.ts`
+- Which schema nodes a check read → `src/schema-dependencies.ts` (the recorder and the reading),
+  `readSchemaType` in `src/json-schema-type.ts` (where each type came from), `typeOf` / `typeOfOperand`
+  in `src/checker.ts` (a use against a descent)
+- Which node a verdict or a result was read from → `src/schema-nodes.ts` (the locator), the `node` of
+  each read in `src/json-schema-type.ts`
 - A host's own named type → `src/nominal-type.ts`, and `registerType` in `src/environment.ts`; its
   fields read at check → `fieldType` in `src/checker.ts`, at evaluation → `celLookup` in
   `src/member-read.ts` with `memberReadsOf` in `src/backend-runtime.ts`
@@ -1129,7 +1536,8 @@ filter is a result waiting to be re-derived by hand.
   checked → `structType` in `src/checker.ts`; built → `ConstructionSite` in `src/backend-runtime.ts`;
   compared → `celEqual` in `src/value-equality.ts`, and an `==` / `!=` registration refused over one →
   `comparedConstructible` in `src/construction.ts`
-- Registration, override, removal and overload resolution → `src/function-registry.ts`, `src/signature.ts`
+- Registration, override, removal and overload resolution → `src/function-registry.ts`, `src/signature.ts`,
+  the union expansion limit as data → `src/union-expansion.json`
 - A namespace, what it declares and what it withholds → `registerNamespace` in `src/environment.ts`
   (`NamespaceFunctionDeclaration`, `NamespaceOptions`), `qualifiedCallType` in `src/checker.ts`,
   `tests/namespace-declaration.test.ts`

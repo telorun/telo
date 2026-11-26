@@ -1,0 +1,6 @@
+kind: Telo.Application
+metadata:
+  name: AppBadLib
+  version: 1.0.0
+imports:
+  Lib: ./lib-bad-type.yaml

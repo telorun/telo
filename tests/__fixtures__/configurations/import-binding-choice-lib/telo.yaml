@@ -1,0 +1,10 @@
+# A library whose exported value is text in one mode and a number in the other.
+kind: Telo.Library
+metadata: { name: ImportBindingChoiceLib }
+variables: { mode: { type: string, enum: [a, b] } }
+exports: { resources: [pick] }
+--- !if
+metadata: { name: pick }
+if: !cel "variables.mode == 'a'"
+then: { kind: Telo.Value, outputType: { kind: Telo.JsonSchema, schema: { type: string } }, value: text }
+else: { kind: Telo.Value, outputType: { kind: Telo.JsonSchema, schema: { type: integer } }, value: 1 }

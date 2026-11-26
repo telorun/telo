@@ -1,0 +1,18 @@
+# A library input bound behind the importer's choice: the library's own choice
+# is decided per option, so appending text to its value is refused where the
+# importer's option binds the mode holding a number.
+kind: Telo.Application
+metadata: { name: ImportBindingChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: true } }
+imports:
+  Lib:
+    source: ./import-binding-choice-lib
+    variables:
+      mode: !if { if: !cel "variables.flag1", then: a, else: b }
+targets: [!ref show]
+---
+kind: Telo.Sequence
+metadata: { name: show }
+steps:
+  - { name: p, invoke: !ref Lib.pick }
+  - { name: q, value: !cel "steps.p.result + 'x'" }

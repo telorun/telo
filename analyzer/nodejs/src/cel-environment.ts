@@ -2,16 +2,21 @@ import {
   CelEnvironment,
   parseExpression,
   type CelExpression,
-  type CelValue,
+  type SchemaTypeResolver,
+  type CelType,
 } from "@telorun/cel";
-import { VALUE_TYPES, type ResourceManifest } from "@telorun/sdk";
+import { moduleInputBlock } from "./text-parameter.js";
+import { celTypeOfValueType, VALUE_TYPES, valueTypeOf, type ResourceManifest } from "@telorun/sdk";
 import { celNamespaceNames } from "@telorun/templating";
 import { isKindDocument } from "./kind-declaration.js";
 import { isModuleKind } from "./module-kinds.js";
 import { authoredModuleMetadata, moduleMetadataSchema } from "./module-metadata-scope.js";
 import { admitsAbsence } from "./configuration-dimensions.js";
-import { jsonSchemaToCelType, VALUE_BRAND_BASE } from "./schema-compat.js";
-import { isStepRecord, stepRecordType } from "./step-result-inference.js";
+import { VALUE_BRAND_BASE } from "./schema-compat.js";
+import { celSchemaResolver } from "./cel-schema-resolver.js";
+import { recordHandedSchema } from "./schema-unjudged.js";
+import { CONTEXT_WITHHELD } from "./context-withheld.js";
+import { isStepRecord, stepRecordSchema } from "./step-result-inference.js";
 
 /** Transport protocol on a `ports` entry → the nominal CEL brand its resolved
  *  value carries. Mirrors the `protocol` enum in the Application schema, and
@@ -75,17 +80,23 @@ export { celNamespaceNames, namespaceDispatchOf } from "@telorun/templating";
 export function registerModuleNamespaces(
   env: CelEnvironment,
   moduleNames: ReadonlySet<string>,
-  callablesThrough: (receiver: string) => readonly { name: string; celType: string }[],
+  callablesThrough: (
+    receiver: string,
+  ) => readonly { name: string; celType: string; returns?: Record<string, any> }[],
 ): void {
   for (const receiver of celNamespaceNames(moduleNames)) {
     env.registerNamespace(
       receiver,
-      callablesThrough(receiver).map(({ name, celType }) => ({ name, returns: celType })),
+      // A declared result is a schema the engine reads through the
+      // environment's resolver, references included.
+      callablesThrough(receiver).map(({ name, celType, returns }) => {
+        if (returns) recordHandedSchema(env, `${receiver}.${name}`, returns);
+        return { name, returns: returns ? { schema: returns } : celType };
+      }),
       { open: true },
     );
   }
 }
-
 
 /** How many name-set environments one base environment keeps. Keyed on a
  *  module's own names, so the live set is bounded by the workspace — but a
@@ -132,13 +143,18 @@ export function moduleNamesEnvironment(
 }
 
 /** Clone `baseEnv` and register typed variable declarations so that
- *  `env.check(expr)` can infer return types for expressions referencing known variables.
+ *  `env.check(expr)` types every read to full depth.
  *
- *  - `variables` / `secrets`: typed from the declaring module's block — the
- *    manifest's own when it is a module doc, else its `moduleGlobals` stamp, else
+ *  Every binding is handed to the engine as its JSON Schema, read through
+ *  `resolver` — the one resolver of named shapes and value types:
+ *
+ *  - `variables` / `secrets`: the context's (the kernel globals the site
+ *    reads), else the declaring module's block — the manifest's own when it
+ *    is a module doc, else its `moduleGlobals` stamp, else
  *    `rootModuleManifest`'s; `map` (dyn) when none declares one.
- *  - `resources`: always `map` (dyn — output schemas unknown).
- *  - `extraContextSchema`: additional variables from an `x-telo-context` annotation.
+ *  - `resources`: the context's record of readings, else `map`.
+ *  - `ports` / `module`: from the module doc.
+ *  - every other name the context declares, `steps` as its closed record.
  *
  *  NOTE: The set of kernel globals registered here must match `KERNEL_GLOBAL_NAMES`
  *  in kernel-globals.ts, which is used for chain-access validation. */
@@ -150,115 +166,114 @@ export function buildTypedCelEnvironment(
   // on the resource being analyzed. When validating a resource, the caller
   // passes the module manifest here so `!cel "ports.X"` types cross-doc.
   rootModuleManifest?: ResourceManifest,
+  resolver?: SchemaTypeResolver,
 ): CelEnvironment {
-  try {
-    // Every value type's CEL face — a brand, a type with fields — is the base
-    // environment's own (`buildCelEnvironment`), the same at check and at run.
-    const env = baseEnv.clone();
+  const env = baseEnv.clone({ resolveSchemaType: resolver ?? celSchemaResolver(baseEnv, undefined) });
 
-    // `variables` / `secrets`: the DECLARING module's blocks, which is the
-    // contract the resource's CEL is evaluated against at runtime. Read the
-    // same three ways `ports` and `module` are, and for the same reason — a
-    // resource doc does not carry them, so typing from `manifest` alone left
-    // every ordinary resource with an open `variables` and no check at all,
-    // while `ports.<typo>` one line away was an error.
-    //
-    // Order matters: a module-identity doc analyzing itself carries its own
-    // block; a resource forwarded from an imported library carries its
-    // library's as `metadata.moduleGlobals`, which must win over the consuming
-    // application's; everything else is the entry module's own doc.
-    const moduleGlobals = (manifest.metadata as Record<string, any> | undefined)?.moduleGlobals as
-      | Record<string, unknown>
-      | undefined;
-    // A KIND document is the exception, and it is not a detail: the CEL inside
-    // a `Telo.Definition`'s `schema:` — an `examples:` entry, a `description`
-    // showing `!cel "secrets.API_KEY"` — illustrates what a CONSUMER writes, in
-    // the consumer's scope. Closing those over the declaring module's blocks
-    // reported an error against a name the module never meant to declare, and
-    // one nobody could fix without deleting the example.
-    const root = (
-      isKindDocument(manifest) ? undefined : (rootModuleManifest as Record<string, unknown>)
-    ) as Record<string, unknown> | undefined;
-    // Only a module doc DECLARES its blocks. On any other doc a `variables:` /
-    // `secrets:` field is values supplied to something else — an import's
-    // inputs, a child application's — never the scope its own CEL reads.
-    const declaring = isModuleKind(manifest.kind)
-      ? (manifest as Record<string, unknown>)
-      : undefined;
-    registerConfigNamespace(
-      env,
-      declaring?.variables ?? moduleGlobals?.variables ?? root?.variables,
-      "variables",
-    );
-
-    // `ports` namespace: each entry types as the brand its `protocol` selects
-    // (tcp → TcpPort, udp → UdpPort), so `!cel "ports.http"` carries a nominal
-    // type that consuming fields can check against.
-    const portsManifest = ((rootModuleManifest ?? manifest) as Record<string, unknown>).ports;
-    if (portsManifest !== null && typeof portsManifest === "object" && !Array.isArray(portsManifest)) {
-      const portEntries = Object.entries(portsManifest as Record<string, any>).filter(
-        ([, v]) => v !== null && typeof v === "object" && !Array.isArray(v),
-      );
-      if (portEntries.length > 0) {
-        const schema: Record<string, string> = {};
-        for (const [k, v] of portEntries) {
-          schema[k] = PORT_PROTOCOL_BRAND[(v as { protocol?: string }).protocol ?? "tcp"] ?? "int";
-        }
-        env.registerVariable("ports", { fields: schema });
-      } else {
-        env.registerVariable("ports", "map");
-      }
-    } else {
-      env.registerVariable("ports", "map");
+  // `variables` / `secrets`: the DECLARING module's blocks, which is the
+  // contract the resource's CEL is evaluated against at runtime. Read the
+  // same three ways `ports` and `module` are, and for the same reason — a
+  // resource doc does not carry them, so typing from `manifest` alone left
+  // every ordinary resource with an open `variables` and no check at all,
+  // while `ports.<typo>` one line away was an error.
+  //
+  // Order matters: a module-identity doc analyzing itself carries its own
+  // block; a resource forwarded from an imported library carries its
+  // library's as `metadata.moduleGlobals`, which must win over the consuming
+  // application's; everything else is the entry module's own doc.
+  const moduleGlobals = (manifest.metadata as Record<string, any> | undefined)?.moduleGlobals as
+    | Record<string, unknown>
+    | undefined;
+  // A KIND document is the exception, and it is not a detail: the CEL inside
+  // a `Telo.Definition`'s `schema:` — an `examples:` entry, a `description`
+  // showing `!cel "secrets.API_KEY"` — illustrates what a CONSUMER writes, in
+  // the consumer's scope. Closing those over the declaring module's blocks
+  // reported an error against a name the module never meant to declare, and
+  // one nobody could fix without deleting the example.
+  const root = (
+    isKindDocument(manifest) ? undefined : (rootModuleManifest as Record<string, unknown>)
+  ) as Record<string, unknown> | undefined;
+  // Only a module doc DECLARES its blocks. On any other doc a `variables:` /
+  // `secrets:` field is values supplied to something else — an import's
+  // inputs, a child application's — never the scope its own CEL reads.
+  const declaring = isModuleKind(manifest.kind)
+    ? (manifest as Record<string, unknown>)
+    : undefined;
+  const context = (extraContextSchema?.properties ?? {}) as Record<string, any>;
+  for (const name of ["variables", "secrets"] as const) {
+    if (isSchemaNode(context[name])) registerBinding(env, name, context[name]);
+    else {
+      // A library's text parameter reads as the record its importer hands over.
+      const block = moduleInputBlock(declaring, name) ?? moduleGlobals?.[name] ?? moduleInputBlock(root, name);
+      registerConfigNamespace(env, block, name);
     }
-
-    registerConfigNamespace(
-      env,
-      declaring?.secrets ?? moduleGlobals?.secrets ?? root?.secrets,
-      "secrets",
-    );
-    env.registerVariable("resources", "map");
-
-    // `module` — the declaring module's own `metadata`, so a manifest reads its
-    // version instead of restating it. A resource forwarded from an imported
-    // library reads THAT library's metadata, stamped as
-    // `metadata.moduleGlobals.module`.
-    //
-    // Falls back to an OPEN map, never to `manifest.metadata`: for a resource
-    // doc that is the RESOURCE's metadata (`{name: <resource name>}`), and
-    // closing `module` over it would turn a `module.version` that resolves
-    // perfectly well at runtime into a hard error the author cannot act on. A
-    // static check that is wrong in the rejecting direction is the worse
-    // polarity.
-    const moduleSchema = moduleMetadataSchema(
-      ((manifest.metadata as Record<string, any> | undefined)?.moduleGlobals?.module as
-        | Record<string, unknown>
-        | undefined) ?? (rootModuleManifest?.metadata as Record<string, unknown> | undefined),
-    );
-    if (moduleSchema) {
-      const schema: Record<string, string> = {};
-      for (const [key, property] of Object.entries(moduleSchema.properties as Record<string, any>)) {
-        schema[key] = jsonSchemaToCelType(property);
-      }
-      env.registerVariable("module", { fields: schema });
-    } else {
-      env.registerVariable("module", "map");
-    }
-
-    if (extraContextSchema?.properties) {
-      const properties = extraContextSchema.properties as Record<string, any>;
-      for (const [name, propSchema] of Object.entries(properties)) {
-        if (env.hasVariable(name)) continue;
-        const schema = propSchema as Record<string, any>;
-        // A step body's `steps` is the closed record of its step names.
-        env.registerVariable(name, name === "steps" && isStepRecord(schema) ? stepRecordType(schema) : jsonSchemaToCelType(schema));
-      }
-    }
-
-    return env;
-  } catch {
-    return baseEnv.clone();
   }
+
+  // `ports` namespace: each entry types as the brand its `protocol` selects
+  // (tcp → TcpPort, udp → UdpPort), so `!cel "ports.http"` carries a nominal
+  // type that consuming fields can check against.
+  const portsManifest = ((rootModuleManifest ?? manifest) as Record<string, unknown>).ports;
+  const portEntries =
+    portsManifest !== null && typeof portsManifest === "object" && !Array.isArray(portsManifest)
+      ? Object.entries(portsManifest as Record<string, any>).filter(
+          ([, v]) => v !== null && typeof v === "object" && !Array.isArray(v),
+        )
+      : [];
+  if (portEntries.length > 0) {
+    const properties: Record<string, any> = {};
+    for (const [k, v] of portEntries) {
+      const brand = PORT_PROTOCOL_BRAND[(v as { protocol?: string }).protocol ?? "tcp"];
+      properties[k] = brand ? { "x-telo-type": brand } : { type: "integer" };
+    }
+    registerBinding(env, "ports", { type: "object", properties, additionalProperties: false });
+  } else {
+    env.registerVariable("ports", "map");
+  }
+
+  if (isSchemaNode(context.resources)) registerBinding(env, "resources", context.resources);
+  else env.registerVariable("resources", "map");
+
+  // `module` — the declaring module's own `metadata`, so a manifest reads its
+  // version instead of restating it. A resource forwarded from an imported
+  // library reads THAT library's metadata, stamped as
+  // `metadata.moduleGlobals.module`.
+  //
+  // Falls back to an OPEN map, never to `manifest.metadata`: for a resource
+  // doc that is the RESOURCE's metadata (`{name: <resource name>}`), and
+  // closing `module` over it would turn a `module.version` that resolves
+  // perfectly well at runtime into a hard error the author cannot act on. A
+  // static check that is wrong in the rejecting direction is the worse
+  // polarity.
+  const moduleSchema = moduleMetadataSchema(
+    ((manifest.metadata as Record<string, any> | undefined)?.moduleGlobals?.module as
+      | Record<string, unknown>
+      | undefined) ?? (rootModuleManifest?.metadata as Record<string, unknown> | undefined),
+  );
+  if (moduleSchema) registerBinding(env, "module", { ...moduleSchema, additionalProperties: false });
+  else env.registerVariable("module", "map");
+
+  for (const [name, schema] of Object.entries(context)) {
+    if (KERNEL_GLOBALS_REGISTERED.has(name) || env.hasVariable(name) || !isSchemaNode(schema)) continue;
+    // A step body's `steps` is the closed record of its step names.
+    if (name === "steps" && isStepRecord(schema)) {
+      registerBinding(env, name, stepRecordSchema(schema));
+    } else registerBinding(env, name, schema);
+  }
+
+  return env;
+}
+
+/** The globals registered from the module above, never from the context's
+ *  own copy of them. */
+const KERNEL_GLOBALS_REGISTERED: ReadonlySet<string> = new Set(["variables", "secrets", "ports", "resources", "module"]);
+
+const isSchemaNode = (value: unknown): value is Record<string, any> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+/** `name` typed from `schema` to full depth, through the environment's resolver. */
+function registerBinding(env: CelEnvironment, name: string, schema: Record<string, any>): void {
+  recordHandedSchema(env, name, schema);
+  env.registerVariable(name, { schema });
 }
 
 /** CEL environment for a parameter scope (`x-telo-context-parameters-from`): the
@@ -269,12 +284,14 @@ export function buildTypedCelEnvironment(
 export function buildParameterCelEnvironment(
   baseEnv: CelEnvironment,
   contextSchema: Record<string, any> | null,
+  resolver?: SchemaTypeResolver,
 ): CelEnvironment {
-  const env = baseEnv.clone();
+  const env = baseEnv.clone({ resolveSchemaType: resolver ?? celSchemaResolver(baseEnv, undefined) });
   for (const [name, propSchema] of Object.entries(
     (contextSchema?.properties ?? {}) as Record<string, any>,
   )) {
-    env.registerVariable(name, jsonSchemaToCelType(propSchema as Record<string, any>));
+    if (isSchemaNode(propSchema)) registerBinding(env, name, propSchema);
+    else env.registerVariable(name, "dyn");
   }
   return env;
 }
@@ -284,10 +301,13 @@ export function buildParameterCelEnvironment(
  * operations the base environment registers for it. A brand is a type of its own,
  * so an operator its base accepts (`+` on a string) finds no overload, and the
  * checker's wording says only that. The brand comes from the engine's checked
- * `readTypes`, never from the checker's wording.
+ * `readCheckedTypes`, never from the checker's wording or a printed type.
  */
-export function valueBrandHint(readTypes: readonly string[] | undefined): string {
-  const brand = readTypes?.find((type) => VALUE_BRAND_BASE[type] !== undefined);
+export function valueBrandHint(readTypes: readonly CelType[] | undefined): string {
+  // A brand is a named type: its own name says which, read from the type rather than its text.
+  const brand = readTypes
+    ?.map((type) => (type.kind === "nominal" ? type.name : undefined))
+    .find((name) => name !== undefined && VALUE_BRAND_BASE[name] !== undefined);
   if (!brand) return "";
   const base = VALUE_BRAND_BASE[brand]!;
   const join =
@@ -309,50 +329,55 @@ function registerConfigNamespace(
       ([, v]) => v !== null && typeof v === "object" && !Array.isArray(v),
     );
     if (entries.length > 0) {
-      const schema: Record<string, string> = {};
-      // An entry that may be absent (`default: null`) is a value or null: its
-      // null-safety is the context schema's rule, which reads it as nullable.
+      const properties: Record<string, any> = {};
+      // An entry that may be absent (`default: null`) is a value or null.
       for (const [k, v] of entries) {
         const entry = v as Record<string, any>;
-        schema[k] = admitsAbsence(entry) ? "dyn" : jsonSchemaToCelType(entry);
+        properties[k] = admitsAbsence(entry) ? { anyOf: [entry, { type: "null" }] } : entry;
       }
-      env.registerVariable(name, { fields: schema });
+      registerBinding(env, name, { type: "object", properties, additionalProperties: false });
       return;
     }
   }
   env.registerVariable(name, "map");
 }
 
+/** The bindings an import's `variables:` / `secrets:` name and withhold:
+ *  those inputs are configuration, evaluated before any resource exists. */
+export const IMPORT_INPUT_WITHHELD = {
+  type: "object",
+  properties: Object.fromEntries(
+    ["resources", "ports"].map((name) => [
+      name,
+      {
+        [CONTEXT_WITHHELD]:
+          "an import's variables and secrets are configuration, evaluated before any resource exists; pass the value through a variable of the importing module",
+      },
+    ]),
+  ),
+} as const satisfies Record<string, any>;
+
+export const IMPORT_INPUT_WITHHELD_NAMES: ReadonlySet<string> = new Set(
+  Object.keys(IMPORT_INPUT_WITHHELD.properties),
+);
+
 /** CEL environment for the `variables:`/`secrets:` expressions on a `Telo.Import`.
  *
  *  Import inputs are a config-only contract: their expressions are evaluated
  *  against the IMPORTING module's `variables`/`secrets`, never the import's own
- *  values map (the bug) nor the imported child's. `resources` and `ports`
- *  are registered as empty typed objects, so referencing them is a "No such key"
- *  error that steers authors to a typed `variables` entry. */
+ *  values map nor the imported child's. `resources` and `ports` are withheld
+ *  bindings ({@link IMPORT_INPUT_WITHHELD}): typed `dyn`, every read of either
+ *  is refused by the withheld-read check alone. */
 export function buildImportInputCelEnvironment(
   baseEnv: CelEnvironment,
   moduleManifest: ResourceManifest | undefined,
+  resolver?: SchemaTypeResolver,
 ): CelEnvironment {
-  const env = baseEnv.clone();
+  const env = baseEnv.clone({ resolveSchemaType: resolver ?? celSchemaResolver(baseEnv, undefined) });
   const mod = moduleManifest as Record<string, unknown> | undefined;
-  // Typing variables/secrets from the importer's schema can fail on a malformed
-  // schema; degrade those to permissive `map` if so — but never lose the
-  // resources/env/ports rejection registered below (the catch is scoped so a
-  // typing failure can't silently re-open the config-only contract).
-  try {
-    registerConfigNamespace(env, mod?.variables, "variables");
-    registerConfigNamespace(env, mod?.secrets, "secrets");
-  } catch {
-    env.registerVariable("variables", "map");
-    env.registerVariable("secrets", "map");
-  }
-  // Override the base env's dyn `resources`/`ports` with empty typed objects
-  // so any access (`resources.X`, `ports.X`) is a "No such key" error — these
-  // surfaces are not part of the config-only import contract.
-  for (const name of ["resources", "ports"]) {
-    env.registerVariable(name, { fields: {} });
-  }
+  registerConfigNamespace(env, moduleInputBlock(mod, "variables"), "variables");
+  registerConfigNamespace(env, moduleInputBlock(mod, "secrets"), "secrets");
+  for (const name of IMPORT_INPUT_WITHHELD_NAMES) env.registerVariable(name, "dyn");
   // `module` IS part of it: the importer's own identity is config, and passing
   // its version down to a child is the case the binding exists for.
   const metadata = authoredModuleMetadata(mod?.metadata as Record<string, unknown> | undefined);

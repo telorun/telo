@@ -4,12 +4,12 @@ import {
   ancestorChain,
   controllerBearingAncestor,
   isResolvedReference,
+  isWithinSlot,
   SELF_PATH,
   type DefResolver,
 } from "@telorun/analyzer";
 import { resolveReference } from "./dependency-injection.js";
 import type { EvaluationContext } from "./evaluation-context.js";
-import { isWithinSlot } from "./controllers/resource-definition/step-value-slots.js";
 
 /**
  * The mappings an inheriting kind writes — `base:`, which builds the

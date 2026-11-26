@@ -562,6 +562,18 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     return scope.terminal(name)?.()?.manifest;
   }
 
+  /** The declaration `name` of module `moduleName` this module reaches: one of
+   *  its own, or an instance an import of that module exports. */
+  declarationInModule(moduleName: string, name: string): ResourceManifest | undefined {
+    if (this.importAliases.get("Self") === moduleName) return this.resolveDeclaredManifest(name);
+    for (const [alias, target] of this.importAliases) {
+      if (alias === "Self" || target !== moduleName) continue;
+      const found = this.resolveImportedManifest(alias, name);
+      if (found) return found;
+    }
+    return undefined;
+  }
+
   /** Like `resolveImportedInstance`, but returns the `{kind, name}` ref (canonical kind)
    *  for controllers that resolve step/handler invokes to refs rather than live instances
    *  (e.g. Telo.Sequence via `ensureKindRef`). The alias is reattached by the caller. */

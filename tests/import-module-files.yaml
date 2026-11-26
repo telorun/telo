@@ -1,0 +1,17 @@
+kind: Telo.Application
+metadata:
+  name: ImportModuleFilesTest
+  version: 1.0.0
+  description: |
+    An import hands its library files that ship with the importing module:
+    `!module-path`, `!include-text` and a need's field-by-field supply, at an
+    `imports:` entry, a module-level `Telo.Import`, a scoped import and from a
+    library importing a library, each anchored at the importer, never at the
+    library.
+imports: { Assert: ../modules/assert }
+targets: [!ref anchoredAtImporter]
+---
+kind: Assert.Manifest
+metadata: { name: anchoredAtImporter }
+source: ./__fixtures__/import-module-files/telo.yaml
+expect: { errors: [], runs: true }

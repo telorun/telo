@@ -67,12 +67,13 @@ export function validateBaseMapping(
     const filePath = (m.metadata as { source?: string } | undefined)?.source;
     const resource = { kind: m.kind, name };
     const label = `${m.kind}/${name}`;
-    checkObject(base as Record<string, unknown>, parentSchema, "base", {
+    checkObject(base as Record<string, unknown>, parentSchema, "base", [], {
       diagnostics,
       registry,
       label,
       resource,
       filePath,
+      document: parentSchema,
     });
   }
 
@@ -85,6 +86,9 @@ interface CheckCtx {
   label: string;
   resource: { kind: string; name: string };
   filePath: string | undefined;
+  /** The parent's schema: every field is validated where it sits in it, so a
+   *  `#` reference names the parent's root. */
+  document: Record<string, any>;
 }
 
 /** Keys the inherited controller supplies itself when it builds the parent
@@ -101,6 +105,8 @@ function checkObject(
   value: Record<string, unknown>,
   schema: Record<string, any>,
   path: string,
+  /** Where `schema` sits in the parent's schema. */
+  at: readonly string[],
   ctx: CheckCtx,
 ): void {
   const properties = (schema.properties ?? {}) as Record<string, Record<string, any>>;
@@ -149,22 +155,24 @@ function checkObject(
         propSchema.type === "object" &&
         propSchema.properties
       ) {
-        checkObject(fieldValue as Record<string, unknown>, propSchema, fieldPath, ctx);
+        checkObject(fieldValue as Record<string, unknown>, propSchema, fieldPath, [...at, "properties", key], ctx);
       }
       continue;
     }
-    const outcome = ctx.registry.validateWithRefs(fieldValue, propSchema);
+    const outcome = ctx.registry.validateAtPointer(fieldValue, ctx.document, [...at, "properties", key]);
     if (!outcome.finished) {
       ctx.diagnostics.push({
         severity: DiagnosticSeverity.Error,
         code: SCHEMA_NESTING_EXCEEDED,
         source: SOURCE,
-        message: schemaNestingExceededMessage(ctx.label, `'${fieldPath}'`),
+        message: schemaNestingExceededMessage(ctx.label, `'${fieldPath}'`, outcome),
         data: { resource: ctx.resource, filePath: ctx.filePath, path: fieldPath },
       });
       continue;
     }
-    for (const issue of outcome.issues) {
+    // Two keywords refusing one place alike (a `type` beside the `$ref` reaching
+    // another `type`) are one mismatch.
+    for (const issue of new Set(outcome.issues)) {
       ctx.diagnostics.push({
         severity: DiagnosticSeverity.Error,
         code: "BASE_SCHEMA_MISMATCH",

@@ -72,9 +72,21 @@ selector's domain or end in `default:`. Branches nest, in either order with
 entry; see [Templated definitions](/extend/templated-definitions).
 
 Imports are not chosen: an application imports every backend it may run on, and
-only the chosen branch's controller loads. A variable's `default:`, an `include:`
-and a kind's schema are not choosable either (`BRANCH_POSITION_INVALID`); an
-import's `variables:` value is chosen with a `!cel` ternary.
+only the chosen branch's controller loads. An import's alias, kind, source and
+integrity are read by the loader before anything is expanded, so a choice there
+is refused at load; a variable's `default:`, an `include:` and a kind's schema
+are not choosable either (`BRANCH_POSITION_INVALID`). An import's inputs —
+`variables:`, `secrets:`, `resources:`, `needs:`, `runtime:` — are values, chosen
+with `!if` / `!switch` like any other, and each is checked where its option is
+taken:
+
+```yaml
+imports:
+  Store:
+    source: ./store
+    variables:
+      root: !if { if: !cel "variables.shared", then: !cel "variables.sharedDir", else: !cel "variables.localDir" }
+```
 
 ## What a choice may read
 

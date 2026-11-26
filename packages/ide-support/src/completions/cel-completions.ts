@@ -103,7 +103,9 @@ export function celCompletions(
   // but two identical labels are two things an author cannot choose between, so
   // the callable form wins the slot and says it also names the type — that is
   // the form written at a root position.
-  const typeNames = new Set(roots.filter((s) => s.type === "type").map((s) => s.name));
+  const typeNames = new Set(
+    roots.filter((s) => s.celType?.kind === "primitive" && s.celType.name === "type").map((s) => s.name),
+  );
 
   // Global functions only: a receiver-style one (`string.startsWith`) is
   // reachable through a member position, where the receiver's type is known.

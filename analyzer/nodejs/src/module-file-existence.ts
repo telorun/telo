@@ -1,6 +1,7 @@
 import { defaultRegistry, isTaggedSentinel, type TaggedSentinel } from "@telorun/templating";
 import { HOST_MEDIA_HEAD_LENGTH, type HostEntryKind } from "@telorun/sdk";
 import type { ImportEdge, LoadedModule } from "./loaded-types.js";
+import { importInputValues } from "./import-input-values.js";
 import { isModuleKind } from "./module-kinds.js";
 import { nearestName } from "./nearest-name.js";
 import { readNeeds } from "./need-type.js";
@@ -178,13 +179,18 @@ export async function collectModuleFileDiagnostics(
           });
         }
       };
-      // A module document's needs' `parameters:` are resolved at load; nothing
-      // else in a document never instantiated is resolved, so the engine's
-      // `*_OUTSIDE_RESOURCE` is the finding there.
+      // A module document's needs' `parameters:` are resolved at load, and an
+      // import's input values when it initializes; nothing else in a document
+      // never instantiated is resolved, so the engine's `*_OUTSIDE_RESOURCE` is
+      // the finding there.
       if (isModuleKind(manifest.kind)) {
         for (const need of readNeeds(manifest)) {
           walkSentinels(need.parameters, `needs.${need.name}.parameters`, collect);
         }
+        return;
+      }
+      if (manifest.kind === "Telo.Import") {
+        for (const [at, value] of importInputValues(manifest)) walkSentinels(value, at, collect);
         return;
       }
       if (isNeverInstantiated(manifest.kind)) return;

@@ -1,0 +1,4 @@
+# A library variable whose local reference names nothing in the entry.
+kind: Telo.Library
+metadata: { name: InputDanglingReferenceLib, version: 1.0.0 }
+variables: { b: { $ref: "#/$defs/Nope" } }

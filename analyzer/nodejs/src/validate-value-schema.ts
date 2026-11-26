@@ -3,8 +3,9 @@ import { valueTypeRefusalCode } from "./schema-error-report.js";
 import { valueSchemaSites } from "./derived-slots.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
 import { type ExternalSchemaResolver, type SchemaIssue } from "./schema-compat.js";
-import type { SchemaValidationOutcome } from "./schema-validation.js";
+import type { SchemaValidationOutcome, ValidationUnfinished } from "./schema-validation.js";
 import type { StandIns } from "./stand-in-findings.js";
+import type { OwnValuePositions } from "./value-depth.js";
 import type { ValueSchemaHost } from "./value-schema-slot.js";
 import type { DeclarationRequests } from "./declaration-requests.js";
 
@@ -29,7 +30,12 @@ import type { DeclarationRequests } from "./declaration-requests.js";
 /** The validator holding the registered shapes, and the resolver that lets the
  *  decoding walk see through them. */
 export interface ShapeAwareValidator {
-  validate(data: unknown, schema: Record<string, any>, standIns?: StandIns): SchemaValidationOutcome;
+  validate(
+    data: unknown,
+    schema: Record<string, any>,
+    standIns?: StandIns,
+    ownValues?: OwnValuePositions,
+  ): SchemaValidationOutcome;
   external: ExternalSchemaResolver;
 }
 
@@ -37,7 +43,7 @@ export interface ShapeAwareValidator {
  *  issues, and the path of every slot whose validation could not finish. */
 export interface ValueSchemaFindings {
   issues: SchemaIssue[];
-  unfinished: string[];
+  unfinished: { path: string; unfinished: ValidationUnfinished }[];
 }
 
 /**
@@ -62,7 +68,7 @@ export function collectValueSchemaIssues(
   valueSchemaHost?: ValueSchemaHost,
 ): ValueSchemaFindings {
   const issues: SchemaIssue[] = [];
-  const unfinished: string[] = [];
+  const unfinished: ValueSchemaFindings["unfinished"] = [];
   for (const { path, value, schema, from: written } of valueSchemaSites(manifest, defSchema, { types, valueSchemaHost })) {
     const from = locationAsPath(written);
     const standIns: StandIns = new Map();
@@ -72,7 +78,7 @@ export function collectValueSchemaIssues(
     });
     const outcome = validator.validate(substituted, schema, standIns);
     if (!outcome.finished) {
-      unfinished.push(path);
+      unfinished.push({ path, unfinished: outcome });
       continue;
     }
     for (const issue of outcome.issues) {

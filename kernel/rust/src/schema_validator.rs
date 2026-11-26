@@ -20,7 +20,9 @@ use telo_analyzer::schema_error_report::{format_schema_errors, schema_issues, Sc
 use telo_analyzer::schema_findings_judge::{judge_schema_findings, SchemaJudgment};
 use telo_analyzer::schema_node_validator::{NodeValidatorOptions, SchemaNodeValidator};
 use telo_analyzer::schema_tag_text::schema_with_tags_as_text;
-use telo_analyzer::schema_validation::{cel_value_of, json_value_of, CompiledSchema, SchemaValidation, SchemaValidationConfiguration};
+use telo_analyzer::schema_validation::{
+    cel_value_of, check_value_depth, json_value_of, CompiledSchema, SchemaValidation, SchemaValidationConfiguration,
+};
 use telo_analyzer::stand_in_findings::StandIns;
 use telo_analyzer::value_type_defaults::decode_plain_literal;
 use telorun_cel::JsonValue;
@@ -32,8 +34,8 @@ use telorun_sdk_core::value_type::{holds_sensitive_member, value_types, X_TELO_T
 const REDACTED: &str = "[redacted]";
 
 /// A value its schema refuses: the sentence, and the path-anchored issues it was
-/// rendered from — `None` when the validation could not finish (a schema nesting without
-/// end over the value), as AJV's code throws instead of refusing.
+/// rendered from — `None` when the validation could not finish (the value nests past the
+/// shared limit, or the engine's bound was reached), the sentence then being the error.
 #[derive(Debug, Clone)]
 pub struct SchemaRefusal {
     pub message: String,
@@ -259,8 +261,10 @@ impl SchemaValidator {
         &self.canonical_json
     }
 
-    /// Validate `data`: the value with its defaults filled, or the refusal.
+    /// Validate `data`: the value with its defaults filled, or the refusal. A value nested past
+    /// the shared limit is refused unvalidated, whatever the engine could follow.
     pub fn check(&self, data: &CelValue) -> Result<CelValue, SchemaRefusal> {
+        check_value_depth(data).map_err(SchemaRefusal::unfinished)?;
         let validation = self.primary.validate(data).map_err(SchemaRefusal::unfinished)?;
         if validation.valid {
             return Ok(validation.value);

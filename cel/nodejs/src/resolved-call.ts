@@ -13,6 +13,7 @@
  * would instead report whatever the reader's parser happened to expand.
  */
 
+import type { CelType } from "./cel-type.js";
 import type { CallForm } from "./signature.js";
 import type { SourceRange } from "./syntax-tree.js";
 
@@ -41,7 +42,11 @@ export interface ResolvedCall {
    * Billing.total(i))`) would type as `dyn` and the host's argument check would silently
    * stop asking. Here the types come from the same pass that typed the call.
    *
-   * Absent for a call the registry resolved: its parameter types are the signature's.
+   * Absent for a call the registry resolved: its parameter types are the signature's. Each
+   * is the type itself, every unresolved type parameter `dyn`, so a host reads it as a type
+   * and never parses its text.
    */
-  readonly argumentTypes?: readonly string[];
+  readonly argumentTypes?: readonly CelType[];
+  /** How each of {@link argumentTypes} prints, for a message: cut as every printed type is. */
+  readonly argumentTypeNames?: readonly string[];
 }

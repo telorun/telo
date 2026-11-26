@@ -1,0 +1,30 @@
+# A kind's union whose first branch names `A`, which names `B` at its own
+# place: `B` gives `x` a runtime eval only where flag1 holds, the other branch
+# always a compile one, so the union is refused where flag1 holds, and only
+# there.
+kind: Telo.Application
+metadata: { name: EvalModeBranchReachedShape }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.JsonSchema
+metadata: { name: B }
+schema: !if
+  if: !cel "variables.flag1"
+  then: { type: object, properties: { x: { x-telo-eval: runtime } } }
+  else: { type: object, properties: { x: { x-telo-eval: compile } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: A }
+schema: { $ref: "telo://Self/B" }
+---
+kind: Telo.Definition
+metadata: { name: Card }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Card]
+schema:
+  type: object
+  properties:
+    content:
+      oneOf:
+        - { $ref: "telo://Self/A" }
+        - { type: object, properties: { x: { x-telo-eval: compile } } }

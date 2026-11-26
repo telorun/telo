@@ -1,0 +1,78 @@
+kind: Telo.Application
+metadata:
+  name: ImportTextInputTest
+  version: 1.0.0
+  description: |
+    A library input typed Text is a text the importer writes: the library reads
+    the record attributed to the importer, at an imports: entry, a top-level
+    Telo.Import and a scoped import, while the entry's default is the library's
+    own text and a record forwarded through a nested import keeps its writer.
+lang: pl
+imports:
+  Assert: ../modules/assert
+  Title: { source: ./__fixtures__/import-text-input/title, variables: { title: Hello } }
+  Plural:
+    source: ./__fixtures__/import-text-input/title
+    variables:
+      title:
+        plural: count
+        cases: { one: "{$count} plik", few: "{$count} pliki", other: "{$count} plików" }
+  Defaulted: ./__fixtures__/import-text-input/defaulted
+  Forwarding:
+    source: ./__fixtures__/import-text-input/forwarding
+    variables: { title: Hello }
+targets: [!ref test]
+---
+kind: Telo.Import
+metadata: { name: TopLevel }
+source: ./__fixtures__/import-text-input/title
+variables: { title: { text: Hello, context: greeting } }
+---
+kind: Telo.Sequence
+metadata: { name: scoped }
+with:
+  - kind: Telo.Import
+    metadata: { name: Inner }
+    source: ./__fixtures__/import-text-input/title
+    variables: { title: Hello }
+steps:
+  - name: shown
+    invoke: !ref Inner.shown
+outputs:
+  title: !cel "steps.shown.result"
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - { name: title, invoke: !ref Title.shown }
+  - { name: plural, invoke: !ref Plural.shown }
+  - { name: defaulted, invoke: !ref Defaulted.shown }
+  - { name: forwarded, invoke: !ref Forwarding.shown }
+  - { name: topLevel, invoke: !ref TopLevel.shown }
+  - { name: firstRun, invoke: !ref scoped }
+  - { name: secondRun, invoke: !ref scoped }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        title: !cel "steps.title.result"
+        plural: !cel "steps.plural.result"
+        defaulted: !cel "steps.defaulted.result"
+        forwarded: !cel "steps.forwarded.result"
+        topLevel: !cel "steps.topLevel.result"
+        runs: !cel "[steps.firstRun.result.title, steps.secondRun.result.title]"
+      expected:
+        title: { text: Hello, context: null, lang: pl, computed: false }
+        plural:
+          text:
+            plural: count
+            cases: { one: "{$count} plik", few: "{$count} pliki", other: "{$count} plików" }
+          context: null
+          lang: pl
+          computed: false
+        defaulted: { text: Hello, context: null, lang: en, computed: false }
+        forwarded: { text: Hello, context: null, lang: pl, computed: false }
+        topLevel: { text: Hello, context: greeting, lang: pl, computed: false }
+        runs:
+          - { text: Hello, context: null, lang: pl, computed: false }
+          - { text: Hello, context: null, lang: pl, computed: false }

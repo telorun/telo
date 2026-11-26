@@ -1,4 +1,7 @@
-import { parseCanonicalTypeSchemaId, parseTeloTypeRef, type ResourceManifest } from "@telorun/sdk";
+import { isCompiledValue, parseCanonicalTypeSchemaId, parseTeloTypeRef, type ResourceManifest } from "@telorun/sdk";
+import { moduleInputBlock } from "./text-parameter.js";
+import { inheritSchemaPlace, recordDocumentPlaces } from "./schema-provenance.js";
+import { carryAuthoredSchemaRef } from "./authored-schema-refs.js";
 import { isKindDocument } from "./kind-declaration.js";
 import type { ImportEdge, LoadedGraph, LoadedModule, ScopedImportEdge } from "./loaded-types.js";
 import type { LoadedFile } from "./loaded-types.js";
@@ -16,7 +19,8 @@ import { forwardedShapeFieldsOf, refSentinelsIn } from "./contract-shapes.js";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
 import { moduleCallSites } from "./cel-access-chains.js";
 import { moduleCallNamesOfFile, SELF_ALIAS } from "./module-call-names.js";
-import { isExpansionSentinel } from "@telorun/templating";
+import { expansionTagOf, isExpansionSentinel, isTaggedSentinel } from "@telorun/templating";
+import { isRefusedImport } from "./loader-expansion-refusals.js";
 import { scopedMemberPath } from "./scoped-imports.js";
 import {
   scopedImportAnchorOf,
@@ -118,7 +122,11 @@ export function selectModuleManifestsForAnalysis(
     }
   }
   out.push(...forwardedInternalCalls(moduleManifests, out, libDoc, moduleGlobals));
-  out.push(...forwardedContractShapes(moduleManifests, out, libDoc));
+  // A forwarded manifest's `variables` / `secrets` are read where the library
+  // writes them, and the shapes their entries name travel with them.
+  const carriesGlobals = moduleGlobals !== undefined && out.length > 0;
+  if (carriesGlobals) recordDocumentPlaces(libDoc!);
+  out.push(...forwardedContractShapes(moduleManifests, out, libDoc, carriesGlobals));
   return out;
 }
 
@@ -208,6 +216,7 @@ function forwardedContractShapes(
   moduleManifests: readonly ResourceManifest[],
   forwarded: readonly ResourceManifest[],
   libDoc: ResourceManifest | undefined,
+  carriesGlobals: boolean,
 ): ResourceManifest[] {
   const ownNames = ownModuleNames(libDoc);
   const byName = new Map<string, ResourceManifest>();
@@ -229,6 +238,7 @@ function forwardedContractShapes(
       fields: forwardedShapeFieldsOf(manifest).filter((field) => field !== "schema" || isShapeDocument(manifest)),
     }),
   );
+  if (carriesGlobals && libDoc) queue.push({ manifest: libDoc, fields: ["variables", "secrets"] });
   while (queue.length > 0) {
     const { manifest, fields } = queue.shift()!;
     const record = manifest as unknown as Record<string, unknown>;
@@ -265,10 +275,22 @@ function forwardedContractShapes(
   return out;
 }
 
-/** Whether a manifest carries a schema of its own, as a named shape does. */
+/** Whether a manifest carries a schema of its own, as a named shape does — or,
+ *  as a whole-document `!if` / `!switch`, declares one in some branch. */
 function isShapeDocument(manifest: ResourceManifest): boolean {
-  const schema = (manifest as unknown as Record<string, unknown>).schema;
-  return !!schema && typeof schema === "object" && !Array.isArray(schema);
+  const holds = (value: unknown): boolean => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    if (isExpansionSentinel(value)) {
+      const tag = expansionTagOf(value);
+      if (tag !== "if" && tag !== "switch") return false;
+      const body = value as Record<string, unknown>;
+      const branches = tag === "if" ? [body.then, body.else] : [...Object.values((body.cases ?? {}) as object), body.default];
+      return branches.some(holds);
+    }
+    const schema = (value as Record<string, unknown>).schema;
+    return !!schema && typeof schema === "object" && !Array.isArray(schema);
+  };
+  return holds(manifest);
 }
 
 /** The names of the library's own shapes a `$ref` under `value` names by id —
@@ -322,8 +344,9 @@ export function readModuleGlobals(libDoc: ResourceManifest | undefined): ModuleG
   if (!doc) return undefined;
   const globals: ModuleGlobals = {};
   for (const key of ["variables", "secrets", "ports"] as const) {
-    const block = doc[key];
-    if (block && typeof block === "object" && !Array.isArray(block)) globals[key] = block;
+    // A library's text parameter reads as the record its importer hands over.
+    const block = key === "ports" ? doc[key] : moduleInputBlock(doc, key);
+    if (block && typeof block === "object" && !Array.isArray(block)) globals[key] = block as Record<string, unknown>;
   }
   // `module` is the declaring module's own identity, so it travels with a
   // forwarded manifest for the same reason the config blocks do: a library's
@@ -465,7 +488,7 @@ function flattenGraph(graph: LoadedGraph): ResourceManifest[] {
           continue;
         }
         for (const importPath of reached) {
-          result.push({ ...m, metadata: { ...m.metadata, importPath } as ResourceManifest["metadata"] });
+          result.push({ ...withOwnChoices(m), metadata: { ...m.metadata, importPath } as ResourceManifest["metadata"] });
         }
       }
     }
@@ -545,16 +568,20 @@ export function stampScopedImportsIn(graph: LoadedGraph, manifests: readonly Res
     for (const edge of edges) {
       if (edge.holders[0]!.name !== m.metadata?.name) continue;
       let node: unknown = m;
-      for (const step of edge.holders) {
-        const array = (node as Record<string, unknown> | undefined)?.[step.field];
-        node = Array.isArray(array) ? array[step.index] : undefined;
-      }
+      for (const key of edge.place) node = (node as Record<string | number, unknown> | undefined)?.[key];
       const member = node as Record<string, unknown> | undefined;
-      if (member?.kind === "Telo.Import" && (member.metadata as { name?: unknown })?.name === edge.alias) {
+      if (member?.kind === "Telo.Import" && (member === edge.member || sameName(member, edge))) {
         stampScopedMember(member, edge, file!, graph);
       }
     }
   }
+}
+
+/** Whether `member`, found at `edge`'s place, is the member it records: named
+ *  as it is, or — a branch a choice declares — named by the tag. */
+function sameName(member: Record<string, unknown>, edge: ScopedImportEdge): boolean {
+  const name = (member.metadata as { name?: unknown } | undefined)?.name;
+  return name === undefined ? (edge.member.metadata as { name?: unknown } | undefined)?.name === undefined : name === edge.alias;
 }
 
 function stampScopedMember(
@@ -570,7 +597,8 @@ function stampScopedMember(
   meta.resolvedNamespace = edge.targetNamespace;
   meta.resolvedSource = edge.targetSource;
   meta.scopeHolders = edge.holders.map((h) => h.name);
-  meta.scopePath = scopedMemberPath(edge.holders);
+  meta.scopePath = scopedMemberPath(edge.place);
+  meta.scopeField = edge.holders[edge.holders.length - 1]!.field;
   meta.scopeAnchor = {
     filePath: file,
     resource: { kind: edge.holderKind, name: edge.holders[0]!.name },
@@ -582,11 +610,44 @@ function stampScopedMember(
 
 export { scopeHoldersOf, scopedImportAnchorOf, scopedImportMembers, type ScopedImportAnchor, type ScopedImportMember };
 
-/** An exported instance or an internal one it calls — a module instance's own
- *  document, as opposed to the module's kinds, imports and named shapes. */
+/**
+ * `manifest` with every `!if` / `!switch` / `!for-each` in it a node of its
+ * own, and every container on the way to one: a choice is read and decided by
+ * its node, so two instances of one document must not share one. Every other
+ * node is shared, and a copied node carries the place and the authored `$ref`
+ * of the node it copies.
+ */
+function withOwnChoices(manifest: ResourceManifest): ResourceManifest {
+  const visit = (node: unknown): unknown => {
+    if (!node || typeof node !== "object" || isTaggedSentinel(node) || isCompiledValue(node)) return node;
+    let changed = isExpansionSentinel(node);
+    const copy = Array.isArray(node)
+      ? node.map((child) => {
+          const next = visit(child);
+          if (next !== child) changed = true;
+          return next;
+        })
+      : Object.fromEntries(
+          Object.entries(node).map(([key, child]) => {
+            const next = key === "metadata" && node === manifest ? child : visit(child);
+            if (next !== child) changed = true;
+            return [key, next];
+          }),
+        );
+    if (!changed) return node;
+    inheritSchemaPlace(copy, node);
+    carryAuthoredSchemaRef(node, copy);
+    return copy;
+  };
+  return visit(manifest) as ResourceManifest;
+}
+
+/** An exported instance, an internal one it calls, or a named shape — a module
+ *  instance's own document, as opposed to the module's kinds and imports. A
+ *  shape is one: its choices read the instance's inputs. */
 function isForwardedInstance(m: ResourceManifest): boolean {
-  const meta = m.metadata as { forwardedExport?: unknown; forwardedInternal?: unknown } | undefined;
-  return meta?.forwardedExport === true || meta?.forwardedInternal === true;
+  const meta = m.metadata as { forwardedExport?: unknown; forwardedInternal?: unknown; forwardedShape?: unknown } | undefined;
+  return meta?.forwardedExport === true || meta?.forwardedInternal === true || meta?.forwardedShape === true;
 }
 
 /**
@@ -1232,6 +1293,8 @@ function stampFile(
   for (let i = 0; i < file.manifests.length; i++) {
     const m = file.manifests[i];
     if (m === null || m === undefined) continue;
+    // Refused by the loader at its alias, kind, source or integrity.
+    if (isRefusedImport(m as unknown as Record<string, unknown>)) continue;
     const { sourceLine } = file.positions[i];
 
     const metadata: Record<string, unknown> = {

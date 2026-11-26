@@ -60,7 +60,7 @@ inputType:
     required: [a, b]
     properties: { a: { type: number }, b: { type: number } }
 value:
-  result: !cel "inputs.a * inputs.b + 1000003"
+  result: !cel "inputs.a * inputs.b + 1000003.0"
 ---
 kind: Ai.Tools
 metadata: { name: tools }

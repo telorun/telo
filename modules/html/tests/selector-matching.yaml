@@ -84,7 +84,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: [l1, l5]
 ---
 # `:nth-last-child(An+B of S)`, from the end.
@@ -100,7 +100,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: [l5]
 ---
 # `of` takes a selector list.
@@ -116,7 +116,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: [l2]
 ---
 # A complex selector inside `:is()`.
@@ -132,7 +132,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: [p1, p2]
 ---
 # A complex selector inside `:not()`, against the whole document.
@@ -148,7 +148,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: [artlink]
 ---
 # `:where()` with a list, under a combinator.
@@ -164,7 +164,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: [navlink, artlink]
 ---
 # `:has(> S)`.
@@ -180,7 +180,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: [imgbox]
 ---
 # `:has(+ S)` looks at the next sibling.
@@ -196,7 +196,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: [t1]
 ---
 # `:has(~ S)` looks at later siblings.
@@ -212,7 +212,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: [t2]
 ---
 # `col || td` — the cells in a column group's columns, spans included.
@@ -228,7 +228,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: [r1b, r2b, r2c]
 ---
 # `:nth-col()`.
@@ -244,7 +244,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: [r1a, r2a]
 ---
 # `:nth-last-col()`, a spanning cell belonging to each of its columns.
@@ -260,7 +260,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: [r1b, r2c]
 ---
 # `:default` — a checked box and a form's first submit button.
@@ -276,7 +276,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: [cb, b1]
 ---
 # `:indeterminate` — radios in a group with none checked, a progress with no value.
@@ -292,7 +292,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: [ra, rb, pg]
 ---
 # `:placeholder-shown`.
@@ -308,7 +308,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: [ph]
 ---
 # `:in-range`.
@@ -324,7 +324,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: [num]
 ---
 # `:out-of-range`.
@@ -340,7 +340,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: [big]
 ---
 # `:valid` — constraint validation from the markup.
@@ -356,7 +356,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: [cb, ra, rb, ph, num, b1, b2]
 ---
 # `:invalid` — a form holding an invalid control is invalid too.
@@ -372,7 +372,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: [f, big, req]
 ---
 # `:defined` — an autonomous custom element is not, in a static page.
@@ -388,7 +388,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: [xw]
 ---
 # HTML compares `type` values case-insensitively.
@@ -404,7 +404,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: [cb, up]
 ---
 # …and other attribute values exactly.
@@ -420,7 +420,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: []
 ---
 # The `i` flag makes any comparison case-insensitive.
@@ -436,7 +436,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: [up]
 ---
 # `:lang()` reads the nearest `lang`.
@@ -452,7 +452,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: [he]
 ---
 # `:dir()` reads the directionality.
@@ -468,7 +468,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: [he]
 ---
 # `:checked`.
@@ -484,7 +484,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: [cb]
 ---
 # `:disabled`.
@@ -500,7 +500,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: [dis]
 ---
 # `:empty` — white space does not count.
@@ -516,7 +516,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: [blank]
 ---
 # `:hover` needs a live user agent: it matches nothing in a parsed page.
@@ -532,7 +532,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: []
 ---
 # `:focus` needs a live user agent: it matches nothing in a parsed page.
@@ -548,7 +548,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: []
 ---
 # `:focus-within` needs a live user agent: it matches nothing in a parsed page.
@@ -564,7 +564,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: []
 ---
 # `:focus-visible` needs a live user agent: it matches nothing in a parsed page.
@@ -580,7 +580,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: []
 ---
 # `:visited` needs a live user agent: it matches nothing in a parsed page.
@@ -596,7 +596,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: []
 ---
 # `:target` needs a live user agent: it matches nothing in a parsed page.
@@ -612,7 +612,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: []
 ---
 # `:target-within` needs a live user agent: it matches nothing in a parsed page.
@@ -628,7 +628,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: []
 ---
 # `:local-link` needs a live user agent: it matches nothing in a parsed page.
@@ -644,7 +644,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: []
 ---
 # `:user-invalid` needs a live user agent: it matches nothing in a parsed page.
@@ -660,7 +660,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: []
 ---
 # `:playing` needs a live user agent: it matches nothing in a parsed page.
@@ -676,7 +676,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: []
 ---
 # `:paused` needs a live user agent: it matches nothing in a parsed page.
@@ -692,7 +692,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: []
 ---
 # `:modal` needs a live user agent: it matches nothing in a parsed page.
@@ -708,7 +708,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: []
 ---
 # `:fullscreen` needs a live user agent: it matches nothing in a parsed page.
@@ -724,7 +724,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: []
 ---
 # `:popover-open` needs a live user agent: it matches nothing in a parsed page.
@@ -740,7 +740,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: []
 ---
 # `:autofill` needs a live user agent: it matches nothing in a parsed page.
@@ -756,7 +756,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: []
 ---
 # `:state(open)` needs a live user agent: it matches nothing in a parsed page.
@@ -772,7 +772,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: []
 ---
 # `:current` needs a live user agent: it matches nothing in a parsed page.
@@ -788,7 +788,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: []
 ---
 # `:past` needs a live user agent: it matches nothing in a parsed page.
@@ -804,7 +804,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: []
 ---
 # `:future` needs a live user agent: it matches nothing in a parsed page.
@@ -820,7 +820,7 @@ steps:
   - name: assertMatches
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      actual: !cel "steps.select.result.nodes.map(n, n.?attrs.id.value())"
       expected: []
 ---
 # A nested field's selector is matched against the whole page, so an ancestor

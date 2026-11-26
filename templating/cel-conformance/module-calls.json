@@ -35,10 +35,10 @@
               "arity": 2,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 },
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 0,
@@ -112,7 +112,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 0,
@@ -182,7 +182,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 0,
@@ -645,7 +645,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 33,
@@ -831,7 +831,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "string"
+                  "typeName": "string"
                 }
               ],
               "start": 0,
@@ -892,10 +892,10 @@
               "arity": 2,
               "arguments": [
                 {
-                  "type": "double"
+                  "typeName": "double"
                 },
                 {
-                  "type": "string"
+                  "typeName": "string"
                 }
               ],
               "start": 0,
@@ -977,20 +977,20 @@
               "arity": 4,
               "arguments": [
                 {
-                  "type": "double",
+                  "typeName": "double",
                   "chain": [
                     "order",
                     "net"
                   ]
                 },
                 {
-                  "type": "int"
+                  "typeName": "int"
                 },
                 {
-                  "type": "string"
+                  "typeName": "string"
                 },
                 {
-                  "type": "list<int>"
+                  "typeName": "list<int>"
                 }
               ],
               "start": 0,
@@ -1380,7 +1380,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 0,
@@ -1465,7 +1465,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 0,
@@ -1542,13 +1542,13 @@
               "arity": 4,
               "arguments": [
                 {
-                  "type": "type",
+                  "typeName": "type",
                   "chain": [
                     "int"
                   ]
                 },
                 {
-                  "type": "optional<dyn>"
+                  "typeName": "optional<dyn>"
                 },
                 {
                   "chain": [
@@ -1640,10 +1640,10 @@
               "arity": 2,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 },
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 0,
@@ -1721,10 +1721,10 @@
               "arity": 2,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 },
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 0,
@@ -1797,7 +1797,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 0,
@@ -1937,7 +1937,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 0,
@@ -2033,7 +2033,7 @@
       "expect": {
         "check": {
           "diagnostics": [],
-          "type": "dyn",
+          "type": "double",
           "calls": [
             {
               "name": "Billing.invoice",
@@ -2042,7 +2042,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 0,
@@ -2131,7 +2131,6 @@
               "message": "'Billing.invoice(…).amont' is not defined (available: amount, lines)"
             }
           ],
-          "type": "dyn",
           "calls": [
             {
               "name": "Billing.invoice",
@@ -2140,7 +2139,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 0,
@@ -2149,6 +2148,7 @@
               "hostBacked": false
             }
           ],
+          "readTypes": [],
           "regions": [
             {
               "start": 0,
@@ -2233,7 +2233,6 @@
               "message": "'Billing.invoice(…).lines.[*].qy' is not defined (available: qty)"
             }
           ],
-          "type": "dyn",
           "calls": [
             {
               "name": "Billing.invoice",
@@ -2242,7 +2241,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 0,
@@ -2251,6 +2250,7 @@
               "hostBacked": false
             }
           ],
+          "readTypes": [],
           "regions": [
             {
               "start": 0,
@@ -2312,7 +2312,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 0,
@@ -2438,7 +2438,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 0,
@@ -2497,10 +2497,10 @@
               "arity": 2,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 },
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 17,
@@ -2701,10 +2701,10 @@
               "arity": 2,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 },
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 0,
@@ -2719,7 +2719,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 14,
@@ -2734,7 +2734,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 32,
@@ -2826,7 +2826,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 0,
@@ -2841,7 +2841,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 19,
@@ -2856,7 +2856,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 38,
@@ -2941,7 +2941,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 9,
@@ -3010,7 +3010,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 4,
@@ -3025,7 +3025,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 23,
@@ -3097,7 +3097,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 0,
@@ -3177,7 +3177,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 0,
@@ -3192,7 +3192,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 19,
@@ -3272,7 +3272,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 0,
@@ -3285,7 +3285,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 16,
@@ -3335,7 +3335,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 0,
@@ -3589,7 +3589,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 0,
@@ -3677,10 +3677,10 @@
               "arity": 2,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 },
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 11,
@@ -3695,7 +3695,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 39,
@@ -3861,7 +3861,7 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "int"
+                  "typeName": "int"
                 }
               ],
               "start": 29,

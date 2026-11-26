@@ -1,0 +1,8 @@
+kind: Telo.Application
+metadata:
+  name: AppNoType
+  version: 1.0.0
+variables:
+  title:
+    env: TITLE
+    default: Hello

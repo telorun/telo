@@ -1,0 +1,6 @@
+units:
+  cel: Added
+body: "A check diagnostic carries `absent: true` (`absent` in Rust) on a
+  `CEL_UNKNOWN_FIELD` refusing a member the schema declares absent, one whose schema
+  admits no value, so a host tells it from an undeclared member without reading the
+  message."

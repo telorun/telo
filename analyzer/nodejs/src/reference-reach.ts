@@ -53,6 +53,8 @@ import { isRefSentinel } from "@telorun/templating";
 import { followSchemaReferences, resolveSchemaReference, schemaReferenceParts, type NamedShapeLookup } from "./schema-reference.js";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
 import { isSchemaOnlySlot, readRefSlot, type RefSlot } from "./ref-slot.js";
+import { schemaWithinDocument } from "./schema-at-pointer.js";
+import { writtenReferences } from "./schema-in-place-cycle.js";
 import { readStepSlot, type StepSlot } from "./step-slot.js";
 import type {
   RefFieldEntry,
@@ -269,26 +271,15 @@ export function refSlotOfEntry(entry: RefFieldEntry): RefSlot {
 }
 
 const branchDocuments = new WeakMap<object, Record<string, any>>();
-const branchSchemas = new WeakMap<object, Record<string, any>>();
 
-/** A value branch as a schema that compiles on its own: the `$defs` /
- *  `definitions` of the document its slot was declared in sit beside it, so a
- *  local `$ref` inside the branch resolves. */
+/** A value branch as a schema that compiles on its own: read where it sits in
+ *  the document its slot was declared in, so a local `$ref` inside the branch
+ *  names what it names there. */
 export function valueBranchSchema(branch: Record<string, any>): Record<string, any> {
   const document = branchDocuments.get(branch);
   if (!document || document === branch) return branch;
-  const { $defs, definitions } = document;
-  if ($defs === undefined && definitions === undefined) return branch;
-  let wrapped = branchSchemas.get(branch);
-  if (!wrapped) {
-    wrapped = {
-      allOf: [branch],
-      ...($defs !== undefined ? { $defs } : {}),
-      ...(definitions !== undefined ? { definitions } : {}),
-    };
-    branchSchemas.set(branch, wrapped);
-  }
-  return wrapped;
+  if (!writtenReferences(branch).some(({ ref }) => ref === "#" || ref.startsWith("#/"))) return branch;
+  return schemaWithinDocument(branch, document);
 }
 
 /** Each reference entry's own declaration, for the enclosing object and the

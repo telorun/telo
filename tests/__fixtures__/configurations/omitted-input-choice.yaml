@@ -1,0 +1,10 @@
+# An import omitting its library's optional input, binding the input that
+# decides whether the library reads it behind a choice: refused only where the
+# option making the library read it is taken.
+kind: Telo.Application
+metadata: { name: OmittedInputChoice, version: 1.0.0 }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+imports:
+  Reading:
+    source: ./optional-reference
+    variables: { useStore: !if { if: !cel "variables.flag1", then: true, else: false } }

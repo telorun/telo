@@ -34,8 +34,10 @@
  *
  * THE ENUMERATION is the texts every module of the closure shows: each `Text` a
  * resource, a template body or a `base:` mapping writes, each `title`,
- * `description` and string enum value of a data schema, and each literal
- * argument at a `Text` parameter. One set per module, built once per analysis,
+ * `description` and string enum value of a data schema, each literal argument
+ * at a `Text` parameter, and each text an import supplies to a library's text
+ * parameter (the importer's) or such an entry's `default:` holds (the
+ * library's). One set per module, built once per analysis,
  * and one union per catalog's closure, memoized per module — linear in what the
  * closure writes. Browser-safe.
  */
@@ -111,6 +113,8 @@ import {
 import { BUILTIN_ERROR_TEXT_LANG, builtinErrorCodes, messageIdentity, readText, type Text } from "@telorun/sdk";
 import { builtinTranslationCatalogs } from "./builtin-translations.js";
 import { judgeDataValues, judgeDeclaredValues } from "./text-values.js";
+import { textParametersOf, type LibraryTextParameter } from "./text-parameter.js";
+import { importTextParameters } from "./import-inputs.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
 const SOURCE = "telo-analyzer";
@@ -297,6 +301,8 @@ export interface TextReaderOptions {
   readonly producedSchemaAt?: TextPassOptions["producedSchemaAt"];
   readonly writerAt?: TextPassOptions["writerAt"];
   readonly bodyWroteWhole?: TextPassOptions["bodyWroteWhole"];
+  /** The text parameters of the library a `Telo.Import` reaches. */
+  readonly importTextParameters?: (importManifest: ResourceManifest) => readonly LibraryTextParameter[];
   /** The parameters of what a qualified call written in `module` names. */
   readonly paramsOf: (qualified: string, module: string) => readonly { name?: unknown; schema?: unknown }[];
 }
@@ -696,7 +702,80 @@ export function textReader(options: TextReaderOptions): (manifest: ResourceManif
       }
     };
 
+    /** A library's text parameters: each text an import supplies, written by
+     *  the importing module, and each entry's `default:`, written by the
+     *  library. */
+    const visitTextParameters = (): void => {
+      const lang = scope.langOfModule(module);
+      /** `input` names a library's parameter an import supplies, as the library
+       *  names it: a choice may hold the value at another place of the import. */
+      const judgeWritten = (value: unknown, path: ValuePath, fragment: TextFragment, input?: string) => {
+        if (!options.accepts(fragment, value)) return;
+        const text = judgeText(value, lang);
+        if (text.text) showText(shown, module, text.text, [WRITING_OF.own, 1]);
+        if (!judged) return;
+        for (const problem of text.problems) {
+          const found = input === undefined
+            ? problemDiagnostic(problem, manifest, path, "the text")
+            : diagnostic(
+                problem.code,
+                `the text for the imported library's ${input}${problem.path.length > 0 ? ` is refused at its \`${renderValuePath(problem.path)}\`` : " is refused"}: ${problem.message}.`,
+                { manifest, path: [...path, ...problem.path] },
+              );
+          findings.push({ diagnostic: found, order: [WRITING_OF.own, 1] });
+        }
+      };
+      if (isModuleKind(manifest.kind as string)) {
+        for (const param of textParametersOf(manifest)) {
+          if (!Object.hasOwn(param.entry, "default") || param.entry.default === null) continue;
+          const path = [param.block, param.name, "default"];
+          extents.push(path);
+          if (expressionsWithin(param.entry.default, isExpression).length === 0) judgeWritten(param.entry.default, path, param.fragment);
+        }
+        return;
+      }
+      if (manifest.kind !== "Telo.Import") return;
+      const computed = (path: ValuePath, name: string) => {
+        if (!judged) return;
+        findings.push({
+          diagnostic: diagnostic(
+            "TEXT_ARGUMENT_COMPUTED",
+            `the value at '${renderValuePath(path)}' is computed, and the library's input '${name}' is a text parameter: it takes a text this module writes, or the record of a text already shown — a text parameter of this module forwarded with \`!cel "variables.<name>"\`. A text an expression produces can be neither checked nor translated. Write the text itself`,
+            { manifest, path },
+          ),
+          order: [WRITING_OF.own, 2],
+        });
+      };
+      const blocksComputed = new Set<string>();
+      for (const param of options.importTextParameters?.(manifest) ?? []) {
+        const block = (manifest as unknown as Record<string, unknown>)[param.block];
+        if (isExpression(block)) {
+          extents.push([param.block]);
+          if (!blocksComputed.has(param.block)) computed([param.block], param.name);
+          blocksComputed.add(param.block);
+          continue;
+        }
+        const value = isPlainObject(block) ? block[param.name] : undefined;
+        if (value === undefined || value === null) continue;
+        const path = [param.block, param.name];
+        extents.push(path);
+        if (isExpression(value)) {
+          // A record already shown is handed on unchanged, its writer's.
+          const produced = options.producedSchemaAt?.(manifest, renderValuePath(path));
+          if (!produced || !producesTextRecord(produced, produced, resolveNamed)) computed(path, param.name);
+          continue;
+        }
+        const [inner] = expressionsWithin(value, isExpression);
+        if (inner) {
+          computed([...path, ...inner.path], param.name);
+          continue;
+        }
+        judgeWritten(value, path, param.fragment, `${param.block === "secrets" ? "secret" : "variable"} '${param.name}'`);
+      }
+    };
+
     visit();
+    visitTextParameters();
     visitSchemas();
     // Literal text arguments at `Text` parameters, read off the module's own CEL.
     const names = options.moduleCallNames.get(module) ?? options.moduleCallNames.get(ROOT_MODULE_KEY);
@@ -918,7 +997,12 @@ export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
   const { manifests, rootModules, resolveDef, moduleDocuments } = options;
   const scope = new TextLanguageScope(listRequests(manifests), rootModules, moduleDocuments);
   const callees = new CalleeResolver(manifests, moduleDocuments, scope, resolveDef);
-  const read = textReader({ ...options, scope, paramsOf: (qualified, module) => callees.paramsOf(qualified, module) });
+  const read = textReader({
+    ...options,
+    scope,
+    paramsOf: (qualified, module) => callees.paramsOf(qualified, module),
+    importTextParameters: (importManifest) => importTextParameters(importManifest, moduleDocuments),
+  });
   const coverage = textCoverage(resolveDef, scope);
 
   // The texts each module shows, and the literal `Text` values each writes — a

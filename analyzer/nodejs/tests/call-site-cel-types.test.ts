@@ -149,7 +149,7 @@ describe("a `!cel` argument's type against the target's inputType", () => {
     });
     expect(found).toHaveLength(1);
     expect(found[0]).toContain("targets[0].inputs.count");
-    expect(found[0]).toContain("'string' but consume's declared inputType expects 'integer'");
+    expect(found[0]).toContain("reads 'variables.name', declared 'string', but consume's declared inputType expects 'integer'.");
   });
 
   it("is refused at a route, reading `request` as the route declares it", () => {
@@ -163,8 +163,7 @@ describe("a `!cel` argument's type against the target's inputType", () => {
     ]);
     expect(found).toHaveLength(1);
     expect(found[0]).toContain("routes[0].inputs.count");
-    expect(found[0]).toContain("reads 'request.path'");
-    expect(found[0]).toContain("source is 'string', target expects 'integer'");
+    expect(found[0]).toContain("reads 'request.path', declared 'string', but consume's declared inputType expects 'integer'.");
   });
 
   it.each([
@@ -250,7 +249,9 @@ describe("a nullable source into a slot that takes no null", () => {
     "a null union branch": { anyOf: [failure, { type: "null" }] },
     "a type list holding null": { ...failure, type: ["object", "null"] },
     "`nullable: true`": { ...failure, nullable: true },
-    "an enum holding null": { enum: [null, "x"] },
+    "an enum holding null": { enum: [null, { message: "x" }] },
+  };
+  const ONLY_NULL: Record<string, Record<string, any>> = {
     "a `type: null`": { type: "null" },
     "a null `const`": { const: null },
   };
@@ -281,6 +282,13 @@ describe("a nullable source into a slot that takes no null", () => {
     expect(found).toHaveLength(1);
     expect(found[0]).toContain(`reads '${chain}', which may be null`);
     expect(found[0]).toContain(`${chain} != null ? ${chain} :`);
+  });
+
+  it.each(Object.entries(ONLY_NULL))("refuses %s as a type mismatch naming null", (form, produced) => {
+    expect(flow(produced, objectSlot, chain)).toEqual([
+      "steps[1].inputs.failure: srv.Sequence/main: CEL at 'steps[1].inputs.failure' returns 'null' " +
+        "but release's declared inputType expects 'object'.",
+    ]);
   });
 
   it("accepts it at an open slot and at one admitting null", () => {
@@ -395,8 +403,8 @@ describe("the code a plain chain's producer-schema conflict carries", () => {
       );
       expect(found).toHaveLength(1);
       expect(found[0]!.startsWith("CEL_TYPE_ERROR: ")).toBe(true);
-      expect(found[0]).toContain("/body<of>");
-      expect(found[0]).toContain("/b: required by");
+      expect(found[0]).toContain("expects at '/body<of>': value type mismatch");
+      expect(found[0]).toContain("; at '/b': required by");
     });
   });
 });
@@ -461,7 +469,8 @@ describe("a member read through a union in its producer's schema", () => {
       const found = reported(site(either(text), { type: "integer" }, ".a"));
       expect(found).toHaveLength(1);
       expect(found[0]!.startsWith("CEL_TYPE_ERROR: ")).toBe(true);
-      expect(found[0]).toContain("source is 'string', target expects 'integer'");
+      expect(found[0]).toContain("declared 'string', but");
+      expect(found[0]).toContain("expects 'integer'.");
       expect(found[0]).not.toContain("no alternative matches");
     });
 

@@ -1,0 +1,23 @@
+# A consumer of the templated graph, handing it a schema that lists no table.
+kind: Telo.Application
+metadata: { name: ConsumesWrappedGraph }
+imports: { SQLite: ../../../../sqlite, Lib: ./wrapped-table-not-in-schema }
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: documents }
+table: documents
+columns: { id: { type: text, primaryKey: true } }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref documents]
+---
+kind: Lib.Ledger
+metadata: { name: ledger }
+connection: !ref db
+schema: !ref appSchema

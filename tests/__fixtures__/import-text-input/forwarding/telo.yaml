@@ -1,0 +1,13 @@
+kind: Telo.Library
+metadata:
+  name: ImportTextForwarding
+  version: 1.0.0
+  description: "Test fixture: a library handing its importer's text on to a library it imports."
+lang: en
+imports:
+  Inner:
+    source: ../title
+    variables:
+      title: !cel "variables.title"
+variables: { title: { $ref: "telo://manifest#/$defs/Text" } }
+exports: { resources: [Inner.shown] }

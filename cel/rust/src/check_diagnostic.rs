@@ -16,6 +16,7 @@
 
 use std::fmt;
 
+use crate::schema_dependencies::SchemaDependency;
 use crate::syntax_tree::SourceRange;
 
 /// Every verdict this engine decides, in Node's order.
@@ -113,6 +114,14 @@ pub struct CelCheckDiagnostic {
     pub message: String,
     pub range: SourceRange,
     pub fix: Option<CelDiagnosticFix>,
+    /// Present only when the host asked (`CheckOptions::schema_nodes`): on a
+    /// `CEL_UNKNOWN_FIELD`, a `CEL_TYPE_ERROR` or a `CEL_NULLABLE_ACCESS`, the schema node
+    /// the verdict was judged at, as `schema-nodes.ts` reads it.
+    pub schema_node: Option<SchemaDependency>,
+    /// On a `CEL_UNKNOWN_FIELD` refusing a member the schema declares absent — one whose
+    /// schema admits no value, read by something other than a presence test — `true`, so a
+    /// host tells it from an undeclared member without reading the message.
+    pub absent: bool,
 }
 
 /// Every way the engine refuses its caller, one vocabulary across engines.

@@ -92,8 +92,8 @@ steps:
         metadata: !cel "steps.metadata.result.baseUrl"
         stylesheet: !cel "steps.metadata.result.links[0].href"
         content: !cel "steps.main.result.content.baseUrl"
-        link: !cel "steps.links.result.nodes[0].attrs.href"
-        image: !cel "steps.links.result.nodes[1].attrs.src"
+        link: !cel "steps.links.result.nodes[0].?attrs.href.value()"
+        image: !cel "steps.links.result.nodes[1].?attrs.src.value()"
       expected:
         selected: https://example.com/assets/
         metadata: https://example.com/assets/

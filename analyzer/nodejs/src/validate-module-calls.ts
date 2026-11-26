@@ -38,13 +38,12 @@ import { moduleCallsInSource } from "./cel-access-chains.js";
 import type { ModuleFunctionIndex } from "./module-function-index.js";
 import type { UnboundCallSource } from "./unbound-call-site.js";
 import {
-  celTypeSatisfiesJsonSchema,
+  celRootTypeSatisfiesJsonSchema,
   checkSchemaCompatibility,
-  navigateSchemaToExprPath,
 } from "./schema-compat.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import {
-  celTypeValueKind,
+  literalValueKind,
   judgeText,
   judgeValues,
   runtimeValueKind,
@@ -61,9 +60,9 @@ export interface ModuleCallSite {
   readonly filePath: string | undefined;
   readonly path: string;
   readonly calls: readonly CallSite[];
-  /** The context the expression is typed against, for a chain argument's
-   *  declared shape. */
-  readonly contextSchema: Record<string, any> | null;
+  /** The node a plain chain argument is read from where the expression is
+   *  typed — the shape it forwards to the parameter. */
+  readonly chainSchema: (chain: string) => Record<string, any> | undefined;
   readonly resolveRef: (ref: string) => Record<string, any> | undefined;
   /** Why no module function is bound where this expression is evaluated, when
    *  none is (`unbound-call-site.ts`). */
@@ -157,15 +156,16 @@ export function moduleCallDiagnostics(
     (call.arguments ?? []).forEach((argument, index) => {
       const param = params[index];
       if (!param?.schema) return;
-      if (argument.type !== undefined && !celTypeSatisfiesJsonSchema(argument.type.split("<")[0]!, param.schema)) {
+      // The argument's type is judged by its root, read from the type itself.
+      if (argument.type !== undefined && !celRootTypeSatisfiesJsonSchema(argument.type, param.schema)) {
         push(
           "FUNCTION_ARGUMENT_MISMATCH",
-          `${prefix} '${call.name}' passing a '${argument.type}' for parameter '${param.name}', which expects '${describeSchema(param.schema)}'.`,
+          `${prefix} '${call.name}' passing a '${argument.typeName}' for parameter '${param.name}', which expects '${describeSchema(param.schema)}'.`,
         );
         return;
       }
-      if (!argument.chain || !site.contextSchema) return;
-      const produced = navigateSchemaToExprPath(site.contextSchema, argument.chain.join("."));
+      if (!argument.chain) return;
+      const produced = site.chainSchema(argument.chain.join("."));
       if (!produced) return;
       const { compatible, issues } = checkSchemaCompatibility(
         produced,
@@ -243,7 +243,7 @@ function writtenValues(call: CallSite, index: number): KnownValues | undefined {
     return new Map(Object.entries(literal).map(([key, value]) => [key, runtimeValueKind(value)]));
   }
   if (argument.entries) {
-    return new Map(argument.entries.map((entry) => [entry.key, celTypeValueKind(entry.type)]));
+    return new Map(argument.entries.map((entry) => [entry.key, literalValueKind(entry.literalKind)]));
   }
   return undefined;
 }

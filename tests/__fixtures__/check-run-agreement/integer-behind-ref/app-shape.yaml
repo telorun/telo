@@ -1,0 +1,16 @@
+# An integer behind an Application variable's `$ref` to a named shape is bound
+# as an int64, as `telo check` types it.
+kind: Telo.Application
+metadata: { name: IntegerBehindAppShape }
+variables:
+  cfg: { env: CFG, type: object, $ref: "telo://Self/Config", default: { n: 2 } }
+targets: [!ref seq]
+---
+kind: Telo.JsonSchema
+metadata: { name: Config }
+schema: { type: object, properties: { n: { type: integer } } }
+---
+kind: Telo.Sequence
+metadata: { name: seq }
+steps:
+  - { name: a, value: !cel "variables.cfg.n + 1" }

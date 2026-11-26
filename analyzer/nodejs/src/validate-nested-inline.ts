@@ -12,6 +12,8 @@ import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { collectValueSchemaIssues } from "./validate-value-schema.js";
 import type { DeclarationRequests } from "./declaration-requests.js";
 import { parseKeys, pathText } from "./template-expansion.js";
+import { ownValuePositions } from "./own-value-positions.js";
+import type { OwnValuePositions } from "./value-depth.js";
 
 const SOURCE = "telo-analyzer";
 
@@ -37,7 +39,7 @@ export interface InlineDefinitionLookup {
  * the caller supplies the one that holds the shapes.
  */
 export interface InlineConfigValidator {
-  validate(data: unknown, schema: Record<string, any>, standIns?: StandIns): SchemaValidationOutcome;
+  validate(data: unknown, schema: Record<string, any>, standIns?: StandIns, ownValues?: OwnValuePositions): SchemaValidationOutcome;
   external: ExternalSchemaResolver;
 }
 
@@ -218,10 +220,10 @@ export function validateNestedInline(
     // the common shape rather than the exception. `data` carries the synthesized
     // metadata; `x-telo-value-schema-from` reads sibling fields off the
     // resource, which are present either way.
-    const own = validator.validate(substituted, effectiveSchema, standIns);
+    const own = validator.validate(substituted, effectiveSchema, standIns, ownValuePositions(data, effectiveSchema, []));
     const valueSchema = collectValueSchemaIssues(data, schema, types, validator);
-    const unfinishedAt = [...(own.finished ? [] : [""]), ...valueSchema.unfinished];
-    for (const at of unfinishedAt) {
+    const unfinishedAt = [...(own.finished ? [] : [{ path: "", unfinished: own }]), ...valueSchema.unfinished];
+    for (const { path: at, unfinished } of unfinishedAt) {
       const place = at ? `${path}.${at}` : path;
       diagnostics.push(
         withQuotedPath(
@@ -229,7 +231,7 @@ export function validateNestedInline(
             severity: DiagnosticSeverity.Error,
             code: SCHEMA_NESTING_EXCEEDED,
             source: SOURCE,
-            message: schemaNestingExceededMessage(`${resource.kind}/${resource.name}`, `the inline ${kind} at '${place}'`),
+            message: schemaNestingExceededMessage(`${resource.kind}/${resource.name}`, `the inline ${kind} at '${place}'`, unfinished),
             data: { resource, filePath, path: place },
           },
           place,

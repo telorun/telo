@@ -39,6 +39,7 @@ import { listRequests } from "./declaration-requests.js";
 import type { KeyParts, RegionPart, TemplateVariantOf } from "./key-parts.js";
 import { namedDependencies, placedInPart, rawInPart, underBranch, unitAt } from "./lifted-body-findings.js";
 import type { TemplateBodyUnit } from "./template-body-sites.js";
+import { importTextParameters } from "./import-inputs.js";
 import { isKindDocument } from "./kind-declaration.js";
 import { SELF_ALIAS } from "./module-call-names.js";
 import type { ModuleDocuments } from "./module-documents.js";
@@ -263,6 +264,7 @@ export function textFindings(inputs: TextFindingsInputs): PassTable {
       const at = viewPlaces(manifest);
       return !!at && !forwarded(at.places, parseKeys(path), true);
     },
+    importTextParameters: (importManifest) => importTextParameters(importManifest, libraries),
     paramsOf: (qualified, module) => {
       const found = callees.paramsAt(qualified, module, current?.witness ?? base);
       if (current) record(found.condition);
@@ -321,6 +323,15 @@ export function textFindings(inputs: TextFindingsInputs): PassTable {
       if (members.has(manifest)) return;
       const module = scope.moduleOf(manifest);
       const owned = scope.isOwned(manifest);
+      read.push({ manifest, index, ...(!owned && documented.has(module) ? {} : { texts: reader(manifest, module, owned) }) });
+    });
+    // A scoped import's text inputs are its module's, as an `imports:` entry's are.
+    part.kindMembers.forEach((member, at) => {
+      const manifest = member.declaration;
+      if (manifest.kind !== "Telo.Import") return;
+      const module = scope.moduleOf(manifest);
+      const owned = scope.isOwned(manifest);
+      const index = part.manifests.length + at;
       read.push({ manifest, index, ...(!owned && documented.has(module) ? {} : { texts: reader(manifest, module, owned) }) });
     });
     const own = read.find((entry) => entry.index === 0)?.texts;

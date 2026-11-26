@@ -1,0 +1,14 @@
+kind: Telo.Application
+metadata: { name: BranchPositionImport }
+imports:
+  Lib:
+    source: ./lib
+    integrity: !if { if: true, then: sha256-a }
+---
+kind: Telo.Import
+metadata: { name: Other }
+source: !switch { switch: a, cases: { a: ./lib } }
+---
+kind: !if { if: true, then: Telo.Import, else: Telo.Value }
+metadata: { name: Chosen }
+source: ./lib

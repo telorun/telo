@@ -1,0 +1,45 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "REPEAT_OUTSIDE_TEMPLATE",
+      "source": "telo-analyzer",
+      "message": "Telo.Import/Other: A '...' splice at '...' of the Telo.Import: the loader reads an import's alias and source before anything is expanded, so they cannot be chosen or repeated. Write them plainly.",
+      "data": {
+        "filePath": "telo.yaml",
+        "path": "..."
+      },
+      "range": {
+        "start": {
+          "line": 10,
+          "character": 9
+        },
+        "end": {
+          "line": 10,
+          "character": 52
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "REPEAT_OUTSIDE_TEMPLATE",
+      "source": "telo-analyzer",
+      "message": "Telo.Import/Lib: A '...' splice at '...' of the Telo.Import: the loader reads an import's alias and source before anything is expanded, so they cannot be chosen or repeated. Write them plainly.",
+      "data": {
+        "filePath": "telo.yaml",
+        "path": "imports.Lib...."
+      },
+      "range": {
+        "start": {
+          "line": 5,
+          "character": 13
+        },
+        "end": {
+          "line": 5,
+          "character": 64
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] telo.yaml: Telo.Import/Lib: A '...' splice at '...' of the Telo.Import: the loader reads an import's alias and source before anything is expanded, so they cannot be chosen or repeated. Write them plainly.\ntelo.yaml: Telo.Import/Other: A '...' splice at '...' of the Telo.Import: the loader reads an import's alias and source before anything is expanded, so they cannot be chosen or repeated. Write them plainly.\n  [REPEAT_OUTSIDE_TEMPLATE] Telo.Import/Lib: A '...' splice at '...' of the Telo.Import: the loader reads an import's alias and source before anything is expanded, so they cannot be chosen or repeated. Write them plainly.\n  [REPEAT_OUTSIDE_TEMPLATE] Telo.Import/Other: A '...' splice at '...' of the Telo.Import: the loader reads an import's alias and source before anything is expanded, so they cannot be chosen or repeated. Write them plainly."
+}

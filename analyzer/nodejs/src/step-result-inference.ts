@@ -5,7 +5,6 @@ import {
   DYN,
   INT,
   isDyn,
-  mapOf,
   MAX_INT,
   MIN_INT,
   schemaType,
@@ -13,6 +12,7 @@ import {
   typesEqual,
   UINT,
   type CelType,
+  type PrimitiveName,
 } from "@telorun/cel";
 import { isRefSentinel, isTaggedSentinel, producedTypeOf } from "@telorun/templating";
 import { canonicalJson } from "./canonical-json.js";
@@ -75,7 +75,8 @@ const READING_ALTERNATIVE = "x-telo-inferred-reading-alternative";
 /** On a step context: the environment holds it as the closed `steps` record. */
 const STEP_RECORD = "x-telo-step-record";
 
-const RECORDED_TYPES: ReadonlyMap<string, CelType> = new Map([
+/** The scalars a fact records, by the primitive each is: a fact names its type by that primitive. */
+const RECORDED_TYPES: ReadonlyMap<PrimitiveName, CelType> = new Map<PrimitiveName, CelType>([
   ["int", INT],
   ["uint", UINT],
   ["double", DOUBLE],
@@ -146,20 +147,17 @@ export const OPEN_FACT: StepFact = { type: "dyn" };
  */
 export function producerFact(
   engine: string,
-  typeName: string | undefined,
+  type: CelType | undefined,
   produced: Record<string, any> | undefined,
 ): StepFact {
   const schema = forwardedSchemaOf(produced);
-  return { type: recordedTypeName(typeName ?? producedTypeName(engine)), ...(schema ? { schema } : {}) };
+  return { type: recordedTypeName(type ?? producedType(engine)), ...(schema ? { schema } : {}) };
 }
 
-/** The scalar a tag's engine declares it produces, by its CEL type name. */
-function producedTypeName(engine: string): string | undefined {
+/** The type a tag's engine declares it produces. */
+function producedType(engine: string): CelType | undefined {
   const declared = producedTypeOf(engine);
-  if (!declared) return undefined;
-  const type = schemaType({ node: declared }).type;
-  for (const [name, recorded] of RECORDED_TYPES) if (typesEqual(recorded, type)) return name;
-  return undefined;
+  return declared ? schemaType({ node: declared }).type : undefined;
 }
 
 /** What a chain's navigation forwards: a schema, never a fact — an expression
@@ -351,9 +349,9 @@ export function stepContextWithFacts(
   return changed ? { ...steps, properties } : steps;
 }
 
-/** The type name a producer records: a scalar, else `dyn`. */
-function recordedTypeName(typeName: string | undefined): string {
-  return typeName !== undefined && RECORDED_TYPES.has(typeName) ? typeName : "dyn";
+/** What a producer records of its type: a scalar's primitive, read from its kind, else `dyn`. */
+function recordedTypeName(type: CelType | undefined): string {
+  return type?.kind === "primitive" && RECORDED_TYPES.has(type.name) ? type.name : "dyn";
 }
 
 /** True when `schema` is a step context, which the environment holds as the
@@ -363,53 +361,98 @@ export function isStepRecord(schema: Record<string, any> | undefined): boolean {
 }
 
 /**
- * The closed `steps` record a step context is held as: each name a record of
- * its `result` — a literal's shape, a producer's fact, the agreement of a
- * shared name, `dyn` otherwise — and a named repeat by its map shape: a map by
- * element key of such records for string keys, `dyn` for int keys. A `'<step>'
- * in steps` test reads it as the string-keyed map a record is.
+ * The closed `steps` record a step context is held as, written as the schema
+ * the CEL engine reads to full depth: each name a closed record of its
+ * `result` — a literal's shape, a producer's fact (the schema it forwards, else
+ * its scalar), the invoked resource's declared result, the agreement of a
+ * shared name, and a node saying nothing otherwise — and a named repeat by its
+ * map shape: a map by element key of such records for string keys. A
+ * `'<step>' in steps` test reads it as the string-keyed map a record is. A
+ * result is the node the context holds, so a reference or pointer in it is read
+ * where it was written.
  */
-export function stepRecordType(steps: Record<string, any>): CelType {
-  const fields = new Map<string, CelType>();
+export function stepRecordSchema(steps: Record<string, any>): Record<string, any> {
+  const properties: Record<string, any> = {};
   for (const [name, step] of Object.entries((steps.properties ?? {}) as Record<string, any>)) {
     const repeated = repeatEntryOf(step);
-    fields.set(
-      name,
-      repeated
-        ? mapOf(STRING, resultRecord(repeated))
-        : step?.properties?.result !== undefined
-          ? resultRecord(step)
-          : DYN,
-    );
+    properties[name] = repeated
+      ? { type: "object", additionalProperties: resultRecordSchema(repeated) }
+      : step?.properties?.result !== undefined
+        ? resultRecordSchema(step)
+        : OPEN_RESULT;
   }
-  return { kind: "record", fields, open: false };
+  return { type: "object", properties, additionalProperties: false };
 }
 
-function resultRecord(step: Record<string, any>): CelType {
-  return { kind: "record", fields: new Map([["result", nameType(step.properties.result)]]), open: false };
+/** A node saying nothing about a result. */
+const OPEN_RESULT: Record<string, any> = Object.freeze({});
+
+/** The schema of a scalar fact. */
+const FACT_SCHEMAS: ReadonlyMap<string, Record<string, any>> = new Map([
+  ["int", { type: "integer" }],
+  ["uint", { "x-telo-type": "Telo.Uint64" }],
+  ["double", { type: "number" }],
+  ["string", { type: "string" }],
+  ["bool", { type: "boolean" }],
+  ["bytes", { "x-telo-type": "Telo.Bytes" }],
+]);
+
+function resultRecordSchema(step: Record<string, any>): Record<string, any> {
+  return {
+    type: "object",
+    properties: { result: nameSchema(step.properties.result) },
+    required: ["result"],
+    additionalProperties: false,
+  };
 }
 
-/** The one type every step of a name produces, leaving out the alternative a
- *  reading site sits inside; `dyn` when they differ or any claims nothing. */
-function nameType(result: Record<string, any> | undefined): CelType {
+/** The one result every step of a name produces, leaving out the alternative a
+ *  reading site sits inside; a node saying nothing when they differ or any
+ *  claims nothing. */
+function nameSchema(result: Record<string, any> | undefined): Record<string, any> {
   const alternatives = alternativesOf(result);
-  if (!alternatives) return resultType(result);
+  if (!alternatives) return resultSchema(result);
   const reading = result![READING_ALTERNATIVE];
-  let agreed: CelType | undefined;
-  let differ = false;
-  alternatives.forEach((alternative, index) => {
-    if (index === reading) return;
-    const type = resultType(alternative.result);
-    if (agreed === undefined) agreed = type;
-    else if (!typesEqual(agreed, type)) differ = true;
-  });
-  return agreed === undefined || differ || isDyn(agreed) ? DYN : agreed;
+  const others = alternatives.filter((_, index) => index !== reading);
+  if (others.length === 0) return OPEN_RESULT;
+  const first = others[0]!.result;
+  const firstType = resultType(first);
+  const agreed = others.every(({ result: other }) =>
+    isDyn(firstType)
+      ? !isExpressionResult(other) && (other === first || canonicalJson(other) === canonicalJson(first))
+      : typesEqual(resultType(other), firstType),
+  );
+  return agreed ? resultSchema(first) : OPEN_RESULT;
 }
 
+function resultSchema(result: Record<string, any> | undefined): Record<string, any> {
+  if (!result || typeof result !== "object") return OPEN_RESULT;
+  if (isLiteralResult(result)) return result[LITERAL_RESULT];
+  if (isExpressionResult(result)) return OPEN_RESULT;
+  const fact = result[INFERRED_TYPE];
+  if (typeof fact === "string") {
+    if (Object.keys(result).some((key) => key !== INFERRED_TYPE)) return result;
+    return FACT_SCHEMAS.get(fact) ?? OPEN_RESULT;
+  }
+  return isOpenResult(result) ? OPEN_RESULT : result;
+}
+
+/** An undeclared result: open, the absence of a claim. */
+function isOpenResult(result: Record<string, any>): boolean {
+  const keys = Object.keys(result);
+  return (
+    result.type === "object" &&
+    result.additionalProperties === true &&
+    keys.every((key) => key === "type" || key === "additionalProperties")
+  );
+}
+
+/** The CEL type a result says it is, when it says one: what step names of
+ *  one result are compared by. */
 function resultType(result: Record<string, any> | undefined): CelType {
   if (isLiteralResult(result)) return schemaType({ node: result![LITERAL_RESULT] }).type;
   const fact = result?.[INFERRED_TYPE];
-  return typeof fact === "string" ? (RECORDED_TYPES.get(fact) ?? DYN) : DYN;
+  return typeof fact === "string" ? (RECORDED_TYPES.get(fact as PrimitiveName) ?? DYN) : DYN;
 }
 
 /** A named repeat's entry: results by element key, string-keyed. */

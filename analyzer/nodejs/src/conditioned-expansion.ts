@@ -33,12 +33,14 @@ import {
   type ExpansionSentinel,
 } from "@telorun/templating";
 import { branchKeys, branchValue, declaresNoResource, STAND_IN, type Decisions } from "./choice-reading.js";
+import { withBranchStamps } from "./chosen-scoped-import.js";
 import { declaredMetadata, isChoice, relocatePath, STAND_IN_MARK, STAND_IN_SOURCE } from "./choice-expansion.js";
 import type { Assignment } from "./configuration-dimensions.js";
 import { isModuleKind } from "./module-kinds.js";
 import { FALSE, TRUE, type Condition, type ConditionSpace } from "./presence-condition.js";
 import type { ViewBinding } from "./view-binding.js";
 import { isKindDocumentOrImport } from "./system-kinds.js";
+import { isKindDocument } from "./kind-declaration.js";
 import type { TemplateBodyReading } from "./template-definition-check.js";
 import type { AnalysisDiagnostic } from "./types.js";
 
@@ -569,14 +571,14 @@ export function expandUnion(
       }
       if (named) {
         // A branch that is no resource declaration declares nothing.
-        if (!chosen.value || typeof chosen.value !== "object" || Array.isArray(chosen.value) || declaresNoResource(chosen.value)) {
+        if (!chosen.value || typeof chosen.value !== "object" || Array.isArray(chosen.value) || declaresNoResource(chosen.value, named.at.length > 0)) {
           element(false);
           out.push(option(false));
           continue;
         }
         element(true);
         const { kind, ...fields } = chosen.value as Record<string, unknown>;
-        const declared: Record<string, unknown> = { kind, metadata: declaredMetadata(named.value, mark) };
+        const declared: Record<string, unknown> = { kind, metadata: withBranchStamps(declaredMetadata(named.value, mark), chosen.value) };
         for (const [key, field] of Object.entries(fields)) {
           if (key === "metadata") continue;
           declared[key] = unionValue(holder, field, [...at, key], condition, taken, steps).value;
@@ -654,7 +656,9 @@ export function expandUnion(
       }
       continue;
     }
-    if (isKindDocumentOrImport(doc)) {
+    // An import's inputs are values chosen per option; its alias, kind,
+    // source and integrity never hold a choice (the loader refuses one).
+    if (isKindDocument(doc)) {
       declarations.push({ condition: TRUE, manifest: doc, holder: doc, at: [], path: [] });
       continue;
     }

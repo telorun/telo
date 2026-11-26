@@ -118,11 +118,8 @@ value: !cel "row.text"
 title: !cel "row.text"
 label: !cel "tenant"
 `),
-      // The pair a field-level region's dropped binding reports too.
-    ).toEqual([
-      ["CEL_UNKNOWN_FIELD", "title"],
-      ["CEL_UNKNOWN_IDENTIFIER", "title"],
-    ]);
+      // One finding: the engine refuses the dropped binding, and no second walk reports it.
+    ).toEqual([["CEL_UNKNOWN_IDENTIFIER", "title"]]);
   });
 
   it("marks no field as evaluated", async () => {

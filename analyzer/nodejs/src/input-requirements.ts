@@ -43,7 +43,8 @@ import { wrapCelAst, type CelNode } from "./cel-ast.js";
 import { parseCelSource } from "./cel-environment.js";
 import { isStandInDeclaration } from "./choice-expansion.js";
 import { branchesOf, branchForValue, readChoices, type ChoiceReading } from "./choice-reading.js";
-import { expandUnion, isAlternatives } from "./conditioned-expansion.js";
+import { expandUnion, isAlternatives, type ConditionedExpansion } from "./conditioned-expansion.js";
+import { holdsChoice } from "./key-door.js";
 import {
   ABSENT,
   admitsAbsence,
@@ -69,6 +70,8 @@ import { addressNeedPorts, PUBLIC_URL_HOST_VALUES, PUBLIC_URL_TYPE } from "./pub
 import { refSentinelTarget } from "./ref-sentinel-target.js";
 import { isResolvedReference } from "./resolved-reference.js";
 import { readResourceInputs, readSuppliedResources } from "./resource-input.js";
+import { scopedImportMembers, scopeHoldersOf } from "./scoped-import-identity.js";
+import { isScopeMemberDeclaration } from "./scope-members.js";
 
 /** One input of an application and the configurations requiring it. */
 export interface InputRequirement {
@@ -102,7 +105,62 @@ const BLOCKS: ReadonlySet<string> = new Set(["variables", "secrets", "ports", "r
 interface Reads {
   readonly entries: ReadonlyMap<Block, ReadonlyMap<string, Condition>>;
   readonly refs: ReadonlyMap<string, Condition>;
+  /** Every scoped `Telo.Import` the module's declarations write, each where it
+   *  is present: its holder's declaration and every option on the way. */
+  readonly scopedImports: readonly ImportSite[];
+  /** Every `imports:` entry and top-level `Telo.Import` the module declares,
+   *  once per class of the options its inputs hold, each projected there. */
+  readonly imports: readonly ImportSite[];
 }
+
+/** An import a module's documents declare, its instance's path below the
+ *  module and where it is present: an `imports:` entry everywhere, beneath its
+ *  alias; a scoped one beneath its holders, where its holding is. */
+interface ImportSite {
+  readonly doc: ResourceManifest;
+  readonly path: readonly string[];
+  readonly condition: Condition;
+}
+
+/** Whether an import's inputs, as written, hold a choice. */
+const holdsWrittenChoice = (value: unknown): boolean => {
+  if (isExpansionSentinel(value)) return true;
+  if (value === null || typeof value !== "object" || isTaggedSentinel(value) || isCompiledValue(value)) return false;
+  return (Array.isArray(value) ? value : Object.values(value)).some(holdsWrittenChoice);
+};
+const importInputsVary = (imports: readonly ResourceManifest[]): boolean =>
+  imports.some((doc) => Object.entries(doc).some(([key, value]) => key !== "metadata" && holdsWrittenChoice(value)));
+
+/** `site` once per class of the options its inputs hold — each projected at
+ *  that class, held where it holds — or `site` itself when none varies. */
+function importClasses(union: ConditionedExpansion, space: ConditionSpace, site: ImportSite): ImportSite[] {
+  if (!Object.entries(site.doc).some(([key, value]) => key !== "metadata" && holdsChoice(value))) return [site];
+  const out: ImportSite[] = [];
+  let remaining = site.condition;
+  while (remaining !== FALSE) {
+    const projected = union.project(site.doc, space.firstAssignment(remaining)!);
+    const held = space.and(remaining, projected.taken);
+    if (held === FALSE) throw new Error(`internal: the import '${site.path.join(".")}' does not hold where it was read.`);
+    out.push({ doc: projected.value as ResourceManifest, path: site.path, condition: held });
+    remaining = space.and(remaining, space.not(held));
+  }
+  return out;
+}
+
+const importSitesOf = (imports: readonly ResourceManifest[]): ImportSite[] =>
+  imports.flatMap((doc) => {
+    const alias = doc.metadata?.name;
+    return typeof alias === "string" ? [{ doc, path: [alias], condition: TRUE }] : [];
+  });
+
+/** The scoped imports `documents` write, each held everywhere — what a reading
+ *  that ignores where they are present reads. */
+const scopedImportSitesOf = (documents: readonly ResourceManifest[]): ImportSite[] =>
+  scopedImportMembers(documents).map(({ member }) => ({
+    doc: member,
+    path: [...(scopeHoldersOf(member) ?? []), member.metadata!.name as string],
+    condition: TRUE,
+  }));
 
 /** Where `reads` reads `name` of `block`, or the whole block. */
 function readOf(space: ConditionSpace, reads: Reads, block: Block, name: string): Condition {
@@ -200,12 +258,17 @@ export function inputRequirements(
   // What each library the application imports requires, translated through
   // every import level to this application's dimensions.
   const ownOptional = new Map(ownNeeds.map((need) => [need.name, need.optional]));
+  const ownImportDocs = manifests.filter((m) => {
+    if (m.kind !== "Telo.Import") return false;
+    const module = (m.metadata as { module?: unknown } | undefined)?.module;
+    return module === undefined || module === rootName;
+  });
+  // An import whose inputs are chosen is read once per class of its options.
+  const ownImports = importInputsVary(ownImportDocs) ? reads().imports : importSitesOf(ownImportDocs);
+  // A scoped import's library is required only where the import is present.
+  const scoped = scopedImportMembers(manifests).some(({ top }) => ownModule(top)) ? reads().scopedImports : [];
   const translated = importRequirements(
-    manifests.filter((m) => {
-      if (m.kind !== "Telo.Import") return false;
-      const module = (m.metadata as { module?: unknown } | undefined)?.module;
-      return module === undefined || module === rootName;
-    }),
+    [...ownImports, ...scoped],
     space,
     keys,
     ownOptional,
@@ -326,7 +389,7 @@ function importTarget(importDoc: ResourceManifest, context: RequirementContext):
  * out — the need is required whatever that library dimension holds.
  */
 function importRequirements(
-  imports: readonly ResourceManifest[],
+  imports: readonly ImportSite[],
   space: ConditionSpace,
   keys: ReadonlySet<string>,
   ownNeeds: ReadonlyMap<string, boolean>,
@@ -334,9 +397,7 @@ function importRequirements(
   context: RequirementContext,
 ): ImportedRequirements {
   const out: ImportedRequirements = { environment: [], forwarded: new Map(), opaque: new Set() };
-  for (const importDoc of imports) {
-    const alias = importDoc.metadata?.name as string | undefined;
-    if (!alias) continue;
+  for (const { doc: importDoc, path: instance, condition: present } of imports) {
     const supplied = readSuppliedNeeds(importDoc);
     const target = importTarget(importDoc, context);
     if (!target || context.active.has(target)) {
@@ -361,7 +422,7 @@ function importRequirements(
         ? path
         : shared
           ? { segments: [target.module, ...path.segments], rooted: true }
-          : { segments: [alias, ...path.segments], rooted: false };
+          : { segments: [...instance, ...path.segments], rooted: false };
 
     // Each library dimension as the importer reads it.
     const resourceInputs = new Set(readResourceInputs(libraryDoc).map((input) => input.name));
@@ -415,7 +476,7 @@ function importRequirements(
     };
     const byKey = new Map(library.dimensions.map((d) => [d.key, d]));
     const carry = (condition: Condition) =>
-      library.space.translate(condition, space, (key) => translate(byKey.get(key)!));
+      space.and(present, library.space.translate(condition, space, (key) => translate(byKey.get(key)!)));
 
     for (const [need, { optional, condition }] of library.needs) {
       const carried = carry(condition);
@@ -470,9 +531,16 @@ function libraryRequirement(documents: ModuleDocuments, context: RequirementCont
   const keys = new Set(ownKeys);
   const nested = new Map<string, NeedPathBelow>();
   const dimensions: Dimension[] = [...choices.dimensions];
-  const importDocs = all.filter((m) => m.kind === "Telo.Import");
+  const importDocs = importSitesOf(all.filter((m) => m.kind === "Telo.Import"));
+  const importsVary = importInputsVary(importDocs.map((site) => site.doc));
   const ownNeeds = new Map(declared.map((need) => [need.name, need.optional]));
-  for (const item of importRequirements(importDocs, ownSpace, ownKeys, ownNeeds, nestedKey, context).environment) {
+  // Which needs are left to the environment, wherever an import holding one is.
+  const anyScoped = scopedImportSitesOf(all);
+  // Which needs are left to the environment, in the options where each is.
+  const anyImports = importsVary
+    ? conditionedReads(all, choices, ownSpace, libraryName, context.callNames, () => true).imports
+    : importDocs;
+  for (const item of importRequirements([...anyImports, ...anyScoped], ownSpace, ownKeys, ownNeeds, nestedKey, context).environment) {
     if (!item.optional) continue;
     const key = nestedKey(item.path);
     if (keys.has(key)) continue;
@@ -489,8 +557,15 @@ function libraryRequirement(documents: ModuleDocuments, context: RequirementCont
   }
   const space = new ConditionSpace(dimensions);
   const universe = configurationUniverse(space, dimensions);
-  const imported = importRequirements(importDocs, space, keys, ownNeeds, nestedKey, context);
   const reads = conditionedReads(all, choices, space, libraryName, context.callNames, () => true);
+  const imported = importRequirements(
+    [...(importsVary ? reads.imports : importDocs), ...(anyScoped.length > 0 ? reads.scopedImports : [])],
+    space,
+    keys,
+    ownNeeds,
+    nestedKey,
+    context,
+  );
 
   const needs = new Map<string, { optional: boolean; condition: Condition }>();
   for (const need of declared) {
@@ -647,6 +722,8 @@ function conditionedReads(
   );
   const entries = new Map<Block, Map<string, Condition>>([...BLOCKS].map((b) => [b as Block, new Map()]));
   const refs = new Map<string, Condition>();
+  const scopedImports: ImportSite[] = [];
+  const imports: ImportSite[] = [];
   const add = (map: Map<string, Condition>, name: string, condition: Condition) =>
     map.set(name, space.or(map.get(name) ?? FALSE, condition));
   const instantiated = instantiatedKinds(declarations, moduleName, space);
@@ -689,8 +766,38 @@ function conditionedReads(
       }
     }, bodyBranches);
     collectRefs(space, m, condition, (name, at) => add(refs, name, at), isModuleKind(m.kind));
+    if (!isKindDocument(m) && !isScopeMemberDeclaration(m)) collectScopedImports(space, m, condition, scopedImports, true);
+    if (m.kind === "Telo.Import" && typeof m.metadata?.name === "string") {
+      imports.push(...importClasses(union, space, { doc: m, path: [m.metadata.name], condition }));
+    }
   }
-  return { entries, refs };
+  return { entries, refs, scopedImports: scopedImports.flatMap((site) => importClasses(union, space, site)), imports };
+}
+
+/** Every scoped `Telo.Import` beneath `value` with the condition holding it. */
+function collectScopedImports(space: ConditionSpace, value: unknown, condition: Condition, out: ImportSite[], top = false): void {
+  if (value === null || typeof value !== "object" || condition === FALSE) return;
+  if (isAlternatives(value)) {
+    for (const option of value.options) {
+      const held = space.and(condition, option.condition);
+      if (option.present) collectScopedImports(space, option.value, held, out);
+    }
+    return;
+  }
+  if (isTaggedSentinel(value) || isCompiledValue(value)) return;
+  if (Array.isArray(value)) {
+    for (const item of value) collectScopedImports(space, item, condition, out);
+    return;
+  }
+  const holders = scopeHoldersOf(value);
+  const name = (value as { metadata?: { name?: unknown } }).metadata?.name;
+  if (!top && (value as { kind?: unknown }).kind === "Telo.Import" && holders && typeof name === "string") {
+    out.push({ doc: value as ResourceManifest, path: [...holders, name], condition });
+    return;
+  }
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    if (key !== "metadata") collectScopedImports(space, child, condition, out);
+  }
 }
 
 /** Each CEL-bearing tag in `value` with the condition it is held under: a

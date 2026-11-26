@@ -19,8 +19,9 @@
  */
 
 /** What a `$ref` written in `node` names: the node it resolves to, through the
- *  one reader the validator compiles with, or `undefined`. */
-export type ReferenceReader = (node: object, ref: string) => object | undefined;
+ *  one reader the validator compiles with, or `undefined`. `at` is where the
+ *  reference applies, relative to the union's node. */
+export type ReferenceReader = (node: object, ref: string, at?: string) => object | undefined;
 
 /** A `$ref` the reader could not follow: the union cannot be read. */
 export class UnreadableReference extends Error {
@@ -59,9 +60,9 @@ function admits(declared: unknown, type: JsonType): boolean {
   return names.some((name) => name === type || (name === "number" && type === "integer"));
 }
 
-function followed(node: Record<string, unknown>, read: ReferenceReader): Record<string, unknown> | undefined {
+function followed(node: Record<string, unknown>, read: ReferenceReader, at = ""): Record<string, unknown> | undefined {
   if (typeof node.$ref !== "string") return undefined;
-  const target = read(node, node.$ref);
+  const target = read(node, node.$ref, at);
   if (!isSchemaObject(target)) throw new UnreadableReference(node.$ref);
   return target;
 }
@@ -101,7 +102,7 @@ export function constrainedPlaces(branch: unknown, read: ReferenceReader): Set<s
     if (!isSchemaObject(node) || seen.has(node)) return;
     seen.add(node);
     if (at !== "" && ("const" in node || Array.isArray(node.enum))) places.add(at);
-    const target = followed(node, read);
+    const target = followed(node, read, at);
     if (target) visit(target, at, seen);
     if (Array.isArray(node.allOf)) for (const member of node.allOf) visit(member, at, seen);
     if (isSchemaObject(node.properties)) {

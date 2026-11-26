@@ -31,12 +31,15 @@ describe("a body entry as each consumer instantiates it", () => {
     ]);
   });
 
-  it("reports a finding at a place the body wrote, which the definition's check does not make, at each consumer", () => {
-    const mismatches = found.filter((d) => d.code === "REFERENCE_KIND_MISMATCH");
-    expect(mismatches.map((d) => [(d.data as { resource?: { name?: string } }).resource?.name, (d.data as { path?: string }).path])).toEqual([
-      ["crossed", ""],
+  it("reports a body's own reference of the wrong kind where the body is written, and at no consumer", async () => {
+    expect(at("REFERENCE_KIND_MISMATCH")).toEqual([]);
+    const library = await loadFile(join(ROOT, "analyzer/nodejs/tests/__fixtures__/template-entry-views/lib/telo.yaml"));
+    const own = new StaticAnalyzer()
+      .analyze(library.manifests, { moduleDocuments: library.moduleDocuments })
+      .filter((d) => d.code === "REFERENCE_KIND_MISMATCH");
+    expect(own.map((d) => [(d.data as { resource?: { name?: string } }).resource?.name, (d.data as { path?: string }).path])).toEqual([
+      ["Crossed", "resources[1].presentation"],
     ]);
-    expect(mismatches[0]!.message).toMatch(/^Views\.Crossed\/crossed: `Views\.Crossed` body entry `listing`, field `presentation`: /);
   });
 
   it("resolves a body reference in the defining module, never to a consumer's resource of the same name", () => {

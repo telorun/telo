@@ -21,14 +21,34 @@
 //!   reads them as keys of a plain object, so a receiver named `constructor`, `toString`
 //!   or another key of the object prototype is taken for one there.
 
-use crate::cel_type::{format_type, is_dyn, list_of, optional_of, parameter_of, CelType, PrimitiveName, BOOL, DYN, STRING};
+use crate::schema_dependencies::ELEMENT_EDGE;
+use crate::schema_nodes::{address, SchemaNodeAt};
+use crate::cel_type::{
+    format_type, is_dyn, list_of, optional_of, parameter_of, union_of, CelType, PrimitiveName, BOOL, DYN, STRING,
+};
 use crate::check_diagnostic::CelCheckCode;
 use crate::comprehension_bindings::{namespace_macro_binding, receiver_macro_binding, ComprehensionBinding};
+use crate::nullable_access::{proven_where_true, Proof};
 use crate::syntax_tree::{CelNode, CelReceiverCallNode, CelSelectNode, SourceRange};
 
 /// What a macro needs of the checker around it, beyond the types it asks for.
 pub(crate) trait MacroHost {
     fn report(&mut self, code: CelCheckCode, message: String, range: SourceRange);
+    /// A verdict naming the schema node its subject was read from.
+    fn report_at(&mut self, code: CelCheckCode, message: String, range: SourceRange, node: Option<SchemaNodeAt>);
+    /// A descent into one member of a container: a list's element.
+    fn read_member(&mut self, container: &CelType, key: &str);
+    /// The schema node a subexpression's type was read from (`schema_nodes.rs`).
+    fn node_at(&self, node: &CelNode) -> Option<SchemaNodeAt>;
+    /// The schema node a container's member was read from.
+    fn member_node(&self, container: &CelType, key: &str) -> Option<SchemaNodeAt>;
+    /// The schema node a union's member `at` was read from.
+    fn union_member_node(&self, union: &CelType, at: usize) -> Option<SchemaNodeAt>;
+    /// Says the tree node at `key` was read from a schema node.
+    fn locate(&mut self, key: usize, at: Option<SchemaNodeAt>);
+    /// Says the tree node at `key`'s value is one of `answers`', each checked as its type
+    /// (`ResultOrigin`).
+    fn relay(&mut self, key: usize, answers: &[(&CelNode, &CelType)]);
 }
 
 /// What a macro asks next, or its answer.
@@ -36,8 +56,10 @@ pub(crate) enum MacroStep<'a> {
     Done(CelType),
     /// The type of a subexpression in the scope that holds.
     TypeOf(&'a CelNode, MacroFrame<'a>),
-    /// The type of a subexpression with one more name in scope.
-    TypeOfBinding(&'a CelNode, &'a str, CelType, MacroFrame<'a>),
+    /// The type of a subexpression with one more name in scope, beside the schema node the
+    /// name's value was read from and what a guard proves there of the name. No proof made
+    /// outside about the name holds inside.
+    TypeOfBinding(&'a CelNode, &'a str, CelType, Option<SchemaNodeAt>, Vec<Proof>, MacroFrame<'a>),
     /// The type of a select read as a question about presence: `has()`'s argument, read as
     /// `.?b` is.
     TypeOfPresence(&'a CelSelectNode, MacroFrame<'a>),
@@ -54,9 +76,9 @@ enum MacroState<'a> {
     /// `cel.bind(name, value, body)`, its value typed.
     BindValue { call: &'a CelReceiverCallNode, name: &'a str },
     /// `cel.bind`, its body typed.
-    BindBody,
+    BindBody { call: &'a CelReceiverCallNode },
     /// `optional.of(v)` / `optional.ofNonZeroValue(v)`, its value typed.
-    OptionalOf,
+    OptionalOf { call: &'a CelReceiverCallNode },
     /// `opt.optMap(v, e)` / `opt.optFlatMap(v, e)`, its receiver typed.
     OptionalReceiver { call: &'a CelReceiverCallNode },
     /// The same, its expression typed.
@@ -69,6 +91,7 @@ enum MacroState<'a> {
         binding: ComprehensionBinding,
         name: &'a str,
         element: CelType,
+        element_node: Option<SchemaNodeAt>,
         types: Vec<CelType>,
     },
 }
@@ -137,54 +160,94 @@ pub(crate) fn start_macro<'a>(node: &'a CelNode, host: &mut dyn MacroHost) -> Ma
     }
 }
 
+/// Whether the type a frame is handed is one the macro descends into or hands on as its own
+/// answer, rather than uses: `map`'s transform, `optMap`'s expression, `cel.bind`'s value and
+/// body, `optional.of`'s value, a receiver and `has()`'s argument.
+pub(crate) fn macro_hands_on(at: &MacroFrame<'_>) -> bool {
+    match &at.state {
+        MacroState::Has
+        | MacroState::BindValue { .. }
+        | MacroState::BindBody { .. }
+        | MacroState::OptionalOf { .. }
+        | MacroState::OptionalReceiver { .. }
+        | MacroState::ComprehensionReceiver { .. } => true,
+        MacroState::OptionalBody { call } => call.name == "optMap",
+        MacroState::ComprehensionScoped { call, binding, types, .. } => {
+            call.name == "map" && types.len() + 1 == binding.scoped_arguments.len()
+        }
+    }
+}
+
 /// The next step of a macro, given the type its last question asked for.
 pub(crate) fn resume_macro<'a>(at: MacroFrame<'a>, ty: CelType, host: &mut dyn MacroHost) -> MacroStep<'a> {
     match at.state {
         MacroState::Has => MacroStep::Done(BOOL),
         MacroState::BindValue { call, name } => {
-            MacroStep::TypeOfBinding(&call.args[2], name, ty, frame(MacroState::BindBody))
+            let at = host.node_at(&call.args[1]);
+            MacroStep::TypeOfBinding(&call.args[2], name, ty, at, Vec::new(), frame(MacroState::BindBody { call }))
         }
-        MacroState::BindBody => MacroStep::Done(ty),
-        MacroState::OptionalOf => MacroStep::Done(optional_of(ty)),
+        MacroState::BindBody { call } => {
+            let at = host.node_at(&call.args[2]);
+            host.locate(address(call), at);
+            host.relay(address(call), &[(&call.args[2], &ty)]);
+            MacroStep::Done(ty)
+        }
+        MacroState::OptionalOf { call } => {
+            let at = host.node_at(&call.args[0]);
+            host.locate(address(call), at);
+            MacroStep::Done(optional_of(ty))
+        }
         MacroState::OptionalReceiver { call } => {
             let CelNode::Ident(name) = &*call.args[0] else { return MacroStep::Done(DYN) };
-            let held = match &ty {
-                CelType::Optional(optional) => (*optional.value).clone(),
+            let receiver_node = host.node_at(&call.receiver);
+            let (held, at) = match &ty {
+                CelType::Optional(optional) => ((*optional.value).clone(), receiver_node),
                 receiver => {
                     if !is_dyn(receiver) && !matches!(receiver, CelType::Parameter(_)) {
-                        host.report(
+                        host.report_at(
                             CelCheckCode::TypeError,
                             format!("{} reads an optional, and {} is not one", call.name, format_type(receiver, false)),
                             call.receiver.range(),
+                            receiver_node,
                         );
                     }
-                    DYN
+                    (DYN, None)
                 }
             };
-            MacroStep::TypeOfBinding(&call.args[1], &name.name, held, frame(MacroState::OptionalBody { call }))
+            MacroStep::TypeOfBinding(&call.args[1], &name.name, held, at, Vec::new(), frame(MacroState::OptionalBody { call }))
         }
         MacroState::OptionalBody { call } => {
+            let at = host.node_at(&call.args[1]);
+            // The wrapping is one value, the optional; its node still names what a verdict reads.
             if call.name == "optMap" {
+                host.locate(address(call), at);
                 return MacroStep::Done(optional_of(ty));
             }
             if matches!(ty, CelType::Optional(_) | CelType::Dyn | CelType::Parameter(_)) {
+                host.locate(address(call), at);
+                host.relay(address(call), &[(&call.args[1], &ty)]);
                 return MacroStep::Done(ty);
             }
-            host.report(
+            host.report_at(
                 CelCheckCode::TypeError,
                 format!("optFlatMap's expression must answer an optional, and it answers {}", format_type(&ty, false)),
                 call.args[1].range(),
+                at,
             );
             MacroStep::Done(optional_of(DYN))
         }
         MacroState::ComprehensionReceiver { call, binding } => {
             let element = iteration_type(&ty, call, host);
             let CelNode::Ident(name) = &*call.args[binding.variable_argument] else { return MacroStep::Done(DYN) };
-            next_scoped(call, binding, &name.name, element, Vec::new(), host)
+            let element_node = match &ty {
+                CelType::List(_) => host.member_node(&ty, ELEMENT_EDGE),
+                _ => None,
+            };
+            next_scoped(call, binding, &name.name, element, element_node, Vec::new(), host)
         }
-        MacroState::ComprehensionScoped { call, binding, name, element, mut types } => {
+        MacroState::ComprehensionScoped { call, binding, name, element, element_node, mut types } => {
             types.push(ty);
-            next_scoped(call, binding, name, element, types, host)
+            next_scoped(call, binding, name, element, element_node, types, host)
         }
     }
 }
@@ -220,7 +283,7 @@ fn start_optional_namespace<'a>(call: &'a CelReceiverCallNode, host: &mut dyn Ma
         );
         return MacroStep::Done(optional_of(DYN));
     }
-    MacroStep::TypeOf(&call.args[0], frame(MacroState::OptionalOf))
+    MacroStep::TypeOf(&call.args[0], frame(MacroState::OptionalOf { call }))
 }
 
 /// The next scoped argument of a comprehension, or its answer once every one is typed.
@@ -229,16 +292,26 @@ fn next_scoped<'a>(
     binding: ComprehensionBinding,
     name: &'a str,
     element: CelType,
+    element_node: Option<SchemaNodeAt>,
     types: Vec<CelType>,
     host: &mut dyn MacroHost,
 ) -> MacroStep<'a> {
     if let Some(at) = binding.scoped_arguments.get(types.len()) {
         let bound = element.clone();
+        let bound_node = element_node.clone();
+        // `map(e, p, t)` lowers to `p ? [t] : []`, so the transform is read under what `p` proves.
+        let proofs = if call.name == "map" && binding.scoped_arguments.len() == 2 && types.len() == 1 {
+            proven_where_true(&call.args[binding.scoped_arguments[0]])
+        } else {
+            Vec::new()
+        };
         return MacroStep::TypeOfBinding(
             &call.args[*at],
             name,
             bound,
-            frame(MacroState::ComprehensionScoped { call, binding, name, element, types }),
+            bound_node,
+            proofs,
+            frame(MacroState::ComprehensionScoped { call, binding, name, element, element_node, types }),
         );
     }
     let scoped = |at: usize| (&*call.args[binding.scoped_arguments[at]], &types[at]);
@@ -266,10 +339,12 @@ fn require_bool((node, ty): (&CelNode, &CelType), name: &str, host: &mut dyn Mac
     if matches!(ty, CelType::Dyn | CelType::Parameter(_) | CelType::Primitive(PrimitiveName::Bool)) {
         return;
     }
-    host.report(
+    let at = host.node_at(node);
+    host.report_at(
         CelCheckCode::TypeError,
         format!("{name}'s test must be bool, and it is {}", format_type(ty, false)),
         node.range(),
+        at,
     );
 }
 
@@ -277,14 +352,45 @@ fn require_bool((node, ty): (&CelNode, &CelType), name: &str, host: &mut dyn Mac
 fn iteration_type(receiver: &CelType, call: &CelReceiverCallNode, host: &mut dyn MacroHost) -> CelType {
     match receiver {
         CelType::Dyn | CelType::Parameter(_) => DYN,
-        CelType::List(list) => (*list.element).clone(),
+        CelType::Union(union) => {
+            let mut elements: Vec<CelType> = Vec::new();
+            for (at, member) in union.members().iter().enumerate() {
+                match member {
+                    CelType::Parameter(_) => return DYN,
+                    CelType::List(_) | CelType::Map(_) | CelType::Record(_) => {
+                        elements.push(iteration_type(member, call, host));
+                    }
+                    _ => {
+                        let node = host.union_member_node(receiver, at).or_else(|| host.node_at(&call.receiver));
+                        host.report_at(
+                            CelCheckCode::TypeError,
+                            format!(
+                                "a comprehension reads a list or a map, and {}, a member of {}, is neither",
+                                format_type(member, false),
+                                format_type(receiver, false)
+                            ),
+                            call.receiver.range(),
+                            node,
+                        );
+                        return DYN;
+                    }
+                }
+            }
+            union_of(elements)
+        }
+        CelType::List(list) => {
+            host.read_member(receiver, ELEMENT_EDGE);
+            (*list.element).clone()
+        }
         CelType::Map(map) => (*map.key).clone(),
         CelType::Record(_) => STRING,
         _ => {
-            host.report(
+            let at = host.node_at(&call.receiver);
+            host.report_at(
                 CelCheckCode::TypeError,
                 format!("a comprehension reads a list or a map, and {} is neither", format_type(receiver, false)),
                 call.receiver.range(),
+                at,
             );
             DYN
         }

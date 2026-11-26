@@ -1,0 +1,57 @@
+# A kind schema and a named shape writing `schemaCarve` beneath every keyword
+# relating members — a string, an object, and the empty object a carve's
+# stand-in holds — beside a reference to a named shape that varies under
+# `variables.flag1`. An authored `schemaCarve` is an unknown keyword: it holds
+# every value: `v` fits no single `oneOf` branch and `w` is refused by `not`, in
+# every configuration, and nothing depends on the flag.
+kind: Telo.Application
+metadata: { name: ShapeCarveAuthoredChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Inner }
+schema: !if
+  if: !cel "variables.flag1"
+  then: { type: string }
+  else: { type: integer }
+---
+kind: Telo.JsonSchema
+metadata: { name: Outer }
+schema:
+  anyOf: [{ $ref: "telo://Self/Inner" }, { type: boolean }, { schemaCarve: {} }]
+  oneOf: [{ $ref: "telo://Self/Inner" }, { schemaCarve: text }, { schemaCarve: { carve: Inner } }]
+  not: { type: array, schemaCarve: {} }
+  if: { schemaCarve: {} }
+  then: { schemaCarve: text }
+  else: { schemaCarve: { schemaCarve: {} } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Middle }
+schema: { $ref: "telo://Self/Inner" }
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Runnable
+schema:
+  type: object
+  properties:
+    v: { $ref: "telo://Self/Outer" }
+    w:
+      anyOf: [{ $ref: "telo://Self/Middle" }, { schemaCarve: {} }]
+      not: { schemaCarve: text }
+      if: { schemaCarve: { carve: Inner } }
+      then: { schemaCarve: {} }
+    d:
+      type: object
+      dependencies: { a: { schemaCarve: {} }, b: { anyOf: [{ $ref: "telo://Self/Middle" }, { schemaCarve: text }] } }
+    t:
+      type: array
+      items: [{ schemaCarve: {} }, { anyOf: [{ $ref: "telo://Self/Middle" }, { schemaCarve: { carve: Inner } }] }]
+      contains: { schemaCarve: {} }
+---
+kind: Self.Holder
+metadata: { name: holder }
+v: text
+w: text
+d: { a: 1, b: 2 }
+t: [1, text]

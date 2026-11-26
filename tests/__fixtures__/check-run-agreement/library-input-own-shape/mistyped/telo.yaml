@@ -1,0 +1,14 @@
+# A library variable typed by its own named shape, read inside the library as a
+# double where the shape declares an integer.
+kind: Telo.Library
+metadata: { name: LibraryInputOwnShapeMistyped }
+variables: { cfg: { $ref: "telo://Self/Config" } }
+exports: { resources: [read] }
+---
+kind: Telo.JsonSchema
+metadata: { name: Config }
+schema: { type: object, properties: { n: { type: integer } } }
+---
+kind: Telo.Value
+metadata: { name: read }
+value: !cel "variables.cfg.n + 1.5"

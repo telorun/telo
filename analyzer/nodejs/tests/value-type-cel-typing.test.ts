@@ -2,7 +2,8 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { celEngine } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
 import { buildCelEnvironment, buildTypedCelEnvironment } from "../src/cel-environment.js";
-import { celTypeSatisfiesJsonSchema } from "../src/schema-compat.js";
+import { BYTES, DURATION, DYN, STRING, TIMESTAMP } from "@telorun/cel";
+import { celValueTypeSatisfiesJsonSchema } from "../src/schema-compat.js";
 
 describe("time and unsigned value types in CEL", () => {
   const app = {
@@ -31,15 +32,15 @@ describe("time and unsigned value types in CEL", () => {
 
   it("keeps an instance's CEL type out of a JSON-typed slot, and text out of an instance slot", () => {
     const timestampSlot = { "x-telo-type": "Telo.Timestamp" };
-    expect(celTypeSatisfiesJsonSchema("google.protobuf.Timestamp", timestampSlot)).toBe(true);
+    expect(celValueTypeSatisfiesJsonSchema(TIMESTAMP, timestampSlot)).toBe(true);
     // An instance is not JSON: its CEL type satisfies no slot that declares one.
-    expect(celTypeSatisfiesJsonSchema("google.protobuf.Timestamp", { type: "string" })).toBe(false);
-    expect(celTypeSatisfiesJsonSchema("bytes", { type: "string" })).toBe(false);
+    expect(celValueTypeSatisfiesJsonSchema(TIMESTAMP, { type: "string" })).toBe(false);
+    expect(celValueTypeSatisfiesJsonSchema(BYTES, { type: "string" })).toBe(false);
     // ...and a slot that holds an instance takes no other concrete CEL type.
-    expect(celTypeSatisfiesJsonSchema("string", timestampSlot)).toBe(false);
-    expect(celTypeSatisfiesJsonSchema("google.protobuf.Duration", timestampSlot)).toBe(false);
+    expect(celValueTypeSatisfiesJsonSchema(STRING, timestampSlot)).toBe(false);
+    expect(celValueTypeSatisfiesJsonSchema(DURATION, timestampSlot)).toBe(false);
     // An untyped expression still says nothing either way.
-    expect(celTypeSatisfiesJsonSchema("dyn", timestampSlot)).toBe(true);
+    expect(celValueTypeSatisfiesJsonSchema(DYN, timestampSlot)).toBe(true);
   });
 
   it("reports comparing a timestamp to a string as a type error", () => {

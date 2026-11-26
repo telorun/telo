@@ -94,7 +94,7 @@ describe("buildStepContextSchema (control-flow wrappers)", () => {
     const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([sequenceDef, seq]));
     const unknown = diagnostics.filter((d) => d.code === "CEL_UNKNOWN_FIELD");
     expect(unknown.length).toBeGreaterThan(0);
-    expect(unknown[0].message).toContain('"wrapParse" is not declared here (declared: doParse, useParse)');
+    expect(unknown[0].message).toContain("'steps.wrapParse' is not defined (available: doParse, useParse)");
   });
 
   it("does not register an if-wrapper's name either", () => {
@@ -118,7 +118,7 @@ describe("buildStepContextSchema (control-flow wrappers)", () => {
     const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([sequenceDef, seq]));
     const unknown = diagnostics.filter((d) => d.code === "CEL_UNKNOWN_FIELD");
     expect(unknown.length).toBeGreaterThan(0);
-    expect(unknown[0].message).toContain('"checkSomething" is not declared here (declared: doWork, useCheck)');
+    expect(unknown[0].message).toContain("'steps.checkSomething' is not defined (available: doWork, useCheck)");
   });
 
   it("recognises a real invoke step's name (no false positive)", () => {
@@ -163,7 +163,7 @@ describe("buildStepContextSchema (control-flow wrappers)", () => {
     const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([sequenceDef, seq]));
     const unknown = diagnostics.filter((d) => d.code === "CEL_UNKNOWN_FIELD");
     expect(unknown.length).toBeGreaterThan(0);
-    expect(unknown[0].message).toContain('"parseManifest" is not declared here (declared: doParse, noop)');
+    expect(unknown[0].message).toContain("'steps.parseManifest' is not defined (available: doParse, noop)");
   });
 
   const cel = (source: string) => ({ __tagged: true, engine: "cel", source });
@@ -206,7 +206,7 @@ describe("buildStepContextSchema (control-flow wrappers)", () => {
     };
     const codes = celCodes([sequenceDef, seq]);
     expect(codes).toHaveLength(1);
-    expect(codes[0]).toMatch(/^CEL_UNKNOWN_FIELD: .*"missing" is not declared here$/);
+    expect(codes[0]).toMatch(/^CEL_UNKNOWN_FIELD: .*'steps\.missing' is not defined \(available: none\)$/);
   });
 
   it("types a later step slot's results when an earlier slot produces none", () => {
@@ -221,7 +221,7 @@ describe("buildStepContextSchema (control-flow wrappers)", () => {
     };
     const codes = celCodes([sequenceDef, seq]);
     expect(codes).toHaveLength(1);
-    expect(codes[0]).toMatch(/^CEL_UNKNOWN_FIELD: .*"nope" is not declared here \(declared: made\)$/);
+    expect(codes[0]).toMatch(/^CEL_UNKNOWN_FIELD: .*'steps\.nope' is not defined \(available: made\)$/);
   });
 
   it("gives a legacy `x-telo-step-context: { invoke }` body with no outputType the `steps` context", () => {
@@ -248,7 +248,7 @@ describe("buildStepContextSchema (control-flow wrappers)", () => {
     };
     const codes = celCodes([legacyDef, seq]);
     expect(codes).toHaveLength(1);
-    expect(codes[0]).toMatch(/^CEL_UNKNOWN_FIELD: .*"nope" is not declared here \(declared: made\)$/);
+    expect(codes[0]).toMatch(/^CEL_UNKNOWN_FIELD: .*'steps\.nope' is not defined \(available: made\)$/);
   });
 });
 
@@ -359,11 +359,11 @@ describe("`inputs` in a step body's scope", () => {
       ],
       invoke: ref("sequence"),
     };
-    // An entry's context is closed (`self` is declared), so the missing root
-    // reads as an unknown field of it.
+    // The Service entry puts no `inputs` in scope, so the root is unknown, as
+    // at a top-level Service kind.
     expect(
       celDiagnostics([sequenceDef, withCapability("Telo.Service", "Daemon"), template]),
-    ).toEqual([{ code: "CEL_UNKNOWN_FIELD", path: "resources[0].steps[0].if" }]);
+    ).toEqual([{ code: "CEL_UNKNOWN_IDENTIFIER", path: "resources[0].steps[0].if" }]);
   });
 
   it("is out of scope at a compile-eval field of an Invocable kind", () => {

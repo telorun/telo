@@ -1,0 +1,8 @@
+# An `imports:` entry's source behind a tag: refused by the loader.
+kind: Telo.Application
+metadata: { name: ImportSourceEntry }
+variables: { flag1: { env: FLAG_1, type: boolean, default: true } }
+imports:
+  Lib:
+    source: !if { if: !cel "variables.flag1", then: ./lib, else: ./shared-lib }
+    variables: { size: 1 }

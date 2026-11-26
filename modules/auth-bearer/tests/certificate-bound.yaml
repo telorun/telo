@@ -72,9 +72,9 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        sameCertificate: !cel "steps.sameCertificate.result.principal.subject"
-        otherCertificate: !cel "steps.otherCertificate.result.reason"
-        noCertificate: !cel "steps.noCertificate.result.reason"
+        sameCertificate: !cel "steps.sameCertificate.result.?principal.subject.value()"
+        otherCertificate: !cel "steps.otherCertificate.result.?reason.orValue('')"
+        noCertificate: !cel "steps.noCertificate.result.?reason.orValue('')"
         unboundRefused: !cel "steps.unboundRefused.result"
       expected:
         sameCertificate: alice

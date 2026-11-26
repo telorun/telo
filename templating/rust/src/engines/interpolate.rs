@@ -14,11 +14,10 @@
 //! Node items with no twin: the `CONVERTIBLE` and `CONVERSIONS` weak maps — the set is read
 //! once per analyzed scalar and the conversion program is compiled into each compiled value.
 
-use std::collections::HashSet;
 
-use telorun_cel::{CelEnvironment, CelNode};
+use telorun_cel::{admits_null, CelEnvironment, CelNode, CelType};
 
-use crate::cel::analyze::nullable_value_chain;
+use crate::cel::analyze::plain_dotted_chain;
 use crate::cel::compile::CompiledValue;
 use crate::cel::interpolation_holes::{literal_fragments, InterpolationHole};
 use crate::cel::verdict_codes::{CelAnalyzeResult, CelDiagnostic, CelDiagnosticCode, TemplatingError};
@@ -47,9 +46,8 @@ impl TemplatingEngine for InterpolateEngine {
     }
 
     fn analyze(&self, source: &str, env: &AnalyzeEnv<'_>) -> AnalyzeResult {
-        let convertible = convertible_types(env.cel_env);
-        let verdict = |hole: &InterpolationHole, result: &CelAnalyzeResult, tree: Option<&CelNode>| {
-            hole_verdict(hole, result, tree, env, &convertible)
+        let verdict = |hole: &InterpolationHole, result: &CelAnalyzeResult, tree: Option<&CelNode>, checked: Option<&CelType>| {
+            hole_verdict(hole, result, tree, checked, env.cel_env)
         };
         analyze_holes(source, env, Some(&verdict)).into()
     }
@@ -77,11 +75,12 @@ fn hole_verdict(
     hole: &InterpolationHole,
     result: &CelAnalyzeResult,
     tree: Option<&CelNode>,
-    env: &AnalyzeEnv<'_>,
-    convertible: &HashSet<String>,
+    checked: Option<&CelType>,
+    cel_env: &CelEnvironment,
 ) -> Vec<CelDiagnostic> {
-    if let (Some(tree), Some(schema)) = (tree, env.context_schema) {
-        if let Some(chain) = nullable_value_chain(tree, schema) {
+    // A plain chain the engine types as a value or null.
+    if let (Some(tree), Some(checked @ CelType::Union(_))) = (tree, checked) {
+        if let Some(chain) = admits_null(checked).then(|| plain_dotted_chain(tree)).flatten() {
             return vec![CelDiagnostic {
                 code: CelDiagnosticCode::CelNullableAccess,
                 message: format!(
@@ -91,8 +90,9 @@ fn hole_verdict(
             }];
         }
     }
-    match &result.type_name {
-        Some(type_name) if !convertible.contains(type_name) => vec![CelDiagnostic {
+    // `!interpolate` joins `string(<hole>)`: the hole converts exactly when that call resolves.
+    match (checked, &result.type_name) {
+        (Some(checked), Some(type_name)) if !cel_env.converts_to_string(checked) => vec![CelDiagnostic {
             code: CelDiagnosticCode::InterpolationHoleNotConvertible,
             message: format!(
                 "the hole '${{{{ {} }}}}' is {type_name}, which CEL's string() cannot convert to text. Convert it inside the hole (e.g. join a list, or read the field you meant), or write the whole value as !cel.",
@@ -102,16 +102,4 @@ fn hole_verdict(
         }],
         _ => Vec::new(),
     }
-}
-
-/// The types a `string()` overload of `env` accepts, `dyn` among them — read off the
-/// registered overloads, so the check is the one evaluation applies.
-fn convertible_types(env: &CelEnvironment) -> HashSet<String> {
-    let mut types: HashSet<String> = HashSet::from(["dyn".to_string()]);
-    for function in env.functions_named("string") {
-        if function.receiver_type.is_none() && function.parameters.len() == 1 {
-            types.insert(function.parameters[0].clone());
-        }
-    }
-    types
 }

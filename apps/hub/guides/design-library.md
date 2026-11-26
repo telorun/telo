@@ -72,7 +72,7 @@ Choose by who should configure the thing:
 **One import instead of two.** A library that imports an abstract and its
 implementation (`sql` and `sqlite`), configures the connection and exports
 the instance leaves its importer one import and no backend choice to make.
-That — exporting instances — is the sanctioned way to collapse imports; do not
+That is the sanctioned way to collapse imports; do not
 re-export another module's kinds to the same end.
 
 **Singletons.** Inside the library, your own kinds are `Self.<Kind>` (no
@@ -251,7 +251,7 @@ result:
   unnamed declaration — and `targets: [!for-each { in: !cel "self.jobs", emit:
   !ref crons[each.key] }]` starts its members. A computed source is
   `REPEAT_COMPUTED`. A module whose own manifest writes these tags declares
-  a `requires: telo:` floor, which `telo release floor` measures in a Telo workspace.
+  a `requires: telo:` floor, measured by `telo release floor`.
 - **A reference the instance holds reaches an entry only through a bare
   `!cel "self.<path>"`** — one slot (`connection: !cel "self.connection"`) or
   a whole value holding several (`routes: !cel "self.routes"`). Never build
@@ -542,7 +542,9 @@ importer.
 ## A library's own texts — by key
 
 Texts an importer writes (a page title, a label in its manifest) are `Text`
-values, translated by their source text. Texts the LIBRARY shows on its own —
+values, translated by their source text; an input typed
+`$ref: "telo://manifest#/$defs/Text"` takes one in the importer's `lang:`,
+read as a `TextRecord`. Texts the LIBRARY shows on its own —
 a button's "Save", a pager's range, a validation message — have stable ids and
 are declared once by key, so translating them never collides with an
 importer's identical text:
@@ -563,12 +565,12 @@ application translates the keys in a catalog of it (`lang:` plus `messages:`)
 listed in its `translations:`. A kind whose resources show the set names it on
 its schema root, `x-telo-text-keys: [Self.Translations]`, and its controller
 reads each key per served language from `ctx.translations.keyed()`; a kind
-extending it shows the same sets unless it names its own. Written anywhere else
-the annotation is refused.
+extending it shows the same sets unless it names its own. Anywhere else the
+annotation is refused.
 
 `telo check` warns `MESSAGE_TRANSLATION_MISSING` for every key a served language lacks;
-keep a test application that lists every catalog the library ships, so a check of
-it proves the translations complete.
+keep a test application listing every catalog the library ships, so its check
+proves the translations complete.
 
 ## Names, descriptions and metadata
 
@@ -616,11 +618,10 @@ covers it.
 
 ## Inline or named
 
-Declare a resource **inline at its use site** when it is used exactly once
-(`invoke: { kind: Sql.Query, connection: !ref db }`), unnamed. Give it a top-level document of its own only when something
+Declare a resource **inline at its use site** when it is used once
+(`invoke: { kind: Sql.Query, connection: !ref db }`), unnamed. Give it its own top-level document only when something
 must name it: it is referenced more than once, listed in `targets:`, or
-exported. A router mounted on a server stays named, testable alone. Template
-body entries are always named. For a kind declaring no `name` field, `{ kind, name }` is the
+exported. A router mounted on a server stays named, testable alone. For a kind declaring no `name` field, `{ kind, name }` is the
 removed reference form (`INVALID_REFERENCE_FORM`) — write `!ref <name>`.
 
 ## Testing a library

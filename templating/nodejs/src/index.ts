@@ -30,7 +30,6 @@ export {
   extractAccessChains,
   extractReadChains,
   extractValueReadChains,
-  findNullableAccessIssues,
   INDEX_SEGMENT,
   schemaConjuncts,
   validateChainAgainstSchema,

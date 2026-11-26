@@ -18,6 +18,7 @@
 !scripts/version-line.mjs
 !scripts/render-builtin-vocabulary.mjs
 !scripts/generate-artifact-axes.mjs
+!scripts/copy-validation-limits.mjs
 !sdk/value-types
 !sdk/zone-attributes
 !sdk/error-codes
@@ -28,6 +29,7 @@
 !sdk/LICENSE
 !analyzer/migrations
 !analyzer/artifact-axes
+!analyzer/validation-limits.json
 !apps/k8s-runner
 !packages/runner-core
 !packages/debug-wire
@@ -96,6 +98,7 @@ analyzer/nodejs/src/builtin-vocabulary
 analyzer/nodejs/builtin-vocabulary-slices.json
 analyzer/nodejs/src/telo-version.ts
 analyzer/nodejs/src/artifact-axes.ts
+analyzer/nodejs/src/validation-limits.json
 sdk/nodejs/src/value-types/entries
 sdk/nodejs/src/zone-attributes/entries
 sdk/nodejs/src/error-codes/entries

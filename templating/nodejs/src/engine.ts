@@ -1,4 +1,4 @@
-import type { CelEnvironment } from "@telorun/cel";
+import type { CelEnvironment, CelType, CheckAssumption, ResultOrigin } from "@telorun/cel";
 import type { CompiledValue } from "@telorun/sdk";
 import type { CelProgramSite } from "./cel/compile.js";
 import type { ModuleCallFlags } from "./cel/diagnose.js";
@@ -26,19 +26,16 @@ export interface CompileEnv {
   readonly programSites?: CelProgramSite[];
 }
 
-/** Analyze-time environment passed to `engine.analyze`. The walker resolves
- *  the path-specific effective context (kernel globals merged in, x-telo-context
- *  applied) and hands the engine a single closed schema. The engine validates
- *  member-access chains against it. `null` means "open context" — no chain
- *  validation possible.
+/** Analyze-time environment passed to `engine.analyze`.
  *
- *  `celEnv` is the environment **typed for this path**, not the bare base one:
+ *  `celEnv` is the environment **typed for this path** — every binding the
+ *  site reads registered as its JSON Schema, which the engine reads to full
+ *  depth and judges every member read against —, not the bare base one:
  *  the engine type-checks against it, so the caller must not check the same
  *  expression again against a different environment. One expression, one
  *  verdict. */
 export interface AnalyzeEnv {
   readonly celEnv: CelEnvironment;
-  readonly contextSchema: Record<string, unknown> | null;
   /**
    * The caller vouches that `celEnv` declares EVERY name legal at this site, so
    * a root identifier it does not know is undeclared rather than merely
@@ -63,11 +60,6 @@ export interface AnalyzeEnv {
    *  they are written, and nothing is claimed about its result. */
   readonly moduleCallType?: ModuleCallTypeResolver;
 
-  /** The JSON Schema a module call's RESULT carries, when the caller can resolve
-   *  one — what member access on the result (`Billing.total(xs).amont`) is
-   *  checked against. Absent leaves such access unchecked. */
-  readonly moduleCallResult?: (qualified: string) => Record<string, unknown> | undefined;
-
   /** The derived flags of the module function a qualified call reaches, carried
    *  onto its {@link CallSite} — boolean wherever the call resolves, so a
    *  consumer reading `deterministic === false` sees every impure one. */
@@ -84,15 +76,10 @@ export interface AnalyzeEnv {
    */
   readonly couldNameModule?: (name: string) => boolean;
 
-  /**
-   * The names this site reads, as a schema — consulted ONLY to explain a
-   * rejection `check()` already made. A chain naming a field it does not declare
-   * is then reported as `CEL_UNKNOWN_FIELD` with the fields it does, rather than
-   * the checker's own wording. Never a verdict of its own: an expression the
-   * checker accepts is not re-judged against it. Lazy, since only a failing
-   * expression asks.
-   */
-  readonly explainSchema?: () => Record<string, unknown> | null;
+  /** Conditions known at the site — a guard of the host's own grammar that held or
+   *  failed on the way to it — handed to the checker as assumptions, outermost
+   *  first. Absent, the expression is checked as written. */
+  readonly assumptions?: readonly CheckAssumption[];
 }
 
 /** A mechanically applicable repair for a diagnostic. `replacement` is the
@@ -164,15 +151,18 @@ export interface CallSite {
 
 /** One argument of a module call. */
 export interface CallArgument {
-  readonly type?: string;
+  /** The type the checker gave it, absent where that is `dyn` — read as a type, never from its text. */
+  readonly type?: CelType;
+  /** How {@link CallArgument.type} prints, for a message: cut as every printed type is. */
+  readonly typeName?: string;
   readonly chain?: readonly string[];
   /** The argument's value when it is written as literals alone — a string, an
    *  integer (bigint), a double, a boolean, null, or a list or string-keyed map of
    *  them — so a caller can judge a parameter that takes only a fixed value. */
   readonly literal?: { readonly value: unknown };
   /** For an argument written as a map literal keyed by string literals: each key
-   *  and the CEL type of what it holds, absent where that is not known. */
-  readonly entries?: readonly { readonly key: string; readonly type?: string }[];
+   *  and the kind of literal it holds (`string`, `int`, …), absent where it is no literal. */
+  readonly entries?: readonly { readonly key: string; readonly literalKind?: string }[];
 }
 
 /** What one `analyze` call establishes about one source. Everything derivable
@@ -181,8 +171,15 @@ export interface CallArgument {
  *  outranks which) is left to the caller, which is the only side that has it. */
 export interface AnalyzeResult {
   readonly diagnostics: readonly EngineDiagnostic[];
-  /** Type the engine's checker resolved, when it type-checks and succeeded. */
+  /** Type the engine's checker resolved, when it type-checks and succeeded — as it prints, for a message. */
   readonly type?: string;
+  /** The type itself, beside {@link AnalyzeResult.type}: what a reader branching on the type reads. */
+  readonly checkedType?: CelType;
+  /** Every place the checked value may have come from, in written order, each
+   *  with its range in the analyzed source, its type and the schema node it is
+   *  an instance of, where it is one — beside `type`, when the engine locates
+   *  its reads. */
+  readonly origins?: readonly ResultOrigin[];
   /** Every function call in the source, in source order. */
   readonly calls: readonly CallSite[];
   /** The string the whole expression is a literal of, read off the parsed tree
@@ -192,6 +189,8 @@ export interface AnalyzeResult {
    *  it reads (`variables.db` → `Telo.HostPath`), so a host can say how to use a
    *  value whose type is what the rejection turned on. */
   readonly readTypes?: readonly string[];
+  /** Each distinct type itself, beside {@link AnalyzeResult.readTypes}: what a reader branching on them reads. */
+  readonly readCheckedTypes?: readonly CelType[];
 }
 
 /** One module-relative file a tagged node embeds, reported by the engine that

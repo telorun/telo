@@ -1,0 +1,10 @@
+# A splice at an `imports:` entry's top level may write its source: refused by
+# the loader, and nothing beneath it is judged.
+kind: Telo.Application
+metadata: { name: ImportSpliceEntry }
+variables: { flag1: { env: FLAG_1, type: boolean, default: true } }
+imports:
+  Lib:
+    source: ./lib
+    variables: { size: 1 }
+    ...: !if { if: !cel "variables.flag1", then: { variables: { size: wrong } } }

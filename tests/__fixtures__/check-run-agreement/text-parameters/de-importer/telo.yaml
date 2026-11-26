@@ -1,0 +1,7 @@
+# A German module writing the singleton's title.
+kind: Telo.Library
+metadata: { name: TextParameterDeImporter, version: 1.0.0 }
+lang: de
+imports:
+  Singleton: { source: ../../../import-text-input/shared, variables: { title: Hello } }
+exports: { resources: [Singleton.shown] }

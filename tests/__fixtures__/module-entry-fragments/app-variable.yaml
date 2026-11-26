@@ -1,0 +1,15 @@
+kind: Telo.Application
+metadata:
+  name: AppVariable
+  version: 1.0.0
+variables:
+  title:
+    $ref: telo://manifest#/$defs/Text
+    type: string
+    env: TITLE
+    default: Hello
+---
+kind: Telo.Value
+metadata:
+  name: shown
+value: !cel "variables.title"

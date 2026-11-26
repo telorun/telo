@@ -1,0 +1,7 @@
+units:
+  apps/authoring-agent: Added
+body: "The primer teaches the typed CEL reads: declared shapes type every read to full
+  depth, a declared number is a double, union members are read through .? / has() / a
+  test on the discriminating field with .orValue(…) or .value() to unwrap, string() over
+  a nullable is guarded, an import's inputs cannot read resources, and a !ref at a
+  schema slot must name a shape."

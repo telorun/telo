@@ -1,0 +1,19 @@
+units:
+  analyzer: Added
+  templating: Added
+body: "telo check types every CEL read from the declared JSON Schema of what it reads,
+  to full depth: inputs, steps.<n>.result, request, self (in a template body and in a
+  base: mapping, a declared integer an int and a declared number a double), variables
+  and secrets (an Application entry written with $ref is typed from the shape it names)
+  and a module call's result. inputs.order.total * 2 over a string total, self.a.x + 1
+  over a string and Self.price(1).m.amount + 1 are refused before the app runs. A member
+  only some shapes of a union declare is refused naming '.?member' and, where a field
+  tells the shapes apart, the test on it (r.?principal, has(r.principal), u.k == 'a' ?
+  u.p : 0); a step's if / elseif / while / switch / try when narrows the steps it
+  guards. A finding names the chain it read, its declared type and what the slot expects
+  ('reads variables.flag, declared string, but the field expects boolean'). In an
+  import's variables: and secrets:, resources and ports are not in scope
+  (CEL_UNKNOWN_IDENTIFIER). A reference to a schema it cannot read yields one
+  CEL_SCHEMA_UNJUDGED warning where the node is written. A !ref at a contract's
+  inputType / outputType or a callable's params[].schema / returns.schema naming a kind
+  other than a shape is REFERENCE_KIND_MISMATCH."
