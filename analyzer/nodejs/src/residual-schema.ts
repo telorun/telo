@@ -1,5 +1,6 @@
 import { isInstanceSlot } from "@telorun/sdk";
 import { admitsAbsence } from "./configuration-dimensions.js";
+import { inheritSchemaPlace } from "./schema-provenance.js";
 
 /**
  * Build the residual JSON Schema for a `variables` / `secrets` entry.
@@ -34,7 +35,8 @@ export function residualEntrySchema(
     if (coercionOnly && key === "type") continue;
     out[key] = value;
   }
-  return out;
+  // The residual is read where the entry is written.
+  return inheritSchemaPlace(out, entry);
 }
 
 /**

@@ -1,0 +1,17 @@
+# An application variable whose default nests exactly 100 levels deep, the
+# most a validation follows: validated, and accepted.
+kind: Telo.Application
+metadata: { name: SchemaNestingAtLimit, version: 1.0.0 }
+variables:
+  tree:
+    env: TREE
+    type: array
+    $ref: "#/$defs/N"
+    $defs:
+      N: { anyOf: [{ const: 0 }, { type: array, items: { $ref: "#/$defs/N" } }] }
+    default: [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]
+imports:
+  Worker:
+    source: ./worker
+    variables:
+      tree: !cel "variables.tree"

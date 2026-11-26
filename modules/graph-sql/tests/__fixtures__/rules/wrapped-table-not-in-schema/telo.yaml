@@ -1,0 +1,33 @@
+# A templated graph whose body keeps its own bookkeeping table, named by a field
+# defaulted in the kind's schema: a consumer handing it a schema that does not
+# list that table makes a store nothing would create the table for.
+kind: Telo.Library
+metadata: { name: WrappedGraph }
+imports:
+  SQLite: ../../../../../sqlite
+  Sql: ../../../../../sql
+  GraphSql: ../../../..
+exports: { kinds: [Ledger] }
+---
+kind: Telo.Definition
+metadata: { name: Ledger }
+capability: Telo.Provider
+schema:
+  type: object
+  required: [connection, schema]
+  properties:
+    connection: { x-telo-ref: { kind: Sql.Connection, use: dependency } }
+    schema: { x-telo-ref: { kind: Sql.Schema, use: dependency } }
+    bookkeeping: { type: string, default: entries }
+resources:
+  - kind: SQLite.Table
+    metadata: { name: book }
+    table: !cel "self.bookkeeping"
+    columns: { id: { type: text, primaryKey: true } }
+  - { kind: GraphSql.Node, metadata: { name: entry }, table: !ref book, key: id }
+  - kind: GraphSql.Store
+    metadata: { name: store }
+    connection: !cel "self.connection"
+    schema: !cel "self.schema"
+    nodes: [!ref entry]
+provide: !ref store

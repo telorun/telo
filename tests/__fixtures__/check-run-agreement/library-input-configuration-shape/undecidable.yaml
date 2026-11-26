@@ -1,0 +1,4 @@
+kind: Telo.Application
+metadata: { name: ConfigurationShapeUndecidableApp }
+imports: { Lib: { source: ./undecidable, variables: { flag: true, config: { a: 1 } } } }
+targets: [{ name: read, invoke: !ref Lib.read }]

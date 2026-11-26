@@ -1,0 +1,13 @@
+# A text parameter's default is the library's own text, judged in its lang:.
+kind: Telo.Library
+metadata: { name: TextParameterDefaultFew, version: 1.0.0 }
+lang: en
+variables:
+  title:
+    $ref: "telo://manifest#/$defs/Text"
+    default: { plural: count, cases: { few: "{$count} files", other: "{$count} files" } }
+exports: { resources: [shown] }
+---
+kind: Telo.Value
+metadata: { name: shown }
+value: !cel "variables.title"

@@ -235,7 +235,7 @@ steps:
   - name: assertScript
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.parse.result.nodes[0].children[0].children[0].children"
+      actual: !cel "steps.parse.result.nodes[0].?children.value()[0].?children.value()[0].?children.value()"
       expected: [{ type: text, text: '<!-- document.write("<script></script>") -->' }]
 ---
 # Every parse satisfies the node shape (the kind's output contract checks it),

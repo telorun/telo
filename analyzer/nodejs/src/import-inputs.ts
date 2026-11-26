@@ -1,9 +1,12 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import { holdsHostPath } from "./host-path-slot.js";
+import { liftFragmentDefs, slotAtPointer } from "./manifest-schemas.js";
 import type { ModuleDocuments } from "./module-documents.js";
 import { inputValueSchema } from "./residual-schema.js";
 import { canonicalShapeSchema, withCanonicalRefSentinels } from "./resolve-schema-type-refs.js";
+import { textOrRecordSchema, textParametersOf, type LibraryTextParameter } from "./text-parameter.js";
+import { textParameterFragment } from "./text-slot.js";
 
 /**
  * What a library declares for its importer to supply under `variables:` / `secrets:`,
@@ -48,10 +51,20 @@ export function importInputsJoinSchema(
   if (!schema) {
     joinSchemas.set(
       library,
-      (schema = blocksSchema(library, documentSet, aliasesByModule, (entry) => !holdsHostPath(entry))),
+      (schema = blocksSchema(library, documentSet, aliasesByModule, (entry) => !holdsHostPath(entry), true)),
     );
   }
   return schema;
+}
+
+/** The text parameters of the library an import reaches — none when the
+ *  analysis holds no documents for it. */
+export function importTextParameters(
+  importDoc: ResourceManifest,
+  documents: readonly ModuleDocuments[],
+): readonly LibraryTextParameter[] {
+  const found = libraryDocOf(importDoc, documents);
+  return found ? textParametersOf(found.library) : [];
 }
 
 /** Memoized per library document, so a validator compiled for one is reused by
@@ -68,6 +81,9 @@ function blocksSchema(
   documentSet: ModuleDocuments,
   aliasesByModule: ReadonlyMap<string, Pick<AliasResolver, "moduleForAlias">> | undefined,
   keep: (entry: Record<string, any>) => boolean,
+  /** An expression is joined against a text parameter as a slot taking a text
+   *  or the record of one, which its record branch alone admits. */
+  joined = false,
 ): Record<string, any> {
   const moduleForAlias = (alias: string): string | undefined =>
     aliasesByModule?.get(documentSet.module)?.moduleForAlias(alias);
@@ -84,16 +100,25 @@ function blocksSchema(
     if (declared && typeof declared === "object" && !Array.isArray(declared)) {
       for (const [name, entry] of Object.entries(declared as Record<string, unknown>)) {
         if (entry && typeof entry === "object" && !Array.isArray(entry) && keep(entry as Record<string, any>)) {
-          entries[name] = inputValueSchema(inLibrary(entry as Record<string, unknown>));
+          // Each entry is its own schema root, so its `#/$defs/…` names the entry.
+          const at = `#/properties/${block}/properties/${pointerSegment(name)}`;
+          const value = inputValueSchema(inLibrary(entry as Record<string, unknown>));
+          entries[name] =
+            joined && textParameterFragment(entry)
+              ? textOrRecordSchema(slotAtPointer(value, `${at}/anyOf/0`))
+              : slotAtPointer(value, at);
         }
       }
     }
     properties[block] = { type: "object", properties: entries };
   }
-  return { type: "object", properties };
+  return liftFragmentDefs({ type: "object", properties });
 }
 
-function libraryDocOf(
+const pointerSegment = (key: string): string => key.replace(/~/g, "~0").replace(/\//g, "~1");
+
+/** The library document an import reaches, and the documents it is one of. */
+export function libraryDocOf(
   importDoc: ResourceManifest,
   documents: readonly ModuleDocuments[],
 ): { library: ResourceManifest; documentSet: ModuleDocuments } | undefined {

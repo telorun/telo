@@ -1,0 +1,12 @@
+# An entry typing a member through a reference into its own `$defs`.
+kind: Telo.Library
+metadata: { name: LocalRefLib, version: 1.0.0 }
+variables:
+  cfg:
+    type: object
+    properties: { a: { $ref: "#/$defs/A" } }
+    $defs: { A: { type: object, properties: { x: { type: string } } } }
+---
+kind: Telo.Value
+metadata: { name: read }
+value: !cel "variables.cfg.a.x + '!'"

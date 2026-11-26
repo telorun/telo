@@ -1,4 +1,5 @@
 import { inlineStepTargetName, type ResourceDefinition, type ResourceManifest } from "@telorun/sdk";
+import { inheritSchemaPlace } from "./schema-provenance.js";
 import { isTaggedSentinel } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
@@ -23,8 +24,8 @@ import {
   isLegacyReferenceForm,
   resolvedReference,
 } from "./resolved-reference.js";
-import { isValueAtSlot } from "./reference-field-map.js";
-import { siteRefEntry, type ReachSite } from "./reference-reach.js";
+import { isValueAtSlot, type ValueBranchOutcome } from "./reference-field-map.js";
+import { siteRefEntry, type ConditionedReachSite, type ReachSite } from "./reference-reach.js";
 import { gatherPropertySchemas } from "./schema-walk.js";
 import {
   declaredScopes,
@@ -73,12 +74,13 @@ function sanitizeName(raw: string): string {
 export function cloneForMutation(value: unknown): unknown {
   if (value === null || typeof value !== "object") return value;
   if ((value as { __compiled?: unknown }).__compiled) return value;
-  if (Array.isArray(value)) return value.map(cloneForMutation);
+  // A copy is written where its source is (`schema-provenance.ts`).
+  if (Array.isArray(value)) return inheritSchemaPlace(value.map(cloneForMutation), value);
   const out: Record<string, unknown> = {};
   for (const key of Object.keys(value)) {
     out[key] = cloneForMutation((value as Record<string, unknown>)[key]);
   }
-  return out;
+  return inheritSchemaPlace(out, value);
 }
 
 type NamedManifest = ResourceManifest & { metadata: { name: string } };
@@ -129,6 +131,8 @@ interface Declaration extends Provenance {
   inBody?: true;
   /** For a template body entry: the definition and the entry's index in it. */
   bodyOf?: { definition: ResourceManifest; index: number };
+  /** Where it holds, over classes — absent wherever its holder holds. */
+  presence?: unknown;
 }
 
 /** What `metadata.xTeloOrigin` records: where an extracted declaration was
@@ -225,6 +229,75 @@ export function normalizeInlineResources(
   emittedName?: (definition: ResourceManifest, entry: number, keys: readonly (string | number)[]) => string | undefined,
   onWrittenStamp?: (stamp: WrittenStampPlace) => void,
 ): ResourceManifest[] {
+  return normalizeAll(resources, registry, aliases, aliasesByModule, emittedName, onWrittenStamp, undefined).manifests;
+}
+
+/** How a normalization over the classes of the varying named shapes reads a
+ *  reference site some classes declare: conditions over the configurations,
+ *  and each way the site's reference items are decided. */
+export interface ClassCuts<C> {
+  readonly always: C;
+  and(a: C, b: C): C;
+  or(a: C, b: C): C;
+  not(a: C): C;
+  isNever(condition: C): boolean;
+  /** Each way of deciding `site`'s reference items: the indices it keeps, in
+   *  the order a walk of such a configuration reaches them, and where. */
+  refSides(site: ConditionedReachSite<C>): readonly { readonly kept: readonly number[]; readonly condition: C }[];
+}
+
+/** A cut point written into a normalization over classes: where `condition`
+ *  holds, the place `key` of `holder` holds `value` instead of what is written
+ *  there. */
+export interface CutPoint<C> {
+  readonly holder: object;
+  readonly key: string | number;
+  readonly condition: C;
+  readonly value: unknown;
+}
+
+/** A normalization over classes: the manifests with every cut point's place
+ *  as written, each cut point, and where each declaration it drew out holds —
+ *  one it drew out at a cut point only where the cut point takes it. */
+export interface ClassNormalization<C> {
+  readonly manifests: ResourceManifest[];
+  readonly cuts: readonly CutPoint<C>[];
+  /** Every declaration not holding wherever its holder does: a top-level one,
+   *  or one placed in a scope's or a template body's list. */
+  readonly presence: ReadonlyMap<object, C>;
+}
+
+/**
+ * {@link normalizeInlineResources} read through the conditioned reach of the
+ * varying named shapes (the registry's reach while `withConditionedReach`
+ * runs): a reference slot only some classes declare is a CUT POINT written
+ * once with every side — where a side holding an extraction is taken, the
+ * declaration drawn out holds and the slot holds a reference to it; where
+ * none is, the value stays as written — so a declaration is normalized once
+ * whatever its cut points decide.
+ */
+export function normalizeInlineResourcesOverClasses<C>(
+  resources: ResourceManifest[],
+  registry: DefinitionRegistry,
+  aliases: AliasResolver | undefined,
+  aliasesByModule: Map<string, AliasResolver> | undefined,
+  emittedName: ((definition: ResourceManifest, entry: number, keys: readonly (string | number)[]) => string | undefined) | undefined,
+  classes: ClassCuts<C>,
+): ClassNormalization<C> {
+  return normalizeAll(resources, registry, aliases, aliasesByModule, emittedName, undefined, classes);
+}
+
+function normalizeAll<C>(
+  resources: ResourceManifest[],
+  registry: DefinitionRegistry,
+  aliases: AliasResolver | undefined,
+  aliasesByModule: Map<string, AliasResolver> | undefined,
+  emittedName: ((definition: ResourceManifest, entry: number, keys: readonly (string | number)[]) => string | undefined) | undefined,
+  onWrittenStamp: ((stamp: WrittenStampPlace) => void) | undefined,
+  classes: ClassCuts<C> | undefined,
+): ClassNormalization<C> {
+  const cuts: CutPoint<C>[] = [];
+  const presence = new Map<object, C>();
   // Deep-clone the input so this pass — and `resolveRefSentinels`, which runs on
   // this output — never mutate caller-owned manifests. The extractions rewrite
   // slots in place, so without cloning we'd corrupt shared state such as the
@@ -295,9 +368,11 @@ export function normalizeInlineResources(
     into: unknown[] | undefined,
     module?: string,
     inBody?: true,
+    held?: unknown,
   ) => {
     if (into) into.push(manifest);
     else result.push(manifest);
+    if (classes && held !== undefined && held !== classes.always) presence.set(manifest, held as C);
     queue.push({
       manifest: manifest as NamedManifest,
       written,
@@ -305,6 +380,7 @@ export function normalizeInlineResources(
       home: into,
       outside: outsideScopesOf(manifest),
       ...(inBody ? { inBody } : {}),
+      ...(held !== undefined ? { presence: held } : {}),
       ...provenanceOf(manifest, module),
     });
   };
@@ -347,7 +423,7 @@ export function normalizeInlineResources(
           const fields = judge(member, written, labelling);
           if (fields.length > 0) member.metadata = withoutStamps(member.metadata, fields) as NamedManifest["metadata"];
         }
-        queue.push({ manifest: member, written, labelling, home: scope.declarations, outside, ...inherit });
+        queue.push({ manifest: member, written, labelling, home: scope.declarations, outside, ...inherit, ...(current.presence !== undefined ? { presence: current.presence } : {}) });
       }
     }
     const outsideAt = (slotKeys: readonly (string | number)[], createdIn?: DeclaredScope): OutsideScope[] => [
@@ -379,15 +455,19 @@ export function normalizeInlineResources(
       });
 
     const extractedAt: (readonly (string | number)[])[] = [];
+    /** Where a cut point draws a declaration out, beneath which a site is the
+     *  holder's only where it does not. */
+    const cutAt: { keys: readonly (string | number)[]; condition: C }[] = [];
     for (const site of sites) {
       if (site.refs.length === 0) continue;
-      const valueOutcome =
-        site.data !== null && typeof site.data === "object" && !isTaggedSentinel(site.data)
-          ? isValueAtSlot(site.data, site.refs, registry)
-          : undefined;
+      if (classes && (site as Partial<ConditionedReachSite<C>>).holding) {
+        cutSite(current, view, inherit, scopes, outsideAt, site as ConditionedReachSite<C>, classes, cutAt);
+        continue;
+      }
+      const valueOutcome = valueOutcomeAt(site, registry);
       // A value whose branch could not finish validating is neither a reference nor
       // a declaration: the slot's own finding is the one report.
-      if (valueOutcome === "unfinished") continue;
+      if (typeof valueOutcome === "object") continue;
       if (site.holder && site.key !== undefined && legacyReference(site.data) && valueOutcome === "refuses") {
         (site.holder as Record<string | number, unknown>)[site.key] = asResolvedReference(site.data);
         continue;
@@ -425,11 +505,119 @@ export function normalizeInlineResources(
         ? { label: stampLabel(m), at: written.path }
         : current.labelling;
       judge(inline, written, labelling);
-      place(m, written, labelling, home, parentModule, current.inBody);
+      place(m, written, labelling, home, parentModule, current.inBody, current.presence);
     });
   }
 
-  return result;
+  return { manifests: result, cuts, presence };
+
+  /**
+   * The reference site `site` of `current`, read over classes: each way of
+   * deciding its reference items gives what a configuration deciding it so
+   * writes there — the value as written, the legacy reference marked, or the
+   * inline declaration drawn out — and where more than one is given, the
+   * place is a cut point holding each where it is taken.
+   */
+  function cutSite(
+    current: Declaration,
+    view: NamedManifest,
+    inherit: Provenance,
+    scopes: readonly DeclaredScope[],
+    outsideAt: (slotKeys: readonly (string | number)[], createdIn?: DeclaredScope) => OutsideScope[],
+    site: ConditionedReachSite<C>,
+    ops: ClassCuts<C>,
+    cutAt: { keys: readonly (string | number)[]; condition: C }[],
+  ): void {
+    const { manifest: resource, home } = current;
+    // A site below one drawn out belongs to that declaration where it is.
+    let under = ops.always;
+    for (const at of cutAt) {
+      if (at.keys.length < site.keys.length && keysUnder(site.keys, at.keys)) under = ops.and(under, ops.not(at.condition));
+    }
+    // A legacy reference is marked whatever encloses it, as the loop marks it.
+    const beneathDrawnOut = ops.isNever(under);
+    const held = current.presence === undefined ? under : ops.and(current.presence as C, under);
+    const outcomes = new Map<string, { condition: C; outcome: SiteOutcome }>();
+    for (const side of ops.refSides(site)) {
+      const refs = side.kept.map((i) => site.refs[i]!);
+      const outcome = siteOutcome(current, view, { ...site, refs }, registry, aliases, aliasesByModule);
+      const key = outcome.kind === "extract" ? `extract\0${JSON.stringify(outcome.context ?? null)}` : outcome.kind;
+      const known = outcomes.get(key);
+      outcomes.set(key, { condition: known ? ops.or(known.condition, side.condition) : side.condition, outcome });
+    }
+    const parentName = resource.metadata.name;
+    const parentModule = moduleOf(view);
+    const scope = scopes.find((s) => scopeEncloses(s, site.keys));
+    const written = { root: current.written.root, path: joinPath(current.written.path, site.path) };
+    const only = outcomes.size === 1;
+    let drawnOut: C | undefined;
+    for (const { condition, outcome } of outcomes.values()) {
+      if (outcome.kind === "written") continue;
+      if (outcome.kind === "legacy") {
+        const marked = asResolvedReference(site.data as Record<string, unknown> & { kind: string; name: string });
+        if (only) (site.holder as Record<string | number, unknown>)[site.key!] = marked;
+        else if (!beneathDrawnOut) cuts.push({ holder: site.holder!, key: site.key!, condition, value: marked });
+        continue;
+      }
+      if (beneathDrawnOut) continue;
+      const inline = only ? (site.data as Record<string, unknown>) : (cloneForMutation(site.data) as Record<string, unknown>);
+      const drawn = inlineManifestAt(
+        resource,
+        { ...site, data: inline },
+        parentName,
+        resource.kind,
+        inherit,
+        outsideAt(site.keys, scope),
+        outcome.context,
+        current.bodyOf ? emittedName?.(current.bodyOf.definition, current.bodyOf.index, site.keys) : undefined,
+      );
+      if (only) (site.holder as Record<string | number, unknown>)[site.key!] = drawn.reference;
+      else cuts.push({ holder: site.holder!, key: site.key!, condition, value: drawn.reference });
+      drawnOut = drawnOut === undefined ? condition : ops.or(drawnOut, condition);
+      const where = only ? held : ops.and(held, condition);
+      place(drawn.manifest, written, current.labelling, scope?.declarations ?? home, parentModule, current.inBody, where);
+    }
+    if (drawnOut !== undefined) cutAt.push({ keys: site.keys, condition: only ? ops.always : drawnOut });
+  }
+}
+
+/** Whether the object at `site` is a value its slot accepts, refuses, or could
+ *  not finish judging; nothing for a scalar or a tag. */
+function valueOutcomeAt(site: ReachSite, registry: DefinitionRegistry): ValueBranchOutcome | undefined {
+  return site.data !== null && typeof site.data === "object" && !isTaggedSentinel(site.data)
+    ? isValueAtSlot(site.data, site.refs, registry)
+    : undefined;
+}
+
+/** What one way of deciding a site's reference items writes there. */
+type SiteOutcome = { kind: "written" } | { kind: "legacy" } | { kind: "extract"; context: Record<string, any> | undefined };
+
+/** What a configuration keeping exactly `site.refs` writes at `site` of
+ *  `current` — the decision the loop of {@link normalizeAll} makes. */
+function siteOutcome(
+  current: Declaration,
+  view: NamedManifest,
+  site: ReachSite,
+  registry: DefinitionRegistry,
+  aliases: AliasResolver | undefined,
+  aliasesByModule: Map<string, AliasResolver> | undefined,
+): SiteOutcome {
+  if (site.refs.length === 0) return { kind: "written" };
+  const resolveDef: DefResolver = (kind, from) =>
+    definitionInScope<ResourceDefinition>(registry, kind, from?.metadata, aliases, aliasesByModule);
+  const legacy = isLegacyReferenceForm(site.data, (kind) => {
+    const definition = definitionInScope<ResourceDefinition>(registry, kind, view.metadata, aliases, aliasesByModule);
+    return definition ? declaresNameField(definition, resolveDef) : undefined;
+  });
+  const valueOutcome = valueOutcomeAt(site, registry);
+  if (typeof valueOutcome === "object") return { kind: "written" };
+  if (site.holder && site.key !== undefined && legacy && valueOutcome === "refuses") return { kind: "legacy" };
+  const entry = siteRefEntry(site);
+  if (!acceptsInline(current.manifest.kind, entry)) return { kind: "written" };
+  if (current.inBody && entry.uses.includes("schema")) return { kind: "written" };
+  const inline = site.data;
+  if (!inline || typeof inline !== "object" || Array.isArray(inline) || !site.holder || !isInlineDeclaration(inline)) return { kind: "written" };
+  return { kind: "extract", context: entry.context };
 }
 
 const moduleOf = (manifest: ResourceManifest): string | undefined => {
@@ -595,6 +783,24 @@ function extractInlineAt(
   const inline = site.data;
   if (!inline || typeof inline !== "object" || Array.isArray(inline) || !site.holder) return undefined;
   if (!isInlineDeclaration(inline)) return undefined;
+  const drawn = inlineManifestAt(resource, site, parentName, parentKind, inherit, outsideScopes, invocationContext, givenName);
+  (site.holder as Record<string | number, unknown>)[site.key!] = drawn.reference;
+  return drawn.manifest;
+}
+
+/** The declaration the inline one `site` holds is drawn out as, and the
+ *  reference to it that takes its place; nothing is written. */
+function inlineManifestAt(
+  resource: ResourceManifest,
+  site: ReachSite,
+  parentName: string,
+  parentKind: string,
+  inherit: Provenance,
+  outsideScopes: OutsideScope[],
+  invocationContext?: Record<string, any>,
+  givenName?: string,
+): { manifest: ResourceManifest; reference: unknown } {
+  const inline = site.data as Record<string, unknown> & { kind: string };
   const nameParts: string[] = [];
   let value: unknown = resource;
   for (const key of site.keys) {
@@ -607,20 +813,22 @@ function extractInlineAt(
     }
   }
   const name = givenName ?? sanitizeName([parentName, ...nameParts].join("_"));
-  (site.holder as Record<string | number, unknown>)[site.key!] = resolvedReference(inline.kind, name);
-  return buildManifest(
-    inline as Record<string, unknown>,
-    name,
-    {
-      parentKind,
-      parentName,
-      pathFromParent: site.path,
-      keysFromParent: [...site.keys],
-      ...(outsideScopes.length > 0 ? { outsideScopes } : {}),
-    },
-    inherit,
-    invocationContext,
-  );
+  return {
+    reference: resolvedReference(inline.kind, name),
+    manifest: buildManifest(
+      inline,
+      name,
+      {
+        parentKind,
+        parentName,
+        pathFromParent: site.path,
+        keysFromParent: [...site.keys],
+        ...(outsideScopes.length > 0 ? { outsideScopes } : {}),
+      },
+      inherit,
+      invocationContext,
+    ),
+  };
 }
 
 function buildManifest(

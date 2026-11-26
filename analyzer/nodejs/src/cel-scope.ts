@@ -21,17 +21,27 @@
  */
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { emittedStepIdentity } from "@telorun/sdk";
-import type { CelEnvironment } from "@telorun/cel";
+import { rootReferences, type CelEnvironment, type CheckAssumption } from "@telorun/cel";
+import { STEP_GUARD_KEPT_ROOTS, stepGuardsAt } from "./step-guards.js";
 import { AliasResolver, type ModuleScopes } from "./alias-resolver.js";
 import { bindingContextProperties, BINDINGS_ANNOTATION } from "./cel-bindings.js";
 import {
   buildImportInputCelEnvironment,
+  IMPORT_INPUT_WITHHELD,
+  IMPORT_INPUT_WITHHELD_NAMES,
   buildParameterCelEnvironment,
   buildTypedCelEnvironment,
   celNamespaceNames,
   parseCelSource,
   registerModuleNamespaces,
 } from "./cel-environment.js";
+import { celSchemaResolver } from "./cel-schema-resolver.js";
+import { chainForwardIn, chainSchemaIn } from "./cel-schema-node.js";
+import { canonicalShapeSchema } from "./resolve-schema-type-refs.js";
+import { parseCanonicalTypeSchemaId } from "@telorun/sdk";
+import { schemaReferenceParts } from "./schema-reference.js";
+import type { ModuleGlobals } from "./flatten-for-analyzer.js";
+import { moduleAliasScope } from "./module-alias-scope.js";
 import { reportKeyCost } from "./cel-site-judgements.js";
 import { TypedEnvironments } from "./typed-environments.js";
 import { DefinitionRegistry } from "./definition-registry.js";
@@ -81,10 +91,10 @@ import {
   type KernelGlobalsIndex,
 } from "./kernel-globals.js";
 import { moduleCallNamesOf } from "./module-call-names.js";
-import { inlineNamedShapes, navigateSchemaToExprPath, type ExternalSchemaResolver } from "./schema-compat.js";
+import { inlineNamedShapes, type ExternalSchemaResolver } from "./schema-compat.js";
 import type { ModuleFunctionIndex, ResolvedFunction } from "./module-function-index.js";
 import type { CallableFlags, CallableFlagsIndex } from "./callable-flags.js";
-import { declaredDocument, navigateDeclaredChain } from "./referenced-shape.js";
+import { declaredDocument } from "./referenced-shape.js";
 import { gatherPropertySchemas, resolveLocalRef, walkStepArray } from "./schema-walk.js";
 import { readStepSlot, type StepSlot } from "./step-slot.js";
 import { withCanonicalRefSentinels } from "./resolve-schema-type-refs.js";
@@ -135,7 +145,13 @@ export function buildSelfSchema(definition: Record<string, any>, defs?: Definiti
     : definition.schema) ?? {}) as Record<string, any>;
   const userProps = (userSchema.properties ?? {}) as Record<string, any>;
   const userRequired = Array.isArray(userSchema.required) ? userSchema.required : [];
+  // The view keeps the schema's root, so a `#/$defs/…` reference beneath it
+  // resolves where it was written.
+  const localDefinitions = Object.fromEntries(
+    (["$defs", "definitions"] as const).filter((key) => userSchema[key] !== undefined).map((key) => [key, userSchema[key]]),
+  );
   return {
+    ...localDefinitions,
     type: "object",
     additionalProperties: false,
     properties: {
@@ -586,7 +602,8 @@ export interface CelScope {
   /** The CEL type a module call at this site yields — its callee's declared
    *  `returns` — or undefined where the callee is not known. */
   moduleCallType: (qualified: string) => string | undefined;
-  /** The schema a module call's result carries, for member access on it. */
+  /** The schema a module call's result carries, for what a value built from
+   *  it forwards. */
   moduleCallResult: (qualified: string) => Record<string, any> | undefined;
   /** The derived flags of the function a module call reaches. */
   moduleCallFlags: (qualified: string) => CallableFlags | undefined;
@@ -597,14 +614,28 @@ export interface CelScope {
    *  import alias) may name here, in declaration order: what `<receiver>.` offers
    *  and every one of them resolves. */
   moduleFunctionsOf: (receiver: string) => ReadonlyArray<{ name: string; function: ResolvedFunction }>;
-  /** The site's names as a schema — the context, or the kernel globals where no
-   *  context applied — for explaining a rejection the checker already made. */
-  explainSchema: () => Record<string, any> | null;
+  /** The schema node the plain chain `chain` is read from where the site's
+   *  environment types it — the node the engine names for its result — or
+   *  undefined where it names none or one saying nothing. */
+  chainSchema: (chain: string) => Record<string, any> | undefined;
+  /** {@link chainSchema} as a step forwarding the chain carries it: read where
+   *  the node sits in its document, so a `#…` reference in it still resolves. */
+  chainForward: (chain: string) => Record<string, any> | undefined;
   /** Set where the site is an accessor field's value: the names a chain there
    *  may start at. Such a value is named and never evaluated, so nothing else
    *  the scope types — a function, a kernel global, a module call — may be
    *  written there (`ACCESSOR_NOT_PLAIN_CHAIN`). */
   accessorBindings?: readonly string[];
+  /** Bindings named at the site that hold no value there, beside the ones its
+   *  regions withhold: what the withheld-read check refuses every read of. */
+  withheldBindings?: ReadonlySet<string>;
+  /** The step guards enclosing the site, outermost first, as the checker's
+   *  assumptions; absent where none does. */
+  assumptions?: readonly CheckAssumption[];
+  /** Whether `env` declares every root the site may read. False only at a kind
+   *  document's site no context of the definition covers — a rule condition or
+   *  an example in its `schema:`, written for a scope of its own. */
+  rootsDeclared: boolean;
 }
 
 /** The analyzer state a scope is resolved against — everything a manifest set
@@ -658,6 +689,10 @@ export interface CelScopeInputs {
   /** The typed environments built so far, shared by every resolver of one
    *  analysis; absent, the resolver keeps its own. */
   typedEnvironments?: TypedEnvironments;
+  /** A named shape some configuration varies, as this resolver's key answers
+   *  it — undefined for one no configuration varies or the key does not hold.
+   *  Absent, every shape is the same wherever the resolver reads it. */
+  varyingShapeAnswer?: (id: string) => Record<string, any> | undefined;
 }
 
 /**
@@ -792,9 +827,17 @@ export interface CelSiteRef {
  */
 const NO_MODULE_CALL_NAMES: ReadonlyMap<string, ReadonlySet<string>> = new Map();
 
-/** The names `buildTypedCelEnvironment` registers before a context's, so a
- *  context property of one of them never reaches the environment. */
-const GLOBALS_TYPED_FROM_BLOCKS: ReadonlySet<string> = new Set(["variables", "ports", "secrets", "resources", "module"]);
+/** The globals `buildTypedCelEnvironment` types from the module doc, never
+ *  from a context property of the same name. */
+const GLOBALS_TYPED_FROM_MODULE: ReadonlySet<string> = new Set(["ports", "module"]);
+
+/** The context a site's environment is built from, references intact, by the
+ *  context {@link CelScopeResolver.resolveContextFor} returns with named shapes
+ *  inlined for the readers placing the site. */
+const engineContexts = new WeakMap<Record<string, any>, Record<string, any>>();
+
+/** The one resolver of each analysis's named-shape lookup. */
+const resolvers = new WeakMap<object, import("@telorun/cel").SchemaTypeResolver>();
 
 export class CelScopeResolver {
   /** The context standing in where no `x-telo-context` matched, one per
@@ -1077,6 +1120,11 @@ export class CelScopeResolver {
     this.selfSchema =
       m.kind === "Telo.Definition" ? buildSelfSchema(m as Record<string, any>, defs) : undefined;
     const declaringModule = (m.metadata as { module?: string } | undefined)?.module;
+    const declaringScope = moduleAliasScope(m.metadata, aliases, scopes.aliasesByModule);
+    const schemaOfKind = (kind: string) => {
+      const definition = defs.resolve(declaringScope?.resolveKind(kind) ?? kind) ?? defs.resolve(kind);
+      return definition ? (defs.effectiveSchemaOf(definition) as Record<string, any> | undefined) : undefined;
+    };
     this.bodyScopes = templateBodies(m, defs, aliases, scopes).map((template) => {
       // A body entry is authoring data, so a named contract is still a `!ref`;
       // it is read in the canonical form a registered resource carries.
@@ -1164,6 +1212,7 @@ export class CelScopeResolver {
       callables: (functions?.callablesThrough(m, receiver) ?? []).map((entry) => ({
         name: entry.name,
         celType: entry.function.celType,
+        ...(entry.function.declaredReturns ? { returns: entry.function.declaredReturns } : {}),
       })),
     }));
 
@@ -1174,9 +1223,13 @@ export class CelScopeResolver {
     const metadata = m.metadata as { module?: string; moduleGlobals?: unknown } | undefined;
     let typing: Record<string, unknown>;
     let build: () => CelEnvironment;
+    let scopeContext = contextSchema;
+    let withheldBindings: ReadonlySet<string> | undefined;
+    const resolver = this.schemaResolver();
+    const engineContext = contextSchema ? (engineContexts.get(contextSchema) ?? contextSchema) : null;
     if (parameterScope) {
-      typing = { typing: "parameter", context: contextSchema };
-      build = () => buildParameterCelEnvironment(celEnv, contextSchema);
+      typing = { typing: "parameter", context: engineContext };
+      build = () => buildParameterCelEnvironment(celEnv, engineContext, resolver);
     } else if (m.kind === "Telo.Import" && !importNeeds) {
       // A `Telo.Import`'s variables/secrets are a config-only contract evaluated
       // in the IMPORTING module's scope, so they type from the owning module doc
@@ -1186,8 +1239,19 @@ export class CelScopeResolver {
         .find((mm) => (mm.metadata as { name?: string } | undefined)?.name === metadata?.module) as
         | Record<string, any>
         | undefined;
-      typing = { typing: "import", variables: owner?.variables, secrets: owner?.secrets, metadata: owner?.metadata };
-      build = () => buildImportInputCelEnvironment(celEnv, owner as ResourceManifest | undefined);
+      typing = {
+        typing: "import",
+        variables: owner?.variables,
+        secrets: owner?.secrets,
+        metadata: owner?.metadata,
+        shapes: this.varyingShapeAnswers(owner?.variables, owner?.secrets),
+      };
+      build = () => buildImportInputCelEnvironment(celEnv, owner as ResourceManifest | undefined, resolver);
+      scopeContext = {
+        type: "object",
+        properties: { ...(contextSchema?.properties ?? {}), ...IMPORT_INPUT_WITHHELD.properties },
+      };
+      withheldBindings = IMPORT_INPUT_WITHHELD_NAMES;
     } else {
       const kindDocument = isKindDocument(m);
       const own = m as Record<string, any>;
@@ -1203,17 +1267,25 @@ export class CelScopeResolver {
             ? root
             : root && { variables: root.variables, secrets: root.secrets, ports: root.ports, metadata: root.metadata },
         ports: root ? undefined : own.ports,
-        // The kernel globals are typed from the module's blocks above, never
-        // from the context: only what the context binds beside them counts.
-        context: contextSchema?.properties
+        shapes: this.varyingShapeAnswers(
+          ...(isModuleKind(m.kind) ? [own.variables, own.secrets] : []),
+          (metadata?.moduleGlobals as ModuleGlobals | undefined)?.variables,
+          (metadata?.moduleGlobals as ModuleGlobals | undefined)?.secrets,
+          root?.variables,
+          root?.secrets,
+        ),
+        // `ports` and `module` are typed from the module doc above; every
+        // other name the context binds — the kernel globals it reads among
+        // them — is typed from the context.
+        context: engineContext?.properties
           ? Object.fromEntries(
-              Object.entries(contextSchema.properties as Record<string, unknown>).filter(
-                ([name]) => !GLOBALS_TYPED_FROM_BLOCKS.has(name),
+              Object.entries(engineContext.properties as Record<string, unknown>).filter(
+                ([name]) => !GLOBALS_TYPED_FROM_MODULE.has(name),
               ),
             )
           : undefined,
       };
-      build = () => buildTypedCelEnvironment(celEnv, m, contextSchema ?? undefined, moduleManifest);
+      build = () => buildTypedCelEnvironment(celEnv, m, engineContext ?? undefined, moduleManifest, resolver);
     }
     const env = this.typedEnvironments.environmentFor({ ...typing, namespaces }, () => {
       const built = build();
@@ -1223,25 +1295,120 @@ export class CelScopeResolver {
       return built;
     });
 
+    const assumptions = parameterScope ? undefined : this.assumptionsAt(site, env);
     return {
       env,
-      contextSchema,
+      contextSchema: scopeContext,
+      // A kind document's site with no declared context reads the observed-state
+      // fallback, which declares nothing the site's own scope binds.
+      rootsDeclared: !isKindDocument(m) || (contextSchema !== null && contextSchema !== this.inputs.observedStateContext),
+      ...(withheldBindings ? { withheldBindings } : {}),
+      ...(assumptions ? { assumptions } : {}),
       moduleNames,
       moduleCallType: (qualified) => resolved(qualified)?.celType,
       moduleCallResult: (qualified) => resolved(qualified)?.returns,
       moduleCallFlags: (qualified) => this.inputs.callableFlags?.ofCall(m, qualified),
       moduleFunction: resolved,
       moduleFunctionsOf: (receiver) => functions?.callablesThrough(m, receiver) ?? [],
-      // The observed-state context that stands in where no `x-telo-context`
-      // matched carries no globals; merging is a no-op for one that does.
-      explainSchema: () =>
-        parameterScope
-          ? contextSchema
-          : mergeKernelGlobalsIntoContext(
-              contextSchema ?? { type: "object", properties: {}, additionalProperties: true },
-              this.inputs.kernelGlobals.forResource(m, site.path),
-            ),
+      chainSchema: (chain) => chainSchemaIn(env, chain),
+      chainForward: (chain) => chainForwardIn(env, chain),
     };
+  }
+
+  /**
+   * The named shapes some configuration varies that module input `blocks`
+   * reference, as this resolver's key answers each: an environment typing the
+   * inputs is one per answer, since the entries alone do not say what a
+   * reference to such a shape reads as.
+   */
+  private varyingShapeAnswers(...blocks: unknown[]): Record<string, unknown> | undefined {
+    const answer = this.inputs.varyingShapeAnswer;
+    if (!answer) return undefined;
+    const ids = new Set<string>();
+    const visit = (value: unknown): void => {
+      if (value === null || typeof value !== "object") return;
+      for (const [key, field] of Object.entries(value)) {
+        if (key === "$ref" && typeof field === "string") {
+          const { shape } = schemaReferenceParts(field);
+          if (shape !== undefined && parseCanonicalTypeSchemaId(shape)) ids.add(shape);
+        } else visit(field);
+      }
+    };
+    for (const block of blocks) visit(block);
+    let out: Record<string, unknown> | undefined;
+    for (const id of [...ids].sort()) {
+      const found = answer(id);
+      if (found !== undefined) (out ??= {})[id] = found;
+    }
+    return out;
+  }
+
+  /**
+   * The step guards enclosing `site` as assumptions: each condition with whether
+   * it held, and the chains that may denote another value at the site — what
+   * the guard itself names as rebound, every loop binding the site holds that
+   * the guard did not, and every root the condition reads but `steps` and
+   * `inputs`, which a resumed run restores. A `switch:` case stands only where its subject checks as
+   * `string`, typed under the guards before it.
+   */
+  private assumptionsAt(site: CelSiteRef, env: CelEnvironment): CheckAssumption[] | undefined {
+    const m = site.source;
+    const inBody = this.bodyScopes.length > 0 ? bodyForPath(this.bodyScopes, site.path) : undefined;
+    const walk = stepGuardsAt(
+      inBody ? inBody.manifest : (m as Record<string, any>),
+      inBody ? inBody.schema : this.authorSchema,
+      inBody ? site.path.slice(inBody.prefix.length + 1) : site.path,
+      new Set((inBody ? inBody.errorScopes : this.errorScopes).keys()),
+    );
+    if (!walk || walk.guards.length === 0) return undefined;
+    const prefix = inBody ? `${inBody.prefix}.` : "";
+    const loopsAtSite = this.inputs.loopBindingsAt?.(m, site.path);
+    const out: CheckAssumption[] = [];
+    for (const guard of walk.guards) {
+      if (guard.switchSubject !== undefined) {
+        const subject = env.check(guard.switchSubject, out.length > 0 ? { assumptions: out } : {});
+        if (!subject.valid || !(subject.type.kind === "primitive" && subject.type.name === "string")) continue;
+      }
+      const rebound = [...guard.rebound];
+      if (loopsAtSite) {
+        const atGuard = this.inputs.loopBindingsAt?.(m, `${prefix}${guard.at}`);
+        for (const [name, binding] of Object.entries(loopsAtSite)) {
+          if (atGuard?.[name] !== binding) rebound.push(name);
+        }
+      }
+      const condition = env.parse(guard.condition);
+      for (const root of rootReferences(condition.root)) if (!STEP_GUARD_KEPT_ROOTS.has(root)) rebound.push(root);
+      out.push({ condition, holds: guard.holds, rebound });
+    }
+    return out.length > 0 ? out : undefined;
+  }
+
+  /** Every typed environment this resolver's sites were read against. */
+  environments(): Iterable<CelEnvironment> {
+    return this.typedEnvironments.environments();
+  }
+
+  /** The resolver every environment of this analysis reads its bindings
+   *  through: the analysis's named-shape lookup, each shape made canonical in
+   *  the module declaring it. */
+  private schemaResolver(): import("@telorun/cel").SchemaTypeResolver {
+    const shapes = this.inputs.shapes;
+    let resolver = resolvers.get(shapes);
+    if (!resolver) {
+      const { aliases, scopes } = this.inputs;
+      resolver = celSchemaResolver(this.inputs.celEnv, shapes, (id, schema) => {
+        const module = parseCanonicalTypeSchemaId(id)?.moduleName;
+        if (module === undefined) return schema;
+        // The shape's own module's import aliases: the root's table for an
+        // entry module, a library's own otherwise.
+        const scope = scopes.rootModules.has(module) ? aliases : scopes.aliasesByModule.get(module);
+        const moduleForAlias = (alias: string) =>
+          scope && "moduleForAlias" in scope ? (scope as AliasResolver).moduleForAlias(alias) : undefined;
+        return canonicalShapeSchema(schema, module, moduleForAlias);
+      });
+      resolvers.set(shapes, resolver);
+    }
+    return resolver;
   }
 
   /** The context schema in force at `site`: the matched `x-telo-context` (or the
@@ -1486,20 +1653,15 @@ export class CelScopeResolver {
       }
       return out;
     };
-    if (parameterScope) return nullable(partial(expand(resolved)));
-    return nullable(
-      partial(
-        expand(
-          mergeKernelGlobalsIntoContext(
-            resolved,
-            // Typed in the module that DECLARED this resource — for a manifest
-            // forwarded from an imported library, that is its `moduleGlobals` stamp,
-            // not the consuming application's block.
-            kernelGlobals.forResource(m, path),
-          ),
-        ),
-      ),
-    );
+    // Typed in the module that DECLARED this resource — for a manifest
+    // forwarded from an imported library, that is its `moduleGlobals` stamp,
+    // not the consuming application's block.
+    const merged = parameterScope ? resolved : mergeKernelGlobalsIntoContext(resolved, kernelGlobals.forResource(m, path));
+    const placed = nullable(partial(expand(merged)));
+    // The engine reads the context with its references intact, through the
+    // environment's resolver.
+    engineContexts.set(placed, nullable(partial(merged)));
+    return placed;
   }
 
   /**
@@ -1652,22 +1814,14 @@ export class CelScopeResolver {
       });
       const analyzed = defaultRegistry().get(producer.engine)?.analyze(producer.source, {
         celEnv: scope.env,
-        contextSchema: scope.contextSchema,
         moduleNames: scope.moduleNames,
         moduleCallType: scope.moduleCallType,
-        moduleCallResult: scope.moduleCallResult,
         moduleCallFlags: scope.moduleCallFlags,
+        ...(scope.assumptions ? { assumptions: scope.assumptions } : {}),
       });
       const chain = plainChainOf(makeTaggedSentinel(producer.engine, producer.source));
-      const produced = chain
-        ? declaredChainSchemaAt(
-            chain,
-            scope.contextSchema ?? this.inputs.kernelGlobals.forResource(this.current!, path),
-            this.stepsAt(stepContext, producer.at, body),
-            this.inputs.shapes,
-          )
-        : undefined;
-      const fact = producerFact(producer.engine, analyzed?.type, produced);
+      const produced = chain ? scope.chainForward(chain) : undefined;
+      const fact = producerFact(producer.engine, analyzed?.checkedType, produced);
       state.facts.set(producer.at, fact);
       return fact;
     } finally {
@@ -1764,21 +1918,16 @@ export class CelScopeResolver {
     const innermost = regions[regions.length - 1];
     this.itemsInProgress.add(full);
     try {
-      const context = this.resolveContextFor(
-        {
-          source: m,
-          path: full,
-          contextSchema: innermost?.schema,
-          matchedScope: innermost?.scope,
-          contexts: regions,
-          mode: celEvalModeAt(body ? body.sites : this.kindSites, target) ?? undefined,
-        },
-        false,
-      );
-      if (!context) return undefined;
-      return elementOfCollection(
-        navigateDeclaredChain(context, chain, this.inputs.shapes),
-      );
+      // The chain is read by the engine in the environment of its own site,
+      // and its collection is the node the engine read the result from.
+      const collection = this.scopeFor({
+        source: m,
+        path: full,
+        ...(innermost ? { contextSchema: innermost.schema, matchedScope: innermost.scope } : {}),
+        contexts: regions,
+        mode: celEvalModeAt(body ? body.sites : this.kindSites, target) ?? undefined,
+      }).chainSchema(chain);
+      return elementOfCollection(collection);
     } finally {
       this.itemsInProgress.delete(full);
     }
@@ -1804,28 +1953,6 @@ interface StepFacts {
   /** The settled `steps` context per view and reading producer. */
   readonly views: WeakMap<object, Map<string, Record<string, any>>>;
 }
-
-/**
- * The schema the plain chain `chain` resolves to where `context` is in force,
- * references followed — a step chain read off `steps`, the record the site
- * reads, where each result is its target's own document or its producer's
- * fact; undefined where nothing is declared. The one navigation a producer's
- * forwarded schema and an expression's produced schema are both read by.
- */
-export function declaredChainSchemaAt(
-  chain: string,
-  context: Record<string, any>,
-  steps: Record<string, any> | undefined,
-  shapes: ExternalSchemaResolver | undefined,
-): Record<string, any> | undefined {
-  if (steps === undefined || !chain.startsWith(STEPS_ROOT)) return navigateDeclaredChain(context, chain, shapes);
-  const within = chain.slice(STEPS_ROOT.length);
-  // An undeclared result is the absence of a claim, not a producer saying `object`.
-  if (navigateSchemaToExprPath(steps, within) === PERMISSIVE_CONTRACT) return undefined;
-  return navigateDeclaredChain(steps, within, shapes);
-}
-
-const STEPS_ROOT = "steps.";
 
 /** Each producer's strongly connected group under `edges`, by its site. */
 function stronglyConnectedGroups(

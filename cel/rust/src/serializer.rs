@@ -397,6 +397,23 @@ fn push_node<'a>(pending: &mut Vec<Piece<'a>>, node: &'a CelNode, under_minus: b
     Ok(())
 }
 
+/// How a member name is written after a dot, or nothing where it has no spelling.
+pub(crate) fn member_name_source(text: &str) -> Option<String> {
+    if text.contains('`') || text.contains('\n') || text.contains('\r') || text.is_empty() {
+        return None;
+    }
+    let mut out = String::new();
+    write_field_name(&mut out, text, false).expect("a member name with a spelling is written");
+    Some(out)
+}
+
+/// How a finite literal is written.
+pub(crate) fn literal_source(literal: &CelLiteral) -> String {
+    let mut out = String::new();
+    write_literal(&mut out, literal).expect("a finite literal is written");
+    out
+}
+
 /// The CEL source of a tree, or why it has none.
 pub fn serialize_tree(root: &CelNode) -> Result<String, CelSerializeError> {
     let mut out = String::new();

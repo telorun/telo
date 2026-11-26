@@ -25,7 +25,7 @@ steps:
   - name: assertEcho
     inputs:
       contentType: !cel "steps.echo.result.content[0].type"
-      contentText: !cel "steps.echo.result.content[0].text"
+      contentText: !cel "steps.echo.result.content[0].?text.orValue('')"
     invoke:
       kind: Assert.Schema
       schema:

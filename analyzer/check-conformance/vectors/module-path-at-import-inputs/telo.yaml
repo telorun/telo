@@ -1,0 +1,14 @@
+kind: Telo.Application
+metadata: { name: InputsApp }
+imports:
+  Lib:
+    source: ./lib
+    variables: { root: !module-path ./a, note: !include-text ./note.txt }
+  Absent:
+    source: ./lib
+    variables: { root: !module-path ./absent }
+---
+kind: Telo.Import
+metadata: { name: Missing }
+source: ./lib
+variables: { root: !module-path ./missing }

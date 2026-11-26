@@ -17,7 +17,29 @@
     "name": "a tag at an import's source",
     "yaml": "kind: Telo.Application\nmetadata:\n  name: App\nimports:\n  Run:\n    source: !if { if: true, then: ../run }\n",
     "refusals": [
-      { "documentIndex": 0, "code": "BRANCH_POSITION_INVALID", "message": "'!if' at 'imports.Run.source' of the Telo.Application document: the loader reads every import's source before anything is expanded, so it cannot be chosen or repeated. Write it plainly.", "range": [5, 16, 5, 42] }
+      { "documentIndex": 0, "code": "BRANCH_POSITION_INVALID", "message": "Telo.Import/Run: '!if' at 'source' of the Telo.Import: the loader reads an import's alias and source before anything is expanded, so they cannot be chosen or repeated. Write them plainly.", "range": [5, 16, 5, 42] }
+    ]
+  },
+  {
+    "name": "a tag at an import's integrity",
+    "yaml": "kind: Telo.Application\nmetadata:\n  name: App\nimports:\n  Run:\n    source: ../run\n    integrity: !if { if: true, then: sha256-a }\n",
+    "refusals": [
+      { "documentIndex": 0, "code": "BRANCH_POSITION_INVALID", "message": "Telo.Import/Run: '!if' at 'integrity' of the Telo.Import: the loader reads an import's alias and source before anything is expanded, so they cannot be chosen or repeated. Write them plainly.", "range": [6, 19, 6, 47] }
+    ]
+  },
+  {
+    "name": "a tag at a Telo.Import document's source",
+    "yaml": "kind: Telo.Application\nmetadata:\n  name: App\n---\nkind: Telo.Import\nmetadata: { name: Run }\nsource: !switch { switch: a, cases: { a: ../run } }\n",
+    "refusals": [
+      { "documentIndex": 1, "code": "BRANCH_POSITION_INVALID", "message": "Telo.Import/Run: '!switch' at 'source' of the Telo.Import: the loader reads an import's alias and source before anything is expanded, so they cannot be chosen or repeated. Write them plainly.", "range": [6, 16, 6, 51] }
+    ]
+  },
+  {
+    "name": "a repeat at a Telo.Import document's name, and a kind choosing Telo.Import",
+    "yaml": "kind: Telo.Application\nmetadata:\n  name: App\n---\nkind: Telo.Import\nmetadata: { name: !for-each { in: [a], emit: Run } }\nsource: ../run\n---\nkind: !if { if: true, then: Telo.Import, else: Telo.Value }\nmetadata: { name: Other }\nsource: ../run\n",
+    "refusals": [
+      { "documentIndex": 1, "code": "REPEAT_OUTSIDE_TEMPLATE", "message": "'!for-each' at 'metadata.name' of the Telo.Import: the loader reads an import's alias and source before anything is expanded, so they cannot be chosen or repeated. Write them plainly.", "range": [5, 28, 5, 50] },
+      { "documentIndex": 2, "code": "BRANCH_POSITION_INVALID", "message": "Telo.Import/Other: '!if' at 'kind' of the Telo.Import: the loader reads an import's alias and source before anything is expanded, so they cannot be chosen or repeated. Write them plainly.", "range": [8, 10, 8, 59] }
     ]
   },
   {

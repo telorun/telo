@@ -1,0 +1,20 @@
+# A template body entry reads a root nothing binds: `slef` for `self`.
+kind: Telo.Application
+metadata: { name: TemplateMisspelledRoot }
+targets:
+  - name: call
+    invoke: !ref greeter
+---
+kind: Telo.Definition
+metadata: { name: Greeter }
+capability: Telo.Invocable
+schema: { type: object, properties: { greeting: { type: string } } }
+resources:
+  - kind: Telo.Value
+    metadata: { name: answer }
+    value: !cel "slef.greeting"
+invoke: !ref answer
+---
+kind: TemplateMisspelledRoot.Greeter
+metadata: { name: greeter }
+greeting: hi

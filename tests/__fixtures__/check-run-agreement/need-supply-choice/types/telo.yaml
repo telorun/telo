@@ -1,0 +1,9 @@
+# The need type the library asks for and the importer fulfils.
+kind: Telo.Library
+metadata: { name: NeedSupplyChoiceTypes }
+exports: { kinds: [Database] }
+---
+kind: Telo.NeedType
+metadata: { name: Database }
+fields: { url: { type: string } }
+required: [url]

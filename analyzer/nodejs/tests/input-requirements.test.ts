@@ -109,6 +109,17 @@ describe("input requirements", () => {
     });
   });
 
+  it("translate a library's requirement through an import binding written behind a choice, per option", async () => {
+    expect(await requirements("needs/flagged-chosen-app.yaml")).toEqual({
+      "variables.flag": "never",
+      "needs.Flagged.data": [{ "variables.flag": false }],
+    });
+    expect(await requirements("needs/flagged-chosen-scoped.yaml")).toEqual({
+      "variables.flag": "never",
+      "needs.scope.Flagged.data": [{ "variables.flag": true }],
+    });
+  });
+
   it("translate a library's requirement through whether its import supplies a resource input", async () => {
     expect(await requirements("requirements/optional-input-app.yaml")).toEqual({
       "needs.Supplying.data": "never",

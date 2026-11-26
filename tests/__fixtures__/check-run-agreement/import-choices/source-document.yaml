@@ -1,0 +1,15 @@
+# A top-level `Telo.Import`'s source behind a tag, and a `kind:` choosing
+# `Telo.Import`: refused by the loader.
+kind: Telo.Application
+metadata: { name: ImportSourceDocument }
+variables: { flag1: { env: FLAG_1, type: boolean, default: true } }
+---
+kind: Telo.Import
+metadata: { name: Lib }
+source: !if { if: !cel "variables.flag1", then: ./lib, else: ./shared-lib }
+variables: { size: 1 }
+---
+kind: !if { if: !cel "variables.flag1", then: Telo.Import, else: Telo.Value }
+metadata: { name: Chosen }
+source: ./lib
+variables: { size: 1 }

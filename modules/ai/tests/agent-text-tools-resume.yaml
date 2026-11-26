@@ -283,7 +283,7 @@ steps:
         firstRequests: !cel "steps.first.result.approvalRequests.map(c, c.name)"
         firstResults: !cel "steps.first.result.toolResults.map(r, r.content)"
         resumedResults: !cel "steps.resumed.result.toolResults.map(r, r.content)"
-        resumedParts: !cel "steps.resumed.result.messages[0].content.map(p, p.text)"
+        resumedParts: !cel "cel.bind(c, steps.resumed.result.messages[0].content, type(c) == list ? c.map(p, p.text) : [])"
       expected:
         firstRequests: [second_note]
         firstResults: ["first_note (one):\nnoted a\n"]

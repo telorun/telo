@@ -4,13 +4,15 @@
 //! 256 KiB, in a debug build.
 //!
 //! No Node test file is the twin of this one. What is Node's answer, executed
-//! (`@telorun/cel 0.118.0 at 63c81d00`): every answer on the three-deep instance of each
+//! (`@telorun/cel 0.118.0 at 63c81d00`, and the integer-against-string halves row at the
+//! change reading member meets as absence): every answer on the three-deep instance of each
 //! row — the type written out, every report and the resolver's call count. What is this
 //! crate's own, because Node's reader recurses and throws `RangeError` on these inputs:
 //! that each deep input is handled at all, and every answer on it, which is the
 //! three-deep answer carried to its depth.
 
 mod schema_support;
+mod type_text_support;
 
 use std::fmt::{self, Write};
 
@@ -74,14 +76,14 @@ fn at_both_depths(
 fn reads_nested_properties() {
     on_a_small_stack(|| {
         at_both_depths(
-            |depth| nested(r#"{"properties":{"a":"#, r#"{"if":{}}"#, "}}", depth),
+            |depth| nested(r#"{"properties":{"a":"#, r#"{"unevaluatedProperties":{}}"#, "}}", depth),
             "{a: {a: {a: dyn}}}",
-            &["keyword-not-read pointer=/properties/a/properties/a/properties/a keywords=if"],
+            &["keyword-not-read pointer=/properties/a/properties/a/properties/a keywords=unevaluatedProperties"],
             4,
             |depth, ty, reports, calls| {
                 let (levels, bottom) = record_depth(ty, "a");
                 assert_eq!((levels, format_type(bottom, true)), (depth, "dyn".to_string()));
-                assert_eq!(reports, [format!("keyword-not-read pointer={} keywords=if", "/properties/a".repeat(depth))]);
+                assert_eq!(reports, [format!("keyword-not-read pointer={} keywords=unevaluatedProperties", "/properties/a".repeat(depth))]);
                 assert_eq!(calls, depth + 1);
             },
         );
@@ -97,7 +99,7 @@ fn reads_nested_items() {
             &[],
             4,
             |depth, ty, reports, calls| {
-                assert_eq!(format_type(ty, true), nested("list<", "string", ">", depth));
+                assert_eq!(format_type(ty, true), type_text_support::printed_nested("list<", 1, "string", 1, ">", depth));
                 assert!(reports.is_empty());
                 assert_eq!(calls, depth + 1);
             },
@@ -135,13 +137,13 @@ fn definitions(depth: usize, each: impl Fn(usize) -> String, last: &str) -> Stri
 fn follows_a_chain_of_references() {
     on_a_small_stack(|| {
         at_both_depths(
-            |depth| definitions(depth, |next| format!(r##"{{"$ref":"#/$defs/d{next}"}}"##), r#"{"type":"string","not":{}}"#),
+            |depth| definitions(depth, |next| format!(r##"{{"$ref":"#/$defs/d{next}"}}"##), r#"{"type":"string","unevaluatedProperties":{}}"#),
             "string",
-            &["keyword-not-read pointer=/$defs/d3 keywords=not"],
+            &["keyword-not-read pointer=/$defs/d3 keywords=unevaluatedProperties"],
             5,
             |depth, ty, reports, calls| {
                 assert_eq!(format_type(ty, true), "string");
-                assert_eq!(reports, [format!("keyword-not-read pointer=/$defs/d{depth} keywords=not")]);
+                assert_eq!(reports, [format!("keyword-not-read pointer=/$defs/d{depth} keywords=unevaluatedProperties")]);
                 assert_eq!(calls, depth + 2);
             },
         );
@@ -195,14 +197,17 @@ fn intersects_two_deep_records() {
                 assert_eq!(calls, 2 * depth + 3);
             },
         );
+        // The bottom field's meet cannot hold, so it is absent there.
         at_both_depths(
             |depth| two_halves(r#"{"type":"integer"}"#, r#"{"type":"string"}"#, depth),
-            "dyn",
-            &["intersection-empty pointer= keywords=allOf"],
+            "{a: {a: {-a}}}",
+            &[],
             9,
             |depth, ty, reports, calls| {
-                assert_eq!(format_type(ty, true), "dyn");
-                assert_eq!(reports, ["intersection-empty pointer= keywords=allOf"]);
+                let (levels, bottom) = record_depth(ty, "a");
+                assert_eq!(levels, depth - 1);
+                assert!(matches!(bottom, CelType::Record(record) if record.fields.is_empty() && record.is_absent("a")));
+                assert!(reports.is_empty());
                 assert_eq!(calls, 2 * depth + 3);
             },
         );

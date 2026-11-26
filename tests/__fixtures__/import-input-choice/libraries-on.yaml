@@ -1,0 +1,25 @@
+# Two branches of one scope-member `!if` reaching different libraries: the
+# member the setting takes is the import of its own library.
+kind: Telo.Application
+metadata: { name: ImportInputChoiceLibraries }
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: true }
+  dir: { env: DIR, type: string, x-telo-type: Telo.HostPath, default: ./a }
+imports: { Assert: ../../../modules/assert }
+targets: [!ref check]
+---
+kind: Telo.Sequence
+metadata: { name: check }
+with:
+  - !if
+    metadata: { name: Chosen }
+    if: !cel "variables.flag1"
+    then: { kind: Telo.Import, source: ./lib, variables: { root: !cel "variables.dir" } }
+    else: { kind: Telo.Import, source: ./lib-b }
+steps:
+  - { name: read, invoke: !ref Chosen.root }
+  - name: same
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.read.result"
+      expected: !cel "string(variables.dir)"

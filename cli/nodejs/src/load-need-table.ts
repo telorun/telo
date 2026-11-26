@@ -64,6 +64,9 @@ export async function loadNeedTable(
     return undefined;
   }
 
+  // The table reads every option of every import's `needs:`: a need some
+  // configuration leaves to the environment is listed, required where the
+  // requirements say, and a problem it finds in any option refuses.
   const scope = needGraphScopeOf(registry, root.metadata?.name as string | undefined);
   const table = resolveNeedTable(needGraphFromLoadedGraph(graph, scope));
   const refusals: AnalysisDiagnostic[] = [

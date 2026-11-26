@@ -1,0 +1,4 @@
+kind: Telo.Application
+metadata: { name: ConfigurationShapeTaken }
+imports: { Lib: { source: ./lib, variables: { flag: true, config: { n: 2 } } } }
+targets: [{ name: read, invoke: !ref Lib.read }]

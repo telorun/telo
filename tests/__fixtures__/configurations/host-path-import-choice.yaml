@@ -1,36 +1,55 @@
-# An import supplying a library's host-path input from a provider's reported
-# state: the declaration a choice decides reports a host path in one branch and
-# a plain string in the other, so the source is refused only where the choice
-# takes the second. A relative literal beside it is refused whatever the choice.
+# A library's host-path input supplied from an importer variable declared a
+# plain string: refused at the `imports:` entry and at a scoped import whatever
+# the choice, as is a relative literal — and at a scoped import a choice writes,
+# where that choice is taken. An Application variable typed by a named shape is
+# read through it; one naming no shape is only refused.
 kind: Telo.Application
 metadata: { name: HostPathImportChoice }
-variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+  plainDir: { env: PLAIN_DIR, type: string, default: /srv/plain }
+  cfg: { env: CFG, type: object, $ref: "telo://Self/Config", default: { dir: /srv } }
+  lost: { env: LOST, type: object, $ref: "telo://Self/Missing", default: {} }
 imports:
   Lib:
     source: ./host-path-import-lib
     variables:
-      root: !cel "resources.chosen.status.dir"
+      root: !cel "variables.plainDir"
       extra: relative/dir
 ---
-kind: Telo.Definition
-metadata: { name: PathProvider }
-capability: Telo.Provider
-controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
-schema: { type: object }
-status:
-  type: object
-  properties: { dir: { type: string, x-telo-type: Telo.HostPath } }
+kind: Telo.JsonSchema
+metadata: { name: Config }
+schema: { type: object, properties: { dir: { type: string } } }
 ---
-kind: Telo.Definition
-metadata: { name: PlainProvider }
-capability: Telo.Provider
-controllers: [pkg:telo/local/js?path=./probe.mjs#Probe]
-schema: { type: object }
-status:
-  type: object
-  properties: { dir: { type: string } }
+kind: Telo.Sequence
+metadata: { name: scoped }
+with:
+  - kind: Telo.Import
+    metadata: { name: Inner }
+    source: ./host-path-import-lib
+    variables:
+      root: !cel "variables.plainDir"
+      extra: relative/dir
+steps:
+  - name: sum
+    value: !cel "variables.cfg.dir + 1"
+  - name: lostRead
+    value: !cel "variables.lost.anything"
 --- !if
 metadata: { name: chosen }
 if: !cel "variables.flag1"
-then: { kind: Self.PlainProvider }
-else: { kind: Self.PathProvider }
+then:
+  kind: Telo.Sequence
+  with:
+    - kind: Telo.Import
+      metadata: { name: Chosen }
+      source: ./host-path-import-lib
+      variables:
+        root: !cel "variables.plainDir"
+        extra: relative/dir
+  steps: [{ name: noop, value: 1 }]
+--- !if
+metadata: { name: shown }
+if: !cel "variables.flag1"
+then: { kind: Telo.Value, value: plain }
+else: { kind: Telo.Value, value: host }

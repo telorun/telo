@@ -19,6 +19,11 @@
  * pointer and its member through the shapes on the way (`pathEnds`), and a
  * shape a contract names carries its value-schema-from annotations per class.
  *
+ * A shape of a library imported more than once is read as the classes of
+ * every instance (`NamedShapeReader.classes`), never one instance's: a kind
+ * document is one document for every instance of its module, so what it finds
+ * through a shape holds where some instance reads that class.
+ *
  * Browser-safe.
  */
 import { parseCanonicalTypeSchemaId, type ResourceDefinition, type ResourceManifest } from "@telorun/sdk";
@@ -66,6 +71,7 @@ import { splitByReads } from "./world-reader.js";
 import { evalModeBranchFindings } from "./eval-mode-branch-findings.js";
 import { kindDeclarationOf } from "./kind-declaration.js";
 import { canonicalKindSchema } from "./schema-compile-findings.js";
+import { frozenWalkSchema } from "./frozen-kind-schema.js";
 import { textKeysProblems } from "./text-keys.js";
 import {
   textBeneathNode,
@@ -411,7 +417,7 @@ export function kindAnnotationFindings(kinds: readonly ResourceManifest[], scope
         if (!declared) return [];
         const module = (m.metadata as { module?: string } | undefined)?.module;
         const schema = declared.schema as Schema | undefined;
-        return [{ manifest: m, module, schema: module ? canonicalIn(schema, module) : schema }];
+        return [{ manifest: m, module, schema: module ? (frozenWalkSchema(defs, m) ?? canonicalIn(schema, module)) : schema }];
       }),
       { shapes, kindSchemaOf, rootModules: scope.rootModules, reach, moduleDocuments: scope.moduleDocuments, writtenOf: scope.writtenOf },
     ),

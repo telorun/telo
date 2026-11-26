@@ -1,0 +1,11 @@
+# A library asking its importer for a directory and a text, publishing both.
+kind: Telo.Library
+metadata: { name: ImportModuleFilesLib }
+variables: { root: { type: string, x-telo-type: Telo.HostPath }, note: { type: string } }
+exports: { resources: [read] }
+---
+kind: Telo.Value
+metadata: { name: read }
+value:
+  root: !cel "string(variables.root)"
+  note: !cel "variables.note"

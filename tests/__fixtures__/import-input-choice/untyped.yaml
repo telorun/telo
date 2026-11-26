@@ -1,0 +1,27 @@
+# The `else` branch hands the library's host path a variable declared a plain
+# string: refused where that branch is taken, at the `imports:` entry and at a
+# scoped import, and nothing for the `then` branch's `!module-path`. Any
+# analysis error refuses every run, whatever its configuration label.
+kind: Telo.Application
+metadata: { name: ImportInputChoiceUntyped }
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: true }
+  plainDir: { env: PLAIN_DIR, type: string, default: /srv/plain }
+imports:
+  Lib:
+    source: ./lib
+    variables:
+      root: !if { if: !cel "variables.flag1", then: !module-path ./a, else: !cel "variables.plainDir" }
+targets: [!ref check]
+---
+kind: Telo.Sequence
+metadata: { name: check }
+with:
+  - kind: Telo.Import
+    metadata: { name: Inner }
+    source: ./lib
+    variables:
+      root: !if { if: !cel "variables.flag1", then: !module-path ./a, else: !cel "variables.plainDir" }
+steps:
+  - { name: top, invoke: !ref Lib.root }
+  - { name: inner, invoke: !ref Inner.root }

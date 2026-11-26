@@ -33,8 +33,10 @@ import {
   type ExpansionSentinel,
 } from "@telorun/templating";
 import { branchKeys, branchValue, declaresNoResource, pathOf, STAND_IN, type Decisions } from "./choice-reading.js";
+import { withBranchStamps } from "./chosen-scoped-import.js";
 import { isModuleKind } from "./module-kinds.js";
 import { isKindDocumentOrImport } from "./system-kinds.js";
+import { isKindDocument } from "./kind-declaration.js";
 import type { AnalysisDiagnostic } from "./types.js";
 
 type Keys = readonly (string | number)[];
@@ -114,7 +116,10 @@ export function expandChoices(
     if (named) {
       // A branch that is no resource declaration is refused where it is
       // written, and declares nothing here.
-      if (!chosen.value || typeof chosen.value !== "object" || Array.isArray(chosen.value) || declaresNoResource(chosen.value)) {
+      // A whole document's tag is written at the document's root; a scope
+      // member's below it.
+      const scopeMember = named.at.length > 0;
+      if (!chosen.value || typeof chosen.value !== "object" || Array.isArray(chosen.value) || declaresNoResource(chosen.value, scopeMember)) {
         return { present: false };
       }
       // A declaration: the branch's kind and fields under the tag's metadata.
@@ -122,7 +127,7 @@ export function expandChoices(
       const { kind, ...fields } = chosen.value as Record<string, unknown>;
       const declared: Record<string, unknown> = {
         kind,
-        metadata: declaredMetadata(named.value, mark),
+        metadata: withBranchStamps(declaredMetadata(named.value, mark), chosen.value),
       };
       for (const [key, field] of Object.entries(fields)) {
         // A branch's own `metadata` is refused where it is written; the tag's names it.
@@ -182,7 +187,9 @@ export function expandChoices(
       expandDocument(doc);
       continue;
     }
-    if (isKindDocumentOrImport(doc)) {
+    // An import's inputs are values chosen per option; its alias, kind,
+    // source and integrity never hold a choice (the loader refuses one).
+    if (isKindDocument(doc)) {
       out.push(doc);
       continue;
     }

@@ -1,0 +1,14 @@
+# A library asking for a need nothing supplies, imported only by a scoped
+# import a choice writes: its need is required only where the import is.
+kind: Telo.Application
+metadata: { name: ScopedChoiceNeed }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+targets: [!ref scope]
+---
+kind: Telo.Sequence
+metadata: { name: scope }
+with: !if
+  if: !cel "variables.flag1"
+  then: [{ kind: Telo.Import, metadata: { name: Inner }, source: ./choice-need-lib }]
+  else: []
+steps: [{ name: noop, value: 1 }]

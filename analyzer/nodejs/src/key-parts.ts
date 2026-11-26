@@ -36,11 +36,11 @@ import {
 } from "./conditioned-expansion.js";
 import type { DefinitionRegistry, VaryingShapeClasses } from "./definition-registry.js";
 import type { DoorCare } from "./key-door.js";
-import { normalizeInlineResources } from "./normalize-inline-resources.js";
-import { TRUE, type Condition } from "./presence-condition.js";
+import { normalizeInlineResources, normalizeInlineResourcesOverClasses, type ClassCuts, type CutPoint } from "./normalize-inline-resources.js";
+import { FALSE, TRUE, type Condition, type ConditionSpace } from "./presence-condition.js";
 import { UNRESOLVED, type NameResolution, type RefResolution, type ResolutionOutcome } from "./reference-resolution.js";
 import { resolveRefSentinels } from "./resolve-ref-sentinels.js";
-import { resolveSchemaTypeRefs } from "./resolve-schema-type-refs.js";
+import { carryAuthoredSchemaRef, resolveSchemaTypeRefs } from "./resolve-schema-type-refs.js";
 import { isKindDocument } from "./kind-declaration.js";
 import { isCarvedResult } from "./step-result-inference.js";
 import type { ScopeSite } from "./scope-address.js";
@@ -60,6 +60,7 @@ import {
   valueAtKeys,
 } from "./region-part.js";
 import { isAtOrAbove } from "./relation-sites.js";
+import type { ConditionedReachSite, ReachSite } from "./reference-reach.js";
 
 /** A template definition as one way of deciding it expands its body, and as
  *  written. */
@@ -81,14 +82,6 @@ interface Lookup {
   readonly fixed: boolean;
 }
 
-/** Whether a reference slot some configuration's named shapes declare held
- *  where a part was normalized: the condition the slot holds under, and what
- *  it decided there. */
-interface SlotLookup {
-  readonly condition: Condition;
-  readonly held: boolean;
-}
-
 /** One declaration of the union, normalized. */
 export interface DeclarationPart {
   readonly declaration: ConditionedDeclaration;
@@ -108,7 +101,6 @@ export interface DeclarationPart {
   /** The same part at every witness projecting it alike. */
   readonly fixed: boolean;
   readonly lookups: readonly Lookup[];
-  readonly slots: readonly SlotLookup[];
 }
 
 /** Some regions of a declaration of the union, normalized on their own. */
@@ -136,7 +128,6 @@ export interface RegionPart {
   readonly members: readonly ScopeMember[];
   readonly kindMembers: readonly ScopeMember[];
   readonly lookups: readonly Lookup[];
-  readonly slots: readonly SlotLookup[];
 }
 
 /** How many values `value` holds, itself included; a carved producer's
@@ -270,7 +261,7 @@ export interface KeyPartsInputs {
   readonly scopeFieldsOf: (holder: { readonly kind: unknown; readonly metadata: unknown }) => readonly string[];
   /** The named shapes some configuration varies, as their classes: what a
    *  reference slot one declares is read through — a cut point of the
-   *  declaration, decided at each witness. */
+   *  declaration, written once with each of its sides. */
   readonly varying: VaryingShapeClasses<Condition> | undefined;
 }
 
@@ -339,6 +330,8 @@ export class KeyParts {
   private definitionsByIdentity: Map<string, ConditionedDeclaration> | undefined;
   private definitionsBySentinel: Map<object, ConditionedDeclaration> | undefined;
   private readonly touched = new WeakMap<World, ReadonlySet<ConditionedDeclaration>>();
+  /** The parts holding a cut point, with what projecting one needs. */
+  private readonly classCuts = new WeakMap<object, HeldCuts>();
 
   constructor(private readonly input: KeyPartsInputs) {
     // A union position for every declaration, and for every forward view after
@@ -469,8 +462,8 @@ export class KeyParts {
     if (!byContent) this.cache.set(declaration, (byContent = new Map()));
     const built = byContent.get(key) ?? [];
     for (const part of built) {
-      if (part.fixed || (part.lookups.every((lookup) => sameOutcome(lookup.outcome, this.outcomeAt(lookup, witness))) && this.sameSlots(part.slots, witness))) {
-        return part;
+      if (part.fixed || part.lookups.every((lookup) => sameOutcome(lookup.outcome, this.outcomeAt(lookup, witness)))) {
+        return this.projectedAt(part, witness);
       }
     }
     const part = this.normalize(declaration, projection, template && { variant: template, written: value }, witness);
@@ -483,7 +476,7 @@ export class KeyParts {
       live: !witness.forcing,
       outcomes: part.lookups.map((l) => outcomeText(l.outcome)).join("\n"),
     });
-    return part;
+    return this.projectedAt(part, witness);
   }
 
   /**
@@ -567,21 +560,17 @@ export class KeyParts {
     if (!byContent) this.regions.set(declaration, (byContent = new Map()));
     const built = byContent.get(key) ?? [];
     for (const part of built) {
-      if (part.lookups.every((lookup) => sameOutcome(lookup.outcome, this.outcomeAt(lookup, witness))) && this.sameSlots(part.slots, witness)) return part;
+      if (part.lookups.every((lookup) => sameOutcome(lookup.outcome, this.outcomeAt(lookup, witness)))) return this.projectedAt(part, witness);
     }
     const root = this.position.get(declaration)!;
     const nodes = countNodes(skeleton);
     const lookups: Lookup[] = [];
-    const slots: SlotLookup[] = [];
-    const { list, collected } = this.atWitness(witness, slots, () => {
-      const list = normalizeInlineResources([skeleton], defs, aliases, aliasesByModule, (owner, entry, keys) =>
-        template && definition && templateKeyOf(owner) === templateKeyOf(definition)
-          ? emittedInlineName(template.expansion, ["resources", entry, ...keys])
-          : undefined,
-      );
-      resolveRefSentinels(list, aliases, aliasesByModule, this.recordingResolution(witness, lookups), defs);
-      return { list, collected: collectScopeMembers(list, (d) => defs.referenceSites(d, aliases, aliasesByModule)) };
-    });
+    const normalized = this.normalizeOverClasses(witness, lookups, [skeleton], (owner, entry, keys) =>
+      template && definition && templateKeyOf(owner) === templateKeyOf(definition)
+        ? emittedInlineName(template.expansion, ["resources", entry, ...keys])
+        : undefined,
+    );
+    const { list, collected } = normalized;
     list.forEach((m, i) => ranks.set(m, [0, i === 0 ? 0 : 1, root, i]));
     const members = collected.analysed.map((member) => member.declaration);
     members.forEach((m, i) => ranks.set(m, [1, 0, root, i]));
@@ -606,12 +595,12 @@ export class KeyParts {
       members: collected.analysed,
       kindMembers: collected.kindDocuments,
       lookups,
-      slots,
     };
+    this.holdCuts(part, normalized, root, true);
     built.push(part);
     byContent.set(key, built);
     reportKeyCost({ kind: "region", declaration, nodes: regions.reduce((n, r) => n + countNodes(r.content), 0) });
-    return part;
+    return this.projectedAt(part, witness);
   }
 
   /** Whether `definition` is a template definition whose body is lifted. */
@@ -690,14 +679,10 @@ export class KeyParts {
     const root = this.position.get(declaration)!;
     const written = template ? template.variant.expansion.definition : (projection.value as ResourceManifest);
     const lookups: Lookup[] = [];
-    const slots: SlotLookup[] = [];
-    const { list, collected } = this.atWitness(witness, slots, () => {
-      const list = normalizeInlineResources([written], defs, aliases, aliasesByModule, (definition, entry, keys) =>
-        template && templateKeyOf(definition) === templateKeyOf(written) ? emittedInlineName(template.variant.expansion, ["resources", entry, ...keys]) : undefined,
-      );
-      resolveRefSentinels(list, aliases, aliasesByModule, this.recordingResolution(witness, lookups), defs);
-      return { list, collected: collectScopeMembers(list, (d) => defs.referenceSites(d, aliases, aliasesByModule)) };
-    });
+    const normalized = this.normalizeOverClasses(witness, lookups, [written], (definition, entry, keys) =>
+      template && templateKeyOf(definition) === templateKeyOf(written) ? emittedInlineName(template.variant.expansion, ["resources", entry, ...keys]) : undefined,
+    );
+    const { list, collected } = normalized;
     // Extraction places what it draws out breadth first, so a declaration's
     // depth below the one written orders it as the whole list's pass would.
     const depthOf = new Map<string, number>();
@@ -713,7 +698,7 @@ export class KeyParts {
     const manifests = [...list, ...members];
     // A kind document is read as written: its canonical form is the registry's.
     resolveSchemaTypeRefs(manifests.filter((m) => !isKindDocument(m)), aliases, aliasesByModule, defs);
-    return {
+    const part: DeclarationPart = {
       declaration,
       projection,
       manifests,
@@ -721,38 +706,129 @@ export class KeyParts {
       members: collected.analysed,
       kindMembers: collected.kindDocuments,
       ...(template ? { template } : {}),
-      fixed: lookups.every((lookup) => lookup.fixed) && slots.length === 0,
+      fixed: lookups.every((lookup) => lookup.fixed) && normalized.cuts.length === 0,
       lookups,
-      slots,
     };
+    this.holdCuts(part, normalized, root, false);
+    return part;
   }
 
   /**
-   * `body` with the reference reach decided at `witness`: a slot a varying
-   * named shape declares — a cut point of the declaration — held where its
-   * condition holds there, each decision recorded in `slots`, so a part is
-   * reused only where every slot it read is decided alike.
+   * `written` normalized once for every way its cut points are decided — a
+   * slot a varying named shape declares written with each of its sides, the
+   * reach read over the shapes' classes and never decided at `witness` —
+   * its `!ref` stamps taken at `witness`, recording each lookup in
+   * `lookups`, and its scope members collected, with the scope sites each
+   * holder was read over.
    */
-  private atWitness<T>(witness: World, slots: SlotLookup[], body: () => T): T {
-    const { varying, defs, union } = this.input;
-    if (!varying) return body();
-    const seen = new Map<Condition, boolean>();
-    const holds = (condition: Condition): boolean => {
-      if (condition === TRUE) return true;
-      const known = seen.get(condition);
-      if (known !== undefined) return known;
-      const held = union.space.holds(condition, witness.assignment);
-      seen.set(condition, held);
-      slots.push({ condition, held });
-      return held;
+  private normalizeOverClasses(
+    witness: World,
+    lookups: Lookup[],
+    written: ResourceManifest[],
+    emittedName: (definition: ResourceManifest, entry: number, keys: readonly (string | number)[]) => string | undefined,
+  ): ClassNormalized {
+    const { varying, defs, aliases, aliasesByModule, union } = this.input;
+    const sites = new Map<object, readonly ReachSite[]>();
+    const read = (list: ResourceManifest[], cuts: readonly CutPoint<Condition>[], presence: ReadonlyMap<object, Condition>): ClassNormalized => {
+      resolveRefSentinels(list, aliases, aliasesByModule, this.recordingResolution(witness, lookups), defs);
+      const collected = collectScopeMembers(list, (d) => {
+        const found = defs.referenceSites(d, aliases, aliasesByModule);
+        sites.set(d, found);
+        return found;
+      });
+      return { list, collected, cuts, presence, sites };
     };
-    return defs.withDecidedReach(varying, holds, body, holds);
+    if (!varying) return read(normalizeInlineResources(written, defs, aliases, aliasesByModule, emittedName), [], new Map());
+    return defs.withConditionedReach(varying, () => {
+      const normalized = normalizeInlineResourcesOverClasses(written, defs, aliases, aliasesByModule, emittedName, classCutsOf(union.space));
+      return read(normalized.manifests, normalized.cuts, normalized.presence);
+    });
   }
 
-  /** Whether every slot `slots` recorded is decided at `witness` as it was. */
-  private sameSlots(slots: readonly SlotLookup[], witness: World): boolean {
+  /** Keeps what projecting `part` at a witness needs, when it holds a cut point. */
+  private holdCuts(part: DeclarationPart | RegionPart, normalized: ClassNormalized, root: number, region: boolean): void {
+    if (normalized.cuts.length === 0 && normalized.presence.size === 0) return;
+    const byHolder = new Map<object, Map<string, CutPoint<Condition>[]>>();
+    for (const cut of normalized.cuts) {
+      let byKey = byHolder.get(cut.holder);
+      if (!byKey) byHolder.set(cut.holder, (byKey = new Map()));
+      const key = String(cut.key);
+      byKey.set(key, [...(byKey.get(key) ?? []), cut]);
+    }
+    this.classCuts.set(part, { ...normalized, byHolder, root, region, projections: new Map() });
+  }
+
+  /**
+   * `part` as `witness` decides its cut points: each place a cut point it
+   * takes holds the side's value, each declaration drawn out where it holds
+   * kept and every other dropped, and the scope members collected again over
+   * what is kept — the part itself where it holds none. One projection per
+   * way of deciding them, built from the one normalization.
+   */
+  private projectedAt<P extends DeclarationPart | RegionPart>(part: P, witness: World): P {
+    const held = this.classCuts.get(part);
+    if (!held) return part;
     const { space } = this.input.union;
-    return slots.every((slot) => space.holds(slot.condition, witness.assignment) === slot.held);
+    const decided = new Map<Condition, boolean>();
+    const holds = (condition: Condition): boolean => {
+      let known = decided.get(condition);
+      if (known === undefined) decided.set(condition, (known = space.holds(condition, witness.assignment)));
+      return known;
+    };
+    const key = [...held.cuts.map((cut) => cut.condition), ...held.presence.values()].map((c) => (holds(c) ? "1" : "0")).join("");
+    const known = held.projections.get(key);
+    if (known) return known as P;
+    const originals = new Map<object, object>();
+    const present = (entry: unknown) => {
+      const condition = entry !== null && typeof entry === "object" ? held.presence.get(entry) : undefined;
+      return condition === undefined || holds(condition);
+    };
+    const copy = (value: unknown): unknown => {
+      if (value === null || typeof value !== "object") return value;
+      if ((value as { __compiled?: unknown }).__compiled) return value;
+      const byKey = held.byHolder.get(value);
+      const at = (key: string | number, inner: unknown) => {
+        const taken = byKey?.get(String(key))?.find((cut) => holds(cut.condition));
+        return copy(taken ? taken.value : inner);
+      };
+      let out: unknown;
+      if (Array.isArray(value)) {
+        out = value.flatMap((item, i) => (present(item) ? [at(i, item)] : []));
+      } else {
+        const record: Record<string, unknown> = {};
+        for (const [field, inner] of Object.entries(value)) record[field] = at(field, inner);
+        out = record;
+      }
+      originals.set(out as object, value);
+      carryAuthoredSchemaRef(value, out as object);
+      return out;
+    };
+    const list = held.list.filter(present).map((m) => {
+      const out = copy(m) as ResourceManifest;
+      ranks.set(out, ranks.get(m)!);
+      return out;
+    });
+    const collected = collectScopeMembers(list, (d) => {
+      const original = originals.get(d);
+      return (original ? held.sites.get(original) : undefined)?.flatMap((site) => {
+        const holding = (site as Partial<ConditionedReachSite<Condition>>).holding;
+        const scopes = holding ? site.scopes.filter((_, i) => holds(holding.scopes[i]!)) : site.scopes;
+        return scopes.length === 0 ? [] : [{ ...site, scopes, data: valueAtKeys(d, site.keys) }];
+      }) ?? [];
+    });
+    const members = collected.analysed.map((member) => member.declaration);
+    members.forEach((m, i) => ranks.set(m, [1, 0, held.root, i]));
+    const manifests = [...list, ...members];
+    const projected = {
+      ...part,
+      manifests,
+      members: collected.analysed,
+      kindMembers: collected.kindDocuments,
+      // A region part's projection is its manifest as normalized.
+      ...(held.region ? { projection: { ...part.projection, value: list[0] } } : {}),
+    } as P;
+    held.projections.set(key, projected);
+    return projected;
   }
 
   /** The resolution `!ref` stamps are taken from at `witness`, recording each
@@ -789,4 +865,67 @@ function replacedAt(root: unknown, keys: readonly (string | number)[], value: un
 
 function outcomeText(outcome: ResolutionOutcome): string {
   return outcome.status === "unresolved" ? "unresolved" : `${outcome.status}:${outcome.address.key}`;
+}
+
+/** A normalization over classes, its `!ref` stamps taken and its scope
+ *  members collected: the manifests before the members, and the scope sites
+ *  each holder was read over. */
+interface ClassNormalized {
+  readonly list: ResourceManifest[];
+  readonly collected: { analysed: ScopeMember[]; kindDocuments: ScopeMember[] };
+  readonly cuts: readonly CutPoint<Condition>[];
+  readonly presence: ReadonlyMap<object, Condition>;
+  readonly sites: ReadonlyMap<object, readonly ReachSite[]>;
+}
+
+/** What projecting a part holding a cut point reads: its normalization, its
+ *  cut points by holder and place, its union position, and each projection
+ *  built, by how it decides the cut points and presences. */
+interface HeldCuts extends ClassNormalized {
+  readonly byHolder: ReadonlyMap<object, ReadonlyMap<string, readonly CutPoint<Condition>[]>>;
+  readonly root: number;
+  /** A region part, whose projection is its manifest as normalized. */
+  readonly region: boolean;
+  readonly projections: Map<string, DeclarationPart | RegionPart>;
+}
+
+/** How a normalization over classes reads a cut point in `space`: a site's
+ *  reference items decided by each assignment of the items' conditions taken
+ *  in some configuration — each side keeping the items it holds, in the order
+ *  a walk of such a configuration reaches them. */
+function classCutsOf(space: ConditionSpace): ClassCuts<Condition> {
+  return {
+    always: TRUE,
+    and: (a, b) => space.and(a, b),
+    or: (a, b) => space.or(a, b),
+    not: (a) => space.not(a),
+    isNever: (condition) => condition === FALSE,
+    refSides: (site) => {
+      const conditions = site.holding.refs;
+      const orders = site.holding.order.refs;
+      const ordered = (kept: number[]) =>
+        kept.sort((a, b) => {
+          const x = orders[a]!;
+          const y = orders[b]!;
+          for (let i = 0; i < Math.min(x.length, y.length); i++) if (x[i] !== y[i]) return x[i]! - y[i]!;
+          return x.length - y.length;
+        });
+      if (conditions.every((condition) => condition === TRUE)) return [{ kept: ordered(conditions.map((_, i) => i)), condition: TRUE }];
+      const sides: { kept: number[]; condition: Condition }[] = [];
+      let remaining = TRUE as Condition;
+      while (remaining !== FALSE) {
+        const at = space.firstAssignment(remaining)!;
+        const kept: number[] = [];
+        let condition = TRUE as Condition;
+        conditions.forEach((item, i) => {
+          const holds = space.holds(item, at);
+          if (holds) kept.push(i);
+          condition = space.and(condition, holds ? item : space.not(item));
+        });
+        sides.push({ kept: ordered(kept), condition });
+        remaining = space.and(remaining, space.not(condition));
+      }
+      return sides;
+    },
+  };
 }

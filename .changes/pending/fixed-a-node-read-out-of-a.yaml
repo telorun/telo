@@ -1,0 +1,7 @@
+units:
+  analyzer: Fixed
+body: A node read out of a larger schema — a `base:` field's parent property, a
+  reference slot's value branch, an `x-telo-schema-from` source, a template body's `...`
+  splice — now resolves `#` and `#/$defs/…` in the document it was read from, in the
+  Node and the Rust analyzer. Before, such a reference was misread as naming the node
+  itself, skipped, or reported at the consumer as `SCHEMA_COMPILE_ERROR`.

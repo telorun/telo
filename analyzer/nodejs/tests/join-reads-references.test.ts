@@ -197,7 +197,7 @@ properties:
     );
     expect(found).toHaveLength(1);
     expect(found[0]!.startsWith("CEL_TYPE_ERROR: ")).toBe(true);
-    expect(found[0]).toContain("source is 'string', target expects 'integer'");
+    expect(found[0]).toContain("declared 'string', but take's declared inputType expects 'integer'");
   });
 
   it("resolves in its own document, beside another producer declaring the same name", async () => {
@@ -224,7 +224,7 @@ value: {}
     expect(await flow(produced, textSlot, "steps.made.result.out", other)).toEqual([]);
     const found = await flow(produced, textSlot, "steps.other.result.out", other);
     expect(found).toHaveLength(1);
-    expect(found[0]).toContain("source is 'integer', target expects 'string'");
+    expect(found[0]).toContain("declared 'integer', but take's declared inputType expects 'string'");
   });
 });
 
@@ -342,20 +342,18 @@ $defs:
     expect(await flow(produced, integerSlot, chain)).toEqual([]);
     const found = await flow(produced, textSlot, chain);
     expect(found).toHaveLength(1);
-    expect(found[0]).toContain("source is 'integer', target expects 'string'");
+    expect(found[0]).toContain("declared 'integer', but take's declared inputType expects 'string'");
   });
 
-  // Only a step's result is known to be a document of its own. Anywhere else a
-  // pointer's document is not known, so it is not followed.
-  it.each([
-    [
-      "the resource's own inputs",
-      `
+  // The resource's own inputs are read from its resolved input contract, a
+  // document of its own, so a pointer in it is followed.
+  it("is followed when read through the resource's own inputs", async () => {
+    const produced = `
 type: object
 properties:
   out: { type: string }
-`,
-      `---
+`;
+    const rest = `---
 kind: Self.Sequence
 metadata: { name: main }
 inputType:
@@ -371,10 +369,10 @@ steps:
     invoke: !ref take
     inputs:
       arg: !cel "inputs.word"
-`,
-    ],
-  ])("claims nothing when read through %s", async (where, produced, rest) => {
-    expect(await declared(produced, textSlot, rest)).toEqual([]);
+`;
+    const found = await declared(produced, textSlot, rest);
+    expect(found).toHaveLength(1);
+    expect(found[0]).toContain("reads 'inputs.word', which may be null");
   });
 
   // A step forwarding part of another's result carries what its own site

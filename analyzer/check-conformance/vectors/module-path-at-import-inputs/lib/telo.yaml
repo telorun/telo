@@ -1,0 +1,5 @@
+kind: Telo.Library
+metadata: { name: InputsLib }
+variables:
+  root: { type: string, x-telo-type: Telo.HostPath }
+  note: { type: string, default: "" }

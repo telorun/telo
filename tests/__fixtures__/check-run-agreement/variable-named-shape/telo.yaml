@@ -1,0 +1,16 @@
+# An Application variable typed by a named shape: read through the shape.
+kind: Telo.Application
+metadata: { name: VariableNamedShape, version: 1.0.0 }
+variables:
+  cfg: { env: CFG, type: object, $ref: "telo://Self/Config", default: { dir: /srv } }
+targets:
+  - name: read
+    invoke: !ref read
+---
+kind: Telo.JsonSchema
+metadata: { name: Config }
+schema: { type: object, properties: { dir: { type: string } }, required: [dir] }
+---
+kind: Telo.Value
+metadata: { name: read }
+value: !cel "variables.cfg.dir + '/data'"

@@ -1,0 +1,12 @@
+# An Application variable whose schema refers back to itself through `anyOf` alone.
+kind: Telo.Application
+metadata: { name: InputInPlaceCycleApp }
+variables:
+  x: { env: X, type: object, default: { a: 1 }, anyOf: [{ $ref: "#" }] }
+targets:
+  - name: read
+    invoke: !ref read
+---
+kind: Telo.Value
+metadata: { name: read }
+value: !cel "variables.x"

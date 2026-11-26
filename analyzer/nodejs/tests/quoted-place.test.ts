@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
 import { isTaggedSentinel } from "@telorun/templating";
 import { quotedPlacesOf, quotedTexts } from "../src/quoted-place.js";
@@ -163,12 +163,17 @@ function relativeToNamed(d: AnalysisDiagnostic, resource: { kind?: string; name?
   return label !== null && label[2] !== resource?.name && authoredNames.has(label[2]!);
 }
 
-function mismatches(loaded: Loaded): string[] {
-  const out: string[] = [];
+/** Empty what the mocks record, so one analysis reads only its own. */
+function resetRecorded(): void {
   extractedNames.clear();
   rerouted.length = 0;
   authoredNames.clear();
   indexed.clear();
+}
+
+function mismatches(loaded: Loaded): string[] {
+  const out: string[] = [];
+  resetRecorded();
   collectAuthoredNames(loaded.manifests);
   const diagnostics: AnalysisDiagnostic[] = new StaticAnalyzer().analyze(loaded.manifests, {
     moduleDocuments: loaded.moduleDocuments,
@@ -296,7 +301,38 @@ const SHIFTED = [
   "",
 ].join("\n");
 
+/** An import handing a library's host path the importer's input of the same
+ *  name, declared a plain string — bare, or behind a choice. */
+const sameNamedInput = (chosen: boolean) =>
+  [
+    "kind: Telo.Application",
+    `metadata: { name: SameNamedInput${chosen ? "Chosen" : ""} }`,
+    "variables:",
+    "  flag1: { env: FLAG_1, type: boolean, default: false }",
+    "  root: { env: ROOT_DIR, type: string, default: /srv/plain }",
+    "imports:",
+    "  Lib:",
+    `    source: ${join(ROOT, "tests/__fixtures__/import-input-choice/lib")}`,
+    "    variables:",
+    chosen
+      ? '      root: !if { if: !cel "variables.flag1", then: /srv/absolute, else: !cel "variables.root" }'
+      : '      root: !cel "variables.root"',
+    "",
+  ].join("\n");
+
 describe("a message quoting its place quotes its data.path", () => {
+  beforeEach(resetRecorded);
+  for (const chosen of [false, true]) {
+    const name = `same-named-input${chosen ? "-chosen" : ""}.yaml`;
+    it(`generated ${name}`, async () => {
+      const loaded = await loadGenerated(name, sameNamedInput(chosen));
+      expect(mismatches(loaded)).toEqual([]);
+      const found = new StaticAnalyzer().analyze(loaded.manifests, { moduleDocuments: loaded.moduleDocuments });
+      expect(found.filter((d) => d.code === "HOST_PATH_UNTYPED_SOURCE").map((d) => (d.data as { path?: unknown }).path)).toEqual([
+        chosen ? "variables.root.else" : "variables.root",
+      ]);
+    }, 120_000);
+  }
   it("quotes the written index of a finding after an item a choice may leave out", async () => {
     const loaded = await loadGenerated("shifted-finding.yaml", SHIFTED);
     expect(mismatches(loaded)).toEqual([]);
@@ -380,10 +416,7 @@ describe("a message quoting its place quotes its data.path", () => {
         unloadable[relative(ROOT, file).split(sep).join("/")] = error instanceof Error ? error.message.split("\n")[0]! : String(error);
         continue;
       }
-      extractedNames.clear();
-      rerouted.length = 0;
-      authoredNames.clear();
-      indexed.clear();
+      resetRecorded();
       collectAuthoredNames(loaded.manifests);
       const diagnostics = new StaticAnalyzer().analyze(loaded.manifests, { moduleDocuments: loaded.moduleDocuments });
       found.push(...unquotedUnderHolder().map((problem) => `${relative(ROOT, file).split(sep).join("/")}: ${problem}`));

@@ -1,0 +1,19 @@
+# A scoped import's source behind `!if` and behind `!for-each`: refused by the
+# loader's scoped-import walk, at the member.
+kind: Telo.Application
+metadata: { name: ImportSourceMember }
+variables: { flag1: { env: FLAG_1, type: boolean, default: true } }
+targets: [!ref scope]
+---
+kind: Telo.Sequence
+metadata: { name: scope }
+with:
+  - kind: Telo.Import
+    metadata: { name: Lib }
+    source: !if { if: !cel "variables.flag1", then: ./lib, else: ./shared-lib }
+    variables: { size: 1 }
+  - kind: Telo.Import
+    metadata: { name: Repeated }
+    source: !for-each { in: [a], emit: ./lib }
+    variables: { size: 1 }
+steps: [{ name: noop, value: 1 }]

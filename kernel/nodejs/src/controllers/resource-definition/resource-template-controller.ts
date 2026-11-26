@@ -19,6 +19,8 @@ import {
   resolvedReference,
   SELF_PATH,
   holdsTemplateConstructs,
+  isWithinSlot,
+  stepValueSlots,
   templateTargetsOf,
   type CelEvalSites,
   type ExpansionSite,
@@ -54,7 +56,6 @@ import {
   expandTemplateInstance,
   type InstanceExpansionInputs,
 } from "./template-instance-expansion.js";
-import { isWithinSlot, stepValueSlots } from "./step-value-slots.js";
 import { TemplateBodyResources, type FamilyPlace } from "../../template-body-resources.js";
 import { recordTemplateBody } from "../../template-body-contexts.js";
 import { refuseWrittenStamps } from "../../metadata-stamp-refusals.js";

@@ -172,7 +172,7 @@ expect:
     - code: CEL_UNKNOWN_FIELD
       message: "Ui.View/lineTypo: !cel: 'row.lnie' is not defined (available: id, line, count)"
     - code: CEL_TYPE_ERROR
-      message: "Ui.View/markdownNotString: CEL at 'content.content[0].value' reads 'data.seq', whose declared shape does not fit what the field expects: /: type mismatch — source is 'integer', target expects 'string'"
+      message: "Ui.View/markdownNotString: CEL at 'content.content[0].value' reads 'data.seq', declared 'integer', but the field expects 'string'"
     - code: CEL_TYPE_ERROR
       message: "Ui.View/timeColumnNoFormat: CEL at 'content.content[0].columns[0].value': 'row.type' is a string with no format; the field takes a string of format date or date-time"
     - code: SCHEMA_VIOLATION

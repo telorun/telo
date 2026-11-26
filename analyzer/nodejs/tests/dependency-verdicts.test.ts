@@ -236,6 +236,9 @@ describe("dependency verdicts", () => {
       ]);
     expect(await codes("mode-a.yaml")).toEqual([]);
     expect(await codes("mode-b.yaml")).toEqual([["SCHEMA_VIOLATION", [{ "variables.mode": "b" }]]]);
+    // A binding written behind a choice reaches what its options hold.
+    expect(await codes("mode-chosen-a.yaml")).toEqual([]);
+    expect(await codes("mode-chosen-b.yaml")).toEqual([["SCHEMA_VIOLATION", [{ "variables.mode": "b" }]]]);
   }, 120_000);
 
   it("reports a defect the entry also finds at its import once, where the library's own check does", async () => {

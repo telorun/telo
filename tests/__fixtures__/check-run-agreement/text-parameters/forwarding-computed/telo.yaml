@@ -1,0 +1,16 @@
+# A library forwarding a computed text to a library it imports: neither a
+# string literal nor an untyped input is the record of a text already shown.
+kind: Telo.Library
+metadata: { name: TextParameterForwardingComputed, version: 1.0.0 }
+lang: en
+imports:
+  Literal:
+    source: ../../../import-text-input/title
+    variables:
+      title: !cel "'x'"
+  Untyped:
+    source: ../../../import-text-input/title
+    variables:
+      title: !cel "variables.raw"
+variables: { raw: { default: x } }
+exports: { resources: [Literal.shown, Untyped.shown] }

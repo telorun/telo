@@ -1,0 +1,8 @@
+kind: Telo.Application
+metadata: { name: ModeChosenA }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+imports:
+  Modes:
+    source: ./modes
+    variables:
+      mode: !if { if: !cel "variables.flag1", then: a, else: a }

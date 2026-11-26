@@ -1,0 +1,16 @@
+# A default the named shape refuses: refused at load.
+kind: Telo.Application
+metadata: { name: VariableNamedShapeRefused, version: 1.0.0 }
+variables:
+  cfg: { env: CFG, type: object, $ref: "telo://Self/Config", default: { dir: 7 } }
+targets:
+  - name: read
+    invoke: !ref read
+---
+kind: Telo.JsonSchema
+metadata: { name: Config }
+schema: { type: object, properties: { dir: { type: string } }, required: [dir] }
+---
+kind: Telo.Value
+metadata: { name: read }
+value: !cel "variables.cfg.dir + '/data'"

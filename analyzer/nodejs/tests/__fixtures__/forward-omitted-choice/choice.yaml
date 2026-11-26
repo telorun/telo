@@ -1,0 +1,65 @@
+# A consumer forwards a field an `!if` with no `else` leaves out where its
+# condition fails, through one templated kind, through two, and through a
+# `base:` mapping's nested forward.
+kind: Telo.Application
+metadata: { name: ForwardOmitted }
+variables: { flag1: { env: FLAG1, type: boolean, default: false } }
+targets: [!ref show]
+---
+kind: Telo.Definition
+metadata: { name: Door }
+capability: Telo.Invocable
+schema: { type: object, properties: { open: { type: boolean } } }
+resources:
+  - kind: Telo.Value
+    metadata: { name: v }
+    value: !cel "self.open"
+invoke: !ref v
+---
+kind: Telo.Definition
+metadata: { name: Gate }
+capability: Telo.Invocable
+schema: { type: object, properties: { open: { type: boolean } } }
+resources:
+  - kind: Self.Door
+    metadata: { name: door }
+    open: !cel "self.open"
+invoke: !ref door
+---
+kind: Telo.Definition
+metadata: { name: Panel }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties: { cfg: { type: object, properties: { open: { type: boolean } } } }
+resources:
+  - kind: Telo.Value
+    metadata: { name: v }
+    value: !cel "self.cfg"
+invoke: !ref v
+---
+kind: Telo.Definition
+metadata: { name: EasyPanel }
+extends: Self.Panel
+schema: { type: object, properties: { flag: { type: boolean } } }
+base:
+  cfg: { open: !cel "self.flag" }
+---
+kind: Self.EasyPanel
+metadata: { name: panel }
+flag: !if { if: !cel "variables.flag1", then: true }
+---
+kind: Self.Door
+metadata: { name: door }
+open: !if { if: !cel "variables.flag1", then: true }
+---
+kind: Self.Gate
+metadata: { name: gate }
+open: !if { if: !cel "variables.flag1", then: true }
+---
+kind: Telo.Sequence
+metadata: { name: show }
+steps:
+  - { name: a, invoke: !ref door }
+  - { name: b, invoke: !ref gate }
+  - { name: c, invoke: !ref panel }

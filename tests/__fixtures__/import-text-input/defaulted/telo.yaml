@@ -1,0 +1,12 @@
+kind: Telo.Library
+metadata:
+  name: ImportTextDefaulted
+  version: 1.0.0
+  description: "Test fixture: a text parameter whose default is the library's own text."
+lang: en
+variables: { title: { $ref: "telo://manifest#/$defs/Text", default: Hello } }
+exports: { resources: [shown] }
+---
+kind: Telo.Value
+metadata: { name: shown }
+value: !cel "variables.title"

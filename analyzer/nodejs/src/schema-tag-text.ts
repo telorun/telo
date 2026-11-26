@@ -1,5 +1,6 @@
 import { isCompiledValue } from "@telorun/sdk";
 import { isTaggedSentinel } from "@telorun/templating";
+import { isCarveToken } from "./schema-carve.js";
 
 /**
  * A copy of a JSON Schema with every tagged value — a `!cel` / `!interpolate`
@@ -13,6 +14,8 @@ import { isTaggedSentinel } from "@telorun/templating";
  * the validator accepts exactly the data it would have.
  */
 export function schemaWithTagsAsText(value: unknown): unknown {
+  // A door's carve token is recognised by identity, so it is never copied.
+  if (isCarveToken(value)) return value;
   if (isCompiledValue(value) || isTaggedSentinel(value)) {
     return typeof value.source === "string" ? value.source : "";
   }

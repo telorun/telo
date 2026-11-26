@@ -8,6 +8,7 @@ import { withReachedFragmentDefs } from "@telorun/analyzer";
 import { canonicalTypeSchemaId, mergeTypeSchemas, RuntimeError } from "@telorun/sdk";
 import { ruleCondition } from "../../type-rule-condition.js";
 import { refuseInvalidCompletedWhen } from "../resource-definition/completed-when-guard.js";
+import { refuseInPlaceCycleShape } from "../resource-definition/in-place-cycle-guard.js";
 
 /**
  * `Telo.JsonSchema` — a named data shape.
@@ -96,6 +97,14 @@ export async function create(
   // are carried here.
   schema = withReachedFragmentDefs(schema, (id) => ctx.lookupSchema(id) as Record<string, any> | undefined);
 
+  // A shape recursing in place is refused before anything validates against it.
+  const moduleName = resource.metadata.module as string | undefined;
+  if (moduleName) {
+    refuseInPlaceCycleShape(resource, canonicalTypeSchemaId(moduleName, resource.metadata.name), schema, (id) =>
+      ctx.lookupSchema(id),
+    );
+  }
+
   const rules = (Array.isArray(resource.rules) ? resource.rules : []) as TypeRule[];
 
   ctx.registerSchema(qualifiedName, schema);
@@ -113,7 +122,6 @@ export async function create(
   // `telo://<Alias>/<name>` across imports) once the loader resolves the
   // authority to this module. Authority-free, so a validator can actually
   // resolve the reference; see `canonicalTypeSchemaId`.
-  const moduleName = resource.metadata.module as string | undefined;
   if (moduleName) {
     // Rules too: a contract that names this type through a resolved `!ref`
     // resolves under this id, and its invariants must come with it.

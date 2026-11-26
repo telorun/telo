@@ -28,6 +28,7 @@ import {
 } from "./schema-reference.js";
 import { isStepSlot } from "./step-slot.js";
 import { canonicalJson } from "./canonical-json.js";
+import { isFrozenSchema } from "./frozen-kind-schema.js";
 import { bindingExistsAt } from "./context-eval.js";
 import { withWithheldReferencesRead } from "./context-withheld.js";
 
@@ -549,11 +550,47 @@ interface WalkState {
   readonly resolved: Map<string, object | undefined>;
 }
 
-/** What a schema's walk finds. Not remembered per schema: a kind's schema is
- *  rewritten in place while an analysis canonicalizes its references, so its
- *  identity says nothing about what it holds; a named shape is remembered
- *  ({@link shapeMemos}), which is what keeps a reused one walked once. */
+/** What a frozen schema's walk found, and every named shape it asked for with
+ *  the lookup's answer. */
+interface SchemaMemo {
+  found: Collected;
+  shapes: ReadonlyArray<readonly [string, object | undefined]>;
+}
+
+/** Memo per frozen schema (`frozen-kind-schema.ts`): a kind's canonical schema
+ *  cannot change after registration, so its identity says what it holds, and
+ *  its walk is reused while every named shape it reached still resolves to what
+ *  it did. A schema that is not frozen is walked on every call. */
+const schemaMemos = new WeakMap<object, SchemaMemo>();
+
+let walkObserver: ((schema: object) => void) | undefined;
+
+/** Observes every walk {@link collectedOf} makes rather than remembers — for a
+ *  test counting them. */
+export function observeEvalSiteWalks(observer: ((schema: object) => void) | undefined): void {
+  walkObserver = observer;
+}
+
+/** What a schema's walk finds. */
 function collectedOf(schema: Record<string, any>, shapes: NamedShapeLookup): Collected {
+  const frozen = isFrozenSchema(schema);
+  if (frozen) {
+    const known = schemaMemos.get(schema);
+    if (known && known.shapes.every(([id, node]) => shapes(id) === node)) return known.found;
+  }
+  walkObserver?.(schema);
+  if (!frozen) return walkedOf(schema, shapes);
+  const asked = new Map<string, object | undefined>();
+  const found = walkedOf(schema, (id) => {
+    const node = shapes(id);
+    asked.set(id, node);
+    return node;
+  });
+  schemaMemos.set(schema, { found, shapes: [...asked] });
+  return found;
+}
+
+function walkedOf(schema: Record<string, any>, shapes: NamedShapeLookup): Collected {
   const state: WalkState = { shapes, resolved: new Map() };
   const found = emptyCollected();
   // A context at the schema root names what every site may read and marks no
@@ -727,16 +764,25 @@ function branchConflicts(
     }
     return bySegment;
   });
+  // A region's canonical text is computed only where two branches compare it.
   const regionsBySegment = branches.map((found) => {
-    const bySegment = new Map<string, Map<string, string>>();
-    for (const [place, region] of regionsByPlace(found.contexts, path)) {
+    const bySegment = new Map<string, Map<string, Record<string, any>>>();
+    for (const context of found.contexts) {
+      const place = context.path.slice(path.length);
       const segment = firstSegment(place);
       let regions = bySegment.get(segment);
       if (!regions) bySegment.set(segment, (regions = new Map()));
-      regions.set(place, region);
+      regions.set(place, context.schema);
     }
     return bySegment;
   });
+  const texts = new Map<object, string>();
+  const textOf = (region: Record<string, any> | undefined): string | undefined => {
+    if (!region) return undefined;
+    let text = texts.get(region);
+    if (text === undefined) texts.set(region, (text = canonicalJson(region)));
+    return text;
+  };
   const declared = (union[keyword] as unknown[]).map((branch) =>
     declaredSegments(branch, document, shapes, new Set()),
   );
@@ -780,11 +826,11 @@ function branchConflicts(
     });
   };
   const differingRegion = (i: number, j: number, segment: string): string | undefined => {
-    const mine = regionsBySegment[i]!.get(segment) ?? new Map<string, string>();
-    const yours = regionsBySegment[j]!.get(segment) ?? new Map<string, string>();
+    const mine = regionsBySegment[i]!.get(segment) ?? new Map<string, Record<string, any>>();
+    const yours = regionsBySegment[j]!.get(segment) ?? new Map<string, Record<string, any>>();
     return (
-      [...mine].find(([place, region]) => yours.get(place) !== region)?.[0] ??
-      [...yours].find(([place, region]) => mine.get(place) !== region)?.[0]
+      [...mine].find(([place, region]) => textOf(yours.get(place)) !== textOf(region))?.[0] ??
+      [...yours].find(([place, region]) => textOf(mine.get(place)) !== textOf(region))?.[0]
     );
   };
   for (let i = 0; i < branches.length; i++) {
@@ -792,7 +838,7 @@ function branchConflicts(
       const own = sitesBySegment[i]!.get("")?.get("");
       const theirs = sitesBySegment[j]!.get("")?.get("");
       if (!judged.has("") && own !== theirs) conflict(i, j, "", "");
-      if (!judged.has("") && regionsBySegment[i]!.get("")?.get("") !== regionsBySegment[j]!.get("")?.get("")) {
+      if (!judged.has("") && textOf(regionsBySegment[i]!.get("")?.get("")) !== textOf(regionsBySegment[j]!.get("")?.get(""))) {
         regionConflict(i, j, "", "");
       }
       for (const segment of declared[i]!) {

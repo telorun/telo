@@ -1,6 +1,8 @@
 //! Twin of `cel/nodejs/tests/checker-cost.test.ts`, case for case: checking does not get
 //! more expensive as a schema gets deeper, because a schema is converted once, at
-//! registration, and a check walks the expression alone.
+//! registration, and a check walks the expression alone. The cases on the cost of converting
+//! an intersection are the unit tests in `src/json_schema_type.rs`, since the holders they
+//! count are the crate's own.
 //!
 //! It is asserted as work, never as elapsed time: a counting resolver is asked at every
 //! schema node, so the number of nodes read is exact. Every count is the Node build's

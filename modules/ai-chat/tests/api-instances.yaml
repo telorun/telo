@@ -191,7 +191,21 @@ steps:
     inputs:
       headers: { content-type: application/json }
       body: { message: !cel "'cancel-' + steps.run.result", attachments: [] }
-  - { name: toolRunning, invoke: { kind: Timer.Delay }, inputs: { duration: 1200ms } }
+  # Timed from the model's first ask for this turn, not from the answer to the
+  # start: the ask is answered 700ms later and the tool then runs two seconds, so
+  # a cancel a second after the ask lands inside the tool however late the turn began.
+  - name: asked
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs: { sql: !sql "SELECT count(*) AS n FROM model_requests WHERE note = ${{ 'cancel-' + steps.run.result }}" }
+  - name: untilAsked
+    while: !cel "steps.asked.result.rows[0].n < 1"
+    maxIterations: 400
+    do:
+      - { name: poll, invoke: { kind: Timer.Delay }, inputs: { duration: 25ms } }
+      - name: asked
+        invoke: { kind: Sql.Query, connection: !ref db }
+        inputs: { sql: !sql "SELECT count(*) AS n FROM model_requests WHERE note = ${{ 'cancel-' + steps.run.result }}" }
+  - { name: toolRunning, invoke: { kind: Timer.Delay }, inputs: { duration: 1s } }
   - name: cancel
     invoke: { kind: Http.Request, method: POST }
     inputs: { url: !interpolate "http://127.0.0.1:19422/chat/turns/${{ steps.cancelled.result.body.turn }}/cancel" }

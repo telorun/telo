@@ -1,0 +1,14 @@
+# Supplies the inner library's need only where its own input `on` is true.
+kind: Telo.Library
+metadata: { name: InnerNeedChoiceOuter }
+variables: { on: { type: boolean } }
+imports:
+  Types: ../types
+  Inner:
+    source: ../inner
+    needs: { db: !if { if: !cel "variables.on", then: !ref fulfilment } }
+exports: { resources: [Inner.address] }
+---
+kind: Types.Database
+metadata: { name: fulfilment }
+fields: { url: postgres://from-fulfilment }

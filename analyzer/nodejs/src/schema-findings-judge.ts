@@ -33,6 +33,14 @@ import {
 import { finishedValidation, VALIDATION_UNFINISHED, type SchemaValidationOutcome } from "./schema-validation.js";
 import { unionOutcome, type BranchState, type UnionOutcome } from "./union-outcome.js";
 import { jsonTypeOf, readUnion, UnreadableReference, type ReferenceReader, type UnionReading } from "./union-tags.js";
+import {
+  isLiteralCarveText,
+  SCHEMA_CARVE_KEYWORD,
+  type CarvePlace,
+  type CarveTextResolver,
+  type ObservedFinding,
+  type SchemaCarveSummary,
+} from "./schema-carve.js";
 
 /** What the judge decides over: one validated value, and the means to ask about
  *  a part of its schema. */
@@ -56,7 +64,14 @@ export interface SchemaJudgment {
    *  force at a place, located as `validate` locates its findings — what a
    *  union the validator passed is decided from. */
   unionsAt?: (place: string) => readonly LocatedFinding[];
+  /** The summary a schema carve holds at a place, where its `schemaCarve`
+   *  keyword refused (`schema-carve.ts`). */
+  carve?: (carve: string, place: string) => SchemaCarveSummary | undefined;
+  /** Shown every judged finding before the carves' stand for ones are dropped:
+   *  what a door reads its carves' pass-through and a sub-verdict's summary off. */
+  observe?: (judged: readonly ObservedFinding[]) => void;
 }
+
 
 /**
  * A cut site's verdict against one branch of a union above it — all the union
@@ -151,6 +166,103 @@ function isSummary(finding: LocatedFinding): boolean {
   return (finding as { [SUMMARY]?: true })[SUMMARY] === true;
 }
 
+/** Marks a finding standing for a schema carve's: which carve, where. */
+const CARVE = Symbol("schema carve");
+
+type CarveMark = { readonly carve: string; readonly place: string; readonly marker: boolean; readonly index?: number };
+
+/** Marks a finding a union phrased over carves' findings: how it reads once
+ *  their texts are resolved. */
+const TEXT_READ = Symbol("carve text read");
+
+type TextRead = NonNullable<ObservedFinding["textRead"]>;
+
+function textReadOf(finding: LocatedFinding): TextRead | undefined {
+  return (finding as { [TEXT_READ]?: TextRead })[TEXT_READ];
+}
+
+/** `entry` with the text of the carve finding it stands for resolved by `resolve`. */
+function resolvedEntry(entry: Judged, resolve: CarveTextResolver): Judged {
+  // A finding a union inside phrased over carves' texts is phrased again.
+  const read = textReadOf(entry.finding);
+  if (read) {
+    const again = read.render(resolve);
+    const finding = { ...entry.finding, ...again.finding } as LocatedFinding;
+    return { finding, ...(entry.via ? { via: { ...entry.via, ...(again.phrases ? { phrases: again.phrases } : {}) } } : {}) };
+  }
+  const mark = carveMarkOf(entry.finding);
+  if (!mark || mark.index === undefined) return entry;
+  const text = resolve(mark.carve, mark.place).text[mark.index];
+  if (!text || !isLiteralCarveText(text)) throw new Error(`internal: the schema carve '${mark.carve}' at '${mark.place}' was resolved with its text unresolved.`);
+  const finding = { ...entry.finding, params: text.params, message: text.message } as LocatedFinding;
+  return { finding, ...(entry.via ? { via: { ...entry.via, ...(text.phrases ? { phrases: text.phrases } : {}) } } : {}) };
+}
+
+/** The carves whose findings among `judged` a phrasing reads. */
+function carveReads(judged: readonly Judged[]): CarvePlace[] {
+  const out = new Map<string, CarvePlace>();
+  for (const { finding } of judged) {
+    for (const read of textReadOf(finding)?.reads ?? []) out.set(JSON.stringify([read.carve, read.place]), read);
+    const mark = carveMarkOf(finding);
+    if (mark && mark.index !== undefined) out.set(JSON.stringify([mark.carve, mark.place]), { carve: mark.carve, place: mark.place });
+  }
+  return [...out.values()];
+}
+
+function carveMarkOf(finding: LocatedFinding): CarveMark | undefined {
+  return (finding as { [CARVE]?: CarveMark })[CARVE];
+}
+
+/** The findings a schema carve's refusal at `place` stands as: each finding of
+ *  its class at its own position or a constrained place, and — where it
+ *  reports anything — one marker a union reports past. */
+function schemaCarveEntries(summary: SchemaCarveSummary, carve: string, place: string): Judged[] {
+  const out: Judged[] = summary.findings.map((found, i) => {
+    const text = summary.text[i]!;
+    if (!isLiteralCarveText(text)) throw new Error(`internal: the schema carve '${carve}' at '${place}' answers with its text unresolved.`);
+    return {
+      finding: {
+        keyword: found.keyword,
+        instancePath: `${place}${found.at}`,
+        params: text.params,
+        message: text.message,
+        [SUMMARY]: true,
+        [CARVE]: { carve, place, marker: false, index: i },
+      } as LocatedFinding,
+      ...(found.via
+        ? { via: { place: `${place}${found.via.at}`, outcome: found.via.outcome as UnionOutcome["kind"], ...(text.phrases ? { phrases: text.phrases } : {}) } }
+        : {}),
+    };
+  });
+  if (summary.reports) {
+    out.push({
+      finding: {
+        keyword: "carve",
+        instancePath: place,
+        params: {},
+        message: "is judged at a site of its own",
+        [SUMMARY]: true,
+        [CARVE]: { carve, place, marker: true },
+      } as LocatedFinding,
+      via: { place, outcome: "branches" },
+    });
+  }
+  return out;
+}
+
+function isSchemaCarveRefusal(finding: AjvErrorLike): boolean {
+  return finding.keyword === SCHEMA_CARVE_KEYWORD && typeof finding.params?.carve === "string";
+}
+
+/** What a schema carve's refusal stands as, read from `judgment`. */
+function expandedCarve(finding: LocatedFinding, judgment: SchemaJudgment): Judged[] {
+  const carve = finding.params!.carve as string;
+  const place = finding.instancePath ?? "";
+  const summary = judgment.carve?.(carve, place);
+  if (!summary) throw new Error(`internal: the schema carve '${carve}' refused at '${place}' holds no summary there.`);
+  return schemaCarveEntries(summary, carve, place);
+}
+
 const UNION_KEYWORDS: ReadonlySet<string> = new Set(["anyOf", "oneOf"]);
 
 /** Keywords refusing the value's SHAPE when raised at the union's own node. */
@@ -225,7 +337,10 @@ function judgedFindings(
   const plan = judgment.plan;
   const places = plan?.placesIn(judgment.value);
   const injected = places && judgment.unionsAt ? [...places.places.keys()].flatMap((place) => judgment.unionsAt!(place)) : [];
-  if ((!errors || errors.length === 0) && injected.length === 0) return [];
+  if ((!errors || errors.length === 0) && injected.length === 0) {
+    judgment.observe?.([]);
+    return [];
+  }
   const carves = plan ? carveStandIns(judgment.value, plan) : new Map<string, string>();
   let standIns = judgment.standIns ?? new Map<string, StandIn>();
   if (carves.size > 0) {
@@ -244,7 +359,19 @@ function judgedFindings(
       ? new FindingsJudge(judgment, rule, plan && places ? { plan, places, carves } : undefined).judge(
           withInjectedUnions(located ?? raised, injected),
         )
-      : standingFindings(withoutTypeConsequences(raised), rule);
+      : standingFindings(withoutTypeConsequences(raised), rule, judgment);
+  judgment.observe?.(
+    judged.map((entry) => {
+      const mark = carveMarkOf(entry.finding);
+      const read = textReadOf(entry.finding);
+      return {
+        finding: plainFinding(entry.finding),
+        ...(entry.via ? { via: entry.via } : {}),
+        ...(mark ? { carve: mark } : {}),
+        ...(read ? { textRead: read } : {}),
+      };
+    }),
+  );
   return judged.filter((entry) => !isSummary(entry.finding)).map((entry) => plainFinding(entry.finding));
 }
 
@@ -341,8 +468,9 @@ function summarize(
   return { state: refused.length > 0 ? "tag-refused" : any ? "failing" : "valid", tags: refused, clean };
 }
 
-function standingFindings(findings: readonly LocatedFinding[], rule: StandInRule): Judged[] {
+function standingFindings(findings: readonly LocatedFinding[], rule: StandInRule, judgment: SchemaJudgment): Judged[] {
   return findings.flatMap((finding) => {
+    if (isSchemaCarveRefusal(finding)) return expandedCarve(finding, judgment);
     const kept = rule.standing(finding);
     return kept ? [{ finding: kept }] : [];
   });
@@ -584,6 +712,7 @@ class FindingsJudge {
     live.forEach((finding, index) => {
       const report = reports.get(index);
       if (report) out.push(...report);
+      else if (finding && isSchemaCarveRefusal(finding)) out.push(...expandedCarve(finding, this.judgment));
       else if (finding) {
         const kept = this.rule.standing(finding);
         if (kept) out.push({ finding: kept });
@@ -632,17 +761,20 @@ class FindingsJudge {
 
   /** The candidates, tags and selectors of the union at `node` for a value of one JSON
    *  type, read once per (node, type). */
-  private readingOf(node: object, keyword: string, branches: readonly unknown[], value: unknown): UnionReading {
+  private readingOf(node: object, keyword: string, branches: readonly unknown[], value: unknown, place: string): UnionReading {
     const type = jsonTypeOf(value);
-    const key = [this.nodeId(node), keyword, type].join("\0");
+    const key = [this.nodeId(node), keyword, type, place].join("\0");
     let reading = this.readings.get(key);
-    if (!reading) this.readings.set(key, (reading = readUnion(branches, type, this.judgment.reference, node)));
+    if (!reading) {
+      const read: ReferenceReader = (at, ref, below) => this.judgment.reference(at, ref, `${place}${below ?? ""}`);
+      this.readings.set(key, (reading = readUnion(branches, type, read, node)));
+    }
     return reading;
   }
 
   private decide(union: LocatedFinding, branches: readonly unknown[], place: string): UnionVerdict | undefined {
     const value = valueAt(this.judgment.value, place);
-    const reading = this.readingOf(union.parentSchema as object, union.keyword!, branches, value);
+    const reading = this.readingOf(union.parentSchema as object, union.keyword!, branches, value, place);
     const tags = new Set(reading.tags.map((tag) => `${place}${tag}`));
     const selectors = new Set(reading.selectors.map((selector) => `${place}${selector}`));
     const discriminating = new Set([...tags, ...selectors]);
@@ -722,7 +854,7 @@ class FindingsJudge {
       return [{ keyword: "false schema", instancePath: place, params: {}, message: "boolean schema is false" }];
     }
     if (branch === null || typeof branch !== "object") return undefined;
-    const raised = finishedFindings(this.judgment.validate(branch, value));
+    const raised = finishedFindings(this.judgment.validate(branch, value, place));
     if (!raised) return undefined;
     return raised.map((finding) => ({ ...finding, instancePath: `${place}${finding.instancePath ?? ""}` }));
   }
@@ -767,6 +899,7 @@ class FindingsJudge {
         return out;
       }
       case "tag": {
+        const allowedOf = (judged: readonly (readonly Judged[])[]): unknown[] => {
         const allowed: unknown[] = [];
         for (const index of outcome.branches) {
           for (const { finding, via } of judged[index]!) {
@@ -782,30 +915,44 @@ class FindingsJudge {
             for (const value of values) if (!allowed.includes(value)) allowed.push(value);
           }
         }
+        return allowed;
+        };
         // Without the union node's `data`: the refusal is of the tag, not the node.
         const { data, ...rest } = union;
-        return [
-          reported({
-            ...rest,
-            keyword: "enum",
-            instancePath: outcome.at,
-            params: { allowedValues: allowed },
-            message: "must be equal to one of the allowed values",
-          }),
-        ];
+        const tagged = (allowed: unknown[]): LocatedFinding => ({
+          ...rest,
+          keyword: "enum",
+          instancePath: outcome.at,
+          params: { allowedValues: allowed },
+          message: "must be equal to one of the allowed values",
+        });
+        const finding = tagged(allowedOf(judged));
+        const reads = carveReads(outcome.branches.flatMap((index) => judged[index]!));
+        if (reads.length > 0) {
+          (finding as { [TEXT_READ]?: TextRead })[TEXT_READ] = {
+            reads,
+            render: (resolve) => ({ finding: plainFinding(tagged(allowedOf(judged.map((entries) => entries.map((e) => resolvedEntry(e, resolve)))))) }),
+          };
+        }
+        return [reported(finding)];
       }
       case "alternatives": {
-        const phrases = describeAlternatives(judged.flat(), place, selectors);
-        return [
-          {
-            finding: {
-              ...union,
-              instancePath: place,
-              message: `matches no alternative — expected ${phrases.join(", or ")}`,
+        const phrased = (entries: readonly Judged[]) => {
+          const phrases = describeAlternatives(entries, place, selectors);
+          return { phrases, finding: { ...union, instancePath: place, message: `matches no alternative — expected ${phrases.join(", or ")}` } as LocatedFinding };
+        };
+        const { phrases, finding } = phrased(judged.flat());
+        const reads = carveReads(judged.flat());
+        if (reads.length > 0) {
+          (finding as { [TEXT_READ]?: TextRead })[TEXT_READ] = {
+            reads,
+            render: (resolve) => {
+              const again = phrased(judged.flat().map((e) => resolvedEntry(e, resolve)));
+              return { finding: plainFinding(again.finding), phrases: again.phrases };
             },
-            via: { ...via, phrases },
-          },
-        ];
+          };
+        }
+        return [{ finding, via: { ...via, phrases } }];
       }
     }
   }

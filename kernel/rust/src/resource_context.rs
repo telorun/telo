@@ -14,7 +14,7 @@ use std::rc::Rc;
 use serde_json::Value;
 use telo_analyzer::builtins::is_supported_capability;
 use telo_analyzer::schema_error_report::value_type_refusal_code;
-use telo_analyzer::schema_validation::{schema_nesting_exceeded_message, SCHEMA_NESTING_EXCEEDED};
+use telo_analyzer::schema_validation::{schema_nesting_exceeded_message, ValidationUnfinished, SCHEMA_NESTING_EXCEEDED};
 use telo_analyzer::runtime_code_of;
 
 use crate::controller_loader::ControllerLoader;
@@ -148,7 +148,11 @@ fn validate_against_kind_schema(
     if refusal.issues.is_none() {
         return Err(KernelError::new(
             runtime_code_of(SCHEMA_NESTING_EXCEEDED),
-            schema_nesting_exceeded_message(&format!("{}/{name}", definition.kind), "the resource"),
+            schema_nesting_exceeded_message(
+                &format!("{}/{name}", definition.kind),
+                "the resource",
+                ValidationUnfinished::of(&refusal.message),
+            ),
         ));
     }
     if let Some((issue, code)) = refusal.issues.iter().flatten().find_map(|issue| value_type_refusal_code(issue).map(|code| (issue, code))) {

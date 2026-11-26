@@ -1,5 +1,5 @@
-# A reference slot whose value branch refers to itself without descending into
-# the value, so validating the object written there never finishes.
+# A value at a reference slot nesting 101 levels deep, one past the 100 a
+# validation follows.
 kind: Telo.Library
 metadata: { name: SchemaNestingSlotLib, version: 1.0.0 }
 ---
@@ -12,9 +12,10 @@ schema:
     handler:
       anyOf:
         - { x-telo-ref: { kind: Telo.Invocable, use: call } }
-        - { $ref: "#/$defs/Loop" }
-  $defs: { Loop: { type: object, $ref: "#/$defs/Loop" } }
+        - { $ref: "#/$defs/N" }
+  $defs:
+    N: { anyOf: [{ const: 0 }, { type: array, items: { $ref: "#/$defs/N" } }] }
 ---
 kind: Self.Router
 metadata: { name: router }
-handler: { leaf: 1 }
+handler: [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]

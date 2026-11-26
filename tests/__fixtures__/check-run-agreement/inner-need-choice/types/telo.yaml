@@ -1,0 +1,9 @@
+# The need type the inner library asks for and the outer one fulfils.
+kind: Telo.Library
+metadata: { name: InnerNeedChoiceTypes }
+exports: { kinds: [Database] }
+---
+kind: Telo.NeedType
+metadata: { name: Database }
+fields: { url: { type: string } }
+required: [url]

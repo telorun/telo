@@ -1,6 +1,7 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import type { LoadedFile } from "./loaded-types.js";
 import { foldIntegrity } from "./sources/integrity.js";
+import { importFieldRefusals } from "./loader-expansion-refusals.js";
 import { isModuleKind } from "./module-kinds.js";
 import type { DocumentPosition } from "./position-metadata.js";
 import type { PositionIndex } from "./types.js";
@@ -36,31 +37,52 @@ export function inlineImportManifests(
   const out: SyntheticImport[] = [];
   for (const [alias, value] of Object.entries(raw as Record<string, unknown>)) {
     const scalar = typeof value === "string";
-    const entry = scalar
-      ? { source: value as string }
-      : value && typeof value === "object" && !Array.isArray(value)
-        ? (value as Record<string, unknown>)
-        : undefined;
-    if (!entry || typeof entry.source !== "string") continue;
+    const entry = desugaredEntry(alias, value);
+    if (!entry) continue;
 
     // The object form carries integrity as a sibling `integrity:` field; fold it
     // into the source string as a `#sha256-...` fragment so every downstream
     // consumer sees a single representation (the scalar form already inlines it).
-    const source = foldIntegrity(entry.source, entry.integrity);
+    const source = foldIntegrity(entry.source as string, entry.integrity);
 
-    const manifest = {
-      kind: "Telo.Import",
-      metadata: { name: alias },
-      source,
-      ...(entry.variables !== undefined ? { variables: entry.variables } : {}),
-      ...(entry.secrets !== undefined ? { secrets: entry.secrets } : {}),
-      ...(entry.resources !== undefined ? { resources: entry.resources } : {}),
-      ...(entry.needs !== undefined ? { needs: entry.needs } : {}),
-      ...(entry.runtime !== undefined ? { runtime: entry.runtime } : {}),
-      ...(entry.logging !== undefined ? { logging: entry.logging } : {}),
-    } as unknown as ResourceManifest;
+    const manifest: Record<string, unknown> = { kind: "Telo.Import", metadata: { name: alias }, source };
+    for (const field of CARRIED_IMPORT_FIELDS) {
+      if (entry[field] !== undefined) manifest[field] = entry[field];
+    }
+    out.push({ manifest: manifest as unknown as ResourceManifest, position: synthPosition(modulePosition, alias, scalar) });
+  }
+  return out;
+}
 
-    out.push({ manifest, position: synthPosition(modulePosition, alias, scalar) });
+/** The fields of an object-form entry its desugared `Telo.Import` carries. */
+const CARRIED_IMPORT_FIELDS = ["variables", "secrets", "resources", "needs", "runtime", "logging"] as const;
+
+/** An `imports:` entry as the desugarer reads it, or undefined for one it
+ *  skips: no string `source`, a tagged integrity, or a splice. */
+function desugaredEntry(alias: string, value: unknown): Record<string, unknown> | undefined {
+  const entry =
+    typeof value === "string"
+      ? { source: value }
+      : value && typeof value === "object" && !Array.isArray(value)
+        ? (value as Record<string, unknown>)
+        : undefined;
+  if (!entry || typeof entry.source !== "string") return undefined;
+  // A tagged integrity, or a splice, is refused by the parse; the entry is read no further.
+  if (importFieldRefusals(entry, alias, ["integrity"]).length > 0) return undefined;
+  return entry;
+}
+
+/** The `imports.<alias>.<field>` positions of a module document that its
+ *  desugared imports carry, so each is judged at its `Telo.Import`; every other
+ *  field of an entry (`source`, `integrity`) is read by the desugarer alone. */
+export function carriedImportPaths(moduleManifest: ResourceManifest): string[] {
+  const raw = (moduleManifest as { imports?: unknown }).imports;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const [alias, value] of Object.entries(raw as Record<string, unknown>)) {
+    const entry = desugaredEntry(alias, value);
+    if (!entry) continue;
+    for (const field of CARRIED_IMPORT_FIELDS) if (entry[field] !== undefined) out.push(`imports.${alias}.${field}`);
   }
   return out;
 }

@@ -63,7 +63,7 @@ metadata: { name: forwardPayloadMismatch }
 source: ./__fixtures__/forward-non-fitting.yaml
 expect:
   errors:
-    - { code: CEL_TYPE_ERROR, message: "/email: type mismatch" }
+    - { code: CEL_TYPE_ERROR, message: "expects at '/email': type mismatch" }
 ---
 kind: Assert.Manifest
 metadata: { name: plainSchema }

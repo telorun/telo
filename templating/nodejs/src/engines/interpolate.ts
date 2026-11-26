@@ -1,6 +1,6 @@
-import { CelEnvironment, CelEvaluationError, celTypeNameOf, typeValueName, type CelNode } from "@telorun/cel";
+import { admitsNull, CelEnvironment, CelEvaluationError, celTypeNameOf, typeValueName, type CelNode, type CelType } from "@telorun/cel";
 import type { CompiledValue } from "@telorun/sdk";
-import { nullableValueChain } from "../cel/analyze.js";
+import { plainDottedChain } from "../cel/analyze.js";
 import { literalFragments, type InterpolationHole } from "../cel/interpolation-holes.js";
 import { celVerdictError, type CelAnalyzeResult, type CelDiagnostic } from "../cel/verdict-codes.js";
 import type { AnalyzeEnv, TemplatingEngine } from "../engine.js";
@@ -50,7 +50,7 @@ export const interpolateEngine: TemplatingEngine = {
   },
 
   analyze(source, env) {
-    return analyzeHoles(source, env, (hole, result, ast) => holeVerdict(hole, result, ast, env));
+    return analyzeHoles(source, env, (hole, result, ast, checkedType) => holeVerdict(hole, result, ast, checkedType, env));
   },
 
   producedType() {
@@ -72,10 +72,12 @@ function holeVerdict(
   hole: InterpolationHole,
   result: CelAnalyzeResult,
   ast: CelNode | undefined,
+  checkedType: CelType | undefined,
   env: AnalyzeEnv,
 ): readonly CelDiagnostic[] {
-  if (ast && env.contextSchema) {
-    const chain = nullableValueChain(ast, env.contextSchema as Record<string, any>);
+  // A plain chain the engine types as a value or null.
+  if (ast && checkedType?.kind === "union" && admitsNull(checkedType)) {
+    const chain = plainDottedChain(ast);
     if (chain !== null) {
       return [
         {
@@ -87,7 +89,8 @@ function holeVerdict(
       ];
     }
   }
-  if (result.type === undefined || convertibleTypes(env.celEnv).has(result.type)) return [];
+  // `!interpolate` joins `string(<hole>)`: the hole converts exactly when that call resolves.
+  if (checkedType === undefined || env.celEnv.convertsToString(checkedType)) return [];
   return [
     {
       code: "INTERPOLATION_HOLE_NOT_CONVERTIBLE",
@@ -96,23 +99,6 @@ function holeVerdict(
         `Convert it inside the hole (e.g. join a list, or read the field you meant), or write the whole value as !cel.`,
     },
   ];
-}
-
-const CONVERTIBLE = new WeakMap<CelEnvironment, ReadonlySet<string>>();
-
-/** The types a `string()` overload of `env` accepts, `dyn` among them — read
- *  off the registered overloads, so the check is the one evaluation applies. */
-function convertibleTypes(env: CelEnvironment): ReadonlySet<string> {
-  const cached = CONVERTIBLE.get(env);
-  if (cached) return cached;
-  const types = new Set<string>(["dyn"]);
-  for (const fn of env.definitions().functions) {
-    if (fn.name === "string" && fn.receiverType === null && fn.parameters.length === 1) {
-      types.add(fn.parameters[0]!);
-    }
-  }
-  CONVERTIBLE.set(env, types);
-  return types;
 }
 
 type Conversion = (value: unknown, hole: InterpolationHole, source: string) => string;

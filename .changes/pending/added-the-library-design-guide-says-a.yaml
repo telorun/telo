@@ -1,0 +1,4 @@
+units:
+  apps/hub: Added
+body: The library design guide says a library input typed `Text` is judged in the
+  importer's language and read by the library as that importer's `TextRecord`.

@@ -207,6 +207,7 @@ export {
   schemaReferenceParts,
 } from "./schema-reference.js";
 export type { SchemaReferenceParts, SchemaReferenceTarget } from "./schema-reference.js";
+export { authoredSchemaRef } from "./authored-schema-refs.js";
 export type { CompletedWhenProblem } from "./completed-when-slot.js";
 export {
   coReferrerScopedMessage,
@@ -362,6 +363,16 @@ export type {
   CapabilityRosterEntry,
 } from "./capability-roster.js";
 export type { TemplateTarget, TemplateTargetProblem } from "./template-targets.js";
+// A schema recursing in place, refused by `telo check` and by the kernel's
+// registration guards from one rule.
+export { inPlaceCycleMessage, SCHEMA_IN_PLACE_CYCLE, type InPlaceHop } from "./schema-in-place-cycle.js";
+export {
+  callableInstanceSchemaDocuments,
+  localInPlaceCycles,
+  moduleInputSchemaDocuments,
+  shapeInPlaceCycle,
+  type DocumentCycle,
+} from "./validated-schemas.js";
 // The built-in vocabulary as the `Telo.Builtins` archive: the bytes this build
 // renders, its one reader, and the slicing `telo builtins` prints with.
 export { BUILTIN_VOCABULARY_ARCHIVE } from "./builtin-vocabulary/index.js";
@@ -769,9 +780,21 @@ export {
   producesTextRecord,
   relativePointerOf,
   textFragmentOf,
+  textParameterFragment,
   textSites,
   UNDETERMINED_LANGUAGE,
 } from "./text-slot.js";
+export {
+  moduleInputBlock,
+  recordsDifferOnlyInLang,
+  textOrRecordSchema,
+  textParametersOf,
+  textParametersOfBlock,
+  textRecordIdentity,
+  textRecordOf,
+  textRecordSchema,
+} from "./text-parameter.js";
+export type { LibraryTextParameter, TextParameterBlock } from "./text-parameter.js";
 export type {
   TextExpressionSite,
   TextFragment,
@@ -859,7 +882,7 @@ export type {
 } from "./topology-role.js";
 export { topologyRoleProblems } from "./validate-topology-roles.js";
 export type { TopologyRoleProblem } from "./validate-topology-roles.js";
-export { stepValueSlotPaths } from "./step-bodies.js";
+export { isWithinSlot, stepValueSlotPaths, stepValueSlots } from "./step-bodies.js";
 export { readDeprecation } from "./deprecation.js";
 export type { Deprecation } from "./deprecation.js";
 export {
@@ -1100,11 +1123,18 @@ export {
   SCHEMA_VALIDATION_CONFIGURATIONS,
   schemaNestingExceededMessage,
   schemaNestingExceededSentence,
+  assertValueDepth,
+  unfinishedValidationOf,
   unlessOverflow,
   VALIDATION_UNFINISHED,
   validateAgainstSchema,
   validateAgainstSchemaWithDefaults,
+  VALUE_DEPTH_EXCEEDED,
+  ValueDepthExceededError,
+  withinValueDepth,
 } from "./schema-validation.js";
+export { MAX_VALUE_DEPTH, nestsPastValueDepth, type OwnValuePositions } from "./value-depth.js";
+export { moduleInputValuePositions, ownValuePositions } from "./own-value-positions.js";
 export type {
   CreateAjvOptions,
   SchemaAjv,

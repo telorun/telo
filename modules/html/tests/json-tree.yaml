@@ -51,7 +51,7 @@ steps:
         publicId: -//W3C//DTD HTML 4.01//EN
         systemId: http://www.w3.org/TR/html4/strict.dtd
   - name: body
-    value: !cel "steps.parse.result.nodes[1].children[1]"
+    value: !cel "steps.parse.result.nodes[1].?children.value()[1]"
   - name: assertParagraph
     invoke: { kind: Assert.Equals }
     inputs:

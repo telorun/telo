@@ -1,4 +1,5 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
+import { recordDocumentPlaces } from "./schema-provenance.js";
 import { isExpansionSentinel } from "@telorun/templating";
 import { AliasResolver } from "./alias-resolver.js";
 import type { AnalysisRegistry } from "./analysis-registry.js";
@@ -90,6 +91,8 @@ export function registerDefinitions(
   moduleDocuments: readonly ModuleDocuments[] = [],
 ): DefinitionRegistration {
   registrationObserver?.();
+  // Where every schema node the analysis may hand the CEL engine is written.
+  for (const manifest of manifests) recordDocumentPlaces(manifest);
   const plane = manifests.filter((m) => !isExpansionSentinel(m));
   const ctx = registry._context();
   const aliases = ctx.aliases!;

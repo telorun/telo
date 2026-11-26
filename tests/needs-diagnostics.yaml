@@ -5,8 +5,7 @@ metadata:
   description: |
     What `telo check` refuses about need types, needs and their supply that the
     agreement suite does not already pin, each by its own code.
-imports:
-  Assert: ../modules/assert
+imports: { Assert: ../modules/assert }
 targets:
   - !ref fieldReads
   - !ref needTypeDeclaration
@@ -25,8 +24,7 @@ expect:
   errors:
     - code: CEL_UNKNOWN_FIELD
       message: "'resources.databaseAccess.host' is not defined (available: url, schema)"
-    - code: CEL_NULLABLE_ACCESS
-      message: "'resources.cache' may be null"
+    - { code: CEL_NULLABLE_ACCESS, message: "'resources.cache' may be null" }
 ---
 # A sensitive field is redacted by its text, so it must hold text; `required:`
 # lists fields the type declares.
@@ -35,8 +33,7 @@ metadata: { name: needTypeDeclaration }
 source: ./__fixtures__/needs/diagnostics/bad-type/telo.yaml
 expect:
   errors:
-    - code: SENSITIVE_ANNOTATION_INVALID
-      message: "requires a string field"
+    - { code: SENSITIVE_ANNOTATION_INVALID, message: "requires a string field" }
     - code: NEED_FIELD_UNDECLARED
       message: "'required' lists 'host', which is not one of its fields"
 ---
@@ -50,14 +47,12 @@ expect:
   errors:
     - code: NEED_FIELD_UNDECLARED
       message: "field 'host' is not declared by need type 'NeedFixtures.DatabaseAccess'"
-    - code: NEED_SLOT_MISMATCH
-      message: "does not yield the required field 'url'"
-    - code: SCHEMA_VIOLATION
-      message: "field 'schema' does not match need type"
+    - { code: NEED_SLOT_MISMATCH, message: "does not yield the required field 'url'" }
+    - { code: SCHEMA_VIOLATION, message: "field 'schema' does not match need type" }
     - code: UNRESOLVED_REFERENCE
       message: "need 'cache' → 'archiveDatabase' names no need or fulfilment"
     - code: CEL_TYPE_ERROR
-      message: "CEL at 'needs.databaseAccess.url' returns 'int' but the field expects 'string'"
+      message: "CEL at 'needs.databaseAccess.url' reads 'variables.databasePort', declared 'integer', but the field expects 'string'"
 ---
 # A fulfilment is a provider: nothing starts it.
 kind: Assert.Manifest
@@ -65,8 +60,7 @@ metadata: { name: fulfilmentAsTarget }
 source: ./__fixtures__/needs/diagnostics/target.yaml
 expect:
   errors:
-    - code: REFERENCE_KIND_MISMATCH
-      message: "it declares 'Telo.Provider'"
+    - { code: REFERENCE_KIND_MISMATCH, message: "it declares 'Telo.Provider'" }
 ---
 # A need type its author deprecated warns where a fulfilment of it is declared.
 kind: Assert.Manifest

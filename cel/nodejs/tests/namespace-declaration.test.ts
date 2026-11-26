@@ -127,11 +127,21 @@ describe("a declaration that withholds its parameter list", () => {
 
   it("is listed by what it declares, never as a function of no arguments", () => {
     const listed = withheld().definitions().namespaces[0]!;
-    expect(listed.functions).toEqual(["total(…): double"]);
+    expect(listed.functions).toEqual([{ declaration: "total(…): double" }]);
     // A full declaration still prints its signature.
-    expect(closed().definitions().namespaces[0]!.functions).toEqual([
-      "total(double, int): double",
+    expect(closed().definitions().namespaces[0]!.functions).toEqual([{ declaration: "total(double, int): double" }]);
+  });
+
+  it("lists a result declared as a schema with its type, which a signature's entry does not carry", () => {
+    const schema = { type: "object", properties: { amount: { type: "integer" } } };
+    const held = new CelEnvironment().registerNamespace("Alias", [
+      { name: "rows", returns: { schema } },
+      { signature: "total(double): double" },
     ]);
+    const [rows, total] = held.definitions().namespaces[0]!.functions;
+    expect(rows).toEqual({ declaration: "rows(…): map", resultType: held.check("Alias.rows()").type });
+    expect(rows!.resultType).toMatchObject({ kind: "record" });
+    expect(total).toEqual({ declaration: "total(double): double" });
   });
 
   it("takes a CelType as readily as its text", () => {
@@ -206,5 +216,23 @@ describe("a declaration naming a type nothing is registered under", () => {
     expect(() => environment.registerNamespace("Alias", [{ name: "nameless", returns: "<int>" }])).toThrow(
       CelTypeExpressionError,
     );
+  });
+});
+
+describe("a result declared as a JSON Schema document", () => {
+  it("reports what its conversion could not judge under <namespace>.<name>, among the variables by name", () => {
+    const environment = new CelEnvironment()
+      .registerVariable("zeta", { schema: { not: {} } })
+      .registerVariable("Alpha", { schema: { unevaluatedProperties: {} } })
+      .registerNamespace("Ns", [
+        { name: "item", returns: { schema: { type: "object", properties: { a: { unevaluatedProperties: {} } } } } },
+        { name: "plain", returns: { schema: { type: "string" } } },
+      ]);
+    expect(environment.check("Ns.item().a").typeName).toBe("dyn");
+    expect(environment.schemaReports().map((report) => [report.name, report.unjudged.map((node) => node.pointer)])).toEqual([
+      ["Alpha", [""]],
+      ["Ns.item", ["/properties/a"]],
+      ["zeta", [""]],
+    ]);
   });
 });

@@ -1,0 +1,10 @@
+# A kind document nesting exactly 100 levels deep from its own root — itself,
+# its schema and 98 arrays in a `const` — the most a validation follows:
+# validated, and accepted.
+kind: Telo.Application
+metadata: { name: NestingAtLimitApp, version: 1.0.0 }
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Type
+schema: { const: [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]] }

@@ -17,10 +17,15 @@
 #![allow(dead_code)]
 
 use serde_json::{Map, Value};
+use std::sync::Arc;
+
 use telorun_cel::{
-    has_unparsed, serialize_tree, trees_equal, CelEnvironment, CelEnvironmentOptions, CelEvaluateError, CelValue,
-    EvaluateOptions, FieldDeclaration, FunctionMetadata, NominalOperatorDeclaration, NominalTypeDefinition, PropertyMap,
-    ResolvedCall, TypeDeclaration,
+    has_unparsed, read_json_text, serialize_tree, trees_equal, AssumedCondition, CelEnvironment, CelEnvironmentOptions,
+    CelEvaluateError, CelValue, CheckAssumption, CheckOptions, EvaluateOptions, FieldDeclaration, FunctionMetadata, JsonSchemaDocument, JsonValue,
+    NamespaceFunctionDeclaration, NamespaceOptions, NominalOperatorDeclaration, NominalTypeDefinition, PropertyMap,
+    ResolvedCall, SchemaDependency, SchemaOwnTypeAgreement, SchemaRegistrationReport, SchemaTypeAnswer,
+    SchemaTypeResolver, TypeDeclaration,
+    WithheldReturns, schema_own_types_agree, types_equal,
 };
 
 use super::conformance_error::{check_refusal, language_cel_codes, recorded_error, recorded_range};
@@ -30,7 +35,7 @@ use super::conformance_value::{encode_conformance_value, json_deep_equal, json_t
 pub const DRIVEN_FILE: &str = "language.json";
 
 /// How many rows the file holds. A row deleted leaves every other count true, so it is pinned.
-pub const LANGUAGE_ROWS: usize = 1882;
+pub const LANGUAGE_ROWS: usize = 2189;
 
 /// The prefix of an authored row's id: a row cel-spec's import did not produce.
 pub const AUTHORED_ROW_PREFIX: &str = "telo/";
@@ -50,8 +55,23 @@ pub const DEVIATION_REASONS: [&str; 4] = [
 /// The parts of cel-spec's outcome a `deviation.celSpec` may state.
 pub const CEL_SPEC_PARTS: [&str; 4] = ["value", "error", "type", "unknown"];
 
-const ROW_KEYS: [&str; 9] =
-    ["id", "source", "provenance", "types", "declarations", "functions", "bindings", "expect", "deviation"];
+const ROW_KEYS: [&str; 14] = [
+    "id",
+    "source",
+    "provenance",
+    "types",
+    "declarations",
+    "documents",
+    "namedTypes",
+    "functions",
+    "namespaces",
+    "variants",
+    "bindings",
+    "assumptions",
+    "expect",
+    "deviation",
+];
+const ASSUMPTION_KEYS: [&str; 3] = ["condition", "holds", "rebound"];
 /// What a `types` entry may say: a type definition's own keys, and no implementation.
 const TYPE_KEYS: [&str; 11] = [
     "name",
@@ -198,18 +218,258 @@ fn register_functions(environment: &mut CelEnvironment, row: &Value) -> Result<(
     Ok(())
 }
 
-/// The environment a row is CHECKED in: its types, its declarations and its functions.
-pub fn check_environment(base: &CelEnvironment, row: &Value) -> Result<CelEnvironment, String> {
-    let mut environment = with_types(base, row)?;
+/// A schema as the engine reads one: its JSON text read back, an object's keys in
+/// ECMAScript's own-property order as `JSON.parse` leaves them.
+fn schema_node(node: &Value) -> Result<Arc<JsonValue>, String> {
+    let text = serde_json::to_string(node).map_err(|refusal| refusal.to_string())?;
+    read_json_text(&text).map_err(|refusal| format!("{} is not JSON text the engine reads: {refusal:?}", json_text(node)))
+}
+
+/// A declaration typing a name from a schema, `{ "schema": … }`.
+fn declared_schema(node: &Value) -> Option<&Value> {
+    node.as_object().filter(|held| held.len() == 1).and_then(|held| held.get("schema"))
+}
+
+/// The documents a row hands over, each by the row's name for it: a declaration's schema
+/// under the declared name, a namespaced function's result under `<namespace>.<name>`, and
+/// each `documents` entry under its key.
+pub type RowDocuments = Vec<(Arc<JsonValue>, String)>;
+
+/// The row's `documents`, read, and its resolver over them and its `namedTypes`: a node
+/// whose `$ref` is exactly a key of `namedTypes` is that named type, and one whose `$ref` is
+/// exactly a key of `documents` is read as that document.
+fn row_documents(row: &Value) -> Result<(RowDocuments, Option<SchemaTypeResolver>), String> {
+    let mut named: RowDocuments = Vec::new();
+    let mut documents: Vec<(String, Arc<JsonValue>)> = Vec::new();
+    for (name, document) in row.get("documents").and_then(Value::as_object).into_iter().flatten() {
+        let node = schema_node(document)?;
+        named.push((Arc::clone(&node), name.clone()));
+        documents.push((name.clone(), node));
+    }
+    let mut named_types: Vec<(String, String, Vec<String>)> = Vec::new();
+    for (reference, answer) in row.get("namedTypes").and_then(Value::as_object).into_iter().flatten() {
+        let name = text_of(answer, "name").ok_or("a `namedTypes` entry names no type")?;
+        let args = answer
+            .get("args")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .map(|arg| arg.as_str().map(String::from).ok_or("a `namedTypes` argument is not type text"))
+            .collect::<Result<Vec<_>, _>>()?;
+        named_types.push((reference.clone(), name.into(), args));
+    }
+    if row.get("documents").is_none() && row.get("namedTypes").is_none() {
+        return Ok((named, None));
+    }
+    let resolver: SchemaTypeResolver = Arc::new(move |document: &JsonSchemaDocument| {
+        let JsonValue::Object(entries) = &*document.node else { return None };
+        let JsonValue::String(reference) = &**entries.get("$ref")? else { return None };
+        if let Some((_, name, args)) = named_types.iter().find(|(held, _, _)| held == reference) {
+            return Some(SchemaTypeAnswer::Named { name: name.clone(), args: args.clone() });
+        }
+        documents
+            .iter()
+            .find(|(name, _)| name == reference)
+            .map(|(_, node)| SchemaTypeAnswer::Document(JsonSchemaDocument { node: Arc::clone(node), root: None }))
+    });
+    Ok((named, Some(resolver)))
+}
+
+fn resolving(base: &CelEnvironment, resolver: Option<SchemaTypeResolver>) -> CelEnvironment {
+    match resolver {
+        Some(resolver) => base.clone_with_options(CelEnvironmentOptions {
+            resolve_schema_type: Some(resolver),
+            ..base.options().clone()
+        }),
+        None => base.clone(),
+    }
+}
+
+/// A namespaced function's result declared as a schema, `{ "schema": … }`, where it is.
+fn result_schema(entry: &Value) -> Option<&Value> {
+    entry.get("returns").and_then(declared_schema)
+}
+
+/// The row's namespaces, each closed, in the order the row writes them, beside the result
+/// schemas they hand over.
+fn register_namespaces(environment: &mut CelEnvironment, row: &Value) -> Result<RowDocuments, String> {
+    let mut named: RowDocuments = Vec::new();
+    for (namespace, functions) in row.get("namespaces").and_then(Value::as_object).into_iter().flatten() {
+        let mut declared = Vec::new();
+        for entry in functions.as_array().ok_or("a namespace holds no list of functions")? {
+            if let Some(signature) = text_of(entry, "signature") {
+                declared.push(NamespaceFunctionDeclaration::signature(signature));
+                continue;
+            }
+            let name = text_of(entry, "name").ok_or("a namespaced function has neither `signature` nor `name`")?;
+            let returns = match (result_schema(entry), text_of(entry, "returns")) {
+                (Some(schema), _) => {
+                    let node = schema_node(schema)?;
+                    named.push((Arc::clone(&node), format!("{namespace}.{name}")));
+                    WithheldReturns::Schema(JsonSchemaDocument { node, root: None })
+                }
+                (None, Some(text)) => WithheldReturns::Text(text.into()),
+                (None, None) => return Err(format!("the namespaced function {name:?} has no `returns`")),
+            };
+            declared.push(NamespaceFunctionDeclaration::withheld(name, returns));
+        }
+        environment
+            .register_namespace(namespace, declared, NamespaceOptions::default())
+            .map_err(|refusal| format!("the namespace {namespace:?} cannot be registered: {refusal}"))?;
+    }
+    Ok(named)
+}
+
+/// The environment a row is CHECKED in: its types, its declarations, its functions and its
+/// namespaces, beside the documents it handed over.
+pub fn check_environment(base: &CelEnvironment, row: &Value) -> Result<(CelEnvironment, RowDocuments), String> {
+    let (mut named, resolver) = row_documents(row)?;
+    let mut environment = with_types(&resolving(base, resolver), row)?;
     if let Some(declarations) = row.get("declarations").and_then(Value::as_object) {
         for (name, declaration) in declarations {
+            let declared = match declared_schema(declaration) {
+                Some(schema) => {
+                    let node = schema_node(schema)?;
+                    named.push((Arc::clone(&node), name.clone()));
+                    TypeDeclaration::Schema(JsonSchemaDocument { node, root: None })
+                }
+                None => type_declaration(declaration)?,
+            };
             environment
-                .register_variable(name, type_declaration(declaration)?, None)
+                .register_variable(name, declared, None)
                 .map_err(|refusal| format!("the variable {name:?} cannot be declared: {refusal}"))?;
         }
     }
     register_functions(&mut environment, row)?;
-    Ok(environment)
+    named.extend(register_namespaces(&mut environment, row)?);
+    Ok((environment, named))
+}
+
+/// Whether the row types a name or a namespaced function's result from a schema, so its
+/// check lists the schema nodes it read.
+fn reads_schemas(row: &Value) -> bool {
+    let declared = row
+        .get("declarations")
+        .and_then(Value::as_object)
+        .is_some_and(|declarations| declarations.values().any(|declaration| declared_schema(declaration).is_some()));
+    declared
+        || row.get("namespaces").and_then(Value::as_object).is_some_and(|namespaces| {
+            namespaces.values().filter_map(Value::as_array).flatten().any(|entry| result_schema(entry).is_some())
+        })
+}
+
+/// Per listed node of a document the row varies, whether its variant agrees with it there.
+fn variant_agreement(row: &Value, named: &RowDocuments, dependencies: &Value) -> Result<Value, String> {
+    let variants = row.get("variants").and_then(Value::as_object).ok_or("carries no `variants`")?;
+    let (_, resolver) = row_documents(row)?;
+    let agreement = SchemaOwnTypeAgreement { resolve_schema_type: resolver, ..SchemaOwnTypeAgreement::default() };
+    let mut out = Vec::new();
+    for dependency in dependencies.as_array().into_iter().flatten() {
+        let document = text_of(dependency, "document").ok_or("a dependency names no document")?;
+        let pointer = text_of(dependency, "pointer").ok_or("a dependency has no pointer")?;
+        let Some(variant) = variants.get(document) else { continue };
+        let (original, _) = named.iter().find(|(_, name)| name == document).ok_or("a dependency names no document handed over")?;
+        let agrees = schema_own_types_agree(
+            &JsonSchemaDocument { node: Arc::clone(original), root: None },
+            &JsonSchemaDocument { node: schema_node(variant)?, root: None },
+            pointer,
+            &agreement,
+        );
+        let mut entry = Map::new();
+        entry.insert("document".into(), Value::String(document.into()));
+        entry.insert("pointer".into(), Value::String(pointer.into()));
+        entry.insert("agrees".into(), Value::Bool(agrees));
+        out.push(Value::Object(entry));
+    }
+    Ok(Value::Array(out))
+}
+
+/// What one registration's conversion could not judge, and the references it re-entered.
+fn recorded_report(report: &SchemaRegistrationReport) -> Value {
+    let text = |held: &Option<String>| held.clone().map(Value::String);
+    let unjudged = report
+        .unjudged
+        .iter()
+        .map(|node| {
+            let mut entry = Map::new();
+            entry.insert("pointer".into(), Value::String(node.pointer.clone()));
+            if let Some(through) = text(&node.through_reference) {
+                entry.insert("throughReference".into(), through);
+            }
+            entry.insert("keywords".into(), Value::Array(node.keywords.iter().map(|keyword| Value::String((*keyword).into())).collect()));
+            if let Some(name) = text(&node.type_name) {
+                entry.insert("typeName".into(), name);
+            }
+            entry.insert("reason".into(), Value::String(node.reason.as_str().into()));
+            Value::Object(entry)
+        })
+        .collect();
+    let recursive = report
+        .recursive
+        .iter()
+        .map(|node| {
+            let mut entry = Map::new();
+            entry.insert("pointer".into(), Value::String(node.pointer.clone()));
+            if let Some(through) = text(&node.through_reference) {
+                entry.insert("throughReference".into(), through);
+            }
+            if let Some(reference) = text(&node.reference) {
+                entry.insert("reference".into(), reference);
+            }
+            Value::Object(entry)
+        })
+        .collect();
+    let mut out = Map::new();
+    out.insert("name".into(), Value::String(report.name.clone()));
+    out.insert("unjudged".into(), Value::Array(unjudged));
+    out.insert("recursive".into(), Value::Array(recursive));
+    Value::Object(out)
+}
+
+fn recorded_dependencies(named: &RowDocuments, dependencies: &[SchemaDependency]) -> Result<Value, String> {
+    let mut out = Vec::with_capacity(dependencies.len());
+    for dependency in dependencies {
+        out.push(recorded_node(named, dependency)?);
+    }
+    Ok(Value::Array(out))
+}
+
+fn recorded_node(named: &RowDocuments, node: &SchemaDependency) -> Result<Value, String> {
+    let (_, name) = named
+        .iter()
+        .find(|(document, _)| Arc::ptr_eq(document, &node.document))
+        .ok_or("the check named a document the row did not hand over")?;
+    let mut entry = Map::new();
+    entry.insert("document".into(), Value::String(name.clone()));
+    entry.insert("pointer".into(), Value::String(node.pointer.clone()));
+    Ok(Value::Object(entry))
+}
+
+/// Every schema node a verdict or the result names is one the same check read.
+fn named_nodes_listed(dependencies: &[SchemaDependency], named: &[&SchemaDependency]) -> Result<(), String> {
+    match named.iter().find(|node| !dependencies.contains(node)) {
+        Some(node) => Err(format!("the check names the schema node {:?}, which it does not list as read", node.pointer)),
+        None => Ok(()),
+    }
+}
+
+/// Every schema a row declares a name by is one an intersection with itself leaves as it is:
+/// `allOf: [S, S]`, read against S's document, converts to a type equal to S's.
+fn self_intersections_equal(environment: &CelEnvironment, named: &RowDocuments, row: &Value) -> Result<(), String> {
+    let declared = environment.definitions().variables;
+    for name in row.get("declarations").and_then(Value::as_object).into_iter().flatten().filter_map(|(name, declaration)| declared_schema(declaration).map(|_| name)) {
+        let (schema, _) = named.iter().find(|(_, held)| held == name).ok_or("a declared schema the row did not hand over")?;
+        let twice = JsonValue::Object(PropertyMap::from_iter([("allOf", Arc::new(JsonValue::Array(vec![Arc::clone(schema), Arc::clone(schema)])))]));
+        let mut met = environment.clone();
+        met.register_variable(name, TypeDeclaration::Schema(JsonSchemaDocument { node: Arc::new(twice), root: Some(Arc::clone(schema)) }), None)
+            .map_err(|refusal| format!("the variable {name:?} cannot be declared: {refusal}"))?;
+        let met = met.definitions().variables.into_iter().find(|variable| &variable.name == name).ok_or("a declared name not listed")?;
+        let once = declared.iter().find(|variable| &variable.name == name).ok_or("a declared name not listed")?;
+        if !types_equal(&met.ty, &once.ty) {
+            return Err(format!("the schema of {name:?} met with itself converts to another type"));
+        }
+    }
+    Ok(())
 }
 
 /// The environment a row is EVALUATED in: its types and its functions, and none of its
@@ -217,8 +477,10 @@ pub fn check_environment(base: &CelEnvironment, row: &Value) -> Result<CelEnviro
 /// resolves to it answers `unbound_function`, naming the function and the signature it
 /// resolved to.
 pub fn evaluation_environment(base: &CelEnvironment, row: &Value) -> Result<CelEnvironment, String> {
-    let mut environment = with_types(base, row)?;
+    let resolver = if row.get("namespaces").is_some() { row_documents(row)?.1 } else { None };
+    let mut environment = with_types(&resolving(base, resolver), row)?;
     register_functions(&mut environment, row)?;
+    register_namespaces(&mut environment, row)?;
     Ok(environment)
 }
 
@@ -260,10 +522,54 @@ fn recorded_call(call: &ResolvedCall) -> Value {
     if let Some(throws) = &call.throws {
         out.insert("throws".into(), strings(throws));
     }
-    if let Some(argument_types) = &call.argument_types {
-        out.insert("argumentTypes".into(), strings(argument_types));
+    // The argument types themselves are recorded by the names they print as.
+    if let Some(argument_type_names) = &call.argument_type_names {
+        out.insert("argumentTypeNames".into(), strings(argument_type_names));
     }
     Value::Object(out)
+}
+
+/// The row's assumptions, each condition a source the environment checking it parses.
+fn assumptions_of(row: &Value) -> Vec<CheckAssumption> {
+    row.get("assumptions")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|assumption| CheckAssumption {
+            condition: AssumedCondition::Source(text_of(assumption, "condition").unwrap_or_default().to_string()),
+            holds: assumption.get("holds").and_then(Value::as_bool).unwrap_or_default(),
+            rebound: assumption
+                .get("rebound")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(String::from)
+                .collect(),
+        })
+        .collect()
+}
+
+/// Why a row's `assumptions` break the format: a non-empty list of `{ condition, holds, rebound? }`.
+fn assumption_problems(raw: &Map<String, Value>) -> Vec<String> {
+    let Some(assumptions) = raw.get("assumptions") else { return Vec::new() };
+    let Some(listed) = assumptions.as_array().filter(|listed| !listed.is_empty()) else {
+        return vec!["carries `assumptions` that is not a non-empty list".into()];
+    };
+    listed
+        .iter()
+        .filter(|assumption| {
+            !assumption.as_object().is_some_and(|fields| {
+                unknown_keys(fields, &ASSUMPTION_KEYS).is_empty()
+                    && fields.get("condition").is_some_and(Value::is_string)
+                    && fields.get("holds").is_some_and(Value::is_boolean)
+                    && fields
+                        .get("rebound")
+                        .is_none_or(|rebound| rebound.as_array().is_some_and(|chains| chains.iter().all(Value::is_string)))
+            })
+        })
+        .map(|assumption| format!("carries an assumption that is not `{{ condition, holds, rebound? }}`: {}", json_text(assumption)))
+        .collect()
 }
 
 /// The engine's whole answer for a row, as the row writes `expect`. The check half runs in
@@ -273,7 +579,11 @@ fn recorded_call(call: &ResolvedCall) -> Value {
 pub fn language_answer(base: &CelEnvironment, row: &Value) -> Result<Value, String> {
     let source = text_of(row, "source").ok_or("has no string `source`")?;
     let activation = activation_of(row)?;
-    let checked = check_environment(base, row)?.check(source);
+    let asked = reads_schemas(row);
+    let (environment, named) = check_environment(base, row)?;
+    let checked = environment
+        .check_with(source, CheckOptions { schema_dependencies: asked, schema_nodes: asked, assumptions: assumptions_of(row) })
+        .map_err(|refusal| refusal.message)?;
     let mut check = Map::new();
     let diagnostics = checked
         .diagnostics
@@ -288,20 +598,60 @@ pub fn language_answer(base: &CelEnvironment, row: &Value) -> Result<Value, Stri
                 replacement.insert("replacement".into(), Value::String(fix.replacement.clone()));
                 out.insert("fix".into(), Value::Object(replacement));
             }
-            Value::Object(out)
+            if let Some(node) = &diagnostic.schema_node {
+                out.insert("schemaNode".into(), recorded_node(&named, node)?);
+            }
+            if diagnostic.absent {
+                out.insert("absent".into(), Value::Bool(true));
+            }
+            Ok(Value::Object(out))
         })
-        .collect();
+        .collect::<Result<_, String>>()?;
     check.insert("diagnostics".into(), Value::Array(diagnostics));
     if checked.diagnostics.is_empty() {
         check.insert("type".into(), Value::String(checked.type_name.clone()));
     }
     check.insert("calls".into(), Value::Array(checked.calls.iter().map(recorded_call).collect()));
+    if asked {
+        let dependencies = checked.schema_dependencies.as_deref().ok_or("the check did not list what it read")?;
+        let origins = checked.result_origins.as_deref().ok_or("the check listed no result origins")?;
+        let mut nodes: Vec<&SchemaDependency> =
+            checked.diagnostics.iter().filter_map(|diagnostic| diagnostic.schema_node.as_ref()).collect();
+        nodes.extend(origins.iter().filter_map(|origin| origin.schema_node.as_ref()));
+        named_nodes_listed(dependencies, &nodes)?;
+        self_intersections_equal(&environment, &named, row)?;
+        let recorded = recorded_dependencies(&named, dependencies)?;
+        let mut recorded_origins = Vec::with_capacity(origins.len());
+        for origin in origins {
+            let mut entry = Map::new();
+            entry.insert("range".into(), recorded_range(origin.range));
+            entry.insert("type".into(), Value::String(origin.type_name.clone()));
+            if let Some(node) = &origin.schema_node {
+                entry.insert("schemaNode".into(), recorded_node(&named, node)?);
+            }
+            recorded_origins.push(Value::Object(entry));
+        }
+        check.insert("resultOrigins".into(), Value::Array(recorded_origins));
+        let agreement = match row.get("variants") {
+            Some(_) => Some(variant_agreement(row, &named, &recorded)?),
+            None => None,
+        };
+        check.insert("schemaDependencies".into(), recorded);
+        if let Some(agreement) = agreement {
+            check.insert("variantAgreement".into(), agreement);
+        }
+    }
+    if row.get("namedTypes").is_some() {
+        check.insert("schemaReports".into(), Value::Array(environment.schema_reports().iter().map(recorded_report).collect()));
+    }
 
     let mut answer = Map::new();
     answer.insert("check".into(), Value::Object(check));
     let environment = evaluation_environment(base, row)?;
     let expression = environment.parse(source);
-    let refusal = environment.check_parsed(&expression).map_err(|refusal| refusal.message)?;
+    let refusal = environment
+        .check_parsed_with(&expression, CheckOptions { assumptions: assumptions_of(row), ..CheckOptions::default() })
+        .map_err(|refusal| refusal.message)?;
     if let Some(first) = refusal.diagnostics.first() {
         answer.insert("error".into(), check_refusal(first).to_json());
         return Ok(Value::Object(answer));
@@ -463,6 +813,10 @@ pub fn row_shape_problems(row: &Value, after_authored: bool) -> Vec<String> {
             None => problems.push("carries `functions` that is not a list".into()),
         }
     }
+    problems.extend(namespace_problems(raw));
+    problems.extend(variant_problems(row, raw));
+    problems.extend(named_type_problems(raw));
+    problems.extend(assumption_problems(raw));
     let Some(expect) = raw.get("expect").and_then(Value::as_object) else {
         problems.push("has no `expect`".into());
         return problems;
@@ -508,6 +862,104 @@ pub fn row_shape_problems(row: &Value, after_authored: bool) -> Vec<String> {
                     }
                 }
             }
+        }
+    }
+    problems
+}
+
+/// Why a row's `namespaces` break the format.
+fn namespace_problems(raw: &Map<String, Value>) -> Vec<String> {
+    let Some(namespaces) = raw.get("namespaces") else { return Vec::new() };
+    let Some(namespaces) = namespaces.as_object().filter(|held| !held.is_empty()) else {
+        return vec!["carries `namespaces` that is not a non-empty map".into()];
+    };
+    let mut problems = Vec::new();
+    for (name, functions) in namespaces {
+        let Some(functions) = functions.as_array() else {
+            problems.push(format!("declares the namespace {} with no list of functions", json_text(&Value::String(name.clone()))));
+            continue;
+        };
+        for entry in functions {
+            let Some(fields) = entry.as_object() else {
+                problems.push(format!(
+                    "declares a namespaced function that is neither `{{ signature }}` nor `{{ name, returns }}`: {}",
+                    json_text(entry)
+                ));
+                continue;
+            };
+            let whole = unknown_keys(fields, &["signature"]).is_empty() && fields.get("signature").is_some_and(Value::is_string);
+            let returns = fields.get("returns");
+            let withheld = unknown_keys(fields, &["name", "returns"]).is_empty()
+                && fields.get("name").is_some_and(Value::is_string)
+                && (returns.is_some_and(Value::is_string)
+                    || returns.and_then(Value::as_object).is_some_and(|held| {
+                        unknown_keys(held, &["schema"]).is_empty() && held.get("schema").is_some_and(Value::is_object)
+                    }));
+            if !whole && !withheld {
+                problems.push(format!(
+                    "declares a namespaced function that is neither `{{ signature }}` nor `{{ name, returns }}`: {}",
+                    json_text(entry)
+                ));
+            }
+        }
+    }
+    problems
+}
+
+/// The row's name for each document it hands over, without reading any.
+fn document_names(row: &Value) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    for (name, declaration) in row.get("declarations").and_then(Value::as_object).into_iter().flatten() {
+        if declared_schema(declaration).is_some() {
+            names.push(name.clone());
+        }
+    }
+    for (namespace, functions) in row.get("namespaces").and_then(Value::as_object).into_iter().flatten() {
+        for entry in functions.as_array().into_iter().flatten() {
+            if let (Some(name), Some(_)) = (text_of(entry, "name"), result_schema(entry)) {
+                names.push(format!("{namespace}.{name}"));
+            }
+        }
+    }
+    names.extend(row.get("documents").and_then(Value::as_object).into_iter().flatten().map(|(name, _)| name.clone()));
+    names
+}
+
+/// Why a row's `namedTypes` break the format: each a `{ name, args? }` of type text.
+fn named_type_problems(raw: &Map<String, Value>) -> Vec<String> {
+    let Some(named_types) = raw.get("namedTypes") else { return Vec::new() };
+    let Some(named_types) = named_types.as_object().filter(|held| !held.is_empty()) else {
+        return vec!["carries `namedTypes` that is not a non-empty map".into()];
+    };
+    let mut problems = Vec::new();
+    for (reference, named) in named_types {
+        let valid = named.as_object().is_some_and(|held| {
+            held.keys().all(|key| key == "name" || key == "args")
+                && held.get("name").is_some_and(Value::is_string)
+                && held.get("args").is_none_or(|args| args.as_array().is_some_and(|args| args.iter().all(Value::is_string)))
+        });
+        if !valid {
+            let quoted = json_text(&Value::String(reference.clone()));
+            problems.push(format!("names the type of {quoted} with a value that is not `{{ name, args? }}`"));
+        }
+    }
+    problems
+}
+
+/// Why a row's `variants` break the format: each names a document the row hands over.
+fn variant_problems(row: &Value, raw: &Map<String, Value>) -> Vec<String> {
+    let Some(variants) = raw.get("variants") else { return Vec::new() };
+    let Some(variants) = variants.as_object().filter(|held| !held.is_empty()) else {
+        return vec!["carries `variants` that is not a non-empty map".into()];
+    };
+    let named = document_names(row);
+    let mut problems = Vec::new();
+    for (name, variant) in variants {
+        let quoted = json_text(&Value::String(name.clone()));
+        if !named.contains(name) {
+            problems.push(format!("varies {quoted}, which names no document the row hands over"));
+        } else if !variant.is_object() {
+            problems.push(format!("varies {quoted} with a value that is not a schema"));
         }
     }
     problems
@@ -650,7 +1102,7 @@ pub fn replay_language_rows(rows: &[Value]) -> LanguageReplayReport {
         report.cel_codes.extend(cel_code_problems(row).into_iter().map(|reason| ReplayFailure { id: id.clone(), reason }));
 
         let environment = match check_environment(&base, row) {
-            Ok(environment) => environment,
+            Ok((environment, _)) => environment,
             Err(problem) => {
                 report.round_trip.push(ReplayFailure { id, reason: problem });
                 continue;

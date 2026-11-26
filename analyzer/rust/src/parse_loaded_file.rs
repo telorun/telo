@@ -137,7 +137,7 @@ pub fn parse_loaded_file(source: &str, requested_url: &str, text: &str) -> Loade
         for misuse in expansion_tag_misuse(document) {
             parse_errors.push(ParseError {
                 document_index,
-                origin: ParseErrorOrigin::Loader { code: misuse.code, message: misuse.message },
+                origin: ParseErrorOrigin::Loader { code: misuse.code, message: misuse.message, path: None },
                 range: Some(range_of(misuse.range)),
             });
         }
@@ -152,7 +152,7 @@ pub fn parse_loaded_file(source: &str, requested_url: &str, text: &str) -> Loade
                 .copied();
             parse_errors.push(ParseError {
                 document_index,
-                origin: ParseErrorOrigin::Loader { code: refusal.code, message: refusal.message },
+                origin: ParseErrorOrigin::Loader { code: refusal.code, message: refusal.message, path: refusal.data_path },
                 range,
             });
         }

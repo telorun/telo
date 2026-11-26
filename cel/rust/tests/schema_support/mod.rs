@@ -97,17 +97,45 @@ pub fn lookup(name: &str, args: &[String]) -> Result<Option<CelType>, CelTypeTex
     Ok(Some(CelType::Nominal(NominalType { name: name.into(), base: Arc::new(INT), args: args.into(), fields: None })))
 }
 
-/// A type with every record's fields written out: `{a: string, ...}` for an open one.
+/// A type with every record's fields written out: `{a: string, ...}` for an open one,
+/// `...: <type>` where its undeclared members are typed, `-name` for a member declared
+/// absent, `/<pattern>/: <type>` for a pattern (`-` where it admits no value), each pattern
+/// part after the first opened by `|` and a part's undeclared members as `|...: <type>`; a
+/// tuple's positions as `[a, b, ...rest]`.
 pub fn described(ty: &CelType) -> String {
     match ty {
         CelType::Record(record) => {
             let mut parts: Vec<String> = record.fields.iter().map(|(name, ty)| format!("{name}: {}", described(ty))).collect();
-            if record.open {
-                parts.push("...".into());
+            parts.extend(record.absent_fields().map(|name| format!("-{name}")));
+            for (part, held) in record.pattern_parts().into_iter().enumerate() {
+                for (at, entry) in held.fields.iter().enumerate() {
+                    let opened = if part > 0 && at == 0 { "|" } else { "" };
+                    parts.push(match &entry.ty {
+                        Some(ty) => format!("{opened}/{}/: {}", entry.pattern, described(ty)),
+                        None => format!("{opened}/{}/: -", entry.pattern),
+                    });
+                }
+                if let Some(additional) = &held.additional_fields {
+                    parts.push(format!("|...: {}", described(additional)));
+                }
+            }
+            match record.additional_fields() {
+                Some(CelType::Dyn) => parts.push("...".into()),
+                Some(additional) => parts.push(format!("...: {}", described(additional))),
+                None => {}
             }
             format!("{}{{{}}}", record.name.as_deref().unwrap_or(""), parts.join(", "))
         }
-        CelType::List(list) => format!("list<{}>", described(&list.element)),
+        CelType::List(list) => match list.prefix_elements() {
+            None => format!("list<{}>", described(&list.element)),
+            Some(prefix) => {
+                let mut parts: Vec<String> = prefix.iter().map(described).collect();
+                if let Some(rest) = list.additional_elements() {
+                    parts.push(format!("...{}", described(rest)));
+                }
+                format!("[{}]", parts.join(", "))
+            }
+        },
         CelType::Map(map) => format!("map<{}, {}>", described(&map.key), described(&map.value)),
         CelType::Optional(optional) => format!("optional<{}>", described(&optional.value)),
         CelType::Union(union) => union.members().iter().map(described).collect::<Vec<_>>().join("|"),

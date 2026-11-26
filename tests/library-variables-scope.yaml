@@ -19,8 +19,7 @@ metadata:
     — are answerable ONLY in the consumer's analysis, since a library has no
     `targets:` of its own. The declaring module's blocks are carried across as
     `metadata.moduleGlobals` so the read is checked, in the right scope.
-imports:
-  Assert: ../modules/assert
+imports: { Assert: ../modules/assert }
 targets:
   - !ref noConsumerScopeLeak
   - !ref scopedToTheDeclaringLibrary
@@ -28,11 +27,9 @@ targets:
 # The app and the library share NO variable name, so a library read judged by the
 # app's contract fails. Zero errors is the whole assertion.
 kind: Assert.Manifest
-metadata:
-  name: noConsumerScopeLeak
+metadata: { name: noConsumerScopeLeak }
 source: ./__fixtures__/library-variables/app.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 # The other direction, and the reason a blanket skip is not the fix. The library
 # reads a variable IT does not declare; the importing app declares that very
@@ -41,10 +38,9 @@ expect:
 # which `declared: onlyInLib` is the proof of, since matching the app's contract
 # would have made this read valid.
 kind: Assert.Manifest
-metadata:
-  name: scopedToTheDeclaringLibrary
+metadata: { name: scopedToTheDeclaringLibrary }
 source: ./__fixtures__/library-variables/typo-app.yaml
 expect:
   errors:
     - code: CEL_UNKNOWN_FIELD
-      message: '"typoNotDeclared" is not declared here (declared: onlyInLib)'
+      message: '''variables.typoNotDeclared'' is not defined (available: onlyInLib)'

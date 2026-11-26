@@ -1,0 +1,17 @@
+# An integer behind a reference into the variable's own `$defs` is bound as an
+# int64, as `telo check` types it.
+kind: Telo.Application
+metadata: { name: IntegerBehindAppLocal }
+variables:
+  cfg:
+    env: CFG
+    type: object
+    $defs: { N: { type: integer } }
+    properties: { n: { $ref: "#/$defs/N" } }
+    default: { n: 2 }
+targets: [!ref seq]
+---
+kind: Telo.Sequence
+metadata: { name: seq }
+steps:
+  - { name: a, value: !cel "variables.cfg.n + 1" }

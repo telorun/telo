@@ -1,0 +1,8 @@
+# A second library, exporting the same name with a value of its own.
+kind: Telo.Library
+metadata: { name: ImportInputChoiceLibB }
+exports: { resources: [root] }
+---
+kind: Telo.Value
+metadata: { name: root }
+value: from-b

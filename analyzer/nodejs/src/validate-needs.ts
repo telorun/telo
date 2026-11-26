@@ -73,9 +73,9 @@ export function needProblemDiagnostics(
   graph: NeedGraph,
   problems: readonly NeedProblem[],
   rootModules: ReadonlySet<string>,
-): { diagnostic: AnalysisDiagnostic; problems: NeedProblem[] }[] {
+): { diagnostic: AnalysisDiagnostic; problems: NeedProblem[]; reached?: unknown }[] {
   const reaching = reachingImports(graph, rootModules);
-  const out: { diagnostic: AnalysisDiagnostic; problems: NeedProblem[] }[] = [];
+  const out: { diagnostic: AnalysisDiagnostic; problems: NeedProblem[]; reached?: unknown }[] = [];
   const reported = new Map<string, NeedProblem[]>();
   for (const p of problems) {
     if (rootModules.has(p.module)) {
@@ -96,8 +96,9 @@ export function needProblemDiagnostics(
       });
       continue;
     }
-    const via = reaching.get(p.module);
-    if (!via) continue;
+    const reach = reaching.get(p.module);
+    if (!reach) continue;
+    const via = reach.via;
     const key = `${p.code}\0${p.module}\0${p.message}`;
     const known = reported.get(key);
     if (known) {
@@ -106,7 +107,9 @@ export function needProblemDiagnostics(
     }
     const stands = [p];
     reported.set(key, stands);
-    const anchor = scopedImportAnchorOf(via.manifest) ?? {
+    const anchor = (via.anchor
+      ? { resource: via.anchor.resource, filePath: (via.anchor.manifest.metadata as { source?: string } | undefined)?.source, path: via.anchor.path }
+      : scopedImportAnchorOf(via.manifest)) ?? {
       resource: { kind: "Telo.Import", name: via.alias },
       filePath: (via.manifest.metadata as { source?: string } | undefined)?.source,
       path: "",
@@ -121,6 +124,7 @@ export function needProblemDiagnostics(
     out.push({
       diagnostic: { ...anchored, data: { ...(anchored.data as object), [NEED_TABLE_MARK]: true } },
       problems: stands,
+      ...(reach.held !== undefined ? { reached: reach.held } : {}),
     });
   }
   return out.map((found) => {
@@ -153,24 +157,29 @@ function needTableOf(
 }
 
 /** For every module of the graph that is not one of the entry's own: the
- *  entry's import through which it is first reached. */
+ *  entry's import through which it is first reached, and — where the graph's
+ *  findings are held — where some import of the entry reaches it. */
 function reachingImports(
   graph: NeedGraph,
   rootModules: ReadonlySet<string>,
-): Map<string, NeedGraphImport> {
-  const out = new Map<string, NeedGraphImport>();
+): Map<string, { via: NeedGraphImport; held?: unknown }> {
+  const out = new Map<string, { via: NeedGraphImport; held?: unknown }>();
+  const logic = graph.logic;
   for (const module of graph.modules.values()) {
     if (!rootModules.has(module.name)) continue;
     for (const imp of module.imports) {
       const queue = imp.target ? [imp.target] : [];
       const seen = new Set<string>();
+      const present = imp.held ?? logic?.TRUE;
       while (queue.length > 0) {
         const key = queue.shift()!;
         if (seen.has(key)) continue;
         seen.add(key);
         const target = graph.modules.get(key);
         if (!target || rootModules.has(target.name)) continue;
-        if (!out.has(target.name)) out.set(target.name, imp);
+        const known = out.get(target.name);
+        if (!known) out.set(target.name, { via: imp, ...(logic ? { held: present } : {}) });
+        else if (logic) known.held = logic.or(known.held, present);
         for (const next of target.imports) if (next.target) queue.push(next.target);
       }
     }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { assignable, typesEqual } from "../src/cel-type.js";
 import { CelEnvironment } from "../src/environment.js";
-import type { JsonSchemaNode } from "../src/json-schema-type.js";
+import { schemaType, type JsonSchemaNode } from "../src/json-schema-type.js";
 
 const REQUEST: JsonSchemaNode = {
   type: "object",
@@ -163,7 +164,7 @@ describe("a reference", () => {
 
   it("leaving the document is answered by the host, with the document to read instead", () => {
     const shared: JsonSchemaNode = {
-      $defs: { Id: { type: "object", properties: { value: { type: "string" }, note: { not: {} } } } },
+      $defs: { Id: { type: "object", properties: { value: { type: "string" }, note: { unevaluatedProperties: {} } } } },
     };
     const typed = new CelEnvironment({
       resolveSchemaType: ({ node }) =>
@@ -184,7 +185,7 @@ describe("a reference", () => {
           {
             pointer: "/properties/note",
             throughReference: "/properties/id",
-            keywords: ["not"],
+            keywords: ["unevaluatedProperties"],
             reason: "keyword-not-read",
           },
         ],
@@ -298,9 +299,9 @@ describe("what a node says about its own type", () => {
       schema: {
         type: "object",
         properties: {
-          name: { type: "string", not: { const: "root" } },
-          pair: { type: "array", items: [{ type: "string" }, { type: "integer" }] },
-          either: { if: { type: "string" }, then: { type: "string" }, else: { type: "integer" } },
+          name: { type: "string", not: { properties: { a: { type: "string" } } } },
+          pair: { type: "array", prefixItems: [{ type: "string" }], additionalItems: false },
+          keyed: { type: "object", unevaluatedProperties: { type: "string" } },
         },
       },
     });
@@ -308,9 +309,9 @@ describe("what a node says about its own type", () => {
     expect(typed.check("subject.name").typeName).toBe("string");
     expect(typed.check("subject.pair").typeName).toBe("list");
     expect(typed.schemaReports()[0]?.unjudged).toEqual([
-      { pointer: "/properties/name", keywords: ["not"], reason: "keyword-not-read" },
-      { pointer: "/properties/pair", keywords: ["items"], reason: "shape-not-read" },
-      { pointer: "/properties/either", keywords: ["else", "if", "then"], reason: "keyword-not-read" },
+      { pointer: "/properties/name", keywords: ["not"], reason: "shape-not-read" },
+      { pointer: "/properties/pair", keywords: ["prefixItems", "additionalItems"], reason: "shape-not-read" },
+      { pointer: "/properties/keyed", keywords: ["unevaluatedProperties"], reason: "keyword-not-read" },
     ]);
   });
 
@@ -339,5 +340,44 @@ describe("what a node says about its own type", () => {
     });
     expect(typed.check("subject.free.whatever").typeName).toBe("dyn");
     expect(typed.schemaReports()).toEqual([]);
+  });
+});
+
+/**
+ * Twice-per-level work on a shape nested `depth` deep is 2^depth: at the depths below a
+ * second, a regression to it takes several seconds, so a one-second bound tells the two
+ * apart on any machine.
+ */
+describe("the cost of a deep schema", () => {
+  const BOUND_MS = 1000;
+
+  /** A record `depth` deep through its undeclared members, each level declaring `b`. */
+  function undeclaredChain(depth: number): JsonSchemaNode {
+    let node: JsonSchemaNode = { type: "object", properties: { b: { type: "string" } } };
+    for (let at = 0; at < depth; at += 1) node = { type: "object", properties: { b: { type: "string" } }, additionalProperties: node };
+    return node;
+  }
+
+  /** A one-position tuple nested `depth` deep. */
+  function tupleChain(depth: number): JsonSchemaNode {
+    let node: JsonSchemaNode = { type: "string" };
+    for (let at = 0; at < depth; at += 1) node = { type: "array", prefixItems: [node], items: false };
+    return node;
+  }
+
+  it("meets two records with typed undeclared members once per level", () => {
+    const schema = undeclaredChain(22);
+    const started = performance.now();
+    const typed = new CelEnvironment().registerVariable("x", { schema: { allOf: [schema, structuredClone(schema)] } });
+    expect(performance.now() - started).toBeLessThan(BOUND_MS);
+    expect(typed.check("x.k.k.b").typeName).toBe("string");
+  });
+
+  it("compares and assigns two nested tuples once per level", () => {
+    const [left, right] = [schemaType({ node: tupleChain(28) }).type, schemaType({ node: tupleChain(28) }).type];
+    const started = performance.now();
+    expect(typesEqual(left, right)).toBe(true);
+    expect(assignable(left, right)).toBe(true);
+    expect(performance.now() - started).toBeLessThan(BOUND_MS);
   });
 });

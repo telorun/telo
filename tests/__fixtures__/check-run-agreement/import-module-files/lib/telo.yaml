@@ -1,0 +1,4 @@
+# A library asking its importer for the path of a file.
+kind: Telo.Library
+metadata: { name: ImportModuleFilesAgreementLib }
+variables: { page: { type: string, x-telo-type: { name: Telo.HostPath, entry: file } } }

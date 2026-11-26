@@ -21,4 +21,4 @@ steps:
       expect:
         errors:
           - code: HOST_PATH_CONTENT_MISMATCH
-            message: "'variables.logo' is the path of a file of image/png in the imported library, but 'variables.logo' is declared to hold image/jpeg (mediaType: image/jpeg)."
+            message: "the imported library's variable 'logo' is the path of a file of image/png, but `variables.logo` is declared to hold image/jpeg (mediaType: image/jpeg)."

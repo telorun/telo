@@ -1,0 +1,16 @@
+# Two spellings of one text in one language settle to one record.
+kind: Telo.Application
+metadata: { name: TextParameterSharedAgree }
+lang: en
+imports:
+  First: { source: ../../import-text-input/shared, variables: { title: Hello } }
+  Second:
+    source: ../../import-text-input/shared
+    variables: { title: { plural: count, cases: { other: Hello } } }
+targets: [!ref scope]
+---
+kind: Telo.Sequence
+metadata: { name: scope }
+steps:
+  - { name: first, invoke: !ref First.shown }
+  - { name: second, invoke: !ref Second.shown }

@@ -1,4 +1,4 @@
-import type { CelEnvironment, CelNode } from "@telorun/cel";
+import type { CelEnvironment, CelNode, CelType } from "@telorun/cel";
 import type { CompiledCall, CompiledValue } from "@telorun/sdk";
 import { compileExpression, repeatableExpression } from "../cel/compile.js";
 import {
@@ -53,6 +53,7 @@ export function analyzeHoles(
     hole: InterpolationHole,
     result: CelAnalyzeResult,
     ast: CelNode | undefined,
+    checkedType: CelType | undefined,
   ) => readonly CelDiagnostic[],
 ): CelAnalyzeResult {
   const reading = readInterpolationHoles(source);
@@ -62,14 +63,14 @@ export function analyzeHoles(
   const diagnostics: CelDiagnostic[] = [];
   const calls: CallSite[] = [];
   for (const hole of reading.holes) {
-    const { result, ast } = analyzeCelWithTree(hole.expr, env);
+    const { result, ast, checkedType } = analyzeCelWithTree(hole.expr, env);
     for (const d of result.diagnostics) {
       diagnostics.push(d.fix ? { ...d, fix: reanchor(source, hole, d.fix) } : d);
     }
     for (const c of result.calls) {
       calls.push({ ...c, start: hole.exprStart + c.start, end: hole.exprStart + c.end });
     }
-    if (perHole && result.diagnostics.length === 0) diagnostics.push(...perHole(hole, result, ast));
+    if (perHole && result.diagnostics.length === 0) diagnostics.push(...perHole(hole, result, ast, checkedType));
   }
   return { diagnostics, calls };
 }

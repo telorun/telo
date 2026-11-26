@@ -1,0 +1,13 @@
+kind: Telo.Library
+metadata:
+  name: ImportTextShared
+  version: 1.0.0
+  description: "Test fixture: a singleton configured by a text parameter."
+lang: en
+lifecycle: shared
+variables: { title: { $ref: "telo://manifest#/$defs/Text", default: Hello } }
+exports: { resources: [shown] }
+---
+kind: Telo.Value
+metadata: { name: shown }
+value: !cel "variables.title"

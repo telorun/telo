@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { isCelTimestamp } from "@telorun/sdk";
-import { settleImportInputs } from "../src/controllers/module/import-inputs.js";
+import { textParametersOfBlock, withSchemaFragments } from "@telorun/analyzer";
+import {
+  settleImportInputs,
+  settleTextParameters,
+  textParameterOrigins,
+} from "../src/controllers/module/import-inputs.js";
+import { assertSharedInputsAgree, type SharedLibrary } from "../src/controllers/module/shared-libraries.js";
 import { acceptsBy } from "../src/members-values.js";
 import { SchemaValidator } from "../src/schema-validator.js";
 
@@ -62,5 +68,91 @@ describe("an import's supplied library inputs", () => {
     ]) {
       expect(refusalOf(run).message).not.toContain("s3cr3t-pw");
     }
+  });
+});
+
+/** A library declaring `title` as a text parameter, its default the library's own text. */
+const textDeclared = withSchemaFragments({
+  type: "object",
+  properties: { title: { $ref: "telo://manifest#/$defs/Text", default: "Hello" } },
+}).properties as Record<string, unknown>;
+const textParams = textParametersOfBlock(textDeclared, "variables");
+const compiled = { __compiled: true };
+const settleTexts = (written: unknown, expanded: Record<string, unknown>) => {
+  const origins = textParameterOrigins(textParams, written, expanded, "Lib");
+  const supplied = { ...expanded, title: expanded.title ?? "Hello" };
+  return settleTextParameters(
+    supplied,
+    expanded,
+    textParams,
+    origins,
+    { importer: "pl", library: "en" },
+    "Lib",
+    (schema) => validator.compile(schema, { persist: false }),
+  );
+};
+
+describe("an import's text parameters", () => {
+  it("hands over a written text as the importer's record and the default as the library's", () => {
+    expect(settleTexts({ title: "Hej" }, { title: "Hej" }).title).toEqual({
+      text: "Hej",
+      context: null,
+      lang: "pl",
+      computed: false,
+    });
+    expect(settleTexts({}, {}).title).toEqual({ text: "Hello", context: null, lang: "en", computed: false });
+  });
+
+  it("passes a computed record on unchanged and refuses any other computed value", () => {
+    const record = { text: "Hello", context: null, lang: "de", computed: false };
+    expect(settleTexts({ title: compiled }, { title: record }).title).toBe(record);
+    const refusal = refusalOf(() => settleTexts({ title: compiled }, { title: "Hello" }));
+    expect(refusal.code).toBe("ERR_TEXT_ARGUMENT_COMPUTED");
+    expect(refusal.message).toContain("Import 'Lib': the value at 'variables.title' is computed");
+  });
+
+  it("refuses a block computed whole and an expression inside a written text", () => {
+    expect(refusalOf(() => settleTexts(compiled, { title: "Hello" })).message).toContain(
+      "the value at 'variables' is computed",
+    );
+    expect(refusalOf(() => settleTexts({ title: { text: compiled, context: "x" } }, {})).message).toContain(
+      "the value at 'variables.title.text' is computed",
+    );
+  });
+});
+
+describe("a shared library's text parameter", () => {
+  const entry = (title: unknown) =>
+    ({
+      owner: "First",
+      module: "Shared",
+      variables: { title },
+      secrets: {},
+      resources: new Map(),
+      needs: new Map(),
+      declaredVariables: textDeclared,
+      declaredSecrets: {},
+    }) as unknown as SharedLibrary;
+  const agree = (a: unknown, b: unknown) =>
+    assertSharedInputsAgree(entry(a), "Second", { title: b }, {}, new Map(), new Map());
+
+  it("agrees on two spellings of one settled text", () => {
+    expect(() =>
+      agree(
+        { text: "Hello", context: null, lang: "en", computed: false },
+        { text: { plural: "n", cases: { other: "Hello" } }, context: null, lang: "en", computed: false },
+      ),
+    ).not.toThrow();
+  });
+
+  it("refuses one text written in two languages, naming both", () => {
+    const refusal = refusalOf(() =>
+      agree(
+        { text: "Hello", context: null, lang: "en", computed: false },
+        { text: "Hello", context: null, lang: "de", computed: false },
+      ),
+    );
+    expect(refusal.code).toBe("ERR_SHARED_LIBRARY_CONFLICT");
+    expect(refusal.message).toContain("variables.title (the same text written in 'en' and in 'de')");
   });
 });

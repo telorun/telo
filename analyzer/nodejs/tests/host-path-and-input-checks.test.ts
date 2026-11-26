@@ -3,7 +3,8 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { makeTaggedSentinel } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
-import { celTypeSatisfiesJsonSchema, checkSchemaCompatibility } from "../src/schema-compat.js";
+import { BOOL, INT, listOf, STRING, type CelType } from "@telorun/cel";
+import { celValueTypeSatisfiesJsonSchema, checkSchemaCompatibility } from "../src/schema-compat.js";
 import { validateAgainstSchema } from "../src/schema-validation.js";
 import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 
@@ -77,7 +78,9 @@ describe("an expression at a union beside a host path", () => {
     expect(analyze({ n: { env: "N", type: "integer", default: 1 } }, { file: cel("variables.n") })).toEqual([
       expect.objectContaining({
         code: "CEL_TYPE_ERROR",
-        message: expect.stringContaining(`the field expects '":memory:" | Telo.HostPath'`),
+        message: expect.stringMatching(
+          /no alternative matches — .*source is 'integer', target expects 'string'; .*target expects 'Telo\.HostPath'/,
+        ),
       }),
     ]);
   });
@@ -137,7 +140,7 @@ describe("an undeclared read at a host-path field", () => {
     expect(analyze({ db: PATH_VARIABLE }, { root: cel("variables.dbb") })).toEqual([
       {
         code: "CEL_UNKNOWN_FIELD",
-        message: expect.stringContaining('"dbb" is not declared here (declared: db)'),
+        message: expect.stringContaining("'variables.dbb' is not defined (available: db)"),
       },
     ]);
   });
@@ -154,11 +157,25 @@ describe("a CEL type error on a brand", () => {
   });
 });
 
-describe("celTypeSatisfiesJsonSchema", () => {
+describe("celValueTypeSatisfiesJsonSchema at a union slot", () => {
   it("reads a constant branch by the type of its constant", () => {
     const union = { anyOf: [{ const: ":memory:" }, { type: "integer" }] };
-    expect(celTypeSatisfiesJsonSchema("int", union)).toBe(true);
-    expect(celTypeSatisfiesJsonSchema("bool", union)).toBe(false);
+    expect(celValueTypeSatisfiesJsonSchema(INT, union)).toBe(true);
+    expect(celValueTypeSatisfiesJsonSchema(BOOL, union)).toBe(false);
+  });
+});
+
+describe("celValueTypeSatisfiesJsonSchema", () => {
+  it("judges a type deeper than its printed text by the type itself", () => {
+    // Printed, a list 70 deep is cut past 64 nodes, and the string at its bottom is no longer in the text.
+    let type: CelType = STRING;
+    let slot: Record<string, unknown> = { type: "integer" };
+    for (let level = 0; level < 70; level += 1) {
+      type = listOf(type);
+      slot = { type: "array", items: slot };
+    }
+    expect(celValueTypeSatisfiesJsonSchema(type, slot)).toBe(false);
+    expect(celValueTypeSatisfiesJsonSchema(listOf(INT), { type: "array", items: { type: "integer" } })).toBe(true);
   });
 });
 

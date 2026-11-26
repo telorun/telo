@@ -19,6 +19,8 @@ use serde_json::{Map, Value};
 use telo_templating::tagged_sentinel_parts;
 use telorun_sdk_core::value_type::host_media_head_length;
 
+use crate::import_input_values::import_input_values;
+use crate::inline_imports::IMPORT;
 use crate::loaded_types::{LoadedFile, LoadedGraph, LoadedModule};
 use crate::manifest_loader::is_local_path_source;
 use crate::module_file_claims::claim_registry;
@@ -284,8 +286,9 @@ fn member_mut<'v>(value: &'v mut Value, segments: &[Segment]) -> Option<&'v mut 
 }
 
 /// Every file claim of every tagged value in `file`: a module document's needs' `parameters:` —
-/// resolved at load — and every document that is instantiated. Nothing else in a document never
-/// instantiated is resolved, so the engine's `*_OUTSIDE_RESOURCE` is the finding there.
+/// resolved at load — an import's input values, resolved when it initializes, and every document
+/// that is instantiated. Nothing else in a document never instantiated is resolved, so the
+/// engine's `*_OUTSIDE_RESOURCE` is the finding there.
 fn collect_claims(file: &LoadedFile) -> Vec<Found> {
     let registry = claim_registry();
     let mut found = Vec::new();
@@ -317,6 +320,13 @@ fn collect_claims(file: &LoadedFile) -> Vec<Found> {
                     Segment::Key("parameters".to_string()),
                 ];
                 walk_sentinels(parameters, &format!("needs.{name}.parameters"), segments, &mut collect);
+            }
+            continue;
+        }
+        if kind == Some(IMPORT) {
+            for (at, value) in import_input_values(manifest) {
+                let segments = at.split('.').map(|key| Segment::Key(key.to_string())).collect();
+                walk_sentinels(value, &at, segments, &mut collect);
             }
             continue;
         }

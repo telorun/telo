@@ -134,14 +134,14 @@ fn a_nullable_dereference_is_reported_for_a_declared_chain_and_cleared_by_each_o
 }
 
 #[test]
-fn a_nullable_dereference_is_not_reported_for_a_chain_rooted_at_a_name_the_expression_bound() {
-    assert_eq!(list_of_nullable().check("rows.all(e, e.code == 'x')").diagnostics, []);
-    assert_eq!(list_of_nullable().check("rows.map(e, e.code)").diagnostics, []);
-    assert_eq!(list_of_nullable().check("cel.bind(e, rows[0], e.code == 'x')").diagnostics, []);
-    // The skip is about the root, not about sitting inside a comprehension.
-    let mut both = list_of_nullable();
-    both.register_variable("request", schema(REQUEST), None).unwrap();
-    assert_eq!(first_code(&both.check("rows.all(e, request.body.id == 'x')")), Some(NullableAccess));
+fn a_nullable_dereference_is_reported_for_a_chain_rooted_at_a_name_the_expression_bound_as_for_any_other() {
+    for source in ["rows.all(e, e.code == 'x')", "rows.map(e, e.code)", "cel.bind(e, rows[0], e.code == 'x')"] {
+        let codes: Vec<CelCheckCode> = list_of_nullable().check(source).diagnostics.into_iter().map(|held| held.code).collect();
+        assert_eq!(codes, [NullableAccess], "{source}");
+    }
+    for source in ["rows.all(e, e != null && e.code == 'x')", "rows.map(e, e != null, e.code)"] {
+        assert_eq!(list_of_nullable().check(source).diagnostics, [], "{source}");
+    }
 }
 
 #[test]
@@ -248,6 +248,7 @@ fn listed(name: &str, arity: usize, range: (u32, u32), signature: &str, returns:
         host_backed: Some(false),
         throws: None,
         argument_types: None,
+        argument_type_names: None,
     }
 }
 
@@ -300,7 +301,8 @@ fn the_listing_names_the_signature_each_call_resolved_to_with_the_metadata_the_h
                 host_backed: Some(true),
                 throws: Some(vec!["ERR_BILLING".into()]),
                 // Each argument's own type, which only a namespaced call carries.
-                argument_types: Some(vec!["int".into()]),
+                argument_types: Some(vec![telorun_cel::INT]),
+                argument_type_names: Some(vec!["int".into()]),
             },
             listed("string", 1, (30, 54), "string(int): string", "string", true),
         ]

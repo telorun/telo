@@ -5,7 +5,7 @@
 //! Node items with no twin: `CompileEnv.programSites`, which `compileHoles` threads to
 //! `compileExpression`.
 
-use telorun_cel::{CelEnvironment, CelNode};
+use telorun_cel::{CelEnvironment, CelNode, CelType};
 
 use crate::cel::compile::{compile_expression, repeatable_expression, CompiledHoles};
 use crate::cel::interpolation_holes::{read_interpolation_holes, HoleReading, InterpolationHole};
@@ -13,8 +13,10 @@ use crate::cel::verdict_codes::{CelAnalyzeResult, CelDiagnostic, CelDiagnosticCo
 use crate::engine::{AnalyzeEnv, CompileEnv, DiagnosticFix, ExpressionRegion};
 use crate::engines::cel::analyze_cel_with_tree;
 
-/// A tag's own verdict on a hole that analyzed clean: the hole, its analysis and its tree.
-pub type HoleVerdict<'a> = &'a dyn Fn(&InterpolationHole, &CelAnalyzeResult, Option<&CelNode>) -> Vec<CelDiagnostic>;
+/// A tag's own verdict on a hole that analyzed clean: the hole, its analysis, its tree and
+/// the type it checked.
+pub type HoleVerdict<'a> =
+    &'a dyn Fn(&InterpolationHole, &CelAnalyzeResult, Option<&CelNode>, Option<&CelType>) -> Vec<CelDiagnostic>;
 
 /// The holes of a scalar a hole-bearing tag compiles, or an error naming where the reading
 /// failed — a tag's scalar that cannot be read is not a value.
@@ -52,7 +54,7 @@ pub fn analyze_holes(source: &str, env: &AnalyzeEnv<'_>, per_hole: Option<HoleVe
     let mut diagnostics: Vec<CelDiagnostic> = Vec::new();
     let mut calls = Vec::new();
     for hole in &holes {
-        let (result, tree) = analyze_cel_with_tree(&hole.expr, env);
+        let (result, tree, checked_type) = analyze_cel_with_tree(&hole.expr, env);
         for diagnostic in &result.diagnostics {
             diagnostics.push(match &diagnostic.fix {
                 Some(fix) => CelDiagnostic { fix: Some(reanchor(source, hole, fix)), ..diagnostic.clone() },
@@ -68,7 +70,7 @@ pub fn analyze_holes(source: &str, env: &AnalyzeEnv<'_>, per_hole: Option<HoleVe
         }
         if let Some(verdict) = per_hole {
             if result.diagnostics.is_empty() {
-                diagnostics.extend(verdict(hole, &result, tree.as_deref()));
+                diagnostics.extend(verdict(hole, &result, tree.as_deref(), checked_type.as_ref()));
             }
         }
     }

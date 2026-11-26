@@ -1,0 +1,26 @@
+# Inline contract shapes whose member names no shape — one through a `$ref`
+# nothing declares, one through a `!ref` to an invocable — read by a step.
+kind: Telo.Application
+metadata: { name: InlineContractShapeReference, version: 1.0.0 }
+targets:
+  - name: missing
+    invoke: !ref missing
+    inputs: { m: 1 }
+---
+kind: Telo.Value
+metadata: { name: thing }
+value: 1
+---
+kind: Telo.Sequence
+metadata: { name: missing }
+inputType: { kind: Telo.JsonSchema, schema: { type: object, properties: { m: { $ref: "telo://Self/Missing" } } } }
+steps:
+  - name: a
+    value: !cel "inputs.m + 1"
+---
+kind: Telo.Sequence
+metadata: { name: notShape }
+inputType: { kind: Telo.JsonSchema, schema: { type: object, properties: { m: !ref thing } } }
+steps:
+  - name: a
+    value: !cel "inputs.m + 1"

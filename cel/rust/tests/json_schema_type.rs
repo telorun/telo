@@ -12,9 +12,9 @@ use std::sync::Arc;
 use check_support::{codes, first_code, found, json, schema};
 use telorun_cel::CelCheckCode::*;
 use telorun_cel::{
-    CelEnvironment, CelEnvironmentOptions, FunctionMetadata, JsonSchemaDocument, JsonValue, NominalTypeDefinition,
-    RecursiveSchemaReference, SchemaRegistrationReport, SchemaTypeAnswer, SchemaTypeResolver, UnjudgedReason,
-    UnjudgedSchemaNode,
+    assignable, schema_type, types_equal, CelEnvironment, CelEnvironmentOptions, FunctionMetadata, JsonSchemaDocument, JsonValue, NominalTypeDefinition,
+    RecursiveSchemaReference, SchemaConversion, SchemaRegistrationReport, SchemaTypeAnswer, SchemaTypeResolver,
+    UnjudgedReason, UnjudgedSchemaNode,
 };
 
 const REQUEST: &str = r#"{"type":"object","properties":{
@@ -190,7 +190,7 @@ fn a_reference_is_read_against_the_document_a_node_belongs_to() {
 
 #[test]
 fn a_reference_leaving_the_document_is_answered_by_the_host_with_the_document_to_read_instead() {
-    let shared = json(r#"{"$defs":{"Id":{"type":"object","properties":{"value":{"type":"string"},"note":{"not":{}}}}}}"#);
+    let shared = json(r#"{"$defs":{"Id":{"type":"object","properties":{"value":{"type":"string"},"note":{"unevaluatedProperties":{}}}}}}"#);
     let JsonValue::Object(top) = &*shared else { unreachable!() };
     let JsonValue::Object(defs) = &**top.get("$defs").unwrap() else { unreachable!() };
     let id = Arc::clone(defs.get("Id").unwrap());
@@ -218,7 +218,7 @@ fn a_reference_leaving_the_document_is_answered_by_the_host_with_the_document_to
             "subject",
             vec![UnjudgedSchemaNode {
                 through_reference: Some("/properties/id".into()),
-                ..unjudged("/properties/note", &["not"], UnjudgedReason::KeywordNotRead)
+                ..unjudged("/properties/note", &["unevaluatedProperties"], UnjudgedReason::KeywordNotRead)
             }],
             vec![]
         )]
@@ -343,9 +343,9 @@ fn a_keyword_it_has_no_rule_for_is_reported_beside_the_type_it_did_produce() {
             "subject",
             schema(
                 r#"{"type":"object","properties":{
-                    "name":{"type":"string","not":{"const":"root"}},
-                    "pair":{"type":"array","items":[{"type":"string"},{"type":"integer"}]},
-                    "either":{"if":{"type":"string"},"then":{"type":"string"},"else":{"type":"integer"}}}}"#,
+                    "name":{"type":"string","not":{"properties":{"a":{"type":"string"}}}},
+                    "pair":{"type":"array","prefixItems":[{"type":"string"}],"additionalItems":false},
+                    "keyed":{"type":"object","unevaluatedProperties":{"type":"string"}}}}"#,
             ),
             None,
         )
@@ -355,9 +355,9 @@ fn a_keyword_it_has_no_rule_for_is_reported_beside_the_type_it_did_produce() {
     assert_eq!(
         typed.schema_reports()[0].unjudged,
         [
-            unjudged("/properties/name", &["not"], UnjudgedReason::KeywordNotRead),
-            unjudged("/properties/pair", &["items"], UnjudgedReason::ShapeNotRead),
-            unjudged("/properties/either", &["else", "if", "then"], UnjudgedReason::KeywordNotRead),
+            unjudged("/properties/name", &["not"], UnjudgedReason::ShapeNotRead),
+            unjudged("/properties/pair", &["prefixItems", "additionalItems"], UnjudgedReason::ShapeNotRead),
+            unjudged("/properties/keyed", &["unevaluatedProperties"], UnjudgedReason::KeywordNotRead),
         ]
     );
 }
@@ -394,4 +394,49 @@ fn a_node_that_constrains_no_type_says_nothing_and_reports_nothing_either() {
         .unwrap();
     assert_eq!(typed.check("subject.free.whatever").type_name, "dyn");
     assert_eq!(typed.schema_reports(), []);
+}
+
+// Twice-per-level work on a shape nested `depth` deep is 2^depth: at the depths below a
+// second, a regression to it takes several seconds, so a one-second bound tells the two
+// apart on any machine.
+const BOUND: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// A record `depth` deep through its undeclared members, each level declaring `b`.
+fn undeclared_chain(depth: usize) -> String {
+    let mut node = r#"{"type":"object","properties":{"b":{"type":"string"}}}"#.to_string();
+    for _ in 0..depth {
+        node = format!(r#"{{"type":"object","properties":{{"b":{{"type":"string"}}}},"additionalProperties":{node}}}"#);
+    }
+    node
+}
+
+/// A one-position tuple nested `depth` deep.
+fn tuple_chain(depth: usize) -> String {
+    let mut node = r#"{"type":"string"}"#.to_string();
+    for _ in 0..depth {
+        node = format!(r#"{{"type":"array","prefixItems":[{node}],"items":false}}"#);
+    }
+    node
+}
+
+#[test]
+fn two_records_with_typed_undeclared_members_meet_once_per_level() {
+    let chain = undeclared_chain(22);
+    let mut typed = CelEnvironment::default();
+    let started = std::time::Instant::now();
+    typed.register_variable("x", schema(&format!(r#"{{"allOf":[{chain},{chain}]}}"#)), None).unwrap();
+    assert!(started.elapsed() < BOUND, "{:?}", started.elapsed());
+    assert_eq!(typed.check("x.k.k.b").type_name, "string");
+}
+
+#[test]
+fn two_nested_tuples_are_compared_and_assigned_once_per_level() {
+    let read = || {
+        schema_type(&JsonSchemaDocument { node: json(&tuple_chain(28)), root: None }, &SchemaConversion::default()).unwrap().ty
+    };
+    let (left, right) = (read(), read());
+    let started = std::time::Instant::now();
+    assert!(types_equal(&left, &right));
+    assert!(assignable(&left, &right));
+    assert!(started.elapsed() < BOUND, "{:?}", started.elapsed());
 }

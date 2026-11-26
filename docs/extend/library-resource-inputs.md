@@ -45,6 +45,24 @@ host path), an expression of the wrong type `CEL_TYPE_ERROR`, and the kernel ref
 the same supply when the import initializes, naming the import and the variable and
 never the value.
 
+A file that ships with the importing module is handed over by its tag, written at the
+import as at a resource field:
+
+```yaml
+imports:
+  Site:
+    source: ./site
+    variables: { root: !module-path ./public, banner: !include-text ./banner.txt }
+```
+
+The path is relative to the importer's module root, never the library's: the library
+receives the absolute path of the importer's `./public` (or the file's text), resolved
+when the import initializes. `telo check` reports a path naming nothing
+(`MODULE_PATH_NOT_FOUND`) and one naming the wrong kind of entry or media type for a
+`Telo.HostPath` input (`HOST_PATH_ENTRY_MISMATCH` / `HOST_PATH_CONTENT_MISMATCH`) at the
+import, and `telo publish` carries the file with the importer. A need supplied field by
+field takes the tags the same way (`needs: { store: { path: !module-path ./data } }`).
+
 ## What it is for
 
 Instances used to flow **up** and never **down**. `exports.resources` hands an

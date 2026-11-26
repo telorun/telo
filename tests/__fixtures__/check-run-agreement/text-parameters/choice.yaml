@@ -1,0 +1,24 @@
+# A text input behind a choice is judged per option: the option that does not
+# read is refused where it holds, the other checks clean.
+kind: Telo.Application
+metadata: { name: TextParameterChoice }
+lang: en
+variables: { flag1: { env: TEXT_PARAMETER_FLAG_1, type: boolean, default: false } }
+imports:
+  Entry:
+    source: ../../import-text-input/title
+    variables:
+      title: !if { if: !cel "variables.flag1", then: "{$x", else: Hello }
+targets: [!ref scope]
+---
+kind: Telo.Sequence
+metadata: { name: scope }
+with:
+  - kind: Telo.Import
+    metadata: { name: Scoped }
+    source: ../../import-text-input/title
+    variables:
+      title: !if { if: !cel "variables.flag1", then: "{$y", else: Hello }
+steps:
+  - { name: entry, invoke: !ref Entry.shown }
+  - { name: scoped, invoke: !ref Scoped.shown }

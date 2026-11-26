@@ -15,7 +15,8 @@ use std::sync::Arc;
 use schema_support::{described, json, recursive_line, unjudged_line};
 use telorun_cel::{
     CelEnvironment, CelEnvironmentOptions, CelRegistrationError, FieldDeclaration, JsonSchemaDocument, JsonValue,
-    NominalTypeDefinition, SchemaTypeAnswer, SchemaTypeResolver, TypeDeclaration,
+    NamespaceFunctionDeclaration, NamespaceOptions, NominalTypeDefinition, SchemaTypeAnswer, SchemaTypeResolver,
+    TypeDeclaration,
 };
 use telorun_cel_value::PropertyMap;
 
@@ -110,7 +111,7 @@ fn with_named_types(options: CelEnvironmentOptions) -> CelEnvironment {
 fn declares_a_schema_and_lists_what_it_could_not_judge_by_name() {
     let mut environment = CelEnvironment::default();
     assert_eq!(environment.schema_reports(), []);
-    environment.register_variable("zeta", schema(r#"{"properties":{"a":{"if":{}}}}"#), None).expect("registers");
+    environment.register_variable("zeta", schema(r#"{"properties":{"a":{"unevaluatedProperties":{}}}}"#), None).expect("registers");
     environment.register_variable("\u{e9}", schema(r##"{"$ref":"#"}"##), None).expect("registers");
     environment.register_variable("Alpha", schema(r#"{"type":"string"}"#), None).expect("registers");
     environment
@@ -125,7 +126,7 @@ fn declares_a_schema_and_lists_what_it_could_not_judge_by_name() {
             "doc",
             TypeDeclaration::Schema(JsonSchemaDocument {
                 node: json(r##"{"$ref":"#/$defs/S"}"##),
-                root: Some(json(r#"{"$defs":{"S":{"type":"integer","not":{}}}}"#)),
+                root: Some(json(r#"{"$defs":{"S":{"type":"integer","unevaluatedProperties":{}}}}"#)),
             }),
             None,
         )
@@ -135,8 +136,8 @@ fn declares_a_schema_and_lists_what_it_could_not_judge_by_name() {
         reports(&environment),
         [
             lines("beta", &["shape-not-read pointer=/$defs/S keywords=type"]),
-            lines("doc", &["keyword-not-read pointer=/$defs/S keywords=not"]),
-            lines("zeta", &["keyword-not-read pointer=/properties/a keywords=if"]),
+            lines("doc", &["keyword-not-read pointer=/$defs/S keywords=unevaluatedProperties"]),
+            lines("zeta", &["keyword-not-read pointer=/properties/a keywords=unevaluatedProperties"]),
             lines("\u{e9}", &["recursive pointer= reference=#"]),
         ]
     );
@@ -156,14 +157,41 @@ fn declares_a_schema_and_lists_what_it_could_not_judge_by_name() {
 #[test]
 fn replaces_a_report_with_its_registration_and_a_clone_diverges() {
     let mut environment = CelEnvironment::default();
-    environment.register_variable("v", schema(r#"{"if":{}}"#), None).expect("registers");
+    environment.register_variable("v", schema(r#"{"unevaluatedProperties":{}}"#), None).expect("registers");
     let mut child = environment.clone();
-    child.register_variable("w", schema(r#"{"not":{}}"#), None).expect("registers");
+    child.register_variable("w", schema(r#"{"unevaluatedProperties":{}}"#), None).expect("registers");
     environment.register_variable("v", schema(r#"{"type":"string"}"#), None).expect("registers");
     assert_eq!(reports(&environment), []);
     assert_eq!(
         reports(&child),
-        [lines("v", &["keyword-not-read pointer= keywords=if"]), lines("w", &["keyword-not-read pointer= keywords=not"])]
+        [lines("v", &["keyword-not-read pointer= keywords=unevaluatedProperties"]), lines("w", &["keyword-not-read pointer= keywords=unevaluatedProperties"])]
+    );
+}
+
+#[test]
+fn reports_a_namespaced_result_schema_under_its_qualified_name() {
+    let mut environment = CelEnvironment::default();
+    environment.register_variable("zeta", schema(r#"{"unevaluatedProperties":{}}"#), None).expect("registers");
+    environment.register_variable("Alpha", schema(r#"{"unevaluatedProperties":{}}"#), None).expect("registers");
+    let result = |text: &str| JsonSchemaDocument { node: json(text), root: None };
+    environment
+        .register_namespace(
+            "Ns",
+            vec![
+                NamespaceFunctionDeclaration::withheld("item", result(r#"{"type":"object","properties":{"a":{"unevaluatedProperties":{}}}}"#)),
+                NamespaceFunctionDeclaration::withheld("plain", result(r#"{"type":"string"}"#)),
+            ],
+            NamespaceOptions::default(),
+        )
+        .expect("registers");
+    assert_eq!(environment.check("Ns.item().a").type_name, "dyn");
+    assert_eq!(
+        reports(&environment),
+        [
+            lines("Alpha", &["keyword-not-read pointer= keywords=unevaluatedProperties"]),
+            lines("Ns.item", &["keyword-not-read pointer=/properties/a keywords=unevaluatedProperties"]),
+            lines("zeta", &["keyword-not-read pointer= keywords=unevaluatedProperties"]),
+        ]
     );
 }
 

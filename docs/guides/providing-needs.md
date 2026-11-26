@@ -44,7 +44,12 @@ data  DurableDirectory (Telo)  required when DATABASE_URL is unset
 ```
 
 A need supplied at an import is not in it: it is the importer's, not the
-environment's. The report carries no values. Beside each need's type it says
+environment's. A supply written behind a choice — `needs: { db: !if { if: !cel
+"variables.flag1", then: !ref db } }`, at an import of the application or at a
+library's own import through what the application binds its input to — is a
+supply only where the option taken writes it: the report lists the need
+`required when` the other options are taken, and a run on one of those reads
+it from the environment as it reads an unsupplied one. The report carries no values. Beside each need's type it says
 whether the application needs it: `optional`, `required`, `required when
 <sentence>` for one only some configurations need, or nothing for one no
 configuration reaches — the sentence names the variables that decide it, as
@@ -180,8 +185,10 @@ every required variable of it is set (or, for `Telo.DurableDirectory`, when
 `TELO_HOST_STATE_DIR` answers it, and for a generated key or password, when
 `TELO_HOST_SECRET_SEED` does), `absent` when none is, and some but not all
 set is `ERR_NEED_PARTIALLY_SUPPLIED` there. So is the presence of every optional
-need a library leaves to the environment, whether or not a choice reads it,
-since it decides which of the library's needs the application needs. The value
+need a library leaves to the environment in the configuration taken — read once
+the choices are decided, since a supply a choice writes decides whether the need
+is left there — whether or not a choice reads it, since it decides which of the
+library's needs the application needs. The value
 each such dimension took is in `Kernel.Starting`'s `configuration`, keyed by the
 need's path (`resources.databaseAccess`, `resources.Orders.databaseAccess`). A
 library's choice reads the need its import bound, never the environment a

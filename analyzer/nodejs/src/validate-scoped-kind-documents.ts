@@ -10,6 +10,8 @@ import { SCHEMA_NESTING_EXCEEDED, schemaNestingExceededMessage, type SchemaValid
 import type { WrittenAt } from "./diagnostic-identity.js";
 import { importAnchoredDiagnostic, type ImportReach } from "./reaching-import.js";
 import { declaredScopes, isScopeMember } from "./scope-declarations.js";
+import { inPlaceCycleMessage, SCHEMA_IN_PLACE_CYCLE } from "./schema-in-place-cycle.js";
+import { localInPlaceCycles } from "./validated-schemas.js";
 import type { ScopeMember } from "./scope-members.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
@@ -28,8 +30,9 @@ const isDeclarationDocument = (m: { kind?: unknown }): boolean =>
  * A `Telo.Definition` / `Telo.Abstract` declared as a member of a `with:` scope,
  * judged as the kernel judges it when the scope opens and creates it: its
  * `capability:` against the roster (`CAPABILITY_UNKNOWN` /
- * `CAPABILITY_NOT_DECLARABLE`) and the document against its built-in entry's
- * schema (`SCHEMA_VIOLATION`). Every other pass over a kind document reads the
+ * `CAPABILITY_NOT_DECLARABLE`), the document against its built-in entry's
+ * schema (`SCHEMA_VIOLATION`) and its schemas for an in-place cycle
+ * (`SCHEMA_IN_PLACE_CYCLE`). Every other pass over a kind document reads the
  * documents that register kinds, which a scope member does not, so the analysis
  * holds such a member apart from the declarations it checks
  * (`collectScopeMembers`), and this is all that judges it. The schema's own
@@ -97,13 +100,18 @@ function scopedKindJudge(
     if (capability) report(capability.code, `${label}: ${capability.message}`, "capability");
     const outcome = validate(member, kind);
     if (!outcome.finished) {
-      report(SCHEMA_NESTING_EXCEEDED, schemaNestingExceededMessage(`${kind}/${member.metadata.name}`, "the document"), "");
+      report(SCHEMA_NESTING_EXCEEDED, schemaNestingExceededMessage(`${kind}/${member.metadata.name}`, "the document", outcome), "");
       return;
     }
     for (const issue of outcome.issues) {
       if (capability && issue.path === "capability") continue;
       const quoted = quotingIssue(`${kind}/${member.metadata.name}: `, issue, issue.path);
       report("SCHEMA_VIOLATION", quoted.message, issue.path, quoted.quotedPlace);
+    }
+    // Nothing references a scope member's own schema, so only its own local
+    // references can close a cycle through it.
+    for (const { path, cycle } of localInPlaceCycles(member)) {
+      report(SCHEMA_IN_PLACE_CYCLE, inPlaceCycleMessage(`${kind} '${member.metadata.name}'`, cycle, (document) => document), path);
     }
   };
 }

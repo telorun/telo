@@ -11,7 +11,7 @@ with:
       kind: Telo.JsonSchema
       schema: { type: object, properties: { value: { type: number } } }
     value:
-      doubled: !cel "inputs.value * 2"
+      doubled: !cel "inputs.value * 2.0"
 steps:
   - name: useHelper
     inputs: { value: 5 }

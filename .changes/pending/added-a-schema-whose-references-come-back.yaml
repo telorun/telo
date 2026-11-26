@@ -1,0 +1,11 @@
+units:
+  analyzer: Added
+  kernel: Added
+body: "A schema whose references come back to the node they left without descending into
+  the value — a named shape with `anyOf: [{ $ref: <itself> }, …]`, two shapes naming
+  each other through `oneOf`, a kind's `schema: { anyOf: [{ $ref: \"#\" }] }`, an
+  Application's or library's `variables:` / `secrets:` entry with `anyOf: [{ $ref: \"#\"
+  }]` — is refused where it is declared, as `SCHEMA_IN_PLACE_CYCLE` by `telo check` and
+  `ERR_SCHEMA_IN_PLACE_CYCLE` by the kernel, and nothing is validated against it. `telo
+  check` and `telo run` used to crash on such a schema with \"Maximum call stack size
+  exceeded\"."

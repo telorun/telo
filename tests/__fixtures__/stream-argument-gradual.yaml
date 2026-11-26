@@ -8,23 +8,7 @@ metadata:
     argument is *any* in both directions, which is what keeps every producer and
     consumer that has not declared an element checking exactly as it did before
     type arguments existed.
-imports:
-  Run: ../../modules/run
-targets:
-  - !ref pipeline
----
-kind: Run.Value
-metadata: { name: produceBytes }
-outputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      output:
-        x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
-    required: [output]
-value:
-  output: !cel "null"
+imports: { Run: ../../modules/run }
 ---
 kind: Run.Value
 metadata: { name: consumeBytes }
@@ -32,12 +16,9 @@ inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      input:
-        x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+    properties: { input: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } } }
     required: [input]
-value:
-  ok: true
+value: { ok: true }
 ---
 kind: Run.Value
 metadata: { name: consumeAnything }
@@ -45,23 +26,24 @@ inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      input:
-        x-telo-type: Telo.Stream
+    properties: { input: { x-telo-type: Telo.Stream } }
     required: [input]
-value:
-  ok: true
+value: { ok: true }
 ---
 kind: Run.Sequence
 metadata: { name: pipeline }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties: { bytes: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } } }
+    required: [bytes]
 steps:
-  - name: produce
-    invoke: !ref produceBytes
   - name: matchingElement
     inputs:
-      input: !cel "steps.produce.result.output"
+      input: !cel "inputs.bytes"
     invoke: !ref consumeBytes
   - name: undeclaredElement
     inputs:
-      input: !cel "steps.produce.result.output"
+      input: !cel "inputs.bytes"
     invoke: !ref consumeAnything

@@ -122,22 +122,35 @@ export function expandForConfiguration(
   return expandChoices(manifests, decided(choices, configuration)).manifests;
 }
 
+/** A library's choices as one import reads them: the inputs they decide on,
+ *  and its documents expanded once those are settled. */
+export interface ImportChoices {
+  /** The `variables:` / `secrets:` entries and needs the choices read. */
+  readonly inputNames: DimensionInputNames;
+  /** The documents as `inputs` decide every choice — the import's settled
+   *  dimension inputs and the needs it bound, each read from what the load
+   *  already resolved, never from the environment again. */
+  expand(inputs: DimensionInputs): ResourceManifest[];
+}
+
 /**
- * A library's documents expanded for one import: its dimensions read off the
- * import's settled `variables:` / `secrets:` and the needs it bound — each read
- * from what the load already resolved, never from the environment again.
- * `related` holds the forwarded declarations of the library's own imports,
- * which a call its conditions make may reach.
+ * A library's choices, read once per import. `related` holds the forwarded
+ * declarations of the library's own imports, which a call its conditions make
+ * may reach.
  */
-export function expandForImport(
+export function importChoices(
   manifests: readonly ResourceManifest[],
-  inputs: DimensionInputs,
   registry: AnalysisRegistry,
   related: readonly ResourceManifest[],
-): ResourceManifest[] {
+): ImportChoices {
   const { choices, declarations } = choicesOf(manifests, registry, related);
-  if (choices.sites.length === 0) return declarations;
-  return expandChoices(manifests, decided(choices, assignmentOf(choices.dimensions, inputs))).manifests;
+  return {
+    inputNames: dimensionInputNames(choices.dimensions),
+    expand: (inputs) =>
+      choices.sites.length === 0
+        ? declarations
+        : expandChoices(manifests, decided(choices, assignmentOf(choices.dimensions, inputs))).manifests,
+  };
 }
 
 /** The branch every choice takes in `configuration`. One of the module's own
@@ -164,6 +177,19 @@ function decided(choices: ChoiceReading, configuration: Assignment) {
     );
   }
   return decisions;
+}
+
+/** `running` with the dimensions `more` decided beside its own. */
+export function withDimensions(running: RunningConfiguration, more: RunningConfiguration): RunningConfiguration {
+  const needs = new Map([...(running.inputs.needs ?? []), ...(more.inputs.needs ?? [])]);
+  return {
+    configuration: { ...running.configuration, ...more.configuration },
+    inputs: {
+      variables: { ...running.inputs.variables, ...more.inputs.variables },
+      secrets: { ...running.inputs.secrets, ...more.inputs.secrets },
+      ...(needs.size > 0 ? { needs } : {}),
+    },
+  };
 }
 
 /** `inputs` with the dimensions already resolved supplied by name, so the

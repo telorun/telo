@@ -1,0 +1,4 @@
+units:
+  apps/authoring-agent: Added
+body: The primer says a scoped Telo.Import may be written inside a choice, and that its
+  source must resolve in every configuration.

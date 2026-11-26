@@ -369,7 +369,6 @@ export function conditionRefusals(
   const out: string[] = [];
   const result = celEngine.analyze(condition, {
     celEnv: moduleNamesEnvironment(ruleEnv(), moduleNames ?? EMPTY_NAMES),
-    contextSchema: null,
     moduleNames,
   });
   for (const diagnostic of result.diagnostics) out.push(`Rule condition: ${diagnostic.message}`);

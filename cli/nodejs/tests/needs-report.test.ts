@@ -221,6 +221,18 @@ describe("telo needs report", () => {
     ]);
   });
 
+  it("lists a need an option leaves unsupplied, required where that option is taken", () => {
+    const agreement = path.join(ROOT, "tests/__fixtures__/check-run-agreement");
+    for (const [fixture, line] of [
+      ["need-supply-choice/supply-off.yaml", /^Lib\.db  Database \(\.\/types\)  required when FLAG_1 is false$/m],
+      ["inner-need-choice/choice-on.yaml", /^Outer\.Inner\.db  Database \(\.\/types\)  required when FLAG_1 is false$/m],
+    ] as const) {
+      const { stdout, status } = runCli(["needs", "report", path.join(agreement, fixture)]);
+      expect(status).toBe(0);
+      expect(stdout).toMatch(line);
+    }
+  });
+
   it("gives no report for an application the kernel would refuse, naming the refusal", () => {
     // The collision is two imports deep, where only the whole-graph table sees it.
     const fixture = path.join(ROOT, "tests/__fixtures__/needs/agreement/env-collision/consumer.yaml");

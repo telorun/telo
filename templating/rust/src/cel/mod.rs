@@ -12,4 +12,5 @@ pub mod literal_argument;
 pub mod module_call;
 pub mod value_types;
 pub mod verdict_codes;
+pub mod verdict_wording;
 pub mod walk;

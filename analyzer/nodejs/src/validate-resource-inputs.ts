@@ -1,7 +1,10 @@
 import type { ResourceManifest } from "@telorun/sdk";
-import { plainScalar } from "@telorun/sdk";
+import { isTextRecord, plainScalar } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
-import { importInputsSchema } from "./import-inputs.js";
+import { listRequests } from "./declaration-requests.js";
+import { importInputsSchema, importTextParameters } from "./import-inputs.js";
+import { recordsDifferOnlyInLang, textRecordIdentity, textRecordOf } from "./text-parameter.js";
+import { TextLanguageScope } from "./validate-texts.js";
 import type { ModuleDocuments } from "./module-documents.js";
 import { decodePlainLiterals } from "./plain-literal-decoding.js";
 import type { AliasResolver } from "./alias-resolver.js";
@@ -78,7 +81,8 @@ export function validateResourceInputs(
   };
   const out = resourceInputDeclarationDiagnostics(manifests, registry, aliases, isOwn);
   for (const m of manifests) if (m.kind === "Telo.Import") out.push(...importInputDiagnostics(m, scope));
-  for (const pair of sharedLibraryPairs(manifests, documents)) {
+  const texts = new TextLanguageScope(listRequests(manifests), rootModules, documents);
+  for (const pair of sharedLibraryPairs(manifests, documents, (m) => texts.langOf(m))) {
     for (const block of SUPPLIED_BLOCKS) {
       for (const key of sharedKeysOf(pair, block)) {
         const found = sharedKeyConflict(pair, block, key, isOwn);
@@ -329,8 +333,14 @@ export interface SharedImportPair {
   readonly imports: readonly [ResourceManifest, ResourceManifest];
 }
 
-/** What `m` — a `Telo.Import` of a shared library — supplies, as compared. */
-export function suppliedConfigOf(m: ResourceManifest, documents: readonly ModuleDocuments[]): SuppliedConfig | undefined {
+/** What `m` — a `Telo.Import` of a shared library — supplies, as compared.
+ *  `langOf` is the language of the module writing `m`, which a text parameter's
+ *  settled record carries. */
+export function suppliedConfigOf(
+  m: ResourceManifest,
+  documents: readonly ModuleDocuments[],
+  langOf: (m: ResourceManifest) => string | null,
+): SuppliedConfig | undefined {
   const meta = m.metadata as
     | { name?: string; module?: string; source?: string; sharedLibrary?: boolean; resolvedSource?: string }
     | undefined;
@@ -340,6 +350,9 @@ export function suppliedConfigOf(m: ResourceManifest, documents: readonly Module
   // decoded against the library's declaration — so two spellings of one value
   // agree, as at runtime.
   const inputs = importInputsSchema(m, documents);
+  // A text parameter is compared as the record it settles to: the importer's
+  // text in the importer's language.
+  const texts = new Set(importTextParameters(m, documents).map((param) => `${param.block}.${param.name}`));
   for (const block of SUPPLIED_BLOCKS) {
     const value = (m as Record<string, unknown>)[block];
     const written =
@@ -352,9 +365,11 @@ export function suppliedConfigOf(m: ResourceManifest, documents: readonly Module
       Object.fromEntries(
         Object.entries(written).map(([key, held]) => [
           key,
-          declared?.[key] && !findDynamicLeaf(held)
-            ? decodePlainLiterals(structuredClone(held), declared[key])
-            : held,
+          !declared?.[key] || findDynamicLeaf(held)
+            ? held
+            : texts.has(`${block}.${key}`) && held !== null
+              ? textRecordOf(held, langOf(m), false)
+              : decodePlainLiterals(structuredClone(held), declared[key]),
         ]),
       ),
     );
@@ -380,11 +395,12 @@ export function suppliedConfigOf(m: ResourceManifest, documents: readonly Module
 export function sharedLibraryPairs(
   manifests: readonly ResourceManifest[],
   documents: readonly ModuleDocuments[],
+  langOf: (m: ResourceManifest) => string | null,
 ): SharedImportPair[] {
   const byTarget = new Map<string, { config: SuppliedConfig; manifest: ResourceManifest }[]>();
   for (const m of manifests) {
     if (m.kind !== "Telo.Import") continue;
-    const config = suppliedConfigOf(m, documents);
+    const config = suppliedConfigOf(m, documents, langOf);
     if (!config) continue;
     const target = (m.metadata as { resolvedSource?: string }).resolvedSource!;
     const bucket = byTarget.get(target);
@@ -453,7 +469,22 @@ export function sharedKeyConflict(
   if (block === "needs" && (isRefSentinel(a[key]) || isRefSentinel(b[key])) && first.module !== later.module) {
     return undefined;
   }
-  if (sameSuppliedValue(a[key], b[key])) return undefined;
+  if (isTextRecord(a[key]) && isTextRecord(b[key])) {
+    // One text is one settled record: its identity, context, language.
+    const identity = textRecordIdentity(a[key]);
+    if (identity !== undefined && identity === textRecordIdentity(b[key])) return undefined;
+    const langs = recordsDifferOnlyInLang(a[key], b[key]);
+    if (langs) {
+      return sharedConflict(
+        later,
+        first,
+        isOwn,
+        `${block}.${key}`,
+        `they supply ${block}.${key} as the same text written in '${langs[0]}' and in '${langs[1]}', ` +
+          `which are two texts. Write it from modules of one language, or make the library 'lifecycle: isolated'.`,
+      );
+    }
+  } else if (sameSuppliedValue(a[key], b[key])) return undefined;
   return sharedConflict(
     later,
     first,

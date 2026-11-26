@@ -1,10 +1,12 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { expansionTagLabel, expansionTagOf, type ExpansionSentinel } from "@telorun/templating";
 import { KERNEL_BUILTINS } from "./builtins.js";
 import { kindDeclarationOf } from "./kind-declaration.js";
 import { kindDocumentIn, type LoadedKindScope } from "./loaded-kind-scope.js";
-import type { LoadedModule, ScopeHolderStep } from "./loaded-types.js";
+import type { LoadedModule, ScopedImportOption, ScopeHolderStep } from "./loaded-types.js";
 import { isModuleKind } from "./module-kinds.js";
 import { isScopeMember } from "./scope-declarations.js";
+import { importFieldRefusals, isImportDocument, type ImportFieldRefusal } from "./loader-expansion-refusals.js";
 
 /**
  * The `Telo.Import` documents a module declares as SCOPE MEMBERS — in an
@@ -22,18 +24,34 @@ import { isScopeMember } from "./scope-declarations.js";
  */
 
 export interface ScopedImportSite {
-  /** The member, as the declaring file holds it. */
+  /** The member, as the declaring file holds it: for one a choice declares at
+   *  a scope-member position, the branch, named by the tag's `metadata`. */
   readonly member: ResourceManifest;
-  readonly alias: string;
+  /** Its name — absent only for a refused member whose `metadata` is not
+   *  written plainly. */
+  readonly alias: string | undefined;
+  /** What the loader refuses at the member's own fields; a refused member is
+   *  read no further. */
+  readonly refusals: readonly ImportFieldRefusal[];
   /** The holders from the top level down; the last holds the member. */
   readonly holders: readonly ScopeHolderStep[];
-  /** The top-level holder's kind, as written. */
+  /** The top-level holder's kind, as written — the tag (`!if`) for a holder a
+   *  whole-document choice declares. */
   readonly holderKind: string;
+  /** The top-level document holding it, by its index in the file. */
+  readonly document: number;
+  /** Where it is written in that document, option keys included. */
+  readonly place: readonly (string | number)[];
+  /** Every option on the way to it, outermost first. */
+  readonly options: readonly ScopedImportOption[];
 }
 
-/** The member's place inside its top-level holder (`with[0]`, `with[1].with[0]`). */
-export function scopedMemberPath(holders: readonly ScopeHolderStep[]): string {
-  return holders.map((h, i) => `${i === 0 ? "" : "."}${h.field}[${h.index}]`).join("");
+/** The member's place inside its top-level holder (`with[0]`, `with.then[0]`,
+ *  `then.with[0]`). */
+export function scopedMemberPath(place: readonly (string | number)[]): string {
+  let out = "";
+  for (const key of place) out += typeof key === "number" ? `[${key}]` : out.length === 0 ? key : `.${key}`;
+  return out;
 }
 
 /** The instance path of a scoped import reached from an instance at `importer`. */
@@ -103,8 +121,35 @@ function scopeFieldsOf(
   return [...own, ...inherited.filter((f) => !own.includes(f))];
 }
 
+/** The branches a choice writes, each with its id and its keys in the tag. */
+function branchesOf(sentinel: ExpansionSentinel): { branch: string; keys: (string | number)[]; value: unknown }[] {
+  const body = sentinel as Record<string, unknown>;
+  if (expansionTagOf(sentinel) === "if") {
+    return ["then", "else"].filter((b) => Object.hasOwn(body, b)).map((b) => ({ branch: b, keys: [b], value: body[b] }));
+  }
+  const out: { branch: string; keys: (string | number)[]; value: unknown }[] = [];
+  const cases = body.cases;
+  if (cases && typeof cases === "object" && !Array.isArray(cases)) {
+    for (const [key, value] of Object.entries(cases)) out.push({ branch: `case:${key}`, keys: ["cases", key], value });
+  }
+  if (Object.hasOwn(body, "default")) out.push({ branch: "default", keys: ["default"], value: body.default });
+  return out;
+}
+
+const isChoice = (value: unknown): value is ExpansionSentinel => {
+  const tag = expansionTagOf(value);
+  return tag === "if" || tag === "switch";
+};
+
+const nameOf = (value: unknown): string | undefined => {
+  const name = (value as { metadata?: { name?: unknown } } | undefined)?.metadata?.name;
+  return typeof name === "string" ? name : undefined;
+};
+
 /** Every scoped `Telo.Import` among `manifests`, the top-level documents of one
- *  file of `mod`, in document order. */
+ *  file of `mod`, in document order — wherever a choice writes it: beneath a
+ *  chosen holder, in a chosen scope array, as a member chosen at a scope-member
+ *  position, in every option at any depth. */
 export function scopedImportsOf(
   graph: LoadedKindScope,
   mod: LoadedModule,
@@ -117,26 +162,74 @@ export function scopedImportsOf(
     if (!known) fields.set(kind, (known = scopeFieldsOf(graph, mod, kind)));
     return known;
   };
-  const visit = (holder: ResourceManifest, holders: ScopeHolderStep[], holderKind: string): void => {
-    for (const field of fieldsOf(holder.kind as string)) {
-      const array = (holder as unknown as Record<string, unknown>)[field];
-      if (!Array.isArray(array)) continue;
-      array.forEach((entry, index) => {
-        if (!isScopeMember(entry)) return;
-        const chain = [...holders, { name: holder.metadata!.name as string, field, index }];
-        if (entry.kind === "Telo.Import") {
-          out.push({ member: entry, alias: entry.metadata.name, holders: chain, holderKind });
-        } else if (!kindDeclarationOf(entry) && !isModuleKind(entry.kind)) {
-          visit(entry, chain, holderKind);
-        }
-      });
+  type Keys = readonly (string | number)[];
+  type Walk = { document: number; holderKind: string };
+  const option = (at: Keys, branch: string): ScopedImportOption => ({ at, branch });
+  /** The members of the scope `value` holds, written at `place`. */
+  const scope = (value: unknown, walk: Walk, holders: ScopeHolderStep[], holder: string, field: string, place: Keys, options: readonly ScopedImportOption[]): void => {
+    if (isChoice(value)) {
+      for (const b of branchesOf(value)) scope(b.value, walk, holders, holder, field, [...place, ...b.keys], [...options, option(place, b.branch)]);
+      return;
+    }
+    if (!Array.isArray(value)) return;
+    value.forEach((entry, index) => {
+      member(entry, walk, [...holders, { name: holder, field, index }], [...place, index], options, undefined);
+    });
+  };
+  /** One scope member written at `place`; `named` is the name the outermost
+   *  tag gives a member a choice declares. */
+  const member = (entry: unknown, walk: Walk, holders: ScopeHolderStep[], place: Keys, options: readonly ScopedImportOption[], named: string | undefined): void => {
+    if (isChoice(entry)) {
+      const name = nameOf(entry) ?? named;
+      if (name === undefined) return;
+      for (const b of branchesOf(entry)) member(b.value, walk, holders, [...place, ...b.keys], [...options, option(place, b.branch)], name);
+      return;
+    }
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return;
+    const record = entry as ResourceManifest;
+    const name = named ?? nameOf(record);
+    if (isImportDocument(record as unknown as Record<string, unknown>)) {
+      const refusals = importFieldRefusals(record as unknown as Record<string, unknown>, name);
+      if (refusals.length > 0) {
+        out.push({ member: record, alias: name, refusals, holders, holderKind: walk.holderKind, document: walk.document, place, options });
+        return;
+      }
+    }
+    if (typeof record.kind !== "string" || name === undefined) return;
+    if (named === undefined && !isScopeMember(record)) return;
+    if (record.kind === "Telo.Import") {
+      out.push({ member: record, alias: name, refusals: [], holders, holderKind: walk.holderKind, document: walk.document, place, options });
+    } else if (!kindDeclarationOf(record) && !isModuleKind(record.kind)) {
+      declaration(record, name, walk, holders, place, options);
     }
   };
-  for (const m of manifests) {
+  /** The scopes of the declaration `holder`, named `name`, written at `place`. */
+  const declaration = (holder: ResourceManifest, name: string, walk: Walk, holders: ScopeHolderStep[], place: Keys, options: readonly ScopedImportOption[]): void => {
+    for (const field of fieldsOf(holder.kind as string)) {
+      scope((holder as unknown as Record<string, unknown>)[field], walk, holders, name, field, [...place, field], options);
+    }
+  };
+  /** A whole document behind a tag: each branch declares the holder it names. */
+  const chosenDocument = (value: unknown, walk: Walk, name: string, place: Keys, options: readonly ScopedImportOption[]): void => {
+    if (isChoice(value)) {
+      for (const b of branchesOf(value)) chosenDocument(b.value, walk, name, [...place, ...b.keys], [...options, option(place, b.branch)]);
+      return;
+    }
+    const record = value as ResourceManifest | undefined;
+    if (!record || typeof record !== "object" || Array.isArray(record) || typeof record.kind !== "string") return;
+    if (record.kind === "Telo.Import" || isModuleKind(record.kind) || kindDeclarationOf(record)) return;
+    declaration(record, name, walk, [], place, options);
+  };
+  manifests.forEach((m, document) => {
+    if (isChoice(m)) {
+      const name = nameOf(m);
+      if (name !== undefined) chosenDocument(m, { document, holderKind: expansionTagLabel(m)! }, name, [], []);
+      return;
+    }
     const doc = m as ResourceManifest | undefined;
-    if (!doc || typeof doc.kind !== "string" || typeof doc.metadata?.name !== "string") continue;
-    if (doc.kind === "Telo.Import" || isModuleKind(doc.kind) || kindDeclarationOf(doc)) continue;
-    visit(doc, [], doc.kind);
-  }
+    if (!doc || typeof doc.kind !== "string" || typeof doc.metadata?.name !== "string") return;
+    if (doc.kind === "Telo.Import" || isModuleKind(doc.kind) || kindDeclarationOf(doc)) return;
+    declaration(doc, doc.metadata.name, { document, holderKind: doc.kind }, [], [], []);
+  });
   return out;
 }

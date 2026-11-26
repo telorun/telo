@@ -146,6 +146,31 @@ describe("a module call's arguments", () => {
     ]);
   });
 
+  it("are checked by type through every member of a union, past where its printed name is cut", async () => {
+    // `wide` prints as more than 64 type nodes: the boolean member past the cut is read from the type.
+    let deep = "{ type: integer }";
+    for (let level = 0; level < 64; level += 1) deep = `{ type: array, items: ${deep} }`;
+    const files = withFunction(`!cel "Self.choose(wide)"`);
+    files["/lib/telo.yaml"] = files["/lib/telo.yaml"]!.replace(
+      "  - name: omitted\n",
+      `  - name: wide\n    schema: { oneOf: [{ type: integer }, ${deep}, { type: boolean }] }\n  - name: omitted\n`,
+    );
+    files["/lib/telo.yaml"] += `---
+kind: Telo.Function
+metadata: { name: choose }
+params:
+  - name: value
+    schema: { type: [integer, array] }
+returns:
+  schema: { type: string }
+body: !cel "'x'"
+`;
+    const diagnostics = await check(files);
+    expect(diagnostics.map(([code]) => code)).toEqual(["FUNCTION_ARGUMENT_MISMATCH"]);
+    expect(diagnostics[0]![1]).toContain("passing a 'int|list<list<");
+    expect(diagnostics[0]![1]).toContain("...>");
+  });
+
   it("are checked by declared shape when an argument names a value", async () => {
     const diagnostics = await check(withFunction(`!cel "Self.label(tag)"`));
     expect(diagnostics.map(([code]) => code)).toEqual(["FUNCTION_ARGUMENT_MISMATCH"]);

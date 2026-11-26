@@ -4,7 +4,7 @@ import { DOCUMENT_STAGES, type DocumentStage } from "../src/analysis-families.js
 import { observeDocumentStages } from "../src/cel-site-judgements.js";
 import { flagTargets, loadGenerated } from "./configuration-cost-fixtures.js";
 
-const KIND_STAGES: DocumentStage[] = ["libraryRequires", "kindHostPathDefaults", "controllerSelectors", "schemaCompile", "extends", "baseMapping", "providerCoherence", "callableKinds", "kindMetadata", "bodyReferenceForms", "kindCapability", "kindRefSlots", "kindSlotAnnotations", "kindZoneSlots", "kindRules", "kindValueTypes", "kindAnnotations", "kindContracts"];
+const KIND_STAGES: DocumentStage[] = ["libraryRequires", "libraryInputCycles", "kindHostPathDefaults", "controllerSelectors", "schemaCompile", "extends", "baseMapping", "providerCoherence", "callableKinds", "kindMetadata", "bodyReferenceForms", "kindCapability", "kindRefSlots", "kindSlotAnnotations", "kindZoneSlots", "kindRules", "kindValueTypes", "kindAnnotations", "kindContracts"];
 const MODULE_STAGES = DOCUMENT_STAGES.filter((stage) => !KIND_STAGES.includes(stage) && stage !== "scopedKindDocuments");
 
 

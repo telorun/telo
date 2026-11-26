@@ -8,7 +8,7 @@ import type { ManifestSource } from "../src/types.js";
 /**
  * What an expression's tree says about its value is judged against the slot it
  * fills: a list's elements against `items`, a map literal's keys against an
- * object, a module call's declared result, a concatenation's elements, either
+ * object, a module call's declared result, a concatenation's elements, each
  * branch of a conditional.
  */
 
@@ -156,9 +156,14 @@ describe("a computed value judged by what its tree says", () => {
     ).toEqual([["CEL_TYPE_ERROR", "steps[1].inputs.messages"]]);
   });
 
-  it("refuses a conditional only when neither branch fits", async () => {
-    expect(await errors(`      tags: !cel "true ? ['a'] : [1]"`)).toEqual([]);
-    expect((await errors(`      tags: !cel "true ? [2] : [1]"`)).map(([code]) => code)).toEqual(["CEL_TYPE_ERROR"]);
+  it("refuses a conditional where a branch does not fit, naming the first that fails", async () => {
+    expect(await errors(`      tags: !cel "true ? ['a'] : ['b']"`)).toEqual([]);
+    expect(await errors(`      tags: !cel "true ? ['a'] : [1]"`)).toEqual([
+      ["CEL_TYPE_ERROR", "steps[1].inputs.tags", expect.stringContaining("from '[1]'")],
+    ]);
+    expect(await errors(`      tags: !cel "true ? [2] : [1]"`)).toEqual([
+      ["CEL_TYPE_ERROR", "steps[1].inputs.tags", expect.stringContaining("from '[2]'")],
+    ]);
   });
 
   it("says nothing where the tree does not know the value", async () => {

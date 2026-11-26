@@ -1,0 +1,9 @@
+# A library asking for a durable directory.
+kind: Telo.Library
+metadata: { name: Stored }
+needs: { store: { kind: Telo.DurableDirectory } }
+exports: { resources: [read] }
+---
+kind: Telo.Value
+metadata: { name: read }
+value: !cel "string(resources.store.path)"

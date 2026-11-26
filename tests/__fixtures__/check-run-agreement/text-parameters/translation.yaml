@@ -1,0 +1,16 @@
+# The importer's text is among the texts its application shows: a served
+# language that does not translate it is warned.
+kind: Telo.Application
+metadata: { name: TextParameterTranslation }
+lang: pl
+imports:
+  Entry: { source: ../../import-text-input/title, variables: { title: Hello } }
+translations:
+  catalogs:
+    - { kind: Telo.TextTranslations, lang: de, texts: [] }
+targets: [!ref scope]
+---
+kind: Telo.Sequence
+metadata: { name: scope }
+steps:
+  - { name: entry, invoke: !ref Entry.shown }

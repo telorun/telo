@@ -15,7 +15,7 @@
 
 import type { CelType } from "./cel-type.js";
 import type { CelValue } from "./cel-value.js";
-import { formatType } from "./cel-type.js";
+import { exactTypeText } from "./cel-type.js";
 import type { CelImplementation } from "./runtime-library.js";
 import type { NominalResolver } from "./type-expression.js";
 import { CelTypeExpressionError, parseTypeExpression } from "./type-expression.js";
@@ -104,14 +104,15 @@ function splitParameters(text: string): string[] {
   return parts;
 }
 
+/** A signature's text, its types written whole: the text is what identifies it. */
 export function formatSignature(signature: CelSignature): string {
-  return `${signatureKey(signature)}: ${formatType(signature.returns)}`;
+  return `${signatureKey(signature)}: ${exactTypeText(signature.returns)}`;
 }
 
 /** What two registrations of the same call share: the name, the form and the parameters. */
 export function signatureKey(signature: CelSignature): string {
-  const on = signature.receiver ? `${formatType(signature.receiver)}.` : "";
-  return `${on}${signature.name}(${signature.parameters.map((type) => formatType(type)).join(", ")})`;
+  const on = signature.receiver ? `${exactTypeText(signature.receiver)}.` : "";
+  return `${on}${signature.name}(${signature.parameters.map((type) => exactTypeText(type)).join(", ")})`;
 }
 
 /**

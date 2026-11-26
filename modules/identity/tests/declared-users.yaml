@@ -52,7 +52,7 @@ steps:
     inputs:
       actual:
         right: !cel "steps.right.result"
-        renamed: !cel "steps.renamed.result.principal.subject"
+        renamed: !cel "steps.renamed.result.?principal.subject.value()"
         wrong: !cel "steps.wrong.result"
         unknown: !cel "steps.unknown.result"
       expected:

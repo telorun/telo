@@ -8,6 +8,7 @@
 //! lands on the `imports:` entry the author wrote. No `ast_documents` entry backs them.
 
 use serde_json::{Map, Value};
+use telo_templating::{expansion_tag_of, SPLICE_KEY};
 
 use crate::loaded_types::LoadedFile;
 use crate::position_metadata::DocumentPosition;
@@ -35,16 +36,9 @@ pub fn inline_import_manifests(
     let Some(raw) = module_manifest.get("imports").and_then(Value::as_object) else { return Vec::new() };
     let mut out = Vec::new();
     for (alias, value) in raw {
-        let (entry, scalar) = match value {
-            Value::String(source) => {
-                let mut entry = Map::new();
-                entry.insert("source".to_string(), Value::String(source.clone()));
-                (entry, true)
-            }
-            Value::Object(map) => (map.clone(), false),
-            _ => continue,
-        };
-        let Some(source) = entry.get("source").and_then(Value::as_str) else { continue };
+        let Some(entry) = desugared_entry(value) else { continue };
+        let scalar = value.is_string();
+        let source = entry.get("source").and_then(Value::as_str).unwrap_or_default();
         let mut manifest = Map::new();
         manifest.insert("kind".to_string(), Value::String(IMPORT.to_string()));
         manifest.insert("metadata".to_string(), Value::Object(Map::from_iter([("name".to_string(), Value::String(alias.clone()))])));
@@ -58,6 +52,35 @@ pub fn inline_import_manifests(
             manifest: Value::Object(manifest),
             position: synth_position(module_position, alias, scalar),
         });
+    }
+    out
+}
+
+/// An `imports:` entry as the desugarer reads it, or `None` for one it skips: no string `source`,
+/// a tagged integrity, or a splice.
+fn desugared_entry(value: &Value) -> Option<Map<String, Value>> {
+    let entry = match value {
+        Value::String(source) => Map::from_iter([("source".to_string(), Value::String(source.clone()))]),
+        Value::Object(map) => map.clone(),
+        _ => return None,
+    };
+    entry.get("source").and_then(Value::as_str)?;
+    // A tagged integrity, or a splice, is refused by the parse; the entry is read no further.
+    if entry.get("integrity").and_then(expansion_tag_of).is_some() || entry.contains_key(SPLICE_KEY) {
+        return None;
+    }
+    Some(entry)
+}
+
+/// The `imports.<alias>.<field>` positions of a module document that its desugared imports
+/// carry, so each is judged at its `Telo.Import`; every other field of an entry (`source`,
+/// `integrity`) is read by the desugarer alone.
+pub fn carried_import_paths(module_manifest: &ResourceManifest) -> Vec<String> {
+    let Some(raw) = module_manifest.get("imports").and_then(Value::as_object) else { return Vec::new() };
+    let mut out = Vec::new();
+    for (alias, value) in raw {
+        let Some(entry) = desugared_entry(value) else { continue };
+        out.extend(CARRIED.iter().filter(|field| entry.contains_key(**field)).map(|field| format!("imports.{alias}.{field}")));
     }
     out
 }

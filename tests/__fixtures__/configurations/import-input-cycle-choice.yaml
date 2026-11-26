@@ -1,0 +1,19 @@
+# An import handed the collector listing its own member only where `flag1`
+# chooses it: the loop through the import is reported where that option is.
+kind: Telo.Application
+metadata: { name: ImportInputCycleChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+imports:
+  Kinds: ../resource-inputs/optional/kinds
+  Lib:
+    source: ../resource-inputs/optional/cycle/members
+    resources:
+      collector: !if { if: !cel "variables.flag1", then: !ref collector, else: !ref other }
+---
+kind: Kinds.Collector
+metadata: { name: collector }
+members: [!ref Lib.member]
+---
+kind: Kinds.Collector
+metadata: { name: other }
+members: []

@@ -20,10 +20,12 @@
 //! draft-07 meta-schema declares `format: regex`, whether or not the validator would
 //! compile that place, a pattern RE2 refuses fails the compile with the seam's sentence.
 //!
-//! A validation answers three ways — valid, invalid, or an error: it could not finish
-//! (`MAX_NESTING`, as AJV's code throws). No caller reads the error as invalid: each
-//! reports `SCHEMA_NESTING_EXCEEDED` where its mismatch would go, worded by
-//! [`schema_nesting_exceeded_message`].
+//! A validation answers three ways — valid, invalid, or an error: it could not finish. An
+//! entry point refuses a value nested past the shared limit unvalidated
+//! ([`value_depth_exceeded_error`]); the engine's own bound (`MAX_NESTING`, as AJV's code
+//! throws) is the backstop. No caller reads the error as invalid: each reports
+//! `SCHEMA_NESTING_EXCEEDED` where its mismatch would go, worded by
+//! [`schema_nesting_exceeded_message`] for the [`ValidationUnfinished`] the error stands for.
 //!
 //! [`cel_value_of`] has no Node twin: JavaScript holds a parsed JSON document as values
 //! already, where Rust converts `serde_json` to the value domain once.
@@ -45,6 +47,7 @@ use crate::schema_error_report::{schema_issues, SchemaIssue};
 use crate::schema_findings_judge::{judge_schema_findings, SchemaJudgment};
 use crate::schema_node_validator::{NodeValidatorOptions, SchemaNodeValidator};
 use crate::stand_in_findings::StandIns;
+use crate::value_depth::{max_value_depth, nests_past_value_depth};
 use crate::value_type_defaults::fill_value_type_defaults;
 
 /// The named configurations, in the order the factory documents them.
@@ -170,18 +173,59 @@ pub fn schema_pattern_refusal_in(schema: &JsonValue) -> Option<String> {
 /// The code a static check reports a validation that could not finish under.
 pub const SCHEMA_NESTING_EXCEEDED: &str = "SCHEMA_NESTING_EXCEEDED";
 
+/// Why a validation could not finish: its value nests past [`max_value_depth`], or — the
+/// backstop — validating it nested past the engine's bound.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ValidationUnfinished {
+    ValueDepth,
+    EngineDepth,
+}
+
+impl ValidationUnfinished {
+    /// The cause a validation's error stands for: the limit's own refusal, or the engine's.
+    pub fn of(error: &str) -> Self {
+        if error == value_depth_exceeded_error() {
+            Self::ValueDepth
+        } else {
+            Self::EngineDepth
+        }
+    }
+}
+
+/// The error an entry point answers a value nested past [`max_value_depth`] with — the twin of
+/// Node's `ValueDepthExceededError` message.
+pub fn value_depth_exceeded_error() -> String {
+    schema_nesting_exceeded_sentence("the value", ValidationUnfinished::ValueDepth)
+}
+
+/// `Err` of [`value_depth_exceeded_error`] when `value` nests past [`max_value_depth`].
+pub fn check_value_depth(value: &CelValue) -> Result<(), String> {
+    if nests_past_value_depth(value) {
+        Err(value_depth_exceeded_error())
+    } else {
+        Ok(())
+    }
+}
+
 /// The sentence of a validation that could not finish: `label` is the declaration
-/// (`<Kind>/<name>`), `place` the value it validated (`the value at 'handler'`).
-pub fn schema_nesting_exceeded_message(label: &str, place: &str) -> String {
-    format!("{label}: {}", schema_nesting_exceeded_sentence(place))
+/// (`<Kind>/<name>`), `place` the value it validated (`the value at 'handler'`), `unfinished`
+/// why.
+pub fn schema_nesting_exceeded_message(label: &str, place: &str, unfinished: ValidationUnfinished) -> String {
+    format!("{label}: {}", schema_nesting_exceeded_sentence(place, unfinished))
 }
 
 /// [`schema_nesting_exceeded_message`] without its label, for a message that names the
 /// declaration itself.
-pub fn schema_nesting_exceeded_sentence(place: &str) -> String {
-    format!(
-        "{place} cannot be validated — validating it nests past the depth a validation may reach. Either its schema refers to itself without descending into the value, or the value is nested deeper than a validation can follow: make each self-reference descend into the value at every step, or nest the value less deeply."
-    )
+pub fn schema_nesting_exceeded_sentence(place: &str, unfinished: ValidationUnfinished) -> String {
+    match unfinished {
+        ValidationUnfinished::ValueDepth => format!(
+            "{place} cannot be validated — it is nested deeper than the {} levels a validation follows: nest it less deeply.",
+            max_value_depth()
+        ),
+        ValidationUnfinished::EngineDepth => {
+            format!("{place} cannot be validated — validating it nests past what this engine can follow: nest it less deeply.")
+        }
+    }
 }
 
 /// A JSON value as a value: an integer as an int64 (a uint past its range), so a value
@@ -419,8 +463,14 @@ pub fn judged_schema_issues(
 /// `validateAgainstSchema`: a value validated under `analysis`, an instance value opaque —
 /// the issues, each union judged, or none. A schema that does not compile is its author's,
 /// reported where it is declared, so it yields none here. An error is a validation that
-/// could not finish, as AJV's code throws.
+/// could not finish: a value nested past [`max_value_depth`], or the engine's bound. A schema
+/// recursing in place is validated against by nothing: its declaration is refused
+/// (`SCHEMA_IN_PLACE_CYCLE`).
 pub fn validate_against_schema(data: &CelValue, schema: &Value) -> Result<Vec<SchemaIssue>, String> {
+    if crate::schema_in_place_cycle::recurses_in_place(schema, &|_| None) {
+        return Ok(Vec::new());
+    }
+    check_value_depth(data)?;
     let mut host = SchemaValidation::new(SchemaValidationConfiguration::Analysis);
     let arc = json_value_of(schema);
     let Ok(compiled) = host.compile_json(arc.clone()) else { return Ok(Vec::new()) };
@@ -454,6 +504,12 @@ mod tests {
                 .expect("the validation returns")
         });
         assert_eq!(answer, Err("Maximum call stack size exceeded".to_string()));
+        // The backstop is worded as such, never as the value-depth limit.
+        let cause = ValidationUnfinished::of(answer.as_ref().unwrap_err());
+        assert_eq!(
+            schema_nesting_exceeded_sentence("the value", cause),
+            "the value cannot be validated — validating it nests past what this engine can follow: nest it less deeply."
+        );
     }
 
     /// A list nested `depth` deep around `leaf`, built without recursion.

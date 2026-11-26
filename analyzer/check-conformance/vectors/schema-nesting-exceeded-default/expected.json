@@ -10,20 +10,20 @@
           "name": "NestingApp"
         }
       },
-      "message": "Telo.Application/NestingApp: the default of variables.tree cannot be validated — validating it nests past the depth a validation may reach. Either its schema refers to itself without descending into the value, or the value is nested deeper than a validation can follow: make each self-reference descend into the value at every step, or nest the value less deeply.",
+      "message": "Telo.Application/NestingApp: the default of variables.tree cannot be validated — it is nested deeper than the 100 levels a validation follows: nest it less deeply.",
       "range": {
         "end": {
-          "character": 66,
-          "line": 3
+          "character": 216,
+          "line": 11
         },
         "start": {
-          "character": 55,
-          "line": 3
+          "character": 13,
+          "line": 11
         }
       },
       "severity": 1,
       "source": "telo-analyzer"
     }
   ],
-  "runFails": "[ERR_SCHEMA_NESTING_EXCEEDED] telo.yaml: Telo.Application/NestingApp: the default of variables.tree cannot be validated — validating it nests past the depth a validation may reach. Either its schema refers to itself without descending into the value, or the value is nested deeper than a validation can follow: make each self-reference descend into the value at every step, or nest the value less deeply.\n  [ERR_SCHEMA_NESTING_EXCEEDED] Telo.Application/NestingApp: the default of variables.tree cannot be validated — validating it nests past the depth a validation may reach. Either its schema refers to itself without descending into the value, or the value is nested deeper than a validation can follow: make each self-reference descend into the value at every step, or nest the value less deeply."
+  "runFails": "[ERR_SCHEMA_NESTING_EXCEEDED] telo.yaml: Telo.Application/NestingApp: the default of variables.tree cannot be validated — it is nested deeper than the 100 levels a validation follows: nest it less deeply.\n  [ERR_SCHEMA_NESTING_EXCEEDED] Telo.Application/NestingApp: the default of variables.tree cannot be validated — it is nested deeper than the 100 levels a validation follows: nest it less deeply."
 }

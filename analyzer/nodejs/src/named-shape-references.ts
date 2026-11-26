@@ -13,6 +13,8 @@
  *    `Self` nor an import of the module;
  *  - SCHEMA_TYPE_REF_UNRESOLVED — a `$ref` naming a type its module does not
  *    declare, or a `!ref` in a named shape's `schema` naming nothing;
+ *  - REFERENCE_KIND_MISMATCH — a contract, a callable signature or a named
+ *    shape's `schema` naming a declaration that holds no named shape;
  *  - CONTRACT_TYPE_NOT_FOUND — a contract, or the callable signature of a
  *    kind or of a function instance, naming a type nothing in scope declares,
  *    so every call through it would fail at dispatch.
@@ -25,11 +27,14 @@ import { isRefSentinel } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { isEntryOwned } from "./entry-ownership.js";
+import { DATA_KEYWORDS, NAME_MAP_KEYWORDS } from "./manifest-schemas.js";
+import { isModuleKind } from "./module-kinds.js";
 import { instanceDeclaresSignature, isCallableKind } from "./callable-signature.js";
 import { inheritedCapability, type DefResolver } from "./extends-resolution.js";
 import { definitionInScope, moduleAliasScope } from "./module-alias-scope.js";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
 import { isResolvedReference } from "./resolved-reference.js";
+import { authoredSchemaRef } from "./resolve-schema-type-refs.js";
 import { schemaReferenceParts } from "./schema-reference.js";
 import type { ScopeSite } from "./scope-address.js";
 import { scopeReadAt } from "./scoped-name-resolver.js";
@@ -57,6 +62,8 @@ export interface NamedShapeReferenceSite {
   readonly name: string;
   /** Where the site's text is written, as the diagnostic names it. */
   readonly path: string;
+  /** A `$ref`'s text as written, however a reading has rewritten it since. */
+  readonly ref?: string;
 }
 
 /** What a site's judge reads of the declarations. */
@@ -93,6 +100,17 @@ function schemaRefTarget(ref: string): { authority: string; typeName: string } |
   return authored ? { authority: authored.authority, typeName: authored.typeName } : undefined;
 }
 
+/** Whether `keys` (from the document root) names a schema node: one beneath no
+ *  data keyword and no annotation, where a `!ref` is a reference to a shape. */
+function atSchemaPosition(keys: Keys): boolean {
+  for (let i = 1; i < keys.length; i++) {
+    const key = keys[i];
+    if (typeof key !== "string" || NAME_MAP_KEYWORDS.has(String(keys[i - 1]))) continue;
+    if (DATA_KEYWORDS.has(key) || key.startsWith("x-")) return false;
+  }
+  return true;
+}
+
 /** The name a contract root references, when it is a reference at all. */
 function contractName(value: unknown): string | undefined {
   if (typeof value === "string") return value;
@@ -117,12 +135,20 @@ export function namedShapeReferenceSites(
     const obj = value as Record<string, unknown>;
     // A `$ref` stamped beside a resolved reference is the resolution's, judged
     // as the reference.
-    const written =
-      typeof obj.$ref === "string" && !isResolvedReference(obj) ? schemaRefTarget(obj.$ref) : undefined;
-    if (written) out.push({ keys: [...keys, "$ref"], form: "schemaRef", name: written.typeName, path: `${path}/$ref` });
-    for (const key of Object.keys(obj)) walk(obj[key], [...keys, key], `${path}/${key}`);
+    const ref = typeof obj.$ref === "string" && !isResolvedReference(obj) ? (authoredSchemaRef(obj) ?? obj.$ref) : undefined;
+    const written = ref === undefined ? undefined : schemaRefTarget(ref);
+    if (written) out.push({ keys: [...keys, "$ref"], form: "schemaRef", name: written.typeName, path: `${path}.$ref`, ref: ref! });
+    for (const key of Object.keys(obj)) walk(obj[key], [...keys, key], `${path}.${key}`);
   };
   for (const field of SCHEMA_FIELDS) walk(md[field], [field], field);
+  // A module document's `variables:` / `secrets:` entries are schemas too.
+  if (isModuleKind(m.kind)) {
+    for (const field of ["variables", "secrets"]) {
+      const block = md[field];
+      if (!block || typeof block !== "object" || Array.isArray(block)) continue;
+      for (const [key, entry] of Object.entries(block)) walk(entry, [field, key], `${field}.${key}`);
+    }
+  }
 
   /** Every `!ref` beneath `value`, written or resolved. */
   const refs = (value: unknown, keys: Keys, path: string, form: "shapeRef" | "contractRef" | "signatureRef"): void => {
@@ -216,6 +242,16 @@ function instanceSignatureHalves(
   return halves;
 }
 
+/** A contract, signature or named shape naming a declaration that holds no
+ *  named shape — the kernel's `ERR_REFERENCE_KIND_MISMATCH` says the same of a
+ *  contract and a signature. */
+function notShapeMessage(label: string, at: string, source: string, found: ResourceManifest): string {
+  return (
+    `${label}: '${at}' names '${source}', a ${String(found.kind)}, which is not a named shape, so it ` +
+    `constrains nothing. Reference a \`Telo.JsonSchema\` or another named shape, or write the schema inline.`
+  );
+}
+
 /** A callable signature's `!ref` naming nothing in scope — the kernel's
  *  registration refusal says the same. */
 export function signatureShapeNotFoundMessage(at: string, source: string): string {
@@ -235,7 +271,9 @@ export function namedShapeReferenceFinding(
   scope: NamedShapeReferenceScope,
 ): AnalysisDiagnostic | undefined {
   const name = m.metadata?.name as string;
-  const ownModule = (m.metadata as { module?: string } | undefined)?.module;
+  // A module document declares the module its own name names.
+  const ownModule =
+    (m.metadata as { module?: string } | undefined)?.module ?? (isModuleKind(m.kind) ? (m.metadata?.name as string | undefined) : undefined);
   const filePath = (m.metadata as { source?: string } | undefined)?.source;
   const resource = { kind: m.kind, name };
   const label = `${m.kind}/${name}`;
@@ -251,13 +289,14 @@ export function namedShapeReferenceFinding(
 
   if (site.form === "schemaRef") {
     if (typeof value !== "string") return undefined;
-    const parsed = schemaRefTarget(value);
+    const ref = site.ref ?? value;
+    const parsed = schemaRefTarget(ref);
     if (!parsed) return undefined;
     const module = parsed.authority === "Self" ? ownModule : moduleScope.moduleForAlias(parsed.authority);
     if (!module) {
       return error(
         "SCHEMA_TYPE_REF_UNKNOWN_ALIAS",
-        `${label}: schema $ref '${value}' — '${parsed.authority}' is not 'Self' or a ` +
+        `${label}: schema $ref '${ref}' — '${parsed.authority}' is not 'Self' or a ` +
           `Telo.Import in this module. Declare the import or correct the authority.`,
         site.path,
       );
@@ -267,7 +306,7 @@ export function namedShapeReferenceFinding(
     if (declared && declaresShape(declared, scope)) return undefined;
     return error(
       "SCHEMA_TYPE_REF_UNRESOLVED",
-      `${label}: schema $ref '${value}' resolves to module '${module}', which declares ` +
+      `${label}: schema $ref '${ref}' resolves to module '${module}', which declares ` +
         `no Telo.Type named '${parsed.typeName}'.`,
       site.path,
     );
@@ -291,7 +330,11 @@ export function namedShapeReferenceFinding(
           : module !== undefined
             ? scope.inModule(target.name, module)
             : undefined;
-      if (found) return undefined;
+      if (found && (declaresShape(found, scope) || (site.form === "shapeRef" && !atSchemaPosition(site.keys)))) return undefined;
+      if (found) {
+        const refused = error("REFERENCE_KIND_MISMATCH", notShapeMessage(label, site.path, source, found), site.path);
+        return site.form === "contractRef" ? refused : withQuotedPath(refused, site.path);
+      }
     }
     if (site.form === "signatureRef") {
       return withQuotedPath(error("CONTRACT_TYPE_NOT_FOUND", signatureShapeNotFoundMessage(site.path, source), site.path), site.path);
@@ -324,7 +367,8 @@ export function namedShapeReferenceFinding(
         ? scope.inModule(named, module)
         : undefined
       : scope.resolve(named, module, within);
-  if (found) return undefined;
+  if (found && (!isKindDocument(m) || declaresShape(found, scope))) return undefined;
+  if (found) return error("REFERENCE_KIND_MISMATCH", notShapeMessage(label, site.path, named, found), site.path);
   return error(
     "CONTRACT_TYPE_NOT_FOUND",
     `${label}: \`${site.path}\` names the type '${named}', which is not declared ` +

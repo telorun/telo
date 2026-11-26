@@ -1,0 +1,3 @@
+kind: Telo.Library
+metadata: { name: ImportSpliceLib }
+variables: { greeting: { type: string, default: hello } }

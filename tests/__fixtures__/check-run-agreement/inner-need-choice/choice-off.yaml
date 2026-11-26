@@ -1,0 +1,24 @@
+# The inner library's need is supplied by the outer library's own import only
+# where the outer library's input, bound to `variables.flag1`, is true.
+kind: Telo.Application
+metadata: { name: InnerNeedChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+imports:
+  Outer:
+    source: ./outer
+    variables: { on: !cel "variables.flag1" }
+targets: [!ref check]
+---
+kind: Telo.Sequence
+metadata: { name: check }
+steps:
+  - { name: read, invoke: !ref Outer.address }
+  - name: compare
+    if: !cel "steps.read.result != 'postgres://from-fulfilment'"
+    then: [{ name: differs, throw: { code: WRONG_URL, message: !cel "steps.read.result" } }]
+---
+# What the library reads, for the kernel's own test of each supply.
+kind: Telo.Sequence
+metadata: { name: read }
+steps: [{ name: read, invoke: !ref Outer.address }]
+outputs: { url: !cel "steps.read.result" }

@@ -32,6 +32,7 @@ import type { AnalysisDiagnostic } from "./types.js";
 import { passTableOf, type PassEntry, type PassTable, type UnionPassName } from "./union-passes.js";
 import { validateTemplateBody, type TemplateBodyReach } from "./validate-template-body.js";
 import { validateTemplateForwards } from "./validate-template-forward.js";
+import { callableSlotContextOf } from "./validate-references.js";
 
 export interface TemplateBodyFindingsInputs {
   readonly union: ConditionedExpansion;
@@ -139,6 +140,9 @@ export function templateBodyFindings(inputs: TemplateBodyFindingsInputs): PassTa
   // Every resource a run's list holds, by declaring module: each reading of a
   // call-graph resource node but a kind, module or import document.
   const instances = new Map<string | undefined, { name: string; held: Condition }[]>();
+  // …and each such reading by name, which a body's `!ref` is kind-checked against.
+  const referents = new Map<string | undefined, Map<string, { manifest: ResourceManifest; held: Condition }[]>>();
+  const readings: ResourceManifest[] = [];
   for (const node of graph.nodes) {
     if (node.node.type !== "resource") continue;
     const manifest = graph.manifestOf(node.id);
@@ -147,7 +151,12 @@ export function templateBodyFindings(inputs: TemplateBodyFindingsInputs): PassTa
     const list = instances.get(module) ?? [];
     list.push({ name: node.node.name, held: node.condition });
     instances.set(module, list);
+    let byName = referents.get(module);
+    if (!byName) referents.set(module, (byName = new Map()));
+    byName.set(node.node.name, [...(byName.get(node.node.name) ?? []), { manifest, held: node.condition }]);
+    readings.push(manifest);
   }
+  const callableSlots = callableSlotContextOf(readings, inputs.defs, inputs.aliases, inputs.aliasesByModule);
   return definitionTable(inputs, "templateBody", (manifests, part) => {
     const held = new Map<AnalysisDiagnostic, Condition>();
     const reach: TemplateBodyReach = {
@@ -161,6 +170,8 @@ export function templateBodyFindings(inputs: TemplateBodyFindingsInputs): PassTa
           .map(({ suggestion, held }) => ({ suggestion, held: space.and(absent, held) }))
           .filter(({ held }) => held !== FALSE);
       },
+      referents: (module, target) => referents.get(module)?.get(target) ?? [],
+      callableSlots,
       placed: (diagnostic, condition) => held.set(diagnostic, condition as Condition),
     };
     const template = part.template;

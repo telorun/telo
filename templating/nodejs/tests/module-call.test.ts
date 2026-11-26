@@ -38,7 +38,6 @@ describe("resolution on the parsed tree", () => {
     expect(compiled.source).toBe(source);
     const resolved = analyzeCelExpression(source, {
       celEnv: env,
-      contextSchema: null,
       moduleNames: NAMES,
     }).calls.find((c) => c.moduleCall);
     expect(source.slice(resolved!.start, resolved!.end)).toBe("Billing.format(price)");
@@ -52,7 +51,6 @@ describe("resolution on the parsed tree", () => {
     const source = "request.lines.map(item, Billing.total(item.net, request.rate))";
     const call = analyzeCelExpression(source, {
       celEnv: siteEnv(),
-      contextSchema: null,
       moduleNames: NAMES,
     }).calls.find((c) => c.moduleCall);
     expect(call?.arguments?.map((a) => a.chain)).toEqual([undefined, ["request", "rate"]]);
@@ -142,7 +140,6 @@ describe("names a module call takes over", () => {
   const analyze = (expr: string, moduleNames = NAMES) =>
     analyzeCelExpression(expr, {
       celEnv: siteEnv(),
-      contextSchema: null,
       rootsDeclared: false,
       moduleNames,
     }).diagnostics;
@@ -164,7 +161,6 @@ describe("names a module call takes over", () => {
   const unknownIdentifier = (expr: string, couldNameModule: (name: string) => boolean) =>
     analyzeCelExpression(expr, {
       celEnv: buildCelEnvironment().registerVariable("variables", "map"),
-      contextSchema: null,
       rootsDeclared: true,
       moduleNames: NAMES,
       couldNameModule,

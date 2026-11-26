@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { buildCelEnvironment } from "../src/cel/environment.js";
 import { analyzeCelExpression } from "../src/engines/cel.js";
+import { auditCalls } from "../src/cel/diagnose.js";
+import { INT, mapOf, STRING } from "@telorun/cel";
 
-const env = { celEnv: buildCelEnvironment(), contextSchema: null };
+const env = { celEnv: buildCelEnvironment() };
 const analyze = (expr: string) => analyzeCelExpression(expr, env);
 const codes = (expr: string) => analyze(expr).diagnostics.map((d) => d.code);
 const first = (expr: string) => analyze(expr).diagnostics[0]!;
@@ -13,7 +15,6 @@ describe("a rejected read", () => {
     typed.registerVariable("variables", { fields: { db: "string" } });
     const { diagnostics } = analyzeCelExpression("variables.dbb", {
       celEnv: typed,
-      contextSchema: null,
     });
     expect(diagnostics).toEqual([
       { code: "CEL_UNKNOWN_FIELD", message: '"dbb" is not declared here (declared: db)' },
@@ -130,5 +131,19 @@ describe("cel.bind", () => {
     expect(env.celEnv.evaluate("cel.bind(c, 150, string(c / 100) + '.' + string(c % 100))")).toBe(
       "1.50",
     );
+  });
+});
+
+describe("a module call's arguments", () => {
+  it("carry each argument's type and its name, and a map literal's entries only their literals' kinds", () => {
+    // The argument's own type is read as a type, never parsed for its value type.
+    const site = buildCelEnvironment();
+    site.registerVariable("x", "int");
+    site.registerNamespace("Billing", [], { open: true });
+    const source = "Billing.f({'a': x, 'b': 1})";
+    const [argument] = auditCalls(source, site.parse(source).root, site).calls[0]!.arguments!;
+    expect(argument!.typeName).toBe("map<string, int>");
+    expect(argument!.type).toEqual(mapOf(STRING, INT));
+    expect(argument!.entries).toEqual([{ key: "a" }, { key: "b", literalKind: "int" }]);
   });
 });

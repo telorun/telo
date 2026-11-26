@@ -1,4 +1,5 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { inheritSchemaPlace } from "./schema-provenance.js";
 import { isRefSentinel, isTaggedSentinel } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { KindResolver } from "./module-alias-scope.js";
@@ -239,7 +240,11 @@ function resolveReferences(
       const target = refSentinelTarget(value);
       if (!target) return value;
       const within = at.holder ? scopeSiteAt(at.holder.address, at.holder.scopes, keys) : undefined;
-      return resolve(target, { module: at.module, within, writer: at.writer }) ?? value;
+      const resolved = resolve(target, { module: at.module, within, writer: at.writer });
+      // The resolved reference is written where its `!ref` is.
+      return resolved !== undefined && resolved !== null && typeof resolved === "object"
+        ? inheritSchemaPlace(resolved as object, value as object)
+        : (resolved ?? value);
     }
     if (value === null || typeof value !== "object") return value;
     if (isTaggedSentinel(value)) return value;

@@ -1,0 +1,6 @@
+units:
+  analyzer: Fixed
+body: '`telo check` holds a value an import supplies to a library input whose entry
+  types a member through a reference into its own `$defs` (`$ref: "#/$defs/A"`) to that
+  entry, reporting a mistyped one at the import as `SCHEMA_VIOLATION`, where it used to
+  pass it unjudged.'

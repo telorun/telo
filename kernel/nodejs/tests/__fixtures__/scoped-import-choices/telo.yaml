@@ -1,0 +1,39 @@
+# A scoped import written under a choice three ways — beneath a chosen holder,
+# in a chosen scope array and as a member chosen at a scope-member position —
+# each option importing its own library under one name.
+kind: Telo.Application
+metadata: { name: ScopedImportChoices }
+variables: { flag1: { env: FLAG_1, type: boolean, default: true } }
+--- !if
+metadata: { name: holder }
+if: !cel "variables.flag1"
+then:
+  kind: Telo.Sequence
+  with: [{ kind: Telo.Import, metadata: { name: Inner }, source: ./lib }]
+  steps: [{ name: read, invoke: !ref Inner.answer }]
+  outputs: { answer: !cel "steps.read.result" }
+else:
+  kind: Telo.Sequence
+  with: [{ kind: Telo.Import, metadata: { name: Inner }, source: ./other }]
+  steps: [{ name: read, invoke: !ref Inner.answer }]
+  outputs: { answer: !cel "steps.read.result" }
+---
+kind: Telo.Sequence
+metadata: { name: scope }
+with: !if
+  if: !cel "variables.flag1"
+  then: [{ kind: Telo.Import, metadata: { name: Inner }, source: ./lib }]
+  else: [{ kind: Telo.Import, metadata: { name: Inner }, source: ./other }]
+steps: [{ name: read, invoke: !ref Inner.answer }]
+outputs: { answer: !cel "steps.read.result" }
+---
+kind: Telo.Sequence
+metadata: { name: member }
+with:
+  - !if
+    metadata: { name: Inner }
+    if: !cel "variables.flag1"
+    then: { kind: Telo.Import, source: ./lib }
+    else: { kind: Telo.Import, source: ./other }
+steps: [{ name: read, invoke: !ref Inner.answer }]
+outputs: { answer: !cel "steps.read.result" }

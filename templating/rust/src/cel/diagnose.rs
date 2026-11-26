@@ -8,15 +8,10 @@
 //!
 //! Node items with no twin: `explainUnresolved`, which nothing calls; and `CelCallAudit`
 //! as a narrowing of `CallAudit` — [`CallAudit`] here holds coded diagnostics itself.
-//!
-//! `map_value_type` is Node's as Node answers: it reads a `map(K, V)` type while the engine
-//! prints `map<K, V>`, so a map-literal argument's entry that is not itself a literal never
-//! gets a type. A test pins that reading as interim.
 
 use std::sync::Arc;
 
-use telorun_cel::{CelEnvironment, CelExpression, CelNode, CheckResult, SourceRange};
-use telorun_cel_value::es_trim;
+use telorun_cel::{CelEnvironment, CelExpression, CelNode, CelType, CheckResult, SourceRange};
 
 use crate::cel::analyze::module_call_argument_chains;
 use crate::cel::literal_argument::{literal_type_of, literal_value_of, map_literal_entries};
@@ -80,15 +75,18 @@ pub fn audit_calls(
         } else {
             None
         };
-        let arguments = match (&call.argument_types, qualified) {
-            (Some(types), true) => Some(
+        let arguments = match (&call.argument_types, &call.argument_type_names, qualified) {
+            (Some(types), Some(names), true) => Some(
                 types
                     .iter()
+                    .zip(names)
                     .enumerate()
-                    .map(|(at, type_name)| {
+                    .map(|(at, (ty, type_name))| {
                         let node = nodes.and_then(|nodes| nodes.get(at)).map(|node| &**node);
+                        let typed = !matches!(ty, CelType::Dyn);
                         CallArgument {
-                            type_name: (type_name != "dyn").then(|| type_name.clone()),
+                            ty: typed.then(|| ty.clone()),
+                            type_name: typed.then(|| type_name.clone()),
                             chain: call_chains.and_then(|held| held.get(at).cloned().flatten()),
                             literal: node.and_then(literal_value_of),
                             entries: node.and_then(map_literal_entries).map(|entries| {
@@ -96,9 +94,7 @@ pub fn audit_calls(
                                     .into_iter()
                                     .map(|entry| CallArgumentEntry {
                                         key: entry.key.into(),
-                                        type_name: literal_type_of(entry.value)
-                                            .map(str::to_owned)
-                                            .or_else(|| map_value_type(type_name)),
+                                        literal_kind: literal_type_of(entry.value).map(str::to_owned),
                                     })
                                     .collect()
                             }),
@@ -127,22 +123,4 @@ pub fn audit_calls(
     }
     calls.sort_by(|left, right| left.start.cmp(&right.start).then(left.end.cmp(&right.end)));
     CallAudit { diagnostics: Vec::new(), calls, unresolved: Vec::new(), argument_issues: Vec::new() }
-}
-
-/// The value type a `map(K, V)` type names, unless it is `dyn`.
-pub fn map_value_type(type_name: &str) -> Option<String> {
-    let inner = type_name.strip_prefix("map(")?.strip_suffix(')')?;
-    let mut depth = 0i32;
-    for (at, character) in inner.char_indices() {
-        match character {
-            '(' => depth += 1,
-            ')' => depth -= 1,
-            ',' if depth == 0 => {
-                let value = es_trim(&inner[at + 1..]);
-                return (value != "dyn").then(|| value.to_owned());
-            }
-            _ => {}
-        }
-    }
-    None
 }

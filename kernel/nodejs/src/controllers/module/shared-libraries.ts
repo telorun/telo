@@ -1,8 +1,9 @@
 import type { EvaluationContext as IEvaluationContext, ResourceInstance } from "@telorun/sdk";
-import { holdsSensitiveMember, plainScalar, RuntimeError } from "@telorun/sdk";
+import { holdsSensitiveMember, isTextRecord, plainScalar, RuntimeError } from "@telorun/sdk";
 import type { ModuleContext } from "../../module-context.js";
-import type { ParsedExportEntry } from "@telorun/analyzer";
+import { recordsDifferOnlyInLang, textParametersOfBlock, textRecordIdentity, type ParsedExportEntry } from "@telorun/analyzer";
 import type { NeedSupplyValue } from "./import-controller.js";
+import type { ImportInputShapes } from "../../module-input-shapes.js";
 
 /**
  * LIBRARY SINGLETONS — one instantiation of a `lifecycle: shared` library per
@@ -50,6 +51,11 @@ export interface SharedLibrary {
   readonly needs: ReadonlyMap<string, NeedSupplyValue>;
   readonly declaredVariables: Record<string, any>;
   readonly declaredSecrets: Record<string, any>;
+  /** The shapes the instantiating import's configuration validates the
+   *  entries through — the configuration every borrower joins. */
+  readonly inputShapes: ImportInputShapes;
+  /** The library's `lang:` — what its `default:` texts are written in. */
+  readonly lang: string | null;
   readonly exportEntries: readonly ParsedExportEntry[];
   readonly kindEntries: readonly ParsedExportEntry[];
   readonly exportedResourceNames: readonly string[];
@@ -113,7 +119,25 @@ export function assertSharedInputsAgree(
     );
   };
 
+  // A text parameter is one text when its settled records are: the message
+  // core's identity of text and context, the language and whether computed.
+  const texts = {
+    variables: new Set(textParametersOfBlock(entry.declaredVariables, "variables").map((p) => p.name)),
+    secrets: new Set(textParametersOfBlock(entry.declaredSecrets, "secrets").map((p) => p.name)),
+  };
+  const textConflict = (a: unknown, b: unknown): string | undefined => {
+    if (!isTextRecord(a) || !isTextRecord(b)) return sameValue(a, b) ? undefined : "";
+    const identity = textRecordIdentity(a);
+    if (identity !== undefined && identity === textRecordIdentity(b)) return undefined;
+    const langs = recordsDifferOnlyInLang(a, b);
+    return langs ? `the same text written in '${langs[0]}' and in '${langs[1]}'` : "";
+  };
   for (const key of union(Object.keys(entry.variables), Object.keys(variables))) {
+    if (texts.variables.has(key)) {
+      const found = textConflict(entry.variables[key], variables[key]);
+      if (found !== undefined) conflict("variables", key, found || undefined);
+      continue;
+    }
     if (!sameValue(entry.variables[key], variables[key])) {
       conflict("variables", key, `'${render(entry.variables[key])}' vs '${render(variables[key])}'`);
     }
@@ -121,7 +145,10 @@ export function assertSharedInputsAgree(
   // Values withheld deliberately — a diagnostic must not become a way to read a
   // secret out of a running process.
   for (const key of union(Object.keys(entry.secrets), Object.keys(secrets))) {
-    if (!sameValue(entry.secrets[key], secrets[key])) conflict("secrets", key);
+    const differs = texts.secrets.has(key)
+      ? textConflict(entry.secrets[key], secrets[key]) !== undefined
+      : !sameValue(entry.secrets[key], secrets[key]);
+    if (differs) conflict("secrets", key);
   }
   for (const key of union([...entry.resources.keys()], [...resources.keys()])) {
     if (entry.resources.has(key) !== resources.has(key)) {

@@ -1,0 +1,45 @@
+# A template's `inputs:` writes a plain-encoded literal at a slot its entry's
+# contract types `Telo.Timestamp`, and the entry's kind derives that contract
+# from the type the entry names: the kernel decodes the literal when it creates
+# the template, so the entry receives the instant.
+kind: Telo.Application
+metadata: { name: TemplateDerivedContractDecoded, version: 1.0.0 }
+imports: { Assert: ../../../../modules/assert }
+targets: [!ref verify]
+---
+kind: Telo.JsonSchema
+metadata: { name: Stamp }
+schema:
+  type: object
+  properties: { at: { x-telo-type: Telo.Timestamp } }
+  required: [at]
+---
+kind: Telo.Definition
+metadata: { name: Echo }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties: { model: { x-telo-ref: { kind: Telo.Type, use: schema } } }
+inputType: { type: object, x-telo-value-schema-from: model }
+resources:
+  - kind: Telo.Value
+    metadata: { name: echo }
+    value: !cel "inputs"
+invoke: !ref echo
+---
+kind: Telo.Definition
+metadata: { name: NewYear }
+capability: Telo.Invocable
+schema: { type: object }
+resources:
+  - { kind: Self.Echo, metadata: { name: echo }, model: !ref Stamp }
+invoke: !ref echo
+inputs: { at: "2024-01-01T00:00:00Z" }
+---
+kind: Telo.Sequence
+metadata: { name: verify }
+steps:
+  - { name: echoed, invoke: { kind: Self.NewYear } }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: !cel "steps.echoed.result.at.getFullYear()", expected: 2024 }

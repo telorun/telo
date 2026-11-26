@@ -1,7 +1,7 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { sensitiveMembersOf, valueTypeOf } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
-import { liftFragmentDefs } from "./manifest-schemas.js";
+import { liftFragmentDefs, slotAtPointer } from "./manifest-schemas.js";
 import { memberForbidden, membersSlotOf } from "./members-value-slot.js";
 import { refSentinelTarget, type RefSentinelTarget } from "./ref-sentinel-target.js";
 import { INJECTED } from "./resource-input.js";
@@ -111,7 +111,7 @@ export function needTypeDefinition(doc: ResourceManifest): ResourceDefinition {
       properties: {
         fields: {
           type: "object",
-          properties: { ...shape.fields },
+          properties: fieldsAt(shape, "#/properties/fields/properties"),
           ...(required.length > 0 ? { required } : {}),
           additionalProperties: false,
         },
@@ -121,6 +121,17 @@ export function needTypeDefinition(doc: ResourceManifest): ResourceDefinition {
     }),
     [NEED_TYPE_MARKER]: shape,
   } as unknown as ResourceDefinition;
+}
+
+/** The type's fields composed beneath `pointer`: each field is a schema root
+ *  of its own, as a fulfilment read from the environment is validated against
+ *  it, so its local references are rebased onto its place. */
+function fieldsAt(shape: NeedTypeShape, pointer: string): Record<string, Record<string, unknown>> {
+  const out: Record<string, Record<string, unknown>> = {};
+  for (const [name, field] of Object.entries(shape.fields)) {
+    out[name] = slotAtPointer(field, `${pointer}/${name.replace(/~/g, "~0").replace(/\//g, "~1")}`);
+  }
+  return out;
 }
 
 /**
@@ -155,7 +166,7 @@ export function needReadingSchema(
 ): Record<string, unknown> {
   const reading = liftFragmentDefs({
     type: "object",
-    properties: { ...shape.fields },
+    properties: fieldsAt(shape, "#/properties"),
     required: shape.required.filter((name) => name in shape.fields),
     additionalProperties: false,
   });

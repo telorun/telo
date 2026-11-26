@@ -10,7 +10,9 @@ use telo_templating::{
     LiteralEngine, SqlEngine, TemplatingEngine,
 };
 use telorun_sdk_core::compiled_value::ParameterizedSql;
-use telorun_cel::{CelEnvironment, PropertyMap, TypeDeclaration};
+use std::sync::Arc;
+
+use telorun_cel::{read_json_text, CelEnvironment, JsonSchemaDocument, PropertyMap, TypeDeclaration};
 use telorun_cel_value::CelValue;
 
 fn env() -> CelEnvironment {
@@ -43,9 +45,20 @@ fn fails_on_a_cel_syntax_error_at_compile_time() {
     assert!(CelEngine.compile("variables.", &CompileEnv { cel_env: &env, module_names: None }).is_err());
 }
 
+/// `env` with each property of `context` registered as its schema.
+fn typed_by(env: &CelEnvironment, context: Option<&serde_json::Value>) -> CelEnvironment {
+    let mut typed = env.clone();
+    let properties = context.and_then(|context| context.get("properties")).and_then(serde_json::Value::as_object);
+    for (name, schema) in properties.into_iter().flatten() {
+        let document = JsonSchemaDocument { node: json_value(schema), root: None };
+        typed.register_variable(name, TypeDeclaration::Schema(document), None).unwrap();
+    }
+    typed
+}
+
 fn codes(source: &str, env: &CelEnvironment, context: Option<&serde_json::Value>) -> Vec<(Option<String>, String)> {
     CelEngine
-        .analyze(source, &AnalyzeEnv { context_schema: context, ..AnalyzeEnv::new(env) })
+        .analyze(source, &AnalyzeEnv::new(&typed_by(env, context)))
         .diagnostics
         .into_iter()
         .map(|diagnostic| (diagnostic.code, diagnostic.message))
@@ -78,9 +91,7 @@ fn reports_cel_unknown_field_when_a_chain_steps_off_a_closed_context() {
 }
 
 #[test]
-fn reports_a_member_the_type_checker_refused_once_not_again_off_the_context() {
-    let mut typed = env();
-    typed.register_variable("variables", TypeDeclaration::Fields([("db", "string".into())].into_iter().collect()), None).unwrap();
+fn reports_each_refused_member_read_once_by_its_chain_and_what_its_node_declares() {
     let closed = json!({
         "type": "object",
         "properties": {
@@ -89,14 +100,14 @@ fn reports_a_member_the_type_checker_refused_once_not_again_off_the_context() {
         }
     });
     let messages: Vec<String> =
-        codes("variables.dbb + string(resources.nope)", &typed, Some(&closed)).into_iter().map(|(_, message)| message).collect();
-    assert_eq!(messages, ["\"dbb\" is not declared here (declared: db)", "'resources.nope' is not defined (available: db)"]);
+        codes("variables.dbb + string(resources.nope)", &env(), Some(&closed)).into_iter().map(|(_, message)| message).collect();
+    assert_eq!(messages, ["'variables.dbb' is not defined (available: db)", "'resources.nope' is not defined (available: db)"]);
 }
 
 #[test]
 fn ignores_well_formed_chains_against_an_open_schema() {
     let open = json!({ "type": "object", "properties": {}, "additionalProperties": true });
-    assert!(codes("anything.goes.here", &env(), Some(&open)).is_empty());
+    assert!(codes("anything.goes.here", &env(), Some(&json!({ "properties": { "anything": open } }))).is_empty());
 }
 
 #[test]
@@ -151,7 +162,7 @@ fn sql_handles_a_plain_string_with_no_interpolation() {
 
 fn sql_codes(source: &str, env: &CelEnvironment, context: Option<&serde_json::Value>) -> Vec<Option<String>> {
     SqlEngine
-        .analyze(source, &AnalyzeEnv { context_schema: context, ..AnalyzeEnv::new(env) })
+        .analyze(source, &AnalyzeEnv::new(&typed_by(env, context)))
         .diagnostics
         .into_iter()
         .map(|diagnostic| diagnostic.code)
@@ -204,4 +215,9 @@ fn repeatable_source_is_the_engines_verdict_on_the_text_alone() {
     assert!(!repeatable_source("interpolate", "a-${{ variables.word }}-${{ uuidv4() }}", &env));
     assert!(!repeatable_source("interpolate", "a-${{ variables.word", &env));
     assert!(!repeatable_source("literal", "text", &env));
+}
+
+/// A JSON value as the engine holds one.
+fn json_value(value: &serde_json::Value) -> Arc<telorun_cel::JsonValue> {
+    read_json_text(&value.to_string()).expect("a JSON value reads as JSON text")
 }

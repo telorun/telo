@@ -56,7 +56,7 @@ export function metadataStampDiagnostics(graph: StampGraph): AnalysisDiagnostic[
     (graph.scopedImportEdges.get(file.source) ?? []).flatMap((edge) => {
       const holderIndex = file.manifests.findIndex((m) => m?.metadata?.name === edge.holders[0]!.name);
       const positions = file.positions[holderIndex]?.positionIndex;
-      const at = scopedMemberPath(edge.holders);
+      const at = scopedMemberPath(edge.place);
       return writtenMetadataStamps(edge.member)
         .filter((field) => positions?.has(`${at}.metadata.${field}`))
         .map((field) => ({
@@ -121,7 +121,7 @@ export function metadataStampDiagnostics(graph: StampGraph): AnalysisDiagnostic[
         via: {
           alias: edge.alias,
           filePath: file.source,
-          path: scopedMemberPath(edge.holders),
+          path: scopedMemberPath(edge.place),
           resource: { kind: edge.holderKind, name: edge.holders[0]!.name },
         },
       });

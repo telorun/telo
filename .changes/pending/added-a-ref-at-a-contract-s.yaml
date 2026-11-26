@@ -1,0 +1,9 @@
+units:
+  kernel: Added
+body: "A !ref at a contract's inputType / outputType or a callable's params[].schema /
+  returns.schema naming a resource that is not a Telo.JsonSchema shape is refused at
+  load as ERR_REFERENCE_KIND_MISMATCH, as telo check reports it. A variables: or
+  secrets: entry of an Application or a library written with $ref — to a named shape,
+  the library's own included, or into the entry's own $defs — is validated and bound as
+  the shape it names, so an integer behind it is an int. A base: mapping reads self as
+  the declared view (a declared integer an int, a declared number a double)."

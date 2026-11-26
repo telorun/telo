@@ -177,7 +177,7 @@ steps:
       actual:
         successor: !cel "[steps.rotated.result.owner, steps.rotated.result.scopes, steps.rotated.result.label]"
         previous: !cel "steps.rotated.result.previous.id"
-        previousEnds: !cel "steps.rotated.result.previous.expiresAt > steps.rotated.result.createdAt && steps.rotated.result.previous.expiresAt <= steps.rotated.result.createdAt + duration('1h1s')"
+        previousEnds: !cel "steps.rotated.result.previous.expiresAt != null && steps.rotated.result.previous.expiresAt > steps.rotated.result.createdAt && steps.rotated.result.previous.expiresAt <= steps.rotated.result.createdAt + duration('1h1s')"
         overlapCapped: !cel "steps.listed.result.keys.map(k, k.expiresAt != null)"
         replacedKeys: !cel "steps.listed.result.keys.map(k, k.rotatedFrom)"
         revokedRotation: !cel "steps.refused.result"

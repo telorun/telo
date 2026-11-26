@@ -1,0 +1,13 @@
+# A step whose `value:` checks to a uint or bytes is read as that type.
+kind: Telo.Application
+metadata: { name: StepResultUintBytes }
+targets:
+  - invoke: !ref seq
+---
+kind: Telo.Sequence
+metadata: { name: seq }
+steps:
+  - { name: count, value: !cel "1u" }
+  - { name: next, value: !cel "steps.count.result + 1" }
+  - { name: data, value: !cel "b'ab'" }
+  - { name: more, value: !cel "steps.data.result + 1" }

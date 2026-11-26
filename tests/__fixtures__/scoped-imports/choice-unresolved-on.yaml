@@ -1,0 +1,32 @@
+# A scoped import whose source names no module, written under a choice three
+# ways: beneath a chosen holder, in a chosen scope array and as a member
+# chosen at a scope-member position. Refused in every configuration.
+kind: Telo.Application
+metadata: { name: ScopedChoiceUnresolved }
+variables: { flag1: { env: FLAG_1, type: boolean, default: true } }
+targets: [!ref scope]
+--- !if
+metadata: { name: holder }
+if: !cel "variables.flag1"
+then:
+  kind: Telo.Sequence
+  with: [{ kind: Telo.Import, metadata: { name: Inner }, source: ./nowhere-lib }]
+  steps: [{ name: noop, value: 1 }]
+else: { kind: Telo.Value, value: 1 }
+---
+kind: Telo.Sequence
+metadata: { name: scope }
+with: !if
+  if: !cel "variables.flag1"
+  then: [{ kind: Telo.Import, metadata: { name: Inner }, source: ./nowhere-lib }]
+  else: []
+steps: [{ name: noop, value: 1 }]
+---
+kind: Telo.Sequence
+metadata: { name: member }
+with:
+  - !if
+    metadata: { name: Inner }
+    if: !cel "variables.flag1"
+    then: { kind: Telo.Import, source: ./nowhere-lib }
+steps: [{ name: noop, value: 1 }]

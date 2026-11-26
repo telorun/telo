@@ -1,0 +1,14 @@
+# One text from an English and a German module is two texts: the singleton
+# cannot take both.
+kind: Telo.Application
+metadata: { name: TextParameterSharedLangs }
+lang: en
+imports:
+  Shared: { source: ../../import-text-input/shared, variables: { title: Hello } }
+  De: ./de-importer
+targets: [!ref scope]
+---
+kind: Telo.Sequence
+metadata: { name: scope }
+steps:
+  - { name: shown, invoke: !ref Shared.shown }

@@ -254,6 +254,107 @@
       "message": "Telo.Definition/Tasks: A family's '!for-each' emits an '!if' with no 'else:', so an element it is false for would have no member — and every member of a family is reachable by '!ref <family>[<binding>.key]'. Give the '!if' an 'else:', or filter the elements with an unnamed repeat at a list position."
     }
   ],
+  "tests/__fixtures__/check-run-agreement/import-choices/inputs.yaml": [
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "tests/__fixtures__/check-run-agreement/import-choices/inputs.yaml",
+      "path": "variables.size.else",
+      "message": "Telo.Import/Lib: /variables/size/else must be integer — the imported library declares it so. (when variables.flag1 is false)",
+      "configurations": [
+        {
+          "variables.flag1": false
+        }
+      ]
+    },
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "tests/__fixtures__/check-run-agreement/import-choices/inputs.yaml",
+      "path": "needs.upstream.else.url",
+      "message": "Import 'Lib': need 'upstream': field 'url' does not match need type 'ImportChoicesLib.Upstream' — must be string. (when variables.flag1 is false)",
+      "configurations": [
+        {
+          "variables.flag1": false
+        }
+      ]
+    },
+    {
+      "code": "SHARED_LIBRARY_CONFLICT",
+      "severity": 1,
+      "file": "tests/__fixtures__/check-run-agreement/import-choices/inputs.yaml",
+      "path": "variables.size.else",
+      "message": "Import 'Second' and import 'First' both reach a 'lifecycle: shared' library — one instantiation for the whole application — but they supply different values for variables.size. Make the two imports agree, or make the library 'lifecycle: isolated'. (when variables.flag1 is false)",
+      "configurations": [
+        {
+          "variables.flag1": false
+        }
+      ]
+    }
+  ],
+  "tests/__fixtures__/check-run-agreement/import-choices/source-document.yaml": [
+    {
+      "code": "UNUSED_DECLARATION",
+      "severity": 2,
+      "file": "tests/__fixtures__/check-run-agreement/import-choices/source-document.yaml",
+      "path": "variables.flag1",
+      "message": "variables.flag1 is declared but never referenced in any CEL expression."
+    }
+  ],
+  "tests/__fixtures__/check-run-agreement/import-choices/source-entry.yaml": [
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "tests/__fixtures__/check-run-agreement/import-choices/source-entry.yaml",
+      "path": "imports.Lib.source",
+      "message": "Telo.Application/ImportSourceEntry: /imports/Lib/source must be string"
+    }
+  ],
+  "tests/__fixtures__/check-run-agreement/import-choices/source-member.yaml": [],
+  "tests/__fixtures__/check-run-agreement/import-choices/splice-document.yaml": [
+    {
+      "code": "UNUSED_DECLARATION",
+      "severity": 2,
+      "file": "tests/__fixtures__/check-run-agreement/import-choices/splice-document.yaml",
+      "path": "variables.flag1",
+      "message": "variables.flag1 is declared but never referenced in any CEL expression."
+    }
+  ],
+  "tests/__fixtures__/check-run-agreement/import-choices/splice-entry.yaml": [
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "tests/__fixtures__/check-run-agreement/import-choices/splice-entry.yaml",
+      "path": "imports.Lib",
+      "message": "Telo.Application/ImportSpliceEntry: /imports/Lib matches no alternative — expected a string"
+    }
+  ],
+  "tests/__fixtures__/check-run-agreement/import-choices/splice-member.yaml": [],
+  "tests/__fixtures__/check-run-agreement/inner-need-choice/outer/telo.yaml": [],
+  "tests/__fixtures__/check-run-agreement/library-input-configuration-shape/lib/telo.yaml": [
+    {
+      "code": "SCHEMA_TYPE_REF_UNRESOLVED",
+      "severity": 1,
+      "file": "tests/__fixtures__/check-run-agreement/library-input-configuration-shape/lib/telo.yaml",
+      "path": "variables.config.$ref",
+      "message": "Telo.Library/ConfigurationShape: schema $ref 'telo://Self/Config' resolves to module 'ConfigurationShape', which declares no Telo.Type named 'Config'. (when variables.flag is false)",
+      "configurations": [
+        {
+          "variables.flag": false
+        }
+      ]
+    }
+  ],
+  "tests/__fixtures__/check-run-agreement/library-input-configuration-shape/mode/telo.yaml": [],
+  "tests/__fixtures__/check-run-agreement/library-input-configuration-shape/undecidable/telo.yaml": [
+    {
+      "code": "BRANCH_UNDECIDABLE",
+      "severity": 1,
+      "file": "tests/__fixtures__/check-run-agreement/library-input-configuration-shape/undecidable/telo.yaml",
+      "path": "if",
+      "message": "!if/read: The condition of '!if' is decided before boot, but 'variables.config' is typed by 'telo://Self/Config', a named shape that differs between configurations, so its value is not settled before boot. A choice reads only literals, 'module.<field>', a call to a module function written in CEL, the whole value of a 'variables:' entry declared 'enum', 'const' or 'type: boolean', a member its declaration binds to an 'enum' or 'const' argument, an input's presence ('… != null', for an entry declaring 'default: null'), the presence of an optional need or resource input ('resources.<name> != null'), or a member its need type's field binds to an 'enum' or 'const' argument."
+    }
+  ],
   "tests/__fixtures__/check-run-agreement/metadata-stamp-nested/choice-lib/telo.yaml": [
     {
       "code": "METADATA_RESERVED_FIELD",
@@ -272,6 +373,8 @@
       "message": "Telo.Sequence/job: 'steps[0].invoke.then.metadata.module' is written by the loader — the module the document belongs to — and cannot be written in a manifest. Remove it."
     }
   ],
+  "tests/__fixtures__/check-run-agreement/need-supply-choice/supply-off.yaml": [],
+  "tests/__fixtures__/check-run-agreement/need-supply-choice/supply-on.yaml": [],
   "tests/__fixtures__/check-run-agreement/template-init/both-lib/telo.yaml": [],
   "tests/__fixtures__/check-run-agreement/template-init/crossing-lib/telo.yaml": [],
   "tests/__fixtures__/check-run-agreement/template-init/lib/telo.yaml": [
@@ -306,6 +409,32 @@
       "file": "tests/__fixtures__/check-run-agreement/template-init/undecidable-lib/telo.yaml",
       "path": "resources[0].value.if",
       "message": "Telo.Definition/Reads: The condition of '!if' is decided when an instance is created, before it runs, but it reads 'resources.other.x', which no consumer's manifest can decide. A template's choice reads 'self', a loop's binding, a declaration a reference names, 'module.<field>' or the module's own inputs."
+    }
+  ],
+  "tests/__fixtures__/check-run-agreement/text-parameters/choice.yaml": [
+    {
+      "code": "MESSAGE_SYNTAX_INVALID",
+      "severity": 1,
+      "file": "tests/__fixtures__/check-run-agreement/text-parameters/choice.yaml",
+      "path": "variables.title.then",
+      "message": "Telo.Import/Entry: the text for the imported library's variable 'title' is refused: the placeholder is not closed (at offset 0 of the pattern). (when variables.flag1 is true)",
+      "configurations": [
+        {
+          "variables.flag1": true
+        }
+      ]
+    },
+    {
+      "code": "MESSAGE_SYNTAX_INVALID",
+      "severity": 1,
+      "file": "tests/__fixtures__/check-run-agreement/text-parameters/choice.yaml",
+      "path": "with[0].variables.title.then",
+      "message": "Telo.Import/Scoped: the text for the imported library's variable 'title' is refused: the placeholder is not closed (at offset 0 of the pattern). (when variables.flag1 is true)",
+      "configurations": [
+        {
+          "variables.flag1": true
+        }
+      ]
     }
   ],
   "tests/__fixtures__/configurations/alternatives-facts.yaml": [
@@ -487,18 +616,6 @@
       "message": "Kind 'Run.Value' is deprecated: Identical to the kernel built-in Telo.Value, which needs no import. Use 'Telo.Value' instead."
     },
     {
-      "code": "CEL_UNKNOWN_FIELD",
-      "severity": 1,
-      "file": "tests/__fixtures__/configurations/bindings-choice.yaml",
-      "path": "value",
-      "message": "Run.Value/shaped: !cel: 'x' is not defined (available: variables, secrets, resources, ports, module, inputs) (when variables.flag1 is false)",
-      "configurations": [
-        {
-          "variables.flag1": false
-        }
-      ]
-    },
-    {
       "code": "CEL_UNKNOWN_IDENTIFIER",
       "severity": 1,
       "file": "tests/__fixtures__/configurations/bindings-choice.yaml",
@@ -525,6 +642,20 @@
       "file": "tests/__fixtures__/configurations/body-defect-lib/telo.yaml",
       "path": "resources[1].limits",
       "message": "Telo.Definition/Pair: the Self.Target entry 'fixed': /limits must match \"then\" schema"
+    }
+  ],
+  "tests/__fixtures__/configurations/body-ref-kind-choice.yaml": [
+    {
+      "code": "REFERENCE_KIND_MISMATCH",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/body-ref-kind-choice.yaml",
+      "path": "resources[0].src",
+      "message": "Telo.Definition/Wrapper: reference at 'src' on the Self.Holder entry 'holder' → 'Self.User' (resolved: 'BodyRefKindChoice.User') does not match required 'BodyRefKindChoice.Thing' (when variables.flag1 is true)",
+      "configurations": [
+        {
+          "variables.flag1": true
+        }
+      ]
     }
   ],
   "tests/__fixtures__/configurations/body-referrer-rule.yaml": [
@@ -589,6 +720,20 @@
       "file": "tests/__fixtures__/configurations/call-refused.yaml",
       "path": "value.if",
       "message": "Run.Value/byClock: The condition of '!if' calls 'Self.afterEpoch', which re-evaluates per call (Self.afterEpoch → now()); a choice decided before boot must read the same value in every check."
+    }
+  ],
+  "tests/__fixtures__/configurations/callable-data-import-choice.yaml": [
+    {
+      "code": "CALLABLE_REFERENCE_NOT_DATA",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/callable-data-import-choice.yaml",
+      "path": "imports.Input",
+      "message": "Imported library 'CallableDataInput', reached through import 'Input': Kinds.Peek/peekInput: holds 'source' at 'target' as data, but it holds `!cel` at 'greeting', evaluated after it is created, so its configuration is not data yet. A native function receives each dependency's configuration once, at creation: write a literal there, or an expression in a field its kind evaluates at creation. (when variables.flag1 is true)",
+      "configurations": [
+        {
+          "variables.flag1": true
+        }
+      ]
     }
   ],
   "tests/__fixtures__/configurations/callable-instance-signature-ref-choice.yaml": [
@@ -1252,18 +1397,6 @@
       ]
     },
     {
-      "code": "SCHEMA_TYPE_REF_UNRESOLVED",
-      "severity": 1,
-      "file": "tests/__fixtures__/configurations/eval-mode-branch-nested-shapes-choice.yaml",
-      "path": "schema/properties/a2/$ref",
-      "message": "Telo.Definition/Holder: schema $ref 'telo://Self/A2' resolves to module 'EvalModeBranchNestedShapes', which declares no Telo.Type named 'A2'. (when variables.flag3 is false)",
-      "configurations": [
-        {
-          "variables.flag3": false
-        }
-      ]
-    },
-    {
       "code": "SCHEMA_COMPILE_ERROR",
       "severity": 1,
       "file": "tests/__fixtures__/configurations/eval-mode-branch-nested-shapes-choice.yaml",
@@ -1272,6 +1405,32 @@
       "configurations": [
         {
           "variables.flag3": false
+        }
+      ]
+    },
+    {
+      "code": "SCHEMA_TYPE_REF_UNRESOLVED",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/eval-mode-branch-nested-shapes-choice.yaml",
+      "path": "schema.properties.a2.$ref",
+      "message": "Telo.Definition/Holder: schema $ref 'telo://Self/A2' resolves to module 'EvalModeBranchNestedShapes', which declares no Telo.Type named 'A2'. (when variables.flag3 is false)",
+      "configurations": [
+        {
+          "variables.flag3": false
+        }
+      ]
+    }
+  ],
+  "tests/__fixtures__/configurations/eval-mode-branch-reached-shape-choice.yaml": [
+    {
+      "code": "EVAL_MODE_BRANCH_CONFLICT",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/eval-mode-branch-reached-shape-choice.yaml",
+      "path": "schema.properties.content.oneOf[0]",
+      "message": "Telo.Definition 'Card' declares a union at 'schema.properties.content' whose branches oneOf[0] and oneOf[1] disagree on 'x': 'schema.properties.content' compares 'telo://Self/A' with what oneOf[1] declares there, whose eval sites or `x-telo-context` regions differ. Every branch is read at one path before a value picks one, so a property means the same in each: give it the same `x-telo-eval` and `x-telo-context` in every branch declaring it, or another name where it means something else. (when variables.flag1 is true)",
+      "configurations": [
+        {
+          "variables.flag1": true
         }
       ]
     }
@@ -1446,18 +1605,53 @@
   ],
   "tests/__fixtures__/configurations/host-path-import-choice.yaml": [
     {
-      "code": "CEL_UNKNOWN_FIELD",
+      "code": "SCHEMA_TYPE_REF_UNRESOLVED",
       "severity": 1,
       "file": "tests/__fixtures__/configurations/host-path-import-choice.yaml",
-      "path": "variables.root",
-      "message": "Telo.Import/Lib: !cel: \"chosen\" is not declared here"
+      "path": "variables.lost.$ref",
+      "message": "Telo.Application/HostPathImportChoice: schema $ref 'telo://Self/Missing' resolves to module 'HostPathImportChoice', which declares no Telo.Type named 'Missing'."
     },
     {
       "code": "HOST_PATH_UNTYPED_SOURCE",
       "severity": 1,
       "file": "tests/__fixtures__/configurations/host-path-import-choice.yaml",
       "path": "variables.root",
-      "message": "Telo.Import/Lib: 'variables.root' is a Telo.HostPath in the imported library, but 'resources.chosen.status.dir' is declared 'string', so a relative path reaches the library unresolved and is refused there. Declare 'resources.chosen.status.dir' with 'x-telo-type: Telo.HostPath' — a variable resolves a relative value against the working directory. (when variables.flag1 is true)",
+      "message": "Telo.Import/Lib: the imported library's variable 'root' is a Telo.HostPath, but `variables.plainDir` is declared 'string', so a relative path reaches the library unresolved and is refused there. Declare `variables.plainDir` with 'x-telo-type: Telo.HostPath' — a variable resolves a relative value against the working directory."
+    },
+    {
+      "code": "HOST_PATH_RELATIVE",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/host-path-import-choice.yaml",
+      "path": "variables.extra",
+      "message": "Telo.Import/Lib: /variables/extra must be an absolute Telo.HostPath — a relative path names nothing fixed here. Write a file that ships with the module as !module-path <path>, or read a location on the host from a variable declared x-telo-type: Telo.HostPath, which resolves a relative value against the working directory. The imported library resolves nothing it is given."
+    },
+    {
+      "code": "HOST_PATH_UNTYPED_SOURCE",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/host-path-import-choice.yaml",
+      "path": "with[0].variables.root",
+      "message": "Telo.Import/Inner: the imported library's variable 'root' is a Telo.HostPath, but `variables.plainDir` is declared 'string', so a relative path reaches the library unresolved and is refused there. Declare `variables.plainDir` with 'x-telo-type: Telo.HostPath' — a variable resolves a relative value against the working directory."
+    },
+    {
+      "code": "HOST_PATH_RELATIVE",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/host-path-import-choice.yaml",
+      "path": "with[0].variables.extra",
+      "message": "Telo.Import/Inner: /variables/extra must be an absolute Telo.HostPath — a relative path names nothing fixed here. Write a file that ships with the module as !module-path <path>, or read a location on the host from a variable declared x-telo-type: Telo.HostPath, which resolves a relative value against the working directory. The imported library resolves nothing it is given."
+    },
+    {
+      "code": "CEL_TYPE_ERROR",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/host-path-import-choice.yaml",
+      "path": "steps[0].value",
+      "message": "Telo.Sequence/scoped: !cel: no \"+\" is declared over string, int"
+    },
+    {
+      "code": "HOST_PATH_UNTYPED_SOURCE",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/host-path-import-choice.yaml",
+      "path": "then.with[0].variables.root",
+      "message": "Telo.Import/Chosen: the imported library's variable 'root' is a Telo.HostPath, but `variables.plainDir` is declared 'string', so a relative path reaches the library unresolved and is refused there. Declare `variables.plainDir` with 'x-telo-type: Telo.HostPath' — a variable resolves a relative value against the working directory. (when variables.flag1 is true)",
       "configurations": [
         {
           "variables.flag1": true
@@ -1468,11 +1662,45 @@
       "code": "HOST_PATH_RELATIVE",
       "severity": 1,
       "file": "tests/__fixtures__/configurations/host-path-import-choice.yaml",
-      "path": "variables.extra",
-      "message": "Telo.Import/Lib: /variables/extra must be an absolute Telo.HostPath — a relative path names nothing fixed here. Write a file that ships with the module as !module-path <path>, or read a location on the host from a variable declared x-telo-type: Telo.HostPath, which resolves a relative value against the working directory. The imported library resolves nothing it is given."
+      "path": "then.with[0].variables.extra",
+      "message": "Telo.Import/Chosen: /variables/extra must be an absolute Telo.HostPath — a relative path names nothing fixed here. Write a file that ships with the module as !module-path <path>, or read a location on the host from a variable declared x-telo-type: Telo.HostPath, which resolves a relative value against the working directory. The imported library resolves nothing it is given. (when variables.flag1 is true)",
+      "configurations": [
+        {
+          "variables.flag1": true
+        }
+      ]
     }
   ],
   "tests/__fixtures__/configurations/host-path-import-lib/telo.yaml": [],
+  "tests/__fixtures__/configurations/import-binding-choice-lib/telo.yaml": [],
+  "tests/__fixtures__/configurations/import-binding-choice.yaml": [
+    {
+      "code": "CEL_TYPE_ERROR",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/import-binding-choice.yaml",
+      "path": "steps[1].value",
+      "message": "Telo.Sequence/show: !cel: no \"+\" is declared over int, string (when variables.flag1 is false)",
+      "configurations": [
+        {
+          "variables.flag1": false
+        }
+      ]
+    }
+  ],
+  "tests/__fixtures__/configurations/import-input-cycle-choice.yaml": [
+    {
+      "code": "DEPENDENCY_CYCLE",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/import-input-cycle-choice.yaml",
+      "path": "metadata.name",
+      "message": "Circular dependency detected:\n  Kinds.Collector \"collector\"\n    → Telo.Import \"Lib\"\n    → Kinds.Collector \"collector\"\nImport 'Lib' initializes after the resources it is handed, and an instance it exports exists only once it has initialized — so a resource handed to it cannot hold one of its exports. Move what is exported into a module that borrows nothing from the importer. (when variables.flag1 is true)",
+      "configurations": [
+        {
+          "variables.flag1": true
+        }
+      ]
+    }
+  ],
   "tests/__fixtures__/configurations/inline-cut-unextracted.yaml": [
     {
       "code": "SCHEMA_VIOLATION",
@@ -1803,6 +2031,27 @@
     }
   ],
   "tests/__fixtures__/configurations/library-body-defect.yaml": [],
+  "tests/__fixtures__/configurations/library-need-supply-choice.yaml": [
+    {
+      "code": "UNUSED_DECLARATION",
+      "severity": 2,
+      "file": "tests/__fixtures__/configurations/library-need-supply-choice.yaml",
+      "path": "variables.url",
+      "message": "variables.url is declared but never referenced in any CEL expression."
+    },
+    {
+      "code": "NEED_ENV_NAME_COLLISION",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/library-need-supply-choice.yaml",
+      "path": "",
+      "message": "Need 'Outer.Inner.db' field 'url' reads environment variable 'TELO_NEED_OUTER__INNER__DB__URL' (derived), which variables.url reads too. Each environment name supplies one value — rename an import alias or a need, or declare a need of this application with 'env:' and supply it at the import. (when variables.flag1 is false)",
+      "configurations": [
+        {
+          "variables.flag1": false
+        }
+      ]
+    }
+  ],
   "tests/__fixtures__/configurations/logging-sinks-choice.yaml": [
     {
       "code": "LOG_SINK_ON_FULL_UNSUPPORTED",
@@ -1958,18 +2207,6 @@
   ],
   "tests/__fixtures__/configurations/named-shape-reference-choice.yaml": [
     {
-      "code": "SCHEMA_TYPE_REF_UNRESOLVED",
-      "severity": 1,
-      "file": "tests/__fixtures__/configurations/named-shape-reference-choice.yaml",
-      "path": "schema/properties/payload/$ref",
-      "message": "Telo.Definition/Handler: schema $ref 'telo://Self/Payload' resolves to module 'NamedShapeReferenceChoice', which declares no Telo.Type named 'Payload'. (when variables.flag1 is false)",
-      "configurations": [
-        {
-          "variables.flag1": false
-        }
-      ]
-    },
-    {
       "code": "CONTRACT_TYPE_NOT_FOUND",
       "severity": 1,
       "file": "tests/__fixtures__/configurations/named-shape-reference-choice.yaml",
@@ -1992,15 +2229,27 @@
           "variables.flag1": false
         }
       ]
+    },
+    {
+      "code": "SCHEMA_TYPE_REF_UNRESOLVED",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/named-shape-reference-choice.yaml",
+      "path": "schema.properties.payload.$ref",
+      "message": "Telo.Definition/Handler: schema $ref 'telo://Self/Payload' resolves to module 'NamedShapeReferenceChoice', which declares no Telo.Type named 'Payload'. (when variables.flag1 is false)",
+      "configurations": [
+        {
+          "variables.flag1": false
+        }
+      ]
     }
   ],
   "tests/__fixtures__/configurations/named-shape-schema-ref-choice-reversed.yaml": [
     {
-      "code": "SCHEMA_TYPE_REF_UNRESOLVED",
+      "code": "SCHEMA_COMPILE_ERROR",
       "severity": 1,
       "file": "tests/__fixtures__/configurations/named-shape-schema-ref-choice-reversed.yaml",
-      "path": "schema/properties/payload/$ref",
-      "message": "Telo.Definition/Handler: schema $ref 'telo://Self/Payload' resolves to module 'NamedShapeSchemaRef', which declares no Telo.Type named 'Payload'. (when variables.flag1 is false)",
+      "path": "schema",
+      "message": "Telo.Definition/Handler: definition schema failed to compile: can't resolve reference telo:NamedShapeSchemaRef/Payload from id # (when variables.flag1 is false)",
       "configurations": [
         {
           "variables.flag1": false
@@ -2008,11 +2257,11 @@
       ]
     },
     {
-      "code": "SCHEMA_COMPILE_ERROR",
+      "code": "SCHEMA_TYPE_REF_UNRESOLVED",
       "severity": 1,
       "file": "tests/__fixtures__/configurations/named-shape-schema-ref-choice-reversed.yaml",
-      "path": "schema",
-      "message": "Telo.Definition/Handler: definition schema failed to compile: can't resolve reference telo:NamedShapeSchemaRef/Payload from id # (when variables.flag1 is false)",
+      "path": "schema.properties.payload.$ref",
+      "message": "Telo.Definition/Handler: schema $ref 'telo://Self/Payload' resolves to module 'NamedShapeSchemaRef', which declares no Telo.Type named 'Payload'. (when variables.flag1 is false)",
       "configurations": [
         {
           "variables.flag1": false
@@ -2022,11 +2271,11 @@
   ],
   "tests/__fixtures__/configurations/named-shape-schema-ref-choice.yaml": [
     {
-      "code": "SCHEMA_TYPE_REF_UNRESOLVED",
+      "code": "SCHEMA_COMPILE_ERROR",
       "severity": 1,
       "file": "tests/__fixtures__/configurations/named-shape-schema-ref-choice.yaml",
-      "path": "schema/properties/payload/$ref",
-      "message": "Telo.Definition/Handler: schema $ref 'telo://Self/Payload' resolves to module 'NamedShapeSchemaRef', which declares no Telo.Type named 'Payload'. (when variables.flag1 is false)",
+      "path": "schema",
+      "message": "Telo.Definition/Handler: definition schema failed to compile: can't resolve reference telo:NamedShapeSchemaRef/Payload from id # (when variables.flag1 is false)",
       "configurations": [
         {
           "variables.flag1": false
@@ -2034,11 +2283,11 @@
       ]
     },
     {
-      "code": "SCHEMA_COMPILE_ERROR",
+      "code": "SCHEMA_TYPE_REF_UNRESOLVED",
       "severity": 1,
       "file": "tests/__fixtures__/configurations/named-shape-schema-ref-choice.yaml",
-      "path": "schema",
-      "message": "Telo.Definition/Handler: definition schema failed to compile: can't resolve reference telo:NamedShapeSchemaRef/Payload from id # (when variables.flag1 is false)",
+      "path": "schema.properties.payload.$ref",
+      "message": "Telo.Definition/Handler: schema $ref 'telo://Self/Payload' resolves to module 'NamedShapeSchemaRef', which declares no Telo.Type named 'Payload'. (when variables.flag1 is false)",
       "configurations": [
         {
           "variables.flag1": false
@@ -2124,6 +2373,8 @@
   ],
   "tests/__fixtures__/configurations/needs/database.yaml": [],
   "tests/__fixtures__/configurations/needs/flagged-app.yaml": [],
+  "tests/__fixtures__/configurations/needs/flagged-chosen-app.yaml": [],
+  "tests/__fixtures__/configurations/needs/flagged-chosen-scoped.yaml": [],
   "tests/__fixtures__/configurations/needs/flagged/telo.yaml": [],
   "tests/__fixtures__/configurations/needs/kinds/telo.yaml": [],
   "tests/__fixtures__/configurations/needs/library-forwarded.yaml": [],
@@ -2196,6 +2447,20 @@
       "file": "tests/__fixtures__/configurations/observed-state-flag.yaml",
       "path": "at",
       "message": "Self.Holder/holder: 'at' is resolved once at startup, so 'resources.plain.status.ready' does not exist yet — 'plain' reports it only while the application is running. Read reported values where the call happens: a step's inputs:, a request's url, a route handler, or a returns: expression. (when variables.flag1 is true)",
+      "configurations": [
+        {
+          "variables.flag1": true
+        }
+      ]
+    }
+  ],
+  "tests/__fixtures__/configurations/omitted-input-choice.yaml": [
+    {
+      "code": "RESOURCE_INPUT_OPTIONAL_REFERENCED",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/omitted-input-choice.yaml",
+      "path": "imports.Reading",
+      "message": "Imported library 'OptionalReferenceLibrary', reached through import 'Reading': Kinds.Holder/holder: 'store' references resource input 'store', which is optional and may be absent. Reference it only inside an '!if' proving it present ('resources.store != null'), with this library's own default in the other branch, or make the input required. (when variables.flag1 is true)",
       "configurations": [
         {
           "variables.flag1": true
@@ -2727,6 +2992,58 @@
       ]
     }
   ],
+  "tests/__fixtures__/configurations/schema-in-place-cycle-choice.yaml": [
+    {
+      "code": "SCHEMA_IN_PLACE_CYCLE",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/schema-in-place-cycle-choice.yaml",
+      "path": "schema",
+      "message": "Telo.JsonSchema 'Answer': its schema comes back to where it started without descending into the value — 'anyOf/0' of Answer refers to Answer — so validating any value against it never ends. A schema may refer back to itself only beneath 'properties', 'patternProperties', 'additionalProperties', 'items', 'additionalItems', 'prefixItems' or 'contains'. (when variables.flag1 is true)",
+      "configurations": [
+        {
+          "variables.flag1": true
+        }
+      ]
+    },
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/schema-in-place-cycle-choice.yaml",
+      "path": "value",
+      "message": "Telo.Value/answer: `value` does not satisfy the type declared at `outputType`: / matches no alternative — expected a integer, or a string (when variables.flag1 is false)",
+      "configurations": [
+        {
+          "variables.flag1": false
+        }
+      ]
+    }
+  ],
+  "tests/__fixtures__/configurations/schema-unjudged-class-choice.yaml": [
+    {
+      "code": "CEL_SCHEMA_UNJUDGED",
+      "severity": 2,
+      "file": "tests/__fixtures__/configurations/schema-unjudged-class-choice.yaml",
+      "path": "then.schema",
+      "message": "!if/Labels: the CEL type checker does not read keyword 'unevaluatedProperties' at 'then.schema': a member no other keyword of the node declares is read as 'additionalProperties' says, refused where that is absent or false. (when variables.flag1 is true)",
+      "configurations": [
+        {
+          "variables.flag1": true
+        }
+      ]
+    },
+    {
+      "code": "CEL_UNKNOWN_FIELD",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/schema-unjudged-class-choice.yaml",
+      "path": "steps[1].value",
+      "message": "Telo.Sequence/seq: !cel: 'inputs.b' is not defined (available: a) (when variables.flag1 is false)",
+      "configurations": [
+        {
+          "variables.flag1": false
+        }
+      ]
+    }
+  ],
   "tests/__fixtures__/configurations/scope-array-collision-choice.yaml": [
     {
       "code": "DUPLICATE_RESOURCE_NAME",
@@ -2872,6 +3189,20 @@
       ]
     }
   ],
+  "tests/__fixtures__/configurations/scoped-import-cel-choice.yaml": [
+    {
+      "code": "CEL_TYPE_ERROR",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/scoped-import-cel-choice.yaml",
+      "path": "with.then[0].variables.root",
+      "message": "Telo.Import/Inner: !cel: no \"+\" is declared over bool, int (when variables.flag1 is true)",
+      "configurations": [
+        {
+          "variables.flag1": true
+        }
+      ]
+    }
+  ],
   "tests/__fixtures__/configurations/scoped-import-collision-choice.yaml": [
     {
       "code": "DUPLICATE_RESOURCE_NAME",
@@ -2965,6 +3296,56 @@
       ]
     }
   ],
+  "tests/__fixtures__/configurations/scoped-import-need-choice.yaml": [
+    {
+      "code": "NEED_UNDECLARED",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/scoped-import-need-choice.yaml",
+      "path": "then.with[0].needs.bogus",
+      "message": "Import 'Inner' supplies need 'bogus', which module 'ScopedChoiceNeedLib' does not declare. Declared needs: upstream. (when variables.flag1 is true)",
+      "configurations": [
+        {
+          "variables.flag1": true
+        }
+      ]
+    },
+    {
+      "code": "NEED_UNDECLARED",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/scoped-import-need-choice.yaml",
+      "path": "with.then[0].needs.bogus",
+      "message": "Import 'Inner' supplies need 'bogus', which module 'ScopedChoiceNeedLib' does not declare. Declared needs: upstream. (when variables.flag1 is true)",
+      "configurations": [
+        {
+          "variables.flag1": true
+        }
+      ]
+    },
+    {
+      "code": "NEED_TYPE_UNRESOLVED",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/scoped-import-need-choice.yaml",
+      "path": "with.then[1]",
+      "message": "Imported library 'ScopedChoiceBadNeedLib', reached through import 'Bad': Need 'upstream' names kind 'Self.Missing', which does not resolve to a need type in this module's scope. Write it alias-qualified — '<Alias>.<Kind>' for a need type an import exports, or 'Self.<Kind>' for one this module declares. The repair is the library's — import a version of it that resolves this. (when variables.flag1 is true)",
+      "configurations": [
+        {
+          "variables.flag1": true
+        }
+      ]
+    },
+    {
+      "code": "NEED_UNDECLARED",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/scoped-import-need-choice.yaml",
+      "path": "with[0].then.needs.bogus",
+      "message": "Import 'Inner' supplies need 'bogus', which module 'ScopedChoiceNeedLib' does not declare. Declared needs: upstream. (when variables.flag1 is true)",
+      "configurations": [
+        {
+          "variables.flag1": true
+        }
+      ]
+    }
+  ],
   "tests/__fixtures__/configurations/scoped-kind-document-choice.yaml": [
     {
       "code": "CAPABILITY_UNKNOWN",
@@ -3001,6 +3382,238 @@
       "configurations": [
         {
           "variables.flag1": true
+        }
+      ]
+    }
+  ],
+  "tests/__fixtures__/configurations/shape-boundary-dead-branch.yaml": [
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/shape-boundary-dead-branch.yaml",
+      "path": "v.then.next.y",
+      "message": "Self.Holder/holder: /v/then/next/y must be integer (when variables.flag1 is true)",
+      "configurations": [
+        {
+          "variables.flag1": true
+        }
+      ]
+    },
+    {
+      "code": "BRANCH_CASE_UNREACHABLE",
+      "severity": 2,
+      "file": "tests/__fixtures__/configurations/shape-boundary-dead-branch.yaml",
+      "path": "v.else",
+      "message": "Self.Holder/holder: The 'else:' branch of '!if' is taken in no configuration — its condition is the same in every one. It is still checked."
+    },
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/shape-boundary-dead-branch.yaml",
+      "path": "v.else.next.z",
+      "message": "Self.Holder/holder: /v/else/next is missing required property 'z' (in a branch no configuration takes)",
+      "configurations": []
+    }
+  ],
+  "tests/__fixtures__/configurations/shape-carve-any-of-choice.yaml": [
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/shape-carve-any-of-choice.yaml",
+      "path": "v",
+      "message": "Self.Holder/holder: /v matches no alternative — expected a integer, or a boolean (when variables.flag1 is false)",
+      "configurations": [
+        {
+          "variables.flag1": false
+        }
+      ]
+    }
+  ],
+  "tests/__fixtures__/configurations/shape-carve-authored-choice.yaml": [
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/shape-carve-authored-choice.yaml",
+      "path": "v",
+      "message": "Self.Holder/holder: /v must match exactly one schema in oneOf"
+    },
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/shape-carve-authored-choice.yaml",
+      "path": "w",
+      "message": "Self.Holder/holder: /w matches a shape that is not allowed here"
+    }
+  ],
+  "tests/__fixtures__/configurations/shape-carve-contains-choice.yaml": [
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/shape-carve-contains-choice.yaml",
+      "path": "v",
+      "message": "Self.Holder/holder: /v must contain at least 1 valid item(s) (when variables.flag1 is false)",
+      "configurations": [
+        {
+          "variables.flag1": false
+        }
+      ]
+    },
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/shape-carve-contains-choice.yaml",
+      "path": "v[0]",
+      "message": "Self.Holder/holder: /v/0 must be integer (when variables.flag1 is false)",
+      "configurations": [
+        {
+          "variables.flag1": false
+        }
+      ]
+    }
+  ],
+  "tests/__fixtures__/configurations/shape-carve-dependencies-choice.yaml": [
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/shape-carve-dependencies-choice.yaml",
+      "path": "v.b",
+      "message": "Self.Holder/holder: /v is missing required property 'b' (when variables.flag1 is true)",
+      "configurations": [
+        {
+          "variables.flag1": true
+        }
+      ]
+    }
+  ],
+  "tests/__fixtures__/configurations/shape-carve-if-then-choice.yaml": [
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/shape-carve-if-then-choice.yaml",
+      "path": "v",
+      "message": "Self.Holder/holder: /v must NOT have more than 2 characters (when variables.flag1 is true)",
+      "configurations": [
+        {
+          "variables.flag1": true
+        }
+      ]
+    },
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/shape-carve-if-then-choice.yaml",
+      "path": "v",
+      "message": "Self.Holder/holder: /v must match \"then\" schema (when variables.flag1 is true)",
+      "configurations": [
+        {
+          "variables.flag1": true
+        }
+      ]
+    }
+  ],
+  "tests/__fixtures__/configurations/shape-carve-member-wise-choice.yaml": [
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/shape-carve-member-wise-choice.yaml",
+      "path": "v.next.y",
+      "message": "Self.Holder/holder: /v/next/y must be integer (when variables.flag2 is true and variables.flag1 is true)",
+      "configurations": [
+        {
+          "variables.flag2": true,
+          "variables.flag1": true
+        }
+      ]
+    }
+  ],
+  "tests/__fixtures__/configurations/shape-carve-not-choice.yaml": [
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/shape-carve-not-choice.yaml",
+      "path": "v",
+      "message": "Self.Holder/holder: /v matches a shape that is not allowed here (when variables.flag1 is true)",
+      "configurations": [
+        {
+          "variables.flag1": true
+        }
+      ]
+    }
+  ],
+  "tests/__fixtures__/configurations/shape-carve-one-of-choice.yaml": [
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/shape-carve-one-of-choice.yaml",
+      "path": "v",
+      "message": "Self.Holder/holder: /v must match exactly one schema in oneOf (when variables.flag1 is true)",
+      "configurations": [
+        {
+          "variables.flag1": true
+        }
+      ]
+    }
+  ],
+  "tests/__fixtures__/configurations/shape-carve-then-else-choice.yaml": [
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/shape-carve-then-else-choice.yaml",
+      "path": "v",
+      "message": "Self.Holder/holder: /v must be integer (when variables.flag1 is false)",
+      "configurations": [
+        {
+          "variables.flag1": false
+        }
+      ]
+    },
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/shape-carve-then-else-choice.yaml",
+      "path": "v",
+      "message": "Self.Holder/holder: /v must match \"then\" schema (when variables.flag1 is false)",
+      "configurations": [
+        {
+          "variables.flag1": false
+        }
+      ]
+    },
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/shape-carve-then-else-choice.yaml",
+      "path": "w",
+      "message": "Self.Holder/holder: /w must be string (when variables.flag1 is true)",
+      "configurations": [
+        {
+          "variables.flag1": true
+        }
+      ]
+    },
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/shape-carve-then-else-choice.yaml",
+      "path": "w",
+      "message": "Self.Holder/holder: /w must match \"else\" schema (when variables.flag1 is true)",
+      "configurations": [
+        {
+          "variables.flag1": true
+        }
+      ]
+    }
+  ],
+  "tests/__fixtures__/configurations/shape-carve-tuple-items-choice.yaml": [
+    {
+      "code": "SCHEMA_VIOLATION",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/shape-carve-tuple-items-choice.yaml",
+      "path": "v[0]",
+      "message": "Self.Holder/holder: /v/0 must be integer (when variables.flag1 is false)",
+      "configurations": [
+        {
+          "variables.flag1": false
         }
       ]
     }
@@ -3065,7 +3678,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/shape-inline-slot-choice.yaml",
       "path": "handler.value",
-      "message": "ShapeInlineSlotChoice.Route/route: !cel: \"missing\" is not declared here (declared: flag1)"
+      "message": "ShapeInlineSlotChoice.Route/route: !cel: 'variables.missing' is not defined (available: flag1)"
     }
   ],
   "tests/__fixtures__/configurations/shape-inline-slot-kind-choice.yaml": [
@@ -3173,6 +3786,20 @@
       "file": "tests/__fixtures__/configurations/shape-slot-fit.yaml",
       "path": "payload.at",
       "message": "Self.Op/op: CEL at 'payload.at' returns 'string' but the field expects 'integer'. (when variables.flag1 is true)",
+      "configurations": [
+        {
+          "variables.flag1": true
+        }
+      ]
+    }
+  ],
+  "tests/__fixtures__/configurations/shape-way-slot-choice.yaml": [
+    {
+      "code": "REFERENCE_KIND_MISMATCH",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/shape-way-slot-choice.yaml",
+      "path": "s.next.x",
+      "message": "ShapeWaySlotChoice.Route/route: reference at 's.next.x' → 'Telo.Value' does not implement 'Telo.Service' (known implementations: ShapeWaySlotChoice.Route) (when variables.flag1 is true)",
       "configurations": [
         {
           "variables.flag1": true
@@ -3331,6 +3958,20 @@
       ]
     }
   ],
+  "tests/__fixtures__/configurations/step-inputs-nested-shape-choice.yaml": [
+    {
+      "code": "CONTRACT_INPUTS_MISMATCH",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/step-inputs-nested-shape-choice.yaml",
+      "path": "steps[0].inputs.amount",
+      "message": "Telo.Sequence/run: inputs at 'steps[0].inputs.amount' do not satisfy price's declared inputType: /amount must be integer (when variables.flag1 is false)",
+      "configurations": [
+        {
+          "variables.flag1": false
+        }
+      ]
+    }
+  ],
   "tests/__fixtures__/configurations/step-invoke-choice.yaml": [
     {
       "code": "UNRESOLVED_REFERENCE",
@@ -3351,7 +3992,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/step-name-miss.yaml",
       "path": "steps[4].value",
-      "message": "Telo.Sequence/main: !cel: \"frist\" is not declared here (declared: first, reader, misser) (when variables.flag2 is false and variables.flag3 is false)",
+      "message": "Telo.Sequence/main: !cel: 'steps.frist' is not defined (available: first, reader, misser) (when variables.flag2 is false and variables.flag3 is false)",
       "configurations": [
         {
           "variables.flag2": false,
@@ -3364,7 +4005,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/step-name-miss.yaml",
       "path": "steps[4].value",
-      "message": "Telo.Sequence/main: !cel: \"frist\" is not declared here (declared: first, second, reader, misser) (when variables.flag2 is true and variables.flag3 is false)",
+      "message": "Telo.Sequence/main: !cel: 'steps.frist' is not defined (available: first, second, reader, misser) (when variables.flag2 is true and variables.flag3 is false)",
       "configurations": [
         {
           "variables.flag2": true,
@@ -3377,7 +4018,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/step-name-miss.yaml",
       "path": "steps[4].value",
-      "message": "Telo.Sequence/main: !cel: \"frist\" is not declared here (declared: first, second, third, reader, misser) (when variables.flag2 is true and variables.flag3 is true)",
+      "message": "Telo.Sequence/main: !cel: 'steps.frist' is not defined (available: first, second, third, reader, misser) (when variables.flag2 is true and variables.flag3 is true)",
       "configurations": [
         {
           "variables.flag2": true,
@@ -3390,7 +4031,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/step-name-miss.yaml",
       "path": "steps[4].value",
-      "message": "Telo.Sequence/main: !cel: \"frist\" is not declared here (declared: first, third, reader, misser) (when variables.flag2 is false and variables.flag3 is true)",
+      "message": "Telo.Sequence/main: !cel: 'steps.frist' is not defined (available: first, third, reader, misser) (when variables.flag2 is false and variables.flag3 is true)",
       "configurations": [
         {
           "variables.flag2": false,
@@ -3442,7 +4083,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/step-result-producer-site.yaml",
       "path": "steps[0].catch[0].then.value",
-      "message": "Telo.Sequence/main: !cel: no overload of \"int\" takes int(map<dyn, dyn>): int(int): int, int(uint): int, int(double): int, int(string): int, int(google.protobuf.Timestamp): int, int(google.protobuf.Duration): int, int(Telo.TcpPort): int, int(Telo.UdpPort): int (when variables.flag1 is true)",
+      "message": "Telo.Sequence/main: !cel: no overload of \"int\" takes int(map): int(int): int, int(uint): int, int(double): int, int(string): int, int(google.protobuf.Timestamp): int, int(google.protobuf.Duration): int, int(Telo.TcpPort): int, int(Telo.UdpPort): int (when variables.flag1 is true)",
       "configurations": [
         {
           "variables.flag1": true
@@ -3980,6 +4621,20 @@
       ]
     }
   ],
+  "tests/__fixtures__/configurations/variable-varying-shape.yaml": [
+    {
+      "code": "CEL_TYPE_ERROR",
+      "severity": 1,
+      "file": "tests/__fixtures__/configurations/variable-varying-shape.yaml",
+      "path": "value",
+      "message": "Telo.Value/read: !cel: no \"+\" is declared over string, int (when variables.flag1 is true)",
+      "configurations": [
+        {
+          "variables.flag1": true
+        }
+      ]
+    }
+  ],
   "tests/__fixtures__/configurations/zones/co-referrer.yaml": [
     {
       "code": "ZONE_REQUIREMENT_UNSATISFIED",
@@ -4121,8 +4776,83 @@
       ]
     }
   ],
+  "tests/__fixtures__/import-configuration-shapes/flag/telo.yaml": [
+    {
+      "code": "SCHEMA_TYPE_REF_UNRESOLVED",
+      "severity": 1,
+      "file": "tests/__fixtures__/import-configuration-shapes/flag/telo.yaml",
+      "path": "variables.config.$ref",
+      "message": "Telo.Library/FlagShape: schema $ref 'telo://Self/Config' resolves to module 'FlagShape', which declares no Telo.Type named 'Config'. (when variables.flag is false)",
+      "configurations": [
+        {
+          "variables.flag": false
+        }
+      ]
+    }
+  ],
+  "tests/__fixtures__/import-configuration-shapes/mode/telo.yaml": [],
+  "tests/__fixtures__/import-input-choice/libraries-off.yaml": [],
+  "tests/__fixtures__/import-input-choice/libraries-on.yaml": [],
+  "tests/__fixtures__/import-input-choice/typed-off.yaml": [],
+  "tests/__fixtures__/import-input-choice/typed-on.yaml": [],
+  "tests/__fixtures__/import-input-choice/untyped-off.yaml": [
+    {
+      "code": "HOST_PATH_UNTYPED_SOURCE",
+      "severity": 1,
+      "file": "tests/__fixtures__/import-input-choice/untyped-off.yaml",
+      "path": "variables.root.else",
+      "message": "Telo.Import/Lib: the imported library's variable 'root' is a Telo.HostPath, but `variables.plainDir` is declared 'string', so a relative path reaches the library unresolved and is refused there. Declare `variables.plainDir` with 'x-telo-type: Telo.HostPath' — a variable resolves a relative value against the working directory. (when variables.flag1 is false)",
+      "configurations": [
+        {
+          "variables.flag1": false
+        }
+      ]
+    },
+    {
+      "code": "HOST_PATH_UNTYPED_SOURCE",
+      "severity": 1,
+      "file": "tests/__fixtures__/import-input-choice/untyped-off.yaml",
+      "path": "with[0].variables.root.else",
+      "message": "Telo.Import/Inner: the imported library's variable 'root' is a Telo.HostPath, but `variables.plainDir` is declared 'string', so a relative path reaches the library unresolved and is refused there. Declare `variables.plainDir` with 'x-telo-type: Telo.HostPath' — a variable resolves a relative value against the working directory. (when variables.flag1 is false)",
+      "configurations": [
+        {
+          "variables.flag1": false
+        }
+      ]
+    }
+  ],
+  "tests/__fixtures__/import-input-choice/untyped.yaml": [
+    {
+      "code": "HOST_PATH_UNTYPED_SOURCE",
+      "severity": 1,
+      "file": "tests/__fixtures__/import-input-choice/untyped.yaml",
+      "path": "variables.root.else",
+      "message": "Telo.Import/Lib: the imported library's variable 'root' is a Telo.HostPath, but `variables.plainDir` is declared 'string', so a relative path reaches the library unresolved and is refused there. Declare `variables.plainDir` with 'x-telo-type: Telo.HostPath' — a variable resolves a relative value against the working directory. (when variables.flag1 is false)",
+      "configurations": [
+        {
+          "variables.flag1": false
+        }
+      ]
+    },
+    {
+      "code": "HOST_PATH_UNTYPED_SOURCE",
+      "severity": 1,
+      "file": "tests/__fixtures__/import-input-choice/untyped.yaml",
+      "path": "with[0].variables.root.else",
+      "message": "Telo.Import/Inner: the imported library's variable 'root' is a Telo.HostPath, but `variables.plainDir` is declared 'string', so a relative path reaches the library unresolved and is refused there. Declare `variables.plainDir` with 'x-telo-type: Telo.HostPath' — a variable resolves a relative value against the working directory. (when variables.flag1 is false)",
+      "configurations": [
+        {
+          "variables.flag1": false
+        }
+      ]
+    }
+  ],
   "tests/__fixtures__/resource-inputs/optional/lib/telo.yaml": [],
   "tests/__fixtures__/resource-inputs/optional/shared/telo.yaml": [],
+  "tests/__fixtures__/scoped-imports/choice-need-off.yaml": [],
+  "tests/__fixtures__/scoped-imports/choice-need-on.yaml": [],
+  "tests/__fixtures__/scoped-imports/choice-unresolved-off.yaml": [],
+  "tests/__fixtures__/scoped-imports/choice-unresolved-on.yaml": [],
   "tests/template-declared-integers.yaml": [
     {
       "code": "DEPRECATED_KIND",
@@ -4525,7 +5255,7 @@
       "severity": 1,
       "file": "analyzer/nodejs/tests/__generated__/nested-dead-branch.yaml",
       "path": "steps[1].else.else.inputs.a",
-      "message": "Telo.Sequence/sequence: CEL at 'steps[1].else.else.inputs.a' returns 'int' but taker's declared inputType expects 'string'. (in a branch no configuration takes)",
+      "message": "Telo.Sequence/sequence: CEL at 'steps[1].else.else.inputs.a' reads 'steps.first.result', declared 'integer', but taker's declared inputType expects 'string'. (in a branch no configuration takes)",
       "configurations": []
     },
     {

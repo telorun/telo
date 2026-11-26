@@ -2490,7 +2490,7 @@ steps:
                                   invoke: !ref discardUnrecordedCopies
                                   inputs:
                                     turnId: !cel "inputs.turnId"
-                                    hashes: !cel "steps.capture.result.captured.map(c, string(c.before))"
+                                    hashes: !cel "steps.capture.result.captured.map(c, c.before != null, c.before)"
                                 - { name: reraise, rethrow: {} }
                             - name: confirm
                               invoke: !ref checkpointCommand
@@ -2591,7 +2591,7 @@ steps:
                                   invoke: !ref discardUnrecordedCopies
                                   inputs:
                                     turnId: !cel "inputs.turnId"
-                                    hashes: !cel "steps.capture.result.captured.map(c, string(c.before))"
+                                    hashes: !cel "steps.capture.result.captured.map(c, c.before != null, c.before)"
                                 - { name: reraise, rethrow: {} }
                             - name: confirm
                               invoke: !ref checkpointCommand
@@ -6898,7 +6898,7 @@ outputs:
           + steps.unreadable.result + '). Call find_kinds again with the needs worded differently.\n'
       : size(steps.found.result) == 0 && size(steps.notFound.result) == 0
         ? 'NOT FOUND\n- the search named no kind for any of the needs.\n' : '')
-    + ('kinds' in steps ? '\nDEFINITIONS\n' + join(steps.kinds.result.content.filter(c, c.type == 'text').map(c, c.text), '\n')
+    + ('kinds' in steps ? '\nDEFINITIONS\n' + join(steps.kinds.result.content.filter(c, c.type == 'text').map(c, c.?text.orValue('')), '\n')
       : 'unfetched' in steps
         ? '\nERR_DEFINITIONS_UNAVAILABLE: the hub did not return the definitions (' + steps.unfetched.result
             + '). Call get_kinds for the kinds listed under FOUND.\n'
@@ -6951,7 +6951,7 @@ steps:
         publisher: !cel "variables.hubPublisher"
 outputs:
   text: !cel >-
-    join(parseJson(steps.list.result.content[0].text).libraries.map(l,
+    join(parseJson(steps.list.result.content[0].?text.orValue('')).libraries.map(l,
       '- ' + string(l.name) + ' (' + string(l.ref) + '): ' + string(l.summary)
         + ('kinds' in l ? ' Kinds: ' + join(l.kinds.map(k, string(k)), ', ') + '.' : '')
         + ('instances' in l ? ' Instances: ' + join(l.instances.map(i, string(i)), ', ') + '.' : '')

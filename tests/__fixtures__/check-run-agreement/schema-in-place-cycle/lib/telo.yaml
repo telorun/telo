@@ -1,0 +1,10 @@
+# A named shape referring back to itself through `anyOf` alone.
+kind: Telo.Library
+metadata: { name: InPlaceCycleLib }
+---
+kind: Telo.JsonSchema
+metadata: { name: Answer }
+schema:
+  anyOf:
+    - { $ref: "telo://Self/Answer" }
+    - { type: string }

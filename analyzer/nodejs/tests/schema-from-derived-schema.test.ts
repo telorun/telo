@@ -65,7 +65,7 @@ const errorsOf = (list: ResourceManifest[]) =>
     .filter((d) => d.severity === 1)
     .map((d) => ({ code: d.code, message: d.message, path: (d.data as { path?: string } | undefined)?.path }));
 
-describe("an x-telo-schema-from slot derives its schema with the source's hoisted fragments", () => {
+describe("an x-telo-schema-from slot reads its schema where it sits in the source kind's schema", () => {
   const typed = carrier({
     type: "object",
     properties: { body: { $ref: "telo://manifest#/$defs/JsonSchema7" } },
@@ -98,18 +98,35 @@ describe("an x-telo-schema-from slot derives its schema with the source's hoiste
     ]);
   });
 
-  it("reports a derived schema that does not compile at the slot, naming its source", () => {
-    // An author's own local definition resolves in the carrier, not where the
-    // node is transplanted.
-    const broken = carrier({ $ref: "#/$defs/Shape" }, { Shape: { type: "object" } });
-    const errors = errorsOf(manifests(broken, [{ request: { method: "GET", schema: {} } }]));
-    expect(errors).toEqual([
+  it("resolves an author's own local definition in the carrier, where the node is written", () => {
+    const local = carrier({ $ref: "#/$defs/Shape" }, { Shape: { type: "object" } });
+    expect(errorsOf(manifests(local, [{ request: { method: "GET", schema: {} } }]))).toEqual([]);
+    expect(errorsOf(manifests(local, [{ request: { method: "GET", schema: 5 } }]))).toEqual([
       {
-        code: "SCHEMA_COMPILE_ERROR",
+        code: "DEPENDENT_SCHEMA_MISMATCH",
         message:
-          "Srv.Api/api: 'routes[0].request' takes its schema from 'Carrier.Request/$defs/Matcher', which failed to compile: can't resolve reference #/$defs/Shape from id #",
-        path: "routes[0].request",
+          "Srv.Api/api: 'routes[0].request' does not match schema from 'Carrier.Request/$defs/Matcher': /schema must be object",
+        path: "routes[0].request.schema",
       },
     ]);
+  });
+
+  it("reads a '#' the node writes as the carrier's root", () => {
+    // Read as the matcher alone, `#` would ask `nested` for a `method`.
+    const descending = carrier({ type: "object", properties: { nested: { $ref: "#" } } });
+    expect(errorsOf(manifests(descending, [{ request: { method: "GET", schema: { nested: { root: 1 } } } }]))).toEqual([]);
+    expect(errorsOf(manifests(descending, [{ request: { method: "GET", schema: { nested: 5 } } }]))).toEqual([
+      {
+        code: "DEPENDENT_SCHEMA_MISMATCH",
+        message:
+          "Srv.Api/api: 'routes[0].request' does not match schema from 'Carrier.Request/$defs/Matcher': /schema/nested must be object",
+        path: "routes[0].request.schema.nested",
+      },
+    ]);
+  });
+
+  it("decodes an instance-typed literal at the pointer it reads, as the whole document would", () => {
+    const timed = carrier({ type: "object", properties: { maxAge: { "x-telo-type": "Telo.Duration" } } });
+    expect(errorsOf(manifests(timed, [{ request: { method: "GET", schema: { maxAge: "0s" } } }]))).toEqual([]);
   });
 });

@@ -1261,6 +1261,8 @@ const ABSENT = Symbol("absent");
 /** One way a forward reads its holder: what it reaches, where that is
  *  written, and where it holds. */
 interface Reached {
+  /** Nothing is there where it holds: the entry receives nothing. */
+  readonly absent?: true;
   readonly node: unknown;
   /** Where the value is written in the root consumer's document; undefined
    *  for a place written nowhere (a view's own). */
@@ -1291,7 +1293,10 @@ function forwardNode(reached: readonly Reached[], space: ConditionSpace): Altern
       }
       return;
     }
-    if (value === undefined) return;
+    if (value === undefined) {
+      if (r.absent) options.push({ condition: holding.condition, taken: holding.condition, path: holding.path, present: false, at: [], moved: false });
+      return;
+    }
     options.push({
       condition: holding.condition,
       taken: holding.condition,
@@ -1306,7 +1311,7 @@ function forwardNode(reached: readonly Reached[], space: ConditionSpace): Altern
     });
   };
   for (const r of reached) add(r, r.node, r.holding, r.written, r.exact);
-  return options.length > 0 ? new Alternatives(options) : undefined;
+  return options.some((option) => option.present) ? new Alternatives(options) : undefined;
 }
 
 /**
@@ -1334,11 +1339,21 @@ function fromSelf(holder: Holder, self: readonly string[], input: ForwardViewInp
     each: (value: unknown, written: readonly Segment[] | undefined, exact: boolean, holding: Holding) => void,
   ) => {
     for (const option of node.options) {
-      if (!option.present) continue;
       const h = meet(space, holding, holdingOf(option));
       if (h.condition === FALSE && holding.condition !== FALSE && !option.unreachable) continue;
-      each(option.value, exact ? written : option.moved ? option.at : written, exact || !!option.exact, h);
+      each(option.present ? option.value : undefined, exact ? written : option.moved ? option.at : written, exact || !!option.exact, h);
     }
+  };
+  /** Nothing at `within`, `i` the path's next segment: `self` holds the
+   *  schema's default where the instance leaves a field out, else the entry
+   *  receives nothing there. */
+  const unset = (declaration: ResourceManifest, within: Segment[], i: number, holding: Holding): void => {
+    const filled = declaration === holder.manifest ? valueAlong(selfDefault(within), self.slice(i)) : undefined;
+    reached.push(
+      filled !== undefined
+        ? { node: structuredClone(filled), written: undefined, exact: false, holding }
+        : { absent: true, node: undefined, written: undefined, exact: false, holding },
+    );
   };
   /** `node`, at segment `i` of the path, read on. */
   const walk = (
@@ -1354,22 +1369,20 @@ function fromSelf(holder: Holder, self: readonly string[], input: ForwardViewInp
       optionsOf(node, written, exact, holding, (value, w, e, h) => walk(value, declaration, within, i, w, e, h));
       return;
     }
+    if (node === undefined) {
+      unset(declaration, within, i, holding);
+      return;
+    }
     if (i === self.length) {
-      if (node !== undefined) reached.push({ node, written, exact, holding });
+      reached.push({ node, written, exact, holding });
       return;
     }
     if (!isPlainObject(node)) {
-      if (node !== undefined && node !== null) unknown = true;
+      if (node !== null) unknown = true;
       return;
     }
     const segment = self[i]!;
     const next = (node as Record<string, unknown>)[segment];
-    if (next === undefined && declaration === holder.manifest) {
-      // `self` holds the schema's default where the instance leaves a field out.
-      const filled = valueAlong(selfDefault([...within, segment]), self.slice(i + 1));
-      if (filled !== undefined) reached.push({ node: structuredClone(filled), written: undefined, exact: false, holding });
-      return;
-    }
     const nextWritten = written && !exact ? [...written, segment] : written;
     if (i === self.length - 1) walk(next, declaration, [...within, segment], i + 1, nextWritten, exact, holding);
     else at(next, declaration, [...within, segment], i + 1, nextWritten, exact, holding);
@@ -1387,6 +1400,10 @@ function fromSelf(holder: Holder, self: readonly string[], input: ForwardViewInp
   ): void => {
     if (isAlternatives(node)) {
       optionsOf(node, written, exact, holding, (value, w, e, h) => at(value, declaration, within, i, w, e, h));
+      return;
+    }
+    if (node === undefined) {
+      unset(declaration, within, i, holding);
       return;
     }
     const targets = crossing.isSite(declaration, within, holding) ? crossing.targets(node, declaration, holding) : undefined;
@@ -1505,10 +1522,11 @@ function throughBase(
   const value = readBaseMapping(node, {
     forward: (path, at) => {
       const reached = reachedPlainly(holder, path, union);
-      const forwardedNode = forwardNode(reached, union.space);
-      if (!forwardedNode) return undefined;
+      if (reached.length === 0) return undefined;
+      // A forward reaching nothing the consumer holds still forwards: the
+      // mapping hands its controller nothing there.
       links.push({ at, from: path });
-      return forwardedNode;
+      return forwardNode(reached, union.space);
     },
     opaque: () => undefined,
     hold: (container) => union.hold(container),
@@ -1563,15 +1581,19 @@ function reachedPlainly(holder: Holder, path: readonly string[], union: Conditio
   const walk = (node: unknown, i: number, written: readonly Segment[] | undefined, exact: boolean, holding: Holding) => {
     if (isAlternatives(node)) {
       for (const option of node.options) {
-        if (!option.present) continue;
         const h = meet(union.space, holding, holdingOf(option));
         if (h.condition === FALSE && holding.condition !== FALSE && !option.unreachable) continue;
-        walk(option.value, i, exact ? written : option.moved ? option.at : written, exact || !!option.exact, h);
+        walk(option.present ? option.value : undefined, i, exact ? written : option.moved ? option.at : written, exact || !!option.exact, h);
       }
       return;
     }
+    // Nothing there: the entry receives nothing where it holds.
+    if (node === undefined) {
+      out.push({ absent: true, node, written: undefined, exact: false, holding });
+      return;
+    }
     if (i === path.length) {
-      if (node !== undefined) out.push({ node, written, exact, holding });
+      out.push({ node, written, exact, holding });
       return;
     }
     if (!isPlainObject(node)) return;

@@ -22,6 +22,7 @@ import {
   type ForwardedNeed,
 } from "./need-table.js";
 import { injectedNeedOf, readNeeds, type NeedTypeShape } from "./need-type.js";
+import { liftFragmentDefs } from "./manifest-schemas.js";
 import { inputValueSchema } from "./residual-schema.js";
 import { isResolvedReference } from "./resolved-reference.js";
 import { isInjectedDeclaration } from "./resource-input.js";
@@ -187,12 +188,15 @@ export function validateApplicationInputs(
         properties[name] =
           block === "ports" ? PORT_SCHEMA : inputValueSchema(child[block][name] as Record<string, unknown>);
       }
-      const blockSchema = nestedSchema(keys, { type: "object", properties });
+      const blockSchema = liftFragmentDefs(nestedSchema(keys, { type: "object", properties }));
       const nestedValue = nestedValueOf(keys, accepted);
-      for (const finding of declaredInputFindings(nestedValue, blockSchema, scope.defs, {
-        subject: label,
-        declarer,
-      })) {
+      for (const finding of declaredInputFindings(
+        nestedValue,
+        blockSchema,
+        scope.defs,
+        { subject: label, declarer },
+        Object.keys(accepted).map((name) => [...keys, name]),
+      )) {
         report(finding.code, finding.message, finding.path, finding.fix, finding.quotedPlace);
       }
     }
@@ -374,7 +378,7 @@ export function applicationInputsSlotSchema(
     }
     schema = mergeNested(schema, keys, { type: "object", properties });
   }
-  return schema;
+  return liftFragmentDefs(schema);
 }
 
 /** `schema` with `inner` placed beneath the property chain `keys`. */

@@ -1,0 +1,12 @@
+# A kind whose schema refers to itself without descending into the value: refused
+# where it is declared, and nothing is validated against it.
+kind: Telo.Application
+metadata: { name: SchemaInPlaceCycleResource, version: 1.0.0 }
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Invocable
+schema: { type: object, $ref: "#" }
+---
+kind: Self.Holder
+metadata: { name: holder }

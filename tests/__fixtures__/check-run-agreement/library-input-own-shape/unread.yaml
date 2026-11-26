@@ -1,0 +1,9 @@
+kind: Telo.Application
+metadata: { name: LibraryInputOwnShapeApp }
+imports: { Lib: { source: ./unread, variables: { cfg: { n: 2 } } } }
+targets: [!ref seq]
+---
+kind: Telo.Sequence
+metadata: { name: seq }
+steps:
+  - { name: a, invoke: !ref Lib.read }

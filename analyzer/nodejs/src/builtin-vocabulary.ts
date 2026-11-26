@@ -3,7 +3,7 @@ import { fullFormats } from "ajv-formats/dist/formats.js";
 import { parseAllDocuments } from "yaml";
 import { TELO_FORMATS } from "./telo-format.js";
 import { describeTextKey, judgeCatalog, keyOfText } from "./text-judgement.js";
-import { createAjv, finishedValidation, schemaNestingExceededSentence, unlessOverflow } from "./schema-validation.js";
+import { createAjv, finishedValidation, schemaNestingExceededSentence, withinValueDepth } from "./schema-validation.js";
 import { readProvidesZone, readRequiresZone, readViolatesZone } from "./zone-slot.js";
 
 /**
@@ -283,9 +283,9 @@ function translationProblems(
   }
   for (const [key, catalog] of Object.entries(translations)) {
     const where = `\`translations.${key}\``;
-    const fits = unlessOverflow(() => finishedValidation(isTextCatalog(catalog) ? [] : [isTextCatalog.errors]));
+    const fits = withinValueDepth(catalog, () => finishedValidation(isTextCatalog(catalog) ? [] : [isTextCatalog.errors]));
     if (!fits.finished) {
-      problems.push(schemaNestingExceededSentence(where));
+      problems.push(schemaNestingExceededSentence(where, fits));
       continue;
     }
     if (fits.issues.length > 0) {

@@ -1390,7 +1390,7 @@ function validateConverged(stage: ModuleStage, value: unknown, target: TypeTarge
   }
   const outcome = stage.defs.validateResourceConfig(data, stage.selfContained(schema));
   // A result no validation can finish over is no result the stage can hand on.
-  if (!outcome.finished) return schemaNestingExceededSentence("the result, against the current schema,");
+  if (!outcome.finished) return schemaNestingExceededSentence("the result, against the current schema,", outcome);
   const issues = outcome.issues.filter((issue) => {
     const segments = (issue.pointer ?? "").split("/").slice(1).map((s) => s.replace(/~1/g, "/").replace(/~0/g, "~"));
     let at: unknown = data;

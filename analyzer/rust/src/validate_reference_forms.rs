@@ -26,7 +26,7 @@ use crate::quoted_place::with_quoted_path;
 use crate::reference_field_map::{value_branches_accept, ValueBranchOutcome};
 use crate::resolved_reference::{carries_reference_marker, declares_name_field, RESOLVED_REFERENCE_MARKER};
 use crate::schema_compat::{collect_properties, resolve_ref_in, union_branches};
-use crate::schema_validation::{schema_nesting_exceeded_message, SCHEMA_NESTING_EXCEEDED};
+use crate::schema_validation::{schema_nesting_exceeded_message, ValidationUnfinished, SCHEMA_NESTING_EXCEEDED};
 use crate::system_kinds::{is_module_document, skips_ref_resolution};
 use crate::types::{kind_of, name_of, AnalysisDiagnostic, DiagnosticData, DiagnosticResource};
 
@@ -60,6 +60,8 @@ pub struct UnfinishedSlot {
     pub path: String,
     /// The same place as a JSON Pointer into the resource.
     pub pointer: String,
+    /// Why the validation could not finish.
+    pub unfinished: ValidationUnfinished,
 }
 
 /// What the reference slots of one resource hold that is refused: the objects written as a
@@ -72,7 +74,7 @@ pub struct ReferenceFormFindings {
 
 /// The sentence of a slot whose value branch could not finish validating its value.
 pub fn nesting_exceeded_slot_message(label: &str, slot: &UnfinishedSlot) -> String {
-    schema_nesting_exceeded_message(label, &format!("the value at '{}'", slot.path))
+    schema_nesting_exceeded_message(label, &format!("the value at '{}'", slot.path), slot.unfinished)
 }
 
 /// The reference spelling an author wrote, or `None` for an inline
@@ -233,9 +235,9 @@ impl Walk<'_> {
         } else {
             ValueBranchOutcome::Refuses
         };
-        if outcome == ValueBranchOutcome::Unfinished {
+        if let ValueBranchOutcome::Unfinished(unfinished) = outcome {
             if !found.unfinished.iter().any(|slot| slot.path == at.path) {
-                found.unfinished.push(UnfinishedSlot { path: at.path.clone(), pointer: at.pointer.clone() });
+                found.unfinished.push(UnfinishedSlot { path: at.path.clone(), pointer: at.pointer.clone(), unfinished });
             }
             return;
         }

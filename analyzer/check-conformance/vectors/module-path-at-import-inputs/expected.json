@@ -1,0 +1,53 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "MODULE_PATH_NOT_FOUND",
+      "source": "telo-analyzer",
+      "message": "Telo.Import/Absent: `!module-path ./absent` names 'absent', and there is nothing there (absent). The path is relative to the module root — the directory holding telo.yaml. Create it or correct the path; if it exists in your checkout, whatever copied the module here left it out (an ignore file, a COPY step).",
+      "data": {
+        "resource": {
+          "kind": "Telo.Import",
+          "name": "Absent"
+        },
+        "filePath": "telo.yaml",
+        "path": "variables.root"
+      },
+      "range": {
+        "start": {
+          "line": 8,
+          "character": 36
+        },
+        "end": {
+          "line": 8,
+          "character": 44
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "MODULE_PATH_NOT_FOUND",
+      "source": "telo-analyzer",
+      "message": "Telo.Import/Missing: `!module-path ./missing` names 'missing', and there is nothing there (missing). The path is relative to the module root — the directory holding telo.yaml. Create it or correct the path; if it exists in your checkout, whatever copied the module here left it out (an ignore file, a COPY step).",
+      "data": {
+        "resource": {
+          "kind": "Telo.Import",
+          "name": "Missing"
+        },
+        "filePath": "telo.yaml",
+        "path": "variables.root"
+      },
+      "range": {
+        "start": {
+          "line": 13,
+          "character": 32
+        },
+        "end": {
+          "line": 13,
+          "character": 41
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] telo.yaml: Telo.Import/Missing: `!module-path ./missing` names 'missing', and there is nothing there (missing). The path is relative to the module root — the directory holding telo.yaml. Create it or correct the path; if it exists in your checkout, whatever copied the module here left it out (an ignore file, a COPY step).\ntelo.yaml: Telo.Import/Absent: `!module-path ./absent` names 'absent', and there is nothing there (absent). The path is relative to the module root — the directory holding telo.yaml. Create it or correct the path; if it exists in your checkout, whatever copied the module here left it out (an ignore file, a COPY step).\n  [MODULE_PATH_NOT_FOUND] Telo.Import/Missing: `!module-path ./missing` names 'missing', and there is nothing there (missing). The path is relative to the module root — the directory holding telo.yaml. Create it or correct the path; if it exists in your checkout, whatever copied the module here left it out (an ignore file, a COPY step).\n  [MODULE_PATH_NOT_FOUND] Telo.Import/Absent: `!module-path ./absent` names 'absent', and there is nothing there (absent). The path is relative to the module root — the directory holding telo.yaml. Create it or correct the path; if it exists in your checkout, whatever copied the module here left it out (an ignore file, a COPY step)."
+}

@@ -118,6 +118,11 @@ export class SchemaNodeValidator {
     };
   }
 
+  /** What an absolute `$ref` names in a document this validator holds. */
+  absoluteReference(ref: string): object | undefined {
+    return this.referenceTarget(ref, "")?.node;
+  }
+
   /**
    * What a `$ref` written in `node` names, read as this validator compiles it:
    * against the document `node` lies in, a document it does not hold adopted

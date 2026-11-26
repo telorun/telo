@@ -1,0 +1,16 @@
+# A scoped import's inputs, judged as an `imports:` entry's are.
+kind: Telo.Application
+metadata: { name: ScopedImportInputs }
+variables: { plainDir: { env: PLAIN_DIR, type: string, default: /srv/plain } }
+---
+kind: Telo.Sequence
+metadata: { name: seq }
+with:
+  - kind: Telo.Import
+    metadata: { name: Inner }
+    source: ./inputs-lib
+    variables:
+      root: !cel "variables.plainDir"
+      extra: relative/dir
+      count: !cel "variables.plainDir + 1"
+steps: []

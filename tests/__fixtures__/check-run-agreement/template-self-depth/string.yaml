@@ -1,0 +1,37 @@
+# `self.a.x` two levels deep, declared `string`: typed string at check and bound
+# as a string at run, so `self.a.x + 1` is refused by both.
+kind: Telo.Application
+metadata: { name: TemplateSelfDepthString }
+imports: { Assert: ../../../../modules/assert }
+targets: [!ref verify]
+---
+kind: Telo.Definition
+metadata: { name: Bump }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    a:
+      type: object
+      properties: { x: { type: string } }
+      required: [x]
+  required: [a]
+resources:
+  - kind: Telo.Sequence
+    metadata: { name: bumping }
+    steps:
+      - name: bumped
+        value: !cel "self.a.x + 1"
+    outputs:
+      bumped: !cel "steps.bumped.result"
+invoke: !ref bumping
+---
+kind: Telo.Sequence
+metadata: { name: verify }
+steps:
+  - { name: bump, invoke: { kind: Self.Bump, a: { x: "4" } } }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.bump.result"
+      expected: { bumped: "41" }

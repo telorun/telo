@@ -1,0 +1,11 @@
+# An import handing a directory to a library input that takes a file, and a
+# text file to one that takes a PNG image.
+kind: Telo.Application
+metadata: { name: ImportModulePathEntry }
+imports:
+  Lib:
+    source: ./lib
+    variables: { page: !module-path ./a }
+  Icon:
+    source: ./icon-lib
+    variables: { icon: !module-path ./a/README.md }

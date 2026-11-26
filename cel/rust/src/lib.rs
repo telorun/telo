@@ -54,6 +54,7 @@
 //! - `construction.rs`           — `construction.ts`
 //! - `cel_type.rs`               — `cel-type.ts`
 //! - `type_expression.rs`        — `type-expression.ts`
+//! - `type_visits.rs`            — `type-visits.ts`
 //! - `signature.rs`              — `signature.ts`
 //! - `nominal_type.rs`           — `nominal-type.ts`
 //! - `check_diagnostic.rs`       — `check-diagnostic.ts`
@@ -70,6 +71,7 @@
 //! - `json_text_scan.rs`         — `json-text-scan.ts`
 //! - `json_schema_type.rs`       — `json-schema-type.ts`
 //! - `cel_value.rs`              — `cel-value.ts` (the engine half, and the domain re-exported)
+//! - `record_member.rs`          — `record-member.ts`
 //! - `resolved_call.rs`          — `resolved-call.ts`
 //! - `nullable_access.rs`        — `nullable-access.ts`
 //! - `macro_shape.rs`            — `macro-shape.ts`
@@ -151,8 +153,12 @@ mod re2_program;
 mod re2_syntax;
 mod regular_expression;
 mod reserved_words;
+mod record_member;
 mod resolved_call;
 mod root_references;
+mod schema_dependencies;
+mod schema_nodes;
+mod schema_own_type;
 mod runtime_library;
 mod serializer;
 mod signature;
@@ -162,6 +168,7 @@ mod syntax_tree;
 mod timestamp_value;
 mod tree_equality;
 mod type_expression;
+mod type_visits;
 // The dataset is generated whole; not every table has a reader in every build.
 #[allow(dead_code)]
 mod unicode_tables;
@@ -184,8 +191,8 @@ pub use catalog_runtime::{
 };
 pub use cel_type::{
     admits_null, assignable, format_type, is_dyn, is_numeric, list_of, map_of, optional_of, parameter_of,
-    types_equal, unify, union_of, without_null, without_parameters, CelType, ListType, MapType, NominalType,
-    OptionalType, ParameterType, PrimitiveName, RecordType, TypeFields, UnionType, BOOL, BYTES, DOUBLE, DURATION,
+    record_of, tuple_of, types_equal, unify, union_of, without_null, without_parameters, CelType, ListType, MapType, NominalType,
+    OptionalType, ParameterType, PatternField, PatternPart, FieldEnumValue, PrimitiveName, RecordType, TypeFields, UnionType, BOOL, BYTES, DOUBLE, DURATION,
     DYN, INT, NULL, STRING, TIMESTAMP, TYPE, UINT, WELL_KNOWN_TYPE_NAMES,
 };
 pub use cel_value::{
@@ -205,10 +212,10 @@ pub use comprehension_runtime::{
 };
 pub use declared_chain::{split_declared_chain, DeclaredChain};
 pub use environment::{
-    CelEnvironment, CelEnvironmentOptions, CelEvaluateError, CelProgramError, CelRegistrationError, ConstructibleListing,
+    CelEnvironment, CelEnvironmentOptions, AssumedCondition, CheckAssumption, CheckOptions, CelEvaluateError, CelProgramError, CelRegistrationError, ConstructibleListing,
     Definitions,
     FunctionDefinition, DEFAULT_COMPILED_CACHE_CAPACITY,
-    NamespaceFunctionDeclaration, NamespaceFunctionForm, NamespaceListing, NamespaceOptions, SchemaRegistrationReport,
+    NamespaceFunctionDeclaration, NamespaceFunctionForm, NamespaceFunctionListing, NamespaceListing, NamespaceOptions, SchemaRegistrationReport,
     SignatureDeclaration, TypeDeclaration, TypeDefinitionListing, VariableDefinition, WithheldReturns,
 };
 pub use function_catalog::{
@@ -217,7 +224,7 @@ pub use function_catalog::{
 };
 pub use function_registry::{
     describe_arguments, describe_candidates, substitute, FunctionRegistry, RegisteredFunction, Resolution,
-    ResolutionFailure, ResolutionFailureReason, UNKNOWN_FUNCTION_CANDIDATES,
+    ResolutionFailure, ResolutionFailureReason, UNION_EXPANSION_LIMIT, UNKNOWN_FUNCTION_CANDIDATES,
 };
 pub use json_schema_type::{
     field_map_type, schema_type, FieldDeclaration, JsonSchemaDocument, NamedTypeLookup, RecursiveSchemaReference,
@@ -245,6 +252,9 @@ pub use regular_expression::{
 pub use reserved_words::{is_identifier_spelling, is_reserved_word, LITERAL_WORDS, OPERATOR_WORDS, RESERVED_WORDS};
 pub use resolved_call::ResolvedCall;
 pub use root_references::root_references;
+pub use schema_dependencies::SchemaDependency;
+pub use schema_nodes::ResultOrigin;
+pub use schema_own_type::{schema_own_types_agree, SchemaAnswersAgree, SchemaOwnTypeAgreement};
 pub use runtime_library::{
     base64_text, cel_type_value_of, implementation_of, implemented_keys, json_as_cel_value, optional_of_non_zero,
     standard_constant_values, type_value_name, CelCallContext, CelImplementation, CALL_SITE_DIRECT_ARITY,

@@ -1,0 +1,16 @@
+# A text an expression computes is no text the importer writes: refused.
+kind: Telo.Application
+metadata: { name: TextParameterComputed }
+lang: en
+variables: { name: { env: TEXT_PARAMETER_NAME, type: string, default: Hello } }
+imports:
+  Entry:
+    source: ../../import-text-input/title
+    variables:
+      title: !cel "variables.name"
+targets: [!ref scope]
+---
+kind: Telo.Sequence
+metadata: { name: scope }
+steps:
+  - { name: entry, invoke: !ref Entry.shown }

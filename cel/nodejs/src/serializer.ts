@@ -274,3 +274,14 @@ function writeArguments(args: readonly CelNode[]): string {
 export function serializeTree(root: CelNode): string {
   return write(root, PRECEDENCE.conditional);
 }
+
+/** How a member name is written after a dot, or nothing where it has no spelling. */
+export function memberNameSource(text: string): string | undefined {
+  if (text.includes("`") || text.includes("\n") || text.includes("\r") || text === "") return undefined;
+  return fieldName(text, false);
+}
+
+/** How a literal is written. */
+export function literalSource(literal: CelLiteral): string {
+  return writeLiteral(literal);
+}

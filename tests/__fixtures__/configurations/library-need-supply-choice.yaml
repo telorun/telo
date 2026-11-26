@@ -1,0 +1,12 @@
+# A library supplies its own import's need only where its input, bound to
+# `variables.flag1`, is true: where it is false the need is read from the
+# environment, under the name this application's variable already reads.
+kind: Telo.Application
+metadata: { name: LibraryNeedSupplyChoice, version: 1.0.0 }
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+  url: { env: TELO_NEED_OUTER__INNER__DB__URL, type: string, default: postgres://local }
+imports:
+  Outer:
+    source: ../check-run-agreement/inner-need-choice/outer
+    variables: { on: !cel "variables.flag1" }

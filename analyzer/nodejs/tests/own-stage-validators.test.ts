@@ -33,14 +33,14 @@ describe("a host-path input an import supplies", () => {
 
   it("is refused where the chain is typed a plain string, whichever source typed it", () => {
     const supplied = makeTaggedSentinel("cel", "variables.dir");
-    expect(hostPathInputFindings(importDoc, "variables.root", declared, supplied, () => ({ type: "string" })).map((d) => d.code)).toEqual([
+    expect(hostPathInputFindings(importDoc, "variables.root", declared, supplied, () => ({ schema: { type: "string" } })).map((d) => d.code)).toEqual([
       "HOST_PATH_UNTYPED_SOURCE",
     ]);
-    expect(hostPathInputFindings(importDoc, "variables.root", declared, supplied, () => ({ type: "string", "x-telo-type": "Telo.HostPath" }))).toEqual([]);
+    expect(hostPathInputFindings(importDoc, "variables.root", declared, supplied, () => ({ schema: { type: "string", "x-telo-type": "Telo.HostPath" } }))).toEqual([]);
     expect(hostPathInputFindings(importDoc, "variables.root", declared, supplied, () => undefined)).toEqual([]);
   });
 
   it("reads a literal as the import-inputs stage's", () => {
-    expect(hostPathInputFindings(importDoc, "variables.root", declared, "relative/dir", () => ({ type: "string" }))).toEqual([]);
+    expect(hostPathInputFindings(importDoc, "variables.root", declared, "relative/dir", () => ({ schema: { type: "string" } }))).toEqual([]);
   });
 });

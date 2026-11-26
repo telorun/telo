@@ -2153,9 +2153,7 @@
             }
           ],
           "calls": [],
-          "readTypes": [
-            "dyn"
-          ],
+          "readTypes": [],
           "regions": [
             {
               "start": 0,
@@ -2183,9 +2181,7 @@
             }
           ],
           "calls": [],
-          "readTypes": [
-            "dyn"
-          ],
+          "readTypes": [],
           "regions": [
             {
               "start": 0,

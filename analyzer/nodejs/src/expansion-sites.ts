@@ -35,6 +35,7 @@ import type { DefinitionRegistry } from "./definition-registry.js";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { manifestFragment, manifestFragmentOf } from "./manifest-schemas.js";
 import { definitionInScope } from "./module-alias-scope.js";
+import { isImportDocument } from "./loader-expansion-refusals.js";
 import { isModuleKind } from "./module-kinds.js";
 import { refSentinelRefusal, refSentinelTarget } from "./ref-sentinel-target.js";
 import { isResolvedReference } from "./resolved-reference.js";
@@ -45,8 +46,10 @@ import {
   SCHEMA_NESTING_EXCEEDED,
   schemaNestingExceededSentence,
   VALIDATION_UNFINISHED,
+  VALUE_DEPTH_EXCEEDED,
   type SchemaValidationOutcome,
 } from "./schema-validation.js";
+import { nestsPastValueDepth } from "./value-depth.js";
 import { gatherPropertySchemas, resolveLocalRef } from "./schema-walk.js";
 import { readStepSlot, STEP_FRAGMENT } from "./step-slot.js";
 import { isKindDocumentOrImport } from "./system-kinds.js";
@@ -236,6 +239,15 @@ class Walker {
       }
       return;
     }
+    if (isImportDocument(doc)) {
+      // Its kind, alias, source and integrity are the loader's positions; every
+      // other field is a value, chosen per option.
+      const inputs: Place = { branchAllowed: true, inTemplate: false, nested: false };
+      for (const [key, value] of Object.entries(doc)) {
+        if (!LOADER_IMPORT_FIELDS.has(key)) this.visit(value, [key], NO_CURSOR, "field", inputs);
+      }
+      return;
+    }
     if (isKindDocumentOrImport(this.holder)) {
       const outside: Place = { branchAllowed: false, inTemplate: false, nested: false };
       const body: Place = { branchAllowed: true, inTemplate: true, nested: false };
@@ -319,6 +331,13 @@ class Walker {
             `body's step list.`),
       );
     }
+    if (isImportDocument(record) && !isResolvedReference(record)) {
+      // A scoped import: the loader's positions skipped, as at the top level.
+      for (const [key, field] of Object.entries(record)) {
+        if (!LOADER_IMPORT_FIELDS.has(key)) this.visitField(key, field, keys, NO_CURSOR, { ...place, nested: false, declaration: undefined });
+      }
+      return;
+    }
     if (typeof record.kind === "string" && !isResolvedReference(record)) {
       // A declaration: its own fields are measured from it, against its kind.
       const inner = this.cursorOf(record.kind);
@@ -400,7 +419,7 @@ class Walker {
 
     const shape = shapeProblems(sentinel, tag, position, place.nested);
     if (!shape.finished) {
-      this.record(sentinel, keys, position, place, SCHEMA_NESTING_EXCEEDED, schemaNestingExceededSentence(label));
+      this.record(sentinel, keys, position, place, SCHEMA_NESTING_EXCEEDED, schemaNestingExceededSentence(label, shape));
     } else if (shape.issues.length > 0) {
       this.record(sentinel, keys, position, place, expansionShapeCode(tag), shape.issues.join(" "));
     } else {
@@ -538,6 +557,11 @@ class Walker {
   }
 }
 
+/** The fields of an import the loader reads before anything is expanded, and
+ *  a splice at its top level (`importFieldRefusals`), refused there and
+ *  skipped here. */
+const LOADER_IMPORT_FIELDS: ReadonlySet<string> = new Set(["kind", "metadata", "source", "integrity", SPLICE_KEY]);
+
 /** The template body of a `Telo.Definition` beside its `resources:` entries:
  *  its boot list, its dispatch slots and their argument and result mappings. */
 const TEMPLATE_BODY_FIELDS: ReadonlySet<string> = new Set([
@@ -607,6 +631,7 @@ function shapeProblems(
   const body = expansionBody(sentinel);
   const fragment = fragmentFor(tag, position, nested, body);
   const validate = validatorFor(fragment);
+  if (nestsPastValueDepth(body)) return VALUE_DEPTH_EXCEEDED;
   let fits: boolean;
   try {
     fits = validate(body);

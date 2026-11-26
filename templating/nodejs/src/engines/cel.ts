@@ -1,23 +1,16 @@
-import { formatType, qualifiedCalls, type CelNode } from "@telorun/cel";
-import {
-  chainFailureAgainstSchema,
-  chainsRefusedAt,
-  extractAccessChains,
-  extractCallResultAccesses,
-  findNullableAccessIssues,
-  INDEX_SEGMENT,
-  moduleCallArgumentChains,
-  validateChainAgainstSchema,
-} from "../cel/analyze.js";
+import { qualifiedCalls, typesEqual, type CelNode, type CelType, type ResultOrigin } from "@telorun/cel";
+import { extractAccessChains, INDEX_SEGMENT } from "../cel/analyze.js";
+import { wordedVerdicts } from "../cel/verdict-wording.js";
 import { compileExpression, repeatableExpression } from "../cel/compile.js";
 import { auditCalls, explainUnresolved } from "../cel/diagnose.js";
 import { moduleNameBindings, unresolvedCallReceivers } from "../cel/module-call.js";
 import type { CelAnalyzeResult, CelDiagnostic } from "../cel/verdict-codes.js";
 import type { AnalyzeEnv, CallSite, TemplatingEngine } from "../engine.js";
 
-/** Statically analyze one CEL expression against the effective context schema:
- *  parse → classify every call → type-check → validate member-access chains →
- *  flag nullable access. Single source of truth shared by the `!cel` engine
+/** Statically analyze one CEL expression against the environment typed for its
+ *  site: parse → classify every call → type-check, the engine judging every
+ *  member read, operand and nullable read to full depth, each verdict worded
+ *  from the schema node it names. Single source of truth shared by the `!cel` engine
  *  (one expression) and the `!sql` engine (one per `${{ }}` interpolation), so
  *  diagnostic wording can't drift between them.
  *
@@ -30,12 +23,13 @@ export function analyzeCelExpression(source: string, env: AnalyzeEnv): CelAnalyz
   return analyzeCelWithTree(source, env).result;
 }
 
-/** {@link analyzeCelExpression}, with the resolved tree it built — for a tag
- *  that asks its own questions of one expression without parsing it again. */
+/** {@link analyzeCelExpression}, with the resolved tree it built and, where it
+ *  checked clean, the type it checked — for a tag that asks its own questions
+ *  of one expression without parsing or checking it again. */
 export function analyzeCelWithTree(
   source: string,
   env: AnalyzeEnv,
-): { result: CelAnalyzeResult; ast?: CelNode } {
+): { result: CelAnalyzeResult; ast?: CelNode; checkedType?: CelType } {
   const out: CelDiagnostic[] = [];
 
   // **Reading never throws and never discards what it read**: the first unreadable thing is
@@ -72,7 +66,10 @@ export function analyzeCelWithTree(
     });
   }
 
-  const checked = env.celEnv.check(parsed);
+  const checked = env.celEnv.check(parsed, {
+    schemaNodes: true,
+    ...(env.assumptions && env.assumptions.length > 0 ? { assumptions: env.assumptions } : {}),
+  });
   const audit = auditCalls(source, ast, env.celEnv, env.moduleCallFlags, checked);
 
   // Reported whatever the type-checker concludes. A literal argument a guard
@@ -82,19 +79,25 @@ export function analyzeCelWithTree(
   out.push(...audit.argumentIssues);
 
   let type: string | undefined;
+  let checkedType: CelType | undefined;
+  let origins: readonly ResultOrigin[] | undefined;
   let checkError: string | undefined;
   try {
     // The TREE is checked, never the source again: `check(source)` would re-read it, and a
     // tree resolved under another site's names is refused rather than answered about.
-    if (checked.valid) type = checked.typeName;
-    else {
+    if (checked.valid) {
+      type = checked.typeName;
+      checkedType = checked.type;
+      origins = checked.resultOrigins;
+    } else {
       // **Every verdict is the engine's, coded and ranged.** This used to be one opaque
       // sentence — `found no matching overload for 'f(...)'` for three unrelated mistakes —
       // which is why a classifier sat beside it rewriting the message. The engine decides an
       // unknown name, a name called in the other form, an unknown field, a type no overload
       // takes and a refusal over a literal argument each where its cause is known, so they
       // come through as they are.
-      for (const diagnostic of checked.diagnostics) {
+      // A member read gets one finding, worded from the node the verdict names.
+      for (const diagnostic of wordedVerdicts(source, ast, checked.diagnostics)) {
         out.push({
           code: diagnostic.code,
           message: diagnostic.message,
@@ -130,11 +133,6 @@ export function analyzeCelWithTree(
   // not become a hard error on valid CEL. Reporting nothing where cel-js is
   // happy makes an unknown future macro a silent no-op rather than a manifest
   // this analyzer refuses and the kernel would run fine.
-  // What explaining a rejection already reported, so the context's own chain
-  // check below does not report it twice.
-  // What the engine already said, so the host's own schema reading below does not say it
-  // twice in different words.
-  const explained = new Set(out.map((diagnostic) => diagnostic.message));
 
   // An undeclared ROOT identifier. cel-js types an unknown name as `dyn` and
   // accepts it, so `!cel "fff"` type-checked, reached the runtime and resolved
@@ -169,98 +167,38 @@ export function analyzeCelWithTree(
     }
   }
 
-  // A module call's result is typed by the callee's declared `returns`, which the
-  // caller resolves: member access on it is checked exactly as a read off the
-  // context would be, under the call as written.
-  if (resolvedCalls && env.moduleCallResult) {
-    for (const access of extractCallResultAccesses(ast)) {
-      const schema = env.moduleCallResult(access.qualified);
-      if (!schema) continue;
-      const label = `${access.qualified}(…)`;
-      const err = validateChainAgainstSchema([label, ...access.members], {
-        type: "object",
-        properties: { [label]: schema },
-      });
-      if (err) out.push({ code: "CEL_UNKNOWN_FIELD", message: err });
-    }
-  }
-
-  if (env.contextSchema) {
-    const contextSchema = env.contextSchema as Record<string, any>;
-    // A member of a closed record the type checker refused is its verdict already.
-    const refusedByChecker = chainsRefusedAt(
-      ast,
-      checked.valid
-        ? []
-        : checked.diagnostics.filter((d) => d.code === "CEL_UNKNOWN_FIELD").map((d) => d.range),
-    );
-    for (const chain of extractAccessChains(ast)) {
-      const failure = chainFailureAgainstSchema(chain, contextSchema);
-      if (!failure || explained.has(failure.message) || refusedByChecker.has(failure.path)) continue;
-      out.push({ code: "CEL_UNKNOWN_FIELD", message: failure.message });
-    }
-
-    for (const issue of findNullableAccessIssues(ast, contextSchema)) {
-      // Index access (member "[index]") attaches without a dot; a named field
-      // attaches with one — so the suggested CEL stays valid either way.
-      const access = issue.member === "[index]" ? issue.member : `.${issue.member}`;
-      out.push({
-        code: "CEL_NULLABLE_ACCESS",
-        message: `'${issue.path}' may be null — guard it (e.g. '${issue.path} != null && …' or '${issue.path} == null ? … : ${issue.path}${access}') before accessing '${access}'`,
-      });
-    }
-  }
-
   return {
     result: {
       diagnostics: out,
       calls: audit.calls,
       ...(type === undefined ? {} : { type }),
+      ...(checkedType === undefined ? {} : { checkedType }),
+      ...(origins === undefined ? {} : { origins }),
       ...(ast.kind === "literal" && ast.literal.type === "string"
         ? { stringLiteral: ast.literal.value }
         : {}),
-      ...(checkError === undefined ? {} : { readTypes: chainTypes(ast, env) }),
+      ...(checkError === undefined ? {} : chainTypes(ast, env)),
     },
     ast,
+    ...(checkedType === undefined ? {} : { checkedType }),
   };
 }
 
-/** Every chain naming a field the site's names do not declare, as the host's
- *  explain schema reads them — the readable half of a rejection the checker
- *  reported in its own words. The explain schema is not the checker's
- *  environment, so a chain is reported only when the checker rejects it too;
- *  otherwise the rejection was about something else and keeps its own words. */
-function explainUnknownFields(ast: CelNode, env: AnalyzeEnv): CelDiagnostic[] {
-  const schema = env.explainSchema?.();
-  if (!schema) return [];
-  const out: CelDiagnostic[] = [];
-  const reported = new Set<string>();
-  for (const chain of extractAccessChains(ast)) {
-    const message = validateChainAgainstSchema(chain, schema as Record<string, any>);
-    if (message && !reported.has(message) && checkerRejects(chain, env)) {
-      reported.add(message);
-      out.push({ code: "CEL_UNKNOWN_FIELD", message });
-    }
-  }
-  return out;
-}
-
-/** The checked type of each distinct plain chain the expression reads. */
-function chainTypes(ast: CelNode, env: AnalyzeEnv): string[] {
-  const types = new Set<string>();
+/** The checked type of each distinct plain chain the expression reads, as it prints and itself. */
+function chainTypes(ast: CelNode, env: AnalyzeEnv): { readTypes: string[]; readCheckedTypes: CelType[] } {
+  const names = new Set<string>();
+  const types: CelType[] = [];
   for (const chain of extractAccessChains(ast)) {
     if (chain.includes(INDEX_SEGMENT)) continue;
-    const result = env.celEnv.check(chain.join("."));
-    if (result.valid) types.add(result.typeName);
+    const result = env.celEnv.check(
+      chain.join("."),
+      env.assumptions && env.assumptions.length > 0 ? { assumptions: env.assumptions } : {},
+    );
+    if (!result.valid) continue;
+    names.add(result.typeName);
+    if (!types.some((held) => typesEqual(held, result.type))) types.push(result.type);
   }
-  return [...types];
-}
-
-/** Does the checker reject the chain's named prefix (up to its first index)? */
-function checkerRejects(chain: readonly string[], env: AnalyzeEnv): boolean {
-  const end = chain.indexOf(INDEX_SEGMENT);
-  const named = end === -1 ? chain : chain.slice(0, end);
-  return !env.celEnv.check(named.join(".")).valid;
+  return { readTypes: [...names], readCheckedTypes: types };
 }
 
 /** `dyn` in a checker message means an operand whose type is unknown here —

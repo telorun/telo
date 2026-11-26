@@ -1,0 +1,17 @@
+# A kind whose contract names `thing`, a value the library does not export: the
+# reference is the library's to resolve, whoever instantiates the kind.
+kind: Telo.Library
+metadata: { name: NonShapeContractLib, version: 1.0.0 }
+exports: { kinds: [Measure] }
+---
+kind: Telo.Value
+metadata: { name: thing }
+value: 1
+---
+kind: Telo.Definition
+metadata: { name: Measure }
+capability: Telo.Invocable
+outputType: !ref thing
+resources:
+  - { kind: Telo.Value, metadata: { name: inner }, value: 1 }
+invoke: !ref inner

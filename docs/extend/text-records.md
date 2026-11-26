@@ -97,6 +97,55 @@ number. Values a call writes are checked before the app runs; values an
 expression computes are checked when the call is made, before your function runs.
 A function whose body is CEL reads the text as written.
 
+## A library input typed `Text`
+
+A library `variables:` or `secrets:` entry typed `Text` or `Message` (or a union
+of either with `TextRecord`) is a **text parameter**: whoever imports the library
+writes the text, in their own language, and the library reads the record.
+
+```yaml
+# the library — written in English
+kind: Telo.Library
+metadata: { name: Greeter }
+lang: en
+variables:
+  title: { $ref: "telo://manifest#/$defs/Text", default: Welcome }
+---
+# an application importing it — written in Polish
+kind: Telo.Application
+metadata: { name: Shop }
+lang: pl
+imports:
+  Greeter:
+    source: ./greeter
+    variables: { title: Witaj }
+```
+
+- The value an import supplies is the importer's text: judged in the importer's
+  `lang:` (a Polish `few` case is fine here, and refused from an English module),
+  counted among the texts the importer shows, so a served language that does not
+  translate it is warned, and handed to the library as `{ text, context, lang,
+  computed }` with the importer's `lang`. This holds at an `imports:` entry, a
+  top-level `Telo.Import` and a `Telo.Import` declared in a `with:` scope, where
+  each scope run settles its own.
+- The entry's `default:` is the library's own text, judged in the library's
+  `lang:` and attributed to it.
+- Inside the library, `variables.title` is typed `TextRecord`: hand it to a slot
+  that takes a text or a record, or format it in your controller.
+- An expression at the import is admitted only where its result can only be a
+  record — a library forwarding its own text parameter to a library it imports
+  writes `title: !cel "variables.title"`, and the inner library receives the
+  outer importer's record unchanged. Any other expression, a computed string or
+  an untyped input included, is `TEXT_ARGUMENT_COMPUTED` (`ERR_TEXT_ARGUMENT_COMPUTED`
+  when the import initializes).
+- A `lifecycle: shared` library compares a text parameter by its settled record —
+  the text and context by the message core's identity, the language, and whether
+  it was computed — so the same words from an English and a German module are
+  `SHARED_LIBRARY_CONFLICT`, while two spellings of one text in one language agree.
+
+An Application's own `variables:` entry typed `Text` is not a text parameter: a
+value the host supplies has no writing module, so it is data of that shape.
+
 ## Values named per row
 
 A field your controller resolves for its own consumer — `x-telo-eval: accessor`,
@@ -362,7 +411,7 @@ with a test application listing every catalog it ships.
 | `MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED` | a value is neither a string nor a number, or a selector's is not a number |
 | `MESSAGE_ENTRY_COMPUTED` | a catalog holds an expression, or an expression produces one |
 | `MESSAGE_ENTRY_DUPLICATE` | one catalog translates one text and context twice in one language |
-| `TEXT_ARGUMENT_COMPUTED` | a `Text` parameter's argument is an expression, or an expression at a text-or-record slot is not typed as a record |
+| `TEXT_ARGUMENT_COMPUTED` | a `Text` parameter's argument is an expression, an expression at a text-or-record slot is not typed as a record, or an import's value for a library's text parameter is computed and not a text record |
 | `TEXT_VALUES_FOR_INVALID` | a values pairing names nothing, no `Text`, or a `Text` already paired |
 | `TEXT_SLOT_ACCESSOR` | a kind types a text at or beneath an accessor field |
 | `TEXT_VALUES_INVALID` | `x-telo-text-values` on a node that is no text, a value schema other than `string` / `integer` / `number`, or on a text a values pairing binds; `x-telo-text-values-from` on a node that is no text, that is no relative pointer, beside `x-telo-text-values`, naming a sibling the object does not declare, or climbing above the resource or the named shape it is written in |

@@ -97,11 +97,11 @@ metadata: { name: testDeclaredBodyIsTyped }
 source: ./__fixtures__/request-body-declared-object.yaml
 expect:
   errors:
-    - { code: CEL_TYPE_ERROR, message: "source is 'object', target expects 'array'" }
+    - { code: CEL_TYPE_ERROR, message: "declared 'object', but countItems's declared inputType expects 'array'" }
 ---
 kind: Assert.Manifest
 metadata: { name: testHeadersAreAMap }
 source: ./__fixtures__/request-headers-into-string.yaml
 expect:
   errors:
-    - { code: CEL_TYPE_ERROR, message: "source is 'object', target expects 'string'" }
+    - { code: CEL_TYPE_ERROR, message: "declared 'object', but echoNote's declared inputType expects 'string'" }

@@ -1,0 +1,35 @@
+# An optional handed to a slot is no value of the slot's type, an untyped list
+# slot included: each is refused naming the `.orValue(…)` that reads one out.
+kind: Telo.Application
+metadata: { name: OptionalSlotRefused, version: 1.0.0 }
+targets:
+  - name: run
+    invoke: !ref forward
+---
+kind: Telo.Definition
+metadata: { name: Forward }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    a: { type: string }
+    o: { type: object, properties: { b: { type: string } } }
+invoke: !ref target
+inputs:
+  t1: !cel "optional.of(self.o.b)"
+  t2: !cel "self.?a"
+  l: !cel "[self.?a]"
+resources:
+  - kind: Telo.Value
+    metadata: { name: target }
+    inputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        properties: { t1: { type: string }, t2: { type: string }, l: { type: array } }
+    value: {}
+---
+kind: Self.Forward
+metadata: { name: forward }
+a: hi
+o: { b: there }

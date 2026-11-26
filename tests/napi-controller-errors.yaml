@@ -79,12 +79,12 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        small: !cel "type(steps.returned.result.numbers.small) == double"
-        negative: !cel "type(steps.returned.result.numbers.negative) == double"
-        aboveU32: !cel "type(steps.returned.result.numbers.aboveU32) == double"
-        maxSafe: !cel "type(steps.returned.result.numbers.maxSafe) == double"
-        aboveSafe: !cel "steps.returned.result.numbers.aboveSafe == 9007199254740993"
-        belowNegativeSafe: !cel "steps.returned.result.numbers.belowNegativeSafe == -9007199254740993"
+        small: !cel "type(steps.returned.result.numbers.?small.value()) == double"
+        negative: !cel "type(steps.returned.result.numbers.?negative.value()) == double"
+        aboveU32: !cel "type(steps.returned.result.numbers.?aboveU32.value()) == double"
+        maxSafe: !cel "type(steps.returned.result.numbers.?maxSafe.value()) == double"
+        aboveSafe: !cel "steps.returned.result.numbers.?aboveSafe.value() == 9007199254740993"
+        belowNegativeSafe: !cel "steps.returned.result.numbers.?belowNegativeSafe.value() == -9007199254740993"
       expected:
         small: true
         negative: true

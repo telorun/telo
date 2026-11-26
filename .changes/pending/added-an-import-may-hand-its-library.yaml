@@ -1,0 +1,18 @@
+units:
+  analyzer: Added
+  templating: Added
+  kernel: Added
+body: "An import may hand its library a file that ships with the importing module:
+  `!module-path`, `!include-text` and `!include-bytes` in an import's `variables:`,
+  `secrets:` and a need supplied field by field — at an `imports:` entry, a
+  `Telo.Import` document and a scoped import — are values, resolved against the
+  importing module when the import starts, so a library receives the importer's path or
+  text, never its own. `telo check` and the load refuse one naming nothing
+  (`MODULE_PATH_NOT_FOUND` / `INCLUDE_FILE_NOT_FOUND`) and hold a `!module-path` to the
+  library input's `entry` / `mediaType` (`HOST_PATH_ENTRY_MISMATCH` /
+  `HOST_PATH_CONTENT_MISMATCH`) at the import; `telo publish` carries the file with the
+  importer. `MODULE_PATH_OUTSIDE_RESOURCE` / `INCLUDE_OUTSIDE_RESOURCE` are no longer
+  reported there (still on every other field of an import), a module document's
+  `imports:` map is judged only at the import it desugars to, so nothing is reported
+  twice, and `HOST_PATH_UNTYPED_SOURCE` judges a tag by the type it produces, so it is
+  never reported for `!module-path` and still is for `!interpolate`."

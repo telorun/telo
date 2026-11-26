@@ -185,7 +185,7 @@ describe("a resource read at a field with no CEL context", () => {
 
   it("is not reported for a resource the module declares", () => {
     const other = { kind: "Test.Thing", metadata: { name: "other" } } as unknown as ResourceManifest;
-    const codes = diagnosticsFor({ label: makeTaggedSentinel("cel", "string(resources.other)") }, [other])
+    const codes = diagnosticsFor({ label: makeTaggedSentinel("cel", "string(resources.other.path)") }, [other])
       .map((x) => x.code)
       .filter((code) => code.startsWith("CEL_"));
     expect(codes).toEqual([]);
@@ -195,7 +195,7 @@ describe("a resource read at a field with no CEL context", () => {
 describe("an expression an import supplies", () => {
   // The application doc's `imports:` entry and its desugared `Telo.Import`
   // hold the same expression; the import judges it, once.
-  it("is reported once, by the import", () => {
+  it("is reported once, by the import, as a read of a binding it withholds", () => {
     const value = makeTaggedSentinel("cel", "string(resources.foo)");
     const app = {
       ...APP,
@@ -209,9 +209,13 @@ describe("an expression an import supplies", () => {
     } as unknown as ResourceManifest;
     const found = new StaticAnalyzer()
       .analyze(withSyntheticPositions([app, KIND, imported]))
-      .filter((d) => d.code === "CEL_UNKNOWN_FIELD");
-    expect(found.map((d) => (d.data as { resource?: { kind?: string } }).resource?.kind)).toEqual([
-      "Telo.Import",
+      .filter((d) => String(d.code).startsWith("CEL_"));
+    expect(found.map((d) => [d.code, (d.data as { resource?: { kind?: string } }).resource?.kind, d.message])).toEqual([
+      [
+        "CEL_UNKNOWN_IDENTIFIER",
+        "Telo.Import",
+        "Telo.Import/Lib: !cel: 'resources' is not available here: an import's variables and secrets are configuration, evaluated before any resource exists; pass the value through a variable of the importing module",
+      ],
     ]);
   });
 });

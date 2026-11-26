@@ -26,7 +26,7 @@ import {
   type ScopeRung,
 } from "./catch-scope.js";
 import type { ValidateFunction } from "ajv";
-import { createAjv, finishedValidation, judgedSchemaIssues, SCHEMA_NESTING_EXCEEDED, schemaNestingExceededMessage, unlessOverflow } from "./schema-validation.js";
+import { createAjv, finishedValidation, judgedSchemaIssues, SCHEMA_NESTING_EXCEEDED, schemaNestingExceededMessage, withinValueDepth } from "./schema-validation.js";
 import { builtinDocumentSchema } from "./builtins.js";
 import { declarableCapabilities, throwsAllowedCapabilities } from "./capability-roster.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
@@ -295,7 +295,7 @@ const atThrows = (message: string): string =>
 const validateAbstractThrows = (value: unknown) => {
   abstractThrowsHost ??= createAjv();
   const validate = (abstractThrowsValidator ??= abstractThrowsHost.compile(abstractThrowsSchema()));
-  return unlessOverflow(() =>
+  return withinValueDepth(value, () =>
     validate(value) ? finishedValidation([]) : judgedSchemaIssues(abstractThrowsHost!, validate.errors, value, validate.schema as object),
   );
 };
@@ -316,7 +316,7 @@ export function validateThrowsDeclarations(manifests: ResourceManifest[]): Analy
           severity: DiagnosticSeverity.Error,
           code: SCHEMA_NESTING_EXCEEDED,
           source: SOURCE,
-          message: schemaNestingExceededMessage(`Telo.Abstract/${name}`, "'throws'"),
+          message: schemaNestingExceededMessage(`Telo.Abstract/${name}`, "'throws'", outcome),
           data: { resource: { kind: m.kind, name }, filePath, path: "throws" },
         });
         continue;

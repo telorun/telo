@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { loadRefusal } from "../src/load-refusal.js";
 import { Loader } from "../src/manifest-loader.js";
-import type { NeedTable } from "../src/need-table.js";
 import { ManifestSourceFailure } from "../src/sources/source-failure.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type ManifestSource } from "../src/types.js";
 import { NEED_TABLE_MARK } from "../src/validate-needs.js";
@@ -19,8 +18,6 @@ function memorySource(files: Record<string, string>): ManifestSource {
     resolveRelative: (base: string, relative: string) => new URL(relative, `file://${base}`).pathname,
   };
 }
-
-const EMPTY_TABLE: NeedTable = { entries: [], problems: [], environment: [], applications: [] };
 
 describe("loadRefusal", () => {
   it("raises an import failure whose error is no Telo runtime error under the diagnostic's code", async () => {
@@ -44,13 +41,12 @@ describe("loadRefusal", () => {
       buildModuleArtifacts: () => {},
       register: () => ({ manifests: [], rootModuleDocument: undefined }),
       analyze: () => [],
-      needTable: () => EMPTY_TABLE,
     });
     expect(refusal?.code).toBe("ERR_INVALID_IMPORT_SOURCE");
   });
 
 
-  it("raises a need refusal holding in some configurations only under the code of an unconditional one", async () => {
+  it("raises a need-table finding of the analysis under its twin, whatever configurations hold it", async () => {
     const graph = await new Loader([memorySource({ [ENTRY]: "kind: Telo.Application\nmetadata: { name: App }\n" })]).loadGraph(
       ENTRY,
       { desugarImports: true },
@@ -71,7 +67,6 @@ describe("loadRefusal", () => {
       buildModuleArtifacts: () => {},
       register: () => ({ manifests: [], rootModuleDocument: undefined }),
       analyze: () => [collision],
-      needTable: () => EMPTY_TABLE,
     });
     expect(refusal).toEqual({
       code: "ERR_DUPLICATE_RESOURCE",

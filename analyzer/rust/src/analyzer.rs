@@ -5,7 +5,8 @@
 //! entry's import reaching it), the entry module's reference forms, its own name, and a plain
 //! string left holding `${{` — the entry's own, and an imported library's at the entry's import
 //! reaching it, and the module documents' own blocks (`native:`, `sources:`, a library's
-//! `variables:` / `exports:`, the placement of file embeds). Each is a refusal the Rust kernel
+//! `variables:` / `exports:`, the placement of file embeds), and the schemas a module input
+//! or a kind document declares that recurse in place (a dependency's at the entry's import). Each is a refusal the Rust kernel
 //! makes; Node's other passes have no twin yet,
 //! so an analysis here reports a subset of Node's and never a diagnostic Node does not make.
 //!
@@ -24,6 +25,7 @@ use crate::finding_order::FindingOrder;
 use crate::finishing_pipeline::finish_findings;
 use crate::loaded_types::LoadedGraph;
 use crate::placement::{Placement, PlacementWorld};
+use crate::schema_in_place_cycle_findings::schema_in_place_cycle_diagnostics;
 use crate::requires_gate::{
     files_of_unreadable_modules, hold_undecided, requires_gate_input, unreadable_module_refusals, UndecidedHold,
 };
@@ -78,6 +80,7 @@ pub fn analysis(graph: &LoadedGraph) -> Analysis {
     diagnostics.extend(validate_native_entries(&documents, Some(&root_modules)));
     diagnostics.extend(validate_source_entries(&documents, Some(&root_modules)));
     diagnostics.extend(validate_input_defaults(&documents, &root_modules));
+    diagnostics.extend(schema_in_place_cycle_diagnostics(graph));
     diagnostics.extend(validate_include_placement(&documents));
     diagnostics.extend(library_block_diagnostics(&documents));
     let refusals = unreadable_module_refusals(unreadable_files);

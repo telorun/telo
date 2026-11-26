@@ -20,6 +20,7 @@
  *
  * Browser-safe: no Node built-ins.
  */
+import { inheritSchemaPlace } from "./schema-provenance.js";
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import {
   ancestorChain,
@@ -196,11 +197,12 @@ export function signatureSchemaOf(
  *  (`["object", "null"]`), which keeps the node's `properties` readable by every
  *  member-access and null-guard walk; anything else becomes a union. */
 function withNull(schema: Record<string, any>): Record<string, any> {
-  if (typeof schema.type === "string") return { ...schema, type: [schema.type, "null"] };
+  // The widened node is written where the declared one is.
+  if (typeof schema.type === "string") return inheritSchemaPlace({ ...schema, type: [schema.type, "null"] }, schema);
   if (Array.isArray(schema.type)) {
-    return schema.type.includes("null") ? schema : { ...schema, type: [...schema.type, "null"] };
+    return schema.type.includes("null") ? schema : inheritSchemaPlace({ ...schema, type: [...schema.type, "null"] }, schema);
   }
-  return liftFragmentDefs({ anyOf: [schema, { type: "null" }] });
+  return inheritSchemaPlace(liftFragmentDefs({ anyOf: [schema, { type: "null" }] }), schema);
 }
 
 /** On a CEL field whose value IS a callable's result: names the root field

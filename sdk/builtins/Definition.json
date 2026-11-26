@@ -186,10 +186,9 @@
             }
           }
         }
-      }
-    },
-    "patternProperties": {
-      "^x-telo-schema-projection(-from)?$": {}
+      },
+      "x-telo-schema-projection": {},
+      "x-telo-schema-projection-from": {}
     },
     "required": [
       "kind",

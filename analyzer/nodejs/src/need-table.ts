@@ -1,6 +1,7 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { expansionTagLabel } from "@telorun/templating";
 import type { AnalysisFamily } from "./analysis-families.js";
-import { instancesOf, moduleInstanceTree } from "./module-instance-tree.js";
+import { instancesOf, moduleInstanceTree, type ModuleInstance } from "./module-instance-tree.js";
 import type { AnalysisRegistry } from "./analysis-registry.js";
 import { readApplicationSourceSlot } from "./application-source-slot.js";
 import { isKindDocument } from "./kind-declaration.js";
@@ -14,6 +15,7 @@ import {
   stampScopedImportIdentity,
 } from "./flatten-for-analyzer.js";
 import { isModuleKind } from "./module-kinds.js";
+import { needsWriteChoice, suppliedNeedReadings } from "./need-supply-options.js";
 import {
   isNeedTypeDoc,
   isTextFieldSchema,
@@ -44,13 +46,14 @@ import {
   hostMediaTypeFinding,
   hostMediaTypeMismatchAt,
 } from "./host-path-slot.js";
+import { moduleFileMismatch } from "./validate-import-host-paths.js";
 import { foundEntryOf, foundHeadOf } from "./module-file-existence.js";
 import { membersSlotOf } from "./members-value-slot.js";
 import { valueTypeRefusalCode } from "./schema-error-report.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
 import type { StandIns } from "./stand-in-findings.js";
 import type { ModuleDocuments } from "./module-documents.js";
-import { isModulePathSentinel, isRefSentinel, isTaggedSentinel, type TaggedSentinel } from "@telorun/templating";
+import { isExpansionSentinel, isModulePathSentinel, isRefSentinel, isTaggedSentinel, type TaggedSentinel } from "@telorun/templating";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
 import { templateBodyEntries } from "./template-body.js";
 import type { ReachSite } from "./reference-reach.js";
@@ -141,6 +144,17 @@ export interface NeedGraphImport {
   /** The key of the target module, when it loaded. */
   target?: string;
   supplied: Record<string, unknown>;
+  /** Where the import is present, in {@link NeedGraph.logic}; everywhere when
+   *  absent. */
+  held?: unknown;
+  /** Where a finding about the import is reported, when not at the import
+   *  itself: the declaration holding it and the member's place there. */
+  anchor?: { manifest: ResourceManifest; resource: { kind: string; name: string }; path: string };
+  /** For a library's import read once per class of its options: `written`, the
+   *  import as the library wrote it, whose supplies the library's own verdict
+   *  judges and the tree does not walk; `walked`, one class, which the tree
+   *  walks and nothing judges. Absent, both. */
+  reading?: "written" | "walked";
 }
 
 export interface NeedGraphModule {
@@ -284,6 +298,10 @@ interface NeedTableEntryBase {
   typeModule?: string;
   /** The root's import the need is reached through — absent for the root's own. */
   via?: NeedGraphImport;
+  /** Where the need is reached, in the graph's connectives: every import on the
+   *  way to its module instance present. Absent for a graph read in one
+   *  configuration. */
+  held?: unknown;
 }
 
 /** A need an import inside the tree supplies, whole or field by field. */
@@ -368,7 +386,7 @@ export function resolveNeedTable(graph: NeedGraph): NeedTable {
   if (root?.application) {
     checkRootSupplyReached(graph, root, environment, problem);
     checkAddressNeeds(root, problem);
-    checkEnvNames(root, environment, problem);
+    checkEnvNames(root, environment, problem, graph.logic);
   }
   return { entries, problems, environment, applications };
 }
@@ -383,10 +401,15 @@ function checkRootSupplyReached(
   environment: readonly NeedEnvironmentEntry[],
   report: Report,
 ): void {
+  const reported = new Set<string>();
   for (const entry of environment) {
     if (!entry.via) continue;
     const shape = entry.need.type ? graph.needType(entry.need.type) : undefined;
     if (shape?.supply !== "root") continue;
+    // A need reached under several readings of its imports is one need.
+    const key = entry.path.join(".");
+    if (reported.has(key) && !graph.logic) continue;
+    reported.add(key);
     report(
       root,
       "NEED_ROOT_SUPPLY_REQUIRED",
@@ -398,6 +421,7 @@ function checkRootSupplyReached(
         manifest: entry.via.manifest,
         resource: { kind: "Telo.Import", name: entry.via.alias },
         path: "",
+        ...(entry.held !== undefined ? { held: entry.held } : {}),
       },
     );
   }
@@ -741,10 +765,24 @@ function checkModule(graph: NeedGraph, module: NeedGraphModule, report: Report, 
 
   for (const imp of module.imports) {
     const target = imp.target ? graph.modules.get(imp.target) : undefined;
-    if (!target) continue;
-    checkSupply(graph, module, imp, target, report, logic);
+    if (!target || imp.reading === "walked") continue;
+    checkSupply(graph, module, imp, target, heldBy(imp.held, anchoredAt(imp, report), logic), logic);
   }
   checkDirectoriesForwardedOnce(graph, module, report, logic);
+}
+
+/** `report`, each finding about `imp` reported where its anchor says. */
+function anchoredAt(imp: NeedGraphImport, report: Report): Report {
+  const anchor = imp.anchor;
+  if (!anchor) return report;
+  return (module, code, message, at) =>
+    report(module, code, message, { ...at, manifest: anchor.manifest, resource: anchor.resource, path: `${anchor.path}.${at.path}` });
+}
+
+/** `report`, each finding held where `held` — an import's presence — is too. */
+function heldBy(held: unknown, report: Report, logic: NeedLogic<unknown>): Report {
+  if (held === undefined) return report;
+  return (module, code, message, at) => report(module, code, message, { ...at, held: logic.and(held, at.held ?? logic.TRUE) });
 }
 
 function checkParameters(
@@ -835,7 +873,7 @@ function checkParameters(
     shape.parameters,
   );
   if (!outcome.finished) {
-    report(module, SCHEMA_NESTING_EXCEEDED, schemaNestingExceededMessage(`Need '${need.name}'`, "its parameters"), { path });
+    report(module, SCHEMA_NESTING_EXCEEDED, schemaNestingExceededMessage(`Need '${need.name}'`, "its parameters", outcome), { path });
     return;
   }
   const [issue] = outcome.issues;
@@ -1002,25 +1040,36 @@ function checkEnvNames(
   root: NeedGraphModule,
   environment: readonly NeedEnvironmentEntry[],
   report: Report,
+  logic: NeedLogic<unknown> | undefined,
 ): void {
-  const claimed = new Map<string, string>();
+  // Each name's claims, and where each holds; one need field reached under
+  // several readings of its imports is one claim.
+  const claimed = new Map<string, { subject: string; held: unknown }[]>();
+  const claim = (env: string, subject: string, held: unknown) => {
+    const list = claimed.get(env);
+    if (list) list.push({ subject, held });
+    else claimed.set(env, [{ subject, held }]);
+  };
   const doc = root.doc as Record<string, unknown> | undefined;
   for (const block of ["variables", "secrets", "ports"] as const) {
     const entries = doc?.[block];
     if (!entries || typeof entries !== "object" || Array.isArray(entries)) continue;
     for (const [name, entry] of Object.entries(entries as Record<string, unknown>)) {
       const env = (entry as { env?: unknown } | null)?.env;
-      if (typeof env === "string") claimed.set(env, `${block}.${name}`);
+      if (typeof env === "string") claim(env, `${block}.${name}`, logic?.TRUE);
     }
   }
   for (const entry of environment) {
     for (const [field, info] of Object.entries(entry.fields ?? {})) {
       const subject = `need '${entry.path.join(".")}' field '${field}'`;
-      const first = claimed.get(info.env);
-      if (first === undefined) {
-        claimed.set(info.env, subject);
-        continue;
-      }
+      const at = entry.held ?? logic?.TRUE;
+      const earlier = (claimed.get(info.env) ?? []).find(
+        (other) => other.subject !== subject && (!logic || !logic.isFalse(logic.and(other.held, at))),
+      );
+      claim(info.env, subject, at);
+      if (!earlier) continue;
+      const first = earlier.subject;
+      const held = logic ? { held: logic.and(earlier.held, at) } : {};
       const own = entry.declaredBy === root.key;
       report(
         root,
@@ -1038,14 +1087,16 @@ function checkEnvNames(
                 info.envSource === "bound"
                   ? `needs.${entry.need.name}.env.${field}`
                   : `needs.${entry.need.name}`,
+              ...held,
             }
           : entry.via
             ? {
                 manifest: entry.via.manifest,
                 resource: { kind: "Telo.Import", name: entry.via.alias },
                 path: "",
+                ...held,
               }
-            : { path: "imports" },
+            : { path: "imports", ...held },
       );
     }
   }
@@ -1119,9 +1170,11 @@ function fieldsFindingsHeld<T>(
 /**
  * What is wrong with a need supplied field by field (`subject` names the supply,
  * `<who>: need '<name>'`): every key a field of the type, every required field
- * present, each literal held to its field's schema, and — for a generated type —
- * to the need's `parameters` (`NEED_VALUE_INVALID`); an expression is held to
- * them when the supplier evaluates it.
+ * present, each literal held to its field's schema, a `!module-path` at a host
+ * path field to the field's `entry` / `mediaType` (`hostPathSubject` naming the
+ * need as its library does), and — for a generated type — to the need's
+ * `parameters` (`NEED_VALUE_INVALID`); an expression is held to them when the
+ * supplier evaluates it.
  */
 export function fieldSupplyFindings(
   fields: Record<string, unknown>,
@@ -1130,6 +1183,7 @@ export function fieldSupplyFindings(
   type: string,
   path: string,
   parameters?: unknown,
+  hostPathSubject: string = subject,
 ): SupplyFinding[] {
   const out = fieldsFindings(fields, shape, subject, type, path);
   out.push(
@@ -1148,7 +1202,7 @@ export function fieldSupplyFindings(
       if (standIns.has("")) continue;
       const outcome = validateAgainstSchema(value, schema);
       if (!outcome.finished) {
-        out.push({ code: SCHEMA_NESTING_EXCEEDED, message: schemaNestingExceededMessage(subject, `field '${field}'`), path: `${path}.${field}` });
+        out.push({ code: SCHEMA_NESTING_EXCEEDED, message: schemaNestingExceededMessage(subject, `field '${field}'`, outcome), path: `${path}.${field}` });
         continue;
       }
       const [issue] = outcome.issues;
@@ -1160,10 +1214,17 @@ export function fieldSupplyFindings(
       });
       continue;
     }
+    if (isModulePathSentinel(written) && holdsHostPath(schema)) {
+      const mismatch = moduleFileMismatch(written, { entry: hostEntryAt(schema), mediaType: hostMediaTypeAt(schema) });
+      if (mismatch) {
+        out.push({ code: mismatch.code, message: `${hostPathSubject} field '${field}' ${mismatch.text}`, path: `${path}.${field}` });
+      }
+      continue;
+    }
     if (findDynamicLeaf(written)) continue;
     const outcome = validateAgainstSchema(written, schema);
     if (!outcome.finished) {
-      out.push({ code: SCHEMA_NESTING_EXCEEDED, message: schemaNestingExceededMessage(subject, `field '${field}'`), path: `${path}.${field}` });
+      out.push({ code: SCHEMA_NESTING_EXCEEDED, message: schemaNestingExceededMessage(subject, `field '${field}'`, outcome), path: `${path}.${field}` });
       continue;
     }
     const [issue] = outcome.issues;
@@ -1347,6 +1408,13 @@ function differingParameters(
   };
 }
 
+/** Whether a supply holds an expansion construct anywhere. */
+function holdsExpansionConstruct(value: unknown): boolean {
+  if (isExpansionSentinel(value)) return true;
+  if (value === null || typeof value !== "object" || isTaggedSentinel(value) || isRefSentinel(value)) return false;
+  return (Array.isArray(value) ? value : Object.values(value)).some(holdsExpansionConstruct);
+}
+
 function checkSupply(
   graph: NeedGraph,
   module: NeedGraphModule,
@@ -1371,6 +1439,9 @@ function checkSupply(
       );
       continue;
     }
+    // A supply written behind a choice is the analysis's to judge, per option;
+    // a reading of the documents as written leaves it alone.
+    if (holdsExpansionConstruct(value)) continue;
     const shape = need.type ? graph.needType(need.type) : undefined;
     const supply = needSupplyOf(value);
     if (supply.form === "invalid") {
@@ -1404,6 +1475,7 @@ function checkSupply(
         need.type!,
         path,
         need.parameters,
+        `Telo.Import/${imp.alias}: the imported library's need '${key}'`,
       )) {
         report(module, finding.code, finding.message, { ...anchor, path: finding.path });
       }
@@ -1482,10 +1554,14 @@ function checkDirectoriesForwardedOnce(
   logic: NeedLogic<unknown>,
 ): void {
   // Which sites a class of configurations holds decides every finding's
-  // wording, so each is judged once per class of where they are written.
+  // wording, so each is judged once per class of where they are written —
+  // the child-need sites, and the declarations sharing a durable directory's
+  // name, which alone decide whether a name is one.
+  const directoryNames = new Set((module.declarations ?? []).filter((d) => d.type === DURABLE_DIRECTORY_TYPE).map((d) => d.name));
   const varying = [
     ...(module.references ?? []).filter((r) => r.childNeed && r.held !== undefined).map((r) => r.held),
-    ...(module.declarations ?? []).filter((d) => d.held !== undefined).map((d) => d.held),
+    ...(module.declarations ?? []).filter((d) => d.held !== undefined && directoryNames.has(d.name)).map((d) => d.held),
+    ...module.imports.filter((imp) => imp.held !== undefined && imp.reading !== "walked").map((imp) => imp.held),
   ];
   for (const atom of varying.length === 0 ? [logic.TRUE] : logic.atoms(varying)) {
     const holds = (held: unknown) => held === undefined || !logic.isFalse(logic.and(atom, held));
@@ -1516,14 +1592,16 @@ function directoriesForwardedOnceIn(
   };
   for (const imp of module.imports) {
     const target = imp.target ? graph.modules.get(imp.target) : undefined;
-    if (!target) continue;
+    if (!target || !holds(imp.held) || imp.reading === "walked") continue;
     for (const [key, value] of Object.entries(imp.supplied)) {
       const supply = needSupplyOf(value);
       if (supply.form !== "whole") continue;
       if (supply.target.alias !== undefined && supply.target.alias !== "Self") continue;
       add(supply.target.name, {
         target: target.shared ? `${target.name}.${key}` : `${imp.alias}.${key}`,
-        anchor: { manifest: imp.manifest, resource: { kind: "Telo.Import", name: imp.alias }, path: `needs.${key}`, held },
+        anchor: imp.anchor
+          ? { manifest: imp.anchor.manifest, resource: imp.anchor.resource, path: `${imp.anchor.path}.needs.${key}`, held }
+          : { manifest: imp.manifest, resource: { kind: "Telo.Import", name: imp.alias }, path: `needs.${key}`, held },
       });
     }
   }
@@ -1620,13 +1698,21 @@ function heldObservations<T>(
       if (local) merge(reference.target.name, new Map(reference.observes.map((c) => [c, at] as const)));
     }
     for (const imp of module.imports) {
+      if (imp.reading === "walked") continue;
       const target = imp.target ? graph.modules.get(imp.target) : undefined;
       for (const [key, value] of Object.entries(imp.supplied)) {
         const supply = needSupplyOf(value);
         if (supply.form !== "whole") continue;
         const local = supply.target.alias === undefined || supply.target.alias === "Self";
         if (!local || !out.has(supply.target.name)) continue;
-        merge(supply.target.name, target ? observedOf(target.key).get(key) : undefined);
+        const reached = target ? observedOf(target.key).get(key) : undefined;
+        // What the import's library observes is observed where the import is.
+        merge(
+          supply.target.name,
+          reached && imp.held !== undefined
+            ? new Map([...reached].map(([c, at]) => [c, logic.and(imp.held as T, at)] as const))
+            : reached,
+        );
       }
     }
     inProgress.delete(moduleKey);
@@ -1703,6 +1789,7 @@ function walkTree(graph: NeedGraph): {
 } {
   const entries: NeedTableEntry[] = [];
   const root = graph.modules.get(graph.root);
+  const logic = graph.logic;
   // What fills a need nothing in the tree supplies: an Application's
   // environment, a Library's importer.
   const unsupplied: "environment" | "importer" = root?.application ? "environment" : "importer";
@@ -1713,6 +1800,7 @@ function walkTree(graph: NeedGraph): {
     supply: NeedSupplyForm,
     via: NeedGraphImport | undefined,
     link?: { forwardedFrom?: string[]; suppliedBy?: string },
+    held?: unknown,
   ): void => {
     const typeModule = need.type ? graph.needTypeModule?.(need.type) : undefined;
     const base: NeedTableEntryBase = {
@@ -1724,6 +1812,7 @@ function walkTree(graph: NeedGraph): {
       ...(sourceOf(module.doc) !== undefined ? { filePath: sourceOf(module.doc) } : {}),
       need,
       ...(typeModule !== undefined ? { typeModule } : {}),
+      ...(logic && held !== undefined ? { held } : {}),
     };
     const reached = via ? { via } : {};
     if (supply === "environment") {
@@ -1741,16 +1830,19 @@ function walkTree(graph: NeedGraph): {
   }
 
   const tree = moduleInstanceTree<NeedGraphImport>(graph.root, {
-    importsOf: (key) => graph.modules.get(key)?.imports ?? [],
+    importsOf: (key) => (graph.modules.get(key)?.imports ?? []).filter((imp) => imp.reading !== "written"),
     targetOf: (imp) => (imp.target !== undefined && graph.modules.has(imp.target) ? imp.target : undefined),
     aliasOf: (imp) => imp.alias,
     holdersOf: (imp) => imp.holders ?? [],
     isShared: (key) => graph.modules.get(key)?.shared === true,
     nameOf: (key) => graph.modules.get(key)!.name,
   });
+  // Where each instance is reached: every import on the way to it present.
+  const heldOf = new Map<ModuleInstance<NeedGraphImport>, unknown>();
   for (const instance of instancesOf(tree)) {
     const { importer, via: imp } = instance;
     if (!importer || !imp) continue;
+    if (logic) heldOf.set(instance, logic.and(heldOf.get(importer) ?? logic.TRUE, imp.held ?? logic.TRUE));
     const module = graph.modules.get(importer.module)!;
     const target = graph.modules.get(instance.module)!;
     const prefix = importer.path;
@@ -1768,7 +1860,7 @@ function walkTree(graph: NeedGraph): {
       } else if (read) {
         link = { suppliedBy: `the field-by-field supply at import '${imp.alias}' of module '${module.name}'` };
       }
-      add(target, need, [...instance.path, need.name], supply, instance.reachedVia, link);
+      add(target, need, [...instance.path, need.name], supply, instance.reachedVia, link, heldOf.get(instance));
     }
   }
   const applications = instancesOf(tree).flatMap((instance) =>
@@ -1856,6 +1948,22 @@ export function needGraphScopeOf(
   };
 }
 
+/** Whether `m` of an analysed set is a document of root module `name`'s own. */
+function ownedBy(m: ResourceManifest, name: string): boolean {
+  const meta = m.metadata as
+    | { name?: string; module?: string; forwardedExport?: boolean; forwardedInternal?: boolean; forwardedShape?: boolean }
+    | undefined;
+  if (isModuleKind(m.kind)) return meta?.name === name;
+  return meta?.module === name && !meta.forwardedExport && !meta.forwardedInternal && !meta.forwardedShape;
+}
+
+/** Module `module`'s import `alias` in an expanded analysed set. */
+function expandedImport(expanded: readonly ResourceManifest[], module: string, alias: string): ResourceManifest | undefined {
+  return expanded.find(
+    (m) => m.kind === "Telo.Import" && m.metadata?.name === alias && (m.metadata as { module?: string }).module === module,
+  );
+}
+
 /** Build one module's unit from its full document set. */
 function moduleUnit(
   key: string,
@@ -1903,12 +2011,18 @@ function moduleUnit(
     declarations.push({ name: declared, kind: m.kind as string, type: resolve(m.kind as string), manifest: m });
   }
   // A scope member's import is a module instance of its own, beneath its holders.
-  for (const { member } of scopedImportMembers(manifests)) {
+  for (const { member, top, path } of scopedImportMembers(manifests)) {
     const alias = member.metadata?.name as string;
     imports.push({
       alias,
       holders: scopeHoldersOf(member) ?? [],
       manifest: member,
+      // Reported at the member inside its holder, as the manifests read hold it.
+      anchor: {
+        manifest: top,
+        resource: { kind: (top.kind as string | undefined) ?? expansionTagLabel(top)!, name: top.metadata?.name as string },
+        path,
+      },
       target: (member.metadata as { resolvedSource?: string }).resolvedSource,
       supplied: readSuppliedNeeds(member),
     });
@@ -2082,11 +2196,25 @@ export function templateBodyReferences(
   return referencesOf([], bodies, resolve, scope.referenceSites, (kind) => scope.applicationNeedsFeed?.(kind));
 }
 
+/** How a loaded graph's imports are read where their `needs:` write a choice. */
+export interface NeedGraphReading {
+  /** One configuration's analysed set, expanded for it: the root module's
+   *  documents are read from it, and a library's import as it holds that
+   *  import. Absent, every option is read — one import per reading of its
+   *  `needs:` ({@link suppliedNeedReadings}), so a need any option leaves
+   *  unsupplied is an entry. */
+  readonly expanded?: readonly ResourceManifest[];
+}
+
 /** The need graph of a whole loaded application — every module it runs: the
  *  modules the import edges reach from the root. A version reconciliation lost
  *  stays loaded, as does every module only it imports, but no edge reaches
  *  them and the application never runs them, so they have no unit. */
-export function needGraphFromLoadedGraph(graph: LoadedGraph, scope: NeedGraphScope): NeedGraph {
+export function needGraphFromLoadedGraph(
+  graph: LoadedGraph,
+  scope: NeedGraphScope,
+  reading: NeedGraphReading = {},
+): NeedGraph {
   stampScopedImportIdentity(graph);
   const modules = new Map<string, NeedGraphModule>();
   const reached = new Set<string>([graph.rootSource]);
@@ -2100,13 +2228,33 @@ export function needGraphFromLoadedGraph(graph: LoadedGraph, scope: NeedGraphSco
       queue.push(edge.targetSource);
     }
   }
+  const expanded = reading.expanded;
   for (const [source, mod] of graph.modules) {
     if (!reached.has(source)) continue;
-    const unit = moduleUnit(source, flattenLoadedModule(mod), scope, (imp, alias) => {
+    const written = flattenLoadedModule(mod);
+    const rootName = source === graph.rootSource ? written.find((m) => isModuleKind(m.kind))?.metadata?.name : undefined;
+    const documents =
+      expanded && typeof rootName === "string" ? expanded.filter((m) => ownedBy(m, rootName)) : written;
+    const unit = moduleUnit(source, documents, scope, (imp, alias) => {
       const owner = sourceOf(imp);
       return owner ? graph.importEdges.get(owner)?.get(alias)?.targetSource : undefined;
     });
-    if (unit) modules.set(source, unit);
+    if (!unit) continue;
+    // An import whose `needs:` still write a choice — every one but the
+    // expanded root's: the tree walks each reading, while its supplies are
+    // judged as written, which is the analysis's to judge per option.
+    unit.imports = unit.imports.flatMap((imp) => {
+      const needs = (imp.manifest as { needs?: unknown }).needs;
+      if (!needsWriteChoice(needs)) return [imp];
+      // A library's import as the configuration's expansion holds it.
+      const taken = expanded && !imp.holders?.length ? expandedImport(expanded, unit.name, imp.alias) : undefined;
+      const readings = taken ? [readSuppliedNeeds(taken)] : suppliedNeedReadings(needs);
+      return [
+        { ...imp, reading: "written" as const },
+        ...readings.map((supplied) => ({ ...imp, supplied, reading: "walked" as const })),
+      ];
+    });
+    modules.set(source, unit);
   }
   const typeModules = new Map<string, string>();
   for (const unit of modules.values()) {
@@ -2138,6 +2286,13 @@ export function needGraphFromManifests(
   rootModules: ReadonlySet<string>,
   scope: NeedGraphScope,
   libraries: readonly ModuleDocuments[] = [],
+  /** The scoped imports of an entry module the set does not hold beneath their
+   *  holders — read off where each is written, with its presence. */
+  scopedImportsOf?: (module: string) => readonly NeedGraphImport[],
+  /** A library's own import read once per class of the options its `needs:`
+   *  hold, through the binding of the import reaching the library — or
+   *  undefined to read it as its documents hold it. */
+  libraryImportsOf?: (module: string, imp: NeedGraphImport) => readonly NeedGraphImport[] | undefined,
 ): NeedGraph | undefined {
   const modules = new Map<string, NeedGraphModule>();
   /** Every flattened `Telo.Import`, by declaring module and alias — where a
@@ -2167,11 +2322,27 @@ export function needGraphFromManifests(
     );
     const unit = moduleUnit(name, own, scope, targetOfImport);
     if (!unit) continue;
+    unit.imports.push(...(scopedImportsOf?.(name) ?? []));
     modules.set(name, unit);
     root ??= name;
   }
   if (root === undefined) return undefined;
 
+  // A library's import whose `needs:` hold a choice: read as the caller reads
+  // it, or else as the set holds it — one configuration's expansion holds it
+  // decided — the tree walking that reading while the supplies as the library
+  // wrote them stay its own verdict's.
+  const readLibraryImport =
+    libraryImportsOf ??
+    ((module: string, own: NeedGraphImport): NeedGraphImport[] | undefined => {
+      if (own.holders?.length || !needsWriteChoice((own.manifest as { needs?: unknown }).needs)) return undefined;
+      const flat = flatImports.get(`${module}\0${own.alias}`);
+      if (!flat || needsWriteChoice((flat as { needs?: unknown }).needs)) return undefined;
+      return [
+        { ...own, reading: "written" },
+        { ...own, supplied: readSuppliedNeeds(flat), reading: "walked" },
+      ];
+    });
   const documentsOf = (target: string, moduleName: string | undefined) =>
     libraries.find((l) => l.sourceId === target) ??
     (moduleName !== undefined ? libraries.find((l) => l.module === moduleName) : undefined);
@@ -2197,6 +2368,7 @@ export function needGraphFromManifests(
           })
         : undefined;
       if (whole) {
+        whole.imports = whole.imports.flatMap((own) => readLibraryImport(whole.name, own) ?? [own]);
         modules.set(imp.target, whole);
         pending.push(whole);
         continue;

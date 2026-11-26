@@ -11,7 +11,7 @@ import { moduleAliasScope } from "./module-alias-scope.js";
 import { navigateJsonPointer } from "./schema-compat.js";
 import { resolveTypeFieldToSchema } from "./validate-cel-context.js";
 import { isResolvedReference } from "./resolved-reference.js";
-import { withReachedFragmentDefs } from "./pointer-base-fragments.js";
+import { schemaAtPointer } from "./schema-at-pointer.js";
 
 /** An `x-telo-schema-from` slot resolved to the schema it derives. */
 export interface SchemaFromSite {
@@ -42,24 +42,15 @@ export interface SchemaFromSlotSite {
   readonly holder?: Record<string, unknown> | unknown[];
 }
 
-/** Each derived node by the document it was read out of — one object per pair,
- *  so every site of it shares one compiled validator. */
-const derivedNodes = new WeakMap<object, WeakMap<object, Record<string, any>>>();
-
-/**
- * The node at a kind's schema pointer as a schema of its own: it carries the
- * fragments its document hoisted, which its `#/$defs/telo:*` pointers name.
- */
-function derivedSchema(
-  node: Record<string, any>,
-  document: Record<string, any>,
-  ctx: DerivedSlotContext,
-): Record<string, any> {
-  let byDocument = derivedNodes.get(node);
-  if (!byDocument) derivedNodes.set(node, (byDocument = new WeakMap()));
-  let derived = byDocument.get(document);
-  if (!derived) byDocument.set(document, (derived = withReachedFragmentDefs(node, ctx.defs.shapeLookup, document)));
-  return derived;
+/** The node `jsonPointer` names in `document`, read where it sits there — one
+ *  object per (document, pointer), so every site of it shares one compiled
+ *  validator. */
+function derivedSchema(document: Record<string, any>, jsonPointer: string): Record<string, any> {
+  const keys = jsonPointer
+    .split("/")
+    .slice(1)
+    .map((segment) => segment.replace(/~1/g, "/").replace(/~0/g, "~"));
+  return schemaAtPointer(document, keys);
 }
 
 /**
@@ -146,7 +137,7 @@ export function schemaFromSites(
     out.push({
       path: slot.path,
       value: slot.value,
-      schema: derivedSchema(subSchema as Record<string, any>, targetSchema as Record<string, any>, ctx),
+      schema: derivedSchema(targetSchema as Record<string, any>, jsonPointer),
       source: `${anchorName}${jsonPointer}`,
       form: "anchored",
     });
@@ -208,7 +199,7 @@ export function schemaFromSites(
   out.push({
     path,
     value,
-    schema: derivedSchema(subSchema as Record<string, any>, refSchema as Record<string, any>, ctx),
+    schema: derivedSchema(refSchema as Record<string, any>, jsonPointer),
     source: `${ref.kind}${jsonPointer}`,
     form: "kind",
   });

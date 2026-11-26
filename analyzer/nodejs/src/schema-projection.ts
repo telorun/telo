@@ -49,8 +49,9 @@ import {
   createAjv,
   finishedValidation,
   schemaNestingExceededSentence,
-  unlessOverflow,
+  withinValueDepth,
   type SchemaValidationOutcome,
+  type ValidationUnfinished,
 } from "./schema-validation.js";
 import { isInjectedDeclaration, readSuppliedResources } from "./resource-input.js";
 import { isResolvedReference } from "./resolved-reference.js";
@@ -612,7 +613,7 @@ export function compileDefaultCondition(condition: unknown): ConditionCheck {
   let check: ConditionCheck;
   try {
     const validate = (conditionAjv ??= createAjv()).compile(condition);
-    check = (entry) => unlessOverflow(() => finishedValidation(validate(entry) === true ? [] : [validate.errors]));
+    check = (entry) => withinValueDepth(entry, () => finishedValidation(validate(entry) === true ? [] : [validate.errors]));
   } catch (error) {
     check = { error: error instanceof Error ? error.message : String(error) };
   }
@@ -627,7 +628,7 @@ export function compileDefaultCondition(condition: unknown): ConditionCheck {
 function applicableDefault(
   sites: readonly ModifierDefaultSite[] | undefined,
   entry: unknown,
-  unfinished: () => void,
+  unfinished: (outcome: ValidationUnfinished) => void,
 ): unknown {
   if (!sites || sites.length !== 1) return undefined;
   const [site] = sites;
@@ -636,7 +637,7 @@ function applicableDefault(
   if (typeof check !== "function") return undefined;
   const outcome = check(entry);
   if (!outcome.finished) {
-    unfinished();
+    unfinished(outcome);
     return undefined;
   }
   return (outcome.issues.length === 0 ? site.then : site.else)?.value;
@@ -724,12 +725,13 @@ function projectEntry(
   const modifier = (field: string): unknown =>
     entry[field] !== undefined
       ? entry[field]
-      : applicableDefault(run.defaultSites[field], entry, () =>
+      : applicableDefault(run.defaultSites[field], entry, (unfinished) =>
           options?.failures?.push({
             reason: "condition-unfinished",
             pointer: failureAnchor(entryPointer, projection, options),
             entry: name,
             field,
+            unfinished,
           }),
         );
   let node: Record<string, unknown> = { ...mapped };
@@ -1101,7 +1103,13 @@ export type ProjectionFailure =
   | { readonly reason: "invalid"; readonly pointer: string; readonly detail: string }
   /** The conditional deciding an entry's modifier default could not finish
    *  validating the entry: no default is read for it. */
-  | { readonly reason: "condition-unfinished"; readonly pointer: string; readonly entry: string; readonly field: string }
+  | {
+      readonly reason: "condition-unfinished";
+      readonly pointer: string;
+      readonly entry: string;
+      readonly field: string;
+      readonly unfinished: ValidationUnfinished;
+    }
   /** Kind-document derivations lead back to a declaration already on the path. */
   | { readonly reason: "cycle"; readonly pointer: string; readonly holder: string }
   /** A `pick` / `omit` pointer lands on a value an expression computes. */
@@ -1593,6 +1601,7 @@ export function describeProjectionFailure(failure: ProjectionFailure): string {
     case "condition-unfinished":
       return schemaNestingExceededSentence(
         `the entry '${failure.entry}' at '${failure.pointer}', against the conditional deciding its '${failure.field}' default,`,
+        failure.unfinished,
       );
     case "no-ref":
       return failure.pointer === "" && !failure.via

@@ -1,5 +1,5 @@
 import type { ResourceManifest } from "@telorun/sdk";
-import { SCHEMA_NESTING_EXCEEDED } from "./schema-validation.js";
+import { SCHEMA_NESTING_EXCEEDED, type ValidationUnfinished } from "./schema-validation.js";
 import type { DeclarationRequests } from "./declaration-requests.js";
 import type { AliasResolver, ModuleScopes } from "./alias-resolver.js";
 import { resolveReference, scopeReadAt } from "./scoped-name-resolver.js";
@@ -35,6 +35,8 @@ export interface StepInputIssue {
    *  value type's own refusal (`URL_INVALID`), or a validation that could not
    *  finish (`SCHEMA_NESTING_EXCEEDED`). */
   code?: string;
+  /** Why the validation could not finish, with `code` `SCHEMA_NESTING_EXCEEDED`. */
+  unfinished?: ValidationUnfinished;
   /** Set when no argument map is written: the default it was judged as, and
    *  where the map would be written. `path` is then the reference. */
   omitted?: { inputsPath: string; default: Record<string, any> };
@@ -276,7 +278,7 @@ export function checkCallSite(
   );
   const outcome = defs.validateResourceConfig(effective, contract.schema, standIns);
   if (!outcome.finished) {
-    out.push({ path: site.path, targetLabel, message: "", code: SCHEMA_NESTING_EXCEEDED, ...(omitted ? { omitted } : {}) });
+    out.push({ path: site.path, targetLabel, message: "", code: SCHEMA_NESTING_EXCEEDED, unfinished: outcome, ...(omitted ? { omitted } : {}) });
     return out;
   }
   for (const issue of outcome.issues) {

@@ -1,3 +1,4 @@
+import { reachSites } from "./reference-reach.js";
 import { gatherPropertySchemas, resolveLocalRef, walkStepArray } from "./schema-walk.js";
 import { readStepSlot } from "./step-slot.js";
 
@@ -73,4 +74,49 @@ export function stepValueSlotPaths(
     });
   }
   return out;
+}
+
+/**
+ * Where a declaration holds its pure steps' `value:` — its own step bodies and
+ * those of every resource declared in one of its scopes (`with:`), each read over
+ * the schema of the kind that owns it, spelled as the body walkers spell paths
+ * (`with[0].steps[1].value`). The kernel leaves these compiled for the step
+ * engine, and `telo check` types `self` there as the kernel binds it.
+ */
+export function stepValueSlots(
+  declaration: Record<string, unknown>,
+  schema: Record<string, any>,
+  schemaOfKind: (kind: string) => Record<string, any> | undefined,
+): string[] {
+  const slots = stepValueSlotPaths(declaration, schema);
+  for (const site of reachSites(schema, declaration)) {
+    if (site.scopes.length === 0 || !Array.isArray(site.data)) continue;
+    const at = pathOfKeys(site.keys);
+    site.data.forEach((member, i) => {
+      if (member === null || typeof member !== "object") return;
+      const kind = (member as { kind?: unknown }).kind;
+      const memberSchema = typeof kind === "string" ? schemaOfKind(kind) : undefined;
+      if (!memberSchema) return;
+      for (const slot of stepValueSlots(member as Record<string, unknown>, memberSchema, schemaOfKind)) {
+        slots.push(`${at}[${i}].${slot}`);
+      }
+    });
+  }
+  return slots;
+}
+
+/** True when `path` is one of `slots` or lies beneath one. */
+export function isWithinSlot(slots: readonly string[], path: string): boolean {
+  return slots.some(
+    (slot) => path === slot || path.startsWith(`${slot}.`) || path.startsWith(`${slot}[`),
+  );
+}
+
+function pathOfKeys(keys: readonly (string | number)[]): string {
+  let path = "";
+  for (const key of keys) {
+    if (typeof key === "number") path += `[${key}]`;
+    else path += path ? `.${key}` : key;
+  }
+  return path;
 }

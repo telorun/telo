@@ -1,12 +1,17 @@
-# A kind whose schema refers to itself without descending into the value, so
-# validating any resource of it never finishes.
+# A resource nesting 101 levels deep — itself and 100 arrays in its field — one
+# past the 100 a validation follows.
 kind: Telo.Application
 metadata: { name: SchemaNestingResource, version: 1.0.0 }
 ---
 kind: Telo.Definition
 metadata: { name: Holder }
 capability: Telo.Invocable
-schema: { type: object, $ref: "#" }
+schema:
+  type: object
+  properties: { tree: { $ref: "#/$defs/N" } }
+  $defs:
+    N: { anyOf: [{ const: 0 }, { type: array, items: { $ref: "#/$defs/N" } }] }
 ---
 kind: Self.Holder
 metadata: { name: holder }
+tree: [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]

@@ -41,6 +41,7 @@ import { isSchemaFromSite, schemaFromSites } from "./schema-from-sites.js";
 import { resolveLocalRef, walkStepArray } from "./schema-walk.js";
 import { readStepSlot } from "./step-slot.js";
 import { dispatchTargetOf } from "./template-body.js";
+import { bodyDeclarationRequests, bodyEntryDeclarations } from "./template-body-lookup.js";
 import type { LibraryDeclarations } from "./library-declarations.js";
 import { isKindDocument } from "./kind-declaration.js";
 import { resolveTypeFieldToSchema } from "./validate-cel-context.js";
@@ -347,11 +348,21 @@ export function templateCallSite(
     // The entry is authoring data, so a named shape in its contract is still a
     // `!ref`; it is read in the canonical form a registered resource carries.
     const aliases = moduleAliasScope(manifest.metadata, ctx.aliases, ctx.aliasesByModule);
+    // The entry as the template creates it: in the defining module, its
+    // references read through the body's lookup — a contract the entry's kind
+    // derives from the entry names what the kernel's child context does.
+    const siblings = bodyEntryDeclarations(manifest, module);
     const entry = target.entry && {
       ...target.entry,
+      metadata: { ...target.entry.metadata, module },
       inputType: withCanonicalRefSentinels(target.entry.inputType, module, (alias) =>
         aliases?.moduleForAlias(alias),
       ),
+    };
+    const bodyScope = {
+      ...scope,
+      declarationsFor: (def: ResourceDefinition | undefined) =>
+        bodyDeclarationRequests(scope.declarationsFor(def), siblings, module),
     };
     return {
       origin: "template",
@@ -360,7 +371,7 @@ export function templateCallSite(
       invoke: resolvedReference(target.kind, target.name),
       invokedManifest: entry,
       invokedDefinition: definition,
-      contract: resolveContract("inputType", entry, definition, scope),
+      contract: resolveContract("inputType", entry, definition, bodyScope),
     };
   }
 

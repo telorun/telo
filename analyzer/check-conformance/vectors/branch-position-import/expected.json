@@ -1,0 +1,65 @@
+{
+  "diagnostics": [
+    {
+      "severity": 1,
+      "code": "BRANCH_POSITION_INVALID",
+      "source": "telo-analyzer",
+      "message": "Telo.Import/Lib: '!if' at 'integrity' of the Telo.Import: the loader reads an import's alias and source before anything is expanded, so they cannot be chosen or repeated. Write them plainly.",
+      "data": {
+        "filePath": "telo.yaml",
+        "path": "imports.Lib.integrity"
+      },
+      "range": {
+        "start": {
+          "line": 5,
+          "character": 19
+        },
+        "end": {
+          "line": 5,
+          "character": 47
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "BRANCH_POSITION_INVALID",
+      "source": "telo-analyzer",
+      "message": "Telo.Import/Chosen: '!if' at 'kind' of the Telo.Import: the loader reads an import's alias and source before anything is expanded, so they cannot be chosen or repeated. Write them plainly.",
+      "data": {
+        "filePath": "telo.yaml",
+        "path": "kind"
+      },
+      "range": {
+        "start": {
+          "line": 11,
+          "character": 10
+        },
+        "end": {
+          "line": 11,
+          "character": 59
+        }
+      }
+    },
+    {
+      "severity": 1,
+      "code": "BRANCH_POSITION_INVALID",
+      "source": "telo-analyzer",
+      "message": "Telo.Import/Other: '!switch' at 'source' of the Telo.Import: the loader reads an import's alias and source before anything is expanded, so they cannot be chosen or repeated. Write them plainly.",
+      "data": {
+        "filePath": "telo.yaml",
+        "path": "source"
+      },
+      "range": {
+        "start": {
+          "line": 9,
+          "character": 16
+        },
+        "end": {
+          "line": 9,
+          "character": 50
+        }
+      }
+    }
+  ],
+  "runFails": "[ERR_MANIFEST_VALIDATION_FAILED] telo.yaml: Telo.Import/Lib: '!if' at 'integrity' of the Telo.Import: the loader reads an import's alias and source before anything is expanded, so they cannot be chosen or repeated. Write them plainly.\ntelo.yaml: Telo.Import/Other: '!switch' at 'source' of the Telo.Import: the loader reads an import's alias and source before anything is expanded, so they cannot be chosen or repeated. Write them plainly.\ntelo.yaml: Telo.Import/Chosen: '!if' at 'kind' of the Telo.Import: the loader reads an import's alias and source before anything is expanded, so they cannot be chosen or repeated. Write them plainly.\n  [BRANCH_POSITION_INVALID] Telo.Import/Lib: '!if' at 'integrity' of the Telo.Import: the loader reads an import's alias and source before anything is expanded, so they cannot be chosen or repeated. Write them plainly.\n  [BRANCH_POSITION_INVALID] Telo.Import/Other: '!switch' at 'source' of the Telo.Import: the loader reads an import's alias and source before anything is expanded, so they cannot be chosen or repeated. Write them plainly.\n  [BRANCH_POSITION_INVALID] Telo.Import/Chosen: '!if' at 'kind' of the Telo.Import: the loader reads an import's alias and source before anything is expanded, so they cannot be chosen or repeated. Write them plainly."
+}

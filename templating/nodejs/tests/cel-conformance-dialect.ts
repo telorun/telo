@@ -12,7 +12,7 @@
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { registerValueTypes } from "../src/cel/value-types.js";
-import { celTypeOfValueType, RuntimeError, VALUE_TYPES } from "@telorun/sdk";
+import { celTypeOfValueType, RuntimeError, VALUE_TYPES, valueTypeOf } from "@telorun/sdk";
 import {
   catalogImplementation,
   catalogLiteralCheck,
@@ -117,7 +117,7 @@ export interface DialectCall {
   form: "global" | "receiver";
   moduleCall?: true;
   arity: number;
-  arguments?: { type?: string; chain?: string[] }[];
+  arguments?: { typeName?: string; chain?: string[] }[];
   start: number;
   end: number;
   deterministic?: boolean;
@@ -268,7 +268,9 @@ function withModuleNames(env: CelEnvironment, modules: DialectModules | undefine
       .filter(([qualified]) => qualified.startsWith(`${name}.`))
       .map(([qualified, fn]) => ({
         name: qualified.slice(name.length + 1),
-        returns: fn.returns,
+        // A result declared as a schema is read to full depth through the
+        // environment's resolver, as a context binding is.
+        returns: fn.resultSchema ? { schema: fn.resultSchema } : fn.returns,
         deterministic: fn.deterministic,
         hostBacked: fn.hostBacked,
       }));
@@ -277,9 +279,25 @@ function withModuleNames(env: CelEnvironment, modules: DialectModules | undefine
   return env;
 }
 
+/** The conformance host's resolver: a node declaring a value type reads as the CEL
+ *  type it registers in the dialect environment. */
+function valueTypeResolver(env: CelEnvironment) {
+  const registered = new Set(env.definitions().types.map((type) => type.name));
+  return ({ node }: { node: Record<string, unknown> }) => {
+    const entry = valueTypeOf(node);
+    if (!entry) return undefined;
+    const type = celTypeOfValueType(entry);
+    return registered.has(type) ? { name: type } : undefined;
+  };
+}
+
 function staticEnvironment(env: CelEnvironment, row: DialectRow, codec: ConformanceValueCodec): CelEnvironment {
-  const cloned = env.clone();
+  const cloned = env.clone({ resolveSchemaType: valueTypeResolver(env) });
   for (const [name, type] of Object.entries(row.declarations ?? {})) cloned.registerVariable(name, type);
+  // Each binding of the site's context is a variable declared as its schema.
+  for (const [name, schema] of Object.entries((row.context?.properties ?? {}) as Record<string, Record<string, unknown>>)) {
+    cloned.registerVariable(name, { schema });
+  }
   return withModuleNames(withFunctions(cloned, row, codec), row.modules);
 }
 
@@ -287,19 +305,15 @@ const moduleFunctionOf = (modules: DialectModules, qualified: string): ModuleFun
   modules.functions && Object.hasOwn(modules.functions, qualified) ? modules.functions[qualified] : undefined;
 
 function analyzeEnvOf(celEnv: CelEnvironment, row: DialectRow): AnalyzeEnv {
-  const explain = row.explain;
   const couldNameModule = row.couldNameModule;
   const modules = row.modules;
   return {
     celEnv,
-    contextSchema: row.context ?? null,
     ...(row.rootsDeclared ? { rootsDeclared: true } : {}),
-    ...(explain ? { explainSchema: () => explain } : {}),
     ...(couldNameModule ? { couldNameModule: (name: string) => couldNameModule.includes(name) } : {}),
     ...(modules
       ? {
           moduleNames: new Set(modules.names),
-          moduleCallResult: (qualified: string) => moduleFunctionOf(modules, qualified)?.resultSchema,
           moduleCallFlags: (qualified: string) => {
             const fn = moduleFunctionOf(modules, qualified);
             return fn && { deterministic: fn.deterministic, hostBacked: fn.hostBacked };
@@ -333,7 +347,7 @@ export function analyzeDialectRow(
       ...(call.arguments
         ? {
             arguments: call.arguments.map((arg) => ({
-              ...(arg.type === undefined ? {} : { type: arg.type }),
+              ...(arg.typeName === undefined ? {} : { typeName: arg.typeName }),
               ...(arg.chain === undefined ? {} : { chain: [...arg.chain] }),
             })),
           }

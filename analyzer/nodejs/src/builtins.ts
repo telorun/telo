@@ -1,4 +1,6 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
+import { recordBuiltInSchema } from "./schema-provenance.js";
+import { frozenSchemaCopy } from "./frozen-kind-schema.js";
 import { BUILTIN_DOCUMENT_FILES } from "./builtin-entries/index.js";
 import { refuseRosterMarkers } from "./builtin-entry-markers.js";
 import { declarableCapabilities } from "./capability-roster.js";
@@ -59,6 +61,13 @@ export function builtinDefinitions(
     }
     return doc as ResourceDefinition;
   });
+  // Every node of a built-in is Telo's own vocabulary, wherever it is handed;
+  // its schema is frozen as a registered kind's is.
+  for (const definition of definitions) {
+    if (definition.schema && typeof definition.schema === "object") definition.schema = frozenSchemaCopy(definition.schema);
+    recordBuiltInSchema(definition);
+  }
+  for (const doc of documents) recordBuiltInSchema(doc);
 
   return definitions;
 }

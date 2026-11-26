@@ -1,8 +1,6 @@
-//! Twin of `templating/nodejs/tests/diagnose.test.ts`, case for case, and one interim
-//! reading of the call audit, recorded by running the Node build at `1ba031dc` under Node
-//! v24.21.0.
+//! Twin of `templating/nodejs/tests/diagnose.test.ts`, case for case.
 
-use telo_templating::cel::diagnose::{audit_calls, map_value_type};
+use telo_templating::cel::diagnose::audit_calls;
 use telo_templating::{analyze_cel_expression, build_cel_environment, AnalyzeEnv, CelHandlers};
 use telo_templating::cel::verdict_codes::CelAnalyzeResult;
 use telorun_cel::{CelEnvironment, EvaluateOptions, NamespaceOptions};
@@ -145,14 +143,10 @@ fn evaluates_cel_bind_so_the_analyzer_and_the_runtime_agree_it_is_valid() {
     assert_eq!(answered, Ok(CelValue::String("1.50".into())));
 }
 
-/// Interim, as Node answers: `map_value_type` reads a `map(K, V)` type while the engine
-/// prints `map<K, V>`, so a map-literal argument's entry that is not itself a literal gets
-/// no type even where the map's value type is known.
+/// A map-literal argument's entries carry the kind of literal each holds and nothing for a
+/// computed one: the argument's own type is read as a type, never parsed for its value type.
 #[test]
-fn interim_a_map_literal_arguments_computed_entry_gets_no_type() {
-    assert_eq!(map_value_type("map<string, int>"), None);
-    assert_eq!(map_value_type("map(string, int)").as_deref(), Some("int"));
-    assert_eq!(map_value_type("map(string, dyn)"), None);
+fn a_map_literal_arguments_entries_carry_only_their_literals_kinds() {
     let mut site = env();
     site.register_variable("x", "int", None).unwrap();
     site.register_namespace("Billing", Vec::new(), NamespaceOptions { open: true }).unwrap();
@@ -160,12 +154,13 @@ fn interim_a_map_literal_arguments_computed_entry_gets_no_type() {
     let audit = audit_calls(source, &site.parse(source).root, &site, None, None);
     let argument = &audit.calls[0].arguments.as_ref().unwrap()[0];
     assert_eq!(argument.type_name.as_deref(), Some("map<string, int>"));
+    assert_eq!(argument.ty, Some(telorun_cel::map_of(telorun_cel::STRING, telorun_cel::INT)));
     let entries: Vec<(&str, Option<&str>)> = argument
         .entries
         .as_ref()
         .unwrap()
         .iter()
-        .map(|entry| (entry.key.as_str(), entry.type_name.as_deref()))
+        .map(|entry| (entry.key.as_str(), entry.literal_kind.as_deref()))
         .collect();
     assert_eq!(entries, [("a", None), ("b", Some("int"))]);
 }

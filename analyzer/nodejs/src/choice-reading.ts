@@ -32,6 +32,7 @@
  * Browser-safe.
  */
 import { listRequests } from "./declaration-requests.js";
+import { BOOL, DOUBLE, formatType, INT, STRING, type CelType, type PrimitiveName } from "@telorun/cel";
 import type { ResourceManifest } from "@telorun/sdk";
 import { isCompiledValue } from "@telorun/sdk";
 import {
@@ -72,6 +73,7 @@ import {
   type InputNarrowing,
 } from "./kernel-globals.js";
 import { membersSlotOf } from "./members-value-slot.js";
+import { varyingShapeReach } from "./varying-input-shapes.js";
 import { ConditionSpace, FALSE, TRUE, type Condition, type ConditionBlock } from "./presence-condition.js";
 import { World, type BranchConditions, type DeadBranchWorld } from "./conditioned-expansion.js";
 import { authoredModuleMetadata } from "./module-metadata-scope.js";
@@ -83,6 +85,8 @@ import { injectedNeedOf, readNeeds } from "./need-type.js";
 import { readResourceInputs, readSuppliedResources } from "./resource-input.js";
 import { compileRuleCondition, forbiddenCatalogCall, ruleEnv } from "./rule-condition.js";
 import { isKindDocumentOrImport } from "./system-kinds.js";
+import { isKindDocument } from "./kind-declaration.js";
+import { holdsOnlyStamps, isImportBranch } from "./chosen-scoped-import.js";
 import { stampedIn } from "./analysis-families.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
@@ -259,6 +263,14 @@ type Resolution =
       readonly expression: DecisionExpression;
       readonly parts: readonly Resolution[];
       readonly via?: BindingAnchor;
+    }
+  /** A binding the importer writes behind a choice: per option, what that
+   *  option's value amounts to, decided as the importer decides the choice. */
+  | {
+      readonly kind: "chosen";
+      readonly site: ChoiceSite;
+      readonly branches: readonly Resolution[];
+      readonly via?: BindingAnchor;
     };
 
 /** An import's binding of one library input, as a diagnostic anchor. */
@@ -306,6 +318,7 @@ export function readChoices(
   };
 
   const sites = collectSites(manifests, documents, moduleOf, isOwn);
+  const siteOfSentinel = new Map<unknown, ChoiceSite>(sites.map((site) => [site.sentinel, site]));
   const bodyReads = bodyChoiceSources(manifests);
   if (sites.length === 0 && consumerReads.length === 0 && bodyReads.length === 0) {
     return {
@@ -520,7 +533,25 @@ export function readChoices(
     if (!binding || !binding.present) {
       return literal(declaration && Object.hasOwn(declaration, "default") ? declaration.default : null);
     }
-    const value = binding.value;
+    return boundValueResolution(binding, read, depth, binding.value, at, literal);
+  };
+  /** What the value `binding` writes for `read` amounts to — per option for
+   *  one written behind a choice. */
+  const boundValueResolution = (
+    binding: Binding,
+    read: InputRead,
+    depth: number,
+    value: unknown,
+    at: BindingAnchor | undefined,
+    literal: (value: unknown) => Resolution,
+  ): Resolution => {
+    const site = isChoiceValue(value) ? siteOfSentinel.get(value) : undefined;
+    if (site) {
+      const branches = branchesOf(site).map(([, keys]) =>
+        boundValueResolution(binding, read, depth, valueAt(site.sentinel, keys), at, literal),
+      );
+      return { kind: "chosen", site, branches, ...(at ? { via: at } : {}) };
+    }
     if (!isTaggedSentinel(value) && !isCompiledValue(value)) return literal(value);
     const source = expressionSource(value);
     if (source === undefined) {
@@ -636,6 +667,8 @@ export function readChoices(
       projections.set(key, set);
     } else if (resolution.kind === "derived") {
       for (const part of resolution.parts) collectRoots(part);
+    } else if (resolution.kind === "chosen") {
+      for (const branch of resolution.branches) collectRoots(branch);
     }
   };
   for (const decision of decisions.values()) {
@@ -660,12 +693,53 @@ export function readChoices(
       if (resolution.kind === "root") collectRoots(resolution);
     }
   }
-  const rootReadingOf = (module: string, read: InputRead) =>
-    readRootInput(
-      read,
-      declarationOf(module, read.input as InputBlock, read.name),
-      projections.get(`${module}\0${read.input}.${read.name}`) ?? new Set(),
-    );
+  // One reading per distinct read: every site reading an input shares it.
+  const readKey = (module: string, read: InputRead) =>
+    `${module}\0${read.input}\0${read.name}\0${read.projection}\0${read.member ?? ""}`;
+  const rootReadings = new Map<string, RootReading>();
+  // An input is settled against its declaration before the documents are
+  // expanded, so one typed through a shape a configuration varies decides nothing.
+  let varyingReach: ReturnType<typeof varyingShapeReach> | undefined;
+  const varyingShapeOf = (module: string, entry: unknown) =>
+    (varyingReach ??= varyingShapeReach(
+      sites
+        .filter((site) => site.own && decisions.get(site)?.kind !== "literal")
+        .map((site) => ({ holder: site.holder, module: site.module })),
+      manifests,
+      moduleOf,
+      (kind, at) => kind !== "Telo.Import" && (kind === "Telo.JsonSchema" || scope?.nameLevel(kind, at) === "type"),
+    ))(module, entry);
+  const rootReadingOf = (module: string, read: InputRead): RootReading => {
+    const key = readKey(module, read);
+    let reading = rootReadings.get(key);
+    if (!reading) {
+      const entry = declarationOf(module, read.input as InputBlock, read.name);
+      reading = readRootInput(read, entry, projections.get(`${module}\0${read.input}.${read.name}`) ?? new Set());
+      const varying = reading.kind === "dimension" ? varyingShapeOf(module, entry) : undefined;
+      if (varying) {
+        reading = {
+          kind: "open",
+          reason:
+            `'${read.input}.${read.name}' is typed by '${varying.ref}', ` +
+            (varying.ref.endsWith(`/${varying.shape}`) || varying.ref === `!ref ${varying.shape}`
+              ? `a named shape that differs between configurations`
+              : `which reaches the named shape '${varying.shape}' that differs between configurations`) +
+            `, so its value is not settled before boot`,
+        };
+      }
+      rootReadings.set(key, reading);
+    }
+    return reading;
+  };
+  const distinctRootReads = new Map<string, InputRead[]>();
+  for (const { module, read } of rootReads) {
+    const key = readKey(module, read);
+    if (rootReadings.has(key)) continue;
+    rootReadingOf(module, read);
+    const list = distinctRootReads.get(module) ?? [];
+    list.push(read);
+    distinctRootReads.set(module, list);
+  }
   const needReadingOf = (resolution: Extract<Resolution, { kind: "need" }>): RootReading =>
     readNeedInput(resolution.read, resolution.need, projections.get(needProjectionKey(resolution.need)) ?? new Set());
   const dimensions: Dimension[] = [];
@@ -729,8 +803,14 @@ export function readChoices(
       const reading = needReadingOf(resolution);
       return reading.kind === "open" ? { reason: reading.reason } : undefined;
     }
-    if (resolution.kind === "derived") {
-      for (const part of resolution.parts) {
+    if (resolution.kind === "derived" || resolution.kind === "chosen") {
+      if (resolution.kind === "chosen" && !decidable(resolution.site)) {
+        return {
+          reason: `the import binds it behind a '!${resolution.site.tag}' nothing decides before boot`,
+          ...(resolution.via ? { binding: resolution.via } : {}),
+        };
+      }
+      for (const part of resolution.kind === "derived" ? resolution.parts : resolution.branches) {
         const open = openOf(part);
         if (open) return open.binding || !resolution.via ? open : { ...open, binding: resolution.via };
       }
@@ -767,9 +847,8 @@ export function readChoices(
         dimensions.filter((d) => dimensionModule.get(d.key) === module),
         assignment,
       );
-      for (const { module: m, read } of rootReads) {
-        if (m !== module) continue;
-        const reading = rootReadingOf(m, read);
+      for (const read of distinctRootReads.get(module) ?? []) {
+        const reading = rootReadingOf(module, read);
         const block = values[read.input as InputBlock];
         if (reading.kind === "constant" && block[read.name] === undefined) block[read.name] = {};
       }
@@ -786,7 +865,23 @@ export function readChoices(
         block[name] = asDeclared(Object.hasOwn(declaration, "default") ? declaration.default : null, declaration);
         continue;
       }
-      const value = binding.value;
+      // A binding behind a choice is the value of the option the importer's
+      // configuration takes; one taking no option leaves the input absent.
+      let value = binding.value;
+      let chosenAbsent = false;
+      for (let site = isChoiceValue(value) ? siteOfSentinel.get(value) : undefined; site; site = isChoiceValue(value) ? siteOfSentinel.get(value) : undefined) {
+        const branch = outcomeIn(site, assignment, memo).branch;
+        const keys = branch === null || branch === STAND_IN ? undefined : branchesOf(site).find(([id]) => id === branch)?.[1];
+        if (!keys) {
+          chosenAbsent = true;
+          break;
+        }
+        value = valueAt(site.sentinel, keys);
+      }
+      if (chosenAbsent) {
+        block[name] = asDeclared(Object.hasOwn(declaration, "default") ? declaration.default : null, declaration);
+        continue;
+      }
       if (!isTaggedSentinel(value) && !isCompiledValue(value)) {
         block[name] = asDeclared(value, declaration);
         continue;
@@ -887,7 +982,7 @@ export function readChoices(
       },
     });
   };
-  const staticTypes = new Map<ChoiceSite, string | undefined>();
+  const staticTypes = new Map<ChoiceSite, CelType | undefined>();
   const globals = buildKernelGlobalsIndex(listRequests(manifests as ResourceManifest[]));
   for (const site of sites) {
     const decision = decisions.get(site)!;
@@ -895,8 +990,9 @@ export function readChoices(
     const label = `'!${site.tag}'`;
     const what = site.tag === "if" ? "condition" : "selector";
     if (site.declaration) {
+      const scopeMember = !atDocumentPosition(site);
       for (const [branch, keys] of branchesOf(site)) {
-        const problem = declarationBranchProblem(valueAt(site.sentinel, keys));
+        const problem = declarationBranchProblem(valueAt(site.sentinel, keys), scopeMember);
         if (problem && site.own) {
           refusedBranches.push({ holder: site.holder, path: pathOf([...site.keys, ...keys]) });
           reportAt(site, [...site.keys, ...keys], "BRANCH_CASE_INVALID",
@@ -925,7 +1021,7 @@ export function readChoices(
       contextSchema: globals.forResource(site.holder, pathOf(site.keys)),
       ...(names ? { moduleNames: names } : {}),
     } as never);
-    staticTypes.set(site, analysis.type);
+    staticTypes.set(site, analysis.checkedType);
     let refused = false;
     const refuse = (message: string) => {
       refused = true;
@@ -952,7 +1048,7 @@ export function readChoices(
       const refusal = callRefusal(site.holder, read.qualified);
       if (refusal) refuse(`The ${what} of ${label} calls '${read.qualified}', which ${refusal}.`);
     }
-    const typeProblem = analysis.type ? staticTypeProblem(site.tag, analysis.type) : undefined;
+    const typeProblem = analysis.checkedType ? staticTypeProblem(site.tag, analysis.checkedType) : undefined;
     if (typeProblem && !refused) refuse(`The ${what} of ${label} ${typeProblem}`);
     if (refused) staticallyRefused.add(site);
     // Every open read the condition makes, named in one report.
@@ -1010,6 +1106,10 @@ export function readChoices(
             : undefined;
       if (reading?.kind === "dimension") out.add(reading.dimension.key);
       if (resolution.kind === "derived") for (const part of resolution.parts) visit(part);
+      if (resolution.kind === "chosen") {
+        for (const key of footprintOf(resolution.site)) out.add(key);
+        for (const branch of resolution.branches) visit(branch);
+      }
     };
     const decision = decisions.get(site)!;
     if (decision.kind === "expression") for (const r of decision.resolutions) visit(r);
@@ -1112,17 +1212,17 @@ export function readChoices(
     if (site.tag === "switch") {
       const type = staticTypes.get(site);
       const valueType =
-        type && type !== "dyn" ? type : outcomes.map(({ outcome }) => celTypeOfValue(outcome.value)).find(Boolean);
+        type && type.kind !== "dyn" ? type : outcomes.map(({ outcome }) => celTypeOfValue(outcome.value)).find(Boolean);
       const cases = (site.sentinel as Record<string, unknown>).cases;
       if (cases && typeof cases === "object" && !Array.isArray(cases)) {
         for (const caseKey of Object.keys(cases)) {
           if (caseKeyValue(caseKey, valueType) !== undefined) continue;
           invalidCases.add(`case:${caseKey}`);
           reportAt(site, [...site.keys, "cases", caseKey], "BRANCH_CASE_KEY_INVALID",
-            `Case '${caseKey}' of ${label} is not a value of the selector's type '${valueType}'` +
-              (valueType === "int"
+            `Case '${caseKey}' of ${label} is not a value of the selector's type '${valueType === undefined ? "undefined" : formatType(valueType, true)}'` +
+              (isPrimitive(valueType, "int")
                 ? ` — an integer case is its decimal literal ('1', never '01').`
-                : valueType === "bool"
+                : isPrimitive(valueType, "bool")
                   ? ` — a boolean case is 'true' or 'false'.`
                   : `.`));
         }
@@ -1343,6 +1443,10 @@ export function readChoices(
             : undefined;
       if (reading?.kind === "dimension") footprint.add(reading.dimension.key);
       if (resolution.kind === "derived") for (const part of resolution.parts) visit(part);
+      if (resolution.kind === "chosen") {
+        for (const key of footprintOf(resolution.site)) footprint.add(key);
+        for (const branch of resolution.branches) visit(branch);
+      }
     };
     for (const read of expression.reads) {
       if (read.class === "module") continue;
@@ -1513,7 +1617,7 @@ function isUrlLike(value: object): boolean {
  *  nearer the root already carries it. */
 function carriedThrough(at: BindingAnchor | undefined, resolution: Resolution): Resolution {
   if (!at) return resolution;
-  if (resolution.kind === "root" || resolution.kind === "derived") {
+  if (resolution.kind === "root" || resolution.kind === "derived" || resolution.kind === "chosen") {
     return resolution.via ? resolution : { ...resolution, via: at };
   }
   if (resolution.kind === "open") return resolution.binding ? resolution : { ...resolution, binding: at };
@@ -1596,28 +1700,34 @@ export function branchForValue(sentinel: ExpansionSentinel, tag: "if" | "switch"
   return "default" in body ? "default" : null;
 }
 
-/** A case key read as a value of `type`, or undefined when it is none. */
-export function caseKeyValue(key: string, type: string | undefined): unknown {
-  switch (type) {
+/** A case key read as a value of `type`, read from its kind, or undefined when it is none. */
+export function caseKeyValue(key: string, type: CelType | undefined): unknown {
+  if (type === undefined || type.kind === "dyn") return key;
+  if (type.kind !== "primitive") return undefined;
+  switch (type.name) {
     case "int":
       return /^-?(0|[1-9][0-9]*)$/.test(key) ? BigInt(key) : undefined;
     case "bool":
       return key === "true" ? true : key === "false" ? false : undefined;
     case "string":
-    case undefined:
-    case "dyn":
       return key;
     default:
       return undefined;
   }
 }
 
-export function celTypeOfValue(value: unknown): string | undefined {
-  if (typeof value === "string") return "string";
-  if (typeof value === "boolean") return "bool";
-  if (typeof value === "bigint") return "int";
-  if (typeof value === "number") return Number.isInteger(value) ? "int" : "double";
+/** The CEL type of a scalar value a choice may be decided by. */
+export function celTypeOfValue(value: unknown): CelType | undefined {
+  if (typeof value === "string") return STRING;
+  if (typeof value === "boolean") return BOOL;
+  if (typeof value === "bigint") return INT;
+  if (typeof value === "number") return Number.isInteger(value) ? INT : DOUBLE;
   return undefined;
+}
+
+/** Whether a type is one of the primitives named. */
+function isPrimitive(type: CelType | undefined, ...names: readonly PrimitiveName[]): boolean {
+  return type?.kind === "primitive" && names.includes(type.name);
 }
 
 /** Why a value cannot decide a tag, or undefined. */
@@ -1625,18 +1735,19 @@ export function valueTypeProblem(tag: "if" | "switch", value: unknown): string |
   if (tag === "if") {
     return typeof value === "boolean" ? undefined : `yields ${describeKind(value)}, where a condition is a boolean.`;
   }
-  const type = celTypeOfValue(value);
-  return type === "string" || type === "int" || type === "bool"
+  return isPrimitive(celTypeOfValue(value), "string", "int", "bool")
     ? undefined
     : `yields ${describeKind(value)}, where a selector is a string, an integer or a boolean.`;
 }
 
-export function staticTypeProblem(tag: "if" | "switch", type: string): string | undefined {
-  if (type === "dyn") return undefined;
-  if (tag === "if") return type === "bool" ? undefined : `is a '${type}', where a condition is a boolean.`;
-  return type === "string" || type === "int" || type === "bool"
+/** Why an expression of `type` cannot decide a tag, read from the type, or undefined. */
+export function staticTypeProblem(tag: "if" | "switch", type: CelType): string | undefined {
+  if (type.kind === "dyn") return undefined;
+  const written = formatType(type, true);
+  if (tag === "if") return isPrimitive(type, "bool") ? undefined : `is a '${written}', where a condition is a boolean.`;
+  return isPrimitive(type, "string", "int", "bool")
     ? undefined
-    : `is a '${type}', where a selector is a string, an integer or a boolean.`;
+    : `is a '${written}', where a selector is a string, an integer or a boolean.`;
 }
 
 function describeKind(value: unknown): string {
@@ -1659,14 +1770,24 @@ export function describeBranch(branch: string): string {
 /** Whether a branch at a declaration position is a document that declares no
  *  resource — a module document, a kind document or an import: refused where
  *  it is written, and expanded to nothing, so no configuration varies it. */
-export function declaresNoResource(value: unknown): boolean {
+export function declaresNoResource(value: unknown, scopeMember = false): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const record = value as Record<string, unknown>;
+  if (scopeMember && isImportBranch(record)) return false;
   return typeof record.kind === "string" && (isModuleKind(record.kind) || isKindDocumentOrImport(record));
 }
 
-/** Why a value cannot be a branch at a declaration position, or undefined. */
-export function declarationBranchProblem(value: unknown): string | undefined {
+/** Whether a declaration-position choice declares a whole document — rather
+ *  than a scope member: its outermost declaration tag is the document. */
+export function atDocumentPosition(site: ChoiceSite): boolean {
+  let outermost = site;
+  while (!("metadata" in outermost.sentinel) && outermost.parent?.site.declaration) outermost = outermost.parent.site;
+  return outermost.keys.length === 0;
+}
+
+/** Why a value cannot be a branch at a declaration position, or undefined. A
+ *  `Telo.Import` is a branch at a scope-member position only. */
+export function declarationBranchProblem(value: unknown, scopeMember = false): string | undefined {
   const tag = expansionTagOf(value);
   if (tag === "if" || tag === "switch") return undefined;
   if (tag === "for-each") return "is a '!for-each', which declares a family only inside a template body";
@@ -1675,6 +1796,7 @@ export function declarationBranchProblem(value: unknown): string | undefined {
   const record = value as Record<string, unknown>;
   if (typeof record.kind !== "string") return "declares no 'kind'";
   if (isModuleKind(record.kind)) return `is a ${record.kind} document, which is never chosen`;
+  if (scopeMember && isImportBranch(record)) return holdsOnlyStamps(record) ? undefined : "carries 'metadata'";
   if (isKindDocumentOrImport(record)) return `is a ${record.kind}, which declares no resource and is never chosen`;
   if ("metadata" in record) return "carries 'metadata'";
   return undefined;
@@ -1935,7 +2057,7 @@ function collectSites(
     for (const [key, field] of Object.entries(value)) walk(holder, field, [...keys, key], parent, false);
   };
   for (const doc of manifests) {
-    if (isKindDocumentOrImport(doc) || isExpansionSentinel(doc)) continue;
+    if (isKindDocument(doc) || isExpansionSentinel(doc)) continue;
     if (isModuleKind(doc.kind)) {
       const targets = (doc as Record<string, unknown>).targets;
       if (Array.isArray(targets)) targets.forEach((item, i) => walk(doc, item, ["targets", i], undefined, false));

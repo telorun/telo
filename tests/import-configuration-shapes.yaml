@@ -1,0 +1,52 @@
+kind: Telo.Application
+metadata:
+  name: ImportConfigurationShapesTest
+  version: 1.0.0
+  description: |
+    An import reads its library's variables: entries as its own configuration
+    declares them: a shape the library declares only where `flag` holds types
+    the entry an import with `flag: true` supplies, an integer member bound as
+    an int64; two isolated imports of a library whose shape its `mode` decides
+    each hold their value to their own variant, in either order; and a value
+    the import's variant refuses is refused at the import before the run.
+imports:
+  Assert: ../modules/assert
+  Flagged:
+    source: ./__fixtures__/import-configuration-shapes/flag
+    variables: { flag: true, config: { n: 2 } }
+targets:
+  - !ref test
+  - !ref twoImports
+  - !ref twoImportsReversed
+  - !ref mistyped
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - { name: config, invoke: !ref Flagged.config }
+  - { name: next, invoke: !ref Flagged.next }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        config: !cel "steps.config.result"
+        next: !cel "steps.next.result"
+      expected: { config: { n: 2 }, next: 3 }
+---
+kind: Assert.Manifest
+metadata: { name: twoImports }
+source: ./__fixtures__/import-configuration-shapes/two-imports.yaml
+expect: { errors: [], runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: twoImportsReversed }
+source: ./__fixtures__/import-configuration-shapes/two-imports-reversed.yaml
+expect: { errors: [], runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: mistyped }
+source: ./__fixtures__/import-configuration-shapes/mistyped.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "Telo.Import/Lib: /variables/config/n must be integer — the imported library declares it so." }
+  runFails: "[SCHEMA_VIOLATION] Telo.Import/Lib: /variables/config/n must be integer"

@@ -33,6 +33,7 @@ import { configuredNamedShapes, type ConfiguredShapeScope } from "./configured-n
 import { foldedNamedShapeReads, type NamedShapeDeclaration } from "./named-shape-extends.js";
 import { FALSE, TRUE, type Condition, type ConditionSpace } from "./presence-condition.js";
 import { schemaReferenceParts } from "./schema-reference.js";
+import { importPathOf } from "./scoped-name-resolver.js";
 import { splitByReads, type WorldReader } from "./world-reader.js";
 
 type Schema = Record<string, any>;
@@ -64,6 +65,10 @@ export interface ShapeClass {
   /** Canonical in its module, its `extends` parents folded. */
   readonly schema: Schema;
 }
+
+/** The module instance a shape is read in: its import path, `[]` the entry's
+ *  own module. A class's content is per shape; its condition per instance. */
+export type ShapeInstance = readonly string[];
 
 /** A reference to a named shape a document writes. */
 export interface ShapeEdge {
@@ -119,6 +124,10 @@ export function nodeAtPointer(document: unknown, pointer: string): unknown {
 
 export class NamedShapeReader {
   private readonly classMemo = new Map<string, readonly ShapeClass[]>();
+  private readonly instanceMemo = new Map<string, readonly ShapeClass[]>();
+  private readonly instanceListMemo = new Map<string, readonly ShapeInstance[]>();
+  /** Per shape, the index of each content any instance reads. */
+  private readonly contentIndexes = new Map<string, Map<string, number>>();
   private readonly edgeMemo = new WeakMap<object, readonly ShapeEdge[]>();
   private readonly verdictMemo = new Map<string, unknown>();
   private readonly reads: (module: string, name: string) => ReadonlySet<string>;
@@ -157,37 +166,116 @@ export class NamedShapeReader {
     return [...new Set([...this.byId.keys(), ...this.libraryIds])];
   }
 
-  /** The classes of `id`: none where nothing declares it. */
+  /**
+   * The classes of `id`: none where nothing declares it. For a library imported
+   * more than once — its shapes forwarded once per instance, each stamped with
+   * its import path — every instance's classes, a content read by several
+   * instances one class held wherever one of them reads it; a reader that
+   * needs one instance's asks {@link classesIn}.
+   */
   classes(id: string): readonly ShapeClass[] {
     const known = this.classMemo.get(id);
     if (known) return known;
-    const named = parseCanonicalTypeSchemaId(id);
-    let classes: ShapeClass[] = [];
-    if (named && this.isShapeId(id)) {
-      const chain = this.reads(named.moduleName, named.typeName);
-      const relevant = [...chain].flatMap((each) => this.byId.get(each) ?? []);
-      const { space, universe, scope, libraries } = this.source;
-      const parts = splitByReads(space, universe, (read) => {
-        const present: ResourceManifest[] = [];
-        for (const declaration of relevant) {
-          if (!read.holds(declaration.condition)) continue;
-          const projected = declaration.project(read);
-          if (projected) present.push(projected);
+    const instances = this.instancesOf(id);
+    let classes: ShapeClass[];
+    if (instances.length === 0) classes = this.classesOver(id, () => true);
+    else {
+      const byIndex = new Map<number, ShapeClass>();
+      for (const instance of instances) {
+        for (const each of this.classesIn(instance, id)) {
+          const known = byIndex.get(each.index);
+          byIndex.set(each.index, known ? { ...known, condition: this.space.or(known.condition, each.condition) } : each);
         }
-        return configuredNamedShapes(present, scope, libraries)(named.moduleName, named.typeName);
-      });
-      const byText = new Map<string, { condition: Condition; schema: Schema }>();
-      for (const part of parts) {
-        if (!part.value) continue;
-        const text = JSON.stringify(part.value);
-        const known = byText.get(text);
-        if (known) known.condition = space.or(known.condition, part.condition);
-        else byText.set(text, { condition: part.condition, schema: part.value });
       }
-      classes = [...byText.values()].map((each, index) => ({ id, index, condition: each.condition, schema: each.schema }));
+      classes = [...byIndex.values()].sort((a, b) => a.index - b.index);
     }
     this.classMemo.set(id, classes);
     return classes;
+  }
+
+  /** The classes of `id` as module instance `instance` reads them: each
+   *  class's content and index are the shape's, one index per content however
+   *  many instances read it; its condition is the instance's — the choices of
+   *  that instance's documents, which read the library's inputs through that
+   *  instance's own import. A module imported once, and the entry's own, is one
+   *  instance. A site that names no instance of a module imported more than
+   *  once (`shapeInstanceOf` found no alias written at it) reads every
+   *  instance's, as {@link classes}. */
+  classesIn(instance: ShapeInstance, id: string): readonly ShapeClass[] {
+    const key = JSON.stringify([instance, id]);
+    const known = this.instanceMemo.get(key);
+    if (known) return known;
+    const instances = this.instancesOf(id);
+    const text = JSON.stringify(instance);
+    const classes = instances.some((each) => JSON.stringify(each) === text)
+      ? this.classesOver(id, (path) => path === undefined || JSON.stringify(path) === text)
+      : this.classes(id);
+    this.instanceMemo.set(key, classes);
+    return classes;
+  }
+
+  /** The import paths the declarations of `id`'s chain are stamped with, in
+   *  declaration order; none for a shape of a module instantiated once. */
+  private instancesOf(id: string): readonly ShapeInstance[] {
+    const known = this.instanceListMemo.get(id);
+    if (known) return known;
+    const out: ShapeInstance[] = [];
+    const named = parseCanonicalTypeSchemaId(id);
+    if (named && this.isShapeId(id)) {
+      const seen = new Set<string>();
+      for (const each of this.reads(named.moduleName, named.typeName)) {
+        for (const declaration of this.byId.get(each) ?? []) {
+          const path = importPathOf(declaration.manifest);
+          if (!path || seen.has(JSON.stringify(path))) continue;
+          seen.add(JSON.stringify(path));
+          out.push(path);
+        }
+      }
+    }
+    this.instanceListMemo.set(id, out);
+    return out;
+  }
+
+  /** The classes of `id` over the declarations `belongs` keeps, by the import
+   *  path each is stamped with; one index per content of the shape. */
+  private classesOver(id: string, belongs: (path: readonly string[] | undefined) => boolean): ShapeClass[] {
+    const named = parseCanonicalTypeSchemaId(id);
+    if (!named || !this.isShapeId(id)) return [];
+    const chain = this.reads(named.moduleName, named.typeName);
+    const relevant = [...chain]
+      .flatMap((each) => this.byId.get(each) ?? [])
+      .filter((declaration) => belongs(importPathOf(declaration.manifest)));
+    const { space, universe, scope, libraries } = this.source;
+    const parts = splitByReads(space, universe, (read) => {
+      const present: ResourceManifest[] = [];
+      for (const declaration of relevant) {
+        if (!read.holds(declaration.condition)) continue;
+        const projected = declaration.project(read);
+        if (projected) present.push(projected);
+      }
+      return configuredNamedShapes(present, scope, libraries)(named.moduleName, named.typeName);
+    });
+    let indexes = this.contentIndexes.get(id);
+    if (!indexes) this.contentIndexes.set(id, (indexes = new Map()));
+    const byText = new Map<string, { condition: Condition; schema: Schema }>();
+    for (const part of parts) {
+      if (!part.value) continue;
+      const text = JSON.stringify(part.value);
+      const known = byText.get(text);
+      if (known) known.condition = space.or(known.condition, part.condition);
+      else byText.set(text, { condition: part.condition, schema: part.value });
+    }
+    return [...byText].map(([text, each]) => {
+      let index = indexes!.get(text);
+      if (index === undefined) indexes!.set(text, (index = indexes!.size));
+      return { id, index, condition: each.condition, schema: each.schema };
+    });
+  }
+
+  /** The class of `id` instance `instance` reads where `read` holds. */
+  classIn(instance: ShapeInstance, id: string, read: WorldReader<Condition>): ShapeClass | undefined {
+    for (const each of this.classesIn(instance, id)) if (read.holds(each.condition)) return each;
+    return undefined;
   }
 
   /** The declarations of `id`, as written. */

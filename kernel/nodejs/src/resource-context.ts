@@ -1107,6 +1107,14 @@ export class ResourceContextImpl implements ResourceContext {
     return this.kernel.libraryAnalysisHost();
   }
 
+  registeredSchemas(): Pick<SchemaValidator, "getSchema" | "addSchema" | "compile"> {
+    return this.validator;
+  }
+
+  langOfModuleFile(source: string | undefined): string | null {
+    return this.kernel.moduleLang(source);
+  }
+
   resolveImportUrl(fromSource: string, importSource: string): Promise<string> {
     return this.kernel.resolveImportUrl(fromSource, importSource);
   }

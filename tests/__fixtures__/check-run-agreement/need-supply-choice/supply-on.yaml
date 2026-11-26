@@ -1,0 +1,23 @@
+# A library need supplied only where `variables.flag1` is true: where it is
+# false the need is left to the environment, as an unsupplied one is.
+kind: Telo.Application
+metadata: { name: NeedSupplyChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: true } }
+imports:
+  Types: ./types
+  Lib:
+    source: ./lib
+    needs: { db: !if { if: !cel "variables.flag1", then: !ref fulfilment } }
+targets: [!ref check]
+---
+kind: Types.Database
+metadata: { name: fulfilment }
+fields: { url: postgres://from-fulfilment }
+---
+kind: Telo.Sequence
+metadata: { name: check }
+steps:
+  - { name: read, invoke: !ref Lib.address }
+  - name: compare
+    if: !cel "steps.read.result != 'postgres://from-fulfilment'"
+    then: [{ name: differs, throw: { code: WRONG_URL, message: !cel "steps.read.result" } }]

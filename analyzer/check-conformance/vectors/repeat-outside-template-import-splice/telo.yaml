@@ -1,0 +1,11 @@
+kind: Telo.Application
+metadata: { name: ImportSplice }
+imports:
+  Lib:
+    source: ./lib
+    ...: !if { if: true, then: { variables: { greeting: hi } } }
+---
+kind: Telo.Import
+metadata: { name: Other }
+source: ./lib
+...: !if { if: true, then: { source: ./elsewhere } }

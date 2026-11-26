@@ -229,6 +229,17 @@ export function collectScopeMembers(
   return { analysed, kindDocuments };
 }
 
+/** The scoped `Telo.Import`s among `members` whose holder is one of `holders`:
+ *  no analysed declaration, yet their `variables:` / `secrets:` are CEL sites
+ *  judged in the import's environment. */
+export function scopedImportsHeldBy(
+  members: readonly ScopeMember[],
+  holders: readonly ResourceManifest[],
+): ResourceManifest[] {
+  const held = new Set(holders);
+  return members.filter((m) => m.declaration.kind === "Telo.Import" && held.has(m.holder)).map((m) => m.declaration);
+}
+
 /** Give a member the provenance a top-level declaration of its holder's module
  *  carries: the module, its config contract, its position, and whether it is a
  *  dependency's code. */

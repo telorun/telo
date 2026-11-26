@@ -18,7 +18,7 @@ pub fn range(start: u32, end: u32) -> SourceRange {
 }
 
 pub fn found(code: CelCheckCode, message: &str, start: u32, end: u32) -> CelCheckDiagnostic {
-    CelCheckDiagnostic { code, message: message.into(), range: range(start, end), fix: None }
+    CelCheckDiagnostic { code, message: message.into(), range: range(start, end), fix: None, schema_node: None, absent: false }
 }
 
 pub fn fixed(code: CelCheckCode, message: &str, start: u32, end: u32, replacement: &str) -> CelCheckDiagnostic {
@@ -27,6 +27,8 @@ pub fn fixed(code: CelCheckCode, message: &str, start: u32, end: u32, replacemen
         message: message.into(),
         range: range(start, end),
         fix: Some(CelDiagnosticFix { replacement: replacement.into() }),
+        schema_node: None,
+        absent: false,
     }
 }
 

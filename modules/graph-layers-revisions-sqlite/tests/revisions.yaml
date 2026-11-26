@@ -327,7 +327,7 @@ steps:
         again: !cel "steps.againCode.result"
         updateAbsent: !cel "steps.updateAbsentCode.result"
         merged: !cel "steps.bobAgain.result.node.properties"
-        found: !cel "steps.people.result.nodes.map(n, n.key + '=' + string(n.properties.age))"
+        found: !cel "steps.people.result.nodes.map(n, n.key + '=' + (n.properties.age != null ? string(n.properties.age) : ''))"
       expected:
         again: GRAPH_NODE_EXISTS
         updateAbsent: GRAPH_NODE_NOT_FOUND

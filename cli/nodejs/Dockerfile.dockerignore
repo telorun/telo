@@ -6,6 +6,7 @@
 !analyzer/nodejs
 !analyzer/migrations
 !analyzer/artifact-axes
+!analyzer/validation-limits.json
 !templating/nodejs
 !sdk/nodejs
 !sdk/value-types

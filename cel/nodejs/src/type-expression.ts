@@ -3,9 +3,9 @@
  *
  * A host declares a variable's or a signature's type as a string, and the signature
  * data a port reads is text, so one grammar reads both. It is deliberately the same
- * spelling `formatType` writes, so a type that round-trips through text is the type
+ * spelling `exactTypeText` writes, so a type that round-trips through text is the type
  * it started as — which is what lets the definition listing and the signature data
- * be compared without a second parser.
+ * be compared without a second parser. (`formatType` writes it too, cut past its bound.)
  *
  * A bare capital letter is a type **parameter**, which is how a signature says "the
  * same type here and there". A name the host registered as a nominal type resolves
@@ -93,6 +93,38 @@ export function parseTypeExpression(text: string, resolveNominal?: NominalResolv
   return type;
 }
 
+/**
+ * What a name with its type arguments resolves to, read as this grammar reads one: CEL's own
+ * types first — the well-known `google.protobuf.Timestamp` / `google.protobuf.Duration`
+ * included — then a type parameter, then `resolveNominal`. Nothing where no type is
+ * registered under the name; a language type given the wrong arguments is refused.
+ */
+export function resolveTypeName(
+  name: string,
+  args: readonly CelType[],
+  resolveNominal?: NominalResolver,
+): CelType | undefined {
+  const wellKnown = WELL_KNOWN_TYPE_NAMES[name];
+  if (wellKnown) return noArguments(name, args, PRIMITIVES[wellKnown as PrimitiveName]!);
+  if (name === "list") return args.length === 1 ? listOf(args[0]!) : listOf(DYN);
+  if (name === "map") return args.length === 2 ? mapOf(args[0]!, args[1]!) : mapOf(DYN, DYN);
+  if (name === "optional") {
+    if (args.length !== 1) {
+      throw new CelTypeExpressionError("optional takes exactly one type argument");
+    }
+    return optionalOf(args[0]!);
+  }
+  const primitive = PRIMITIVES[name];
+  if (primitive) return noArguments(name, args, primitive);
+  if (PARAMETER.test(name)) return noArguments(name, args, parameterOf(name));
+  return resolveNominal?.(name, args);
+}
+
+function noArguments(name: string, args: readonly CelType[], type: CelType): CelType {
+  if (args.length > 0) throw new CelTypeExpressionError(`${name} takes no type arguments`);
+  return type;
+}
+
 class TypeReader {
   private at = 0;
 
@@ -157,26 +189,8 @@ class TypeReader {
   }
 
   private resolve(name: string, args: readonly CelType[]): CelType {
-    const wellKnown = WELL_KNOWN_TYPE_NAMES[name];
-    if (wellKnown) return this.noArguments(name, args, PRIMITIVES[wellKnown as PrimitiveName]!);
-    if (name === "list") return args.length === 1 ? listOf(args[0]!) : listOf(DYN);
-    if (name === "map") return args.length === 2 ? mapOf(args[0]!, args[1]!) : mapOf(DYN, DYN);
-    if (name === "optional") {
-      if (args.length !== 1) {
-        throw new CelTypeExpressionError("optional takes exactly one type argument");
-      }
-      return optionalOf(args[0]!);
-    }
-    const primitive = PRIMITIVES[name];
-    if (primitive) return this.noArguments(name, args, primitive);
-    if (PARAMETER.test(name)) return this.noArguments(name, args, parameterOf(name));
-    const nominal = this.resolveNominal?.(name, args);
-    if (nominal) return nominal;
+    const type = resolveTypeName(name, args, this.resolveNominal);
+    if (type) return type;
     throw new CelUnknownTypeNameError(name);
-  }
-
-  private noArguments(name: string, args: readonly CelType[], type: CelType): CelType {
-    if (args.length > 0) throw new CelTypeExpressionError(`${name} takes no type arguments`);
-    return type;
   }
 }

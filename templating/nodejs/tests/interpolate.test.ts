@@ -119,7 +119,7 @@ describe("interpolate engine", () => {
 
   it("refuses a hole CEL cannot convert, and passes one it can", () => {
     const analyze = (source: string) =>
-      interpolateEngine.analyze(source, { celEnv, contextSchema: null }).diagnostics.map((d) => d.code);
+      interpolateEngine.analyze(source, { celEnv }).diagnostics.map((d) => d.code);
     expect(analyze("${{ {'a': 1} }}")).toEqual(["INTERPOLATION_HOLE_NOT_CONVERTIBLE"]);
     expect(analyze("${{ [1] }}")).toEqual(["INTERPOLATION_HOLE_NOT_CONVERTIBLE"]);
     expect(analyze("${{ duration('1s') }} ${{ timestamp('2026-01-01T00:00:00Z') }} ${{ 1 }}")).toEqual([]);
@@ -127,13 +127,11 @@ describe("interpolate engine", () => {
   });
 
   it("reports a nullable hole", () => {
-    const { diagnostics } = interpolateEngine.analyze("${{ variables.x }}", {
-      celEnv,
-      contextSchema: {
-        type: "object",
-        properties: { variables: { type: "object", properties: { x: { type: ["string", "null"] } } } },
-      },
+    const typed = celEnv.clone();
+    typed.registerVariable("variables", {
+      schema: { type: "object", properties: { x: { type: ["string", "null"] } } },
     });
+    const { diagnostics } = interpolateEngine.analyze("${{ variables.x }}", { celEnv: typed });
     expect(diagnostics.map((d) => d.code)).toEqual(["CEL_NULLABLE_ACCESS"]);
   });
 

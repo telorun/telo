@@ -34,6 +34,8 @@ import { moduleAliasScope } from "./module-alias-scope.js";
 import { refSlotOfEntry, type ReachPosition, type ReachSite } from "./reference-reach.js";
 import { registeredDefinitionForms, resolveSchemaTypeRefs as resolveSchemaTypeRefsIn } from "./resolve-schema-type-refs.js";
 import { cloneForMutation } from "./normalize-inline-resources.js";
+import { frozenSchemaCopy, isFrozenSchema } from "./frozen-kind-schema.js";
+import { inheritSchemaPlace } from "./schema-provenance.js";
 import type { AnalysisContext } from "./types.js";
 import type { LibraryDeclarations } from "./library-declarations.js";
 import type { ModuleDocuments } from "./module-documents.js";
@@ -202,13 +204,15 @@ export class AnalysisRegistry {
    * is registered here, and what is registered is the copy
    * {@link registeredFormOf} derives — the kinds its annotations name and the
    * named shapes it references canonical in its declaring module's scope,
-   * `extends` as `canonicalExtends`. `def` is never written to; the copy is
-   * returned, and is what the registry's answers read.
+   * `extends` as `canonicalExtends`, its `schema` a frozen copy
+   * (`frozen-kind-schema.ts`). `def` is never written to; the copy is returned,
+   * and is what the registry's answers read.
    */
   registerDefinition(def: ResourceDefinition, canonicalExtends?: string): ResourceDefinition {
     const { kinds, registered } = registeredDefinitionForms(def, this.aliases, this.aliasesByModule, canonicalExtends);
-    this.defs.register(registered, def, kinds);
-    return registered;
+    const held = withFrozenSchema(registered);
+    this.defs.register(held, def, kinds);
+    return held;
   }
 
   /** The copy {@link registerDefinition} would register for `def`, derived
@@ -806,4 +810,11 @@ export class AnalysisRegistry {
   _context(): AnalysisContext {
     return { aliases: this.aliases, definitions: this.defs, aliasesByModule: this.aliasesByModule };
   }
+}
+
+/** `definition` holding its `schema` as a frozen copy. */
+function withFrozenSchema(definition: ResourceDefinition): ResourceDefinition {
+  const schema = (definition as { schema?: unknown }).schema;
+  if (!schema || typeof schema !== "object" || isFrozenSchema(schema)) return definition;
+  return inheritSchemaPlace({ ...definition, schema: frozenSchemaCopy(schema) } as ResourceDefinition, definition);
 }

@@ -110,6 +110,7 @@ describe("the passes that carry presence conditions", () => {
       "import-host-path-findings.ts",
       "lifted-body-findings.ts",
       "mark-reach-findings.ts",
+      "need-table-findings.ts",
       "own-check-sites.ts",
       "resource-input-findings.ts",
       "rule-absence.ts",

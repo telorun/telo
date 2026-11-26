@@ -12,7 +12,7 @@ use std::time::Instant;
 
 use telorun_cel::{
     admits_null, assignable, format_type, is_numeric, list_of, map_of, parameter_of, parse_type_expression,
-    types_equal, unify, union_of, without_null, without_parameters, CelType, NominalType, RecordType, TypeFields,
+    record_of, types_equal, unify, union_of, without_null, without_parameters, CelType, NominalType, TypeFields,
     DOUBLE, DYN, INT, NULL, STRING, UINT,
 };
 
@@ -21,11 +21,7 @@ fn ty(text: &str) -> CelType {
 }
 
 fn record(fields: &[(&str, CelType)], open: bool, name: Option<&str>) -> CelType {
-    CelType::Record(RecordType {
-        name: name.map(Into::into),
-        fields: fields.iter().map(|(field, ty)| (*field, ty.clone())).collect(),
-        open,
-    })
+    record_of(fields.iter().map(|(field, ty)| (*field, ty.clone())).collect(), open.then_some(DYN), Vec::new(), name.map(Into::into), Vec::new(), Vec::new())
 }
 
 fn nominal(name: &str, base: CelType, args: Vec<CelType>, fields: Option<TypeFields>) -> CelType {
@@ -165,7 +161,8 @@ fn decides_assignability_as_node_does() {
         (ab.clone(), map_of(STRING, DYN), true),
         (ab.clone(), map_of(STRING, INT), false),
         (record(&[("a", INT)], false, None), map_of(STRING, INT), true),
-        (record(&[("a", INT)], true, None), map_of(STRING, INT), false),
+        // Its undeclared members are `dyn`, which stands anywhere.
+        (record(&[("a", INT)], true, None), map_of(STRING, INT), true),
         (record(&[("a", INT)], true, None), map_of(STRING, DYN), true),
         (record(&[("a", INT)], false, None), map_of(INT, INT), false),
         (ab, ba, true),

@@ -8,23 +8,7 @@ metadata:
     disagreement — cel-js types by constructor identity, so every stream is one
     CEL type. The type ARGUMENT is what differs, and comparing it is a parallel
     pass over the schemas.
-imports:
-  Run: ../../modules/run
-targets:
-  - !ref pipeline
----
-kind: Run.Value
-metadata: { name: produceBytes }
-outputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      output:
-        x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
-    required: [output]
-value:
-  output: !cel "null"
+imports: { Run: ../../modules/run }
 ---
 kind: Run.Value
 metadata: { name: consumeText }
@@ -32,21 +16,20 @@ inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      input:
-        x-telo-type:
-          name: Telo.Stream
-          of: { type: string }
+    properties: { input: { x-telo-type: { name: Telo.Stream, of: { type: string } } } }
     required: [input]
-value:
-  ok: true
+value: { ok: true }
 ---
 kind: Run.Sequence
 metadata: { name: pipeline }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties: { bytes: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } } }
+    required: [bytes]
 steps:
-  - name: produce
-    invoke: !ref produceBytes
   - name: consume
     inputs:
-      input: !cel "steps.produce.result.output"
+      input: !cel "inputs.bytes"
     invoke: !ref consumeText

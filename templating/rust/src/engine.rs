@@ -16,7 +16,7 @@
 use std::collections::HashSet;
 
 use serde_json::Value;
-use telorun_cel::{CallForm, CelEnvironment};
+use telorun_cel::{CallForm, CelEnvironment, CelType};
 use telorun_cel_value::CelValue;
 
 use crate::cel::compile::CompiledValue;
@@ -44,18 +44,12 @@ pub struct ModuleCallFlagValues {
 #[derive(Clone, Copy)]
 pub struct AnalyzeEnv<'a> {
     pub cel_env: &'a CelEnvironment,
-    /// The closed context schema member-access chains are validated against, or `None`
-    /// for an open context.
-    pub context_schema: Option<&'a Value>,
     /// The caller vouches that `cel_env` declares every name legal here, so an unknown root
     /// identifier is undeclared rather than unmodelled.
     pub roots_declared: bool,
     /// The declaring module's names — see [`CompileEnv::module_names`]; the two halves are
     /// given the same set.
     pub module_names: Option<&'a HashSet<String>>,
-    /// The JSON Schema a module call's result carries, which member access on it is
-    /// checked against.
-    pub module_call_result: Option<&'a dyn Fn(&str) -> Option<Value>>,
     /// The derived flags of the module function a qualified call reaches, carried onto its
     /// [`CallSite`].
     pub module_call_flags: Option<&'a dyn Fn(&str) -> Option<ModuleCallFlagValues>>,
@@ -68,10 +62,8 @@ impl<'a> AnalyzeEnv<'a> {
     pub fn new(cel_env: &'a CelEnvironment) -> Self {
         Self {
             cel_env,
-            context_schema: None,
             roots_declared: false,
             module_names: None,
-            module_call_result: None,
             module_call_flags: None,
             could_name_module: None,
         }
@@ -116,13 +108,15 @@ pub struct CallSite {
 /// One argument of a module call.
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct CallArgument {
-    /// The checked type, absent where it is `dyn`.
+    /// The checked type, absent where it is `dyn` — read as a type, never from its text.
+    pub ty: Option<CelType>,
+    /// How `ty` prints, for a message: cut as every printed type is.
     pub type_name: Option<String>,
     /// The member chain the argument is, when it is one.
     pub chain: Option<Vec<String>>,
     /// The value the argument is written as, when it is literals alone.
     pub literal: Option<CelValue>,
-    /// For a map literal keyed by string literals, each key and the type it holds.
+    /// For a map literal keyed by string literals, each key and the kind of literal it holds.
     pub entries: Option<Vec<CallArgumentEntry>>,
 }
 
@@ -130,21 +124,26 @@ pub struct CallArgument {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct CallArgumentEntry {
     pub key: String,
-    pub type_name: Option<String>,
+    /// The kind of literal the entry holds (`string`, `int`, …); none where it is no literal.
+    pub literal_kind: Option<String>,
 }
 
 /// What one `analyze` establishes about one source.
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct AnalyzeResult {
     pub diagnostics: Vec<EngineDiagnostic>,
-    /// The checked type, when the check succeeded.
+    /// The checked type, when the check succeeded — as it prints, for a message.
     pub type_name: Option<String>,
+    /// The type itself, beside `type_name`: what a reader branching on the type reads.
+    pub checked_type: Option<CelType>,
     /// Every call, in source order.
     pub calls: Vec<CallSite>,
     /// The string the whole expression is a literal of.
     pub string_literal: Option<String>,
     /// When the checker rejected the expression, the type of each plain chain it reads.
     pub read_types: Option<Vec<String>>,
+    /// Each distinct type itself, beside `read_types`: what a reader branching on them reads.
+    pub read_checked_types: Option<Vec<CelType>>,
 }
 
 /// One module-root-relative file a tag embeds.

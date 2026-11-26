@@ -16,11 +16,14 @@ import type { AliasResolver, ModuleScopes } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { isRefSourceSpelling, refSentinelTarget } from "./ref-sentinel-target.js";
 import { isValueAtSlot } from "./reference-field-map.js";
+import { ownValuePositions } from "./own-value-positions.js";
 import { templateBodies } from "./template-body.js";
 import { quotingIssue } from "./quoted-place.js";
 import { parseKeys } from "./template-expansion.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { computedRefSlots, refSlotComputedReason } from "./ref-slot-computed.js";
+import type { CallableSlotContext } from "./callable-slot.js";
+import { callableSlotContextOf, referentKindErrors } from "./validate-references.js";
 import {
   DiagnosticSeverity,
   DiagnosticTag,
@@ -43,6 +46,11 @@ export interface TemplateBodyReach {
     candidates: readonly string[],
     suggest: boolean,
   ): readonly { readonly suggestion: string | undefined; readonly held: unknown }[];
+  /** The resources of `module` named `target`, each with where it holds —
+   *  what a body's bare `!ref` reaches when no sibling bears the name. */
+  referents(module: string | undefined, target: string): readonly { readonly manifest: ResourceManifest; readonly held: unknown }[];
+  /** What a function standing in for a callable abstract is judged with. */
+  callableSlots(): CallableSlotContext;
   /** Told each finding it gives rise to, with where it holds. */
   placed?(diagnostic: AnalysisDiagnostic, held: unknown): void;
 }
@@ -117,7 +125,7 @@ export function validateTemplateBody(
   // A definition forwarded from an imported library is that library's to fix.
   // Every named instance, by declaring module — what a body's bare `!ref` may
   // reach beside its siblings. A manifest with no stamp belongs to the entry.
-  const instancesByModule = new Map<string | undefined, Set<string>>();
+  const instancesByModule = new Map<string | undefined, Map<string, ResourceManifest>>();
   for (const m of manifests) {
     const name = m.metadata?.name;
     if (typeof name !== "string") continue;
@@ -125,16 +133,21 @@ export function validateTemplateBody(
     if (isKindDocument(m)) continue;
     if (m.kind === "Telo.Library" || m.kind === "Telo.Application") continue;
     const mod = (m.metadata as { module?: string } | undefined)?.module;
-    let set = instancesByModule.get(mod);
-    if (!set) instancesByModule.set(mod, (set = new Set()));
-    set.add(name);
+    let byName = instancesByModule.get(mod);
+    if (!byName) instancesByModule.set(mod, (byName = new Map()));
+    if (!byName.has(name)) byName.set(name, m);
   }
   const bodyReach: TemplateBodyReach = reach ?? {
     unknown: (module, target, siblings, candidates, suggest) => {
-      const instances = instancesByModule.get(module) ?? new Set<string>();
+      const instances = instancesByModule.get(module) ?? new Map<string, ResourceManifest>();
       if (siblings.includes(target) || instances.has(target)) return [];
-      return [{ suggestion: suggest ? nearestName(target, [...new Set([...candidates, ...instances])]) : undefined, held: true }];
+      return [{ suggestion: suggest ? nearestName(target, [...new Set([...candidates, ...instances.keys()])]) : undefined, held: true }];
     },
+    referents: (module, target) => {
+      const manifest = instancesByModule.get(module)?.get(target);
+      return manifest ? [{ manifest, held: true }] : [];
+    },
+    callableSlots: callableSlotContextOf(manifests, registry, aliases, aliasesByModule),
   };
 
   for (const m of manifests) {
@@ -341,13 +354,14 @@ export function validateTemplateBody(
             }),
             schema,
             standIns,
+            ownValuePositions(body.manifest, schema, registry.referenceSites(body.manifest, aliases, aliasesByModule)),
           );
           if (!outcome.finished) {
             out.push({
               severity: DiagnosticSeverity.Error,
               code: SCHEMA_NESTING_EXCEEDED,
               source: SOURCE,
-              message: schemaNestingExceededMessage(subject, label),
+              message: schemaNestingExceededMessage(subject, label, outcome),
               data: { resource: resourceRef, filePath, path: body.prefix },
             });
           }
@@ -419,6 +433,31 @@ export function validateTemplateBody(
           const { alias, name: refName } = target;
           if (alias && alias !== "Self") continue;
           unknownRef(refName, path, `'${site.path}: !ref ${value.source}' on ${label}`, body.manifest.metadata?.name);
+          // The kind it names, as for a top-level reference: a sibling first,
+          // then a resource of the defining module — the kernel's order.
+          const sibling = entries.find(
+            (entry) =>
+              (entry as { metadata?: { name?: unknown } } | undefined)?.metadata?.name === refName &&
+              typeof (entry as { kind?: unknown }).kind === "string",
+          ) as ResourceManifest | undefined;
+          const referents = sibling
+            ? [{ manifest: sibling, held: undefined }]
+            : target.indexes.length > 0 || siblings.includes(refName) || anyDynamic
+              ? []
+              : bodyReach.referents(meta?.module, refName);
+          for (const { manifest: referent, held } of referents) {
+            const kindErrors = referentKindErrors(
+              referent,
+              value.source,
+              [...new Set(site.refs.flatMap((ref) => ref.slot.kinds))],
+              registry,
+              moduleAliasScope(sibling ? meta : referent.metadata, aliases, aliasesByModule),
+              bodyReach.callableSlots,
+            );
+            if (kindErrors.length === 0) continue;
+            report("REFERENCE_KIND_MISMATCH", path, `reference at '${site.path}' on ${label} → ${kindErrors.join("; ")}`);
+            if (held !== undefined) bodyReach.placed?.(out[out.length - 1]!, held);
+          }
           continue;
         }
         // A value whose branch could not finish validating is `validateReferenceForms`'s.

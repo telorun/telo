@@ -33,6 +33,7 @@
  * Browser-safe.
  */
 import { listRequests } from "./declaration-requests.js";
+import { formatType, STRING, typesEqual, type CelType } from "@telorun/cel";
 import type { ResourceManifest } from "@telorun/sdk";
 import { isCompiledValue } from "@telorun/sdk";
 import {
@@ -83,6 +84,7 @@ import { moduleCallNamesByModule, moduleCallNamesOf } from "./module-call-names.
 import { readRefSlot } from "./ref-slot.js";
 import { forbiddenCatalogCall, ruleEnv } from "./rule-condition.js";
 import { gatherPropertySchemas, resolveLocalRef } from "./schema-walk.js";
+import { schemaWithinDocument } from "./schema-at-pointer.js";
 import {
   expandTemplateBody,
   parseKeys,
@@ -102,6 +104,7 @@ import { World, type ChoiceStep, type Forcing } from "./conditioned-expansion.js
 import { reportBodyReading } from "./cel-site-judgements.js";
 import { extractContextsFromSchema } from "./validate-cel-context.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
+import type { ValidationUnfinished } from "./schema-validation.js";
 import type { StandIns } from "./stand-in-findings.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { iteratesFamilySource, type LoopView } from "./family-source.js";
@@ -248,7 +251,9 @@ export interface TemplateDefinitionInputs {
 }
 
 /** A loop's binding as a CEL context property: a closed record. */
-export function bindingRecordSchema(binding: Pick<LoopBinding, "keyed" | "element">): Record<string, any> {
+export function bindingRecordSchema(binding: Pick<LoopBinding, "keyed" | "element" | "poisoned">): Record<string, any> {
+  // A refused source's binding is still in scope, and says nothing.
+  if (binding.poisoned) return {};
   return {
     type: "object",
     additionalProperties: false,
@@ -438,8 +443,9 @@ export function readTemplateDefinitions(inputs: TemplateDefinitionInputs): Templ
         name,
         sentinel: repeat.value as ExpansionSentinel,
         site: keys,
-        keyed: source?.keyed ?? false,
-        element: source?.element,
+        keyed: source.keyed,
+        element: source.element,
+        ...(source.poisoned ? { poisoned: true as const } : {}),
       });
       judgeBindingName(repeat, name, typeof body.as === "string", outer, keys);
       judgeEmit(repeat, body, keys);
@@ -480,7 +486,7 @@ export function readTemplateDefinitions(inputs: TemplateDefinitionInputs): Templ
         report("REPEAT_KEY_INVALID", keys, `The 'key:' of '!for-each' is written with a tag other than '!cel'.`);
         continue;
       }
-      const problems = typeProblems(source, contextFor(inScope), "string");
+      const problems = typeProblems(source, contextFor(inScope), STRING);
       if (problems.length > 0) {
         refuse(keys);
         report("REPEAT_KEY_INVALID", keys, `The 'key:' of '!for-each' ${problems.join("; ")}.`);
@@ -648,10 +654,44 @@ export function readTemplateDefinitions(inputs: TemplateDefinitionInputs): Templ
       };
     };
 
+    const poisoned = new Map<unknown, LoopBinding>();
+    for (const repeat of repeats) {
+      const binding = bindings.get(repeat);
+      if (binding?.poisoned) poisoned.set(repeat.value, binding);
+    }
+    /** Where each loop over a refused source the expansion left as written
+     *  stands in it: such a loop still binds its name over its own `key:` and
+     *  `emit:`. */
+    const standingPoisoned = new WeakMap<TemplateBodyExpansion, readonly { at: string; binding: LoopBinding }[]>();
+    const poisonedIn = (expansion: TemplateBodyExpansion) => {
+      let found = standingPoisoned.get(expansion);
+      if (!found) {
+        const out: { at: string; binding: LoopBinding }[] = [];
+        const visit = (value: unknown, keys: (string | number)[]): void => {
+          if (value === null || typeof value !== "object" || isTaggedSentinel(value) || isCompiledValue(value)) return;
+          const binding = poisoned.get(value);
+          if (binding) out.push({ at: pathText(keys), binding });
+          if (Array.isArray(value)) value.forEach((item, i) => visit(item, [...keys, i]));
+          else for (const [key, field] of Object.entries(value)) visit(field, [...keys, key]);
+        };
+        for (const field of TEMPLATE_BODY_FIELDS) {
+          visit((expansion.definition as Record<string, unknown>)[field], [field]);
+        }
+        standingPoisoned.set(expansion, (found = out));
+      }
+      return found;
+    };
     const bindingsOf = (expansion: TemplateBodyExpansion) => (path: string) => {
-      const instance = expansion.instanceAt(path);
-      if (instance.length === 0) return undefined;
-      return Object.fromEntries(instance.map((frame) => [frame.binding.name, bindingRecordSchema(frame.binding)]));
+      const inScope = Object.fromEntries(
+        expansion.instanceAt(path).map((frame) => [frame.binding.name, bindingRecordSchema(frame.binding)]),
+      );
+      if (poisoned.size > 0) {
+        for (const { at, binding } of poisonedIn(expansion)) {
+          if (binding.name in inScope) continue;
+          if (isUnder(path, `${at}.key`) || isUnder(path, `${at}.emit`)) inScope[binding.name] = bindingRecordSchema(binding);
+        }
+      }
+      return Object.keys(inScope).length > 0 ? inScope : undefined;
     };
     const atAssignment = new WeakMap<TemplateBodyReading, Map<string, DefinitionProjection>>();
     const forcingIds = new WeakMap<object, number>();
@@ -681,19 +721,20 @@ export function readTemplateDefinitions(inputs: TemplateDefinitionInputs): Templ
       written: unknown,
       outer: readonly LoopBinding[],
       keys: readonly (string | number)[],
-    ): { element: Record<string, any> | undefined; keyed: boolean } | undefined {
+    ): { element: Record<string, any> | undefined; keyed: boolean; poisoned?: true } {
       const at = [...keys, "in"];
+      const poisoned = { element: undefined, keyed: false, poisoned: true as const };
       const source = celSourceOf(written);
       const chain = source?.trim();
       const segments = chain && /^[A-Za-z_]\w*(\.[A-Za-z_]\w*)*$/.test(chain) ? chain.split(".") : undefined;
       const invalid = (why: string) => {
         refuse(at);
         // The schema is refused where it is written: no source can be judged by it.
-        if (schemaRefused) return undefined;
+        if (schemaRefused) return poisoned;
         report("REPEAT_SOURCE_INVALID", at,
           `The source of '!for-each' ${why}. A repeat's source is a bare 'self.<path>' or ` +
             `'<binding>.value.<path>' naming a list or a map the schema declares.`);
-        return undefined;
+        return poisoned;
       };
       if (!segments) {
         return invalid(
@@ -711,10 +752,9 @@ export function readTemplateDefinitions(inputs: TemplateDefinitionInputs): Templ
         if (!binding || segments[1] !== "value") {
           return invalid(`'${chain}' reads neither 'self' nor the 'value' of an enclosing loop's binding`);
         }
-        ({ node, root } = binding.element
-          ? walk(binding.element, binding.element, segments.slice(2))
-          : { node: undefined, root: undefined });
-        if (!binding.element) return { element: undefined, keyed: false };
+        // Through a binding nothing is derived from, the source says nothing either.
+        if (binding.poisoned || !binding.element) return poisoned;
+        ({ node, root } = walk(binding.element, binding.element, segments.slice(2)));
       }
       const element = node && root ? elementOf(node, root) : undefined;
       if (!element) {
@@ -1007,6 +1047,11 @@ export function readTemplateDefinitions(inputs: TemplateDefinitionInputs): Templ
               `by the binding of a loop around the reference.`;
           }
           const familyLoop = chain[depth]!;
+          // Nothing is judged against a loop whose source is refused.
+          if (bindings.get(familyLoop)?.poisoned || bindings.get(loop)?.poisoned) {
+            loops.push(loop);
+            continue;
+          }
           const keyed = bindings.get(familyLoop)?.keyed ?? false;
           if ((index.member === "key") !== keyed) {
             return keyed
@@ -1159,13 +1204,16 @@ export function readTemplateDefinitions(inputs: TemplateDefinitionInputs): Templ
           .flatMap((d) => d.values)
           .map((v) => celTypeOfValue(asCel(v)))
           .find((t) => t !== undefined);
-        const selectorType = analysisType && analysisType !== "dyn" ? analysisType : domainType;
+        const selectorType = analysisType && analysisType.kind !== "dyn" ? analysisType : domainType;
+        const selectorText = selectorType === undefined ? "undefined" : formatType(selectorType, true);
+        const integral = selectorType?.kind === "primitive" && selectorType.name === "int";
+        const boolean = selectorType?.kind === "primitive" && selectorType.name === "bool";
         for (const caseKey of cases) {
           if (caseKeyValue(caseKey, selectorType) !== undefined) continue;
           invalidCases.add(`${pathText(keys)}#case:${caseKey}`);
           report("BRANCH_CASE_KEY_INVALID", [...keys, "cases", caseKey],
-            `Case '${caseKey}' of ${label} is not a value of the selector's type '${selectorType}'` +
-              (selectorType === "int" ? ` — an integer case is its decimal literal ('1', never '01').` : selectorType === "bool" ? ` — a boolean case is 'true' or 'false'.` : `.`));
+            `Case '${caseKey}' of ${label} is not a value of the selector's type '${selectorText}'` +
+              (integral ? ` — an integer case is its decimal literal ('1', never '01').` : boolean ? ` — a boolean case is 'true' or 'false'.` : `.`));
         }
         return {
           site, sentinel, tag, keys, dimensions: keysRead,
@@ -1323,7 +1371,7 @@ export function readTemplateDefinitions(inputs: TemplateDefinitionInputs): Templ
 
     /** What the engine refuses about `source` in `context`, and, with `type`,
      *  a result that is not of that type. */
-    function typeProblems(source: string, context: Record<string, any>, type: string | undefined): string[] {
+    function typeProblems(source: string, context: Record<string, any>, type: CelType | undefined): string[] {
       const analysis = celEngine.analyze(source, {
         celEnv: moduleNamesEnvironment(ruleEnv(), moduleNames),
         contextSchema: context,
@@ -1340,19 +1388,20 @@ export function readTemplateDefinitions(inputs: TemplateDefinitionInputs): Templ
           );
         }
       }
-      if (type && out.length === 0 && analysis.type && analysis.type !== "dyn" && analysis.type !== type) {
+      const checked = analysis.checkedType;
+      if (type && out.length === 0 && checked && checked.kind !== "dyn" && !typesEqual(checked, type)) {
         out.push(`types to '${analysis.type}', where a splice's key is a 'string'`);
       }
       return out;
     }
 
-    function staticTypeOf(source: string, context: Record<string, any>): string | undefined {
+    function staticTypeOf(source: string, context: Record<string, any>): CelType | undefined {
       const analysis = celEngine.analyze(source, {
         celEnv: moduleNamesEnvironment(ruleEnv(), moduleNames),
         contextSchema: context,
         moduleNames,
       } as never);
-      return analysis.type;
+      return analysis.checkedType;
     }
 
     /** `segments` read down a schema, crossing a reference slot into the
@@ -1597,7 +1646,7 @@ function templateAssignmentKey(assignment: TemplateAssignment): string {
 
 /** What a `...` splice's representative key raises: a mismatch's sentence, or
  *  that validating the value it emits could not finish. */
-export type SpliceIssue = { readonly path: string; readonly message: string } | { readonly path: string; readonly unfinished: true };
+export type SpliceIssue = { readonly path: string; readonly message: string } | { readonly path: string; readonly unfinished: ValidationUnfinished };
 
 /**
  * A splice's representative entry, held to every value schema a key of its
@@ -1651,7 +1700,8 @@ export function representativeSpliceIssues(
       out.push({ path: at, message: `the mapping a '...' splice emits into takes no entry beside the ones written` });
       continue;
     }
-    const union = { $defs: schema.$defs, anyOf: branches };
+    // Read where each branch sits in the kind's schema.
+    const union = schemaWithinDocument({ anyOf: branches }, schema);
     const standIns: StandIns = new Map();
     const outcome = registry.validateResourceConfig(
       substituteDecodedCelFields(value, union, schema, { standIns, external: (ref) => registry.schemaForId(ref) }),
@@ -1659,7 +1709,7 @@ export function representativeSpliceIssues(
       standIns,
     );
     if (!outcome.finished) {
-      out.push({ path: at, unfinished: true });
+      out.push({ path: at, unfinished: outcome });
       continue;
     }
     if (outcome.issues.length === 0) continue;

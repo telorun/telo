@@ -1,0 +1,24 @@
+kind: Telo.Application
+metadata: { name: DocumentReferenceApp }
+---
+kind: Telo.Definition
+metadata: { name: Router }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    handler:
+      anyOf:
+        - { x-telo-ref: { kind: Telo.Invocable, use: call } }
+        - { type: object, properties: { next: { $ref: "#" } }, additionalProperties: false }
+    label: { type: string }
+---
+kind: Self.Router
+metadata: { name: router }
+handler: { next: { label: x } }
+---
+# Only the Node kernel runs `router`, so a misspelled capability refuses the load
+# in both kernels on that alone.
+kind: Telo.Definition
+metadata: { name: Unrun }
+capability: Telo.Invokable

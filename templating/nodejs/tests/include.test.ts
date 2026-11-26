@@ -11,7 +11,7 @@ import {
 } from "../src/index.js";
 
 const analyze = (engine: typeof includeTextEngine, source: string) =>
-  engine.analyze(source, { celEnv: {} as never, contextSchema: null }).diagnostics;
+  engine.analyze(source, { celEnv: {} as never }).diagnostics;
 
 describe("normalizeIncludePath", () => {
   it("folds `./` and `.` segments to a root-relative path", () => {
@@ -95,7 +95,6 @@ describe("include engines", () => {
   it("report no calls — there is no expression language here", () => {
     const result = includeTextEngine.analyze("assets/bg.svg", {
       celEnv: {} as never,
-      contextSchema: null,
     });
     expect(result.calls).toEqual([]);
   });

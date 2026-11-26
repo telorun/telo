@@ -327,3 +327,27 @@ describe("a template body's `resources`", () => {
     expect(family.message).toContain("runz");
   });
 });
+
+describe("a loop over a refused source", () => {
+  const of = async (name: string) =>
+    summary((await check("refused-source.yaml")).filter((d) => d.message.startsWith(`Telo.Definition/${name}:`)));
+
+  it("is the one finding: every read of its binding and a member reference through it are accepted", async () => {
+    expect(await of("Refused")).toEqual(["REPEAT_SOURCE_INVALID resources[0].in"]);
+  });
+
+  it("still leaves a misspelled root refused", async () => {
+    expect(await of("Misspelled")).toEqual([
+      "CEL_UNKNOWN_IDENTIFIER resources[0].emit.note",
+      "REPEAT_SOURCE_INVALID resources[0].in",
+    ]);
+  });
+
+  it("poisons a loop over its value silently, expanded or left as written", async () => {
+    expect(await of("Nested")).toEqual(["REPEAT_SOURCE_INVALID resources[0].in"]);
+  });
+
+  it("types its binding again once the source is declared", async () => {
+    expect(await of("Declared")).toEqual(["CEL_UNKNOWN_FIELD resources[0].emit.label"]);
+  });
+});

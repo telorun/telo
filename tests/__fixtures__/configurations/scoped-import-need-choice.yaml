@@ -1,0 +1,32 @@
+# A scoped import a choice writes supplies a need its library does not declare:
+# the need table's refusal holds where the import is — beneath a chosen holder,
+# in a chosen scope array and as a member chosen at a scope-member position — and
+# so does the refusal of a library it alone reaches, reported at the import.
+kind: Telo.Application
+metadata: { name: ScopedImportNeedChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+--- !if
+metadata: { name: holder }
+if: !cel "variables.flag1"
+then:
+  kind: Telo.Sequence
+  with: [{ kind: Telo.Import, metadata: { name: Inner }, source: ../scoped-imports/choice-need-lib, needs: { bogus: { url: x } } }]
+  steps: [{ name: noop, value: 1 }]
+---
+kind: Telo.Sequence
+metadata: { name: scope }
+with: !if
+  if: !cel "variables.flag1"
+  then:
+    - { kind: Telo.Import, metadata: { name: Inner }, source: ../scoped-imports/choice-need-lib, needs: { bogus: { url: x } } }
+    - { kind: Telo.Import, metadata: { name: Bad }, source: ../scoped-imports/choice-bad-need-lib }
+steps: [{ name: noop, value: 1 }]
+---
+kind: Telo.Sequence
+metadata: { name: member }
+with:
+  - !if
+    metadata: { name: Inner }
+    if: !cel "variables.flag1"
+    then: { kind: Telo.Import, source: ../scoped-imports/choice-need-lib, needs: { bogus: { url: x } } }
+steps: [{ name: noop, value: 1 }]

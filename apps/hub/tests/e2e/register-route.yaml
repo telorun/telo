@@ -307,7 +307,7 @@ steps:
   - name: suggested
     invoke: { kind: Yaml.Parse }
     inputs:
-      text: !cel "steps.suggest.result.content[0].text"
+      text: !cel "steps.suggest.result.content[0].?text.orValue('')"
   - name: assert
     inputs:
       actual:

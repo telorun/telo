@@ -1,0 +1,7 @@
+kind: Telo.Library
+metadata:
+  name: LibBadType
+  version: 1.0.0
+variables:
+  title:
+    type: strng

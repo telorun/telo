@@ -142,7 +142,8 @@ fn refuses_each_use_of_a_type_as_node_does() {
     // A namespace's own declarations are not the registry's, so no width is refused there.
     let mut environment = CelEnvironment::default();
     environment.register_namespace("Alias", vec!["f(int, int, int, int, int): int".into()], NamespaceOptions::default()).expect("registers");
-    assert_eq!(environment.definitions().namespaces[0].functions, ["f(int, int, int, int, int): int"]);
+    assert_eq!(environment.definitions().namespaces[0].functions[0].declaration, "f(int, int, int, int, int): int");
+    assert_eq!(environment.definitions().namespaces[0].functions.len(), 1);
 }
 
 fn function(name: &str, signature: &str, receiver: Option<&str>, parameters: &[&str], returns: &str, origin: Option<&str>) -> FunctionDefinition {

@@ -396,6 +396,42 @@ describe("a forward view's relation sites", () => {
     const inline = await keysPerSite("forwarded-sequence-inline-8.yaml", forwardedSequenceNested(8, "inline"));
     expect(inline.keys).toBeLessThanOrEqual(top.keys);
   }, 600_000);
+  // A key holds a sibling entry's view only where a reference aimed between
+  // them joins the two: a body repeating an entry n times costs each key the
+  // same whatever n is.
+  it("hold no sibling view nothing references", async () => {
+    const fan = (n: number) =>
+      [
+        "kind: Telo.Application",
+        "metadata: { name: Fans }",
+        "targets: [!ref fan]",
+        "---",
+        "kind: Telo.Definition",
+        "metadata: { name: Fan }",
+        "capability: Telo.Runnable",
+        "schema: { type: object, required: [items], properties: { items: { type: array, items: { type: string } } } }",
+        "resources:",
+        "  - !for-each",
+        "    metadata: { name: members }",
+        '    in: !cel "self.items"',
+        "    emit:",
+        "      kind: Telo.Sequence",
+        '      steps: [{ name: s, value: !cel "each.value" }]',
+        "targets:",
+        "  - !for-each",
+        '    in: !cel "self.items"',
+        "    emit: !ref members[each.index]",
+        "---",
+        "kind: Fans.Fan",
+        "metadata: { name: fan }",
+        `items: [${Array.from({ length: n }, (_, i) => `item${i}`).join(", ")}]`,
+        "",
+      ].join("\n");
+    const two = await keysPerSite("fan-2.yaml", fan(2));
+    const eight = await keysPerSite("fan-8.yaml", fan(8));
+    expect(two.nodes).toBeGreaterThan(0);
+    expect(eight.nodes).toBe(two.nodes);
+  }, 120_000);
 });
 
 describe("a union's schema site", () => {

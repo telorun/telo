@@ -1080,12 +1080,13 @@ export function conditionedCallGraph(inputs: ConditionedCallGraphInputs): Condit
     const split = new Set<Alternatives>();
     // A reference site varying named shapes read differently is a cut point:
     // the view is read once with every cut point on its first side, then once
-    // per other side of each — those enclosing it on their first — each place
-    // holding on its side.
+    // per other side of each — the cut points enclosing it on the sides that
+    // reach it, every other one on its first — each place holding on its side.
     const readings: SlotReading[] = [{ chain: [] }];
     const known = new Set<string>(["[]"]);
     for (let r = 0; r < readings.length; r++) readSide(readings[r]!, r === 0);
     function readSide(reading: SlotReading, firstReading: boolean): void {
+    reportKeyCost({ kind: "graph-side", declaration });
     const met = new Map<string, MetSlot>();
     const read = () => {
       const normalized = normalizeInlineResources([view], defs, aliases, aliasesByModule);
@@ -1099,9 +1100,13 @@ export function conditionedCallGraph(inputs: ConditionedCallGraphInputs): Condit
     const { normalized, graph } = withShapes(() =>
       varying ? defs.withDecidedReach(varying, slotDecision(reading, met, space, view), read) : read(),
     );
-    // Each slot this side met it does not read as a slot: a side of its own.
+    // Each slot this side met beneath the cut point it reads another side of
+    // has sides of its own; one outside it is read off the reading enclosing
+    // it, whose places this one does not hold.
+    const enclosing = reading.chain[reading.chain.length - 1]?.slot;
     for (const slot of met.values()) {
       if (reading.chain.some((each) => each.slot.id === slot.id)) continue;
+      if (enclosing && !isAtOrAbove(enclosing.keys, slot.keys)) continue;
       for (let side = 1; side < slot.sides.length; side++) {
         const chain = [...reading.chain, { slot, side }];
         const id = JSON.stringify(chain.map((each) => [each.slot.id, each.side]));

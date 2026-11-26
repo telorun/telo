@@ -188,9 +188,9 @@ steps:
     invoke: !ref Assert.equals
     inputs:
       actual:
-        results: !cel "steps.run.result.toolResults.map(r, r.name + ': ' + r.content)"
+        results: !cel "steps.run.result.toolResults.map(r, r.name + ': ' + (type(r.content) == string ? r.content : ''))"
         replyMessages: !cel "steps.run.result.messages.map(m, m.role == 'tool' ? 'tool ' + m.toolCallId : m.role)"
-        textParts: !cel "steps.run.result.messages[3].content.map(p, p.toolCallId == steps.run.result.steps[0].textCalls[0].id)"
+        textParts: !cel "cel.bind(c, steps.run.result.messages[3].content, type(c) == list ? c.map(p, p.toolCallId == steps.run.result.steps[0].textCalls[0].id) : [])"
       expected:
         results:
           - "multiply: 6"

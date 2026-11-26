@@ -20,8 +20,10 @@ import {
   reservedImportAliasMessage,
   isResolvedReference,
   runtimeCodeOf,
+  moduleLangOf,
+  textParametersOfBlock,
 } from "@telorun/analyzer";
-import type { AnalysisDiagnostic, ParsedExportEntry } from "@telorun/analyzer";
+import type { AnalysisDiagnostic, OwnValuePositions, ParsedExportEntry } from "@telorun/analyzer";
 import { refuseExpansionConstructs } from "../../expansion-refusals.js";
 import type { ResourceInstance, ResourceManifest } from "@telorun/sdk";
 import { RuntimeError, TEARDOWN_LAST } from "@telorun/sdk";
@@ -29,19 +31,22 @@ import { publishedPropsOf } from "../../evaluation-context.js";
 import type { BuiltinControllerContext } from "../../internal-context.js";
 import { buildScopeConfig, type LoggingManifestBlock } from "../../logging/kernel-logging.js";
 import { normalizeModuleInputs } from "../../declared-module-inputs.js";
+import { importInputShapes, type ImportInputShapes } from "../../module-input-shapes.js";
+import { SchemaValidator } from "../../schema-validator.js";
 import { membersRefusal, settleMembersValue, type SchemaAccepts } from "../../members-values.js";
-import { settleImportInputs } from "./import-inputs.js";
+import { settleImportInputs, settleTextParameters, textParameterOrigins } from "./import-inputs.js";
 import { importFailure } from "../../import-load-failure.js";
 import { refuseReservedKindPrefix } from "../../reserved-kind-prefix.js";
+import { refuseInPlaceCycleModuleInputs } from "../resource-definition/in-place-cycle-guard.js";
 import { ModuleContext } from "../../module-context.js";
 import { isDefaultPolicy, normalizeRuntime } from "../../runtime-registry.js";
-import { loadLibraryTarget, resolveLibraryScope } from "./library-scope.js";
+import { loadLibraryTarget, resolveLibraryScope, type LibraryScope } from "./library-scope.js";
 import { isDefinitionRegistered } from "../resource-definition/registered-definitions.js";
 import { isNeedFulfilment, needFulfilment, type NeedFulfilment } from "../../need-fulfilment.js";
 import { refuseUnusableDirectories } from "../../durable-directories.js";
 import { markWrittenDeclaration } from "../../failure-location.js";
 import { environmentNeed } from "./environment-needs.js";
-import { expandForImport } from "../../running-configuration.js";
+import { importChoices } from "../../running-configuration.js";
 import {
   assertNoSharedOverride,
   assertSharedInputsAgree,
@@ -175,42 +180,11 @@ export async function create(
     throw new RuntimeError(runtimeCodeOf(String(refused[0]!.code)), refused.map((d) => d.message).join("\n"));
   }
   const libraryDocument = scope.rawManifests.find((m: any) => m.kind === "Telo.Library")! as any;
+  refuseInPlaceCycleModuleInputs(libraryDocument);
 
   // Validate required inputs before injecting.
   validateRequiredInputs(libraryDocument.variables ?? {}, resource.variables ?? {}, "variables");
   validateRequiredInputs(libraryDocument.secrets ?? {}, resource.secrets ?? {}, "secrets");
-
-  // Evaluate the import's variables/secrets ONCE against the IMPORTER's config
-  // scope, instead of baking the raw compiled-value objects verbatim. Resolution
-  // is eager and per-hop: each importer resolves its child's inputs from its own
-  // already-settled config, so config flows app -> lib -> lib at any nesting depth
-  // and a leaf reads `variables.X` as an O(1) concrete lookup with no chain-walk.
-  // The single concrete result seeds both the child scope and the snapshot value-
-  // flow surface, so they can never diverge.
-  //
-  // NOTE: `expandValue` evaluates against the importer's FULL context (variables /
-  // secrets, plus env/resources for a root app). The config-only import contract —
-  // no resources/env/ports in import inputs — is enforced by the analyzer, not here;
-  // a `${{ resources.X }}` slipping past analysis (skipValidation / programmatic
-  // load) would evaluate at runtime rather than being rejected.
-  // Defaults declared on the library's own `variables` / `secrets` contract fill
-  // any input the importer didn't override — the import-time analogue of the root
-  // Application's env defaulting (`resolveApplicationEnv`). Child modules are
-  // isolated from the host environment, so there is no env lookup here: the value
-  // is the importer's override, else the library default. Without this a contract
-  // var with a default but no override reaches a `${{ variables.X }}` template as
-  // a missing key, even though analysis validated the reference against the
-  // (defaulted) contract.
-  // Then read against the library's declared entries — decoded, built and
-  // validated (`settleImportInputs`), the one decode site an import is.
-  const settledInputs = settleImportBlocks(
-    resource,
-    (libraryDocument.variables ?? {}) as Record<string, unknown>,
-    (libraryDocument.secrets ?? {}) as Record<string, unknown>,
-    alias,
-    ctx,
-  );
-  const { variables: importVariables, secrets: importSecrets } = settledInputs;
 
   // Where this module instance sits in the import tree, which is what names its
   // needs: beneath the importer's own path, or — for a singleton — beneath the
@@ -220,6 +194,47 @@ export async function create(
   const needPath = readLibraryLifecycle(libraryDocument) === "shared"
     ? [libraryDocument.metadata.name as string]
     : [...(ctx.moduleContext as unknown as ModuleContext).needPath, ...(scopeRun?.scopeHolders ?? []), alias];
+
+  // The import's `variables:` / `secrets:`, evaluated ONCE against the
+  // IMPORTER's config scope: each importer resolves its child's inputs from its
+  // own already-settled config, so config flows app -> lib -> lib at any depth
+  // and a leaf reads `variables.X` as a concrete lookup. The one evaluation
+  // decides the library's choices and seeds both the child scope and the
+  // snapshot value-flow surface, so they can never diverge.
+  //
+  // NOTE: `expandValue` evaluates against the importer's FULL context. The
+  // config-only import contract — no resources/env/ports in import inputs — is
+  // enforced by the analyzer, not here.
+  const written = importBlocksOf(resource, ctx);
+  const lang = moduleLangOf(libraryDocument);
+
+  // The inputs the library's choices decide on are settled first, against
+  // entries that reach no shape a configuration varies — the reading refuses a
+  // choice over one — so the documents can be expanded for this import.
+  const choices = importChoices(scope.rawManifests, libraryRegistry, scope.targetsAt(needPath));
+  const [writtenDeclarations] = libraryRegistry.withCanonicalSchemaTypeRefs([libraryDocument]) as Record<string, any>[];
+  const dimensionEntries = {
+    variables: pickEntries(writtenDeclarations!.variables, choices.inputNames.variables),
+    secrets: pickEntries(writtenDeclarations!.secrets, choices.inputNames.secrets),
+  };
+  const dimensionInputs = settleImportBlocks(
+    resource,
+    written,
+    dimensionEntries,
+    alias,
+    ctx,
+    lang,
+    importInputShapes(
+      dimensionEntries,
+      libraryDocument,
+      alias,
+      (id) => libraryRegistry.schemaForId(id),
+      (id) => libraryRegistry.schemaForId(id),
+      kernelSchemas(ctx),
+      isolatedValidatorsOf(scope),
+    ),
+  );
+
   // What fulfils each need the library declares — the need table refused every
   // defect here at load; these are its backstops for a load that never ran it.
   const { bindings: needBindings, unrequired: unrequiredNeeds } = bindNeedSupplies(
@@ -235,28 +250,43 @@ export async function create(
   // every choice in them, before any is registered: an unchosen branch never
   // exists here.
   const manifests = analyzer.normalize(
-    expandForImport(
-      scope.rawManifests,
-      {
-        variables: importVariables,
-        secrets: importSecrets,
-        // A resource input's presence is read as a need's is: by name, `null`
-        // when this import omits it.
-        needs: new Map([
-          ...[...needBindings].map(([name, binding]) => [name, binding?.fulfilment.fields ?? null] as const),
-          ...readResourceInputs(libraryDocument).map(
-            (input) => [input.name, borrowed.has(input.name) ? {} : null] as const,
-          ),
-        ]),
-      },
-      libraryRegistry,
-      scope.targetsAt(needPath),
-    ),
+    choices.expand({
+      variables: dimensionInputs.variables,
+      secrets: dimensionInputs.secrets,
+      // A resource input's presence is read as a need's is: by name, `null`
+      // when this import omits it.
+      needs: new Map([
+        ...[...needBindings].map(([name, binding]) => [name, binding?.fulfilment.fields ?? null] as const),
+        ...readResourceInputs(libraryDocument).map(
+          (input) => [input.name, borrowed.has(input.name) ? {} : null] as const,
+        ),
+      ]),
+    }),
     libraryRegistry,
     scope.targetsAt(needPath),
   );
+  // Every kernel read of a named shape for this library — its entries' first —
+  // goes through the configuration these inputs decided.
+  const view = libraryRegistry.forConfiguration(manifests);
   const moduleManifest = manifests.find((m: any) => m.kind === "Telo.Library")!;
   const targetModule: string = moduleManifest.metadata.name;
+
+  // Then the whole block, against the entries as this configuration declares
+  // them — decoded, built and validated (`settleImportInputs`), the one decode
+  // site an import is.
+  const [declared] = libraryRegistry.withCanonicalSchemaTypeRefs([moduleManifest]) as Record<string, any>[];
+  const libraryInputs = { variables: declared!.variables ?? {}, secrets: declared!.secrets ?? {} };
+  const inputShapes = importInputShapes(
+    libraryInputs,
+    libraryDocument,
+    alias,
+    view.shapeLookup,
+    (id) => libraryRegistry.schemaForId(id),
+    kernelSchemas(ctx),
+    isolatedValidatorsOf(scope),
+  );
+  const settledInputs = settleImportBlocks(resource, written, libraryInputs, alias, ctx, lang, inputShapes);
+  const { variables: importVariables, secrets: importSecrets } = settledInputs;
   const declaredInputs = readResourceInputs(moduleManifest);
   validateResourceInputs(declaredInputs, borrowed, targetModule);
   // An optional input this import omits is referenced nowhere the expansion
@@ -303,9 +333,7 @@ export async function create(
     authoredModuleMetadata(moduleManifest.metadata as Record<string, unknown> | undefined),
   );
   childCtx.needPath = needPath;
-  // Every kernel read of a named shape for a kind this library declares goes
-  // through the configuration these inputs decided.
-  childCtx.setAnalysisView(libraryRegistry.forConfiguration(manifests));
+  childCtx.setAnalysisView(view);
   // A built value holding a sensitive member (a URL's password) is redacted in the
   // library's context and the importer's — the import is a load-time site.
   if (settledInputs.redacted.length > 0) {
@@ -560,8 +588,10 @@ export async function create(
         secrets: importSecrets,
         resources: new Map([...borrowed].map(([name, b]) => [name, b.instance])),
         needs: supplies,
-        declaredVariables: (moduleManifest.variables ?? {}) as Record<string, any>,
-        declaredSecrets: (moduleManifest.secrets ?? {}) as Record<string, any>,
+        declaredVariables: libraryInputs.variables,
+        declaredSecrets: libraryInputs.secrets,
+        inputShapes,
+        lang: moduleLangOf(moduleManifest),
         exportEntries,
         kindEntries,
         exportedResourceNames,
@@ -722,10 +752,12 @@ function borrowSharedLibrary(
   assertNoSharedOverride(resource, alias, entry.module);
   const settledInputs = settleImportBlocks(
     resource,
-    entry.declaredVariables,
-    entry.declaredSecrets,
+    importBlocksOf(resource, ctx),
+    { variables: entry.declaredVariables, secrets: entry.declaredSecrets },
     alias,
     ctx,
+    entry.lang,
+    entry.inputShapes,
   );
   const { variables: importVariables, secrets: importSecrets } = settledInputs;
   if (settledInputs.redacted.length > 0) {
@@ -796,39 +828,87 @@ function borrowSharedLibrary(
   };
 }
 
-/** An import's `variables:` / `secrets:`, evaluated in the importer's scope,
- *  defaulted from the library's declaration, settled against it, and each in the
- *  numeric representation the library declares for it. */
+/** An import's `variables:` / `secrets:`, evaluated in the importer's scope. */
+function importBlocksOf(
+  resource: any,
+  ctx: BuiltinControllerContext,
+): { variables: Record<string, unknown>; secrets: Record<string, unknown> } {
+  return {
+    variables: (ctx.expandValue(resource.variables, {}) as Record<string, unknown>) ?? {},
+    secrets: (ctx.expandValue(resource.secrets, {}) as Record<string, unknown>) ?? {},
+  };
+}
+
+/** The entries of `block` named in `names`. */
+function pickEntries(block: Record<string, unknown> | undefined, names: ReadonlySet<string>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const name of names) if (block && Object.hasOwn(block, name)) out[name] = block[name];
+  return out;
+}
+
+/** The kernel's own validator, for the shapes no configuration varies. */
+function kernelSchemas(ctx: BuiltinControllerContext) {
+  return {
+    registered: ctx.registeredSchemas(),
+    compile: (schema: Record<string, any>, ownValues?: OwnValuePositions) =>
+      ctx.registeredSchemas().compile(schema, { persist: false, ownValues }),
+  };
+}
+
+/** One validator per distinct set of shapes a library's imports validate
+ *  against, kept with the library's scope. */
+const isolatedValidators = new WeakMap<LibraryScope, Map<string, SchemaValidator>>();
+function isolatedValidatorsOf(scope: LibraryScope) {
+  return (shapes: ReadonlyMap<string, Record<string, any>>): SchemaValidator => {
+    let byShapes = isolatedValidators.get(scope);
+    if (!byShapes) isolatedValidators.set(scope, (byShapes = new Map()));
+    const key = JSON.stringify([...shapes].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+    let validator = byShapes.get(key);
+    if (!validator) {
+      validator = new SchemaValidator();
+      for (const [id, shape] of shapes) validator.addSchema(id, shape);
+      byShapes.set(key, validator);
+    }
+    return validator;
+  };
+}
+
+/** An import's evaluated `variables:` / `secrets:` (`written`), defaulted from
+ *  the library's declaration, settled against it through `shapes`, and each in
+ *  the numeric representation the library declares for it. */
 function settleImportBlocks(
   resource: any,
-  declaredVariables: Record<string, unknown>,
-  declaredSecrets: Record<string, unknown>,
+  written: { readonly variables: Record<string, unknown>; readonly secrets: Record<string, unknown> },
+  declared: { readonly variables: Record<string, unknown>; readonly secrets: Record<string, unknown> },
   alias: string,
   ctx: BuiltinControllerContext,
+  libraryLang: string | null,
+  shapes: ImportInputShapes,
 ): { variables: Record<string, unknown>; secrets: Record<string, unknown>; redacted: string[] } {
-  const compile = (schema: Record<string, any>) => ctx.createSchemaValidator(schema);
-  const external = (ref: string) => ctx.lookupSchema(ref) as Record<string, any> | undefined;
-  const variables = settleImportInputs(
-    applyDefaults((ctx.expandValue(resource.variables, {}) as Record<string, unknown>) ?? {}, declaredVariables),
-    declaredVariables,
-    "variables",
-    alias,
-    compile,
-    acceptsWith(ctx),
-    external,
-  );
-  const secrets = settleImportInputs(
-    applyDefaults((ctx.expandValue(resource.secrets, {}) as Record<string, unknown>) ?? {}, declaredSecrets),
-    declaredSecrets,
-    "secrets",
-    alias,
-    compile,
-    acceptsWith(ctx),
-    external,
-  );
+  // A text the import writes is the importing module's, in its language.
+  const langs = {
+    importer: ctx.langOfModuleFile(resource.metadata?.source ?? (ctx.moduleContext as ModuleContext).source),
+    library: libraryLang,
+  };
+  const settle = (block: "variables" | "secrets") => {
+    const entries = declared[block];
+    const params = textParametersOfBlock(entries, block);
+    const expanded = written[block];
+    const origins = textParameterOrigins(params, resource[block], expanded, alias);
+    const supplied = applyDefaults(expanded, entries);
+    for (const name of origins.computed) delete supplied[name];
+    shapes.refuseUnresolved(block, supplied);
+    const settled = settleImportInputs(supplied, entries, block, alias, shapes.compile, acceptsWith(ctx), shapes.resolve);
+    return {
+      values: settleTextParameters(settled.values, expanded, params, origins, langs, alias, shapes.compile),
+      redacted: settled.redacted,
+    };
+  };
+  const variables = settle("variables");
+  const secrets = settle("secrets");
   return {
-    variables: normalizeModuleInputs(variables.values, declaredVariables),
-    secrets: normalizeModuleInputs(secrets.values, declaredSecrets),
+    variables: normalizeModuleInputs(variables.values, declared.variables, shapes.resolve),
+    secrets: normalizeModuleInputs(secrets.values, declared.secrets, shapes.resolve),
     redacted: [...variables.redacted, ...secrets.redacted],
   };
 }

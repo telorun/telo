@@ -1,0 +1,11 @@
+# An application variable whose schema refers to itself without descending into
+# the value: refused where it is declared, its default unjudged.
+kind: Telo.Application
+metadata: { name: SchemaInPlaceCycleDefault, version: 1.0.0 }
+variables:
+  tree: { env: TREE, type: object, $ref: "#", default: { leaf: 1 } }
+imports:
+  Worker:
+    source: ./worker
+    variables:
+      tree: !cel "variables.tree"

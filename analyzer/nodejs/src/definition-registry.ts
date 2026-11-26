@@ -1,9 +1,12 @@
 import type { NamedShapeLookup } from "./eval-paths.js";
+import { InPlaceCycleGuard } from "./schema-in-place-cycle.js";
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { schemaWithTagsAsText } from "./schema-tag-text.js";
 import { canonicalTypeSchemaId, parseCanonicalTypeSchemaId, parseTeloTypeRef } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import { KERNEL_BUILTINS } from "./builtins.js";
+import { frozenSchemaCopy, isFrozenSchema } from "./frozen-kind-schema.js";
+import { sourceDocumentOf } from "./schema-provenance.js";
 import { isCapabilityRole } from "./capability-roster.js";
 import { moduleAliasScope, type KindResolver } from "./module-alias-scope.js";
 import {
@@ -22,7 +25,15 @@ import {
   type VaryingShapes,
 } from "./reference-reach.js";
 import { navigateJsonPointer } from "./schema-compat.js";
-import { createAjv, finishedValidation, unlessOverflow, type SchemaValidationOutcome } from "./schema-validation.js";
+import { schemaAtPointer } from "./schema-at-pointer.js";
+import {
+  createAjv,
+  finishedValidation,
+  returnBlankAjv,
+  takeBlankAjv,
+  withinValueDepth,
+  type SchemaValidationOutcome,
+} from "./schema-validation.js";
 import { SchemaNodeValidator } from "./schema-node-validator.js";
 import { judgeSchemaFindings, type UnionPlan } from "./schema-findings-judge.js";
 import type { StandIns } from "./stand-in-findings.js";
@@ -50,6 +61,16 @@ import {
   type DeclaredDisplayMessageEntry,
   type ThrowsBlock,
 } from "./throws-ceiling.js";
+import {
+  carveReadingSchema,
+  carveSummaryAt,
+  currentCarveContext,
+  isRecordingCarveFocus,
+  observeCarveJudgement,
+  registerSchemaCarveKeyword,
+  withCarveOffset,
+} from "./schema-carve.js";
+import type { OwnValuePositions } from "./value-depth.js";
 
 /**
  * Everything a kind means once its `extends` chain is folded, as one answer —
@@ -115,7 +136,9 @@ export type ReachDecision<C = unknown> = (condition: C, site: ConditionedReachSi
 /** The reach in force while one is decided ({@link DefinitionRegistry.withDecidedReach}). */
 interface DecidedReach {
   readonly varying: VaryingShapeClasses;
-  readonly decide: ReachDecision;
+  /** Each item kept where it decides; absent while the reach is read over
+   *  the classes ({@link DefinitionRegistry.withConditionedReach}). */
+  readonly decide?: ReachDecision;
   /** What a read of a kind's patterns or positions — no site to decide —
    *  answers a varying shape with: the class `holds` takes, or every class
    *  as alternatives where none is given. */
@@ -172,6 +195,8 @@ interface SchemaStore {
   readonly ajv: ReturnType<typeof createAjv>;
   readonly compiled: WeakMap<Record<string, any>, CompiledValidator>;
   nodes?: { ajv: ReturnType<typeof createAjv>; validator: SchemaNodeValidator };
+  /** Which schemas reach an in-place cycle, read through this store. */
+  cycles?: InPlaceCycleGuard;
 }
 
 /**
@@ -277,6 +302,7 @@ export class DefinitionRegistry {
    *  (`AnalysisRegistry.registerDefinition`). */
   register(definition: ResourceDefinition, written?: object, kinds?: ResourceDefinition): void {
     this.add(definition, false);
+    if (written) this.registeredFrom.set(definition, written);
     const key = registryKeyOf(definition);
     if (written && kinds && kinds !== written) {
       this.canonicalKindCopies.set(written, kinds);
@@ -301,6 +327,23 @@ export class DefinitionRegistry {
     return (this.canonicalKindsByKey.get(key) as T | undefined) ?? written;
   }
   private readonly canonicalKindCopies = new WeakMap<object, ResourceDefinition>();
+  /** The document each registered definition was derived from. */
+  private readonly registeredFrom = new WeakMap<ResourceDefinition, object>();
+
+  /** The frozen canonical schema registered for the kind `kind` declares, when
+   *  `kind` — or the document it was copied from — is the document registered
+   *  for that kind; the passes judging a kind document read it rather than a
+   *  copy of their own. */
+  registeredSchemaOf(kind: { metadata?: unknown }): Record<string, any> | undefined {
+    const metadata = kind.metadata as { name?: unknown; module?: unknown } | undefined;
+    if (typeof metadata?.name !== "string") return undefined;
+    const key = typeof metadata.module === "string" && metadata.module ? `${metadata.module}.${metadata.name}` : metadata.name;
+    const definition = this.defs.get(key);
+    const written = definition && this.registeredFrom.get(definition);
+    if (!written || (kind !== written && sourceDocumentOf(kind) !== written)) return undefined;
+    const schema = definition.schema;
+    return isFrozenSchema(schema) ? (schema as Record<string, any>) : undefined;
+  }
   private readonly canonicalKindsByKey = new Map<string, ResourceDefinition>();
 
 
@@ -516,8 +559,18 @@ export class DefinitionRegistry {
     const layer = this.layer;
     if (!layer) throw new Error("internal: no named-shape layer is open.");
     this.layer = undefined;
+    this.releaseLayerStore(layer);
     this.clearReaches();
     return layer.registered;
+  }
+
+  /** Hands a layer's instances back blank: nothing compiled for one run
+   *  answers another. */
+  private releaseLayerStore(layer: ShapeLayer): void {
+    if (!layer.store) return;
+    returnBlankAjv(layer.store.ajv);
+    if (layer.store.nodes) returnBlankAjv(layer.store.nodes.ajv);
+    layer.store = undefined;
   }
 
   /** Marks `ids` as shapes some configuration varies, until
@@ -539,7 +592,8 @@ export class DefinitionRegistry {
   /** The open layer's instance: every shared registration, then its own. */
   private layerStore(layer: ShapeLayer): SchemaStore {
     if (!layer.store) {
-      const ajv = createAjv();
+      // A key's door judges on the layer, so the carves it issues answer there.
+      const ajv = takeBlankAjv("layer", carvingAjv);
       for (const { schema, id } of this.registeredSchemas) ajv.addSchema(schema, id, undefined, false);
       layer.store = { ajv, compiled: new WeakMap() };
     }
@@ -596,7 +650,8 @@ export class DefinitionRegistry {
   private nodeValidator(): SchemaNodeValidator {
     const store = this.store;
     if (!store.nodes) {
-      const ajv = createAjv("analysis-verbose");
+      const ajv =
+        store === this.sharedStore ? createAjv("analysis-verbose") : takeBlankAjv("layer-verbose", verboseCarvingAjv);
       for (const { schema, id } of this.registeredSchemas) ajv.addSchema(schema, id, undefined, false);
       if (store !== this.sharedStore) {
         for (const [id, schema] of this.layer!.registered) {
@@ -636,13 +691,32 @@ export class DefinitionRegistry {
     standIns: StandIns | undefined,
   ): SchemaValidationOutcome<AjvErrorLike> {
     const plan = this.unionPlan;
+    const carves = currentCarveContext();
+    // A carve's stand-in is read, for a union's candidates and tags, as its
+    // summary's decision part where it applies.
+    const reference = (node: object, ref: string, at?: string) => {
+      const target = this.nodeValidator().reference(node, ref);
+      const found = carves && at !== undefined ? carveSummaryAt((target as { schemaCarve?: unknown } | undefined)?.schemaCarve, at) : undefined;
+      return found ? carveReadingSchema(found.summary) : target;
+    };
     return judgeSchemaFindings(errors, {
       value: data,
       schema,
       ...(standIns ? { standIns } : {}),
-      validate: (node, value) => this.nodeValidator().findingsFor(schema)(node, value),
-      reference: (node, ref) => this.nodeValidator().reference(node, ref),
+      validate: (node, value, at) => withCarveOffset(at, () => this.nodeValidator().findingsFor(schema)(node, value)),
+      reference,
       ...(plan ? { plan, unionsAt: (place: string) => this.nodeValidator().unionsAt(schema, data, place) } : {}),
+      ...(carves
+        ? {
+            carve: (carve: string, place: string) => carves.table.get(carve)?.get(place),
+            observe: (judged) =>
+              observeCarveJudgement(carves, judged, errors ?? [], data, schema, reference, (ref, at) => {
+                const target = this.nodeValidator().absoluteReference(ref);
+                const found = carveSummaryAt((target as { schemaCarve?: unknown } | undefined)?.schemaCarve, at);
+                return found ? carveReadingSchema(found.summary) : target;
+              }, (finding) => schemaIssues([finding as AjvErrorLike], data)[0]?.message ?? finding.message ?? ""),
+          }
+        : {}),
     });
   }
 
@@ -703,36 +777,56 @@ export class DefinitionRegistry {
     return finishedValidation((withEnumValues(explainFormatErrors(judged.issues, data), data) ?? []).map(formatSingleError));
   }
 
+  /** {@link validateWithRefs} for the node at `keys` of `document`, read where it
+   *  sits there (`schemaAtPointer`), so its `#…` references name `document`'s
+   *  nodes — never the node taken out of it. */
+  validateAtPointer(
+    data: unknown,
+    document: Record<string, any>,
+    keys: readonly string[],
+    standIns?: StandIns,
+  ): SchemaValidationOutcome<string> {
+    return this.validateWithRefs(data, schemaAtPointer(document, keys), standIns);
+  }
+
   /** {@link validateWithRefs}, with the path each issue is anchored at. */
   validateResourceConfig(
     data: unknown,
     schema: Record<string, any>,
     standIns?: StandIns,
+    /** The values `data` holds that are validated on their own, each a leaf of
+     *  its depth (`own-value-positions.ts`). */
+    ownValues?: OwnValuePositions,
   ): SchemaValidationOutcome {
-    const judged = this.judgedValidation(data, schema, standIns);
+    // A carve focus being recorded reads the judgement of a valid value too.
+    const judged = this.judgedValidation(data, schema, standIns, true, ownValues);
     return judged.finished ? finishedValidation(schemaIssues(judged.issues, data)) : judged;
   }
 
   /** `data` validated against `schema` and every finding judged — none for a
-   *  schema that does not compile — or that the validation could not finish. */
+   *  schema that does not compile — or that the validation could not finish.
+   *  With `carveFocus`, a valid value is judged while a carve focus records. */
   private judgedValidation(
     data: unknown,
     schema: Record<string, any>,
     standIns: StandIns | undefined,
+    carveFocus = false,
+    ownValues?: OwnValuePositions,
   ): SchemaValidationOutcome<AjvErrorLike> {
     const validate = this.compiledFor(schema);
     if (!validate) return finishedValidation([]);
-    return unlessOverflow(() => {
+    return withinValueDepth(data, () => {
       const valid = validate(data);
-      if (valid && !this.judgedWhole(data)) return finishedValidation([]);
+      if (valid && !this.judgedWhole(data) && !(carveFocus && isRecordingCarveFocus())) return finishedValidation([]);
       return this.judged(valid ? [] : validate.errors, data, schema, standIns);
-    });
+    }, ownValues);
   }
 
   /** Memoized per schema OBJECT — the analyzer validates every resource of a
    *  kind against the same one, and this runs at keystroke time in an editor.
    *  A schema AJV refuses compiles to `undefined`; that is reported once,
-   *  anchored on the owning definition, by `schemaCompileError`. */
+   *  anchored on the owning definition, by `schemaCompileError`. So does one
+   *  reaching an in-place cycle, reported at its declaration. */
   private compiledFor(schema: Record<string, any>): CompiledValidator | undefined {
     const store = this.store;
     const cached = store.compiled.get(schema);
@@ -741,6 +835,10 @@ export class DefinitionRegistry {
       const validate = this.compileResolvingKinds(() =>
         this.store.ajv.compile(schemaWithTagsAsText(this.withFragments(schema)) as object),
       );
+      // A schema recursing in place never finishes validating; its declaration
+      // is refused (`SCHEMA_IN_PLACE_CYCLE`), and nothing is validated against it.
+      store.cycles ??= new InPlaceCycleGuard((id) => this.schemaForId(id));
+      if (store.cycles.holds(schema)) return undefined;
       this.store.compiled.set(schema, validate);
       return validate;
     } catch (err) {
@@ -766,24 +864,34 @@ export class DefinitionRegistry {
     }
   }
 
-  /** {@link schemaCompileError} of a schema {@link validateResourceConfig} has
-   *  validated against: `undefined` at once when its validator is held. */
-  validatedSchemaCompileError(schema: Record<string, any>): string | undefined {
-    return this.store.compiled.has(schema) ? undefined : this.schemaCompileError(schema);
-  }
-
   /**
    * A compiler over this registry's registrations with each id of `standIns`
    * held by its stand-in document instead — what a schema compiles to with
    * every named shape it references read as a document that always compiles.
    * It answers the compile error of a schema, `undefined` when it compiles;
    * given `as`, the schema is compiled under that id in place of its stand-in,
-   * so its own errors name it as a registered shape's do.
+   * so its own errors name it as a registered shape's do. The compiler answers
+   * while `body` runs, on a blank instance handed back when it returns.
    */
-  standInCompiler(
+  withStandInCompiler<T>(
     standIns: ReadonlyMap<string, Record<string, any>>,
+    body: (compile: (schema: Record<string, any>, as?: string) => string | undefined) => T,
+  ): T {
+    const ajv = takeBlankAjv("stand-in", () => createAjv("analysis"));
+    let open = true;
+    try {
+      return body(this.standInCompile(ajv, standIns, () => open));
+    } finally {
+      open = false;
+      returnBlankAjv(ajv);
+    }
+  }
+
+  private standInCompile(
+    ajv: ReturnType<typeof createAjv>,
+    standIns: ReadonlyMap<string, Record<string, any>>,
+    isOpen: () => boolean,
   ): (schema: Record<string, any>, as?: string) => string | undefined {
-    const ajv = createAjv();
     const held = new Set<string>();
     const hold = (schema: object, id: string): void => {
       if (held.has(id)) return;
@@ -794,6 +902,7 @@ export class DefinitionRegistry {
     for (const { schema, id } of this.registeredSchemas) if (!standIns.has(id)) hold(schema, id);
     const standInLookup: NamedShapeLookup = (id) => standIns.get(id);
     return (schema, as) => {
+      if (!isOpen()) throw new Error("internal: a stand-in compile was asked for after its instance was handed back.");
       const root = schemaWithTagsAsText(withReachedFragmentDefs(schema, standInLookup)) as Record<string, any>;
       const compiled = as === undefined ? root : { ...root, $id: as };
       if (as !== undefined && held.has(as)) ajv.removeSchema(as);
@@ -882,7 +991,7 @@ export class DefinitionRegistry {
     this.sharedStore = { ajv, compiled: new WeakMap() };
     const layer = this.layer;
     if (layer?.store) {
-      layer.store = undefined;
+      this.releaseLayerStore(layer);
       const store = this.layerStore(layer);
       for (const [id, schema] of layer.registered) {
         store.ajv.addSchema(schemaWithTagsAsText(this.withFragments(schema)) as object, id, undefined, false);
@@ -947,8 +1056,10 @@ export class DefinitionRegistry {
     if (!def) return undefined;
     const resolve: DefResolver = (k) => this.defs.get(k);
     const declaresSchema = authorSchemaChain(def, resolve).some((d) => d.schema !== undefined);
+    const schema = declaresSchema ? effectiveAuthorSchema(def, resolve) : undefined;
     const effective: EffectiveKind = {
-      schema: declaresSchema ? effectiveAuthorSchema(def, resolve) : undefined,
+      // Frozen as the kind's own schema is.
+      schema: schema && frozenSchemaCopy(schema),
       status: effectiveStatusSchema(def, resolve),
       throws: effectiveThrows(def, resolve),
       publishedOwnFields: publishedOwnFields(def, resolve),
@@ -1099,10 +1210,10 @@ export class DefinitionRegistry {
   ): ReachSite[] {
     const decided = this.decided;
     if (decided && !configured) {
-      return decidedReachSites(
-        this.conditionedReferenceSites(resource, decided.varying, aliases, aliasesByModule, data),
-        (site, condition) => decided.decide(condition, site, resource),
-      );
+      const sites = this.conditionedReferenceSites(resource, decided.varying, aliases, aliasesByModule, data);
+      const decide = decided.decide;
+      if (!decide) return sites;
+      return decidedReachSites(sites, (site, condition) => decide(condition, site, resource));
     }
     const reach = this.reachOf(resource, aliases, aliasesByModule, configured);
     if (!reach) return [];
@@ -1189,6 +1300,30 @@ export class DefinitionRegistry {
       return { anyOf: classes.map((each) => each.schema) };
     };
     this.decided = { varying: varying as VaryingShapeClasses, decide: decide as ReachDecision, lookup };
+    try {
+      return body();
+    } finally {
+      this.decided = before;
+    }
+  }
+
+  /**
+   * `body` with every reference reach read through {@link referenceSites}
+   * over the classes of `varying`: every site any class puts there, each item
+   * with where it holds ({@link conditionedReferenceSites}) — what a
+   * normalization written once for every way its cut points are decided
+   * reads. A read of a kind's patterns or positions answers a varying shape
+   * with every class as alternatives. No copy of a varying shape the registry
+   * holds is an input to a reach while it runs.
+   */
+  withConditionedReach<T, C>(varying: VaryingShapeClasses<C>, body: () => T): T {
+    const before = this.decided;
+    const lookup: NamedShapeLookup = (id) => {
+      const classes = varying.classesOf(id);
+      if (!classes) return this.namedShapeFor(id);
+      return { anyOf: classes.map((each) => each.schema) };
+    };
+    this.decided = { varying: varying as VaryingShapeClasses, lookup };
     try {
       return body();
     } finally {
@@ -1340,4 +1475,17 @@ export class DefinitionRegistry {
 function registryKeyOf(definition: ResourceDefinition): string {
   const { name, module: mod } = definition.metadata;
   return mod ? `${mod}.${name}` : (name as string);
+}
+
+/** An instance a key's door judges on, which answers the carves it issues. */
+function carvingAjv(): ReturnType<typeof createAjv> {
+  const ajv = createAjv();
+  registerSchemaCarveKeyword(ajv);
+  return ajv;
+}
+
+function verboseCarvingAjv(): ReturnType<typeof createAjv> {
+  const ajv = createAjv("analysis-verbose");
+  registerSchemaCarveKeyword(ajv);
+  return ajv;
 }

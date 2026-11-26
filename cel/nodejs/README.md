@@ -131,7 +131,7 @@ environment.check("request.query.limit").typeName; // "int"
 - **`.y` resolves against the environment**, never against a name the expression bound: it is the only
   spelling for an outer name where a comprehension variable shares it.
 - `convertsToString(type)` answers whether a value of that type can be rendered as text by the
-  environment's own `string()`.
+  environment's own `string()`: whether a call `string(x)` over it resolves, unions by member.
 
 The standard library is data — `src/signatures/standard-library.json`, described in
 [docs/signature-data.md](docs/signature-data.md). It is **CEL's** library: a declaration CEL itself does

@@ -82,6 +82,25 @@ pub fn refuse_unreadable_import(alias: &str, source: &str, from_artifact: bool) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+    use telo_templating::{make_tagged_sentinel, MODULE_PATH_ENGINE};
+
+    #[test]
+    fn refuses_an_import_handing_its_library_a_module_file() {
+        let document = json!({ "kind": "Telo.Import", "metadata": { "name": "Lib" }, "source": "./lib",
+            "variables": { "root": make_tagged_sentinel(MODULE_PATH_ENGINE, "./a") } });
+        let edge = ImportEdge {
+            target_source: "file:///m/lib/telo.yaml".to_string(),
+            target_ref: "./lib".to_string(),
+            target_module_name: "Lib".to_string(),
+        };
+        let owner = Owner { label: "Telo.Import/Lib", source: "file:///m/telo.yaml" };
+        let Err(refusal) = import_spec(&document, &edge, owner, "imports.Lib", "Lib") else {
+            panic!("an import's variables: must be refused");
+        };
+        assert_eq!(refusal.code, "ERR_UNSUPPORTED_MANIFEST_FEATURE");
+        assert!(refusal.message.contains("passes `variables:`"), "{}", refusal.message);
+    }
 
     #[test]
     fn refuses_a_relative_import_inside_an_artifact_and_keeps_local_ones() {

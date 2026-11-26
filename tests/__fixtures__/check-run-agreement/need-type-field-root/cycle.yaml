@@ -1,0 +1,9 @@
+# A need type field referring back to itself through its own `$defs`, read as
+# the root it is validated as.
+kind: Telo.Application
+metadata: { name: NeedTypeFieldCycle, version: 1.0.0 }
+---
+kind: Telo.NeedType
+metadata: { name: Db }
+fields:
+  url: { $defs: { L: { anyOf: [{ $ref: "#/$defs/L" }] } }, $ref: "#/$defs/L" }

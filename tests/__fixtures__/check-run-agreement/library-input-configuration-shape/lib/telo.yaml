@@ -1,0 +1,14 @@
+# A library input typed by a named shape the library declares only where
+# `flag` holds.
+kind: Telo.Library
+metadata: { name: ConfigurationShape }
+variables: { flag: { type: boolean }, config: { $ref: "telo://Self/Config" } }
+exports: { resources: [read] }
+--- !if
+metadata: { name: Config }
+if: !cel "variables.flag"
+then: { kind: Telo.JsonSchema, schema: { type: object, required: [n], properties: { n: { type: integer } } } }
+---
+kind: Telo.Value
+metadata: { name: read }
+value: !cel "variables.config.n + 1"

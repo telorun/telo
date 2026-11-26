@@ -1,0 +1,4 @@
+# Imports a library whose kind's value branch recurses in place.
+kind: Telo.Application
+metadata: { name: SchemaInPlaceCycleSlot, version: 1.0.0 }
+imports: { Lib: ./lib }

@@ -11,10 +11,14 @@
  * not, since a shape entered beneath one contributes no sites and has none of
  * its unions judged.
  *
- * Two branches compared at aligned positions read each side once per pair of
- * the classes holding them (`NamedShapeReader.pairVerdict`): a site whose mode
- * differs with nothing deferred above it is a conflict of the pair itself; a
- * named shape on either side makes the comparison beneath it a deferred pair.
+ * Two branches compared at aligned positions are judged once per pair of the
+ * positions they hold in their classes (`NamedShapeReader.pairVerdict`): a
+ * reference at a side's own place is a reach edge to each class of the shape
+ * it names, read as that class and labelled with where the edge holds, so a
+ * side's sites hold under class ∧ reach and no comparison is made per
+ * combination of classes. A site whose mode differs with nothing deferred
+ * above it is a conflict of the pair itself, where the two sides differ; a
+ * named shape beneath either side makes the comparison there a deferred pair.
  * Then, combining conditions alone:
  *
  *  1. where each pair is inconsistent — the least fixpoint, so recursive
@@ -31,6 +35,11 @@
  * the place down to the references each side holds there, quoted as written.
  * The kernel reads the content walk alone, when it registers a kind
  * (`ERR_EVAL_MODE_BRANCH_CONFLICT`).
+ *
+ * A shape of a library imported more than once is read as the classes of
+ * every instance (`NamedShapeReader.classes`), never one instance's: a kind
+ * document is one document for every instance of its module, so what it finds
+ * through a shape holds where some instance reads that class.
  *
  * Browser-safe.
  */
@@ -72,29 +81,41 @@ interface Component {
   readonly document: Schema;
 }
 
-/** One reading of a set of nodes — a branch, or what one side of a comparison
- *  holds at a place — and where it holds. */
-interface Variant {
+/** A node one side of a comparison holds, and where — relative to the
+ *  comparison, whose own condition its edge carries. */
+interface Member {
+  readonly component: Component;
   readonly condition: Condition;
-  readonly components: readonly Component[];
 }
 
-/** What one side of a comparison holds beneath the place it is compared at. */
+/** What one side of a comparison holds at the place it is compared at: the
+ *  nodes written there, each a position in its document's class. */
+type Side = readonly Member[];
+
+/** One way a side's members hold together: the positions holding at once,
+ *  and where. */
+interface Cell {
+  readonly components: readonly Component[];
+  readonly condition: Condition;
+}
+
+/** What one side holds beneath the place it is compared at, over the nodes
+ *  its references at that place reach, each entry where it holds. */
 interface MergedWalk {
-  readonly sites: ReadonlyMap<string, string>;
-  readonly regions: ReadonlyMap<string, string>;
-  readonly refs: readonly DeferredShapeRef[];
-  readonly nodes: ReadonlyMap<string, readonly Component[]>;
+  readonly sites: ReadonlyMap<string, ReadonlyMap<string, Condition>>;
+  readonly regions: ReadonlyMap<string, ReadonlyMap<string, Condition>>;
+  readonly refs: ReadonlyMap<string, { readonly ref: DeferredShapeRef; readonly condition: Condition }>;
+  readonly nodes: ReadonlyMap<string, ReadonlyMap<string, Member>>;
 }
 
 /** Which sites a comparison reads: every one, the compared value's own, or one
  *  property segment's. */
 type Filter = "all" | "own" | `segment:${string}`;
 
-/** A comparison's own judgement: a conflict of its own, and the deferred pairs
- *  it depends on, each where its classes hold. */
+/** A comparison's own judgement: where it conflicts of its own, and the
+ *  deferred pairs it depends on, each where it is deferred. */
 interface PairJudgement {
-  readonly local: boolean;
+  readonly local: Condition;
   readonly subs: readonly { readonly condition: Condition; readonly key: string }[];
 }
 
@@ -180,78 +201,143 @@ export function evalModeBranchFindings(kinds: readonly EvalModeKind[], scope: Ev
     return known;
   };
 
-  /** What `id` names at `pointer` in each class, and where it is absent. */
-  const targetsOf = (target: string, pointer: string): Variant[] => {
-    const classes = shapes.classes(target);
-    const out: Variant[] = [];
-    for (const each of classes) {
+  /** The nodes `target` names at `pointer`, one per class, each where its
+   *  class holds beneath `condition`. */
+  const targetsOf = (target: string, pointer: string, condition: Condition): Member[] => {
+    const out: Member[] = [];
+    for (const each of shapes.classes(target)) {
       classOf.set(each.schema, each);
       const node = resolveSchemaPointer(each.schema, pointer);
-      out.push({ condition: each.condition, components: isSchema(node) ? [{ node, document: each.schema }] : [] });
+      const held = space.and(condition, each.condition);
+      if (isSchema(node) && held !== FALSE) out.push({ component: { node, document: each.schema }, condition: held });
     }
-    const absent = space.not(space.some(classes.map((each) => each.condition)));
-    if (absent !== FALSE) out.push({ condition: absent, components: [] });
     return out;
   };
 
-  const mergedOf = (components: readonly Component[]): MergedWalk => {
-    const sites = new Map<string, string>();
-    const regions = new Map<string, string>();
-    const refs = new Map<string, DeferredShapeRef>();
-    const nodes = new Map<string, Component[]>();
-    const seenNodes = new Set<object>();
-    for (const component of components) {
-      const walked = walkOf(component, false);
-      for (const [place, mode] of walked.sites) sites.set(place, mode);
-      for (const [place, region] of walked.regions) regions.set(place, region);
-      for (const ref of walked.refs) refs.set(JSON.stringify([ref.path, ref.target, ref.pointer, ref.underEval]), ref);
-      for (const found of walked.nodes) {
-        if (seenNodes.has(found.node)) continue;
-        seenNodes.add(found.node);
-        const list = nodes.get(found.path) ?? [];
-        list.push({ node: found.node, document: found.document });
-        nodes.set(found.path, list);
-      }
-    }
-    return { sites, regions, refs: [...refs.values()], nodes };
-  };
+  const componentKey = (component: Component): string => `${idOf(component.node)}/${idOf(component.document)}`;
 
-  /** `start` with every shape a reference at its own place names read into it,
-   *  one variant per reading of those shapes. */
-  const normalized = (start: Variant): Variant[] => {
-    const out: Variant[] = [];
-    const pending: { variant: Variant; expanded: ReadonlySet<string> }[] = [{ variant: start, expanded: new Set() }];
+  /** A side with every class a reference at its own place names read in as a
+   *  reach edge — each class once, where the references reaching it hold. */
+  const reachOf = (side: Side): Member[] => {
+    const reached = new Map<string, Member>();
+    const pending: Member[] = [];
+    const add = (member: Member): void => {
+      const key = componentKey(member.component);
+      const known = reached.get(key);
+      const condition = known ? space.or(known.condition, member.condition) : member.condition;
+      if (known && condition === known.condition) return;
+      const next = { component: member.component, condition };
+      reached.set(key, next);
+      pending.push(next);
+    };
+    side.forEach(add);
     while (pending.length > 0) {
-      const { variant, expanded } = pending.pop()!;
-      const next = mergedOf(variant.components).refs.find(
-        (ref) => ref.path === "" && !ref.underEval && !expanded.has(`${ref.target}${ref.pointer}`),
-      );
-      if (!next) {
-        out.push(variant);
-        continue;
+      const member = pending.pop()!;
+      if (reached.get(componentKey(member.component)) !== member) continue;
+      for (const ref of walkOf(member.component, false).refs) {
+        if (ref.path === "" && !ref.underEval) targetsOf(ref.target, ref.pointer, member.condition).forEach(add);
       }
-      const marked = new Set(expanded).add(`${next.target}${next.pointer}`);
-      for (const target of targetsOf(next.target, next.pointer)) {
-        const condition = space.and(variant.condition, target.condition);
-        if (condition === FALSE) continue;
-        pending.push({ variant: { condition, components: [...variant.components, ...target.components] }, expanded: marked });
+    }
+    return [...reached.values()];
+  };
+
+  const mergedWalks = new WeakMap<Side, MergedWalk>();
+  const mergedOf = (side: Side): MergedWalk => {
+    const memo = mergedWalks.get(side);
+    if (memo) return memo;
+    const sites = new Map<string, Map<string, Condition>>();
+    const regions = new Map<string, Map<string, Condition>>();
+    const refs = new Map<string, { ref: DeferredShapeRef; condition: Condition }>();
+    const nodes = new Map<string, Map<string, Member>>();
+    const into = (map: Map<string, Map<string, Condition>>, place: string, value: string, condition: Condition) => {
+      const at = map.get(place) ?? new Map<string, Condition>();
+      map.set(place, at);
+      at.set(value, space.or(at.get(value) ?? FALSE, condition));
+    };
+    for (const { component, condition } of reachOf(side)) {
+      const walked = walkOf(component, false);
+      for (const [place, mode] of walked.sites) into(sites, place, mode, condition);
+      for (const [place, region] of walked.regions) into(regions, place, region, condition);
+      for (const ref of walked.refs) {
+        const key = JSON.stringify([ref.path, ref.target, ref.pointer, ref.underEval]);
+        const known = refs.get(key);
+        refs.set(key, { ref: known?.ref ?? ref, condition: space.or(known?.condition ?? FALSE, condition) });
       }
+      for (const found of walked.nodes) {
+        const at = nodes.get(found.path) ?? new Map<string, Member>();
+        nodes.set(found.path, at);
+        const held = { node: found.node, document: found.document };
+        const key = componentKey(held);
+        at.set(key, { component: held, condition: space.or(at.get(key)?.condition ?? FALSE, condition) });
+      }
+    }
+    const merged = { sites, regions, refs, nodes };
+    mergedWalks.set(side, merged);
+    return merged;
+  };
+
+  /** A side's members split by which of them hold together: one cell per
+   *  set of positions holding at once — one per class of a shape the side
+   *  names — so a comparison is judged once per pair of positions in their
+   *  classes, never per combination of what lies beyond them. */
+  const cellsOf = (side: Side): Cell[] => {
+    const merged = new Map<string, Member>();
+    for (const member of side) {
+      if (member.condition === FALSE) continue;
+      const key = componentKey(member.component);
+      const known = merged.get(key);
+      merged.set(key, { component: member.component, condition: space.or(known?.condition ?? FALSE, member.condition) });
+    }
+    const members = [...merged.values()];
+    if (members.every((member) => member.condition === TRUE)) return [{ components: members.map((member) => member.component), condition: TRUE }];
+    const out: Cell[] = [];
+    let remaining = TRUE;
+    while (remaining !== FALSE) {
+      const at = space.firstAssignment(remaining)!;
+      const components: Component[] = [];
+      let condition = TRUE;
+      for (const member of members) {
+        const holds = space.holds(member.condition, at);
+        if (holds) components.push(member.component);
+        condition = space.and(condition, holds ? member.condition : space.not(member.condition));
+      }
+      out.push({ components, condition });
+      remaining = space.and(remaining, space.not(condition));
     }
     return out;
   };
 
-  const viewKey = (components: readonly Component[]): string =>
-    [...new Set(components.map((component) => idOf(component.node)))].sort((a, b) => a - b).join(",");
-
-  // Stage 1's graph: every comparison judged once, by the pair of readings it
-  // compares, and the deferred comparisons it depends on.
+  // Stage 1's graph: every comparison judged once, by the positions it
+  // compares in their classes, and the deferred comparisons it depends on.
   const judgements = new Map<string, PairJudgement>();
-  const views = new Map<string, { a: readonly Component[]; b: readonly Component[]; filter: Filter }>();
+  const views = new Map<string, { a: Side; b: Side; filter: Filter }>();
+  // One side per list of positions, so its merged walk is computed once
+  // however many comparisons hold it.
+  const sides = new Map<string, Side>();
   const keyOf = (a: readonly Component[], b: readonly Component[], filter: Filter): string => {
+    const viewKey = (components: readonly Component[]) => [...new Set(components.map(componentKey))].sort().join(",");
     const [left, right] = [viewKey(a), viewKey(b)].sort();
     const key = `${left}|${right}|${filter}`;
-    if (!views.has(key)) views.set(key, { a, b, filter });
+    const held = (components: readonly Component[]): Side => {
+      const listed = components.map(componentKey).join(",");
+      let side = sides.get(listed);
+      if (!side) sides.set(listed, (side = components.map((component) => ({ component, condition: TRUE }))));
+      return side;
+    };
+    if (!views.has(key)) views.set(key, { a: held(a), b: held(b), filter });
     return key;
+  };
+
+  /** Where two sides' entries at one place differ: one holds the place where
+   *  the other does not, or the two hold different values. */
+  const differ = (mine: ReadonlyMap<string, Condition> | undefined, theirs: ReadonlyMap<string, Condition> | undefined): Condition => {
+    const here = space.some(mine?.values() ?? []);
+    const there = space.some(theirs?.values() ?? []);
+    let out = space.or(space.and(here, space.not(there)), space.and(space.not(here), there));
+    for (const [value, condition] of mine ?? []) {
+      for (const [other, otherCondition] of theirs ?? []) if (value !== other) out = space.or(out, space.and(condition, otherCondition));
+    }
+    return out;
   };
 
   const judge = (key: string): PairJudgement => {
@@ -261,42 +347,43 @@ export function evalModeBranchFindings(kinds: readonly EvalModeKind[], scope: Ev
       const right = mergedOf(b);
       const inFilter = (place: string): boolean =>
         filter === "all" ? true : filter === "own" ? place === "" : firstSegment(place) === filter.slice("segment:".length);
-      const relevant = (walked: MergedWalk) =>
-        walked.refs.filter((ref) => !ref.underEval && ref.path !== "" && filter !== "own" && inFilter(ref.path));
-      const places = [...new Set([...relevant(left), ...relevant(right)].map((ref) => ref.path))];
-      const deferred = (place: string) => places.some((at) => placeCovers(at, place));
-      for (const place of new Set([...left.sites.keys(), ...right.sites.keys()])) {
-        if (!inFilter(place) || deferred(place)) continue;
-        if (left.sites.get(place) !== right.sites.get(place)) return { local: true, subs: [] };
+      // Where a named shape defers each place beneath it.
+      const deferring = new Map<string, Condition>();
+      for (const walked of [left, right]) {
+        for (const { ref, condition } of walked.refs.values()) {
+          if (ref.underEval || ref.path === "" || filter === "own" || !inFilter(ref.path)) continue;
+          deferring.set(ref.path, space.or(deferring.get(ref.path) ?? FALSE, condition));
+        }
       }
-      for (const place of new Set([...left.regions.keys(), ...right.regions.keys()])) {
-        if (!inFilter(place) || deferred(place)) continue;
-        if (left.regions.get(place) !== right.regions.get(place)) return { local: true, subs: [] };
+      const deferredAt = (place: string, except?: string): Condition =>
+        space.some([...deferring].filter(([at]) => at !== except && placeCovers(at, place)).map(([, condition]) => condition));
+      let local: Condition = FALSE;
+      for (const [mine, theirs] of [[left.sites, right.sites], [left.regions, right.regions]] as const) {
+        for (const place of new Set([...mine.keys(), ...theirs.keys()])) {
+          if (!inFilter(place)) continue;
+          local = space.or(local, space.and(differ(mine.get(place), theirs.get(place)), space.not(deferredAt(place))));
+        }
       }
       const subs: { condition: Condition; key: string }[] = [];
-      for (const place of places) {
-        if (places.some((at) => at !== place && placeCovers(at, place))) continue;
-        const side = (walked: MergedWalk): Variant[] => {
-          let variants: Variant[] = [{ condition: TRUE, components: walked.nodes.get(place) ?? [] }];
-          for (const ref of walked.refs) {
-            if (ref.underEval || ref.path !== place) continue;
-            variants = variants.flatMap((variant) =>
-              targetsOf(ref.target, ref.pointer).flatMap((target) => {
-                const condition = space.and(variant.condition, target.condition);
-                return condition === FALSE ? [] : [{ condition, components: [...variant.components, ...target.components] }];
-              }),
-            );
+      for (const [place, condition] of deferring) {
+        const top = space.and(condition, space.not(deferredAt(place, place)));
+        if (top === FALSE) continue;
+        const side = (walked: MergedWalk): Member[] => {
+          const out = [...(walked.nodes.get(place)?.values() ?? [])];
+          for (const { ref, condition: held } of walked.refs.values()) {
+            if (!ref.underEval && ref.path === place) out.push(...targetsOf(ref.target, ref.pointer, held));
           }
-          return variants.flatMap(normalized);
+          return out;
         };
-        for (const mine of side(left)) {
-          for (const theirs of side(right)) {
-            const condition = space.and(mine.condition, theirs.condition);
+        const others = cellsOf(side(right));
+        for (const mine of cellsOf(side(left))) {
+          for (const theirs of others) {
+            const condition = space.and(top, space.and(mine.condition, theirs.condition));
             if (condition !== FALSE) subs.push({ condition, key: keyOf(mine.components, theirs.components, "all") });
           }
         }
       }
-      return { local: false, subs };
+      return { local, subs };
     });
   };
 
@@ -357,20 +444,28 @@ export function evalModeBranchFindings(kinds: readonly EvalModeKind[], scope: Ev
   }
 
   // Stage 2's inputs: each union's branch pairs in written order, per segment
-  // both declare.
-  const segmentsOf = (variant: Variant): Set<string> => {
-    const out = new Set<string>();
-    for (const component of variant.components) {
-      for (const segment of declaredBranchSegments(component.node, component.document, lookup, stops)) out.add(segment);
+  // both declare, where both declare it.
+  const segmentsOf = (components: readonly Component[]): Map<string, Condition> => {
+    const out = new Map<string, Condition>();
+    for (const { component, condition } of reachOf(components.map((each) => ({ component: each, condition: TRUE })))) {
+      for (const segment of declaredBranchSegments(component.node, component.document, lookup, stops)) {
+        out.set(segment, space.or(out.get(segment) ?? FALSE, condition));
+      }
     }
     return out;
   };
   const verdictTerms = new Map<UnionAt, Map<string, BranchPair[]>>();
   for (const at of unions.values()) {
-    const branches = (at.union[at.keyword] as unknown[]).map((branch) =>
-      isSchema(branch) ? normalized({ condition: TRUE, components: [{ node: branch, document: at.document }] }) : [],
+    const branches = (at.union[at.keyword] as unknown[]).map((branch): Component[] | undefined =>
+      isSchema(branch) ? [{ node: branch, document: at.document }] : undefined,
     );
     const bySegment = new Map<string, BranchPair[]>();
+    const segments = new Map<number, Map<string, Condition>>();
+    const segmentsAt = (index: number, components: readonly Component[]) => {
+      let known = segments.get(index);
+      if (!known) segments.set(index, (known = segmentsOf(components)));
+      return known;
+    };
     const term = (segment: string, i: number, j: number, condition: Condition, key: string) => {
       const pairs = bySegment.get(segment) ?? [];
       if (pairs.length === 0) bySegment.set(segment, pairs);
@@ -379,17 +474,16 @@ export function evalModeBranchFindings(kinds: readonly EvalModeKind[], scope: Ev
       pair.terms.push({ condition, key });
     };
     for (let i = 0; i < branches.length; i++) {
+      const mine = branches[i];
+      if (!mine) continue;
       for (let j = i + 1; j < branches.length; j++) {
-        for (const mine of branches[i]!) {
-          for (const theirs of branches[j]!) {
-            const condition = space.and(mine.condition, theirs.condition);
-            if (condition === FALSE) continue;
-            term("", i, j, condition, keyOf(mine.components, theirs.components, "own"));
-            const shared = segmentsOf(theirs);
-            for (const segment of segmentsOf(mine)) {
-              if (segment !== "" && shared.has(segment)) term(segment, i, j, condition, keyOf(mine.components, theirs.components, `segment:${segment}`));
-            }
-          }
+        const theirs = branches[j];
+        if (!theirs) continue;
+        term("", i, j, TRUE, keyOf(mine, theirs, "own"));
+        const shared = segmentsAt(j, theirs);
+        for (const [segment, condition] of segmentsAt(i, mine)) {
+          const held = segment === "" ? FALSE : space.and(condition, shared.get(segment) ?? FALSE);
+          if (held !== FALSE) term(segment, i, j, held, keyOf(mine, theirs, `segment:${segment}`));
         }
       }
     }
@@ -403,7 +497,7 @@ export function evalModeBranchFindings(kinds: readonly EvalModeKind[], scope: Ev
   const failing = new Map<string, Condition>();
   const dependents = new Map<string, Set<string>>();
   for (const [key, judged] of judgements) {
-    failing.set(key, judged.local ? TRUE : FALSE);
+    failing.set(key, judged.local);
     for (const sub of judged.subs) {
       const list = dependents.get(sub.key) ?? new Set<string>();
       list.add(key);
@@ -414,9 +508,8 @@ export function evalModeBranchFindings(kinds: readonly EvalModeKind[], scope: Ev
   while (queue.length > 0) {
     const key = queue.pop()!;
     const judged = judgements.get(key)!;
-    if (judged.local) continue;
     const before = failing.get(key)!;
-    const after = space.some(judged.subs.map((sub) => space.and(sub.condition, failing.get(sub.key) ?? FALSE)));
+    const after = space.or(judged.local, space.some(judged.subs.map((sub) => space.and(sub.condition, failing.get(sub.key) ?? FALSE))));
     if (after === before) continue;
     failing.set(key, after);
     for (const parent of dependents.get(key) ?? []) queue.push(parent);

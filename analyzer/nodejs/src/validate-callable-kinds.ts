@@ -60,6 +60,8 @@ import { readRefSlot, type RefSlot } from "./ref-slot.js";
 import { isDataSlot, isNativeCallableKind } from "./callable-data-slot.js";
 import { readStepSlot } from "./step-slot.js";
 import { untypedCallableSlotIssues } from "./validate-ref-slots.js";
+import { inPlaceCycleMessage, SCHEMA_IN_PLACE_CYCLE } from "./schema-in-place-cycle.js";
+import { callableInstanceSchemaDocuments, localInPlaceCycles } from "./validated-schemas.js";
 
 export interface CallableKindIssue {
   readonly code:
@@ -175,6 +177,23 @@ function callableIssuesOf(
           filePath: (m.metadata as { source?: string } | undefined)?.source,
           path: issue.path,
           ...(issue.fix ? { fix: issue.fix } : {}),
+        },
+      });
+    }
+    // An instance's own signature schemas: nothing references them, so only
+    // their own local references can close an in-place cycle through them. A
+    // kind document's are the kind stage's.
+    if (isKindDocument) continue;
+    for (const { path, cycle } of localInPlaceCycles(callableInstanceSchemaDocuments(m, resolveDef))) {
+      diagnostics.push({
+        severity: DiagnosticSeverity.Error,
+        code: SCHEMA_IN_PLACE_CYCLE,
+        source: SOURCE,
+        message: inPlaceCycleMessage(`${m.kind} '${name}'`, cycle, (document) => document),
+        data: {
+          resource: { kind: m.kind, name },
+          filePath: (m.metadata as { source?: string } | undefined)?.source,
+          path,
         },
       });
     }

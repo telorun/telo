@@ -791,20 +791,29 @@ export function resolveContextAnnotations(
 
   if (schema.properties) {
     const props: Record<string, any> = {};
+    // A node nothing beneath resolves is returned as it is: its identity is
+    // what marks a document embedded whole (a step's result contract), so a
+    // `#/…` pointer inside it still resolves against its own root.
+    let changed = false;
     for (const [k, v] of Object.entries(schema.properties)) {
       // Withholding happens HERE rather than inside the child resolver, because
       // this is the only level that owns the property map — a child can return a
       // schema but cannot remove itself from one.
-      if (collectionBindingWithheld(v as Record<string, any>, manifestRoot, declarations)) continue;
+      if (collectionBindingWithheld(v as Record<string, any>, manifestRoot, declarations)) {
+        changed = true;
+        continue;
+      }
       if (typeof (v as Record<string, any> | undefined)?.[ELEMENT_FROM_ITEM] === "string") {
         // Typed from the chain at another site, which only the scope rule can
         // type (`cel-scope.ts`); untyped until it does.
         props[k] = {};
+        changed = true;
         continue;
       }
       props[k] = resolveContextAnnotations(v as Record<string, any>, manifestItem, normalizedOpts);
+      if (props[k] !== v) changed = true;
     }
-    return { ...schema, properties: props };
+    return changed ? { ...schema, properties: props } : schema;
   }
 
   return schema;

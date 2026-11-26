@@ -69,8 +69,11 @@ loader places none. Two families:
 
 - the expansion constructs written at a value the loader itself reads before
   anything is expanded — a module document's `metadata` and `metadata.name`,
-  `imports:` (the block, an entry, an entry's `source`) and `include:` (the block,
-  an entry). `!if` / `!switch` there are `BRANCH_POSITION_INVALID`, `!for-each` and
+  `imports:` (the block, an entry) and `include:` (the block, an entry), and an
+  import's own alias, kind, source and integrity (an `imports:` entry's `source` /
+  `integrity`, a top-level `Telo.Import`'s `kind` / `metadata` / `source` /
+  `integrity`, worded with the import's alias). `!if` / `!switch` there are
+  `BRANCH_POSITION_INVALID`, `!for-each` and
   a `...` splice `REPEAT_OUTSIDE_TEMPLATE`, each at the range the position index
   gives its path. Every other position is judged by the analysis, not the loader,
   so a row whose tags stand anywhere else expects no refusal;

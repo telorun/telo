@@ -11,8 +11,9 @@
  *
  * So every line below is a fact about what the environment *is*: every function signature
  * surviving registration and removal, every named type with its base, parameters, fields and
- * construction, every variable with its name and type, every namespace with the functions it
- * declares, and every option value. The lines are sorted, so the order they were produced in cannot
+ * construction, every variable with its name and its type's whole structure (a record's
+ * fields, undeclared and absent members, each field's finite set, a tuple's positions and rest), every namespace with the functions it
+ * declares and the structure of each result it declares as a schema, and every option value. The lines are sorted, so the order they were produced in cannot
  * reach the digest.
  *
  * **What the digest is for, in this engine.** Overloads are resolved at evaluation on the
@@ -32,8 +33,10 @@
  * The cost is one extra emission; the cost of the copy going stale is a wrong key.
  */
 
+import type { CelType, FieldEnumValue } from "./cel-type.js";
 import type { CelEnvironmentOptions, Definitions } from "./environment.js";
 import { sha256OfText } from "./sha256.js";
+import { countTypeVisit } from "./type-visits.js";
 
 /** What the digest reads of an environment — its listing and its options, nothing else. */
 export interface DigestedEnvironment {
@@ -76,7 +79,7 @@ export function environmentListing(environment: DigestedEnvironment): readonly s
     lines.push(`option ${key} ${optionText((environment.options as Record<string, unknown>)[key])}`);
   }
   for (const variable of definitions.variables) {
-    lines.push(`variable ${variable.name} ${variable.typeName} ${variable.constant}`);
+    lines.push(`variable ${variable.name} ${typeStructure(variable.type)} ${variable.constant}`);
   }
   for (const held of definitions.functions) {
     lines.push(
@@ -103,11 +106,82 @@ export function environmentListing(environment: DigestedEnvironment): readonly s
     // Openness is part of the surface, not a convenience: it decides whether an undeclared
     // name checks clean, so two environments differing only in it answer differently and must
     // not share an emitted module.
-    lines.push(
-      `namespace ${held.name} ${held.open ? "open" : "closed"} ${canonicalJson([...held.functions].sort(compareText))}`,
-    );
+    const declarations = held.functions.map((listed) => listed.declaration);
+    lines.push(`namespace ${held.name} ${held.open ? "open" : "closed"} ${canonicalJson(declarations.sort(compareText))}`);
+    // A result declared as a schema prints cut, so its listed text does not identify it:
+    // its structure does.
+    for (const listed of held.functions) {
+      if (listed.resultType === undefined) continue;
+      lines.push(`namespace-result ${held.name} ${JSON.stringify(listed.declaration)} ${typeStructure(listed.resultType)}`);
+    }
   }
   return lines.sort(compareText);
+}
+
+/**
+ * A type written whole, where its printed name is not: a record's fields in name order with
+ * its absent members, its patterns in text order and its undeclared members, a tuple's
+ * positions and rest. A type object met again
+ * is written as `@<n>`, its order of first appearance, so a shape shared a hundred times is
+ * written once.
+ */
+function typeStructure(root: CelType): string {
+  const seen = new Map<CelType, number>();
+  const write = (type: CelType): string => {
+    countTypeVisit();
+    const leaf = type.kind === "dyn" || type.kind === "primitive" || type.kind === "parameter";
+    const held = seen.get(type);
+    if (held !== undefined) return `@${held}`;
+    if (!leaf) seen.set(type, seen.size);
+    switch (type.kind) {
+      case "dyn":
+        return "dyn";
+      case "primitive":
+        return type.name;
+      case "parameter":
+        return `'${type.name}`;
+      case "list": {
+        const element = `list<${write(type.element)}`;
+        if (!type.prefixElements) return `${element}>`;
+        const rest = type.additionalElements === undefined ? "" : ` ...${write(type.additionalElements)}`;
+        return `${element} [${type.prefixElements.map(write).join(",")}]${rest}>`;
+      }
+      case "map":
+        return `map<${write(type.key)},${write(type.value)}>`;
+      case "optional":
+        return `optional<${write(type.value)}>`;
+      case "union":
+        return `(${type.members.map(write).join("|")})`;
+      case "nominal":
+        return `${JSON.stringify(type.name)}<${type.args.map(write).join(",")}>`;
+      case "record": {
+        const fields = [...type.fields.keys()].sort(compareText).map((name) => `${JSON.stringify(name)}:${write(type.fields.get(name)!)}`);
+        const absent = [...(type.absentFields ?? [])].sort(compareText).map((name) => `-${JSON.stringify(name)}`);
+        const enums = [...(type.fieldEnums ?? [])]
+          .sort(([left], [right]) => compareText(left, right))
+          .map(([name, values]) => `=${JSON.stringify(name)}:[${values.map(enumValueText).join(",")}]`);
+        const patterns = (type.patternParts ?? [])
+          .map((part) => {
+            const entries = [...part.fields]
+              .sort((left, right) => compareText(left.pattern, right.pattern))
+              .map((entry) => `/${JSON.stringify(entry.pattern)}:${entry.type === undefined ? "-" : write(entry.type)}`);
+            const additional = part.additionalFields === undefined ? [] : [`...${write(part.additionalFields)}`];
+            return `[${[...entries, ...additional].join(",")}]`;
+          })
+          .sort(compareText);
+        const additional = type.additionalFields === undefined ? [] : [`...${write(type.additionalFields)}`];
+        return `${type.name === undefined ? "" : JSON.stringify(type.name)}{${[...fields, ...absent, ...enums, ...patterns, ...additional].join(",")}}`;
+      }
+    }
+  };
+  return write(root);
+}
+
+/** A value of a field's set, its type written beside it: a set is already in canonical order. */
+function enumValueText(value: FieldEnumValue): string {
+  if (typeof value === "bigint") return `i${value}`;
+  if (typeof value === "number") return `d${value}`;
+  return JSON.stringify(value);
 }
 
 /** The digest of an environment: 64 hexadecimal characters over its sorted listing. */

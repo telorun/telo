@@ -13,8 +13,7 @@ metadata:
     as `ERR_URL_INVALID`, and at a call's dispatch as `ERR_INPUT_INVALID` carrying it.
     Every refusal names the field and never the value. A URL's members are its fields,
     closed, and a URL is not text.
-imports:
-  Assert: ../modules/assert
+imports: { Assert: ../modules/assert }
 targets:
   - !ref literals
   - !ref typing
@@ -51,7 +50,7 @@ expect:
     - code: CEL_TYPE_ERROR
       message: "source is 'Telo.Url', target expects 'string'"
     - code: CEL_TYPE_ERROR
-      message: "CEL at 'fields.url.host' returns 'int' but the field expects 'string'"
+      message: "CEL at 'fields.url.host' reads 'variables.port', declared 'integer', but the field expects 'string'"
 ---
 kind: Assert.Manifest
 metadata: { name: importVariables }
@@ -60,8 +59,7 @@ expect:
   errors:
     - code: URL_INVALID
       message: "Telo.Import/Wrong: /variables/url is not a Telo.Url: its scheme must be one of postgres, postgresql"
-    - code: CEL_TYPE_ERROR
-      message: "CEL at 'variables.url' returns 'int'"
+    - { code: CEL_TYPE_ERROR, message: "CEL at 'variables.url' returns 'int'" }
 ---
 kind: Assert.Manifest
 metadata: { name: importSupply }

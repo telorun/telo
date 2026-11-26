@@ -98,7 +98,7 @@ describe("an accessor template judged against the type it names", () => {
     const diagnostics = await analyze(request(`  size: !cel "query.text"`));
     expect(findings(diagnostics)).toEqual([
       "SCHEMA_VIOLATION body.period: Self.Request/report: `body` does not satisfy the type declared at `model`: / is missing required property 'period'",
-      "CEL_TYPE_ERROR body.size: Self.Request/report: CEL at 'body.size' reads 'query.text', whose declared shape does not fit what the field expects: /: type mismatch — source is 'string', target expects 'integer'.",
+      "CEL_TYPE_ERROR body.size: Self.Request/report: CEL at 'body.size' reads 'query.text', declared 'string', but the field expects 'integer'.",
     ]);
     const formats = await analyze(request(`  period: { from: !cel "query.text" }\n  size: 20`));
     expect(findings(formats)).toEqual([

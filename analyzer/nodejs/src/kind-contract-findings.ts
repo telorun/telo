@@ -26,6 +26,11 @@
  * is a second finding of the pair that holds it, held where it fails. No
  * fixpoint iteration reads a shape.
  *
+ * A shape of a library imported more than once is read as the classes of
+ * every instance (`NamedShapeReader.classes`), never one instance's: a kind
+ * document is one document for every instance of its module, so what it finds
+ * through a shape holds where some instance reads that class.
+ *
  * Browser-safe.
  */
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";

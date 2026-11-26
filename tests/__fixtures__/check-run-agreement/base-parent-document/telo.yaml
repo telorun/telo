@@ -1,0 +1,27 @@
+# A base: field read where it sits in the parent's schema: `#` there names the
+# parent's root, which `{ leaf: 1 }` satisfies, so it checks clean and boots.
+kind: Telo.Application
+metadata: { name: BaseParentDocument, version: 1.0.0 }
+targets:
+  - invoke: !ref child
+---
+kind: Telo.Definition
+metadata: { name: Parent }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    tree: { type: object, $ref: "#" }
+resources:
+  - { kind: Telo.Value, metadata: { name: answer }, value: 1 }
+invoke: !ref answer
+---
+kind: Telo.Definition
+metadata: { name: Child }
+extends: Self.Parent
+schema: { type: object }
+base:
+  tree: { leaf: 1 }
+---
+kind: Self.Child
+metadata: { name: child }

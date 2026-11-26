@@ -96,9 +96,11 @@ export {
   NULL,
   optionalOf,
   parameterOf,
+  recordOf,
   STRING,
   TIMESTAMP,
   TYPE,
+  tupleOf,
   typesEqual,
   UINT,
   unify,
@@ -110,11 +112,14 @@ export {
 export type {
   CelType,
   DynType,
+  FieldEnumValue,
   ListType,
   MapType,
   NominalType,
   OptionalType,
   ParameterType,
+  PatternField,
+  PatternPart,
   PrimitiveName,
   PrimitiveType,
   RecordType,
@@ -130,22 +135,30 @@ export type {
 } from "./check-diagnostic.js";
 
 export type { CheckResult, NamespaceFunction } from "./checker.js";
+export type { SchemaDependency } from "./schema-dependencies.js";
+export type { ResultOrigin } from "./schema-nodes.js";
+export { schemaOwnTypesAgree } from "./schema-own-type.js";
+export type { SchemaOwnTypeAgreement } from "./schema-own-type.js";
 
 export { CelEnvironment, DEFAULT_COMPILED_CACHE_CAPACITY } from "./environment.js";
 export type {
   CelEnvironmentOptions,
+  CheckAssumption,
+  CheckOptions,
   Definitions,
   FunctionDefinition,
   NamespaceFunctionDeclaration,
+  NamespaceFunctionListing,
   NamespaceListing,
   NamespaceOptions,
   SchemaRegistrationReport,
+  SchemaDeclaration,
   TypeDeclaration,
   TypeDefinitionListing,
   VariableDefinition,
 } from "./environment.js";
 
-export { FunctionRegistry, UNKNOWN_FUNCTION_CANDIDATES } from "./function-registry.js";
+export { FunctionRegistry, UNION_EXPANSION_LIMIT, UNKNOWN_FUNCTION_CANDIDATES } from "./function-registry.js";
 export type { RegisteredFunction, Resolution, ResolutionFailure } from "./function-registry.js";
 
 export {

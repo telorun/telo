@@ -1,6 +1,7 @@
 import {
   childNodes,
   namespaceMacroBinding,
+  RESERVED_NAMESPACES,
   receiverMacroBinding,
   type CelNode,
 } from "@telorun/cel";
@@ -95,6 +96,10 @@ function comprehension(
   };
 }
 
+function onReservedNamespace(node: CelNode): node is Extract<CelNode, { kind: "receiverCall" }> {
+  return node.kind === "receiverCall" && node.receiver.kind === "ident" && RESERVED_NAMESPACES.includes(node.receiver.name);
+}
+
 function visitNode(
   node: CelNode,
   chains: string[][],
@@ -120,6 +125,13 @@ function visitNode(
   if (bind) {
     visitNode(bind.init, chains, boundVars, onModuleCall);
     visitNode(bind.body, chains, new Set(boundVars).add(bind.name), onModuleCall);
+    return;
+  }
+
+  // A call on a reserved namespace (`optional.of(x)`) names a function, never a
+  // value: its receiver is no read.
+  if (onReservedNamespace(node)) {
+    for (const arg of node.args) visitNode(arg, chains, boundVars, onModuleCall);
     return;
   }
 
@@ -163,6 +175,29 @@ function extractChain(node: CelNode, boundVars: ReadonlySet<string>): string[] |
     if (node.optional) return null;
     const parent = extractChain(node.operand, boundVars);
     if (parent !== null) return [...parent, INDEX_SEGMENT];
+  }
+  return null;
+}
+
+/** The dotted form of a static member chain rooted at a free identifier, or
+ *  null when the node is no such chain (a call result, an index, …). */
+export function plainDottedChain(node: CelNode): string | null {
+  const chain = extractChain(node, new Set());
+  if (chain === null || chain.includes(INDEX_SEGMENT)) return null;
+  return chain.join(".");
+}
+
+/** The chain a member read's operand is, its segments joined as a chain is
+ *  written in a finding (`items.[*].amount`), or null where it is not one. A
+ *  module call's result is written as the call (`Billing.total(…)`). */
+export function memberReadPath(node: CelNode): string | null {
+  const call = moduleCallOf(node);
+  if (call) return `${call.qualified}(…)`;
+  if (node.kind === "ident") return node.name;
+  if ((node.kind === "select" || node.kind === "index") && !node.optional) {
+    const parent = memberReadPath(node.operand);
+    if (parent === null) return null;
+    return `${parent}.${node.kind === "select" ? node.field : INDEX_SEGMENT}`;
   }
   return null;
 }
@@ -328,244 +363,6 @@ function presenceOperand(node: CelNode): { operand: CelNode; field: string } | u
   return arg.kind === "select" && !arg.optional ? { operand: arg.operand, field: arg.field } : undefined;
 }
 
-/** A member access on a module call's result: the call, and the members read
- *  off it in order (`Billing.total(xs).amount` → `amount`). */
-export interface CallResultAccess {
-  readonly qualified: string;
-  readonly members: readonly string[];
-}
-
-/**
- * Every member access whose base is a module call, longest first — the chains
- * {@link extractAccessChains} deliberately skips, since their root is a value
- * no context schema describes. The caller supplies the call's result schema.
- */
-export function extractCallResultAccesses(node: CelNode): CallResultAccess[] {
-  const out: CallResultAccess[] = [];
-  visitAccess(node, out);
-  return out;
-}
-
-function visitAccess(node: CelNode, out: CallResultAccess[]): void {
-  if (node.kind === "select" || node.kind === "index") {
-    const members: string[] = [];
-    let base: CelNode = node;
-    while (base.kind === "select" || base.kind === "index") {
-      if (base.kind === "select") {
-        members.unshift(base.field);
-      } else {
-        members.unshift(INDEX_SEGMENT);
-        // The index is its own expression and may itself read off a call's result.
-        visitAccess(base.index, out);
-      }
-      base = base.operand;
-    }
-    const call = moduleCallOf(base);
-    if (call) {
-      out.push({ qualified: call.qualified, members });
-      for (const arg of call.args) visitAccess(arg, out);
-      return;
-    }
-    visitAccess(base, out);
-    return;
-  }
-  for (const child of childNodes(node)) visitAccess(child, out);
-}
-
-interface NullableIssue {
-  /** Dotted path of the nullable value being dereferenced (e.g. "error"). */
-  path: string;
-  /** The member accessed on it (e.g. "code", or "[index]"). */
-  member: string;
-}
-
-/** True when a JSON Schema admits `null` — `type: "null"` or a union that
- *  includes it (e.g. `["object", "null"]`). */
-function schemaIsNullable(schema: Record<string, any> | undefined): boolean {
-  if (!schema || typeof schema !== "object") return false;
-  const t = schema.type;
-  if (t === "null" || (Array.isArray(t) && t.includes("null"))) return true;
-  // A union admits null when one of its branches does.
-  const branches = Array.isArray(schema.anyOf) ? schema.anyOf : Array.isArray(schema.oneOf) ? schema.oneOf : [];
-  return (branches as unknown[]).some((branch) =>
-    schemaIsNullable(branch as Record<string, any> | undefined),
-  );
-}
-
-/** Navigate `schema` following a member chain, descending through `properties`.
- *  Returns the schema node at that path, or undefined when it can't be resolved. */
-function schemaAtChain(
-  chain: string[],
-  schema: Record<string, any>,
-): Record<string, any> | undefined {
-  let current: Record<string, any> | undefined = schema;
-  for (const key of chain) {
-    if (!current || typeof current !== "object") return undefined;
-    const props = current.properties as Record<string, any> | undefined;
-    if (!props || !(key in props)) return undefined;
-    current = props[key];
-  }
-  return current;
-}
-
-/** The dotted chain an expression IS, when it is a plain chain whose schema
- *  admits null — a value that may itself be null, rather than one dereferenced
- *  through a null. */
-export function nullableValueChain(
-  node: CelNode,
-  contextSchema: Record<string, any>,
-): string | null {
-  const chain = dottedChain(node, new Set());
-  if (chain === null) return null;
-  return schemaIsNullable(schemaAtChain(chain.split("."), contextSchema)) ? chain : null;
-}
-
-function isNullLiteral(node: CelNode): boolean {
-  return node.kind === "literal" && node.literal.type === "null";
-}
-
-/** Dotted form of a static member chain rooted at a free identifier, or null
- *  when the node isn't such a chain (call result, bound var, index, …). */
-function dottedChain(node: CelNode, boundVars: Set<string>): string | null {
-  const chain = extractChain(node, boundVars);
-  if (chain === null || chain.includes(INDEX_SEGMENT)) return null;
-  return chain.join(".");
-}
-
-interface Narrowing {
-  whenTrue: Set<string>;
-  whenFalse: Set<string>;
-}
-
-const EMPTY_NARROWING: Narrowing = { whenTrue: new Set(), whenFalse: new Set() };
-
-/** Derive which chains a boolean condition proves non-null in its true / false
- *  branches. Handles `x == null` / `x != null`, negation, and `&&` / `||`. */
-function deriveNarrowing(node: CelNode, boundVars: Set<string>): Narrowing {
-  if (node.kind === "unary" && node.operator === "!") {
-    const inner = deriveNarrowing(node.operand, boundVars);
-    return { whenTrue: inner.whenFalse, whenFalse: inner.whenTrue };
-  }
-  if (node.kind !== "binary") return EMPTY_NARROWING;
-  if (node.operator === "==" || node.operator === "!=") {
-    const chain = isNullLiteral(node.right)
-      ? dottedChain(node.left, boundVars)
-      : isNullLiteral(node.left)
-        ? dottedChain(node.right, boundVars)
-        : null;
-    if (chain === null) return EMPTY_NARROWING;
-    const proven = new Set([chain]);
-    return node.operator === "!="
-      ? { whenTrue: proven, whenFalse: new Set() }
-      : { whenTrue: new Set(), whenFalse: proven };
-  }
-  if (node.operator === "&&") {
-    const left = deriveNarrowing(node.left, boundVars);
-    const right = deriveNarrowing(node.right, boundVars);
-    return { whenTrue: union(left.whenTrue, right.whenTrue), whenFalse: new Set() };
-  }
-  if (node.operator === "||") {
-    const left = deriveNarrowing(node.left, boundVars);
-    const right = deriveNarrowing(node.right, boundVars);
-    return { whenTrue: new Set(), whenFalse: union(left.whenFalse, right.whenFalse) };
-  }
-  return EMPTY_NARROWING;
-}
-
-function union(a: Set<string>, b: Set<string>): Set<string> {
-  return new Set([...a, ...b]);
-}
-
-/**
- * Find member accesses on a nullable value that are not null-guarded in the
- * surrounding expression. A context field whose schema admits `null` (e.g. the
- * `error` object inside a `finally` block, typed `["object", "null"]`) must be
- * narrowed before its members are read. Recognised guards: `x == null` /
- * `x != null` flowing through `?:` ternaries and `&&` / `||` short-circuits.
- * Returns one issue per unguarded dereference.
- */
-export function findNullableAccessIssues(
-  node: CelNode,
-  contextSchema: Record<string, any>,
-): NullableIssue[] {
-  const issues: NullableIssue[] = [];
-  walkNullable(node, new Set(), new Set(), issues, contextSchema);
-  return issues;
-}
-
-function walkNullable(
-  node: CelNode,
-  nonNull: Set<string>,
-  boundVars: Set<string>,
-  issues: NullableIssue[],
-  schema: Record<string, any>,
-): void {
-  // Dereference of an object/array member — check the receiver's nullability.
-  if (node.kind === "select" || node.kind === "index") {
-    const objChain = dottedChain(node.operand, boundVars);
-    if (objChain !== null && !nonNull.has(objChain)) {
-      if (schemaIsNullable(schemaAtChain(objChain.split("."), schema))) {
-        issues.push({
-          path: objChain,
-          member: node.kind === "select" ? node.field : "[index]",
-        });
-      }
-    }
-    walkNullable(node.operand, nonNull, boundVars, issues, schema);
-    // The index expression (`obj[expr]`) is itself evaluated — descend so a nullable
-    // deref used as an index (`items[error.code]`) is caught.
-    if (node.kind === "index") walkNullable(node.index, nonNull, boundVars, issues, schema);
-    return;
-  }
-
-  if (node.kind === "conditional") {
-    walkNullable(node.condition, nonNull, boundVars, issues, schema);
-    const narrowed = deriveNarrowing(node.condition, boundVars);
-    walkNullable(node.whenTrue, union(nonNull, narrowed.whenTrue), boundVars, issues, schema);
-    walkNullable(node.whenFalse, union(nonNull, narrowed.whenFalse), boundVars, issues, schema);
-    return;
-  }
-
-  if (node.kind === "binary" && (node.operator === "&&" || node.operator === "||")) {
-    walkNullable(node.left, nonNull, boundVars, issues, schema);
-    const narrowed = deriveNarrowing(node.left, boundVars);
-    const carried = node.operator === "&&" ? narrowed.whenTrue : narrowed.whenFalse;
-    walkNullable(node.right, union(nonNull, carried), boundVars, issues, schema);
-    return;
-  }
-
-  // A module call's receiver is a module name, not a value; mirror extractAccessChains so
-  // it is never read as a nullable context field.
-  const moduleCall = moduleCallOf(node);
-  if (moduleCall) {
-    for (const arg of moduleCall.args) walkNullable(arg, nonNull, boundVars, issues, schema);
-    return;
-  }
-
-  // `cel.bind` binds a name for its body; mirror extractAccessChains so a bound name is
-  // never read as a nullable context field.
-  const bind = bindCall(node);
-  if (bind) {
-    walkNullable(bind.init, nonNull, boundVars, issues, schema);
-    walkNullable(bind.body, nonNull, new Set(boundVars).add(bind.name), issues, schema);
-    return;
-  }
-
-  // A comprehension binds a loop variable; mirror extractAccessChains so a bound var is
-  // never mistaken for a nullable context field.
-  const macro = comprehension(node);
-  if (macro) {
-    walkNullable(macro.receiver, nonNull, boundVars, issues, schema);
-    const inner = new Set(boundVars).add(macro.bound);
-    for (const arg of macro.scoped) walkNullable(arg, nonNull, inner, issues, schema);
-    return;
-  }
-
-  for (const child of childNodes(node)) {
-    walkNullable(child, nonNull, boundVars, issues, schema);
-  }
-}
-
 /**
  * Check whether a member-access chain accesses only fields declared in a JSON Schema.
  * Returns an error string if a field is unknown in a schema that declares explicit
@@ -592,32 +389,8 @@ export function validateChainAgainstSchema(
   return chainFailureAgainstSchema(chain, schema)?.message ?? null;
 }
 
-/**
- * The member chains whose last read the type checker already refused, joined with
- * `.` — the select nodes whose member range is one of `ranges`, which is where the
- * checker reports an unknown member. A context schema read of the same chain would
- * say it a second time, in other words.
- */
-export function chainsRefusedAt(
-  node: CelNode,
-  ranges: ReadonlyArray<readonly [number, number]>,
-): Set<string> {
-  const refused = new Set<string>();
-  if (ranges.length === 0) return refused;
-  const at = new Set(ranges.map(([start, end]) => `${start}:${end}`));
-  const visit = (current: CelNode): void => {
-    if (current.kind === "select" && at.has(`${current.fieldRange[0]}:${current.fieldRange[1]}`)) {
-      const chain = extractChain(current, new Set());
-      if (chain) refused.add(chain.join("."));
-    }
-    for (const child of childNodes(current)) visit(child);
-  };
-  visit(node);
-  return refused;
-}
-
 /** {@link validateChainAgainstSchema}, with the path of the read that failed. */
-export function chainFailureAgainstSchema(
+function chainFailureAgainstSchema(
   chain: string[],
   schema: Record<string, any>,
 ): { path: string; message: string } | null {
@@ -690,7 +463,7 @@ export function chainFailureAgainstSchema(
         const path = chain.slice(0, i + 1).join(".");
         return {
           path,
-          message: `'${path}' yields a stream — pipe it through an Encoder or iterate in a JS.Script step (no member access on stream-typed values)`,
+          message: `'${path}' is a Telo.Stream, which holds no members: hand it to a step that consumes a stream and read that step's result`,
         };
       }
       current = found;

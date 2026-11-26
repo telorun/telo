@@ -1,0 +1,30 @@
+# A value beneath a named shape that varies under `variables.flag1`, reached
+# through a reference inside a second shape: what the inner shape refuses is
+# reported under its class, and what every class refuses in the branch no
+# configuration takes is reported in that branch.
+kind: Telo.Application
+metadata: { name: ShapeBoundaryDeadBranch, version: 1.0.0 }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Inner }
+schema: !if
+  if: !cel "variables.flag1"
+  then: { type: object, required: [z], properties: { y: { type: integer } } }
+  else: { type: object, required: [z], properties: { y: { type: string } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Outer }
+schema: { type: object, properties: { next: { $ref: "telo://Self/Inner" } } }
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Runnable
+schema: { type: object, properties: { v: { $ref: "telo://Self/Outer" } } }
+---
+kind: Self.Holder
+metadata: { name: holder }
+v: !if
+  if: !cel "module.version == '1.0.0'"
+  then: { next: { y: text, z: 1 } }
+  else: { next: {} }

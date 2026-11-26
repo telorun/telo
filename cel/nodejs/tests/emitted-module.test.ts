@@ -20,7 +20,9 @@ import {
   readEmittedHeader,
   RUNTIME_BINDINGS,
   type EmittedModuleStore,
+  type JsonSchemaNode,
 } from "../src/index.js";
+import { typesEqual } from "../src/cel-type.js";
 import { environmentListing } from "../src/environment-digest.js";
 import { CALL_SITE_DIRECT_ARITY } from "../src/runtime-library.js";
 import { sha256OfText } from "../src/sha256.js";
@@ -199,6 +201,40 @@ describe("the cache key", () => {
       key(base().registerType({ name: "Money", base: "int", members: ["Self.cents(): int"] })),
     ).not.toBe(key(base()));
     expect(key(new CelEnvironment({ unlistedVariablesAreDyn: true }))).not.toBe(key(base()));
+  });
+
+  it("changes when a closed record declares a member absent", () => {
+    const record = (properties: Record<string, JsonSchemaNode>) =>
+      base().registerVariable("x", { schema: { type: "object", properties } });
+    expect(record({ a: { type: "string" }, b: { not: {} } }).digest()).not.toBe(record({ a: { type: "string" } }).digest());
+  });
+
+  it("changes when a record's field differs only in its finite set, which makes the types unequal", () => {
+    const record = (values: readonly string[]) =>
+      base().registerVariable("x", { schema: { type: "object", properties: { k: { type: "string", enum: values } } } });
+    const typeOf = (environment: CelEnvironment) => environment.definitions().variables.find((held) => held.name === "x")!.type;
+    expect(record(["a"]).digest()).not.toBe(record(["b"]).digest());
+    expect(typesEqual(typeOf(record(["a"])), typeOf(record(["b"])))).toBe(false);
+    expect(record(["a", "b"]).digest()).toBe(record(["b", "a", "b"]).digest());
+  });
+
+  it("changes when a record's pattern differs only in its text", () => {
+    const record = (pattern: string) =>
+      base().registerVariable("x", { schema: { type: "object", patternProperties: { [pattern]: { type: "string" } } } });
+    expect(record("^a").digest()).not.toBe(record("^b").digest());
+  });
+
+  it("carries each pattern part: the same for parts met with themselves, not for their patterns as one part", () => {
+    const variable = (schema: JsonSchemaNode) => base().registerVariable("x", { schema });
+    const parts: JsonSchemaNode = {
+      allOf: [
+        { type: "object", patternProperties: { "^x-": { type: "string" } }, additionalProperties: { type: "integer" } },
+        { type: "object", patternProperties: { "y-": { type: "integer" } } },
+      ],
+    };
+    const onePart: JsonSchemaNode = { type: "object", patternProperties: { "^x-": { type: "string" }, "y-": { type: "integer" } } };
+    expect(variable({ allOf: [parts, parts] }).digest()).toBe(variable(parts).digest());
+    expect(variable(onePart).digest()).not.toBe(variable(parts).digest());
   });
 
   it("is the SAME for two environments built by different registration orders", () => {

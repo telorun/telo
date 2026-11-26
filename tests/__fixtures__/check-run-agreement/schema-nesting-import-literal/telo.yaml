@@ -1,0 +1,9 @@
+# An import supplying a literal exactly 100 levels deep, the most a validation
+# follows: each supplied value is judged from its own root, so it is accepted.
+kind: Telo.Application
+metadata: { name: SchemaNestingImportLiteral, version: 1.0.0 }
+imports:
+  Worker:
+    source: ./worker
+    variables:
+      tree: [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]

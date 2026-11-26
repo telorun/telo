@@ -1,0 +1,46 @@
+# A template body's entry holding a reference to a resource of the wrong kind:
+# `src` takes a `Self.Thing`, and both a sibling entry and a resource of the
+# library are `Self.User`s.
+kind: Telo.Library
+metadata: { name: BodyRefKind, version: 0.1.0 }
+exports: { kinds: [Wrapper] }
+---
+kind: Telo.Definition
+metadata: { name: Thing }
+capability: Telo.Invocable
+schema: { type: object }
+resources:
+  - { kind: Telo.Value, metadata: { name: value }, value: thing }
+invoke: !ref value
+---
+kind: Telo.Definition
+metadata: { name: User }
+capability: Telo.Invocable
+schema: { type: object }
+resources:
+  - { kind: Telo.Value, metadata: { name: value }, value: user }
+invoke: !ref value
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties: { src: { x-telo-ref: { kind: Self.Thing, use: call } } }
+  required: [src]
+resources:
+  - { kind: Telo.Value, metadata: { name: value }, value: held }
+invoke: !ref value
+---
+kind: Self.User
+metadata: { name: owner }
+---
+kind: Telo.Definition
+metadata: { name: Wrapper }
+capability: Telo.Invocable
+schema: { type: object }
+resources:
+  - { kind: Self.User, metadata: { name: user } }
+  - { kind: Self.Holder, metadata: { name: bySibling }, src: !ref user }
+  - { kind: Self.Holder, metadata: { name: byModule }, src: !ref owner }
+invoke: !ref bySibling

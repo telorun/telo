@@ -40,9 +40,9 @@ expect:
     - code: CEL_TYPE_ERROR
       message: "'steps[1].invoke.fields.top.selector' returns 'int'"
     - code: CEL_TYPE_ERROR
-      message: "'steps[1].invoke.fields.link.attr' returns 'int'"
+      message: "'steps[1].invoke.fields.link.attr' reads 'variables.n', declared 'integer', but the field expects 'string'"
     - code: CEL_TYPE_ERROR
-      message: "'steps[1].invoke.fields.a.fields.c.selector' returns 'int'"
+      message: "'steps[1].invoke.fields.a.fields.c.selector' reads 'variables.n', declared 'integer', but the field expects 'string'"
 ---
 kind: Assert.Manifest
 metadata: { name: dynComputedSelectorNotText }

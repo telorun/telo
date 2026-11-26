@@ -138,10 +138,10 @@ steps:
     inputs: { subject: ann@acme.test, holder: browser-holder-secret, data: { returnTo: /other } }
   - name: otherHolder
     invoke: !ref redeemLink
-    inputs: { token: !cel "steps.issued.result.token", holder: someone-else }
+    inputs: { token: !cel "steps.issued.result.?token.value()", holder: someone-else }
   - name: noHolder
     invoke: !ref redeemLink
-    inputs: { token: !cel "steps.issued.result.token" }
+    inputs: { token: !cel "steps.issued.result.?token.value()" }
   - name: guess
     invoke: !ref redeemLink
     inputs: { token: not-a-token, holder: browser-holder-secret }
@@ -150,13 +150,13 @@ steps:
     inputs: { sql: "SELECT store_key, value FROM one_time", bindings: [] }
   - name: onOtherReplica
     invoke: !ref redeemOnOtherReplica
-    inputs: { token: !cel "steps.issued.result.token", holder: browser-holder-secret }
+    inputs: { token: !cel "steps.issued.result.?token.value()", holder: browser-holder-secret }
   - name: redeemed
     invoke: !ref redeemLink
-    inputs: { token: !cel "steps.issued.result.token", holder: browser-holder-secret }
+    inputs: { token: !cel "steps.issued.result.?token.value()", holder: browser-holder-secret }
   - name: again
     invoke: !ref redeemLink
-    inputs: { token: !cel "steps.issued.result.token", holder: browser-holder-secret }
+    inputs: { token: !cel "steps.issued.result.?token.value()", holder: browser-holder-secret }
   - name: afterRedeem
     invoke: !ref issueLink
     inputs: { subject: ann@acme.test, data: { returnTo: /again } }
@@ -165,7 +165,7 @@ steps:
     inputs: { subject: ann@acme.test }
   - name: revokedLinkOpens
     invoke: !ref redeemLink
-    inputs: { token: !cel "steps.afterRedeem.result.token" }
+    inputs: { token: !cel "steps.afterRedeem.result.?token.value()" }
   - name: revokedTwice
     invoke: !ref revokeLink
     inputs: { subject: ann@acme.test }
@@ -199,23 +199,23 @@ steps:
     inputs: { subject: bob@acme.test }
   - name: firstAfterReissue
     invoke: !ref redeemReplaceable
-    inputs: { token: !cel "steps.first.result.token" }
+    inputs: { token: !cel "steps.first.result.?token.value()" }
   - name: secondRedeems
     invoke: !ref redeemReplaceable
-    inputs: { token: !cel "steps.second.result.token" }
+    inputs: { token: !cel "steps.second.result.?token.value()" }
   - name: expired
     invoke: !ref redeemShortLived
-    inputs: { token: !cel "steps.shortLived.result.token" }
+    inputs: { token: !cel "steps.shortLived.result.?token.value()" }
 
   # A code: holder first, attempts, exhaustion, and the wait that follows.
   - name: code
     invoke: !ref issueCode
     inputs: { subject: ann@acme.test, holder: browser-holder-secret }
   - name: wrongCode
-    value: !cel "steps.code.result.token == '0000000000' ? '1111111111' : '0000000000'"
+    value: !cel "steps.code.result.?token.value() == '0000000000' ? '1111111111' : '0000000000'"
   - name: codeOtherHolderRight
     invoke: !ref redeemCode
-    inputs: { subject: ann@acme.test, token: !cel "steps.code.result.token", holder: someone-else }
+    inputs: { subject: ann@acme.test, token: !cel "steps.code.result.?token.value()", holder: someone-else }
   - name: codeOtherHolderWrong
     invoke: !ref redeemCode
     inputs: { subject: ann@acme.test, token: !cel "steps.wrongCode.result", holder: someone-else }
@@ -236,7 +236,7 @@ steps:
     inputs: { subject: ann@acme.test, token: !cel "steps.wrongCode.result", holder: browser-holder-secret }
   - name: rightAfterExhausted
     invoke: !ref redeemCode
-    inputs: { subject: ann@acme.test, token: !cel "steps.code.result.token", holder: browser-holder-secret }
+    inputs: { subject: ann@acme.test, token: !cel "steps.code.result.?token.value()", holder: browser-holder-secret }
   - name: issueAfterExhausted
     invoke: !ref issueCode
     inputs: { subject: ann@acme.test }
@@ -244,13 +244,13 @@ steps:
     invoke: !ref issueCode
     inputs: { subject: carol@acme.test }
   - name: bobWrongCode
-    value: !cel "steps.bobCode.result.token == '0000000000' ? '1111111111' : '0000000000'"
+    value: !cel "steps.bobCode.result.?token.value() == '0000000000' ? '1111111111' : '0000000000'"
   - name: bobWrong
     invoke: !ref redeemCode
     inputs: { subject: carol@acme.test, token: !cel "steps.bobWrongCode.result" }
   - name: bobRight
     invoke: !ref redeemCode
-    inputs: { subject: carol@acme.test, token: !cel "steps.bobCode.result.token" }
+    inputs: { subject: carol@acme.test, token: !cel "steps.bobCode.result.?token.value()" }
   - name: unknownSubject
     invoke: !ref redeemCode
     inputs: { subject: nobody@acme.test, token: "0000000000" }
@@ -259,12 +259,12 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        issued: { issued: !cel "steps.issued.result.issued", tokenLength: !cel "size(steps.issued.result.token)" }
-        reissued: { issued: !cel "steps.reissued.result.issued", waits: !cel "steps.reissued.result.retryAfter >= 100 && steps.reissued.result.retryAfter <= 120" }
+        issued: { issued: !cel "steps.issued.result.issued", tokenLength: !cel "size(steps.issued.result.?token.value())" }
+        reissued: { issued: !cel "steps.reissued.result.issued", waits: !cel "steps.reissued.result.?retryAfter.value() >= 100 && steps.reissued.result.?retryAfter.value() <= 120" }
         otherHolder: !cel "steps.otherHolder.result"
         noHolder: !cel "steps.noHolder.result"
         guess: !cel "steps.guess.result"
-        rowsHoldNoSecret: !cel "!steps.rows.result.rows.exists(r, r.value.contains(steps.issued.result.token) || r.value.contains('browser-holder-secret') || r.store_key.contains(steps.issued.result.token))"
+        rowsHoldNoSecret: !cel "!steps.rows.result.rows.exists(r, r.value.contains(steps.issued.result.?token.value()) || r.value.contains('browser-holder-secret') || r.store_key.contains(steps.issued.result.?token.value()))"
         rowCount: !cel "size(steps.rows.result.rows)"
         onOtherReplica: !cel "steps.onOtherReplica.result"
         redeemed: !cel "steps.redeemed.result"
@@ -280,7 +280,7 @@ steps:
         expired: !cel "steps.expired.result"
         dataMissing: !cel "steps.dataMissingOutcome.result"
         dataGiven: !cel "steps.dataGiven.result.issued"
-        code: { issued: !cel "steps.code.result.issued", digits: !cel "steps.code.result.token.matches('^[0-9]{10}$')" }
+        code: { issued: !cel "steps.code.result.issued", digits: !cel "steps.code.result.?token.value().matches('^[0-9]{10}$')" }
         codeOtherHolderRight: !cel "steps.codeOtherHolderRight.result"
         codeOtherHolderWrong: !cel "steps.codeOtherHolderWrong.result"
         attempts:

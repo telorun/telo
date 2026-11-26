@@ -1,0 +1,31 @@
+# A reference slot reached through a named shape whose flag decides which
+# shape declares it: the inline declaration written there is refused only
+# where the way leads to the slot that does not accept it.
+kind: Telo.Application
+metadata: { name: ShapeWaySlotChoice }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Way }
+schema: !if
+  if: !cel "variables.flag1"
+  then: { type: object, properties: { next: { $ref: "telo://Self/Slot" } } }
+  else: { type: object, properties: { next: { $ref: "telo://Self/Other" } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Slot }
+schema: { type: object, properties: { x: { x-telo-ref: { kind: Telo.Service, use: dependency } } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Other }
+schema: { type: object, properties: { x: { x-telo-ref: { kind: Telo.Invocable, use: call } } } }
+---
+kind: Telo.Definition
+metadata: { name: Route }
+capability: Telo.Service
+controllers: [pkg:telo/local/js?path=./probe.mjs#Route]
+schema: { type: object, properties: { s: { $ref: "telo://Self/Way" } } }
+---
+kind: ShapeWaySlotChoice.Route
+metadata: { name: route }
+s: { next: { x: { kind: Telo.Value, value: 1 } } }
